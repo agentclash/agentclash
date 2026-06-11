@@ -140,3 +140,37 @@ func TestSchemaSubtreeLookup(t *testing.T) {
 		t.Fatalf("unknown path error = %v, want cliError invalid_argument", err)
 	}
 }
+
+// The error_codes registry's `retryable` flags must match what the CLI
+// actually emits — a published `retryable:true` that the runtime contradicts
+// (retryable:false + exit 64) is the exact contract lie schema v2 exists to
+// prevent. Codes the CLI synthesizes as a cliError are checked end-to-end.
+func TestErrorCodeRegistryRetryableMatchesRuntime(t *testing.T) {
+	reg := map[string]bool{}
+	for _, ec := range documentedErrorCodes {
+		reg[ec.Code] = ec.Retryable
+	}
+
+	// cliError-synthesized codes: build the error, classify it, compare.
+	for _, code := range []string{"follow_timeout", "stream_reconnect_exhausted", "missing_workspace", "invalid_argument"} {
+		want, documented := reg[code]
+		if !documented {
+			t.Errorf("error code %q is emitted but absent from the registry", code)
+			continue
+		}
+		se := classifyStructuredError(&cliError{Code: code, Message: "x"})
+		if se.Retryable != want {
+			t.Errorf("code %q: registry retryable=%v, runtime envelope retryable=%v", code, want, se.Retryable)
+		}
+		// The exit-75 ⟺ retryable invariant must also hold for these.
+		gotExit := exitCodeForError(&cliError{Code: code, Message: "x"})
+		if (gotExit == exitRetryableFailure) != want {
+			t.Errorf("code %q: exit %d vs registry retryable=%v breaks the exit-75-iff-retryable invariant", code, gotExit, want)
+		}
+	}
+
+	// Transport failures genuinely are retryable, and the registry must say so.
+	if !reg["request_failed"] {
+		t.Error("request_failed must be marked retryable in the registry")
+	}
+}

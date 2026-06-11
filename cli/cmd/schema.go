@@ -68,12 +68,21 @@ type cliSchema struct {
 // "agentclash run create") scopes a local flag. Only add entries whose set is
 // authoritative (enforced by validation or the backend) — a speculative or
 // stale enum is worse for an agent than none.
+// runScopeValues is the closed set the shared run-create validator enforces
+// (run_create_helpers.go). Both `run create` and `eval start` parse flags
+// through it, so they reference one source here rather than two literals that
+// could drift.
+var runScopeValues = []string{"full", "suite_only"}
+
 var flagAllowedValues = map[string]map[string][]string{
 	"": {
 		"output": {"table", "json", "yaml"},
 	},
 	"agentclash run create": {
-		"scope": {"full", "suite_only"},
+		"scope": runScopeValues,
+	},
+	"agentclash eval start": {
+		"scope": runScopeValues,
 	},
 }
 

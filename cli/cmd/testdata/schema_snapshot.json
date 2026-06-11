@@ -2208,7 +2208,11 @@
               "name": "scope",
               "usage": "Run scope: full or suite_only",
               "type": "string",
-              "default": "full"
+              "default": "full",
+              "allowed_values": [
+                "full",
+                "suite_only"
+              ]
             },
             {
               "name": "suite",
@@ -5028,13 +5032,11 @@
     },
     {
       "code": "follow_timeout",
-      "description": "A --follow loop gave up after --timeout; the underlying job keeps running server-side.",
-      "retryable": true
+      "description": "A --follow loop gave up after --timeout; the underlying job keeps running server-side — re-check its status rather than blindly retrying."
     },
     {
       "code": "stream_reconnect_exhausted",
-      "description": "The SSE event stream dropped repeatedly without delivering events; resume with `run events --since \u003cid\u003e`.",
-      "retryable": true
+      "description": "The SSE event stream dropped repeatedly without delivering events; resume with `run events --since \u003cid\u003e`."
     }
   ],
   "status_enums": [
