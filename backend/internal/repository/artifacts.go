@@ -104,7 +104,7 @@ func (r *Repository) CreateArtifact(ctx context.Context, params CreateArtifactPa
 	return artifact, nil
 }
 
-func (r *Repository) ListArtifactsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]Artifact, error) {
+func (r *Repository) ListArtifactsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]Artifact, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT
 			id,
@@ -126,8 +126,9 @@ func (r *Repository) ListArtifactsByWorkspaceID(ctx context.Context, workspaceID
 		FROM artifacts
 		WHERE workspace_id = $1
 		  AND retention_status = 'active'
-		ORDER BY created_at DESC
-	`, workspaceID)
+		ORDER BY created_at DESC, id DESC
+		LIMIT $2 OFFSET $3
+	`, workspaceID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list artifacts by workspace: %w", err)
 	}
@@ -145,6 +146,22 @@ func (r *Repository) ListArtifactsByWorkspaceID(ctx context.Context, workspaceID
 		return nil, fmt.Errorf("list artifacts by workspace: rows: %w", err)
 	}
 	return artifacts, nil
+}
+
+// CountArtifactsByWorkspaceID returns the total number of active artifacts in
+// the workspace, for list pagination.
+func (r *Repository) CountArtifactsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
+	var total int64
+	err := r.db.QueryRow(ctx, `
+		SELECT COUNT(*)
+		FROM artifacts
+		WHERE workspace_id = $1
+		  AND retention_status = 'active'
+	`, workspaceID).Scan(&total)
+	if err != nil {
+		return 0, fmt.Errorf("count artifacts by workspace: %w", err)
+	}
+	return total, nil
 }
 
 // ListArtifactsByRunID returns the active (non-expired) artifacts produced by a

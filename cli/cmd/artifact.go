@@ -16,6 +16,7 @@ import (
 func init() {
 	rootCmd.AddCommand(artifactCmd)
 	artifactCmd.AddCommand(artifactListCmd)
+	registerListPaginationFlags(artifactListCmd)
 	artifactCmd.AddCommand(artifactUploadCmd)
 	artifactCmd.AddCommand(artifactDownloadCmd)
 
@@ -40,7 +41,11 @@ var artifactListCmd = &cobra.Command{
 		rc := GetRunContext(cmd)
 		wsID := RequireWorkspace(cmd)
 
-		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/artifacts", nil)
+		q, err := listPaginationQuery(cmd)
+		if err != nil {
+			return err
+		}
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/artifacts", q)
 		if err != nil {
 			return err
 		}
@@ -49,14 +54,18 @@ var artifactListCmd = &cobra.Command{
 		}
 
 		var result struct {
-			Items []map[string]any `json:"items"`
+			Items  []map[string]any `json:"items"`
+			Total  int64            `json:"total"`
+			Limit  int              `json:"limit"`
+			Offset int              `json:"offset"`
 		}
 		if err := resp.DecodeJSON(&result); err != nil {
 			return err
 		}
+		list := newPaginatedList(result.Items, result.Total, result.Limit, result.Offset)
 
 		if rc.Output.IsStructured() {
-			return rc.Output.PrintRaw(result)
+			return rc.Output.PrintRaw(list)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Type"}, {Header: "Size"}, {Header: "Run"}, {Header: "Run Agent"}, {Header: "Created"}}
@@ -72,6 +81,7 @@ var artifactListCmd = &cobra.Command{
 			}
 		}
 		rc.Output.PrintTable(cols, rows)
+		printListPagingHint(rc, list)
 		return nil
 	},
 }

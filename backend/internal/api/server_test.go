@@ -64,7 +64,7 @@ func (stubRunReadService) ListRuns(_ context.Context, _ Caller, _ ListRunsInput)
 
 type stubAgentDeploymentReadService struct{}
 
-func (stubAgentDeploymentReadService) ListAgentDeployments(_ context.Context, _ uuid.UUID) (ListAgentDeploymentsResult, error) {
+func (stubAgentDeploymentReadService) ListAgentDeployments(_ context.Context, _ uuid.UUID, _, _ int32) (ListAgentDeploymentsResult, error) {
 	return ListAgentDeploymentsResult{}, errors.New("not implemented")
 }
 
