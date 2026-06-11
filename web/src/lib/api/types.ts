@@ -2687,6 +2687,7 @@ export interface AgentTryout {
   tool_policy_snapshot: Record<string, unknown>;
   evaluation_spec_snapshot: Record<string, unknown>;
   selected_model_policy: Record<string, unknown>;
+  selected_harness_kind?: AgentHarnessKind;
   summary: AgentTryoutSummary;
   redaction_status: AgentTryoutRedactionStatus;
   run_id?: string;
@@ -2753,9 +2754,16 @@ export interface AgentTryoutModelPolicy {
   models?: AgentTryoutModelPolicyModel[];
 }
 
+export type AgentHarnessKind =
+  | "codex_e2b"
+  | "claude_e2b"
+  | "openclaw_e2b"
+  | "hermes_e2b";
+
 export interface CreateAgentTryoutInput {
   template_slug: string;
   input: Record<string, unknown>;
+  selected_harness_kind?: AgentHarnessKind;
 }
 
 export interface RerunAgentTryoutInput {
