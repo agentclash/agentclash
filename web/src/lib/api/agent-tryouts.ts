@@ -35,6 +35,17 @@ export function getPublicAgentTryout(
   return api.get<AgentTryout>(`/v1/agent-tryouts/${tryoutId}`);
 }
 
+export function submitAgentTryoutTurn(
+  api: ApiClient,
+  tryoutId: string,
+  input: { message?: string; end?: boolean },
+): Promise<{ status: string }> {
+  return api.post<{ status: string }>(
+    `/v1/agent-tryouts/${tryoutId}/turns`,
+    input,
+  );
+}
+
 export function getPublicAgentTryoutEvents(
   api: ApiClient,
   tryoutId: string,

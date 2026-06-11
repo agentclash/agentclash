@@ -26,6 +26,7 @@ import {
   getPublicAgentTryout,
   getPublicAgentTryoutEvents,
   listAgentTryoutTemplates,
+  submitAgentTryoutTurn,
 } from "@/lib/api/agent-tryouts";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
@@ -581,6 +582,8 @@ function TryoutPanel({
         <Stat label="Latency" value={formatTryoutLatency(tryout.latency_ms)} />
         <Stat label="Cost" value={formatTryoutCost(tryout)} />
       </dl>
+
+      <TryoutChat tryout={tryout} events={events} />
 
       {scorecard ? <ScorecardCard scorecard={scorecard} /> : null}
 
@@ -1150,5 +1153,190 @@ function RoiInput({
         className="h-9 w-full rounded-xl border border-[#f4efe6]/12 bg-[#0e0c0a]/65 px-3 text-sm text-[#f4efe6] outline-none placeholder:text-[#f4efe6]/25 focus:border-[#d8a15d]/50 focus:ring-2 focus:ring-[#d8a15d]/20"
       />
     </label>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TryoutChat — the live conversation. The visitor talks to the agent turn by
+// turn while the session is active; agent reasoning/tool steps stream in from
+// the event log. User messages are tracked locally (the page sent them) and
+// interleaved with agent steps.
+// ---------------------------------------------------------------------------
+
+type ChatUserMessage = { id: string; text: string; at: number };
+
+function TryoutChat({
+  tryout,
+  events,
+}: {
+  tryout: AgentTryout;
+  events: TryoutTimelineEvent[];
+}) {
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [ending, setEnding] = useState(false);
+  const [userMessages, setUserMessages] = useState<ChatUserMessage[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const active = tryoutIsActive(tryout.status);
+
+  // Reset local chat when switching to a different tryout.
+  useEffect(() => {
+    setUserMessages([]);
+    setDraft("");
+    setError(null);
+  }, [tryout.id]);
+
+  const agentSteps = useMemo(
+    () =>
+      events
+        .filter(
+          (event) =>
+            event.type === "planning" ||
+            event.type === "tool_call" ||
+            event.type === "finished",
+        )
+        .map((event) => ({
+          kind: "agent" as const,
+          id: `e${event.cursor}`,
+          text: event.summary,
+          at: new Date(event.occurred_at).getTime(),
+          stepType: event.type,
+        })),
+    [events],
+  );
+
+  const timeline = useMemo(() => {
+    const user = userMessages.map((m) => ({
+      kind: "user" as const,
+      id: m.id,
+      text: m.text,
+      at: m.at,
+      stepType: "user" as const,
+    }));
+    return [...user, ...agentSteps].sort((a, b) => a.at - b.at);
+  }, [userMessages, agentSteps]);
+
+  async function send() {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      await submitAgentTryoutTurn(api, tryout.id, { message: text });
+      setUserMessages((current) => [
+        ...current,
+        { id: `u${Date.now()}`, text, at: Date.now() },
+      ]);
+      setDraft("");
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Could not send your message.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function endSession() {
+    if (ending) return;
+    setEnding(true);
+    try {
+      await submitAgentTryoutTurn(api, tryout.id, { end: true });
+    } catch {
+      // best-effort; the session also ends on idle / cap
+    } finally {
+      setEnding(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-2xl border border-[#f4efe6]/10 bg-[#0e0c0a]/55 p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold tracking-tight">Conversation</h3>
+        {active ? (
+          <button
+            type="button"
+            onClick={endSession}
+            disabled={ending}
+            className="text-xs text-[#f4efe6]/45 transition hover:text-[#f4efe6]/80"
+          >
+            End session
+          </button>
+        ) : null}
+      </div>
+
+      <div className="mt-3 max-h-96 space-y-2 overflow-auto">
+        {timeline.length === 0 ? (
+          <p className="text-sm text-[#f4efe6]/45">
+            {active
+              ? "The agent is starting. Watch its steps, then reply below."
+              : "No conversation was recorded."}
+          </p>
+        ) : (
+          timeline.map((item) =>
+            item.kind === "user" ? (
+              <div key={item.id} className="flex justify-end">
+                <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-[#e7c18d] px-3 py-2 text-sm text-[#14120f]">
+                  {item.text}
+                </div>
+              </div>
+            ) : (
+              <div key={item.id} className="flex justify-start">
+                <div className="flex max-w-[85%] items-start gap-2 rounded-2xl rounded-bl-sm border border-[#f4efe6]/10 bg-[#f4efe6]/[0.04] px-3 py-2 text-sm text-[#f4efe6]/80">
+                  {item.stepType === "tool_call" ? (
+                    <Activity className="mt-0.5 size-3.5 shrink-0 text-[#7fd1a0]" />
+                  ) : (
+                    <Gauge className="mt-0.5 size-3.5 shrink-0 text-[#d8a15d]" />
+                  )}
+                  <span className="min-w-0">{item.text}</span>
+                </div>
+              </div>
+            ),
+          )
+        )}
+      </div>
+
+      {active ? (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void send();
+          }}
+          className="mt-3 flex items-end gap-2 rounded-2xl border border-[#f4efe6]/12 bg-[#16140f]/80 p-2 focus-within:border-[#d8a15d]/40"
+        >
+          <textarea
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void send();
+              }
+            }}
+            rows={1}
+            placeholder="Reply to the agent…"
+            className="block max-h-32 w-full resize-none bg-transparent px-2 py-1.5 text-sm text-[#f4efe6] outline-none placeholder:text-[#f4efe6]/30"
+          />
+          <button
+            type="submit"
+            disabled={!draft.trim() || sending}
+            aria-label="Send message"
+            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#e7c18d] text-[#14120f] transition hover:bg-[#f0cf9d] disabled:opacity-40"
+          >
+            {sending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <ArrowUp className="size-4" />
+            )}
+          </button>
+        </form>
+      ) : (
+        <p className="mt-3 text-xs text-[#f4efe6]/40">
+          This session has ended. Sign in to start a fresh conversation and save it.
+        </p>
+      )}
+      {error ? <p className="mt-2 text-xs text-red-300">{error}</p> : null}
+    </div>
   );
 }
