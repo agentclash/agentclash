@@ -15,6 +15,7 @@ import (
 func init() {
 	rootCmd.AddCommand(datasetCmd)
 	datasetCmd.AddCommand(datasetListCmd)
+	registerListPaginationFlags(datasetListCmd)
 	datasetCmd.AddCommand(datasetCreateCmd)
 	datasetCmd.AddCommand(datasetViewCmd)
 	datasetCmd.AddCommand(datasetDeleteCmd)
@@ -83,7 +84,11 @@ var datasetListCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
 		wsID := RequireWorkspace(cmd)
-		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/datasets", nil)
+		q, err := listPaginationQuery(cmd)
+		if err != nil {
+			return err
+		}
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/datasets", q)
 		if err != nil {
 			return err
 		}
@@ -91,15 +96,20 @@ var datasetListCmd = &cobra.Command{
 			return apiErr
 		}
 		var result struct {
-			Items []map[string]any `json:"items"`
+			Items  []map[string]any `json:"items"`
+			Total  int64            `json:"total"`
+			Limit  int              `json:"limit"`
+			Offset int              `json:"offset"`
 		}
 		if err := resp.DecodeJSON(&result); err != nil {
 			return err
 		}
+		list := newPaginatedList(result.Items, result.Total, result.Limit, result.Offset)
 		if rc.Output.IsStructured() {
-			return rc.Output.PrintRaw(result)
+			return rc.Output.PrintRaw(list)
 		}
 		renderDatasetsTable(rc, result.Items)
+		printListPagingHint(rc, list)
 		return nil
 	},
 }
