@@ -68,6 +68,57 @@ function agentLabel(value: string): string {
   return AGENT_OPTIONS.find((option) => option.value === value)?.label ?? "Auto";
 }
 
+// Starter prompts shown under the composer so people know what to throw at the
+// agent. Many lean on Python (PDFs, charts, spreadsheets) on purpose — that's
+// where agents shine and where the sandbox now has the full toolchain.
+const TASK_SUGGESTIONS: Record<string, string[]> = {
+  "support-ticket-resolution": [
+    "Customer says their invoice was charged twice and wants a refund today. Draft a reply and decide whether to escalate.",
+    "Angry customer threatening to churn over downtime. Reply empathetically, cite our SLA, flag for a human.",
+  ],
+  "document-extraction": [
+    "Extract line items, totals, and vendor from this invoice, then render a clean summary PDF.",
+    "Pull every date, amount, and party from this contract into a spreadsheet.",
+  ],
+  "contract-review": [
+    "Review this NDA for one-sided indemnity and unlimited liability. List risks with severity.",
+    "Compare these payment terms against net-30 standard and propose redlines.",
+  ],
+  "sdr-outreach": [
+    "Qualify this prospect for our eval platform and draft a 3-sentence cold email.",
+    "Write a follow-up to a VP Eng who opened but didn't reply, referencing their hiring spike.",
+  ],
+  "spreadsheet-builder": [
+    "Turn this raw sales data into a spreadsheet with a pivot summary and a bar chart PNG.",
+    "Build a 12-month cashflow model from these assumptions and chart the runway.",
+  ],
+  "slide-deck": [
+    "Make a 6-slide investor update from these metrics, with a revenue trend chart.",
+    "Turn this product brief into a deck outline with speaker notes.",
+  ],
+  "status-report": [
+    "Turn these scattered updates into a polished weekly status report and export it as a PDF.",
+    "Summarize this sprint into highlights, risks, and next steps.",
+  ],
+  "meeting-minutes": [
+    "Summarize these notes into minutes with owners and due dates.",
+    "Extract action items and render them as a one-page PDF checklist.",
+  ],
+  "inbox-triage": [
+    "Prioritize these 8 emails and draft replies for the urgent ones.",
+  ],
+};
+
+const GENERIC_SUGGESTIONS = [
+  "Generate a PDF report from this data with a chart.",
+  "Build a spreadsheet with formulas and a summary tab.",
+  "Turn this into a labeled bar chart and explain the trend.",
+];
+
+function suggestionsFor(slug: string): string[] {
+  return TASK_SUGGESTIONS[slug] ?? GENERIC_SUGGESTIONS;
+}
+
 const api = createApiClient();
 
 export function PublicTryoutsClient() {
@@ -377,6 +428,26 @@ export function PublicTryoutsClient() {
               </p>
             ) : null}
           </form>
+
+          {template && primaryField ? (
+            <div className="mt-5 w-full">
+              <p className="mb-2 text-center text-xs uppercase tracking-[0.14em] text-[#f4efe6]/35">
+                Try one of these
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {suggestionsFor(template.slug).map((suggestion) => (
+                  <button
+                    key={suggestion}
+                    type="button"
+                    onClick={() => updateField(primaryField[0], suggestion)}
+                    className="rounded-full border border-[#f4efe6]/12 bg-[#f4efe6]/[0.04] px-3 py-1.5 text-left text-xs text-[#f4efe6]/70 transition hover:border-[#d8a15d]/40 hover:text-[#f4efe6]"
+                  >
+                    {suggestion.length > 70 ? suggestion.slice(0, 70) + "…" : suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-7 grid w-full gap-3 sm:grid-cols-2">
             <GradientCard
