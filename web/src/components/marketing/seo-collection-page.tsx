@@ -5,6 +5,12 @@ import { ClashMark } from "@/components/marketing/clash-mark";
 import { JsonLd, breadcrumbSchema } from "@/components/marketing/json-ld";
 import type { SeoPageConfig } from "@/lib/seo-pages/types";
 
+type SecondarySection = {
+  title: string;
+  intro?: string;
+  pages: SeoPageConfig[];
+};
+
 type SeoCollectionPageProps = {
   path: string;
   title: string;
@@ -13,6 +19,7 @@ type SeoCollectionPageProps = {
   h1: string;
   intro: string;
   pages: SeoPageConfig[];
+  secondarySections?: SecondarySection[];
   schemaId: string;
 };
 
@@ -65,6 +72,7 @@ export function SeoCollectionPage({
   h1,
   intro,
   pages,
+  secondarySections = [],
   schemaId,
 }: SeoCollectionPageProps) {
   return (
@@ -138,6 +146,39 @@ export function SeoCollectionPage({
               </Link>
             ))}
           </div>
+          {secondarySections.map((section) => (
+            <section key={section.title} className="mt-16">
+              <h2 className="text-xl font-semibold tracking-tight text-white">
+                {section.title}
+              </h2>
+              {section.intro ? (
+                <p className="mt-3 max-w-[58ch] text-sm leading-7 text-white/55">
+                  {section.intro}
+                </p>
+              ) : null}
+              <div className="mt-6 grid gap-3">
+                {section.pages.map((page) => (
+                  <Link
+                    key={page.path}
+                    href={page.path}
+                    className="group rounded-md border border-white/[0.08] bg-white/[0.03] p-5 transition-colors hover:border-white/20 hover:bg-white/[0.05]"
+                  >
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <h3 className="text-base font-semibold tracking-normal text-white">
+                          {page.sitemapTitle}
+                        </h3>
+                        <p className="mt-2 text-sm leading-6 text-white/50">
+                          {page.sitemapDescription}
+                        </p>
+                      </div>
+                      <ArrowRight className="size-4 shrink-0 text-white/35 transition-colors group-hover:text-white/75" />
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
       </main>
     </>

@@ -2917,9 +2917,11 @@ type AgentDeploymentSummary struct {
 	LatestSnapshotID      *uuid.UUID
 }
 
-func (r *Repository) ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]AgentDeploymentSummary, error) {
+func (r *Repository) ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]AgentDeploymentSummary, error) {
 	rows, err := r.queries.ListActiveAgentDeploymentsByWorkspaceID(ctx, repositorysqlc.ListActiveAgentDeploymentsByWorkspaceIDParams{
 		WorkspaceID: workspaceID,
+		LimitCount:  limit,
+		OffsetCount: offset,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list active agent deployments by workspace id: %w", err)
@@ -2950,6 +2952,16 @@ func (r *Repository) ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context
 	}
 
 	return deployments, nil
+}
+
+func (r *Repository) CountActiveAgentDeploymentsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error) {
+	total, err := r.queries.CountActiveAgentDeploymentsByWorkspaceID(ctx, repositorysqlc.CountActiveAgentDeploymentsByWorkspaceIDParams{
+		WorkspaceID: workspaceID,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("count active agent deployments by workspace id: %w", err)
+	}
+	return total, nil
 }
 
 type ChallengePackSummary struct {

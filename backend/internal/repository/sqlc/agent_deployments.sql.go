@@ -12,6 +12,25 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countActiveAgentDeploymentsByWorkspaceID = `-- name: CountActiveAgentDeploymentsByWorkspaceID :one
+SELECT COUNT(*)
+FROM agent_deployments
+WHERE workspace_id = $1
+  AND status = 'active'
+  AND archived_at IS NULL
+`
+
+type CountActiveAgentDeploymentsByWorkspaceIDParams struct {
+	WorkspaceID uuid.UUID
+}
+
+func (q *Queries) CountActiveAgentDeploymentsByWorkspaceID(ctx context.Context, arg CountActiveAgentDeploymentsByWorkspaceIDParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countActiveAgentDeploymentsByWorkspaceID, arg.WorkspaceID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const listActiveAgentDeploymentsByWorkspaceID = `-- name: ListActiveAgentDeploymentsByWorkspaceID :many
 SELECT DISTINCT ON (ad.id)
     ad.id,
@@ -32,10 +51,13 @@ WHERE ad.workspace_id = $1
   AND ad.status = 'active'
   AND ad.archived_at IS NULL
 ORDER BY ad.id, ads.created_at DESC, ads.id DESC
+LIMIT $3 OFFSET $2
 `
 
 type ListActiveAgentDeploymentsByWorkspaceIDParams struct {
 	WorkspaceID uuid.UUID
+	OffsetCount int32
+	LimitCount  int32
 }
 
 type ListActiveAgentDeploymentsByWorkspaceIDRow struct {
@@ -51,7 +73,7 @@ type ListActiveAgentDeploymentsByWorkspaceIDRow struct {
 }
 
 func (q *Queries) ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context, arg ListActiveAgentDeploymentsByWorkspaceIDParams) ([]ListActiveAgentDeploymentsByWorkspaceIDRow, error) {
-	rows, err := q.db.Query(ctx, listActiveAgentDeploymentsByWorkspaceID, arg.WorkspaceID)
+	rows, err := q.db.Query(ctx, listActiveAgentDeploymentsByWorkspaceID, arg.WorkspaceID, arg.OffsetCount, arg.LimitCount)
 	if err != nil {
 		return nil, err
 	}

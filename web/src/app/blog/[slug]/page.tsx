@@ -7,6 +7,11 @@ import {
   articleSchema,
   breadcrumbSchema,
 } from "@/components/marketing/json-ld";
+import { BlogRelatedResources } from "@/components/marketing/blog-related-resources";
+import { MarketingShell } from "@/components/marketing/marketing-shell";
+import { ResearchAudienceCTA } from "@/components/marketing/research-audience-cta";
+import { ResourcePackCTA } from "@/components/marketing/resource-pack-cta";
+import { getBlogRelatedResources } from "@/lib/blog-related-resources";
 import { getAllSlugs, getPostBySlug } from "@/lib/blog";
 import { mdxRemoteOptions } from "@/lib/mdx-options";
 import { blogRssAlternate, ogImageUrl } from "@/lib/seo";
@@ -74,9 +79,10 @@ export default async function BlogPostPage({ params }: Props) {
   const { slug } = await params;
   const post = getPostBySlug(slug);
   if (!post) notFound();
+  const relatedResources = getBlogRelatedResources(slug);
 
   return (
-    <main className="min-h-screen flex flex-col items-center px-6 py-16">
+    <MarketingShell>
       <JsonLd
         id={`agentclash-blog-${post.slug}-schema`}
         data={[
@@ -94,12 +100,19 @@ export default async function BlogPostPage({ params }: Props) {
           }),
         ]}
       />
-      <article className="w-full max-w-lg">
-        <header className="mb-8">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] text-white/20">
+      <article className="mx-auto w-full max-w-3xl px-6 py-16">
+        <Link
+          href="/blog"
+          className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35 transition-colors hover:text-white/55"
+        >
+          &larr; Blog
+        </Link>
+
+        <header className="mt-6 mb-8">
+          <p className="font-[family-name:var(--font-mono)] text-[11px] text-white/40">
             {post.date} &middot; {post.author}
           </p>
-          <h1 className="mt-2 font-[family-name:var(--font-display)] text-2xl sm:text-3xl tracking-[-0.02em] leading-[1.15]">
+          <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl tracking-[-0.02em] leading-[1.15] sm:text-4xl">
             {post.title}
           </h1>
         </header>
@@ -107,14 +120,19 @@ export default async function BlogPostPage({ params }: Props) {
         <div className="prose-agentclash">
           <MDXRemote source={post.content} options={mdxRemoteOptions} />
         </div>
-      </article>
 
-      <Link
-        href="/blog"
-        className="mt-12 text-xs text-white/30 hover:text-white/50 transition-colors"
-      >
-        &larr; All posts
-      </Link>
-    </main>
+        <ResourcePackCTA className="mt-12" />
+
+        <BlogRelatedResources links={relatedResources} />
+
+        <ResearchAudienceCTA
+          className="mt-12"
+          headline="Ready to evaluate agents on your workloads?"
+          body="Book an eval workshop to map your agents to challenge packs, baselines, and release gates. Or see fixed-scope eval services and the enterprise pilot."
+          secondaryHref="/services"
+          secondaryLabel="Eval services"
+        />
+      </article>
+    </MarketingShell>
   );
 }

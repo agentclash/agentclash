@@ -17,4 +17,12 @@ LEFT JOIN agent_deployment_snapshots ads
 WHERE ad.workspace_id = @workspace_id
   AND ad.status = 'active'
   AND ad.archived_at IS NULL
-ORDER BY ad.id, ads.created_at DESC, ads.id DESC;
+ORDER BY ad.id, ads.created_at DESC, ads.id DESC
+LIMIT @limit_count OFFSET @offset_count;
+
+-- name: CountActiveAgentDeploymentsByWorkspaceID :one
+SELECT COUNT(*)
+FROM agent_deployments
+WHERE workspace_id = @workspace_id
+  AND status = 'active'
+  AND archived_at IS NULL;

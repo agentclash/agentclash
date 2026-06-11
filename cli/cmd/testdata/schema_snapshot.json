@@ -20,6 +20,12 @@
       "default": "false"
     },
     {
+      "name": "non-interactive",
+      "usage": "Never prompt; fail fast when interactive input is required (also set by AGENTCLASH_NONINTERACTIVE or CI)",
+      "type": "bool",
+      "default": "false"
+    },
+    {
       "name": "output",
       "shorthand": "o",
       "usage": "Output format: table, json, yaml",
@@ -29,6 +35,11 @@
         "json",
         "yaml"
       ]
+    },
+    {
+      "name": "query",
+      "usage": "jq expression applied to structured output (alias: --jq); strings print raw, other results one compact JSON document per line. Requires --json or --output json|yaml.",
+      "type": "string"
     },
     {
       "name": "quiet",
@@ -535,7 +546,21 @@
           "name": "list",
           "path": "agentclash artifact list",
           "short": "List artifacts in the workspace",
-          "runnable": true
+          "runnable": true,
+          "flags": [
+            {
+              "name": "limit",
+              "usage": "Maximum items to return (1-100; 0 = server default of 20)",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "offset",
+              "usage": "Number of items to skip before the first result",
+              "type": "int",
+              "default": "0"
+            }
+          ]
         },
         {
           "name": "upload",
@@ -1733,7 +1758,21 @@
           "name": "list",
           "path": "agentclash dataset list",
           "short": "List datasets",
-          "runnable": true
+          "runnable": true,
+          "flags": [
+            {
+              "name": "limit",
+              "usage": "Maximum items to return (1-100; 0 = server default of 20)",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "offset",
+              "usage": "Number of items to skip before the first result",
+              "type": "int",
+              "default": "0"
+            }
+          ]
         },
         {
           "name": "promote",
@@ -2031,7 +2070,21 @@
           "name": "list",
           "path": "agentclash deployment list",
           "short": "List agent deployments",
-          "runnable": true
+          "runnable": true,
+          "flags": [
+            {
+              "name": "limit",
+              "usage": "Maximum items to return (1-100; 0 = server default of 20)",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "offset",
+              "usage": "Number of items to skip before the first result",
+              "type": "int",
+              "default": "0"
+            }
+          ]
         }
       ]
     },
@@ -2949,7 +3002,21 @@
           "name": "list",
           "path": "agentclash org list",
           "short": "List organizations you belong to",
-          "runnable": true
+          "runnable": true,
+          "flags": [
+            {
+              "name": "limit",
+              "usage": "Maximum items to return (1-100; 0 = server default of 20)",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "offset",
+              "usage": "Number of items to skip before the first result",
+              "type": "int",
+              "default": "0"
+            }
+          ]
         },
         {
           "name": "members",
@@ -4108,7 +4175,21 @@
           "name": "list",
           "path": "agentclash run list",
           "short": "List runs in the workspace",
-          "runnable": true
+          "runnable": true,
+          "flags": [
+            {
+              "name": "limit",
+              "usage": "Maximum items to return (1-100; 0 = server default of 20)",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "offset",
+              "usage": "Number of items to skip before the first result",
+              "type": "int",
+              "default": "0"
+            }
+          ]
         },
         {
           "name": "promote-failure",
@@ -4769,6 +4850,18 @@
           "short": "List workspaces in an organization",
           "runnable": true,
           "flags": [
+            {
+              "name": "limit",
+              "usage": "Maximum items to return (1-100; 0 = server default of 20)",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "offset",
+              "usage": "Number of items to skip before the first result",
+              "type": "int",
+              "default": "0"
+            },
             {
               "name": "org",
               "usage": "Organization ID (uses default if not set)",

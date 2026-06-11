@@ -16,9 +16,11 @@ import (
 var runtimeOutputJSON bool
 
 type cliError struct {
-	Code    string
-	Message string
-	Err     error
+	Code     string
+	Message  string
+	Details  map[string]any
+	NextStep string
+	Err      error
 }
 
 func (e *cliError) Error() string {
@@ -193,7 +195,10 @@ func classifyStructuredError(err error) structuredError {
 
 	var localErr *cliError
 	if errors.As(err, &localErr) {
-		return structuredError{Code: nonEmpty(localErr.Code, "invalid_argument"), Message: localErr.Error(), Details: details}
+		if localErr.Details != nil {
+			details = localErr.Details
+		}
+		return structuredError{Code: nonEmpty(localErr.Code, "invalid_argument"), Message: localErr.Error(), Details: details, NextStep: localErr.NextStep}
 	}
 
 	var exitErr *ExitCodeError

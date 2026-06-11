@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { hasPublishedBenchmarks } from "@/lib/benchmarks";
 
 const COLUMNS: Array<{
   heading: string;
@@ -9,6 +8,8 @@ const COLUMNS: Array<{
     heading: "Product",
     links: [
       { href: "/#features", label: "Features" },
+      { href: "/enterprise", label: "Enterprise" },
+      { href: "/services", label: "Services" },
       { href: "/platform/agent-evaluation", label: "Agent evaluation" },
       { href: "/compare", label: "Compare tools" },
       { href: "/docs", label: "Docs" },
@@ -41,20 +42,11 @@ const COLUMNS: Array<{
 ];
 
 export function MarketingFooter() {
-  // Drop the Benchmarks link while the section is in its coming-soon state; it
-  // returns automatically once a real report is published.
-  const columns = hasPublishedBenchmarks()
-    ? COLUMNS
-    : COLUMNS.map((col) => ({
-        ...col,
-        links: col.links.filter((link) => link.href !== "/benchmarks"),
-      }));
-
   return (
     <footer className="mt-auto border-t border-white/[0.06] px-8 sm:px-12 pt-20 pb-10">
       <div className="mx-auto max-w-[1440px]">
         <div className="grid gap-12 sm:grid-cols-2 lg:grid-cols-4">
-          {columns.map((col) => (
+          {COLUMNS.map((col) => (
             <div key={col.heading}>
               <p className="text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/35">
                 {col.heading}

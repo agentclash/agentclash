@@ -21,6 +21,7 @@ func init() {
 	wsMembersCmd.AddCommand(wsMembersUpdateCmd)
 
 	wsListCmd.Flags().String("org", "", "Organization ID (uses default if not set)")
+	registerListPaginationFlags(wsListCmd)
 	wsCreateCmd.Flags().String("org", "", "Organization ID (required)")
 	wsCreateCmd.Flags().String("name", "", "Workspace name (required)")
 	wsCreateCmd.Flags().String("slug", "", "Workspace slug (optional)")
@@ -57,7 +58,11 @@ var wsListCmd = &cobra.Command{
 			return fmt.Errorf("organization ID required: use --org or set default_org via 'agentclash config set default_org <id>'")
 		}
 
-		resp, err := rc.Client.Get(cmd.Context(), "/v1/organizations/"+orgID+"/workspaces", nil)
+		q, err := listPaginationQuery(cmd)
+		if err != nil {
+			return err
+		}
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/organizations/"+orgID+"/workspaces", q)
 		if err != nil {
 			return err
 		}
@@ -66,14 +71,18 @@ var wsListCmd = &cobra.Command{
 		}
 
 		var result struct {
-			Items []map[string]any `json:"items"`
+			Items  []map[string]any `json:"items"`
+			Total  int64            `json:"total"`
+			Limit  int              `json:"limit"`
+			Offset int              `json:"offset"`
 		}
 		if err := resp.DecodeJSON(&result); err != nil {
 			return err
 		}
+		list := newPaginatedList(result.Items, result.Total, result.Limit, result.Offset)
 
 		if rc.Output.IsStructured() {
-			return rc.Output.PrintRaw(result)
+			return rc.Output.PrintRaw(list)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Slug"}, {Header: "Status"}}
@@ -87,6 +96,7 @@ var wsListCmd = &cobra.Command{
 			}
 		}
 		rc.Output.PrintTable(cols, rows)
+		printListPagingHint(rc, list)
 		return nil
 	},
 }

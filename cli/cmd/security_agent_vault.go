@@ -132,35 +132,59 @@ Example:
 			PerCallTimeout:      timeout,
 		}
 
-		fmt.Printf("Agent Vault stress-run: %d iterations against %s\n", iterations, model)
+		rc := GetRunContext(cmd)
+		// In structured mode keep stdout a clean JSON stream; route the
+		// banner, progress markers, per-entry stats, and the campaign table
+		// to stderr (same contract as `security stress-run`/`runtime-stress`).
+		progressW, structured := progressWriter(rc)
+
+		fmt.Fprintf(progressW, "Agent Vault stress-run: %d iterations against %s\n", iterations, model)
 		if proxyURL != "" {
-			fmt.Printf("  proxy        : %s\n", redactUserinfo(proxyURL))
+			fmt.Fprintf(progressW, "  proxy        : %s\n", redactUserinfo(proxyURL))
 		} else {
-			fmt.Printf("  proxy        : (none — tool issues direct requests)\n")
+			fmt.Fprintf(progressW, "  proxy        : (none — tool issues direct requests)\n")
 		}
 		if allowedUpstream != "" {
-			fmt.Printf("  upstream     : %s\n", allowedUpstream)
+			fmt.Fprintf(progressW, "  upstream     : %s\n", allowedUpstream)
 		}
 
 		ctx := context.Background()
 		if fromPack != "" {
-			return runFromPack(ctx, fromPack, outDir, iterations, base, cmd.OutOrStdout())
+			result, err := runFromPack(ctx, fromPack, outDir, iterations, base, progressW)
+			if err != nil {
+				return err
+			}
+			if structured {
+				return rc.Output.PrintRaw(result)
+			}
+			return nil
 		}
 		base.UserMessage = userMsg
-		stats := runOneEntry(ctx, base, iterations, cmd.OutOrStdout())
-		fmt.Printf("\n=== %s ===\n", model)
-		fmt.Printf("  iterations            : %d\n", iterations)
-		printStats(cmd.OutOrStdout(), stats, iterations)
+		stats := runOneEntry(ctx, base, iterations, progressW)
+		fmt.Fprintf(progressW, "\n=== %s ===\n", model)
+		fmt.Fprintf(progressW, "  iterations            : %d\n", iterations)
+		printStats(progressW, stats, iterations)
 		if outPath != "" {
 			f, err := os.Create(outPath)
 			if err != nil {
 				return err
 			}
-			defer f.Close()
-			if err := json.NewEncoder(f).Encode(stats.Report); err != nil {
-				return err
+			// Check Close, not just Encode: Encode can land in the kernel
+			// buffer while the flush fails on Close (full disk, NFS drop), so
+			// only advertise the report path once the file is fully written.
+			encErr := json.NewEncoder(f).Encode(stats.Report)
+			closeErr := f.Close()
+			if encErr != nil {
+				return encErr
 			}
-			fmt.Printf("  full report           : %s\n", outPath)
+			if closeErr != nil {
+				return closeErr
+			}
+			fmt.Fprintf(progressW, "  full report           : %s\n", outPath)
+		}
+		if structured {
+			// Same shape `--out` writes: the raw per-iteration report.
+			return rc.Output.PrintRaw(stats.Report)
 		}
 		return nil
 	},
@@ -225,37 +249,65 @@ func printStats(w io.Writer, s entryStats, iterations int) {
 	}
 }
 
+// agentVaultCampaignEntry is the machine-readable summary of one
+// adversarial prompt's campaign — the same numbers the markdown table
+// renders. Full per-iteration transcripts are written per entry to
+// --out-dir (surfaced as report_path); they are not inlined to keep the
+// stdout document bounded.
+type agentVaultCampaignEntry struct {
+	Name           string `json:"name"`
+	Strategy       string `json:"strategy,omitempty"`
+	Leaked         int    `json:"leaked"`
+	ProxyBypass    int    `json:"proxy_bypass"`
+	ConfusedDeputy int    `json:"confused_deputy"`
+	AdminAPI       int    `json:"admin_api"`
+	Refused        int    `json:"refused"`
+	Errors         int    `json:"errors"`
+	ReportPath     string `json:"report_path,omitempty"`
+}
+
+// agentVaultCampaignResult is the single JSON document `--json` emits
+// for a --from-pack campaign.
+type agentVaultCampaignResult struct {
+	Pack       string                    `json:"pack"`
+	Model      string                    `json:"model"`
+	Iterations int                       `json:"iterations"`
+	Entries    []agentVaultCampaignEntry `json:"entries"`
+}
+
 // runFromPack loads a security pack YAML, runs every adversarial
 // prompt as its own --user-message, and prints a leak-rate markdown
-// table. When outDir is non-empty, also writes one JSON report per
-// attack: <outDir>/<pack-slug>-<prompt-name>.json.
+// table to w (stderr in structured mode). It returns the machine-
+// readable campaign summary for `--json`. When outDir is non-empty,
+// also writes one JSON report per attack:
+// <outDir>/<pack-slug>-<prompt-name>.json.
 //
 // Empty adversarial_prompts is a hard error; loading a pack only to
 // execute zero entries is almost certainly a misconfiguration.
-func runFromPack(ctx context.Context, packPath, outDir string, iterations int, base agentvaultruntime.Config, w io.Writer) error {
+func runFromPack(ctx context.Context, packPath, outDir string, iterations int, base agentvaultruntime.Config, w io.Writer) (*agentVaultCampaignResult, error) {
 	data, err := os.ReadFile(packPath)
 	if err != nil {
-		return fmt.Errorf("read pack %s: %w", packPath, err)
+		return nil, fmt.Errorf("read pack %s: %w", packPath, err)
 	}
 	pack, err := securitystress.LoadPack(data)
 	if err != nil {
-		return fmt.Errorf("parse pack %s: %w", packPath, err)
+		return nil, fmt.Errorf("parse pack %s: %w", packPath, err)
 	}
 	if pack.Security == nil || len(pack.Security.AdversarialPrompts) == 0 {
-		return fmt.Errorf("pack %s has no security.adversarial_prompts to run", packPath)
+		return nil, fmt.Errorf("pack %s has no security.adversarial_prompts to run", packPath)
 	}
 	if outDir != "" {
 		if err := os.MkdirAll(outDir, 0o755); err != nil {
-			return fmt.Errorf("mkdir out-dir: %w", err)
+			return nil, fmt.Errorf("mkdir out-dir: %w", err)
 		}
 	}
 
-	type campaignRow struct {
-		Name      string
-		Strategy  string
-		Stats     entryStats
+	result := &agentVaultCampaignResult{
+		Pack:       pack.Pack.Slug,
+		Model:      base.Model,
+		Iterations: iterations,
+		Entries:    make([]agentVaultCampaignEntry, 0, len(pack.Security.AdversarialPrompts)),
 	}
-	rows := make([]campaignRow, 0, len(pack.Security.AdversarialPrompts))
 
 	fmt.Fprintf(w, "  pack         : %s (%d prompts)\n\n", pack.Pack.Slug, len(pack.Security.AdversarialPrompts))
 	for _, ap := range pack.Security.AdversarialPrompts {
@@ -265,7 +317,16 @@ func runFromPack(ctx context.Context, packPath, outDir string, iterations int, b
 		stats := runOneEntry(ctx, cfg, iterations, w)
 		printStats(w, stats, iterations)
 		fmt.Fprintln(w)
-		rows = append(rows, campaignRow{Name: ap.Name, Strategy: ap.Strategy, Stats: stats})
+		entry := agentVaultCampaignEntry{
+			Name:           ap.Name,
+			Strategy:       ap.Strategy,
+			Leaked:         stats.Leaked,
+			ProxyBypass:    stats.Bypass,
+			ConfusedDeputy: stats.Deputy,
+			AdminAPI:       stats.Admin,
+			Refused:        stats.Refused,
+			Errors:         stats.Errors,
+		}
 		if outDir != "" {
 			outPath, perr := safeReportPath(outDir, pack.Pack.Slug, ap.Name)
 			if perr != nil {
@@ -277,12 +338,22 @@ func runFromPack(ctx context.Context, packPath, outDir string, iterations int, b
 				// hours of model spend.
 				fmt.Fprintf(w, "  warning: could not write report %s: %v\n", outPath, err)
 			} else {
-				if encErr := json.NewEncoder(f).Encode(stats.Report); encErr != nil {
+				encErr := json.NewEncoder(f).Encode(stats.Report)
+				closeErr := f.Close()
+				switch {
+				case encErr != nil:
 					fmt.Fprintf(w, "  warning: could not encode report %s: %v\n", outPath, encErr)
+				case closeErr != nil:
+					// Encode can land in the kernel buffer and the flush still
+					// fail on Close (full disk, NFS drop) — a report_path must
+					// only be claimed for a fully written file.
+					fmt.Fprintf(w, "  warning: could not write report %s: %v\n", outPath, closeErr)
+				default:
+					entry.ReportPath = outPath
 				}
-				_ = f.Close()
 			}
 		}
+		result.Entries = append(result.Entries, entry)
 	}
 
 	// Markdown campaign table.
@@ -295,13 +366,12 @@ func runFromPack(ctx context.Context, packPath, outDir string, iterations int, b
 		}
 		return fmt.Sprintf("%d%%", int(100.0*float64(n)/float64(iterations)+0.5))
 	}
-	for _, r := range rows {
-		s := r.Stats
+	for _, e := range result.Entries {
 		fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s | %s |\n",
-			r.Name, defaultedStrategy(r.Strategy),
-			pct(s.Leaked), pct(s.Bypass), pct(s.Deputy), pct(s.Admin), pct(s.Refused))
+			e.Name, defaultedStrategy(e.Strategy),
+			pct(e.Leaked), pct(e.ProxyBypass), pct(e.ConfusedDeputy), pct(e.AdminAPI), pct(e.Refused))
 	}
-	return nil
+	return result, nil
 }
 
 func defaultedStrategy(s string) string {
