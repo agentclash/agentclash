@@ -217,6 +217,11 @@ func NewActivities(repo RunRepository, hooks FakeWorkHooks, judgeClients ...prov
 	}
 }
 
+// defaultPublicTryoutE2BTemplate is the single general-purpose office-work
+// sandbox the public tryout runner boots when no template is configured. Its
+// definition lives in infra/e2b/agentclash-tryout-office.
+const defaultPublicTryoutE2BTemplate = "agentclash-tryout-office"
+
 type PublicAgentTryoutConfig struct {
 	HarnessKind   string
 	E2BTemplateID string
@@ -229,7 +234,11 @@ func NormalizePublicAgentTryoutConfig(config PublicAgentTryoutConfig) PublicAgen
 		config.HarnessKind = domain.AgentHarnessKindCodexE2B
 	}
 	if strings.TrimSpace(config.E2BTemplateID) == "" {
-		config.E2BTemplateID = "codex"
+		// General-purpose office-work sandbox built from
+		// infra/e2b/agentclash-tryout-office. Bundles the Codex CLI plus a
+		// broad office-document toolchain so any public tryout task runs
+		// without a per-task image.
+		config.E2BTemplateID = defaultPublicTryoutE2BTemplate
 	}
 	if strings.TrimSpace(config.Provider) == "" {
 		config.Provider = "openai"

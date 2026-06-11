@@ -16,8 +16,8 @@ func TestNormalizePublicAgentTryoutConfigDefaultsToEnvCredential(t *testing.T) {
 	if config.HarnessKind != domain.AgentHarnessKindCodexE2B {
 		t.Fatalf("harness kind = %q, want codex_e2b", config.HarnessKind)
 	}
-	if config.E2BTemplateID != "codex" {
-		t.Fatalf("template = %q, want codex", config.E2BTemplateID)
+	if config.E2BTemplateID != "agentclash-tryout-office" {
+		t.Fatalf("template = %q, want agentclash-tryout-office", config.E2BTemplateID)
 	}
 	if config.Provider != "openai" {
 		t.Fatalf("provider = %q, want openai", config.Provider)
