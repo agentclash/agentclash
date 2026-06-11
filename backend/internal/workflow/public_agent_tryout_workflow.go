@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"path"
@@ -441,22 +442,50 @@ func (a *Activities) publicTryoutOutputPreviews(ctx context.Context, tryoutID uu
 		if err != nil || len(data) == 0 {
 			continue
 		}
-		if len(data) > 32*1024 {
-			data = data[:32*1024]
-		}
-		outputs = append(outputs, map[string]any{
+		contentType := capturedArtifactContentType(rel)
+		entry := map[string]any{
 			"key":           spec.Key,
 			"type":          spec.Type,
 			"relative_path": rel,
-			"preview":       string(data),
-			"truncated":     len(data) == 32*1024,
-		})
+			"content_type":  contentType,
+			"size_bytes":    len(data),
+		}
+		if publicTryoutOutputIsTextPreviewable(spec.Type, rel, contentType) {
+			preview := data
+			truncated := false
+			if len(preview) > 32*1024 {
+				preview = preview[:32*1024]
+				truncated = true
+			}
+			entry["encoding"] = "utf-8"
+			entry["preview"] = string(preview)
+			entry["truncated"] = truncated
+		} else {
+			entry["encoding"] = "base64"
+			entry["preview"] = base64.StdEncoding.EncodeToString(data)
+			entry["truncated"] = false
+		}
+		outputs = append(outputs, entry)
 		_ = a.recordPublicTryoutEvent(ctx, tryoutID, runevents.EventTypeSandboxFileWritten, map[string]any{
 			"relative_path": rel,
 			"file_path":     rel,
 		})
 	}
 	return outputs
+}
+
+func publicTryoutOutputIsTextPreviewable(templateType, rel, contentType string) bool {
+	switch strings.ToLower(strings.TrimSpace(templateType)) {
+	case "markdown", "json", "csv", "patch", "text":
+		return true
+	case "pdf", "pptx", "png", "jpg", "jpeg", "gif", "webp", "binary":
+		return false
+	}
+	switch strings.ToLower(path.Ext(rel)) {
+	case ".md", ".json", ".csv", ".patch", ".diff", ".txt", ".yaml", ".yml":
+		return true
+	}
+	return strings.HasPrefix(contentType, "text/")
 }
 
 func publicTryoutHarnessSnapshot(config PublicAgentTryoutConfig, tryout repository.AgentTryout, harnessKind string, credentialRef string) agentHarnessSnapshot {
@@ -570,15 +599,15 @@ func publicTryoutCompletedSummary(outputs []map[string]any, scorecard map[string
 }
 
 // publicTryoutScorecard evaluates a template's lightweight evaluation spec
-// (json_field / json_schema validators) against the produced output previews
-// and returns a self-contained scorecard. It needs no judge credential and no
-// harness-execution row — everything is derived from the JSON the agent wrote.
+// (json_field / json_schema / artifact_produced validators) against the
+// produced output previews and returns a self-contained scorecard.
 func publicTryoutScorecard(evaluationSpec json.RawMessage, outputs []map[string]any, latencyMS int64) map[string]any {
 	var spec struct {
 		Validators []struct {
-			Key   string `json:"key"`
-			Type  string `json:"type"`
-			Field string `json:"field"`
+			Key         string `json:"key"`
+			Type        string `json:"type"`
+			Field       string `json:"field"`
+			ArtifactKey string `json:"artifact_key"`
 		} `json:"validators"`
 		Scorecard struct {
 			Dimensions []string `json:"dimensions"`
@@ -610,6 +639,22 @@ func publicTryoutScorecard(evaluationSpec json.RawMessage, outputs []map[string]
 		case "json_field":
 			for _, obj := range decoded {
 				if value, exists := obj[v.Field]; exists && !isEmptyScorecardValue(value) {
+					ok = true
+					break
+				}
+			}
+		case "artifact_produced":
+			target := strings.TrimSpace(v.ArtifactKey)
+			for _, out := range outputs {
+				key, _ := out["key"].(string)
+				if key != target {
+					continue
+				}
+				if size, okSize := out["size_bytes"].(int); okSize && size > 0 {
+					ok = true
+					break
+				}
+				if preview, okPreview := out["preview"].(string); okPreview && strings.TrimSpace(preview) != "" {
 					ok = true
 					break
 				}

@@ -533,7 +533,7 @@ func (a *Activities) persistCapturedArtifact(ctx context.Context, execution repo
 func capturedArtifactType(templateType string) string {
 	t := strings.ToLower(strings.TrimSpace(templateType))
 	switch t {
-	case "markdown", "json", "csv", "patch", "text":
+	case "markdown", "json", "csv", "patch", "text", "pdf", "pptx", "png":
 		return "agent_tryout_" + t
 	default:
 		return "agent_tryout_output"
@@ -550,6 +550,14 @@ func capturedArtifactContentType(rel string) string {
 		return "text/csv; charset=utf-8"
 	case ".patch", ".diff":
 		return "text/x-patch"
+	case ".pdf":
+		return "application/pdf"
+	case ".pptx":
+		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
 	}
 	if ct := mime.TypeByExtension(strings.ToLower(filepath.Ext(rel))); ct != "" && strings.HasPrefix(ct, "text/") {
 		return ct

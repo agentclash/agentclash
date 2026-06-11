@@ -51,6 +51,21 @@ func TestPublicTryoutScorecardEvaluatesJSONFieldValidators(t *testing.T) {
 	}
 }
 
+func TestPublicTryoutScorecardArtifactProducedValidator(t *testing.T) {
+	spec := json.RawMessage(`{"validators":[{"key":"has_presentation","type":"artifact_produced","artifact_key":"presentation"},{"key":"has_pdf","type":"artifact_produced","artifact_key":"presentation_pdf"}],"scorecard":{"dimensions":["correctness"]}}`)
+	outputs := []map[string]any{
+		{"key": "presentation", "type": "pptx", "size_bytes": 1200, "preview": "UEsDB"},
+	}
+
+	card := publicTryoutScorecard(spec, outputs, 500)
+	if card["passed_validators"].(int) != 1 {
+		t.Fatalf("passed = %v, want 1", card["passed_validators"])
+	}
+	if card["passed"].(bool) {
+		t.Fatal("scorecard should fail when pdf artifact is missing")
+	}
+}
+
 func TestPublicTurnCommandResumesSessionAfterFirstTurn(t *testing.T) {
 	join := func(parts []string) string { return strings.Join(parts, " ") }
 

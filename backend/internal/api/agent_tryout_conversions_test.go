@@ -29,15 +29,14 @@ func TestAgentTryoutListArtifactsReturnsCapturedOutputs(t *testing.T) {
 	source.RunID = &runID
 	repo.tryouts[source.ID] = source
 
-	contentType := "text/markdown; charset=utf-8"
 	size := int64(42)
 	repo.artifacts = []repository.Artifact{{
 		ID:           uuid.New(),
 		RunID:        &runID,
-		ArtifactType: "agent_tryout_markdown",
-		ContentType:  &contentType,
+		ArtifactType: "agent_tryout_pptx",
+		ContentType:  ptrString("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
 		SizeBytes:    &size,
-		Metadata:     json.RawMessage(`{"source":"agent_tryout","artifact_key":"deck_outline","relative_path":"deck.md"}`),
+		Metadata:     json.RawMessage(`{"source":"agent_tryout","artifact_key":"presentation","relative_path":"deck.pptx"}`),
 	}, {
 		ID:           uuid.New(),
 		RunID:        ptrUUID(uuid.New()), // different run; must be excluded
@@ -53,8 +52,8 @@ func TestAgentTryoutListArtifactsReturnsCapturedOutputs(t *testing.T) {
 		t.Fatalf("artifacts = %d, want 1 (only the run's artifact)", len(artifacts))
 	}
 	got := artifacts[0]
-	if got.Key != "deck_outline" || got.Path != "deck.md" {
-		t.Fatalf("artifact identity = %q/%q, want deck_outline/deck.md", got.Key, got.Path)
+	if got.Key != "presentation" || got.Path != "deck.pptx" {
+		t.Fatalf("artifact identity = %q/%q, want presentation/deck.pptx", got.Key, got.Path)
 	}
 	if got.DownloadURL == "" || got.DownloadExpiresAt == nil {
 		t.Fatalf("expected a signed download URL, got %q (expires=%v)", got.DownloadURL, got.DownloadExpiresAt)

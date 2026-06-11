@@ -112,7 +112,7 @@ func TestAgentTryoutOfficeTemplatesAreAvailableAndExecutable(t *testing.T) {
 	for _, template := range templates {
 		bySlug[template.Slug] = template
 	}
-	for _, slug := range []string{"slide-deck", "spreadsheet-builder", "status-report", "inbox-triage"} {
+	for _, slug := range []string{"spreadsheet-builder", "status-report", "inbox-triage"} {
 		template, ok := bySlug[slug]
 		if !ok {
 			t.Fatalf("office template %q not found", slug)
@@ -154,6 +154,35 @@ func TestAgentTryoutOfficeTemplatesAreAvailableAndExecutable(t *testing.T) {
 			if !json.Valid(raw) {
 				t.Fatalf("%s template carries invalid JSON: %s", slug, raw)
 			}
+		}
+	}
+}
+
+func TestSlideDeckTemplateProducesBinaryOfficeArtifacts(t *testing.T) {
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), newFakeAgentTryoutRepository(uuid.New(), uuid.New()))
+	templates, err := manager.ListTemplates(context.Background())
+	if err != nil {
+		t.Fatalf("ListTemplates returned error: %v", err)
+	}
+	var slideDeck AgentTryoutTemplate
+	for _, template := range templates {
+		if template.Slug == "slide-deck" {
+			slideDeck = template
+			break
+		}
+	}
+	if slideDeck.Slug == "" {
+		t.Fatal("slide-deck template not found")
+	}
+	if !slideDeck.Available {
+		t.Fatalf("slide-deck availability = %v, want true", slideDeck.Available)
+	}
+	if !bytes.Contains(slideDeck.ToolPolicy, []byte(`"shell":"allowed"`)) {
+		t.Fatalf("slide-deck tool policy = %s, want shell allowed", slideDeck.ToolPolicy)
+	}
+	for _, want := range []string{`"path":"deck.pptx"`, `"path":"deck.pdf"`, `python-pptx`, `"artifact_produced"`} {
+		if !bytes.Contains(slideDeck.Runtime, []byte(want)) {
+			t.Fatalf("slide-deck runtime = %s, want substring %q", slideDeck.Runtime, want)
 		}
 	}
 }

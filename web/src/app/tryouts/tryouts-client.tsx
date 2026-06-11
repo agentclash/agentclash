@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import type { FormEvent } from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowRight,
@@ -16,8 +16,11 @@ import {
   Gauge,
   Loader2,
   Lock,
+  PanelRight,
   ShieldAlert,
+  Terminal,
   TrendingUp,
+  Wrench,
   XCircle,
 } from "lucide-react";
 
@@ -44,6 +47,20 @@ import {
 } from "@/lib/agent-tryout-status";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 
 type FieldSpec = {
   type: string;
@@ -68,9 +85,6 @@ function agentLabel(value: string): string {
   return AGENT_OPTIONS.find((option) => option.value === value)?.label ?? "Auto";
 }
 
-// Starter prompts shown under the composer so people know what to throw at the
-// agent. Many lean on Python (PDFs, charts, spreadsheets) on purpose — that's
-// where agents shine and where the sandbox now has the full toolchain.
 const TASK_SUGGESTIONS: Record<string, string[]> = {
   "support-ticket-resolution": [
     "Customer says their invoice was charged twice and wants a refund today. Draft a reply and decide whether to escalate.",
@@ -93,8 +107,8 @@ const TASK_SUGGESTIONS: Record<string, string[]> = {
     "Build a 12-month cashflow model from these assumptions and chart the runway.",
   ],
   "slide-deck": [
-    "Make a 6-slide investor update from these metrics, with a revenue trend chart.",
-    "Turn this product brief into a deck outline with speaker notes.",
+    "Make a 6-slide deck for 10 year olds explaining what AI is, with a simple chart.",
+    "Turn this product brief into a PowerPoint with speaker notes and one diagram.",
   ],
   "status-report": [
     "Turn these scattered updates into a polished weekly status report and export it as a PDF.",
@@ -120,6 +134,25 @@ function suggestionsFor(slug: string): string[] {
 }
 
 const api = createApiClient();
+
+function ThinkingIndicator({ label = "Thinking" }: { label?: string }) {
+  return (
+    <div className="flex justify-start animate-in fade-in duration-500">
+      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
+        <div className="flex items-center gap-1" aria-hidden>
+          {[0, 1, 2].map((index) => (
+            <span
+              key={index}
+              className="size-1.5 rounded-full bg-white/35 animate-pulse"
+              style={{ animationDelay: `${index * 180}ms` }}
+            />
+          ))}
+        </div>
+        <span className="text-sm text-white/45">{label}</span>
+      </div>
+    </div>
+  );
+}
 
 export function PublicTryoutsClient() {
   const router = useRouter();
@@ -303,213 +336,937 @@ export function PublicTryoutsClient() {
 
   const primaryValue = primaryField ? fieldValues[primaryField[0]] ?? "" : "";
   const canRun = Boolean(template) && !templatesLoading && !launching;
+  const inSession = Boolean(urlTryoutId);
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#0c0b0a] text-[#f4efe6]">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_50%_-10%,rgba(216,161,93,0.16),transparent_42%)]" />
-      <div className="relative mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-5 sm:px-6">
-        <header className="flex items-center justify-between gap-4">
-          <Link href="/" className="text-sm font-semibold tracking-tight text-[#f4efe6]/90">
+    <main className="flex h-[100dvh] flex-col overflow-hidden bg-black text-white">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05),transparent_55%)]" />
+
+      <header className="relative z-10 flex shrink-0 items-center justify-between gap-4 border-b border-white/10 px-4 py-3 sm:px-6">
+        <div className="flex items-center gap-3">
+          <Link
+            href="/"
+            className="text-sm font-semibold tracking-tight text-white/90"
+          >
             AgentClash
           </Link>
-          <div className="flex items-center gap-3">
+          {tryout ? (
+            <Badge variant={tryoutStatusVariant(tryout.status)} className="hidden sm:inline-flex">
+              {tryout.status}
+            </Badge>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2 sm:gap-3">
+          {inSession && tryout ? (
+            <TryoutSidebarMobile
+              tryout={tryout}
+              events={events}
+              loginHref={loginHref}
+            />
+          ) : null}
+          {inSession ? (
+            <Link
+              href="/tryouts"
+              className="hidden text-sm text-white/55 transition hover:text-white sm:inline"
+            >
+              New tryout
+            </Link>
+          ) : (
             <Link
               href="/pricing"
-              className="hidden text-sm text-[#f4efe6]/55 transition hover:text-[#f4efe6] sm:inline"
+              className="hidden text-sm text-white/55 transition hover:text-white sm:inline"
             >
               For teams
             </Link>
-            <Link
-              href={loginHref}
-              className="rounded-full border border-[#f4efe6]/15 px-3 py-1.5 text-sm text-[#f4efe6]/80 transition hover:border-[#f4efe6]/30 hover:text-[#f4efe6]"
-            >
-              Sign in
-            </Link>
-          </div>
-        </header>
+          )}
+          <Link
+            href={loginHref}
+            className="rounded-full border border-white/15 px-3 py-1.5 text-sm text-white/80 transition hover:border-white/30 hover:text-white"
+          >
+            Sign in
+          </Link>
+        </div>
+      </header>
 
-        <section className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center justify-center py-10 sm:py-14">
-          <h1 className="text-center text-[clamp(2.8rem,9vw,5rem)] font-semibold leading-none tracking-tight">
-            agentclash
-          </h1>
-          <p className="mt-4 text-center text-base text-[#f4efe6]/55">
-            Hand a real AI agent your office work. Pick a task, pick an agent, watch it run.
-          </p>
-
-          <form onSubmit={handleLaunch} className="mt-8 w-full">
-            <div className="rounded-[28px] border border-[#f4efe6]/12 bg-[#16140f]/80 p-2 shadow-2xl shadow-black/40 backdrop-blur transition focus-within:border-[#d8a15d]/40">
-              <textarea
-                value={primaryValue}
-                onChange={(event) =>
-                  primaryField && updateField(primaryField[0], event.target.value)
-                }
-                rows={3}
-                disabled={!template}
-                placeholder={
-                  template
-                    ? `Paste the work for "${template.name}" — notes, brief, data, or context.`
-                    : "Loading tasks…"
-                }
-                className="block w-full resize-none bg-transparent px-4 pt-3 text-[15px] leading-7 text-[#f4efe6] outline-none placeholder:text-[#f4efe6]/30"
-              />
-
-              {secondaryFields.length > 0 ? (
-                <div className="grid gap-2 px-2 pb-1 sm:grid-cols-2">
-                  {secondaryFields.map(([field, spec]) => (
-                    <CompactField
-                      key={field}
-                      field={field}
-                      spec={spec}
-                      value={fieldValues[field] ?? ""}
-                      required={required.has(field)}
-                      onChange={updateField}
-                    />
-                  ))}
-                </div>
-              ) : null}
-
-              <div className="flex items-center justify-between gap-2 px-1.5 pb-1.5 pt-1.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <PillSelect
-                    icon={<FileText className="size-3.5" />}
-                    value={templateSlug}
-                    onChange={setTemplateSlug}
-                    disabled={templatesLoading}
-                    options={templates.map((t) => ({ value: t.slug, label: t.name }))}
-                  />
-                  <PillSelect
-                    icon={<Gauge className="size-3.5" />}
-                    value={agent}
-                    onChange={(value) => setAgent(value as "" | AgentHarnessKind)}
-                    options={AGENT_OPTIONS.map((option) => ({
-                      value: option.value,
-                      label: option.label,
-                    }))}
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={!canRun}
-                  aria-label="Run public tryout"
-                  className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#e7c18d] text-[#14120f] transition hover:bg-[#f0cf9d] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {launching ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <ArrowUp className="size-4" />
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {message ? (
-              <div className="mt-3 rounded-2xl border border-red-400/25 bg-red-400/10 p-3 text-sm text-red-100">
-                {message}
-              </div>
-            ) : null}
-            {quotaMessage ? (
-              <div className="mt-3 rounded-2xl border border-[#d8a15d]/25 bg-[#d8a15d]/10 p-3 text-sm text-[#f2d6ad]">
-                <p>{quotaMessage}</p>
-                <Link
-                  href={loginHref}
-                  className="mt-2 inline-flex items-center gap-1 font-medium text-[#f4efe6] hover:underline"
-                >
-                  Save this tryout in a workspace
-                  <ArrowRight className="size-3.5" />
-                </Link>
-              </div>
-            ) : null}
-
-            {template ? (
-              <p className="mt-3 text-center text-xs text-[#f4efe6]/40">
-                {template.description} · runs on{" "}
-                <span className="text-[#f4efe6]/70">{agentLabel(agent)}</span> · hosted
-                cost capped at {`$${template.max_cost_usd.toFixed(2)}`}.
-              </p>
-            ) : null}
-          </form>
-
-          {template && primaryField ? (
-            <div className="mt-5 w-full">
-              <p className="mb-2 text-center text-xs uppercase tracking-[0.14em] text-[#f4efe6]/35">
-                Try one of these
-              </p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {suggestionsFor(template.slug).map((suggestion) => (
-                  <button
-                    key={suggestion}
-                    type="button"
-                    onClick={() => updateField(primaryField[0], suggestion)}
-                    className="rounded-full border border-[#f4efe6]/12 bg-[#f4efe6]/[0.04] px-3 py-1.5 text-left text-xs text-[#f4efe6]/70 transition hover:border-[#d8a15d]/40 hover:text-[#f4efe6]"
-                  >
-                    {suggestion.length > 70 ? suggestion.slice(0, 70) + "…" : suggestion}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="mt-7 grid w-full gap-3 sm:grid-cols-2">
-            <GradientCard
-              icon={<FileText className="size-4" />}
-              title="Real office tasks"
-              text="Meeting minutes, slide decks, spreadsheet extraction, inbox triage."
-              tone="amber"
-            />
-            <GradientCard
-              icon={<Gauge className="size-4" />}
-              title="Any agent, scored"
-              text="Codex, Claude, OpenClaw or Hermes — with a trace and scorecard."
-              tone="teal"
-            />
-          </div>
-        </section>
-
-        <TryoutPanel
+      {inSession ? (
+        <TryoutSession
           tryout={tryout}
           events={events}
           loading={tryoutLoading}
           loginHref={loginHref}
+          message={message}
         />
-      </div>
+      ) : (
+        <TryoutWelcome
+          template={template}
+          templates={templates}
+          templateSlug={templateSlug}
+          setTemplateSlug={setTemplateSlug}
+          agent={agent}
+          setAgent={setAgent}
+          primaryField={primaryField}
+          secondaryFields={secondaryFields}
+          fieldValues={fieldValues}
+          updateField={updateField}
+          primaryValue={primaryValue}
+          canRun={canRun}
+          launching={launching}
+          templatesLoading={templatesLoading}
+          message={message}
+          quotaMessage={quotaMessage}
+          loginHref={loginHref}
+          onSubmit={handleLaunch}
+        />
+      )}
     </main>
   );
 }
 
-function PillSelect({
+function TryoutWelcome({
+  template,
+  templates,
+  templateSlug,
+  setTemplateSlug,
+  agent,
+  setAgent,
+  primaryField,
+  secondaryFields,
+  fieldValues,
+  updateField,
+  primaryValue,
+  canRun,
+  launching,
+  templatesLoading,
+  message,
+  quotaMessage,
+  loginHref,
+  onSubmit,
+}: {
+  template: AgentTryoutTemplate | null;
+  templates: AgentTryoutTemplate[];
+  templateSlug: string;
+  setTemplateSlug: (value: string) => void;
+  agent: "" | AgentHarnessKind;
+  setAgent: (value: "" | AgentHarnessKind) => void;
+  primaryField: [string, FieldSpec] | null;
+  secondaryFields: [string, FieldSpec][];
+  fieldValues: Record<string, string>;
+  updateField: (field: string, value: string) => void;
+  primaryValue: string;
+  canRun: boolean;
+  launching: boolean;
+  templatesLoading: boolean;
+  message: string | null;
+  quotaMessage: string | null;
+  loginHref: string;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <div className="relative flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8 sm:px-6">
+      <h1 className="text-center text-[clamp(2rem,7vw,3.5rem)] font-semibold leading-none tracking-tight">
+        Try an agent on real work
+      </h1>
+      <p className="mt-3 max-w-lg text-center text-base text-white/55">
+        Chat with a sandboxed agent. When it finishes, see the eval scorecard and
+        what shipping it is worth at your scale.
+      </p>
+
+      <form onSubmit={onSubmit} className="mt-8 w-full max-w-2xl">
+        <ComposerShell
+          value={primaryValue}
+          onChange={(value) =>
+            primaryField && updateField(primaryField[0], value)
+          }
+          disabled={!template}
+          placeholder={
+            template
+              ? `Describe the work for "${template.name}"…`
+              : "Loading tasks…"
+          }
+          canSubmit={canRun}
+          submitting={launching}
+          footer={
+            <>
+              <AnimatedPillSelect
+                icon={<FileText className="size-3.5" />}
+                value={templateSlug}
+                onChange={setTemplateSlug}
+                disabled={templatesLoading}
+                options={templates.map((t) => ({ value: t.slug, label: t.name }))}
+              />
+              <AnimatedPillSelect
+                icon={<Gauge className="size-3.5" />}
+                value={agent}
+                onChange={(value) => setAgent(value as "" | AgentHarnessKind)}
+                options={AGENT_OPTIONS.map((option) => ({
+                  value: option.value,
+                  label: option.label,
+                }))}
+              />
+            </>
+          }
+        />
+
+        {secondaryFields.length > 0 ? (
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {secondaryFields.map(([field, spec]) => (
+              <CompactField
+                key={field}
+                field={field}
+                spec={spec}
+                value={fieldValues[field] ?? ""}
+                required={false}
+                onChange={updateField}
+              />
+            ))}
+          </div>
+        ) : null}
+
+        {message ? <Alert tone="error" text={message} /> : null}
+        {quotaMessage ? (
+          <div className="mt-3 rounded-2xl border border-white/15 bg-white/[0.04] p-3 text-sm text-white/70">
+            <p>{quotaMessage}</p>
+            <Link
+              href={loginHref}
+              className="mt-2 inline-flex items-center gap-1 font-medium text-white hover:underline"
+            >
+              Save this tryout in a workspace
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
+        ) : null}
+
+        {template ? (
+          <p className="mt-3 text-center text-xs text-white/40">
+            {template.description} · {agentLabel(agent)} · cap{" "}
+            {`$${template.max_cost_usd.toFixed(2)}`}
+          </p>
+        ) : null}
+      </form>
+
+      {template && primaryField ? (
+        <div className="mt-6 w-full max-w-2xl">
+          <p className="mb-2 text-center text-xs uppercase tracking-[0.14em] text-white/35">
+            Try one of these
+          </p>
+          <div className="flex flex-wrap justify-center gap-2">
+            {suggestionsFor(template.slug).map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                onClick={() => updateField(primaryField[0], suggestion)}
+                className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-left text-xs text-white/60 transition hover:border-white/25 hover:text-white"
+              >
+                {suggestion.length > 70 ? suggestion.slice(0, 70) + "…" : suggestion}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-8 hidden w-full max-w-2xl gap-3 sm:grid-cols-3">
+        <ProofItem icon={Lock} label="Sandboxed" text="Real tools, capped cost." />
+        <ProofItem icon={Activity} label="Live trace" text="Every step in the sidebar." />
+        <ProofItem icon={FileText} label="Evals built in" text="Scorecard when the run ends." />
+      </div>
+    </div>
+  );
+}
+
+function TryoutSession({
+  tryout,
+  events,
+  loading,
+  loginHref,
+  message,
+}: {
+  tryout: AgentTryout | null;
+  events: TryoutTimelineEvent[];
+  loading: boolean;
+  loginHref: string;
+  message: string | null;
+}) {
+  if (!tryout && loading) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-sm text-white/55">
+        <Loader2 className="mr-2 size-4 animate-spin" />
+        Starting your session…
+      </div>
+    );
+  }
+
+  if (!tryout) {
+    return (
+      <div className="flex flex-1 items-center justify-center px-4 text-sm text-white/55">
+        {message ?? "Could not load this tryout."}
+      </div>
+    );
+  }
+
+  const outputs = tryoutOutputs(tryout.summary);
+  const scorecard = tryoutScorecard(tryout.summary);
+
+  return (
+    <div className="relative flex min-h-0 flex-1">
+      <aside className="hidden w-80 shrink-0 flex-col border-r border-white/10 bg-zinc-950/80/60 lg:flex">
+        <TryoutSidebar
+          tryout={tryout}
+          events={events}
+          outputs={outputs}
+          scorecard={scorecard}
+          loginHref={loginHref}
+        />
+      </aside>
+
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <TryoutChatThread
+          tryout={tryout}
+          events={events}
+          outputs={outputs}
+          scorecard={scorecard}
+          loginHref={loginHref}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TryoutSidebarMobile({
+  tryout,
+  events,
+  loginHref,
+}: {
+  tryout: AgentTryout;
+  events: TryoutTimelineEvent[];
+  loginHref: string;
+}) {
+  const outputs = tryoutOutputs(tryout.summary);
+  const scorecard = tryoutScorecard(tryout.summary);
+
+  return (
+    <Sheet>
+      <SheetTrigger
+        render={
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-full border-white/15 bg-transparent text-white hover:bg-white/10 lg:hidden"
+          />
+        }
+      >
+        <PanelRight className="size-3.5" />
+        Trace
+      </SheetTrigger>
+      <SheetContent
+        side="right"
+        className="w-full border-white/10 bg-zinc-950/80 text-white sm:max-w-md"
+      >
+        <SheetHeader>
+          <SheetTitle className="text-white">Trace & downloads</SheetTitle>
+        </SheetHeader>
+        <TryoutSidebar
+          tryout={tryout}
+          events={events}
+          outputs={outputs}
+          scorecard={scorecard}
+          loginHref={loginHref}
+          compact
+        />
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function TryoutSidebar({
+  tryout,
+  events,
+  outputs,
+  scorecard,
+  loginHref,
+  compact,
+}: {
+  tryout: AgentTryout;
+  events: TryoutTimelineEvent[];
+  outputs: TryoutOutputPreview[];
+  scorecard: TryoutScorecard | null;
+  loginHref: string;
+  compact?: boolean;
+}) {
+  const agentRan = tryout.selected_harness_kind
+    ? agentLabel(tryout.selected_harness_kind)
+    : "Auto";
+
+  return (
+    <div className={cn("flex min-h-0 flex-1 flex-col", compact ? "pt-2" : "p-4")}>
+      <div className="space-y-1 px-1">
+        <p className="text-sm font-medium text-white/90">{tryout.template_slug}</p>
+        <p className="text-xs text-white/45">
+          {agentRan} · {formatTryoutLatency(tryout.latency_ms)} ·{" "}
+          {formatTryoutCost(tryout)}
+        </p>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2 px-1">
+        <DownloadButton label="Trace" onClick={() => downloadTrace(tryout, events)} />
+        {scorecard ? (
+          <DownloadButton
+            label="Scorecard"
+            onClick={() => downloadScorecard(tryout, scorecard)}
+          />
+        ) : null}
+        {outputs.length > 0 ? (
+          <DownloadButton
+            label="Artifacts"
+            onClick={() => downloadArtifacts(tryout, outputs)}
+          />
+        ) : null}
+      </div>
+
+      {scorecard ? (
+        <div className="mt-4 px-1">
+          <ScorecardCard scorecard={scorecard} compact />
+        </div>
+      ) : null}
+
+      {outputs.length > 0 ? (
+        <div className="mt-4 min-h-0 px-1">
+          <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-white/40">
+            Artifacts
+          </p>
+          <div className="space-y-2">
+            {outputs.map((output) => (
+              <ArtifactPreviewCard key={`${output.key}-${output.relative_path}`} output={output} />
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex min-h-0 flex-1 flex-col px-1">
+        <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-white/40">
+          Event log
+        </p>
+        <ol className="min-h-0 flex-1 space-y-0 overflow-y-auto rounded-xl border border-white/10 bg-black/80">
+          {events.length === 0 ? (
+            <li className="p-3 text-xs text-white/45">
+              {tryoutIsActive(tryout.status)
+                ? "Waiting for events…"
+                : "No events recorded."}
+            </li>
+          ) : (
+            events.map((event) => (
+              <li
+                key={event.cursor}
+                className="border-b border-white/6 px-3 py-2 text-xs last:border-b-0"
+              >
+                <p className="text-white/75">{event.summary}</p>
+                <time className="mt-0.5 block text-[10px] text-white/35">
+                  {new Date(event.occurred_at).toLocaleTimeString()}
+                </time>
+              </li>
+            ))
+          )}
+        </ol>
+      </div>
+
+      <Link
+        href={loginHref}
+        className="mt-4 inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
+      >
+        Save and rerun
+        <ArrowRight className="size-4" />
+      </Link>
+    </div>
+  );
+}
+
+function TryoutChatThread({
+  tryout,
+  events,
+  outputs,
+  scorecard,
+  loginHref,
+}: {
+  tryout: AgentTryout;
+  events: TryoutTimelineEvent[];
+  outputs: TryoutOutputPreview[];
+  scorecard: TryoutScorecard | null;
+  loginHref: string;
+}) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [ending, setEnding] = useState(false);
+  const [followUps, setFollowUps] = useState<{ id: string; text: string; at: number }[]>([]);
+  const [error, setError] = useState<string | null>(null);
+
+  const active = tryoutIsActive(tryout.status);
+  const finished = !active;
+
+  useEffect(() => {
+    setFollowUps([]);
+    setDraft("");
+    setError(null);
+  }, [tryout.id]);
+
+  const initialUserText = useMemo(
+    () => formatInputSnapshot(tryout.input_snapshot),
+    [tryout.input_snapshot],
+  );
+
+  const timeline = useMemo(() => {
+    const items: ChatItem[] = [];
+
+    if (initialUserText) {
+      items.push({
+        kind: "user",
+        id: "initial",
+        text: initialUserText,
+        at: new Date(tryout.created_at).getTime(),
+      });
+    }
+
+    for (const msg of followUps) {
+      items.push({
+        kind: "user",
+        id: msg.id,
+        text: msg.text,
+        at: msg.at,
+      });
+    }
+
+    for (const event of events) {
+      if (event.type === "started") continue;
+      items.push({
+        kind: "agent",
+        id: `e${event.cursor}`,
+        text: event.summary,
+        at: new Date(event.occurred_at).getTime(),
+        eventType: event.type,
+      });
+    }
+
+    return items.sort((a, b) => a.at - b.at);
+  }, [initialUserText, followUps, events, tryout.created_at]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [timeline.length, outputs.length, scorecard, finished]);
+
+  async function send() {
+    const text = draft.trim();
+    if (!text || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      await submitAgentTryoutTurn(api, tryout.id, { message: text });
+      setFollowUps((current) => [
+        ...current,
+        { id: `u${Date.now()}`, text, at: Date.now() },
+      ]);
+      setDraft("");
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? err.message : "Could not send your message.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function endSession() {
+    if (ending) return;
+    setEnding(true);
+    try {
+      await submitAgentTryoutTurn(api, tryout.id, { end: true });
+    } catch {
+      // best-effort
+    } finally {
+      setEnding(false);
+    }
+  }
+
+  return (
+    <>
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8">
+        <div className="mx-auto flex max-w-3xl flex-col gap-4">
+          {timeline.map((item, index) =>
+            item.kind === "user" ? (
+              <UserBubble key={item.id} text={item.text} animate={index === timeline.length - 1} />
+            ) : (
+              <AgentStepBubble
+                key={item.id}
+                text={item.text}
+                eventType={item.eventType}
+                animate={index === timeline.length - 1}
+              />
+            ),
+          )}
+
+          {active && events.length === 0 ? <ThinkingIndicator label="Starting" /> : null}
+
+          {active && timeline.length > 0 && timeline[timeline.length - 1]?.kind === "agent" ? (
+            <ThinkingIndicator />
+          ) : null}
+
+          {outputs
+            .filter((output) => output.type !== "json")
+            .map((output) => (
+            <ArtifactChatCard key={`${output.key}-${output.relative_path}`} output={output} />
+          ))}
+
+          {scorecard && finished ? (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <ScorecardCard scorecard={scorecard} />
+            </div>
+          ) : null}
+
+          {finished ? (
+            <div className="animate-in fade-in slide-in-from-bottom-3 duration-700">
+              <EvalRoiCalculator tryout={tryout} loginHref={loginHref} />
+            </div>
+          ) : null}
+
+          <div ref={bottomRef} />
+        </div>
+      </div>
+
+      <div className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3 backdrop-blur sm:px-8">
+        <div className="mx-auto max-w-3xl">
+          {active ? (
+            <>
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs text-white/40">
+                  Reply to steer the agent, or let it finish on its own.
+                </p>
+                <button
+                  type="button"
+                  onClick={endSession}
+                  disabled={ending}
+                  className="text-xs text-white/45 transition hover:text-white/80"
+                >
+                  End session
+                </button>
+              </div>
+              <ComposerShell
+                value={draft}
+                onChange={setDraft}
+                disabled={false}
+                placeholder="Reply to the agent…"
+                canSubmit={Boolean(draft.trim()) && !sending}
+                submitting={sending}
+                onSubmit={() => void send()}
+                compact
+              />
+            </>
+          ) : (
+            <p className="text-center text-sm text-white/45">
+              Session complete.{" "}
+              <Link href={loginHref} className="text-white underline-offset-4 hover:underline">
+                Sign in
+              </Link>{" "}
+              to save this run and wire it into evals.
+            </p>
+          )}
+          {error ? <p className="mt-2 text-xs text-white/50">{error}</p> : null}
+        </div>
+      </div>
+    </>
+  );
+}
+
+type ChatItem = {
+  kind: "user" | "agent";
+  id: string;
+  text: string;
+  at: number;
+  eventType?: TryoutTimelineEvent["type"];
+};
+
+function UserBubble({ text, animate }: { text: string; animate?: boolean }) {
+  return (
+    <div
+      className={cn(
+        "flex justify-end",
+        animate && "animate-in fade-in slide-in-from-bottom-2 duration-300",
+      )}
+    >
+      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-white px-4 py-2.5 text-[15px] leading-7 text-black">
+        {text}
+      </div>
+    </div>
+  );
+}
+
+function AgentStepBubble({
+  text,
+  eventType,
+  animate,
+}: {
+  text: string;
+  eventType?: TryoutTimelineEvent["type"];
+  animate?: boolean;
+}) {
+  const Icon = eventIcon(eventType);
+
+  return (
+    <div
+      className={cn(
+        "flex justify-start",
+        animate && "animate-in fade-in slide-in-from-bottom-2 duration-300",
+      )}
+    >
+      <div className="flex max-w-[90%] items-start gap-2.5 rounded-2xl rounded-bl-md border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-sm leading-6 text-white/75">
+        <Icon className="mt-0.5 size-4 shrink-0 text-white/35" />
+        <span className="min-w-0 whitespace-pre-wrap">{text}</span>
+      </div>
+    </div>
+  );
+}
+
+function eventIcon(type?: TryoutTimelineEvent["type"]) {
+  switch (type) {
+    case "tool_call":
+      return Wrench;
+    case "sandbox_command":
+      return Terminal;
+    case "file_written":
+    case "file_activity":
+      return FileText;
+    case "validation":
+    case "scoring":
+      return CheckCircle2;
+    case "planning":
+      return Gauge;
+    default:
+      return Activity;
+  }
+}
+
+function ArtifactChatCard({ output }: { output: TryoutOutputPreview }) {
+  const label = output.relative_path || output.key || "Artifact";
+  const sizeLabel =
+    typeof output.size_bytes === "number"
+      ? `${Math.max(1, Math.round(output.size_bytes / 1024))} KB`
+      : null;
+
+  return (
+    <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+      <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
+        <div className="flex items-center justify-between gap-2 border-b border-white/8 px-4 py-2.5">
+          <div className="flex min-w-0 items-center gap-2">
+            <FileText className="size-4 shrink-0 text-white/40" />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium text-white/90">{label}</p>
+              {sizeLabel ? (
+                <p className="text-[11px] text-white/40">{artifactKindLabel(output)} · {sizeLabel}</p>
+              ) : null}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => downloadOutput(output)}
+            className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/10 px-2.5 py-1 text-xs text-white/60 transition hover:border-white/25 hover:text-white"
+          >
+            <Download className="size-3" />
+            Download
+          </button>
+        </div>
+        <ArtifactPreviewBody output={output} />
+        {output.truncated ? (
+          <p className="border-t border-white/8 px-4 py-2 text-xs text-white/38">
+            Preview truncated. Download for the full file.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ArtifactPreviewBody({ output }: { output: TryoutOutputPreview }) {
+  const blobUrl = useArtifactBlobUrl(output);
+
+  if (isPdfArtifact(output) && blobUrl) {
+    return (
+      <div className="bg-black p-2">
+        <iframe
+          title={output.relative_path || "PDF preview"}
+          src={blobUrl}
+          className="h-[28rem] w-full rounded-lg border border-white/10 bg-white"
+        />
+      </div>
+    );
+  }
+
+  if (isImageArtifact(output) && blobUrl) {
+    return (
+      <div className="p-4">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={blobUrl}
+          alt={output.relative_path || "Generated chart"}
+          className="max-h-80 w-full rounded-lg object-contain"
+        />
+      </div>
+    );
+  }
+
+  if (isBinaryArtifact(output)) {
+    return (
+      <div className="px-4 py-6 text-sm leading-7 text-white/60">
+        <p>
+          {artifactKindLabel(output)} ready. Download to open it in PowerPoint, Keynote, or
+          Preview.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-h-80 overflow-auto p-4">
+      <pre className="whitespace-pre-wrap font-sans text-sm leading-7 text-white/75">
+        {output.preview}
+      </pre>
+    </div>
+  );
+}
+
+function ArtifactPreviewCard({ output }: { output: TryoutOutputPreview }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-[#0c0c0a]/80 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate text-xs font-medium text-white/80">
+            {output.relative_path || output.key || "Output"}
+          </p>
+          <p className="text-[10px] text-white/35">{artifactKindLabel(output)}</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => downloadOutput(output)}
+          className="text-white/45 transition hover:text-white"
+          aria-label="Download"
+        >
+          <Download className="size-3.5" />
+        </button>
+      </div>
+      {!isBinaryArtifact(output) ? (
+        <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-white/55">
+          {output.preview.slice(0, 400)}
+          {output.preview.length > 400 ? "…" : ""}
+        </pre>
+      ) : null}
+    </div>
+  );
+}
+
+function ComposerShell({
+  value,
+  onChange,
+  disabled,
+  placeholder,
+  canSubmit,
+  submitting,
+  footer,
+  compact,
+  onSubmit,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+  placeholder: string;
+  canSubmit: boolean;
+  submitting: boolean;
+  footer?: ReactNode;
+  compact?: boolean;
+  onSubmit?: () => void;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-white/10 bg-white/[0.02] p-2 transition focus-within:border-white/25",
+        compact && "rounded-xl shadow-none",
+      )}
+    >
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            if (canSubmit && !submitting) {
+              onSubmit?.();
+            }
+          }
+        }}
+        rows={compact ? 1 : 3}
+        disabled={disabled}
+        placeholder={placeholder}
+        className="block w-full resize-none bg-transparent px-3 pt-2 text-[15px] leading-7 text-white outline-none placeholder:text-white/30"
+      />
+      <div className="flex items-center justify-between gap-2 px-1 pb-0.5 pt-1">
+        {footer ? <div className="flex flex-wrap items-center gap-2">{footer}</div> : <span />}
+        <button
+          type={onSubmit ? "button" : "submit"}
+          onClick={onSubmit}
+          disabled={!canSubmit || submitting}
+          aria-label="Send"
+          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {submitting ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <ArrowUp className="size-4" />
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AnimatedPillSelect({
   icon,
   value,
   onChange,
   options,
   disabled,
 }: {
-  icon: React.ReactNode;
+  icon: ReactNode;
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
   disabled?: boolean;
 }) {
+  const selected = options.find((option) => option.value === value);
+
   return (
-    <div className="relative inline-flex items-center gap-1.5 rounded-full border border-[#f4efe6]/12 bg-[#f4efe6]/[0.04] py-1.5 pl-3 pr-7 text-sm text-[#f4efe6]/80 transition hover:border-[#f4efe6]/25">
-      <span className="text-[#d8a15d]">{icon}</span>
-      <span className="truncate">
-        {options.find((option) => option.value === value)?.label ?? "Select"}
-      </span>
-      <ChevronDown className="pointer-events-none absolute right-2.5 size-3.5 text-[#f4efe6]/40" />
-      <select
-        value={value}
+    <DropdownMenu>
+      <DropdownMenuTrigger
         disabled={disabled}
-        onChange={(event) => onChange(event.target.value)}
-        className="absolute inset-0 cursor-pointer opacity-0"
-        aria-label="Select"
+        className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] py-1.5 pl-3 pr-2.5 text-sm text-white/70 transition hover:border-white/20 data-popup-open:border-white/30 data-popup-open:bg-white/[0.06] disabled:opacity-50"
+      >
+        <span className="text-white/45">{icon}</span>
+        <span className="max-w-[9rem] truncate">{selected?.label ?? "Select"}</span>
+        <ChevronDown className="size-3.5 text-white/40 transition-transform duration-200 group-data-popup-open:rotate-180" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="start"
+        className="min-w-[12rem] border-white/10 bg-zinc-950 text-white"
       >
         {options.map((option) => (
-          <option key={option.value || "auto"} value={option.value}>
+          <DropdownMenuItem
+            key={option.value || "auto"}
+            onClick={() => onChange(option.value)}
+            className={cn(
+              "cursor-pointer text-white/75 focus:bg-white/10 focus:text-white",
+              option.value === value && "bg-white/10 text-white",
+            )}
+          >
             {option.label}
-          </option>
+          </DropdownMenuItem>
         ))}
-      </select>
-    </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -527,8 +1284,8 @@ function CompactField({
   onChange: (field: string, value: string) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 rounded-xl border border-[#f4efe6]/8 bg-[#0e0c0a]/55 px-3 py-1.5">
-      <span className="shrink-0 text-xs text-[#f4efe6]/45">
+    <label className="flex items-center gap-2 rounded-xl border border-white/8 bg-zinc-950/80/55 px-3 py-1.5">
+      <span className="shrink-0 text-xs text-white/45">
         {fieldLabel(field)}
         {required ? "" : " (opt)"}
       </span>
@@ -538,259 +1295,63 @@ function CompactField({
         min={spec.minimum}
         max={spec.maximum}
         onChange={(event) => onChange(field, event.target.value)}
-        className="w-full bg-transparent text-sm text-[#f4efe6] outline-none placeholder:text-[#f4efe6]/25"
+        className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
       />
     </label>
   );
 }
 
-function GradientCard({
-  icon,
-  title,
-  text,
-  tone,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  text: string;
-  tone: "amber" | "teal";
-}) {
-  const toneClass =
-    tone === "amber"
-      ? "from-[#d8a15d]/18 to-[#d8a15d]/[0.04]"
-      : "from-[#3aa6a0]/18 to-[#3aa6a0]/[0.04]";
+function Alert({ tone, text }: { tone: "error"; text: string }) {
   return (
-    <div
-      className={`rounded-2xl border border-[#f4efe6]/8 bg-gradient-to-br ${toneClass} p-4`}
-    >
-      <span className="text-[#f4efe6]/85">{icon}</span>
-      <p className="mt-2.5 font-medium tracking-tight text-[#f4efe6]/90">{title}</p>
-      <p className="mt-1 text-sm leading-6 text-[#f4efe6]/55">{text}</p>
+    <div className="mt-3 rounded-xl border border-white/15 bg-white/[0.03] p-3 text-sm text-white/70">
+      {text}
     </div>
   );
 }
 
-function TryoutPanel({
-  tryout,
-  events,
-  loading,
-  loginHref,
+function ScorecardCard({
+  scorecard,
+  compact,
 }: {
-  tryout: AgentTryout | null;
-  events: TryoutTimelineEvent[];
-  loading: boolean;
-  loginHref: string;
+  scorecard: TryoutScorecard;
+  compact?: boolean;
 }) {
-  if (!tryout && !loading) {
-    return (
-      <section className="mx-auto mb-12 grid w-full max-w-3xl gap-3 rounded-[1.6rem] border border-[#f4efe6]/10 bg-[#f4efe6]/[0.03] p-4 text-sm text-[#f4efe6]/55 sm:grid-cols-3">
-        <ProofItem icon={Lock} label="Task gated" text="Four hosted tasks per fingerprint by default." />
-        <ProofItem icon={Activity} label="Trace + scorecard" text="Every run exposes a redacted event trail and a scorecard." />
-        <ProofItem icon={FileText} label="Exportable" text="Download the artifact, trace, and scorecard." />
-      </section>
-    );
-  }
-
-  if (!tryout) {
-    return (
-      <section className="mx-auto mb-12 flex w-full max-w-3xl items-center justify-center rounded-[1.6rem] border border-[#f4efe6]/10 bg-[#f4efe6]/[0.03] p-8 text-sm text-[#f4efe6]/55">
-        <Loader2 className="mr-2 size-4 animate-spin" />
-        Loading tryout
-      </section>
-    );
-  }
-
-  const summary =
-    typeof tryout.summary?.message === "string" ? tryout.summary.message : "";
-  const outputs = tryoutOutputs(tryout.summary);
-  const scorecard = tryoutScorecard(tryout.summary);
-  const agentRan = tryout.selected_harness_kind
-    ? agentLabel(tryout.selected_harness_kind)
-    : "Auto";
-
-  return (
-    <section className="mx-auto mb-12 w-full max-w-3xl rounded-[1.6rem] border border-[#f4efe6]/10 bg-[#f4efe6]/[0.035] p-4 shadow-xl shadow-black/20 sm:p-5">
-      <div className="flex flex-col gap-4 border-b border-[#f4efe6]/10 pb-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-xl font-semibold tracking-tight">Result</h2>
-            <Badge variant={tryoutStatusVariant(tryout.status)}>{tryout.status}</Badge>
-            <Badge variant="outline" className="border-[#d8a15d]/30 text-[#e7c18d]">
-              {agentRan}
-            </Badge>
-          </div>
-          <p className="mt-1 text-sm leading-6 text-[#f4efe6]/55">
-            {summary || "The agent trace will appear here as the sandbox runs."}
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {outputs.length > 0 ? (
-            <DownloadButton
-              label="Artifacts"
-              onClick={() => downloadArtifacts(tryout, outputs)}
-            />
-          ) : null}
-          <DownloadButton label="Traces" onClick={() => downloadTrace(tryout, events)} />
-          {scorecard ? (
-            <DownloadButton
-              label="Scorecard"
-              onClick={() => downloadScorecard(tryout, scorecard)}
-            />
-          ) : null}
-          <Link
-            href={loginHref}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-[#e7c18d] px-3 text-sm font-medium text-[#14120f] transition hover:bg-[#f0cf9d]"
-          >
-            Save and rerun
-            <ArrowRight className="size-4" />
-          </Link>
-        </div>
-      </div>
-
-      <dl className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-        <Stat label="Task" value={tryout.template_slug} />
-        <Stat label="Agent" value={agentRan} />
-        <Stat label="Latency" value={formatTryoutLatency(tryout.latency_ms)} />
-        <Stat label="Cost" value={formatTryoutCost(tryout)} />
-      </dl>
-
-      <TryoutChat tryout={tryout} events={events} />
-
-      {scorecard ? <ScorecardCard scorecard={scorecard} /> : null}
-
-      <div className="mt-5 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-        <div>
-          {outputs.length > 0 ? (
-            <div className="mb-5">
-              <h3 className="mb-2 text-sm font-semibold tracking-tight">Preview</h3>
-              <div className="space-y-3">
-                {outputs.map((output) => (
-                  <article
-                    key={`${output.key}-${output.relative_path}`}
-                    className="rounded-2xl border border-[#f4efe6]/10 bg-[#0e0c0a]/55 p-4"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-medium text-[#f4efe6]/88">
-                        {output.key || output.relative_path || "Output"}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        {output.relative_path ? (
-                          <span className="text-xs text-[#f4efe6]/38">
-                            {output.relative_path}
-                          </span>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => downloadOutput(output)}
-                          className="text-[#f4efe6]/45 transition hover:text-[#f4efe6]"
-                          aria-label="Download this artifact"
-                        >
-                          <Download className="size-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                    <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap text-xs leading-5 text-[#f4efe6]/68">
-                      {output.preview}
-                    </pre>
-                    {output.truncated ? (
-                      <p className="mt-2 text-xs text-[#f4efe6]/38">
-                        Preview truncated. Sign in to keep working with the full
-                        artifact.
-                      </p>
-                    ) : null}
-                  </article>
-                ))}
-              </div>
-            </div>
-          ) : null}
-          <h3 className="mb-2 text-sm font-semibold tracking-tight">Traces</h3>
-          {events.length === 0 ? (
-            <div className="rounded-2xl border border-[#f4efe6]/10 bg-[#0e0c0a]/55 p-4 text-sm text-[#f4efe6]/50">
-              {tryoutIsActive(tryout.status)
-                ? "Waiting for the first sandbox event."
-                : "No public timeline events were recorded."}
-            </div>
-          ) : (
-            <ol className="overflow-hidden rounded-2xl border border-[#f4efe6]/10 bg-[#0e0c0a]/55">
-              {events.map((event) => (
-                <li
-                  key={event.cursor}
-                  className="flex gap-3 border-b border-[#f4efe6]/8 px-4 py-3 text-sm last:border-b-0"
-                >
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-[#d8a15d]" />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[#f4efe6]/82">{event.summary}</p>
-                    <time className="mt-1 block text-xs text-[#f4efe6]/38">
-                      {new Date(event.occurred_at).toLocaleTimeString()}
-                    </time>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
-        </div>
-
-        <div>
-          <h3 className="mb-2 text-sm font-semibold tracking-tight">Input</h3>
-          <pre className="max-h-80 overflow-auto rounded-2xl border border-[#f4efe6]/10 bg-[#0e0c0a]/55 p-4 text-xs leading-5 text-[#f4efe6]/62">
-            {JSON.stringify(tryout.input_snapshot, null, 2)}
-          </pre>
-        </div>
-      </div>
-
-      <EvalRoiCalculator tryout={tryout} loginHref={loginHref} />
-    </section>
-  );
-}
-
-function ScorecardCard({ scorecard }: { scorecard: TryoutScorecard }) {
   const pct = Math.round(scorecard.score * 100);
   return (
-    <div className="mt-4 rounded-2xl border border-[#f4efe6]/10 bg-[#0e0c0a]/55 p-4">
+    <div
+      className={cn(
+        "rounded-xl border border-white/10 bg-white/[0.02]",
+        compact ? "p-3" : "p-4",
+      )}
+    >
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold tracking-tight">Scorecard</h3>
-        <span
-          className={`text-sm font-semibold ${
-            scorecard.passed ? "text-[#7fd1a0]" : "text-[#e7c18d]"
-          }`}
-        >
-          {pct}% · {scorecard.passed_validators}/{scorecard.total_validators} checks
+        <h3 className="text-sm font-semibold tracking-tight">Eval scorecard</h3>
+        <span className="text-sm font-medium text-white/80">
+          {pct}% · {scorecard.passed_validators}/{scorecard.total_validators}
         </span>
       </div>
-      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-[#f4efe6]/10">
+      <div className="mt-3 h-px w-full overflow-hidden rounded-full bg-white/10">
         <div
-          className="h-full rounded-full bg-[#d8a15d]"
+          className="h-full rounded-full bg-white/70 transition-all duration-700"
           style={{ width: `${pct}%` }}
         />
       </div>
-      {scorecard.checks.length > 0 ? (
+      {!compact && scorecard.checks.length > 0 ? (
         <ul className="mt-3 space-y-1.5">
           {scorecard.checks.map((check) => (
             <li key={check.key} className="flex items-center gap-2 text-sm">
               {check.status === "passed" ? (
-                <CheckCircle2 className="size-4 shrink-0 text-[#7fd1a0]" />
+                <CheckCircle2 className="size-4 shrink-0 text-white/70" />
               ) : check.status === "failed" ? (
-                <XCircle className="size-4 shrink-0 text-[#e07a7a]" />
+                <XCircle className="size-4 shrink-0 text-white/35" />
               ) : (
-                <span className="size-4 shrink-0 rounded-full border border-[#f4efe6]/25" />
+                <span className="size-4 shrink-0 rounded-full border border-white/25" />
               )}
-              <span className="text-[#f4efe6]/75">{fieldLabel(check.key)}</span>
-              <span className="ml-auto text-xs text-[#f4efe6]/35">{check.status}</span>
+              <span className="text-white/75">{fieldLabel(check.key)}</span>
+              <span className="ml-auto text-xs text-white/35">{check.status}</span>
             </li>
           ))}
         </ul>
-      ) : null}
-      {scorecard.dimensions.length > 0 ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {scorecard.dimensions.map((dimension) => (
-            <span
-              key={dimension}
-              className="rounded-full border border-[#f4efe6]/12 px-2 py-0.5 text-xs text-[#f4efe6]/50"
-            >
-              {dimension}
-            </span>
-          ))}
-        </div>
       ) : null}
     </div>
   );
@@ -802,9 +1363,9 @@ function DownloadButton({ label, onClick }: { label: string; onClick: () => void
       type="button"
       variant="outline"
       onClick={onClick}
-      className="h-8 rounded-full border-[#f4efe6]/15 bg-transparent px-3 text-sm text-[#f4efe6] hover:bg-[#f4efe6]/10"
+      className="h-7 rounded-full border-white/15 bg-transparent px-2.5 text-xs text-white hover:bg-white/10"
     >
-      <Download className="size-3.5" />
+      <Download className="size-3" />
       {label}
     </Button>
   );
@@ -820,21 +1381,27 @@ function ProofItem({
   text: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[#f4efe6]/8 bg-[#0e0c0a]/45 p-4">
-      <Icon className="size-4 text-[#d8a15d]" />
-      <p className="mt-3 font-medium text-[#f4efe6]/85">{label}</p>
-      <p className="mt-1 leading-6">{text}</p>
+    <div className="rounded-2xl border border-white/8 bg-zinc-950/80/45 p-4">
+      <Icon className="size-4 text-white/35" />
+      <p className="mt-3 font-medium text-white/85">{label}</p>
+      <p className="mt-1 text-sm leading-6 text-white/55">{text}</p>
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-2xl border border-[#f4efe6]/10 bg-[#0e0c0a]/45 px-3 py-2.5">
-      <dt className="text-xs text-[#f4efe6]/38">{label}</dt>
-      <dd className="mt-1 truncate font-medium">{value}</dd>
-    </div>
-  );
+function formatInputSnapshot(input: Record<string, unknown>): string {
+  if (!input || typeof input !== "object") return "";
+  const preferred = ["brief", "task", "prompt", "message", "content", "description"];
+  for (const key of preferred) {
+    const value = input[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  const strings = Object.entries(input)
+    .filter(([, value]) => typeof value === "string" && value.trim())
+    .map(([key, value]) => `${fieldLabel(key)}: ${value}`);
+  if (strings.length === 1) return strings[0].split(": ").slice(1).join(": ");
+  if (strings.length > 1) return strings.join("\n\n");
+  return JSON.stringify(input, null, 2);
 }
 
 function getFields(template: AgentTryoutTemplate | null): [string, FieldSpec][] {
@@ -881,7 +1448,10 @@ function fieldLabel(field: string): string {
 }
 
 function triggerDownload(filename: string, contents: string, mime: string) {
-  const blob = new Blob([contents], { type: mime });
+  triggerDownloadBlob(filename, new Blob([contents], { type: mime }));
+}
+
+function triggerDownloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -923,8 +1493,9 @@ function downloadScorecard(tryout: AgentTryout, scorecard: TryoutScorecard) {
 
 function downloadOutput(output: TryoutOutputPreview) {
   const name =
-    output.relative_path || `${output.key || "artifact"}.${extForType(output.type)}`;
-  triggerDownload(name.split("/").pop() || name, output.preview, "text/plain");
+    output.relative_path || `${output.key || "artifact"}.${extForType(output.type, output.relative_path)}`;
+  const mime = output.content_type || mimeForType(output.type, output.relative_path);
+  triggerDownloadBlob(name.split("/").pop() || name, new Blob([decodeArtifactBytes(output)], { type: mime }));
 }
 
 function downloadArtifacts(tryout: AgentTryout, outputs: TryoutOutputPreview[]) {
@@ -939,7 +1510,9 @@ function downloadArtifacts(tryout: AgentTryout, outputs: TryoutOutputPreview[]) 
   );
 }
 
-function extForType(type: string): string {
+function extForType(type: string, relativePath?: string): string {
+  const fromPath = relativePath?.includes(".") ? relativePath.split(".").pop() : "";
+  if (fromPath) return fromPath;
   switch (type) {
     case "json":
       return "json";
@@ -947,8 +1520,39 @@ function extForType(type: string): string {
       return "md";
     case "csv":
       return "csv";
+    case "pdf":
+      return "pdf";
+    case "pptx":
+      return "pptx";
+    case "png":
+      return "png";
     default:
       return "txt";
+  }
+}
+
+function mimeForType(type: string, relativePath?: string): string {
+  const ext = extForType(type, relativePath).toLowerCase();
+  switch (ext) {
+    case "pdf":
+      return "application/pdf";
+    case "pptx":
+      return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    case "png":
+      return "image/png";
+    case "jpg":
+    case "jpeg":
+      return "image/jpeg";
+  }
+  switch (type) {
+    case "json":
+      return "application/json";
+    case "markdown":
+      return "text/markdown";
+    case "csv":
+      return "text/csv";
+    default:
+      return "text/plain";
   }
 }
 
@@ -958,7 +1562,66 @@ type TryoutOutputPreview = {
   relative_path: string;
   preview: string;
   truncated: boolean;
+  encoding?: "utf-8" | "base64";
+  content_type?: string;
+  size_bytes?: number;
 };
+
+function isBinaryArtifact(output: TryoutOutputPreview): boolean {
+  return output.encoding === "base64" || ["pdf", "pptx", "png", "jpg", "jpeg"].includes(output.type);
+}
+
+function isPdfArtifact(output: TryoutOutputPreview): boolean {
+  return output.type === "pdf" || output.content_type?.includes("pdf") === true;
+}
+
+function isImageArtifact(output: TryoutOutputPreview): boolean {
+  return (
+    output.type === "png" ||
+    output.content_type?.startsWith("image/") === true
+  );
+}
+
+function artifactKindLabel(output: TryoutOutputPreview): string {
+  if (output.type === "pptx" || output.relative_path.endsWith(".pptx")) return "PowerPoint";
+  if (isPdfArtifact(output)) return "PDF";
+  if (isImageArtifact(output)) return "Image";
+  if (output.type === "json") return "Metadata";
+  if (output.type === "markdown") return "Markdown";
+  return "File";
+}
+
+function decodeArtifactBytes(output: TryoutOutputPreview): ArrayBuffer {
+  if (output.encoding === "base64") {
+    const binary = atob(output.preview);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+      bytes[i] = binary.charCodeAt(i);
+    }
+    return bytes.buffer;
+  }
+  return new TextEncoder().encode(output.preview).buffer;
+}
+
+function useArtifactBlobUrl(output: TryoutOutputPreview): string | null {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isPdfArtifact(output) && !isImageArtifact(output)) {
+      setUrl(null);
+      return;
+    }
+    const mime = output.content_type || mimeForType(output.type, output.relative_path);
+    const blob = new Blob([decodeArtifactBytes(output)], { type: mime });
+    const next = URL.createObjectURL(blob);
+    setUrl(next);
+    return () => {
+      URL.revokeObjectURL(next);
+    };
+  }, [output.key, output.preview, output.encoding, output.type, output.content_type, output.relative_path]);
+
+  return url;
+}
 
 function tryoutOutputs(summary: unknown): TryoutOutputPreview[] {
   if (!summary || typeof summary !== "object") return [];
@@ -1035,20 +1698,12 @@ function tryoutScorecard(summary: unknown): TryoutScorecard | null {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Eval ROI calculator — the conversion centerpiece. After the agent runs on
-// the buyer's own task, we quantify the bet they're about to make: shipping an
-// agent WITHOUT evaluating it vs WITH AgentClash. Anchors are from 2026
-// enterprise benchmarks (MIT NANDA 95% pilot-failure, per-task human cost,
-// hallucination rates, cost-of-error). All numbers are editable by the buyer.
-// ---------------------------------------------------------------------------
-
 type RoiAnchor = {
   label: string;
-  humanCostPerTask: number; // fully-loaded human cost to do the task once
-  aiCostPerTask: number; // model + sandbox cost per task
-  errorRate: number; // share of outputs that go wrong if unevaluated
-  costPerError: number; // downstream cost of one bad output (rework/churn/exposure)
+  humanCostPerTask: number;
+  aiCostPerTask: number;
+  errorRate: number;
+  costPerError: number;
 };
 
 const ROI_ANCHORS: Record<string, RoiAnchor> = {
@@ -1072,10 +1727,8 @@ const DEFAULT_ANCHOR: RoiAnchor = {
   costPerError: 50,
 };
 
-// Share of un-evaluated enterprise GenAI pilots that fail to reach production
-// ROI (MIT NANDA, 2025). Evaluated programs reach production ~6x more often.
 const UNEVALUATED_FAILURE_RATE = 0.95;
-const EVAL_ANNUAL_COST = 12000; // representative platform cost to evaluate this workflow
+const EVAL_ANNUAL_COST = 12000;
 
 function usd(value: number): string {
   if (!Number.isFinite(value)) return "$0";
@@ -1102,36 +1755,25 @@ function EvalRoiCalculator({
   const humanCostPerTask = Math.max(0, Number(humanCost) || 0);
   const annualVolume = monthlyVolume * 12;
 
-  // Gross automation prize: what moving these tasks to an agent is worth/yr.
   const automationSavings =
     annualVolume * (humanCostPerTask - anchor.aiCostPerTask);
-
-  // Ship WITHOUT evals: errors run unchecked, AND most such pilots never reach
-  // production — so you eat the error cost and forfeit the savings.
   const annualErrorCost = annualVolume * anchor.errorRate * anchor.costPerError;
   const forfeitedSavings = automationSavings * UNEVALUATED_FAILURE_RATE;
   const costWithoutEvals = annualErrorCost + forfeitedSavings;
-
-  // Ship WITH evals: catch failures before prod, actually capture the savings,
-  // for the price of evaluating.
   const capturedSavings = automationSavings - EVAL_ANNUAL_COST;
   const netUpside = capturedSavings + costWithoutEvals;
 
   return (
-    <div className="mt-6 rounded-2xl border border-[#d8a15d]/25 bg-gradient-to-br from-[#d8a15d]/[0.08] to-transparent p-5">
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
       <div className="flex items-center gap-2">
-        <Calculator className="size-4 text-[#d8a15d]" />
+        <Calculator className="size-4 text-white/40" />
         <h3 className="text-sm font-semibold tracking-tight">
           What this is worth at your scale
         </h3>
       </div>
-      <p className="mt-1.5 text-sm leading-6 text-[#f4efe6]/55">
-        You just watched an agent do one {anchor.label}. Here is the business
-        case for evaluating it before you wire it into production —{" "}
-        <span className="text-[#f4efe6]/75">
-          95% of enterprise AI pilots fail to deliver ROI
-        </span>{" "}
-        when they skip this step.
+      <p className="mt-1.5 text-sm leading-6 text-white/50">
+        You just watched an agent finish one {anchor.label}. Here is the business
+        case for evaluating it before you wire it into production.
       </p>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -1142,55 +1784,46 @@ function EvalRoiCalculator({
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-2xl border border-[#e07a7a]/25 bg-[#e07a7a]/[0.07] p-4">
-          <div className="flex items-center gap-2 text-[#f0a8a8]">
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
+          <div className="flex items-center gap-2 text-white/55">
             <ShieldAlert className="size-4" />
             <p className="text-sm font-medium">Integrate without evals</p>
           </div>
-          <p className="mt-2 text-3xl font-semibold tracking-tight text-[#f4efe6]">
+          <p className="mt-2 text-3xl font-semibold tracking-tight text-white">
             {usd(costWithoutEvals)}
-            <span className="text-base font-normal text-[#f4efe6]/45"> /yr at risk</span>
+            <span className="text-base font-normal text-white/40"> /yr at risk</span>
           </p>
-          <ul className="mt-3 space-y-1 text-sm text-[#f4efe6]/55">
-            <li>{usd(annualErrorCost)} from unchecked errors ({Math.round(anchor.errorRate * 100)}% bad outputs × {usd(anchor.costPerError)})</li>
-            <li>{usd(forfeitedSavings)} in savings forfeited if the pilot stalls (95% do)</li>
-          </ul>
         </div>
 
-        <div className="rounded-2xl border border-[#7fd1a0]/25 bg-[#7fd1a0]/[0.07] p-4">
-          <div className="flex items-center gap-2 text-[#8fe0b0]">
+        <div className="rounded-xl border border-white/15 bg-white/[0.04] p-4">
+          <div className="flex items-center gap-2 text-white/70">
             <TrendingUp className="size-4" />
             <p className="text-sm font-medium">Evaluate with AgentClash</p>
           </div>
-          <p className="mt-2 text-3xl font-semibold tracking-tight text-[#f4efe6]">
+          <p className="mt-2 text-3xl font-semibold tracking-tight text-white">
             {usd(capturedSavings)}
-            <span className="text-base font-normal text-[#f4efe6]/45"> /yr captured</span>
+            <span className="text-base font-normal text-white/40"> /yr captured</span>
           </p>
-          <ul className="mt-3 space-y-1 text-sm text-[#f4efe6]/55">
-            <li>{usd(automationSavings)} automation upside, de-risked into production</li>
-            <li>− {usd(EVAL_ANNUAL_COST)} to evaluate before you ship</li>
-          </ul>
         </div>
       </div>
 
-      <div className="mt-4 flex flex-col items-start justify-between gap-3 rounded-2xl border border-[#f4efe6]/10 bg-[#0e0c0a]/55 p-4 sm:flex-row sm:items-center">
-        <p className="text-sm text-[#f4efe6]/70">
+      <div className="mt-4 flex flex-col items-start justify-between gap-3 rounded-xl border border-white/10 bg-black/40 p-4 sm:flex-row sm:items-center">
+        <p className="text-sm text-white/65">
           Evaluating first is worth{" "}
-          <span className="font-semibold text-[#e7c18d]">{usd(netUpside)}/yr</span>{" "}
+          <span className="font-semibold text-white">{usd(netUpside)}/yr</span>{" "}
           to {company.trim() || "your team"} on this workflow alone.
         </p>
         <Link
           href={`/enterprise?from=tryout&task=${encodeURIComponent(tryout.template_slug)}${email.trim() ? `&email=${encodeURIComponent(email.trim())}` : ""}`}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[#e7c18d] px-4 text-sm font-medium text-[#14120f] transition hover:bg-[#f0cf9d]"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
         >
           Talk to us about integrating
           <ArrowRight className="size-4" />
         </Link>
       </div>
-      <p className="mt-2 text-xs text-[#f4efe6]/35">
-        Estimates use 2026 enterprise benchmarks (MIT NANDA, per-task labor cost,
-        hallucination rates). Adjust the inputs to match your numbers.{" "}
-        <Link href={loginHref} className="text-[#f4efe6]/55 hover:underline">
+      <p className="mt-2 text-xs text-white/35">
+        Adjust the inputs to match your numbers.{" "}
+        <Link href={loginHref} className="text-white/55 hover:underline">
           Save this analysis →
         </Link>
       </p>
@@ -1213,7 +1846,7 @@ function RoiInput({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs text-[#f4efe6]/45">{label}</span>
+      <span className="mb-1 block text-xs text-white/45">{label}</span>
       <input
         type={numeric ? "number" : "text"}
         inputMode={numeric ? "decimal" : undefined}
@@ -1221,193 +1854,8 @@ function RoiInput({
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full rounded-xl border border-[#f4efe6]/12 bg-[#0e0c0a]/65 px-3 text-sm text-[#f4efe6] outline-none placeholder:text-[#f4efe6]/25 focus:border-[#d8a15d]/50 focus:ring-2 focus:ring-[#d8a15d]/20"
+        className="h-9 w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/25 focus:ring-1 focus:ring-white/10"
       />
     </label>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// TryoutChat — the live conversation. The visitor talks to the agent turn by
-// turn while the session is active; agent reasoning/tool steps stream in from
-// the event log. User messages are tracked locally (the page sent them) and
-// interleaved with agent steps.
-// ---------------------------------------------------------------------------
-
-type ChatUserMessage = { id: string; text: string; at: number };
-
-function TryoutChat({
-  tryout,
-  events,
-}: {
-  tryout: AgentTryout;
-  events: TryoutTimelineEvent[];
-}) {
-  const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
-  const [ending, setEnding] = useState(false);
-  const [userMessages, setUserMessages] = useState<ChatUserMessage[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const active = tryoutIsActive(tryout.status);
-
-  // Reset local chat when switching to a different tryout.
-  useEffect(() => {
-    setUserMessages([]);
-    setDraft("");
-    setError(null);
-  }, [tryout.id]);
-
-  const agentSteps = useMemo(
-    () =>
-      events
-        .filter(
-          (event) =>
-            event.type === "planning" ||
-            event.type === "tool_call" ||
-            event.type === "finished",
-        )
-        .map((event) => ({
-          kind: "agent" as const,
-          id: `e${event.cursor}`,
-          text: event.summary,
-          at: new Date(event.occurred_at).getTime(),
-          stepType: event.type,
-        })),
-    [events],
-  );
-
-  const timeline = useMemo(() => {
-    const user = userMessages.map((m) => ({
-      kind: "user" as const,
-      id: m.id,
-      text: m.text,
-      at: m.at,
-      stepType: "user" as const,
-    }));
-    return [...user, ...agentSteps].sort((a, b) => a.at - b.at);
-  }, [userMessages, agentSteps]);
-
-  async function send() {
-    const text = draft.trim();
-    if (!text || sending) return;
-    setSending(true);
-    setError(null);
-    try {
-      await submitAgentTryoutTurn(api, tryout.id, { message: text });
-      setUserMessages((current) => [
-        ...current,
-        { id: `u${Date.now()}`, text, at: Date.now() },
-      ]);
-      setDraft("");
-    } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : "Could not send your message.",
-      );
-    } finally {
-      setSending(false);
-    }
-  }
-
-  async function endSession() {
-    if (ending) return;
-    setEnding(true);
-    try {
-      await submitAgentTryoutTurn(api, tryout.id, { end: true });
-    } catch {
-      // best-effort; the session also ends on idle / cap
-    } finally {
-      setEnding(false);
-    }
-  }
-
-  return (
-    <div className="mt-4 rounded-2xl border border-[#f4efe6]/10 bg-[#0e0c0a]/55 p-4">
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold tracking-tight">Conversation</h3>
-        {active ? (
-          <button
-            type="button"
-            onClick={endSession}
-            disabled={ending}
-            className="text-xs text-[#f4efe6]/45 transition hover:text-[#f4efe6]/80"
-          >
-            End session
-          </button>
-        ) : null}
-      </div>
-
-      <div className="mt-3 max-h-96 space-y-2 overflow-auto">
-        {timeline.length === 0 ? (
-          <p className="text-sm text-[#f4efe6]/45">
-            {active
-              ? "The agent is starting. Watch its steps, then reply below."
-              : "No conversation was recorded."}
-          </p>
-        ) : (
-          timeline.map((item) =>
-            item.kind === "user" ? (
-              <div key={item.id} className="flex justify-end">
-                <div className="max-w-[80%] rounded-2xl rounded-br-sm bg-[#e7c18d] px-3 py-2 text-sm text-[#14120f]">
-                  {item.text}
-                </div>
-              </div>
-            ) : (
-              <div key={item.id} className="flex justify-start">
-                <div className="flex max-w-[85%] items-start gap-2 rounded-2xl rounded-bl-sm border border-[#f4efe6]/10 bg-[#f4efe6]/[0.04] px-3 py-2 text-sm text-[#f4efe6]/80">
-                  {item.stepType === "tool_call" ? (
-                    <Activity className="mt-0.5 size-3.5 shrink-0 text-[#7fd1a0]" />
-                  ) : (
-                    <Gauge className="mt-0.5 size-3.5 shrink-0 text-[#d8a15d]" />
-                  )}
-                  <span className="min-w-0">{item.text}</span>
-                </div>
-              </div>
-            ),
-          )
-        )}
-      </div>
-
-      {active ? (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void send();
-          }}
-          className="mt-3 flex items-end gap-2 rounded-2xl border border-[#f4efe6]/12 bg-[#16140f]/80 p-2 focus-within:border-[#d8a15d]/40"
-        >
-          <textarea
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void send();
-              }
-            }}
-            rows={1}
-            placeholder="Reply to the agent…"
-            className="block max-h-32 w-full resize-none bg-transparent px-2 py-1.5 text-sm text-[#f4efe6] outline-none placeholder:text-[#f4efe6]/30"
-          />
-          <button
-            type="submit"
-            disabled={!draft.trim() || sending}
-            aria-label="Send message"
-            className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#e7c18d] text-[#14120f] transition hover:bg-[#f0cf9d] disabled:opacity-40"
-          >
-            {sending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <ArrowUp className="size-4" />
-            )}
-          </button>
-        </form>
-      ) : (
-        <p className="mt-3 text-xs text-[#f4efe6]/40">
-          This session has ended. Sign in to start a fresh conversation and save it.
-        </p>
-      )}
-      {error ? <p className="mt-2 text-xs text-red-300">{error}</p> : null}
-    </div>
   );
 }

@@ -16,10 +16,16 @@ export default function PublicTryoutsPage() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen bg-[#14120f] text-[#f4efe6]">
+        <main className="min-h-screen bg-black text-white">
           <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4">
-            <div className="h-2 w-36 overflow-hidden rounded-full bg-white/10">
-              <div className="h-full w-1/2 animate-pulse rounded-full bg-[#d8a15d]" />
+            <div className="flex items-center gap-1">
+              {[0, 1, 2].map((index) => (
+                <span
+                  key={index}
+                  className="size-1.5 rounded-full bg-white/30 animate-pulse"
+                  style={{ animationDelay: `${index * 180}ms` }}
+                />
+              ))}
             </div>
           </div>
         </main>
