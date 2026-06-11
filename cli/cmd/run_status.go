@@ -4,8 +4,9 @@ package cmd
 // machine (backend/internal/domain/run.go). Every follow/poll loop in the CLI
 // must use isTerminalRunStatus rather than hand-rolling its own switch — the
 // divergent copies are exactly how `dataset generate --follow` looped forever
-// on a cancelled job. The `schema` command's status registry consumes these
-// same constants, so the documented contract and the code cannot drift.
+// on a cancelled job. These constants are the single vocabulary the `schema`
+// status registry builds on in a later PR; keeping them here means that
+// registry references the same source the follow loops do.
 const (
 	runStatusPending   = "pending"
 	runStatusRunning   = "running"
