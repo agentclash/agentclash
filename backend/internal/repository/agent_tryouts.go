@@ -52,6 +52,7 @@ type AgentTryout struct {
 	ToolPolicySnapshot       json.RawMessage
 	EvaluationSpecSnapshot   json.RawMessage
 	SelectedModelPolicy      json.RawMessage
+	SelectedHarnessKind      *string
 	Summary                  json.RawMessage
 	RedactionStatus          AgentTryoutRedactionStatus
 	RunID                    *uuid.UUID
@@ -89,6 +90,7 @@ type CreateAgentTryoutParams struct {
 	ToolPolicySnapshot       json.RawMessage
 	EvaluationSpecSnapshot   json.RawMessage
 	SelectedModelPolicy      json.RawMessage
+	SelectedHarnessKind      *string
 	Summary                  json.RawMessage
 	RedactionStatus          AgentTryoutRedactionStatus
 	RunID                    *uuid.UUID
@@ -196,6 +198,7 @@ func createAgentTryout(ctx context.Context, queries *repositorysqlc.Queries, par
 		ToolPolicySnapshot:       normalizeJSONObject(params.ToolPolicySnapshot),
 		EvaluationSpecSnapshot:   normalizeJSONObject(params.EvaluationSpecSnapshot),
 		SelectedModelPolicy:      normalizeJSONObject(params.SelectedModelPolicy),
+		SelectedHarnessKind:      cloneStringPtr(params.SelectedHarnessKind),
 		Summary:                  normalizeJSONObject(params.Summary),
 		RedactionStatus:          string(params.RedactionStatus),
 		RunID:                    cloneUUIDPtr(params.RunID),
@@ -616,6 +619,7 @@ func mapAgentTryout(row repositorysqlc.AgentTryout) (AgentTryout, error) {
 		ToolPolicySnapshot:       cloneJSON(row.ToolPolicySnapshot),
 		EvaluationSpecSnapshot:   cloneJSON(row.EvaluationSpecSnapshot),
 		SelectedModelPolicy:      cloneJSON(row.SelectedModelPolicy),
+		SelectedHarnessKind:      cloneStringPtr(row.SelectedHarnessKind),
 		Summary:                  cloneJSON(row.Summary),
 		RedactionStatus:          AgentTryoutRedactionStatus(row.RedactionStatus),
 		RunID:                    cloneUUIDPtr(row.RunID),

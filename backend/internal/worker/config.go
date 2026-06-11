@@ -201,10 +201,12 @@ func LoadConfigFromEnv() (Config, error) {
 
 		AgentTryoutRetentionReaperInterval: agentTryoutRetentionReaperInterval,
 		AgentTryoutHosted: workflow.PublicAgentTryoutConfig{
-			HarnessKind:   strings.TrimSpace(os.Getenv("AGENT_TRYOUT_HOSTED_HARNESS_KIND")),
-			E2BTemplateID: strings.TrimSpace(os.Getenv("AGENT_TRYOUT_E2B_TEMPLATE_ID")),
-			Provider:      strings.TrimSpace(os.Getenv("AGENT_TRYOUT_HOSTED_PROVIDER")),
-			CredentialRef: strings.TrimSpace(os.Getenv("AGENT_TRYOUT_HOSTED_CREDENTIAL_REF")),
+			HarnessKind:             strings.TrimSpace(os.Getenv("AGENT_TRYOUT_HOSTED_HARNESS_KIND")),
+			E2BTemplateID:           strings.TrimSpace(os.Getenv("AGENT_TRYOUT_E2B_TEMPLATE_ID")),
+			Provider:                strings.TrimSpace(os.Getenv("AGENT_TRYOUT_HOSTED_PROVIDER")),
+			CredentialRef:           strings.TrimSpace(os.Getenv("AGENT_TRYOUT_HOSTED_CREDENTIAL_REF")),
+			AnthropicCredentialRef:  strings.TrimSpace(os.Getenv("AGENT_TRYOUT_HOSTED_ANTHROPIC_CREDENTIAL_REF")),
+			OpenRouterCredentialRef: strings.TrimSpace(os.Getenv("AGENT_TRYOUT_HOSTED_OPENROUTER_CREDENTIAL_REF")),
 		},
 		ArtifactStorage: ArtifactStorageConfig{
 			Backend:          artifactStorageBackend,

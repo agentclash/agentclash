@@ -113,6 +113,7 @@ type AgentTryoutTemplate struct {
 type CreateAnonymousAgentTryoutInput struct {
 	TemplateSlug         string
 	Input                json.RawMessage
+	SelectedHarnessKind  string
 	AnonymousFingerprint string
 	Now                  time.Time
 }
@@ -236,6 +237,19 @@ func (m *AgentTryoutManager) ListTemplates(context.Context) ([]AgentTryoutTempla
 	return templates, nil
 }
 
+// normalizeSelectedHarnessKind validates a user-chosen agent harness. An empty
+// choice returns nil so the worker falls back to its configured default.
+func normalizeSelectedHarnessKind(kind string) (*string, error) {
+	trimmed := strings.TrimSpace(kind)
+	if trimmed == "" {
+		return nil, nil
+	}
+	if !domain.IsSupportedAgentHarnessKind(trimmed) {
+		return nil, fmt.Errorf("%w: unsupported agent %q", ErrInvalidAgentTryoutInput, trimmed)
+	}
+	return &trimmed, nil
+}
+
 func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input CreateAnonymousAgentTryoutInput) (repository.AgentTryout, error) {
 	template, err := m.lookupTemplate(input.TemplateSlug)
 	if err != nil {
@@ -248,6 +262,10 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 		return repository.AgentTryout{}, fmt.Errorf("%w: template does not allow anonymous tryouts", ErrInvalidAgentTryoutInput)
 	}
 	if err := validateAgentTryoutInput(template, input.Input); err != nil {
+		return repository.AgentTryout{}, err
+	}
+	selectedHarness, err := normalizeSelectedHarnessKind(input.SelectedHarnessKind)
+	if err != nil {
 		return repository.AgentTryout{}, err
 	}
 	now := input.Now
@@ -264,6 +282,7 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 		ToolPolicySnapshot:       template.ToolPolicy,
 		EvaluationSpecSnapshot:   template.EvaluationSpec,
 		SelectedModelPolicy:      template.DefaultModelPolicy,
+		SelectedHarnessKind:      selectedHarness,
 		Summary:                  json.RawMessage(`{}`),
 		RedactionStatus:          repository.AgentTryoutRedactionPending,
 		CostLimitUSD:             template.MaxCostUSD,
@@ -910,8 +929,9 @@ func (m *AgentTryoutManager) lookupTemplate(slug string) (AgentTryoutTemplate, e
 }
 
 type createAgentTryoutRequest struct {
-	TemplateSlug string          `json:"template_slug"`
-	Input        json.RawMessage `json:"input"`
+	TemplateSlug        string          `json:"template_slug"`
+	Input               json.RawMessage `json:"input"`
+	SelectedHarnessKind string          `json:"selected_harness_kind,omitempty"`
 }
 
 type claimAgentTryoutRequest struct {
@@ -937,6 +957,7 @@ type agentTryoutResponse struct {
 	ToolPolicySnapshot     json.RawMessage                       `json:"tool_policy_snapshot"`
 	EvaluationSpecSnapshot json.RawMessage                       `json:"evaluation_spec_snapshot"`
 	SelectedModelPolicy    json.RawMessage                       `json:"selected_model_policy"`
+	SelectedHarnessKind    *string                               `json:"selected_harness_kind,omitempty"`
 	Summary                json.RawMessage                       `json:"summary"`
 	RedactionStatus        repository.AgentTryoutRedactionStatus `json:"redaction_status"`
 	RunID                  *uuid.UUID                            `json:"run_id,omitempty"`
@@ -962,6 +983,7 @@ type publicAgentTryoutResponse struct {
 	ToolPolicySnapshot     json.RawMessage                       `json:"tool_policy_snapshot"`
 	EvaluationSpecSnapshot json.RawMessage                       `json:"evaluation_spec_snapshot"`
 	SelectedModelPolicy    json.RawMessage                       `json:"selected_model_policy"`
+	SelectedHarnessKind    *string                               `json:"selected_harness_kind,omitempty"`
 	Summary                json.RawMessage                       `json:"summary"`
 	RedactionStatus        repository.AgentTryoutRedactionStatus `json:"redaction_status"`
 	RunID                  *uuid.UUID                            `json:"run_id,omitempty"`
@@ -1021,6 +1043,7 @@ func createAnonymousAgentTryoutHandler(logger *slog.Logger, service AgentTryoutS
 		tryout, err := service.CreateAnonymousTryout(r.Context(), CreateAnonymousAgentTryoutInput{
 			TemplateSlug:         req.TemplateSlug,
 			Input:                req.Input,
+			SelectedHarnessKind:  req.SelectedHarnessKind,
 			AnonymousFingerprint: anonymousFingerprintFromRequest(r),
 		})
 		if err != nil {
@@ -1390,6 +1413,7 @@ func mapAgentTryoutResponse(tryout repository.AgentTryout) agentTryoutResponse {
 		ToolPolicySnapshot:     tryout.ToolPolicySnapshot,
 		EvaluationSpecSnapshot: tryout.EvaluationSpecSnapshot,
 		SelectedModelPolicy:    tryout.SelectedModelPolicy,
+		SelectedHarnessKind:    tryout.SelectedHarnessKind,
 		Summary:                tryout.Summary,
 		RedactionStatus:        tryout.RedactionStatus,
 		RunID:                  tryout.RunID,
@@ -1417,6 +1441,7 @@ func mapPublicAgentTryoutResponse(tryout repository.AgentTryout) publicAgentTryo
 		ToolPolicySnapshot:     tryout.ToolPolicySnapshot,
 		EvaluationSpecSnapshot: tryout.EvaluationSpecSnapshot,
 		SelectedModelPolicy:    tryout.SelectedModelPolicy,
+		SelectedHarnessKind:    tryout.SelectedHarnessKind,
 		Summary:                tryout.Summary,
 		RedactionStatus:        tryout.RedactionStatus,
 		RunID:                  tryout.RunID,

@@ -1,9 +1,9 @@
 # General-purpose office-work sandbox for public agent tryouts.
 #
-# This is the single, hardcoded template the public tryout runner boots for
-# every task (meeting minutes, spreadsheets, PDFs, inbox triage, status
-# updates, etc.). It bundles the Codex CLI plus a broad office-document
-# toolchain so a general office task can complete without per-task images.
+# Boots for every public tryout regardless of which agent harness the user
+# picks. It bundles ALL four supported agent CLIs (codex, claude, openclaw,
+# hermes) plus a broad office-document toolchain, so any task + any agent runs
+# without a per-agent image.
 #
 # Build + publish (see README.md in this directory):
 #   e2b template build --name agentclash-tryout-office
@@ -13,12 +13,12 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
     PIP_BREAK_SYSTEM_PACKAGES=1 \
-    NODE_MAJOR=20
+    NODE_MAJOR=22
 
 # Base OS + document toolchain. pandoc/libreoffice/poppler cover the common
 # office conversions; the python libs cover programmatic doc generation.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl git unzip zip jq ripgrep \
+        ca-certificates curl git unzip zip jq ripgrep ffmpeg \
         build-essential \
         python3 python3-pip python3-venv \
         pandoc \
@@ -27,15 +27,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
-# Node.js 20 (Codex CLI is distributed via npm).
+# Node.js 22 (OpenClaw requires Node 22+; Codex/Claude/OpenClaw ship via npm).
 RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
     && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
-# Codex CLI — this is what the codex_e2b runner invokes:
-#   codex exec --full-auto --skip-git-repo-check --json -C /workspace "<prompt>"
-RUN npm install -g @openai/codex@latest \
-    && codex --version
+# Agent CLIs distributed via npm. Each --version is a build-time smoke test:
+#   codex_e2b    -> codex exec ...
+#   claude_e2b   -> claude -p ...
+#   openclaw_e2b -> openclaw agent ...
+RUN npm install -g \
+        @openai/codex@latest \
+        @anthropic-ai/claude-code@latest \
+        openclaw@latest \
+    && codex --version \
+    && claude --version \
+    && openclaw --version
+
+# Hermes (NousResearch) ships only a curl installer. Run as root: it uses the
+# FHS layout (code at /usr/local/lib/hermes-agent, command at
+# /usr/local/bin/hermes) so every sandbox user can invoke `hermes`. It bundles
+# its own uv-managed Python 3.11 venv, so this layer is heavy (~5 min).
+RUN curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash \
+    && chmod -R a+rX /usr/local/lib/hermes-agent /usr/local/share/uv 2>/dev/null || true \
+    && /usr/local/bin/hermes --version
 
 # Python office-document libraries for programmatic generation/parsing.
 RUN pip3 install --no-cache-dir \

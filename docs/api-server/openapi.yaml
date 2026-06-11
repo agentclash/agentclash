@@ -12966,6 +12966,12 @@ components:
         input:
           type: object
           additionalProperties: true
+        selected_harness_kind:
+          type: string
+          description: >-
+            Optional agent harness to run the tryout. One of codex_e2b,
+            claude_e2b, openclaw_e2b, hermes_e2b. Empty uses the hosted default.
+          enum: [codex_e2b, claude_e2b, openclaw_e2b, hermes_e2b]
 
     ClaimAgentTryoutRequest:
       type: object
@@ -13008,6 +13014,9 @@ components:
         selected_model_policy:
           type: object
           additionalProperties: true
+        selected_harness_kind:
+          type: string
+          description: Agent harness the tryout ran on, when explicitly selected.
         summary:
           type: object
           additionalProperties: true
@@ -13079,6 +13088,9 @@ components:
         selected_model_policy:
           type: object
           additionalProperties: true
+        selected_harness_kind:
+          type: string
+          description: Agent harness the tryout ran on, when explicitly selected.
         summary:
           type: object
           additionalProperties: true

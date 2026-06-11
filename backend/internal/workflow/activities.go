@@ -226,7 +226,12 @@ type PublicAgentTryoutConfig struct {
 	HarnessKind   string
 	E2BTemplateID string
 	Provider      string
+	// CredentialRef is the OpenAI/Codex credential (the default harness).
 	CredentialRef string
+	// AnthropicCredentialRef powers the claude harness.
+	AnthropicCredentialRef string
+	// OpenRouterCredentialRef powers the openclaw + hermes harnesses.
+	OpenRouterCredentialRef string
 }
 
 func NormalizePublicAgentTryoutConfig(config PublicAgentTryoutConfig) PublicAgentTryoutConfig {
@@ -235,8 +240,8 @@ func NormalizePublicAgentTryoutConfig(config PublicAgentTryoutConfig) PublicAgen
 	}
 	if strings.TrimSpace(config.E2BTemplateID) == "" {
 		// General-purpose office-work sandbox built from
-		// infra/e2b/agentclash-tryout-office. Bundles the Codex CLI plus a
-		// broad office-document toolchain so any public tryout task runs
+		// infra/e2b/agentclash-tryout-office. Bundles all four agent CLIs plus
+		// a broad office-document toolchain so any task + any agent runs
 		// without a per-task image.
 		config.E2BTemplateID = defaultPublicTryoutE2BTemplate
 	}
@@ -246,7 +251,36 @@ func NormalizePublicAgentTryoutConfig(config PublicAgentTryoutConfig) PublicAgen
 	if strings.TrimSpace(config.CredentialRef) == "" {
 		config.CredentialRef = "env://OPENAI_API_KEY"
 	}
+	if strings.TrimSpace(config.AnthropicCredentialRef) == "" {
+		config.AnthropicCredentialRef = "env://ANTHROPIC_API_KEY"
+	}
+	if strings.TrimSpace(config.OpenRouterCredentialRef) == "" {
+		config.OpenRouterCredentialRef = "env://OPENROUTER_API_KEY"
+	}
 	return config
+}
+
+// publicTryoutHarnessKind resolves the agent harness for a tryout: the user's
+// per-tryout selection when supported, otherwise the configured default.
+func publicTryoutHarnessKind(config PublicAgentTryoutConfig, selected *string) string {
+	if selected != nil {
+		if trimmed := strings.TrimSpace(*selected); domain.IsSupportedAgentHarnessKind(trimmed) {
+			return trimmed
+		}
+	}
+	return domain.NormalizeAgentHarnessKind(config.HarnessKind)
+}
+
+// publicTryoutCredentialRef maps a harness kind to the credential it needs.
+func publicTryoutCredentialRef(config PublicAgentTryoutConfig, harnessKind string) string {
+	switch domain.NormalizeAgentHarnessKind(harnessKind) {
+	case domain.AgentHarnessKindClaudeE2B:
+		return config.AnthropicCredentialRef
+	case domain.AgentHarnessKindOpenClawE2B, domain.AgentHarnessKindHermesE2B:
+		return config.OpenRouterCredentialRef
+	default:
+		return config.CredentialRef
+	}
 }
 
 func (a *Activities) WithPublicAgentTryoutConfig(config PublicAgentTryoutConfig) *Activities {

@@ -93,13 +93,15 @@ func (a *Activities) ExecutePublicAgentTryout(ctx context.Context, input Execute
 
 func (a *Activities) executePublicTryoutSandbox(ctx context.Context, tryout repository.AgentTryout) ([]map[string]any, error) {
 	config := NormalizePublicAgentTryoutConfig(a.publicTryoutConfig)
-	credential, err := provider.EnvCredentialResolver{}.Resolve(ctx, config.CredentialRef)
+	harnessKind := publicTryoutHarnessKind(config, tryout.SelectedHarnessKind)
+	credentialRef := publicTryoutCredentialRef(config, harnessKind)
+	credential, err := provider.EnvCredentialResolver{}.Resolve(ctx, credentialRef)
 	if err != nil {
 		return nil, err
 	}
 
-	harness := publicTryoutHarnessSnapshot(config, tryout)
-	env := publicTryoutRunnerEnv(config, harness, credential)
+	harness := publicTryoutHarnessSnapshot(config, tryout, harnessKind, credentialRef)
+	env := publicTryoutRunnerEnv(harnessKind, harness, credential)
 	timeout := time.Duration(tryout.MaxDurationSeconds) * time.Second
 	if timeout <= 0 {
 		timeout = defaultAgentHarnessTimeoutSeconds * time.Second
@@ -139,6 +141,7 @@ func (a *Activities) executePublicTryoutSandbox(ctx context.Context, tryout repo
 	started := time.Now()
 	if err := a.recordPublicTryoutEvent(ctx, tryout.ID, runevents.EventTypeSandboxCommandStarted, map[string]any{
 		"provider_key":   config.Provider,
+		"harness_kind":   harnessKind,
 		"sandbox_action": runner.DisplayName,
 	}); err != nil {
 		return nil, err
@@ -156,6 +159,7 @@ func (a *Activities) executePublicTryoutSandbox(ctx context.Context, tryout repo
 	}
 	if recordErr := a.recordPublicTryoutEvent(ctx, tryout.ID, eventType, map[string]any{
 		"provider_key":   config.Provider,
+		"harness_kind":   harnessKind,
 		"sandbox_action": runner.DisplayName,
 		"exit_code":      result.ExitCode,
 		"duration_ms":    durationMS,
@@ -208,14 +212,14 @@ func (a *Activities) publicTryoutOutputPreviews(ctx context.Context, tryoutID uu
 	return outputs
 }
 
-func publicTryoutHarnessSnapshot(config PublicAgentTryoutConfig, tryout repository.AgentTryout) agentHarnessSnapshot {
+func publicTryoutHarnessSnapshot(config PublicAgentTryoutConfig, tryout repository.AgentTryout, harnessKind string, credentialRef string) agentHarnessSnapshot {
 	prompt := publicTryoutTaskPrompt(tryout)
-	secretName := publicTryoutSecretName(config.CredentialRef)
+	secretName := publicTryoutSecretName(credentialRef)
 	return agentHarnessSnapshot{
 		ID:                     uuid.New(),
 		WorkspaceID:            uuid.Nil,
 		OrganizationID:         uuid.Nil,
-		HarnessKind:            config.HarnessKind,
+		HarnessKind:            harnessKind,
 		TaskPrompt:             prompt,
 		CodexTemplate:          config.E2BTemplateID,
 		AuthMode:               "api_key_secret",
@@ -273,16 +277,17 @@ func publicTryoutExecutionConfig(tryout repository.AgentTryout) json.RawMessage 
 	return payload
 }
 
-func publicTryoutRunnerEnv(config PublicAgentTryoutConfig, harness agentHarnessSnapshot, credential string) map[string]string {
+func publicTryoutRunnerEnv(harnessKind string, harness agentHarnessSnapshot, credential string) map[string]string {
 	env := map[string]string{}
-	switch domain.NormalizeAgentHarnessKind(config.HarnessKind) {
+	secretName := publicTryoutSecretName(derefString(harness.OpenAIAPIKeySecretName))
+	switch domain.NormalizeAgentHarnessKind(harnessKind) {
 	case domain.AgentHarnessKindClaudeE2B:
 		env["ANTHROPIC_API_KEY"] = credential
 	case domain.AgentHarnessKindOpenClawE2B:
-		applyOpenClawSecretEnv(env, publicTryoutSecretName(config.CredentialRef), credential)
+		applyOpenClawSecretEnv(env, secretName, credential)
 		applyOpenClawRunnerEnv(env, harness, defaultAgentHarnessTimeoutSeconds*time.Second)
 	case domain.AgentHarnessKindHermesE2B:
-		applyHermesSecretEnv(env, publicTryoutSecretName(config.CredentialRef), credential)
+		applyHermesSecretEnv(env, secretName, credential)
 		applyHermesRunnerEnv(env, harness)
 	default:
 		env["OPENAI_API_KEY"] = credential

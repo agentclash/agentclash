@@ -17,3 +17,26 @@ func NormalizeAgentHarnessKind(kind string) string {
 	}
 	return trimmed
 }
+
+// SupportedAgentHarnessKinds lists every harness the platform can run.
+func SupportedAgentHarnessKinds() []string {
+	return []string{
+		AgentHarnessKindCodexE2B,
+		AgentHarnessKindClaudeE2B,
+		AgentHarnessKindOpenClawE2B,
+		AgentHarnessKindHermesE2B,
+	}
+}
+
+// IsSupportedAgentHarnessKind reports whether kind is a recognized harness.
+func IsSupportedAgentHarnessKind(kind string) bool {
+	switch strings.TrimSpace(kind) {
+	case AgentHarnessKindCodexE2B,
+		AgentHarnessKindClaudeE2B,
+		AgentHarnessKindOpenClawE2B,
+		AgentHarnessKindHermesE2B:
+		return true
+	default:
+		return false
+	}
+}

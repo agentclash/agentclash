@@ -34,15 +34,16 @@ func TestPublicTryoutRunnerEnvUsesHostedCredential(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve hosted credential: %v", err)
 	}
+	harnessKind := publicTryoutHarnessKind(config, nil)
 	harness := publicTryoutHarnessSnapshot(config, repository.AgentTryout{
 		TemplateSlug:           "meeting-minutes",
 		InputSnapshot:          json.RawMessage(`{"notes":"hello"}`),
 		TemplateSnapshot:       json.RawMessage(`{"name":"Meeting minutes","description":"Summarize","runtime":{}}`),
 		ToolPolicySnapshot:     json.RawMessage(`{"tools":[]}`),
 		EvaluationSpecSnapshot: json.RawMessage(`{}`),
-	})
+	}, harnessKind, config.CredentialRef)
 
-	env := publicTryoutRunnerEnv(config, harness, credential)
+	env := publicTryoutRunnerEnv(harnessKind, harness, credential)
 	if env["OPENAI_API_KEY"] != "sk-hosted" || env["CODEX_API_KEY"] != "sk-hosted" {
 		t.Fatalf("runner env did not use hosted key: %#v", env)
 	}
