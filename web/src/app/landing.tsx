@@ -1391,12 +1391,8 @@ const LANDING_FEATURES: Array<{
 // shared with the /compare pages so the matrix never drifts between surfaces.
 
 export default function HomePage({
-  showBenchmarks = false,
   returning = false,
 }: {
-  // Gated by the server page off `hasPublishedBenchmarks()`: hide the Benchmarks
-  // nav link while the section is in its coming-soon state.
-  showBenchmarks?: boolean;
   returning?: boolean;
 }) {
   const { user, loading: authLoading } = useAuth();
@@ -1461,14 +1457,12 @@ export default function HomePage({
             >
               Docs
             </Link>
-            {showBenchmarks && (
-              <Link
-                href="/benchmarks"
-                className="hidden sm:inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
-              >
-                Benchmarks
-              </Link>
-            )}
+            <Link
+              href="/benchmarks"
+              className="hidden sm:inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
+            >
+              Benchmarks
+            </Link>
             <Link
               href="/blog"
               className="hidden sm:inline-flex px-3 py-1.5 text-white/55 hover:text-white/85 transition-colors"
