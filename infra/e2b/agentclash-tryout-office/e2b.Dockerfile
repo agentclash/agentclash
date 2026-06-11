@@ -60,5 +60,8 @@ RUN pip3 install --no-cache-dir \
         Pillow
 
 # Working directory the runner uses (agentHarnessWorkspaceDir = "/workspace").
-RUN mkdir -p /workspace
+# World-writable so agents that run as the non-root sandbox user can write
+# artifacts directly (verified: root-owned /workspace forces a sudo/bash
+# fallback and noisy failed apply_patch steps).
+RUN mkdir -p /workspace && chmod 777 /workspace
 WORKDIR /workspace

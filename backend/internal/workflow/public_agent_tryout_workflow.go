@@ -305,12 +305,23 @@ func publicTurnCommand(harnessKind, workdir, message string, firstTurn bool) ([]
 exec openclaw agent --local --session-id agentclash-tryout --json --timeout "${AGENTCLASH_HARNESS_TIMEOUT_SECONDS:-1800}" -m "$AGENTCLASH_TURN_MESSAGE"`
 		return []string{"bash", "-lc", script}, nil
 	default: // codex_e2b
-		cmd := []string{"codex", "exec"}
+		// E2B already isolates the sandbox; Codex's own OS sandbox fails nested
+		// (it can't set up landlock around /workspace), so bypass it. Verified
+		// live: --full-auto cannot write files inside the E2B container.
 		if !firstTurn {
-			cmd = append(cmd, "resume", "--last")
+			// `codex exec resume` restores the session's original cwd and does
+			// NOT accept -C (passing it exits 2). Verified live.
+			return []string{
+				"codex", "exec", "resume", "--last",
+				"--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check",
+				"--json", message,
+			}, nil
 		}
-		cmd = append(cmd, "--full-auto", "--skip-git-repo-check", "--json", "-C", workdir, message)
-		return cmd, nil
+		return []string{
+			"codex", "exec",
+			"--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check",
+			"--json", "-C", workdir, message,
+		}, nil
 	}
 }
 
@@ -327,29 +338,74 @@ func (a *Activities) recordPublicAgentStreamLine(ctx context.Context, tryoutID u
 		// Plain (non-JSON) chatter is noisy; skip it.
 		return false
 	}
+	// Determine the step kind. Codex nests the meaningful payload under "item"
+	// (e.g. {"type":"item.completed","item":{"type":"agent_message","text":...}}
+	// or item.type "file_change" / "command_execution"); claude stream-json and
+	// openclaw use top-level "type". Tool-ish steps map to tool_call, the rest to
+	// planning, so the chat shows "thinking" vs "acting".
 	kind, _ := decoded["type"].(string)
+	itemType := ""
+	if item, ok := decoded["item"].(map[string]any); ok {
+		itemType, _ = item["type"].(string)
+	}
+	summary, ok := streamLineSummary(decoded)
+	if !ok {
+		return false
+	}
+	lowered := strings.ToLower(kind + " " + itemType)
 	eventType := runevents.EventTypeModelCallStarted
-	if strings.Contains(strings.ToLower(kind), "tool") {
+	if strings.Contains(lowered, "tool") ||
+		strings.Contains(lowered, "file_change") ||
+		strings.Contains(lowered, "command") {
 		eventType = runevents.EventTypeToolCallStarted
+	}
+	streamType := itemType
+	if streamType == "" {
+		streamType = kind
 	}
 	_ = a.recordPublicTryoutEvent(ctx, tryoutID, eventType, map[string]any{
 		"harness_kind": harnessKind,
-		"stream_type":  kind,
-		"summary":      streamLineSummary(decoded),
+		"stream_type":  streamType,
+		"summary":      summary,
 	})
 	return true
 }
 
-func streamLineSummary(decoded map[string]any) string {
-	for _, key := range []string{"text", "message", "content", "summary", "name", "tool", "type"} {
-		if value, ok := decoded[key].(string); ok && strings.TrimSpace(value) != "" {
-			if len(value) > 240 {
-				value = value[:240]
+// streamLineSummary extracts a short human-readable summary from one streamed
+// JSON object, looking inside a nested "item" first (Codex), then top level.
+// Returns ok=false for housekeeping frames with nothing worth showing.
+func streamLineSummary(decoded map[string]any) (string, bool) {
+	clip := func(value string) string {
+		value = strings.TrimSpace(value)
+		if len(value) > 240 {
+			value = value[:240]
+		}
+		return value
+	}
+	if item, ok := decoded["item"].(map[string]any); ok {
+		for _, key := range []string{"text", "message", "summary"} {
+			if value, ok := item[key].(string); ok && strings.TrimSpace(value) != "" {
+				return clip(value), true
 			}
-			return value
+		}
+		if changes, ok := item["changes"].([]any); ok && len(changes) > 0 {
+			if first, ok := changes[0].(map[string]any); ok {
+				if p, ok := first["path"].(string); ok && p != "" {
+					return clip("Edited " + p), true
+				}
+			}
+		}
+		if itemType, ok := item["type"].(string); ok && strings.TrimSpace(itemType) != "" {
+			return clip(strings.ReplaceAll(itemType, "_", " ")), true
 		}
 	}
-	return "agent step"
+	for _, key := range []string{"text", "message", "content", "summary", "name", "tool"} {
+		if value, ok := decoded[key].(string); ok && strings.TrimSpace(value) != "" {
+			return clip(value), true
+		}
+	}
+	// Bare lifecycle frames (thread.started, turn.started) carry no content.
+	return "", false
 }
 
 // sleepWithContext sleeps for d unless ctx is cancelled first; returns false if
