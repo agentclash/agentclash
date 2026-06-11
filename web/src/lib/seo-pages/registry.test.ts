@@ -96,6 +96,9 @@ describe("SEO page registry", () => {
         { name: "Industries", url: "/industries" },
         { name: expect.any(String), url: page.path },
       ]);
+      expect(new Set(page.breadcrumbs.map((crumb) => crumb.url)).size).toBe(
+        page.breadcrumbs.length,
+      );
     }
 
     for (const page of getSeoPagesByPrefix("/glossary")) {
@@ -104,6 +107,9 @@ describe("SEO page registry", () => {
         { name: "Glossary", url: "/glossary" },
         { name: expect.any(String), url: page.path },
       ]);
+      expect(new Set(page.breadcrumbs.map((crumb) => crumb.url)).size).toBe(
+        page.breadcrumbs.length,
+      );
     }
   });
 });
