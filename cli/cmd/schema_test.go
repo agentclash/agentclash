@@ -131,3 +131,30 @@ func TestSchemaExitCodesMatchConsts(t *testing.T) {
 		}
 	}
 }
+
+// TestNoCommandExitCodeCollidesWithGlobalBand enforces the precondition the
+// "exit 75 ⟺ retryable:true" invariant silently relies on: no command-scoped
+// exit code may reuse a value in the global failure-class band. If a future
+// command returned ExitCodeError{Code: 75}, exitCodeForError would emit 75
+// (command codes win) while classifyStructuredError reported retryable:false —
+// breaking the invariant. The bands are sysexits values (64/66/75/77),
+// deliberately above the 1–31 command range; this test makes "deliberately"
+// a guarantee instead of a convention.
+func TestNoCommandExitCodeCollidesWithGlobalBand(t *testing.T) {
+	band := map[int]string{
+		exitValidationError:  "validation_error",
+		exitNotFound:         "not_found",
+		exitRetryableFailure: "retryable_failure",
+		exitAuthDenied:       "auth_denied",
+	}
+	for _, ec := range documentedExitCodes {
+		if len(ec.Commands) == 0 {
+			continue // global band entry itself
+		}
+		if name, clash := band[ec.Code]; clash {
+			t.Errorf("command-scoped code %q (%d, used by %v) collides with global band %q; "+
+				"a command returning this code would break the exit-75-iff-retryable invariant",
+				ec.Name, ec.Code, ec.Commands, name)
+		}
+	}
+}
