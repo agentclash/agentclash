@@ -28,14 +28,6 @@ const proofPoints = [
   "30-day rollout plan for the first governed eval program",
 ];
 
-const searchIntents = [
-  "AI agent evaluation checklist",
-  "AI agent release gate template",
-  "AI agent pilot scorecard",
-  "agent procurement questions",
-  "AI agent evaluation framework PDF",
-];
-
 export const metadata: Metadata = {
   title: PAGE_TITLE,
   description: PAGE_DESCRIPTION,
@@ -62,7 +54,7 @@ const eyebrowClass =
 
 export default function EvalChecklistResourcePage() {
   return (
-    <MarketingShell>
+    <MarketingShell showFooter={false}>
       <JsonLd
         id="agentclash-eval-checklist-resource-schema"
         data={[
@@ -120,59 +112,35 @@ export default function EvalChecklistResourcePage() {
         </div>
       </section>
 
-      <section className="px-6 pt-24 sm:px-12 sm:pt-32">
+      <section className="px-6 py-20 sm:px-12 sm:py-28">
         <div className="mx-auto max-w-[1120px]">
           <p className={eyebrowClass}>Included downloads</p>
           <h2 className="mt-4 max-w-[18ch] text-3xl font-sans font-semibold tracking-tight text-white sm:text-4xl">
             Practical guides, not generic AI advice
           </h2>
-          <div className="mt-10 grid gap-px overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.08] md:grid-cols-2">
+          <div className="mt-10 divide-y divide-white/[0.08] border-y border-white/[0.08]">
             {RESOURCE_LIBRARY.map((resource) => (
               <article
                 key={resource.slug}
-                className="bg-[#060606] p-6 transition-colors hover:bg-white/[0.025]"
+                className="grid gap-5 py-7 md:grid-cols-[0.85fr_1.15fr] md:gap-10"
               >
-                <p className={eyebrowClass}>{resource.kicker}</p>
-                <h3 className="mt-3 text-xl font-sans font-semibold tracking-tight text-white">
-                  {resource.title}
-                </h3>
-                <p className="mt-3 text-sm leading-6 text-white/50">
-                  {resource.description}
-                </p>
-                <dl className="mt-5 grid gap-3 text-xs text-white/40 sm:grid-cols-2">
-                  <div>
-                    <dt className="text-white/25">Audience</dt>
-                    <dd className="mt-1 text-white/55">{resource.audience}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-white/25">Use in</dt>
-                    <dd className="mt-1 text-white/55">{resource.readTime}</dd>
-                  </div>
-                </dl>
+                <div>
+                  <p className={eyebrowClass}>{resource.kicker}</p>
+                  <h3 className="mt-3 text-xl font-sans font-semibold tracking-tight text-white">
+                    {resource.title}
+                  </h3>
+                </div>
+                <div>
+                  <p className="text-sm leading-6 text-white/55">
+                    {resource.description}
+                  </p>
+                  <p className="mt-3 text-xs leading-5 text-white/35">
+                    {resource.audience}, {resource.readTime}
+                  </p>
+                </div>
               </article>
             ))}
           </div>
-        </div>
-      </section>
-
-      <section className="px-6 py-24 sm:px-12 sm:py-32">
-        <div className="mx-auto grid max-w-[1120px] gap-12 border-t border-white/[0.08] pt-12 lg:grid-cols-[0.8fr_1.2fr]">
-          <div>
-            <p className={eyebrowClass}>Search intent covered</p>
-            <h2 className="mt-4 text-3xl font-sans font-semibold tracking-tight text-white">
-              Built for the questions teams actually search
-            </h2>
-          </div>
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {searchIntents.map((intent) => (
-              <li
-                key={intent}
-                className="rounded-lg border border-white/[0.08] px-4 py-3 text-sm text-white/60"
-              >
-                {intent}
-              </li>
-            ))}
-          </ul>
         </div>
       </section>
     </MarketingShell>

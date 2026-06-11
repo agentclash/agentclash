@@ -16,7 +16,7 @@ const eyebrowClass =
 
 export default function EvalChecklistThankYouPage() {
   return (
-    <MarketingShell>
+    <MarketingShell showFooter={false}>
       <section className="px-6 py-20 sm:px-12 sm:py-28">
         <div className="mx-auto max-w-[980px]">
           <p className={eyebrowClass}>Resource pack unlocked</p>
