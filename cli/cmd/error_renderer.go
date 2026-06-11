@@ -47,6 +47,11 @@ type structuredError struct {
 	Status   int            `json:"status,omitempty"`
 	Details  map[string]any `json:"details"`
 	NextStep string         `json:"next_step,omitempty"`
+	// Retryable is always emitted (never omitted) so agents can branch on it
+	// without an existence check: true for rate limiting (429), server-side
+	// failures (5xx), and transport errors; false for everything else. The
+	// process exit code mirrors it — retryable failures exit exitRetryable.
+	Retryable bool `json:"retryable"`
 }
 
 // RenderError writes a machine-readable error envelope when JSON output was
@@ -77,10 +82,64 @@ func setRuntimeOutputFormat(format string) {
 	runtimeOutputJSON = format == "json"
 }
 
+// exitCodeForError maps an error to the process exit code. Command-specific
+// ExitCodeErrors always win (compare gate, ci run, prompt-eval). Everything
+// else lands in a small global band (documented in documentedExitCodes and
+// `agentclash schema`) so agents and CI can branch on the failure class
+// without parsing output:
+//
+//	exitValidationError (64)  usage / validation errors
+//	exitNotFound        (66)  the referenced resource or file does not exist
+//	exitRetryableFailure(75)  transient — mirrors the envelope's retryable:true
+//	exitAuthDenied      (77)  authentication or permission failures
+//	1                         anything unclassified
 func exitCodeForError(err error) int {
+	if err == nil {
+		return 0
+	}
 	var exitErr *ExitCodeError
 	if errors.As(err, &exitErr) {
 		return exitErr.Code
+	}
+
+	var apiErr *cliapi.APIError
+	if errors.As(err, &apiErr) {
+		switch {
+		case apiErr.StatusCode == 401 || apiErr.StatusCode == 403:
+			return exitAuthDenied
+		case apiErr.StatusCode == 404:
+			return exitNotFound
+		case apiErr.Retryable():
+			return exitRetryableFailure
+		default:
+			return 1
+		}
+	}
+
+	var localErr *cliError
+	if errors.As(err, &localErr) {
+		// RequireWorkspace normally os.Exit(2)s itself; keep the documented
+		// code if the same error ever travels the error-return path instead.
+		if localErr.Code == "missing_workspace" {
+			return 2
+		}
+		return exitValidationError
+	}
+
+	if errors.Is(err, fs.ErrNotExist) {
+		return exitNotFound
+	}
+	if errors.Is(err, fs.ErrPermission) {
+		return exitAuthDenied
+	}
+
+	var urlErr *url.Error
+	var netErr net.Error
+	if errors.As(err, &urlErr) || errors.As(err, &netErr) || strings.Contains(err.Error(), "request failed:") {
+		return exitRetryableFailure
+	}
+	if strings.HasPrefix(err.Error(), "loading config:") {
+		return exitValidationError
 	}
 	return 1
 }
@@ -121,12 +180,16 @@ func classifyStructuredError(err error) structuredError {
 		if apiErr.ExpiresAt != nil {
 			details["expires_at"] = apiErr.ExpiresAt.UTC().Format(time.RFC3339)
 		}
+		if apiErr.RetryAfterSeconds != nil {
+			details["retry_after_seconds"] = *apiErr.RetryAfterSeconds
+		}
 		return structuredError{
-			Code:     code,
-			Message:  message,
-			Status:   apiErr.StatusCode,
-			Details:  details,
-			NextStep: apiErrorNextStep(apiErr),
+			Code:      code,
+			Message:   message,
+			Status:    apiErr.StatusCode,
+			Details:   details,
+			NextStep:  apiErrorNextStep(apiErr),
+			Retryable: apiErr.Retryable(),
 		}
 	}
 
@@ -152,16 +215,16 @@ func classifyStructuredError(err error) structuredError {
 
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) {
-		return structuredError{Code: "request_failed", Message: err.Error(), Details: details}
+		return structuredError{Code: "request_failed", Message: err.Error(), Details: details, Retryable: true}
 	}
 	var netErr net.Error
 	if errors.As(err, &netErr) {
-		return structuredError{Code: "request_failed", Message: err.Error(), Details: details}
+		return structuredError{Code: "request_failed", Message: err.Error(), Details: details, Retryable: true}
 	}
 
 	message := err.Error()
 	if strings.Contains(message, "request failed:") {
-		return structuredError{Code: "request_failed", Message: message, Details: details}
+		return structuredError{Code: "request_failed", Message: message, Details: details, Retryable: true}
 	}
 	if strings.HasPrefix(message, "loading config:") {
 		return structuredError{Code: "invalid_config", Message: message, Details: details}

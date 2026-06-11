@@ -409,6 +409,13 @@ type BenchmarkIndexReport = {
 export function benchmarkIndexSchema(
   reports: BenchmarkIndexReport[],
 ): Record<string, unknown>[] {
+  return benchmarkHubSchema(reports);
+}
+
+export function benchmarkHubSchema(
+  reports: BenchmarkIndexReport[],
+  faqItems: Array<{ question: string; answer: string }> = [],
+): Record<string, unknown>[] {
   const pageUrl = `${SITE_URL}/benchmarks`;
   const items = reports.map((report) => ({
     url: `${SITE_URL}/benchmarks/${report.slug}`,
@@ -416,7 +423,7 @@ export function benchmarkIndexSchema(
     description: report.description,
   }));
 
-  return [
+  const schemas: Record<string, unknown>[] = [
     breadcrumbSchema([
       { name: "Home", url: "/" },
       { name: "Benchmarks", url: "/benchmarks" },
@@ -424,9 +431,9 @@ export function benchmarkIndexSchema(
     {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
-      name: "AgentClash Model Benchmarks",
+      name: "AgentClash AI Agent Benchmarks",
       description:
-        "Head-to-head AI agent benchmarks — new models raced against the field on real agentic tasks with deterministic, behavioral, and cost scoring.",
+        "Public AI agent benchmarks hub with frozen challenge packs, head-to-head races, replay evidence, scorecards, and monthly reports.",
       url: pageUrl,
       isPartOf: {
         "@type": "WebSite",
@@ -435,7 +442,14 @@ export function benchmarkIndexSchema(
       },
       publisher: publisherSchema(),
     },
-    {
+  ];
+
+  if (faqItems.length > 0) {
+    schemas.push(faqSchema(faqItems));
+  }
+
+  if (items.length > 0) {
+    schemas.push({
       "@context": "https://schema.org",
       "@type": "ItemList",
       name: "AgentClash Model Benchmarks",
@@ -449,8 +463,10 @@ export function benchmarkIndexSchema(
         url: item.url,
         item: { "@id": item.url },
       })),
-    },
-  ];
+    });
+  }
+
+  return schemas;
 }
 
 type ChangelogIndexPeriod = {

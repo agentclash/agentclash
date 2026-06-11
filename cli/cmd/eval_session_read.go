@@ -290,12 +290,7 @@ func renderEvalSessionWarnings(rc *RunContext, warnings []string) {
 }
 
 func evalSessionStatusTerminal(status string) bool {
-	switch status {
-	case "completed", "failed", "cancelled", "canceled":
-		return true
-	default:
-		return false
-	}
+	return isTerminalRunStatus(status)
 }
 
 func evalSessionRunCountsLabel(counts map[string]any) string {
