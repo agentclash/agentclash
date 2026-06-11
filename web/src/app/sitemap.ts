@@ -204,6 +204,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
       ],
     },
     {
+      url: `${DOCS_ORIGIN}/resources/eval-checklist`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.77,
+      images: [
+        ogImage({
+          title: "Enterprise AI Agent Eval Checklist",
+          subtitle: "Free PDFs for release gates, pilots, and procurement",
+          kind: "Resource",
+        }),
+      ],
+    },
+    {
       url: `${DOCS_ORIGIN}/services`,
       lastModified: new Date(),
       changeFrequency: "monthly",

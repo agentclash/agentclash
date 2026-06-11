@@ -3,6 +3,7 @@ import Link from "next/link";
 import { JsonLd, blogIndexSchema } from "@/components/marketing/json-ld";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
 import { ResearchAudienceCTA } from "@/components/marketing/research-audience-cta";
+import { ResourcePackCTA } from "@/components/marketing/resource-pack-cta";
 import { getAllPosts } from "@/lib/blog";
 import { blogRssAlternate } from "@/lib/seo";
 
@@ -68,6 +69,7 @@ export default function BlogPage() {
         </p>
 
         <ResearchAudienceCTA className="mt-8" />
+        <ResourcePackCTA className="mt-4" compact />
 
         <div className="mt-10 flex flex-col gap-3">
           {posts.map((post) => (
