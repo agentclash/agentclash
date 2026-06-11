@@ -13,6 +13,7 @@ import (
 func init() {
 	rootCmd.AddCommand(deploymentCmd)
 	deploymentCmd.AddCommand(deploymentListCmd)
+	registerListPaginationFlags(deploymentListCmd)
 	deploymentCmd.AddCommand(deploymentCreateCmd)
 
 	deploymentCreateCmd.Flags().String("from-file", "", "JSON file with deployment spec")
@@ -37,7 +38,11 @@ var deploymentListCmd = &cobra.Command{
 		rc := GetRunContext(cmd)
 		wsID := RequireWorkspace(cmd)
 
-		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-deployments", nil)
+		q, err := listPaginationQuery(cmd)
+		if err != nil {
+			return err
+		}
+		resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-deployments", q)
 		if err != nil {
 			return err
 		}
@@ -46,14 +51,18 @@ var deploymentListCmd = &cobra.Command{
 		}
 
 		var result struct {
-			Items []map[string]any `json:"items"`
+			Items  []map[string]any `json:"items"`
+			Total  int64            `json:"total"`
+			Limit  int              `json:"limit"`
+			Offset int              `json:"offset"`
 		}
 		if err := resp.DecodeJSON(&result); err != nil {
 			return err
 		}
+		list := newPaginatedList(result.Items, result.Total, result.Limit, result.Offset)
 
 		if rc.Output.IsStructured() {
-			return rc.Output.PrintRaw(result)
+			return rc.Output.PrintRaw(list)
 		}
 
 		cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Status"}, {Header: "Build Version"}, {Header: "Created"}}
@@ -68,6 +77,7 @@ var deploymentListCmd = &cobra.Command{
 			}
 		}
 		rc.Output.PrintTable(cols, rows)
+		printListPagingHint(rc, list)
 		return nil
 	},
 }

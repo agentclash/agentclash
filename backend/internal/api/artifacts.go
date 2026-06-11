@@ -58,7 +58,8 @@ var disallowedArtifactMediaTypes = map[string]struct{}{
 type ArtifactRepository interface {
 	CreateArtifact(ctx context.Context, params repository.CreateArtifactParams) (repository.Artifact, error)
 	GetArtifactByID(ctx context.Context, artifactID uuid.UUID) (repository.Artifact, error)
-	ListArtifactsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.Artifact, error)
+	ListArtifactsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.Artifact, error)
+	CountArtifactsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
 	GetRunByID(ctx context.Context, runID uuid.UUID) (domain.Run, error)
 	GetRunAgentByID(ctx context.Context, runAgentID uuid.UUID) (domain.RunAgent, error)
 	GetOrganizationIDByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, error)
@@ -66,7 +67,7 @@ type ArtifactRepository interface {
 
 type ArtifactService interface {
 	UploadArtifact(ctx context.Context, caller Caller, input UploadArtifactInput) (UploadArtifactResult, error)
-	ListWorkspaceArtifacts(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.Artifact, error)
+	ListWorkspaceArtifacts(ctx context.Context, caller Caller, workspaceID uuid.UUID, limit, offset int32) (ListWorkspaceArtifactsResult, error)
 	GetArtifactDownload(ctx context.Context, caller Caller, artifactID uuid.UUID, baseURL string) (GetArtifactDownloadResult, error)
 	GetArtifactContent(ctx context.Context, artifactID uuid.UUID, expiresAt time.Time, signature string) (GetArtifactContentResult, error)
 }
@@ -183,18 +184,36 @@ func (m *ArtifactManager) UploadArtifact(ctx context.Context, caller Caller, inp
 	return UploadArtifactResult{Artifact: artifact}, nil
 }
 
-func (m *ArtifactManager) ListWorkspaceArtifacts(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.Artifact, error) {
+// ListWorkspaceArtifactsResult carries one page of artifacts plus the
+// pagination envelope fields.
+type ListWorkspaceArtifactsResult struct {
+	Artifacts []repository.Artifact
+	Total     int64
+	Limit     int32
+	Offset    int32
+}
+
+func (m *ArtifactManager) ListWorkspaceArtifacts(ctx context.Context, caller Caller, workspaceID uuid.UUID, limit, offset int32) (ListWorkspaceArtifactsResult, error) {
 	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
-		return nil, err
+		return ListWorkspaceArtifactsResult{}, err
 	}
-	artifacts, err := m.repo.ListArtifactsByWorkspaceID(ctx, workspaceID)
+	artifacts, err := m.repo.ListArtifactsByWorkspaceID(ctx, workspaceID, limit, offset)
 	if err != nil {
-		return nil, fmt.Errorf("list workspace artifacts: %w", err)
+		return ListWorkspaceArtifactsResult{}, fmt.Errorf("list workspace artifacts: %w", err)
 	}
 	if artifacts == nil {
 		artifacts = []repository.Artifact{}
 	}
-	return artifacts, nil
+	total, err := m.repo.CountArtifactsByWorkspaceID(ctx, workspaceID)
+	if err != nil {
+		return ListWorkspaceArtifactsResult{}, fmt.Errorf("count workspace artifacts: %w", err)
+	}
+	return ListWorkspaceArtifactsResult{
+		Artifacts: artifacts,
+		Total:     total,
+		Limit:     limit,
+		Offset:    offset,
+	}, nil
 }
 
 func (m *ArtifactManager) GetArtifactDownload(ctx context.Context, caller Caller, artifactID uuid.UUID, baseURL string) (GetArtifactDownloadResult, error) {
@@ -576,7 +595,8 @@ func listWorkspaceArtifactsHandler(logger *slog.Logger, service ArtifactService)
 			return
 		}
 
-		artifacts, err := service.ListWorkspaceArtifacts(r.Context(), caller, workspaceID)
+		limit, offset := parseListLimitOffset(r)
+		result, err := service.ListWorkspaceArtifacts(r.Context(), caller, workspaceID, limit, offset)
 		if err != nil {
 			if errors.Is(err, ErrForbidden) {
 				writeAuthzError(w, err)
@@ -592,11 +612,16 @@ func listWorkspaceArtifactsHandler(logger *slog.Logger, service ArtifactService)
 			return
 		}
 
-		items := make([]uploadArtifactResponse, len(artifacts))
-		for i, a := range artifacts {
+		items := make([]uploadArtifactResponse, len(result.Artifacts))
+		for i, a := range result.Artifacts {
 			items[i] = buildUploadArtifactResponse(a, nil)
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items":  items,
+			"total":  result.Total,
+			"limit":  result.Limit,
+			"offset": result.Offset,
+		})
 	}
 }
 

@@ -18,6 +18,7 @@ type Querier interface {
 	BeginBillingWebhookEvent(ctx context.Context, arg BeginBillingWebhookEventParams) (string, error)
 	ClaimAgentTryout(ctx context.Context, arg ClaimAgentTryoutParams) (AgentTryout, error)
 	ClaimNextPendingAgentTryoutTurn(ctx context.Context, arg ClaimNextPendingAgentTryoutTurnParams) (AgentTryoutTurn, error)
+	CountActiveAgentDeploymentsByWorkspaceID(ctx context.Context, arg CountActiveAgentDeploymentsByWorkspaceIDParams) (int64, error)
 	CountActiveOrgMembers(ctx context.Context, arg CountActiveOrgMembersParams) (int32, error)
 	CountActiveWorkspaceRuns(ctx context.Context, arg CountActiveWorkspaceRunsParams) (int32, error)
 	CountActiveWorkspaces(ctx context.Context, arg CountActiveWorkspacesParams) (int32, error)

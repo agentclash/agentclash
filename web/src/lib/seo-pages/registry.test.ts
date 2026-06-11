@@ -112,4 +112,19 @@ describe("SEO page registry", () => {
       );
     }
   });
+
+  it("adds hub links to /compare and peer SEO pages without self-links", () => {
+    for (const page of SEO_PAGE_REGISTRY) {
+      const hrefs = page.relatedLinks.map((link) => link.href);
+      expect(hrefs).toContain("/compare");
+      expect(hrefs).not.toContain(page.path);
+      expect(new Set(hrefs).size).toBe(hrefs.length);
+    }
+  });
+
+  it("includes SEO hub links on S-tier landing pages", () => {
+    expect(getSeoPageByPath("/agent-evals")?.relatedLinks.length).toBeGreaterThan(
+      3,
+    );
+  });
 });

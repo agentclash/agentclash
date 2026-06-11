@@ -7,9 +7,11 @@ import {
   articleSchema,
   breadcrumbSchema,
 } from "@/components/marketing/json-ld";
+import { BlogRelatedResources } from "@/components/marketing/blog-related-resources";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
 import { ResearchAudienceCTA } from "@/components/marketing/research-audience-cta";
 import { ResourcePackCTA } from "@/components/marketing/resource-pack-cta";
+import { getBlogRelatedResources } from "@/lib/blog-related-resources";
 import { getAllSlugs, getPostBySlug } from "@/lib/blog";
 import { mdxRemoteOptions } from "@/lib/mdx-options";
 import { blogRssAlternate, ogImageUrl } from "@/lib/seo";
@@ -77,6 +79,7 @@ export default async function BlogPostPage({ params }: Props) {
   const { slug } = await params;
   const post = getPostBySlug(slug);
   if (!post) notFound();
+  const relatedResources = getBlogRelatedResources(slug);
 
   return (
     <MarketingShell>
@@ -119,6 +122,8 @@ export default async function BlogPostPage({ params }: Props) {
         </div>
 
         <ResourcePackCTA className="mt-12" />
+
+        <BlogRelatedResources links={relatedResources} />
 
         <ResearchAudienceCTA
           className="mt-12"

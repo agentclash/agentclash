@@ -264,6 +264,16 @@ describe("sitemap", () => {
     expect(() => JSON.stringify(entries)).not.toThrow();
   });
 
+  it("includes every SEO registry path from getAllSeoPagePaths", async () => {
+    const { getAllSeoPagePaths } = await import("@/lib/seo-pages");
+    const entries = sitemap();
+    const urls = new Set(entries.map((entry) => entry.url));
+
+    for (const path of getAllSeoPagePaths()) {
+      expect(urls.has(`https://www.agentclash.dev${path}`)).toBe(true);
+    }
+  });
+
   it("serializes to well-formed sitemap XML with escaped image URLs", () => {
     const entries = sitemap();
 
