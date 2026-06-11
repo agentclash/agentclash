@@ -522,7 +522,7 @@ function TryoutWelcome({
           </div>
         ) : null}
 
-        {message ? <Alert tone="error" text={message} /> : null}
+        {message ? <Alert text={message} /> : null}
         {quotaMessage ? (
           <div className="mt-3 rounded-2xl border border-white/15 bg-white/[0.04] p-3 text-sm text-white/70">
             <p>{quotaMessage}</p>
@@ -1007,8 +1007,6 @@ function AgentStepBubble({
   eventType?: TryoutTimelineEvent["type"];
   animate?: boolean;
 }) {
-  const Icon = eventIcon(eventType);
-
   return (
     <div
       className={cn(
@@ -1017,29 +1015,30 @@ function AgentStepBubble({
       )}
     >
       <div className="flex max-w-[90%] items-start gap-2.5 rounded-2xl rounded-bl-md border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-sm leading-6 text-white/75">
-        <Icon className="mt-0.5 size-4 shrink-0 text-white/35" />
+        <EventStepIcon type={eventType} />
         <span className="min-w-0 whitespace-pre-wrap">{text}</span>
       </div>
     </div>
   );
 }
 
-function eventIcon(type?: TryoutTimelineEvent["type"]) {
+function EventStepIcon({ type }: { type?: TryoutTimelineEvent["type"] }) {
+  const className = "mt-0.5 size-4 shrink-0 text-white/35";
   switch (type) {
     case "tool_call":
-      return Wrench;
+      return <Wrench className={className} />;
     case "sandbox_command":
-      return Terminal;
+      return <Terminal className={className} />;
     case "file_written":
     case "file_activity":
-      return FileText;
+      return <FileText className={className} />;
     case "validation":
     case "scoring":
-      return CheckCircle2;
+      return <CheckCircle2 className={className} />;
     case "planning":
-      return Gauge;
+      return <Gauge className={className} />;
     default:
-      return Activity;
+      return <Activity className={className} />;
   }
 }
 
@@ -1084,26 +1083,26 @@ function ArtifactChatCard({ output }: { output: TryoutOutputPreview }) {
 }
 
 function ArtifactPreviewBody({ output }: { output: TryoutOutputPreview }) {
-  const blobUrl = useArtifactBlobUrl(output);
+  const previewUrl = artifactDataUrl(output);
 
-  if (isPdfArtifact(output) && blobUrl) {
+  if (isPdfArtifact(output) && previewUrl) {
     return (
       <div className="bg-black p-2">
         <iframe
           title={output.relative_path || "PDF preview"}
-          src={blobUrl}
+          src={previewUrl}
           className="h-[28rem] w-full rounded-lg border border-white/10 bg-white"
         />
       </div>
     );
   }
 
-  if (isImageArtifact(output) && blobUrl) {
+  if (isImageArtifact(output) && previewUrl) {
     return (
       <div className="p-4">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
-          src={blobUrl}
+          src={previewUrl}
           alt={output.relative_path || "Generated chart"}
           className="max-h-80 w-full rounded-lg object-contain"
         />
@@ -1301,7 +1300,7 @@ function CompactField({
   );
 }
 
-function Alert({ tone, text }: { tone: "error"; text: string }) {
+function Alert({ text }: { text: string }) {
   return (
     <div className="mt-3 rounded-xl border border-white/15 bg-white/[0.03] p-3 text-sm text-white/70">
       {text}
@@ -1603,24 +1602,20 @@ function decodeArtifactBytes(output: TryoutOutputPreview): ArrayBuffer {
   return new TextEncoder().encode(output.preview).buffer;
 }
 
-function useArtifactBlobUrl(output: TryoutOutputPreview): string | null {
-  const [url, setUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!isPdfArtifact(output) && !isImageArtifact(output)) {
-      setUrl(null);
-      return;
-    }
-    const mime = output.content_type || mimeForType(output.type, output.relative_path);
-    const blob = new Blob([decodeArtifactBytes(output)], { type: mime });
-    const next = URL.createObjectURL(blob);
-    setUrl(next);
-    return () => {
-      URL.revokeObjectURL(next);
-    };
-  }, [output.key, output.preview, output.encoding, output.type, output.content_type, output.relative_path]);
-
-  return url;
+function artifactDataUrl(output: TryoutOutputPreview): string | null {
+  if (!isPdfArtifact(output) && !isImageArtifact(output)) {
+    return null;
+  }
+  const mime = output.content_type || mimeForType(output.type, output.relative_path);
+  if (output.encoding === "base64") {
+    return `data:${mime};base64,${output.preview}`;
+  }
+  const bytes = new TextEncoder().encode(output.preview);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 1) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return `data:${mime};base64,${btoa(binary)}`;
 }
 
 function tryoutOutputs(summary: unknown): TryoutOutputPreview[] {
