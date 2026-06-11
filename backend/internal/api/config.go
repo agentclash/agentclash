@@ -37,7 +37,7 @@ const (
 	defaultRateLimitRunCreationBurst            = 10
 	defaultDodoWebhookKey                       = "whsec_YWdlbnRjbGFzaC1kZXYtZG9kby13ZWJob29rLXNlY3JldA=="
 	defaultDodoEnvironment                      = "test"
-	defaultAgentTryoutAnonymousLimit            = 1
+	defaultAgentTryoutAnonymousLimit            = 4
 	defaultAgentTryoutAnonymousWindow           = 24 * time.Hour
 	defaultAgentTryoutHostedDailySpendCapUSD    = 25.0
 	defaultAgentTryoutAnonymousPerRunCostCapUSD = 1.0
@@ -90,6 +90,8 @@ type Config struct {
 	AgentTryoutPublicCreatedByUserID     *uuid.UUID
 	AgentTryoutE2BTemplateID             string
 	AgentTryoutOpenAIAPIKeySecretName    string
+	AgentTryoutHostedProvider            string
+	AgentTryoutHostedCredentialRef       string
 	AgentTryoutAnonymousLimit            int
 	AgentTryoutAnonymousWindow           time.Duration
 	AgentTryoutHostedDailySpendCapUSD    float64
@@ -292,6 +294,8 @@ func LoadConfigFromEnv() (Config, error) {
 		AgentTryoutPublicCreatedByUserID:     agentTryoutPublicCreatedByUserID,
 		AgentTryoutE2BTemplateID:             os.Getenv("AGENT_TRYOUT_E2B_TEMPLATE_ID"),
 		AgentTryoutOpenAIAPIKeySecretName:    os.Getenv("AGENT_TRYOUT_OPENAI_API_KEY_SECRET_NAME"),
+		AgentTryoutHostedProvider:            strings.TrimSpace(os.Getenv("AGENT_TRYOUT_HOSTED_PROVIDER")),
+		AgentTryoutHostedCredentialRef:       strings.TrimSpace(os.Getenv("AGENT_TRYOUT_HOSTED_CREDENTIAL_REF")),
 		AgentTryoutAnonymousLimit:            agentTryoutAnonymousLimit,
 		AgentTryoutAnonymousWindow:           agentTryoutAnonymousWindow,
 		AgentTryoutHostedDailySpendCapUSD:    agentTryoutHostedDailySpendCapUSD,

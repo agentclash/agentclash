@@ -289,6 +289,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.88,
       images: [DEFAULT_OG],
     },
+    {
+      url: `${DOCS_ORIGIN}/tryouts`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.9,
+      images: [
+        ogImage({
+          title: "Try an AI agent on office work",
+          subtitle: "Public task-gated agent tryouts with trace export",
+          kind: "Tryouts",
+        }),
+      ],
+    },
     // .txt endpoints are intentionally imageless — they are not HTML pages.
     {
       url: `${DOCS_ORIGIN}/llms.txt`,

@@ -244,6 +244,49 @@ func (q *Queries) GetAgentTryoutByID(ctx context.Context, arg GetAgentTryoutByID
 	return i, err
 }
 
+const listAgentTryoutEventsAfter = `-- name: ListAgentTryoutEventsAfter :many
+SELECT id, agent_tryout_id, sequence_number, event_type, actor_type, occurred_at, payload
+FROM agent_tryout_events
+WHERE agent_tryout_id = $1
+  AND id > $2
+ORDER BY id ASC
+LIMIT $3
+`
+
+type ListAgentTryoutEventsAfterParams struct {
+	AgentTryoutID uuid.UUID
+	AfterID       int64
+	LimitCount    int32
+}
+
+func (q *Queries) ListAgentTryoutEventsAfter(ctx context.Context, arg ListAgentTryoutEventsAfterParams) ([]AgentTryoutEvent, error) {
+	rows, err := q.db.Query(ctx, listAgentTryoutEventsAfter, arg.AgentTryoutID, arg.AfterID, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AgentTryoutEvent
+	for rows.Next() {
+		var i AgentTryoutEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentTryoutID,
+			&i.SequenceNumber,
+			&i.EventType,
+			&i.ActorType,
+			&i.OccurredAt,
+			&i.Payload,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAgentTryoutsByWorkspaceID = `-- name: ListAgentTryoutsByWorkspaceID :many
 SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id
 FROM agent_tryouts
@@ -302,6 +345,56 @@ func (q *Queries) ListAgentTryoutsByWorkspaceID(ctx context.Context, arg ListAge
 		return nil, err
 	}
 	return items, nil
+}
+
+const recordAgentTryoutEvent = `-- name: RecordAgentTryoutEvent :one
+WITH next_sequence AS (
+    SELECT COALESCE(MAX(sequence_number), 0) + 1 AS sequence_number
+    FROM agent_tryout_events
+    WHERE agent_tryout_id = $1
+)
+INSERT INTO agent_tryout_events (
+    agent_tryout_id,
+    sequence_number,
+    event_type,
+    actor_type,
+    payload
+)
+SELECT
+    $1,
+    next_sequence.sequence_number,
+    $2,
+    $3,
+    $4
+FROM next_sequence
+RETURNING id, agent_tryout_id, sequence_number, event_type, actor_type, occurred_at, payload
+`
+
+type RecordAgentTryoutEventParams struct {
+	AgentTryoutID uuid.UUID
+	EventType     string
+	ActorType     string
+	Payload       []byte
+}
+
+func (q *Queries) RecordAgentTryoutEvent(ctx context.Context, arg RecordAgentTryoutEventParams) (AgentTryoutEvent, error) {
+	row := q.db.QueryRow(ctx, recordAgentTryoutEvent,
+		arg.AgentTryoutID,
+		arg.EventType,
+		arg.ActorType,
+		arg.Payload,
+	)
+	var i AgentTryoutEvent
+	err := row.Scan(
+		&i.ID,
+		&i.AgentTryoutID,
+		&i.SequenceNumber,
+		&i.EventType,
+		&i.ActorType,
+		&i.OccurredAt,
+		&i.Payload,
+	)
+	return i, err
 }
 
 const setAgentTryoutRunID = `-- name: SetAgentTryoutRunID :one

@@ -541,9 +541,6 @@ func capturedArtifactType(templateType string) string {
 }
 
 func capturedArtifactContentType(rel string) string {
-	if ct := mime.TypeByExtension(strings.ToLower(filepath.Ext(rel))); ct != "" {
-		return ct
-	}
 	switch strings.ToLower(filepath.Ext(rel)) {
 	case ".md":
 		return "text/markdown; charset=utf-8"
@@ -553,9 +550,11 @@ func capturedArtifactContentType(rel string) string {
 		return "text/csv; charset=utf-8"
 	case ".patch", ".diff":
 		return "text/x-patch"
-	default:
-		return "application/octet-stream"
 	}
+	if ct := mime.TypeByExtension(strings.ToLower(filepath.Ext(rel))); ct != "" && strings.HasPrefix(ct, "text/") {
+		return ct
+	}
+	return "application/octet-stream"
 }
 
 func (a *Activities) buildAgentHarnessReplayBestEffort(ctx context.Context, execution repository.AgentHarnessExecution) {

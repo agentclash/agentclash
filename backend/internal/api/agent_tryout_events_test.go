@@ -316,6 +316,43 @@ func TestGetPublicTryoutEventsEmptyWhenNoRun(t *testing.T) {
 	}
 }
 
+func TestGetPublicTryoutEventsReadsTryoutEventStoreWithoutRun(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	tryoutID := uuid.New()
+	repo.tryouts[tryoutID] = repository.AgentTryout{ID: tryoutID, Status: repository.AgentTryoutStatusRunning}
+	repo.tryoutEvents = []repository.AgentTryoutEvent{
+		{
+			ID:             1,
+			AgentTryoutID:  tryoutID,
+			SequenceNumber: 1,
+			EventType:      string(runevents.EventTypeSystemRunStarted),
+			OccurredAt:     time.Unix(1_700_000_001, 0).UTC(),
+			Payload:        json.RawMessage(`{"status":"running","command":"secret"}`),
+		},
+		{
+			ID:             2,
+			AgentTryoutID:  tryoutID,
+			SequenceNumber: 2,
+			EventType:      string(runevents.EventTypeSandboxCommandCompleted),
+			OccurredAt:     time.Unix(1_700_000_002, 0).UTC(),
+			Payload:        json.RawMessage(`{"exit_code":0,"stdout":"secret"}`),
+		},
+	}
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	result, err := manager.GetPublicTryoutEvents(ctx, tryoutID, TryoutEventsCursor{})
+	if err != nil {
+		t.Fatalf("GetPublicTryoutEvents returned error: %v", err)
+	}
+	if len(result.Events) != 2 || result.NextCursor != 2 {
+		t.Fatalf("events/next = %d/%d, want 2/2", len(result.Events), result.NextCursor)
+	}
+	if strings.Contains(string(result.Events[1].Payload), "secret") || strings.Contains(string(result.Events[1].Payload), "stdout") {
+		t.Fatalf("public tryout event leaked unsafe payload: %s", result.Events[1].Payload)
+	}
+}
+
 func TestPublicAgentTryoutEventsHandler(t *testing.T) {
 	runID := uuid.New()
 	service := &fakeAgentTryoutService{

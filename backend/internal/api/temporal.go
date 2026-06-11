@@ -111,6 +111,28 @@ func (s TemporalAgentHarnessExecutionWorkflowStarter) CancelAgentHarnessExecutio
 	return s.client.CancelWorkflow(ctx, workflowID, runID)
 }
 
+type TemporalPublicAgentTryoutExecutionWorkflowStarter struct {
+	client TemporalClient
+}
+
+func NewTemporalPublicAgentTryoutExecutionWorkflowStarter(client TemporalClient) TemporalPublicAgentTryoutExecutionWorkflowStarter {
+	return TemporalPublicAgentTryoutExecutionWorkflowStarter{client: client}
+}
+
+func (s TemporalPublicAgentTryoutExecutionWorkflowStarter) StartPublicAgentTryoutExecutionWorkflow(ctx context.Context, tryoutID uuid.UUID) (AgentHarnessExecutionWorkflowRef, error) {
+	workflowID := fmt.Sprintf("%s/%s", workflow.PublicAgentTryoutExecutionWorkflowName, tryoutID)
+	run, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
+		ID:        workflowID,
+		TaskQueue: workflow.WorkflowTaskQueue,
+	}, workflow.PublicAgentTryoutExecutionWorkflowName, workflow.PublicAgentTryoutExecutionWorkflowInput{
+		TryoutID: tryoutID,
+	})
+	if err != nil {
+		return AgentHarnessExecutionWorkflowRef{}, err
+	}
+	return AgentHarnessExecutionWorkflowRef{WorkflowID: run.GetID(), RunID: run.GetRunID()}, nil
+}
+
 type TemporalPlaygroundWorkflowStarter struct {
 	client TemporalClient
 }

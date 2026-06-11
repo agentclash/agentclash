@@ -97,6 +97,16 @@ type AgentTryout struct {
 	ParentTryoutID           *uuid.UUID
 }
 
+type AgentTryoutEvent struct {
+	ID             int64
+	AgentTryoutID  uuid.UUID
+	SequenceNumber int64
+	EventType      string
+	ActorType      string
+	OccurredAt     pgtype.Timestamptz
+	Payload        []byte
+}
+
 type BillingAccount struct {
 	ID             uuid.UUID
 	OrganizationID uuid.UUID

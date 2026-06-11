@@ -89,3 +89,33 @@ UPDATE agent_tryouts
 SET run_id = @run_id
 WHERE id = @id
 RETURNING *;
+
+-- name: RecordAgentTryoutEvent :one
+WITH next_sequence AS (
+    SELECT COALESCE(MAX(sequence_number), 0) + 1 AS sequence_number
+    FROM agent_tryout_events
+    WHERE agent_tryout_id = @agent_tryout_id
+)
+INSERT INTO agent_tryout_events (
+    agent_tryout_id,
+    sequence_number,
+    event_type,
+    actor_type,
+    payload
+)
+SELECT
+    @agent_tryout_id,
+    next_sequence.sequence_number,
+    @event_type,
+    @actor_type,
+    @payload
+FROM next_sequence
+RETURNING *;
+
+-- name: ListAgentTryoutEventsAfter :many
+SELECT *
+FROM agent_tryout_events
+WHERE agent_tryout_id = @agent_tryout_id
+  AND id > @after_id
+ORDER BY id ASC
+LIMIT @limit_count;

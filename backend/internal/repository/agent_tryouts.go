@@ -69,6 +69,16 @@ type AgentTryout struct {
 	UpdatedAt                time.Time
 }
 
+type AgentTryoutEvent struct {
+	ID             int64
+	AgentTryoutID  uuid.UUID
+	SequenceNumber int64
+	EventType      string
+	ActorType      string
+	OccurredAt     time.Time
+	Payload        json.RawMessage
+}
+
 type CreateAgentTryoutParams struct {
 	OrganizationID           *uuid.UUID
 	WorkspaceID              *uuid.UUID
@@ -116,6 +126,13 @@ type LinkAgentTryoutRunParams struct {
 	Summary json.RawMessage
 }
 
+type RecordAgentTryoutEventParams struct {
+	AgentTryoutID uuid.UUID
+	EventType     string
+	ActorType     string
+	Payload       json.RawMessage
+}
+
 // tryoutRowQuerier is satisfied by both *pgxpool.Pool and pgx.Tx, letting the
 // hand-written anonymous quota queries run either standalone or inside the
 // advisory-locked transaction used by WithinAnonymousAgentTryoutQuotaLock.
@@ -125,6 +142,39 @@ type tryoutRowQuerier interface {
 
 func (r *Repository) CreateAgentTryout(ctx context.Context, params CreateAgentTryoutParams) (AgentTryout, error) {
 	return createAgentTryout(ctx, r.queries, params)
+}
+
+func (r *Repository) RecordAgentTryoutEvent(ctx context.Context, params RecordAgentTryoutEventParams) (AgentTryoutEvent, error) {
+	row, err := r.queries.RecordAgentTryoutEvent(ctx, repositorysqlc.RecordAgentTryoutEventParams{
+		AgentTryoutID: params.AgentTryoutID,
+		EventType:     params.EventType,
+		ActorType:     params.ActorType,
+		Payload:       normalizeJSONObject(params.Payload),
+	})
+	if err != nil {
+		return AgentTryoutEvent{}, fmt.Errorf("record agent tryout event: %w", err)
+	}
+	return mapAgentTryoutEvent(row)
+}
+
+func (r *Repository) ListAgentTryoutEventsAfter(ctx context.Context, tryoutID uuid.UUID, afterID int64, limit int32) ([]AgentTryoutEvent, error) {
+	rows, err := r.queries.ListAgentTryoutEventsAfter(ctx, repositorysqlc.ListAgentTryoutEventsAfterParams{
+		AgentTryoutID: tryoutID,
+		AfterID:       afterID,
+		LimitCount:    limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list agent tryout events: %w", err)
+	}
+	events := make([]AgentTryoutEvent, 0, len(rows))
+	for _, row := range rows {
+		event, err := mapAgentTryoutEvent(row)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, nil
 }
 
 func createAgentTryout(ctx context.Context, queries *repositorysqlc.Queries, params CreateAgentTryoutParams) (AgentTryout, error) {
@@ -581,5 +631,21 @@ func mapAgentTryout(row repositorysqlc.AgentTryout) (AgentTryout, error) {
 		ExpiresAt:                optionalTime(row.ExpiresAt),
 		CreatedAt:                createdAt,
 		UpdatedAt:                updatedAt,
+	}, nil
+}
+
+func mapAgentTryoutEvent(row repositorysqlc.AgentTryoutEvent) (AgentTryoutEvent, error) {
+	occurredAt, err := requiredTime("agent_tryout_events.occurred_at", row.OccurredAt)
+	if err != nil {
+		return AgentTryoutEvent{}, err
+	}
+	return AgentTryoutEvent{
+		ID:             row.ID,
+		AgentTryoutID:  row.AgentTryoutID,
+		SequenceNumber: row.SequenceNumber,
+		EventType:      row.EventType,
+		ActorType:      row.ActorType,
+		OccurredAt:     occurredAt,
+		Payload:        cloneJSON(row.Payload),
 	}, nil
 }

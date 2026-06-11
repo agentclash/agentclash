@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
@@ -90,15 +91,17 @@ type MultiTurnInvoker interface {
 }
 
 type Activities struct {
-	repo             RunRepository
-	evalSessionRepo  EvalSessionRepository
-	agentHarnessRepo AgentHarnessExecutionRepository
-	hooks            FakeWorkHooks
-	judgeClient      provider.Client
-	sandboxProvider  sandbox.Provider
-	githubClient     GitHubPullRequestClient
-	artifactStore    storage.Store
-	artifactWriter   ArtifactWriter
+	repo               RunRepository
+	evalSessionRepo    EvalSessionRepository
+	agentHarnessRepo   AgentHarnessExecutionRepository
+	publicTryoutRepo   PublicAgentTryoutRepository
+	publicTryoutConfig PublicAgentTryoutConfig
+	hooks              FakeWorkHooks
+	judgeClient        provider.Client
+	sandboxProvider    sandbox.Provider
+	githubClient       GitHubPullRequestClient
+	artifactStore      storage.Store
+	artifactWriter     ArtifactWriter
 }
 
 type LoadEvalSessionInput struct {
@@ -193,19 +196,53 @@ func NewActivities(repo RunRepository, hooks FakeWorkHooks, judgeClients ...prov
 	if candidate, ok := repo.(AgentHarnessExecutionRepository); ok {
 		agentHarnessRepo = candidate
 	}
+	var publicTryoutRepo PublicAgentTryoutRepository
+	if candidate, ok := repo.(PublicAgentTryoutRepository); ok {
+		publicTryoutRepo = candidate
+	}
 	var artifactWriter ArtifactWriter
 	if candidate, ok := repo.(ArtifactWriter); ok {
 		artifactWriter = candidate
 	}
 	return &Activities{
-		repo:             repo,
-		evalSessionRepo:  evalSessionRepo,
-		agentHarnessRepo: agentHarnessRepo,
-		artifactWriter:   artifactWriter,
-		hooks:            hooks,
-		judgeClient:      judgeClient,
-		sandboxProvider:  sandbox.UnconfiguredProvider{},
+		repo:               repo,
+		evalSessionRepo:    evalSessionRepo,
+		agentHarnessRepo:   agentHarnessRepo,
+		publicTryoutRepo:   publicTryoutRepo,
+		publicTryoutConfig: NormalizePublicAgentTryoutConfig(PublicAgentTryoutConfig{}),
+		artifactWriter:     artifactWriter,
+		hooks:              hooks,
+		judgeClient:        judgeClient,
+		sandboxProvider:    sandbox.UnconfiguredProvider{},
 	}
+}
+
+type PublicAgentTryoutConfig struct {
+	HarnessKind   string
+	E2BTemplateID string
+	Provider      string
+	CredentialRef string
+}
+
+func NormalizePublicAgentTryoutConfig(config PublicAgentTryoutConfig) PublicAgentTryoutConfig {
+	if strings.TrimSpace(config.HarnessKind) == "" {
+		config.HarnessKind = domain.AgentHarnessKindCodexE2B
+	}
+	if strings.TrimSpace(config.E2BTemplateID) == "" {
+		config.E2BTemplateID = "codex"
+	}
+	if strings.TrimSpace(config.Provider) == "" {
+		config.Provider = "openai"
+	}
+	if strings.TrimSpace(config.CredentialRef) == "" {
+		config.CredentialRef = "env://OPENAI_API_KEY"
+	}
+	return config
+}
+
+func (a *Activities) WithPublicAgentTryoutConfig(config PublicAgentTryoutConfig) *Activities {
+	a.publicTryoutConfig = NormalizePublicAgentTryoutConfig(config)
+	return a
 }
 
 // WithArtifactStore wires the object store the harness uploads captured output

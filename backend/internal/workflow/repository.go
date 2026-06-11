@@ -65,6 +65,12 @@ type AgentHarnessExecutionRepository interface {
 	RecordAgentHarnessExecutionEvent(ctx context.Context, params repository.RecordAgentHarnessExecutionEventParams) (repository.AgentHarnessExecutionEvent, error)
 }
 
+type PublicAgentTryoutRepository interface {
+	GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
+	UpdateAgentTryoutStatus(ctx context.Context, params repository.UpdateAgentTryoutStatusParams) (repository.AgentTryout, error)
+	RecordAgentTryoutEvent(ctx context.Context, params repository.RecordAgentTryoutEventParams) (repository.AgentTryoutEvent, error)
+}
+
 // ArtifactWriter persists produced files as durable, downloadable artifact rows.
 // It is the subset of the repository the harness needs to capture agent output
 // (e.g. an agent tryout's slide deck) before the sandbox is torn down.

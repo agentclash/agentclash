@@ -63,6 +63,7 @@ type AgentTryoutRepository interface {
 	WithinAnonymousAgentTryoutQuotaLock(ctx context.Context, fn func(repository.AnonymousAgentTryoutQuotaTx) error) error
 	GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
 	ListRunEventsByRunIDAfter(ctx context.Context, runID uuid.UUID, afterID int64, limit int32) ([]repository.RunEvent, error)
+	ListAgentTryoutEventsAfter(ctx context.Context, tryoutID uuid.UUID, afterID int64, limit int32) ([]repository.AgentTryoutEvent, error)
 	ListArtifactsByRunID(ctx context.Context, runID uuid.UUID) ([]repository.Artifact, error)
 	ListAgentTryoutsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.AgentTryout, error)
 	LinkAgentTryoutRunIfUnset(ctx context.Context, params repository.LinkAgentTryoutRunParams) (repository.AgentTryout, error)
@@ -139,8 +140,14 @@ type AgentTryoutExecutionConfig struct {
 	HarnessKind            string
 	E2BTemplateID          string
 	OpenAIAPIKeySecretName string
+	HostedProvider         string
+	HostedCredentialRef    string
 	PublicCreatedByUserID  *uuid.UUID
 	ConcurrencyLimit       int
+}
+
+type PublicAgentTryoutExecutionWorkflowStarter interface {
+	StartPublicAgentTryoutExecutionWorkflow(ctx context.Context, tryoutID uuid.UUID) (AgentHarnessExecutionWorkflowRef, error)
 }
 
 type AgentTryoutQuotaConfig struct {
@@ -186,10 +193,34 @@ func (m *AgentTryoutManager) WithExecution(starter AgentHarnessExecutionWorkflow
 	if starter == nil {
 		return m
 	}
+	config = normalizeAgentTryoutExecutionConfig(config)
+	if m.execution != nil {
+		m.execution.starter = starter
+		m.execution.config = config
+		return m
+	}
 	m.execution = &agentTryoutExecutionDispatcher{
 		repo:    m.repo,
 		starter: starter,
-		config:  normalizeAgentTryoutExecutionConfig(config),
+		config:  config,
+	}
+	return m
+}
+
+func (m *AgentTryoutManager) WithPublicExecution(starter PublicAgentTryoutExecutionWorkflowStarter, config AgentTryoutExecutionConfig) *AgentTryoutManager {
+	if starter == nil {
+		return m
+	}
+	config = normalizeAgentTryoutExecutionConfig(config)
+	if m.execution != nil {
+		m.execution.publicStarter = starter
+		m.execution.config = config
+		return m
+	}
+	m.execution = &agentTryoutExecutionDispatcher{
+		repo:          m.repo,
+		publicStarter: starter,
+		config:        config,
 	}
 	return m
 }
@@ -436,9 +467,10 @@ func (m *AgentTryoutManager) enforceAnonymousQuota(ctx context.Context, qtx repo
 }
 
 type agentTryoutExecutionDispatcher struct {
-	repo    AgentTryoutRepository
-	starter AgentHarnessExecutionWorkflowStarter
-	config  AgentTryoutExecutionConfig
+	repo          AgentTryoutRepository
+	starter       AgentHarnessExecutionWorkflowStarter
+	publicStarter PublicAgentTryoutExecutionWorkflowStarter
+	config        AgentTryoutExecutionConfig
 }
 
 func normalizeAgentTryoutExecutionConfig(config AgentTryoutExecutionConfig) AgentTryoutExecutionConfig {
@@ -451,6 +483,12 @@ func normalizeAgentTryoutExecutionConfig(config AgentTryoutExecutionConfig) Agen
 	if strings.TrimSpace(config.OpenAIAPIKeySecretName) == "" {
 		config.OpenAIAPIKeySecretName = "OPENAI_API_KEY"
 	}
+	if strings.TrimSpace(config.HostedProvider) == "" {
+		config.HostedProvider = "openai"
+	}
+	if strings.TrimSpace(config.HostedCredentialRef) == "" {
+		config.HostedCredentialRef = "env://OPENAI_API_KEY"
+	}
 	if config.ConcurrencyLimit <= 0 {
 		config.ConcurrencyLimit = 3
 	}
@@ -458,6 +496,9 @@ func normalizeAgentTryoutExecutionConfig(config AgentTryoutExecutionConfig) Agen
 }
 
 func (d *agentTryoutExecutionDispatcher) dispatch(ctx context.Context, tryout repository.AgentTryout, template AgentTryoutTemplate) (repository.AgentTryout, error) {
+	if tryout.WorkspaceID == nil {
+		return d.dispatchPublic(ctx, tryout)
+	}
 	if tryout.RunID != nil {
 		return d.refresh(ctx, tryout)
 	}
@@ -519,6 +560,18 @@ func (d *agentTryoutExecutionDispatcher) dispatch(ctx context.Context, tryout re
 		return d.failTryout(ctx, linked, "execution_start_failed", "We could not start this tryout. Please try again.")
 	}
 	return d.refresh(ctx, linked)
+}
+
+func (d *agentTryoutExecutionDispatcher) dispatchPublic(ctx context.Context, tryout repository.AgentTryout) (repository.AgentTryout, error) {
+	if d.publicStarter == nil {
+		return d.failTryout(ctx, tryout, "execution_not_configured", "Hosted public tryouts are not configured yet.")
+	}
+	ref, err := d.publicStarter.StartPublicAgentTryoutExecutionWorkflow(ctx, tryout.ID)
+	if err != nil {
+		return d.failTryout(ctx, tryout, "execution_start_failed", "We could not start this hosted public tryout. Please try again.")
+	}
+	_ = ref
+	return tryout, nil
 }
 
 func (d *agentTryoutExecutionDispatcher) executionScope(tryout repository.AgentTryout) (uuid.UUID, *uuid.UUID, bool) {
