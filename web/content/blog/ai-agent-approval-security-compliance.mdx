@@ -1,0 +1,97 @@
+---
+title: "How to Get AI Agent Approval from Security and Compliance"
+date: "2026-06-10"
+description: "Security and compliance teams need replay evidence, frozen workloads, and gate verdicts before they approve an AI agent. A practical approval checklist for platform leads."
+author: "Atharva"
+---
+
+Security reviewers do not block AI agents because they dislike automation. They block agents when the approval packet is a demo recording and a slide that says "eval score improved."
+
+Enterprise approval needs a defensible artifact: what was tested, under which policy, with what evidence, and what the gate verdict was.
+
+## What security actually asks
+
+In most regulated enterprises, the approval conversation converges on five questions:
+
+1. What agent build and deployment are we approving?
+2. What workload proves it is safe for our environment?
+3. What evidence can we audit after the fact?
+4. What happens when the agent fails or routes to a fallback model?
+5. Who owns the release decision if production regresses?
+
+Observability dashboards answer parts of question 4. Prompt evals answer parts of question 2. Neither alone produces a packet compliance can sign.
+
+## Bring a benchmark decision, not a trace export
+
+The enterprise pattern that works is a **governed benchmark decision**: frozen challenge pack version, pinned baseline, named candidate, explicit gate policy, and a pass or fail verdict with replay attached.
+
+Picture a platform lead preparing a coding agent release. They do not send security a LangSmith project link and hope for the best. They attach:
+
+- the challenge pack version and input set approved for the quarter
+- baseline and candidate deployment IDs
+- scorecard deltas (correctness, cost, latency, evidence tier)
+- replay links for the cases that drove the verdict
+- the gate policy (for example: no correctness regression, cost cap, automatic fail on policy violations)
+
+That mirrors the buyer workflow in our [enterprise pilot](/enterprise) narrative: benchmark first, replay second, gate third.
+
+AgentClash supports review with immutable run history and replay shaped for decisions, not raw span dumps. See [AI agent regression testing](/platform/agent-regression-testing) for the product surface.
+
+## The evidence bundle compliance expects
+
+Structure the approval packet so each stakeholder finds their slice without re-interpreting chat logs.
+
+| Stakeholder | What they need from the bundle |
+| --- | --- |
+| Security | Tool policy, network bounds, secrets handling, evidence tier per agent |
+| Compliance | Traceability from approved workload to verdict, retention policy |
+| Engineering | Replay of divergences, routing fallbacks, sandbox failures |
+| Finance | Cost per successful task vs baseline |
+
+Include a one-page gate summary: **ship, block, or conditional ship** with the single metric that forced the call.
+
+Industry surveys consistently show a gap between documented AI policy and production approval. [Gravitee's 2026 agent security report](https://www.gravitee.io/blog/state-of-ai-agent-security-2026-report-when-adoption-outpaces-control) found most agent fleets lack full security oversight. Your packet should close that gap for *your* agent, not claim industry-wide certification.
+
+## Approval checklist (copy into your review ticket)
+
+- [ ] Named candidate build and deployment (not "latest prod")
+- [ ] Frozen challenge pack version and input set
+- [ ] Baseline run ID with max age policy documented
+- [ ] Gate policy written in scorecard dimensions, not prose
+- [ ] Replay retained per security retention rules
+- [ ] Evidence tier labeled for hosted vs native agents (`black_box`, `structured_trace`, `native_full_replay`)
+- [ ] Automatic fail conditions listed (policy violations, forbidden paths, cost ceiling)
+- [ ] Release owner and rollback owner named
+
+Use careful language: AgentClash **supports review and evidence collection**. It does not replace your SOC 2 program, legal sign-off, or industry-specific control frameworks.
+
+## How eval becomes an ongoing control
+
+One-time approval is not enough. Connect the benchmark to [CI/CD agent evaluation](/ci-cd-agent-evaluation) so every material agent change re-runs the approved workload.
+
+The [CI/CD agent gates](/docs/guides/ci-cd-agent-gates) guide shows how a repo-tracked manifest names the candidate, baseline, workload, and fail threshold. Security cares because the same contract runs in CI that ran for the original approval.
+
+## FAQ
+
+### Do we need human-in-the-loop for every agent action?
+
+No. Separate **runtime policy** (what executes in production) from **release evidence** (what proved the build before go-live). Many teams use human approval queues for high-risk tool calls while still gating releases with benchmark replay.
+
+### Can we approve a hosted vendor agent with limited observability?
+
+Yes, with explicit evidence tier labeling. Black-box runs can inform procurement, but native full replay should gate production-critical workloads when your policy requires it.
+
+### What if we have no baseline yet?
+
+Run an exploratory benchmark, record the green run as baseline, then attach the manifest. The [CI gates guide](/docs/guides/ci-cd-agent-gates) notes that missing baseline is informational during setup, not a reason to skip approval structure.
+
+## Next step
+
+Need a governed benchmark your security team can replay? Start the [enterprise pilot](/enterprise) or book a demo to walk through a sample gate verdict on your workload.
+
+## Related resources
+
+- [Enterprise pilot](/enterprise)
+- [AI agent regression testing](/platform/agent-regression-testing)
+- [CI/CD agent evaluation](/ci-cd-agent-evaluation)
+- [CI/CD agent gates](/docs/guides/ci-cd-agent-gates)

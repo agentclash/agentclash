@@ -1,0 +1,129 @@
+---
+title: "Building an Agent Eval Program in a Regulated Enterprise"
+date: "2026-06-13"
+description: "Regulated enterprises need versioned workloads, audit-friendly replay, baseline gates, and CI handoff. A phased plan to stand up a governed agent eval program."
+author: "Atharva"
+---
+
+Regulated enterprises do not get permission to "move fast and fix agents in prod." They get permission to ship **when evidence supports the decision**.
+
+An agent eval program is how platform teams make that evidence repeatable across business units, vendors, and release trains.
+
+## Phase 0: Align on the decision object
+
+Before you buy tools, align leadership on what a release decision contains:
+
+- frozen workload (challenge pack version + input set)
+- candidate and baseline agent builds
+- scorecard with policy dimensions
+- replay evidence for material divergences
+- gate verdict (ship, block, conditional)
+
+If compliance, security, and engineering cannot point at the same artifact, the program will stall in slide decks.
+
+AgentClash models that object end to end. Start with the [enterprise pilot](/enterprise) if you need a self-serve environment to socialize the shape.
+
+## Phase 1: Inventory workloads worth gating
+
+Not every agent deserves a full benchmark on day one. Prioritize workloads where failure is expensive or audited:
+
+- customer-facing actions with tool use
+- coding or data agents that mutate repositories
+- retrieval agents bound to regulated data classes
+- vendor agents executing under your brand
+
+For each, document: owner, data class, retry policy, and current "proof" (usually demos or ad hoc evals).
+
+## Phase 2: Encode workloads as challenge packs
+
+Turn the top one or two workflows into versioned packs:
+
+- explicit tool and network policy
+- fixtures that mirror production shape (with safe secrets)
+- validators tied to tests, artifacts, or judges
+- scorecard dimensions that map to release policy
+
+When production misses, promote cases within a week. That is how eval coverage compounds in regulated settings.
+
+Product context: [AI agent regression testing](/platform/agent-regression-testing). Authoring: [write a challenge pack](/docs/guides/write-a-challenge-pack).
+
+## Phase 3: Establish baselines and compare discipline
+
+Regulated programs fail when every team picks its own baseline week. Central platform teams should:
+
+- name baseline deployments per workload
+- set baseline refresh rules (manual vs scheduled, max age)
+- require compare runs before committee review
+- label evidence tier for hosted agents
+
+The compare view should show tradeoffs clearly: correctness, cost per success, latency, TTFT, reliability, evidence completeness.
+
+## Phase 4: Connect benchmarks to CI gates
+
+An eval program without CI becomes a quarterly ritual. Wire gates when baselines exist:
+
+1. Repo-tracked `.agentclash/ci.yaml` manifest
+2. Remote validation in CI for resource visibility
+3. `agentclash ci run` on agent-changing paths
+4. Artifact upload: gate JSON, scorecard, replay links
+
+This is the handoff from **program** to **control**. Implementation guide: [CI/CD agent gates](/docs/guides/ci-cd-agent-gates). Product page: [CI/CD agent evaluation](/ci-cd-agent-evaluation).
+
+```yaml
+gate:
+  fail_on: regression
+baseline:
+  refresh: manual
+  max_age_days: 30
+```
+
+Adjust refresh policy to match your change control board. Document exceptions in the ticket, not in Slack.
+
+## Phase 5: Operate the program
+
+| Cadence | Activity |
+| --- | --- |
+| Weekly | Review failed gates; promote cases |
+| Monthly | Refresh baseline candidates; retire stale packs |
+| Quarterly | Audit evidence retention and access controls |
+| Per release | Attach gate summary to change record |
+
+Use language compliance teams accept: AgentClash **supports evidence collection and review**. Map controls to your framework (SOC 2, ISO 42001, internal AI policy) in your own risk register. Do not overclaim certification from a benchmark tool.
+
+External context: enterprises face fragmented AI regulation and rising expectations for identity and audit trails ([Lasso Security, 2026 predictions](https://www.lasso.security/blog/enterprise-ai-security-predictions-2026)). Your program should produce attributable logs of *what you tested*, not replace legal interpretation.
+
+## Regulated enterprise checklist
+
+- [ ] Decision object agreed with security and compliance
+- [ ] Top workloads encoded as versioned packs
+- [ ] Baseline registry with owners and refresh rules
+- [ ] Replay retention aligned with records management
+- [ ] CI manifest on agent repos that gate production paths
+- [ ] Evidence tier policy for vendor agents
+- [ ] Regression promotion workflow documented
+- [ ] Executive summary template (verdict + three deltas + replay link)
+
+## FAQ
+
+### How is this different from our existing ML model validation?
+
+Models are one component. Agents add tools, state, routing, cost, and recovery behavior. The eval program tests the **system**, not an isolated completion score.
+
+### Can business units run their own benchmarks?
+
+Yes, inside workspace boundaries with shared pack standards. Platform teams should own gate policy templates and baseline hygiene.
+
+### Where do human approvals fit?
+
+Human-in-the-loop belongs in runtime policy for high-risk actions. Release gates prove the build before those runtime controls apply.
+
+## Next step
+
+Standing up a governed eval program this half? Start the [enterprise pilot](/enterprise) or book a demo to map your first workload to a gate-ready benchmark.
+
+## Related resources
+
+- [Enterprise pilot](/enterprise)
+- [CI/CD agent gates](/docs/guides/ci-cd-agent-gates)
+- [CI/CD agent evaluation](/ci-cd-agent-evaluation)
+- [AI agent regression testing](/platform/agent-regression-testing)
