@@ -1,13 +1,9 @@
 ---
 title: "Agent Evaluation vs Prompt Evaluation: When Braintrust Isn't Enough"
 date: "2026-06-11"
-description: "Prompt evaluation tools like Braintrust excel at scoring model outputs. Production agents need trajectory evals on real tasks — here's how to know when to add sandboxed agent testing."
+description: "Prompt evaluation tools like Braintrust excel at scoring model outputs. Production agents need trajectory evals on real tasks: here's how to know when to add sandboxed agent testing."
 author: "Atharva"
 ---
-
-**Target query:** agent evaluation vs prompt evaluation  
-**Reader stage:** Evaluating tools; has prompt-level evals running  
-**Proof artifact:** Challenge pack + replay timeline from a multi-tool agent run
 
 Braintrust is a strong fit when the unit you evaluate is a prompt, a dataset row, or a logged model response. That workflow breaks when the product you ship is an agent: multi-turn, tool-using, stateful, and sensitive to sandbox conditions.
 
