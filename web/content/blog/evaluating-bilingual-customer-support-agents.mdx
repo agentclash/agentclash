@@ -1,0 +1,117 @@
+---
+title: "Evaluating Bilingual Customer Support Agents: Arabic, English, and Release Evidence"
+date: "2026-06-15"
+description: "Bilingual support agents need evals on real ticket flows in each language, not a single translated prompt. How to build Arabic and English cases with replay and gates."
+author: "Atharva"
+---
+
+A support agent that sounds fluent in a demo can still fail in production when the customer writes in Arabic, code-switches mid-ticket, or expects policy language that matches your regulated market.
+
+Bilingual evaluation is not "run the English pack through Google Translate." It is running **the same resolution workflow** with language-specific cases, validators, and replay evidence for each lane you ship.
+
+## What bilingual support eval must prove
+
+Before you approve a support agent for UAE or wider GCC operations, stakeholders usually need evidence on:
+
+1. **Resolution correctness:** did the agent solve the ticket under policy?
+2. **Language fit:** is the reply intelligible and appropriately formal in each language?
+3. **Tool discipline:** did it call refund, CRM, or escalation tools correctly?
+4. **Audit trail:** can compliance replay the trajectory later?
+
+Prompt-only evals catch tone. They miss tool misuse, wrong escalation, or an English reply to an Arabic ticket. The [support agent evaluation](/use-cases/support-agent-evaluation) use case page describes the full trajectory model AgentClash uses for ticket workflows.
+
+## Build separate cases, not translated duplicates
+
+Structure bilingual coverage in a challenge pack input set:
+
+| Lane | What to encode | Example signal |
+| --- | --- | --- |
+| English ticket | Standard refund or status flow | Validators on required fields and policy phrases |
+| Arabic ticket | Same workflow, Arabic customer messages | `contains` or judge rubric on Arabic output quality |
+| Code-switch | Arabic opener, English product IDs | Ensures the agent handles mixed input |
+| Escalation | Frustrated customer, policy boundary | Multi-turn scripted phases |
+
+Use `execution_mode: multi_turn` when the workflow needs back-and-forth, not a single-shot answer. The reference pack `examples/challenge-packs/multi-turn-refund-recovery.yaml` shows scripted user phases and validators on refund language; mirror that pattern with Arabic message fixtures your team approves.
+
+Deterministic checks can gate schema and required actions:
+
+```yaml
+validators:
+  - key: mentions_refund
+    type: contains
+    target: final_output
+    expected_from: "literal:refund"
+```
+
+Add LLM judge rubrics for language quality when deterministic string match is too brittle:
+
+```yaml
+llm_judges:
+  - key: arabic_clarity
+    mode: rubric
+    model: gpt-4.1
+    rubric: Score whether the reply is clear, polite Modern Standard Arabic appropriate for customer support.
+    context_from:
+      - challenge_input
+      - final_output
+```
+
+Hybrid scorecards can gate on policy validators first, then score language quality as a weighted dimension.
+
+## Compare baselines per language lane
+
+Race candidate and baseline agents on the **same pack version** with the same tool policy. The compare view should answer:
+
+- Did Arabic lane correctness regress while English improved?
+- Did cost or latency spike on multi-turn cases?
+- Did the agent skip tool calls in one language only?
+
+Replay is what settles disagreements between CX, compliance, and engineering. Export the cases that drove a block, not aggregate sentiment scores.
+
+## Connect bilingual eval to release gates
+
+When both language lanes pass policy, pin the green run as baseline and wire CI:
+
+```bash
+agentclash ci init .agentclash/ci.yaml
+agentclash ci validate .agentclash/ci.yaml --remote
+```
+
+Full gate recipe: [CI/CD agent gates](/docs/guides/ci-cd-agent-gates). Pair with [AI agent regression testing](/platform/agent-regression-testing) so every production miss in Arabic or English becomes a regression case.
+
+For regional governance framing (residency vs release evidence), see [AI agent governance for Middle East enterprises](/blog/ai-agent-governance-middle-east-enterprises).
+
+## Bilingual support eval checklist
+
+- [ ] Arabic and English cases cover the same business outcomes, not literal translations only
+- [ ] Tool and network policy identical across lanes
+- [ ] Validators gate policy actions; judges score language where needed
+- [ ] Multi-turn flows encoded for escalation scenarios
+- [ ] Baseline run recorded before vendor or model changes
+- [ ] Replay retention aligned with your records policy
+- [ ] Executive readout includes gate verdict plus per-lane deltas
+
+## FAQ
+
+### Does AgentClash ship a built-in Arabic benchmark?
+
+No. You author cases in challenge packs with your approved fixtures and policies. That keeps eval aligned with your products, refund rules, and tone guidelines.
+
+### Can we evaluate hosted vendor support agents with limited observability?
+
+Yes. Label evidence tier (`hosted_black_box` vs `native_structured`) and gate production paths on the evidence level your policy requires.
+
+### Where does data residency fit?
+
+Residency is a deployment and legal decision. Bilingual eval proves behavioral readiness on your workload. See the [enterprise pilot](/enterprise) FAQ for hosted regions and enterprise residency discussions.
+
+## Next step
+
+Shipping bilingual support agents in the Gulf? Start the [enterprise pilot](/enterprise), build cases on the [support agent evaluation](/use-cases/support-agent-evaluation) workflow, or ask about [Benchmark & Gate Setup](/services) for pack authoring help.
+
+## Related resources
+
+- [Support agent evaluation](/use-cases/support-agent-evaluation)
+- [Enterprise pilot](/enterprise)
+- [Write a challenge pack](/docs/guides/write-a-challenge-pack)
+- [Multi-turn challenge packs](/docs/challenge-packs/multi-turn)
