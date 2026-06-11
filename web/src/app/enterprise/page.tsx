@@ -9,6 +9,7 @@ import {
   productSchema,
 } from "@/components/marketing/json-ld";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
+import { ResourcePackCTA } from "@/components/marketing/resource-pack-cta";
 import { PRICING_TIERS } from "@/lib/pricing-data";
 import { ogImageUrl } from "@/lib/seo";
 
@@ -114,6 +115,11 @@ const faqItems = [
 ];
 
 const crossLinks = [
+  {
+    href: "/resources/eval-checklist",
+    label: "Enterprise eval checklist",
+    description: "Download the checklist, scorecard, gate worksheet, and rollout PDFs.",
+  },
   {
     href: "/platform/agent-evaluation",
     label: "Agent evaluation platform",
@@ -376,6 +382,7 @@ export default function EnterprisePage() {
               </Link>{" "}
               we scope on the architecture review.
             </p>
+            <ResourcePackCTA className="mt-8" compact />
           </div>
         </div>
       </section>

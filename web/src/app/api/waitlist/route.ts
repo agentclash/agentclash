@@ -5,9 +5,17 @@ import { NextResponse } from "next/server";
 type WaitlistRecord = {
   email: string;
   createdAt: string;
+  sources?: LeadSource[];
 };
 
 const BLOB_PATH = "waitlist.json";
+
+type LeadSource = {
+  source: string;
+  resource?: string;
+  intent?: string;
+  createdAt: string;
+};
 
 function getResend() {
   return new Resend(process.env.RESEND_API_KEY);
@@ -36,6 +44,19 @@ async function writeWaitlistRecords(records: WaitlistRecord[]) {
     allowOverwrite: true,
     contentType: "application/json",
   });
+}
+
+function normalizeOptionalText(value: unknown) {
+  return typeof value === "string" ? value.trim().slice(0, 120) : "";
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function buildWelcomeEmail(position: number) {
@@ -102,6 +123,35 @@ async function sendWelcomeEmail(email: string, position: number) {
   }
 }
 
+async function sendLeadNotification(email: string, source: LeadSource) {
+  if (source.intent !== "resource-download") return;
+
+  try {
+    const safeEmail = escapeHtml(email);
+    const safeSource = escapeHtml(source.source);
+    const safeResource = escapeHtml(source.resource || "resource-pack");
+    const safeCreatedAt = escapeHtml(source.createdAt);
+
+    await getResend().emails.send({
+      from: "AgentClash <team@agentclash.dev>",
+      to: "hello@agentclash.dev",
+      subject: "New AgentClash resource lead",
+      html: `<!DOCTYPE html>
+<html>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#111">
+  <h1 style="font-size:20px">New resource lead</h1>
+  <p><strong>Email:</strong> ${safeEmail}</p>
+  <p><strong>Source:</strong> ${safeSource}</p>
+  <p><strong>Resource:</strong> ${safeResource}</p>
+  <p><strong>Captured:</strong> ${safeCreatedAt}</p>
+</body>
+</html>`,
+    });
+  } catch (err) {
+    console.error("Failed to send lead notification:", err);
+  }
+}
+
 export async function GET() {
   const records = await readWaitlistRecords();
   return NextResponse.json({ count: records.length });
@@ -130,9 +180,31 @@ export async function POST(request: Request) {
   }
 
   const records = await readWaitlistRecords();
+  const leadSource: LeadSource | null = (() => {
+    const source = normalizeOptionalText(payload.source);
+    const resource = normalizeOptionalText(payload.resource);
+    const intent = normalizeOptionalText(payload.intent);
+    if (!source && !resource && !intent) return null;
+    return {
+      source: source || "unknown",
+      ...(resource ? { resource } : {}),
+      ...(intent ? { intent } : {}),
+      createdAt: new Date().toISOString(),
+    };
+  })();
 
   if (records.some((record) => record.email === email)) {
-    const position = records.findIndex((r) => r.email === email) + 1;
+    const index = records.findIndex((r) => r.email === email);
+    const position = index + 1;
+    if (leadSource) {
+      const existing = records[index];
+      records[index] = {
+        ...existing,
+        sources: [...(existing.sources ?? []), leadSource],
+      };
+      await writeWaitlistRecords(records);
+      sendLeadNotification(email, leadSource);
+    }
     return NextResponse.json({
       ok: true,
       duplicate: true,
@@ -144,6 +216,7 @@ export async function POST(request: Request) {
   const nextRecord: WaitlistRecord = {
     email,
     createdAt: new Date().toISOString(),
+    ...(leadSource ? { sources: [leadSource] } : {}),
   };
 
   const updated = [...records, nextRecord];
@@ -153,6 +226,7 @@ export async function POST(request: Request) {
 
   // Fire and forget — don't block the response
   sendWelcomeEmail(email, position);
+  if (leadSource) sendLeadNotification(email, leadSource);
 
   return NextResponse.json({
     ok: true,

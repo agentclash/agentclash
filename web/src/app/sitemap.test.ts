@@ -94,6 +94,12 @@ describe("sitemap", () => {
       changeFrequency: "monthly",
       priority: 0.82,
     });
+    expect(
+      byUrl.get("https://www.agentclash.dev/resources/eval-checklist"),
+    ).toMatchObject({
+      changeFrequency: "monthly",
+      priority: 0.77,
+    });
     expect(byUrl.get("https://www.agentclash.dev/services")).toMatchObject({
       changeFrequency: "monthly",
       priority: 0.78,

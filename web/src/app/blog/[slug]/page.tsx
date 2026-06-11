@@ -9,6 +9,7 @@ import {
 } from "@/components/marketing/json-ld";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
 import { ResearchAudienceCTA } from "@/components/marketing/research-audience-cta";
+import { ResourcePackCTA } from "@/components/marketing/resource-pack-cta";
 import { getAllSlugs, getPostBySlug } from "@/lib/blog";
 import { mdxRemoteOptions } from "@/lib/mdx-options";
 import { blogRssAlternate, ogImageUrl } from "@/lib/seo";
@@ -116,6 +117,8 @@ export default async function BlogPostPage({ params }: Props) {
         <div className="prose-agentclash">
           <MDXRemote source={post.content} options={mdxRemoteOptions} />
         </div>
+
+        <ResourcePackCTA className="mt-12" />
 
         <ResearchAudienceCTA
           className="mt-12"
