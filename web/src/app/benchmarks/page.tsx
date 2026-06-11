@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
+import { ResearchAudienceCTA } from "@/components/marketing/research-audience-cta";
 import { JsonLd, benchmarkIndexSchema } from "@/components/marketing/json-ld";
 import { getAllReports, hasPublishedBenchmarks } from "@/lib/benchmarks";
 import { benchmarkRssAlternate, ogImageUrl } from "@/lib/seo";
@@ -72,6 +73,12 @@ export default function BenchmarksPage() {
             on correctness, reliability, latency, and cost.
           </p>
 
+          <ResearchAudienceCTA
+            className="mt-8"
+            headline="Want this benchmark on your agents?"
+            body="Book an eval workshop and we'll reproduce the race on your workloads with the same challenge pack, tools, and scorecard."
+          />
+
           <div className="mt-10 rounded-lg border border-white/[0.08] bg-white/[0.03] px-6 py-8">
             <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/40">
               Coming soon
@@ -105,6 +112,12 @@ export default function BenchmarksPage() {
           tasks — same challenge, same tools — and score the whole trajectory on
           correctness, reliability, latency, and cost. Here is who won.
         </p>
+
+        <ResearchAudienceCTA
+          className="mt-8"
+          headline="Want this benchmark on your agents?"
+          body="Book an eval workshop and we'll reproduce the race on your workloads with the same challenge pack, tools, and scorecard."
+        />
 
         <div className="mt-10 flex flex-col gap-3">
           {reports.map((report) => (
