@@ -29,6 +29,11 @@ func (c *Client) StreamSSE(ctx context.Context, path string, query url.Values) (
 // or the context is cancelled — callers that want a seamless stream reconnect
 // with the last ID they received.
 func (c *Client) StreamSSEFrom(ctx context.Context, path string, query url.Values, lastEventID string) (<-chan SSEEvent, error) {
+	// Short-circuit a credential-free SSE request the same way REST calls do
+	// (WI-9): a synthesized 401 instead of a doomed connection.
+	if err := c.ensureAuth(path); err != nil {
+		return nil, err
+	}
 	fullURL := c.baseURL + path
 	if len(query) > 0 {
 		fullURL += "?" + query.Encode()

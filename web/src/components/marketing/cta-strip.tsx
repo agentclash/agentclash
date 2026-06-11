@@ -6,6 +6,7 @@ type Variant = "demo-first" | "cli-first" | "github-first";
 
 type Props = {
   variant?: Variant;
+  demoLabel?: string;
   primaryLabel?: string;
   primaryHref?: string;
   secondaryLabel?: string;
@@ -15,6 +16,7 @@ type Props = {
 
 export function CTAStrip({
   variant = "demo-first",
+  demoLabel,
   primaryLabel,
   primaryHref,
   secondaryLabel,
@@ -23,7 +25,7 @@ export function CTAStrip({
 }: Props) {
   const primaryCTA =
     variant === "demo-first" ? (
-      <DemoButton />
+      <DemoButton label={demoLabel} />
     ) : primaryHref ? (
       <Link
         href={primaryHref}
@@ -35,13 +37,23 @@ export function CTAStrip({
     ) : null;
 
   const secondaryCTA = secondaryHref ? (
-    <Link
-      href={secondaryHref}
-      className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
-    >
-      {secondaryLabel ?? "Learn more"}
-      <ArrowRight className="size-4" />
-    </Link>
+    secondaryHref.startsWith("mailto:") ? (
+      <a
+        href={secondaryHref}
+        className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
+      >
+        {secondaryLabel ?? "Learn more"}
+        <ArrowRight className="size-4" />
+      </a>
+    ) : (
+      <Link
+        href={secondaryHref}
+        className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
+      >
+        {secondaryLabel ?? "Learn more"}
+        <ArrowRight className="size-4" />
+      </Link>
+    )
   ) : variant === "demo-first" ? (
     <Link
       href="/auth/login"

@@ -10,7 +10,6 @@ import {
   softwareSourceCodeSchema,
   websiteSchema,
 } from "@/components/marketing/json-ld";
-import { hasPublishedBenchmarks } from "@/lib/benchmarks";
 import { getChangelogPeriods } from "@/lib/changelog";
 import { HOME_FAQ } from "@/lib/home-faq";
 import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
@@ -64,7 +63,7 @@ export default async function RootPage() {
           faqSchema(HOME_FAQ),
         ]}
       />
-      <HomePage showBenchmarks={hasPublishedBenchmarks()} returning={returning} />
+      <HomePage returning={returning} />
     </>
   );
 }

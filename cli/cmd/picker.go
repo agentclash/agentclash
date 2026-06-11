@@ -22,11 +22,17 @@ type interactivePicker interface {
 
 var surveyAskOne = survey.AskOne
 
+// stdioIsInteractive reports whether both stdin and stdout are TTYs. It is a
+// var so tests can simulate a terminal. nonInteractiveMode builds on it.
+var stdioIsInteractive = func() bool {
+	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+}
+
 var isInteractiveTerminal = func(rc *RunContext) bool {
 	if rc == nil || rc.Output == nil || rc.Output.IsStructured() {
 		return false
 	}
-	return term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd()))
+	return !nonInteractiveMode()
 }
 
 var newInteractivePicker = func() interactivePicker {

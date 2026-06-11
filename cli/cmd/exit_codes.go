@@ -19,10 +19,28 @@ type ExitCode struct {
 	Commands    []string `json:"commands,omitempty" yaml:"commands,omitempty"`
 }
 
+// Global failure-class band, sysexits(3)-aligned so the values cannot collide
+// with the small command-scoped codes below (1–31). exitCodeForError maps every
+// non-command-specific failure into this band; agents and CI can branch on the
+// class without parsing output.
+const (
+	exitValidationError  = 64 // EX_USAGE — usage / validation errors
+	exitNotFound         = 66 // EX_NOINPUT — referenced resource or file does not exist
+	exitRetryableFailure = 75 // EX_TEMPFAIL — transient; mirrors envelope retryable:true
+	exitAuthDenied       = 77 // EX_NOPERM — authentication or permission failure
+)
+
 var documentedExitCodes = []ExitCode{
 	{Code: 0, Name: "success", Description: "Command completed successfully."},
 	{Code: 1, Name: "error", Description: "Generic, unexpected failure when no command-specific code applies."},
 	{Code: 2, Name: "missing_workspace", Description: "No workspace resolved; pass --workspace, set AGENTCLASH_WORKSPACE, or run 'agentclash link'."},
+
+	// Global failure-class band (sysexits-aligned). Applies to every command
+	// unless a command-specific code below overrides it.
+	{Code: exitValidationError, Name: "validation_error", Description: "Invalid arguments, flags, input files, or configuration (sysexits EX_USAGE)."},
+	{Code: exitNotFound, Name: "not_found", Description: "The referenced resource or file does not exist (HTTP 404 or a missing local file; sysexits EX_NOINPUT)."},
+	{Code: exitRetryableFailure, Name: "retryable_failure", Description: "Transient failure — rate limiting (429), server errors (5xx), or a network/transport error. Mirrors `error.retryable: true` in the JSON envelope; safe to retry, honoring details.retry_after_seconds when present (sysexits EX_TEMPFAIL)."},
+	{Code: exitAuthDenied, Name: "auth_denied", Description: "Authentication or permission failure (HTTP 401/403 or a local permission error; sysexits EX_NOPERM)."},
 
 	// `compare gate` — CI regression gate.
 	{Code: gateExitFail, Name: "compare_gate_fail", Description: "compare gate: a regression was detected.", Commands: []string{"compare gate"}},

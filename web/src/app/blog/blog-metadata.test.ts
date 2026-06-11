@@ -3,6 +3,14 @@ import { blogRssAlternate, ogImageUrl } from "@/lib/seo";
 import { metadata as blogMetadata } from "./page";
 import { generateMetadata } from "./[slug]/page";
 
+vi.mock("@/components/marketing/marketing-shell", () => ({
+  MarketingShell: ({ children }: { children: unknown }) => children,
+}));
+
+vi.mock("@/components/marketing/research-audience-cta", () => ({
+  ResearchAudienceCTA: () => null,
+}));
+
 const getPostBySlugMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/blog", () => ({
