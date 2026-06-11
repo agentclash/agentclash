@@ -2,19 +2,13 @@ import Link from "next/link";
 import { ArrowRight, Star } from "lucide-react";
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { isReturningVisitor } from "@/lib/auth/returning";
+import { DEFAULT_MARKETING_NAV } from "@/lib/marketing-nav";
 import { AuthCtaLink } from "./auth-cta-link";
 import { ClashMark } from "./clash-mark";
 
 type NavLink = { href: string; label: string; external?: boolean };
 
-const DEFAULT_NAV: NavLink[] = [
-  { href: "/#features", label: "Features" },
-  { href: "/enterprise", label: "Enterprise" },
-  { href: "/docs", label: "Docs" },
-  { href: "/benchmarks", label: "Benchmarks" },
-  { href: "/blog", label: "Blog" },
-  { href: "/changelog", label: "Changelog" },
-];
+const DEFAULT_NAV: NavLink[] = DEFAULT_MARKETING_NAV;
 
 type Props = {
   nav?: NavLink[];

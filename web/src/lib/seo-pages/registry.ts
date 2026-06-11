@@ -21,6 +21,40 @@ const sharedDocsLinks = [
   },
 ] as const;
 
+const seoHubLinks = [
+  {
+    title: "Agent evals",
+    text: "Real-task agent evals with replay evidence and CI gates.",
+    href: "/agent-evals",
+  },
+  {
+    title: "LLM agent evaluation",
+    text: "Evaluate LLM agents on full trajectories, not one-shot answers.",
+    href: "/llm-agent-evaluation",
+  },
+  {
+    title: "Compare tools",
+    text: "See how AgentClash differs from prompt-eval platforms.",
+    href: "/compare",
+  },
+] as const;
+
+function seoHubLinksFor(path: string): SeoPageConfig["relatedLinks"] {
+  return seoHubLinks.filter((link) => link.href !== path);
+}
+
+function dedupeRelatedLinks(
+  links: SeoPageConfig["relatedLinks"],
+): SeoPageConfig["relatedLinks"] {
+  const seen = new Set<string>();
+
+  return links.filter((link) => {
+    if (seen.has(link.href)) return false;
+    seen.add(link.href);
+    return true;
+  });
+}
+
 function page(
   config: Omit<
     SeoPageConfig,
@@ -32,9 +66,14 @@ function page(
     faqItems: SeoPageConfig["faqItems"];
   },
 ): SeoPageConfig {
+  const { relatedLinks: customRelatedLinks, ...rest } = config;
+
   return {
     proofPoints: sharedProofPoints,
-    relatedLinks: [...sharedDocsLinks],
+    relatedLinks: dedupeRelatedLinks([
+      ...seoHubLinksFor(config.path),
+      ...(customRelatedLinks ?? sharedDocsLinks),
+    ]),
     workflow: [
       {
         title: "Package the task",
@@ -53,7 +92,7 @@ function page(
         text: "Compare candidate and baseline runs, then fail CI before a regression reaches users.",
       },
     ],
-    ...config,
+    ...rest,
   };
 }
 
@@ -265,14 +304,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
           "Yes. Challenge packs carry scoring rules, validators, and judge configuration so teams can encode domain-specific pass conditions.",
       },
     ],
-    relatedLinks: [
-      {
-        title: "Compare tools",
-        text: "See how AgentClash differs from prompt-eval platforms.",
-        href: "/compare",
-      },
-      ...sharedDocsLinks,
-    ],
+    relatedLinks: [...sharedDocsLinks],
   }),
   page({
     path: "/ai-agent-testing",
