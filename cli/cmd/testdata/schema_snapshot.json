@@ -20,6 +20,12 @@
       "default": "false"
     },
     {
+      "name": "non-interactive",
+      "usage": "Never prompt; fail fast when interactive input is required (also set by AGENTCLASH_NONINTERACTIVE or CI)",
+      "type": "bool",
+      "default": "false"
+    },
+    {
       "name": "output",
       "shorthand": "o",
       "usage": "Output format: table, json, yaml",

@@ -21,6 +21,40 @@ const sharedDocsLinks = [
   },
 ] as const;
 
+const seoHubLinks = [
+  {
+    title: "Agent evals",
+    text: "Real-task agent evals with replay evidence and CI gates.",
+    href: "/agent-evals",
+  },
+  {
+    title: "LLM agent evaluation",
+    text: "Evaluate LLM agents on full trajectories, not one-shot answers.",
+    href: "/llm-agent-evaluation",
+  },
+  {
+    title: "Compare tools",
+    text: "See how AgentClash differs from prompt-eval platforms.",
+    href: "/compare",
+  },
+] as const;
+
+function seoHubLinksFor(path: string): SeoPageConfig["relatedLinks"] {
+  return seoHubLinks.filter((link) => link.href !== path);
+}
+
+function dedupeRelatedLinks(
+  links: SeoPageConfig["relatedLinks"],
+): SeoPageConfig["relatedLinks"] {
+  const seen = new Set<string>();
+
+  return links.filter((link) => {
+    if (seen.has(link.href)) return false;
+    seen.add(link.href);
+    return true;
+  });
+}
+
 function page(
   config: Omit<
     SeoPageConfig,
@@ -32,9 +66,14 @@ function page(
     faqItems: SeoPageConfig["faqItems"];
   },
 ): SeoPageConfig {
+  const { relatedLinks: customRelatedLinks, ...rest } = config;
+
   return {
     proofPoints: sharedProofPoints,
-    relatedLinks: [...sharedDocsLinks],
+    relatedLinks: dedupeRelatedLinks([
+      ...seoHubLinksFor(config.path),
+      ...(customRelatedLinks ?? sharedDocsLinks),
+    ]),
     workflow: [
       {
         title: "Package the task",
@@ -53,7 +92,7 @@ function page(
         text: "Compare candidate and baseline runs, then fail CI before a regression reaches users.",
       },
     ],
-    ...config,
+    ...rest,
   };
 }
 
@@ -265,14 +304,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
           "Yes. Challenge packs carry scoring rules, validators, and judge configuration so teams can encode domain-specific pass conditions.",
       },
     ],
-    relatedLinks: [
-      {
-        title: "Compare tools",
-        text: "See how AgentClash differs from prompt-eval platforms.",
-        href: "/compare",
-      },
-      ...sharedDocsLinks,
-    ],
+    relatedLinks: [...sharedDocsLinks],
   }),
   page({
     path: "/ai-agent-testing",
@@ -699,6 +731,420 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
         answer:
           "Yes. Compare candidate and baseline scorecards in CI before deploying a new support agent or model route.",
       },
+    ],
+  }),
+  page({
+    path: "/industries/banking",
+    tier: "B",
+    keyword: "banking agent evaluation",
+    intent: "Industry vertical",
+    pageTitle: "Banking Agent Evaluation with Replay Evidence - AgentClash",
+    metaDescription:
+      "Evaluate banking and financial services agents on real workflows with replay evidence, scorecards, challenge packs, and release gates your risk team can review.",
+    socialImageAlt: "AgentClash banking agent evaluation social preview.",
+    eyebrow: "Industry",
+    h1: "Agent evaluation for banking and financial services",
+    heroDescription:
+      "Banking agents touch payments, account changes, and policy-heavy workflows. AgentClash gives platform teams replay evidence and scorecards to compare candidates before a model change reaches production.",
+    proofSectionTitle: "What banking eval should prove",
+    proofSectionDescription:
+      "Score resolution correctness, tool discipline, artifact quality, and cost stability on workloads your compliance reviewers can replay.",
+    workflowSectionTitle: "Banking eval workflow",
+    docsSectionTitle: "Encode regulated workflows as packs",
+    docsSectionDescription:
+      "Turn escaped incidents and approval flows into challenge packs, then gate releases when scorecards regress.",
+    faqSectionTitle: "Banking agent evaluation FAQ",
+    applicationSubCategory: "Banking agent evaluation software",
+    breadcrumbs: [
+      { name: "Home", url: "/" },
+      { name: "Industries", url: "/industries" },
+      { name: "Banking", url: "/industries/banking" },
+    ],
+    schemaId: "agentclash-industries-banking-schema",
+    searchKeywords:
+      "banking agent evaluation financial services agent eval regulated agent testing replay scorecards release gates challenge packs",
+    sitemapTitle: "Banking agent evaluation",
+    sitemapDescription:
+      "Evaluate financial services agents with replay evidence and release gates.",
+    faqItems: [
+      {
+        question: "Does AgentClash certify banking compliance?",
+        answer:
+          "No. AgentClash provides evaluation evidence, replay, and release gates your team can use in internal approval workflows. Compliance decisions stay with your risk and legal stakeholders.",
+      },
+      {
+        question: "Can we evaluate agents that call internal banking APIs?",
+        answer:
+          "Yes. Challenge packs run agents in sandboxes with your fixtures, tool policy, and validators so candidates face the same constraints.",
+      },
+      {
+        question: "How do teams gate model changes in banking?",
+        answer:
+          "Compare candidate and baseline scorecards in CI, attach replay links to change tickets, and fail merges when correctness or policy checks regress.",
+      },
+    ],
+    relatedLinks: [
+      {
+        title: "Enterprise pilot",
+        text: "Start a governed eval program with replay and gates.",
+        href: "/enterprise",
+      },
+      {
+        title: "Support agent evaluation",
+        text: "Evaluate service workflows with policy checks and replay.",
+        href: "/use-cases/support-agent-evaluation",
+      },
+      {
+        title: "Release gate glossary",
+        text: "What a release gate means in AgentClash.",
+        href: "/glossary/release-gate",
+      },
+      ...sharedDocsLinks,
+    ],
+  }),
+  page({
+    path: "/industries/insurance",
+    tier: "B",
+    keyword: "insurance agent evaluation",
+    intent: "Industry vertical",
+    pageTitle: "Insurance Agent Evaluation for Support and Compliance - AgentClash",
+    metaDescription:
+      "Evaluate insurance support and compliance agents on real claim and policy workflows with replay evidence, scorecards, and regression gates.",
+    socialImageAlt: "AgentClash insurance agent evaluation social preview.",
+    eyebrow: "Industry",
+    h1: "Agent evaluation for insurance support and compliance",
+    heroDescription:
+      "Insurance agents must follow policy, escalate correctly, and leave an auditable trail. AgentClash evaluates full support trajectories and preserves replay when resolution quality or compliance signals regress.",
+    proofSectionTitle: "Insurance eval signals",
+    proofSectionDescription:
+      "Measure policy adherence, escalation behavior, artifact completeness, multilingual quality where needed, and whether the agent finished with a defensible resolution.",
+    workflowSectionTitle: "Insurance eval workflow",
+    docsSectionTitle: "Start with escaped claims",
+    docsSectionDescription:
+      "Promote real claim or policy failures into challenge packs so the same mistake cannot return after a prompt or model update.",
+    faqSectionTitle: "Insurance agent evaluation FAQ",
+    applicationSubCategory: "Insurance agent evaluation software",
+    breadcrumbs: [
+      { name: "Home", url: "/" },
+      { name: "Industries", url: "/industries" },
+      { name: "Insurance", url: "/industries/insurance" },
+    ],
+    schemaId: "agentclash-industries-insurance-schema",
+    searchKeywords:
+      "insurance agent evaluation support agent compliance eval claims workflow replay scorecards challenge packs release gates",
+    sitemapTitle: "Insurance agent evaluation",
+    sitemapDescription:
+      "Evaluate insurance support agents with policy checks and replay.",
+    faqItems: [
+      {
+        question: "Can AgentClash evaluate multi-turn claims conversations?",
+        answer:
+          "Yes. Multi-turn challenge packs support scripted, simulated, and human phases for realistic insurance support flows.",
+      },
+      {
+        question: "How do teams measure policy adherence?",
+        answer:
+          "Challenge packs encode required actions, forbidden tool use, and validator checks so scorecards reflect policy, not just friendly language.",
+      },
+      {
+        question: "Does AgentClash replace compliance sign-off?",
+        answer:
+          "No. AgentClash supplies evaluation evidence and gates. Final compliance and underwriting decisions remain with your organization.",
+      },
+    ],
+    relatedLinks: [
+      {
+        title: "Enterprise pilot",
+        text: "Stand up governed eval for support and compliance agents.",
+        href: "/enterprise",
+      },
+      {
+        title: "Support agent evaluation",
+        text: "Use-case overview for ticket resolution eval.",
+        href: "/use-cases/support-agent-evaluation",
+      },
+      {
+        title: "Challenge pack glossary",
+        text: "How packs encode insurance workflows.",
+        href: "/glossary/challenge-pack",
+      },
+      ...sharedDocsLinks,
+    ],
+  }),
+  page({
+    path: "/industries/government",
+    tier: "B",
+    keyword: "government agent evaluation",
+    intent: "Industry vertical",
+    pageTitle: "Government Agent Evaluation with Audit Trails - AgentClash",
+    metaDescription:
+      "Evaluate public-sector agents with replay evidence, artifact bundles, scorecards, and release gates that support audit-ready review workflows.",
+    socialImageAlt: "AgentClash government agent evaluation social preview.",
+    eyebrow: "Industry",
+    h1: "Agent evaluation for government and public sector",
+    heroDescription:
+      "Public-sector agents need traceable decisions, artifact bundles, and repeatable tests before deployment. AgentClash captures replay evidence and scorecards reviewers can attach to change records.",
+    proofSectionTitle: "Government eval signals",
+    proofSectionDescription:
+      "Track task completion, evidence quality, tool discipline, artifact exports, and whether candidate runs regress against an approved baseline.",
+    workflowSectionTitle: "Government eval workflow",
+    docsSectionTitle: "Build audit-ready packs",
+    docsSectionDescription:
+      "Encode citizen service workflows as challenge packs with validators and replay links your program office can review.",
+    faqSectionTitle: "Government agent evaluation FAQ",
+    applicationSubCategory: "Government agent evaluation software",
+    breadcrumbs: [
+      { name: "Home", url: "/" },
+      { name: "Industries", url: "/industries" },
+      { name: "Government", url: "/industries/government" },
+    ],
+    schemaId: "agentclash-industries-government-schema",
+    searchKeywords:
+      "government agent evaluation public sector agent eval audit trail evidence bundle replay scorecards release gates challenge packs",
+    sitemapTitle: "Government agent evaluation",
+    sitemapDescription:
+      "Evaluate public-sector agents with replay and evidence bundles.",
+    faqItems: [
+      {
+        question: "Can reviewers export evidence from a run?",
+        answer:
+          "Yes. Replay captures tool calls, artifacts, and scorecard dimensions so reviewers can attach evidence to internal change and approval workflows.",
+      },
+      {
+        question: "Does AgentClash guarantee FedRAMP or IL compliance?",
+        answer:
+          "No. AgentClash provides evaluation infrastructure and evidence. Deployment, accreditation, and authority to operate decisions are yours. Enterprise can discuss dedicated deployment during architecture review.",
+      },
+      {
+        question: "How do teams compare vendors or model routes fairly?",
+        answer:
+          "Run every candidate on the same frozen challenge pack with identical tools and budgets, then compare scorecards and replay side by side.",
+      },
+    ],
+    relatedLinks: [
+      {
+        title: "Enterprise pilot",
+        text: "Discuss residency, deployment, and governed eval for public sector.",
+        href: "/enterprise",
+      },
+      {
+        title: "Agent replay feature",
+        text: "Inspect trajectories and artifact bundles after each run.",
+        href: "/features/agent-replay",
+      },
+      {
+        title: "Agent evaluation glossary",
+        text: "Core terms for standing up an eval program.",
+        href: "/glossary/agent-evaluation",
+      },
+      ...sharedDocsLinks,
+    ],
+  }),
+  page({
+    path: "/glossary/agent-evaluation",
+    tier: "B",
+    keyword: "agent evaluation definition",
+    intent: "Glossary",
+    pageTitle: "What Is Agent Evaluation? - AgentClash Glossary",
+    metaDescription:
+      "Agent evaluation runs AI agents on repeatable real tasks, scores full trajectories, and produces replay evidence and scorecards for release decisions.",
+    socialImageAlt: "AgentClash agent evaluation glossary social preview.",
+    eyebrow: "Glossary",
+    h1: "What is agent evaluation?",
+    heroDescription:
+      "Agent evaluation measures whether an AI agent completes a real task correctly under constraint. Unlike prompt tests, it scores the whole trajectory: tools, artifacts, cost, latency, and evidence quality.",
+    proofSectionTitle: "How agent evaluation differs",
+    proofSectionDescription:
+      "Prompt eval checks text from one call. Agent evaluation reruns multi-step work in a sandbox and preserves replay when something fails.",
+    workflowSectionTitle: "Typical eval workflow",
+    docsSectionTitle: "Go deeper",
+    docsSectionDescription:
+      "Read the platform overview, then author a challenge pack for your first repeatable eval.",
+    faqSectionTitle: "Agent evaluation FAQ",
+    applicationSubCategory: "Agent evaluation glossary",
+    breadcrumbs: [
+      { name: "Home", url: "/" },
+      { name: "Glossary", url: "/glossary" },
+      { name: "Agent evaluation", url: "/glossary/agent-evaluation" },
+    ],
+    schemaId: "agentclash-glossary-agent-evaluation-schema",
+    searchKeywords:
+      "agent evaluation definition what is agent evaluation AI agent eval trajectory scoring replay scorecards",
+    sitemapTitle: "Agent evaluation (glossary)",
+    sitemapDescription:
+      "Definition of agent evaluation vs prompt testing.",
+    faqItems: [
+      {
+        question: "Is agent evaluation the same as LLM benchmarking?",
+        answer:
+          "Benchmarks compare models on fixed tasks. Agent evaluation also covers your prompts, tools, harness, and release gates on workloads you own.",
+      },
+      {
+        question: "What outputs does an agent evaluation produce?",
+        answer:
+          "A scorecard, replay of the trajectory, artifacts from the run, and a pass or fail against validators and gates you define.",
+      },
+      {
+        question: "Where should teams start?",
+        answer:
+          "Promote one escaped failure into a challenge pack, establish a baseline run, then compare the next candidate in CI or a benchmark race.",
+      },
+    ],
+    relatedLinks: [
+      {
+        title: "Agent evaluation platform",
+        text: "Product overview for real-task eval.",
+        href: "/platform/agent-evaluation",
+      },
+      {
+        title: "Agent evals landing page",
+        text: "SEO hub for evaluation workflows.",
+        href: "/agent-evals",
+      },
+      {
+        title: "Glossary index",
+        text: "More AgentClash terms.",
+        href: "/glossary",
+      },
+      ...sharedDocsLinks.slice(0, 2),
+    ],
+  }),
+  page({
+    path: "/glossary/challenge-pack",
+    tier: "B",
+    keyword: "challenge pack definition",
+    intent: "Glossary",
+    pageTitle: "What Is a Challenge Pack? - AgentClash Glossary",
+    metaDescription:
+      "A challenge pack is a versioned YAML bundle that defines an agent evaluation task: inputs, tools, sandbox, scoring rules, and pass conditions.",
+    socialImageAlt: "AgentClash challenge pack glossary social preview.",
+    eyebrow: "Glossary",
+    h1: "What is a challenge pack?",
+    heroDescription:
+      "Challenge packs are AgentClash's unit of repeatable agent evaluation. Encode the task once so every model, prompt, or harness change reruns the same workload with the same constraints.",
+    proofSectionTitle: "What packs contain",
+    proofSectionDescription:
+      "Inputs, tool policy, sandbox resources, validators, judges, artifacts, and pass conditions that together define a fair race or regression test.",
+    workflowSectionTitle: "From pack to gate",
+    docsSectionTitle: "Authoring resources",
+    docsSectionDescription:
+      "Use the challenge pack docs and authoring guide to publish your first pack.",
+    faqSectionTitle: "Challenge pack FAQ",
+    applicationSubCategory: "Challenge pack glossary",
+    breadcrumbs: [
+      { name: "Home", url: "/" },
+      { name: "Glossary", url: "/glossary" },
+      { name: "Challenge pack", url: "/glossary/challenge-pack" },
+    ],
+    schemaId: "agentclash-glossary-challenge-pack-schema",
+    searchKeywords:
+      "challenge pack definition agent evaluation YAML pack scoring rules sandbox tools validators",
+    sitemapTitle: "Challenge pack (glossary)",
+    sitemapDescription:
+      "Definition of AgentClash challenge packs.",
+    faqItems: [
+      {
+        question: "How is a challenge pack versioned?",
+        answer:
+          "Packs are versioned YAML bundles in your workspace. Pin a version for benchmarks and CI so comparisons stay reproducible.",
+      },
+      {
+        question: "Can one pack power both benchmarks and CI?",
+        answer:
+          "Yes. The same frozen pack can back a public benchmark race and an internal release gate once your team trusts the scoring rules.",
+      },
+      {
+        question: "Where are examples?",
+        answer:
+          "See example packs in the repository and the challenge pack reference docs for field-by-field authoring.",
+      },
+    ],
+    relatedLinks: [
+      {
+        title: "Challenge packs feature",
+        text: "Feature overview for pack-based eval.",
+        href: "/features/challenge-packs",
+      },
+      {
+        title: "Challenge pack docs",
+        text: "Reference hub for pack authors.",
+        href: "/docs/challenge-packs",
+      },
+      {
+        title: "Benchmarks hub",
+        text: "Public races on frozen packs.",
+        href: "/benchmarks",
+      },
+      ...sharedDocsLinks.slice(1, 3),
+    ],
+  }),
+  page({
+    path: "/glossary/release-gate",
+    tier: "B",
+    keyword: "release gate definition",
+    intent: "Glossary",
+    pageTitle: "What Is a Release Gate? - AgentClash Glossary",
+    metaDescription:
+      "A release gate compares a candidate agent run to a baseline on a challenge pack and blocks promotion when scorecards or validators regress.",
+    socialImageAlt: "AgentClash release gate glossary social preview.",
+    eyebrow: "Glossary",
+    h1: "What is a release gate?",
+    heroDescription:
+      "A release gate is the pass or fail boundary between a candidate agent run and an approved baseline. AgentClash evaluates both on the same pack and fails CI when correctness, cost, or evidence quality regresses.",
+    proofSectionTitle: "What gates enforce",
+    proofSectionDescription:
+      "Scorecard thresholds, validator failures, and baseline comparisons that stop a model or harness change from reaching users.",
+    workflowSectionTitle: "Gate workflow",
+    docsSectionTitle: "Wire gates in CI",
+    docsSectionDescription:
+      "Use the CI/CD agent gates guide to connect manifests, baselines, and pull request checks.",
+    faqSectionTitle: "Release gate FAQ",
+    applicationSubCategory: "Release gate glossary",
+    breadcrumbs: [
+      { name: "Home", url: "/" },
+      { name: "Glossary", url: "/glossary" },
+      { name: "Release gate", url: "/glossary/release-gate" },
+    ],
+    schemaId: "agentclash-glossary-release-gate-schema",
+    searchKeywords:
+      "release gate definition agent release gate CI regression gate baseline candidate scorecard",
+    sitemapTitle: "Release gate (glossary)",
+    sitemapDescription:
+      "Definition of agent release gates and CI regression checks.",
+    faqItems: [
+      {
+        question: "What is a baseline in a release gate?",
+        answer:
+          "A baseline is the approved run you compare against, usually pinned by run ID in a CI manifest after a green eval on main.",
+      },
+      {
+        question: "Can gates run outside CI?",
+        answer:
+          "Yes. Teams also gate manually before production promotion, using the same scorecard and replay evidence produced in CI.",
+      },
+      {
+        question: "How is this different from a linter?",
+        answer:
+          "Linters check static code. Release gates execute the agent on real tasks and score the full trajectory with replay attached.",
+      },
+    ],
+    relatedLinks: [
+      {
+        title: "CI/CD agent evaluation",
+        text: "Landing page for eval in CI.",
+        href: "/ci-cd-agent-evaluation",
+      },
+      {
+        title: "Eval workflows and gates",
+        text: "Docs on baselines and manifests.",
+        href: "/docs/challenge-packs/eval-workflows-and-gates",
+      },
+      {
+        title: "Enterprise pilot",
+        text: "Stand up governed gates with platform support.",
+        href: "/enterprise",
+      },
+      ...sharedDocsLinks.slice(2, 3),
     ],
   }),
   page({

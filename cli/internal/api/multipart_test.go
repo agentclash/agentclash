@@ -53,7 +53,7 @@ func TestPostMultipartSendsContentLengthAndSupportsGetBody(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	client := NewClient(srv.URL, "")
+	client := NewClient(srv.URL, "test-token")
 	payload := strings.Repeat("0123456789", 10_000) // 100 KB, well beyond a header line
 	resp, err := client.PostMultipart(context.Background(), "/upload",
 		map[string]string{"note": "hello"},
