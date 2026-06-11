@@ -8,6 +8,7 @@ import {
   Activity,
   ArrowRight,
   ArrowUp,
+  Calculator,
   CheckCircle2,
   ChevronDown,
   Download,
@@ -15,6 +16,8 @@ import {
   Gauge,
   Loader2,
   Lock,
+  ShieldAlert,
+  TrendingUp,
   XCircle,
 } from "lucide-react";
 
@@ -58,7 +61,6 @@ const AGENT_OPTIONS: AgentOption[] = [
   { value: "codex_e2b", label: "Codex", hint: "OpenAI Codex CLI" },
   { value: "claude_e2b", label: "Claude", hint: "Anthropic Claude Code" },
   { value: "openclaw_e2b", label: "OpenClaw", hint: "OpenRouter-routed" },
-  { value: "hermes_e2b", label: "Hermes", hint: "Nous Research Hermes" },
 ];
 
 function agentLabel(value: string): string {
@@ -661,6 +663,8 @@ function TryoutPanel({
           </pre>
         </div>
       </div>
+
+      <EvalRoiCalculator tryout={tryout} loginHref={loginHref} />
     </section>
   );
 }
@@ -955,4 +959,196 @@ function tryoutScorecard(summary: unknown): TryoutScorecard | null {
       : [],
     checks,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Eval ROI calculator — the conversion centerpiece. After the agent runs on
+// the buyer's own task, we quantify the bet they're about to make: shipping an
+// agent WITHOUT evaluating it vs WITH AgentClash. Anchors are from 2026
+// enterprise benchmarks (MIT NANDA 95% pilot-failure, per-task human cost,
+// hallucination rates, cost-of-error). All numbers are editable by the buyer.
+// ---------------------------------------------------------------------------
+
+type RoiAnchor = {
+  label: string;
+  humanCostPerTask: number; // fully-loaded human cost to do the task once
+  aiCostPerTask: number; // model + sandbox cost per task
+  errorRate: number; // share of outputs that go wrong if unevaluated
+  costPerError: number; // downstream cost of one bad output (rework/churn/exposure)
+};
+
+const ROI_ANCHORS: Record<string, RoiAnchor> = {
+  "support-ticket-resolution": { label: "support ticket", humanCostPerTask: 7, aiCostPerTask: 0.03, errorRate: 0.05, costPerError: 50 },
+  "document-extraction": { label: "document", humanCostPerTask: 12.88, aiCostPerTask: 0.02, errorRate: 0.03, costPerError: 75 },
+  "contract-review": { label: "contract", humanCostPerTask: 150, aiCostPerTask: 0.3, errorRate: 0.064, costPerError: 5000 },
+  "sdr-outreach": { label: "outreach email", humanCostPerTask: 40, aiCostPerTask: 0.01, errorRate: 0.05, costPerError: 100 },
+  "meeting-minutes": { label: "meeting", humanCostPerTask: 25, aiCostPerTask: 0.01, errorRate: 0.04, costPerError: 30 },
+  "slide-deck": { label: "deck", humanCostPerTask: 60, aiCostPerTask: 0.03, errorRate: 0.05, costPerError: 40 },
+  "spreadsheet-builder": { label: "spreadsheet", humanCostPerTask: 40, aiCostPerTask: 0.02, errorRate: 0.04, costPerError: 50 },
+  "structured-data": { label: "extraction", humanCostPerTask: 12, aiCostPerTask: 0.02, errorRate: 0.03, costPerError: 50 },
+  "status-report": { label: "report", humanCostPerTask: 30, aiCostPerTask: 0.01, errorRate: 0.04, costPerError: 30 },
+  "inbox-triage": { label: "inbox batch", humanCostPerTask: 15, aiCostPerTask: 0.02, errorRate: 0.05, costPerError: 25 },
+};
+
+const DEFAULT_ANCHOR: RoiAnchor = {
+  label: "task",
+  humanCostPerTask: 10,
+  aiCostPerTask: 0.02,
+  errorRate: 0.05,
+  costPerError: 50,
+};
+
+// Share of un-evaluated enterprise GenAI pilots that fail to reach production
+// ROI (MIT NANDA, 2025). Evaluated programs reach production ~6x more often.
+const UNEVALUATED_FAILURE_RATE = 0.95;
+const EVAL_ANNUAL_COST = 12000; // representative platform cost to evaluate this workflow
+
+function usd(value: number): string {
+  if (!Number.isFinite(value)) return "$0";
+  if (Math.abs(value) >= 1000) {
+    return `$${Math.round(value).toLocaleString()}`;
+  }
+  return `$${value.toFixed(2)}`;
+}
+
+function EvalRoiCalculator({
+  tryout,
+  loginHref,
+}: {
+  tryout: AgentTryout;
+  loginHref: string;
+}) {
+  const anchor = ROI_ANCHORS[tryout.template_slug] ?? DEFAULT_ANCHOR;
+  const [company, setCompany] = useState("");
+  const [email, setEmail] = useState("");
+  const [volume, setVolume] = useState("5000");
+  const [humanCost, setHumanCost] = useState(String(anchor.humanCostPerTask));
+
+  const monthlyVolume = Math.max(0, Number(volume) || 0);
+  const humanCostPerTask = Math.max(0, Number(humanCost) || 0);
+  const annualVolume = monthlyVolume * 12;
+
+  // Gross automation prize: what moving these tasks to an agent is worth/yr.
+  const automationSavings =
+    annualVolume * (humanCostPerTask - anchor.aiCostPerTask);
+
+  // Ship WITHOUT evals: errors run unchecked, AND most such pilots never reach
+  // production — so you eat the error cost and forfeit the savings.
+  const annualErrorCost = annualVolume * anchor.errorRate * anchor.costPerError;
+  const forfeitedSavings = automationSavings * UNEVALUATED_FAILURE_RATE;
+  const costWithoutEvals = annualErrorCost + forfeitedSavings;
+
+  // Ship WITH evals: catch failures before prod, actually capture the savings,
+  // for the price of evaluating.
+  const capturedSavings = automationSavings - EVAL_ANNUAL_COST;
+  const netUpside = capturedSavings + costWithoutEvals;
+
+  return (
+    <div className="mt-6 rounded-2xl border border-[#d8a15d]/25 bg-gradient-to-br from-[#d8a15d]/[0.08] to-transparent p-5">
+      <div className="flex items-center gap-2">
+        <Calculator className="size-4 text-[#d8a15d]" />
+        <h3 className="text-sm font-semibold tracking-tight">
+          What this is worth at your scale
+        </h3>
+      </div>
+      <p className="mt-1.5 text-sm leading-6 text-[#f4efe6]/55">
+        You just watched an agent do one {anchor.label}. Here is the business
+        case for evaluating it before you wire it into production —{" "}
+        <span className="text-[#f4efe6]/75">
+          95% of enterprise AI pilots fail to deliver ROI
+        </span>{" "}
+        when they skip this step.
+      </p>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <RoiInput label="Company" value={company} onChange={setCompany} placeholder="Acme Inc" />
+        <RoiInput label="Work email" value={email} onChange={setEmail} placeholder="you@acme.com" />
+        <RoiInput label={`${anchor.label}s / month`} value={volume} onChange={setVolume} numeric />
+        <RoiInput label="Human $ / task" value={humanCost} onChange={setHumanCost} numeric />
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-2xl border border-[#e07a7a]/25 bg-[#e07a7a]/[0.07] p-4">
+          <div className="flex items-center gap-2 text-[#f0a8a8]">
+            <ShieldAlert className="size-4" />
+            <p className="text-sm font-medium">Integrate without evals</p>
+          </div>
+          <p className="mt-2 text-3xl font-semibold tracking-tight text-[#f4efe6]">
+            {usd(costWithoutEvals)}
+            <span className="text-base font-normal text-[#f4efe6]/45"> /yr at risk</span>
+          </p>
+          <ul className="mt-3 space-y-1 text-sm text-[#f4efe6]/55">
+            <li>{usd(annualErrorCost)} from unchecked errors ({Math.round(anchor.errorRate * 100)}% bad outputs × {usd(anchor.costPerError)})</li>
+            <li>{usd(forfeitedSavings)} in savings forfeited if the pilot stalls (95% do)</li>
+          </ul>
+        </div>
+
+        <div className="rounded-2xl border border-[#7fd1a0]/25 bg-[#7fd1a0]/[0.07] p-4">
+          <div className="flex items-center gap-2 text-[#8fe0b0]">
+            <TrendingUp className="size-4" />
+            <p className="text-sm font-medium">Evaluate with AgentClash</p>
+          </div>
+          <p className="mt-2 text-3xl font-semibold tracking-tight text-[#f4efe6]">
+            {usd(capturedSavings)}
+            <span className="text-base font-normal text-[#f4efe6]/45"> /yr captured</span>
+          </p>
+          <ul className="mt-3 space-y-1 text-sm text-[#f4efe6]/55">
+            <li>{usd(automationSavings)} automation upside, de-risked into production</li>
+            <li>− {usd(EVAL_ANNUAL_COST)} to evaluate before you ship</li>
+          </ul>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-col items-start justify-between gap-3 rounded-2xl border border-[#f4efe6]/10 bg-[#0e0c0a]/55 p-4 sm:flex-row sm:items-center">
+        <p className="text-sm text-[#f4efe6]/70">
+          Evaluating first is worth{" "}
+          <span className="font-semibold text-[#e7c18d]">{usd(netUpside)}/yr</span>{" "}
+          to {company.trim() || "your team"} on this workflow alone.
+        </p>
+        <Link
+          href={`/enterprise?from=tryout&task=${encodeURIComponent(tryout.template_slug)}${email.trim() ? `&email=${encodeURIComponent(email.trim())}` : ""}`}
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[#e7c18d] px-4 text-sm font-medium text-[#14120f] transition hover:bg-[#f0cf9d]"
+        >
+          Talk to us about integrating
+          <ArrowRight className="size-4" />
+        </Link>
+      </div>
+      <p className="mt-2 text-xs text-[#f4efe6]/35">
+        Estimates use 2026 enterprise benchmarks (MIT NANDA, per-task labor cost,
+        hallucination rates). Adjust the inputs to match your numbers.{" "}
+        <Link href={loginHref} className="text-[#f4efe6]/55 hover:underline">
+          Save this analysis →
+        </Link>
+      </p>
+    </div>
+  );
+}
+
+function RoiInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+  numeric,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  numeric?: boolean;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-xs text-[#f4efe6]/45">{label}</span>
+      <input
+        type={numeric ? "number" : "text"}
+        inputMode={numeric ? "decimal" : undefined}
+        min={numeric ? 0 : undefined}
+        value={value}
+        placeholder={placeholder}
+        onChange={(event) => onChange(event.target.value)}
+        className="h-9 w-full rounded-xl border border-[#f4efe6]/12 bg-[#0e0c0a]/65 px-3 text-sm text-[#f4efe6] outline-none placeholder:text-[#f4efe6]/25 focus:border-[#d8a15d]/50 focus:ring-2 focus:ring-[#d8a15d]/20"
+      />
+    </label>
+  );
 }

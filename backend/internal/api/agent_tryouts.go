@@ -244,7 +244,7 @@ func normalizeSelectedHarnessKind(kind string) (*string, error) {
 	if trimmed == "" {
 		return nil, nil
 	}
-	if !domain.IsSupportedAgentHarnessKind(trimmed) {
+	if !domain.IsPublicSelectableAgentHarnessKind(trimmed) {
 		return nil, fmt.Errorf("%w: unsupported agent %q", ErrInvalidAgentTryoutInput, trimmed)
 	}
 	return &trimmed, nil
@@ -1600,6 +1600,70 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			MaxInputBytes:      32 * 1024,
 			MaxDurationSeconds: 300,
 			MaxCostUSD:         0.75,
+		},
+		// Enterprise eval templates — the highest-budget, fastest-payback agent
+		// use-cases enterprises evaluate before integrating. Each runs on the
+		// generic public sandbox (no per-task worker adapter) and produces an
+		// inspectable JSON artifact the scorecard validates.
+		{
+			Slug:               "support-ticket-resolution",
+			Name:               "Resolve a Support Ticket",
+			Description:        "Draft a grounded customer-support reply, decide whether to escalate, and flag policy/compliance risks — the #1 enterprise agent use-case.",
+			Available:          true,
+			InputSchema:        json.RawMessage(`{"type":"object","required":["ticket"],"additionalProperties":false,"properties":{"ticket":{"type":"string"},"knowledge_base":{"type":"string"},"policy":{"type":"string"}}}`),
+			ToolPolicy:         json.RawMessage(`{"tools":["file_writer"],"sandbox":{"filesystem":"workspace","shell":"disabled"},"network":{"mode":"disabled"},"external_side_effects":false}`),
+			Runtime:            json.RawMessage(`{"adapter":"office_generic_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"reply","type":"markdown","path":"reply.md"},{"key":"resolution","type":"json","path":"resolution.json"}],"instructions":"Resolve the support ticket using only the supplied knowledge base and policy. Write reply.md (the customer-facing reply) and resolution.json with fields: answer (string), escalate (boolean), confidence (number 0-1), citations (array), policy_flags (array). Never invent facts not in the knowledge base.","validation":{"validators":[{"key":"answer","type":"json_field","field":"answer"},{"key":"escalate","type":"json_field","field":"escalate"}],"score_dimensions":["accuracy","escalation","compliance","cost"]}}`),
+			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"answer","type":"json_field","field":"answer"},{"key":"escalate","type":"json_field","field":"escalate"},{"key":"citations","type":"json_field","field":"citations"}],"scorecard":{"dimensions":["accuracy","escalation","compliance","cost"]}}`),
+			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
+			AnonymousEnabled:   true,
+			MaxInputBytes:      96 * 1024,
+			MaxDurationSeconds: 150,
+			MaxCostUSD:         0.3,
+		},
+		{
+			Slug:               "document-extraction",
+			Name:               "Extract Invoice / Document Data",
+			Description:        "Pull structured fields (line items, totals, vendor) from a messy invoice or document and flag exceptions — replaces manual AP data entry.",
+			Available:          true,
+			InputSchema:        json.RawMessage(`{"type":"object","required":["document"],"additionalProperties":false,"properties":{"document":{"type":"string"},"fields":{"type":"string"}}}`),
+			ToolPolicy:         json.RawMessage(`{"tools":["file_writer"],"sandbox":{"filesystem":"workspace","shell":"disabled"},"network":{"mode":"disabled"},"external_side_effects":false}`),
+			Runtime:            json.RawMessage(`{"adapter":"office_generic_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"extracted","type":"json","path":"extracted.json"},{"key":"review","type":"markdown","path":"review.md"}],"instructions":"Extract the requested fields from the document into extracted.json with fields: vendor (string), total (number), currency (string), line_items (array of {description, quantity, amount}), exceptions (array of strings for anything ambiguous or missing). Write review.md summarizing confidence and any exceptions. Do not fabricate values.","validation":{"validators":[{"key":"line_items","type":"json_field","field":"line_items"},{"key":"total","type":"json_field","field":"total"}],"score_dimensions":["accuracy","exceptions","latency","cost"]}}`),
+			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"line_items","type":"json_field","field":"line_items"},{"key":"total","type":"json_field","field":"total"},{"key":"vendor","type":"json_field","field":"vendor"}],"scorecard":{"dimensions":["accuracy","exceptions","latency","cost"]}}`),
+			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
+			AnonymousEnabled:   true,
+			MaxInputBytes:      96 * 1024,
+			MaxDurationSeconds: 150,
+			MaxCostUSD:         0.3,
+		},
+		{
+			Slug:               "contract-review",
+			Name:               "Review a Contract Clause",
+			Description:        "Extract key clauses, surface risks, and propose redlines against a checklist — high-value legal work where hallucination rates run ~6%.",
+			Available:          true,
+			InputSchema:        json.RawMessage(`{"type":"object","required":["contract"],"additionalProperties":false,"properties":{"contract":{"type":"string"},"checklist":{"type":"string"}}}`),
+			ToolPolicy:         json.RawMessage(`{"tools":["file_writer"],"sandbox":{"filesystem":"workspace","shell":"disabled"},"network":{"mode":"disabled"},"external_side_effects":false}`),
+			Runtime:            json.RawMessage(`{"adapter":"office_generic_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"review","type":"json","path":"review.json"},{"key":"summary","type":"markdown","path":"summary.md"}],"instructions":"Review the contract against the checklist. Write review.json with fields: clauses (array of {name, summary, location}), risks (array of {issue, severity, clause}), redlines (array of suggested edits). Write summary.md for a non-lawyer. Quote the contract verbatim for every claim; never invent clauses or citations.","validation":{"validators":[{"key":"clauses","type":"json_field","field":"clauses"},{"key":"risks","type":"json_field","field":"risks"}],"score_dimensions":["accuracy","hallucination","compliance","cost"]}}`),
+			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"clauses","type":"json_field","field":"clauses"},{"key":"risks","type":"json_field","field":"risks"},{"key":"redlines","type":"json_field","field":"redlines"}],"scorecard":{"dimensions":["accuracy","hallucination","compliance","cost"]}}`),
+			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
+			AnonymousEnabled:   true,
+			MaxInputBytes:      128 * 1024,
+			MaxDurationSeconds: 180,
+			MaxCostUSD:         0.5,
+		},
+		{
+			Slug:               "sdr-outreach",
+			Name:               "Qualify a Lead & Draft Outreach",
+			Description:        "Score a prospect against an ideal-customer profile and draft a personalized outbound email — the fastest-payback sales agent use-case.",
+			Available:          true,
+			InputSchema:        json.RawMessage(`{"type":"object","required":["prospect","offer"],"additionalProperties":false,"properties":{"prospect":{"type":"string"},"offer":{"type":"string"},"tone":{"type":"string"}}}`),
+			ToolPolicy:         json.RawMessage(`{"tools":["file_writer"],"sandbox":{"filesystem":"workspace","shell":"disabled"},"network":{"mode":"disabled"},"external_side_effects":false}`),
+			Runtime:            json.RawMessage(`{"adapter":"office_generic_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"email","type":"markdown","path":"email.md"},{"key":"outreach","type":"json","path":"outreach.json"}],"instructions":"Qualify the prospect for the offer and draft outreach. Write outreach.json with fields: subject (string), body (string), qualification (object with fit_score 0-1 and reasons array), personalization (array). Write email.md as the send-ready email. Keep claims grounded in the prospect details provided.","validation":{"validators":[{"key":"subject","type":"json_field","field":"subject"},{"key":"body","type":"json_field","field":"body"}],"score_dimensions":["relevance","tone","deliverability","cost"]}}`),
+			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"subject","type":"json_field","field":"subject"},{"key":"body","type":"json_field","field":"body"},{"key":"qualification","type":"json_field","field":"qualification"}],"scorecard":{"dimensions":["relevance","tone","deliverability","cost"]}}`),
+			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
+			AnonymousEnabled:   true,
+			MaxInputBytes:      64 * 1024,
+			MaxDurationSeconds: 120,
+			MaxCostUSD:         0.25,
 		},
 	}
 }

@@ -8,8 +8,11 @@ name works with zero extra configuration.
 
 ## What's inside
 
-- **Codex CLI** (`@openai/codex`) — the binary the `codex_e2b` runner invokes.
-- Node.js 20, Python 3 + pip.
+- **Agent CLIs** — `codex` (`@openai/codex`), `claude` (`@anthropic-ai/claude-code`),
+  and `openclaw` (`openclaw`). The user picks one per public tryout; the backend
+  routes the matching credential. (Hermes is intentionally excluded — its
+  installer pulls a heavy Chromium + Python venv that bloats cold starts.)
+- Node.js 22, Python 3 + pip.
 - Office document toolchain: `pandoc`, `poppler-utils`, LibreOffice (calc /
   writer / impress), and Python libs (`openpyxl`, `python-docx`,
   `python-pptx`, `pypdf`, `reportlab`, `pandas`, `markdown`, `Pillow`, …).

@@ -40,3 +40,27 @@ func IsSupportedAgentHarnessKind(kind string) bool {
 		return false
 	}
 }
+
+// PublicSelectableAgentHarnessKinds lists the agents end users may pick for a
+// public tryout. It is a subset of the supported kinds, gated by which CLIs are
+// baked into the public sandbox template (infra/e2b/agentclash-tryout-office).
+// Hermes is excluded for now — its installer bloats the image.
+func PublicSelectableAgentHarnessKinds() []string {
+	return []string{
+		AgentHarnessKindCodexE2B,
+		AgentHarnessKindClaudeE2B,
+		AgentHarnessKindOpenClawE2B,
+	}
+}
+
+// IsPublicSelectableAgentHarnessKind reports whether end users may pick kind.
+func IsPublicSelectableAgentHarnessKind(kind string) bool {
+	switch strings.TrimSpace(kind) {
+	case AgentHarnessKindCodexE2B,
+		AgentHarnessKindClaudeE2B,
+		AgentHarnessKindOpenClawE2B:
+		return true
+	default:
+		return false
+	}
+}

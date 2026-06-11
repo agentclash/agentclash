@@ -1,9 +1,10 @@
 # General-purpose office-work sandbox for public agent tryouts.
 #
-# Boots for every public tryout regardless of which agent harness the user
-# picks. It bundles ALL four supported agent CLIs (codex, claude, openclaw,
-# hermes) plus a broad office-document toolchain, so any task + any agent runs
-# without a per-agent image.
+# Boots for every public tryout regardless of which agent the user picks. It
+# bundles the supported agent CLIs (codex, claude, openclaw) plus a broad
+# office-document toolchain, so any task + any agent runs without a per-agent
+# image. (Hermes is intentionally excluded for now — its installer pulls a
+# heavy Chromium + Python venv that bloats cold starts.)
 #
 # Build + publish (see README.md in this directory):
 #   e2b template build --name agentclash-tryout-office
@@ -18,7 +19,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Base OS + document toolchain. pandoc/libreoffice/poppler cover the common
 # office conversions; the python libs cover programmatic doc generation.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        ca-certificates curl git unzip zip jq ripgrep ffmpeg \
+        ca-certificates curl git unzip zip jq ripgrep \
         build-essential \
         python3 python3-pip python3-venv \
         pandoc \
@@ -43,14 +44,6 @@ RUN npm install -g \
     && codex --version \
     && claude --version \
     && openclaw --version
-
-# Hermes (NousResearch) ships only a curl installer. Run as root: it uses the
-# FHS layout (code at /usr/local/lib/hermes-agent, command at
-# /usr/local/bin/hermes) so every sandbox user can invoke `hermes`. It bundles
-# its own uv-managed Python 3.11 venv, so this layer is heavy (~5 min).
-RUN curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash \
-    && chmod -R a+rX /usr/local/lib/hermes-agent /usr/local/share/uv 2>/dev/null || true \
-    && /usr/local/bin/hermes --version
 
 # Python office-document libraries for programmatic generation/parsing.
 RUN pip3 install --no-cache-dir \
