@@ -248,6 +248,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.78,
       images: [ogImage({ title: "Agent Evaluation Features", kind: "SEO" })],
     },
+    {
+      url: `${DOCS_ORIGIN}/industries`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.78,
+      images: [ogImage({ title: "Agent Evaluation by Industry", kind: "SEO" })],
+    },
+    {
+      url: `${DOCS_ORIGIN}/glossary`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.78,
+      images: [ogImage({ title: "Agent Evaluation Glossary", kind: "SEO" })],
+    },
     ...SEO_PAGE_REGISTRY.map((page) => ({
       url: `${DOCS_ORIGIN}${page.path}`,
       lastModified: new Date(),
