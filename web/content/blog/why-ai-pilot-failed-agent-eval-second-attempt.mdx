@@ -1,0 +1,97 @@
+---
+title: "Why Your AI Pilot Failed (and How Eval Fixes the Second Attempt)"
+date: "2026-06-12"
+description: "Most AI agent pilots fail on workload mismatch, missing baselines, and unreviewable evidence. How to redesign the second attempt with governed benchmarks and replay."
+author: "Atharva"
+---
+
+The first AI agent pilot rarely fails because the model is "bad." It fails because the team optimized for a demo shape that does not survive contact with production.
+
+Second attempts win when they replace enthusiasm with a **repeatable benchmark loop**: frozen workload, baseline comparison, replay evidence, and a gate verdict everyone can inspect.
+
+## The four failure modes we see in first pilots
+
+### 1. Wrong workload
+
+The pilot used generic public tasks while production needs your repo layout, tools, approvals, and failure recovery. Scores looked fine. Shipped behavior did not.
+
+**Fix:** Encode one shippable workflow in a [challenge pack](/docs/guides/write-a-challenge-pack) with validators tied to tests or artifacts, not final-string matching.
+
+### 2. No baseline
+
+Teams compared candidates to vibes or to a vendor slide. When the pilot "succeeded," nobody could prove what improved or regressed.
+
+**Fix:** Pin a baseline deployment and re-run every candidate against it. Record the green run as the reference for CI.
+
+### 3. Evidence nobody trusts
+
+Security and engineering got chat transcripts or aggregate eval scores without trajectory proof. Disagreements ended in meetings, not diffs.
+
+**Fix:** Capture replay with tool calls, artifacts, routing, cost, and latency. Use the compare view to show *why* one agent won.
+
+### 4. No path from pilot to production
+
+The pilot ended with a recommendation deck. Production kept shipping agent changes without re-running the workload.
+
+**Fix:** Promote the pilot benchmark into [CI/CD agent evaluation](/ci-cd-agent-evaluation) with a manifest gate. See [AI agent regression testing](/platform/agent-regression-testing) for the regression layer.
+
+## Redesign the second attempt as a benchmark decision
+
+Use the enterprise buyer loop as your pilot template:
+
+1. **Monday problem:** name the release decision (for example, coding agent RC vs production baseline).
+2. **Freeze once:** challenge pack version, input set, tool policy, gate thresholds.
+3. **Race fairly:** baseline, candidate, and any vendors under the same sandbox contract.
+4. **Watch live:** routing fallbacks, tool efficiency, cost drift, sandbox failures.
+5. **Decide with replay:** open divergences, attach scorecard, export evidence bundle.
+6. **Close the loop:** block or ship with a named reason; promote failures into regression cases.
+
+That is the difference between "the pilot felt good" and "the gate failed on recovery reliability after a model fallback."
+
+## Failure-mode worksheet (use in your pilot retro)
+
+| Pilot symptom | Likely root cause | Second-attempt action |
+| --- | --- | --- |
+| Great demo, bad staging | Workload mismatch | New case from staging incident |
+| Inconsistent scores across days | Unfrozen pack or warm state | Pin pack version; independent sandboxes per attempt |
+| Security slow-walked approval | No audit artifact | Gate summary + replay bundle |
+| Vendor looked best | Black-box lane without evidence tier | Label tiers (`hosted_black_box` vs `native_structured`); gate native workloads on structured replay |
+| Team lost interest | No CI handoff | Manifest gate on agent repo |
+
+## How eval compounds after the second run
+
+Every meaningful miss becomes a case. Every case becomes a regression. Every regression tightens the next gate.
+
+Wire the manifest when the second benchmark goes green:
+
+```bash
+agentclash ci init .agentclash/ci.yaml
+agentclash ci validate .agentclash/ci.yaml --remote
+```
+
+Full recipe: [CI/CD agent gates](/docs/guides/ci-cd-agent-gates).
+
+## FAQ
+
+### Should we rerun the same pilot with a better model?
+
+Only if the workload was right the first time. If the workload was wrong, a better model just fails faster on the wrong test.
+
+### How long should the second attempt take?
+
+Many platform teams freeze the first real task in one sprint and gate CI in the next. [Benchmark & Gate Setup](/services) is available if you want hands-on help.
+
+### What metric should executives see?
+
+One gate verdict plus three deltas vs baseline: correctness, cost per success, and median latency. Link replay for the case that drove the call.
+
+## Next step
+
+Restarting after a stalled pilot? Start the [enterprise pilot](/enterprise) and rerun your workload as a governed benchmark with replay and gate export.
+
+## Related resources
+
+- [Enterprise pilot](/enterprise)
+- [CI/CD agent evaluation](/ci-cd-agent-evaluation)
+- [AI agent regression testing](/platform/agent-regression-testing)
+- [Write a challenge pack](/docs/guides/write-a-challenge-pack)

@@ -1,0 +1,124 @@
+---
+title: "The AI Platform Lead's Guide to Agent Release Gates"
+date: "2026-06-11"
+description: "Release gates for AI agents need frozen workloads, baseline comparison, replay evidence, and CI handoff. A guide for platform leads shipping governed agent systems."
+author: "Atharva"
+---
+
+Platform leads own the unglamorous question: **can this agent revision go to production without a war room next Tuesday?**
+
+A release gate turns that question into a machine-checkable contract instead of a calendar hold and a prayer.
+
+## Release gates are not prompt checks
+
+Prompt diff tools excel when the only variable is text. Agent releases change more than prompts:
+
+- tool bindings and permissions
+- model aliases and routing fallbacks
+- harness code and retry policy
+- sandbox images and network policy
+- output schemas and guardrails
+
+A gate must name the **full agent system under test**, the **workload**, the **baseline**, and the **fail policy**. Anything less becomes a false green.
+
+```text
+agent build/deployment = thing under test
+challenge pack/regression suite = workload
+release gate = decision policy
+```
+
+That separation is how [CI/CD agent gates](/docs/guides/ci-cd-agent-gates) are documented. Treat the manifest as the contract your platform team and release committee both read.
+
+## The gate workflow platform leads actually run
+
+### 1. Define the benchmark decision once
+
+Select for this release train:
+
+- workspace and owners
+- challenge pack version (frozen)
+- input set approved for the period
+- production baseline deployment
+- release candidate deployment
+- optional vendor agents under evaluation
+
+Attach numeric policy: max correctness regression, cost ceiling, latency and TTFT bounds, automatic fail on security-policy violations.
+
+This is the "Monday morning release problem" from the enterprise buyer story: the candidate claims lower cost and better patch quality. The gate exists so you do not ship on demo optics.
+
+### 2. Run in a frozen environment
+
+Provision sandboxes with the same tool policy for every lane. Mark evidence tier for hosted agents so compare views stay honest.
+
+During the run, platform leads watch what changes decisions: routing fallbacks after rate limits, skipped tool use, recovery paths, token cost, sandbox failures.
+
+### 3. Open replay, not just dashboards
+
+When the run finishes, reviewers need decision-shaped replay:
+
+- where candidate diverged from baseline
+- which tool path changed
+- when latency spiked or the route changed models
+- whether artifacts match release policy
+
+Replay is the explanation layer for stakeholders who will not read raw traces.
+
+### 4. Read the compare view and gate verdict
+
+The compare screen should answer: who wins on correctness, cost, latency, reliability, and evidence completeness?
+
+The gate verdict should answer: **ship or block**, with the dimension that failed.
+
+Example from the enterprise narrative: candidate beats baseline on cost but fails the gate because correctness regressed on a critical challenge family and TTFT exceeded policy after a routing fallback. That is a defensible block.
+
+## Wire the gate into CI
+
+Ad hoc benchmarks rot. Promote the approved workload into a repo-tracked manifest and run it on pull requests that touch agent surfaces.
+
+AgentClash CI gates compare candidate runs against a locked baseline and emit artifacts your pipeline can fail on. Product overview: [CI/CD agent evaluation](/ci-cd-agent-evaluation). Implementation: [CI/CD agent gates](/docs/guides/ci-cd-agent-gates).
+
+Minimum GitHub Actions handoff (see the [CI/CD agent gates](/docs/guides/ci-cd-agent-gates) sketch):
+
+1. `agentclash ci validate .agentclash/ci.yaml --remote` on manifest changes
+2. `agentclash ci should-run --manifest .agentclash/ci.yaml` on path filters
+3. `agentclash ci run --manifest .agentclash/ci.yaml --artifact-dir agentclash-artifacts` when matched; nonzero exit codes block merge
+4. Upload `agentclash-artifacts/gate.json`, scorecard JSON, and replay links to the PR (the bundled `agentclash-ci` action handles this)
+
+Regression promotion policy belongs in the same manifest so failed cases become coverage instead of Slack archaeology.
+
+## Release gate checklist
+
+- [ ] Manifest checked into `.agentclash/ci.yaml`
+- [ ] Baseline run ID with refresh and max-age rules
+- [ ] Gate `fail_on` matches release committee language
+- [ ] Scorecard dimensions map to policy (not ad hoc after the run)
+- [ ] Replay links attached to PR or change ticket
+- [ ] Hosted agents labeled by evidence tier
+- [ ] Owner named for baseline refresh and gate exceptions
+
+Pair gates with [AI agent regression testing](/platform/agent-regression-testing) so production misses flow back into the workload.
+
+## FAQ
+
+### When should a gate block vs warn?
+
+Block on correctness regression, policy violations, and hard cost or latency ceilings. Warn on exploratory metrics while the workload is still stabilizing. Document the mode in the manifest so CI behavior matches committee expectations.
+
+### How do we gate vendor agents we do not control?
+
+Run them in the same challenge pack with explicit evidence tier limits. Use compare for procurement; use native replay for production gates when policy requires full trajectory evidence.
+
+### What is the fastest path to a first gate?
+
+Freeze one real task as a challenge pack, record a baseline run, init the CI manifest, and gate a single agent repo. The [enterprise pilot](/enterprise) includes a 45-day Team pilot to run this loop self-serve.
+
+## Next step
+
+Platform lead shipping agent revisions this quarter? Start the [enterprise pilot](/enterprise) or ask about a [Benchmark & Gate Setup](/services) sprint for manifest and gate wiring.
+
+## Related resources
+
+- [CI/CD agent gates](/docs/guides/ci-cd-agent-gates)
+- [CI/CD agent evaluation](/ci-cd-agent-evaluation)
+- [AI agent regression testing](/platform/agent-regression-testing)
+- [Enterprise pilot](/enterprise)
