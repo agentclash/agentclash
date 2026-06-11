@@ -63,7 +63,7 @@ const offerings = [
 const guardrails = [
   "Every engagement produces artifacts in your AgentClash workspace: packs, baselines, gates, or CI handoff.",
   "We do not run black-box evals outside your tenancy. You own the packs and the evidence.",
-  "Services accelerate platform adoption. The 45-day Team pilot on /enterprise is still the default starting path.",
+  "Services are paid engagements. The free 45-day Team pilot is still the default path if you want to self-serve first.",
   "No vague SOWs. Each package above has a fixed duration and named deliverable.",
 ];
 
@@ -119,6 +119,11 @@ const faqItems = [
     question: "What do you need before discovery?",
     answer:
       "A short description of the agent workflow, one or two real failure examples, and who signs the release decision. We handle the rest on the first call.",
+  },
+  {
+    question: "Are services free?",
+    answer:
+      "No. The four packages above are paid, fixed-scope engagements. The discovery call is free. Product access starts free on the Team pilot and paid tiers on the pricing page.",
   },
 ];
 
@@ -184,6 +189,16 @@ export default function ServicesPage() {
             frozen challenge packs, baseline evidence, and CI gates in your
             workspace. Fixed offerings, not open-ended consulting.
           </p>
+          <p className="mt-4 max-w-[58ch] text-sm leading-6 text-white/45">
+            These packages are paid engagements, scoped after discovery. The{" "}
+            <Link
+              href="/enterprise"
+              className="text-white/65 underline decoration-white/20 underline-offset-4 transition-colors hover:text-white/85"
+            >
+              Team pilot
+            </Link>{" "}
+            is free self-serve product access if you want to start on your own.
+          </p>
           <EnterprisePageCTA className="mt-10" />
         </div>
       </section>
@@ -195,8 +210,9 @@ export default function ServicesPage() {
             Four fixed packages
           </h2>
           <p className="mt-5 max-w-[56ch] text-base leading-7 text-white/55">
-            Each engagement ends with customer-owned artifacts in your
-            workspace. Pick the scope that matches where you are today.
+            Each package is a paid, fixed-scope engagement that ends with
+            customer-owned artifacts in your workspace. We quote scope on
+            discovery; no public rate card.
           </p>
           <ul className="mt-14 grid gap-px overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.08] sm:grid-cols-2">
             {offerings.map((offering) => (
@@ -252,8 +268,8 @@ export default function ServicesPage() {
             What we capture on the first call
           </h2>
           <p className="mt-5 max-w-[56ch] text-base leading-7 text-white/55">
-            A 30-minute discovery maps your agents to the right package. Bring
-            what you have; we structure the benchmark plan.
+            A free 30-minute discovery maps your agents to the right package and
+            quotes scope. Bring what you have; we structure the benchmark plan.
           </p>
           <ul className="mt-10 grid gap-3 sm:grid-cols-2">
             {intakeFields.map((field) => (
