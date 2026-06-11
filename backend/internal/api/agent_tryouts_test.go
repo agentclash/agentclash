@@ -965,6 +965,7 @@ type fakeAgentTryoutRepository struct {
 	hostedSpendUSD      float64
 	runEvents           []repository.RunEvent
 	tryoutEvents        []repository.AgentTryoutEvent
+	tryoutTurns         []repository.AgentTryoutTurn
 	runEventsErr        error
 	artifacts           []repository.Artifact
 	artifactsErr        error
@@ -1032,6 +1033,20 @@ func (r *fakeAgentTryoutRepository) RecordAgentTryoutEvent(_ context.Context, pa
 	}
 	r.tryoutEvents = append(r.tryoutEvents, event)
 	return event, nil
+}
+
+func (r *fakeAgentTryoutRepository) AppendAgentTryoutTurn(_ context.Context, params repository.AppendAgentTryoutTurnParams) (repository.AgentTryoutTurn, error) {
+	turn := repository.AgentTryoutTurn{
+		ID:            int64(len(r.tryoutTurns) + 1),
+		AgentTryoutID: params.AgentTryoutID,
+		TurnIndex:     int32(len(r.tryoutTurns)),
+		Role:          params.Role,
+		Message:       params.Message,
+		Status:        "pending",
+		CreatedAt:     time.Now().UTC(),
+	}
+	r.tryoutTurns = append(r.tryoutTurns, turn)
+	return turn, nil
 }
 
 func (r *fakeAgentTryoutRepository) ListArtifactsByRunID(_ context.Context, runID uuid.UUID) ([]repository.Artifact, error) {
@@ -1387,6 +1402,46 @@ func (s *fakeAgentTryoutService) CreateAnonymousTryout(_ context.Context, input 
 		return repository.AgentTryout{}, s.createAnonymousErr
 	}
 	return s.tryout, nil
+}
+
+func (s *fakeAgentTryoutService) SubmitAnonymousTryoutTurn(_ context.Context, _ uuid.UUID, _ SubmitAgentTryoutTurnInput) error {
+	return nil
+}
+
+func TestSubmitAnonymousTryoutTurnValidatesAndAppends(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	publicID := uuid.New()
+	repo.tryouts[publicID] = repository.AgentTryout{ID: publicID, Status: repository.AgentTryoutStatusRunning}
+
+	// Empty message rejected.
+	if err := manager.SubmitAnonymousTryoutTurn(ctx, publicID, SubmitAgentTryoutTurnInput{}); err == nil {
+		t.Fatal("expected error for empty message")
+	}
+	// Valid user turn appended.
+	if err := manager.SubmitAnonymousTryoutTurn(ctx, publicID, SubmitAgentTryoutTurnInput{Message: "hello agent"}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// End signal appended without a message.
+	if err := manager.SubmitAnonymousTryoutTurn(ctx, publicID, SubmitAgentTryoutTurnInput{End: true}); err != nil {
+		t.Fatalf("unexpected end error: %v", err)
+	}
+	if len(repo.tryoutTurns) != 2 {
+		t.Fatalf("turns appended = %d, want 2", len(repo.tryoutTurns))
+	}
+	if repo.tryoutTurns[0].Role != "user" || repo.tryoutTurns[1].Role != "system_end" {
+		t.Fatalf("unexpected roles: %q / %q", repo.tryoutTurns[0].Role, repo.tryoutTurns[1].Role)
+	}
+
+	// Workspace-owned tryout is not reachable on the public turn path.
+	wsID := uuid.New()
+	workspace := uuid.New()
+	repo.tryouts[wsID] = repository.AgentTryout{ID: wsID, WorkspaceID: &workspace, Status: repository.AgentTryoutStatusRunning}
+	if err := manager.SubmitAnonymousTryoutTurn(ctx, wsID, SubmitAgentTryoutTurnInput{Message: "x"}); err == nil {
+		t.Fatal("expected workspace-owned tryout to be rejected on public turn path")
+	}
 }
 
 func (s *fakeAgentTryoutService) CreateWorkspaceTryout(context.Context, Caller, CreateWorkspaceAgentTryoutInput) (repository.AgentTryout, error) {

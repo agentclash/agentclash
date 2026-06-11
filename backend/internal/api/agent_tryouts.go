@@ -64,6 +64,7 @@ type AgentTryoutRepository interface {
 	GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
 	ListRunEventsByRunIDAfter(ctx context.Context, runID uuid.UUID, afterID int64, limit int32) ([]repository.RunEvent, error)
 	ListAgentTryoutEventsAfter(ctx context.Context, tryoutID uuid.UUID, afterID int64, limit int32) ([]repository.AgentTryoutEvent, error)
+	AppendAgentTryoutTurn(ctx context.Context, params repository.AppendAgentTryoutTurnParams) (repository.AgentTryoutTurn, error)
 	ListArtifactsByRunID(ctx context.Context, runID uuid.UUID) ([]repository.Artifact, error)
 	ListAgentTryoutsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.AgentTryout, error)
 	LinkAgentTryoutRunIfUnset(ctx context.Context, params repository.LinkAgentTryoutRunParams) (repository.AgentTryout, error)
@@ -78,6 +79,7 @@ type AgentTryoutRepository interface {
 type AgentTryoutService interface {
 	ListTemplates(ctx context.Context) ([]AgentTryoutTemplate, error)
 	CreateAnonymousTryout(ctx context.Context, input CreateAnonymousAgentTryoutInput) (repository.AgentTryout, error)
+	SubmitAnonymousTryoutTurn(ctx context.Context, id uuid.UUID, input SubmitAgentTryoutTurnInput) error
 	CreateWorkspaceTryout(ctx context.Context, caller Caller, input CreateWorkspaceAgentTryoutInput) (repository.AgentTryout, error)
 	GetPublicTryout(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
 	GetWorkspaceTryout(ctx context.Context, caller Caller, id uuid.UUID) (repository.AgentTryout, error)
@@ -116,6 +118,13 @@ type CreateAnonymousAgentTryoutInput struct {
 	SelectedHarnessKind  string
 	AnonymousFingerprint string
 	Now                  time.Time
+}
+
+// SubmitAgentTryoutTurnInput is a user message in an interactive tryout chat.
+// End=true closes the session instead of sending a message.
+type SubmitAgentTryoutTurnInput struct {
+	Message string
+	End     bool
 }
 
 type CreateWorkspaceAgentTryoutInput struct {
@@ -324,6 +333,44 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 		return repository.AgentTryout{}, err
 	}
 	return m.dispatchCreatedTryout(ctx, tryout, template)
+}
+
+// SubmitAnonymousTryoutTurn appends a user message (or an end signal) to a
+// public interactive tryout. The long-running session activity claims pending
+// turns and replies via the agent. Only public, still-active tryouts accept it.
+func (m *AgentTryoutManager) SubmitAnonymousTryoutTurn(ctx context.Context, id uuid.UUID, input SubmitAgentTryoutTurnInput) error {
+	tryout, err := m.repo.GetAgentTryoutByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if tryout.WorkspaceID != nil {
+		return repository.ErrAgentTryoutNotFound
+	}
+	if tryout.Status != repository.AgentTryoutStatusRunning &&
+		tryout.Status != repository.AgentTryoutStatusQueued {
+		return fmt.Errorf("%w: this tryout session is no longer active", ErrInvalidAgentTryoutInput)
+	}
+	role := "user"
+	message := strings.TrimSpace(input.Message)
+	if input.End {
+		role = "system_end"
+		message = ""
+	} else {
+		if message == "" {
+			return fmt.Errorf("%w: message is required", ErrInvalidAgentTryoutInput)
+		}
+		if len(message) > maxAgentTryoutTurnBytes {
+			return fmt.Errorf("%w: message exceeds %d bytes", ErrInvalidAgentTryoutInput, maxAgentTryoutTurnBytes)
+		}
+	}
+	if _, err := m.repo.AppendAgentTryoutTurn(ctx, repository.AppendAgentTryoutTurnParams{
+		AgentTryoutID: id,
+		Role:          role,
+		Message:       message,
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (m *AgentTryoutManager) CreateWorkspaceTryout(ctx context.Context, caller Caller, input CreateWorkspaceAgentTryoutInput) (repository.AgentTryout, error) {
@@ -1003,6 +1050,7 @@ type agentTryoutShareResponse struct {
 func registerPublicAgentTryoutRoutes(router chi.Router, logger *slog.Logger, service AgentTryoutService) {
 	router.Get("/agent-tryout-templates", listAgentTryoutTemplatesHandler(logger, service))
 	router.Post("/agent-tryouts", createAnonymousAgentTryoutHandler(logger, service))
+	router.Post("/agent-tryouts/{tryoutID}/turns", submitAnonymousAgentTryoutTurnHandler(logger, service))
 	router.Get("/agent-tryouts/{tryoutID}", getPublicAgentTryoutHandler(logger, service))
 	router.Get("/agent-tryouts/{tryoutID}/events", getPublicAgentTryoutEventsHandler(logger, service))
 	router.Get("/agent-tryouts/shared/{token}/events", getSharedAgentTryoutEventsHandler(logger, service))
@@ -1051,6 +1099,36 @@ func createAnonymousAgentTryoutHandler(logger *slog.Logger, service AgentTryoutS
 			return
 		}
 		writeJSON(w, http.StatusCreated, mapPublicAgentTryoutResponse(tryout))
+	}
+}
+
+const maxAgentTryoutTurnBytes = 16 * 1024
+
+type submitAgentTryoutTurnRequest struct {
+	Message string `json:"message"`
+	End     bool   `json:"end,omitempty"`
+}
+
+func submitAnonymousAgentTryoutTurnHandler(logger *slog.Logger, service AgentTryoutService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(chi.URLParam(r, "tryoutID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_tryout_id", "tryout_id must be a UUID")
+			return
+		}
+		var req submitAgentTryoutTurnRequest
+		if err := decodeAgentTryoutJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+			return
+		}
+		if err := service.SubmitAnonymousTryoutTurn(r.Context(), id, SubmitAgentTryoutTurnInput{
+			Message: req.Message,
+			End:     req.End,
+		}); err != nil {
+			writeAgentTryoutError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]string{"status": "submitted"})
 	}
 }
 

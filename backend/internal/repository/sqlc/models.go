@@ -108,6 +108,17 @@ type AgentTryoutEvent struct {
 	Payload        []byte
 }
 
+type AgentTryoutTurn struct {
+	ID            int64
+	AgentTryoutID uuid.UUID
+	TurnIndex     int32
+	Role          string
+	Message       string
+	Status        string
+	CreatedAt     pgtype.Timestamptz
+	ProcessedAt   pgtype.Timestamptz
+}
+
 type BillingAccount struct {
 	ID             uuid.UUID
 	OrganizationID uuid.UUID

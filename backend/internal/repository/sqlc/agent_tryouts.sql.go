@@ -12,6 +12,51 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const appendAgentTryoutTurn = `-- name: AppendAgentTryoutTurn :one
+WITH next_turn AS (
+    SELECT COALESCE(MAX(turn_index), -1) + 1 AS turn_index
+    FROM agent_tryout_turns
+    WHERE agent_tryout_id = $1
+)
+INSERT INTO agent_tryout_turns (
+    agent_tryout_id,
+    turn_index,
+    role,
+    message,
+    status
+)
+SELECT
+    $1,
+    next_turn.turn_index,
+    $2,
+    $3,
+    'pending'
+FROM next_turn
+RETURNING id, agent_tryout_id, turn_index, role, message, status, created_at, processed_at
+`
+
+type AppendAgentTryoutTurnParams struct {
+	AgentTryoutID uuid.UUID
+	Role          string
+	Message       string
+}
+
+func (q *Queries) AppendAgentTryoutTurn(ctx context.Context, arg AppendAgentTryoutTurnParams) (AgentTryoutTurn, error) {
+	row := q.db.QueryRow(ctx, appendAgentTryoutTurn, arg.AgentTryoutID, arg.Role, arg.Message)
+	var i AgentTryoutTurn
+	err := row.Scan(
+		&i.ID,
+		&i.AgentTryoutID,
+		&i.TurnIndex,
+		&i.Role,
+		&i.Message,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ProcessedAt,
+	)
+	return i, err
+}
+
 const claimAgentTryout = `-- name: ClaimAgentTryout :one
 UPDATE agent_tryouts
 SET
@@ -74,6 +119,59 @@ func (q *Queries) ClaimAgentTryout(ctx context.Context, arg ClaimAgentTryoutPara
 		&i.SelectedHarnessKind,
 	)
 	return i, err
+}
+
+const claimNextPendingAgentTryoutTurn = `-- name: ClaimNextPendingAgentTryoutTurn :one
+UPDATE agent_tryout_turns
+SET status = 'processing'
+WHERE id = (
+    SELECT pending.id
+    FROM agent_tryout_turns AS pending
+    WHERE pending.agent_tryout_id = $1
+      AND pending.status = 'pending'
+    ORDER BY pending.id ASC
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING id, agent_tryout_id, turn_index, role, message, status, created_at, processed_at
+`
+
+type ClaimNextPendingAgentTryoutTurnParams struct {
+	AgentTryoutID uuid.UUID
+}
+
+func (q *Queries) ClaimNextPendingAgentTryoutTurn(ctx context.Context, arg ClaimNextPendingAgentTryoutTurnParams) (AgentTryoutTurn, error) {
+	row := q.db.QueryRow(ctx, claimNextPendingAgentTryoutTurn, arg.AgentTryoutID)
+	var i AgentTryoutTurn
+	err := row.Scan(
+		&i.ID,
+		&i.AgentTryoutID,
+		&i.TurnIndex,
+		&i.Role,
+		&i.Message,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ProcessedAt,
+	)
+	return i, err
+}
+
+const countPendingAgentTryoutTurns = `-- name: CountPendingAgentTryoutTurns :one
+SELECT COUNT(*)
+FROM agent_tryout_turns
+WHERE agent_tryout_id = $1
+  AND status = 'pending'
+`
+
+type CountPendingAgentTryoutTurnsParams struct {
+	AgentTryoutID uuid.UUID
+}
+
+func (q *Queries) CountPendingAgentTryoutTurns(ctx context.Context, arg CountPendingAgentTryoutTurnsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPendingAgentTryoutTurns, arg.AgentTryoutID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createAgentTryout = `-- name: CreateAgentTryout :one
@@ -353,6 +451,21 @@ func (q *Queries) ListAgentTryoutsByWorkspaceID(ctx context.Context, arg ListAge
 		return nil, err
 	}
 	return items, nil
+}
+
+const markAgentTryoutTurnProcessed = `-- name: MarkAgentTryoutTurnProcessed :exec
+UPDATE agent_tryout_turns
+SET status = 'done', processed_at = now()
+WHERE id = $1
+`
+
+type MarkAgentTryoutTurnProcessedParams struct {
+	ID int64
+}
+
+func (q *Queries) MarkAgentTryoutTurnProcessed(ctx context.Context, arg MarkAgentTryoutTurnProcessedParams) error {
+	_, err := q.db.Exec(ctx, markAgentTryoutTurnProcessed, arg.ID)
+	return err
 }
 
 const recordAgentTryoutEvent = `-- name: RecordAgentTryoutEvent :one

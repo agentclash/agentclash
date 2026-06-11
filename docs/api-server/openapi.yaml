@@ -5167,6 +5167,42 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/agent-tryouts/{id}/turns:
+    post:
+      operationId: submitAnonymousAgentTryoutTurn
+      summary: Send a chat turn to a live anonymous agent tryout session
+      tags: [AgentTryouts]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  description: User message for the agent. Required unless end=true.
+                end:
+                  type: boolean
+                  description: Close the interactive session instead of sending a message.
+      responses:
+        "202":
+          description: Turn submitted; the session activity will process it.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/agent-tryouts/{id}:
     get:
       operationId: getPublicAgentTryout

@@ -11,11 +11,13 @@ import (
 )
 
 type Querier interface {
+	AppendAgentTryoutTurn(ctx context.Context, arg AppendAgentTryoutTurnParams) (AgentTryoutTurn, error)
 	ApplyHostedRunEvent(ctx context.Context, arg ApplyHostedRunEventParams) (HostedRunExecution, error)
 	ArchiveDataset(ctx context.Context, arg ArchiveDatasetParams) (Dataset, error)
 	AttachRunToEvalSession(ctx context.Context, arg AttachRunToEvalSessionParams) (Run, error)
 	BeginBillingWebhookEvent(ctx context.Context, arg BeginBillingWebhookEventParams) (string, error)
 	ClaimAgentTryout(ctx context.Context, arg ClaimAgentTryoutParams) (AgentTryout, error)
+	ClaimNextPendingAgentTryoutTurn(ctx context.Context, arg ClaimNextPendingAgentTryoutTurnParams) (AgentTryoutTurn, error)
 	CountActiveOrgMembers(ctx context.Context, arg CountActiveOrgMembersParams) (int32, error)
 	CountActiveWorkspaceRuns(ctx context.Context, arg CountActiveWorkspaceRunsParams) (int32, error)
 	CountActiveWorkspaces(ctx context.Context, arg CountActiveWorkspacesParams) (int32, error)
@@ -25,6 +27,7 @@ type Querier interface {
 	CountDatasetGenerationRejectionsByJobID(ctx context.Context, arg CountDatasetGenerationRejectionsByJobIDParams) (int64, error)
 	CountDatasetTraceCandidates(ctx context.Context, arg CountDatasetTraceCandidatesParams) (int64, error)
 	CountDatasetsByWorkspaceID(ctx context.Context, arg CountDatasetsByWorkspaceIDParams) (int64, error)
+	CountPendingAgentTryoutTurns(ctx context.Context, arg CountPendingAgentTryoutTurnsParams) (int64, error)
 	CountRegressionCasesBySuiteID(ctx context.Context, arg CountRegressionCasesBySuiteIDParams) (int64, error)
 	CountRegressionCasesBySuiteIDs(ctx context.Context, arg CountRegressionCasesBySuiteIDsParams) ([]CountRegressionCasesBySuiteIDsRow, error)
 	CountRegressionCasesByWorkspaceID(ctx context.Context, arg CountRegressionCasesByWorkspaceIDParams) (int64, error)
@@ -168,6 +171,7 @@ type Querier interface {
 	ListVibeEvalDraftsByConversationID(ctx context.Context, arg ListVibeEvalDraftsByConversationIDParams) ([]VibeEvalDraft, error)
 	LockActiveDatasetForVersion(ctx context.Context, arg LockActiveDatasetForVersionParams) (uuid.UUID, error)
 	MarkAgentBuildVersionReady(ctx context.Context, arg MarkAgentBuildVersionReadyParams) error
+	MarkAgentTryoutTurnProcessed(ctx context.Context, arg MarkAgentTryoutTurnProcessedParams) error
 	MarkBillingCheckoutIntentCompleted(ctx context.Context, arg MarkBillingCheckoutIntentCompletedParams) (int64, error)
 	MarkDatasetTraceCandidatePromotedIfPending(ctx context.Context, arg MarkDatasetTraceCandidatePromotedIfPendingParams) (DatasetTraceCandidate, error)
 	MarkHostedRunExecutionAccepted(ctx context.Context, arg MarkHostedRunExecutionAcceptedParams) (HostedRunExecution, error)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
@@ -78,6 +79,23 @@ type AgentTryoutEvent struct {
 	ActorType      string
 	OccurredAt     time.Time
 	Payload        json.RawMessage
+}
+
+type AgentTryoutTurn struct {
+	ID            int64
+	AgentTryoutID uuid.UUID
+	TurnIndex     int32
+	Role          string
+	Message       string
+	Status        string
+	CreatedAt     time.Time
+	ProcessedAt   *time.Time
+}
+
+type AppendAgentTryoutTurnParams struct {
+	AgentTryoutID uuid.UUID
+	Role          string
+	Message       string
 }
 
 type CreateAgentTryoutParams struct {
@@ -652,4 +670,63 @@ func mapAgentTryoutEvent(row repositorysqlc.AgentTryoutEvent) (AgentTryoutEvent,
 		OccurredAt:     occurredAt,
 		Payload:        cloneJSON(row.Payload),
 	}, nil
+}
+
+func (r *Repository) AppendAgentTryoutTurn(ctx context.Context, params AppendAgentTryoutTurnParams) (AgentTryoutTurn, error) {
+	role := strings.TrimSpace(params.Role)
+	if role == "" {
+		role = "user"
+	}
+	row, err := r.queries.AppendAgentTryoutTurn(ctx, repositorysqlc.AppendAgentTryoutTurnParams{
+		AgentTryoutID: params.AgentTryoutID,
+		Role:          role,
+		Message:       params.Message,
+	})
+	if err != nil {
+		return AgentTryoutTurn{}, fmt.Errorf("append agent tryout turn: %w", err)
+	}
+	return mapAgentTryoutTurn(row), nil
+}
+
+func (r *Repository) ClaimNextPendingAgentTryoutTurn(ctx context.Context, tryoutID uuid.UUID) (AgentTryoutTurn, bool, error) {
+	row, err := r.queries.ClaimNextPendingAgentTryoutTurn(ctx, repositorysqlc.ClaimNextPendingAgentTryoutTurnParams{AgentTryoutID: tryoutID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return AgentTryoutTurn{}, false, nil
+	}
+	if err != nil {
+		return AgentTryoutTurn{}, false, fmt.Errorf("claim agent tryout turn: %w", err)
+	}
+	return mapAgentTryoutTurn(row), true, nil
+}
+
+func (r *Repository) MarkAgentTryoutTurnProcessed(ctx context.Context, id int64) error {
+	if err := r.queries.MarkAgentTryoutTurnProcessed(ctx, repositorysqlc.MarkAgentTryoutTurnProcessedParams{ID: id}); err != nil {
+		return fmt.Errorf("mark agent tryout turn processed: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) CountPendingAgentTryoutTurns(ctx context.Context, tryoutID uuid.UUID) (int64, error) {
+	count, err := r.queries.CountPendingAgentTryoutTurns(ctx, repositorysqlc.CountPendingAgentTryoutTurnsParams{AgentTryoutID: tryoutID})
+	if err != nil {
+		return 0, fmt.Errorf("count pending agent tryout turns: %w", err)
+	}
+	return count, nil
+}
+
+func mapAgentTryoutTurn(row repositorysqlc.AgentTryoutTurn) AgentTryoutTurn {
+	var createdAt time.Time
+	if t := optionalTime(row.CreatedAt); t != nil {
+		createdAt = *t
+	}
+	return AgentTryoutTurn{
+		ID:            row.ID,
+		AgentTryoutID: row.AgentTryoutID,
+		TurnIndex:     row.TurnIndex,
+		Role:          row.Role,
+		Message:       row.Message,
+		Status:        row.Status,
+		CreatedAt:     createdAt,
+		ProcessedAt:   optionalTime(row.ProcessedAt),
+	}
 }
