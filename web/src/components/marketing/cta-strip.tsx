@@ -6,6 +6,7 @@ type Variant = "demo-first" | "cli-first" | "github-first";
 
 type Props = {
   variant?: Variant;
+  demoLabel?: string;
   primaryLabel?: string;
   primaryHref?: string;
   secondaryLabel?: string;
@@ -15,6 +16,7 @@ type Props = {
 
 export function CTAStrip({
   variant = "demo-first",
+  demoLabel,
   primaryLabel,
   primaryHref,
   secondaryLabel,
@@ -23,7 +25,7 @@ export function CTAStrip({
 }: Props) {
   const primaryCTA =
     variant === "demo-first" ? (
-      <DemoButton />
+      <DemoButton label={demoLabel} />
     ) : primaryHref ? (
       <Link
         href={primaryHref}

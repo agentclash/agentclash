@@ -4,6 +4,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SITE_URL } from "@/components/marketing/json-ld";
 import BlogPage from "./page";
 
+vi.mock("@/components/marketing/marketing-shell", () => ({
+  MarketingShell: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+}));
+
+vi.mock("@/components/marketing/research-audience-cta", () => ({
+  ResearchAudienceCTA: () => <div data-testid="research-audience-cta" />,
+}));
+
 vi.mock("@/lib/blog", () => ({
   getAllPosts: vi.fn(() => [
     {

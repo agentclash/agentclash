@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { getCalApi } from "@calcom/embed-react";
 import { useAuth } from "@workos-inc/authkit-nextjs/components";
-import { ArrowRight, Calendar, ExternalLink, Star } from "lucide-react";
+import { ArrowRight, ExternalLink, Star } from "lucide-react";
 import {
   Anthropic,
   Gemini,
@@ -15,6 +15,7 @@ import {
   XAI,
 } from "@lobehub/icons";
 import { AuthCtaLink, authCta } from "@/components/marketing/auth-cta-link";
+import { CTAStrip } from "@/components/marketing/cta-strip";
 import { LuminousGrid } from "@/components/marketing/luminous-grid";
 import { PricingBlock } from "@/components/marketing/pricing-block";
 import { ExpandedCardsBlock } from "@/components/marketing/expanded-cards-block";
@@ -23,23 +24,6 @@ import { TryCliBanner } from "@/components/marketing/try-cli-banner";
 import { MatrixMark } from "@/components/marketing/matrix-mark";
 import { COMPARISON_COLUMNS, COMPARISON_ROWS } from "@/lib/comparison-data";
 import { HOME_FAQ } from "@/lib/home-faq";
-
-const DEMO_LINK = "atharva-kanherkar-epgztu/agentclash-demo";
-const DEMO_BUTTON_CONFIG = JSON.stringify({ layout: "month_view" });
-
-function DemoPopupButton({ className }: { className: string }) {
-  return (
-    <button
-      type="button"
-      data-cal-link={DEMO_LINK}
-      data-cal-config={DEMO_BUTTON_CONFIG}
-      className={className}
-    >
-      <Calendar className="size-4" />
-      Book a demo
-    </button>
-  );
-}
 
 function ClashMark({
   className = "",
@@ -1421,6 +1405,7 @@ export default function HomePage({
   // (server-provided returning-visitor hint cookie). The nav link uses the
   // shared <AuthCtaLink>; the hero/closing CTAs reuse just its href.
   const authHref = authCta(returning).href;
+  const authLabel = authCta(returning).label;
 
   useEffect(() => {
     (async () => {
@@ -1541,9 +1526,9 @@ export default function HomePage({
             </h1>
 
             <p className="mt-10 max-w-[46ch] text-lg sm:text-xl leading-[1.5] text-white/55">
-              Race agents head-to-head with the same tools, same constraints,
-              and same time budget. Replay every tool call, score the
-              trajectory, and fail CI when a candidate regresses.
+              Governed head-to-head benchmarks for teams evaluating coding and
+              support agents. Same tools, same constraints — replay every
+              trajectory and gate releases on scorecards leadership can trust.
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
@@ -1567,25 +1552,12 @@ export default function HomePage({
                   </a>
                 </>
               ) : (
-                <>
-                  <Link
-                    href={authHref}
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
-                  >
-                    Start first race
-                    <ArrowRight className="size-4" />
-                  </Link>
-                  <DemoPopupButton className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors" />
-                  <a
-                    href="https://github.com/agentclash/agentclash"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center justify-center gap-2 rounded-md border border-white/[0.08] bg-white/[0.02] px-6 py-3 text-sm font-medium text-white/60 hover:text-white/90 hover:border-white/20 transition-colors"
-                  >
-                    <Star className="size-4" />
-                    GitHub
-                  </a>
-                </>
+                <CTAStrip
+                  variant="demo-first"
+                  demoLabel="Book eval workshop"
+                  secondaryHref={authHref}
+                  secondaryLabel={authLabel}
+                />
               )}
             </div>
           </div>
@@ -2289,9 +2261,9 @@ export default function HomePage({
               <span className="text-white/40">Start racing.</span>
             </h2>
             <p className="mt-6 max-w-[44ch] text-base leading-[1.6] text-white/50">
-              Run open-source, head-to-head AI agent evaluations on real tasks —
-              replay every tool call, score the trajectory, and gate every model
-              in CI.
+              Book an eval workshop to baseline your agents on real workloads —
+              or start racing in the hosted product when your team is ready to
+              self-serve.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap gap-3">
               {user ? (
@@ -2303,16 +2275,12 @@ export default function HomePage({
                   <ArrowRight className="size-4" />
                 </Link>
               ) : (
-                <>
-                  <Link
-                    href={authHref}
-                    className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
-                  >
-                    Start your first race
-                    <ArrowRight className="size-4" />
-                  </Link>
-                  <DemoPopupButton className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-7 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors" />
-                </>
+                <CTAStrip
+                  variant="demo-first"
+                  demoLabel="Book eval workshop"
+                  secondaryHref={authHref}
+                  secondaryLabel={authLabel}
+                />
               )}
               <a
                 href="https://github.com/agentclash/agentclash"
