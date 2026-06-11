@@ -28,12 +28,11 @@ var configGetCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
 		key := args[0]
-		// Validate the key before touching the config file: an unknown key
-		// must yield the key error, not whatever disk/parse problem the
-		// config happens to have.
+		// Reject an unknown key up front, the same way `config set` does, so a
+		// typo can never read as "valid but unset". (A corrupt config file is
+		// already surfaced earlier by PersistentPreRunE's own load — this
+		// guards the key, not the file.)
 		if !isValidConfigKey(key) {
-			// A typo'd key must not read as "valid but unset" — fail the same
-			// way `config set` does, naming the valid keys.
 			return &cliError{
 				Code:    "invalid_argument",
 				Message: fmt.Sprintf("unknown config key %q. Valid keys: %s", key, strings.Join(config.Keys(), ", ")),
