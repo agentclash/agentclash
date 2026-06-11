@@ -1,0 +1,112 @@
+---
+title: "Coding agent benchmark — June 2026"
+date: "2026-06-11"
+description: "Our first measured public benchmark: four GPT generations on a real coding task with frozen challenge packs, full trajectory scoring, and replay evidence. Methodology, scoreboard, and reproduction steps."
+author: "AgentClash"
+---
+
+This is the first monthly coding-agent benchmark we publish on [/benchmarks](/benchmarks): a head-to-head race on a frozen challenge pack, scored on the full trajectory, with numbers you can reproduce.
+
+**Headline:** GPT-5.4 solved an integer expression evaluator in two model calls and about 8K tokens. GPT-5 and GPT-5.5 also passed. GPT-4.1 burned its full ten-iteration budget and never submitted a valid solution.
+
+Read the [full scoreboard and narrative](/benchmarks/gpt-generations-expression-evaluator) for task details, caveats, and the token table.
+
+## Why this task
+
+Public leaderboards often hide setup drift. We picked one workload from the repo's public fixtures: [Expression Evaluator Arena](https://github.com/agentclash/agentclash/blob/main/examples/challenge-packs/expr-eval-arena.yaml). It is a real agentic coding slice, not trivia.
+
+The trap is deliberate: lazy implementations reach for Python's `//` or `eval`, pass basic tiers, then fail when division must **truncate toward zero** on negative operands (`-7/2 == -3`, not `-4`). Correctness is graded across three hidden test tiers so partial credit produces a ranking spread instead of an all-pass tie.
+
+## Scoreboard snapshot
+
+| Rank | Model   | Composite | Correctness | Reliability | Cost (token efficiency) |
+| ---- | ------- | --------- | ----------- | ----------- | ----------------------- |
+| 1    | GPT-5.4 | 1.00      | 1.00        | 1.00        | 1.00                    |
+| 2    | GPT-5   | 1.00      | 1.00        | 1.00        | 0.55                    |
+| 3    | GPT-5.5 | 0.88      | 1.00        | 1.00        | 0.46                    |
+| 4    | GPT-4.1 | 0.00      | 0.00        | 0.00        | 0.20                    |
+
+Every passing model was "correct" on the hidden tests. The separation showed up in **efficiency** (model calls and tokens) and **output contract** adherence. GPT-5.5 slipped on the strict JSON shape and dropped its composite to 0.88.
+
+## Methodology appendix
+
+Use this block when you cite the report or rerun the race internally.
+
+### Frozen challenge pack
+
+| Field | Value |
+| ----- | ----- |
+| Pack | Expression Evaluator Arena (`expr-eval-arena`) |
+| Version | v1 (`evaluation_spec`: `expr-eval-arena-v1`) |
+| Fixture path | `examples/challenge-packs/expr-eval-arena.yaml` on `main` |
+| Execution mode | Native sandbox, shell + file tools, network off |
+| Iteration budget | 10 model turns; 240s wall clock; 40K token cap per run |
+
+Pin the git commit when you reproduce. This report was authored against the pack on `main` as of June 2026.
+
+### Models tested
+
+| Model | Provider | Runs |
+| ----- | -------- | ---- |
+| GPT-4.1 | OpenAI | n=1 |
+| GPT-5 | OpenAI | n=1 |
+| GPT-5.4 | OpenAI | n=1 |
+| GPT-5.5 | OpenAI | n=1 |
+
+This is a small first field (OpenAI-only, one task). Wider cross-provider races follow as we expand hosted lineup support.
+
+### Scoring dimensions
+
+Composite score folds these scorecard dimensions from the pack:
+
+1. **Correctness** (gate, weight 0.6): hidden `code_execution` tiers (basic precedence, unary minus, truncating division) plus `solution.py` defines `evaluate`.
+2. **Output contract** (weight 0.15): final JSON mentions precedence, matches schema, states `truncate-toward-zero` division semantics.
+3. **Code quality** (LLM judge, weight 0.15): rubric vs reference solution; penalizes `eval`, floor division, unsafe parsing.
+4. **Explanation clarity** (LLM judge, weight 0.1): plain-language parsing approach, not one-sentence hand-waving.
+
+Reliability reflects run completion. **Cost** on the public scoreboard is token-efficiency normalized to the leanest run (not a dollar price).
+
+### Evidence we attach to every report
+
+- Scoreboard rows exported from `GET .../runs/{id}/ranking` (or `agentclash run ranking <run-id> --json`)
+- Replay / trajectory for each lane (tool calls, artifacts, judge rationale)
+- Validator pass/fail per dimension
+- Latency and token totals per run
+- Gate verdict (`pass_threshold: 0.5` on the pack)
+
+### Reproduce the race
+
+Hosted path (recommended):
+
+```bash
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
+cd cli
+go run . auth login --device
+go run . workspace use <workspace-id>
+go run . run create --follow   # select Expression Evaluator Arena + your model lineup
+go run . run ranking <run-id> --json > ranking.json
+```
+
+Then scaffold or hand-edit the MDX report:
+
+```bash
+node scripts/benchmarks/scaffold.mjs \
+  --ranking ranking.json \
+  --title "Your headline" \
+  --model "GPT-5.4" \
+  --slug your-slug
+```
+
+Full monthly checklist, ownership, and syndication steps live in the repo runbook: [`docs/marketing/model-benchmark-workflow.md`](https://github.com/agentclash/agentclash/blob/main/docs/marketing/model-benchmark-workflow.md).
+
+## Caveats (read before you tweet)
+
+- **n=1 per model** on a **single task**. LLM judges add per-run variance.
+- Not a general model ranking. It is a worked example of a reproducible public benchmark format.
+- Promote meaningful failures back into challenge-pack coverage so the next month's report gates on real regressions.
+
+## What we do next month
+
+We follow the same five-step cadence on [/benchmarks](/benchmarks): pin the pack, race every candidate on identical constraints, export scorecards, attach replay evidence, summarize on the hub and RSS feed. Subscribe at [/benchmarks/feed.xml](/benchmarks/feed.xml).
+
+Want the same discipline on your workloads? [Book an eval workshop](/enterprise) or [run your own race](/try).

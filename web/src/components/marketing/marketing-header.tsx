@@ -2,19 +2,13 @@ import Link from "next/link";
 import { ArrowRight, Star } from "lucide-react";
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { isReturningVisitor } from "@/lib/auth/returning";
-import { hasPublishedBenchmarks } from "@/lib/benchmarks";
+import { DEFAULT_MARKETING_NAV } from "@/lib/marketing-nav";
 import { AuthCtaLink } from "./auth-cta-link";
 import { ClashMark } from "./clash-mark";
 
 type NavLink = { href: string; label: string; external?: boolean };
 
-const DEFAULT_NAV: NavLink[] = [
-  { href: "/#features", label: "Features" },
-  { href: "/docs", label: "Docs" },
-  { href: "/benchmarks", label: "Benchmarks" },
-  { href: "/blog", label: "Blog" },
-  { href: "/changelog", label: "Changelog" },
-];
+const DEFAULT_NAV: NavLink[] = DEFAULT_MARKETING_NAV;
 
 type Props = {
   nav?: NavLink[];
@@ -23,11 +17,6 @@ type Props = {
 export async function MarketingHeader({ nav = DEFAULT_NAV }: Props) {
   const { user } = await withAuth();
   const returning = await isReturningVisitor();
-  // Hide Benchmarks until a real report ships (coming-soon state) so we never
-  // funnel visitors to a placeholder; it reappears automatically once live.
-  const visibleNav = hasPublishedBenchmarks()
-    ? nav
-    : nav.filter((item) => item.href !== "/benchmarks");
 
   return (
     <header className="px-5 sm:px-12 py-5 sm:py-6 border-b border-white/[0.06]">
@@ -42,7 +31,7 @@ export async function MarketingHeader({ nav = DEFAULT_NAV }: Props) {
           </span>
         </Link>
         <nav className="flex items-center gap-0.5 sm:gap-2 text-xs">
-          {visibleNav.map((item) =>
+          {nav.map((item) =>
             item.external ? (
               <a
                 key={item.href}

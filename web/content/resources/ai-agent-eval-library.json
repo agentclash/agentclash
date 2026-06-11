@@ -1,0 +1,220 @@
+{
+  "primarySlug": "enterprise-ai-agent-eval-checklist",
+  "resources": [
+    {
+      "slug": "enterprise-ai-agent-eval-checklist",
+      "title": "Enterprise AI Agent Eval Checklist",
+      "kicker": "12-point release readiness checklist",
+      "description": "A practical checklist for platform, security, and product leaders deciding whether an agent is ready for production.",
+      "audience": "Platform leads, AI product owners, security reviewers",
+      "readTime": "10 min",
+      "file": "/resources/enterprise-ai-agent-eval-checklist.pdf",
+      "sections": [
+        {
+          "title": "Workload Definition",
+          "items": [
+            "Name the business workflow, user persona, risk level, and owner.",
+            "Convert real incidents, support tickets, or repo tasks into a versioned challenge pack.",
+            "Separate must-pass cases from exploratory cases before the first run."
+          ]
+        },
+        {
+          "title": "Baseline And Candidate",
+          "items": [
+            "Record the current production agent, model alias, tool policy, and harness version as the baseline.",
+            "Run candidates against the same workload, tools, time budget, and retry policy.",
+            "Compare against baseline on correctness, cost, latency, and evidence completeness."
+          ]
+        },
+        {
+          "title": "Evidence And Review",
+          "items": [
+            "Require replay links, scorecards, artifacts, and redacted traces for release review.",
+            "Label evidence tier when vendor agents or hosted tools hide trajectory details.",
+            "Keep a named reviewer for platform, security, product, and finance signoff."
+          ]
+        },
+        {
+          "title": "Gate Policy",
+          "items": [
+            "Block on correctness regression, policy violation, unsafe tool use, or hard cost and latency ceilings.",
+            "Warn on unstable exploratory metrics while the benchmark matures.",
+            "Promote every production failure into the challenge pack within one sprint."
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "agent-release-gate-worksheet",
+      "title": "Agent Release Gate Worksheet",
+      "kicker": "CI policy builder",
+      "description": "A one-page worksheet for translating eval results into ship, warn, or block rules your CI pipeline can enforce.",
+      "audience": "Platform engineering and release owners",
+      "readTime": "12 min",
+      "file": "/resources/agent-release-gate-worksheet.pdf",
+      "sections": [
+        {
+          "title": "Decision Inputs",
+          "items": [
+            "Baseline run ID and refresh rule.",
+            "Candidate deployment, model alias, tool policy, and sandbox image.",
+            "Challenge pack version and owner."
+          ]
+        },
+        {
+          "title": "Thresholds",
+          "items": [
+            "Correctness regression budget by challenge family.",
+            "Maximum cost per successful task.",
+            "Latency and time-to-first-token ceilings for user-facing paths."
+          ]
+        },
+        {
+          "title": "Automatic Blocks",
+          "items": [
+            "Security policy violation or unapproved tool call.",
+            "Missing replay evidence for a critical task.",
+            "Malformed final output in a schema-bound workflow."
+          ]
+        },
+        {
+          "title": "CI Handoff",
+          "items": [
+            "Attach gate JSON, scorecard JSON, and replay links to every release PR.",
+            "Document the exception owner, expiry date, and follow-up pack update.",
+            "Make the gate nonzero when a block rule fails."
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "ai-agent-pilot-scorecard",
+      "title": "AI Agent Pilot Scorecard",
+      "kicker": "Vendor and model comparison sheet",
+      "description": "A scoring rubric for pilots where leaders need to compare agents on usefulness, reliability, cost, latency, and auditability.",
+      "audience": "AI platform teams and procurement reviewers",
+      "readTime": "15 min",
+      "file": "/resources/ai-agent-pilot-scorecard.pdf",
+      "sections": [
+        {
+          "title": "Score Dimensions",
+          "items": [
+            "Correct final outcome and task completion.",
+            "Tool selection quality and recovery after failed calls.",
+            "Cost per successful task, not raw token spend."
+          ]
+        },
+        {
+          "title": "Reliability Signals",
+          "items": [
+            "Repeated runs on the same pack show stable behavior.",
+            "Failures cluster into named categories with owners.",
+            "Candidate keeps quality when inputs include messy real-world details."
+          ]
+        },
+        {
+          "title": "Evidence Quality",
+          "items": [
+            "Replay explains the path from prompt to final answer.",
+            "Artifacts are downloadable and tied to the scorecard.",
+            "Security can review tool paths without reading raw logs for hours."
+          ]
+        },
+        {
+          "title": "Pilot Decision",
+          "items": [
+            "Ship, extend pilot, or reject with the exact failed dimension.",
+            "Name the next workload to freeze if the pilot advances.",
+            "Turn pilot misses into regression coverage before expansion."
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "agent-procurement-questions",
+      "title": "Agent Procurement Questions",
+      "kicker": "Buyer checklist for AI agent platforms",
+      "description": "A focused list of questions procurement and security teams can use when vendors claim their agents are production ready.",
+      "audience": "Procurement, security, platform leadership",
+      "readTime": "9 min",
+      "file": "/resources/agent-procurement-questions.pdf",
+      "sections": [
+        {
+          "title": "Evaluation Method",
+          "items": [
+            "Can we run the agent on our own challenge pack and private data?",
+            "Can we compare it against our current baseline under identical tools?",
+            "Can we repeat the same run after model, prompt, or harness changes?"
+          ]
+        },
+        {
+          "title": "Evidence Access",
+          "items": [
+            "Do we get replay, artifacts, and scorecards for failed cases?",
+            "Which evidence is hidden because the vendor hosts the agent?",
+            "Can audit teams export redacted evidence for committee review?"
+          ]
+        },
+        {
+          "title": "Control And Policy",
+          "items": [
+            "Can tool permissions, network access, and secrets be scoped per workload?",
+            "Can cost and latency limits block a release automatically?",
+            "Can failures become permanent regression tests?"
+          ]
+        },
+        {
+          "title": "Commercial Fit",
+          "items": [
+            "Are LLM tokens marked up or bring-your-own-key?",
+            "What happens to replay retention after the pilot?",
+            "Can we self-host or use dedicated infrastructure if required?"
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "30-day-agent-eval-rollout-plan",
+      "title": "30-Day Agent Eval Rollout Plan",
+      "kicker": "Adoption plan for first release gate",
+      "description": "A practical rollout calendar for going from ad hoc agent testing to a baseline, challenge pack, and first CI gate.",
+      "audience": "Engineering managers and platform leads",
+      "readTime": "14 min",
+      "file": "/resources/30-day-agent-eval-rollout-plan.pdf",
+      "sections": [
+        {
+          "title": "Week 1: Pick The Wedge",
+          "items": [
+            "Choose one workflow with visible business impact and recurring failures.",
+            "Collect 20 to 50 real examples from tickets, repos, support cases, or operations logs.",
+            "Name the release owner and review committee."
+          ]
+        },
+        {
+          "title": "Week 2: Freeze The Pack",
+          "items": [
+            "Turn examples into a versioned challenge pack with expected outputs and scorers.",
+            "Record the current production baseline.",
+            "Agree on correctness, cost, latency, and evidence expectations."
+          ]
+        },
+        {
+          "title": "Week 3: Compare Candidates",
+          "items": [
+            "Run baseline, candidate, and any vendor agent under the same constraints.",
+            "Review replay for every critical fail.",
+            "Update scorers where the committee finds ambiguous evidence."
+          ]
+        },
+        {
+          "title": "Week 4: Gate The Release",
+          "items": [
+            "Commit the gate manifest and wire it into CI.",
+            "Publish the first decision readout with links to scorecards and replay.",
+            "Schedule the first regression promotion review."
+          ]
+        }
+      ]
+    }
+  ]
+}
