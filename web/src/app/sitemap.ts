@@ -212,6 +212,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
       ],
     },
     {
+      url: `${DOCS_ORIGIN}/services`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.78,
+      images: [
+        ogImage({
+          title: "Agent Evaluation Services",
+          subtitle: "Fixed offerings for platform adoption",
+          kind: "Services",
+        }),
+      ],
+    },
+    {
       url: `${DOCS_ORIGIN}/platform/agent-evaluation`,
       lastModified: new Date(),
       changeFrequency: "monthly",

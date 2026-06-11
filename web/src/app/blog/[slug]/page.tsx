@@ -120,7 +120,9 @@ export default async function BlogPostPage({ params }: Props) {
         <ResearchAudienceCTA
           className="mt-12"
           headline="Ready to evaluate agents on your workloads?"
-          body="Book an eval workshop to map your agents to challenge packs, baselines, and release gates — or explore how enterprise teams run governed evals on AgentClash."
+          body="Book an eval workshop to map your agents to challenge packs, baselines, and release gates. Or see fixed-scope eval services and the enterprise pilot."
+          secondaryHref="/services"
+          secondaryLabel="Eval services"
         />
       </article>
     </MarketingShell>
