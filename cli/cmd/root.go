@@ -11,7 +11,9 @@ import (
 	"github.com/agentclash/agentclash/cli/internal/auth"
 	"github.com/agentclash/agentclash/cli/internal/config"
 	"github.com/agentclash/agentclash/cli/internal/output"
+	"github.com/itchyny/gojq"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // Global flags.
@@ -24,6 +26,7 @@ var (
 	flagWorkspace      string
 	flagAPIURL         string
 	flagNonInteractive bool
+	flagQuery          string
 )
 
 // nonInteractiveMode reports whether the CLI must never prompt for input and
@@ -164,6 +167,32 @@ Get started:
 		formatter := output.NewFormatter(mgr.OutputFormat(), flagJSON, flagQuiet)
 		setRuntimeOutputFormat(formatter.Format())
 
+		// Validate --query before any work (and before any network call):
+		// a bad expression must be a fast, clean validation error.
+		if flagQuery != "" {
+			if !formatter.IsStructured() {
+				return &cliError{
+					Code:    "invalid_argument",
+					Message: "--query requires structured output; add --json or --output json|yaml",
+				}
+			}
+			parsed, err := gojq.Parse(flagQuery)
+			if err != nil {
+				return &cliError{
+					Code:    "invalid_argument",
+					Message: fmt.Sprintf("invalid --query expression: %v", err),
+				}
+			}
+			compiled, err := gojq.Compile(parsed)
+			if err != nil {
+				return &cliError{
+					Code:    "invalid_argument",
+					Message: fmt.Sprintf("invalid --query expression: %v", err),
+				}
+			}
+			formatter.SetQuery(compiled)
+		}
+
 		rc := &RunContext{
 			Client:    client,
 			Config:    mgr,
@@ -186,6 +215,24 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&flagWorkspace, "workspace", "w", "", "Workspace ID (overrides config)")
 	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "API base URL (overrides config)")
 	rootCmd.PersistentFlags().BoolVar(&flagNonInteractive, "non-interactive", false, "Never prompt; fail fast when interactive input is required (also set by AGENTCLASH_NONINTERACTIVE or CI)")
+	rootCmd.PersistentFlags().StringVar(&flagQuery, "query", "", "jq expression applied to structured output (alias: --jq); strings print raw, other results one compact JSON document per line. Requires --json or --output json|yaml.")
+	// --jq is the de-facto name agents know from gh; normalize it onto --query
+	// so both spellings parse while the schema documents a single flag. The
+	// GLOBAL normalization func is required — a flag-set-local one would not
+	// propagate to subcommand parsing — and we chain any prior func so this
+	// registration preserves an existing mapping rather than clobbering it.
+	// (A *future* un-chained SetGlobalNormalizationFunc caller could still
+	// drop ours; today this is the only caller.)
+	prior := rootCmd.GlobalNormalizationFunc()
+	rootCmd.SetGlobalNormalizationFunc(func(fs *pflag.FlagSet, name string) pflag.NormalizedName {
+		if prior != nil {
+			name = string(prior(fs, name))
+		}
+		if name == "jq" {
+			name = "query"
+		}
+		return pflag.NormalizedName(name)
+	})
 }
 
 // Execute runs the root command.

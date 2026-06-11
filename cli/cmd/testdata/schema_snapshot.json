@@ -32,6 +32,11 @@
       "type": "string"
     },
     {
+      "name": "query",
+      "usage": "jq expression applied to structured output (alias: --jq); strings print raw, other results one compact JSON document per line. Requires --json or --output json|yaml.",
+      "type": "string"
+    },
+    {
       "name": "quiet",
       "shorthand": "q",
       "usage": "Suppress non-essential output",
