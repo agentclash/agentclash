@@ -169,9 +169,16 @@ Example:
 			if err != nil {
 				return err
 			}
-			defer f.Close()
-			if err := json.NewEncoder(f).Encode(stats.Report); err != nil {
-				return err
+			// Check Close, not just Encode: Encode can land in the kernel
+			// buffer while the flush fails on Close (full disk, NFS drop), so
+			// only advertise the report path once the file is fully written.
+			encErr := json.NewEncoder(f).Encode(stats.Report)
+			closeErr := f.Close()
+			if encErr != nil {
+				return encErr
+			}
+			if closeErr != nil {
+				return closeErr
 			}
 			fmt.Fprintf(progressW, "  full report           : %s\n", outPath)
 		}
