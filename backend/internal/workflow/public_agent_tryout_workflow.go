@@ -73,12 +73,22 @@ func (a *Activities) ExecutePublicAgentTryout(ctx context.Context, input Execute
 		return wrapActivityError(err)
 	}
 
+	latencyMS := time.Since(started).Milliseconds()
+	scorecard := publicTryoutScorecard(tryout.EvaluationSpecSnapshot, outputs, latencyMS)
+	if err := a.recordPublicTryoutEvent(ctx, tryout.ID, runevents.EventTypeScoringCompleted, map[string]any{
+		"passed": scorecard["passed_validators"],
+		"total":  scorecard["total_validators"],
+		"score":  scorecard["score"],
+	}); err != nil {
+		return wrapActivityError(err)
+	}
+
 	redaction := repository.AgentTryoutRedactionPassed
 	if _, err := a.publicTryoutRepo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
 		ID:              tryout.ID,
 		Status:          repository.AgentTryoutStatusCompleted,
-		Summary:         publicTryoutCompletedSummary(outputs),
-		LatencyMS:       int64Ptr(time.Since(started).Milliseconds()),
+		Summary:         publicTryoutCompletedSummary(outputs, scorecard),
+		LatencyMS:       int64Ptr(latencyMS),
 		RedactionStatus: &redaction,
 	}); err != nil {
 		return wrapActivityError(err)
@@ -312,13 +322,111 @@ func publicTryoutSummary(code string, message string) json.RawMessage {
 	return payload
 }
 
-func publicTryoutCompletedSummary(outputs []map[string]any) json.RawMessage {
+func publicTryoutCompletedSummary(outputs []map[string]any, scorecard map[string]any) json.RawMessage {
 	payload, _ := json.Marshal(map[string]any{
-		"code":    "completed",
-		"message": "The hosted agent finished this public tryout. Export the trace or sign in to save and rerun it.",
-		"outputs": outputs,
+		"code":      "completed",
+		"message":   "The hosted agent finished this public tryout. Export the trace or sign in to save and rerun it.",
+		"outputs":   outputs,
+		"scorecard": scorecard,
 	})
 	return payload
+}
+
+// publicTryoutScorecard evaluates a template's lightweight evaluation spec
+// (json_field / json_schema validators) against the produced output previews
+// and returns a self-contained scorecard. It needs no judge credential and no
+// harness-execution row — everything is derived from the JSON the agent wrote.
+func publicTryoutScorecard(evaluationSpec json.RawMessage, outputs []map[string]any, latencyMS int64) map[string]any {
+	var spec struct {
+		Validators []struct {
+			Key   string `json:"key"`
+			Type  string `json:"type"`
+			Field string `json:"field"`
+		} `json:"validators"`
+		Scorecard struct {
+			Dimensions []string `json:"dimensions"`
+		} `json:"scorecard"`
+	}
+	_ = json.Unmarshal(evaluationSpec, &spec)
+
+	// Decode every JSON output preview once so field checks can scan them all.
+	decoded := make([]map[string]any, 0, len(outputs))
+	for _, out := range outputs {
+		if t, _ := out["type"].(string); t != "json" {
+			continue
+		}
+		preview, _ := out["preview"].(string)
+		var obj map[string]any
+		if json.Unmarshal([]byte(preview), &obj) == nil {
+			decoded = append(decoded, obj)
+		}
+	}
+
+	checks := make([]map[string]any, 0, len(spec.Validators))
+	passed := 0
+	for _, v := range spec.Validators {
+		ok := false
+		switch strings.TrimSpace(v.Type) {
+		case "json_schema":
+			// Passes when at least one produced output is valid JSON.
+			ok = len(decoded) > 0
+		case "json_field":
+			for _, obj := range decoded {
+				if value, exists := obj[v.Field]; exists && !isEmptyScorecardValue(value) {
+					ok = true
+					break
+				}
+			}
+		default:
+			// Unknown validator types are reported but do not count for/against.
+			checks = append(checks, map[string]any{"key": v.Key, "type": v.Type, "status": "skipped"})
+			continue
+		}
+		if ok {
+			passed++
+		}
+		status := "failed"
+		if ok {
+			status = "passed"
+		}
+		checks = append(checks, map[string]any{"key": v.Key, "type": v.Type, "status": status})
+	}
+
+	total := 0
+	for _, c := range checks {
+		if c["status"] != "skipped" {
+			total++
+		}
+	}
+	score := 0.0
+	if total > 0 {
+		score = float64(passed) / float64(total)
+	}
+	return map[string]any{
+		"passed_validators": passed,
+		"total_validators":  total,
+		"score":             score,
+		"passed":            total > 0 && passed == total,
+		"dimensions":        spec.Scorecard.Dimensions,
+		"checks":            checks,
+		"latency_ms":        latencyMS,
+		"outputs_count":     len(outputs),
+	}
+}
+
+func isEmptyScorecardValue(value any) bool {
+	switch v := value.(type) {
+	case nil:
+		return true
+	case string:
+		return strings.TrimSpace(v) == ""
+	case []any:
+		return len(v) == 0
+	case map[string]any:
+		return len(v) == 0
+	default:
+		return false
+	}
 }
 
 func (a *Activities) recordPublicTryoutEvent(ctx context.Context, tryoutID uuid.UUID, eventType runevents.Type, payload map[string]any) error {

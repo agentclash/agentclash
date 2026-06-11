@@ -27,6 +27,29 @@ func TestNormalizePublicAgentTryoutConfigDefaultsToEnvCredential(t *testing.T) {
 	}
 }
 
+func TestPublicTryoutScorecardEvaluatesJSONFieldValidators(t *testing.T) {
+	spec := json.RawMessage(`{"validators":[{"key":"has_summary","type":"json_field","field":"summary"},{"key":"has_action_items","type":"json_field","field":"action_items"}],"scorecard":{"dimensions":["correctness","latency"]}}`)
+	outputs := []map[string]any{
+		{"type": "json", "preview": `{"summary":"did the thing","action_items":[]}`},
+	}
+
+	card := publicTryoutScorecard(spec, outputs, 1234)
+
+	if card["total_validators"].(int) != 2 {
+		t.Fatalf("total = %v, want 2", card["total_validators"])
+	}
+	// summary is present+non-empty (pass); action_items is an empty array (fail).
+	if card["passed_validators"].(int) != 1 {
+		t.Fatalf("passed = %v, want 1", card["passed_validators"])
+	}
+	if card["passed"].(bool) {
+		t.Fatal("scorecard should not be fully passed when a validator fails")
+	}
+	if card["latency_ms"].(int64) != 1234 {
+		t.Fatalf("latency = %v, want 1234", card["latency_ms"])
+	}
+}
+
 func TestPublicTryoutRunnerEnvUsesHostedCredential(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-hosted")
 	config := NormalizePublicAgentTryoutConfig(PublicAgentTryoutConfig{})
