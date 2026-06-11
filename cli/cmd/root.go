@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/agentclash/agentclash/cli/internal/api"
 	"github.com/agentclash/agentclash/cli/internal/auth"
@@ -15,14 +16,40 @@ import (
 
 // Global flags.
 var (
-	flagJSON      bool
-	flagOutput    string
-	flagQuiet     bool
-	flagVerbose   bool
-	flagNoColor   bool
-	flagWorkspace string
-	flagAPIURL    string
+	flagJSON           bool
+	flagOutput         string
+	flagQuiet          bool
+	flagVerbose        bool
+	flagNoColor        bool
+	flagWorkspace      string
+	flagAPIURL         string
+	flagNonInteractive bool
 )
+
+// nonInteractiveMode reports whether the CLI must never prompt for input and
+// should fail fast when interactive input would otherwise be required. It is
+// driven by the explicit --non-interactive flag, the AGENTCLASH_NONINTERACTIVE
+// or CI environment variables, or a non-TTY stdin/stdout. Note: --json/--output
+// alone does NOT imply non-interactive — a human at a real terminal can still
+// run an interactive flow and ask for a machine-readable result.
+func nonInteractiveMode() bool {
+	if flagNonInteractive || envTruthy(os.Getenv("AGENTCLASH_NONINTERACTIVE")) || envTruthy(os.Getenv("CI")) {
+		return true
+	}
+	return !stdioIsInteractive()
+}
+
+// envTruthy treats empty, "0", "false", "no", and "off" (case-insensitive) as
+// false; any other non-empty value is true. This matches the de-facto CI
+// convention (e.g. GitHub Actions sets CI=true).
+func envTruthy(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "0", "false", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
 
 // RunContext is passed to all commands via cobra context.
 type RunContext struct {
@@ -158,6 +185,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "Disable color output")
 	rootCmd.PersistentFlags().StringVarP(&flagWorkspace, "workspace", "w", "", "Workspace ID (overrides config)")
 	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "API base URL (overrides config)")
+	rootCmd.PersistentFlags().BoolVar(&flagNonInteractive, "non-interactive", false, "Never prompt; fail fast when interactive input is required (also set by AGENTCLASH_NONINTERACTIVE or CI)")
 }
 
 // Execute runs the root command.

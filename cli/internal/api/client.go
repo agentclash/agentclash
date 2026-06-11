@@ -314,6 +314,9 @@ func (c *Client) Delete(ctx context.Context, path string) (*Response, error) {
 
 // PostRaw performs a POST with a raw body and custom content type.
 func (c *Client) PostRaw(ctx context.Context, path string, contentType string, body io.Reader) (*Response, error) {
+	if err := c.ensureAuth(path); err != nil {
+		return nil, err
+	}
 	fullURL := c.baseURL + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, body)
 	if err != nil {
@@ -341,6 +344,9 @@ type FileUpload struct {
 //  3. A `GetBody` implementation so Go can replay the body on same-origin
 //     307/308 redirects instead of silently failing.
 func (c *Client) PostMultipart(ctx context.Context, path string, fields map[string]string, files map[string]FileUpload) (*Response, error) {
+	if err := c.ensureAuth(path); err != nil {
+		return nil, err
+	}
 	spool, err := os.CreateTemp("", "agentclash-multipart-*")
 	if err != nil {
 		return nil, fmt.Errorf("creating multipart spool: %w", err)
@@ -406,6 +412,9 @@ func (c *Client) PostMultipart(ctx context.Context, path string, fields map[stri
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, body any) (*Response, error) {
+	if err := c.ensureAuth(path); err != nil {
+		return nil, err
+	}
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -428,6 +437,9 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body any) (*Re
 }
 
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body io.Reader) (*Response, error) {
+	if err := c.ensureAuth(path); err != nil {
+		return nil, err
+	}
 	fullURL := c.baseURL + path
 	if len(query) > 0 {
 		fullURL += "?" + query.Encode()
@@ -439,6 +451,31 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	c.setAuth(req)
 	return c.executeWithRetry(req)
+}
+
+// publicAPIPath reports whether path is reachable without credentials. Only the
+// two RFC 8628 device-authorization endpoints qualify — they MINT a CLI token,
+// so requiring a token to reach them would be circular. Exact matches only: a
+// prefix match would silently exempt any future /v1/cli-auth/device* route.
+func publicAPIPath(path string) bool {
+	return path == "/v1/cli-auth/device" || path == "/v1/cli-auth/device/token"
+}
+
+// ensureAuth fails fast with a synthesized 401 when the client has no way to
+// authenticate (no bearer token and not in dev mode) for a non-public path.
+// This makes "not logged in" a deterministic, network-free error instead of a
+// doomed request that returns a confusing transport error or passthrough 401,
+// and it covers every authenticated call (REST + SSE) from one place rather
+// than per-command classification.
+func (c *Client) ensureAuth(path string) error {
+	if c.token != "" || c.devUserID != "" || publicAPIPath(path) {
+		return nil
+	}
+	return &APIError{
+		StatusCode: http.StatusUnauthorized,
+		Code:       "unauthenticated",
+		Message:    "not authenticated: set AGENTCLASH_TOKEN or run 'agentclash auth login'",
+	}
 }
 
 func (c *Client) setAuth(req *http.Request) {

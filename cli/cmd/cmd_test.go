@@ -42,6 +42,7 @@ func executeCommandWithQuiet(t *testing.T, args []string, apiURL string, quiet b
 	flagAPIURL = apiURL
 	flagDevice = false
 	flagForceLogin = false
+	flagNonInteractive = false
 	runtimeOutputJSON = false
 
 	rootCmd.SetArgs(args)
@@ -49,6 +50,20 @@ func executeCommandWithQuiet(t *testing.T, args []string, apiURL string, quiet b
 }
 
 var cmdMu sync.Mutex
+
+// forceInteractiveTTY makes the CLI treat the session as an interactive terminal
+// for the duration of a test, and clears the env signals that would otherwise
+// force non-interactive mode (e.g. CI=true on the runner). Device-flow login
+// fails fast in non-interactive contexts, so tests that exercise the real device
+// flow must opt back into interactive behavior.
+func forceInteractiveTTY(t *testing.T) {
+	t.Helper()
+	t.Setenv("CI", "")
+	t.Setenv("AGENTCLASH_NONINTERACTIVE", "")
+	prev := stdioIsInteractive
+	stdioIsInteractive = func() bool { return true }
+	t.Cleanup(func() { stdioIsInteractive = prev })
+}
 
 func resetCommandFlags(cmd *cobra.Command) {
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
@@ -909,6 +924,7 @@ func TestAuthLoginSkipsDeviceFlowWhenEnvTokenValid(t *testing.T) {
 }
 
 func TestAuthLoginInvalidStoredTokenStartsDeviceFlow(t *testing.T) {
+	forceInteractiveTTY(t)
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	t.Setenv("AGENTCLASH_TOKEN", "")
@@ -967,6 +983,7 @@ func TestAuthLoginInvalidStoredTokenStartsDeviceFlow(t *testing.T) {
 }
 
 func TestAuthLoginForceStartsDeviceFlowWhenStoredTokenValid(t *testing.T) {
+	forceInteractiveTTY(t)
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	t.Setenv("AGENTCLASH_TOKEN", "")
@@ -1022,6 +1039,7 @@ func TestAuthLoginForceStartsDeviceFlowWhenStoredTokenValid(t *testing.T) {
 }
 
 func TestAuthLoginFallsBackToEmailWhenDisplayNameMissing(t *testing.T) {
+	forceInteractiveTTY(t)
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	t.Setenv("AGENTCLASH_TOKEN", "")
@@ -1058,6 +1076,7 @@ func TestAuthLoginFallsBackToEmailWhenDisplayNameMissing(t *testing.T) {
 }
 
 func TestAuthLoginFallsBackToUserIDWhenIdentityMissing(t *testing.T) {
+	forceInteractiveTTY(t)
 	tmpDir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", tmpDir)
 	t.Setenv("AGENTCLASH_TOKEN", "")
