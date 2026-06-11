@@ -13,9 +13,13 @@ name works with zero extra configuration.
   routes the matching credential. (Hermes is intentionally excluded — its
   installer pulls a heavy Chromium + Python venv that bloats cold starts.)
 - Node.js 22, Python 3 + pip.
-- Office document toolchain: `pandoc`, `poppler-utils`, LibreOffice (calc /
-  writer / impress), and Python libs (`openpyxl`, `python-docx`,
-  `python-pptx`, `pypdf`, `reportlab`, `pandas`, `markdown`, `Pillow`, …).
+- Office + data toolchain: `pandoc`, `poppler-utils`, LibreOffice, `graphviz`,
+  `sqlite3`, and a broad Python stack agents reach for to make PDFs, charts,
+  and spreadsheets: `matplotlib`, `plotly`+`kaleido`, `seaborn`, `pandas`,
+  `numpy`, `openpyxl`/`xlsxwriter`, `reportlab`/`fpdf2`/`weasyprint`,
+  `pypdf`/`pdfplumber`, `python-docx`/`python-pptx`, `Pillow`, `Jinja2`. A
+  `python` → `python3` alias is in place. (Verified live: a single prompt
+  generates a matplotlib chart PNG + a reportlab PDF with no fallbacks.)
 
 ## Build + publish
 

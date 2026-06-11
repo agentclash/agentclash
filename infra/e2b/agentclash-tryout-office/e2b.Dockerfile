@@ -21,11 +21,15 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates curl git unzip zip jq ripgrep \
         build-essential \
-        python3 python3-pip python3-venv \
+        python3 python3-pip python3-venv python3-dev \
         pandoc \
         poppler-utils \
         libreoffice-calc libreoffice-writer libreoffice-impress \
-        fonts-dejavu \
+        fonts-dejavu fonts-liberation \
+        graphviz \
+        sqlite3 \
+        libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf-2.0-0 \
+        libcairo2 libffi-dev shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
 # Node.js 22 (OpenClaw requires Node 22+; Codex/Claude/OpenClaw ship via npm).
@@ -45,19 +49,37 @@ RUN npm install -g \
     && claude --version \
     && openclaw --version
 
-# Python office-document libraries for programmatic generation/parsing.
+# `python` alias so agents that call `python` (not `python3`) just work.
+RUN ln -sf /usr/bin/python3 /usr/local/bin/python
+
+# Python is the default tool agents reach for to generate PDFs, charts,
+# spreadsheets, and documents — so install a broad, batteries-included set.
 RUN pip3 install --no-cache-dir \
         openpyxl \
+        xlsxwriter \
         python-docx \
         python-pptx \
         pypdf \
+        pdfplumber \
         reportlab \
+        fpdf2 \
+        weasyprint \
+        matplotlib \
+        plotly \
+        kaleido \
+        seaborn \
         pandas \
+        numpy \
         tabulate \
         markdown \
+        markdownify \
         beautifulsoup4 \
         lxml \
-        Pillow
+        graphviz \
+        Pillow \
+        Jinja2 \
+        pyyaml \
+        requests
 
 # Working directory the runner uses (agentHarnessWorkspaceDir = "/workspace").
 # World-writable so agents that run as the non-root sandbox user can write
