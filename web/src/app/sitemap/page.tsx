@@ -69,6 +69,16 @@ const primaryPages = [
     description: "Scorecards, replay, and challenge packs for agent evaluation.",
   },
   {
+    title: "Industries",
+    href: "/industries",
+    description: "Banking, insurance, and government agent evaluation playbooks.",
+  },
+  {
+    title: "Glossary",
+    href: "/glossary",
+    description: "Definitions for agent evaluation, challenge packs, and release gates.",
+  },
+  {
     title: "Docs",
     href: "/docs",
     description: "Guides and references for running AgentClash.",

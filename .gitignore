@@ -38,3 +38,8 @@ testing/*
 !testing/feat-sync-cli-skills-snapshot-p3.md
 !testing/feat-skills-export.md
 !testing/feat-integration-all-hosts.md
+!testing/feat-984-enterprise-ctas.md
+!testing/feat-985-enterprise-page.md
+!testing/feat-services-eval-program.md
+!testing/feat-blog-batch-987.md
+!testing/feat-nav-cross-linking-993.md

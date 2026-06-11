@@ -4,6 +4,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { SITE_URL } from "@/components/marketing/json-ld";
 import BlogPostPage from "./[slug]/page";
 
+vi.mock("@/components/marketing/marketing-shell", () => ({
+  MarketingShell: ({ children }: { children: React.ReactNode }) => (
+    <div>{children}</div>
+  ),
+}));
+
+vi.mock("@/components/marketing/research-audience-cta", () => ({
+  ResearchAudienceCTA: () => <div data-testid="research-audience-cta" />,
+}));
+
 vi.mock("next-mdx-remote/rsc", () => ({
   MDXRemote: ({ source }: { source: string }) => <div>{source}</div>,
 }));

@@ -1,0 +1,63 @@
+---
+title: "How to Benchmark AI Agents on Your Own Data (Not Public Leaderboards)"
+date: "2026-06-10"
+description: "Public leaderboards answer a general model question. Shipping agents requires benchmarks on your workflows, tools, and failure modes: a practical playbook."
+author: "Atharva"
+---
+
+Public leaderboards are useful for orientation. They are a poor release gate for the agent your customers actually use.
+
+Leaderboards optimize for tasks that are public, static, and comparable across vendors. Your agent optimizes for private repos, internal APIs, ticket schemas, and policies that never appear on LMSYS.
+
+## Step 1: Pick workloads, not models
+
+Start from three real jobs your agent must complete:
+
+- a support refund with policy checks
+- a coding fix in a service your team owns
+- an internal ops workflow with approvals
+
+Each job becomes a [challenge pack](/docs/guides/write-a-challenge-pack) case: inputs, tools, validators, artifacts. That is how [agent evals](/agent-evals) turn anecdotes into coverage.
+
+## Step 2: Freeze the benchmark
+
+Version the pack before you race candidates. If the task drifts every week, you are comparing runs that never met on the same track.
+
+Freeze:
+
+- fixtures and seed data
+- tool allowlists and network policy
+- scoring rules and pass thresholds
+- time and token budgets
+
+This is the same discipline public benchmarks use — except the workload is yours.
+
+## Step 3: Run head-to-head, not staggered
+
+Run baseline and candidate agents concurrently on the same pack. Staggered comparisons leak cache warmth, provider weather, and prompt drift into the verdict.
+
+AgentClash races agents on the same task at the same time in isolated sandboxes. See [why we race agents head-to-head](/blog/why-agentclash-races-agents-head-to-head).
+
+## Step 4: Capture replay, not just scores
+
+A number without a trajectory is not actionable. Reviewers need:
+
+- tool paths and retries
+- produced files and logs
+- cost and latency per successful task
+- judge or validator evidence
+
+That replay is what makes a benchmark defensible to security and platform leads. The [LLM agent evaluation](/llm-agent-evaluation) page outlines the product surface.
+
+## Step 5: Promote failures into gates
+
+When a candidate regresses, promote the failure into permanent coverage and wire a CI gate. Benchmarks that nobody gates on become slide deck decorations.
+
+Follow [CI/CD agent gates](/docs/guides/ci-cd-agent-gates) once you have a baseline you trust.
+
+## Feeding `/benchmarks` without fiction
+
+We publish field reports on [/benchmarks](/benchmarks) when we have reproducible packs and honest sample sizes. Your private benchmark should follow the same rule: publish internal scorecards, not vibes.
+
+If you want help freezing the first pack, see [eval services](/services) or the free [enterprise pilot](/enterprise).
+

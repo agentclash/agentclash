@@ -5,6 +5,7 @@ import { MDXRemote } from "next-mdx-remote/rsc";
 import { ArrowUpRight } from "lucide-react";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
 import { BenchmarkScoreboard } from "@/components/marketing/benchmark-scoreboard";
+import { BenchmarkRunCTA } from "@/components/marketing/research-audience-cta";
 import {
   JsonLd,
   benchmarkReportSchema,
@@ -125,6 +126,7 @@ export default async function BenchmarkReportPage({ params }: Props) {
               <ArrowUpRight className="size-3" />
             </a>
           )}
+          <BenchmarkRunCTA className="mt-8" />
         </section>
 
         {report.tasks.length > 0 && (
@@ -160,6 +162,8 @@ export default async function BenchmarkReportPage({ params }: Props) {
         <div className="prose-agentclash mt-12">
           <MDXRemote source={report.content} options={mdxRemoteOptions} />
         </div>
+
+        <BenchmarkRunCTA className="mt-12" />
       </article>
     </MarketingShell>
   );

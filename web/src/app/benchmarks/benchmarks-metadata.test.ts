@@ -4,7 +4,6 @@ import { generateMetadata as benchmarksIndexMetadata } from "./page";
 import { generateMetadata } from "./[slug]/page";
 
 const getReportBySlugMock = vi.hoisted(() => vi.fn());
-const hasPublishedBenchmarksMock = vi.hoisted(() => vi.fn(() => false));
 
 vi.mock("@workos-inc/authkit-nextjs", () => ({
   withAuth: vi.fn(),
@@ -18,7 +17,6 @@ vi.mock("@/lib/benchmarks", () => ({
   getAllReports: vi.fn(() => []),
   getAllSlugs: vi.fn(() => []),
   getReportBySlug: getReportBySlugMock,
-  hasPublishedBenchmarks: hasPublishedBenchmarksMock,
 }));
 
 describe("benchmarks RSS autodiscovery metadata", () => {
@@ -67,17 +65,8 @@ describe("benchmarks index social metadata", () => {
   });
 });
 
-describe("benchmarks index indexability (coming-soon gate)", () => {
-  it("noindexes the index while no real benchmark is published", () => {
-    hasPublishedBenchmarksMock.mockReturnValueOnce(false);
-    expect(benchmarksIndexMetadata().robots).toEqual({
-      index: false,
-      follow: true,
-    });
-  });
-
-  it("leaves the index indexable once a real benchmark ships", () => {
-    hasPublishedBenchmarksMock.mockReturnValueOnce(true);
+describe("benchmarks index indexability", () => {
+  it("leaves the hub indexable as a methodology landing page", () => {
     expect(benchmarksIndexMetadata().robots).toBeUndefined();
   });
 });

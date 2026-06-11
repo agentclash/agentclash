@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { JsonLd, blogIndexSchema } from "@/components/marketing/json-ld";
+import { MarketingShell } from "@/components/marketing/marketing-shell";
+import { ResearchAudienceCTA } from "@/components/marketing/research-audience-cta";
+import { ResourcePackCTA } from "@/components/marketing/resource-pack-cta";
 import { getAllPosts } from "@/lib/blog";
 import { blogRssAlternate } from "@/lib/seo";
 
@@ -50,17 +53,25 @@ export default function BlogPage() {
   const posts = getAllPosts();
 
   return (
-    <>
+    <MarketingShell>
       <JsonLd id="agentclash-blog-index-schema" data={blogIndexSchema(posts)} />
-      <main className="min-h-screen flex flex-col items-center px-6 py-16">
-        <h1 className="font-[family-name:var(--font-display)] text-3xl sm:text-4xl text-center tracking-[-0.02em] leading-[1.15]">
+      <section className="mx-auto w-full max-w-3xl px-6 py-16">
+        <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35">
           Blog
+        </p>
+        <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl tracking-[-0.02em] leading-[1.15] sm:text-4xl">
+          AI agent evaluation, in practice
         </h1>
-        <p className="mt-3 text-sm text-white/25">
-          Engineering notes from the team.
+        <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/45">
+          Engineering notes on head-to-head agent evals, replayable failures,
+          scorecards, and release gates — for teams deciding which agents to
+          ship.
         </p>
 
-        <div className="mt-10 w-full max-w-lg flex flex-col gap-3">
+        <ResearchAudienceCTA className="mt-8" />
+        <ResourcePackCTA className="mt-4" compact />
+
+        <div className="mt-10 flex flex-col gap-3">
           {posts.map((post) => (
             <Link
               key={post.slug}
@@ -83,14 +94,7 @@ export default function BlogPage() {
         {posts.length === 0 && (
           <p className="mt-10 text-xs text-white/20">No posts yet.</p>
         )}
-
-        <Link
-          href="/"
-          className="mt-10 text-xs text-white/30 hover:text-white/50 transition-colors"
-        >
-          &larr; Back to AgentClash
-        </Link>
-      </main>
-    </>
+      </section>
+    </MarketingShell>
   );
 }

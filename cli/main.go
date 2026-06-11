@@ -22,7 +22,8 @@ func main() {
 		return
 	}
 
-	if code, rendered := cmd.RenderError(err, os.Stderr); rendered {
+	code, rendered := cmd.RenderError(err, os.Stderr)
+	if rendered {
 		os.Exit(code)
 	}
 
@@ -35,5 +36,7 @@ func main() {
 	}
 
 	fmt.Fprintln(os.Stderr, err)
-	os.Exit(1)
+	// Same failure-class exit band as JSON mode (RenderError computes it even
+	// when it does not render), so scripts can branch identically either way.
+	os.Exit(code)
 }

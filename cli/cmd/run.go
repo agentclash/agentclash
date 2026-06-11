@@ -49,6 +49,7 @@ func init() {
 	runCreateCmd.Flags().Int("seeds", 0, "Create a seeded eval session with N child runs, one per seed (1-100). 0 creates a single run.")
 	runCreateCmd.Flags().String("mode", "", "Voice eval mode: text-sim (future: audio-sim, live-call, replay-import)")
 	runEventsCmd.Flags().StringSlice("filter", nil, "Filter streamed events by event type pattern (exact, comma-separated, or glob; '*' matches any non-slash chars, so 'model.*' matches 'model.call.started'; repeatable)")
+	runEventsCmd.Flags().String("since", "", "Resume the stream after this event ID (sent as Last-Event-ID; the server replays everything recorded after it)")
 
 	runRankingCmd.Flags().String("sort-by", "", "Sort by: composite, correctness, reliability, latency, cost")
 	runFailuresCmd.Flags().String("agent", "", "Filter by run agent ID")
@@ -769,17 +770,118 @@ var runPromoteFailureCmd = &cobra.Command{
 	},
 }
 
+// maxEventlessReconnects bounds how many consecutive times streamRunEvents
+// will re-dial a connection that dropped without delivering a single event.
+// A reconnect after real progress resets the budget.
+const maxEventlessReconnects = 5
+
 func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string, patterns []string) error {
-	ch, err := rc.Client.StreamSSE(cmd.Context(), "/v1/runs/"+runID+"/events/stream", nil)
-	if err != nil {
-		return fmt.Errorf("connecting to event stream: %w", err)
+	// --since is only registered on `run events`; the other follow paths
+	// (eval start, run create, ci run) share this function without it.
+	lastEventID := ""
+	if f := cmd.Flags().Lookup("since"); f != nil {
+		lastEventID = strings.TrimSpace(f.Value.String())
 	}
 
 	if !rc.Output.IsStructured() {
 		fmt.Fprintf(os.Stderr, "%s Streaming events for run %s (Ctrl+C to stop)\n", output.Cyan("▸"), runID)
 	}
 
+	eventlessReconnects := 0
+	for {
+		received, err := streamRunEventsOnce(cmd, rc, runID, patterns, &lastEventID)
+		if err != nil {
+			return err
+		}
+		if cmd.Context().Err() != nil {
+			// Ctrl+C / cancellation: not an error for a live tail.
+			break
+		}
+
+		// The server closed the stream. That is either the natural end (the
+		// run reached a terminal status) or a dropped connection — probe the
+		// run to tell the two apart, then resume from the last received ID.
+		// Reconnect ONLY on a positive "still live" answer: if the probe
+		// errors (run not readable, transient failure), fall back to the
+		// pre-resume behavior where a closed stream simply ends the tail —
+		// anything else risks an unbounded reconnect loop.
+		terminal, probeErr := runReachedTerminalStatus(cmd, rc, runID)
+		if probeErr != nil || terminal {
+			break
+		}
+		// Tell the operator why the CLI is pausing BEFORE any backoff sleep —
+		// silence followed by a reconnect line reads like a hang.
+		if !rc.Output.IsStructured() {
+			resumeFrom := lastEventID
+			if resumeFrom == "" {
+				resumeFrom = "the live tail"
+			}
+			fmt.Fprintf(os.Stderr, "%s Stream dropped; reconnecting from %s\n", output.Faint("▸"), resumeFrom)
+		}
+		if received {
+			eventlessReconnects = 0
+		} else {
+			eventlessReconnects++
+			if eventlessReconnects >= maxEventlessReconnects {
+				retryHint := fmt.Sprintf("retry with `agentclash run events %s`", runID)
+				if lastEventID != "" {
+					retryHint = fmt.Sprintf("retry with `agentclash run events %s --since %s`", runID, lastEventID)
+				}
+				return &cliError{
+					Code:    "stream_reconnect_exhausted",
+					Message: fmt.Sprintf("event stream for run %s dropped %d times in a row without delivering an event; %s", runID, eventlessReconnects, retryHint),
+				}
+			}
+			// Context-aware backoff: 1s, 2s, 4s, 8s between eventless re-dials.
+			backoff := time.Duration(1<<(eventlessReconnects-1)) * time.Second
+			timer := time.NewTimer(backoff)
+			select {
+			case <-cmd.Context().Done():
+				timer.Stop()
+				return nil
+			case <-timer.C:
+			}
+		}
+	}
+
+	if !rc.Output.IsStructured() {
+		fmt.Fprintf(os.Stderr, "%s Stream ended\n", output.Faint("▸"))
+	}
+	return nil
+}
+
+// runReachedTerminalStatus probes the run's status once via REST so a closed
+// SSE connection can be classified as "run finished" vs "connection dropped".
+func runReachedTerminalStatus(cmd *cobra.Command, rc *RunContext, runID string) (bool, error) {
+	resp, err := rc.Client.Get(cmd.Context(), "/v1/runs/"+runID, nil)
+	if err != nil {
+		return false, err
+	}
+	if apiErr := resp.ParseError(); apiErr != nil {
+		return false, apiErr
+	}
+	var run map[string]any
+	if err := resp.DecodeJSON(&run); err != nil {
+		return false, err
+	}
+	return isTerminalRunStatus(str(run["status"])), nil
+}
+
+// streamRunEventsOnce runs a single SSE connection to completion, rendering
+// events as they arrive. It reports whether any event was received and keeps
+// *lastEventID current so the caller can resume a dropped connection.
+func streamRunEventsOnce(cmd *cobra.Command, rc *RunContext, runID string, patterns []string, lastEventID *string) (bool, error) {
+	ch, err := rc.Client.StreamSSEFrom(cmd.Context(), "/v1/runs/"+runID+"/events/stream", nil, *lastEventID)
+	if err != nil {
+		return false, fmt.Errorf("connecting to event stream: %w", err)
+	}
+
+	received := false
 	for event := range ch {
+		received = true
+		if event.ID != "" {
+			*lastEventID = event.ID
+		}
 		if !runEventMatchesFilters(event.Event, event.Data, patterns) {
 			continue
 		}
@@ -799,7 +901,7 @@ func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string, patterns 
 			}
 			out, err := yaml.Marshal(doc)
 			if err != nil {
-				return fmt.Errorf("encoding event as yaml: %w", err)
+				return received, fmt.Errorf("encoding event as yaml: %w", err)
 			}
 			fmt.Fprint(rc.Output.Writer(), "---\n")
 			fmt.Fprint(rc.Output.Writer(), string(out))
@@ -823,11 +925,7 @@ func streamRunEvents(cmd *cobra.Command, rc *RunContext, runID string, patterns 
 			)
 		}
 	}
-
-	if !rc.Output.IsStructured() {
-		fmt.Fprintf(os.Stderr, "%s Stream ended\n", output.Faint("▸"))
-	}
-	return nil
+	return received, nil
 }
 
 func runEventMatchesFilters(sseEvent string, data []byte, patterns []string) bool {

@@ -4,14 +4,15 @@ import { MarketingFooter } from "./marketing-footer";
 
 type Props = {
   children: ReactNode;
+  showFooter?: boolean;
 };
 
-export function MarketingShell({ children }: Props) {
+export function MarketingShell({ children, showFooter = true }: Props) {
   return (
     <main className="main min-h-screen flex flex-col">
       <MarketingHeader />
       {children}
-      <MarketingFooter />
+      {showFooter ? <MarketingFooter /> : null}
     </main>
   );
 }
