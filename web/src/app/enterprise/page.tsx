@@ -1,17 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import {
-  ArrowRight,
-  CheckCircle2,
-  GitBranch,
-  Lock,
-  Play,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
 import { CalEmbedInit } from "@/components/marketing/cal-embed-init";
 import { EnterprisePageCTA } from "@/components/marketing/enterprise-page-cta";
-import { EnterpriseHeroVisual } from "@/components/marketing/enterprise/enterprise-hero-visual";
 import { FAQBlock } from "@/components/marketing/faq-block";
 import {
   JsonLd,
@@ -46,17 +36,17 @@ const buyerQuestions = [
   {
     num: "01",
     title: "Which agent should we trust?",
-    body: "Race baseline, candidate, and vendor agents on the same frozen challenge pack instead of disconnected eval jobs.",
+    body: "Compare baseline, candidate, and vendor agents inside one frozen challenge pack, not disconnected eval jobs.",
   },
   {
     num: "02",
     title: "Under which constraints?",
-    body: "Attach latency, cost, and policy ceilings to the benchmark. Fail the run when a candidate breaks your release rules.",
+    body: "Attach latency, cost, and policy ceilings to the benchmark. The run fails when a candidate breaks your release rules.",
   },
   {
     num: "03",
     title: "At what cost?",
-    body: "See cost per successful task next to correctness and reliability. Not token spend in isolation.",
+    body: "See cost per successful task next to correctness and reliability, not token spend in isolation.",
   },
   {
     num: "04",
@@ -66,31 +56,38 @@ const buyerQuestions = [
   {
     num: "05",
     title: "Can we defend the decision?",
-    body: "Export pass/fail recommendations, scorecards, and redacted evidence for security, finance, and engineering leadership.",
+    body: "Export pass and fail recommendations, scorecards, and redacted evidence for security, finance, and engineering leadership.",
   },
 ];
 
 const workflow = [
   {
-    icon: GitBranch,
+    num: "01",
     title: "Freeze the benchmark",
     text: "Version challenge packs and inputs so every run compares against the same approved workload.",
   },
   {
-    icon: Play,
+    num: "02",
     title: "Race candidates",
-    text: "Run agents in sandbox with the same tools, time budget, and scoring rules.",
+    text: "Run agents in a sandbox with the same tools, time budget, and scoring rules.",
   },
   {
-    icon: Sparkles,
+    num: "03",
     title: "Review replay evidence",
-    text: "Inspect trajectories, artifacts, cost, and scorecards before anyone argues from vibes.",
+    text: "Inspect trajectories, artifacts, cost, and scorecards before anyone argues from anecdotes.",
   },
   {
-    icon: ShieldCheck,
+    num: "04",
     title: "Gate the release",
     text: "Fail CI when a candidate regresses against baseline on the scorecard your team already trusts.",
   },
+];
+
+const pilotIncludes = [
+  "Dedicated workspace on the Team tier",
+  "Challenge packs and replay retention",
+  "CI integration and audit logs",
+  "Architecture review with our team",
 ];
 
 const faqItems = [
@@ -160,6 +157,9 @@ export const metadata: Metadata = {
   },
 };
 
+const eyebrowClass =
+  "font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.16em] text-white/40";
+
 export default function EnterprisePage() {
   return (
     <MarketingShell>
@@ -180,193 +180,177 @@ export default function EnterprisePage() {
         ]}
       />
 
-      <section className="px-6 pt-16 sm:px-12 sm:pt-24">
-        <div className="mx-auto grid max-w-[1200px] gap-14 lg:grid-cols-[1fr_0.95fr] lg:items-center">
-          <div>
-            <nav className="flex items-center gap-2 text-xs text-white/35">
-              <Link href="/" className="transition-colors hover:text-white/70">
-                Home
-              </Link>
-              <span>/</span>
-              <span>Enterprise</span>
-            </nav>
-            <p className="mt-8 font-mono text-[11px] uppercase tracking-[0.14em] text-cyan-200/80">
-              Enterprise evaluation
-            </p>
-            <h1 className="mt-4 max-w-[14ch] text-[clamp(2.25rem,5vw,3.75rem)] font-sans font-semibold leading-[1.08] tracking-[-0.03em] text-white">
-              Ship agents with evidence your team can defend
-            </h1>
-            <p className="mt-6 max-w-[52ch] text-base leading-7 text-white/60 sm:text-lg sm:leading-8">
-              AgentClash turns agent behavior into a release decision: frozen
-              benchmarks, replay, scorecards, and CI gates. Built for platform,
-              security, and vendor review committees, not another trace dashboard.
-            </p>
-            <EnterprisePageCTA className="mt-8" />
-            <ul className="mt-8 flex flex-wrap gap-x-5 gap-y-2 border-t border-white/[0.06] pt-6">
-              {trustItems.map((item) => (
-                <li
-                  key={item}
-                  className="flex items-center gap-2 text-xs text-white/45"
-                >
-                  <CheckCircle2 className="size-3.5 shrink-0 text-emerald-300/80" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <EnterpriseHeroVisual />
+      {/* Hero: pure typographic, no product chrome */}
+      <section className="px-6 pt-20 sm:px-12 sm:pt-32">
+        <div className="mx-auto max-w-[960px]">
+          <nav className="flex items-center gap-2 text-xs text-white/35">
+            <Link href="/" className="transition-colors hover:text-white/70">
+              Home
+            </Link>
+            <span aria-hidden>/</span>
+            <span>Enterprise</span>
+          </nav>
+          <p className={`mt-12 ${eyebrowClass}`}>Enterprise evaluation</p>
+          <h1 className="mt-6 max-w-[16ch] text-[clamp(2.5rem,6vw,4.5rem)] font-sans font-semibold leading-[1.04] tracking-[-0.03em] text-white">
+            Ship agents with evidence your team can defend
+          </h1>
+          <p className="mt-8 max-w-[58ch] text-lg leading-8 text-white/60">
+            AgentClash turns agent behavior into a release decision: frozen
+            benchmarks, replay, scorecards, and CI gates. Built for platform,
+            security, and vendor review committees, not another trace dashboard.
+          </p>
+          <EnterprisePageCTA className="mt-10" />
+          <ul className="mt-12 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-white/[0.08] pt-6 text-sm text-white/45">
+            {trustItems.map((item, index) => (
+              <li key={item} className="flex items-center gap-3">
+                {index > 0 ? (
+                  <span aria-hidden className="text-white/20">
+                    /
+                  </span>
+                ) : null}
+                {item}
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
-      <section className="border-t border-white/[0.06] px-6 py-20 sm:px-12 sm:py-28">
-        <div className="mx-auto max-w-[1200px]">
-          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/40">
-            Release committee
-          </p>
-          <h2 className="mt-3 max-w-[20ch] text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+      {/* Buyer questions */}
+      <section className="px-6 pt-28 sm:px-12 sm:pt-40">
+        <div className="mx-auto max-w-[960px]">
+          <p className={eyebrowClass}>Release committee</p>
+          <h2 className="mt-4 max-w-[20ch] text-3xl font-sans font-semibold tracking-[-0.02em] text-white sm:text-[2.75rem] sm:leading-[1.1]">
             Five questions every agent release needs answered
           </h2>
-          <p className="mt-4 max-w-[56ch] text-sm leading-7 text-white/55 sm:text-base">
+          <p className="mt-5 max-w-[56ch] text-base leading-7 text-white/55">
             Platform leads do not need another leaderboard. They need governed
-            evidence that connects benchmark, replay, gate, and ship or block.
+            evidence that connects benchmark, replay, gate, and the decision to
+            ship or block.
           </p>
-          <ol className="mt-12 grid gap-4 sm:grid-cols-2">
+          <ol className="mt-14 border-t border-white/[0.08]">
             {buyerQuestions.map((item) => (
               <li
                 key={item.num}
-                className="group relative overflow-hidden rounded-xl border border-white/[0.08] bg-gradient-to-br from-white/[0.04] to-transparent p-6 transition-colors hover:border-white/[0.14]"
+                className="grid grid-cols-1 gap-2 border-b border-white/[0.08] py-8 sm:grid-cols-[7rem_1fr] sm:gap-8 sm:py-9"
               >
-                <span className="font-mono text-[11px] tabular-nums text-cyan-200/70">
+                <span className="text-sm font-sans tabular-nums text-white/30">
                   {item.num}
                 </span>
-                <h3 className="mt-3 text-lg font-semibold tracking-tight text-white">
-                  {item.title}
-                </h3>
-                <p className="mt-2 text-sm leading-6 text-white/55">{item.body}</p>
+                <div>
+                  <h3 className="text-xl font-sans font-semibold tracking-[-0.01em] text-white">
+                    {item.title}
+                  </h3>
+                  <p className="mt-3 max-w-[60ch] text-base leading-7 text-white/55">
+                    {item.body}
+                  </p>
+                </div>
               </li>
             ))}
           </ol>
         </div>
       </section>
 
-      <section className="border-t border-white/[0.06] px-6 py-20 sm:px-12 sm:py-28">
-        <div className="mx-auto max-w-[1200px]">
-          <div className="grid gap-12 lg:grid-cols-[0.85fr_1.15fr] lg:items-start">
-            <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/40">
-                How it works
-              </p>
-              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-                From live run to release gate in one system
-              </h2>
-              <p className="mt-4 text-sm leading-7 text-white/55 sm:text-base">
-                No stitching traces, eval spreadsheets, and policy docs in
-                separate tools. AgentClash produces one decision artifact your
-                team can gate on.
-              </p>
-              {enterpriseTier ? (
-                <div className="mt-10 rounded-xl border border-white/[0.08] bg-white/[0.03] p-6">
-                  <div className="flex items-center gap-2">
-                    <Lock className="size-4 text-white/50" />
-                    <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/45">
-                      Enterprise tier
-                    </p>
-                  </div>
-                  <p className="mt-3 text-sm leading-relaxed text-white/55">
-                    {enterpriseTier.blurb}
-                  </p>
-                  <ul className="mt-5 space-y-2.5 text-sm text-white/75">
-                    {enterpriseTier.features.map((feature) => (
-                      <li key={feature} className="flex gap-2">
-                        <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-300/80" />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-                  <Link
-                    href="/pricing"
-                    className="mt-6 inline-flex items-center gap-1.5 text-sm font-medium text-cyan-200/90 transition-colors hover:text-cyan-100"
-                  >
-                    View full pricing
-                    <ArrowRight className="size-3.5" />
-                  </Link>
-                </div>
-              ) : null}
-            </div>
-            <ol className="space-y-4">
-              {workflow.map((step, index) => {
-                const Icon = step.icon;
-                return (
-                  <li
-                    key={step.title}
-                    className="flex gap-4 rounded-xl border border-white/[0.08] bg-[#0a0a0a] p-5"
-                  >
-                    <div className="flex size-10 shrink-0 items-center justify-center rounded-lg border border-white/[0.1] bg-white/[0.04]">
-                      <Icon className="size-4 text-white/70" strokeWidth={1.5} />
-                    </div>
-                    <div>
-                      <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/35">
-                        Step {index + 1}
-                      </p>
-                      <h3 className="mt-1 text-base font-semibold text-white">
-                        {step.title}
-                      </h3>
-                      <p className="mt-1.5 text-sm leading-6 text-white/55">
-                        {step.text}
-                      </p>
-                    </div>
-                  </li>
-                );
-              })}
-            </ol>
+      {/* How it works + enterprise tier */}
+      <section className="px-6 pt-28 sm:px-12 sm:pt-40">
+        <div className="mx-auto grid max-w-[1080px] gap-16 lg:grid-cols-[0.9fr_1.1fr] lg:gap-20">
+          <div className="lg:sticky lg:top-28 lg:self-start">
+            <p className={eyebrowClass}>How it works</p>
+            <h2 className="mt-4 max-w-[16ch] text-3xl font-sans font-semibold tracking-[-0.02em] text-white sm:text-[2.5rem] sm:leading-[1.1]">
+              From live run to release gate in one system
+            </h2>
+            <p className="mt-5 max-w-[44ch] text-base leading-7 text-white/55">
+              No stitching together traces, eval spreadsheets, and policy docs
+              in separate tools. AgentClash produces one decision artifact your
+              team can gate on.
+            </p>
+
+            {enterpriseTier ? (
+              <div className="mt-12 rounded-xl border border-white/[0.1] bg-white/[0.02] p-7">
+                <p className={eyebrowClass}>Enterprise tier</p>
+                <p className="mt-4 text-base leading-7 text-white/60">
+                  {enterpriseTier.blurb}
+                </p>
+                <ul className="mt-6 divide-y divide-white/[0.08] border-t border-white/[0.08]">
+                  {enterpriseTier.features.map((feature) => (
+                    <li
+                      key={feature}
+                      className="py-3 text-sm leading-6 text-white/70"
+                    >
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+                <Link
+                  href="/pricing"
+                  className="mt-6 inline-block text-sm font-medium text-white/70 underline decoration-white/20 underline-offset-4 transition-colors hover:text-white hover:decoration-white/50"
+                >
+                  View full pricing
+                </Link>
+              </div>
+            ) : null}
           </div>
+
+          <ol>
+            {workflow.map((step) => (
+              <li
+                key={step.num}
+                className="grid grid-cols-[3rem_1fr] gap-5 border-b border-white/[0.08] py-8 first:border-t"
+              >
+                <span className="text-sm font-sans tabular-nums text-white/30">
+                  {step.num}
+                </span>
+                <div>
+                  <h3 className="text-lg font-sans font-semibold tracking-[-0.01em] text-white">
+                    {step.title}
+                  </h3>
+                  <p className="mt-2.5 text-base leading-7 text-white/55">
+                    {step.text}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
         </div>
       </section>
 
-      <section className="border-t border-white/[0.06] px-6 py-20 sm:px-12">
-        <div className="mx-auto max-w-[960px]">
-          <div className="overflow-hidden rounded-2xl border border-white/[0.1] bg-gradient-to-br from-cyan-500/[0.08] via-transparent to-transparent p-8 sm:p-10">
-            <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-cyan-200/80">
-              Pilot offer
-            </p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+      {/* Pilot offer */}
+      <section className="px-6 pt-28 sm:px-12 sm:pt-40">
+        <div className="mx-auto max-w-[1080px]">
+          <div className="rounded-2xl border border-white/[0.1] bg-white/[0.02] p-8 sm:p-12">
+            <p className={eyebrowClass}>Pilot offer</p>
+            <h2 className="mt-4 max-w-[18ch] text-3xl font-sans font-semibold tracking-[-0.02em] text-white sm:text-[2.5rem] sm:leading-[1.1]">
               Start with a 45-day Team pilot
             </h2>
-            <p className="mt-4 max-w-[58ch] text-sm leading-7 text-white/60 sm:text-base">
-              Run governed benchmarks on your workloads in a dedicated workspace:
-              challenge packs, replay retention, CI integration, and workspace
-              audit logs. No credit card required.
+            <p className="mt-5 max-w-[58ch] text-base leading-7 text-white/60">
+              Run governed benchmarks on your workloads in a dedicated
+              workspace: challenge packs, replay retention, CI integration, and
+              workspace audit logs. No credit card required.
             </p>
-            <ul className="mt-6 grid gap-2 sm:grid-cols-2">
-              {[
-                "Dedicated workspace on Team tier",
-                "Challenge packs and replay retention",
-                "CI integration and audit logs",
-                "Architecture review with our team",
-              ].map((item) => (
-                <li key={item} className="flex gap-2 text-sm text-white/70">
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-300/80" />
+            <ul className="mt-10 grid gap-x-12 gap-y-4 border-t border-white/[0.08] pt-8 sm:grid-cols-2">
+              {pilotIncludes.map((item) => (
+                <li
+                  key={item}
+                  className="text-base leading-7 text-white/70"
+                >
                   {item}
                 </li>
               ))}
             </ul>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Link
                 href="/auth/login?plan=team"
-                className="inline-flex items-center justify-center gap-2 rounded-lg bg-white px-6 py-3.5 text-sm font-semibold text-[#060606] transition-colors hover:bg-white/90"
+                className="inline-flex items-center justify-center rounded-lg bg-white px-7 py-3.5 text-sm font-semibold text-[#060606] transition-colors hover:bg-white/90"
               >
                 Start Team pilot
-                <ArrowRight className="size-4" />
               </Link>
               <a
                 href="mailto:hello@agentclash.dev?subject=AgentClash%202-week%20eval%20sprint"
-                className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/20 bg-black/20 px-6 py-3.5 text-sm font-medium text-white/85 transition-colors hover:border-white/35 hover:text-white"
+                className="inline-flex items-center justify-center rounded-lg border border-white/15 px-7 py-3.5 text-sm font-medium text-white/85 transition-colors hover:border-white/35 hover:text-white"
               >
                 Ask about a 2-week eval sprint
-                <ArrowRight className="size-4" />
               </a>
             </div>
-            <p className="mt-5 text-xs leading-relaxed text-white/45">
+            <p className="mt-6 max-w-[64ch] text-sm leading-6 text-white/45">
               The Team pilot is self-serve product access. Fixed-scope eval
               sprints are optional services we scope on the architecture review.
             </p>
@@ -374,30 +358,26 @@ export default function EnterprisePage() {
         </div>
       </section>
 
-      <section className="border-t border-white/[0.06] px-6 py-16 sm:px-12">
-        <div className="mx-auto max-w-[960px]">
-          <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-white/40">
-            Explore
-          </p>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+      {/* Related resources */}
+      <section className="px-6 pt-28 sm:px-12 sm:pt-40">
+        <div className="mx-auto max-w-[1080px]">
+          <p className={eyebrowClass}>Explore</p>
+          <h2 className="mt-4 text-2xl font-sans font-semibold tracking-[-0.02em] text-white sm:text-3xl">
             Related resources
           </h2>
-          <ul className="mt-8 grid gap-3 sm:grid-cols-2">
+          <ul className="mt-10 grid gap-px overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.08] sm:grid-cols-2">
             {crossLinks.map((link) => (
               <li key={link.href}>
                 <Link
                   href={link.href}
-                  className="group flex h-full items-start justify-between gap-4 rounded-xl border border-white/[0.08] bg-white/[0.02] px-5 py-4 transition-all hover:border-white/16 hover:bg-white/[0.04]"
+                  className="flex h-full flex-col bg-[#060606] px-6 py-6 transition-colors hover:bg-white/[0.025]"
                 >
-                  <div>
-                    <span className="text-sm font-semibold text-white group-hover:text-white">
-                      {link.label}
-                    </span>
-                    <span className="mt-1.5 block text-xs leading-relaxed text-white/45">
-                      {link.description}
-                    </span>
-                  </div>
-                  <ArrowRight className="mt-0.5 size-4 shrink-0 text-white/30 transition-transform group-hover:translate-x-0.5 group-hover:text-white/60" />
+                  <span className="text-base font-sans font-semibold text-white">
+                    {link.label}
+                  </span>
+                  <span className="mt-2 text-sm leading-6 text-white/45">
+                    {link.description}
+                  </span>
                 </Link>
               </li>
             ))}
@@ -405,24 +385,27 @@ export default function EnterprisePage() {
         </div>
       </section>
 
-      <FAQBlock
-        schemaId="agentclash-enterprise-faq-schema"
-        eyebrow="FAQ"
-        title="Enterprise evaluation questions"
-        items={faqItems}
-        sansHeadlines
-      />
+      <div className="mt-28 sm:mt-40">
+        <FAQBlock
+          schemaId="agentclash-enterprise-faq-schema"
+          eyebrow="FAQ"
+          title="Enterprise evaluation questions"
+          items={faqItems}
+          sansHeadlines
+        />
+      </div>
 
-      <section className="border-t border-white/[0.06] px-6 py-20 sm:px-12 sm:py-28">
+      {/* Closing CTA */}
+      <section className="border-t border-white/[0.06] px-6 py-28 sm:px-12 sm:py-40">
         <div className="mx-auto max-w-[960px]">
-          <h2 className="max-w-[16ch] text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+          <h2 className="max-w-[18ch] text-[clamp(2rem,4.5vw,3.25rem)] font-sans font-semibold leading-[1.08] tracking-[-0.03em] text-white">
             Ready to gate your next agent release?
           </h2>
-          <p className="mt-4 max-w-[52ch] text-base leading-7 text-white/55">
-            Book a 30-minute eval architecture review or email us to scope a Team
-            pilot on your workloads.
+          <p className="mt-6 max-w-[52ch] text-lg leading-8 text-white/55">
+            Book a 30-minute eval architecture review, or email us to scope a
+            Team pilot on your workloads.
           </p>
-          <EnterprisePageCTA className="mt-8" />
+          <EnterprisePageCTA className="mt-10" />
         </div>
       </section>
     </MarketingShell>
