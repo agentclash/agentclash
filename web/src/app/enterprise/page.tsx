@@ -1,82 +1,93 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import {
-  ArrowRight,
-  CheckCircle2,
-} from "lucide-react";
 import { CalEmbedInit } from "@/components/marketing/cal-embed-init";
-import { ClosingCTA } from "@/components/marketing/closing-cta";
 import { EnterprisePageCTA } from "@/components/marketing/enterprise-page-cta";
 import { FAQBlock } from "@/components/marketing/faq-block";
-import { FeatureGrid } from "@/components/marketing/feature-grid";
 import {
   JsonLd,
   breadcrumbSchema,
   productSchema,
 } from "@/components/marketing/json-ld";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
-import { SplitSection } from "@/components/marketing/split-section";
 import { PRICING_TIERS } from "@/lib/pricing-data";
 import { ogImageUrl } from "@/lib/seo";
 
 const PAGE_PATH = "/enterprise";
 const PAGE_TITLE =
-  "Enterprise AI Agent Evaluation — Governed Release Gates | AgentClash";
+  "Enterprise AI Agent Evaluation — Release Gates & Pilot | AgentClash";
 const PAGE_DESCRIPTION =
-  "Prove which agent is safe to ship with governed benchmarks, replay evidence, scorecards, and CI release gates. 45-day Team pilot — no credit card.";
+  "Prove which agent is safe to ship with governed benchmarks, replay evidence, scorecards, and CI release gates. Start a 45-day Team pilot with no credit card.";
 const SOCIAL_IMAGE = ogImageUrl({
   title: "Enterprise Agent Evaluation",
-  subtitle: "Governed release gates for platform teams",
+  subtitle: "Release gates platform teams can defend",
   kind: "Enterprise",
 });
 
 const enterpriseTier = PRICING_TIERS.find((tier) => tier.name === "Enterprise");
 
+const trustItems = [
+  "MIT open source",
+  "Bring your own keys",
+  "45-day Team pilot",
+  "No token markup",
+];
+
 const buyerQuestions = [
   {
-    label: "Trust",
+    num: "01",
     title: "Which agent should we trust?",
-    body: "Compare baseline, candidate, and vendor agents inside one frozen challenge pack — not disconnected eval jobs.",
+    body: "Compare baseline, candidate, and vendor agents inside one frozen challenge pack, not disconnected eval jobs.",
   },
   {
-    label: "Constraints",
-    title: "Under which runtime constraints?",
-    body: "Attach release policy to the benchmark: latency, TTFT, cost ceilings, and automatic fails on policy violations.",
+    num: "02",
+    title: "Under which constraints?",
+    body: "Attach latency, cost, and policy ceilings to the benchmark. The run fails when a candidate breaks your release rules.",
   },
   {
-    label: "Cost",
+    num: "03",
     title: "At what cost?",
-    body: "See cost per successful task alongside correctness and reliability — not token spend in isolation.",
+    body: "See cost per successful task next to correctness and reliability, not token spend in isolation.",
   },
   {
-    label: "Evidence",
+    num: "04",
     title: "Why did it fail?",
-    body: "Replay explains divergences: routing fallbacks, tool paths, artifacts, and scorecard axes — not raw log dumps.",
+    body: "Replay shows routing, tool paths, artifacts, and scorecard axes. Not another log dump.",
   },
   {
-    label: "Defense",
+    num: "05",
     title: "Can we defend the decision?",
-    body: "Export pass/fail recommendations, scorecards, and redacted evidence for security, finance, and engineering leadership.",
+    body: "Export pass and fail recommendations, scorecards, and redacted evidence for security, finance, and engineering leadership.",
   },
 ];
 
-const productProof = [
+const workflow = [
   {
-    title: "Evidence, not debug logs",
-    body: "Inspect tool trajectories, routing, latency spikes, and artifacts in a replay shaped for ship decisions.",
+    num: "01",
+    title: "Freeze the benchmark",
+    text: "Version challenge packs and inputs so every run compares against the same approved workload.",
   },
   {
-    title: "Benchmark outcomes you can gate on",
-    body: "Completion, correctness, cost, reliability, and challenge-specific policy checks in one scorecard.",
+    num: "02",
+    title: "Race candidates",
+    text: "Run agents in a sandbox with the same tools, time budget, and scoring rules.",
   },
   {
-    title: "Your workloads, versioned",
-    body: "Freeze challenge packs and input sets so every run compares against the same approved benchmark.",
+    num: "03",
+    title: "Review replay evidence",
+    text: "Inspect trajectories, artifacts, cost, and scorecards before anyone argues from anecdotes.",
   },
   {
-    title: "Block regressions before prod",
-    body: "Fail builds when a candidate regresses against baseline on the scorecard your team already trusts.",
+    num: "04",
+    title: "Gate the release",
+    text: "Fail CI when a candidate regresses against baseline on the scorecard your team already trusts.",
   },
+];
+
+const pilotIncludes = [
+  "Dedicated workspace on the Team tier",
+  "Challenge packs and replay retention",
+  "CI integration and audit logs",
+  "Architecture review with our team",
 ];
 
 const faqItems = [
@@ -93,12 +104,12 @@ const faqItems = [
   {
     question: "What about data residency for UAE and other regions?",
     answer:
-      "Hosted pilots run on our standard cloud regions today. Enterprise contracts can discuss dedicated deployment, private networking, and residency requirements during the architecture review — contact hello@agentclash.dev.",
+      "Hosted pilots run on our standard cloud regions today. Enterprise contracts can discuss dedicated deployment, private networking, and residency requirements during the architecture review. Contact hello@agentclash.dev.",
   },
   {
     question: "How is the 45-day Team pilot different from a services engagement?",
     answer:
-      "The pilot is product access on the Team tier — your workspace, challenge packs, and gates — with no credit card required. Optional hands-on eval sprints (pack build, benchmark setup) are fixed-scope services; ask us about a 2-week eval sprint intro.",
+      "The pilot is product access on the Team tier: your workspace, challenge packs, and gates, with no credit card required. Optional hands-on eval sprints (pack build, benchmark setup) are fixed-scope services. Ask us about a 2-week eval sprint intro.",
   },
 ];
 
@@ -146,6 +157,9 @@ export const metadata: Metadata = {
   },
 };
 
+const eyebrowClass =
+  "font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.16em] text-white/40";
+
 export default function EnterprisePage() {
   return (
     <MarketingShell>
@@ -166,158 +180,202 @@ export default function EnterprisePage() {
         ]}
       />
 
-      <section className="px-6 pt-20 sm:px-12 sm:pt-28">
-        <div className="mx-auto max-w-[1080px]">
+      {/* Hero: pure typographic, no product chrome */}
+      <section className="px-6 pt-20 sm:px-12 sm:pt-32">
+        <div className="mx-auto max-w-[960px]">
           <nav className="flex items-center gap-2 text-xs text-white/35">
             <Link href="/" className="transition-colors hover:text-white/70">
               Home
             </Link>
-            <span>/</span>
+            <span aria-hidden>/</span>
             <span>Enterprise</span>
           </nav>
-          <p className="mt-10 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-cyan-200/70">
-            Enterprise
-          </p>
-          <h1 className="mt-5 max-w-[18ch] font-[family-name:var(--font-display)] text-4xl font-normal leading-[1.05] tracking-tight text-white sm:text-6xl">
-            Governed agent release gates
+          <p className={`mt-12 ${eyebrowClass}`}>Enterprise evaluation</p>
+          <h1 className="mt-6 max-w-[16ch] text-[clamp(2.5rem,6vw,4.5rem)] font-sans font-semibold leading-[1.04] tracking-[-0.03em] text-white">
+            Ship agents with evidence your team can defend
           </h1>
-          <p className="mt-8 max-w-[62ch] text-base leading-8 text-white/62 sm:text-lg">
-            Prove which agent is safe to ship — with replay evidence, scorecards,
-            and CI gates your platform, security, and finance teams can defend.
-            Not another trace dashboard. A benchmark control room for agent trust.
+          <p className="mt-8 max-w-[58ch] text-lg leading-8 text-white/60">
+            AgentClash turns agent behavior into a release decision: frozen
+            benchmarks, replay, scorecards, and CI gates. Built for platform,
+            security, and vendor review committees, not another trace dashboard.
           </p>
           <EnterprisePageCTA className="mt-10" />
+          <ul className="mt-12 flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-white/[0.08] pt-6 text-sm text-white/45">
+            {trustItems.map((item, index) => (
+              <li key={item} className="flex items-center gap-3">
+                {index > 0 ? (
+                  <span aria-hidden className="text-white/20">
+                    /
+                  </span>
+                ) : null}
+                {item}
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
-      <section className="border-t border-white/[0.06] px-6 py-16 sm:px-12 sm:py-24">
-        <div className="mx-auto max-w-[1080px]">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35">
-            The decision loop
-          </p>
-          <h2 className="mt-4 max-w-[24ch] font-[family-name:var(--font-display)] text-3xl tracking-[-0.02em] text-white sm:text-4xl">
-            Five questions every release needs answered
+      {/* Buyer questions */}
+      <section className="px-6 pt-28 sm:px-12 sm:pt-40">
+        <div className="mx-auto max-w-[960px]">
+          <p className={eyebrowClass}>Release committee</p>
+          <h2 className="mt-4 max-w-[20ch] text-3xl font-sans font-semibold tracking-[-0.02em] text-white sm:text-[2.75rem] sm:leading-[1.1]">
+            Five questions every agent release needs answered
           </h2>
-          <p className="mt-4 max-w-[58ch] text-sm leading-relaxed text-white/50">
-            Platform leads and vendor committees do not need another eval score.
-            They need governed evidence that connects benchmark → replay → gate →
+          <p className="mt-5 max-w-[56ch] text-base leading-7 text-white/55">
+            Platform leads do not need another leaderboard. They need governed
+            evidence that connects benchmark, replay, gate, and the decision to
             ship or block.
           </p>
-        </div>
-        <div className="mt-12">
-          <FeatureGrid features={buyerQuestions} columns={2} />
+          <ol className="mt-14 border-t border-white/[0.08]">
+            {buyerQuestions.map((item) => (
+              <li
+                key={item.num}
+                className="grid grid-cols-1 gap-2 border-b border-white/[0.08] py-8 sm:grid-cols-[7rem_1fr] sm:gap-8 sm:py-9"
+              >
+                <span className="text-sm font-sans tabular-nums text-white/30">
+                  {item.num}
+                </span>
+                <div>
+                  <h3 className="text-xl font-sans font-semibold tracking-[-0.01em] text-white">
+                    {item.title}
+                  </h3>
+                  <p className="mt-3 max-w-[60ch] text-base leading-7 text-white/55">
+                    {item.body}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
         </div>
       </section>
 
-      <SplitSection
-        eyebrow="Product proof"
-        title="From live run to release gate — one system"
-        body={
-          <>
-            <p>
-              AgentClash turns agent behavior into a decision artifact: frozen
-              challenge versions, sandbox execution, replay, scorecards, and
-              release gates — without stitching traces, evals, and policy in
-              separate tools.
+      {/* How it works + enterprise tier */}
+      <section className="px-6 pt-28 sm:px-12 sm:pt-40">
+        <div className="mx-auto grid max-w-[1080px] gap-16 lg:grid-cols-[0.9fr_1.1fr] lg:gap-20">
+          <div className="lg:sticky lg:top-28 lg:self-start">
+            <p className={eyebrowClass}>How it works</p>
+            <h2 className="mt-4 max-w-[16ch] text-3xl font-sans font-semibold tracking-[-0.02em] text-white sm:text-[2.5rem] sm:leading-[1.1]">
+              From live run to release gate in one system
+            </h2>
+            <p className="mt-5 max-w-[44ch] text-base leading-7 text-white/55">
+              No stitching together traces, eval spreadsheets, and policy docs
+              in separate tools. AgentClash produces one decision artifact your
+              team can gate on.
             </p>
-            <ul className="mt-6 space-y-3 text-sm text-white/55">
-              {productProof.map((item) => (
-                <li key={item.title} className="flex gap-2">
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-cyan-200/80" />
-                  <span>
-                    <span className="font-medium text-white/80">{item.title}.</span>{" "}
-                    {item.body}
-                  </span>
+
+            {enterpriseTier ? (
+              <div className="mt-12 rounded-xl border border-white/[0.1] bg-white/[0.02] p-7">
+                <p className={eyebrowClass}>Enterprise tier</p>
+                <p className="mt-4 text-base leading-7 text-white/60">
+                  {enterpriseTier.blurb}
+                </p>
+                <ul className="mt-6 divide-y divide-white/[0.08] border-t border-white/[0.08]">
+                  {enterpriseTier.features.map((feature) => (
+                    <li
+                      key={feature}
+                      className="py-3 text-sm leading-6 text-white/70"
+                    >
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+                <Link
+                  href="/pricing"
+                  className="mt-6 inline-block text-sm font-medium text-white/70 underline decoration-white/20 underline-offset-4 transition-colors hover:text-white hover:decoration-white/50"
+                >
+                  View full pricing
+                </Link>
+              </div>
+            ) : null}
+          </div>
+
+          <ol>
+            {workflow.map((step) => (
+              <li
+                key={step.num}
+                className="grid grid-cols-[3rem_1fr] gap-5 border-b border-white/[0.08] py-8 first:border-t"
+              >
+                <span className="text-sm font-sans tabular-nums text-white/30">
+                  {step.num}
+                </span>
+                <div>
+                  <h3 className="text-lg font-sans font-semibold tracking-[-0.01em] text-white">
+                    {step.title}
+                  </h3>
+                  <p className="mt-2.5 text-base leading-7 text-white/55">
+                    {step.text}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* Pilot offer */}
+      <section className="px-6 pt-28 sm:px-12 sm:pt-40">
+        <div className="mx-auto max-w-[1080px]">
+          <div className="rounded-2xl border border-white/[0.1] bg-white/[0.02] p-8 sm:p-12">
+            <p className={eyebrowClass}>Pilot offer</p>
+            <h2 className="mt-4 max-w-[18ch] text-3xl font-sans font-semibold tracking-[-0.02em] text-white sm:text-[2.5rem] sm:leading-[1.1]">
+              Start with a 45-day Team pilot
+            </h2>
+            <p className="mt-5 max-w-[58ch] text-base leading-7 text-white/60">
+              Run governed benchmarks on your workloads in a dedicated
+              workspace: challenge packs, replay retention, CI integration, and
+              workspace audit logs. No credit card required.
+            </p>
+            <ul className="mt-10 grid gap-x-12 gap-y-4 border-t border-white/[0.08] pt-8 sm:grid-cols-2">
+              {pilotIncludes.map((item) => (
+                <li
+                  key={item}
+                  className="text-base leading-7 text-white/70"
+                >
+                  {item}
                 </li>
               ))}
             </ul>
-          </>
-        }
-        aside={
-          enterpriseTier ? (
-            <div className="rounded-lg border border-white/[0.08] bg-white/[0.03] p-6">
-              <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/40">
-                Enterprise tier
-              </p>
-              <p className="mt-3 text-sm leading-relaxed text-white/55">
-                {enterpriseTier.blurb}
-              </p>
-              <ul className="mt-6 space-y-2.5 text-sm text-white/70">
-                {enterpriseTier.features.map((feature) => (
-                  <li key={feature} className="flex gap-2">
-                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-300/80" />
-                    {feature}
-                  </li>
-                ))}
-              </ul>
+            <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Link
-                href="/pricing"
-                className="mt-6 inline-flex items-center gap-1.5 text-sm text-cyan-200/80 transition-colors hover:text-cyan-100"
+                href="/auth/login?plan=team"
+                className="inline-flex items-center justify-center rounded-lg bg-white px-7 py-3.5 text-sm font-semibold text-[#060606] transition-colors hover:bg-white/90"
               >
-                View full pricing
-                <ArrowRight className="size-3.5" />
+                Start Team pilot
               </Link>
+              <a
+                href="mailto:hello@agentclash.dev?subject=AgentClash%202-week%20eval%20sprint"
+                className="inline-flex items-center justify-center rounded-lg border border-white/15 px-7 py-3.5 text-sm font-medium text-white/85 transition-colors hover:border-white/35 hover:text-white"
+              >
+                Ask about a 2-week eval sprint
+              </a>
             </div>
-          ) : null
-        }
-      />
-
-      <section className="border-t border-white/[0.06] px-6 py-16 sm:px-12 sm:py-24">
-        <div className="mx-auto max-w-[960px]">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35">
-            Pilot offer
-          </p>
-          <h2 className="mt-4 font-[family-name:var(--font-display)] text-3xl tracking-[-0.02em] text-white sm:text-4xl">
-            Start with a 45-day Team pilot
-          </h2>
-          <p className="mt-4 max-w-[62ch] text-sm leading-7 text-white/55">
-            Run governed benchmarks on your workloads in a dedicated workspace —
-            challenge packs, replay retention, CI integration, and workspace audit
-            logs. No credit card required.
-          </p>
-          <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:flex-wrap">
-            <Link
-              href="/auth/login?plan=team"
-              className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
-            >
-              Start Team pilot
-              <ArrowRight className="size-4" />
-            </Link>
-            <a
-              href="mailto:hello@agentclash.dev?subject=AgentClash%202-week%20eval%20sprint"
-              className="inline-flex items-center justify-center gap-2 rounded-md border border-white/15 bg-white/[0.04] px-6 py-3 text-sm font-medium text-white/80 hover:text-white hover:border-white/30 transition-colors"
-            >
-              Ask about a 2-week eval sprint
-              <ArrowRight className="size-4" />
-            </a>
+            <p className="mt-6 max-w-[64ch] text-sm leading-6 text-white/45">
+              The Team pilot is self-serve product access. Fixed-scope eval
+              sprints are optional services we scope on the architecture review.
+            </p>
           </div>
-          <p className="mt-4 text-xs leading-relaxed text-white/40">
-            Product pilot vs services: the Team pilot is self-serve product access.
-            Fixed-scope eval sprints (pack build, benchmark setup) are optional
-            services engagements — we&apos;ll scope them on the architecture review.
-          </p>
         </div>
       </section>
 
-      <section className="border-t border-white/[0.06] px-6 py-16 sm:px-12">
-        <div className="mx-auto max-w-[960px]">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35">
-            Explore
-          </p>
-          <h2 className="mt-4 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+      {/* Related resources */}
+      <section className="px-6 pt-28 sm:px-12 sm:pt-40">
+        <div className="mx-auto max-w-[1080px]">
+          <p className={eyebrowClass}>Explore</p>
+          <h2 className="mt-4 text-2xl font-sans font-semibold tracking-[-0.02em] text-white sm:text-3xl">
             Related resources
           </h2>
-          <ul className="mt-8 grid gap-4 sm:grid-cols-2">
+          <ul className="mt-10 grid gap-px overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.08] sm:grid-cols-2">
             {crossLinks.map((link) => (
               <li key={link.href}>
                 <Link
                   href={link.href}
-                  className="group flex h-full flex-col rounded-lg border border-white/[0.08] bg-white/[0.03] px-5 py-4 transition-colors hover:border-white/15"
+                  className="flex h-full flex-col bg-[#060606] px-6 py-6 transition-colors hover:bg-white/[0.025]"
                 >
-                  <span className="text-sm font-medium text-white group-hover:text-white/90">
+                  <span className="text-base font-sans font-semibold text-white">
                     {link.label}
                   </span>
-                  <span className="mt-2 text-xs leading-relaxed text-white/45">
+                  <span className="mt-2 text-sm leading-6 text-white/45">
                     {link.description}
                   </span>
                 </Link>
@@ -327,25 +385,29 @@ export default function EnterprisePage() {
         </div>
       </section>
 
-      <FAQBlock
-        schemaId="agentclash-enterprise-faq-schema"
-        eyebrow="FAQ"
-        title="Enterprise evaluation questions"
-        items={faqItems}
-      />
+      <div className="mt-28 sm:mt-40">
+        <FAQBlock
+          schemaId="agentclash-enterprise-faq-schema"
+          eyebrow="FAQ"
+          title="Enterprise evaluation questions"
+          items={faqItems}
+          sansHeadlines
+        />
+      </div>
 
-      <ClosingCTA
-        title={
-          <>
-            Ready to gate
-            <br />
-            <span className="text-white/40">your next agent release?</span>
-          </>
-        }
-        body="Book a 30-minute eval architecture review or email us to scope a Team pilot on your workloads."
-      >
-        <EnterprisePageCTA />
-      </ClosingCTA>
+      {/* Closing CTA */}
+      <section className="border-t border-white/[0.06] px-6 py-28 sm:px-12 sm:py-40">
+        <div className="mx-auto max-w-[960px]">
+          <h2 className="max-w-[18ch] text-[clamp(2rem,4.5vw,3.25rem)] font-sans font-semibold leading-[1.08] tracking-[-0.03em] text-white">
+            Ready to gate your next agent release?
+          </h2>
+          <p className="mt-6 max-w-[52ch] text-lg leading-8 text-white/55">
+            Book a 30-minute eval architecture review, or email us to scope a
+            Team pilot on your workloads.
+          </p>
+          <EnterprisePageCTA className="mt-10" />
+        </div>
+      </section>
     </MarketingShell>
   );
 }
