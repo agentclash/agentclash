@@ -4,6 +4,7 @@ import {
   ArrowRight,
   CheckCircle2,
 } from "lucide-react";
+import { CalEmbedInit } from "@/components/marketing/cal-embed-init";
 import { ClosingCTA } from "@/components/marketing/closing-cta";
 import { EnterprisePageCTA } from "@/components/marketing/enterprise-page-cta";
 import { FAQBlock } from "@/components/marketing/faq-block";
@@ -11,7 +12,6 @@ import { FeatureGrid } from "@/components/marketing/feature-grid";
 import {
   JsonLd,
   breadcrumbSchema,
-  faqSchema,
   productSchema,
 } from "@/components/marketing/json-ld";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
@@ -149,6 +149,7 @@ export const metadata: Metadata = {
 export default function EnterprisePage() {
   return (
     <MarketingShell>
+      <CalEmbedInit />
       <JsonLd
         id="agentclash-enterprise-schema"
         data={[
@@ -162,7 +163,6 @@ export default function EnterprisePage() {
             url: `https://www.agentclash.dev${PAGE_PATH}`,
             applicationSubCategory: "Enterprise AI agent evaluation",
           }),
-          faqSchema(faqItems),
         ]}
       />
 
