@@ -1,0 +1,81 @@
+---
+title: "AgentClash vs LangSmith vs Braintrust for Production Agent Testing"
+date: "2026-06-07"
+description: "LangSmith traces chains, Braintrust scores prompts, AgentClash races tool-using agents on real tasks with replay and CI gates: an honest workflow comparison for production agent testing."
+author: "Atharva"
+---
+
+This post is an SEO wrapper around the detailed pages on [/compare](/compare). It compares **workflow fit**, not feature checklists we cannot verify for your tenant.
+
+## Three different default questions
+
+| Tool | Default question | Best when |
+| --- | --- | --- |
+| [LangSmith](/compare/agentclash-vs-langsmith) | What happened in this chain, and how good was the output? | LangChain apps, trace-first debugging, prompt/dataset evals |
+| [Braintrust](/compare/agentclash-vs-braintrust) | How do prompts score on curated datasets? | Prompt iteration, logging, scoring functions over responses |
+| AgentClash | Which agent should ship on this real task under policy? | Multi-turn agents, sandboxed tools, release gates |
+
+Many production teams use LangSmith or Braintrust **and** add a sandboxed agent benchmark layer. They are complements until your release committee asks for same-tools races and CI blocks.
+
+## Where LangSmith fits
+
+LangSmith excels when you need deep observability over chains and prompts you already run. Reach for it when:
+
+- tracing production failures is the daily job
+- eval units are logged LLM calls or chain steps
+- you live inside the LangChain ecosystem
+
+Read the full [AgentClash vs LangSmith](/compare/agentclash-vs-langsmith) page for row-by-row notes.
+
+## Where Braintrust fits
+
+Braintrust excels when the eval loop is: dataset row → model call → scorer. Reach for it when:
+
+- product quality is mostly output grading
+- you iterate prompts with human or LLM judges
+- you want strong experiment logging without running sandboxes
+
+Read [AgentClash vs Braintrust](/compare/agentclash-vs-braintrust) for the workflow contrast.
+
+## Where AgentClash fits
+
+AgentClash is purpose-built when the shipped unit is an **agent**:
+
+- same challenge pack for every candidate
+- isolated sandboxes with explicit tool policy
+- replay timelines and scorecards per run
+- baseline vs candidate comparison
+- CI regression gates
+
+That maps to [agent evals](/agent-evals), [LLM agent evaluation](/llm-agent-evaluation), and the [agent evaluation platform](/platform/agent-evaluation).
+
+## Production testing workflow (combined stack)
+
+A pattern we see on platform teams:
+
+1. **Trace in production** with LangSmith (or your APM) to find failures.
+2. **Score prompt changes** with Braintrust while iterating copy and judges.
+3. **Promote failures into challenge packs** and race agents before merge.
+4. **Gate CI** when the candidate regresses against baseline.
+
+AgentClash owns steps 3–4. It does not replace your tracing or prompt lab.
+
+## What not to claim
+
+Avoid these mistakes when shopping tools:
+
+- Treating a prompt score as proof the agent completes the job
+- Comparing models on different days without frozen packs
+- Skipping artifact review on coding or ops agents
+
+Compare on workflow fit. Run a head-to-head on *your* pack when the decision is close.
+
+## Related resources
+
+- [Compare hub](/compare)
+- [Coding agent evaluation](/use-cases/coding-agent-evaluation)
+- [AI agent benchmark](/ai-agent-benchmark)
+- [Benchmarks field reports](/benchmarks)
+- [Enterprise pilot](/enterprise)
+
+Book an eval architecture review from the post footer, or explore [eval services](/services) for fixed-scope pack and gate setup.

@@ -1,0 +1,87 @@
+---
+title: "Evaluating Coding Agents on Private Repos: A Practical Checklist"
+date: "2026-06-08"
+description: "Coding agents on private repositories need evals that respect your layout, tests, and policies (not public leaderboard tasks). A checklist for platform and developer-experience teams."
+author: "Atharva"
+---
+
+Public coding benchmarks tell you how a model performs on leaked-style tasks. They do not tell you whether an agent can fix *your* service, run *your* test suite, or respect *your* merge policy.
+
+Use this checklist before you trust a coding agent on private repos.
+
+## 1. Define the job, not the model
+
+Pick one shippable workflow:
+
+- fix a failing test in a known module
+- implement a small API change with contract tests
+- refactor with lint and typecheck gates
+
+Encode it in a [challenge pack](/docs/guides/write-a-challenge-pack) with explicit success validators (tests green, file present, no forbidden paths touched). The [coding agent evaluation](/use-cases/coding-agent-evaluation) use case page has patterns.
+
+## 2. Mirror real repo shape
+
+Your fixture should include:
+
+- dependency files your CI actually uses
+- realistic directory depth and naming
+- secrets replaced with safe stubs (never real tokens in packs)
+- the same test runner command developers use locally
+
+If the sandbox image drifts from production CI, scores lie.
+
+## 3. Set tool and network policy explicitly
+
+Coding agents fail in boring ways: wrong package manager, blocked registry, over-broad file writes.
+
+Document:
+
+- which directories are writable
+- whether network is allowed and to which hosts
+- max wall-clock time and tool-call budget
+
+AgentClash applies tool policy per pack so every candidate races under the same rules. See [agent evals](/agent-evals).
+
+## 4. Capture artifacts, not chat transcripts
+
+Reviewers need:
+
+- diff or patch output
+- test logs
+- build artifacts
+- cost and duration
+
+Replay should show *what changed in the repo*, not just the agent's summary message.
+
+## 5. Compare harnesses, not just models
+
+The same model with different harnesses (CLI, IDE agent, custom orchestrator) is a different product surface. Race harnesses head-to-head on the same pack before you standardize on one.
+
+## 6. Promote every production failure
+
+When an agent breaks staging, promote the incident into a pack case within a week. That is how coding agent eval compounds.
+
+Wire the pack into [CI/CD agent gates](/docs/guides/ci-cd-agent-gates) once you have a baseline.
+
+## 7. Plan for human review on high-risk merges
+
+Even strong pass^k scores do not remove code review. Evals tell you the agent completed the task under policy; humans still own merge approval for sensitive paths.
+
+## Quick reference checklist
+
+- [ ] Real repo fixture with safe secrets
+- [ ] Validators tied to tests or artifacts
+- [ ] Tool/network policy matches production intent
+- [ ] Baseline harness and model pinned
+- [ ] Replay retained per security policy
+- [ ] Regression case for last production miss
+- [ ] Release gate owner named on the scorecard
+
+Start self-serve on the [enterprise pilot](/enterprise), or ask about [challenge pack build](/services) if you want hands-on help encoding your repos.
+
+## Related resources
+
+- [LLM agent evaluation](/llm-agent-evaluation)
+- [AI agent testing](/ai-agent-testing)
+- [Compare coding-agent eval approaches](/compare)
+- [Enterprise pilot](/enterprise)
