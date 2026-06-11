@@ -1,0 +1,96 @@
+---
+title: "AI Agent Governance for Middle East Enterprises: Residency, Evidence, and Release Gates"
+date: "2026-06-14"
+description: "UAE and GCC buyers need clear separation between data residency, sovereign cloud, and agent release evidence. A governance checklist grounded in repeatable eval workflows."
+author: "Atharva"
+---
+
+Middle East enterprise teams often get one slide that mixes three different problems: where data lives, who runs the cloud, and whether an AI agent is safe to ship.
+
+Those are related, but they are not the same decision. Governance breaks when procurement, security, and platform engineering argue past each other using one overloaded word like "compliance."
+
+## Separate the four questions buyers actually ask
+
+| Question | What it covers | What it does not prove |
+| --- | --- | --- |
+| Data residency | Where prompts, logs, and artifacts are stored and processed | That the agent resolves tickets correctly |
+| Sovereign or regional hosting | Who operates infrastructure and under which legal framework | That your vendor model behaves the same in Arabic and English |
+| Agent release evidence | Frozen workload, replay, scorecard, gate verdict | ISO certification by itself |
+| Government or sector procurement | Audit trail format, retention, approval workflow | A generic public benchmark score |
+
+AgentClash sits primarily in the **release evidence** column. It helps teams run governed benchmarks, preserve replay, compare baselines, and export gate artifacts stakeholders can review. It supports evaluation and release-gate workflows; it does not replace PDPL legal review, sector regulators, or your cloud residency contract.
+
+Regional context: UAE and wider GCC buyers increasingly treat residency and AI governance as board-level topics alongside frameworks such as PDPL and sector rules from bodies like TDRA, CBUAE, ADGM, and DIFC. Your architecture review still owns the legal mapping; your eval program owns the proof that a specific agent build behaved acceptably on your workload.
+
+## What hosted AgentClash offers today (and what to discuss separately)
+
+Be precise about deployment options:
+
+- **Hosted Team pilot:** runs on AgentClash standard cloud regions today, with BYOK so provider tokens bill to your accounts directly.
+- **Self-host or hybrid:** AgentClash is MIT-licensed; many enterprises run the stack in environments they control after the pilot.
+- **Enterprise architecture review:** dedicated deployment, private networking, and residency requirements can be discussed for enterprise contracts. See the [enterprise pilot FAQ](/enterprise) and contact `hello@agentclash.dev` for residency conversations.
+
+Do not read those options as "AgentClash is certified for every UAE sector." Read them as deployment paths your team can align with legal and infra decisions you already own.
+
+## The governance artifact GCC reviewers expect
+
+Whether the buyer is in financial services, telecom, healthcare, or government-adjacent operations, the release packet shape is similar:
+
+1. **Frozen workload:** challenge pack version, input set, tool policy
+2. **Named builds:** baseline and candidate agent deployments
+3. **Replay evidence:** trajectory proof for cases that drove the decision
+4. **Scorecard deltas:** correctness, cost, latency, policy dimensions
+5. **Gate verdict:** ship, block, or conditional with a named owner
+
+That loop matches the enterprise buyer narrative in our [security approval checklist](/blog/ai-agent-approval-security-compliance) and [regulated eval program guide](/blog/building-agent-eval-program-regulated-enterprise).
+
+For customer-facing agents, encode real ticket flows in [support agent evaluation](/use-cases/support-agent-evaluation) packs before you debate model vendors.
+
+## Checklist for platform and compliance leads
+
+- [ ] Residency decision documented separately from agent release decision
+- [ ] BYOK and log retention policy attached to the eval workspace
+- [ ] Challenge pack version frozen for the approval period
+- [ ] Baseline run ID pinned in CI manifest when gates apply
+- [ ] Evidence tier labeled for hosted vs native agents (`native_structured`, `hosted_structured`, `hosted_black_box`)
+- [ ] Gate summary translated for non-engineering stakeholders (Arabic executive summary optional; replay remains source of truth)
+- [ ] Self-host or dedicated deployment path evaluated if hosted regions are insufficient
+
+## Wire governance into CI without overclaiming
+
+Once leadership accepts the evidence shape, promote the approved workload into repo-tracked gates:
+
+```bash
+agentclash ci init .agentclash/ci.yaml
+agentclash ci validate .agentclash/ci.yaml --remote
+agentclash ci should-run --manifest .agentclash/ci.yaml
+agentclash ci run --manifest .agentclash/ci.yaml --artifact-dir agentclash-artifacts
+```
+
+Implementation details: [CI/CD agent gates](/docs/guides/ci-cd-agent-gates). Product overview: [AI agent regression testing](/platform/agent-regression-testing).
+
+## FAQ
+
+### Does AgentClash guarantee UAE data residency on the hosted pilot?
+
+No. Hosted pilots use standard cloud regions today. Discuss residency, private networking, or self-host during an enterprise architecture review, or run the open-source stack in infrastructure you control.
+
+### How is this different from sovereign AI infrastructure selection?
+
+Infrastructure answers where compute runs. Agent governance answers whether a specific agent revision is safe to release on your workload, with replay and gate evidence. You need both conversations; neither replaces the other.
+
+### Can we use this for government procurement readouts?
+
+AgentClash exports replay, scorecards, and gate verdicts that support audit-friendly readouts. Your procurement template still defines the final evidence format and retention rules.
+
+## Next step
+
+Evaluating agents for a UAE or GCC rollout? Start the [enterprise pilot](/enterprise) to run governed benchmarks, or ask about [Benchmark & Gate Setup](/services) if you want help encoding your first residency-aware workload.
+
+## Related resources
+
+- [Enterprise pilot](/enterprise)
+- [Support agent evaluation](/use-cases/support-agent-evaluation)
+- [Evaluating bilingual customer support agents](/blog/evaluating-bilingual-customer-support-agents)
+- [AI agent approval from security and compliance](/blog/ai-agent-approval-security-compliance)
+- [CI/CD agent gates](/docs/guides/ci-cd-agent-gates)
