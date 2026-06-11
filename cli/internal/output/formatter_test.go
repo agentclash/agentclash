@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/itchyny/gojq"
 	"gopkg.in/yaml.v3"
 )
 
@@ -155,5 +156,37 @@ func TestFormatterPrintErrorAlwaysShows(t *testing.T) {
 	f.PrintError("critical failure")
 	if !strings.Contains(errBuf.String(), "critical failure") {
 		t.Fatalf("PrintError should show even in quiet mode, got:\n%s", errBuf.String())
+	}
+}
+
+// A typed int64 field larger than 2^53 must survive a --query projection.
+// The default any-decode in printQueried would turn it into float64 and
+// silently corrupt it; UseNumber + gojq's json.Number support keeps it exact.
+// This is the unit-level analog of the gh --jq contract: the projection itself
+// must not lose precision on data that reaches the formatter as a real int64.
+func TestPrintQueriedPreservesLargeInt64(t *testing.T) {
+	var buf bytes.Buffer
+	f := NewFormatter("json", false, false)
+	f.writer = &buf
+
+	q, err := gojq.Parse(".seq")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	code, err := gojq.Compile(q)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+	f.SetQuery(code)
+
+	// 2^53+1 is the first integer float64 cannot represent exactly.
+	type payload struct {
+		Seq int64 `json:"seq"`
+	}
+	if err := f.PrintRaw(payload{Seq: 9007199254740993}); err != nil {
+		t.Fatalf("PrintRaw: %v", err)
+	}
+	if got := strings.TrimSpace(buf.String()); got != "9007199254740993" {
+		t.Fatalf("projected seq = %q, want exact 9007199254740993 (no float64 loss)", got)
 	}
 }

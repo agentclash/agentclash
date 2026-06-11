@@ -5,24 +5,54 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/agentclash/agentclash/cli/internal/api"
 	"github.com/agentclash/agentclash/cli/internal/auth"
 	"github.com/agentclash/agentclash/cli/internal/config"
 	"github.com/agentclash/agentclash/cli/internal/output"
+	"github.com/itchyny/gojq"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // Global flags.
 var (
-	flagJSON      bool
-	flagOutput    string
-	flagQuiet     bool
-	flagVerbose   bool
-	flagNoColor   bool
-	flagWorkspace string
-	flagAPIURL    string
+	flagJSON           bool
+	flagOutput         string
+	flagQuiet          bool
+	flagVerbose        bool
+	flagNoColor        bool
+	flagWorkspace      string
+	flagAPIURL         string
+	flagNonInteractive bool
+	flagQuery          string
 )
+
+// nonInteractiveMode reports whether the CLI must never prompt for input and
+// should fail fast when interactive input would otherwise be required. It is
+// driven by the explicit --non-interactive flag, the AGENTCLASH_NONINTERACTIVE
+// or CI environment variables, or a non-TTY stdin/stdout. Note: --json/--output
+// alone does NOT imply non-interactive — a human at a real terminal can still
+// run an interactive flow and ask for a machine-readable result.
+func nonInteractiveMode() bool {
+	if flagNonInteractive || envTruthy(os.Getenv("AGENTCLASH_NONINTERACTIVE")) || envTruthy(os.Getenv("CI")) {
+		return true
+	}
+	return !stdioIsInteractive()
+}
+
+// envTruthy treats empty, "0", "false", "no", and "off" (case-insensitive) as
+// false; any other non-empty value is true. This matches the de-facto CI
+// convention (e.g. GitHub Actions sets CI=true).
+func envTruthy(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "", "0", "false", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
 
 // RunContext is passed to all commands via cobra context.
 type RunContext struct {
@@ -137,6 +167,32 @@ Get started:
 		formatter := output.NewFormatter(mgr.OutputFormat(), flagJSON, flagQuiet)
 		setRuntimeOutputFormat(formatter.Format())
 
+		// Validate --query before any work (and before any network call):
+		// a bad expression must be a fast, clean validation error.
+		if flagQuery != "" {
+			if !formatter.IsStructured() {
+				return &cliError{
+					Code:    "invalid_argument",
+					Message: "--query requires structured output; add --json or --output json|yaml",
+				}
+			}
+			parsed, err := gojq.Parse(flagQuery)
+			if err != nil {
+				return &cliError{
+					Code:    "invalid_argument",
+					Message: fmt.Sprintf("invalid --query expression: %v", err),
+				}
+			}
+			compiled, err := gojq.Compile(parsed)
+			if err != nil {
+				return &cliError{
+					Code:    "invalid_argument",
+					Message: fmt.Sprintf("invalid --query expression: %v", err),
+				}
+			}
+			formatter.SetQuery(compiled)
+		}
+
 		rc := &RunContext{
 			Client:    client,
 			Config:    mgr,
@@ -158,6 +214,25 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&flagNoColor, "no-color", false, "Disable color output")
 	rootCmd.PersistentFlags().StringVarP(&flagWorkspace, "workspace", "w", "", "Workspace ID (overrides config)")
 	rootCmd.PersistentFlags().StringVar(&flagAPIURL, "api-url", "", "API base URL (overrides config)")
+	rootCmd.PersistentFlags().BoolVar(&flagNonInteractive, "non-interactive", false, "Never prompt; fail fast when interactive input is required (also set by AGENTCLASH_NONINTERACTIVE or CI)")
+	rootCmd.PersistentFlags().StringVar(&flagQuery, "query", "", "jq expression applied to structured output (alias: --jq); strings print raw, other results one compact JSON document per line. Requires --json or --output json|yaml.")
+	// --jq is the de-facto name agents know from gh; normalize it onto --query
+	// so both spellings parse while the schema documents a single flag. The
+	// GLOBAL normalization func is required — a flag-set-local one would not
+	// propagate to subcommand parsing — and we chain any prior func so this
+	// registration preserves an existing mapping rather than clobbering it.
+	// (A *future* un-chained SetGlobalNormalizationFunc caller could still
+	// drop ours; today this is the only caller.)
+	prior := rootCmd.GlobalNormalizationFunc()
+	rootCmd.SetGlobalNormalizationFunc(func(fs *pflag.FlagSet, name string) pflag.NormalizedName {
+		if prior != nil {
+			name = string(prior(fs, name))
+		}
+		if name == "jq" {
+			name = "query"
+		}
+		return pflag.NormalizedName(name)
+	})
 }
 
 // Execute runs the root command.

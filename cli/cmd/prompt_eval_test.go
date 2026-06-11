@@ -960,8 +960,20 @@ type promptEvalRemoteFakeOptions struct {
 	PaginateAliases  bool
 }
 
+// promptEvalAuthEnv makes a prompt-eval test hermetic and authenticated:
+// it isolates the config dir so the test can never pick up the developer's
+// real stored credentials, and sets a dummy token so the client's
+// no-credential short-circuit (ensureAuth) lets the request reach the fake
+// server. The fakes do not check the token; its value is irrelevant.
+func promptEvalAuthEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
+}
+
 func promptEvalRemoteFakeAPI(t *testing.T, options promptEvalRemoteFakeOptions) *httptest.Server {
 	t.Helper()
+	promptEvalAuthEnv(t)
 	modelAliases := options.ModelAliases
 	if modelAliases == nil {
 		modelAliases = []map[string]any{{"id": "alias-1", "alias_key": "gpt-5.5", "provider_key": "openai", "provider_account_id": "pa-1"}}
@@ -1064,6 +1076,7 @@ type promptEvalRunFake struct {
 
 func newPromptEvalRunFake(t *testing.T, state *promptEvalRunFakeState) *promptEvalRunFake {
 	t.Helper()
+	promptEvalAuthEnv(t)
 	f := &promptEvalRunFake{nextPlaygroundID: 1, nextExperimentID: 1}
 	if state != nil {
 		f.playgrounds = append(f.playgrounds, state.playgrounds...)

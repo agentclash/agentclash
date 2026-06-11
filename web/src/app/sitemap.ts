@@ -1,6 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getAllPosts } from "@/lib/blog";
-import { getAllReports, hasPublishedBenchmarks } from "@/lib/benchmarks";
+import { getAllReports } from "@/lib/benchmarks";
 import {
   getChangelogLatestModified,
   getChangelogPeriodHref,
@@ -57,10 +57,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
       ogImage({ title: post.title, subtitle: post.description, kind: "Blog" }),
     ],
   }));
-  // Exclude `sample` reports (illustrative numbers) so search engines never
-  // index fabricated data. Guard the date: a report whose `date` does not parse
-  // would become an Invalid Date and make Next's serializer throw on
-  // .toISOString(), taking down the entire sitemap.xml.
+  // Only list measured reports in the sitemap. Sample reports stay reachable but
+  // out of the index; guard dates so Invalid Date cannot take down sitemap.xml.
   const benchmarks = getAllReports()
     .filter((report) => !report.sample)
     .map((report) => {
@@ -79,27 +77,21 @@ export default function sitemap(): MetadataRoute.Sitemap {
         ],
       };
     });
-  // Only list the /benchmarks index while a real report is published. With just
-  // illustrative `sample` reports, the page is a noindexed "coming soon" state,
-  // and a sitemap must never advertise a noindexed URL (Search Console flags it).
-  const benchmarkIndex = hasPublishedBenchmarks()
-    ? [
-        {
-          url: `${DOCS_ORIGIN}/benchmarks`,
-          lastModified: new Date(),
-          changeFrequency: "weekly" as const,
-          priority: 0.8,
-          images: [
-            ogImage({
-              title: "AI Agent Benchmarks",
-              subtitle:
-                "New models raced against the field on real agentic tasks",
-              kind: "Benchmark",
-            }),
-          ],
-        },
-      ]
-    : [];
+  const benchmarkIndex = [
+    {
+      url: `${DOCS_ORIGIN}/benchmarks`,
+      lastModified: new Date(),
+      changeFrequency: "weekly" as const,
+      priority: 0.8,
+      images: [
+        ogImage({
+          title: "AI Agent Benchmarks",
+          subtitle: "Frozen packs, head-to-head races, replay evidence",
+          kind: "Benchmark",
+        }),
+      ],
+    },
+  ];
   const docs = getAllDocPaths().map((docPath) => ({
     url: `${DOCS_ORIGIN}${docPath}`,
     lastModified: new Date(),
@@ -199,6 +191,45 @@ export default function sitemap(): MetadataRoute.Sitemap {
       ],
     },
     {
+      url: `${DOCS_ORIGIN}/enterprise`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.82,
+      images: [
+        ogImage({
+          title: "Enterprise Agent Evaluation",
+          subtitle: "Governed release gates for platform teams",
+          kind: "Enterprise",
+        }),
+      ],
+    },
+    {
+      url: `${DOCS_ORIGIN}/resources/eval-checklist`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.77,
+      images: [
+        ogImage({
+          title: "Enterprise AI Agent Eval Checklist",
+          subtitle: "Free PDFs for release gates, pilots, and procurement",
+          kind: "Resource",
+        }),
+      ],
+    },
+    {
+      url: `${DOCS_ORIGIN}/services`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.78,
+      images: [
+        ogImage({
+          title: "Agent Evaluation Services",
+          subtitle: "Fixed offerings for platform adoption",
+          kind: "Services",
+        }),
+      ],
+    },
+    {
       url: `${DOCS_ORIGIN}/platform/agent-evaluation`,
       lastModified: new Date(),
       changeFrequency: "monthly",
@@ -229,6 +260,20 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 0.78,
       images: [ogImage({ title: "Agent Evaluation Features", kind: "SEO" })],
+    },
+    {
+      url: `${DOCS_ORIGIN}/industries`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.78,
+      images: [ogImage({ title: "Agent Evaluation by Industry", kind: "SEO" })],
+    },
+    {
+      url: `${DOCS_ORIGIN}/glossary`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.78,
+      images: [ogImage({ title: "Agent Evaluation Glossary", kind: "SEO" })],
     },
     ...SEO_PAGE_REGISTRY.map((page) => ({
       url: `${DOCS_ORIGIN}${page.path}`,

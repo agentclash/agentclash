@@ -237,14 +237,22 @@ var agentHarnessRunCmd = &cobra.Command{
 			return err
 		}
 
-		if rc.Output.IsStructured() {
-			return rc.Output.PrintRaw(execution)
-		}
-
-		rc.Output.PrintSuccess(fmt.Sprintf("Started agent harness execution %s", str(execution["id"])))
-		rc.Output.PrintDetail("Harness", str(execution["agent_harness_id"]))
-		rc.Output.PrintDetail("Status", output.StatusColor(str(execution["status"])))
+		// The follow decision must come before the structured early-return:
+		// `--json --follow` previously printed the non-terminal execution and
+		// exited 0 without ever polling.
 		follow, _ := cmd.Flags().GetBool("follow")
+
+		if rc.Output.IsStructured() {
+			// ID-first: emit the initial execution immediately so an agent can
+			// recover the execution id even if the follow loop dies.
+			if err := rc.Output.PrintRaw(execution); err != nil {
+				return err
+			}
+		} else {
+			rc.Output.PrintSuccess(fmt.Sprintf("Started agent harness execution %s", str(execution["id"])))
+			rc.Output.PrintDetail("Harness", str(execution["agent_harness_id"]))
+			rc.Output.PrintDetail("Status", output.StatusColor(str(execution["status"])))
+		}
 		if !follow {
 			return nil
 		}
@@ -272,8 +280,14 @@ func followAgentHarnessExecution(cmd *cobra.Command, workspaceID, executionID st
 			return err
 		}
 		status := str(execution["status"])
-		rc.Output.PrintDetail("Status", output.StatusColor(status))
-		if isTerminalAgentHarnessExecutionStatus(status) {
+		if !rc.Output.IsStructured() {
+			rc.Output.PrintDetail("Status", output.StatusColor(status))
+		}
+		if isTerminalRunStatus(status) {
+			if rc.Output.IsStructured() {
+				// Second and final NDJSON document: the terminal execution.
+				return rc.Output.PrintRaw(execution)
+			}
 			return nil
 		}
 
@@ -284,15 +298,6 @@ func followAgentHarnessExecution(cmd *cobra.Command, workspaceID, executionID st
 			return cmd.Context().Err()
 		case <-timer.C:
 		}
-	}
-}
-
-func isTerminalAgentHarnessExecutionStatus(status string) bool {
-	switch status {
-	case "completed", "failed", "cancelled":
-		return true
-	default:
-		return false
 	}
 }
 

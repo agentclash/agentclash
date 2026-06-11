@@ -26,17 +26,48 @@ var configGetCmd = &cobra.Command{
 	Short: "Get a config value",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		rc := GetRunContext(cmd)
+		key := args[0]
+		// Reject an unknown key up front, the same way `config set` does, so a
+		// typo can never read as "valid but unset". (A corrupt config file is
+		// already surfaced earlier by PersistentPreRunE's own load — this
+		// guards the key, not the file.)
+		if !isValidConfigKey(key) {
+			return &cliError{
+				Code:    "invalid_argument",
+				Message: fmt.Sprintf("unknown config key %q. Valid keys: %s", key, strings.Join(config.Keys(), ", ")),
+			}
+		}
 		cfg, err := config.Load()
 		if err != nil {
 			return err
 		}
-		val := cfg.Get(args[0])
+		val := cfg.Get(key)
+
+		if rc != nil && rc.Output.IsStructured() {
+			// An unset key is data, not an error: {"key","value":null}, exit 0.
+			payload := map[string]any{"key": key, "value": nil}
+			if val != "" {
+				payload["value"] = val
+			}
+			return rc.Output.PrintRaw(payload)
+		}
+
 		if val == "" {
-			return fmt.Errorf("key %q is not set", args[0])
+			return fmt.Errorf("key %q is not set", key)
 		}
 		fmt.Println(val)
 		return nil
 	},
+}
+
+func isValidConfigKey(key string) bool {
+	for _, k := range config.Keys() {
+		if k == key {
+			return true
+		}
+	}
+	return false
 }
 
 var configSetCmd = &cobra.Command{

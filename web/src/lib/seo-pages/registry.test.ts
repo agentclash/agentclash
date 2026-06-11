@@ -21,11 +21,17 @@ describe("SEO page registry", () => {
       "/use-cases/coding-agent-evaluation",
       "/use-cases/research-agent-evaluation",
       "/use-cases/support-agent-evaluation",
+      "/industries/banking",
+      "/industries/insurance",
+      "/industries/government",
+      "/glossary/agent-evaluation",
+      "/glossary/challenge-pack",
+      "/glossary/release-gate",
       "/features/agent-scorecards",
       "/features/agent-replay",
       "/features/challenge-packs",
     ]);
-    expect(SEO_PAGE_REGISTRY).toHaveLength(15);
+    expect(SEO_PAGE_REGISTRY).toHaveLength(21);
   });
 
   it("groups use-case and feature routes by prefix", () => {
@@ -38,6 +44,16 @@ describe("SEO page registry", () => {
       "/features/agent-scorecards",
       "/features/agent-replay",
       "/features/challenge-packs",
+    ]);
+    expect(getSeoPagesByPrefix("/industries").map((page) => page.path)).toEqual([
+      "/industries/banking",
+      "/industries/insurance",
+      "/industries/government",
+    ]);
+    expect(getSeoPagesByPrefix("/glossary").map((page) => page.path)).toEqual([
+      "/glossary/agent-evaluation",
+      "/glossary/challenge-pack",
+      "/glossary/release-gate",
     ]);
   });
 
@@ -73,5 +89,42 @@ describe("SEO page registry", () => {
         page.breadcrumbs.length,
       );
     }
+
+    for (const page of getSeoPagesByPrefix("/industries")) {
+      expect(page.breadcrumbs).toEqual([
+        { name: "Home", url: "/" },
+        { name: "Industries", url: "/industries" },
+        { name: expect.any(String), url: page.path },
+      ]);
+      expect(new Set(page.breadcrumbs.map((crumb) => crumb.url)).size).toBe(
+        page.breadcrumbs.length,
+      );
+    }
+
+    for (const page of getSeoPagesByPrefix("/glossary")) {
+      expect(page.breadcrumbs).toEqual([
+        { name: "Home", url: "/" },
+        { name: "Glossary", url: "/glossary" },
+        { name: expect.any(String), url: page.path },
+      ]);
+      expect(new Set(page.breadcrumbs.map((crumb) => crumb.url)).size).toBe(
+        page.breadcrumbs.length,
+      );
+    }
+  });
+
+  it("adds hub links to /compare and peer SEO pages without self-links", () => {
+    for (const page of SEO_PAGE_REGISTRY) {
+      const hrefs = page.relatedLinks.map((link) => link.href);
+      expect(hrefs).toContain("/compare");
+      expect(hrefs).not.toContain(page.path);
+      expect(new Set(hrefs).size).toBe(hrefs.length);
+    }
+  });
+
+  it("includes SEO hub links on S-tier landing pages", () => {
+    expect(getSeoPageByPath("/agent-evals")?.relatedLinks.length).toBeGreaterThan(
+      3,
+    );
   });
 });

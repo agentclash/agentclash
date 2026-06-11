@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { hasPublishedBenchmarks } from "@/lib/benchmarks";
 import { getChangelogLatestModified, getChangelogPeriods } from "@/lib/changelog";
 import sitemap from "./sitemap";
 
@@ -46,9 +45,6 @@ vi.mock("@/lib/benchmarks", () => ({
       sample: false,
     },
   ]),
-  // Two of the mocked reports are non-sample, so the section is "live" and the
-  // /benchmarks index belongs in the sitemap.
-  hasPublishedBenchmarks: vi.fn(() => true),
 }));
 
 describe("sitemap", () => {
@@ -94,6 +90,20 @@ describe("sitemap", () => {
       changeFrequency: "weekly",
       priority: 0.5,
     });
+    expect(byUrl.get("https://www.agentclash.dev/enterprise")).toMatchObject({
+      changeFrequency: "monthly",
+      priority: 0.82,
+    });
+    expect(
+      byUrl.get("https://www.agentclash.dev/resources/eval-checklist"),
+    ).toMatchObject({
+      changeFrequency: "monthly",
+      priority: 0.77,
+    });
+    expect(byUrl.get("https://www.agentclash.dev/services")).toMatchObject({
+      changeFrequency: "monthly",
+      priority: 0.78,
+    });
     expect(
       byUrl.get("https://www.agentclash.dev/platform/agent-evaluation"),
     ).toMatchObject({
@@ -121,6 +131,14 @@ describe("sitemap", () => {
       priority: 0.76,
     });
     expect(byUrl.get("https://www.agentclash.dev/use-cases")).toMatchObject({
+      changeFrequency: "monthly",
+      priority: 0.78,
+    });
+    expect(byUrl.get("https://www.agentclash.dev/industries")).toMatchObject({
+      changeFrequency: "monthly",
+      priority: 0.78,
+    });
+    expect(byUrl.get("https://www.agentclash.dev/glossary")).toMatchObject({
       changeFrequency: "monthly",
       priority: 0.78,
     });
@@ -165,7 +183,7 @@ describe("sitemap", () => {
     });
   });
 
-  it("includes the benchmarks index and per-report pages", () => {
+  it("always includes the benchmarks hub index", () => {
     const entries = sitemap();
     const byUrl = new Map(entries.map((entry) => [entry.url, entry]));
 
@@ -175,6 +193,11 @@ describe("sitemap", () => {
       changeFrequency: "weekly",
       priority: 0.8,
     });
+  });
+
+  it("includes per-report pages when measured reports exist", () => {
+    const entries = sitemap();
+    const byUrl = new Map(entries.map((entry) => [entry.url, entry]));
     const report = byUrl.get(
       "https://www.agentclash.dev/benchmarks/claude-opus-4-8-vs-the-field",
     );
@@ -186,14 +209,6 @@ describe("sitemap", () => {
     const image = report?.images?.[0] ?? "";
     expect(image.startsWith("https://www.agentclash.dev/og?")).toBe(true);
     expect(image).toContain("kind=Benchmark");
-  });
-
-  it("omits the benchmarks index while the section is coming-soon", () => {
-    vi.mocked(hasPublishedBenchmarks).mockReturnValueOnce(false);
-    const entries = sitemap();
-    const urls = new Set(entries.map((entry) => entry.url));
-
-    expect(urls.has("https://www.agentclash.dev/benchmarks")).toBe(false);
   });
 
   it("includes the comparison hub and per-competitor pages", () => {
@@ -243,6 +258,16 @@ describe("sitemap", () => {
       }
     }
     expect(() => JSON.stringify(entries)).not.toThrow();
+  });
+
+  it("includes every SEO registry path from getAllSeoPagePaths", async () => {
+    const { getAllSeoPagePaths } = await import("@/lib/seo-pages");
+    const entries = sitemap();
+    const urls = new Set(entries.map((entry) => entry.url));
+
+    for (const path of getAllSeoPagePaths()) {
+      expect(urls.has(`https://www.agentclash.dev${path}`)).toBe(true);
+    }
   });
 
   it("serializes to well-formed sitemap XML with escaped image URLs", () => {
