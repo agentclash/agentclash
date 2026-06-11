@@ -1,0 +1,66 @@
+---
+title: "pass@k, pass^k, and Reliability: What Enterprise Teams Should Measure"
+date: "2026-06-09"
+description: "Enterprise agent releases need explicit reliability metrics. A practical guide to pass@k and pass^k for platform teams, extending the pass@k vs pass^k primer with release-gate examples."
+author: "Atharva"
+---
+
+We covered the definitions in [pass@k vs pass^k](/blog/pass-at-k-vs-pass-power-k). This post extends that primer for enterprise teams deciding what to gate in CI.
+
+The short version:
+
+- **pass@k** — at least one success in *k* independent tries
+- **pass^k** — success on *all k* tries
+
+Same symbols, different release contracts.
+
+## What enterprise buyers actually ask
+
+Release committees rarely ask for a leaderboard score. They ask:
+
+1. Can we ship this agent without a human in the loop for this workload?
+2. What happens on the second and third attempt?
+3. If it fails, can we explain why with evidence?
+
+pass@k and pass^k answer questions 2 and 3 when paired with replay. Question 1 still needs policy, cost ceilings, and artifact checks on the scorecard.
+
+## Mapping metrics to product promises
+
+| Product promise | Primary metric | Gate posture |
+| --- | --- | --- |
+| "Usually works if the user retries" | pass@k with bounded k | Warn on pass^k regression |
+| "Must not fail twice in a row" | pass^k | Block release on any strict failure |
+| "Expensive failures are unacceptable" | pass^k + cost-per-success | Block on cost regression |
+
+Document the promise in the challenge pack README so evaluators do not argue about the metric after the run.
+
+## How to run both without gaming
+
+1. **Freeze the pack** so every attempt sees the same tools and fixtures.
+2. **Run k independent sandboxes** per candidate (no shared warm state).
+3. **Inspect disagreement** in replay when pass@k is high but pass^k is low.
+4. **Promote clustered failures** into new cases before widening k.
+
+AgentClash keeps pack version, replay, and scorecards together so you can audit whether a "pass" was lucky or repeatable. See [agent reliability benchmark](/agent-reliability-benchmark).
+
+## When to tighten from pass@k to pass^k
+
+Teams often start with pass@k while discovering the workload, then tighten once:
+
+- tool strategy stabilizes
+- validators cover the known failure modes
+- cost per success is predictable
+
+That transition is a maturity signal, not a moral judgment. Early exploration should not be blocked by pass^k before you understand the task.
+
+## Enterprise checklist before you gate
+
+- [ ] Workload encoded as a versioned challenge pack
+- [ ] Baseline agent frozen with explicit model and harness IDs
+- [ ] k chosen to match real retry policy (not "whatever fits the slide")
+- [ ] Replay retention policy agreed with security
+- [ ] Scorecard dimensions match the release committee questions
+- [ ] CI gate documented in the PR template
+
+Need a baseline and gate wired in two weeks? See [Benchmark & Gate Setup](/services) or start the [enterprise pilot](/enterprise).
+

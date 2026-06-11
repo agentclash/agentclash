@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -156,6 +157,7 @@ func (c *Client) BaseURL() string {
 type Response struct {
 	StatusCode int
 	Body       []byte
+	Header     http.Header
 }
 
 // DecodeJSON unmarshals the response body into v.
@@ -175,6 +177,17 @@ type APIError struct {
 	Remaining     *int       `json:"remaining,omitempty"`
 	ResetAt       *time.Time `json:"reset_at,omitempty"`
 	ExpiresAt     *time.Time `json:"expires_at,omitempty"`
+	// RetryAfterSeconds is derived from the Retry-After response header (not
+	// the error envelope body), normalized to whole seconds.
+	RetryAfterSeconds *int `json:"-"`
+}
+
+// Retryable reports whether the failure is transient and the same request can
+// be retried as-is: rate limiting (429) and server-side failures (5xx). This
+// is the single definition the client's own retry loop and the CLI error
+// envelope both derive from.
+func (e *APIError) Retryable() bool {
+	return e.StatusCode == http.StatusTooManyRequests || e.StatusCode >= 500
 }
 
 func (e *APIError) Error() string {
@@ -273,18 +286,60 @@ func (r *Response) ParseError() *APIError {
 	if r.StatusCode < 400 {
 		return nil
 	}
+	apiErr := &APIError{
+		StatusCode: r.StatusCode,
+		Code:       http.StatusText(r.StatusCode),
+		Message:    string(r.Body),
+	}
 	var envelope struct {
 		Error APIError `json:"error"`
 	}
 	if json.Unmarshal(r.Body, &envelope) == nil && envelope.Error.Code != "" {
 		envelope.Error.StatusCode = r.StatusCode
-		return &envelope.Error
+		apiErr = &envelope.Error
 	}
-	return &APIError{
-		StatusCode: r.StatusCode,
-		Code:       http.StatusText(r.StatusCode),
-		Message:    string(r.Body),
+	if delay, ok := parseRetryAfter(r.Header); ok {
+		seconds := int(delay / time.Second)
+		apiErr.RetryAfterSeconds = &seconds
 	}
+	return apiErr
+}
+
+// maxRetryAfterDelay caps the parsed Retry-After at 24h: it keeps an
+// implausibly large delta-seconds from overflowing time.Duration (int64
+// nanoseconds wrap at ~292 years, flipping the value negative and bypassing
+// the auto-wait bound), and keeps far-future HTTP-dates from publishing an
+// absurd retry_after_seconds in the error envelope.
+const maxRetryAfterDelay = 24 * time.Hour
+
+// parseRetryAfter reads a Retry-After header in either RFC 9110 form —
+// delta-seconds or an HTTP-date — and returns it as a non-negative duration,
+// capped at maxRetryAfterDelay.
+func parseRetryAfter(h http.Header) (time.Duration, bool) {
+	value := strings.TrimSpace(h.Get("Retry-After"))
+	if value == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.Atoi(value); err == nil {
+		if seconds < 0 {
+			return 0, false
+		}
+		if seconds > int(maxRetryAfterDelay/time.Second) {
+			return maxRetryAfterDelay, true
+		}
+		return time.Duration(seconds) * time.Second, true
+	}
+	if at, err := http.ParseTime(value); err == nil {
+		delay := time.Until(at)
+		if delay < 0 {
+			delay = 0
+		}
+		if delay > maxRetryAfterDelay {
+			delay = maxRetryAfterDelay
+		}
+		return delay, true
+	}
+	return 0, false
 }
 
 // Get performs a GET request.
@@ -314,6 +369,9 @@ func (c *Client) Delete(ctx context.Context, path string) (*Response, error) {
 
 // PostRaw performs a POST with a raw body and custom content type.
 func (c *Client) PostRaw(ctx context.Context, path string, contentType string, body io.Reader) (*Response, error) {
+	if err := c.ensureAuth(path); err != nil {
+		return nil, err
+	}
 	fullURL := c.baseURL + path
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, body)
 	if err != nil {
@@ -341,6 +399,9 @@ type FileUpload struct {
 //  3. A `GetBody` implementation so Go can replay the body on same-origin
 //     307/308 redirects instead of silently failing.
 func (c *Client) PostMultipart(ctx context.Context, path string, fields map[string]string, files map[string]FileUpload) (*Response, error) {
+	if err := c.ensureAuth(path); err != nil {
+		return nil, err
+	}
 	spool, err := os.CreateTemp("", "agentclash-multipart-*")
 	if err != nil {
 		return nil, fmt.Errorf("creating multipart spool: %w", err)
@@ -406,6 +467,9 @@ func (c *Client) PostMultipart(ctx context.Context, path string, fields map[stri
 }
 
 func (c *Client) doJSON(ctx context.Context, method, path string, body any) (*Response, error) {
+	if err := c.ensureAuth(path); err != nil {
+		return nil, err
+	}
 	var bodyReader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -428,6 +492,9 @@ func (c *Client) doJSON(ctx context.Context, method, path string, body any) (*Re
 }
 
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body io.Reader) (*Response, error) {
+	if err := c.ensureAuth(path); err != nil {
+		return nil, err
+	}
 	fullURL := c.baseURL + path
 	if len(query) > 0 {
 		fullURL += "?" + query.Encode()
@@ -439,6 +506,31 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 	}
 	c.setAuth(req)
 	return c.executeWithRetry(req)
+}
+
+// publicAPIPath reports whether path is reachable without credentials. Only the
+// two RFC 8628 device-authorization endpoints qualify — they MINT a CLI token,
+// so requiring a token to reach them would be circular. Exact matches only: a
+// prefix match would silently exempt any future /v1/cli-auth/device* route.
+func publicAPIPath(path string) bool {
+	return path == "/v1/cli-auth/device" || path == "/v1/cli-auth/device/token"
+}
+
+// ensureAuth fails fast with a synthesized 401 when the client has no way to
+// authenticate (no bearer token and not in dev mode) for a non-public path.
+// This makes "not logged in" a deterministic, network-free error instead of a
+// doomed request that returns a confusing transport error or passthrough 401,
+// and it covers every authenticated call (REST + SSE) from one place rather
+// than per-command classification.
+func (c *Client) ensureAuth(path string) error {
+	if c.token != "" || c.devUserID != "" || publicAPIPath(path) {
+		return nil
+	}
+	return &APIError{
+		StatusCode: http.StatusUnauthorized,
+		Code:       "unauthenticated",
+		Message:    "not authenticated: set AGENTCLASH_TOKEN or run 'agentclash auth login'",
+	}
 }
 
 func (c *Client) setAuth(req *http.Request) {
@@ -460,6 +552,11 @@ func (c *Client) setAuth(req *http.Request) {
 	}
 }
 
+// maxRetryAfterAutoWait bounds how long the automatic GET retry loop will
+// honor a server's Retry-After before giving up and surfacing the 429 to the
+// caller (whose error envelope still carries details.retry_after_seconds).
+const maxRetryAfterAutoWait = 30 * time.Second
+
 func (c *Client) executeWithRetry(req *http.Request) (*Response, error) {
 	if req.Method != http.MethodGet {
 		return c.execute(req)
@@ -474,14 +571,27 @@ func (c *Client) executeWithRetry(req *http.Request) (*Response, error) {
 		if err != nil {
 			return nil, err
 		}
-		if resp.StatusCode < 500 || resp.StatusCode == http.StatusUnprocessableEntity {
+		if resp.StatusCode < 500 && resp.StatusCode != http.StatusTooManyRequests {
 			return resp, nil
 		}
 		if attempt < len(delays) {
-			if c.verbose {
-				c.logger.Debug("retrying request", "status", resp.StatusCode, "attempt", attempt+1, "delay", delays[attempt])
+			delay := delays[attempt]
+			if resp.StatusCode == http.StatusTooManyRequests {
+				if retryAfter, ok := parseRetryAfter(resp.Header); ok {
+					if retryAfter > maxRetryAfterAutoWait {
+						// Too long to block on — let the caller decide when
+						// to come back (RFC 6585 §4 / RFC 9110 §10.2.3).
+						return resp, nil
+					}
+					if retryAfter > delay {
+						delay = retryAfter
+					}
+				}
 			}
-			time.Sleep(delays[attempt])
+			if c.verbose {
+				c.logger.Debug("retrying request", "status", resp.StatusCode, "attempt", attempt+1, "delay", delay)
+			}
+			time.Sleep(delay)
 		}
 	}
 	return resp, nil
@@ -510,5 +620,6 @@ func (c *Client) execute(req *http.Request) (*Response, error) {
 	return &Response{
 		StatusCode: resp.StatusCode,
 		Body:       body,
+		Header:     resp.Header,
 	}, nil
 }

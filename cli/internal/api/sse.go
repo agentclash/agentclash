@@ -19,6 +19,21 @@ type SSEEvent struct {
 // StreamSSE opens an SSE connection and sends events to a channel.
 // The channel is closed when the connection ends or the context is cancelled.
 func (c *Client) StreamSSE(ctx context.Context, path string, query url.Values) (<-chan SSEEvent, error) {
+	return c.StreamSSEFrom(ctx, path, query, "")
+}
+
+// StreamSSEFrom opens an SSE connection resuming after lastEventID: the value
+// is sent as the Last-Event-ID header (the standard SSE resume mechanism), and
+// the server replays every event recorded after it before going live. Pass ""
+// to start from the live tail. The channel is closed when the connection ends
+// or the context is cancelled — callers that want a seamless stream reconnect
+// with the last ID they received.
+func (c *Client) StreamSSEFrom(ctx context.Context, path string, query url.Values, lastEventID string) (<-chan SSEEvent, error) {
+	// Short-circuit a credential-free SSE request the same way REST calls do
+	// (WI-9): a synthesized 401 instead of a doomed connection.
+	if err := c.ensureAuth(path); err != nil {
+		return nil, err
+	}
 	fullURL := c.baseURL + path
 	if len(query) > 0 {
 		fullURL += "?" + query.Encode()
@@ -30,6 +45,9 @@ func (c *Client) StreamSSE(ctx context.Context, path string, query url.Values) (
 	}
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Cache-Control", "no-cache")
+	if lastEventID != "" {
+		req.Header.Set("Last-Event-ID", lastEventID)
+	}
 	c.setAuth(req)
 
 	// Streaming client: share the main client's transport (proxy / TLS

@@ -131,3 +131,7 @@ Do not manually publish for normal releases.
 6. `.github/workflows/release-cli.yml` builds release assets, publishes npm, and runs smoke installs on Ubuntu, macOS, and Windows.
 
 The one-time npm Trusted Publishing bootstrap is documented in `docs/cli-distribution.md`. That bootstrap should not be part of routine releases.
+
+## Marketing site (web/)
+
+When editing public marketing pages under `web/`, read `web/AGENTS.md` first. It bans Instrument Serif (`--font-display`) on new marketing headlines and documents conversion layout patterns.
