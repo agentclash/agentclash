@@ -77,12 +77,12 @@ Ad hoc benchmarks rot. Promote the approved workload into a repo-tracked manifes
 
 AgentClash CI gates compare candidate runs against a locked baseline and emit artifacts your pipeline can fail on. Product overview: [CI/CD agent evaluation](/ci-cd-agent-evaluation). Implementation: [CI/CD agent gates](/docs/guides/ci-cd-agent-gates).
 
-Minimum GitHub Actions handoff:
+Minimum GitHub Actions handoff (see the [CI/CD agent gates](/docs/guides/ci-cd-agent-gates) sketch):
 
-1. `agentclash ci validate --remote` on manifest changes
-2. `agentclash ci should-run` on path filters
-3. `agentclash ci run` with gate exit codes blocking merge
-4. Upload `gate.json` and replay links to the PR
+1. `agentclash ci validate .agentclash/ci.yaml --remote` on manifest changes
+2. `agentclash ci should-run --manifest .agentclash/ci.yaml` on path filters
+3. `agentclash ci run --manifest .agentclash/ci.yaml --artifact-dir agentclash-artifacts` when matched; nonzero exit codes block merge
+4. Upload `agentclash-artifacts/gate.json`, scorecard JSON, and replay links to the PR (the bundled `agentclash-ci` action handles this)
 
 Regression promotion policy belongs in the same manifest so failed cases become coverage instead of Slack archaeology.
 
@@ -110,11 +110,11 @@ Run them in the same challenge pack with explicit evidence tier limits. Use comp
 
 ### What is the fastest path to a first gate?
 
-Freeze one real task as a challenge pack, record a baseline run, init the CI manifest, and gate a single agent repo. The [enterprise pilot](/enterprise) includes Team access to run this loop self-serve.
+Freeze one real task as a challenge pack, record a baseline run, init the CI manifest, and gate a single agent repo. The [enterprise pilot](/enterprise) includes a 45-day Team pilot to run this loop self-serve.
 
 ## Next step
 
-Platform lead shipping agent revisions this quarter? Start the [enterprise pilot](/enterprise) or request a demo walkthrough of manifest setup and gate verdict export.
+Platform lead shipping agent revisions this quarter? Start the [enterprise pilot](/enterprise) or ask about a [Benchmark & Gate Setup](/services) sprint for manifest and gate wiring.
 
 ## Related resources
 

@@ -59,7 +59,7 @@ Industry surveys consistently show a gap between documented AI policy and produc
 - [ ] Baseline run ID with max age policy documented
 - [ ] Gate policy written in scorecard dimensions, not prose
 - [ ] Replay retained per security retention rules
-- [ ] Evidence tier labeled for hosted vs native agents (`black_box`, `structured_trace`, `native_full_replay`)
+- [ ] Evidence tier labeled for hosted vs native agents (`native_structured`, `hosted_structured`, `hosted_black_box`)
 - [ ] Automatic fail conditions listed (policy violations, forbidden paths, cost ceiling)
 - [ ] Release owner and rollback owner named
 
@@ -79,15 +79,15 @@ No. Separate **runtime policy** (what executes in production) from **release evi
 
 ### Can we approve a hosted vendor agent with limited observability?
 
-Yes, with explicit evidence tier labeling. Black-box runs can inform procurement, but native full replay should gate production-critical workloads when your policy requires it.
+Yes, with explicit evidence tier labeling. `hosted_black_box` runs can inform procurement, but `native_structured` evidence should gate production-critical workloads when your policy requires full trajectory replay.
 
 ### What if we have no baseline yet?
 
-Run an exploratory benchmark, record the green run as baseline, then attach the manifest. The [CI gates guide](/docs/guides/ci-cd-agent-gates) notes that missing baseline is informational during setup, not a reason to skip approval structure.
+Run an exploratory benchmark, record the green run as baseline, then pin `baseline.run_id` in the manifest. Until that exists, `agentclash ci validate` flags a missing baseline selector. Separately, `agentclash doctor` treats a missing eval baseline bookmark as informational only ([eval workflows and gates](/docs/challenge-packs/eval-workflows-and-gates)).
 
 ## Next step
 
-Need a governed benchmark your security team can replay? Start the [enterprise pilot](/enterprise) or book a demo to walk through a sample gate verdict on your workload.
+Need a governed benchmark your security team can replay? Start the [enterprise pilot](/enterprise) or ask about [Benchmark & Gate Setup](/services) for a guided first gate.
 
 ## Related resources
 

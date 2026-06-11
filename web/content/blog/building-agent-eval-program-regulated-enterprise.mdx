@@ -62,10 +62,10 @@ The compare view should show tradeoffs clearly: correctness, cost per success, l
 
 An eval program without CI becomes a quarterly ritual. Wire gates when baselines exist:
 
-1. Repo-tracked `.agentclash/ci.yaml` manifest
-2. Remote validation in CI for resource visibility
-3. `agentclash ci run` on agent-changing paths
-4. Artifact upload: gate JSON, scorecard, replay links
+1. Repo-tracked `.agentclash/ci.yaml` manifest with `baseline.run_id` pinned
+2. Remote validation in CI: `agentclash ci validate .agentclash/ci.yaml --remote`
+3. `agentclash ci should-run --manifest .agentclash/ci.yaml` on agent-changing paths, then `agentclash ci run --manifest .agentclash/ci.yaml --artifact-dir agentclash-artifacts` when matched
+4. Artifact upload: `gate.json`, scorecard JSON, replay links (or use the bundled GitHub Action)
 
 This is the handoff from **program** to **control**. Implementation guide: [CI/CD agent gates](/docs/guides/ci-cd-agent-gates). Product page: [CI/CD agent evaluation](/ci-cd-agent-evaluation).
 
@@ -119,7 +119,7 @@ Human-in-the-loop belongs in runtime policy for high-risk actions. Release gates
 
 ## Next step
 
-Standing up a governed eval program this half? Start the [enterprise pilot](/enterprise) or book a demo to map your first workload to a gate-ready benchmark.
+Standing up a governed eval program this half? Start the [enterprise pilot](/enterprise) or ask about [Benchmark & Gate Setup](/services) for hands-on pack and gate wiring.
 
 ## Related resources
 
