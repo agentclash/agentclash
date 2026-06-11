@@ -7,6 +7,7 @@ import { generateMetadata as generateBenchmarksIndexMetadata } from "./benchmark
 import { generateMetadata as generateBenchmarkMetadata } from "./benchmarks/[slug]/page";
 import { generateMetadata as generateDocsMetadata } from "./docs/[[...slug]]/page";
 import { metadata as enterpriseMetadata } from "./enterprise/page";
+import { metadata as servicesMetadata } from "./services/page";
 import { metadata as agentEvaluationMetadata } from "./platform/agent-evaluation/page";
 import { metadata as agentRegressionTestingMetadata } from "./platform/agent-regression-testing/page";
 import { metadata as sitemapMetadata } from "./sitemap/page";
@@ -61,6 +62,7 @@ describe("public canonical metadata", () => {
     expectCanonical(blogMetadata, "/blog");
     expectCanonical(generateBenchmarksIndexMetadata(), "/benchmarks");
     expectCanonical(enterpriseMetadata, "/enterprise");
+    expectCanonical(servicesMetadata, "/services");
     expectCanonical(agentEvaluationMetadata, "/platform/agent-evaluation");
     expectCanonical(
       agentRegressionTestingMetadata,

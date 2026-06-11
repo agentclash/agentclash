@@ -98,6 +98,10 @@ describe("sitemap", () => {
       changeFrequency: "monthly",
       priority: 0.82,
     });
+    expect(byUrl.get("https://www.agentclash.dev/services")).toMatchObject({
+      changeFrequency: "monthly",
+      priority: 0.78,
+    });
     expect(
       byUrl.get("https://www.agentclash.dev/platform/agent-evaluation"),
     ).toMatchObject({

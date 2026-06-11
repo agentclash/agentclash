@@ -134,6 +134,11 @@ const crossLinks = [
     label: "Pricing",
     description: "Free, Pro, Team, and custom Enterprise tiers.",
   },
+  {
+    href: "/services",
+    label: "Eval services",
+    description: "Fixed-scope pack build, benchmark setup, and managed eval retainers.",
+  },
 ];
 
 export const metadata: Metadata = {
@@ -352,7 +357,14 @@ export default function EnterprisePage() {
             </div>
             <p className="mt-6 max-w-[64ch] text-sm leading-6 text-white/45">
               The Team pilot is self-serve product access. Fixed-scope eval
-              sprints are optional services we scope on the architecture review.
+              sprints are optional{" "}
+              <Link
+                href="/services"
+                className="text-white/65 underline decoration-white/20 underline-offset-4 transition-colors hover:text-white/85"
+              >
+                services packages
+              </Link>{" "}
+              we scope on the architecture review.
             </p>
           </div>
         </div>
