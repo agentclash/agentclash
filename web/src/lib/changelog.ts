@@ -381,6 +381,16 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
         category: "improved",
         text: "IndexNow pings and sitemap image entries for faster search-engine discovery.",
       },
+      {
+        category: "added",
+        text: "First public coding-agent benchmark report with frozen Expression Evaluator Arena pack, monthly blog summary, and reproducible scorecard export workflow.",
+        href: "/blog/coding-agent-benchmark-june-2026",
+      },
+      {
+        category: "added",
+        text: "/benchmarks hub summarizes the measured GPT generations race with replay-backed scoreboard and methodology appendix.",
+        href: "/benchmarks/gpt-generations-expression-evaluator",
+      },
     ],
   },
 ];

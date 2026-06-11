@@ -1,28 +1,55 @@
-# Model Benchmark Workflow (Race Report Runbook)
+# Model Benchmark Workflow (Monthly Public Report Runbook)
 
-This is the repeatable process for turning an AgentClash race into a published
-benchmark report on the marketing site. Run it **every time a major model
-launches** (≈ monthly) to ride the launch-week attention.
+Repeatable process for turning an AgentClash race into a **monthly public benchmark**:
+a measured report on `/benchmarks/<slug>`, a shareable blog summary, and a changelog
+entry. Run it when major models ship and on a **monthly reliability cadence**.
 
-The published surface is `/benchmarks` (index) and `/benchmarks/<slug>` (report),
-backed by MDX files in `web/content/benchmarks/`. There are no backend changes —
-a report is a content file with a structured scoreboard in its frontmatter plus a
-narrative body.
+Reference implementation: [Coding agent benchmark — June 2026](https://www.agentclash.dev/blog/coding-agent-benchmark-june-2026) and the [full scoreboard](https://www.agentclash.dev/benchmarks/gpt-generations-expression-evaluator).
 
-## Why this exists
+## Roles and cadence
 
-AgentClash already produces the asset the AI ecosystem shares: head-to-head agent
-races on real tasks with defensible scoring. A "We raced **\<new model\>** against
-the field on 5 real agentic tasks — here's who won" post is high-signal, evergreen,
-and SEO-friendly. The workflow below makes producing one fast and consistent.
+| Role | Responsibility |
+| ---- | ---------------- |
+| **Monthly owner** | Picks the pack, runs the race, exports ranking JSON, drafts MDX + blog |
+| **Review approver** | Verifies numbers against replay, checks caveats and sample size honesty |
+| **Distribution** | Posts share URL to X / HN / LinkedIn on publish day; pings benchmarks RSS |
+
+**Target window:** publish by the **second week** of each month (or within 48h of a major model launch if that falls mid-month).
+
+**Checklist (copy each cycle):**
+
+- [ ] Pin challenge pack version **and** git commit SHA in the report appendix
+- [ ] Race every candidate on the same pack (tools, sandbox, budgets)
+- [ ] Export ranking JSON and attach replay / validator evidence per lane
+- [ ] Set `sample: false` only when numbers are measured
+- [ ] Write narrative + methodology appendix; add monthly blog summary
+- [ ] Link from `/benchmarks` hub and add changelog entry for the period
+- [ ] Promote meaningful failures into pack coverage or regression suites
+- [ ] Run web verification (`tsc`, `lint`, `test`, spot-check OG cards)
+
+## Public fixtures to use
+
+Start from versioned packs in `examples/challenge-packs/`. The first published report uses:
+
+| Pack | Path | Why |
+| ---- | ---- | --- |
+| Expression Evaluator Arena v1 | `examples/challenge-packs/expr-eval-arena.yaml` | Real coding task with hidden tiers; separates efficiency and contract adherence |
+
+Other packs suitable for future months (rotate or expand field size):
+
+- `multi-turn-refund-recovery.yaml` (multi-turn reliability)
+- `incident-response-*.yaml` (ops / tool use)
+- Security and eval-awareness packs as they stabilize
+
+Record in every report:
+
+- `pack.slug`, `evaluation_spec.name`, execution mode, tool policy, runtime limits
+- Git commit SHA of the repo when the race ran
 
 ## One-time setup
 
-- A workspace on the hosted backend with a challenge pack of **real agentic tasks**
-  (not trivia). The seed report uses five: an auth bug fix, a p99 latency hunt, a
-  flaky-test triage, a safe schema migration, and a log-driven incident RCA.
-- The `agentclash` CLI pointed at the hosted backend (see the repo `CLAUDE.md`,
-  "CLI Against Hosted Backend"):
+- Workspace on the hosted backend with the chosen challenge pack imported
+- CLI pointed at production (see repo `CLAUDE.md`, "CLI Against Hosted Backend"):
 
   ```bash
   export AGENTCLASH_API_URL="https://api.agentclash.dev"
@@ -30,100 +57,122 @@ and SEO-friendly. The workflow below makes producing one fast and consistent.
   go run . workspace use <workspace-id>
   ```
 
-## Per-launch steps
+## Per-report steps
 
 ### 1. Run the race
 
-Create a run with the model lineup (the new model plus the current field) on the
-challenge pack and follow it to completion:
-
 ```bash
 cd cli
-go run . run create --follow   # pick the pack + the models when prompted
+go run . run create --follow   # pick pack + model lineup
 ```
 
-Note the **run ID** when it finishes.
+Note the **run ID** when it finishes. Every lane must use the same pack version and deployment policy.
 
 ### 2. Export the ranking JSON
 
-Fetch the run's ranking (the scoreboard the backend computes — see
-`backend/internal/api/run_ranking.go`). Either save the CLI/API output to a file
-or pipe it straight into the scaffold:
+The scoreboard comes from the run ranking API (`backend/internal/api/run_ranking.go`).
 
 ```bash
-# via the API directly:
+# CLI (preferred):
+go run . run ranking <run-id> --json > ranking.json
+
+# or HTTP:
 curl -s -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
   "$AGENTCLASH_API_URL/workspaces/$AGENTCLASH_WORKSPACE/runs/<run-id>/ranking" \
   > ranking.json
 ```
 
-The scaffold accepts either the full response (`{ state, ranking: {...} }`) or the
-bare `ranking` payload.
+The scaffold accepts either the full response (`{ state, ranking: {...} }`) or the bare `ranking` payload.
 
-### 3. Scaffold the report
+**Required fields per report:** rank, composite, correctness, reliability, latency, cost, cost per correct (when available), winner flag, provider (confirm manually).
+
+### 3. Scaffold the benchmark MDX
 
 ```bash
 node scripts/benchmarks/scaffold.mjs \
   --ranking ranking.json \
-  --title "We raced <Model> against the field on 5 real agentic tasks" \
+  --title "We raced <Model> on <task headline>" \
   --model "<Model>" \
-  --slug <model>-vs-the-field \
+  --slug <kebab-slug> \
   --share-url "https://www.agentclash.dev/share/<token>"   # optional
 ```
 
-This writes `web/content/benchmarks/<slug>.mdx` with:
+Writes `web/content/benchmarks/<slug>.mdx` with `sample: false` and a prose skeleton. Refuses to overwrite unless `--force`.
 
-- `sample: false` (real data),
-- the **scoreboard pre-filled** from the ranking (rank, winner, composite,
-  correctness, reliability, latency, cost, $/correct), with a provider hint per
-  model, and
-- a prose skeleton (`How the race worked`, `The tasks`, `What we saw`, `Takeaway`).
+### 4. Public share link (recommended)
 
-It refuses to overwrite an existing file unless you pass `--force`.
+Create a public share of the run scorecard and set `runShareUrl` in frontmatter. The report page renders "View the live race scorecard".
 
-### 4. Make a public share link (optional but recommended)
+### 5. Edit narrative + methodology appendix
 
-So readers can drill into the live race, create a public share of the run
-scorecard and paste its URL into the report's `runShareUrl` frontmatter (the
-scaffold's `--share-url` does this for you). The report page renders a
-"View the live race scorecard" link to `/share/<token>`.
+In the MDX body, include:
 
-### 5. Edit the narrative
+- How the race worked (lineup, constraints, n per model)
+- Task description and why it was chosen
+- What we saw (story behind the scoreboard)
+- Caveats (sample size, provider scope, judge variance)
+- **Methodology appendix:** frozen pack, models, scoring dimensions, reproduction commands
 
-Fill in every `TODO` in the frontmatter (`verdict`, `challengePack`, each task's
-`name`/`summary`) and the body. Keep the verdict to one line — it's the OG-card
-subtitle and the index-card blurb. Confirm the provider on each scoreboard row.
+Keep `verdict` to one line (OG subtitle and hub blurb).
 
-### 6. Verify locally
+### 6. Publish the monthly blog summary
+
+Add `web/content/blog/coding-agent-benchmark-<month>-<year>.mdx` (or launch-week variant) with:
+
+- Shareable headline and scoreboard snapshot
+- Link to `/benchmarks/<slug>`
+- Methodology appendix (can mirror the report)
+- Distribution-ready caveats
+
+Update `BENCHMARKS_READING` / hub links in `web/src/lib/benchmarks-hub.ts`.
+
+### 7. Verify locally
 
 ```bash
 cd web
-npx tsc --noEmit
+pnpm exec tsc --noEmit
 pnpm lint
 pnpm test
 pnpm build
-pnpm dev    # open /benchmarks and /benchmarks/<slug>
+pnpm dev    # /benchmarks, /benchmarks/<slug>, blog post, OG cards
 ```
 
-Check: the scoreboard renders with the winner highlighted, the OG card
-(`/og?title=...&kind=Benchmark`) looks right, and the sample-data banner is
-**absent** (since `sample: false`).
+Confirm: scoreboard renders, sample banner absent when `sample: false`, hub shows latest report.
 
-### 7. Publish & syndicate
+### 8. Changelog + syndicate
 
-Merge to `main`. The report is automatically picked up by:
+- Add an **Added** entry to the current period in `web/src/lib/changelog.ts` linking to the blog or `/benchmarks`.
+- Merge to `main`. Surfaces update automatically: `/benchmarks`, sitemap, `/benchmarks/feed.xml`, JSON-LD.
+- Post the **blog URL** (primary share link) to X, HN, LinkedIn. Use the verdict line as the hook; link the full scoreboard for proof.
 
-- `/benchmarks` index and `/benchmarks/<slug>` page,
-- `sitemap.xml` (with a tailored OG image),
-- `/benchmarks/feed.xml` (RSS),
-- JSON-LD (`Article` + `Dataset`) for search/answer-engine discovery.
+## Promote failures into coverage
 
-Then post the link to X and Hacker News on launch day. The verdict line is your
-hook; the scoreboard is the proof.
+When a model fails or regresses on a dimension that should not recur:
 
-## Authoring a report by hand
+1. Capture replay + validator evidence from the run
+2. Add or tighten validators / cases in the pack (or promote to a regression suite)
+3. Reference the promoted case in the next month's appendix
 
-You don't need a real run to publish — set `sample: true` in the frontmatter and
-the page shows a clear "Sample data" banner. This is how the seed report
-(`claude-opus-4-8-vs-the-field.mdx`) works. Flip it to `false` once the numbers
-are real.
+This keeps public benchmarks aligned with the same gates enterprise teams use in CI.
+
+## Authoring without a live run
+
+Set `sample: true` for illustrative scoreboards. The page shows a "Sample data" banner and is `noindex`. Flip to `sample: false` once numbers are measured.
+
+## Scorecard export schema (reference)
+
+Ranking items map to scoreboard rows:
+
+| Ranking field | Report field |
+| ------------- | ------------ |
+| `label` | `model` |
+| `rank` | `rank` |
+| `run_agent_id === winner.run_agent_id` | `winner: true` |
+| `composite_score` | `composite` |
+| `correctness_score` | `correctness` |
+| `reliability_score` | `reliability` |
+| `latency_score` | `latency` |
+| `cost_score` | `cost` |
+| `cost_per_correct_usd` | `costPerCorrectUsd` |
+
+Provider is not in the ranking document; confirm in frontmatter after scaffold guess.

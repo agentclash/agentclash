@@ -61,7 +61,20 @@ export const BENCHMARKS_CHILD_PAGES = [
   },
 ] as const;
 
+export const BENCHMARKS_MONTHLY_BLOG = {
+  href: "/blog/coding-agent-benchmark-june-2026",
+  title: "Coding agent benchmark — June 2026",
+  text: "Shareable monthly summary with methodology appendix and reproduction steps.",
+} as const;
+
+export const BENCHMARKS_RUNBOOK_HREF =
+  "https://github.com/agentclash/agentclash/blob/main/docs/marketing/model-benchmark-workflow.md" as const;
+
 export const BENCHMARKS_READING = [
+  {
+    href: BENCHMARKS_MONTHLY_BLOG.href,
+    title: BENCHMARKS_MONTHLY_BLOG.title,
+  },
   {
     href: "/blog/benchmark-ai-agents-on-your-own-data",
     title: "Benchmark AI agents on your own data",
@@ -100,9 +113,9 @@ export const BENCHMARKS_PACK_LINKS = [
 ] as const;
 
 export const BENCHMARKS_MONTHLY_PROCESS = [
-  "Pin a challenge pack version and publish the runtime constraints up front.",
+  "Pin a challenge pack version, git commit, and runtime constraints in the report appendix.",
   "Race every candidate on the same pack with identical tools, sandbox, and budgets.",
-  "Score the full trajectory across correctness, reliability, latency, cost, and judge evidence.",
-  "Attach replay links and artifact references reviewers can audit without rerunning.",
-  "Summarize winners, regressions, and gate verdicts on this hub and in the RSS feed.",
+  "Export ranking JSON (`agentclash run ranking`) and attach replay plus validator evidence.",
+  "Publish measured MDX on /benchmarks and a shareable monthly blog summary.",
+  "Summarize on this hub, RSS feed, and changelog; promote failures into pack coverage.",
 ] as const;
