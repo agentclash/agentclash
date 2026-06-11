@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
@@ -90,15 +91,17 @@ type MultiTurnInvoker interface {
 }
 
 type Activities struct {
-	repo             RunRepository
-	evalSessionRepo  EvalSessionRepository
-	agentHarnessRepo AgentHarnessExecutionRepository
-	hooks            FakeWorkHooks
-	judgeClient      provider.Client
-	sandboxProvider  sandbox.Provider
-	githubClient     GitHubPullRequestClient
-	artifactStore    storage.Store
-	artifactWriter   ArtifactWriter
+	repo               RunRepository
+	evalSessionRepo    EvalSessionRepository
+	agentHarnessRepo   AgentHarnessExecutionRepository
+	publicTryoutRepo   PublicAgentTryoutRepository
+	publicTryoutConfig PublicAgentTryoutConfig
+	hooks              FakeWorkHooks
+	judgeClient        provider.Client
+	sandboxProvider    sandbox.Provider
+	githubClient       GitHubPullRequestClient
+	artifactStore      storage.Store
+	artifactWriter     ArtifactWriter
 }
 
 type LoadEvalSessionInput struct {
@@ -193,19 +196,96 @@ func NewActivities(repo RunRepository, hooks FakeWorkHooks, judgeClients ...prov
 	if candidate, ok := repo.(AgentHarnessExecutionRepository); ok {
 		agentHarnessRepo = candidate
 	}
+	var publicTryoutRepo PublicAgentTryoutRepository
+	if candidate, ok := repo.(PublicAgentTryoutRepository); ok {
+		publicTryoutRepo = candidate
+	}
 	var artifactWriter ArtifactWriter
 	if candidate, ok := repo.(ArtifactWriter); ok {
 		artifactWriter = candidate
 	}
 	return &Activities{
-		repo:             repo,
-		evalSessionRepo:  evalSessionRepo,
-		agentHarnessRepo: agentHarnessRepo,
-		artifactWriter:   artifactWriter,
-		hooks:            hooks,
-		judgeClient:      judgeClient,
-		sandboxProvider:  sandbox.UnconfiguredProvider{},
+		repo:               repo,
+		evalSessionRepo:    evalSessionRepo,
+		agentHarnessRepo:   agentHarnessRepo,
+		publicTryoutRepo:   publicTryoutRepo,
+		publicTryoutConfig: NormalizePublicAgentTryoutConfig(PublicAgentTryoutConfig{}),
+		artifactWriter:     artifactWriter,
+		hooks:              hooks,
+		judgeClient:        judgeClient,
+		sandboxProvider:    sandbox.UnconfiguredProvider{},
 	}
+}
+
+// defaultPublicTryoutE2BTemplate is the single general-purpose office-work
+// sandbox the public tryout runner boots when no template is configured. Its
+// definition lives in infra/e2b/agentclash-tryout-office.
+const defaultPublicTryoutE2BTemplate = "agentclash-tryout-office"
+
+type PublicAgentTryoutConfig struct {
+	HarnessKind   string
+	E2BTemplateID string
+	Provider      string
+	// CredentialRef is the OpenAI/Codex credential (the default harness).
+	CredentialRef string
+	// AnthropicCredentialRef powers the claude harness.
+	AnthropicCredentialRef string
+	// OpenRouterCredentialRef powers the openclaw + hermes harnesses.
+	OpenRouterCredentialRef string
+}
+
+func NormalizePublicAgentTryoutConfig(config PublicAgentTryoutConfig) PublicAgentTryoutConfig {
+	if strings.TrimSpace(config.HarnessKind) == "" {
+		config.HarnessKind = domain.AgentHarnessKindCodexE2B
+	}
+	if strings.TrimSpace(config.E2BTemplateID) == "" {
+		// General-purpose office-work sandbox built from
+		// infra/e2b/agentclash-tryout-office. Bundles all four agent CLIs plus
+		// a broad office-document toolchain so any task + any agent runs
+		// without a per-task image.
+		config.E2BTemplateID = defaultPublicTryoutE2BTemplate
+	}
+	if strings.TrimSpace(config.Provider) == "" {
+		config.Provider = "openai"
+	}
+	if strings.TrimSpace(config.CredentialRef) == "" {
+		config.CredentialRef = "env://OPENAI_API_KEY"
+	}
+	if strings.TrimSpace(config.AnthropicCredentialRef) == "" {
+		config.AnthropicCredentialRef = "env://ANTHROPIC_API_KEY"
+	}
+	if strings.TrimSpace(config.OpenRouterCredentialRef) == "" {
+		config.OpenRouterCredentialRef = "env://OPENROUTER_API_KEY"
+	}
+	return config
+}
+
+// publicTryoutHarnessKind resolves the agent harness for a tryout: the user's
+// per-tryout selection when supported, otherwise the configured default.
+func publicTryoutHarnessKind(config PublicAgentTryoutConfig, selected *string) string {
+	if selected != nil {
+		if trimmed := strings.TrimSpace(*selected); domain.IsSupportedAgentHarnessKind(trimmed) {
+			return trimmed
+		}
+	}
+	return domain.NormalizeAgentHarnessKind(config.HarnessKind)
+}
+
+// publicTryoutCredentialRef maps a harness kind to the credential it needs.
+func publicTryoutCredentialRef(config PublicAgentTryoutConfig, harnessKind string) string {
+	switch domain.NormalizeAgentHarnessKind(harnessKind) {
+	case domain.AgentHarnessKindClaudeE2B:
+		return config.AnthropicCredentialRef
+	case domain.AgentHarnessKindOpenClawE2B, domain.AgentHarnessKindHermesE2B:
+		return config.OpenRouterCredentialRef
+	default:
+		return config.CredentialRef
+	}
+}
+
+func (a *Activities) WithPublicAgentTryoutConfig(config PublicAgentTryoutConfig) *Activities {
+	a.publicTryoutConfig = NormalizePublicAgentTryoutConfig(config)
+	return a
 }
 
 // WithArtifactStore wires the object store the harness uploads captured output

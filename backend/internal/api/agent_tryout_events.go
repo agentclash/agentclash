@@ -227,6 +227,29 @@ func mapTryoutTimelineEvent(event repository.RunEvent, redact bool) (TryoutTimel
 	}, true
 }
 
+func mapPublicTryoutTimelineEvent(event repository.AgentTryoutEvent, redact bool) (TryoutTimelineEvent, bool) {
+	eventType := runevents.Type(event.EventType)
+	timelineType, include := classifyTryoutEvent(eventType)
+	if !include {
+		return TryoutTimelineEvent{}, false
+	}
+	facts := decodeTryoutPayloadFacts(event.Payload)
+	var payload json.RawMessage
+	if redact {
+		payload = redactTryoutPayload(facts)
+	} else {
+		payload = nonEmptyJSON(event.Payload)
+	}
+	return TryoutTimelineEvent{
+		Cursor:     event.ID,
+		Sequence:   event.SequenceNumber,
+		Type:       timelineType,
+		Summary:    tryoutEventSummary(eventType, facts),
+		OccurredAt: event.OccurredAt.UTC(),
+		Payload:    payload,
+	}, true
+}
+
 func decodeTryoutPayloadFacts(payload json.RawMessage) map[string]any {
 	if len(payload) == 0 {
 		return nil
@@ -387,7 +410,7 @@ func (m *AgentTryoutManager) buildTryoutEvents(ctx context.Context, tryout repos
 	// No linked run yet (still queued): return an empty, resumable timeline plus
 	// the current status snapshot rather than failing.
 	if tryout.RunID == nil {
-		return result, nil
+		return m.buildPublicTryoutEvents(ctx, result, tryout, cursor, redact)
 	}
 
 	limit := normalizeTryoutEventLimit(cursor.Limit)
@@ -410,6 +433,27 @@ func (m *AgentTryoutManager) buildTryoutEvents(ctx context.Context, tryout repos
 		// full of filtered events still makes forward progress.
 		result.NextCursor = row.ID
 		item, include := mapTryoutTimelineEvent(row, redact)
+		if !include {
+			continue
+		}
+		result.Events = append(result.Events, item)
+	}
+	return result, nil
+}
+
+func (m *AgentTryoutManager) buildPublicTryoutEvents(ctx context.Context, result AgentTryoutEventsResult, tryout repository.AgentTryout, cursor TryoutEventsCursor, redact bool) (AgentTryoutEventsResult, error) {
+	limit := normalizeTryoutEventLimit(cursor.Limit)
+	rows, err := m.repo.ListAgentTryoutEventsAfter(ctx, tryout.ID, cursor.After, limit+1)
+	if err != nil {
+		return AgentTryoutEventsResult{}, err
+	}
+	if int32(len(rows)) > limit {
+		result.HasMore = true
+		rows = rows[:limit]
+	}
+	for _, row := range rows {
+		result.NextCursor = row.ID
+		item, include := mapPublicTryoutTimelineEvent(row, redact)
 		if !include {
 			continue
 		}

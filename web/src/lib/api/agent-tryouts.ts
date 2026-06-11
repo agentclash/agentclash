@@ -21,6 +21,42 @@ export function listAgentTryoutTemplates(
   return api.get<{ items: AgentTryoutTemplate[] }>("/v1/agent-tryout-templates");
 }
 
+export function createAnonymousAgentTryout(
+  api: ApiClient,
+  input: CreateAgentTryoutInput,
+): Promise<AgentTryout> {
+  return api.post<AgentTryout>("/v1/agent-tryouts", input);
+}
+
+export function getPublicAgentTryout(
+  api: ApiClient,
+  tryoutId: string,
+): Promise<AgentTryout> {
+  return api.get<AgentTryout>(`/v1/agent-tryouts/${tryoutId}`);
+}
+
+export function submitAgentTryoutTurn(
+  api: ApiClient,
+  tryoutId: string,
+  input: { message?: string; end?: boolean },
+): Promise<{ status: string }> {
+  return api.post<{ status: string }>(
+    `/v1/agent-tryouts/${tryoutId}/turns`,
+    input,
+  );
+}
+
+export function getPublicAgentTryoutEvents(
+  api: ApiClient,
+  tryoutId: string,
+  opts?: { after?: number; limit?: number },
+): Promise<AgentTryoutEventsResponse> {
+  return api.get<AgentTryoutEventsResponse>(
+    `/v1/agent-tryouts/${tryoutId}/events`,
+    { params: { after: opts?.after, limit: opts?.limit } },
+  );
+}
+
 export function createWorkspaceAgentTryout(
   api: ApiClient,
   workspaceId: string,

@@ -142,6 +142,18 @@ func main() {
 			PublicCreatedByUserID:  cfg.AgentTryoutPublicCreatedByUserID,
 			E2BTemplateID:          cfg.AgentTryoutE2BTemplateID,
 			OpenAIAPIKeySecretName: cfg.AgentTryoutOpenAIAPIKeySecretName,
+			HostedProvider:         cfg.AgentTryoutHostedProvider,
+			HostedCredentialRef:    cfg.AgentTryoutHostedCredentialRef,
+		},
+	).WithPublicExecution(
+		api.NewTemporalPublicAgentTryoutExecutionWorkflowStarter(temporalClient),
+		api.AgentTryoutExecutionConfig{
+			PublicWorkspaceID:      cfg.AgentTryoutPublicWorkspaceID,
+			PublicCreatedByUserID:  cfg.AgentTryoutPublicCreatedByUserID,
+			E2BTemplateID:          cfg.AgentTryoutE2BTemplateID,
+			OpenAIAPIKeySecretName: cfg.AgentTryoutOpenAIAPIKeySecretName,
+			HostedProvider:         cfg.AgentTryoutHostedProvider,
+			HostedCredentialRef:    cfg.AgentTryoutHostedCredentialRef,
 		},
 	)
 	agentBuildManager := api.NewAgentBuildManager(repo)

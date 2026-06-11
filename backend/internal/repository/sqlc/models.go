@@ -95,6 +95,28 @@ type AgentTryout struct {
 	CreatedAt                pgtype.Timestamptz
 	UpdatedAt                pgtype.Timestamptz
 	ParentTryoutID           *uuid.UUID
+	SelectedHarnessKind      *string
+}
+
+type AgentTryoutEvent struct {
+	ID             int64
+	AgentTryoutID  uuid.UUID
+	SequenceNumber int64
+	EventType      string
+	ActorType      string
+	OccurredAt     pgtype.Timestamptz
+	Payload        []byte
+}
+
+type AgentTryoutTurn struct {
+	ID            int64
+	AgentTryoutID uuid.UUID
+	TurnIndex     int32
+	Role          string
+	Message       string
+	Status        string
+	CreatedAt     pgtype.Timestamptz
+	ProcessedAt   pgtype.Timestamptz
 }
 
 type BillingAccount struct {

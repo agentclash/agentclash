@@ -3,14 +3,15 @@ package workflow
 import "github.com/google/uuid"
 
 const (
-	EvalSessionWorkflowName           = "EvalSessionWorkflow"
-	RunWorkflowName                   = "RunWorkflow"
-	RunAgentWorkflowName              = "RunAgentWorkflow"
-	AgentHarnessExecutionWorkflowName     = "AgentHarnessExecutionWorkflow"
-	PlaygroundExperimentWorkflowName      = "PlaygroundExperimentWorkflow"
+	EvalSessionWorkflowName                = "EvalSessionWorkflow"
+	RunWorkflowName                        = "RunWorkflow"
+	RunAgentWorkflowName                   = "RunAgentWorkflow"
+	AgentHarnessExecutionWorkflowName      = "AgentHarnessExecutionWorkflow"
+	PublicAgentTryoutExecutionWorkflowName = "PublicAgentTryoutExecutionWorkflow"
+	PlaygroundExperimentWorkflowName       = "PlaygroundExperimentWorkflow"
 	SyntheticDatasetGenerationWorkflowName = "SyntheticDatasetGenerationWorkflow"
-	HostedRunEventSignal                  = "hosted_run_event"
-	WorkflowTaskQueue                 = RunWorkflowName
+	HostedRunEventSignal                   = "hosted_run_event"
+	WorkflowTaskQueue                      = RunWorkflowName
 )
 
 type EvalSessionWorkflowInput struct {
@@ -29,6 +30,10 @@ type RunAgentWorkflowInput struct {
 type AgentHarnessExecutionWorkflowInput struct {
 	ExecutionID    uuid.UUID `json:"execution_id"`
 	TimeoutSeconds int       `json:"timeout_seconds,omitempty"`
+}
+
+type PublicAgentTryoutExecutionWorkflowInput struct {
+	TryoutID uuid.UUID `json:"tryout_id"`
 }
 
 type PlaygroundExperimentWorkflowInput struct {

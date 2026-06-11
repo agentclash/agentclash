@@ -11,11 +11,13 @@ import (
 )
 
 type Querier interface {
+	AppendAgentTryoutTurn(ctx context.Context, arg AppendAgentTryoutTurnParams) (AgentTryoutTurn, error)
 	ApplyHostedRunEvent(ctx context.Context, arg ApplyHostedRunEventParams) (HostedRunExecution, error)
 	ArchiveDataset(ctx context.Context, arg ArchiveDatasetParams) (Dataset, error)
 	AttachRunToEvalSession(ctx context.Context, arg AttachRunToEvalSessionParams) (Run, error)
 	BeginBillingWebhookEvent(ctx context.Context, arg BeginBillingWebhookEventParams) (string, error)
 	ClaimAgentTryout(ctx context.Context, arg ClaimAgentTryoutParams) (AgentTryout, error)
+	ClaimNextPendingAgentTryoutTurn(ctx context.Context, arg ClaimNextPendingAgentTryoutTurnParams) (AgentTryoutTurn, error)
 	CountActiveAgentDeploymentsByWorkspaceID(ctx context.Context, arg CountActiveAgentDeploymentsByWorkspaceIDParams) (int64, error)
 	CountActiveOrgMembers(ctx context.Context, arg CountActiveOrgMembersParams) (int32, error)
 	CountActiveWorkspaceRuns(ctx context.Context, arg CountActiveWorkspaceRunsParams) (int32, error)
@@ -26,6 +28,7 @@ type Querier interface {
 	CountDatasetGenerationRejectionsByJobID(ctx context.Context, arg CountDatasetGenerationRejectionsByJobIDParams) (int64, error)
 	CountDatasetTraceCandidates(ctx context.Context, arg CountDatasetTraceCandidatesParams) (int64, error)
 	CountDatasetsByWorkspaceID(ctx context.Context, arg CountDatasetsByWorkspaceIDParams) (int64, error)
+	CountPendingAgentTryoutTurns(ctx context.Context, arg CountPendingAgentTryoutTurnsParams) (int64, error)
 	CountRegressionCasesBySuiteID(ctx context.Context, arg CountRegressionCasesBySuiteIDParams) (int64, error)
 	CountRegressionCasesBySuiteIDs(ctx context.Context, arg CountRegressionCasesBySuiteIDsParams) ([]CountRegressionCasesBySuiteIDsRow, error)
 	CountRegressionCasesByWorkspaceID(ctx context.Context, arg CountRegressionCasesByWorkspaceIDParams) (int64, error)
@@ -119,6 +122,7 @@ type Querier interface {
 	ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context, arg ListActiveAgentDeploymentsByWorkspaceIDParams) ([]ListActiveAgentDeploymentsByWorkspaceIDRow, error)
 	ListAgentBuildVersionsByBuildID(ctx context.Context, arg ListAgentBuildVersionsByBuildIDParams) ([]AgentBuildVersion, error)
 	ListAgentBuildsByWorkspaceID(ctx context.Context, arg ListAgentBuildsByWorkspaceIDParams) ([]AgentBuild, error)
+	ListAgentTryoutEventsAfter(ctx context.Context, arg ListAgentTryoutEventsAfterParams) ([]AgentTryoutEvent, error)
 	ListAgentTryoutsByWorkspaceID(ctx context.Context, arg ListAgentTryoutsByWorkspaceIDParams) ([]AgentTryout, error)
 	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, arg ListChallengeIdentityIDsByPackVersionIDParams) ([]uuid.UUID, error)
 	ListChallengeInputSetsByVersionID(ctx context.Context, arg ListChallengeInputSetsByVersionIDParams) ([]ListChallengeInputSetsByVersionIDRow, error)
@@ -168,6 +172,7 @@ type Querier interface {
 	ListVibeEvalDraftsByConversationID(ctx context.Context, arg ListVibeEvalDraftsByConversationIDParams) ([]VibeEvalDraft, error)
 	LockActiveDatasetForVersion(ctx context.Context, arg LockActiveDatasetForVersionParams) (uuid.UUID, error)
 	MarkAgentBuildVersionReady(ctx context.Context, arg MarkAgentBuildVersionReadyParams) error
+	MarkAgentTryoutTurnProcessed(ctx context.Context, arg MarkAgentTryoutTurnProcessedParams) error
 	MarkBillingCheckoutIntentCompleted(ctx context.Context, arg MarkBillingCheckoutIntentCompletedParams) (int64, error)
 	MarkDatasetTraceCandidatePromotedIfPending(ctx context.Context, arg MarkDatasetTraceCandidatePromotedIfPendingParams) (DatasetTraceCandidate, error)
 	MarkHostedRunExecutionAccepted(ctx context.Context, arg MarkHostedRunExecutionAcceptedParams) (HostedRunExecution, error)
@@ -178,6 +183,7 @@ type Querier interface {
 	PatchDatasetExample(ctx context.Context, arg PatchDatasetExampleParams) (DatasetExample, error)
 	PatchRegressionCase(ctx context.Context, arg PatchRegressionCaseParams) (WorkspaceRegressionCase, error)
 	PatchRegressionSuite(ctx context.Context, arg PatchRegressionSuiteParams) (WorkspaceRegressionSuite, error)
+	RecordAgentTryoutEvent(ctx context.Context, arg RecordAgentTryoutEventParams) (AgentTryoutEvent, error)
 	RecordDatasetEvalRun(ctx context.Context, arg RecordDatasetEvalRunParams) (DatasetEvalRun, error)
 	ResolveWorkspaceOrganization(ctx context.Context, arg ResolveWorkspaceOrganizationParams) (uuid.UUID, error)
 	SetAgentTryoutRunID(ctx context.Context, arg SetAgentTryoutRunIDParams) (AgentTryout, error)

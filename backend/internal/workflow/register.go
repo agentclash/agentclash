@@ -15,6 +15,7 @@ func Register(registrar Registrar, activities *Activities) {
 	registrar.RegisterWorkflowWithOptions(RunWorkflow, sdkworkflow.RegisterOptions{Name: RunWorkflowName})
 	registrar.RegisterWorkflowWithOptions(RunAgentWorkflow, sdkworkflow.RegisterOptions{Name: RunAgentWorkflowName})
 	registrar.RegisterWorkflowWithOptions(AgentHarnessExecutionWorkflow, sdkworkflow.RegisterOptions{Name: AgentHarnessExecutionWorkflowName})
+	registrar.RegisterWorkflowWithOptions(PublicAgentTryoutExecutionWorkflow, sdkworkflow.RegisterOptions{Name: PublicAgentTryoutExecutionWorkflowName})
 	registrar.RegisterActivityWithOptions(activities.LoadEvalSession, sdkactivity.RegisterOptions{Name: loadEvalSessionActivityName})
 	registrar.RegisterActivityWithOptions(activities.ListEvalSessionRuns, sdkactivity.RegisterOptions{Name: listEvalSessionRunsActivityName})
 	registrar.RegisterActivityWithOptions(activities.TransitionEvalSessionStatus, sdkactivity.RegisterOptions{Name: transitionEvalSessionStatusActivityName})
@@ -41,6 +42,7 @@ func Register(registrar Registrar, activities *Activities) {
 	registrar.RegisterActivityWithOptions(activities.SimulateEvaluation, sdkactivity.RegisterOptions{Name: simulateEvaluationActivityName})
 	registrar.RegisterActivityWithOptions(activities.TransitionAgentHarnessExecutionStatus, sdkactivity.RegisterOptions{Name: transitionAgentHarnessExecutionStatusActivityName})
 	registrar.RegisterActivityWithOptions(activities.ExecuteAgentHarnessExecution, sdkactivity.RegisterOptions{Name: executeAgentHarnessExecutionActivityName})
+	registrar.RegisterActivityWithOptions(activities.ExecutePublicAgentTryout, sdkactivity.RegisterOptions{Name: executePublicAgentTryoutActivityName})
 }
 
 func RegisterPlayground(registrar Registrar, activities *PlaygroundActivities) {

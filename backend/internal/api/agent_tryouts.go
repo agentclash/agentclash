@@ -63,6 +63,8 @@ type AgentTryoutRepository interface {
 	WithinAnonymousAgentTryoutQuotaLock(ctx context.Context, fn func(repository.AnonymousAgentTryoutQuotaTx) error) error
 	GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
 	ListRunEventsByRunIDAfter(ctx context.Context, runID uuid.UUID, afterID int64, limit int32) ([]repository.RunEvent, error)
+	ListAgentTryoutEventsAfter(ctx context.Context, tryoutID uuid.UUID, afterID int64, limit int32) ([]repository.AgentTryoutEvent, error)
+	AppendAgentTryoutTurn(ctx context.Context, params repository.AppendAgentTryoutTurnParams) (repository.AgentTryoutTurn, error)
 	ListArtifactsByRunID(ctx context.Context, runID uuid.UUID) ([]repository.Artifact, error)
 	ListAgentTryoutsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.AgentTryout, error)
 	LinkAgentTryoutRunIfUnset(ctx context.Context, params repository.LinkAgentTryoutRunParams) (repository.AgentTryout, error)
@@ -77,6 +79,7 @@ type AgentTryoutRepository interface {
 type AgentTryoutService interface {
 	ListTemplates(ctx context.Context) ([]AgentTryoutTemplate, error)
 	CreateAnonymousTryout(ctx context.Context, input CreateAnonymousAgentTryoutInput) (repository.AgentTryout, error)
+	SubmitAnonymousTryoutTurn(ctx context.Context, id uuid.UUID, input SubmitAgentTryoutTurnInput) error
 	CreateWorkspaceTryout(ctx context.Context, caller Caller, input CreateWorkspaceAgentTryoutInput) (repository.AgentTryout, error)
 	GetPublicTryout(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
 	GetWorkspaceTryout(ctx context.Context, caller Caller, id uuid.UUID) (repository.AgentTryout, error)
@@ -112,8 +115,16 @@ type AgentTryoutTemplate struct {
 type CreateAnonymousAgentTryoutInput struct {
 	TemplateSlug         string
 	Input                json.RawMessage
+	SelectedHarnessKind  string
 	AnonymousFingerprint string
 	Now                  time.Time
+}
+
+// SubmitAgentTryoutTurnInput is a user message in an interactive tryout chat.
+// End=true closes the session instead of sending a message.
+type SubmitAgentTryoutTurnInput struct {
+	Message string
+	End     bool
 }
 
 type CreateWorkspaceAgentTryoutInput struct {
@@ -139,8 +150,14 @@ type AgentTryoutExecutionConfig struct {
 	HarnessKind            string
 	E2BTemplateID          string
 	OpenAIAPIKeySecretName string
+	HostedProvider         string
+	HostedCredentialRef    string
 	PublicCreatedByUserID  *uuid.UUID
 	ConcurrencyLimit       int
+}
+
+type PublicAgentTryoutExecutionWorkflowStarter interface {
+	StartPublicAgentTryoutExecutionWorkflow(ctx context.Context, tryoutID uuid.UUID) (AgentHarnessExecutionWorkflowRef, error)
 }
 
 type AgentTryoutQuotaConfig struct {
@@ -186,10 +203,34 @@ func (m *AgentTryoutManager) WithExecution(starter AgentHarnessExecutionWorkflow
 	if starter == nil {
 		return m
 	}
+	config = normalizeAgentTryoutExecutionConfig(config)
+	if m.execution != nil {
+		m.execution.starter = starter
+		m.execution.config = config
+		return m
+	}
 	m.execution = &agentTryoutExecutionDispatcher{
 		repo:    m.repo,
 		starter: starter,
-		config:  normalizeAgentTryoutExecutionConfig(config),
+		config:  config,
+	}
+	return m
+}
+
+func (m *AgentTryoutManager) WithPublicExecution(starter PublicAgentTryoutExecutionWorkflowStarter, config AgentTryoutExecutionConfig) *AgentTryoutManager {
+	if starter == nil {
+		return m
+	}
+	config = normalizeAgentTryoutExecutionConfig(config)
+	if m.execution != nil {
+		m.execution.publicStarter = starter
+		m.execution.config = config
+		return m
+	}
+	m.execution = &agentTryoutExecutionDispatcher{
+		repo:          m.repo,
+		publicStarter: starter,
+		config:        config,
 	}
 	return m
 }
@@ -203,6 +244,19 @@ func (m *AgentTryoutManager) WithQuota(config AgentTryoutQuotaConfig) *AgentTryo
 func (m *AgentTryoutManager) ListTemplates(context.Context) ([]AgentTryoutTemplate, error) {
 	templates := builtinAgentTryoutTemplates()
 	return templates, nil
+}
+
+// normalizeSelectedHarnessKind validates a user-chosen agent harness. An empty
+// choice returns nil so the worker falls back to its configured default.
+func normalizeSelectedHarnessKind(kind string) (*string, error) {
+	trimmed := strings.TrimSpace(kind)
+	if trimmed == "" {
+		return nil, nil
+	}
+	if !domain.IsPublicSelectableAgentHarnessKind(trimmed) {
+		return nil, fmt.Errorf("%w: unsupported agent %q", ErrInvalidAgentTryoutInput, trimmed)
+	}
+	return &trimmed, nil
 }
 
 func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input CreateAnonymousAgentTryoutInput) (repository.AgentTryout, error) {
@@ -219,6 +273,10 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 	if err := validateAgentTryoutInput(template, input.Input); err != nil {
 		return repository.AgentTryout{}, err
 	}
+	selectedHarness, err := normalizeSelectedHarnessKind(input.SelectedHarnessKind)
+	if err != nil {
+		return repository.AgentTryout{}, err
+	}
 	now := input.Now
 	if now.IsZero() {
 		now = m.now()
@@ -233,6 +291,7 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 		ToolPolicySnapshot:       template.ToolPolicy,
 		EvaluationSpecSnapshot:   template.EvaluationSpec,
 		SelectedModelPolicy:      template.DefaultModelPolicy,
+		SelectedHarnessKind:      selectedHarness,
 		Summary:                  json.RawMessage(`{}`),
 		RedactionStatus:          repository.AgentTryoutRedactionPending,
 		CostLimitUSD:             template.MaxCostUSD,
@@ -274,6 +333,44 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 		return repository.AgentTryout{}, err
 	}
 	return m.dispatchCreatedTryout(ctx, tryout, template)
+}
+
+// SubmitAnonymousTryoutTurn appends a user message (or an end signal) to a
+// public interactive tryout. The long-running session activity claims pending
+// turns and replies via the agent. Only public, still-active tryouts accept it.
+func (m *AgentTryoutManager) SubmitAnonymousTryoutTurn(ctx context.Context, id uuid.UUID, input SubmitAgentTryoutTurnInput) error {
+	tryout, err := m.repo.GetAgentTryoutByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if tryout.WorkspaceID != nil {
+		return repository.ErrAgentTryoutNotFound
+	}
+	if tryout.Status != repository.AgentTryoutStatusRunning &&
+		tryout.Status != repository.AgentTryoutStatusQueued {
+		return fmt.Errorf("%w: this tryout session is no longer active", ErrInvalidAgentTryoutInput)
+	}
+	role := "user"
+	message := strings.TrimSpace(input.Message)
+	if input.End {
+		role = "system_end"
+		message = ""
+	} else {
+		if message == "" {
+			return fmt.Errorf("%w: message is required", ErrInvalidAgentTryoutInput)
+		}
+		if len(message) > maxAgentTryoutTurnBytes {
+			return fmt.Errorf("%w: message exceeds %d bytes", ErrInvalidAgentTryoutInput, maxAgentTryoutTurnBytes)
+		}
+	}
+	if _, err := m.repo.AppendAgentTryoutTurn(ctx, repository.AppendAgentTryoutTurnParams{
+		AgentTryoutID: id,
+		Role:          role,
+		Message:       message,
+	}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (m *AgentTryoutManager) CreateWorkspaceTryout(ctx context.Context, caller Caller, input CreateWorkspaceAgentTryoutInput) (repository.AgentTryout, error) {
@@ -436,9 +533,10 @@ func (m *AgentTryoutManager) enforceAnonymousQuota(ctx context.Context, qtx repo
 }
 
 type agentTryoutExecutionDispatcher struct {
-	repo    AgentTryoutRepository
-	starter AgentHarnessExecutionWorkflowStarter
-	config  AgentTryoutExecutionConfig
+	repo          AgentTryoutRepository
+	starter       AgentHarnessExecutionWorkflowStarter
+	publicStarter PublicAgentTryoutExecutionWorkflowStarter
+	config        AgentTryoutExecutionConfig
 }
 
 func normalizeAgentTryoutExecutionConfig(config AgentTryoutExecutionConfig) AgentTryoutExecutionConfig {
@@ -451,6 +549,12 @@ func normalizeAgentTryoutExecutionConfig(config AgentTryoutExecutionConfig) Agen
 	if strings.TrimSpace(config.OpenAIAPIKeySecretName) == "" {
 		config.OpenAIAPIKeySecretName = "OPENAI_API_KEY"
 	}
+	if strings.TrimSpace(config.HostedProvider) == "" {
+		config.HostedProvider = "openai"
+	}
+	if strings.TrimSpace(config.HostedCredentialRef) == "" {
+		config.HostedCredentialRef = "env://OPENAI_API_KEY"
+	}
 	if config.ConcurrencyLimit <= 0 {
 		config.ConcurrencyLimit = 3
 	}
@@ -458,6 +562,9 @@ func normalizeAgentTryoutExecutionConfig(config AgentTryoutExecutionConfig) Agen
 }
 
 func (d *agentTryoutExecutionDispatcher) dispatch(ctx context.Context, tryout repository.AgentTryout, template AgentTryoutTemplate) (repository.AgentTryout, error) {
+	if tryout.WorkspaceID == nil {
+		return d.dispatchPublic(ctx, tryout)
+	}
 	if tryout.RunID != nil {
 		return d.refresh(ctx, tryout)
 	}
@@ -519,6 +626,18 @@ func (d *agentTryoutExecutionDispatcher) dispatch(ctx context.Context, tryout re
 		return d.failTryout(ctx, linked, "execution_start_failed", "We could not start this tryout. Please try again.")
 	}
 	return d.refresh(ctx, linked)
+}
+
+func (d *agentTryoutExecutionDispatcher) dispatchPublic(ctx context.Context, tryout repository.AgentTryout) (repository.AgentTryout, error) {
+	if d.publicStarter == nil {
+		return d.failTryout(ctx, tryout, "execution_not_configured", "Hosted public tryouts are not configured yet.")
+	}
+	ref, err := d.publicStarter.StartPublicAgentTryoutExecutionWorkflow(ctx, tryout.ID)
+	if err != nil {
+		return d.failTryout(ctx, tryout, "execution_start_failed", "We could not start this hosted public tryout. Please try again.")
+	}
+	_ = ref
+	return tryout, nil
 }
 
 func (d *agentTryoutExecutionDispatcher) executionScope(tryout repository.AgentTryout) (uuid.UUID, *uuid.UUID, bool) {
@@ -857,8 +976,9 @@ func (m *AgentTryoutManager) lookupTemplate(slug string) (AgentTryoutTemplate, e
 }
 
 type createAgentTryoutRequest struct {
-	TemplateSlug string          `json:"template_slug"`
-	Input        json.RawMessage `json:"input"`
+	TemplateSlug        string          `json:"template_slug"`
+	Input               json.RawMessage `json:"input"`
+	SelectedHarnessKind string          `json:"selected_harness_kind,omitempty"`
 }
 
 type claimAgentTryoutRequest struct {
@@ -884,6 +1004,7 @@ type agentTryoutResponse struct {
 	ToolPolicySnapshot     json.RawMessage                       `json:"tool_policy_snapshot"`
 	EvaluationSpecSnapshot json.RawMessage                       `json:"evaluation_spec_snapshot"`
 	SelectedModelPolicy    json.RawMessage                       `json:"selected_model_policy"`
+	SelectedHarnessKind    *string                               `json:"selected_harness_kind,omitempty"`
 	Summary                json.RawMessage                       `json:"summary"`
 	RedactionStatus        repository.AgentTryoutRedactionStatus `json:"redaction_status"`
 	RunID                  *uuid.UUID                            `json:"run_id,omitempty"`
@@ -909,6 +1030,7 @@ type publicAgentTryoutResponse struct {
 	ToolPolicySnapshot     json.RawMessage                       `json:"tool_policy_snapshot"`
 	EvaluationSpecSnapshot json.RawMessage                       `json:"evaluation_spec_snapshot"`
 	SelectedModelPolicy    json.RawMessage                       `json:"selected_model_policy"`
+	SelectedHarnessKind    *string                               `json:"selected_harness_kind,omitempty"`
 	Summary                json.RawMessage                       `json:"summary"`
 	RedactionStatus        repository.AgentTryoutRedactionStatus `json:"redaction_status"`
 	RunID                  *uuid.UUID                            `json:"run_id,omitempty"`
@@ -928,6 +1050,7 @@ type agentTryoutShareResponse struct {
 func registerPublicAgentTryoutRoutes(router chi.Router, logger *slog.Logger, service AgentTryoutService) {
 	router.Get("/agent-tryout-templates", listAgentTryoutTemplatesHandler(logger, service))
 	router.Post("/agent-tryouts", createAnonymousAgentTryoutHandler(logger, service))
+	router.Post("/agent-tryouts/{tryoutID}/turns", submitAnonymousAgentTryoutTurnHandler(logger, service))
 	router.Get("/agent-tryouts/{tryoutID}", getPublicAgentTryoutHandler(logger, service))
 	router.Get("/agent-tryouts/{tryoutID}/events", getPublicAgentTryoutEventsHandler(logger, service))
 	router.Get("/agent-tryouts/shared/{token}/events", getSharedAgentTryoutEventsHandler(logger, service))
@@ -968,6 +1091,7 @@ func createAnonymousAgentTryoutHandler(logger *slog.Logger, service AgentTryoutS
 		tryout, err := service.CreateAnonymousTryout(r.Context(), CreateAnonymousAgentTryoutInput{
 			TemplateSlug:         req.TemplateSlug,
 			Input:                req.Input,
+			SelectedHarnessKind:  req.SelectedHarnessKind,
 			AnonymousFingerprint: anonymousFingerprintFromRequest(r),
 		})
 		if err != nil {
@@ -975,6 +1099,36 @@ func createAnonymousAgentTryoutHandler(logger *slog.Logger, service AgentTryoutS
 			return
 		}
 		writeJSON(w, http.StatusCreated, mapPublicAgentTryoutResponse(tryout))
+	}
+}
+
+const maxAgentTryoutTurnBytes = 16 * 1024
+
+type submitAgentTryoutTurnRequest struct {
+	Message string `json:"message"`
+	End     bool   `json:"end,omitempty"`
+}
+
+func submitAnonymousAgentTryoutTurnHandler(logger *slog.Logger, service AgentTryoutService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := uuid.Parse(chi.URLParam(r, "tryoutID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_tryout_id", "tryout_id must be a UUID")
+			return
+		}
+		var req submitAgentTryoutTurnRequest
+		if err := decodeAgentTryoutJSON(r, &req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+			return
+		}
+		if err := service.SubmitAnonymousTryoutTurn(r.Context(), id, SubmitAgentTryoutTurnInput{
+			Message: req.Message,
+			End:     req.End,
+		}); err != nil {
+			writeAgentTryoutError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]string{"status": "submitted"})
 	}
 }
 
@@ -1337,6 +1491,7 @@ func mapAgentTryoutResponse(tryout repository.AgentTryout) agentTryoutResponse {
 		ToolPolicySnapshot:     tryout.ToolPolicySnapshot,
 		EvaluationSpecSnapshot: tryout.EvaluationSpecSnapshot,
 		SelectedModelPolicy:    tryout.SelectedModelPolicy,
+		SelectedHarnessKind:    tryout.SelectedHarnessKind,
 		Summary:                tryout.Summary,
 		RedactionStatus:        tryout.RedactionStatus,
 		RunID:                  tryout.RunID,
@@ -1364,6 +1519,7 @@ func mapPublicAgentTryoutResponse(tryout repository.AgentTryout) publicAgentTryo
 		ToolPolicySnapshot:     tryout.ToolPolicySnapshot,
 		EvaluationSpecSnapshot: tryout.EvaluationSpecSnapshot,
 		SelectedModelPolicy:    tryout.SelectedModelPolicy,
+		SelectedHarnessKind:    tryout.SelectedHarnessKind,
 		Summary:                tryout.Summary,
 		RedactionStatus:        tryout.RedactionStatus,
 		RunID:                  tryout.RunID,
@@ -1522,6 +1678,70 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			MaxInputBytes:      32 * 1024,
 			MaxDurationSeconds: 300,
 			MaxCostUSD:         0.75,
+		},
+		// Enterprise eval templates — the highest-budget, fastest-payback agent
+		// use-cases enterprises evaluate before integrating. Each runs on the
+		// generic public sandbox (no per-task worker adapter) and produces an
+		// inspectable JSON artifact the scorecard validates.
+		{
+			Slug:               "support-ticket-resolution",
+			Name:               "Resolve a Support Ticket",
+			Description:        "Draft a grounded customer-support reply, decide whether to escalate, and flag policy/compliance risks — the #1 enterprise agent use-case.",
+			Available:          true,
+			InputSchema:        json.RawMessage(`{"type":"object","required":["ticket"],"additionalProperties":false,"properties":{"ticket":{"type":"string"},"knowledge_base":{"type":"string"},"policy":{"type":"string"}}}`),
+			ToolPolicy:         json.RawMessage(`{"tools":["file_writer"],"sandbox":{"filesystem":"workspace","shell":"disabled"},"network":{"mode":"disabled"},"external_side_effects":false}`),
+			Runtime:            json.RawMessage(`{"adapter":"office_generic_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"reply","type":"markdown","path":"reply.md"},{"key":"resolution","type":"json","path":"resolution.json"}],"instructions":"Resolve the support ticket using only the supplied knowledge base and policy. Write reply.md (the customer-facing reply) and resolution.json with fields: answer (string), escalate (boolean), confidence (number 0-1), citations (array), policy_flags (array). Never invent facts not in the knowledge base.","validation":{"validators":[{"key":"answer","type":"json_field","field":"answer"},{"key":"escalate","type":"json_field","field":"escalate"}],"score_dimensions":["accuracy","escalation","compliance","cost"]}}`),
+			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"answer","type":"json_field","field":"answer"},{"key":"escalate","type":"json_field","field":"escalate"},{"key":"citations","type":"json_field","field":"citations"}],"scorecard":{"dimensions":["accuracy","escalation","compliance","cost"]}}`),
+			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
+			AnonymousEnabled:   true,
+			MaxInputBytes:      96 * 1024,
+			MaxDurationSeconds: 150,
+			MaxCostUSD:         0.3,
+		},
+		{
+			Slug:               "document-extraction",
+			Name:               "Extract Invoice / Document Data",
+			Description:        "Pull structured fields (line items, totals, vendor) from a messy invoice or document and flag exceptions — replaces manual AP data entry.",
+			Available:          true,
+			InputSchema:        json.RawMessage(`{"type":"object","required":["document"],"additionalProperties":false,"properties":{"document":{"type":"string"},"fields":{"type":"string"}}}`),
+			ToolPolicy:         json.RawMessage(`{"tools":["file_writer"],"sandbox":{"filesystem":"workspace","shell":"disabled"},"network":{"mode":"disabled"},"external_side_effects":false}`),
+			Runtime:            json.RawMessage(`{"adapter":"office_generic_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"extracted","type":"json","path":"extracted.json"},{"key":"review","type":"markdown","path":"review.md"}],"instructions":"Extract the requested fields from the document into extracted.json with fields: vendor (string), total (number), currency (string), line_items (array of {description, quantity, amount}), exceptions (array of strings for anything ambiguous or missing). Write review.md summarizing confidence and any exceptions. Do not fabricate values.","validation":{"validators":[{"key":"line_items","type":"json_field","field":"line_items"},{"key":"total","type":"json_field","field":"total"}],"score_dimensions":["accuracy","exceptions","latency","cost"]}}`),
+			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"line_items","type":"json_field","field":"line_items"},{"key":"total","type":"json_field","field":"total"},{"key":"vendor","type":"json_field","field":"vendor"}],"scorecard":{"dimensions":["accuracy","exceptions","latency","cost"]}}`),
+			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
+			AnonymousEnabled:   true,
+			MaxInputBytes:      96 * 1024,
+			MaxDurationSeconds: 150,
+			MaxCostUSD:         0.3,
+		},
+		{
+			Slug:               "contract-review",
+			Name:               "Review a Contract Clause",
+			Description:        "Extract key clauses, surface risks, and propose redlines against a checklist — high-value legal work where hallucination rates run ~6%.",
+			Available:          true,
+			InputSchema:        json.RawMessage(`{"type":"object","required":["contract"],"additionalProperties":false,"properties":{"contract":{"type":"string"},"checklist":{"type":"string"}}}`),
+			ToolPolicy:         json.RawMessage(`{"tools":["file_writer"],"sandbox":{"filesystem":"workspace","shell":"disabled"},"network":{"mode":"disabled"},"external_side_effects":false}`),
+			Runtime:            json.RawMessage(`{"adapter":"office_generic_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"review","type":"json","path":"review.json"},{"key":"summary","type":"markdown","path":"summary.md"}],"instructions":"Review the contract against the checklist. Write review.json with fields: clauses (array of {name, summary, location}), risks (array of {issue, severity, clause}), redlines (array of suggested edits). Write summary.md for a non-lawyer. Quote the contract verbatim for every claim; never invent clauses or citations.","validation":{"validators":[{"key":"clauses","type":"json_field","field":"clauses"},{"key":"risks","type":"json_field","field":"risks"}],"score_dimensions":["accuracy","hallucination","compliance","cost"]}}`),
+			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"clauses","type":"json_field","field":"clauses"},{"key":"risks","type":"json_field","field":"risks"},{"key":"redlines","type":"json_field","field":"redlines"}],"scorecard":{"dimensions":["accuracy","hallucination","compliance","cost"]}}`),
+			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
+			AnonymousEnabled:   true,
+			MaxInputBytes:      128 * 1024,
+			MaxDurationSeconds: 180,
+			MaxCostUSD:         0.5,
+		},
+		{
+			Slug:               "sdr-outreach",
+			Name:               "Qualify a Lead & Draft Outreach",
+			Description:        "Score a prospect against an ideal-customer profile and draft a personalized outbound email — the fastest-payback sales agent use-case.",
+			Available:          true,
+			InputSchema:        json.RawMessage(`{"type":"object","required":["prospect","offer"],"additionalProperties":false,"properties":{"prospect":{"type":"string"},"offer":{"type":"string"},"tone":{"type":"string"}}}`),
+			ToolPolicy:         json.RawMessage(`{"tools":["file_writer"],"sandbox":{"filesystem":"workspace","shell":"disabled"},"network":{"mode":"disabled"},"external_side_effects":false}`),
+			Runtime:            json.RawMessage(`{"adapter":"office_generic_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"email","type":"markdown","path":"email.md"},{"key":"outreach","type":"json","path":"outreach.json"}],"instructions":"Qualify the prospect for the offer and draft outreach. Write outreach.json with fields: subject (string), body (string), qualification (object with fit_score 0-1 and reasons array), personalization (array). Write email.md as the send-ready email. Keep claims grounded in the prospect details provided.","validation":{"validators":[{"key":"subject","type":"json_field","field":"subject"},{"key":"body","type":"json_field","field":"body"}],"score_dimensions":["relevance","tone","deliverability","cost"]}}`),
+			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"subject","type":"json_field","field":"subject"},{"key":"body","type":"json_field","field":"body"},{"key":"qualification","type":"json_field","field":"qualification"}],"scorecard":{"dimensions":["relevance","tone","deliverability","cost"]}}`),
+			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
+			AnonymousEnabled:   true,
+			MaxInputBytes:      64 * 1024,
+			MaxDurationSeconds: 120,
+			MaxCostUSD:         0.25,
 		},
 	}
 }

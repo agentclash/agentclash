@@ -44,6 +44,7 @@ func NewTemporalWorker(
 	activities := workflowpkg.NewActivities(repo, executionHooks, playgroundClient).
 		WithSandboxProvider(sandboxProvider).
 		WithGitHubPullRequestClient(githubClient).
+		WithPublicAgentTryoutConfig(cfg.AgentTryoutHosted).
 		WithArtifactStore(artifactStore)
 	workflowpkg.Register(temporalWorker, activities)
 	workflowpkg.RegisterPlayground(temporalWorker, workflowpkg.NewPlaygroundActivities(repo, playgroundClient, repo))

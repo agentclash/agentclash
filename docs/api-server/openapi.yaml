@@ -5201,6 +5201,42 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/agent-tryouts/{id}/turns:
+    post:
+      operationId: submitAnonymousAgentTryoutTurn
+      summary: Send a chat turn to a live anonymous agent tryout session
+      tags: [AgentTryouts]
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ResourceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  description: User message for the agent. Required unless end=true.
+                end:
+                  type: boolean
+                  description: Close the interactive session instead of sending a message.
+      responses:
+        "202":
+          description: Turn submitted; the session activity will process it.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/agent-tryouts/{id}:
     get:
       operationId: getPublicAgentTryout
@@ -13018,6 +13054,12 @@ components:
         input:
           type: object
           additionalProperties: true
+        selected_harness_kind:
+          type: string
+          description: >-
+            Optional agent harness to run the tryout. One of codex_e2b,
+            claude_e2b, openclaw_e2b, hermes_e2b. Empty uses the hosted default.
+          enum: [codex_e2b, claude_e2b, openclaw_e2b, hermes_e2b]
 
     ClaimAgentTryoutRequest:
       type: object
@@ -13060,6 +13102,9 @@ components:
         selected_model_policy:
           type: object
           additionalProperties: true
+        selected_harness_kind:
+          type: string
+          description: Agent harness the tryout ran on, when explicitly selected.
         summary:
           type: object
           additionalProperties: true
@@ -13131,6 +13176,9 @@ components:
         selected_model_policy:
           type: object
           additionalProperties: true
+        selected_harness_kind:
+          type: string
+          description: Agent harness the tryout ran on, when explicitly selected.
         summary:
           type: object
           additionalProperties: true

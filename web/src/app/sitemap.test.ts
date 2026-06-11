@@ -156,6 +156,10 @@ describe("sitemap", () => {
       changeFrequency: "weekly",
       priority: 0.55,
     });
+    expect(byUrl.get("https://www.agentclash.dev/tryouts")).toMatchObject({
+      changeFrequency: "weekly",
+      priority: 0.9,
+    });
   });
 
   it("includes docs pages and blog posts from source readers", () => {

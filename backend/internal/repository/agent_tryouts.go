@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
@@ -52,6 +53,7 @@ type AgentTryout struct {
 	ToolPolicySnapshot       json.RawMessage
 	EvaluationSpecSnapshot   json.RawMessage
 	SelectedModelPolicy      json.RawMessage
+	SelectedHarnessKind      *string
 	Summary                  json.RawMessage
 	RedactionStatus          AgentTryoutRedactionStatus
 	RunID                    *uuid.UUID
@@ -69,6 +71,33 @@ type AgentTryout struct {
 	UpdatedAt                time.Time
 }
 
+type AgentTryoutEvent struct {
+	ID             int64
+	AgentTryoutID  uuid.UUID
+	SequenceNumber int64
+	EventType      string
+	ActorType      string
+	OccurredAt     time.Time
+	Payload        json.RawMessage
+}
+
+type AgentTryoutTurn struct {
+	ID            int64
+	AgentTryoutID uuid.UUID
+	TurnIndex     int32
+	Role          string
+	Message       string
+	Status        string
+	CreatedAt     time.Time
+	ProcessedAt   *time.Time
+}
+
+type AppendAgentTryoutTurnParams struct {
+	AgentTryoutID uuid.UUID
+	Role          string
+	Message       string
+}
+
 type CreateAgentTryoutParams struct {
 	OrganizationID           *uuid.UUID
 	WorkspaceID              *uuid.UUID
@@ -79,6 +108,7 @@ type CreateAgentTryoutParams struct {
 	ToolPolicySnapshot       json.RawMessage
 	EvaluationSpecSnapshot   json.RawMessage
 	SelectedModelPolicy      json.RawMessage
+	SelectedHarnessKind      *string
 	Summary                  json.RawMessage
 	RedactionStatus          AgentTryoutRedactionStatus
 	RunID                    *uuid.UUID
@@ -116,6 +146,13 @@ type LinkAgentTryoutRunParams struct {
 	Summary json.RawMessage
 }
 
+type RecordAgentTryoutEventParams struct {
+	AgentTryoutID uuid.UUID
+	EventType     string
+	ActorType     string
+	Payload       json.RawMessage
+}
+
 // tryoutRowQuerier is satisfied by both *pgxpool.Pool and pgx.Tx, letting the
 // hand-written anonymous quota queries run either standalone or inside the
 // advisory-locked transaction used by WithinAnonymousAgentTryoutQuotaLock.
@@ -125,6 +162,39 @@ type tryoutRowQuerier interface {
 
 func (r *Repository) CreateAgentTryout(ctx context.Context, params CreateAgentTryoutParams) (AgentTryout, error) {
 	return createAgentTryout(ctx, r.queries, params)
+}
+
+func (r *Repository) RecordAgentTryoutEvent(ctx context.Context, params RecordAgentTryoutEventParams) (AgentTryoutEvent, error) {
+	row, err := r.queries.RecordAgentTryoutEvent(ctx, repositorysqlc.RecordAgentTryoutEventParams{
+		AgentTryoutID: params.AgentTryoutID,
+		EventType:     params.EventType,
+		ActorType:     params.ActorType,
+		Payload:       normalizeJSONObject(params.Payload),
+	})
+	if err != nil {
+		return AgentTryoutEvent{}, fmt.Errorf("record agent tryout event: %w", err)
+	}
+	return mapAgentTryoutEvent(row)
+}
+
+func (r *Repository) ListAgentTryoutEventsAfter(ctx context.Context, tryoutID uuid.UUID, afterID int64, limit int32) ([]AgentTryoutEvent, error) {
+	rows, err := r.queries.ListAgentTryoutEventsAfter(ctx, repositorysqlc.ListAgentTryoutEventsAfterParams{
+		AgentTryoutID: tryoutID,
+		AfterID:       afterID,
+		LimitCount:    limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list agent tryout events: %w", err)
+	}
+	events := make([]AgentTryoutEvent, 0, len(rows))
+	for _, row := range rows {
+		event, err := mapAgentTryoutEvent(row)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	return events, nil
 }
 
 func createAgentTryout(ctx context.Context, queries *repositorysqlc.Queries, params CreateAgentTryoutParams) (AgentTryout, error) {
@@ -146,6 +216,7 @@ func createAgentTryout(ctx context.Context, queries *repositorysqlc.Queries, par
 		ToolPolicySnapshot:       normalizeJSONObject(params.ToolPolicySnapshot),
 		EvaluationSpecSnapshot:   normalizeJSONObject(params.EvaluationSpecSnapshot),
 		SelectedModelPolicy:      normalizeJSONObject(params.SelectedModelPolicy),
+		SelectedHarnessKind:      cloneStringPtr(params.SelectedHarnessKind),
 		Summary:                  normalizeJSONObject(params.Summary),
 		RedactionStatus:          string(params.RedactionStatus),
 		RunID:                    cloneUUIDPtr(params.RunID),
@@ -566,6 +637,7 @@ func mapAgentTryout(row repositorysqlc.AgentTryout) (AgentTryout, error) {
 		ToolPolicySnapshot:       cloneJSON(row.ToolPolicySnapshot),
 		EvaluationSpecSnapshot:   cloneJSON(row.EvaluationSpecSnapshot),
 		SelectedModelPolicy:      cloneJSON(row.SelectedModelPolicy),
+		SelectedHarnessKind:      cloneStringPtr(row.SelectedHarnessKind),
 		Summary:                  cloneJSON(row.Summary),
 		RedactionStatus:          AgentTryoutRedactionStatus(row.RedactionStatus),
 		RunID:                    cloneUUIDPtr(row.RunID),
@@ -582,4 +654,79 @@ func mapAgentTryout(row repositorysqlc.AgentTryout) (AgentTryout, error) {
 		CreatedAt:                createdAt,
 		UpdatedAt:                updatedAt,
 	}, nil
+}
+
+func mapAgentTryoutEvent(row repositorysqlc.AgentTryoutEvent) (AgentTryoutEvent, error) {
+	occurredAt, err := requiredTime("agent_tryout_events.occurred_at", row.OccurredAt)
+	if err != nil {
+		return AgentTryoutEvent{}, err
+	}
+	return AgentTryoutEvent{
+		ID:             row.ID,
+		AgentTryoutID:  row.AgentTryoutID,
+		SequenceNumber: row.SequenceNumber,
+		EventType:      row.EventType,
+		ActorType:      row.ActorType,
+		OccurredAt:     occurredAt,
+		Payload:        cloneJSON(row.Payload),
+	}, nil
+}
+
+func (r *Repository) AppendAgentTryoutTurn(ctx context.Context, params AppendAgentTryoutTurnParams) (AgentTryoutTurn, error) {
+	role := strings.TrimSpace(params.Role)
+	if role == "" {
+		role = "user"
+	}
+	row, err := r.queries.AppendAgentTryoutTurn(ctx, repositorysqlc.AppendAgentTryoutTurnParams{
+		AgentTryoutID: params.AgentTryoutID,
+		Role:          role,
+		Message:       params.Message,
+	})
+	if err != nil {
+		return AgentTryoutTurn{}, fmt.Errorf("append agent tryout turn: %w", err)
+	}
+	return mapAgentTryoutTurn(row), nil
+}
+
+func (r *Repository) ClaimNextPendingAgentTryoutTurn(ctx context.Context, tryoutID uuid.UUID) (AgentTryoutTurn, bool, error) {
+	row, err := r.queries.ClaimNextPendingAgentTryoutTurn(ctx, repositorysqlc.ClaimNextPendingAgentTryoutTurnParams{AgentTryoutID: tryoutID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return AgentTryoutTurn{}, false, nil
+	}
+	if err != nil {
+		return AgentTryoutTurn{}, false, fmt.Errorf("claim agent tryout turn: %w", err)
+	}
+	return mapAgentTryoutTurn(row), true, nil
+}
+
+func (r *Repository) MarkAgentTryoutTurnProcessed(ctx context.Context, id int64) error {
+	if err := r.queries.MarkAgentTryoutTurnProcessed(ctx, repositorysqlc.MarkAgentTryoutTurnProcessedParams{ID: id}); err != nil {
+		return fmt.Errorf("mark agent tryout turn processed: %w", err)
+	}
+	return nil
+}
+
+func (r *Repository) CountPendingAgentTryoutTurns(ctx context.Context, tryoutID uuid.UUID) (int64, error) {
+	count, err := r.queries.CountPendingAgentTryoutTurns(ctx, repositorysqlc.CountPendingAgentTryoutTurnsParams{AgentTryoutID: tryoutID})
+	if err != nil {
+		return 0, fmt.Errorf("count pending agent tryout turns: %w", err)
+	}
+	return count, nil
+}
+
+func mapAgentTryoutTurn(row repositorysqlc.AgentTryoutTurn) AgentTryoutTurn {
+	var createdAt time.Time
+	if t := optionalTime(row.CreatedAt); t != nil {
+		createdAt = *t
+	}
+	return AgentTryoutTurn{
+		ID:            row.ID,
+		AgentTryoutID: row.AgentTryoutID,
+		TurnIndex:     row.TurnIndex,
+		Role:          row.Role,
+		Message:       row.Message,
+		Status:        row.Status,
+		CreatedAt:     createdAt,
+		ProcessedAt:   optionalTime(row.ProcessedAt),
+	}
 }

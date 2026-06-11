@@ -432,6 +432,10 @@ func (noopAgentTryoutService) CreateAnonymousTryout(context.Context, CreateAnony
 	return repository.AgentTryout{}, errors.New("agent tryout service is not configured")
 }
 
+func (noopAgentTryoutService) SubmitAnonymousTryoutTurn(context.Context, uuid.UUID, SubmitAgentTryoutTurnInput) error {
+	return errors.New("agent tryout service is not configured")
+}
+
 func (noopAgentTryoutService) CreateWorkspaceTryout(context.Context, Caller, CreateWorkspaceAgentTryoutInput) (repository.AgentTryout, error) {
 	return repository.AgentTryout{}, errors.New("agent tryout service is not configured")
 }

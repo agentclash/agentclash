@@ -12,6 +12,51 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const appendAgentTryoutTurn = `-- name: AppendAgentTryoutTurn :one
+WITH next_turn AS (
+    SELECT COALESCE(MAX(turn_index), -1) + 1 AS turn_index
+    FROM agent_tryout_turns
+    WHERE agent_tryout_id = $1
+)
+INSERT INTO agent_tryout_turns (
+    agent_tryout_id,
+    turn_index,
+    role,
+    message,
+    status
+)
+SELECT
+    $1,
+    next_turn.turn_index,
+    $2,
+    $3,
+    'pending'
+FROM next_turn
+RETURNING id, agent_tryout_id, turn_index, role, message, status, created_at, processed_at
+`
+
+type AppendAgentTryoutTurnParams struct {
+	AgentTryoutID uuid.UUID
+	Role          string
+	Message       string
+}
+
+func (q *Queries) AppendAgentTryoutTurn(ctx context.Context, arg AppendAgentTryoutTurnParams) (AgentTryoutTurn, error) {
+	row := q.db.QueryRow(ctx, appendAgentTryoutTurn, arg.AgentTryoutID, arg.Role, arg.Message)
+	var i AgentTryoutTurn
+	err := row.Scan(
+		&i.ID,
+		&i.AgentTryoutID,
+		&i.TurnIndex,
+		&i.Role,
+		&i.Message,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ProcessedAt,
+	)
+	return i, err
+}
+
 const claimAgentTryout = `-- name: ClaimAgentTryout :one
 UPDATE agent_tryouts
 SET
@@ -25,7 +70,7 @@ WHERE id = $5
   AND organization_id IS NULL
   AND workspace_id IS NULL
   AND claimed_by_user_id IS NULL
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind
 `
 
 type ClaimAgentTryoutParams struct {
@@ -71,8 +116,62 @@ func (q *Queries) ClaimAgentTryout(ctx context.Context, arg ClaimAgentTryoutPara
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ParentTryoutID,
+		&i.SelectedHarnessKind,
 	)
 	return i, err
+}
+
+const claimNextPendingAgentTryoutTurn = `-- name: ClaimNextPendingAgentTryoutTurn :one
+UPDATE agent_tryout_turns
+SET status = 'processing'
+WHERE id = (
+    SELECT pending.id
+    FROM agent_tryout_turns AS pending
+    WHERE pending.agent_tryout_id = $1
+      AND pending.status = 'pending'
+    ORDER BY pending.id ASC
+    LIMIT 1
+    FOR UPDATE SKIP LOCKED
+)
+RETURNING id, agent_tryout_id, turn_index, role, message, status, created_at, processed_at
+`
+
+type ClaimNextPendingAgentTryoutTurnParams struct {
+	AgentTryoutID uuid.UUID
+}
+
+func (q *Queries) ClaimNextPendingAgentTryoutTurn(ctx context.Context, arg ClaimNextPendingAgentTryoutTurnParams) (AgentTryoutTurn, error) {
+	row := q.db.QueryRow(ctx, claimNextPendingAgentTryoutTurn, arg.AgentTryoutID)
+	var i AgentTryoutTurn
+	err := row.Scan(
+		&i.ID,
+		&i.AgentTryoutID,
+		&i.TurnIndex,
+		&i.Role,
+		&i.Message,
+		&i.Status,
+		&i.CreatedAt,
+		&i.ProcessedAt,
+	)
+	return i, err
+}
+
+const countPendingAgentTryoutTurns = `-- name: CountPendingAgentTryoutTurns :one
+SELECT COUNT(*)
+FROM agent_tryout_turns
+WHERE agent_tryout_id = $1
+  AND status = 'pending'
+`
+
+type CountPendingAgentTryoutTurnsParams struct {
+	AgentTryoutID uuid.UUID
+}
+
+func (q *Queries) CountPendingAgentTryoutTurns(ctx context.Context, arg CountPendingAgentTryoutTurnsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countPendingAgentTryoutTurns, arg.AgentTryoutID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
 }
 
 const createAgentTryout = `-- name: CreateAgentTryout :one
@@ -86,6 +185,7 @@ INSERT INTO agent_tryouts (
     tool_policy_snapshot,
     evaluation_spec_snapshot,
     selected_model_policy,
+    selected_harness_kind,
     summary,
     redaction_status,
     run_id,
@@ -118,9 +218,10 @@ VALUES (
     $17,
     $18,
     $19,
-    $20
+    $20,
+    $21
 )
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind
 `
 
 type CreateAgentTryoutParams struct {
@@ -133,6 +234,7 @@ type CreateAgentTryoutParams struct {
 	ToolPolicySnapshot       []byte
 	EvaluationSpecSnapshot   []byte
 	SelectedModelPolicy      []byte
+	SelectedHarnessKind      *string
 	Summary                  []byte
 	RedactionStatus          string
 	RunID                    *uuid.UUID
@@ -157,6 +259,7 @@ func (q *Queries) CreateAgentTryout(ctx context.Context, arg CreateAgentTryoutPa
 		arg.ToolPolicySnapshot,
 		arg.EvaluationSpecSnapshot,
 		arg.SelectedModelPolicy,
+		arg.SelectedHarnessKind,
 		arg.Summary,
 		arg.RedactionStatus,
 		arg.RunID,
@@ -196,12 +299,13 @@ func (q *Queries) CreateAgentTryout(ctx context.Context, arg CreateAgentTryoutPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ParentTryoutID,
+		&i.SelectedHarnessKind,
 	)
 	return i, err
 }
 
 const getAgentTryoutByID = `-- name: GetAgentTryoutByID :one
-SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id
+SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind
 FROM agent_tryouts
 WHERE id = $1
 LIMIT 1
@@ -240,12 +344,56 @@ func (q *Queries) GetAgentTryoutByID(ctx context.Context, arg GetAgentTryoutByID
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ParentTryoutID,
+		&i.SelectedHarnessKind,
 	)
 	return i, err
 }
 
+const listAgentTryoutEventsAfter = `-- name: ListAgentTryoutEventsAfter :many
+SELECT id, agent_tryout_id, sequence_number, event_type, actor_type, occurred_at, payload
+FROM agent_tryout_events
+WHERE agent_tryout_id = $1
+  AND id > $2
+ORDER BY id ASC
+LIMIT $3
+`
+
+type ListAgentTryoutEventsAfterParams struct {
+	AgentTryoutID uuid.UUID
+	AfterID       int64
+	LimitCount    int32
+}
+
+func (q *Queries) ListAgentTryoutEventsAfter(ctx context.Context, arg ListAgentTryoutEventsAfterParams) ([]AgentTryoutEvent, error) {
+	rows, err := q.db.Query(ctx, listAgentTryoutEventsAfter, arg.AgentTryoutID, arg.AfterID, arg.LimitCount)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []AgentTryoutEvent
+	for rows.Next() {
+		var i AgentTryoutEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentTryoutID,
+			&i.SequenceNumber,
+			&i.EventType,
+			&i.ActorType,
+			&i.OccurredAt,
+			&i.Payload,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listAgentTryoutsByWorkspaceID = `-- name: ListAgentTryoutsByWorkspaceID :many
-SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id
+SELECT id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind
 FROM agent_tryouts
 WHERE workspace_id = $1
 ORDER BY created_at DESC
@@ -293,6 +441,7 @@ func (q *Queries) ListAgentTryoutsByWorkspaceID(ctx context.Context, arg ListAge
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ParentTryoutID,
+			&i.SelectedHarnessKind,
 		); err != nil {
 			return nil, err
 		}
@@ -304,11 +453,76 @@ func (q *Queries) ListAgentTryoutsByWorkspaceID(ctx context.Context, arg ListAge
 	return items, nil
 }
 
+const markAgentTryoutTurnProcessed = `-- name: MarkAgentTryoutTurnProcessed :exec
+UPDATE agent_tryout_turns
+SET status = 'done', processed_at = now()
+WHERE id = $1
+`
+
+type MarkAgentTryoutTurnProcessedParams struct {
+	ID int64
+}
+
+func (q *Queries) MarkAgentTryoutTurnProcessed(ctx context.Context, arg MarkAgentTryoutTurnProcessedParams) error {
+	_, err := q.db.Exec(ctx, markAgentTryoutTurnProcessed, arg.ID)
+	return err
+}
+
+const recordAgentTryoutEvent = `-- name: RecordAgentTryoutEvent :one
+WITH next_sequence AS (
+    SELECT COALESCE(MAX(sequence_number), 0) + 1 AS sequence_number
+    FROM agent_tryout_events
+    WHERE agent_tryout_id = $1
+)
+INSERT INTO agent_tryout_events (
+    agent_tryout_id,
+    sequence_number,
+    event_type,
+    actor_type,
+    payload
+)
+SELECT
+    $1,
+    next_sequence.sequence_number,
+    $2,
+    $3,
+    $4
+FROM next_sequence
+RETURNING id, agent_tryout_id, sequence_number, event_type, actor_type, occurred_at, payload
+`
+
+type RecordAgentTryoutEventParams struct {
+	AgentTryoutID uuid.UUID
+	EventType     string
+	ActorType     string
+	Payload       []byte
+}
+
+func (q *Queries) RecordAgentTryoutEvent(ctx context.Context, arg RecordAgentTryoutEventParams) (AgentTryoutEvent, error) {
+	row := q.db.QueryRow(ctx, recordAgentTryoutEvent,
+		arg.AgentTryoutID,
+		arg.EventType,
+		arg.ActorType,
+		arg.Payload,
+	)
+	var i AgentTryoutEvent
+	err := row.Scan(
+		&i.ID,
+		&i.AgentTryoutID,
+		&i.SequenceNumber,
+		&i.EventType,
+		&i.ActorType,
+		&i.OccurredAt,
+		&i.Payload,
+	)
+	return i, err
+}
+
 const setAgentTryoutRunID = `-- name: SetAgentTryoutRunID :one
 UPDATE agent_tryouts
 SET run_id = $1
 WHERE id = $2
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind
 `
 
 type SetAgentTryoutRunIDParams struct {
@@ -345,6 +559,7 @@ func (q *Queries) SetAgentTryoutRunID(ctx context.Context, arg SetAgentTryoutRun
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ParentTryoutID,
+		&i.SelectedHarnessKind,
 	)
 	return i, err
 }
@@ -358,7 +573,7 @@ SET
     latency_ms = COALESCE($4, latency_ms),
     redaction_status = COALESCE($5, redaction_status)
 WHERE id = $6
-RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id
+RETURNING id, organization_id, workspace_id, template_slug, status, input_snapshot, template_snapshot, tool_policy_snapshot, evaluation_spec_snapshot, selected_model_policy, summary, redaction_status, run_id, cost_limit_usd, actual_cost_usd, latency_ms, max_duration_seconds, anonymous_fingerprint_hash, created_by_user_id, claimed_by_user_id, claimed_at, expires_at, created_at, updated_at, parent_tryout_id, selected_harness_kind
 `
 
 type UpdateAgentTryoutStatusParams struct {
@@ -406,6 +621,7 @@ func (q *Queries) UpdateAgentTryoutStatus(ctx context.Context, arg UpdateAgentTr
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ParentTryoutID,
+		&i.SelectedHarnessKind,
 	)
 	return i, err
 }
