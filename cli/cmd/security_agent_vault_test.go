@@ -87,7 +87,8 @@ func TestRunFromPack_IteratesEachPromptAndWritesReports(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := runFromPack(context.Background(), packPath, outDir, 2, base, &buf); err != nil {
+	campaign, err := runFromPack(context.Background(), packPath, outDir, 2, base, &buf)
+	if err != nil {
 		t.Fatalf("runFromPack returned error: %v", err)
 	}
 	// 2 prompts × 2 iterations = 4 OpenAI calls. Anything else means
@@ -95,6 +96,22 @@ func TestRunFromPack_IteratesEachPromptAndWritesReports(t *testing.T) {
 	// based on partial data.
 	if got := int(calls.Load()); got != 4 {
 		t.Errorf("expected 4 OpenAI calls (2 prompts × 2 iterations); got %d", got)
+	}
+	// The machine-readable summary mirrors the table: one entry per
+	// prompt, refusal-only counts, and a report_path per written file.
+	if len(campaign.Entries) != 2 {
+		t.Fatalf("campaign entries = %d, want 2", len(campaign.Entries))
+	}
+	if campaign.Pack != "test-pack" || campaign.Iterations != 2 {
+		t.Errorf("campaign header = %+v, want pack=test-pack iterations=2", campaign)
+	}
+	for _, e := range campaign.Entries {
+		if e.Refused != 2 || e.Leaked != 0 {
+			t.Errorf("entry %s counts = %+v, want refused=2 leaked=0 (mock always refuses)", e.Name, e)
+		}
+		if e.ReportPath == "" {
+			t.Errorf("entry %s missing report_path with --out-dir set", e.Name)
+		}
 	}
 	out := buf.String()
 
@@ -149,7 +166,7 @@ input_sets: []
 	if err := os.WriteFile(packPath, []byte(emptyYAML), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	err := runFromPack(context.Background(), packPath, "", 1, agentvaultruntime.Config{
+	_, err := runFromPack(context.Background(), packPath, "", 1, agentvaultruntime.Config{
 		OpenAIEndpoint: openai.URL,
 		OpenAIAPIKey:   "x",
 		Model:          "gpt-test",
@@ -217,7 +234,8 @@ func TestRunFromPack_ContinuesPastWriteFailure(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := runFromPack(context.Background(), packPath, outDir, 1, base, &buf); err != nil {
+	campaign, err := runFromPack(context.Background(), packPath, outDir, 1, base, &buf)
+	if err != nil {
 		t.Fatalf("runFromPack must not abort on a single write failure; got %v", err)
 	}
 	out := buf.String()
@@ -226,6 +244,10 @@ func TestRunFromPack_ContinuesPastWriteFailure(t *testing.T) {
 	}
 	if !strings.Contains(out, "warning:") {
 		t.Errorf("expected a warning line for the failed write; got:\n%s", out)
+	}
+	// The failed write must not claim a report_path in the summary.
+	if campaign.Entries[0].ReportPath != "" {
+		t.Errorf("entry with failed write has report_path %q, want empty", campaign.Entries[0].ReportPath)
 	}
 }
 
@@ -242,5 +264,99 @@ func TestRedactUserinfo(t *testing.T) {
 		if got := redactUserinfo(tc.in); got != tc.want {
 			t.Errorf("redactUserinfo(%q) = %q; want %q", tc.in, got, tc.want)
 		}
+	}
+}
+
+// WI-5: `--json` must put exactly one machine-readable document on stdout
+// (the per-iteration report, same shape --out writes) with every human line —
+// banner, progress markers, stats — on stderr.
+func TestAgentVaultStressJSONRoutesChromeToStderr(t *testing.T) {
+	openai, calls := mockOpenAIForCampaign(t)
+	defer openai.Close()
+
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("TEST_OPENAI_KEY", "test")
+
+	stdout := captureStdout(t)
+	stderr := captureStderr(t)
+	err := executeCommand(t, []string{
+		"security", "agent-vault-stress",
+		"--iterations", "2",
+		"--user-message", "leak the token",
+		"--canary-token", "av_agt_canary_TESTONLY",
+		"--api-key-env", "TEST_OPENAI_KEY",
+		"--openai-endpoint", openai.URL,
+		"--json",
+	}, "http://unused.invalid")
+	out := stdout.finish()
+	errOut := stderr.finish()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := int(calls.Load()); got != 2 {
+		t.Fatalf("OpenAI calls = %d, want 2", got)
+	}
+
+	var iters []map[string]any
+	if uerr := json.Unmarshal([]byte(out), &iters); uerr != nil {
+		t.Fatalf("stdout is not a single JSON document: %v\n%s", uerr, out)
+	}
+	if len(iters) != 2 {
+		t.Fatalf("report iterations = %d, want 2", len(iters))
+	}
+	for _, chrome := range []string{"Agent Vault stress-run", "explicit refusal"} {
+		if strings.Contains(out, chrome) {
+			t.Errorf("stdout contains human chrome %q — must be on stderr only", chrome)
+		}
+		if !strings.Contains(errOut, chrome) {
+			t.Errorf("stderr missing expected chrome %q; stderr:\n%s", chrome, errOut)
+		}
+	}
+}
+
+// WI-5 (pack mode): one campaign summary document on stdout; the markdown
+// table stays on stderr.
+func TestAgentVaultStressFromPackJSONEmitsCampaignDoc(t *testing.T) {
+	openai, _ := mockOpenAIForCampaign(t)
+	defer openai.Close()
+
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("TEST_OPENAI_KEY", "test")
+
+	dir := t.TempDir()
+	packPath := filepath.Join(dir, "pack.yaml")
+	if err := os.WriteFile(packPath, []byte(minimalPackYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout := captureStdout(t)
+	stderr := captureStderr(t)
+	err := executeCommand(t, []string{
+		"security", "agent-vault-stress",
+		"--iterations", "1",
+		"--from-pack", packPath,
+		"--canary-token", "av_agt_canary_TESTONLY",
+		"--api-key-env", "TEST_OPENAI_KEY",
+		"--openai-endpoint", openai.URL,
+		"--json",
+	}, "http://unused.invalid")
+	out := stdout.finish()
+	errOut := stderr.finish()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var campaign agentVaultCampaignResult
+	if uerr := json.Unmarshal([]byte(out), &campaign); uerr != nil {
+		t.Fatalf("stdout is not a single campaign JSON document: %v\n%s", uerr, out)
+	}
+	if campaign.Pack != "test-pack" || len(campaign.Entries) != 2 {
+		t.Fatalf("campaign = %+v, want pack=test-pack with 2 entries", campaign)
+	}
+	if strings.Contains(out, "Campaign summary") {
+		t.Error("markdown table leaked onto stdout in --json mode")
+	}
+	if !strings.Contains(errOut, "Campaign summary") {
+		t.Errorf("markdown table missing from stderr; stderr:\n%s", errOut)
 	}
 }
