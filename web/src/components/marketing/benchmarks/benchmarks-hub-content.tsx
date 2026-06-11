@@ -7,9 +7,11 @@ import type { BenchmarkReport } from "@/lib/benchmarks";
 import {
   BENCHMARKS_CHILD_PAGES,
   BENCHMARKS_METHODOLOGY,
+  BENCHMARKS_MONTHLY_BLOG,
   BENCHMARKS_MONTHLY_PROCESS,
   BENCHMARKS_PACK_LINKS,
   BENCHMARKS_READING,
+  BENCHMARKS_RUNBOOK_HREF,
 } from "@/lib/benchmarks-hub";
 
 type Props = {
@@ -121,13 +123,22 @@ export function BenchmarksHubContent({ published }: Props) {
             </div>
           )}
 
-          <Link
-            href={`/benchmarks/${latest.slug}`}
-            className="mt-4 inline-flex items-center gap-1.5 text-sm text-white/70 transition-colors hover:text-white"
-          >
-            Read the full report
-            <ArrowRight className="size-3.5" />
-          </Link>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+            <Link
+              href={`/benchmarks/${latest.slug}`}
+              className="inline-flex items-center gap-1.5 text-sm text-white/70 transition-colors hover:text-white"
+            >
+              Read the full report
+              <ArrowRight className="size-3.5" />
+            </Link>
+            <Link
+              href={BENCHMARKS_MONTHLY_BLOG.href}
+              className="inline-flex items-center gap-1.5 text-sm text-white/55 transition-colors hover:text-white/80"
+            >
+              {BENCHMARKS_MONTHLY_BLOG.title}
+              <ArrowRight className="size-3.5" />
+            </Link>
+          </div>
         </section>
       ) : (
         <section className="mt-14" aria-labelledby="monthly-process-heading">
@@ -215,6 +226,18 @@ export function BenchmarksHubContent({ published }: Props) {
               </li>
             ))}
           </ol>
+          <p className="mt-4 text-xs text-white/35">
+            Owner checklist and scorecard export format:{" "}
+            <a
+              href={BENCHMARKS_RUNBOOK_HREF}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white/55 underline-offset-2 hover:text-white/75 hover:underline"
+            >
+              monthly benchmark runbook
+            </a>
+            .
+          </p>
         </section>
       )}
 
