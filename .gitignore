@@ -40,3 +40,4 @@ testing/*
 !testing/feat-integration-all-hosts.md
 !testing/feat-984-enterprise-ctas.md
 !testing/feat-985-enterprise-page.md
+!testing/feat-services-eval-program.md
