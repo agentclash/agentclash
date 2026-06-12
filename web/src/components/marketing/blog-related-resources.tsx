@@ -11,7 +11,7 @@ export function BlogRelatedResources({ links, className = "mt-12" }: Props) {
 
   return (
     <section className={className} aria-labelledby="blog-related-resources">
-      <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/40">
+      <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/40">
         Explore
       </p>
       <h2

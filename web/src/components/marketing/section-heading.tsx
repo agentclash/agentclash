@@ -26,7 +26,7 @@ export function SectionHeading({
   return (
     <div className={`${alignClass} ${className}`}>
       {eyebrow ? (
-        <p className="mb-6 inline-flex items-center gap-2 text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.22em] text-white/45">
+        <p className="mb-6 inline-flex items-center gap-2 text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.22em] text-white/45">
           <span className="inline-block size-1 rounded-full bg-white/60" />
           {eyebrow}
         </p>

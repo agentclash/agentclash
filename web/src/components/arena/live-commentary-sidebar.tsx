@@ -61,7 +61,7 @@ export function LiveCommentarySidebar({
     >
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <div className="mb-1 inline-flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.18em] text-amber-700/80 dark:text-amber-300/80">
+          <div className="mb-1 inline-flex items-center gap-1.5 text-2xs font-medium uppercase tracking-[0.18em] text-amber-700/80 dark:text-amber-300/80">
             <AudioLines className="size-3" />
             Commentary Booth
           </div>
@@ -101,7 +101,7 @@ export function LiveCommentarySidebar({
                 TONE_STYLES[entry.tone],
               )}
             >
-              <div className="mb-1 flex items-center gap-2 text-[11px] uppercase tracking-[0.12em] text-current/70">
+              <div className="mb-1 flex items-center gap-2 text-2xs uppercase tracking-[0.12em] text-current/70">
                 {entry.tone === "warning" ? (
                   <AlertTriangle className="size-3.5" />
                 ) : (

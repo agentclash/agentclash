@@ -46,7 +46,7 @@ function ReportPanel({ report }: { report: AgentOpportunityReport }) {
     <section className="mt-14 border-t border-white/[0.08] pt-10">
       <div className="grid gap-8 lg:grid-cols-[0.8fr_1.2fr]">
         <div>
-          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.16em] text-white/40">
+          <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.16em] text-white/40">
             Agent opportunity report
           </p>
           <h2 className="mt-4 text-3xl font-sans font-semibold tracking-tight text-white sm:text-4xl">
@@ -107,7 +107,7 @@ function ReportPanel({ report }: { report: AgentOpportunityReport }) {
                         {useCase.workflow}
                       </p>
                     </div>
-                    <span className="rounded-md border border-white/[0.08] px-2 py-1 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.12em] text-white/45">
+                    <span className="rounded-md border border-white/[0.08] px-2 py-1 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.12em] text-white/45">
                       {useCase.fit} fit
                     </span>
                   </div>
@@ -198,7 +198,7 @@ function ReportPanel({ report }: { report: AgentOpportunityReport }) {
 
           <div className="grid gap-4 border-t border-white/[0.08] pt-6 md:grid-cols-2">
             <div>
-              <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.16em] text-white/35">
+              <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.16em] text-white/35">
                 Next steps
               </p>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-white/55">
@@ -208,7 +208,7 @@ function ReportPanel({ report }: { report: AgentOpportunityReport }) {
               </ul>
             </div>
             <div>
-              <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.16em] text-white/35">
+              <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.16em] text-white/35">
                 Evidence limits
               </p>
               <ul className="mt-3 space-y-2 text-sm leading-6 text-white/45">
@@ -272,7 +272,7 @@ export function AgentOpportunityClient() {
       <section className="px-6 pt-16 sm:px-12 sm:pt-24">
         <div className="mx-auto grid max-w-[1180px] gap-12 lg:grid-cols-[0.92fr_1.08fr] lg:items-start">
           <div>
-            <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.16em] text-white/40">
+            <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.16em] text-white/40">
               AI agent opportunity scanner
             </p>
             <h1 className="mt-6 max-w-[13ch] text-[clamp(2.75rem,7vw,5.8rem)] font-sans font-semibold leading-[0.98] tracking-tight text-white">
@@ -377,7 +377,7 @@ export function AgentOpportunityClient() {
                 ["3", "Generate the eval pack"],
               ].map(([step, label]) => (
                 <div key={step} className="bg-[#0a0a0a] p-4">
-                  <p className="font-[family-name:var(--font-mono)] text-[11px] text-white/35">
+                  <p className="font-[family-name:var(--font-mono)] text-2xs text-white/35">
                     {step}
                   </p>
                   <p className="mt-3 text-sm leading-5 text-white/60">{label}</p>

@@ -43,7 +43,7 @@ export function RankStrip({
         icon={<Trophy className="size-3.5" />}
         trailing={
           current ? (
-            <span className="text-[11px] text-white/45 font-[family-name:var(--font-mono)]">
+            <span className="text-2xs text-white/45 font-[family-name:var(--font-mono)]">
               #{current.rank ?? "—"} of {items.length}
             </span>
           ) : null
@@ -94,7 +94,7 @@ function RankRow({
         {/* Rank badge */}
         <span
           className={cn(
-            "font-[family-name:var(--font-mono)] text-[11px] w-6 tabular-nums",
+            "font-[family-name:var(--font-mono)] text-2xs w-6 tabular-nums",
             isWinner ? "text-amber-300" : "text-white/35",
           )}
         >
@@ -110,12 +110,12 @@ function RankRow({
         >
           {item.label}
           {isWinner && (
-            <span className="ml-2 text-[10px] uppercase tracking-[0.16em] text-amber-300/80">
+            <span className="ml-2 text-2xs uppercase tracking-[0.16em] text-amber-300/80">
               Winner
             </span>
           )}
           {isCurrent && !isWinner && (
-            <span className="ml-2 text-[10px] uppercase tracking-[0.16em] text-white/40">
+            <span className="ml-2 text-2xs uppercase tracking-[0.16em] text-white/40">
               You
             </span>
           )}
@@ -125,7 +125,7 @@ function RankRow({
         {item.passed != null && (
           <span
             className={cn(
-              "text-[10px] uppercase tracking-[0.14em]",
+              "text-2xs uppercase tracking-[0.14em]",
               item.passed ? "text-emerald-400/80" : "text-red-400/80",
             )}
           >
@@ -134,7 +134,7 @@ function RankRow({
         )}
 
         {/* Delta from top */}
-        <span className="font-[family-name:var(--font-mono)] text-[11px] text-white/40 tabular-nums w-14 text-right">
+        <span className="font-[family-name:var(--font-mono)] text-2xs text-white/40 tabular-nums w-14 text-right">
           {item.delta_from_top != null && item.delta_from_top !== 0
             ? signedDelta(item.delta_from_top)
             : ""}

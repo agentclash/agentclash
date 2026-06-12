@@ -48,10 +48,10 @@ export function MarketingFooter() {
         <div className="grid gap-12 sm:grid-cols-2 lg:grid-cols-4">
           {COLUMNS.map((col) => (
             <div key={col.heading}>
-              <p className="text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/35">
+              <p className="text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/35">
                 {col.heading}
               </p>
-              <ul className="mt-5 space-y-3 text-[13px] text-white/55">
+              <ul className="mt-5 space-y-3 text-sm text-white/55">
                 {col.links.map((link) =>
                   link.external ? (
                     <li key={link.href}>
@@ -80,7 +80,7 @@ export function MarketingFooter() {
           ))}
         </div>
 
-        <div className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-white/[0.06] pt-8 text-[11px] font-[family-name:var(--font-mono)] text-white/35">
+        <div className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-white/[0.06] pt-8 text-2xs font-[family-name:var(--font-mono)] text-white/35">
           <div className="flex items-center gap-6">
             <span className="font-medium text-white/55">AgentClash</span>
             <span className="text-white/40">Beta · MIT</span>

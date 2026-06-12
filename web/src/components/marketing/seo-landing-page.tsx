@@ -99,11 +99,11 @@ function ProductVisual() {
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="size-2 rounded-full bg-emerald-300" />
-            <span className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/45">
+            <span className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/45">
               live race
             </span>
           </div>
-          <span className="rounded-md border border-white/[0.08] px-2 py-1 font-[family-name:var(--font-mono)] text-[11px] text-white/45">
+          <span className="rounded-md border border-white/[0.08] px-2 py-1 font-[family-name:var(--font-mono)] text-2xs text-white/45">
             gate: pass
           </span>
         </div>
@@ -129,7 +129,7 @@ function ProductVisual() {
       </div>
       <div className="grid gap-px bg-white/[0.06] md:grid-cols-[1.1fr_0.9fr]">
         <div className="bg-[#090909] p-5">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/35">
+          <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
             replay timeline
           </p>
           <div className="mt-4 space-y-3">
@@ -140,7 +140,7 @@ function ProductVisual() {
               "attached scorecard and release verdict",
             ].map((item, index) => (
               <div key={item} className="flex items-start gap-3">
-                <span className="mt-1 flex size-5 items-center justify-center rounded-md border border-cyan-300/25 bg-cyan-300/10 font-[family-name:var(--font-mono)] text-[10px] text-cyan-100">
+                <span className="mt-1 flex size-5 items-center justify-center rounded-md border border-cyan-300/25 bg-cyan-300/10 font-[family-name:var(--font-mono)] text-2xs text-cyan-100">
                   {index + 1}
                 </span>
                 <span className="text-sm leading-6 text-white/68">{item}</span>
@@ -149,7 +149,7 @@ function ProductVisual() {
           </div>
         </div>
         <div className="bg-[#090909] p-5">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/35">
+          <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
             ci verdict
           </p>
           <div className="mt-4 rounded-md border border-emerald-300/15 bg-emerald-300/[0.06] p-4">
@@ -162,7 +162,7 @@ function ProductVisual() {
               artifacts were preserved for review.
             </p>
           </div>
-          <pre className="mt-4 overflow-hidden rounded-md border border-white/[0.08] bg-black px-4 py-3 font-[family-name:var(--font-mono)] text-[11px] leading-5 text-white/55">
+          <pre className="mt-4 overflow-hidden rounded-md border border-white/[0.08] bg-black px-4 py-3 font-[family-name:var(--font-mono)] text-2xs leading-5 text-white/55">
             agentclash run create --follow
           </pre>
         </div>
@@ -213,7 +213,7 @@ export function SeoLandingPage({ config }: { config: SeoPageConfig }) {
                   </span>
                 ))}
               </nav>
-              <p className="mt-10 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-cyan-200/70">
+              <p className="mt-10 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-cyan-200/70">
                 {config.eyebrow}
               </p>
               <h1 className="mt-5 max-w-[14ch] font-[family-name:var(--font-display)] text-5xl font-normal leading-none tracking-normal text-white sm:text-7xl">
@@ -246,7 +246,7 @@ export function SeoLandingPage({ config }: { config: SeoPageConfig }) {
         <section className="border-y border-white/[0.06] px-6 py-20 sm:px-12">
           <div className="mx-auto max-w-[1440px]">
             <div className="max-w-3xl">
-              <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/35">
+              <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
                 {config.proofSectionTitle}
               </p>
               <h2 className="mt-4 text-3xl font-semibold tracking-normal text-white sm:text-5xl">
@@ -276,7 +276,7 @@ export function SeoLandingPage({ config }: { config: SeoPageConfig }) {
           <div className="mx-auto max-w-[1440px]">
             <div className="grid gap-12 lg:grid-cols-[0.7fr_1fr]">
               <div>
-                <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/35">
+                <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
                   Workflow
                 </p>
                 <h2 className="mt-4 text-3xl font-semibold tracking-normal text-white sm:text-5xl">
@@ -309,7 +309,7 @@ export function SeoLandingPage({ config }: { config: SeoPageConfig }) {
         <section className="border-y border-white/[0.06] px-6 py-20 sm:px-12">
           <div className="mx-auto grid max-w-[1440px] gap-10 lg:grid-cols-[0.8fr_1fr] lg:items-start">
             <div>
-              <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/35">
+              <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
                 {config.docsSectionTitle}
               </p>
               <h2 className="mt-4 text-3xl font-semibold tracking-normal text-white sm:text-5xl">
@@ -345,7 +345,7 @@ export function SeoLandingPage({ config }: { config: SeoPageConfig }) {
 
         <section className="px-6 py-20 sm:px-12 sm:py-28">
           <div className="mx-auto max-w-[960px]">
-            <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/35">
+            <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
               FAQ
             </p>
             <h2 className="mt-4 text-3xl font-semibold tracking-normal text-white sm:text-5xl">

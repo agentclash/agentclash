@@ -1733,37 +1733,37 @@ export default function HomePage({
 
             <dl className="mt-10 grid gap-x-10 gap-y-5 sm:grid-cols-2">
               <div>
-                <dt className="text-[15px] font-medium text-white/90">
+                <dt className="text-base font-medium text-white/90">
                   Deterministic
                 </dt>
-                <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
+                <dd className="mt-1 text-sm leading-[1.55] text-white/50">
                   exact, regex, JSON Schema, code execution, file-tree
                   assertions.
                 </dd>
               </div>
               <div>
-                <dt className="text-[15px] font-medium text-white/90">
+                <dt className="text-base font-medium text-white/90">
                   Mathematic
                 </dt>
-                <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
+                <dd className="mt-1 text-sm leading-[1.55] text-white/50">
                   math equivalence, BLEU, ROUGE, ChrF, token F1, numeric
                   tolerance.
                 </dd>
               </div>
               <div>
-                <dt className="text-[15px] font-medium text-white/90">
+                <dt className="text-base font-medium text-white/90">
                   Behavioural
                 </dt>
-                <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
+                <dd className="mt-1 text-sm leading-[1.55] text-white/50">
                   recovery, exploration, scope adherence, confidence
                   calibration &middot; plus latency, cost, reliability.
                 </dd>
               </div>
               <div>
-                <dt className="text-[15px] font-medium text-white/90">
+                <dt className="text-base font-medium text-white/90">
                   LLM + aggregation
                 </dt>
-                <dd className="mt-1 text-[13px] leading-[1.55] text-white/50">
+                <dd className="mt-1 text-sm leading-[1.55] text-white/50">
                   rubric, assertion, reference, pairwise &middot; median,
                   mean, majority-vote, unanimous consensus.
                 </dd>
@@ -1963,10 +1963,10 @@ export default function HomePage({
                 key={`m-${row.label}`}
                 className="border-b border-white/[0.08] pb-8 last:border-b-0"
               >
-                <p className="text-[16px] font-medium text-white/90 leading-[1.35]">
+                <p className="text-base font-medium text-white/90 leading-[1.35]">
                   {row.label}
                 </p>
-                <p className="mt-2 text-[13px] leading-[1.55] text-white/40">
+                <p className="mt-2 text-sm leading-[1.55] text-white/40">
                   {row.sub}
                 </p>
                 <dl className="mt-5 grid grid-cols-1 gap-0">
@@ -1979,7 +1979,7 @@ export default function HomePage({
                     >
                       <div className="flex flex-col">
                         <dt
-                          className={`text-[13px] ${
+                          className={`text-sm ${
                             col.highlight
                               ? "text-white/95 font-medium"
                               : "text-white/60"
@@ -1988,7 +1988,7 @@ export default function HomePage({
                           {col.name}
                         </dt>
                         <span
-                          className={`text-[9px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] ${
+                          className={`text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] ${
                             col.highlight ? "text-white/45" : "text-white/25"
                           }`}
                         >
@@ -2014,7 +2014,7 @@ export default function HomePage({
               {/* Header row */}
               <div className="grid grid-cols-[1.7fr_repeat(7,minmax(0,1fr))] border-b border-white/[0.12]">
                 <div className="pb-5 pr-4">
-                  <p className="text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.18em] text-white/35">
+                  <p className="text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.18em] text-white/35">
                     Capability
                   </p>
                 </div>
@@ -2026,14 +2026,14 @@ export default function HomePage({
                     <span
                       className={`text-center leading-tight ${
                         col.highlight
-                          ? "text-[13px] font-[family-name:var(--font-display)] tracking-[-0.01em] text-white/95"
-                          : "text-[12px] font-[family-name:var(--font-mono)] uppercase tracking-[0.16em] text-white/45"
+                          ? "text-sm font-[family-name:var(--font-display)] tracking-[-0.01em] text-white/95"
+                          : "text-xs font-[family-name:var(--font-mono)] uppercase tracking-[0.16em] text-white/45"
                       }`}
                     >
                       {col.name}
                     </span>
                     <span
-                      className={`text-[9px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] ${
+                      className={`text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] ${
                         col.highlight ? "text-white/30" : "text-white/25"
                       }`}
                     >
@@ -2050,8 +2050,8 @@ export default function HomePage({
                   className="grid grid-cols-[1.7fr_repeat(7,minmax(0,1fr))] border-b border-white/[0.05] last:border-b-0"
                 >
                   <div className="py-7 pr-6">
-                    <p className="text-[15px] text-white/85">{row.label}</p>
-                    <p className="mt-1.5 text-[12px] leading-[1.5] text-white/40">
+                    <p className="text-base text-white/85">{row.label}</p>
+                    <p className="mt-1.5 text-xs leading-[1.5] text-white/40">
                       {row.sub}
                     </p>
                   </div>
@@ -2070,7 +2070,7 @@ export default function HomePage({
             </div>
           </div>
 
-          <p className="mt-10 text-[12px] font-[family-name:var(--font-mono)] text-white/35">
+          <p className="mt-10 text-xs font-[family-name:var(--font-mono)] text-white/35">
             <span className="text-white/60">●</span>&nbsp;&nbsp;supported
             &nbsp;·&nbsp; <span className="text-white/45">◐</span>
             &nbsp;&nbsp;partial &nbsp;·&nbsp;
@@ -2129,7 +2129,7 @@ export default function HomePage({
                   {feature.glyph}
                 </div>
 
-                <p className="mt-8 text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/40">
+                <p className="mt-8 text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/40">
                   {feature.label}
                 </p>
 
@@ -2137,7 +2137,7 @@ export default function HomePage({
                   {feature.title}
                 </h3>
 
-                <p className="mt-4 text-[14px] leading-[1.65] text-white/55">
+                <p className="mt-4 text-sm leading-[1.65] text-white/55">
                   {feature.body}
                 </p>
               </li>
@@ -2317,7 +2317,7 @@ export default function HomePage({
                 <h3 className="text-lg font-medium leading-snug text-white/90">
                   {item.question}
                 </h3>
-                <p className="mt-3 text-[15px] leading-[1.7] text-white/55">
+                <p className="mt-3 text-base leading-[1.7] text-white/55">
                   {item.answer}
                 </p>
               </div>
@@ -2328,7 +2328,7 @@ export default function HomePage({
 
       {/* ── Footer ──────────────────────────────────────────────── */}
       <footer className="mt-auto border-t border-white/[0.06] px-8 sm:px-12 py-10">
-        <div className="mx-auto max-w-[1440px] flex flex-wrap items-center justify-between gap-4 text-[11px] font-[family-name:var(--font-mono)] text-white/35">
+        <div className="mx-auto max-w-[1440px] flex flex-wrap items-center justify-between gap-4 text-2xs font-[family-name:var(--font-mono)] text-white/35">
           <div className="flex items-center gap-6">
             <span className="font-medium text-white/55">AgentClash</span>
             <span className="text-white/40">Beta</span>

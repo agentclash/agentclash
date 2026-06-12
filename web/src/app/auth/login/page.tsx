@@ -48,7 +48,7 @@ export default async function LoginPage({
 
       <div className="pointer-events-none relative grid min-h-screen grid-rows-[1fr_auto] lg:grid-cols-[minmax(0,1fr)_minmax(440px,520px)] lg:grid-rows-1">
         <div className="flex flex-col justify-end p-6 sm:p-10 lg:p-14">
-          <p className="font-mono text-[0.66rem] uppercase tracking-[0.28em] text-white/45">
+          <p className="font-mono text-2xs uppercase tracking-[0.28em] text-white/45">
             Open evals engine
           </p>
           <h1 className="mt-3 max-w-2xl font-mono text-[1.65rem] font-medium uppercase leading-[1.05] tracking-[0.04em] text-white sm:text-4xl lg:text-[2.6rem]">
@@ -56,7 +56,7 @@ export default async function LoginPage({
             <br />
             and agents.
           </h1>
-          <p className="mt-4 max-w-md text-[0.85rem] leading-6 text-white/55 sm:mt-5 sm:text-sm">
+          <p className="mt-4 max-w-md text-sm leading-6 text-white/55 sm:mt-5 sm:text-sm">
             Run the same task across models. Score on real outcomes. Replay
             every step.
           </p>
@@ -66,7 +66,7 @@ export default async function LoginPage({
           <div className="pointer-events-auto w-full max-w-[440px] lg:-translate-y-[6vh]">
             <div className="mb-7 flex items-center gap-3">
               <ClashMark className="size-9" />
-              <span className="font-mono text-[0.7rem] uppercase tracking-[0.26em] text-white/55">
+              <span className="font-mono text-2xs uppercase tracking-[0.26em] text-white/55">
                 AgentClash
               </span>
             </div>

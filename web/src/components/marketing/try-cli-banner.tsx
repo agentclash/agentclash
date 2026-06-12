@@ -59,9 +59,9 @@ export function TryCliBanner() {
     <div className="relative border-b border-white/[0.06] bg-white/[0.02]">
       <Link
         href="/try"
-        className="group mx-auto flex max-w-[1440px] flex-wrap items-center justify-center gap-x-3 gap-y-1.5 px-12 sm:px-14 py-2.5 text-xs sm:text-[13px]"
+        className="group mx-auto flex max-w-[1440px] flex-wrap items-center justify-center gap-x-3 gap-y-1.5 px-12 sm:px-14 py-2.5 text-xs sm:text-sm"
       >
-        <span className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.18em] text-white/35">
+        <span className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.18em] text-white/35">
           New
         </span>
         <span className="text-white/70">

@@ -553,7 +553,7 @@ export function VersionEditor({ version }: VersionEditorProps) {
                   >
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-sm font-medium">{template.name}</span>
-                      <span className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                      <span className="text-2xs uppercase tracking-[0.12em] text-muted-foreground">
                         Apply
                       </span>
                     </div>

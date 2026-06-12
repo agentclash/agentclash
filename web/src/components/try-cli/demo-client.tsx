@@ -326,7 +326,7 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
         <div className="flex items-center gap-3">
           {tier === "anonymous" ? (
             <span
-              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 font-[family-name:var(--font-mono)] text-[11px] transition-colors ${
+              className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 font-[family-name:var(--font-mono)] text-2xs transition-colors ${
                 low
                   ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
                   : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
@@ -474,7 +474,7 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
                 <Copy className="size-3.5 text-white/25 transition-colors group-hover:text-white/60" />
               )}
             </button>
-            <code className="mt-2 block break-all rounded-md bg-white/[0.03] p-2.5 font-[family-name:var(--font-mono)] text-[10px] leading-relaxed text-white/45">
+            <code className="mt-2 block break-all rounded-md bg-white/[0.03] p-2.5 font-[family-name:var(--font-mono)] text-2xs leading-relaxed text-white/45">
               {badgeMd}
             </code>
           </div>

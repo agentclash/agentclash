@@ -192,18 +192,18 @@ function GateVisual() {
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="size-2 rounded-full bg-emerald-300" />
-            <span className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/45">
+            <span className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/45">
               pull request gate
             </span>
           </div>
-          <span className="rounded-md border border-rose-300/20 bg-rose-300/[0.06] px-2 py-1 font-[family-name:var(--font-mono)] text-[11px] text-rose-100/75">
+          <span className="rounded-md border border-rose-300/20 bg-rose-300/[0.06] px-2 py-1 font-[family-name:var(--font-mono)] text-2xs text-rose-100/75">
             blocked
           </span>
         </div>
       </div>
       <div className="grid gap-px bg-white/[0.06] md:grid-cols-[0.92fr_1.08fr]">
         <div className="bg-[#090909] p-5">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/35">
+          <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
             regression scorecard
           </p>
           <div className="mt-5 space-y-3">
@@ -225,7 +225,7 @@ function GateVisual() {
                     {value}
                   </span>
                 </div>
-                <p className="mt-2 font-[family-name:var(--font-mono)] text-[11px] text-white/35">
+                <p className="mt-2 font-[family-name:var(--font-mono)] text-2xs text-white/35">
                   {threshold}
                 </p>
               </div>
@@ -233,7 +233,7 @@ function GateVisual() {
           </div>
         </div>
         <div className="bg-[#090909] p-5">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/35">
+          <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
             replay evidence
           </p>
           <div className="mt-5 space-y-4">
@@ -243,14 +243,14 @@ function GateVisual() {
               "candidate final answer passed prose check but failed file check",
             ].map((item, index) => (
               <div key={item} className="flex items-start gap-3">
-                <span className="mt-1 flex size-5 items-center justify-center rounded-md border border-emerald-300/25 bg-emerald-300/10 font-[family-name:var(--font-mono)] text-[10px] text-emerald-100">
+                <span className="mt-1 flex size-5 items-center justify-center rounded-md border border-emerald-300/25 bg-emerald-300/10 font-[family-name:var(--font-mono)] text-2xs text-emerald-100">
                   {index + 1}
                 </span>
                 <span className="text-sm leading-6 text-white/62">{item}</span>
               </div>
             ))}
           </div>
-          <pre className="mt-6 overflow-hidden rounded-md border border-white/[0.08] bg-black px-4 py-3 font-[family-name:var(--font-mono)] text-[11px] leading-5 text-white/55">
+          <pre className="mt-6 overflow-hidden rounded-md border border-white/[0.08] bg-black px-4 py-3 font-[family-name:var(--font-mono)] text-2xs leading-5 text-white/55">
             agentclash compare gate --baseline run-stable --candidate run-pr-184
           </pre>
         </div>
@@ -291,7 +291,7 @@ export default function AgentRegressionTestingPage() {
                 <span>/</span>
                 <span>AI Agent Regression Testing</span>
               </nav>
-              <p className="mt-10 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-emerald-200/70">
+              <p className="mt-10 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-emerald-200/70">
                 Release gates for agents
               </p>
               <h1 className="mt-5 max-w-[11ch] font-[family-name:var(--font-display)] text-5xl font-normal leading-none tracking-normal text-white sm:text-7xl">
@@ -327,7 +327,7 @@ export default function AgentRegressionTestingPage() {
         <section className="border-y border-white/[0.06] px-6 py-20 sm:px-12">
           <div className="mx-auto max-w-[1440px]">
             <div className="max-w-3xl">
-              <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/35">
+              <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
                 What a gate checks
               </p>
               <h2 className="mt-4 text-3xl font-semibold tracking-normal text-white sm:text-5xl">
@@ -359,7 +359,7 @@ export default function AgentRegressionTestingPage() {
           <div className="mx-auto max-w-[1440px]">
             <div className="grid gap-12 lg:grid-cols-[0.7fr_1fr]">
               <div>
-                <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/35">
+                <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
                   Workflow
                 </p>
                 <h2 className="mt-4 text-3xl font-semibold tracking-normal text-white sm:text-5xl">
@@ -389,7 +389,7 @@ export default function AgentRegressionTestingPage() {
         <section className="border-y border-white/[0.06] px-6 py-20 sm:px-12">
           <div className="mx-auto grid max-w-[1440px] gap-10 lg:grid-cols-[0.8fr_1fr] lg:items-start">
             <div>
-              <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/35">
+              <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
                 Start with docs
               </p>
               <h2 className="mt-4 text-3xl font-semibold tracking-normal text-white sm:text-5xl">
@@ -443,7 +443,7 @@ export default function AgentRegressionTestingPage() {
 
         <section className="px-6 py-20 sm:px-12 sm:py-28">
           <div className="mx-auto max-w-[960px]">
-            <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/35">
+            <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
               FAQ
             </p>
             <h2 className="mt-4 text-3xl font-semibold tracking-normal text-white sm:text-5xl">

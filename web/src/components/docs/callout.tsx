@@ -48,7 +48,7 @@ export function Callout({
       <div className="flex items-start gap-3">
         <Icon className="mt-0.5 size-4 shrink-0 opacity-70" />
         <div className="min-w-0 text-sm leading-7">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.14em] opacity-80">
+          <p className="mb-1 text-2xs font-semibold uppercase tracking-[0.14em] opacity-80">
             {style.label}
           </p>
           <div>{children}</div>

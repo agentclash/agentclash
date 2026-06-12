@@ -847,7 +847,7 @@ function TryoutSidebar({
                 className="border-b border-white/6 px-3 py-2 text-xs last:border-b-0"
               >
                 <p className="text-white/75">{event.summary}</p>
-                <time className="mt-0.5 block text-[10px] text-white/35">
+                <time className="mt-0.5 block text-2xs text-white/35">
                   {new Date(event.occurred_at).toLocaleTimeString()}
                 </time>
               </li>
@@ -1081,7 +1081,7 @@ function UserBubble({ text, animate }: { text: string; animate?: boolean }) {
         animate && "animate-in fade-in slide-in-from-bottom-2 duration-300",
       )}
     >
-      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-white px-4 py-2.5 text-[15px] leading-7 text-black">
+      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-white px-4 py-2.5 text-base leading-7 text-black">
         {text}
       </div>
     </div>
@@ -1148,7 +1148,7 @@ function ArtifactChatCard({ output }: { output: TryoutOutputPreview }) {
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-white/90">{label}</p>
               {sizeLabel ? (
-                <p className="text-[11px] text-white/40">{artifactKindLabel(output)} · {sizeLabel}</p>
+                <p className="text-2xs text-white/40">{artifactKindLabel(output)} · {sizeLabel}</p>
               ) : null}
             </div>
           </div>
@@ -1228,7 +1228,7 @@ function ArtifactPreviewCard({ output }: { output: TryoutOutputPreview }) {
           <p className="truncate text-xs font-medium text-white/80">
             {output.relative_path || output.key || "Output"}
           </p>
-          <p className="text-[10px] text-white/35">{artifactKindLabel(output)}</p>
+          <p className="text-2xs text-white/35">{artifactKindLabel(output)}</p>
         </div>
         <button
           type="button"
@@ -1240,7 +1240,7 @@ function ArtifactPreviewCard({ output }: { output: TryoutOutputPreview }) {
         </button>
       </div>
       {!isBinaryArtifact(output) ? (
-        <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-white/55">
+        <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap text-2xs leading-5 text-white/55">
           {output.preview.slice(0, 400)}
           {output.preview.length > 400 ? "…" : ""}
         </pre>
@@ -1291,7 +1291,7 @@ function ComposerShell({
         rows={compact ? 1 : 3}
         disabled={disabled}
         placeholder={placeholder}
-        className="block w-full resize-none bg-transparent px-3 pt-2 text-[15px] leading-7 text-white outline-none placeholder:text-white/30"
+        className="block w-full resize-none bg-transparent px-3 pt-2 text-base leading-7 text-white outline-none placeholder:text-white/30"
       />
       <div className="flex items-center justify-between gap-2 px-1 pb-0.5 pt-1">
         {footer ? <div className="flex flex-wrap items-center gap-2">{footer}</div> : <span />}

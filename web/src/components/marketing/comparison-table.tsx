@@ -29,10 +29,10 @@ export function ComparisonTable({ columns, rows }: Props) {
             key={`m-${row.label}`}
             className="border-b border-white/[0.08] pb-8 last:border-b-0"
           >
-            <p className="text-[16px] font-medium text-white/90 leading-[1.35]">
+            <p className="text-base font-medium text-white/90 leading-[1.35]">
               {row.label}
             </p>
-            <p className="mt-2 text-[13px] leading-[1.55] text-white/40">
+            <p className="mt-2 text-sm leading-[1.55] text-white/40">
               {row.sub}
             </p>
             <dl className="mt-5 grid grid-cols-1 gap-0">
@@ -45,7 +45,7 @@ export function ComparisonTable({ columns, rows }: Props) {
                 >
                   <div className="flex flex-col">
                     <dt
-                      className={`text-[13px] ${
+                      className={`text-sm ${
                         col.highlight
                           ? "text-white/95 font-medium"
                           : "text-white/60"
@@ -54,7 +54,7 @@ export function ComparisonTable({ columns, rows }: Props) {
                       {col.name}
                     </dt>
                     <span
-                      className={`text-[9px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] ${
+                      className={`text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] ${
                         col.highlight ? "text-white/45" : "text-white/25"
                       }`}
                     >
@@ -79,7 +79,7 @@ export function ComparisonTable({ columns, rows }: Props) {
         <div className="min-w-[1040px] px-8 sm:px-0">
           <div className={`grid ${gridTemplate} border-b border-white/[0.12]`}>
             <div className="pb-5 pr-4">
-              <p className="text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.18em] text-white/35">
+              <p className="text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.18em] text-white/35">
                 Capability
               </p>
             </div>
@@ -91,14 +91,14 @@ export function ComparisonTable({ columns, rows }: Props) {
                 <span
                   className={`text-center leading-tight ${
                     col.highlight
-                      ? "text-[13px] font-[family-name:var(--font-display)] tracking-[-0.01em] text-white/95"
-                      : "text-[12px] font-[family-name:var(--font-mono)] uppercase tracking-[0.16em] text-white/45"
+                      ? "text-sm font-[family-name:var(--font-display)] tracking-[-0.01em] text-white/95"
+                      : "text-xs font-[family-name:var(--font-mono)] uppercase tracking-[0.16em] text-white/45"
                   }`}
                 >
                   {col.name}
                 </span>
                 <span
-                  className={`text-[9px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] ${
+                  className={`text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] ${
                     col.highlight ? "text-white/30" : "text-white/25"
                   }`}
                 >
@@ -114,8 +114,8 @@ export function ComparisonTable({ columns, rows }: Props) {
               className={`grid ${gridTemplate} border-b border-white/[0.05] last:border-b-0`}
             >
               <div className="py-7 pr-6">
-                <p className="text-[15px] text-white/85">{row.label}</p>
-                <p className="mt-1.5 text-[12px] leading-[1.5] text-white/40">
+                <p className="text-base text-white/85">{row.label}</p>
+                <p className="mt-1.5 text-xs leading-[1.5] text-white/40">
                   {row.sub}
                 </p>
               </div>
@@ -137,7 +137,7 @@ export function ComparisonTable({ columns, rows }: Props) {
         </div>
       </div>
 
-      <p className="mt-10 text-[12px] font-[family-name:var(--font-mono)] text-white/35">
+      <p className="mt-10 text-xs font-[family-name:var(--font-mono)] text-white/35">
         <span className="text-white/60">●</span>&nbsp;&nbsp;supported
         &nbsp;·&nbsp; <span className="text-white/45">◐</span>
         &nbsp;&nbsp;partial &nbsp;·&nbsp;

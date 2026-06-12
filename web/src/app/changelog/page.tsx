@@ -31,7 +31,7 @@ export default function ChangelogPage() {
         )}
       />
       <ChangelogShell backHref="/" backLabel="Back to AgentClash">
-        <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35">
+        <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/35">
           Release notes
         </p>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">

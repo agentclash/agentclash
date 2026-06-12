@@ -67,13 +67,13 @@ export function CodeBlock({ code, language = "text", showLineNumbers = true }: C
       <div className="flex items-center justify-between border-b border-white/[0.06] bg-black/30 px-3 py-2">
         <div className="flex items-center gap-2">
           <FileCode className="size-3.5 text-white/40" />
-          <span className="text-[11px] font-medium uppercase tracking-wider text-white/50">
+          <span className="text-2xs font-medium uppercase tracking-wider text-white/50">
             {normalizedLang}
           </span>
         </div>
         <button
           onClick={handleCopy}
-          className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-white/60 transition-colors hover:bg-white/10 hover:text-white/90"
+          className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-2xs text-white/60 transition-colors hover:bg-white/10 hover:text-white/90"
         >
           {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
           {copied ? "Copied" : "Copy"}
@@ -275,7 +275,7 @@ export function AgentOutputRenderer({ text }: AgentOutputRendererProps) {
   }
 
   return (
-    <div className="text-[13px] leading-relaxed text-white/85">
+    <div className="text-sm leading-relaxed text-white/85">
       {tokens.map((token, i) => {
         switch (token.type) {
           case "code_block":

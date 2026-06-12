@@ -52,7 +52,7 @@ export function CopyableCodeBlock({ children }: { children: ReactNode }) {
 
   return (
     <div className="not-prose my-6 overflow-x-auto rounded-2xl border border-white/[0.08] bg-white/[0.04] p-4">
-      <pre className="m-0 font-mono text-[13px] leading-6 text-white/78">
+      <pre className="m-0 font-mono text-sm leading-6 text-white/78">
         <code>{text}</code>
       </pre>
     </div>

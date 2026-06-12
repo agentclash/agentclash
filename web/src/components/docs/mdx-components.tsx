@@ -56,7 +56,7 @@ function DocsHeading({
         "scroll-mt-28 font-sans font-semibold tracking-tight text-white/92 not-italic antialiased",
         level === 2
           ? "mt-14 border-b border-white/[0.08] pb-3 text-xl"
-          : "mt-10 text-[1.0625rem] leading-snug text-white/84",
+          : "mt-10 text-base leading-snug text-white/84",
         className,
       )}
     >

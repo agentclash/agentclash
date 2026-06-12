@@ -101,7 +101,7 @@ export function ReplayStepCard({
         )}
       >
         {/* Step number */}
-        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-white/5 text-[10px] font-medium text-white/50 font-[family-name:var(--font-mono)]">
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-white/5 text-2xs font-medium text-white/50 font-[family-name:var(--font-mono)]">
           {index + 1}
         </span>
 
@@ -115,7 +115,7 @@ export function ReplayStepCard({
 
         {/* Duration */}
         {duration && (
-          <span className="shrink-0 text-[11px] uppercase tracking-[0.14em] text-white/40">
+          <span className="shrink-0 text-2xs uppercase tracking-[0.14em] text-white/40">
             {duration}
           </span>
         )}
@@ -126,7 +126,7 @@ export function ReplayStepCard({
         </Badge>
 
         {/* Timestamp */}
-        <span className="shrink-0 text-[11px] font-[family-name:var(--font-mono)] text-white/30 tabular-nums">
+        <span className="shrink-0 text-2xs font-[family-name:var(--font-mono)] text-white/30 tabular-nums">
           {formatTime(step.occurred_at)}
         </span>
 
@@ -144,7 +144,7 @@ export function ReplayStepCard({
       {expanded && (
         <div className="ml-[4.5rem] mr-4 mb-4 space-y-4 rounded-lg border border-white/[0.08] bg-white/[0.02] p-4 text-sm">
           {/* Metadata row */}
-          <div className="flex flex-wrap gap-x-5 gap-y-2 text-[11px] uppercase tracking-[0.14em] text-white/40">
+          <div className="flex flex-wrap gap-x-5 gap-y-2 text-2xs uppercase tracking-[0.14em] text-white/40">
             {step.provider_key && (
               <span className="flex items-baseline gap-1.5">
                 Provider: <span className="text-white/80 font-[family-name:var(--font-mono)] normal-case tracking-normal">{step.provider_key}</span>
@@ -184,7 +184,7 @@ export function ReplayStepCard({
               {step.event_types.map((et, i) => (
                 <span
                   key={i}
-                  className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-[family-name:var(--font-mono)] text-white/60"
+                  className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-2xs font-[family-name:var(--font-mono)] text-white/60"
                 >
                   {et}
                 </span>
@@ -204,7 +204,7 @@ export function ReplayStepCard({
             <div className="pt-2">
               <div className="mb-2 flex items-center gap-2">
                 <div className="h-px flex-1 bg-white/[0.06]" />
-                <span className="text-[10px] uppercase tracking-[0.16em] text-white/40">
+                <span className="text-2xs uppercase tracking-[0.16em] text-white/40">
                   Model output
                 </span>
                 <div className="h-px flex-1 bg-white/[0.06]" />
@@ -220,7 +220,7 @@ export function ReplayStepCard({
             <div className="pt-2">
               <div className="mb-2 flex items-center gap-2">
                 <div className="h-px flex-1 bg-white/[0.06]" />
-                <span className="text-[10px] uppercase tracking-[0.16em] text-white/40">
+                <span className="text-2xs uppercase tracking-[0.16em] text-white/40">
                   Tool result
                 </span>
                 <div className="h-px flex-1 bg-white/[0.06]" />
@@ -243,7 +243,7 @@ export function ReplayStepCard({
           {/* Artifacts */}
           {hasArtifacts && (
             <div className="flex flex-wrap items-center gap-2 pt-2">
-              <span className="text-[10px] uppercase tracking-[0.16em] text-white/40">Artifacts:</span>
+              <span className="text-2xs uppercase tracking-[0.16em] text-white/40">Artifacts:</span>
               {step.artifact_ids!.map((id) => (
                 <DownloadArtifactButton
                   key={id}

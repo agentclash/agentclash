@@ -624,7 +624,7 @@ export function EvalSpecBuilder({ value, onChange }: EvalSpecBuilderProps) {
         )}
 
         {form.validators.length > 0 && (
-          <div className="hidden sm:flex items-center gap-3 px-3 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="hidden sm:flex items-center gap-3 px-3 text-2xs font-medium uppercase tracking-wider text-muted-foreground">
             <span className="shrink-0 w-20">Key</span>
             <span className="w-40">Type</span>
             <span className="w-40">Checks</span>
@@ -701,11 +701,11 @@ export function EvalSpecBuilder({ value, onChange }: EvalSpecBuilderProps) {
                       className="min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring aria-invalid:border-destructive aria-invalid:ring-destructive/30"
                     />
                     {validatorConfigErrors[v.key] && (
-                      <p className="mt-1 text-[10px] text-destructive">
+                      <p className="mt-1 text-2xs text-destructive">
                         {validatorConfigErrors[v.key]}
                       </p>
                     )}
-                    <p className="mt-1 text-[10px] text-muted-foreground">
+                    <p className="mt-1 text-2xs text-muted-foreground">
                       JSON config for tool_name, must_call, count, min_count, max_count, arguments_contain, ordered_tools, and order_mode.
                     </p>
                   </div>
@@ -717,7 +717,7 @@ export function EvalSpecBuilder({ value, onChange }: EvalSpecBuilderProps) {
                       placeholder="case.expectations.expected_output"
                       className="text-xs"
                     />
-                    <p className="mt-1 text-[10px] text-muted-foreground">
+                    <p className="mt-1 text-2xs text-muted-foreground">
                       Path to expected value in your test case, e.g. <code className="font-mono">case.expectations.your_field</code>
                     </p>
                   </div>

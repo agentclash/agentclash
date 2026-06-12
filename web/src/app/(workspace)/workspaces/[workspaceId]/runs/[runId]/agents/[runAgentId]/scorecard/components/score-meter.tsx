@@ -135,7 +135,7 @@ export function ScoreMeter({
         >
           {overallPct}
         </span>
-        <span className="mt-0.5 text-[9px] uppercase tracking-[0.18em] text-white/40">
+        <span className="mt-0.5 text-2xs uppercase tracking-[0.18em] text-white/40">
           Overall
         </span>
       </div>

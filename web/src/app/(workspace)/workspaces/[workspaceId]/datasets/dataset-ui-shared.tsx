@@ -99,7 +99,7 @@ export function StructuredValue({ value }: { value: unknown }) {
             key={key}
             className={isNestedValue(nested) ? "sm:col-span-2" : undefined}
           >
-            <dt className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <dt className="text-2xs font-medium uppercase tracking-wide text-muted-foreground">
               {humanizeKey(key)}
             </dt>
             <dd className="mt-1">

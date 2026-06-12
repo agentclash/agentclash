@@ -466,7 +466,7 @@ export function LightSpeed({
           type="button"
           onClick={onTiltChipClick}
           data-testid="lightspeed-tilt-chip"
-          className="absolute left-4 top-4 z-10 rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5 font-mono text-[0.6rem] uppercase tracking-[0.2em] text-white/70 backdrop-blur transition-colors hover:bg-white/[0.1] hover:text-white"
+          className="absolute left-4 top-4 z-10 rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5 font-mono text-2xs uppercase tracking-[0.2em] text-white/70 backdrop-blur transition-colors hover:bg-white/[0.1] hover:text-white"
         >
           Tap to tilt
         </button>

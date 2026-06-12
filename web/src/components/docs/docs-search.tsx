@@ -82,7 +82,7 @@ export function DocsSearch() {
           placeholder="Search docs..."
           className="h-9 w-full rounded-xl border border-white/[0.08] bg-white/[0.03] pl-10 pr-10 text-sm text-white/80 outline-none transition-colors placeholder:text-white/30 focus:border-white/15 focus:bg-white/[0.05]"
         />
-        <div className="pointer-events-none absolute right-3 flex items-center gap-1 text-[10px] uppercase tracking-wider text-white/25">
+        <div className="pointer-events-none absolute right-3 flex items-center gap-1 text-2xs uppercase tracking-wider text-white/25">
           <Command className="size-3" />
           <span>K</span>
         </div>

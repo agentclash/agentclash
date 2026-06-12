@@ -52,7 +52,7 @@ export function Hero({
             {run.name}
           </span>
         </div>
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-white/35">
+        <div className="flex items-center gap-2 text-2xs uppercase tracking-[0.14em] text-white/35">
           <Clock className="size-3" />
           <span className="font-[family-name:var(--font-mono)] normal-case tracking-normal text-white/55">
             {duration}
@@ -73,7 +73,7 @@ export function Hero({
 
         <div className="flex flex-col gap-4 min-w-0">
           {/* Meta row */}
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px]">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-2xs">
             {strategy && (
               <MetaChip label="Strategy" value={strategy} />
             )}
@@ -101,7 +101,7 @@ export function Hero({
             />
             {doc?.metric_summary?.run_total_tokens != null && (
               <div className="flex items-baseline gap-1.5">
-                <span className="text-[9px] uppercase tracking-[0.18em] text-white/35">Tokens</span>
+                <span className="text-2xs uppercase tracking-[0.18em] text-white/35">Tokens</span>
                 <span className="text-xs text-white/80 font-[family-name:var(--font-mono)]">
                   {doc.metric_summary.run_total_tokens.toLocaleString()}
                   {(doc.metric_summary.run_race_context_tokens ?? 0) > 0 && (
@@ -126,14 +126,14 @@ export function Hero({
             <div className="flex items-start gap-2 border border-amber-500/25 bg-amber-500/[0.04] rounded-md px-3 py-2">
               <AlertTriangle className="size-3.5 text-amber-400 shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
-                <div className="text-[11px] uppercase tracking-[0.14em] text-amber-400/85 mb-1">
+                <div className="text-2xs uppercase tracking-[0.14em] text-amber-400/85 mb-1">
                   {warnings.length} {warnings.length === 1 ? "warning" : "warnings"}
                 </div>
                 <ul className="space-y-0.5">
                   {warnings.map((w, i) => (
                     <li
                       key={i}
-                      className="text-[12px] text-amber-200/75 leading-snug"
+                      className="text-xs text-amber-200/75 leading-snug"
                     >
                       {w}
                     </li>
@@ -153,7 +153,7 @@ function VerdictPill({ passed }: { passed: boolean }) {
     return (
       <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/[0.08]">
         <CheckCircle2 className="size-3 text-emerald-400" />
-        <span className="text-[10px] uppercase tracking-[0.16em] text-emerald-300">
+        <span className="text-2xs uppercase tracking-[0.16em] text-emerald-300">
           Passed
         </span>
       </div>
@@ -162,7 +162,7 @@ function VerdictPill({ passed }: { passed: boolean }) {
   return (
     <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-red-500/30 bg-red-500/[0.08]">
       <XCircle className="size-3 text-red-400" />
-      <span className="text-[10px] uppercase tracking-[0.16em] text-red-300">
+      <span className="text-2xs uppercase tracking-[0.16em] text-red-300">
         Failed
       </span>
     </div>
@@ -189,7 +189,7 @@ function MetaChip({
   }[valueTone];
   return (
     <div className="flex items-baseline gap-1.5">
-      <span className="text-[9px] uppercase tracking-[0.18em] text-white/35">
+      <span className="text-2xs uppercase tracking-[0.18em] text-white/35">
         {label}
       </span>
       <span

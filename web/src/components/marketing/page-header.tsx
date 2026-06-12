@@ -27,7 +27,7 @@ export function PageHeader({
         {breadcrumbs && breadcrumbs.length > 0 ? (
           <nav
             aria-label="Breadcrumb"
-            className="mb-10 flex flex-wrap items-center gap-1.5 text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.18em] text-white/35"
+            className="mb-10 flex flex-wrap items-center gap-1.5 text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.18em] text-white/35"
           >
             {breadcrumbs.map((crumb, i) => (
               <span key={`${crumb.label}-${i}`} className="flex items-center gap-1.5">
@@ -51,7 +51,7 @@ export function PageHeader({
 
         <div className="grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-start">
           <div>
-            <p className="mb-6 inline-flex items-center gap-2 text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.22em] text-white/45">
+            <p className="mb-6 inline-flex items-center gap-2 text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.22em] text-white/45">
               <span className="inline-block size-1 rounded-full bg-white/60" />
               {eyebrow}
             </p>

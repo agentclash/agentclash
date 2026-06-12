@@ -31,7 +31,7 @@ export default function WhyWeBuiltThisPage() {
 
       <section className="px-8 sm:px-12 py-32 sm:py-48">
         <div className="mx-auto max-w-[1440px]">
-          <p className="font-mono text-[0.66rem] uppercase tracking-[0.28em] text-white/45">
+          <p className="font-mono text-2xs uppercase tracking-[0.28em] text-white/45">
             Why we built this
           </p>
 
@@ -56,7 +56,7 @@ export default function WhyWeBuiltThisPage() {
             AgentClash is that eval.
           </p>
 
-          <p className="mt-24 max-w-[56ch] text-[15px] leading-[1.7] text-white/50">
+          <p className="mt-24 max-w-[56ch] text-base leading-[1.7] text-white/50">
             Pick your task the way your product actually runs it. Six
             models race, live, on the same inputs with the same tools.
             Scored on what matters in production — correctness, cost,

@@ -72,7 +72,7 @@ function PeriodToggle({
       >
         <span>Yearly</span>
         <span
-          className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold tracking-tight ${
+          className={`rounded-full px-1.5 py-0.5 text-2xs font-semibold tracking-tight ${
             period === "yearly"
               ? "bg-[#060606]/15 text-[#060606]"
               : "bg-emerald-400/15 text-emerald-300"
@@ -161,7 +161,7 @@ function TierCard({ tier, period }: { tier: Tier; period: Period }) {
 
           <div className="my-6 h-px bg-white/10" />
 
-          <ul className="flex flex-col gap-2.5 text-[14px] leading-6 text-white/85">
+          <ul className="flex flex-col gap-2.5 text-sm leading-6 text-white/85">
             {tier.features.map((feature) => (
               <li key={feature} className="flex items-start gap-2.5">
                 <span
@@ -212,7 +212,7 @@ function CtaButton({ cta }: { cta: Cta }) {
         </Link>
       )}
       {cta.sublabel && (
-        <p className="mt-2 text-center text-[11px] text-white/40">
+        <p className="mt-2 text-center text-2xs text-white/40">
           {cta.sublabel}
         </p>
       )}

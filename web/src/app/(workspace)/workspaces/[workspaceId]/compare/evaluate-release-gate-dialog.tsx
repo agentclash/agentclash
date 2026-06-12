@@ -347,11 +347,11 @@ export function EvaluateReleaseGateDialog({
                   className={cn(capInvalid && "border-destructive")}
                 />
               </label>
-              <p className="mt-1 text-[11px] text-muted-foreground">
+              <p className="mt-1 text-2xs text-muted-foreground">
                 Leave blank to disable. 0 = allow no warning failures.
               </p>
               {capInvalid && (
-                <p className="mt-1 text-[11px] text-destructive">
+                <p className="mt-1 text-2xs text-destructive">
                   Must be zero or greater. Negative values are dropped at
                   submit.
                 </p>
@@ -366,10 +366,10 @@ export function EvaluateReleaseGateDialog({
                 </span>
               </p>
               {suitesError && (
-                <p className="text-[11px] text-destructive">{suitesError}</p>
+                <p className="text-2xs text-destructive">{suitesError}</p>
               )}
               {suites.length === 0 && !suitesError ? (
-                <p className="text-[11px] text-muted-foreground">
+                <p className="text-2xs text-muted-foreground">
                   No active regression suites in this workspace.
                 </p>
               ) : (
@@ -525,7 +525,7 @@ function ToggleRow({
       />
       <div>
         <p className="text-xs font-medium">{label}</p>
-        <p className="text-[11px] text-muted-foreground">{description}</p>
+        <p className="text-2xs text-muted-foreground">{description}</p>
       </div>
     </label>
   );

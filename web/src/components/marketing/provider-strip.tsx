@@ -30,7 +30,7 @@ export function ProviderStrip() {
           <div className="flex h-10 items-center justify-center">
             {render(32)}
           </div>
-          <p className="text-[10px] font-[family-name:var(--font-mono)] uppercase tracking-[0.22em] text-white/40">
+          <p className="text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.22em] text-white/40">
             {name}
           </p>
         </li>
