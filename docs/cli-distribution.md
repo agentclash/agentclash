@@ -123,6 +123,20 @@ feat!: major release
 
 Main-branch CLI merges also run the snapshot workflow. Snapshot artifacts are uploaded to the workflow run and are intentionally not a stable release channel.
 
+### Changelog hygiene (merge commits)
+
+Because PRs land as merge commits (not squashes), GitHub copies the PR's conventional title into the merge commit body. Release Please then parses both the branch commit and the `Merge pull request …` commit, so each PR's headline change appears **twice** in the generated `CHANGELOG.md` (and the GitHub Release notes) — once per commit, with two different SHAs. Follow-up commits pushed onto the same branch are unaffected; only a PR's lead commit duplicates.
+
+Avoid it either way:
+
+- **At merge time** — drop the conventional line from the merge body so only the branch commit carries it:
+
+  ```bash
+  gh pr merge <pr-number> --merge --subject "Merge pull request #<pr-number>" --body ""
+  ```
+
+- **At release time** — when reviewing the Release Please PR, delete the duplicate lines from the new `## [x.y.z]` block, keeping the non-merge (branch) commit of each pair.
+
 ## Maintainer Setup
 
 Before advertising package-manager installs as live, make sure these external pieces exist:

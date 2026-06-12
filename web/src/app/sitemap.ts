@@ -302,6 +302,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
         }),
       ],
     },
+    {
+      url: `${DOCS_ORIGIN}/agent-opportunity`,
+      lastModified: new Date(),
+      changeFrequency: "weekly",
+      priority: 0.91,
+      images: [
+        ogImage({
+          title: "AI agent ROI calculator",
+          subtitle: "Build vs buy assessment from a company URL",
+          kind: "Report",
+        }),
+      ],
+    },
     // .txt endpoints are intentionally imageless — they are not HTML pages.
     {
       url: `${DOCS_ORIGIN}/llms.txt`,

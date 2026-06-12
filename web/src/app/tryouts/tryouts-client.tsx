@@ -5,23 +5,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity,
   ArrowRight,
   ArrowUp,
-  Calculator,
-  CheckCircle2,
   ChevronDown,
   Download,
   FileText,
   Gauge,
   Loader2,
-  Lock,
   PanelRight,
-  ShieldAlert,
-  Terminal,
-  TrendingUp,
-  Wrench,
-  XCircle,
 } from "lucide-react";
 
 import {
@@ -44,9 +35,7 @@ import {
   formatTryoutCost,
   formatTryoutLatency,
   tryoutIsActive,
-  tryoutStatusVariant,
 } from "@/lib/agent-tryout-status";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -79,6 +68,59 @@ type ModelOption = AgentOption & {
   provider?: "openai" | "anthropic" | "openrouter";
   model?: string;
 };
+
+type EvalPriority = "accuracy" | "polish" | "speed" | "cost" | "compliance";
+type EvalStyle = "consistent" | "balanced" | "creative";
+
+type EvalSetupValues = {
+  unacceptableMistakes: string;
+  reviewer: string;
+  priority: EvalPriority;
+  style: EvalStyle;
+  monthlyVolume: string;
+};
+
+type EvalRubricItem = {
+  key: string;
+  label: string;
+  checks: string[];
+};
+
+type DerivedEvalSetup = {
+  version: string;
+  unacceptable_mistakes: string;
+  human_reviewer: string;
+  business_priority: EvalPriority;
+  output_style: EvalStyle;
+  monthly_volume: string;
+  derived_rubric: EvalRubricItem[];
+  suggested_generation_settings: {
+    temperature: string;
+    reason: string;
+  };
+};
+
+const DEFAULT_EVAL_SETUP: EvalSetupValues = {
+  unacceptableMistakes: "",
+  reviewer: "Operations owner",
+  priority: "accuracy",
+  style: "consistent",
+  monthlyVolume: "",
+};
+
+const PRIORITY_OPTIONS: { value: EvalPriority; label: string }[] = [
+  { value: "accuracy", label: "Correct facts" },
+  { value: "polish", label: "Client-ready" },
+  { value: "speed", label: "Fast enough" },
+  { value: "cost", label: "Cheap at scale" },
+  { value: "compliance", label: "Policy-safe" },
+];
+
+const STYLE_OPTIONS: { value: EvalStyle; label: string }[] = [
+  { value: "consistent", label: "Same every time" },
+  { value: "balanced", label: "Balanced" },
+  { value: "creative", label: "More creative" },
+];
 
 const MODEL_OPTIONS: ModelOption[] = [
   { value: "", label: "Auto", hint: "Hosted default agent and model" },
@@ -214,24 +256,8 @@ function suggestionsFor(slug: string): string[] {
 
 const api = createApiClient();
 
-function ThinkingIndicator({ label = "Thinking" }: { label?: string }) {
-  return (
-    <div className="flex justify-start animate-in fade-in duration-500">
-      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-        <div className="flex items-center gap-1" aria-hidden>
-          {[0, 1, 2].map((index) => (
-            <span
-              key={index}
-              className="size-1.5 rounded-full bg-white/35 animate-pulse"
-              style={{ animationDelay: `${index * 180}ms` }}
-            />
-          ))}
-        </div>
-        <span className="text-sm text-white/45">{label}</span>
-      </div>
-    </div>
-  );
-}
+const SERIF = "[font-family:var(--font-race-display)]";
+const MICRO = "font-mono text-2xs uppercase tracking-[0.22em]";
 
 export function PublicTryoutsClient() {
   const router = useRouter();
@@ -242,6 +268,7 @@ export function PublicTryoutsClient() {
   const [templateSlug, setTemplateSlug] = useState("");
   const [selectedModelKey, setSelectedModelKey] = useState("auto");
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [evalSetup, setEvalSetup] = useState<EvalSetupValues>(DEFAULT_EVAL_SETUP);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [launching, setLaunching] = useState(false);
   const [tryout, setTryout] = useState<AgentTryout | null>(null);
@@ -370,15 +397,34 @@ export function PublicTryoutsClient() {
     setFieldValues((current) => ({ ...current, [field]: value }));
   }, []);
 
+  const updateEvalSetup = useCallback(
+    <Key extends keyof EvalSetupValues>(field: Key, value: EvalSetupValues[Key]) => {
+      setEvalSetup((current) => ({ ...current, [field]: value }));
+    },
+    [],
+  );
+
+  const evalReady =
+    evalSetup.unacceptableMistakes.trim().length > 0 &&
+    evalSetup.monthlyVolume.trim().length > 0;
+
   async function handleLaunch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!template || launching) return;
+    if (!evalReady) {
+      setMessage(
+        "Define the eval first: name one mistake that would fail this work, and your monthly volume.",
+      );
+      return;
+    }
 
     const input = buildInput(fields, required, fieldValues);
     if ("error" in input) {
       setMessage(input.error);
       return;
     }
+    input.value.eval_setup = buildEvalSetup(evalSetup, template?.name ?? "agent task");
+
     const selectedModel =
       MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey) ??
       MODEL_OPTIONS[0];
@@ -419,15 +465,13 @@ export function PublicTryoutsClient() {
   )}`;
 
   const primaryValue = primaryField ? fieldValues[primaryField[0]] ?? "" : "";
-  const canRun = Boolean(template) && !templatesLoading && !launching;
+  const canRun = Boolean(template) && !templatesLoading && !launching && evalReady;
   const inSession = Boolean(urlTryoutId);
 
   return (
-    <main className="flex h-[100dvh] flex-col overflow-hidden bg-black text-white">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05),transparent_55%)]" />
-
-      <header className="relative z-10 flex shrink-0 items-center justify-between gap-4 border-b border-white/10 px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-3">
+    <main className="flex h-[100dvh] flex-col overflow-hidden bg-[#131312] text-white">
+      <header className="relative z-10 flex shrink-0 items-center justify-between gap-4 border-b border-white/[0.07] px-4 py-3 sm:px-6">
+        <div className="flex items-baseline gap-4">
           <Link
             href="/"
             className="text-sm font-semibold tracking-tight text-white/90"
@@ -435,9 +479,9 @@ export function PublicTryoutsClient() {
             AgentClash
           </Link>
           {tryout ? (
-            <Badge variant={tryoutStatusVariant(tryout.status)} className="hidden sm:inline-flex">
+            <span className={cn(MICRO, "hidden text-white/35 sm:inline")}>
               {tryout.status}
-            </Badge>
+            </span>
           ) : null}
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
@@ -465,7 +509,7 @@ export function PublicTryoutsClient() {
           )}
           <Link
             href={loginHref}
-            className="rounded-full border border-white/15 px-3 py-1.5 text-sm text-white/80 transition hover:border-white/30 hover:text-white"
+            className="rounded-sm border border-white/15 px-3 py-1.5 text-sm text-white/80 transition hover:border-white/40 hover:text-white"
           >
             Sign in
           </Link>
@@ -492,6 +536,9 @@ export function PublicTryoutsClient() {
           secondaryFields={secondaryFields}
           fieldValues={fieldValues}
           updateField={updateField}
+          evalSetup={evalSetup}
+          updateEvalSetup={updateEvalSetup}
+          evalReady={evalReady}
           primaryValue={primaryValue}
           canRun={canRun}
           launching={launching}
@@ -517,6 +564,9 @@ function TryoutWelcome({
   secondaryFields,
   fieldValues,
   updateField,
+  evalSetup,
+  updateEvalSetup,
+  evalReady,
   primaryValue,
   canRun,
   launching,
@@ -536,6 +586,12 @@ function TryoutWelcome({
   secondaryFields: [string, FieldSpec][];
   fieldValues: Record<string, string>;
   updateField: (field: string, value: string) => void;
+  evalSetup: EvalSetupValues;
+  updateEvalSetup: <Key extends keyof EvalSetupValues>(
+    field: Key,
+    value: EvalSetupValues[Key],
+  ) => void;
+  evalReady: boolean;
   primaryValue: string;
   canRun: boolean;
   launching: boolean;
@@ -545,118 +601,204 @@ function TryoutWelcome({
   loginHref: string;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const enter =
+    "animate-in fade-in slide-in-from-bottom-3 fill-mode-both duration-700 motion-reduce:animate-none";
+
   return (
-    <div className="relative flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8 sm:px-6">
-      <h1 className="text-center text-[clamp(2rem,7vw,3.5rem)] font-semibold leading-none tracking-tight">
-        Try an agent on real work
-      </h1>
-      <p className="mt-3 max-w-lg text-center text-base text-white/55">
-        Chat with a sandboxed agent. When it finishes, see the eval scorecard and
-        what shipping it is worth at your scale.
-      </p>
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="relative mx-auto min-h-full w-full max-w-3xl border-x border-white/[0.06] px-5 pb-24 pt-14 sm:px-12 sm:pt-20">
+        <RegistrationMark className="left-0 top-8" />
+        <RegistrationMark className="right-0 top-8" />
 
-      <form onSubmit={onSubmit} className="mt-8 w-full max-w-2xl">
-        <ComposerShell
-          value={primaryValue}
-          onChange={(value) =>
-            primaryField && updateField(primaryField[0], value)
-          }
-          disabled={!template}
-          placeholder={
-            template
-              ? `Describe the work for "${template.name}"…`
-              : "Loading tasks…"
-          }
-          canSubmit={canRun}
-          submitting={launching}
-          footer={
-            <>
-              <AnimatedPillSelect
-                icon={<FileText className="size-3.5" />}
-                value={templateSlug}
-                onChange={setTemplateSlug}
-                disabled={templatesLoading}
-                options={templates.map((t) => ({ value: t.slug, label: t.name }))}
-              />
-              <AnimatedPillSelect
-                icon={<Gauge className="size-3.5" />}
-                value={selectedModelKey}
-                onChange={setSelectedModelKey}
-                options={MODEL_OPTIONS.map((option) => ({
-                  value: modelOptionKey(option),
-                  label: option.label,
-                }))}
-              />
-            </>
-          }
-        />
+        <p
+          className={cn(MICRO, "text-white/35", enter)}
+          style={{ animationDelay: "0ms" }}
+        >
+          Public tryout · Sandboxed · No signup
+        </p>
+        <h1
+          className={cn(
+            SERIF,
+            "mt-7 max-w-[22ch] text-[clamp(2.5rem,6.2vw,4rem)] font-light leading-[1.04] tracking-tight text-white/95",
+            enter,
+          )}
+          style={{ animationDelay: "100ms" }}
+        >
+          What would make you{" "}
+          <em className="italic text-white/55">reject</em> this work?
+        </h1>
+        <p
+          className={cn("mt-6 max-w-xl text-base leading-7 text-white/50", enter)}
+          style={{ animationDelay: "200ms" }}
+        >
+          Answer that and you have written your first eval. Then brief a
+          sandboxed agent, watch every step it takes, and see it graded against
+          your own bar.
+        </p>
 
-        {secondaryFields.length > 0 ? (
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {secondaryFields.map(([field, spec]) => (
-              <CompactField
-                key={field}
-                field={field}
-                spec={spec}
-                value={fieldValues[field] ?? ""}
-                required={false}
-                onChange={updateField}
-              />
-            ))}
-          </div>
-        ) : null}
+        <form onSubmit={onSubmit}>
+          <section
+            className={cn("relative mt-16", enter)}
+            style={{ animationDelay: "300ms" }}
+          >
+            <GhostNumeral>01</GhostNumeral>
+            <div className="flex items-baseline justify-between border-b border-white/15 pb-3">
+              <h2 className={cn(SERIF, "text-2xl font-light tracking-tight text-white/90")}>
+                Set the bar
+              </h2>
+              <span className={cn(MICRO, evalReady ? "text-white/55" : "text-white/30")}>
+                {evalReady ? "Complete" : "Required"}
+              </span>
+            </div>
+            <EvalSetupPanel values={evalSetup} onChange={updateEvalSetup} />
+          </section>
 
-        {message ? <Alert text={message} /> : null}
-        {quotaMessage ? (
-          <div className="mt-3 rounded-2xl border border-white/15 bg-white/[0.04] p-3 text-sm text-white/70">
-            <p>{quotaMessage}</p>
-            <Link
-              href={loginHref}
-              className="mt-2 inline-flex items-center gap-1 font-medium text-white hover:underline"
-            >
-              Save this tryout in a workspace
-              <ArrowRight className="size-3.5" />
-            </Link>
-          </div>
-        ) : null}
+          <section
+            className={cn("relative mt-20", enter)}
+            style={{ animationDelay: "400ms" }}
+          >
+            <GhostNumeral>02</GhostNumeral>
+            <div className="flex items-baseline justify-between border-b border-white/15 pb-3">
+              <h2 className={cn(SERIF, "text-2xl font-light tracking-tight text-white/90")}>
+                Brief the agent
+              </h2>
+              <span className={cn(MICRO, "text-white/30")}>
+                {evalReady ? "Open" : "Locked"}
+              </span>
+            </div>
 
-        {template ? (
-          <p className="mt-3 text-center text-xs text-white/40">
-            {template.description} ·{" "}
-            {MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey)?.hint ??
-              "Hosted default agent and model"}{" "}
-            · cap{" "}
-            {`$${template.max_cost_usd.toFixed(2)}`}
-          </p>
-        ) : null}
-      </form>
+            {evalReady ? (
+              <div className="mt-7 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none">
+                <ComposerShell
+                  value={primaryValue}
+                  onChange={(value) =>
+                    primaryField && updateField(primaryField[0], value)
+                  }
+                  disabled={!template}
+                  placeholder={
+                    template
+                      ? `Describe the work for "${template.name}"…`
+                      : "Loading tasks…"
+                  }
+                  canSubmit={canRun}
+                  submitting={launching}
+                  footer={
+                    <>
+                      <AnimatedPillSelect
+                        icon={<FileText className="size-3.5" />}
+                        value={templateSlug}
+                        onChange={setTemplateSlug}
+                        disabled={templatesLoading}
+                        options={templates.map((t) => ({ value: t.slug, label: t.name }))}
+                      />
+                      <AnimatedPillSelect
+                        icon={<Gauge className="size-3.5" />}
+                        value={selectedModelKey}
+                        onChange={setSelectedModelKey}
+                        options={MODEL_OPTIONS.map((option) => ({
+                          value: modelOptionKey(option),
+                          label: option.label,
+                        }))}
+                      />
+                    </>
+                  }
+                />
 
-      {template && primaryField ? (
-        <div className="mt-6 w-full max-w-2xl">
-          <p className="mb-2 text-center text-xs uppercase tracking-[0.14em] text-white/35">
-            Try one of these
-          </p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {suggestionsFor(template.slug).map((suggestion) => (
-              <button
-                key={suggestion}
-                type="button"
-                onClick={() => updateField(primaryField[0], suggestion)}
-                className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-left text-xs text-white/60 transition hover:border-white/25 hover:text-white"
+                {secondaryFields.length > 0 ? (
+                  <div className="mt-4 grid gap-x-10 gap-y-5 sm:grid-cols-2">
+                    {secondaryFields.map(([field, spec]) => (
+                      <CompactField
+                        key={field}
+                        field={field}
+                        spec={spec}
+                        value={fieldValues[field] ?? ""}
+                        required={false}
+                        onChange={updateField}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+
+                {template && primaryField ? (
+                  <div className="mt-8">
+                    <p className={cn(MICRO, "text-white/30")}>Or steal one of these</p>
+                    <ul className="mt-3 divide-y divide-white/[0.07] border-y border-white/[0.07]">
+                      {suggestionsFor(template.slug).map((suggestion) => (
+                        <li key={suggestion}>
+                          <button
+                            type="button"
+                            onClick={() => updateField(primaryField[0], suggestion)}
+                            className="group flex w-full items-baseline gap-3 py-2.5 text-left text-sm leading-6 text-white/50 transition hover:text-white"
+                          >
+                            <span className="font-mono text-2xs text-white/25 transition group-hover:text-white/60">
+                              →
+                            </span>
+                            {suggestion}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-7 flex h-28 items-center justify-center border border-dashed border-white/10">
+                <p className={cn(MICRO, "text-white/30")}>Answer 01 to unlock the brief</p>
+              </div>
+            )}
+          </section>
+
+          {message ? <Alert text={message} /> : null}
+          {quotaMessage ? (
+            <div className="mt-5 border border-white/15 p-4 text-sm text-white/70">
+              <p>{quotaMessage}</p>
+              <Link
+                href={loginHref}
+                className="mt-2 inline-flex items-center gap-1 font-medium text-white hover:underline"
               >
-                {suggestion.length > 70 ? suggestion.slice(0, 70) + "…" : suggestion}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
+                Save this tryout in a workspace
+                <ArrowRight className="size-3.5" />
+              </Link>
+            </div>
+          ) : null}
 
-      <div className="mt-8 hidden w-full max-w-2xl gap-3 sm:grid-cols-3">
-        <ProofItem icon={Lock} label="Sandboxed" text="Real tools, capped cost." />
-        <ProofItem icon={Activity} label="Live trace" text="Every step in the sidebar." />
-        <ProofItem icon={FileText} label="Evals built in" text="Scorecard when the run ends." />
+          {template && evalReady ? (
+            <p className="mt-6 font-mono text-2xs leading-5 tracking-[0.04em] text-white/30">
+              {template.description} ·{" "}
+              {MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey)?.hint ??
+                "Hosted default agent and model"}{" "}
+              · cost cap {`$${template.max_cost_usd.toFixed(2)}`}
+            </p>
+          ) : null}
+        </form>
       </div>
     </div>
+  );
+}
+
+function RegistrationMark({ className }: { className: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn("pointer-events-none absolute size-2.5", className)}
+    >
+      <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/20" />
+      <span className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-white/20" />
+    </span>
+  );
+}
+
+function GhostNumeral({ children }: { children: ReactNode }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        SERIF,
+        "pointer-events-none absolute -top-10 right-0 select-none text-[6rem] font-light leading-none text-white/[0.05] sm:-top-14 sm:text-[8.5rem]",
+      )}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -695,7 +837,7 @@ function TryoutSession({
 
   return (
     <div className="relative flex min-h-0 flex-1">
-      <aside className="hidden w-80 shrink-0 flex-col border-r border-white/10 bg-zinc-950/80/60 lg:flex">
+      <aside className="hidden w-80 shrink-0 flex-col border-r border-white/10 lg:flex">
         <TryoutSidebar
           tryout={tryout}
           events={events}
@@ -737,7 +879,7 @@ function TryoutSidebarMobile({
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-full border-white/15 bg-transparent text-white hover:bg-white/10 lg:hidden"
+            className="h-8 rounded-sm border-white/15 bg-transparent text-white hover:bg-white/10 lg:hidden"
           />
         }
       >
@@ -746,7 +888,7 @@ function TryoutSidebarMobile({
       </SheetTrigger>
       <SheetContent
         side="right"
-        className="w-full border-white/10 bg-zinc-950/80 text-white sm:max-w-md"
+        className="w-full border-white/10 bg-[#131312] text-white sm:max-w-md"
       >
         <SheetHeader>
           <SheetTitle className="text-white">Trace & downloads</SheetTitle>
@@ -783,12 +925,13 @@ function TryoutSidebar({
   const agentRan = tryout.selected_harness_kind
     ? `${modelRan} · ${agentLabel(tryout.selected_harness_kind)}`
     : modelRan;
+  const evalPlan = evalSetupFromInput(tryout.input_snapshot);
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", compact ? "pt-2" : "p-4")}>
-      <div className="space-y-1 px-1">
-        <p className="text-sm font-medium text-white/90">{tryout.template_slug}</p>
-        <p className="text-xs text-white/45">
+      <div className="space-y-2 px-1">
+        <p className={cn(MICRO, "text-white/55")}>{tryout.template_slug}</p>
+        <p className="text-xs text-white/40">
           {agentRan} · {formatTryoutLatency(tryout.latency_ms)} ·{" "}
           {formatTryoutCost(tryout)}
         </p>
@@ -816,11 +959,15 @@ function TryoutSidebar({
         </div>
       ) : null}
 
+      {evalPlan ? (
+        <div className="mt-4 px-1">
+          <EvalPlanCard setup={evalPlan} compact />
+        </div>
+      ) : null}
+
       {outputs.length > 0 ? (
-        <div className="mt-4 min-h-0 px-1">
-          <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-white/40">
-            Artifacts
-          </p>
+        <div className="mt-5 min-h-0 px-1">
+          <p className={cn(MICRO, "mb-3 text-white/35")}>Artifacts</p>
           <div className="space-y-2">
             {outputs.map((output) => (
               <ArtifactPreviewCard key={`${output.key}-${output.relative_path}`} output={output} />
@@ -829,25 +976,24 @@ function TryoutSidebar({
         </div>
       ) : null}
 
-      <div className="mt-4 flex min-h-0 flex-1 flex-col px-1">
-        <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-white/40">
-          Event log
-        </p>
-        <ol className="min-h-0 flex-1 space-y-0 overflow-y-auto rounded-xl border border-white/10 bg-black/80">
+      <div className="mt-5 flex min-h-0 flex-1 flex-col px-1">
+        <p className={cn(MICRO, "mb-3 text-white/35")}>Raw event log</p>
+        <ol className="ml-1 min-h-0 flex-1 space-y-3 overflow-y-auto border-l border-white/10 pl-4">
           {events.length === 0 ? (
-            <li className="p-3 text-xs text-white/45">
+            <li className="text-xs text-white/40">
               {tryoutIsActive(tryout.status)
                 ? "Waiting for events…"
                 : "No events recorded."}
             </li>
           ) : (
             events.map((event) => (
-              <li
-                key={event.cursor}
-                className="border-b border-white/6 px-3 py-2 text-xs last:border-b-0"
-              >
-                <p className="text-white/75">{event.summary}</p>
-                <time className="mt-0.5 block text-2xs text-white/35">
+              <li key={event.cursor} className="relative">
+                <span
+                  aria-hidden
+                  className="absolute -left-[19px] top-[5px] size-[5px] rounded-full bg-white/25"
+                />
+                <p className="text-xs leading-5 text-white/60">{event.summary}</p>
+                <time className="mt-0.5 block font-mono text-2xs uppercase tracking-[0.1em] text-white/25">
                   {new Date(event.occurred_at).toLocaleTimeString()}
                 </time>
               </li>
@@ -858,7 +1004,7 @@ function TryoutSidebar({
 
       <Link
         href={loginHref}
-        className="mt-4 inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
+        className="mt-5 inline-flex h-9 items-center justify-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
       >
         Save and rerun
         <ArrowRight className="size-4" />
@@ -890,6 +1036,10 @@ function TryoutChatThread({
 
   const active = tryoutIsActive(tryout.status);
   const finished = !active;
+  const evalPlan = useMemo(
+    () => evalSetupFromInput(tryout.input_snapshot),
+    [tryout.input_snapshot],
+  );
 
   useEffect(() => {
     setFollowUps([]);
@@ -928,14 +1078,37 @@ function TryoutChatThread({
       items.push({
         kind: "agent",
         id: `e${event.cursor}`,
-        text: event.summary,
+        text: friendlyTraceSummary(event),
         at: new Date(event.occurred_at).getTime(),
-        eventType: event.type,
       });
     }
 
     return items.sort((a, b) => a.at - b.at);
   }, [initialUserText, followUps, events, tryout.created_at]);
+
+  const blocks = useMemo(() => {
+    const out: ChatBlock[] = [];
+    for (const item of timeline) {
+      const last = out[out.length - 1];
+      if (item.kind === "user") {
+        out.push({ kind: "user", item });
+      } else if (last?.kind === "steps") {
+        last.items.push(item);
+      } else {
+        out.push({ kind: "steps", id: item.id, items: [item] });
+      }
+    }
+    return out;
+  }, [timeline]);
+
+  const thinkingLabel =
+    !active || outputs.length > 0
+      ? null
+      : events.length === 0
+        ? "Starting"
+        : timeline[timeline.length - 1]?.kind === "agent"
+          ? "Working"
+          : null;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -977,24 +1150,25 @@ function TryoutChatThread({
   return (
     <>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8">
-        <div className="mx-auto flex max-w-3xl flex-col gap-4">
-          {timeline.map((item, index) =>
-            item.kind === "user" ? (
-              <UserBubble key={item.id} text={item.text} animate={index === timeline.length - 1} />
+        <div className="mx-auto flex max-w-3xl flex-col gap-5">
+          {blocks.map((block, index) =>
+            block.kind === "user" ? (
+              <UserBubble
+                key={block.item.id}
+                text={block.item.text}
+                animate={index === blocks.length - 1}
+              />
             ) : (
-              <AgentStepBubble
-                key={item.id}
-                text={item.text}
-                eventType={item.eventType}
-                animate={index === timeline.length - 1}
+              <TraceBlock
+                key={block.id}
+                items={block.items}
+                thinking={index === blocks.length - 1 ? thinkingLabel : null}
               />
             ),
           )}
 
-          {active && events.length === 0 ? <ThinkingIndicator label="Starting" /> : null}
-
-          {active && outputs.length === 0 && timeline.length > 0 && timeline[timeline.length - 1]?.kind === "agent" ? (
-            <ThinkingIndicator />
+          {thinkingLabel && blocks[blocks.length - 1]?.kind !== "steps" ? (
+            <TraceBlock items={[]} thinking={thinkingLabel} />
           ) : null}
 
           {outputs
@@ -1002,6 +1176,12 @@ function TryoutChatThread({
             .map((output) => (
             <ArtifactChatCard key={`${output.key}-${output.relative_path}`} output={output} />
           ))}
+
+          {evalPlan && (outputs.length > 0 || finished) ? (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <EvalPlanCard setup={evalPlan} />
+            </div>
+          ) : null}
 
           {scorecard && finished ? (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -1019,7 +1199,7 @@ function TryoutChatThread({
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3 backdrop-blur sm:px-8">
+      <div className="shrink-0 border-t border-white/[0.07] bg-[#131312]/95 px-4 py-3 backdrop-blur sm:px-8">
         <div className="mx-auto max-w-3xl">
           {active ? (
             <>
@@ -1070,66 +1250,65 @@ type ChatItem = {
   id: string;
   text: string;
   at: number;
-  eventType?: TryoutTimelineEvent["type"];
 };
+
+type ChatBlock =
+  | { kind: "user"; item: ChatItem }
+  | { kind: "steps"; id: string; items: ChatItem[] };
 
 function UserBubble({ text, animate }: { text: string; animate?: boolean }) {
   return (
     <div
       className={cn(
         "flex justify-end",
-        animate && "animate-in fade-in slide-in-from-bottom-2 duration-300",
+        animate &&
+          "animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none",
       )}
     >
-      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-white px-4 py-2.5 text-base leading-7 text-black">
+      <div className="max-w-[85%] rounded-sm bg-[#e9e9e5] px-4 py-2.5 text-base leading-7 text-[#161614]">
         {text}
       </div>
     </div>
   );
 }
 
-function AgentStepBubble({
-  text,
-  eventType,
-  animate,
+function TraceBlock({
+  items,
+  thinking,
 }: {
-  text: string;
-  eventType?: TryoutTimelineEvent["type"];
-  animate?: boolean;
+  items: ChatItem[];
+  thinking?: string | null;
 }) {
   return (
-    <div
-      className={cn(
-        "flex justify-start",
-        animate && "animate-in fade-in slide-in-from-bottom-2 duration-300",
-      )}
-    >
-      <div className="flex max-w-[90%] items-start gap-2.5 rounded-2xl rounded-bl-md border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-sm leading-6 text-white/75">
-        <EventStepIcon type={eventType} />
-        <span className="min-w-0 whitespace-pre-wrap">{text}</span>
+    <div className="ml-1 border-l border-white/10 py-0.5 pl-5">
+      <div className="flex flex-col gap-2.5">
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className="relative text-sm leading-6 text-white/55 animate-in fade-in duration-300 motion-reduce:animate-none"
+          >
+            <span
+              aria-hidden
+              className="absolute -left-[23px] top-[9.5px] size-[5px] rounded-full bg-white/30"
+            />
+            <span className="whitespace-pre-wrap">{item.text}</span>
+          </div>
+        ))}
+        {thinking ? (
+          <div className="relative flex h-6 items-center animate-in fade-in duration-300 motion-reduce:animate-none">
+            <span
+              aria-hidden
+              className="absolute -left-[24.5px] flex size-2"
+            >
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/25 motion-reduce:animate-none" />
+              <span className="relative inline-flex size-2 rounded-full bg-white/45" />
+            </span>
+            <span className={cn(MICRO, "text-white/35")}>{thinking}</span>
+          </div>
+        ) : null}
       </div>
     </div>
   );
-}
-
-function EventStepIcon({ type }: { type?: TryoutTimelineEvent["type"] }) {
-  const className = "mt-0.5 size-4 shrink-0 text-white/35";
-  switch (type) {
-    case "tool_call":
-      return <Wrench className={className} />;
-    case "sandbox_command":
-      return <Terminal className={className} />;
-    case "file_written":
-    case "file_activity":
-      return <FileText className={className} />;
-    case "validation":
-    case "scoring":
-      return <CheckCircle2 className={className} />;
-    case "planning":
-      return <Gauge className={className} />;
-    default:
-      return <Activity className={className} />;
-  }
 }
 
 function ArtifactChatCard({ output }: { output: TryoutOutputPreview }) {
@@ -1141,7 +1320,7 @@ function ArtifactChatCard({ output }: { output: TryoutOutputPreview }) {
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-      <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
+      <div className="overflow-hidden rounded-sm border border-white/12">
         <div className="flex items-center justify-between gap-2 border-b border-white/8 px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <FileText className="size-4 shrink-0 text-white/40" />
@@ -1222,7 +1401,7 @@ function ArtifactPreviewBody({ output }: { output: TryoutOutputPreview }) {
 
 function ArtifactPreviewCard({ output }: { output: TryoutOutputPreview }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-[#0c0c0a]/80 p-3">
+    <div className="rounded-sm border border-white/10 p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-xs font-medium text-white/80">
@@ -1273,8 +1452,8 @@ function ComposerShell({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-white/10 bg-white/[0.02] p-2 transition focus-within:border-white/25",
-        compact && "rounded-xl shadow-none",
+        "rounded-sm border border-white/12 bg-white/[0.015] p-2 transition focus-within:border-white/35",
+        compact && "shadow-none",
       )}
     >
       <textarea
@@ -1300,7 +1479,7 @@ function ComposerShell({
           onClick={onSubmit}
           disabled={!canSubmit || submitting}
           aria-label="Send"
-          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-white text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {submitting ? (
             <Loader2 className="size-4 animate-spin" />
@@ -1332,7 +1511,7 @@ function AnimatedPillSelect({
     <DropdownMenu>
       <DropdownMenuTrigger
         disabled={disabled}
-        className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] py-1.5 pl-3 pr-2.5 text-sm text-white/70 transition hover:border-white/20 data-popup-open:border-white/30 data-popup-open:bg-white/[0.06] disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-sm border border-white/12 py-1.5 pl-2.5 pr-2 font-mono text-2xs text-white/60 transition hover:border-white/30 hover:text-white/90 data-popup-open:border-white/40 data-popup-open:text-white disabled:opacity-50"
       >
         <span className="text-white/45">{icon}</span>
         <span className="max-w-[9rem] truncate">{selected?.label ?? "Select"}</span>
@@ -1340,7 +1519,7 @@ function AnimatedPillSelect({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        className="min-w-[12rem] border-white/10 bg-zinc-950 text-white"
+        className="min-w-[12rem] rounded-sm border-white/10 bg-[#181817] text-white"
       >
         {options.map((option) => (
           <DropdownMenuItem
@@ -1359,6 +1538,131 @@ function AnimatedPillSelect({
   );
 }
 
+function EvalSetupPanel({
+  values,
+  onChange,
+}: {
+  values: EvalSetupValues;
+  onChange: <Key extends keyof EvalSetupValues>(
+    field: Key,
+    value: EvalSetupValues[Key],
+  ) => void;
+}) {
+  return (
+    <div className="mt-8 space-y-8">
+      <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
+        <UnderlineField
+          label="The mistake you would not forgive"
+          required
+          value={values.unacceptableMistakes}
+          onChange={(value) => onChange("unacceptableMistakes", value)}
+          placeholder="Invented numbers, missing citations, off-brand tone"
+        />
+        <UnderlineField
+          label="The person who signs off"
+          value={values.reviewer}
+          onChange={(value) => onChange("reviewer", value)}
+          placeholder="Support lead, CFO, sales manager"
+        />
+      </div>
+
+      <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
+        <SegmentedControl
+          label="Optimize for"
+          value={values.priority}
+          options={PRIORITY_OPTIONS}
+          onChange={(value) => onChange("priority", value)}
+        />
+        <SegmentedControl
+          label="Output behavior"
+          value={values.style}
+          options={STYLE_OPTIONS}
+          onChange={(value) => onChange("style", value)}
+        />
+      </div>
+
+      <div className="max-w-xs">
+        <UnderlineField
+          label="Runs per month"
+          required
+          value={values.monthlyVolume}
+          onChange={(value) => onChange("monthlyVolume", value)}
+          placeholder="50, 500, 10k"
+        />
+      </div>
+
+      <p className="max-w-md text-sm leading-6 text-white/35">
+        These answers become the rubric the agent is graded against. That is the
+        whole trick: an eval is just your standards, written down.
+      </p>
+    </div>
+  );
+}
+
+function UnderlineField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  required,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="block">
+      <span className={cn(MICRO, "flex items-baseline justify-between tracking-[0.16em] text-white/40")}>
+        {label}
+        {required ? <span className="text-white/25">req</span> : null}
+      </span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="mt-2.5 w-full border-b border-white/15 bg-transparent pb-2 text-base text-white outline-none transition-colors placeholder:text-white/20 focus:border-white/50"
+      />
+    </label>
+  );
+}
+
+function SegmentedControl<TValue extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: TValue;
+  options: { value: TValue; label: string }[];
+  onChange: (value: TValue) => void;
+}) {
+  return (
+    <div>
+      <p className={cn(MICRO, "tracking-[0.16em] text-white/40")}>{label}</p>
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={cn(
+              "border px-2.5 py-1 font-mono text-2xs uppercase tracking-[0.08em] transition",
+              option.value === value
+                ? "border-white bg-white text-black"
+                : "border-white/12 text-white/45 hover:border-white/35 hover:text-white/85",
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CompactField({
   field,
   spec,
@@ -1373,10 +1677,10 @@ function CompactField({
   onChange: (field: string, value: string) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 rounded-xl border border-white/8 bg-zinc-950/80/55 px-3 py-1.5">
-      <span className="shrink-0 text-xs text-white/45">
+    <label className="block">
+      <span className={cn(MICRO, "flex items-baseline justify-between tracking-[0.16em] text-white/40")}>
         {fieldLabel(field)}
-        {required ? "" : " (opt)"}
+        {required ? null : <span className="text-white/25">opt</span>}
       </span>
       <input
         type={spec.type === "string" ? "text" : "number"}
@@ -1384,7 +1688,7 @@ function CompactField({
         min={spec.minimum}
         max={spec.maximum}
         onChange={(event) => onChange(field, event.target.value)}
-        className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
+        className="mt-2.5 w-full border-b border-white/15 bg-transparent pb-2 text-base text-white outline-none transition-colors placeholder:text-white/20 focus:border-white/50"
       />
     </label>
   );
@@ -1392,7 +1696,7 @@ function CompactField({
 
 function Alert({ text }: { text: string }) {
   return (
-    <div className="mt-3 rounded-xl border border-white/15 bg-white/[0.03] p-3 text-sm text-white/70">
+    <div className="mt-5 border-l-2 border-white/40 pl-4 text-sm leading-6 text-white/70">
       {text}
     </div>
   );
@@ -1407,41 +1711,105 @@ function ScorecardCard({
 }) {
   const pct = Math.round(scorecard.score * 100);
   return (
-    <div
-      className={cn(
-        "rounded-xl border border-white/10 bg-white/[0.02]",
-        compact ? "p-3" : "p-4",
-      )}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold tracking-tight">Eval scorecard</h3>
-        <span className="text-sm font-medium text-white/80">
-          {pct}% · {scorecard.passed_validators}/{scorecard.total_validators}
-        </span>
+    <div className={cn("border border-white/12", compact ? "p-4" : "p-5 sm:p-6")}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className={cn(MICRO, "text-white/40")}>Eval scorecard</p>
+          <p className="mt-2 text-xs text-white/35">
+            {scorecard.passed_validators} of {scorecard.total_validators} checks
+            passed
+          </p>
+        </div>
+        <p
+          className={cn(
+            SERIF,
+            "font-light leading-none text-white/90",
+            compact ? "text-4xl" : "text-5xl sm:text-6xl",
+          )}
+        >
+          {pct}
+          <span className={cn(compact ? "text-xl" : "text-2xl", "text-white/35")}>%</span>
+        </p>
       </div>
-      <div className="mt-3 h-px w-full overflow-hidden rounded-full bg-white/10">
+      <div className="mt-4 h-px w-full bg-white/10">
         <div
-          className="h-full rounded-full bg-white/70 transition-all duration-700"
+          className="h-full bg-white/70 transition-all duration-700"
           style={{ width: `${pct}%` }}
         />
       </div>
       {!compact && scorecard.checks.length > 0 ? (
-        <ul className="mt-3 space-y-1.5">
+        <ul className="mt-4 divide-y divide-white/[0.07]">
           {scorecard.checks.map((check) => (
-            <li key={check.key} className="flex items-center gap-2 text-sm">
-              {check.status === "passed" ? (
-                <CheckCircle2 className="size-4 shrink-0 text-white/70" />
-              ) : check.status === "failed" ? (
-                <XCircle className="size-4 shrink-0 text-white/35" />
-              ) : (
-                <span className="size-4 shrink-0 rounded-full border border-white/25" />
-              )}
-              <span className="text-white/75">{fieldLabel(check.key)}</span>
-              <span className="ml-auto text-xs text-white/35">{check.status}</span>
+            <li
+              key={check.key}
+              className="flex items-baseline justify-between gap-3 py-2.5 text-sm"
+            >
+              <span className="text-white/65">{fieldLabel(check.key)}</span>
+              <span
+                className={cn(
+                  "font-mono text-2xs uppercase tracking-[0.14em]",
+                  check.status === "passed"
+                    ? "text-white/80"
+                    : check.status === "failed"
+                      ? "text-white/30 line-through"
+                      : "text-white/25",
+                )}
+              >
+                {check.status}
+              </span>
             </li>
           ))}
         </ul>
       ) : null}
+    </div>
+  );
+}
+
+function EvalPlanCard({
+  setup,
+  compact,
+}: {
+  setup: DerivedEvalSetup;
+  compact?: boolean;
+}) {
+  return (
+    <div className={cn("border border-white/12", compact ? "p-4" : "p-5 sm:p-6")}>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className={cn(MICRO, "text-white/40")}>Your rubric</p>
+        <span className="font-mono text-2xs uppercase tracking-[0.14em] text-white/30">
+          {priorityLabel(setup.business_priority)}
+        </span>
+      </div>
+      <p className="mt-3 text-sm leading-6 text-white/55">
+        Graded as if {setup.human_reviewer} signs off. Behavior:{" "}
+        {styleLabel(setup.output_style).toLowerCase()}.
+      </p>
+      {setup.unacceptable_mistakes ? (
+        <p className="mt-1 text-sm leading-6 text-white/55">
+          Instant fail: {setup.unacceptable_mistakes}
+        </p>
+      ) : null}
+      {!compact ? (
+        <ul className="mt-4 divide-y divide-white/[0.07] border-t border-white/[0.07]">
+          {setup.derived_rubric.slice(0, 4).map((item, index) => (
+            <li key={item.key} className="flex gap-4 py-3">
+              <span className="font-mono text-2xs leading-6 text-white/25">
+                0{index + 1}
+              </span>
+              <div>
+                <p className="text-sm leading-6 text-white/80">{item.label}</p>
+                <p className="mt-0.5 text-xs leading-5 text-white/40">
+                  {item.checks.join(" · ")}
+                </p>
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="mt-3 text-xs leading-5 text-white/35">
+        Suggested setting: {setup.suggested_generation_settings.temperature}{" "}
+        temperature.
+      </p>
     </div>
   );
 }
@@ -1452,29 +1820,11 @@ function DownloadButton({ label, onClick }: { label: string; onClick: () => void
       type="button"
       variant="outline"
       onClick={onClick}
-      className="h-7 rounded-full border-white/15 bg-transparent px-2.5 text-xs text-white hover:bg-white/10"
+      className="h-7 rounded-sm border-white/15 bg-transparent px-2.5 font-mono text-2xs uppercase tracking-[0.1em] text-white/70 hover:bg-white/10 hover:text-white"
     >
       <Download className="size-3" />
       {label}
     </Button>
-  );
-}
-
-function ProofItem({
-  icon: Icon,
-  label,
-  text,
-}: {
-  icon: typeof Lock;
-  label: string;
-  text: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/8 bg-zinc-950/80/45 p-4">
-      <Icon className="size-4 text-white/35" />
-      <p className="mt-3 font-medium text-white/85">{label}</p>
-      <p className="mt-1 text-sm leading-6 text-white/55">{text}</p>
-    </div>
   );
 }
 
@@ -1486,7 +1836,7 @@ function formatInputSnapshot(input: Record<string, unknown>): string {
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   const strings = Object.entries(input)
-    .filter(([, value]) => typeof value === "string" && value.trim())
+    .filter(([key, value]) => key !== "eval_setup" && typeof value === "string" && value.trim())
     .map(([key, value]) => `${fieldLabel(key)}: ${value}`);
   if (strings.length === 1) return strings[0].split(": ").slice(1).join(": ");
   if (strings.length > 1) return strings.join("\n\n");
@@ -1529,6 +1879,194 @@ function buildInput(
     }
   }
   return { value: input };
+}
+
+function buildEvalSetup(values: EvalSetupValues, taskName: string): DerivedEvalSetup {
+  const unacceptable = values.unacceptableMistakes.trim();
+  const reviewer = values.reviewer.trim() || DEFAULT_EVAL_SETUP.reviewer;
+  const volume = values.monthlyVolume.trim();
+  const priority = values.priority;
+  const style = values.style;
+
+  const rubric: EvalRubricItem[] = [
+    {
+      key: "business_fit",
+      label: `${reviewer} would accept it`,
+      checks: [
+        `Solves the ${taskName} request`,
+        "Uses the supplied context instead of generic filler",
+        "Makes the next human review step obvious",
+      ],
+    },
+    {
+      key: "priority_match",
+      label: priorityRubricLabel(priority),
+      checks: priorityRubricChecks(priority),
+    },
+    {
+      key: "failure_mode",
+      label: unacceptable ? "Avoids the named failure mode" : "Avoids obvious failure modes",
+      checks: [
+        unacceptable || "Does not invent facts, omit required sections, or leave placeholders",
+        "Flags uncertainty instead of hiding it",
+      ],
+    },
+    {
+      key: "operational_readiness",
+      label: "Ready to repeat in production",
+      checks: [
+        volume ? `Suitable for about ${volume} runs per month` : "Clear enough to scale beyond a demo",
+        "Outputs are structured enough to validate automatically",
+      ],
+    },
+  ];
+
+  return {
+    version: "public_tryouts_eval_setup_v1",
+    unacceptable_mistakes: unacceptable,
+    human_reviewer: reviewer,
+    business_priority: priority,
+    output_style: style,
+    monthly_volume: volume,
+    derived_rubric: rubric,
+    suggested_generation_settings: generationSettingsFor(style, priority),
+  };
+}
+
+function evalSetupFromInput(input: Record<string, unknown>): DerivedEvalSetup | null {
+  const value = input?.eval_setup;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const setup = value as Partial<DerivedEvalSetup>;
+  if (!Array.isArray(setup.derived_rubric) || setup.derived_rubric.length === 0) {
+    return null;
+  }
+  return {
+    version: typeof setup.version === "string" ? setup.version : "public_tryouts_eval_setup_v1",
+    unacceptable_mistakes:
+      typeof setup.unacceptable_mistakes === "string" ? setup.unacceptable_mistakes : "",
+    human_reviewer:
+      typeof setup.human_reviewer === "string" && setup.human_reviewer.trim()
+        ? setup.human_reviewer
+        : DEFAULT_EVAL_SETUP.reviewer,
+    business_priority: isEvalPriority(setup.business_priority)
+      ? setup.business_priority
+      : DEFAULT_EVAL_SETUP.priority,
+    output_style: isEvalStyle(setup.output_style)
+      ? setup.output_style
+      : DEFAULT_EVAL_SETUP.style,
+    monthly_volume: typeof setup.monthly_volume === "string" ? setup.monthly_volume : "",
+    derived_rubric: setup.derived_rubric.filter(isEvalRubricItem),
+    suggested_generation_settings:
+      setup.suggested_generation_settings &&
+      typeof setup.suggested_generation_settings === "object" &&
+      typeof setup.suggested_generation_settings.temperature === "string" &&
+      typeof setup.suggested_generation_settings.reason === "string"
+        ? setup.suggested_generation_settings
+        : generationSettingsFor(DEFAULT_EVAL_SETUP.style, DEFAULT_EVAL_SETUP.priority),
+  };
+}
+
+function isEvalPriority(value: unknown): value is EvalPriority {
+  return PRIORITY_OPTIONS.some((option) => option.value === value);
+}
+
+function isEvalStyle(value: unknown): value is EvalStyle {
+  return STYLE_OPTIONS.some((option) => option.value === value);
+}
+
+function isEvalRubricItem(value: unknown): value is EvalRubricItem {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Partial<EvalRubricItem>;
+  return (
+    typeof item.key === "string" &&
+    typeof item.label === "string" &&
+    Array.isArray(item.checks) &&
+    item.checks.every((check) => typeof check === "string")
+  );
+}
+
+function generationSettingsFor(
+  style: EvalStyle,
+  priority: EvalPriority,
+): DerivedEvalSetup["suggested_generation_settings"] {
+  if (style === "creative" && priority !== "compliance") {
+    return {
+      temperature: "medium",
+      reason: "Allow more variation because the user values creative alternatives.",
+    };
+  }
+  if (priority === "speed" || priority === "cost") {
+    return {
+      temperature: "low",
+      reason: "Keep outputs predictable so cheaper or faster models can be compared fairly.",
+    };
+  }
+  return {
+    temperature: "low",
+    reason: "Prefer repeatable outputs because the rubric depends on correctness and reviewer trust.",
+  };
+}
+
+function priorityRubricLabel(priority: EvalPriority): string {
+  switch (priority) {
+    case "polish":
+      return "Looks client-ready";
+    case "speed":
+      return "Finishes quickly enough";
+    case "cost":
+      return "Makes economic sense";
+    case "compliance":
+      return "Stays inside policy";
+    default:
+      return "Gets the facts right";
+  }
+}
+
+function priorityRubricChecks(priority: EvalPriority): string[] {
+  switch (priority) {
+    case "polish":
+      return ["Clear structure", "Tone fits the audience", "No rough-draft leftovers"];
+    case "speed":
+      return ["Completes without extra back-and-forth", "Avoids unnecessary tool calls"];
+    case "cost":
+      return ["Avoids wasteful retries", "Output quality justifies model cost"];
+    case "compliance":
+      return ["Follows supplied policies", "Calls out risky or missing information"];
+    default:
+      return ["Grounded in user input", "No fabricated claims", "Important details preserved"];
+  }
+}
+
+function priorityLabel(priority: EvalPriority): string {
+  return PRIORITY_OPTIONS.find((option) => option.value === priority)?.label ?? "Correct facts";
+}
+
+function styleLabel(style: EvalStyle): string {
+  return STYLE_OPTIONS.find((option) => option.value === style)?.label ?? "Same every time";
+}
+
+function friendlyTraceSummary(event: TryoutTimelineEvent): string {
+  const summary = event.summary.trim();
+  const lower = summary.toLowerCase();
+  switch (event.type) {
+    case "planning":
+      return "Planned the next step";
+    case "tool_call":
+      return lower.includes("complete") ? "Finished a tool step" : "Used a tool";
+    case "sandbox_command":
+      return lower.includes("soffice") || lower.includes("libreoffice")
+        ? "Exported the deck preview"
+        : "Ran a sandbox command";
+    case "file_written":
+    case "file_activity":
+      return summary.replace(/^wrote file:?/i, "Created").replace(/^file written:?/i, "Created");
+    case "validation":
+      return "Checked the output against validators";
+    case "scoring":
+      return "Updated the eval scorecard";
+    default:
+      return summary || "Working";
+  }
 }
 
 function fieldLabel(field: string): string {
@@ -1857,64 +2395,52 @@ function EvalRoiCalculator({
   const netUpside = capturedSavings + costWithoutEvals;
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-      <div className="flex items-center gap-2">
-        <Calculator className="size-4 text-white/40" />
-        <h3 className="text-sm font-semibold tracking-tight">
-          What this is worth at your scale
-        </h3>
-      </div>
-      <p className="mt-1.5 text-sm leading-6 text-white/50">
-        You just watched an agent finish one {anchor.label}. Here is the business
-        case for evaluating it before you wire it into production.
+    <div className="border border-white/12 p-5 sm:p-6">
+      <p className={cn(MICRO, "text-white/40")}>The business case</p>
+      <p className="mt-3 max-w-lg text-sm leading-6 text-white/50">
+        You just watched an agent finish one {anchor.label}. This is what grading
+        it before production is worth at your scale.
       </p>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">
         <RoiInput label="Company" value={company} onChange={setCompany} placeholder="Acme Inc" />
         <RoiInput label="Work email" value={email} onChange={setEmail} placeholder="you@acme.com" />
         <RoiInput label={`${anchor.label}s / month`} value={volume} onChange={setVolume} numeric />
         <RoiInput label="Human $ / task" value={humanCost} onChange={setHumanCost} numeric />
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-          <div className="flex items-center gap-2 text-white/55">
-            <ShieldAlert className="size-4" />
-            <p className="text-sm font-medium">Integrate without evals</p>
-          </div>
-          <p className="mt-2 text-3xl font-semibold tracking-tight text-white">
+      <div className="mt-7 grid divide-y divide-white/[0.08] border-y border-white/[0.08] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+        <div className="py-5 sm:pr-8">
+          <p className={cn(MICRO, "text-white/35")}>Ship blind</p>
+          <p className={cn(SERIF, "mt-3 text-4xl font-light leading-none text-white/90 sm:text-5xl")}>
             {usd(costWithoutEvals)}
-            <span className="text-base font-normal text-white/40"> /yr at risk</span>
           </p>
+          <p className="mt-2 text-xs text-white/35">per year at risk</p>
         </div>
-
-        <div className="rounded-xl border border-white/15 bg-white/[0.04] p-4">
-          <div className="flex items-center gap-2 text-white/70">
-            <TrendingUp className="size-4" />
-            <p className="text-sm font-medium">Evaluate with AgentClash</p>
-          </div>
-          <p className="mt-2 text-3xl font-semibold tracking-tight text-white">
+        <div className="py-5 sm:pl-8">
+          <p className={cn(MICRO, "text-white/55")}>Ship graded</p>
+          <p className={cn(SERIF, "mt-3 text-4xl font-light leading-none text-white sm:text-5xl")}>
             {usd(capturedSavings)}
-            <span className="text-base font-normal text-white/40"> /yr captured</span>
           </p>
+          <p className="mt-2 text-xs text-white/35">per year captured</p>
         </div>
       </div>
 
-      <div className="mt-4 flex flex-col items-start justify-between gap-3 rounded-xl border border-white/10 bg-black/40 p-4 sm:flex-row sm:items-center">
-        <p className="text-sm text-white/65">
+      <div className="mt-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+        <p className="text-sm leading-6 text-white/60">
           Evaluating first is worth{" "}
-          <span className="font-semibold text-white">{usd(netUpside)}/yr</span>{" "}
-          to {company.trim() || "your team"} on this workflow alone.
+          <span className="font-medium text-white">{usd(netUpside)}/yr</span> to{" "}
+          {company.trim() || "your team"} on this workflow alone.
         </p>
         <Link
           href={`/enterprise?from=tryout&task=${encodeURIComponent(tryout.template_slug)}${email.trim() ? `&email=${encodeURIComponent(email.trim())}` : ""}`}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
         >
           Talk to us about integrating
           <ArrowRight className="size-4" />
         </Link>
       </div>
-      <p className="mt-2 text-xs text-white/35">
+      <p className="mt-3 text-xs text-white/35">
         Adjust the inputs to match your numbers.{" "}
         <Link href={loginHref} className="text-white/55 hover:underline">
           Save this analysis →
@@ -1939,7 +2465,7 @@ function RoiInput({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs text-white/45">{label}</span>
+      <span className={cn(MICRO, "block tracking-[0.16em] text-white/40")}>{label}</span>
       <input
         type={numeric ? "number" : "text"}
         inputMode={numeric ? "decimal" : undefined}
@@ -1947,7 +2473,7 @@ function RoiInput({
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/25 focus:ring-1 focus:ring-white/10"
+        className="mt-2 w-full border-b border-white/15 bg-transparent pb-1.5 text-sm text-white outline-none transition-colors placeholder:text-white/20 focus:border-white/50"
       />
     </label>
   );
