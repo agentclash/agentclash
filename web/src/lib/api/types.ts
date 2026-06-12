@@ -2760,11 +2760,19 @@ export type AgentHarnessKind =
   | "openclaw_e2b"
   | "hermes_e2b";
 
+export type AgentTryoutJudgeStrictness = "lenient" | "standard" | "harsh";
+
+export interface AgentTryoutJudgeSelection {
+  model?: string;
+  strictness?: AgentTryoutJudgeStrictness;
+}
+
 export interface CreateAgentTryoutInput {
   template_slug: string;
   input: Record<string, unknown>;
   selected_harness_kind?: AgentHarnessKind;
   selected_model_policy?: AgentTryoutModelPolicy;
+  judge?: AgentTryoutJudgeSelection;
 }
 
 export interface RerunAgentTryoutInput {

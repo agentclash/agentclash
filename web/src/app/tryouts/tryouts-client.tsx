@@ -13,6 +13,8 @@ import {
   Gauge,
   Loader2,
   PanelRight,
+  Scale,
+  SlidersHorizontal,
 } from "lucide-react";
 
 import {
@@ -27,6 +29,7 @@ import { ApiError } from "@/lib/api/errors";
 import type {
   AgentHarnessKind,
   AgentTryout,
+  AgentTryoutJudgeStrictness,
   AgentTryoutModelPolicy,
   AgentTryoutTemplate,
   TryoutTimelineEvent,
@@ -168,6 +171,58 @@ const MODEL_OPTIONS: ModelOption[] = [
   },
 ];
 
+// Judge models must match the backend's hosted allowlist
+// (defaultPublicJudgeModels). Judges always run on platform keys.
+const JUDGE_OPTIONS = [
+  { value: "gpt-5-mini", label: "GPT-5 mini" },
+  { value: "claude-haiku-4-5", label: "Claude Haiku" },
+  { value: "gemini-2.5-flash", label: "Gemini Flash" },
+];
+
+const STRICTNESS_OPTIONS: { value: AgentTryoutJudgeStrictness; label: string }[] = [
+  { value: "lenient", label: "Lenient" },
+  { value: "standard", label: "Standard" },
+  { value: "harsh", label: "Harsh" },
+];
+
+function judgeModelLabel(model: string): string {
+  return JUDGE_OPTIONS.find((option) => option.value === model)?.label ?? model;
+}
+
+// Cross-page handoff for the "run it again" funnel loop: the verdict screen
+// stashes the brief + eval answers here, and the welcome screen prefills from
+// it so a rerun takes one click instead of re-typing everything.
+const RERUN_STORAGE_KEY = "agentclash.tryout.rerun";
+
+type RerunPrefill = {
+  templateSlug?: string;
+  fieldValues?: Record<string, string>;
+  evalSetup?: Partial<EvalSetupValues>;
+  judgeModel?: string;
+  judgeStrictness?: AgentTryoutJudgeStrictness;
+  selectedModelKey?: string;
+};
+
+function readRerunPrefill(): RerunPrefill | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(RERUN_STORAGE_KEY);
+    if (!raw) return null;
+    window.sessionStorage.removeItem(RERUN_STORAGE_KEY);
+    return JSON.parse(raw) as RerunPrefill;
+  } catch {
+    return null;
+  }
+}
+
+function writeRerunPrefill(prefill: RerunPrefill) {
+  try {
+    window.sessionStorage.setItem(RERUN_STORAGE_KEY, JSON.stringify(prefill));
+  } catch {
+    // best-effort
+  }
+}
+
 function agentLabel(value: string): string {
   switch (value) {
     case "codex_e2b":
@@ -267,8 +322,29 @@ export function PublicTryoutsClient() {
   const [templates, setTemplates] = useState<AgentTryoutTemplate[]>([]);
   const [templateSlug, setTemplateSlug] = useState("");
   const [selectedModelKey, setSelectedModelKey] = useState("auto");
+  const [judgeModel, setJudgeModel] = useState(JUDGE_OPTIONS[0].value);
+  const [judgeStrictness, setJudgeStrictness] =
+    useState<AgentTryoutJudgeStrictness>("standard");
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [evalSetup, setEvalSetup] = useState<EvalSetupValues>(DEFAULT_EVAL_SETUP);
+  const prefillRef = useRef<RerunPrefill | null>(null);
+
+  // Apply a rerun handoff (same brief, different agent/judge) exactly once.
+  useEffect(() => {
+    if (urlTryoutId) return;
+    const prefill = readRerunPrefill();
+    if (!prefill) return;
+    prefillRef.current = prefill;
+    if (prefill.templateSlug) setTemplateSlug(prefill.templateSlug);
+    if (prefill.evalSetup) {
+      setEvalSetup((current) => ({ ...current, ...prefill.evalSetup }));
+    }
+    if (prefill.judgeModel) setJudgeModel(prefill.judgeModel);
+    if (prefill.judgeStrictness) setJudgeStrictness(prefill.judgeStrictness);
+    if (prefill.selectedModelKey) setSelectedModelKey(prefill.selectedModelKey);
+    if (prefill.fieldValues) setFieldValues(prefill.fieldValues);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [launching, setLaunching] = useState(false);
   const [tryout, setTryout] = useState<AgentTryout | null>(null);
@@ -309,6 +385,15 @@ export function PublicTryoutsClient() {
   }, []);
 
   useEffect(() => {
+    const pending = prefillRef.current;
+    if (
+      pending?.fieldValues &&
+      (!pending.templateSlug || pending.templateSlug === templateSlug)
+    ) {
+      setFieldValues(pending.fieldValues);
+      prefillRef.current = null;
+      return;
+    }
     setFieldValues({});
   }, [templateSlug]);
 
@@ -439,6 +524,7 @@ export function PublicTryoutsClient() {
         input: input.value,
         ...(selectedModel.value ? { selected_harness_kind: selectedModel.value } : {}),
         ...(selectedPolicy ? { selected_model_policy: selectedPolicy } : {}),
+        judge: { model: judgeModel, strictness: judgeStrictness },
       });
       setTryout(nextTryout);
       setEvents([]);
@@ -532,6 +618,10 @@ export function PublicTryoutsClient() {
           setTemplateSlug={setTemplateSlug}
           selectedModelKey={selectedModelKey}
           setSelectedModelKey={setSelectedModelKey}
+          judgeModel={judgeModel}
+          setJudgeModel={setJudgeModel}
+          judgeStrictness={judgeStrictness}
+          setJudgeStrictness={setJudgeStrictness}
           primaryField={primaryField}
           secondaryFields={secondaryFields}
           fieldValues={fieldValues}
@@ -560,6 +650,10 @@ function TryoutWelcome({
   setTemplateSlug,
   selectedModelKey,
   setSelectedModelKey,
+  judgeModel,
+  setJudgeModel,
+  judgeStrictness,
+  setJudgeStrictness,
   primaryField,
   secondaryFields,
   fieldValues,
@@ -582,6 +676,10 @@ function TryoutWelcome({
   setTemplateSlug: (value: string) => void;
   selectedModelKey: string;
   setSelectedModelKey: (value: string) => void;
+  judgeModel: string;
+  setJudgeModel: (value: string) => void;
+  judgeStrictness: AgentTryoutJudgeStrictness;
+  setJudgeStrictness: (value: AgentTryoutJudgeStrictness) => void;
   primaryField: [string, FieldSpec] | null;
   secondaryFields: [string, FieldSpec][];
   fieldValues: Record<string, string>;
@@ -632,8 +730,8 @@ function TryoutWelcome({
           style={{ animationDelay: "200ms" }}
         >
           Answer that and you have written your first eval. Then brief a
-          sandboxed agent, watch every step it takes, and see it graded against
-          your own bar.
+          sandboxed agent, pick the judge, and watch the work get graded
+          against your own bar.
         </p>
 
         <form onSubmit={onSubmit}>
@@ -700,6 +798,23 @@ function TryoutWelcome({
                           label: option.label,
                         }))}
                       />
+                      <AnimatedPillSelect
+                        icon={<Scale className="size-3.5" />}
+                        value={judgeModel}
+                        onChange={setJudgeModel}
+                        options={JUDGE_OPTIONS.map((option) => ({
+                          value: option.value,
+                          label: `${option.label} judges`,
+                        }))}
+                      />
+                      <AnimatedPillSelect
+                        icon={<SlidersHorizontal className="size-3.5" />}
+                        value={judgeStrictness}
+                        onChange={(value) =>
+                          setJudgeStrictness(value as AgentTryoutJudgeStrictness)
+                        }
+                        options={STRICTNESS_OPTIONS}
+                      />
                     </>
                   }
                 />
@@ -750,14 +865,19 @@ function TryoutWelcome({
 
           {message ? <Alert text={message} /> : null}
           {quotaMessage ? (
-            <div className="mt-5 border border-white/15 p-4 text-sm text-white/70">
-              <p>{quotaMessage}</p>
+            <div className="mt-6 border border-white/25 p-5">
+              <p className={cn(MICRO, "text-white/45")}>Free runs used</p>
+              <p className="mt-2 text-sm leading-6 text-white/55">{quotaMessage}</p>
+              <p className="mt-2 text-sm leading-6 text-white/70">
+                Your bar is already written. Sign up free to keep grading agents
+                against it, and to save every verdict.
+              </p>
               <Link
                 href={loginHref}
-                className="mt-2 inline-flex items-center gap-1 font-medium text-white hover:underline"
+                className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
               >
-                Save this tryout in a workspace
-                <ArrowRight className="size-3.5" />
+                Keep grading
+                <ArrowRight className="size-4" />
               </Link>
             </div>
           ) : null}
@@ -767,7 +887,8 @@ function TryoutWelcome({
               {template.description} ·{" "}
               {MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey)?.hint ??
                 "Hosted default agent and model"}{" "}
-              · cost cap {`$${template.max_cost_usd.toFixed(2)}`}
+              · judged by {judgeModelLabel(judgeModel)} ({judgeStrictness}) on our
+              keys · cost cap {`$${template.max_cost_usd.toFixed(2)}`}
             </p>
           ) : null}
         </form>
@@ -955,7 +1076,7 @@ function TryoutSidebar({
 
       {scorecard ? (
         <div className="mt-4 px-1">
-          <ScorecardCard scorecard={scorecard} compact />
+          <VerdictCard scorecard={scorecard} compact />
         </div>
       ) : null}
 
@@ -1101,14 +1222,20 @@ function TryoutChatThread({
     return out;
   }, [timeline]);
 
-  const thinkingLabel =
-    !active || outputs.length > 0
-      ? null
-      : events.length === 0
-        ? "Starting"
-        : timeline[timeline.length - 1]?.kind === "agent"
-          ? "Working"
-          : null;
+  const lastEvent = events[events.length - 1];
+  const judging =
+    active && lastEvent?.type === "scoring" && /grading/i.test(lastEvent.summary);
+  const thinkingLabel = !active
+    ? null
+    : judging
+      ? "The judge is reading"
+      : outputs.length > 0
+        ? null
+        : events.length === 0
+          ? "Starting"
+          : timeline[timeline.length - 1]?.kind === "agent"
+            ? "Working"
+            : null;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1185,13 +1312,23 @@ function TryoutChatThread({
 
           {scorecard && finished ? (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <ScorecardCard scorecard={scorecard} />
+              <VerdictCard scorecard={scorecard} />
+            </div>
+          ) : null}
+
+          {scorecard?.judge && finished ? (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <RerunStrip tryout={tryout} judge={scorecard.judge} loginHref={loginHref} />
             </div>
           ) : null}
 
           {finished ? (
             <div className="animate-in fade-in slide-in-from-bottom-3 duration-700">
-              <EvalRoiCalculator tryout={tryout} loginHref={loginHref} />
+              <EvalRoiCalculator
+                tryout={tryout}
+                loginHref={loginHref}
+                initialVolume={evalPlan?.monthly_volume}
+              />
             </div>
           ) : null}
 
@@ -1592,8 +1729,9 @@ function EvalSetupPanel({
       </div>
 
       <p className="max-w-md text-[13px] leading-6 text-white/35">
-        These answers become the rubric the agent is graded against. That is the
-        whole trick: an eval is just your standards, written down.
+        These answers become the judge&apos;s instructions, word for word. That
+        is the whole trick: an eval is just your standards, written down and
+        enforced by a model you pick.
       </p>
     </div>
   );
@@ -1698,6 +1836,252 @@ function Alert({ text }: { text: string }) {
   return (
     <div className="mt-5 border-l-2 border-white/40 pl-4 text-sm leading-6 text-white/70">
       {text}
+    </div>
+  );
+}
+
+// modelKeyFromPolicy maps a tryout's stored model policy back to the
+// MODEL_OPTIONS key so reruns can rotate to a different agent.
+function modelKeyFromPolicy(policy: unknown): string {
+  if (!policy || typeof policy !== "object") return "auto";
+  const models = (policy as { models?: unknown }).models;
+  if (!Array.isArray(models) || models.length === 0) return "auto";
+  const first = models[0] as { provider?: unknown; model?: unknown };
+  const match = MODEL_OPTIONS.find(
+    (option) => option.provider === first.provider && option.model === first.model,
+  );
+  return match ? modelOptionKey(match) : "auto";
+}
+
+// RerunStrip drives the comparison loop: one click reruns the same brief and
+// the same bar with a different agent, a harsher judge, or a different judge.
+function RerunStrip({
+  tryout,
+  judge,
+  loginHref,
+}: {
+  tryout: AgentTryout;
+  judge: TryoutJudgeSection;
+  loginHref: string;
+}) {
+  const router = useRouter();
+
+  function basePrefill(): RerunPrefill {
+    const fieldValues: Record<string, string> = {};
+    for (const [key, value] of Object.entries(tryout.input_snapshot ?? {})) {
+      if (key === "eval_setup") continue;
+      if (typeof value === "string") fieldValues[key] = value;
+      else if (typeof value === "number") fieldValues[key] = String(value);
+    }
+    const setup = evalSetupFromInput(tryout.input_snapshot);
+    return {
+      templateSlug: tryout.template_slug,
+      fieldValues,
+      evalSetup: setup
+        ? {
+            unacceptableMistakes: setup.unacceptable_mistakes,
+            reviewer: setup.human_reviewer,
+            priority: setup.business_priority,
+            style: setup.output_style,
+            monthlyVolume: setup.monthly_volume,
+          }
+        : undefined,
+      selectedModelKey: modelKeyFromPolicy(tryout.selected_model_policy),
+      judgeModel: judge.model,
+      judgeStrictness:
+        judge.strictness === "lenient" || judge.strictness === "harsh"
+          ? judge.strictness
+          : "standard",
+    };
+  }
+
+  function rerun(overrides: Partial<RerunPrefill>) {
+    writeRerunPrefill({ ...basePrefill(), ...overrides });
+    router.push("/tryouts");
+  }
+
+  const currentModelKey = modelKeyFromPolicy(tryout.selected_model_policy);
+  const currentOption = MODEL_OPTIONS.find(
+    (option) => modelOptionKey(option) === currentModelKey,
+  );
+  const nextAgent =
+    MODEL_OPTIONS.find(
+      (option) =>
+        option.model &&
+        option.provider !== currentOption?.provider &&
+        modelOptionKey(option) !== currentModelKey,
+    ) ?? MODEL_OPTIONS.find((option) => option.model && modelOptionKey(option) !== currentModelKey);
+  const nextJudge =
+    JUDGE_OPTIONS.find((option) => option.value !== judge.model) ?? JUDGE_OPTIONS[0];
+
+  return (
+    <div className="border border-white/12 p-5 sm:p-6">
+      <p className={cn(MICRO, "text-white/40")}>Do not take one run&apos;s word for it</p>
+      <p className="mt-2 max-w-lg text-sm leading-6 text-white/50">
+        This is the whole point of an eval: the bar stays fixed, everything else
+        can change, and the verdicts stay comparable.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {nextAgent ? (
+          <RerunButton
+            onClick={() =>
+              rerun({ selectedModelKey: modelOptionKey(nextAgent) })
+            }
+          >
+            Same brief, run {nextAgent.label} instead
+          </RerunButton>
+        ) : null}
+        {judge.strictness !== "harsh" ? (
+          <RerunButton onClick={() => rerun({ judgeStrictness: "harsh" })}>
+            Same brief, harsher judge
+          </RerunButton>
+        ) : null}
+        <RerunButton onClick={() => rerun({ judgeModel: nextJudge.value })}>
+          Let {nextJudge.label} judge instead
+        </RerunButton>
+      </div>
+      <p className="mt-4 border-t border-white/[0.07] pt-3 text-xs leading-5 text-white/35">
+        The bar you wrote is reusable.{" "}
+        <Link href={loginHref} className="text-white/60 underline-offset-4 hover:text-white hover:underline">
+          Save this eval
+        </Link>{" "}
+        and it grades every future run, automatically.
+      </p>
+    </div>
+  );
+}
+
+function RerunButton({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="border border-white/15 px-3 py-1.5 text-left font-mono text-[11px] text-white/65 transition hover:border-white/40 hover:text-white"
+    >
+      {children}
+    </button>
+  );
+}
+
+const VERDICT_WORDS: Record<TryoutJudgeSection["verdict"], string> = {
+  approved: "Approved",
+  needs_edits: "Needs edits",
+  rejected: "Rejected",
+  not_judged: "Not judged",
+};
+
+// VerdictCard is the centerpiece of the funnel: the judge the visitor chose,
+// grading the work against the visitor's own words, with its reasoning quoted.
+function VerdictCard({
+  scorecard,
+  compact,
+}: {
+  scorecard: TryoutScorecard;
+  compact?: boolean;
+}) {
+  const judge = scorecard.judge;
+  if (!judge) return <ScorecardCard scorecard={scorecard} compact={compact} />;
+  const grade = judge.score != null ? 1 + judge.score * 4 : null;
+
+  return (
+    <div
+      className={cn(
+        "border",
+        judge.verdict === "approved" ? "border-white/30" : "border-white/12",
+        compact ? "p-4" : "p-5 sm:p-6",
+      )}
+    >
+      <div className="flex items-baseline justify-between gap-3">
+        <p className={cn(MICRO, "text-white/40")}>The verdict</p>
+        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/30">
+          {judgeModelLabel(judge.model)}
+          {judge.strictness ? ` · ${judge.strictness}` : ""}
+        </p>
+      </div>
+
+      <div className="mt-4 flex items-end justify-between gap-4">
+        <p
+          className={cn(
+            SERIF,
+            "font-light leading-none",
+            compact ? "text-3xl" : "text-4xl sm:text-5xl",
+            judge.verdict === "rejected" ? "text-white/55" : "text-white/95",
+          )}
+        >
+          {VERDICT_WORDS[judge.verdict]}
+        </p>
+        {grade != null ? (
+          <p className={cn(SERIF, "font-light leading-none text-white/85", compact ? "text-2xl" : "text-3xl sm:text-4xl")}>
+            {grade.toFixed(1)}
+            <span className="text-lg text-white/35"> / 5</span>
+          </p>
+        ) : null}
+      </div>
+      <p className="mt-3 text-xs leading-5 text-white/40">
+        Graded by the judge you chose, against the bar you wrote in step 01.
+      </p>
+      {judge.reason ? (
+        <p className="mt-2 text-sm leading-6 text-white/55">{judge.reason}</p>
+      ) : null}
+
+      {!compact && judge.criteria.length > 0 ? (
+        <ul className="mt-5 divide-y divide-white/[0.07] border-t border-white/[0.07]">
+          {judge.criteria.map((criterion) => (
+            <li key={criterion.key} className="py-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-sm leading-6 text-white/75">{criterion.label}</span>
+                <span
+                  className={cn(
+                    "font-mono text-[10px] uppercase tracking-[0.14em]",
+                    criterion.status === "passed"
+                      ? "text-white/80"
+                      : criterion.status === "failed"
+                        ? "text-white/35 line-through"
+                        : "text-white/25",
+                  )}
+                >
+                  {criterion.status === "skipped" ? "not graded" : criterion.status}
+                </span>
+              </div>
+              {criterion.reasoning ? (
+                <p className="mt-1 max-w-xl text-xs leading-5 text-white/40">
+                  “{criterion.reasoning}”
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {!compact && scorecard.checks.length > 0 ? (
+        <div className="mt-5">
+          <p className={cn(MICRO, "text-white/30")}>Automatic checks</p>
+          <ul className="mt-2 divide-y divide-white/[0.06]">
+            {scorecard.checks.map((check) => (
+              <li
+                key={check.key}
+                className="flex items-baseline justify-between gap-3 py-1.5 text-xs"
+              >
+                <span className="text-white/50">{fieldLabel(check.key)}</span>
+                <span
+                  className={cn(
+                    "font-mono text-[9px] uppercase tracking-[0.14em]",
+                    check.status === "passed" ? "text-white/60" : "text-white/25",
+                  )}
+                >
+                  {check.status}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2063,7 +2447,7 @@ function friendlyTraceSummary(event: TryoutTimelineEvent): string {
     case "validation":
       return "Checked the output against validators";
     case "scoring":
-      return "Updated the eval scorecard";
+      return summary.startsWith("Judge") ? summary : "Updated the eval scorecard";
     default:
       return summary || "Working";
   }
@@ -2283,6 +2667,26 @@ type TryoutScorecardCheck = {
   status: "passed" | "failed" | "skipped";
 };
 
+type TryoutJudgeCriterion = {
+  key: string;
+  label: string;
+  mode: string;
+  status: "passed" | "failed" | "skipped";
+  score?: number;
+  reasoning?: string;
+  confidence?: string;
+  reason?: string;
+};
+
+type TryoutJudgeSection = {
+  model: string;
+  strictness?: string;
+  verdict: "approved" | "needs_edits" | "rejected" | "not_judged";
+  score?: number;
+  reason?: string;
+  criteria: TryoutJudgeCriterion[];
+};
+
 type TryoutScorecard = {
   passed_validators: number;
   total_validators: number;
@@ -2290,7 +2694,58 @@ type TryoutScorecard = {
   passed: boolean;
   dimensions: string[];
   checks: TryoutScorecardCheck[];
+  judge: TryoutJudgeSection | null;
 };
+
+function tryoutJudgeSection(raw: unknown): TryoutJudgeSection | null {
+  if (!raw || typeof raw !== "object") return null;
+  const section = raw as Record<string, unknown>;
+  if (typeof section.model !== "string" || section.model.trim() === "") return null;
+  const verdict =
+    section.verdict === "approved" ||
+    section.verdict === "needs_edits" ||
+    section.verdict === "rejected" ||
+    section.verdict === "not_judged"
+      ? section.verdict
+      : "not_judged";
+  const criteria: TryoutJudgeCriterion[] = Array.isArray(section.criteria)
+    ? section.criteria
+        .map((item): TryoutJudgeCriterion | null => {
+          if (!item || typeof item !== "object") return null;
+          const criterion = item as Record<string, unknown>;
+          const status =
+            criterion.status === "passed" || criterion.status === "failed"
+              ? criterion.status
+              : "skipped";
+          const key = typeof criterion.key === "string" ? criterion.key : "criterion";
+          return {
+            key,
+            label:
+              typeof criterion.label === "string" && criterion.label.trim()
+                ? criterion.label
+                : fieldLabel(key),
+            mode: typeof criterion.mode === "string" ? criterion.mode : "",
+            status,
+            score: typeof criterion.score === "number" ? criterion.score : undefined,
+            reasoning:
+              typeof criterion.reasoning === "string" ? criterion.reasoning : undefined,
+            confidence:
+              typeof criterion.confidence === "string" ? criterion.confidence : undefined,
+            reason: typeof criterion.reason === "string" ? criterion.reason : undefined,
+          };
+        })
+        .filter((item): item is TryoutJudgeCriterion => item !== null)
+    : [];
+  return {
+    model: section.model,
+    strictness:
+      typeof section.strictness === "string" ? section.strictness : undefined,
+    verdict,
+    score: typeof section.score === "number" ? section.score : undefined,
+    reason: typeof section.reason === "string" ? section.reason : undefined,
+    criteria,
+  };
+}
 
 function tryoutScorecard(summary: unknown): TryoutScorecard | null {
   if (!summary || typeof summary !== "object") return null;
@@ -2326,6 +2781,7 @@ function tryoutScorecard(summary: unknown): TryoutScorecard | null {
       ? card.dimensions.filter((d): d is string => typeof d === "string")
       : [],
     checks,
+    judge: tryoutJudgeSection(card.judge),
   };
 }
 
@@ -2369,17 +2825,36 @@ function usd(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
+// parseMonthlyVolume turns freeform answers like "500", "10k", or "2,000 runs"
+// into a number for the ROI inputs.
+function parseMonthlyVolume(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const match = raw.replaceAll(",", "").match(/(\d+(?:\.\d+)?)\s*(k|m)?/i);
+  if (!match) return null;
+  let value = Number(match[1]);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const unit = (match[2] ?? "").toLowerCase();
+  if (unit === "k") value *= 1_000;
+  if (unit === "m") value *= 1_000_000;
+  return Math.round(value);
+}
+
 function EvalRoiCalculator({
   tryout,
   loginHref,
+  initialVolume,
 }: {
   tryout: AgentTryout;
   loginHref: string;
+  initialVolume?: string;
 }) {
   const anchor = ROI_ANCHORS[tryout.template_slug] ?? DEFAULT_ANCHOR;
   const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
-  const [volume, setVolume] = useState("5000");
+  const [volume, setVolume] = useState(() => {
+    const parsed = parseMonthlyVolume(initialVolume);
+    return parsed != null ? String(parsed) : "5000";
+  });
   const [humanCost, setHumanCost] = useState(String(anchor.humanCostPerTask));
 
   const monthlyVolume = Math.max(0, Number(volume) || 0);
