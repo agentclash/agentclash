@@ -185,7 +185,7 @@ export function RaceLane({
 
         {lane.ticker.filter(e => e.kind === "system" && e.headline === "Race standings injected").slice(-1).map(e => (
           <div key={e.id} className="rm-stream !bg-emerald-500/[0.03] !border-emerald-500/20 !text-emerald-500/70 !max-h-none">
-            <div className="text-[10px] uppercase tracking-[0.16em] text-emerald-500/50 mb-1.5 font-sans">
+            <div className="text-2xs uppercase tracking-[0.16em] text-emerald-500/50 mb-1.5 font-sans">
               Latest Race Standings Injected
             </div>
             {e.detail}

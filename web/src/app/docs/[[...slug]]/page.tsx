@@ -137,7 +137,7 @@ export default async function DocsPage({ params }: Props) {
                 key={section.title}
                 className="rounded-[24px] border border-white/[0.08] bg-black/20 p-5"
               >
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                <p className="text-2xs font-semibold uppercase tracking-wider text-zinc-400">
                   {section.title}
                 </p>
                 <p className="mt-3 text-sm leading-6 text-white/45">
@@ -167,7 +167,7 @@ export default async function DocsPage({ params }: Props) {
 
       {isHome && (
         <div className="mt-12 border-t border-white/[0.08] pt-8">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+          <p className="text-2xs font-semibold uppercase tracking-wider text-zinc-400">
             Docs FAQ
           </p>
           <div className="mt-5 grid gap-4 xl:grid-cols-3">
@@ -195,7 +195,7 @@ export default async function DocsPage({ params }: Props) {
               href={neighbors.previous.href}
               className="rounded-[24px] border border-white/[0.08] bg-black/20 px-5 py-4 transition-colors hover:border-white/15"
             >
-              <span className="block text-[11px] uppercase tracking-[0.18em] text-white/30">
+              <span className="block text-2xs uppercase tracking-[0.18em] text-white/30">
                 Previous
               </span>
               <span className="mt-2 block text-sm font-medium text-white/88">
@@ -210,7 +210,7 @@ export default async function DocsPage({ params }: Props) {
               href={neighbors.next.href}
               className="rounded-[24px] border border-white/[0.08] bg-black/20 px-5 py-4 text-left transition-colors hover:border-white/15"
             >
-              <span className="block text-[11px] uppercase tracking-[0.18em] text-white/30">
+              <span className="block text-2xs uppercase tracking-[0.18em] text-white/30">
                 Next
               </span>
               <span className="mt-2 block text-sm font-medium text-white/88">

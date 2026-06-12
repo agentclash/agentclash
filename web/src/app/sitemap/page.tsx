@@ -165,7 +165,7 @@ export default function HtmlSitemapPage() {
   return (
     <main className="min-h-screen px-6 py-16 text-white">
       <div className="mx-auto max-w-5xl">
-        <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-wider text-white/35">
+        <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-wider text-white/35">
           Public sitemap
         </p>
         <h1 className="mt-4 font-[family-name:var(--font-display)] text-3xl leading-tight tracking-normal sm:text-5xl">

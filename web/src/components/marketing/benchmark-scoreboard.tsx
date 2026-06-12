@@ -52,16 +52,16 @@ export function BenchmarkScoreboard({ results, featuredModel }: Props) {
       <table className="w-full min-w-[680px] border-collapse text-left">
         <thead>
           <tr className="border-b border-white/[0.08]">
-            <th className="px-4 py-3 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35">
+            <th className="px-4 py-3 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/35">
               #
             </th>
-            <th className="px-4 py-3 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35">
+            <th className="px-4 py-3 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/35">
               Model
             </th>
             {COLUMNS.map((col) => (
               <th
                 key={col.key}
-                className="px-4 py-3 text-right font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35"
+                className="px-4 py-3 text-right font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/35"
               >
                 {col.label}
               </th>
@@ -94,13 +94,13 @@ export function BenchmarkScoreboard({ results, featuredModel }: Props) {
                       {result.model}
                     </span>
                     {result.winner && (
-                      <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.12em] text-emerald-300">
+                      <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.12em] text-emerald-300">
                         Winner
                       </span>
                     )}
                   </div>
                   {result.provider && (
-                    <span className="mt-0.5 block text-[11px] text-white/35">
+                    <span className="mt-0.5 block text-2xs text-white/35">
                       {result.provider}
                     </span>
                   )}

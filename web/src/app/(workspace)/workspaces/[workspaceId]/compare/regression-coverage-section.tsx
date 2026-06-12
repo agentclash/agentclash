@@ -502,7 +502,7 @@ function Stat({
           : "text-amber-400";
   return (
     <div>
-      <dt className="text-[10px] uppercase tracking-wide text-muted-foreground/80">
+      <dt className="text-2xs uppercase tracking-wide text-muted-foreground/80">
         {label}
       </dt>
       <dd

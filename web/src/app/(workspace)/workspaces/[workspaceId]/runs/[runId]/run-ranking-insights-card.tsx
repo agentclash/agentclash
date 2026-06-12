@@ -169,7 +169,7 @@ export function RunRankingInsightsCard({
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold">Insights</h3>
-            <span className="rounded-full border border-border px-2 py-0.5 text-[11px] uppercase tracking-wide text-muted-foreground">
+            <span className="rounded-full border border-border px-2 py-0.5 text-2xs uppercase tracking-wide text-muted-foreground">
               LLM advisory
             </span>
           </div>
@@ -318,10 +318,10 @@ export function RunRankingInsightsCard({
                 <div key={summary.run_agent_id} className="rounded-md border border-border p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium">{summary.label}</span>
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-2xs text-muted-foreground">
                       Strongest: {formatDimensionLabel(summary.strongest_dimension)}
                     </span>
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-2xs text-muted-foreground">
                       Weakest: {formatDimensionLabel(summary.weakest_dimension)}
                     </span>
                   </div>

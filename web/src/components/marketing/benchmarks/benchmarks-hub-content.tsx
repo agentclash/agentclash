@@ -20,7 +20,7 @@ type Props = {
 
 function SectionEyebrow({ children }: { children: ReactNode }) {
   return (
-    <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35">
+    <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/35">
       {children}
     </p>
   );
@@ -108,7 +108,7 @@ export function BenchmarksHubContent({ published }: Props) {
           <p className="mt-3 text-sm leading-relaxed text-white/50">
             {latest.verdict}
           </p>
-          <p className="mt-2 font-[family-name:var(--font-mono)] text-[11px] text-white/35">
+          <p className="mt-2 font-[family-name:var(--font-mono)] text-2xs text-white/35">
             {latest.date}
             {latest.challengePack ? ` · ${latest.challengePack}` : ""}
             {latest.featuredModel ? ` · ${latest.featuredModel}` : ""}
@@ -158,7 +158,7 @@ export function BenchmarksHubContent({ published }: Props) {
                 key={step}
                 className="flex gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3"
               >
-                <span className="font-[family-name:var(--font-mono)] text-[11px] text-white/30">
+                <span className="font-[family-name:var(--font-mono)] text-2xs text-white/30">
                   {String(index + 1).padStart(2, "0")}
                 </span>
                 <span className="text-sm leading-relaxed text-white/55">
@@ -217,7 +217,7 @@ export function BenchmarksHubContent({ published }: Props) {
                 key={step}
                 className="flex gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3"
               >
-                <span className="font-[family-name:var(--font-mono)] text-[11px] text-white/30">
+                <span className="font-[family-name:var(--font-mono)] text-2xs text-white/30">
                   {String(index + 1).padStart(2, "0")}
                 </span>
                 <span className="text-sm leading-relaxed text-white/55">
@@ -298,7 +298,7 @@ export function BenchmarksHubContent({ published }: Props) {
                 href={`/benchmarks/${report.slug}`}
                 className="group flex flex-col gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-5 py-4 transition-colors hover:border-white/15"
               >
-                <span className="font-[family-name:var(--font-mono)] text-[11px] text-white/40">
+                <span className="font-[family-name:var(--font-mono)] text-2xs text-white/40">
                   {report.date} · {report.featuredModel}
                 </span>
                 <span className="text-base font-medium text-white group-hover:text-white/90">

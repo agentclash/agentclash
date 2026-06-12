@@ -69,10 +69,10 @@ function RegexEvidence({ evidence }: { evidence: ValidatorRegexEvidence }) {
         />
       )}
       <div className="space-y-2">
-        <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+        <div className="text-2xs uppercase tracking-[0.18em] text-white/35">
           Actual
         </div>
-        <pre className="max-h-[60vh] overflow-auto rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 text-[12px] text-white/82 whitespace-pre-wrap font-[family-name:var(--font-mono)]">
+        <pre className="max-h-[60vh] overflow-auto rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 text-xs text-white/82 whitespace-pre-wrap font-[family-name:var(--font-mono)]">
           {segments?.map((segment, index) =>
             segment.matched ? (
               <mark
@@ -106,7 +106,7 @@ function JSONSchemaEvidence({
       )}
       {evidence.validation_errors && evidence.validation_errors.length > 0 && (
         <div className="space-y-2">
-          <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+          <div className="text-2xs uppercase tracking-[0.18em] text-white/35">
             Validation Errors
           </div>
           <ul className="space-y-2">
@@ -232,11 +232,11 @@ function EvidenceSection({
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <h3 className="text-[11px] uppercase tracking-[0.22em] text-white/40">
+        <h3 className="text-2xs uppercase tracking-[0.22em] text-white/40">
           {title}
         </h3>
         {sourceField && (
-          <span className="font-[family-name:var(--font-mono)] text-[11px] text-white/35">
+          <span className="font-[family-name:var(--font-mono)] text-2xs text-white/35">
             {sourceField}
           </span>
         )}
@@ -257,13 +257,13 @@ function EvidenceMeta({
 }) {
   return (
     <div className="grid grid-cols-[92px_minmax(0,1fr)] gap-3 items-start">
-      <div className="text-[11px] uppercase tracking-[0.18em] text-white/30">
+      <div className="text-2xs uppercase tracking-[0.18em] text-white/30">
         {label}
       </div>
       <div
         className={cn(
           "text-sm text-white/78 break-words",
-          mono && "font-[family-name:var(--font-mono)] text-[12px]",
+          mono && "font-[family-name:var(--font-mono)] text-xs",
         )}
       >
         {value}
@@ -300,10 +300,10 @@ function EvidenceBlock({
 }) {
   return (
     <div className="space-y-2">
-      <div className="text-[11px] uppercase tracking-[0.18em] text-white/35">
+      <div className="text-2xs uppercase tracking-[0.18em] text-white/35">
         {label}
       </div>
-      <pre className="max-h-[60vh] overflow-auto rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 text-[12px] text-white/82 whitespace-pre-wrap break-words font-[family-name:var(--font-mono)]">
+      <pre className="max-h-[60vh] overflow-auto rounded-2xl border border-white/[0.08] bg-white/[0.03] p-4 text-xs text-white/82 whitespace-pre-wrap break-words font-[family-name:var(--font-mono)]">
         {children}
       </pre>
     </div>

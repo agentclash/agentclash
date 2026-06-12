@@ -37,7 +37,7 @@ export function DimensionsDeck({
         title="Dimensions"
         icon={<Gauge className="size-3.5" />}
         trailing={
-          <span className="text-[10px] uppercase tracking-[0.14em] text-white/40">
+          <span className="text-2xs uppercase tracking-[0.14em] text-white/40">
             {keys.length} {keys.length === 1 ? "axis" : "axes"}
           </span>
         }
@@ -68,11 +68,11 @@ function DimensionCard({
     <div className="bg-[#060606] p-4 flex flex-col gap-3 min-h-[112px]">
       <div className="flex items-start justify-between gap-2">
         <div className="flex flex-col gap-1 min-w-0">
-          <h3 className="text-[13px] leading-none text-white/90 truncate font-medium tracking-[-0.005em]">
+          <h3 className="text-sm leading-none text-white/90 truncate font-medium tracking-[-0.005em]">
             {humanizeKey(dimKey)}
           </h3>
           {direction && (
-            <span className="flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] text-white/35">
+            <span className="flex items-center gap-1 text-2xs uppercase tracking-[0.14em] text-white/35">
               {direction === "higher" ? (
                 <ArrowUp className="size-2.5" />
               ) : (
@@ -85,7 +85,7 @@ function DimensionCard({
         {!isAvailable && (
           <span
             className={cn(
-              "text-[9px] uppercase tracking-[0.14em] px-1.5 py-0.5 rounded border",
+              "text-2xs uppercase tracking-[0.14em] px-1.5 py-0.5 rounded border",
               dim.state === "error"
                 ? "text-red-300 border-red-500/30 bg-red-500/[0.06]"
                 : "text-white/50 border-white/10 bg-white/[0.03]",
@@ -105,7 +105,7 @@ function DimensionCard({
         >
           {dim.score == null ? "—" : (dim.score * 100).toFixed(1)}
         </span>
-        <span className="text-[10px] text-white/30 font-[family-name:var(--font-mono)]">
+        <span className="text-2xs text-white/30 font-[family-name:var(--font-mono)]">
           {dim.score == null ? "" : "/100"}
         </span>
       </div>
@@ -120,7 +120,7 @@ function DimensionCard({
       </div>
 
       {dim.reason && (
-        <p className="text-[11px] text-white/45 leading-relaxed line-clamp-3">
+        <p className="text-2xs text-white/45 leading-relaxed line-clamp-3">
           {dim.reason}
         </p>
       )}

@@ -43,7 +43,7 @@ export function ExpandedCardsBlock({ cards }: { cards: ExpandedCard[] }) {
           <p className="font-[family-name:var(--font-display)] text-[clamp(1.5rem,2.4vw,2rem)] leading-[1.1] tracking-[-0.02em] text-white">
             …and many more.
           </p>
-          <p className="text-[14px] leading-[1.55] text-white/55">
+          <p className="text-sm leading-[1.55] text-white/55">
             Whatever agent you can dream up — race it on AgentClash.
           </p>
         </div>

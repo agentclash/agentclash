@@ -38,7 +38,7 @@ export function UserMenu({
   return (
     <div className="flex items-center gap-3">
       {orgName && (
-        <span className="hidden text-[0.6875rem] font-medium text-muted-foreground/50 tracking-wide sm:block">
+        <span className="hidden text-2xs font-medium text-muted-foreground/50 tracking-wide sm:block">
           {orgName}
         </span>
       )}
@@ -46,7 +46,7 @@ export function UserMenu({
         <DropdownMenuTrigger className="outline-none rounded-full ring-offset-background focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-offset-2">
           <Avatar className="size-7">
             {avatarUrl && <AvatarImage src={avatarUrl} alt="" />}
-            <AvatarFallback className="bg-white/[0.08] text-[0.5625rem] font-medium text-foreground/70">
+            <AvatarFallback className="bg-white/[0.08] text-2xs font-medium text-foreground/70">
               {initials}
             </AvatarFallback>
           </Avatar>

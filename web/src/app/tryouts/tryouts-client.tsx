@@ -318,7 +318,7 @@ function suggestionsFor(slug: string): string[] {
 const api = createApiClient();
 
 const SERIF = "[font-family:var(--font-race-display)]";
-const MICRO = "font-mono text-[10px] uppercase tracking-[0.22em]";
+const MICRO = "font-mono text-2xs uppercase tracking-[0.22em]";
 
 export function PublicTryoutsClient() {
   const router = useRouter();
@@ -756,7 +756,7 @@ function TryoutWelcome({
         </h1>
         <p
           className={cn(
-            "mx-auto mt-4 max-w-md text-center text-[15px] leading-7 text-white/50",
+            "mx-auto mt-4 max-w-md text-center text-base leading-7 text-white/50",
             enter,
           )}
           style={{ animationDelay: "180ms" }}
@@ -848,7 +848,7 @@ function TryoutWelcome({
           ) : null}
 
           {template ? (
-            <p className="mt-4 text-center font-mono text-[10px] leading-5 tracking-[0.04em] text-white/30">
+            <p className="mt-4 text-center font-mono text-2xs leading-5 tracking-[0.04em] text-white/30">
               {MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey)?.hint ??
                 "Hosted default agent and model"}{" "}
               · judged by {judgeModelLabel(judgeModel)} ({judgeStrictness}) on our
@@ -868,9 +868,9 @@ function TryoutWelcome({
                   <button
                     type="button"
                     onClick={() => updateField(primaryField[0], suggestion)}
-                    className="group flex w-full items-baseline gap-3 py-2.5 text-left text-[13px] leading-6 text-white/50 transition hover:text-white"
+                    className="group flex w-full items-baseline gap-3 py-2.5 text-left text-sm leading-6 text-white/50 transition hover:text-white"
                   >
-                    <span className="font-mono text-[10px] text-white/25 transition group-hover:text-white/60">
+                    <span className="font-mono text-2xs text-white/25 transition group-hover:text-white/60">
                       →
                     </span>
                     {suggestion}
@@ -916,7 +916,7 @@ function BarPill({ ready, onClick }: { ready: boolean; onClick: () => void }) {
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-sm border py-1.5 pl-2.5 pr-2.5 font-mono text-[11px] transition",
+        "inline-flex items-center gap-1.5 rounded-sm border py-1.5 pl-2.5 pr-2.5 font-mono text-2xs transition",
         ready
           ? "border-white/12 text-white/60 hover:border-white/30 hover:text-white/90"
           : "border-white/35 text-white/90 hover:border-white/60",
@@ -1030,7 +1030,7 @@ function BarDialog({
           <button
             type="button"
             onClick={() => onOpenChange(false)}
-            className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/35 transition hover:text-white/70"
+            className="font-mono text-2xs uppercase tracking-[0.12em] text-white/35 transition hover:text-white/70"
           >
             Not yet
           </button>
@@ -1240,7 +1240,7 @@ function TryoutSidebar({
                   className="absolute -left-[19px] top-[5px] size-[5px] rounded-full bg-white/25"
                 />
                 <p className="text-xs leading-5 text-white/60">{event.summary}</p>
-                <time className="mt-0.5 block font-mono text-[9px] uppercase tracking-[0.1em] text-white/25">
+                <time className="mt-0.5 block font-mono text-2xs uppercase tracking-[0.1em] text-white/25">
                   {new Date(event.occurred_at).toLocaleTimeString()}
                 </time>
               </li>
@@ -1528,7 +1528,7 @@ function UserBubble({ text, animate }: { text: string; animate?: boolean }) {
           "animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none",
       )}
     >
-      <div className="max-w-[85%] rounded-sm bg-[#e9e9e5] px-4 py-2.5 text-[15px] leading-7 text-[#161614]">
+      <div className="max-w-[85%] rounded-sm bg-[#e9e9e5] px-4 py-2.5 text-base leading-7 text-[#161614]">
         {text}
       </div>
     </div>
@@ -1590,7 +1590,7 @@ function ArtifactChatCard({ output }: { output: TryoutOutputPreview }) {
             <div className="min-w-0">
               <p className="truncate text-sm font-medium text-white/90">{label}</p>
               {sizeLabel ? (
-                <p className="text-[11px] text-white/40">{artifactKindLabel(output)} · {sizeLabel}</p>
+                <p className="text-2xs text-white/40">{artifactKindLabel(output)} · {sizeLabel}</p>
               ) : null}
             </div>
           </div>
@@ -1670,7 +1670,7 @@ function ArtifactPreviewCard({ output }: { output: TryoutOutputPreview }) {
           <p className="truncate text-xs font-medium text-white/80">
             {output.relative_path || output.key || "Output"}
           </p>
-          <p className="text-[10px] text-white/35">{artifactKindLabel(output)}</p>
+          <p className="text-2xs text-white/35">{artifactKindLabel(output)}</p>
         </div>
         <button
           type="button"
@@ -1682,7 +1682,7 @@ function ArtifactPreviewCard({ output }: { output: TryoutOutputPreview }) {
         </button>
       </div>
       {!isBinaryArtifact(output) ? (
-        <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap text-[11px] leading-5 text-white/55">
+        <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap text-2xs leading-5 text-white/55">
           {output.preview.slice(0, 400)}
           {output.preview.length > 400 ? "…" : ""}
         </pre>
@@ -1733,7 +1733,7 @@ function ComposerShell({
         rows={compact ? 1 : 3}
         disabled={disabled}
         placeholder={placeholder}
-        className="block w-full resize-none bg-transparent px-3 pt-2 text-[15px] leading-7 text-white outline-none placeholder:text-white/30"
+        className="block w-full resize-none bg-transparent px-3 pt-2 text-base leading-7 text-white outline-none placeholder:text-white/30"
       />
       <div className="flex items-center justify-between gap-2 px-1 pb-0.5 pt-1">
         {footer ? <div className="flex flex-wrap items-center gap-2">{footer}</div> : <span />}
@@ -1774,7 +1774,7 @@ function AnimatedPillSelect({
     <DropdownMenu>
       <DropdownMenuTrigger
         disabled={disabled}
-        className="inline-flex items-center gap-1.5 rounded-sm border border-white/12 py-1.5 pl-2.5 pr-2 font-mono text-[11px] text-white/60 transition hover:border-white/30 hover:text-white/90 data-popup-open:border-white/40 data-popup-open:text-white disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-sm border border-white/12 py-1.5 pl-2.5 pr-2 font-mono text-2xs text-white/60 transition hover:border-white/30 hover:text-white/90 data-popup-open:border-white/40 data-popup-open:text-white disabled:opacity-50"
       >
         <span className="text-white/45">{icon}</span>
         <span className="max-w-[9rem] truncate">{selected?.label ?? "Select"}</span>
@@ -1824,7 +1824,7 @@ function UnderlineField({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="mt-2.5 w-full border-b border-white/15 bg-transparent pb-2 text-[15px] text-white outline-none transition-colors placeholder:text-white/20 focus:border-white/50"
+        className="mt-2.5 w-full border-b border-white/15 bg-transparent pb-2 text-base text-white outline-none transition-colors placeholder:text-white/20 focus:border-white/50"
       />
     </label>
   );
@@ -1851,7 +1851,7 @@ function SegmentedControl<TValue extends string>({
             type="button"
             onClick={() => onChange(option.value)}
             className={cn(
-              "border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] transition",
+              "border px-2.5 py-1 font-mono text-2xs uppercase tracking-[0.08em] transition",
               option.value === value
                 ? "border-white bg-white text-black"
                 : "border-white/12 text-white/45 hover:border-white/35 hover:text-white/85",
@@ -1890,7 +1890,7 @@ function CompactField({
         min={spec.minimum}
         max={spec.maximum}
         onChange={(event) => onChange(field, event.target.value)}
-        className="mt-2.5 w-full border-b border-white/15 bg-transparent pb-2 text-[15px] text-white outline-none transition-colors placeholder:text-white/20 focus:border-white/50"
+        className="mt-2.5 w-full border-b border-white/15 bg-transparent pb-2 text-base text-white outline-none transition-colors placeholder:text-white/20 focus:border-white/50"
       />
     </label>
   );
@@ -2026,7 +2026,7 @@ function RerunButton({
     <button
       type="button"
       onClick={onClick}
-      className="border border-white/15 px-3 py-1.5 text-left font-mono text-[11px] text-white/65 transition hover:border-white/40 hover:text-white"
+      className="border border-white/15 px-3 py-1.5 text-left font-mono text-2xs text-white/65 transition hover:border-white/40 hover:text-white"
     >
       {children}
     </button>
@@ -2063,7 +2063,7 @@ function VerdictCard({
     >
       <div className="flex items-baseline justify-between gap-3">
         <p className={cn(MICRO, "text-white/40")}>The verdict</p>
-        <p className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/30">
+        <p className="font-mono text-2xs uppercase tracking-[0.14em] text-white/30">
           {judgeModelLabel(judge.model)}
           {judge.strictness ? ` · ${judge.strictness}` : ""}
         </p>
@@ -2102,7 +2102,7 @@ function VerdictCard({
                 <span className="text-sm leading-6 text-white/75">{criterion.label}</span>
                 <span
                   className={cn(
-                    "font-mono text-[10px] uppercase tracking-[0.14em]",
+                    "font-mono text-2xs uppercase tracking-[0.14em]",
                     criterion.status === "passed"
                       ? "text-white/80"
                       : criterion.status === "failed"
@@ -2135,7 +2135,7 @@ function VerdictCard({
                 <span className="text-white/50">{fieldLabel(check.key)}</span>
                 <span
                   className={cn(
-                    "font-mono text-[9px] uppercase tracking-[0.14em]",
+                    "font-mono text-2xs uppercase tracking-[0.14em]",
                     check.status === "passed" ? "text-white/60" : "text-white/25",
                   )}
                 >
@@ -2195,7 +2195,7 @@ function ScorecardCard({
               <span className="text-white/65">{fieldLabel(check.key)}</span>
               <span
                 className={cn(
-                  "font-mono text-[10px] uppercase tracking-[0.14em]",
+                  "font-mono text-2xs uppercase tracking-[0.14em]",
                   check.status === "passed"
                     ? "text-white/80"
                     : check.status === "failed"
@@ -2224,7 +2224,7 @@ function EvalPlanCard({
     <div className={cn("border border-white/12", compact ? "p-4" : "p-5 sm:p-6")}>
       <div className="flex items-baseline justify-between gap-3">
         <p className={cn(MICRO, "text-white/40")}>Your rubric</p>
-        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/30">
+        <span className="font-mono text-2xs uppercase tracking-[0.14em] text-white/30">
           {priorityLabel(setup.business_priority)}
         </span>
       </div>
@@ -2241,7 +2241,7 @@ function EvalPlanCard({
         <ul className="mt-4 divide-y divide-white/[0.07] border-t border-white/[0.07]">
           {setup.derived_rubric.slice(0, 4).map((item, index) => (
             <li key={item.key} className="flex gap-4 py-3">
-              <span className="font-mono text-[10px] leading-6 text-white/25">
+              <span className="font-mono text-2xs leading-6 text-white/25">
                 0{index + 1}
               </span>
               <div>
@@ -2268,7 +2268,7 @@ function DownloadButton({ label, onClick }: { label: string; onClick: () => void
       type="button"
       variant="outline"
       onClick={onClick}
-      className="h-7 rounded-sm border-white/15 bg-transparent px-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-white/70 hover:bg-white/10 hover:text-white"
+      className="h-7 rounded-sm border-white/15 bg-transparent px-2.5 font-mono text-2xs uppercase tracking-[0.1em] text-white/70 hover:bg-white/10 hover:text-white"
     >
       <Download className="size-3" />
       {label}

@@ -211,7 +211,7 @@ export function ReplayViewerClient({
               />
             )}
           </div>
-          <p className="mt-2 text-[11px] uppercase tracking-[0.14em] text-white/40">
+          <p className="mt-2 text-2xs uppercase tracking-[0.14em] text-white/40">
             Replay for{" "}
             <Link
               href={`/workspaces/${workspaceId}/runs/${run.id}`}
@@ -228,7 +228,7 @@ export function ReplayViewerClient({
         <Panel tone="warn" className="px-4 py-3 text-sm">
           <div className="flex items-center gap-2 text-amber-500">
             <Loader2 className="size-4 animate-spin" />
-            <span className="font-medium uppercase tracking-[0.14em] text-[11px]">Replay pending</span>
+            <span className="font-medium uppercase tracking-[0.14em] text-2xs">Replay pending</span>
           </div>
           {replayData.message && (
             <p className="mt-1.5 text-amber-500/70 text-xs">
@@ -243,7 +243,7 @@ export function ReplayViewerClient({
         <Panel tone="danger" className="px-4 py-3 text-sm">
           <div className="flex items-center gap-2 text-red-500">
             <AlertTriangle className="size-4" />
-            <span className="font-medium uppercase tracking-[0.14em] text-[11px]">Replay unavailable</span>
+            <span className="font-medium uppercase tracking-[0.14em] text-2xs">Replay unavailable</span>
           </div>
           {replayData.message && (
             <p className="mt-1.5 text-red-500/70 text-xs">
@@ -294,7 +294,7 @@ export function ReplayViewerClient({
 
       {/* Terminal state */}
       {isReady && replayData.replay?.summary?.terminal_state && (
-        <Panel className="flex items-center gap-3 px-4 py-3 text-[11px] uppercase tracking-[0.14em] text-white/60">
+        <Panel className="flex items-center gap-3 px-4 py-3 text-2xs uppercase tracking-[0.14em] text-white/60">
           <Clock className="size-4 text-white/30" />
           <span>{replayData.replay.summary.terminal_state.headline}</span>
           {replayData.replay.summary.terminal_state.error_message && (
@@ -351,7 +351,7 @@ function StatCard({
 }) {
   return (
     <Panel className="px-4 py-3 flex flex-col gap-1.5">
-      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.14em] text-white/40">
+      <div className="flex items-center gap-2 text-2xs uppercase tracking-[0.14em] text-white/40">
         <div className="text-white/30">{icon}</div>
         <span>{label}</span>
       </div>

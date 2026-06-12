@@ -859,7 +859,7 @@ function ResourceChecklist({
                 className="size-3.5 accent-primary"
               />
               <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
-              <code className="truncate text-[11px] text-muted-foreground">
+              <code className="truncate text-2xs text-muted-foreground">
                 {item.meta}
               </code>
             </label>

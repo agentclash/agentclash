@@ -46,7 +46,7 @@ export function DocsSidebar({
       <div className="space-y-6">
         {sections.map((section) => (
           <div key={section.title} className="px-1">
-            <h4 className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/35">
+            <h4 className="mb-2 px-2 text-2xs font-semibold uppercase tracking-[0.16em] text-white/35">
               {section.title}
             </h4>
             <div className="space-y-0.5">

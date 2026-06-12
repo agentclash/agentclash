@@ -396,7 +396,7 @@ body {
 
 /* Blog prose */
 .prose-agentclash {
-  font-size: 15px;
+  font-size: clamp(0.9375rem, 0.895rem + 0.175vw, 1.0625rem); /* 15 → 17px */
   line-height: 1.75;
   color: rgba(255, 255, 255, 0.65);
 }
@@ -526,7 +526,7 @@ body {
 /* Docs prose */
 .prose-agentclash-docs {
   max-width: 72ch;
-  font-size: 15px;
+  font-size: clamp(0.9375rem, 0.895rem + 0.175vw, 1.0625rem); /* 15 → 17px */
   line-height: 1.8;
   color: rgba(255, 255, 255, 0.68);
 }
@@ -715,6 +715,25 @@ body {
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+/*
+ * Fluid font-size scale. Floors equal the prior fixed sizes so phones (≤390px)
+ * render identically; a uniform 0.175vw slope (~+2px from 390→1536px) lets text
+ * grow on large displays while keeping a constant gap between adjacent steps so
+ * sizes never invert. text-2xs is new (replaces the old text-[9/10/11px] swarm).
+ */
+@theme {
+  --text-2xs: clamp(0.6875rem, 0.645rem + 0.175vw, 0.8125rem); /* 11 → 13px */
+  --text-2xs--line-height: 1.45;
+  --text-xs: clamp(0.75rem, 0.707rem + 0.175vw, 0.875rem); /* 12 → 14px */
+  --text-xs--line-height: 1.4;
+  --text-sm: clamp(0.875rem, 0.832rem + 0.175vw, 1rem); /* 14 → 16px */
+  --text-sm--line-height: 1.45;
+  --text-base: clamp(1rem, 0.957rem + 0.175vw, 1.125rem); /* 16 → 18px */
+  --text-base--line-height: 1.5;
+  --text-lg: clamp(1.125rem, 1.082rem + 0.175vw, 1.25rem); /* 18 → 20px */
+  --text-lg--line-height: 1.45;
 }
 
 .dark {

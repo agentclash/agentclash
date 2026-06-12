@@ -98,7 +98,7 @@ export function ScorecardSummaryCard({
           >
             {scorePercent(scorecard.overall_score)}
           </span>
-          <span className="text-[10px] text-muted-foreground">overall</span>
+          <span className="text-2xs text-muted-foreground">overall</span>
           {scorecard.scorecard?.passed != null && (
             scorecard.scorecard.passed ? (
               <CheckCircle2 className="size-3 text-emerald-400" />
@@ -107,7 +107,7 @@ export function ScorecardSummaryCard({
             )
           )}
           {scorecard.scorecard?.strategy && (
-            <span className="text-[10px] text-muted-foreground/60 ml-1">
+            <span className="text-2xs text-muted-foreground/60 ml-1">
               {scorecard.scorecard.strategy}
             </span>
           )}
@@ -125,7 +125,7 @@ export function ScorecardSummaryCard({
           return (
             <div
               key={key}
-              className="flex items-center gap-1 text-[10px]"
+              className="flex items-center gap-1 text-2xs"
               title={key}
             >
               <Icon className="size-2.5 text-muted-foreground" />
@@ -138,7 +138,7 @@ export function ScorecardSummaryCard({
 
       {/* Token split */}
       {scorecard.scorecard?.metric_summary?.run_total_tokens != null && (
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-2xs text-muted-foreground">
           <span className="font-[family-name:var(--font-mono)]">{scorecard.scorecard.metric_summary.run_total_tokens.toLocaleString()} tokens</span>
           {(scorecard.scorecard.metric_summary.run_race_context_tokens ?? 0) > 0 && (
             <span className="text-muted-foreground/60 font-[family-name:var(--font-mono)]">

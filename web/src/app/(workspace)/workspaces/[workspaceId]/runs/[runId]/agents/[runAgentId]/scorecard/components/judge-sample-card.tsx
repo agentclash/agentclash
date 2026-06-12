@@ -246,11 +246,11 @@ export function JudgeSampleCard({ call }: { call: JudgeCall }) {
 
       {/* Header — sample #, model, score, confidence, raw toggle */}
       <div className="flex items-center gap-3 pl-4 pr-3 h-10 border-b border-white/[0.05]">
-        <span className="font-[family-name:var(--font-mono)] text-[11px] text-white/35 tabular-nums w-6">
+        <span className="font-[family-name:var(--font-mono)] text-2xs text-white/35 tabular-nums w-6">
           #{call.sampleIndex ?? "?"}
         </span>
         <span
-          className="font-[family-name:var(--font-mono)] text-[11px] text-white/65 truncate flex-1"
+          className="font-[family-name:var(--font-mono)] text-2xs text-white/65 truncate flex-1"
           title={call.model}
         >
           {call.model}
@@ -272,7 +272,7 @@ export function JudgeSampleCard({ call }: { call: JudgeCall }) {
             type="button"
             onClick={() => setShowRaw(!showRaw)}
             className={cn(
-              "ml-1 inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] rounded px-1.5 h-6 border transition-colors",
+              "ml-1 inline-flex items-center gap-1 text-2xs uppercase tracking-[0.14em] rounded px-1.5 h-6 border transition-colors",
               showRaw
                 ? "border-white/25 bg-white/[0.05] text-white/75"
                 : "border-white/10 text-white/40 hover:text-white/70 hover:border-white/20",
@@ -288,7 +288,7 @@ export function JudgeSampleCard({ call }: { call: JudgeCall }) {
       {/* Body */}
       <div className="px-4 py-3.5 space-y-3.5">
         {hasError && (
-          <div className="text-[12px] text-red-300/85 leading-snug whitespace-pre-wrap">
+          <div className="text-xs text-red-300/85 leading-snug whitespace-pre-wrap">
             {call.error}
           </div>
         )}
@@ -329,7 +329,7 @@ export function JudgeSampleCard({ call }: { call: JudgeCall }) {
               parsed.feedback.length === 0 &&
               parsed.other.length === 0 &&
               !parsed.ranking && (
-                <p className="text-[12px] text-white/40 italic">
+                <p className="text-xs text-white/40 italic">
                   No rationale was provided by the judge.
                 </p>
               )}
@@ -342,7 +342,7 @@ export function JudgeSampleCard({ call }: { call: JudgeCall }) {
 
         {/* Raw toggle — always available when response exists */}
         {hasResponse && showRaw && (
-          <details open className="text-[11px]">
+          <details open className="text-2xs">
             <summary className="cursor-pointer text-white/40 uppercase tracking-[0.16em] mb-1.5">
               Raw response
             </summary>
@@ -365,7 +365,7 @@ function RationaleBlock({ text }: { text: string }) {
         aria-hidden
         className="absolute left-0 top-0 size-4 text-white/20"
       />
-      <p className="text-[13px] text-white/80 leading-relaxed whitespace-pre-wrap font-[family-name:var(--font-body)]">
+      <p className="text-sm text-white/80 leading-relaxed whitespace-pre-wrap font-[family-name:var(--font-body)]">
         {text}
       </p>
     </div>
@@ -388,14 +388,14 @@ function BulletBlock({
   }[tone];
   return (
     <div>
-      <h4 className="text-[10px] uppercase tracking-[0.2em] text-white/45 mb-1.5 font-medium">
+      <h4 className="text-2xs uppercase tracking-[0.2em] text-white/45 mb-1.5 font-medium">
         {title}
       </h4>
       <ul className="space-y-1">
         {items.map((item, i) => (
           <li
             key={i}
-            className="flex gap-2 text-[12.5px] text-white/75 leading-relaxed"
+            className="flex gap-2 text-xs text-white/75 leading-relaxed"
           >
             <span
               className={cn("mt-[7px] size-1 rounded-full shrink-0", marker)}
@@ -412,14 +412,14 @@ function BulletBlock({
 function RankingBlock({ ranking }: { ranking: string[] }) {
   return (
     <div>
-      <h4 className="text-[10px] uppercase tracking-[0.2em] text-white/45 mb-1.5 font-medium">
+      <h4 className="text-2xs uppercase tracking-[0.2em] text-white/45 mb-1.5 font-medium">
         Ranking
       </h4>
       <ol className="space-y-1">
         {ranking.map((id, i) => (
           <li
             key={id}
-            className="flex gap-3 text-[12px] text-white/70 font-[family-name:var(--font-mono)] leading-tight"
+            className="flex gap-3 text-xs text-white/70 font-[family-name:var(--font-mono)] leading-tight"
           >
             <span className="text-white/35 tabular-nums w-4">{i + 1}.</span>
             <span className="truncate">{id}</span>
@@ -442,11 +442,11 @@ function OtherFields({
           key={f.key}
           className="inline-flex items-baseline gap-1.5 px-2 py-1 rounded border border-white/[0.08] bg-white/[0.02]"
         >
-          <span className="text-[10px] uppercase tracking-[0.14em] text-white/40">
+          <span className="text-2xs uppercase tracking-[0.14em] text-white/40">
             {f.key.replace(/_/g, " ")}
           </span>
           <span
-            className="text-[11px] text-white/75 font-[family-name:var(--font-mono)] max-w-[240px] truncate"
+            className="text-2xs text-white/75 font-[family-name:var(--font-mono)] max-w-[240px] truncate"
             title={f.value}
           >
             {f.value}
@@ -461,14 +461,14 @@ function FallbackText({ text }: { text: string }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-1.5">
-        <span className="text-[10px] uppercase tracking-[0.18em] text-white/40">
+        <span className="text-2xs uppercase tracking-[0.18em] text-white/40">
           Raw response
         </span>
-        <span className="text-[10px] text-white/30">
+        <span className="text-2xs text-white/30">
           · couldn&apos;t parse as structured JSON
         </span>
       </div>
-      <pre className="font-[family-name:var(--font-mono)] text-[11.5px] text-white/70 leading-relaxed whitespace-pre-wrap bg-black/30 border border-white/[0.05] rounded px-3 py-2 max-h-60 overflow-y-auto">
+      <pre className="font-[family-name:var(--font-mono)] text-2xs text-white/70 leading-relaxed whitespace-pre-wrap bg-black/30 border border-white/[0.05] rounded px-3 py-2 max-h-60 overflow-y-auto">
         {text}
       </pre>
     </div>
@@ -484,7 +484,7 @@ function VerdictChip({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.14em] px-1.5 h-5 rounded border",
+        "inline-flex items-center gap-1 text-2xs uppercase tracking-[0.14em] px-1.5 h-5 rounded border",
         pass
           ? "border-emerald-500/30 bg-emerald-500/[0.08] text-emerald-300"
           : "border-red-500/30 bg-red-500/[0.08] text-red-300",
@@ -506,7 +506,7 @@ function ConfidenceChip({ value }: { value: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center text-[10px] uppercase tracking-[0.14em] px-1.5 h-5 rounded border bg-white/[0.015]",
+        "inline-flex items-center text-2xs uppercase tracking-[0.14em] px-1.5 h-5 rounded border bg-white/[0.015]",
         tone,
       )}
     >

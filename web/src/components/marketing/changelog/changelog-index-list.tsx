@@ -24,23 +24,23 @@ export function ChangelogIndexList({
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <time
                       dateTime={period.endDate}
-                      className="font-[family-name:var(--font-mono)] text-[11px] text-white/45"
+                      className="font-[family-name:var(--font-mono)] text-2xs text-white/45"
                     >
                       {period.label}
                     </time>
                     {index === 0 ? (
-                      <span className="rounded border border-white/10 bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white/60">
+                      <span className="rounded border border-white/10 bg-white/[0.06] px-1.5 py-0.5 text-2xs font-medium uppercase tracking-wide text-white/60">
                         Latest
                       </span>
                     ) : null}
                   </div>
-                  <h2 className="mt-2 text-[15px] font-semibold leading-snug text-white group-hover:text-white/90">
+                  <h2 className="mt-2 text-base font-semibold leading-snug text-white group-hover:text-white/90">
                     {period.headline}
                   </h2>
                   <p className="mt-2 text-sm leading-relaxed text-white/45">
                     {period.summary}
                   </p>
-                  <p className="mt-3 text-[11px] text-white/30">
+                  <p className="mt-3 text-2xs text-white/30">
                     {period.entries.length} updates
                     {pullRequestCount > 0
                       ? ` · ${pullRequestCount} merged PRs`

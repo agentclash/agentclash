@@ -71,7 +71,7 @@ export function DocsShell({
       </header>
 
       <div className="mx-auto flex w-full max-w-[1536px] items-start px-6 lg:px-8">
-        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 overflow-y-auto border-r border-white/[0.08] pt-8 lg:block">
+        <aside className="sticky top-16 hidden h-[calc(100dvh-4rem)] w-64 shrink-0 overflow-y-auto border-r border-white/[0.08] pt-8 lg:block">
           <DocsSidebar sections={sections} currentHref={currentHref} />
         </aside>
 
@@ -79,11 +79,11 @@ export function DocsShell({
           <div className="mx-auto max-w-[720px]">
             <header className="mb-10 border-b border-white/[0.08] pb-8">
               {sectionTitle ? (
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">
+                <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-white/35">
                   {sectionTitle}
                 </p>
               ) : (
-                <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/35">
+                <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-white/35">
                   Documentation
                 </p>
               )}
@@ -96,7 +96,7 @@ export function DocsShell({
                   onClick={() =>
                     navigator.clipboard.writeText(window.location.href)
                   }
-                  className="hidden items-center gap-2 rounded-xl border border-white/[0.08] px-3 py-1.5 text-[11px] font-medium uppercase tracking-wider text-white/45 transition-colors hover:border-white/15 hover:text-white/70 sm:flex"
+                  className="hidden items-center gap-2 rounded-xl border border-white/[0.08] px-3 py-1.5 text-2xs font-medium uppercase tracking-wider text-white/45 transition-colors hover:border-white/15 hover:text-white/70 sm:flex"
                 >
                   <Copy className="size-3.5" />
                   Copy page

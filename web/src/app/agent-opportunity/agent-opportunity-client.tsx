@@ -2,21 +2,17 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import {
-  AlertTriangle,
   ArrowRight,
-  ClipboardCheck,
+  ChevronDown,
   Download,
-  FlaskConical,
   Loader2,
   Search,
-  ShieldCheck,
-  Sparkles,
-  Target,
-  TrendingUp,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { AgentOpportunityReport } from "@/lib/agent-opportunity";
-import { FitScoreRing } from "./components/fit-score-ring";
-import { MetricTile } from "./components/metric-tile";
+import { DimensionRadar } from "./components/dimension-radar";
+import { OpportunityMap } from "./components/opportunity-map";
+import { RiskHeatmap } from "./components/risk-heatmap";
 import {
   AGENT_OPPORTUNITY_FAQ,
   AGENT_OPPORTUNITY_H1,
@@ -34,7 +30,10 @@ type ReportResponse =
   | { ok: true; report: AgentOpportunityReport }
   | { ok: false; code: string; error: string };
 
-type ReportTab = "overview" | "opportunities" | "risks" | "eval";
+type UseCase = AgentOpportunityReport["useCases"][number];
+
+const SERIF = "[font-family:var(--font-race-display)]";
+const MICRO = "font-mono text-2xs uppercase tracking-[0.22em]";
 
 const painOptions = [
   "Support",
@@ -51,326 +50,447 @@ const loadingSteps = [
   "Scoring workflows and risks",
 ];
 
-function toneFromScore(score: number): "good" | "warn" | "bad" | "neutral" {
-  if (score >= 75) return "good";
-  if (score >= 45) return "warn";
-  if (score >= 25) return "neutral";
-  return "bad";
+const VERDICT_ORDER: AgentOpportunityReport["shouldBuildAgent"][] = [
+  "not_yet",
+  "eval_first",
+  "narrow_pilot",
+  "strong_fit",
+];
+
+const toneDot: Record<"good" | "warn" | "bad" | "neutral", string> = {
+  good: "bg-emerald-400",
+  warn: "bg-amber-400",
+  bad: "bg-red-400",
+  neutral: "bg-white/60",
+};
+
+const ADVERSARIAL_STRIPES =
+  "repeating-linear-gradient(135deg, rgba(255,255,255,0.55) 0, rgba(255,255,255,0.55) 2px, transparent 2px, transparent 6px)";
+
+function levelCount(level: UseCase["fit"]): number {
+  return level === "high" ? 3 : level === "medium" ? 2 : 1;
 }
 
-function ReportTabs({
-  active,
-  onChange,
-}: {
-  active: ReportTab;
-  onChange: (tab: ReportTab) => void;
-}) {
-  const tabs: { id: ReportTab; label: string }[] = [
-    { id: "overview", label: "Overview" },
-    { id: "opportunities", label: "Opportunities" },
-    { id: "risks", label: "Risks" },
-    { id: "eval", label: "Eval plan" },
-  ];
+function reportHostname(analyzedUrl: string): string {
+  try {
+    return new URL(analyzedUrl).hostname;
+  } catch {
+    return analyzedUrl;
+  }
+}
 
+function ScaleBar({ value, className }: { value: number; className?: string }) {
   return (
-    <div className="flex flex-wrap gap-1 rounded-md border border-white/[0.08] bg-white/[0.02] p-1">
-      {tabs.map((tab) => (
-        <button
-          key={tab.id}
-          type="button"
-          onClick={() => onChange(tab.id)}
-          className={
-            active === tab.id
-              ? "rounded-sm bg-white px-3 py-1.5 text-xs font-medium text-[#060606]"
-              : "rounded-sm px-3 py-1.5 text-xs text-white/55 transition-colors hover:text-white"
-          }
-        >
-          {tab.label}
-        </button>
+    <div
+      className={cn("relative h-[3px] w-full bg-white/[0.08]", className)}
+      aria-hidden
+    >
+      <div
+        className="h-full bg-white/80"
+        style={{ width: `${Math.max(2, Math.min(100, value))}%` }}
+      />
+      {[25, 50, 75].map((tick) => (
+        <span
+          key={tick}
+          className="absolute top-0 h-full w-px bg-[#080808]"
+          style={{ left: `${tick}%` }}
+        />
       ))}
     </div>
   );
 }
 
-function UseCaseCard({ useCase }: { useCase: AgentOpportunityReport["useCases"][number] }) {
-  const fitScore =
-    useCase.fit === "high" ? 88 : useCase.fit === "medium" ? 58 : 28;
-
+function LevelMeter({
+  level,
+  label,
+}: {
+  level: UseCase["fit"];
+  label: string;
+}) {
+  const count = levelCount(level);
   return (
-    <article className="rounded-md border border-white/[0.08] bg-[#060606] p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-white">{useCase.title}</p>
-          <p className="mt-2 text-sm leading-6 text-white/55">{useCase.workflow}</p>
-        </div>
-        <span className="rounded-sm border border-white/[0.08] px-2 py-1 font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.12em] text-white/45">
-          {useCase.fit} fit
-        </span>
-      </div>
-      <div className="mt-4 h-[3px] overflow-hidden rounded-full bg-white/[0.05]">
-        <div
-          className="h-full rounded-full bg-cyan-500/80"
-          style={{ width: `${fitScore}%` }}
-        />
-      </div>
-      <div className="mt-4 grid gap-2 text-xs sm:grid-cols-3">
-        <p className="text-white/45">
-          Hours saved{" "}
-          <span className="text-white/75">{useCase.estimatedMonthlyHoursSaved}</span>
-        </p>
-        <p className="text-white/45">
-          Savings{" "}
-          <span className="text-white/75">{useCase.estimatedMonthlySavingsUsd}</span>
-        </p>
-        <p className="text-white/45">
-          Complexity{" "}
-          <span className="capitalize text-white/75">{useCase.complexity}</span>
-        </p>
-      </div>
-      <p className="mt-4 text-sm leading-6 text-white/50">{useCase.why}</p>
-      <ul className="mt-4 grid gap-2 text-xs text-white/45 sm:grid-cols-2">
-        {useCase.firstEvalTasks.map((task) => (
-          <li key={task} className="flex items-start gap-2">
-            <ClipboardCheck className="mt-0.5 size-3.5 shrink-0" />
-            <span>{task}</span>
-          </li>
+    <span className="flex flex-col gap-1.5">
+      <span className="flex gap-[3px]" aria-hidden>
+        {[0, 1, 2].map((index) => (
+          <span
+            key={index}
+            className={cn(
+              "h-[5px] w-4",
+              index < count ? "bg-white/75" : "bg-white/[0.08]",
+            )}
+          />
         ))}
-      </ul>
-    </article>
+      </span>
+      <span className="font-mono text-2xs uppercase tracking-[0.12em] text-white/35">
+        {level === "medium" ? "med" : level} {label}
+      </span>
+    </span>
   );
 }
 
-function ReportDashboard({ report }: { report: AgentOpportunityReport }) {
-  const [tab, setTab] = useState<ReportTab>("overview");
+function StatCell({
+  label,
+  children,
+  caption,
+}: {
+  label: string;
+  children: React.ReactNode;
+  caption: string;
+}) {
+  return (
+    <div className="flex min-w-0 flex-col bg-[#080808] p-5 sm:px-6">
+      <p className={cn(MICRO, "text-white/35")}>{label}</p>
+      <div className="mt-3 flex-1">{children}</div>
+      <p className="mt-3 font-mono text-2xs tracking-[0.06em] text-white/35">
+        {caption}
+      </p>
+    </div>
+  );
+}
+
+function UseCaseRow({ useCase, index }: { useCase: UseCase; index: number }) {
+  return (
+    <details className="group">
+      <summary className="grid cursor-pointer list-none grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-x-4 px-5 py-4 transition-colors marker:content-none hover:bg-white/[0.02] sm:grid-cols-[2.5rem_minmax(0,1fr)_5.5rem_6.5rem_7rem_7rem] sm:px-7 [&::-webkit-details-marker]:hidden">
+        <span
+          className={cn(SERIF, "text-2xl leading-none text-white/15")}
+          aria-hidden
+        >
+          {String(index + 1).padStart(2, "0")}
+        </span>
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-sm font-medium text-white">
+            {useCase.title}
+          </span>
+          <ChevronDown className="size-3.5 shrink-0 text-white/25 transition-transform group-open:rotate-180" />
+        </span>
+        <span className="hidden sm:block">
+          <LevelMeter level={useCase.fit} label="fit" />
+        </span>
+        <span className="hidden sm:block">
+          <LevelMeter level={useCase.complexity} label="cmplx" />
+        </span>
+        <span className="hidden text-right font-mono text-xs tabular-nums text-white/60 sm:block">
+          {useCase.estimatedMonthlyHoursSaved}
+        </span>
+        <span className="text-right font-mono text-xs tabular-nums text-white">
+          {useCase.estimatedMonthlySavingsUsd}
+        </span>
+      </summary>
+      <div className="grid gap-6 px-5 pb-5 pt-1 sm:grid-cols-2 sm:px-7 sm:pl-[4.25rem]">
+        <div>
+          <div className="mb-3 flex items-end gap-5 sm:hidden">
+            <LevelMeter level={useCase.fit} label="fit" />
+            <LevelMeter level={useCase.complexity} label="cmplx" />
+            <span className="font-mono text-xs text-white/60">
+              {useCase.estimatedMonthlyHoursSaved}
+            </span>
+          </div>
+          <p className="text-sm leading-6 text-white/55">
+            {useCase.workflow}
+          </p>
+          <p className="mt-2 text-sm leading-6 text-white/40">
+            {useCase.why}
+          </p>
+        </div>
+        <div>
+          <p className={cn(MICRO, "tracking-[0.16em] text-white/30")}>
+            First eval tasks
+          </p>
+          <ul className="mt-2.5 space-y-1.5">
+            {useCase.firstEvalTasks.map((task) => (
+              <li
+                key={task}
+                className="flex gap-2 text-sm leading-5 text-white/55"
+              >
+                <span className="font-mono text-white/25">·</span>
+                {task}
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+export function ReportDashboard({
+  report,
+}: {
+  report: AgentOpportunityReport;
+}) {
   const metrics = useMemo(() => deriveOpportunityMetrics(report), [report]);
-  const verdict = fitCopy[report.shouldBuildAgent];
+  const tone = fitTone[report.shouldBuildAgent];
+  const highFitCount = report.useCases.filter(
+    (useCase) => useCase.fit === "high",
+  ).length;
+  const highRiskCount = report.risks.filter(
+    (risk) => risk.severity === "high",
+  ).length;
+  const totalEvalCases =
+    report.evaluationPack.recommendedCases +
+    report.evaluationPack.adversarialCases;
 
   return (
-    <section className="mt-10 overflow-hidden rounded-lg border border-white/[0.08] bg-[#080808]">
-      <div className="border-b border-white/[0.08] p-5 sm:p-6">
-        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 flex-1">
-            <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.16em] text-white/40">
-              Agent opportunity report
-            </p>
-            <h2 className="mt-3 truncate text-2xl font-semibold tracking-tight text-white sm:text-3xl">
+    <section className="mt-10 border border-white/[0.08] bg-[#080808]">
+      <header className="border-b border-white/[0.08] px-5 py-5 sm:px-7">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <p className={cn(MICRO, "text-white/35")}>Agent opportunity report</p>
+          <p className="font-mono text-2xs tracking-[0.08em] text-white/25">
+            {reportHostname(report.analyzedUrl)}
+          </p>
+        </div>
+        <div className="mt-4 flex flex-wrap items-end justify-between gap-4">
+          <div className="min-w-0">
+            <h2
+              className={cn(
+                SERIF,
+                "text-3xl tracking-tight text-white sm:text-4xl",
+              )}
+            >
               {report.companyName}
             </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-white/55">
+            <p className="mt-2 line-clamp-2 max-w-[62ch] text-sm leading-6 text-white/50">
               {report.summary}
             </p>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+          </div>
+          <button
+            type="button"
+            onClick={() => window.print()}
+            className="inline-flex items-center gap-2 border border-white/[0.12] px-3 py-2 font-mono text-2xs uppercase tracking-[0.12em] text-white/60 transition-colors hover:border-white/30 hover:text-white print:hidden"
+          >
+            <Download className="size-3.5" />
+            Save report
+          </button>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-2 gap-px border-b border-white/[0.08] bg-white/[0.06] xl:grid-cols-4">
+        <StatCell
+          label="Agent fit"
+          caption={confidenceCopy[report.fitLevel].toLowerCase()}
+        >
+          <p className="font-mono text-[40px] leading-none tabular-nums text-white">
+            {report.agentFitScore}
+            <span className="ml-1 text-sm text-white/30">/100</span>
+          </p>
+          <ScaleBar value={report.agentFitScore} className="mt-3" />
+        </StatCell>
+
+        <StatCell
+          label="Verdict"
+          caption={`stage ${
+            VERDICT_ORDER.indexOf(report.shouldBuildAgent) + 1
+          } of 4`}
+        >
+          <p className="flex items-center gap-2 text-[22px] font-medium leading-none tracking-tight text-white sm:text-[26px]">
+            <span
+              className={cn("size-2 shrink-0 rounded-full", toneDot[tone])}
+              aria-hidden
+            />
+            {fitCopy[report.shouldBuildAgent]}
+          </p>
+          <div className="mt-4 flex gap-1" aria-hidden>
+            {VERDICT_ORDER.map((verdict) => (
               <span
-                className={
-                  fitTone[report.shouldBuildAgent] === "good"
-                    ? "rounded-sm border border-emerald-500/25 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-200"
-                    : fitTone[report.shouldBuildAgent] === "warn"
-                      ? "rounded-sm border border-amber-500/25 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-200"
-                      : fitTone[report.shouldBuildAgent] === "bad"
-                        ? "rounded-sm border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-200"
-                        : "rounded-sm border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-medium text-white/75"
-                }
-              >
-                {verdict}
-              </span>
-              <span className="text-xs text-white/40">
-                {confidenceCopy[report.fitLevel]}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex shrink-0 flex-col items-center gap-3 sm:flex-row lg:flex-col">
-            <FitScoreRing score={report.agentFitScore} />
-            <button
-              type="button"
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-2 rounded-md border border-white/[0.1] px-3 py-2 text-xs text-white/70 transition-colors hover:border-white/25 hover:text-white print:hidden"
-            >
-              <Download className="size-3.5" />
-              Save report
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-6 grid grid-cols-1 gap-px overflow-hidden rounded-md border border-white/[0.08] bg-white/[0.08] sm:grid-cols-2 xl:grid-cols-4">
-          <MetricTile
-            icon={Target}
-            label="Workflow fit"
-            value={
-              metrics.workflowFit >= 75
-                ? "Repeatable workflows found"
-                : metrics.workflowFit >= 45
-                  ? "Some repeatable work"
-                  : "Weak workflow signal"
-            }
-            hint="How clearly the site exposes agent-ready work."
-            score={metrics.workflowFit}
-            tone={toneFromScore(metrics.workflowFit)}
-          />
-          <MetricTile
-            icon={TrendingUp}
-            label="ROI signal"
-            value={
-              metrics.roiSignal >= 75
-                ? "Conservative upside"
-                : metrics.roiSignal >= 45
-                  ? "Limited upside"
-                  : "Hard to justify now"
-            }
-            hint="Blended fit score and workflow quality."
-            score={metrics.roiSignal}
-            tone={toneFromScore(metrics.roiSignal)}
-          />
-          <MetricTile
-            icon={ShieldCheck}
-            label="Risk profile"
-            value={
-              metrics.riskProfile >= 75
-                ? "Risks look manageable"
-                : metrics.riskProfile >= 45
-                  ? "Needs guardrails"
-                  : "High failure risk"
-            }
-            hint="Higher is safer. Based on severity of listed risks."
-            score={metrics.riskProfile}
-            tone={toneFromScore(metrics.riskProfile)}
-          />
-          <MetricTile
-            icon={FlaskConical}
-            label="Eval readiness"
-            value={
-              metrics.evalReadiness >= 75
-                ? "Ready to test"
-                : metrics.evalReadiness >= 45
-                  ? "Test before building"
-                  : "Do not ship yet"
-            }
-            hint="Whether AgentClash eval should come next."
-            score={metrics.evalReadiness}
-            tone={toneFromScore(metrics.evalReadiness)}
-          />
-        </div>
-      </div>
-
-      <div className="border-b border-white/[0.08] px-5 py-4 sm:px-6">
-        <ReportTabs active={tab} onChange={setTab} />
-      </div>
-
-      <div className="max-h-[min(70vh,720px)] overflow-y-auto p-5 sm:p-6">
-        {tab === "overview" ? (
-          <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div className="space-y-4">
-              <h3 className="text-sm font-medium text-white">Honest verdict</h3>
-              <p className="rounded-md border border-white/[0.08] bg-[#060606] p-4 text-sm leading-7 text-white/65">
-                {report.honestVerdict}
-              </p>
-              <div>
-                <h3 className="text-sm font-medium text-white">Next steps</h3>
-                <ul className="mt-3 space-y-2 text-sm leading-6 text-white/55">
-                  {report.nextSteps.map((step) => (
-                    <li key={step} className="flex gap-2">
-                      <span className="font-[family-name:var(--font-mono)] text-white/30">
-                        →
-                      </span>
-                      <span>{step}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-            <div>
-              <h3 className="text-sm font-medium text-white">Evidence limits</h3>
-              <ul className="mt-3 space-y-2 text-sm leading-6 text-white/45">
-                {report.evidenceLimitations.map((limit) => (
-                  <li key={limit}>{limit}</li>
-                ))}
-              </ul>
-              <p className="mt-5 font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.14em] text-white/30">
-                Analyzed {report.analyzedUrl}
-              </p>
-            </div>
-          </div>
-        ) : null}
-
-        {tab === "opportunities" ? (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Sparkles className="size-4 text-cyan-200" />
-              <h3 className="text-sm font-medium text-white">Best agent use cases</h3>
-            </div>
-            <div className="grid gap-3">
-              {report.useCases.map((useCase) => (
-                <UseCaseCard key={useCase.title} useCase={useCase} />
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        {tab === "risks" ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            {report.risks.map((risk) => (
-              <article
-                key={risk.risk}
-                className="rounded-md border border-white/[0.08] bg-[#060606] p-4"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-200" />
-                    <p className="text-sm font-medium text-white">{risk.risk}</p>
-                  </div>
-                  <span className="rounded-sm border border-white/[0.08] px-2 py-0.5 text-[10px] uppercase tracking-[0.12em] text-white/40">
-                    {risk.severity}
-                  </span>
-                </div>
-                <p className="mt-3 text-sm leading-6 text-white/50">{risk.mitigation}</p>
-              </article>
+                key={verdict}
+                className={cn(
+                  "h-[3px] flex-1",
+                  verdict === report.shouldBuildAgent
+                    ? "bg-white"
+                    : "bg-white/[0.08]",
+                )}
+              />
             ))}
           </div>
-        ) : null}
+        </StatCell>
 
-        {tab === "eval" ? (
-          <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
-            <div className="rounded-md border border-white/[0.08] bg-[#060606] p-5">
-              <div className="flex items-center gap-2">
-                <ShieldCheck className="size-4 text-emerald-200" />
-                <h3 className="text-sm font-medium text-white">AgentClash eval pack</h3>
-              </div>
-              <p className="mt-4 text-base font-medium text-white">
-                {report.evaluationPack.name}
-              </p>
-              <p className="mt-3 text-sm leading-6 text-white/55">
-                {report.evaluationPack.recommendedCases} realistic cases,{" "}
-                {report.evaluationPack.adversarialCases} adversarial cases.
-              </p>
-              <ul className="mt-4 space-y-2 text-sm leading-6 text-white/45">
-                {report.evaluationPack.successCriteria.map((criterion) => (
-                  <li key={criterion} className="flex gap-2">
-                    <span className="text-white/25">•</span>
-                    <span>{criterion}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="flex flex-col justify-between gap-4 rounded-md border border-white/[0.08] bg-white/[0.02] p-5">
-              <div>
-                <p className="text-sm font-medium text-white">
-                  Race agents on real cases before you ship
-                </p>
-                <p className="mt-2 text-sm leading-6 text-white/50">
-                  Turn this report into a challenge pack and compare models on the
-                  workflows that actually matter for {report.companyName}.
-                </p>
-              </div>
-              <a
-                href="/auth/login"
-                className="inline-flex w-fit items-center gap-2 rounded-md bg-white px-3 py-2 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
-              >
-                Create eval workspace
-                <ArrowRight className="size-4" />
-              </a>
-            </div>
+        <StatCell label="Use cases" caption={`${highFitCount} high fit`}>
+          <p className="font-mono text-[40px] leading-none tabular-nums text-white">
+            {report.useCases.length}
+          </p>
+          <div className="mt-3 flex gap-1.5" aria-hidden>
+            {report.useCases.map((useCase) => (
+              <span
+                key={useCase.title}
+                className={cn(
+                  "size-2 rounded-full",
+                  useCase.fit === "high"
+                    ? "bg-white"
+                    : useCase.fit === "medium"
+                      ? "bg-white/45"
+                      : "bg-white/15",
+                )}
+              />
+            ))}
           </div>
-        ) : null}
+        </StatCell>
+
+        <StatCell label="Risks" caption={`${highRiskCount} high severity`}>
+          <p className="font-mono text-[40px] leading-none tabular-nums text-white">
+            {report.risks.length}
+          </p>
+          <div className="mt-3 flex gap-1" aria-hidden>
+            {report.risks.map((risk) => (
+              <span
+                key={risk.risk}
+                className={cn(
+                  "h-2 w-5",
+                  risk.severity === "high"
+                    ? "bg-white"
+                    : risk.severity === "medium"
+                      ? "bg-white/45"
+                      : "bg-white/15",
+                )}
+              />
+            ))}
+          </div>
+        </StatCell>
+      </div>
+
+      <div className="grid gap-px border-b border-white/[0.08] bg-white/[0.06] lg:grid-cols-[0.9fr_1.1fr]">
+        <div className="bg-[#080808] p-5 sm:p-6">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className={cn(MICRO, "text-white/35")}>Dimension profile</p>
+            <p className="font-mono text-2xs tracking-[0.1em] text-white/25">
+              0–100
+            </p>
+          </div>
+          <DimensionRadar
+            metrics={metrics}
+            className="mx-auto mt-2 max-w-[340px]"
+          />
+        </div>
+        <div className="bg-[#080808] p-5 sm:p-6">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className={cn(MICRO, "text-white/35")}>Opportunity map</p>
+            <p className="font-mono text-2xs tracking-[0.1em] text-white/25">
+              fit × complexity
+            </p>
+          </div>
+          <OpportunityMap useCases={report.useCases} className="mt-4" />
+        </div>
+      </div>
+
+      <div className="border-b border-white/[0.08]">
+        <div className="flex items-baseline justify-between gap-3 px-5 pt-5 sm:px-7">
+          <p className={cn(MICRO, "text-white/35")}>Use cases</p>
+          <p className="hidden font-mono text-2xs tracking-[0.1em] text-white/25 sm:block">
+            hours · savings / month
+          </p>
+        </div>
+        <div className="mt-2 divide-y divide-white/[0.05]">
+          {report.useCases.map((useCase, index) => (
+            <UseCaseRow key={useCase.title} useCase={useCase} index={index} />
+          ))}
+        </div>
+      </div>
+
+      <div className="grid gap-px border-b border-white/[0.08] bg-white/[0.06] lg:grid-cols-2">
+        <div className="bg-[#080808] p-5 sm:p-6">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className={cn(MICRO, "text-white/35")}>Risk heatmap</p>
+            <p className="font-mono text-2xs tracking-[0.1em] text-white/25">
+              {highRiskCount} high · {report.risks.length} total
+            </p>
+          </div>
+          <RiskHeatmap risks={report.risks} className="mt-4" />
+        </div>
+
+        <div className="flex flex-col bg-[#080808] p-5 sm:p-6">
+          <div className="flex items-baseline justify-between gap-3">
+            <p className={cn(MICRO, "text-white/35")}>Eval plan</p>
+            <p className="font-mono text-2xs tracking-[0.1em] text-white/25">
+              {totalEvalCases} cases
+            </p>
+          </div>
+          <p className="mt-4 text-sm font-medium text-white">
+            {report.evaluationPack.name}
+          </p>
+          <div className="mt-3 flex h-3 w-full" aria-hidden>
+            <div
+              className="bg-white/85"
+              style={{
+                width: `${
+                  (report.evaluationPack.recommendedCases /
+                    Math.max(1, totalEvalCases)) *
+                  100
+                }%`,
+              }}
+            />
+            <div
+              className="flex-1"
+              style={{ backgroundImage: ADVERSARIAL_STRIPES }}
+            />
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 font-mono text-2xs tracking-[0.06em] text-white/40">
+            <span className="flex items-center gap-1.5">
+              <span className="size-2 bg-white/85" aria-hidden />
+              {report.evaluationPack.recommendedCases} realistic
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span
+                className="size-2"
+                style={{ backgroundImage: ADVERSARIAL_STRIPES }}
+                aria-hidden
+              />
+              {report.evaluationPack.adversarialCases} adversarial
+            </span>
+          </div>
+          <ul className="mt-4 space-y-1.5">
+            {report.evaluationPack.successCriteria.map((criterion) => (
+              <li
+                key={criterion}
+                className="flex gap-2 text-sm leading-5 text-white/55"
+              >
+                <span className="font-mono text-white/25">✓</span>
+                {criterion}
+              </li>
+            ))}
+          </ul>
+          <a
+            href="/auth/login"
+            className="mt-5 inline-flex w-fit items-center gap-2 bg-white px-3.5 py-2 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90 lg:mt-auto"
+          >
+            Create eval workspace
+            <ArrowRight className="size-4" />
+          </a>
+        </div>
+      </div>
+
+      <div className="grid gap-px bg-white/[0.06] lg:grid-cols-[1.1fr_0.9fr]">
+        <div className="bg-[#080808] p-5 sm:p-7">
+          <p className={cn(MICRO, "text-white/35")}>The verdict</p>
+          <p className="mt-3 text-base leading-7 text-white/70">
+            {report.honestVerdict}
+          </p>
+          <div className="mt-5 border-t border-white/[0.06] pt-3">
+            {report.evidenceLimitations.map((limit, index) => (
+              <p
+                key={limit}
+                className="mt-1 text-2xs leading-5 text-white/30"
+              >
+                <span className="font-mono">{index + 1}.</span> {limit}
+              </p>
+            ))}
+          </div>
+        </div>
+        <div className="bg-[#080808] p-5 sm:p-7">
+          <p className={cn(MICRO, "text-white/35")}>Next steps</p>
+          <ol className="mt-3 space-y-3">
+            {report.nextSteps.map((step, index) => (
+              <li key={step} className="flex gap-3">
+                <span
+                  className={cn(SERIF, "text-xl leading-6 text-white/15")}
+                  aria-hidden
+                >
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <span className="text-sm leading-6 text-white/60">{step}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
       </div>
     </section>
   );
@@ -378,11 +498,13 @@ function ReportDashboard({ report }: { report: AgentOpportunityReport }) {
 
 function LoadingPanel({ step }: { step: number }) {
   return (
-    <section className="mt-10 overflow-hidden rounded-lg border border-white/[0.08] bg-[#080808] p-6">
+    <section className="mt-10 border border-white/[0.08] bg-[#080808] p-6">
       <div className="flex items-center gap-3">
         <Loader2 className="size-5 animate-spin text-white/60" />
         <div>
-          <p className="text-sm font-medium text-white">Generating your report</p>
+          <p className="text-sm font-medium text-white">
+            Generating your report
+          </p>
           <p className="mt-1 text-xs text-white/45">
             This usually takes 20 to 60 seconds while we search the web.
           </p>
@@ -395,18 +517,34 @@ function LoadingPanel({ step }: { step: number }) {
           return (
             <li
               key={label}
-              className={
+              className={cn(
+                "flex items-center gap-3 text-sm",
                 done
-                  ? "flex items-center gap-3 text-sm text-emerald-200/80"
+                  ? "text-white/70"
                   : active
-                    ? "flex items-center gap-3 text-sm text-white"
-                    : "flex items-center gap-3 text-sm text-white/35"
-              }
+                    ? "text-white"
+                    : "text-white/30",
+              )}
             >
-              <span className="flex size-6 items-center justify-center rounded-full border border-white/10 font-[family-name:var(--font-mono)] text-[11px]">
+              <span
+                className={cn(
+                  "flex size-6 items-center justify-center border font-mono text-2xs",
+                  done
+                    ? "border-white/30 bg-white/10"
+                    : active
+                      ? "border-white/40"
+                      : "border-white/10",
+                )}
+              >
                 {done ? "✓" : index + 1}
               </span>
               {label}
+              {active ? (
+                <span
+                  className="size-1.5 animate-pulse rounded-full bg-white/70"
+                  aria-hidden
+                />
+              ) : null}
             </li>
           );
         })}
@@ -539,7 +677,7 @@ export function AgentOpportunityClient() {
     <>
       <section className="px-6 pt-14 sm:px-12 sm:pt-20">
         <div className="mx-auto max-w-[980px]">
-            <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.16em] text-white/40">
+            <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.16em] text-white/40">
               AI agent ROI calculator
             </p>
             <h1 className="mt-5 max-w-[16ch] text-[clamp(2.4rem,6vw,4.5rem)] font-sans font-semibold leading-[0.98] tracking-tight text-white">

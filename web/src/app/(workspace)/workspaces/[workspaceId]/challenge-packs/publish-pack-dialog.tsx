@@ -139,7 +139,7 @@ export function PublishPackDialog({ workspaceId }: PublishPackDialogProps) {
       <DialogContent
         className={
           isFullscreen
-            ? "max-w-[100vw] w-[100vw] h-[100vh] m-0 rounded-none p-6 flex flex-col sm:max-w-none data-closed:zoom-out-95 data-open:zoom-in-95 data-closed:fade-out-0 data-open:fade-in-0"
+            ? "max-w-[100vw] w-[100vw] h-dvh m-0 rounded-none p-6 flex flex-col sm:max-w-none data-closed:zoom-out-95 data-open:zoom-in-95 data-closed:fade-out-0 data-open:fade-in-0"
             : "sm:max-w-3xl flex flex-col max-h-[90vh]"
         }
       >
