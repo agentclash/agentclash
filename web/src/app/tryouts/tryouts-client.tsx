@@ -36,6 +36,7 @@ import { ApiError } from "@/lib/api/errors";
 import type {
   AgentHarnessKind,
   AgentTryout,
+  AgentTryoutModelPolicy,
   AgentTryoutTemplate,
   TryoutTimelineEvent,
 } from "@/lib/api/types";
@@ -74,15 +75,93 @@ type AgentOption = {
   hint: string;
 };
 
-const AGENT_OPTIONS: AgentOption[] = [
-  { value: "", label: "Auto", hint: "Hosted default agent" },
-  { value: "codex_e2b", label: "Codex", hint: "OpenAI Codex CLI" },
-  { value: "claude_e2b", label: "Claude", hint: "Anthropic Claude Code" },
-  { value: "openclaw_e2b", label: "OpenClaw", hint: "OpenRouter-routed" },
+type ModelOption = AgentOption & {
+  provider?: "openai" | "anthropic" | "openrouter";
+  model?: string;
+};
+
+const MODEL_OPTIONS: ModelOption[] = [
+  { value: "", label: "Auto", hint: "Hosted default agent and model" },
+  {
+    value: "codex_e2b",
+    label: "GPT-5",
+    hint: "OpenAI via Codex",
+    provider: "openai",
+    model: "gpt-5",
+  },
+  {
+    value: "codex_e2b",
+    label: "GPT-5 mini",
+    hint: "OpenAI via Codex",
+    provider: "openai",
+    model: "gpt-5-mini",
+  },
+  {
+    value: "claude_e2b",
+    label: "Claude Sonnet 4.5",
+    hint: "Anthropic via Claude Code",
+    provider: "anthropic",
+    model: "claude-sonnet-4-5",
+  },
+  {
+    value: "claude_e2b",
+    label: "Claude Opus 4.1",
+    hint: "Anthropic via Claude Code",
+    provider: "anthropic",
+    model: "claude-opus-4-1",
+  },
+  {
+    value: "openclaw_e2b",
+    label: "Gemini 2.5 Pro",
+    hint: "Google Gemini via OpenRouter",
+    provider: "openrouter",
+    model: "google/gemini-2.5-pro",
+  },
+  {
+    value: "openclaw_e2b",
+    label: "Gemini 2.5 Flash",
+    hint: "Google Gemini via OpenRouter",
+    provider: "openrouter",
+    model: "google/gemini-2.5-flash",
+  },
 ];
 
 function agentLabel(value: string): string {
-  return AGENT_OPTIONS.find((option) => option.value === value)?.label ?? "Auto";
+  switch (value) {
+    case "codex_e2b":
+      return "Codex";
+    case "claude_e2b":
+      return "Claude";
+    case "openclaw_e2b":
+      return "OpenClaw";
+    default:
+      return "Auto";
+  }
+}
+
+function modelOptionKey(option: ModelOption): string {
+  return option.model ? `${option.provider}:${option.model}` : "auto";
+}
+
+function modelPolicyFor(option: ModelOption): AgentTryoutModelPolicy | undefined {
+  if (!option.provider || !option.model) return undefined;
+  return {
+    mode: "explicit",
+    max_models: 1,
+    models: [{ provider: option.provider, model: option.model }],
+  };
+}
+
+function modelLabelFromPolicy(policy: unknown): string {
+  if (!policy || typeof policy !== "object") return "Auto";
+  const models = (policy as { models?: unknown }).models;
+  if (!Array.isArray(models) || models.length === 0) return "Auto";
+  const first = models[0] as { provider?: unknown; model?: unknown };
+  if (typeof first.model !== "string" || first.model.trim() === "") return "Auto";
+  const match = MODEL_OPTIONS.find(
+    (option) => option.provider === first.provider && option.model === first.model,
+  );
+  return match?.label ?? first.model;
 }
 
 const TASK_SUGGESTIONS: Record<string, string[]> = {
@@ -161,7 +240,7 @@ export function PublicTryoutsClient() {
 
   const [templates, setTemplates] = useState<AgentTryoutTemplate[]>([]);
   const [templateSlug, setTemplateSlug] = useState("");
-  const [agent, setAgent] = useState<"" | AgentHarnessKind>("");
+  const [selectedModelKey, setSelectedModelKey] = useState("auto");
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [launching, setLaunching] = useState(false);
@@ -300,6 +379,10 @@ export function PublicTryoutsClient() {
       setMessage(input.error);
       return;
     }
+    const selectedModel =
+      MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey) ??
+      MODEL_OPTIONS[0];
+    const selectedPolicy = modelPolicyFor(selectedModel);
 
     setLaunching(true);
     setMessage(null);
@@ -308,7 +391,8 @@ export function PublicTryoutsClient() {
       const nextTryout = await createAnonymousAgentTryout(api, {
         template_slug: template.slug,
         input: input.value,
-        ...(agent ? { selected_harness_kind: agent } : {}),
+        ...(selectedModel.value ? { selected_harness_kind: selectedModel.value } : {}),
+        ...(selectedPolicy ? { selected_model_policy: selectedPolicy } : {}),
       });
       setTryout(nextTryout);
       setEvents([]);
@@ -402,8 +486,8 @@ export function PublicTryoutsClient() {
           templates={templates}
           templateSlug={templateSlug}
           setTemplateSlug={setTemplateSlug}
-          agent={agent}
-          setAgent={setAgent}
+          selectedModelKey={selectedModelKey}
+          setSelectedModelKey={setSelectedModelKey}
           primaryField={primaryField}
           secondaryFields={secondaryFields}
           fieldValues={fieldValues}
@@ -427,8 +511,8 @@ function TryoutWelcome({
   templates,
   templateSlug,
   setTemplateSlug,
-  agent,
-  setAgent,
+  selectedModelKey,
+  setSelectedModelKey,
   primaryField,
   secondaryFields,
   fieldValues,
@@ -446,8 +530,8 @@ function TryoutWelcome({
   templates: AgentTryoutTemplate[];
   templateSlug: string;
   setTemplateSlug: (value: string) => void;
-  agent: "" | AgentHarnessKind;
-  setAgent: (value: "" | AgentHarnessKind) => void;
+  selectedModelKey: string;
+  setSelectedModelKey: (value: string) => void;
   primaryField: [string, FieldSpec] | null;
   secondaryFields: [string, FieldSpec][];
   fieldValues: Record<string, string>;
@@ -496,10 +580,10 @@ function TryoutWelcome({
               />
               <AnimatedPillSelect
                 icon={<Gauge className="size-3.5" />}
-                value={agent}
-                onChange={(value) => setAgent(value as "" | AgentHarnessKind)}
-                options={AGENT_OPTIONS.map((option) => ({
-                  value: option.value,
+                value={selectedModelKey}
+                onChange={setSelectedModelKey}
+                options={MODEL_OPTIONS.map((option) => ({
+                  value: modelOptionKey(option),
                   label: option.label,
                 }))}
               />
@@ -538,7 +622,10 @@ function TryoutWelcome({
 
         {template ? (
           <p className="mt-3 text-center text-xs text-white/40">
-            {template.description} · {agentLabel(agent)} · cap{" "}
+            {template.description} ·{" "}
+            {MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey)?.hint ??
+              "Hosted default agent and model"}{" "}
+            · cap{" "}
             {`$${template.max_cost_usd.toFixed(2)}`}
           </p>
         ) : null}
@@ -692,9 +779,10 @@ function TryoutSidebar({
   loginHref: string;
   compact?: boolean;
 }) {
+  const modelRan = modelLabelFromPolicy(tryout.selected_model_policy);
   const agentRan = tryout.selected_harness_kind
-    ? agentLabel(tryout.selected_harness_kind)
-    : "Auto";
+    ? `${modelRan} · ${agentLabel(tryout.selected_harness_kind)}`
+    : modelRan;
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", compact ? "pt-2" : "p-4")}>
@@ -905,7 +993,7 @@ function TryoutChatThread({
 
           {active && events.length === 0 ? <ThinkingIndicator label="Starting" /> : null}
 
-          {active && timeline.length > 0 && timeline[timeline.length - 1]?.kind === "agent" ? (
+          {active && outputs.length === 0 && timeline.length > 0 && timeline[timeline.length - 1]?.kind === "agent" ? (
             <ThinkingIndicator />
           ) : null}
 
@@ -937,7 +1025,9 @@ function TryoutChatThread({
             <>
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-xs text-white/40">
-                  Reply to steer the agent, or let it finish on its own.
+                  {outputs.length > 0
+                    ? "Outputs are ready. Reply to request edits, or end the session to finalize scoring."
+                    : "Reply to steer the agent, or let it finish on its own."}
                 </p>
                 <button
                   type="button"
@@ -1623,7 +1713,7 @@ function tryoutOutputs(summary: unknown): TryoutOutputPreview[] {
   const outputs = (summary as { outputs?: unknown }).outputs;
   if (!Array.isArray(outputs)) return [];
   return outputs
-    .map((item) => {
+    .map((item): TryoutOutputPreview | null => {
       if (!item || typeof item !== "object") return null;
       const output = item as Partial<TryoutOutputPreview>;
       if (typeof output.preview !== "string" || output.preview.trim() === "") {
@@ -1636,6 +1726,14 @@ function tryoutOutputs(summary: unknown): TryoutOutputPreview[] {
           typeof output.relative_path === "string" ? output.relative_path : "",
         preview: output.preview,
         truncated: output.truncated === true,
+        encoding:
+          output.encoding === "base64" || output.encoding === "utf-8"
+            ? output.encoding
+            : undefined,
+        content_type:
+          typeof output.content_type === "string" ? output.content_type : undefined,
+        size_bytes:
+          typeof output.size_bytes === "number" ? output.size_bytes : undefined,
       };
     })
     .filter((item): item is TryoutOutputPreview => item !== null);

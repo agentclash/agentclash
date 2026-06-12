@@ -2764,6 +2764,7 @@ export interface CreateAgentTryoutInput {
   template_slug: string;
   input: Record<string, unknown>;
   selected_harness_kind?: AgentHarnessKind;
+  selected_model_policy?: AgentTryoutModelPolicy;
 }
 
 export interface RerunAgentTryoutInput {

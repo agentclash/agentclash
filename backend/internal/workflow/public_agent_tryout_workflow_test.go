@@ -70,8 +70,8 @@ func TestPublicTurnCommandResumesSessionAfterFirstTurn(t *testing.T) {
 	join := func(parts []string) string { return strings.Join(parts, " ") }
 
 	// Codex: opening turn vs resume.
-	first, _ := publicTurnCommand(domain.AgentHarnessKindCodexE2B, "/workspace", "hi", true)
-	resume, _ := publicTurnCommand(domain.AgentHarnessKindCodexE2B, "/workspace", "next", false)
+	first, _ := publicTurnCommand(domain.AgentHarnessKindCodexE2B, "/workspace", "hi", true, "")
+	resume, _ := publicTurnCommand(domain.AgentHarnessKindCodexE2B, "/workspace", "next", false, "")
 	if strings.Contains(join(first), "resume") {
 		t.Fatalf("codex opening turn should not resume: %v", first)
 	}
@@ -80,8 +80,8 @@ func TestPublicTurnCommandResumesSessionAfterFirstTurn(t *testing.T) {
 	}
 
 	// Claude: --continue only on follow-ups.
-	cFirst, _ := publicTurnCommand(domain.AgentHarnessKindClaudeE2B, "/workspace", "hi", true)
-	cResume, _ := publicTurnCommand(domain.AgentHarnessKindClaudeE2B, "/workspace", "next", false)
+	cFirst, _ := publicTurnCommand(domain.AgentHarnessKindClaudeE2B, "/workspace", "hi", true, "")
+	cResume, _ := publicTurnCommand(domain.AgentHarnessKindClaudeE2B, "/workspace", "next", false, "")
 	if strings.Contains(join(cFirst), "--continue") {
 		t.Fatalf("claude opening turn should not continue: %v", cFirst)
 	}
@@ -90,13 +90,60 @@ func TestPublicTurnCommandResumesSessionAfterFirstTurn(t *testing.T) {
 	}
 
 	// OpenClaw: same session id across turns.
-	oFirst, _ := publicTurnCommand(domain.AgentHarnessKindOpenClawE2B, "/workspace", "hi", true)
-	oResume, _ := publicTurnCommand(domain.AgentHarnessKindOpenClawE2B, "/workspace", "next", false)
+	oFirst, _ := publicTurnCommand(domain.AgentHarnessKindOpenClawE2B, "/workspace", "hi", true, "")
+	oResume, _ := publicTurnCommand(domain.AgentHarnessKindOpenClawE2B, "/workspace", "next", false, "")
 	if !strings.Contains(join(oFirst), "session-id agentclash-tryout") || !strings.Contains(join(oResume), "session-id agentclash-tryout") {
 		t.Fatalf("openclaw turns must reuse session id: %v / %v", oFirst, oResume)
 	}
 	if !strings.Contains(join(oFirst), "onboard") || strings.Contains(join(oResume), "onboard") {
 		t.Fatalf("openclaw onboard should run only on opening turn: %v / %v", oFirst, oResume)
+	}
+}
+
+func TestPublicTurnCommandAppliesSelectedModel(t *testing.T) {
+	codex, _ := publicTurnCommand(domain.AgentHarnessKindCodexE2B, "/workspace", "hi", true, "gpt-5")
+	if !strings.Contains(strings.Join(codex, " "), "--model gpt-5") {
+		t.Fatalf("codex command missing selected model: %v", codex)
+	}
+
+	claude, _ := publicTurnCommand(domain.AgentHarnessKindClaudeE2B, "/workspace", "hi", true, "claude-sonnet-4-5")
+	if !strings.Contains(strings.Join(claude, " "), "--model claude-sonnet-4-5") {
+		t.Fatalf("claude command missing selected model: %v", claude)
+	}
+
+	openclaw, _ := publicTurnCommand(domain.AgentHarnessKindOpenClawE2B, "/workspace", "hi", true, "google/gemini-2.5-pro")
+	if !strings.Contains(strings.Join(openclaw, " "), "AGENTCLASH_SELECTED_MODEL") ||
+		!strings.Contains(strings.Join(openclaw, " "), "--model") {
+		t.Fatalf("openclaw command missing selected model routing: %v", openclaw)
+	}
+}
+
+func TestPublicTryoutRunningSummaryExposesOutputsWhileActive(t *testing.T) {
+	summary := publicTryoutRunningSummary(
+		[]map[string]any{{
+			"key":           "presentation",
+			"type":          "pptx",
+			"relative_path": "deck.pptx",
+			"preview":       "UEsDB",
+			"encoding":      "base64",
+		}},
+		domain.AgentHarnessKindCodexE2B,
+		"gpt-5",
+	)
+
+	var decoded map[string]any
+	if err := json.Unmarshal(summary, &decoded); err != nil {
+		t.Fatalf("unmarshal summary: %v", err)
+	}
+	if decoded["code"] != "outputs_ready" {
+		t.Fatalf("code = %v, want outputs_ready", decoded["code"])
+	}
+	if decoded["selected_model"] != "gpt-5" {
+		t.Fatalf("selected_model = %v, want gpt-5", decoded["selected_model"])
+	}
+	outputs, ok := decoded["outputs"].([]any)
+	if !ok || len(outputs) != 1 {
+		t.Fatalf("outputs = %#v, want one output", decoded["outputs"])
 	}
 }
 
