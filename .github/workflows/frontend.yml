@@ -59,7 +59,7 @@ jobs:
           path: web/.next/cache
           # New cache when packages or source change; restore-keys lets a source-only
           # change fall back to the most recent cache for the same lockfile.
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('web/package-lock.json') }}-${{ hashFiles('web/src/**/*.{js,jsx,ts,tsx}') }}
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('web/package-lock.json') }}-${{ hashFiles('web/src/**/*.{js,jsx,ts,tsx}', 'web/*.config.{js,ts,mjs,cjs}') }}
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('web/package-lock.json') }}-
 
