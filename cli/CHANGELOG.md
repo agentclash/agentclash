@@ -9,18 +9,12 @@
 
 ### Features
 
-* **cli:** --limit/--offset pagination for run/workspace/org/dataset list ([c741b20](https://github.com/agentclash/agentclash/commit/c741b203abbb64486ee185e8afab8ec36083d5f3))
 * **cli:** --limit/--offset pagination for run/workspace/org/dataset list ([3df1386](https://github.com/agentclash/agentclash/commit/3df1386187b1bf5420a2bd6adf37cfa5dc19ad01))
-* **cli:** global --query/--jq field selection over structured output ([f766a91](https://github.com/agentclash/agentclash/commit/f766a9151350feb0f61664cc8a45dafa214a1dec))
 * **cli:** global --query/--jq field selection over structured output ([574926e](https://github.com/agentclash/agentclash/commit/574926e7ac129e7cffb82256327c73968e5231ad))
 * **cli:** headless auth determinism — fail fast, no-token short-circuit, clean auth status --json ([c4a0c3e](https://github.com/agentclash/agentclash/commit/c4a0c3e914c26c86ff03aedf9a17d0ab7ee3a28e))
-* **cli:** headless auth determinism (fail-fast login, no-token short-circuit, clean auth status --json) ([4467c91](https://github.com/agentclash/agentclash/commit/4467c91937454af34db4734216a08152857a5c12))
 * **cli:** retryable error contract (Retry-After/429 backoff) + failure-class exit codes ([ed87f71](https://github.com/agentclash/agentclash/commit/ed87f7192b250ecc24a0ece0bb2bb7daa7ed9a6c))
-* **cli:** schema v2 — positional args, flag enums, error/status registries, subtree lookup ([50eff62](https://github.com/agentclash/agentclash/commit/50eff62d7d5105519e38b6912bf8cc67f48936c6))
 * **cli:** schema v2 — positional args, flag enums, error/status registries, subtree lookup ([b381766](https://github.com/agentclash/agentclash/commit/b381766e06c01ce1ac47ec63bbf7b073279413a3))
-* **cli:** structured output for security commands + actionable error envelopes ([873234e](https://github.com/agentclash/agentclash/commit/873234eb6cd75036033ff3232ec45c6a4dcc0499))
 * **cli:** structured output for security commands + actionable error envelopes ([f53e619](https://github.com/agentclash/agentclash/commit/f53e6194a31e665b5479feac45b3ad86594f1d58))
-* limit/offset pagination for agent-deployments and artifacts lists ([09934d7](https://github.com/agentclash/agentclash/commit/09934d79e52fa0a67608628928e7f1486d0202a6))
 * limit/offset pagination for agent-deployments and artifacts lists ([9fceba5](https://github.com/agentclash/agentclash/commit/9fceba5b8d97365dc266de1e9bdfa7636a7ab004))
 
 
@@ -30,20 +24,16 @@
 * **cli:** chain any prior global normalization func under the --jq alias ([21aded5](https://github.com/agentclash/agentclash/commit/21aded5c1c9211c15abb62890723248d6dbbc935))
 * **cli:** check Close on the single-prompt --out write too ([758f345](https://github.com/agentclash/agentclash/commit/758f34557adc8d9a8a6649f0fd4a44490231be31))
 * **cli:** claim report_path only after a checked Close ([415ba91](https://github.com/agentclash/agentclash/commit/415ba918f4d144421e9c85f3a12cdf2677cc1d39))
-* **cli:** config get honors --json; unset key is data, unknown key is an error ([4a27a9a](https://github.com/agentclash/agentclash/commit/4a27a9a018579d01c1ff8e1d903423b5bd22c8b0))
 * **cli:** config get honors --json; unset key is data, unknown key is an error ([9b86adc](https://github.com/agentclash/agentclash/commit/9b86adc08379cf96c0778b4dae7d8399a503629c))
 * **cli:** fail fast on any headless device-flow path + exact-match public auth endpoints ([1dd551f](https://github.com/agentclash/agentclash/commit/1dd551f1d102665397e4c46c1679c6da9d43433f))
-* **cli:** make --follow loops terminate + resumable SSE event streams ([13971c3](https://github.com/agentclash/agentclash/commit/13971c34ba82cb3d4f4cde087b07d74e04f00801))
 * **cli:** make --follow loops terminate + resumable SSE event streams ([daf192f](https://github.com/agentclash/agentclash/commit/daf192f67bce77b322855ebe8e6ed861d3bc4746))
 * **cli:** pagination polish — hint carries --limit, items never null, clearer message ([dc3b7d9](https://github.com/agentclash/agentclash/commit/dc3b7d9049571e6b80a76085ecb435ea6670f8ba))
 * **cli:** preserve integers &gt;2^53 in --query projection (UseNumber) ([d51b4f6](https://github.com/agentclash/agentclash/commit/d51b4f6da7d1274c4ab87c2006772cc9f951b552))
 * **cli:** print reconnect notice before backoff; omit --since hint when empty ([0168143](https://github.com/agentclash/agentclash/commit/0168143d6b86daaddd12971a1ce40af291c01b8f))
 * **cli:** schema registries — error_codes retryable lie + missing eval-start scope enum ([0c0db01](https://github.com/agentclash/agentclash/commit/0c0db018a4bdd94b496fcbcb489bd1c0038cf9b5))
-* **cli:** security agent-vault-stress honors --json (WI-5 remainder) ([1a11ae7](https://github.com/agentclash/agentclash/commit/1a11ae7c160f1f601b95fb4ad42df63098dc59c5))
 * **cli:** security agent-vault-stress honors --json (WI-5 remainder) ([f162065](https://github.com/agentclash/agentclash/commit/f1620658c28ab249e3f42efc68df3e0c5e76a2ca))
 * **cli:** validate config key before loading the file + yaml null coverage ([6e03868](https://github.com/agentclash/agentclash/commit/6e038686ca10fc314b875fe290a20b73c6864ca2))
 * **cli:** wait-for-reset next_step hint for usage limits without an upgrade path ([632a012](https://github.com/agentclash/agentclash/commit/632a0120699058b3fda8ce0184002a63a2c2236b))
-* **skills:** correct agentclash-dataset-workflows command/flag drift ([5e56e82](https://github.com/agentclash/agentclash/commit/5e56e8269425ea9c41b63e574ba2e423bd26834b))
 * **skills:** correct agentclash-dataset-workflows command/flag drift ([d8d10d5](https://github.com/agentclash/agentclash/commit/d8d10d592435c4d6a52a69faffd7a38a9bfed1b9))
 * **skills:** drop non-existent --version flag from `dataset example list` ([b9c24a2](https://github.com/agentclash/agentclash/commit/b9c24a2f5d46c5a5ab3586771d00b5dafe683e0d))
 
