@@ -16,7 +16,7 @@ export default function PublicTryoutsPage() {
   return (
     <Suspense
       fallback={
-        <main className="min-h-screen bg-black text-white">
+        <main className="min-h-screen bg-[#131312] text-white">
           <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-4">
             <div className="flex items-center gap-1">
               {[0, 1, 2].map((index) => (
