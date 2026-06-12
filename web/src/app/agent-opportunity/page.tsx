@@ -1,42 +1,54 @@
 import type { Metadata } from "next";
-import { JsonLd, breadcrumbSchema } from "@/components/marketing/json-ld";
+import {
+  JsonLd,
+  breadcrumbSchema,
+  faqSchema,
+  productSchema,
+  SITE_URL,
+} from "@/components/marketing/json-ld";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
 import { ogImageUrl } from "@/lib/seo";
 import { AgentOpportunityClient } from "./agent-opportunity-client";
+import {
+  AGENT_OPPORTUNITY_DESCRIPTION,
+  AGENT_OPPORTUNITY_FAQ,
+  AGENT_OPPORTUNITY_KEYWORDS,
+  AGENT_OPPORTUNITY_PATH,
+  AGENT_OPPORTUNITY_TITLE,
+} from "./agent-opportunity-seo";
 
-const PAGE_PATH = "/agent-opportunity";
-const PAGE_TITLE = "AI Agent Opportunity Report | AgentClash";
-const PAGE_DESCRIPTION =
-  "Enter a company URL and get an honest AI agent opportunity report with ROI ranges, risks, and an AgentClash evaluation pack.";
+const SOCIAL_IMAGE = ogImageUrl({
+  title: "AI agent ROI calculator",
+  subtitle: "Build vs buy assessment from a company URL",
+  kind: "Report",
+});
 
 export const metadata: Metadata = {
-  title: PAGE_TITLE,
-  description: PAGE_DESCRIPTION,
-  alternates: { canonical: PAGE_PATH },
+  title: AGENT_OPPORTUNITY_TITLE,
+  description: AGENT_OPPORTUNITY_DESCRIPTION,
+  keywords: [...AGENT_OPPORTUNITY_KEYWORDS],
+  alternates: { canonical: AGENT_OPPORTUNITY_PATH },
   openGraph: {
-    title: PAGE_TITLE,
-    description: PAGE_DESCRIPTION,
-    url: PAGE_PATH,
+    title: AGENT_OPPORTUNITY_TITLE,
+    description: AGENT_OPPORTUNITY_DESCRIPTION,
+    url: AGENT_OPPORTUNITY_PATH,
     type: "website",
     locale: "en_US",
     siteName: "AgentClash",
     images: [
       {
-        url: ogImageUrl({
-          title: "Should your company have an AI agent?",
-          subtitle: "ROI, risk, and eval plan from a URL",
-          kind: "Report",
-        }),
+        url: SOCIAL_IMAGE,
         width: 1200,
         height: 630,
-        alt: PAGE_TITLE,
+        alt: AGENT_OPPORTUNITY_TITLE,
       },
     ],
   },
   twitter: {
     card: "summary_large_image",
-    title: PAGE_TITLE,
-    description: PAGE_DESCRIPTION,
+    title: AGENT_OPPORTUNITY_TITLE,
+    description: AGENT_OPPORTUNITY_DESCRIPTION,
+    images: [{ url: SOCIAL_IMAGE, alt: AGENT_OPPORTUNITY_TITLE }],
   },
 };
 
@@ -44,12 +56,29 @@ export default function AgentOpportunityPage() {
   return (
     <MarketingShell>
       <JsonLd
-        id="agent-opportunity-breadcrumb-schema"
+        id="agent-opportunity-schema"
         data={[
           breadcrumbSchema([
             { name: "Home", url: "/" },
-            { name: "AI Agent Opportunity Report", url: PAGE_PATH },
+            {
+              name: "AI Agent ROI Calculator",
+              url: AGENT_OPPORTUNITY_PATH,
+            },
           ]),
+          faqSchema([...AGENT_OPPORTUNITY_FAQ]),
+          productSchema({
+            name: "AgentClash AI Agent Opportunity Scanner",
+            description: AGENT_OPPORTUNITY_DESCRIPTION,
+            url: `${SITE_URL}${AGENT_OPPORTUNITY_PATH}`,
+            applicationSubCategory: "AI agent evaluation",
+            featureList: [
+              "AI agent ROI ranges from a company URL",
+              "Build vs buy AI agent guidance",
+              "Agentic AI use case scoring",
+              "Risk and eval readiness scorecard",
+              "AgentClash evaluation pack recommendations",
+            ],
+          }),
         ]}
       />
       <AgentOpportunityClient />
