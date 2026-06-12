@@ -592,26 +592,106 @@ func publicTryoutTaskPrompt(tryout repository.AgentTryout) string {
 	if description == "" {
 		description = "Complete the requested office-work task."
 	}
-	lines := []string{
-		"You are running a public AgentClash tryout.",
-		"Task: " + name + " (" + tryout.TemplateSlug + ")",
-		"Goal: " + description,
-		"Use the sandbox to produce concise, inspectable office-work outputs for the user.",
-		"Do not reveal secrets or environment variables.",
-		"User input JSON:",
-		"```json",
-		string(tryout.InputSnapshot),
-		"```",
-	}
+	lines := renderAgentTryoutTaskPromptLines(name, tryout.TemplateSlug, description, template.Runtime, tryout.InputSnapshot)
 	lines = append(lines, publicTryoutEvalSetupPrompt(tryout.InputSnapshot)...)
 	lines = append(lines, publicTryoutInputAttachmentsPrompt(tryout.InputSnapshot)...)
+	return strings.Join(lines, "\n")
+}
+
+// renderAgentTryoutTaskPromptLines builds the strong, structured task prompt
+// shared (by intent) by the public and workspace tryout paths. It foregrounds
+// the template's own instructions, enumerates the exact deliverable files the
+// agent must write (parsed from runtime.expected_artifacts), names the
+// pre-installed toolchain, and sets an explicit quality bar — so the agent
+// produces real, openable office files instead of stopping at a markdown
+// outline. Returns lines (not a joined string) so callers can append
+// path-specific sections before joining.
+//
+// NOTE: api/agent_tryouts.go intentionally keeps a structurally identical
+// agentTryoutRuntimeInstructions / expectedArtifactsFromRuntime / prompt builder.
+// The two packages do not import one another for layering reasons; keep them in
+// sync when the runtime blob schema changes.
+func renderAgentTryoutTaskPromptLines(name, slug, description string, runtime, input json.RawMessage) []string {
+	instructions := strings.TrimSpace(agentTryoutRuntimeInstructions(runtime))
+	specs := expectedArtifactsFromRuntime(runtime)
+
+	lines := []string{
+		"You are an expert AI agent completing a real office-work task inside a sandboxed Linux workspace at /workspace.",
+		"The user is judging the QUALITY of the files you deliver, so produce polished, professional, ready-to-use output — never a draft, outline, or plan-only response.",
+		"",
+		"TASK: " + name + " (" + slug + ")",
+		"GOAL: " + description,
+	}
+	if instructions != "" {
+		lines = append(lines, "", "INSTRUCTIONS:", instructions)
+	}
+	if len(specs) > 0 {
+		lines = append(lines, "", "DELIVERABLES — create these exact files in /workspace (every one must exist and be non-empty when you finish):")
+		for _, spec := range specs {
+			path := strings.TrimSpace(spec.Path)
+			if path == "" {
+				continue
+			}
+			detail := fmt.Sprintf("- %s (%s)", path, strings.TrimSpace(spec.Type))
+			if key := strings.TrimSpace(spec.Key); key != "" {
+				detail += " — " + key
+			}
+			lines = append(lines, detail)
+		}
+	}
 	lines = append(lines,
-		"Runtime instructions JSON:",
+		"",
+		"TOOLCHAIN (pre-installed; no network access — do not attempt installs or downloads):",
+		"- Python 3 with: python-pptx, python-docx, openpyxl, xlsxwriter, pandas, numpy, matplotlib, seaborn, plotly+kaleido, reportlab, fpdf2, weasyprint, pypdf, pdfplumber, Pillow, Jinja2, markdown.",
+		"- CLI tools: pandoc, LibreOffice (soffice), poppler-utils, graphviz, sqlite3.",
+		"- Generate real binary files with these libraries. To convert a .pptx/.docx to PDF: soffice --headless --convert-to pdf <file>. To embed a chart, render it with matplotlib/seaborn to a PNG under assets/ and place it in the document.",
+		"",
+		"QUALITY BAR:",
+		"- Use real content derived from the user's input below — no lorem ipsum or [placeholder] text.",
+		"- Slide decks: a title slide, well-structured content slides, at least one real chart or diagram, and speaker notes. Keep a consistent visual style.",
+		"- Spreadsheets: clean headers, correct derived columns/formulas, and a short written summary of insights.",
+		"- Documents/reports: clear structure, headings, and a scannable layout.",
+		"- Any JSON deliverable must be valid JSON with the fields named in the instructions.",
+		"- Before finishing, verify each file: re-read JSON you wrote, and check that binary files are non-trivial in size.",
+		"",
+		"When you are done, end your final message with a short \"Deliverables\" summary that lists each file you created and one line on what it contains.",
+		"Do not reveal secrets, API keys, or environment variables.",
+		"",
+		"USER INPUT:",
 		"```json",
-		string(template.Runtime),
+		strings.TrimSpace(string(input)),
 		"```",
 	)
-	return strings.Join(lines, "\n")
+	return lines
+}
+
+// agentTryoutRuntimeInstructions extracts the free-text "instructions" directive
+// from a template runtime blob, if present.
+func agentTryoutRuntimeInstructions(runtime json.RawMessage) string {
+	if len(runtime) == 0 {
+		return ""
+	}
+	var parsed struct {
+		Instructions string `json:"instructions"`
+	}
+	_ = json.Unmarshal(runtime, &parsed)
+	return parsed.Instructions
+}
+
+// expectedArtifactsFromRuntime parses runtime.expected_artifacts directly from a
+// template runtime blob (as opposed to expectedArtifactsFromExecutionConfig,
+// which reads the nested execution-config snapshot).
+func expectedArtifactsFromRuntime(runtime json.RawMessage) []capturedArtifactSpec {
+	if len(runtime) == 0 {
+		return nil
+	}
+	var parsed struct {
+		ExpectedArtifacts []capturedArtifactSpec `json:"expected_artifacts"`
+	}
+	if err := json.Unmarshal(runtime, &parsed); err != nil {
+		return nil
+	}
+	return parsed.ExpectedArtifacts
 }
 
 func publicTryoutEvalSetupPrompt(input json.RawMessage) []string {
