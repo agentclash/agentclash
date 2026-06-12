@@ -55,6 +55,47 @@ func TestAgentTryoutManagerCreateAnonymousPersistsGuardrailSnapshots(t *testing.
 	}
 }
 
+func TestAgentTryoutManagerCreateAnonymousPersistsSelectedModelPolicy(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "slide-deck",
+		Input:                json.RawMessage(`{"brief":"make a launch deck"}`),
+		SelectedHarnessKind:  "claude_e2b",
+		SelectedModelPolicy:  json.RawMessage(`{"mode":"explicit","max_models":1,"models":[{"provider":"anthropic","model":"claude-sonnet-4-5"}]}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if err != nil {
+		t.Fatalf("CreateAnonymousTryout returned error: %v", err)
+	}
+	if tryout.SelectedHarnessKind == nil || *tryout.SelectedHarnessKind != "claude_e2b" {
+		t.Fatalf("selected harness = %v, want claude_e2b", tryout.SelectedHarnessKind)
+	}
+	if !bytes.Contains(tryout.SelectedModelPolicy, []byte(`"provider":"anthropic"`)) ||
+		!bytes.Contains(tryout.SelectedModelPolicy, []byte(`"model":"claude-sonnet-4-5"`)) {
+		t.Fatalf("selected model policy = %s", tryout.SelectedModelPolicy)
+	}
+}
+
+func TestAgentTryoutManagerRejectsPublicModelHarnessMismatch(t *testing.T) {
+	ctx := context.Background()
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	_, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
+		TemplateSlug:         "slide-deck",
+		Input:                json.RawMessage(`{"brief":"make a launch deck"}`),
+		SelectedHarnessKind:  "claude_e2b",
+		SelectedModelPolicy:  json.RawMessage(`{"mode":"explicit","models":[{"provider":"openai","model":"gpt-5"}]}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if !errors.Is(err, ErrAgentTryoutModelUnavailable) {
+		t.Fatalf("CreateAnonymousTryout error = %v, want ErrAgentTryoutModelUnavailable", err)
+	}
+}
+
 func TestAgentTryoutManagerRejectsAnonymousWhenTemplateDisabled(t *testing.T) {
 	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
@@ -1104,6 +1145,7 @@ func (r *fakeAgentTryoutRepository) CreateAgentTryout(_ context.Context, params 
 		ToolPolicySnapshot:       params.ToolPolicySnapshot,
 		EvaluationSpecSnapshot:   params.EvaluationSpecSnapshot,
 		SelectedModelPolicy:      params.SelectedModelPolicy,
+		SelectedHarnessKind:      params.SelectedHarnessKind,
 		Summary:                  params.Summary,
 		RedactionStatus:          params.RedactionStatus,
 		RunID:                    params.RunID,

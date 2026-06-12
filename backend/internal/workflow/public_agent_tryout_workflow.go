@@ -129,6 +129,10 @@ func (a *Activities) executePublicTryoutSandbox(ctx context.Context, tryout repo
 
 	harness := publicTryoutHarnessSnapshot(config, tryout, harnessKind, credentialRef)
 	env := publicTryoutRunnerEnv(harnessKind, harness, credential)
+	selectedModel := publicTryoutSelectedModel(tryout.SelectedModelPolicy)
+	if selectedModel != "" {
+		env["AGENTCLASH_SELECTED_MODEL"] = selectedModel
+	}
 
 	sessionCap := publicTryoutSessionCap
 
@@ -167,6 +171,11 @@ func (a *Activities) executePublicTryoutSandbox(ctx context.Context, tryout repo
 		return nil, err
 	}
 	outputs = a.publicTryoutOutputPreviews(ctx, tryout.ID, session, harness.ExecutionConfig)
+	if len(outputs) > 0 {
+		if err := a.updatePublicTryoutOutputSnapshot(ctx, tryout, outputs, harnessKind, selectedModel); err != nil {
+			return nil, err
+		}
+	}
 
 	// Conversational turns: drain user messages until end / idle / cap.
 	lastActivity := time.Now()
@@ -197,6 +206,11 @@ func (a *Activities) executePublicTryoutSandbox(ctx context.Context, tryout repo
 		}
 		_ = a.publicTryoutRepo.MarkAgentTryoutTurnProcessed(ctx, turn.ID)
 		outputs = a.publicTryoutOutputPreviews(ctx, tryout.ID, session, harness.ExecutionConfig)
+		if len(outputs) > 0 {
+			if err := a.updatePublicTryoutOutputSnapshot(ctx, tryout, outputs, harnessKind, selectedModel); err != nil {
+				return nil, err
+			}
+		}
 		lastActivity = time.Now()
 	}
 
@@ -211,7 +225,7 @@ func (a *Activities) executePublicTryoutSandbox(ctx context.Context, tryout repo
 // runPublicTryoutTurn executes one agent turn in the live sandbox, streaming the
 // agent's reasoning + tool calls into the tryout event log as it runs.
 func (a *Activities) runPublicTryoutTurn(ctx context.Context, tryout repository.AgentTryout, session sandbox.Session, harnessKind string, env map[string]string, message string, firstTurn bool) error {
-	command, err := publicTurnCommand(harnessKind, agentHarnessWorkspaceDir, message, firstTurn)
+	command, err := publicTurnCommand(harnessKind, agentHarnessWorkspaceDir, message, firstTurn, env["AGENTCLASH_SELECTED_MODEL"])
 	if err != nil {
 		return err
 	}
@@ -280,10 +294,14 @@ func turnLabel(firstTurn bool) string {
 // the session; later turns resume it so conversation state carries across turns
 // (verified live: codex `exec resume --last`, claude `--continue`, openclaw
 // reuses --session-id).
-func publicTurnCommand(harnessKind, workdir, message string, firstTurn bool) ([]string, error) {
+func publicTurnCommand(harnessKind, workdir, message string, firstTurn bool, selectedModel string) ([]string, error) {
+	selectedModel = strings.TrimSpace(selectedModel)
 	switch domain.NormalizeAgentHarnessKind(harnessKind) {
 	case domain.AgentHarnessKindClaudeE2B:
 		cmd := []string{"claude", "-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions"}
+		if selectedModel != "" {
+			cmd = append(cmd, "--model", selectedModel)
+		}
 		if !firstTurn {
 			cmd = append(cmd, "--continue")
 		}
@@ -296,14 +314,18 @@ func publicTurnCommand(harnessKind, workdir, message string, firstTurn bool) ([]
 				`elif [ -n "${ANTHROPIC_API_KEY:-}" ]; then AUTH_CHOICE=apiKey`,
 				`elif [ -n "${OPENROUTER_API_KEY:-}" ]; then AUTH_CHOICE=openrouter-api-key`,
 				`else echo "missing OpenClaw provider API key" >&2; exit 1; fi`,
+				`MODEL_ARGS=()`,
+				`if [ -n "${AGENTCLASH_SELECTED_MODEL:-}" ]; then MODEL_ARGS=(--model "$AGENTCLASH_SELECTED_MODEL"); fi`,
 				`openclaw setup --workspace "$PWD" --mode local --non-interactive --accept-risk`,
 				`openclaw onboard --non-interactive --mode local --auth-choice "$AUTH_CHOICE" --secret-input-mode ref --accept-risk --skip-bootstrap --skip-health`,
-				`exec openclaw agent --local --session-id agentclash-tryout --json --timeout "${AGENTCLASH_HARNESS_TIMEOUT_SECONDS:-1800}" -m "$AGENTCLASH_HARNESS_TASK"`,
+				`exec openclaw agent --local --session-id agentclash-tryout --json --timeout "${AGENTCLASH_HARNESS_TIMEOUT_SECONDS:-1800}" "${MODEL_ARGS[@]}" -m "$AGENTCLASH_HARNESS_TASK"`,
 			}, "\n")
 			return []string{"bash", "-lc", script}, nil
 		}
 		script := `set -euo pipefail
-exec openclaw agent --local --session-id agentclash-tryout --json --timeout "${AGENTCLASH_HARNESS_TIMEOUT_SECONDS:-1800}" -m "$AGENTCLASH_TURN_MESSAGE"`
+MODEL_ARGS=()
+if [ -n "${AGENTCLASH_SELECTED_MODEL:-}" ]; then MODEL_ARGS=(--model "$AGENTCLASH_SELECTED_MODEL"); fi
+exec openclaw agent --local --session-id agentclash-tryout --json --timeout "${AGENTCLASH_HARNESS_TIMEOUT_SECONDS:-1800}" "${MODEL_ARGS[@]}" -m "$AGENTCLASH_TURN_MESSAGE"`
 		return []string{"bash", "-lc", script}, nil
 	default: // codex_e2b
 		// E2B already isolates the sandbox; Codex's own OS sandbox fails nested
@@ -312,17 +334,25 @@ exec openclaw agent --local --session-id agentclash-tryout --json --timeout "${A
 		if !firstTurn {
 			// `codex exec resume` restores the session's original cwd and does
 			// NOT accept -C (passing it exits 2). Verified live.
-			return []string{
+			cmd := []string{
 				"codex", "exec", "resume", "--last",
 				"--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check",
-				"--json", message,
-			}, nil
+				"--json",
+			}
+			if selectedModel != "" {
+				cmd = append(cmd, "--model", selectedModel)
+			}
+			return append(cmd, message), nil
 		}
-		return []string{
+		cmd := []string{
 			"codex", "exec",
 			"--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check",
-			"--json", "-C", workdir, message,
-		}, nil
+			"--json",
+		}
+		if selectedModel != "" {
+			cmd = append(cmd, "--model", selectedModel)
+		}
+		return append(cmd, "-C", workdir, message), nil
 	}
 }
 
@@ -430,6 +460,15 @@ func maputilClone(in map[string]string) map[string]string {
 	return out
 }
 
+func (a *Activities) updatePublicTryoutOutputSnapshot(ctx context.Context, tryout repository.AgentTryout, outputs []map[string]any, harnessKind string, selectedModel string) error {
+	_, err := a.publicTryoutRepo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
+		ID:      tryout.ID,
+		Status:  repository.AgentTryoutStatusRunning,
+		Summary: publicTryoutRunningSummary(outputs, harnessKind, selectedModel),
+	})
+	return err
+}
+
 func (a *Activities) publicTryoutOutputPreviews(ctx context.Context, tryoutID uuid.UUID, session sandbox.Session, executionConfig json.RawMessage) []map[string]any {
 	specs := expectedArtifactsFromExecutionConfig(executionConfig)
 	outputs := make([]map[string]any, 0, len(specs))
@@ -486,6 +525,21 @@ func publicTryoutOutputIsTextPreviewable(templateType, rel, contentType string) 
 		return true
 	}
 	return strings.HasPrefix(contentType, "text/")
+}
+
+func publicTryoutSelectedModel(policy json.RawMessage) string {
+	var parsed struct {
+		Models []struct {
+			Model string `json:"model"`
+		} `json:"models"`
+	}
+	if err := json.Unmarshal(policy, &parsed); err != nil {
+		return ""
+	}
+	if len(parsed.Models) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(parsed.Models[0].Model)
 }
 
 func publicTryoutHarnessSnapshot(config PublicAgentTryoutConfig, tryout repository.AgentTryout, harnessKind string, credentialRef string) agentHarnessSnapshot {
@@ -585,6 +639,17 @@ func publicTryoutSecretName(credentialRef string) string {
 
 func publicTryoutSummary(code string, message string) json.RawMessage {
 	payload, _ := json.Marshal(map[string]string{"code": code, "message": message})
+	return payload
+}
+
+func publicTryoutRunningSummary(outputs []map[string]any, harnessKind string, selectedModel string) json.RawMessage {
+	payload, _ := json.Marshal(map[string]any{
+		"code":                  "outputs_ready",
+		"message":               "The hosted agent produced downloadable outputs. You can keep chatting to request edits, or end the session to finalize scoring.",
+		"outputs":               outputs,
+		"selected_harness_kind": strings.TrimSpace(harnessKind),
+		"selected_model":        strings.TrimSpace(selectedModel),
+	})
 	return payload
 }
 

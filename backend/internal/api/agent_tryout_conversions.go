@@ -56,18 +56,9 @@ type tryoutModelPolicy struct {
 // ErrAgentTryoutModelPolicyInvalid for malformed input and
 // ErrAgentTryoutModelUnavailable for unknown providers / empty model ids.
 func validateTryoutModelPolicy(raw json.RawMessage) error {
-	trimmed := strings.TrimSpace(string(raw))
-	if trimmed == "" || trimmed == "null" {
-		return fmt.Errorf("%w: model policy is required", ErrAgentTryoutModelPolicyInvalid)
-	}
-	if trimmed[0] != '{' {
-		return fmt.Errorf("%w: model policy must be a JSON object", ErrAgentTryoutModelPolicyInvalid)
-	}
-	var policy tryoutModelPolicy
-	decoder := json.NewDecoder(strings.NewReader(trimmed))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&policy); err != nil {
-		return fmt.Errorf("%w: %v", ErrAgentTryoutModelPolicyInvalid, err)
+	policy, err := parseTryoutModelPolicy(raw)
+	if err != nil {
+		return err
 	}
 	mode := strings.TrimSpace(policy.Mode)
 	if mode == "" && len(policy.Models) == 0 {
@@ -87,6 +78,23 @@ func validateTryoutModelPolicy(raw json.RawMessage) error {
 		}
 	}
 	return nil
+}
+
+func parseTryoutModelPolicy(raw json.RawMessage) (tryoutModelPolicy, error) {
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" || trimmed == "null" {
+		return tryoutModelPolicy{}, fmt.Errorf("%w: model policy is required", ErrAgentTryoutModelPolicyInvalid)
+	}
+	if trimmed[0] != '{' {
+		return tryoutModelPolicy{}, fmt.Errorf("%w: model policy must be a JSON object", ErrAgentTryoutModelPolicyInvalid)
+	}
+	var policy tryoutModelPolicy
+	decoder := json.NewDecoder(strings.NewReader(trimmed))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&policy); err != nil {
+		return tryoutModelPolicy{}, fmt.Errorf("%w: %v", ErrAgentTryoutModelPolicyInvalid, err)
+	}
+	return policy, nil
 }
 
 // RerunAgentTryoutInput requests a rerun of an existing workspace tryout with a

@@ -116,6 +116,7 @@ type CreateAnonymousAgentTryoutInput struct {
 	TemplateSlug         string
 	Input                json.RawMessage
 	SelectedHarnessKind  string
+	SelectedModelPolicy  json.RawMessage
 	AnonymousFingerprint string
 	Now                  time.Time
 }
@@ -277,6 +278,13 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 	if err != nil {
 		return repository.AgentTryout{}, err
 	}
+	selectedModelPolicy := template.DefaultModelPolicy
+	if len(input.SelectedModelPolicy) > 0 {
+		selectedModelPolicy = input.SelectedModelPolicy
+	}
+	if err := validatePublicTryoutModelSelection(selectedHarness, selectedModelPolicy); err != nil {
+		return repository.AgentTryout{}, err
+	}
 	now := input.Now
 	if now.IsZero() {
 		now = m.now()
@@ -290,7 +298,7 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 		TemplateSnapshot:         templateSnapshot(template),
 		ToolPolicySnapshot:       template.ToolPolicy,
 		EvaluationSpecSnapshot:   template.EvaluationSpec,
-		SelectedModelPolicy:      template.DefaultModelPolicy,
+		SelectedModelPolicy:      selectedModelPolicy,
 		SelectedHarnessKind:      selectedHarness,
 		Summary:                  json.RawMessage(`{}`),
 		RedactionStatus:          repository.AgentTryoutRedactionPending,
@@ -979,6 +987,7 @@ type createAgentTryoutRequest struct {
 	TemplateSlug        string          `json:"template_slug"`
 	Input               json.RawMessage `json:"input"`
 	SelectedHarnessKind string          `json:"selected_harness_kind,omitempty"`
+	SelectedModelPolicy json.RawMessage `json:"selected_model_policy,omitempty"`
 }
 
 type claimAgentTryoutRequest struct {
@@ -1092,6 +1101,7 @@ func createAnonymousAgentTryoutHandler(logger *slog.Logger, service AgentTryoutS
 			TemplateSlug:         req.TemplateSlug,
 			Input:                req.Input,
 			SelectedHarnessKind:  req.SelectedHarnessKind,
+			SelectedModelPolicy:  req.SelectedModelPolicy,
 			AnonymousFingerprint: anonymousFingerprintFromRequest(r),
 		})
 		if err != nil {
@@ -1477,6 +1487,39 @@ func agentTryoutTemplateUnavailableMessage(err error) string {
 		return "agent tryout template is unavailable"
 	}
 	return message
+}
+
+func validatePublicTryoutModelSelection(selectedHarness *string, policy json.RawMessage) error {
+	if err := validateTryoutModelPolicy(policy); err != nil {
+		return err
+	}
+	parsed, err := parseTryoutModelPolicy(policy)
+	if err != nil {
+		return err
+	}
+	if len(parsed.Models) == 0 {
+		return nil
+	}
+	harnessKind := domain.NormalizeAgentHarnessKind("")
+	if selectedHarness != nil {
+		harnessKind = domain.NormalizeAgentHarnessKind(*selectedHarness)
+	}
+	provider := strings.TrimSpace(parsed.Models[0].Provider)
+	switch harnessKind {
+	case domain.AgentHarnessKindClaudeE2B:
+		if provider != "anthropic" {
+			return fmt.Errorf("%w: claude tryouts require an anthropic model", ErrAgentTryoutModelUnavailable)
+		}
+	case domain.AgentHarnessKindOpenClawE2B:
+		if provider != "openrouter" {
+			return fmt.Errorf("%w: OpenRouter Gemini tryouts require provider openrouter", ErrAgentTryoutModelUnavailable)
+		}
+	default:
+		if provider != "openai" {
+			return fmt.Errorf("%w: codex tryouts require an openai model", ErrAgentTryoutModelUnavailable)
+		}
+	}
+	return nil
 }
 
 func mapAgentTryoutResponse(tryout repository.AgentTryout) agentTryoutResponse {
