@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 
 import { PublicTryoutsClient } from "./tryouts-client";
+import { ComingSoonDialog } from "./coming-soon-dialog";
 
 export const metadata: Metadata = {
   title: "Free AI Agent Tryout",
@@ -50,6 +51,7 @@ export default function PublicTryoutsPage() {
       }
     >
       <PublicTryoutsClient />
+      <ComingSoonDialog />
     </Suspense>
   );
 }
