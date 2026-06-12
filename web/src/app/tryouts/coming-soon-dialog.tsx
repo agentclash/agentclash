@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 
@@ -16,17 +15,18 @@ import { ClashMark } from "@/components/marketing/clash-mark";
 /**
  * Coming-soon gate for the public Agent Tryouts page.
  *
- * Shown on every visit (state is intentionally not persisted) while tryouts are
- * not yet open to the general public. Remove this component — and its render in
- * `page.tsx` — when tryouts go GA.
+ * A hard gate: the dialog is always open and cannot be dismissed (no close
+ * button, no Escape / outside-click close), so the public tryout surface stays
+ * blocked while tryouts are not yet open to the general public. The only exits
+ * are the CTAs, which navigate away from this page. Remove this component — and
+ * its render in `page.tsx` — when tryouts go GA.
  */
 export function ComingSoonDialog() {
   const router = useRouter();
-  const [open, setOpen] = useState(true);
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent showCloseButton className="sm:max-w-md">
+    <Dialog open disablePointerDismissal>
+      <DialogContent showCloseButton={false} className="sm:max-w-md">
         <div className="flex flex-col gap-4 py-1">
           <div className="flex items-center gap-2 text-white/70">
             <ClashMark className="size-6" />
