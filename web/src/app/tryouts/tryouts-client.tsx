@@ -11,10 +11,10 @@ import {
   Download,
   FileText,
   Gauge,
+  ListChecks,
   Loader2,
   PanelRight,
   Scale,
-  SlidersHorizontal,
 } from "lucide-react";
 
 import {
@@ -40,6 +40,12 @@ import {
   tryoutIsActive,
 } from "@/lib/agent-tryout-status";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -493,15 +499,8 @@ export function PublicTryoutsClient() {
     evalSetup.unacceptableMistakes.trim().length > 0 &&
     evalSetup.monthlyVolume.trim().length > 0;
 
-  async function handleLaunch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!template || launching) return;
-    if (!evalReady) {
-      setMessage(
-        "Define the eval first: name one mistake that would fail this work, and your monthly volume.",
-      );
-      return;
-    }
+  async function launchTryout() {
+    if (!template || launching || !evalReady) return;
 
     const input = buildInput(fields, required, fieldValues);
     if ("error" in input) {
@@ -568,7 +567,7 @@ export function PublicTryoutsClient() {
   )}`;
 
   const primaryValue = primaryField ? fieldValues[primaryField[0]] ?? "" : "";
-  const canRun = Boolean(template) && !templatesLoading && !launching && evalReady;
+  const canRun = Boolean(template) && !templatesLoading && !launching;
   const inSession = Boolean(urlTryoutId);
 
   return (
@@ -653,7 +652,7 @@ export function PublicTryoutsClient() {
           message={message}
           quotaMessage={quotaMessage}
           loginHref={loginHref}
-          onSubmit={handleLaunch}
+          onLaunch={() => void launchTryout()}
         />
       )}
     </main>
@@ -685,7 +684,7 @@ function TryoutWelcome({
   message,
   quotaMessage,
   loginHref,
-  onSubmit,
+  onLaunch,
 }: {
   template: AgentTryoutTemplate | null;
   templates: AgentTryoutTemplate[];
@@ -714,19 +713,32 @@ function TryoutWelcome({
   message: string | null;
   quotaMessage: string | null;
   loginHref: string;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onLaunch: () => void;
 }) {
+  const [barOpen, setBarOpen] = useState(false);
+  // True when the bar dialog was opened by a send attempt: confirming the bar
+  // should immediately launch the run instead of dropping back to the page.
+  const [launchAfterBar, setLaunchAfterBar] = useState(false);
+
   const enter =
     "animate-in fade-in slide-in-from-bottom-3 fill-mode-both duration-700 motion-reduce:animate-none";
 
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canRun) return;
+    if (!evalReady) {
+      setLaunchAfterBar(true);
+      setBarOpen(true);
+      return;
+    }
+    onLaunch();
+  }
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
-      <div className="relative mx-auto min-h-full w-full max-w-3xl border-x border-white/[0.06] px-5 pb-24 pt-14 sm:px-12 sm:pt-20">
-        <RegistrationMark className="left-0 top-8" />
-        <RegistrationMark className="right-0 top-8" />
-
+      <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-5 py-12 sm:px-6">
         <p
-          className={cn(MICRO, "text-white/35", enter)}
+          className={cn(MICRO, "text-center text-white/35", enter)}
           style={{ animationDelay: "0ms" }}
         >
           Public tryout · Sandboxed · No signup
@@ -734,151 +746,87 @@ function TryoutWelcome({
         <h1
           className={cn(
             SERIF,
-            "mt-7 max-w-[22ch] text-[clamp(2.5rem,6.2vw,4rem)] font-light leading-[1.04] tracking-tight text-white/95",
+            "mx-auto mt-5 max-w-[20ch] text-center text-[clamp(2.1rem,5vw,3.1rem)] font-light leading-[1.06] tracking-tight text-white/95",
             enter,
           )}
-          style={{ animationDelay: "100ms" }}
+          style={{ animationDelay: "90ms" }}
         >
-          What would make you{" "}
-          <em className="italic text-white/55">reject</em> this work?
+          Put an agent on your work.{" "}
+          <em className="italic text-white/55">Then judge it.</em>
         </h1>
         <p
-          className={cn("mt-6 max-w-xl text-[15px] leading-7 text-white/50", enter)}
-          style={{ animationDelay: "200ms" }}
+          className={cn(
+            "mx-auto mt-4 max-w-md text-center text-[15px] leading-7 text-white/50",
+            enter,
+          )}
+          style={{ animationDelay: "180ms" }}
         >
-          Answer that and you have written your first eval. Then brief a
-          sandboxed agent, pick the judge, and watch the work get graded
-          against your own bar.
+          Describe the work. Before the agent runs, you set the bar — and a
+          judge you pick grades the result against it.
         </p>
 
-        <form onSubmit={onSubmit}>
-          <section
-            className={cn("relative mt-16", enter)}
-            style={{ animationDelay: "300ms" }}
-          >
-            <GhostNumeral>01</GhostNumeral>
-            <div className="flex items-baseline justify-between border-b border-white/15 pb-3">
-              <h2 className={cn(SERIF, "text-2xl font-light tracking-tight text-white/90")}>
-                Set the bar
-              </h2>
-              <span className={cn(MICRO, evalReady ? "text-white/55" : "text-white/30")}>
-                {evalReady ? "Complete" : "Required"}
-              </span>
-            </div>
-            <EvalSetupPanel values={evalSetup} onChange={updateEvalSetup} />
-          </section>
-
-          <section
-            className={cn("relative mt-20", enter)}
-            style={{ animationDelay: "400ms" }}
-          >
-            <GhostNumeral>02</GhostNumeral>
-            <div className="flex items-baseline justify-between border-b border-white/15 pb-3">
-              <h2 className={cn(SERIF, "text-2xl font-light tracking-tight text-white/90")}>
-                Brief the agent
-              </h2>
-              <span className={cn(MICRO, "text-white/30")}>
-                {evalReady ? "Open" : "Locked"}
-              </span>
-            </div>
-
-            {evalReady ? (
-              <div className="mt-7 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none">
-                <ComposerShell
-                  value={primaryValue}
-                  onChange={(value) =>
-                    primaryField && updateField(primaryField[0], value)
-                  }
-                  disabled={!template}
-                  placeholder={
-                    template
-                      ? `Describe the work for "${template.name}"…`
-                      : "Loading tasks…"
-                  }
-                  canSubmit={canRun}
-                  submitting={launching}
-                  footer={
-                    <>
-                      <AnimatedPillSelect
-                        icon={<FileText className="size-3.5" />}
-                        value={templateSlug}
-                        onChange={setTemplateSlug}
-                        disabled={templatesLoading}
-                        options={templates.map((t) => ({ value: t.slug, label: t.name }))}
-                      />
-                      <AnimatedPillSelect
-                        icon={<Gauge className="size-3.5" />}
-                        value={selectedModelKey}
-                        onChange={setSelectedModelKey}
-                        options={MODEL_OPTIONS.map((option) => ({
-                          value: modelOptionKey(option),
-                          label: option.label,
-                        }))}
-                      />
-                      <AnimatedPillSelect
-                        icon={<Scale className="size-3.5" />}
-                        value={judgeModel}
-                        onChange={setJudgeModel}
-                        options={JUDGE_OPTIONS.map((option) => ({
-                          value: option.value,
-                          label: `${option.label} judges`,
-                        }))}
-                      />
-                      <AnimatedPillSelect
-                        icon={<SlidersHorizontal className="size-3.5" />}
-                        value={judgeStrictness}
-                        onChange={(value) =>
-                          setJudgeStrictness(value as AgentTryoutJudgeStrictness)
-                        }
-                        options={STRICTNESS_OPTIONS}
-                      />
-                    </>
-                  }
+        <form
+          onSubmit={handleSubmit}
+          className={cn("mt-8", enter)}
+          style={{ animationDelay: "270ms" }}
+        >
+          <ComposerShell
+            value={primaryValue}
+            onChange={(value) => primaryField && updateField(primaryField[0], value)}
+            disabled={!template}
+            placeholder={
+              template
+                ? `Describe the work for "${template.name}"…`
+                : "Loading tasks…"
+            }
+            canSubmit={canRun}
+            submitting={launching}
+            footer={
+              <>
+                <BarPill ready={evalReady} onClick={() => setBarOpen(true)} />
+                <AnimatedPillSelect
+                  icon={<FileText className="size-3.5" />}
+                  value={templateSlug}
+                  onChange={setTemplateSlug}
+                  disabled={templatesLoading}
+                  options={templates.map((t) => ({ value: t.slug, label: t.name }))}
                 />
+                <AnimatedPillSelect
+                  icon={<Gauge className="size-3.5" />}
+                  value={selectedModelKey}
+                  onChange={setSelectedModelKey}
+                  options={MODEL_OPTIONS.map((option) => ({
+                    value: modelOptionKey(option),
+                    label: option.label,
+                  }))}
+                />
+                <AnimatedPillSelect
+                  icon={<Scale className="size-3.5" />}
+                  value={judgeModel}
+                  onChange={setJudgeModel}
+                  options={JUDGE_OPTIONS.map((option) => ({
+                    value: option.value,
+                    label: `${option.label} judges`,
+                  }))}
+                />
+              </>
+            }
+          />
 
-                {secondaryFields.length > 0 ? (
-                  <div className="mt-4 grid gap-x-10 gap-y-5 sm:grid-cols-2">
-                    {secondaryFields.map(([field, spec]) => (
-                      <CompactField
-                        key={field}
-                        field={field}
-                        spec={spec}
-                        value={fieldValues[field] ?? ""}
-                        required={false}
-                        onChange={updateField}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-
-                {template && primaryField ? (
-                  <div className="mt-8">
-                    <p className={cn(MICRO, "text-white/30")}>Or steal one of these</p>
-                    <ul className="mt-3 divide-y divide-white/[0.07] border-y border-white/[0.07]">
-                      {suggestionsFor(template.slug).map((suggestion) => (
-                        <li key={suggestion}>
-                          <button
-                            type="button"
-                            onClick={() => updateField(primaryField[0], suggestion)}
-                            className="group flex w-full items-baseline gap-3 py-2.5 text-left text-[13px] leading-6 text-white/50 transition hover:text-white"
-                          >
-                            <span className="font-mono text-[10px] text-white/25 transition group-hover:text-white/60">
-                              →
-                            </span>
-                            {suggestion}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <div className="mt-7 flex h-28 items-center justify-center border border-dashed border-white/10">
-                <p className={cn(MICRO, "text-white/30")}>Answer 01 to unlock the brief</p>
-              </div>
-            )}
-          </section>
+          {secondaryFields.length > 0 ? (
+            <div className="mt-4 grid gap-x-10 gap-y-5 sm:grid-cols-2">
+              {secondaryFields.map(([field, spec]) => (
+                <CompactField
+                  key={field}
+                  field={field}
+                  spec={spec}
+                  value={fieldValues[field] ?? ""}
+                  required={false}
+                  onChange={updateField}
+                />
+              ))}
+            </div>
+          ) : null}
 
           {message ? <Alert text={message} /> : null}
           {quotaMessage ? (
@@ -899,9 +847,8 @@ function TryoutWelcome({
             </div>
           ) : null}
 
-          {template && evalReady ? (
-            <p className="mt-6 font-mono text-[10px] leading-5 tracking-[0.04em] text-white/30">
-              {template.description} ·{" "}
+          {template ? (
+            <p className="mt-4 text-center font-mono text-[10px] leading-5 tracking-[0.04em] text-white/30">
               {MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey)?.hint ??
                 "Hosted default agent and model"}{" "}
               · judged by {judgeModelLabel(judgeModel)} ({judgeStrictness}) on our
@@ -909,34 +856,196 @@ function TryoutWelcome({
             </p>
           ) : null}
         </form>
+
+        {template && primaryField ? (
+          <div className={cn("mt-9", enter)} style={{ animationDelay: "360ms" }}>
+            <p className={cn(MICRO, "text-center text-white/30")}>
+              Or steal one of these
+            </p>
+            <ul className="mt-3 divide-y divide-white/[0.07] border-y border-white/[0.07]">
+              {suggestionsFor(template.slug).map((suggestion) => (
+                <li key={suggestion}>
+                  <button
+                    type="button"
+                    onClick={() => updateField(primaryField[0], suggestion)}
+                    className="group flex w-full items-baseline gap-3 py-2.5 text-left text-[13px] leading-6 text-white/50 transition hover:text-white"
+                  >
+                    <span className="font-mono text-[10px] text-white/25 transition group-hover:text-white/60">
+                      →
+                    </span>
+                    {suggestion}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
+
+      <BarDialog
+        open={barOpen}
+        onOpenChange={(open) => {
+          setBarOpen(open);
+          if (!open) setLaunchAfterBar(false);
+        }}
+        values={evalSetup}
+        onChange={updateEvalSetup}
+        strictness={judgeStrictness}
+        setStrictness={setJudgeStrictness}
+        judgeModel={judgeModel}
+        evalReady={evalReady}
+        willLaunch={launchAfterBar}
+        onConfirm={() => {
+          if (!evalReady) return;
+          setBarOpen(false);
+          if (launchAfterBar) {
+            setLaunchAfterBar(false);
+            onLaunch();
+          }
+        }}
+      />
     </div>
   );
 }
 
-function RegistrationMark({ className }: { className: string }) {
+// BarPill is the composer's entry to the eval gate: it shows whether the bar
+// is set and opens the dialog to write or edit it.
+function BarPill({ ready, onClick }: { ready: boolean; onClick: () => void }) {
   return (
-    <span
-      aria-hidden
-      className={cn("pointer-events-none absolute size-2.5", className)}
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-sm border py-1.5 pl-2.5 pr-2.5 font-mono text-[11px] transition",
+        ready
+          ? "border-white/12 text-white/60 hover:border-white/30 hover:text-white/90"
+          : "border-white/35 text-white/90 hover:border-white/60",
+      )}
     >
-      <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/20" />
-      <span className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-white/20" />
-    </span>
+      <ListChecks className="size-3.5" />
+      {ready ? "Bar set" : "Set the bar"}
+      {!ready ? (
+        <span
+          aria-hidden
+          className="size-1 rounded-full bg-white/80 animate-pulse motion-reduce:animate-none"
+        />
+      ) : null}
+    </button>
   );
 }
 
-function GhostNumeral({ children }: { children: ReactNode }) {
+// BarDialog is the eval gate: a single modal where the visitor writes the bar
+// the judge will grade against. It blocks the first run until the two
+// required answers exist, then gets out of the way.
+function BarDialog({
+  open,
+  onOpenChange,
+  values,
+  onChange,
+  strictness,
+  setStrictness,
+  judgeModel,
+  evalReady,
+  willLaunch,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  values: EvalSetupValues;
+  onChange: <Key extends keyof EvalSetupValues>(
+    field: Key,
+    value: EvalSetupValues[Key],
+  ) => void;
+  strictness: AgentTryoutJudgeStrictness;
+  setStrictness: (value: AgentTryoutJudgeStrictness) => void;
+  judgeModel: string;
+  evalReady: boolean;
+  willLaunch: boolean;
+  onConfirm: () => void;
+}) {
   return (
-    <span
-      aria-hidden
-      className={cn(
-        SERIF,
-        "pointer-events-none absolute -top-10 right-0 select-none text-[6rem] font-light leading-none text-white/[0.05] sm:-top-14 sm:text-[8.5rem]",
-      )}
-    >
-      {children}
-    </span>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        className="max-h-[85dvh] gap-0 overflow-y-auto rounded-sm border border-white/12 bg-[#1a1a19] p-6 text-white ring-0 sm:max-w-lg"
+      >
+        <p className={cn(MICRO, "text-white/40")}>Before the agent runs</p>
+        <DialogTitle
+          className={cn(SERIF, "mt-3 text-3xl font-light tracking-tight text-white/95")}
+        >
+          What would make you{" "}
+          <em className="italic text-white/55">reject</em> this work?
+        </DialogTitle>
+        <DialogDescription className="mt-3 text-sm leading-6 text-white/50">
+          Your answers become the judge&apos;s instructions, word for word.
+          That is an eval — and {judgeModelLabel(judgeModel)} will enforce it.
+        </DialogDescription>
+
+        <div className="mt-6 space-y-6">
+          <UnderlineField
+            label="The mistake you would not forgive"
+            required
+            value={values.unacceptableMistakes}
+            onChange={(value) => onChange("unacceptableMistakes", value)}
+            placeholder="Invented numbers, missing citations, off-brand tone"
+          />
+          <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+            <UnderlineField
+              label="The person who signs off"
+              value={values.reviewer}
+              onChange={(value) => onChange("reviewer", value)}
+              placeholder="Support lead, CFO, sales manager"
+            />
+            <UnderlineField
+              label="Runs per month"
+              required
+              value={values.monthlyVolume}
+              onChange={(value) => onChange("monthlyVolume", value)}
+              placeholder="50, 500, 10k"
+            />
+          </div>
+          <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+            <SegmentedControl
+              label="Optimize for"
+              value={values.priority}
+              options={PRIORITY_OPTIONS}
+              onChange={(value) => onChange("priority", value)}
+            />
+            <SegmentedControl
+              label="Output behavior"
+              value={values.style}
+              options={STYLE_OPTIONS}
+              onChange={(value) => onChange("style", value)}
+            />
+          </div>
+          <SegmentedControl
+            label="How harshly the judge grades"
+            value={strictness}
+            options={STRICTNESS_OPTIONS}
+            onChange={setStrictness}
+          />
+        </div>
+
+        <div className="mt-7 flex items-center justify-between gap-4 border-t border-white/[0.08] pt-4">
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="font-mono text-[11px] uppercase tracking-[0.12em] text-white/35 transition hover:text-white/70"
+          >
+            Not yet
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!evalReady}
+            className="inline-flex h-9 items-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {willLaunch ? "Lock the bar and run" : "Lock the bar"}
+            <ArrowRight className="size-4" />
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1689,68 +1798,6 @@ function AnimatedPillSelect({
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-
-function EvalSetupPanel({
-  values,
-  onChange,
-}: {
-  values: EvalSetupValues;
-  onChange: <Key extends keyof EvalSetupValues>(
-    field: Key,
-    value: EvalSetupValues[Key],
-  ) => void;
-}) {
-  return (
-    <div className="mt-8 space-y-8">
-      <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
-        <UnderlineField
-          label="The mistake you would not forgive"
-          required
-          value={values.unacceptableMistakes}
-          onChange={(value) => onChange("unacceptableMistakes", value)}
-          placeholder="Invented numbers, missing citations, off-brand tone"
-        />
-        <UnderlineField
-          label="The person who signs off"
-          value={values.reviewer}
-          onChange={(value) => onChange("reviewer", value)}
-          placeholder="Support lead, CFO, sales manager"
-        />
-      </div>
-
-      <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
-        <SegmentedControl
-          label="Optimize for"
-          value={values.priority}
-          options={PRIORITY_OPTIONS}
-          onChange={(value) => onChange("priority", value)}
-        />
-        <SegmentedControl
-          label="Output behavior"
-          value={values.style}
-          options={STYLE_OPTIONS}
-          onChange={(value) => onChange("style", value)}
-        />
-      </div>
-
-      <div className="max-w-xs">
-        <UnderlineField
-          label="Runs per month"
-          required
-          value={values.monthlyVolume}
-          onChange={(value) => onChange("monthlyVolume", value)}
-          placeholder="50, 500, 10k"
-        />
-      </div>
-
-      <p className="max-w-md text-[13px] leading-6 text-white/35">
-        These answers become the judge&apos;s instructions, word for word. That
-        is the whole trick: an eval is just your standards, written down and
-        enforced by a model you pick.
-      </p>
-    </div>
   );
 }
 
