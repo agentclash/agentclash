@@ -151,7 +151,7 @@ describe("POST /api/agent-opportunity", () => {
       new Request("https://agentclash.dev/api/agent-opportunity", {
         method: "POST",
         body: JSON.stringify({
-          url: "http://93.184.216.34",
+          url: "https://example.com",
           companySize: "11-50",
           currentPain: "support",
         }),
@@ -159,7 +159,7 @@ describe("POST /api/agent-opportunity", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(fetchMock.mock.calls[0][0]).toBe("http://93.184.216.34/");
+    expect(fetchMock.mock.calls[0][0]).toBe("https://example.com/");
     const openAIRequest = fetchMock.mock.calls.find(
       (call) => call[0] === "https://api.openai.com/v1/responses",
     );

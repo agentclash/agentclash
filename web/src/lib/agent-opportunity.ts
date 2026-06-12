@@ -377,7 +377,8 @@ export async function fetchCompanyResearch(
   const supplementary: PageSnapshot[] = [];
 
   for (const path of SUPPLEMENTARY_PATHS) {
-    if (path === primaryPath || supplementary.length >= 2) break;
+    if (supplementary.length >= 2) break;
+    if (path === primaryPath) continue;
     try {
       const candidate = await normalizePublicUrl(`${origin}${path}`);
       supplementary.push(await fetchCompanySnapshot(candidate, fetchImpl));
@@ -454,10 +455,11 @@ async function pollOpenAIResponse(
     const status = payload.status ?? "completed";
     if (status === "completed") return payload;
     if (status === "failed" || status === "cancelled" || status === "incomplete") {
-      const message =
-        payload.error?.message?.trim() ||
-        `OpenAI returned status ${status}.`;
-      throw new AgentOpportunityError("openai_failed", message, 502);
+      throw new AgentOpportunityError(
+        "openai_failed",
+        openAIResponsesFailureMessage(payload, status),
+        502,
+      );
     }
   }
 
@@ -466,6 +468,46 @@ async function pollOpenAIResponse(
     "OpenAI took too long to generate the report.",
     504,
   );
+}
+
+function openAIResponsesFailureMessage(
+  payload: OpenAIResponsesPayload,
+  status: string,
+): string {
+  return payload.error?.message?.trim() || `OpenAI returned status ${status}.`;
+}
+
+async function resolveOpenAIResponsesPayload(
+  payload: OpenAIResponsesPayload | null,
+  apiKey: string,
+  fetchImpl: typeof fetch,
+): Promise<OpenAIResponsesPayload> {
+  if (!payload) {
+    throw new AgentOpportunityError(
+      "openai_failed",
+      "OpenAI could not generate the report.",
+      502,
+    );
+  }
+
+  const status = payload.status ?? "completed";
+  if (status === "completed") return payload;
+  if (status === "failed" || status === "cancelled" || status === "incomplete") {
+    throw new AgentOpportunityError(
+      "openai_failed",
+      openAIResponsesFailureMessage(payload, status),
+      502,
+    );
+  }
+  if (!payload.id) {
+    throw new AgentOpportunityError(
+      "openai_failed",
+      "OpenAI could not generate the report.",
+      502,
+    );
+  }
+
+  return pollOpenAIResponse(payload.id, apiKey, fetchImpl);
 }
 
 function assertString(value: unknown): value is string {
@@ -777,13 +819,7 @@ export async function analyzeAgentOpportunity({
   }
 
   let payload = (await response.json().catch(() => null)) as OpenAIResponsesPayload | null;
-  if (
-    payload?.id &&
-    payload.status &&
-    !["completed", "failed", "cancelled", "incomplete"].includes(payload.status)
-  ) {
-    payload = await pollOpenAIResponse(payload.id, apiKey, fetchImpl);
-  }
+  payload = await resolveOpenAIResponsesPayload(payload, apiKey, fetchImpl);
 
   const text = extractOpenAIText(payload);
   if (!text) {

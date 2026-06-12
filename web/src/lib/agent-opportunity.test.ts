@@ -116,6 +116,30 @@ describe("fetchCompanyResearch", () => {
     expect(research.primary.title).toBe("Example");
     expect(research.supplementary).toHaveLength(0);
   });
+
+  it("still fetches other supplementary pages when the primary URL matches one path", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (
+        url === "https://example.com/about" ||
+        url === "https://example.com/pricing"
+      ) {
+        return new Response(
+          `<html><head><title>${url}</title></head><body>More context.</body></html>`,
+          { headers: { "content-type": "text/html" } },
+        );
+      }
+      throw new Error(`missing page: ${url}`);
+    });
+
+    const research = await fetchCompanyResearch(
+      "https://example.com/about",
+      fetchImpl as typeof fetch,
+    );
+
+    expect(research.primary.url).toBe("https://example.com/about");
+    expect(research.supplementary).toHaveLength(1);
+    expect(research.supplementary[0]?.url).toBe("https://example.com/pricing");
+  });
 });
 
 describe("parseAgentOpportunityReport", () => {
