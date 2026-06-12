@@ -91,7 +91,7 @@ export default function PricingPage() {
               <span>/</span>
               <span>Pricing</span>
             </nav>
-            <p className="mt-10 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-cyan-200/70">
+            <p className="mt-10 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-cyan-200/70">
               Pricing
             </p>
             <h1 className="mt-5 max-w-[20ch] font-[family-name:var(--font-display)] text-4xl font-normal leading-[1.05] tracking-tight text-white sm:text-6xl">
@@ -139,7 +139,7 @@ export default function PricingPage() {
 
         <section className="border-t border-white/[0.06] px-6 py-16 sm:px-12 sm:py-24">
           <div className="mx-auto max-w-[960px]">
-            <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/35">
+            <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
               FAQ
             </p>
             <h2 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl">

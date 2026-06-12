@@ -64,7 +64,7 @@ function FailureDetailBody({
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
       <div className="border-b border-border px-6 pt-6 pb-4">
-        <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-muted-foreground mb-2">
+        <div className="flex items-center gap-2 text-2xs uppercase tracking-[0.18em] text-muted-foreground mb-2">
           <span>Failure review</span>
           <span className="text-muted-foreground/50">·</span>
           <span className="normal-case tracking-normal font-[family-name:var(--font-mono)] text-xs">
@@ -106,7 +106,7 @@ function FailureDetailBody({
             <div className="flex items-center gap-3 min-w-0">
               <Play className="size-4 text-foreground/70 shrink-0" />
               <div className="min-w-0">
-                <div className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                <div className="text-2xs uppercase tracking-[0.18em] text-muted-foreground">
                   Open replay
                 </div>
                 <div className="text-sm text-foreground font-[family-name:var(--font-mono)] truncate">
@@ -309,7 +309,7 @@ function Section({
 }) {
   return (
     <div>
-      <h3 className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground mb-2 font-medium">
+      <h3 className="text-2xs uppercase tracking-[0.2em] text-muted-foreground mb-2 font-medium">
         {title}
       </h3>
       {children}

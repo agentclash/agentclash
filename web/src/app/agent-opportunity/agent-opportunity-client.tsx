@@ -34,7 +34,7 @@ type UseCase = AgentOpportunityReport["useCases"][number];
 type Tone = "good" | "warn" | "bad" | "neutral";
 
 const SERIF = "[font-family:var(--font-race-display)]";
-const MICRO = "font-mono text-[11px] uppercase tracking-[0.18em]";
+const MICRO = "font-mono text-2xs uppercase tracking-[0.18em]";
 
 const painOptions = [
   "Support",
@@ -180,7 +180,7 @@ function LevelMeter({
           />
         ))}
       </span>
-      <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-white/55">
+      <span className="font-mono text-2xs uppercase tracking-[0.1em] text-white/55">
         {level === "medium" ? "med" : level} {label}
       </span>
     </span>
@@ -200,7 +200,7 @@ function StatCell({
     <div className="flex min-w-0 flex-col bg-[#080808] p-5 sm:px-6">
       <p className={cn(MICRO, "text-white/60")}>{label}</p>
       <div className="mt-3 flex-1">{children}</div>
-      <p className="mt-3 font-mono text-[11px] tracking-[0.04em] text-white/55">
+      <p className="mt-3 font-mono text-2xs tracking-[0.04em] text-white/55">
         {caption}
       </p>
     </div>
@@ -296,7 +296,7 @@ export function ReportDashboard({
       <header className="border-b border-white/[0.08] px-5 py-5 sm:px-7">
         <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
           <p className={cn(MICRO, "text-white/60")}>Agent opportunity report</p>
-          <p className="font-mono text-[11px] tracking-[0.06em] text-white/50">
+          <p className="font-mono text-2xs tracking-[0.06em] text-white/50">
             {reportHostname(report.analyzedUrl)}
           </p>
         </div>
@@ -317,7 +317,7 @@ export function ReportDashboard({
           <button
             type="button"
             onClick={() => window.print()}
-            className="inline-flex items-center gap-2 border border-white/[0.15] px-3 py-2 font-mono text-[10px] uppercase tracking-[0.12em] text-white/70 transition-colors hover:border-white/35 hover:text-white print:hidden"
+            className="inline-flex items-center gap-2 border border-white/[0.15] px-3 py-2 font-mono text-2xs uppercase tracking-[0.12em] text-white/70 transition-colors hover:border-white/35 hover:text-white print:hidden"
           >
             <Download className="size-3.5" />
             Save report
@@ -412,7 +412,7 @@ export function ReportDashboard({
         <div className="bg-[#080808] p-5 sm:p-6">
           <div className="flex items-baseline justify-between gap-3">
             <p className={cn(MICRO, "text-white/60")}>Dimension profile</p>
-            <p className="font-mono text-[10px] tracking-[0.08em] text-white/45">
+            <p className="font-mono text-2xs tracking-[0.08em] text-white/45">
               0–100
             </p>
           </div>
@@ -424,7 +424,7 @@ export function ReportDashboard({
         <div className="bg-[#080808] p-5 sm:p-6">
           <div className="flex items-baseline justify-between gap-3">
             <p className={cn(MICRO, "text-white/60")}>Opportunity map</p>
-            <p className="font-mono text-[10px] tracking-[0.08em] text-white/45">
+            <p className="font-mono text-2xs tracking-[0.08em] text-white/45">
               fit × complexity
             </p>
           </div>
@@ -435,7 +435,7 @@ export function ReportDashboard({
       <div className="border-b border-white/[0.08]">
         <div className="flex items-baseline justify-between gap-3 px-5 pt-5 sm:px-7">
           <p className={cn(MICRO, "text-white/60")}>Use cases</p>
-          <p className="hidden font-mono text-[10px] tracking-[0.08em] text-white/45 sm:block">
+          <p className="hidden font-mono text-2xs tracking-[0.08em] text-white/45 sm:block">
             hours · savings / month
           </p>
         </div>
@@ -450,7 +450,7 @@ export function ReportDashboard({
         <div className="bg-[#080808] p-5 sm:p-6">
           <div className="flex items-baseline justify-between gap-3">
             <p className={cn(MICRO, "text-white/60")}>Risk heatmap</p>
-            <p className="font-mono text-[10px] tracking-[0.08em] text-white/45">
+            <p className="font-mono text-2xs tracking-[0.08em] text-white/45">
               {highRiskCount} high · {report.risks.length} total
             </p>
           </div>
@@ -460,7 +460,7 @@ export function ReportDashboard({
         <div className="flex flex-col bg-[#080808] p-5 sm:p-6">
           <div className="flex items-baseline justify-between gap-3">
             <p className={cn(MICRO, "text-white/60")}>Eval plan</p>
-            <p className="font-mono text-[10px] tracking-[0.08em] text-white/45">
+            <p className="font-mono text-2xs tracking-[0.08em] text-white/45">
               {totalEvalCases} cases
             </p>
           </div>
@@ -483,7 +483,7 @@ export function ReportDashboard({
             />
             <div className={cn("flex-1", ADVERSARIAL_FILL)} />
           </div>
-          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[11px] tracking-[0.04em] text-white/65">
+          <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 font-mono text-2xs tracking-[0.04em] text-white/65">
             <span className="flex items-center gap-1.5">
               <span className="size-2 rounded-[1px] bg-white" aria-hidden />
               {report.evaluationPack.recommendedCases} realistic
@@ -584,7 +584,7 @@ function LoadingPanel({ step }: { step: number }) {
             >
               <span
                 className={cn(
-                  "flex size-6 items-center justify-center border font-mono text-[11px]",
+                  "flex size-6 items-center justify-center border font-mono text-2xs",
                   done
                     ? "border-white/30 bg-white/10 text-white"
                     : active
@@ -733,7 +733,7 @@ export function AgentOpportunityClient() {
     <>
       <section className="px-6 pt-14 sm:px-12 sm:pt-20">
         <div className="mx-auto max-w-[980px]">
-            <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.16em] text-white/40">
+            <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.16em] text-white/40">
               AI agent ROI calculator
             </p>
             <h1 className="mt-5 max-w-[16ch] text-[clamp(2.4rem,6vw,4.5rem)] font-sans font-semibold leading-[0.98] tracking-tight text-white">

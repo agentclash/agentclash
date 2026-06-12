@@ -67,7 +67,7 @@ function SidebarNav({
       {navSections.map((section) => (
         <div key={section.title} className="mb-5">
           {!collapsed && (
-            <p className="mb-1 px-2 text-[0.625rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">
+            <p className="mb-1 px-2 text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground/50">
               {section.title}
             </p>
           )}
@@ -84,7 +84,7 @@ function SidebarNav({
                   onMouseEnter={() => warmRoute(href)}
                   onFocus={() => warmRoute(href)}
                   className={cn(
-                    "group relative flex items-center rounded-md text-[0.8125rem] transition-colors",
+                    "group relative flex items-center rounded-md text-sm transition-colors",
                     collapsed
                       ? "justify-center p-2"
                       : "gap-2.5 px-2 py-1.5",
@@ -161,7 +161,7 @@ export function Sidebar({ workspaceId }: SidebarProps) {
           >
             <LogoMark className="size-6 text-foreground" />
             {!collapsed && (
-              <span className="font-[family-name:var(--font-display)] text-[0.9375rem] tracking-tight">
+              <span className="font-[family-name:var(--font-display)] text-base tracking-tight">
                 AgentClash
               </span>
             )}
@@ -211,7 +211,7 @@ export function MobileSidebar({ workspaceId }: SidebarProps) {
           {/* Logo */}
           <div className="flex h-14 items-center gap-2 px-3 border-b border-white/[0.06]">
             <LogoMark className="size-6 text-foreground" />
-            <span className="font-[family-name:var(--font-display)] text-[0.9375rem] tracking-tight text-foreground/90">
+            <span className="font-[family-name:var(--font-display)] text-base tracking-tight text-foreground/90">
               AgentClash
             </span>
           </div>

@@ -27,7 +27,7 @@ function Pill({
   return (
     <span
       className={cn(
-        "inline-flex max-w-[18rem] items-center justify-center rounded-xl border px-3 py-1.5 text-center text-[13px] font-medium leading-snug text-white/88",
+        "inline-flex max-w-[18rem] items-center justify-center rounded-xl border px-3 py-1.5 text-center text-sm font-medium leading-snug text-white/88",
         "border-white/[0.12] bg-white/[0.04]",
         className,
       )}
@@ -167,7 +167,7 @@ export function DiagramAgentsToRun() {
         </div>
         <div className="flex flex-col items-center gap-2">
           <div className="hidden h-[2rem] border-l border-dashed border-white/20 md:block" aria-hidden />
-          <p className="text-center text-[11px] uppercase tracking-[0.18em] text-white/35">
+          <p className="text-center text-2xs uppercase tracking-[0.18em] text-white/35">
             feed deployment
           </p>
           <ArrowD />
@@ -175,7 +175,7 @@ export function DiagramAgentsToRun() {
           <ArrowD />
           <Pill>Run</Pill>
         </div>
-        <p className="text-center text-[12px] leading-relaxed text-white/35">
+        <p className="text-center text-xs leading-relaxed text-white/35">
           Ready build versions and runtime configuration rows converge on the same Deployment—the
           object runs once your challenge pack binds through run submission.
         </p>
@@ -223,7 +223,7 @@ export function DiagramReplayVsScorecards() {
         </div>
         <div className="hidden w-px self-stretch bg-white/[0.08] md:block md:mx-10" aria-hidden />
         <div className="flex flex-1 flex-col items-center gap-3 md:items-start">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/45 md:-mt-[1rem] md:pb-10">
+          <span className="text-2xs font-semibold uppercase tracking-[0.2em] text-white/45 md:-mt-[1rem] md:pb-10">
             also
           </span>
           <Pill className="-mt-[0.5rem] md:mt-0">Canonical events</Pill>
@@ -259,7 +259,7 @@ export function DiagramEvidenceClosingLoop() {
             <Pill>Scorecards</Pill>
           </div>
           <div className="rounded-2xl border border-dashed border-white/[0.08] bg-black/35 p-6">
-            <p className="mb-6 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+            <p className="mb-6 text-2xs font-semibold uppercase tracking-wider text-zinc-400">
               Convergent outcomes
             </p>
             <div className="flex flex-col gap-8">
@@ -272,7 +272,7 @@ export function DiagramEvidenceClosingLoop() {
               <ArrowD />
               <RowArrowRow pills={["Future challenge-pack improvements"]} />
             </div>
-            <p className="mt-6 text-[12px] leading-relaxed text-white/35">
+            <p className="mt-6 text-xs leading-relaxed text-white/35">
               Review and comparison tighten the authored packs you ship next, turning observed drifts into explicit benchmark updates.
             </p>
           </div>
@@ -353,7 +353,7 @@ export function DiagramChallengePackBundleShape() {
 
         <div className="flex flex-col items-center gap-6 border-t border-white/[0.08] pt-12 md:flex-row md:flex-wrap md:justify-center md:gap-10">
           <RowArrowRow pills={["Cases", "Run execution"]} />
-          <span className="hidden text-[11px] uppercase tracking-[0.2em] text-zinc-600 md:inline">
+          <span className="hidden text-2xs uppercase tracking-[0.2em] text-zinc-600 md:inline">
             —
           </span>
           <div className="flex flex-col items-center gap-2">

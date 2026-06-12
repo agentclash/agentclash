@@ -200,10 +200,10 @@ function PendingState() {
   return (
     <div className="border border-white/[0.08] rounded-md bg-white/[0.015] px-8 py-14 text-center">
       <Loader2 className="size-5 animate-spin mx-auto mb-3 text-white/55" />
-      <p className="text-[15px] text-white/85 font-medium tracking-[-0.005em]">
+      <p className="text-base text-white/85 font-medium tracking-[-0.005em]">
         Scoring in progress
       </p>
-      <p className="mt-1.5 text-[12px] text-white/45 max-w-md mx-auto leading-relaxed">
+      <p className="mt-1.5 text-xs text-white/45 max-w-md mx-auto leading-relaxed">
         Running validators and collectors against the agent&apos;s trace. LLM judges,
         if any, run last — they can take a minute or two per sample.
       </p>
@@ -215,10 +215,10 @@ function ErroredState({ message }: { message?: string }) {
   return (
     <div className="border border-red-500/25 bg-red-500/[0.04] rounded-md px-8 py-14 text-center">
       <AlertTriangle className="size-5 mx-auto mb-3 text-red-400" />
-      <p className="text-[15px] text-red-200 font-medium tracking-[-0.005em]">
+      <p className="text-base text-red-200 font-medium tracking-[-0.005em]">
         Scorecard unavailable
       </p>
-      <p className="mt-1.5 text-[12px] text-red-200/60 max-w-md mx-auto leading-relaxed">
+      <p className="mt-1.5 text-xs text-red-200/60 max-w-md mx-auto leading-relaxed">
         {message || "An error occurred during evaluation."}
       </p>
     </div>

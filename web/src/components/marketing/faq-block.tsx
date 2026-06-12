@@ -23,12 +23,12 @@ export function FAQBlock({
     : "font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4rem)] max-w-[22ch]";
   const questionClass = sansHeadlines
     ? "text-lg font-sans font-semibold tracking-[-0.01em] text-white/90 sm:text-xl"
-    : "font-[family-name:var(--font-display)] text-[18px] sm:text-[22px] leading-[1.3] tracking-[-0.01em] text-white/90";
+    : "font-[family-name:var(--font-display)] text-lg sm:text-[22px] leading-[1.3] tracking-[-0.01em] text-white/90";
   return (
     <section className="border-t border-white/[0.06] px-8 sm:px-12 py-32 sm:py-48">
       <JsonLd id={schemaId} data={faqSchema(items)} />
       <div className="mx-auto max-w-[1100px]">
-        <p className="mb-6 inline-flex items-center gap-2 text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.22em] text-white/45">
+        <p className="mb-6 inline-flex items-center gap-2 text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.22em] text-white/45">
           <span className="inline-block size-1 rounded-full bg-white/60" />
           {eyebrow}
         </p>
@@ -38,7 +38,7 @@ export function FAQBlock({
           {items.map((qa) => (
             <div key={qa.question} className="py-8">
               <dt className={questionClass}>{qa.question}</dt>
-              <dd className="mt-3 max-w-[68ch] text-[14px] sm:text-[15px] leading-[1.7] text-white/55">
+              <dd className="mt-3 max-w-[68ch] text-sm sm:text-base leading-[1.7] text-white/55">
                 {qa.answer}
               </dd>
             </div>

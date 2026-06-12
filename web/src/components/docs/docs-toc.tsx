@@ -6,7 +6,7 @@ export function DocsToc({ headings }: { headings: DocHeading[] }) {
   return (
     <aside className="hidden xl:block">
       <div className="sticky top-24 pt-8">
-        <p className="mb-4 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/35">
+        <p className="mb-4 text-2xs font-semibold uppercase tracking-[0.16em] text-white/35">
           On this page
         </p>
         <div className="space-y-3 border-l border-white/[0.08] pl-4">

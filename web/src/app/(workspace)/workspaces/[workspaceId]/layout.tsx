@@ -30,7 +30,7 @@ export default async function WorkspaceLayout({
 
   if (!hasMembership && !hasOrgAccess) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
+      <div className="flex min-h-dvh items-center justify-center">
         <div className="text-center">
           <h1 className="text-4xl font-semibold mb-2">403</h1>
           <p className="text-sm text-muted-foreground mb-4">
@@ -50,7 +50,7 @@ export default async function WorkspaceLayout({
   return (
     <AuthenticatedAppProviders initialAuth={initialAuth}>
       <PostHogIdentify session={session} />
-      <div className="flex h-screen overflow-hidden">
+      <div className="flex h-dvh overflow-hidden">
         <Sidebar workspaceId={workspaceId} />
         <div className="flex flex-1 flex-col overflow-hidden">
           <TopBar

@@ -358,7 +358,7 @@ export function RunDetailClient({
             </Badge>
             {isActive && sseConnected && (
               <span
-                className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 h-6 text-[10px] font-medium uppercase tracking-wider text-emerald-400"
+                className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 h-6 text-2xs font-medium uppercase tracking-wider text-emerald-400"
                 title="Streaming live events"
               >
                 <Radio className="size-3 animate-pulse" />
@@ -437,7 +437,7 @@ export function RunDetailClient({
         </div>
 
         {/* KPI strip */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 text-[11px] uppercase tracking-[0.14em] text-white/40 bg-black/20">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 text-2xs uppercase tracking-[0.14em] text-white/40 bg-black/20">
           <div className="flex items-center gap-2">
             <Clock className="size-3.5" />
             {run.started_at ? (
@@ -538,7 +538,7 @@ export function RunDetailClient({
 
       {/* === Agent Lanes === */}
       <div>
-        <h2 className="text-[11px] leading-none text-white/75 uppercase tracking-[0.22em] font-medium mb-4">Agent Lanes</h2>
+        <h2 className="text-2xs leading-none text-white/75 uppercase tracking-[0.22em] font-medium mb-4">Agent Lanes</h2>
         {arenaMode === "race" ? (
           <RaceModeArena
             agents={sortedAgents}
@@ -621,18 +621,18 @@ export function RunDetailClient({
         (run.regression_coverage.suites.length > 0 ||
           run.regression_coverage.unmatched_cases.length > 0) && (
           <div>
-            <h2 className="text-[11px] leading-none text-white/75 uppercase tracking-[0.22em] font-medium mb-3">Regression Coverage</h2>
+            <h2 className="text-2xs leading-none text-white/75 uppercase tracking-[0.22em] font-medium mb-3">Regression Coverage</h2>
             <div className="space-y-3">
               {run.regression_coverage.suites.length > 0 && (
                 <Panel className="overflow-x-auto">
                   <Table className="text-white/70">
                     <TableHeader className="border-white/10 hover:bg-transparent">
                       <TableRow className="border-white/10 hover:bg-transparent">
-                        <TableHead className="text-white/40 uppercase tracking-[0.14em] text-[10px]">Suite</TableHead>
-                        <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Cases</TableHead>
-                        <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Pass</TableHead>
-                        <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Fail</TableHead>
-                        <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Pending</TableHead>
+                        <TableHead className="text-white/40 uppercase tracking-[0.14em] text-2xs">Suite</TableHead>
+                        <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-2xs">Cases</TableHead>
+                        <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-2xs">Pass</TableHead>
+                        <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-2xs">Fail</TableHead>
+                        <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-2xs">Pending</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -666,7 +666,7 @@ export function RunDetailClient({
 
               {run.regression_coverage.unmatched_cases.length > 0 && (
                 <Panel className="p-4">
-                  <h3 className="text-[10px] font-medium uppercase tracking-[0.14em] text-white/40 mb-3">
+                  <h3 className="text-2xs font-medium uppercase tracking-[0.14em] text-white/40 mb-3">
                     Unmatched Cases
                   </h3>
                   <div className="flex flex-wrap gap-2">
@@ -691,15 +691,15 @@ export function RunDetailClient({
         run.status === "failed" ||
         run.status === "cancelled") && (
         <div>
-          <h2 className="text-[11px] leading-none text-white/75 uppercase tracking-[0.22em] font-medium mb-4">Ranking</h2>
+          <h2 className="text-2xs leading-none text-white/75 uppercase tracking-[0.22em] font-medium mb-4">Ranking</h2>
 
           {!ranking || ranking.state === "pending" ? (
-            <Panel className="p-8 text-center text-[11px] uppercase tracking-[0.14em] text-white/40">
+            <Panel className="p-8 text-center text-2xs uppercase tracking-[0.14em] text-white/40">
               <Loader2 className="size-5 animate-spin mx-auto mb-3 text-white/20" />
               Scoring in progress...
             </Panel>
           ) : ranking.state === "errored" ? (
-            <Panel tone="danger" className="p-8 text-center text-[11px] uppercase tracking-[0.14em] text-red-400/80">
+            <Panel tone="danger" className="p-8 text-center text-2xs uppercase tracking-[0.14em] text-red-400/80">
               <AlertTriangle className="size-5 mx-auto mb-3 text-red-400/50" />
               {ranking.message || "Ranking unavailable for this run."}
             </Panel>
@@ -742,7 +742,7 @@ export function RunDetailClient({
 
                     {/* Strategy badge (if present) */}
                     {ranking.ranking.items[0]?.strategy && (
-                      <div className="flex items-center gap-2 mb-4 text-[10px] uppercase tracking-[0.14em] text-white/40">
+                      <div className="flex items-center gap-2 mb-4 text-2xs uppercase tracking-[0.14em] text-white/40">
                         <span>Strategy:</span>
                         <Badge variant="outline" className="bg-white/5 text-white/70 border-white/10">
                           {ranking.ranking.items[0].strategy}
@@ -754,19 +754,19 @@ export function RunDetailClient({
                       <Table className="text-white/70">
                         <TableHeader className="border-white/10 hover:bg-transparent">
                           <TableRow className="border-white/10 hover:bg-transparent">
-                            <TableHead className="w-16 text-white/40 uppercase tracking-[0.14em] text-[10px]">Rank</TableHead>
-                            <TableHead className="text-white/40 uppercase tracking-[0.14em] text-[10px]">Agent</TableHead>
-                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Overall</TableHead>
-                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Correctness</TableHead>
-                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Reliability</TableHead>
-                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Latency</TableHead>
-                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">Cost</TableHead>
+                            <TableHead className="w-16 text-white/40 uppercase tracking-[0.14em] text-2xs">Rank</TableHead>
+                            <TableHead className="text-white/40 uppercase tracking-[0.14em] text-2xs">Agent</TableHead>
+                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-2xs">Overall</TableHead>
+                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-2xs">Correctness</TableHead>
+                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-2xs">Reliability</TableHead>
+                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-2xs">Latency</TableHead>
+                            <TableHead className="text-right text-white/40 uppercase tracking-[0.14em] text-2xs">Cost</TableHead>
                             {customDimKeys.map((key) => (
-                              <TableHead key={key} className="text-right text-white/40 uppercase tracking-[0.14em] text-[10px]">
+                              <TableHead key={key} className="text-right text-white/40 uppercase tracking-[0.14em] text-2xs">
                                 {key.charAt(0).toUpperCase() + key.slice(1).replace(/_/g, " ")}
                               </TableHead>
                             ))}
-                            <TableHead className="text-center text-white/40 uppercase tracking-[0.14em] text-[10px]">Pass</TableHead>
+                            <TableHead className="text-center text-white/40 uppercase tracking-[0.14em] text-2xs">Pass</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -789,7 +789,7 @@ export function RunDetailClient({
                                 </TableCell>
                                 <TableCell className="font-medium text-white/90">
                                   {item.label}
-                                  <span className="text-[10px] text-white/30 ml-2 font-[family-name:var(--font-mono)]">
+                                  <span className="text-2xs text-white/30 ml-2 font-[family-name:var(--font-mono)]">
                                     #{item.lane_index}
                                   </span>
                                 </TableCell>
@@ -797,7 +797,7 @@ export function RunDetailClient({
                                   <div className="font-[family-name:var(--font-mono)] text-white/90">{scorePercent(item.overall_score ?? item.composite_score)}</div>
                                   {item.delta_from_top != null &&
                                     item.delta_from_top !== 0 && (
-                                      <div className="text-[10px] text-white/40 font-[family-name:var(--font-mono)] mt-0.5">
+                                      <div className="text-2xs text-white/40 font-[family-name:var(--font-mono)] mt-0.5">
                                         {deltaLabel(item.delta_from_top)}
                                       </div>
                                     )}

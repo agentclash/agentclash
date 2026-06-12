@@ -55,7 +55,7 @@ export function WorkspaceSwitcher({
           />
         }
       >
-        <span className="truncate text-[0.8125rem]">
+        <span className="truncate text-sm">
           {current?.name ?? "Select workspace"}
         </span>
         <ChevronsUpDown className="size-3 opacity-40" />
@@ -71,7 +71,7 @@ export function WorkspaceSwitcher({
           >
             <div className="flex flex-col gap-0.5">
               <span className="text-sm">{ws.name}</span>
-              <span className="text-[0.6875rem] text-muted-foreground/60">
+              <span className="text-2xs text-muted-foreground/60">
                 {ws.orgName}
               </span>
             </div>

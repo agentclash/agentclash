@@ -14,6 +14,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 	sdkworkflow "go.temporal.io/sdk/workflow"
 )
@@ -76,11 +77,23 @@ func (a *Activities) ExecutePublicAgentTryout(ctx context.Context, input Execute
 
 	latencyMS := time.Since(started).Milliseconds()
 	scorecard := publicTryoutScorecard(tryout.EvaluationSpecSnapshot, outputs, latencyMS)
-	if err := a.recordPublicTryoutEvent(ctx, tryout.ID, runevents.EventTypeScoringCompleted, map[string]any{
+	if judgeSection := a.runPublicTryoutJudges(ctx, tryout, outputs); judgeSection != nil {
+		scorecard["judge"] = judgeSection
+	}
+	scoringPayload := map[string]any{
 		"passed": scorecard["passed_validators"],
 		"total":  scorecard["total_validators"],
 		"score":  scorecard["score"],
-	}); err != nil {
+	}
+	if judgeSection, ok := scorecard["judge"].(map[string]any); ok {
+		if verdict, ok := judgeSection["verdict"].(string); ok {
+			scoringPayload["verdict"] = verdict
+		}
+		if model, ok := judgeSection["model"].(string); ok {
+			scoringPayload["provider_model_id"] = model
+		}
+	}
+	if err := a.recordPublicTryoutEvent(ctx, tryout.ID, runevents.EventTypeScoringCompleted, scoringPayload); err != nil {
 		return wrapActivityError(err)
 	}
 
@@ -789,6 +802,215 @@ func publicTryoutScorecard(evaluationSpec json.RawMessage, outputs []map[string]
 		"latency_ms":        latencyMS,
 		"outputs_count":     len(outputs),
 	}
+}
+
+// Judge-output digest bounds. Output previews are truncated before they are
+// handed to the LLM judge so anonymous tryouts cannot run up platform-key
+// spend with giant artifacts.
+const (
+	publicJudgeMaxBytesPerOutput = 6_000
+	publicJudgeMaxDigestBytes    = 18_000
+)
+
+// runPublicTryoutJudges executes the llm_judges baked into the tryout's
+// evaluation spec snapshot against the produced outputs, reusing the same
+// judge machinery as harness runs (evaluateLLMJudges). Anonymous tryouts carry
+// no deployment context, so credential resolution always lands on platform env
+// keys. Returns nil when no judges are configured; judge failures degrade to a
+// section with skipped criteria instead of failing the tryout.
+func (a *Activities) runPublicTryoutJudges(ctx context.Context, tryout repository.AgentTryout, outputs []map[string]any) map[string]any {
+	var spec struct {
+		LLMJudges []json.RawMessage `json:"llm_judges"`
+		JudgeMeta struct {
+			Model      string            `json:"model"`
+			Strictness string            `json:"strictness"`
+			Labels     map[string]string `json:"labels"`
+		} `json:"judge_meta"`
+	}
+	if err := json.Unmarshal(tryout.EvaluationSpecSnapshot, &spec); err != nil || len(spec.LLMJudges) == 0 {
+		return nil
+	}
+	judges, err := agentHarnessLLMJudges(spec.LLMJudges)
+	if err != nil || len(judges) == 0 {
+		return nil
+	}
+
+	judgeModel := strings.TrimSpace(spec.JudgeMeta.Model)
+	if judgeModel == "" {
+		judgeModel = judges[0].Model
+	}
+	_ = a.recordPublicTryoutEvent(ctx, tryout.ID, runevents.EventTypeScoringStarted, map[string]any{
+		"status":            "judging",
+		"provider_model_id": judgeModel,
+	})
+
+	digest := publicTryoutJudgeDigest(outputs)
+	if digest == "" {
+		_ = a.recordPublicTryoutEvent(ctx, tryout.ID, runevents.EventTypeScoringFailed, map[string]any{
+			"status": "no_output_to_judge",
+		})
+		return map[string]any{
+			"model":      judgeModel,
+			"strictness": spec.JudgeMeta.Strictness,
+			"verdict":    "not_judged",
+			"reason":     "the run produced no output the judge could grade",
+		}
+	}
+
+	input := scoring.EvaluationInput{
+		Events: []scoring.Event{{
+			Type:       string(runevents.EventTypeSystemOutputFinalized),
+			Source:     "worker",
+			OccurredAt: time.Now().UTC(),
+			Payload:    mustMarshalJSON(map[string]any{"final_output": digest}),
+		}},
+	}
+	results, warnings := evaluateLLMJudges(ctx, a.judgeClient, a.repo, repository.RunAgentExecutionContext{}, input, scoring.EvaluationSpec{LLMJudges: judges})
+
+	criteria := make([]map[string]any, 0, len(results))
+	var overallScore *float64
+	anyScored := false
+	instantFailHit := false
+	for _, result := range results {
+		entry := map[string]any{
+			"key":   result.JudgeKey,
+			"label": publicJudgeLabel(spec.JudgeMeta.Labels, result.JudgeKey),
+			"mode":  result.Mode,
+		}
+		if result.NormalizedScore == nil {
+			entry["status"] = "skipped"
+			if result.Reason != "" {
+				entry["reason"] = result.Reason
+			}
+		} else {
+			anyScored = true
+			score := *result.NormalizedScore
+			entry["score"] = score
+			if score >= 0.5 {
+				entry["status"] = "passed"
+			} else {
+				entry["status"] = "failed"
+			}
+			if result.JudgeKey == "overall_quality" {
+				overallScore = result.NormalizedScore
+			} else if score < 0.5 && result.JudgeKey == "instant_fail" {
+				instantFailHit = true
+			}
+		}
+		if result.Confidence != nil {
+			entry["confidence"] = *result.Confidence
+		}
+		if reasoning := publicJudgeReasoning(result.Payload); reasoning != "" {
+			entry["reasoning"] = reasoning
+		}
+		criteria = append(criteria, entry)
+	}
+
+	section := map[string]any{
+		"model":      judgeModel,
+		"strictness": spec.JudgeMeta.Strictness,
+		"criteria":   criteria,
+	}
+	if len(warnings) > 0 {
+		section["warnings"] = warnings
+	}
+	if !anyScored {
+		section["verdict"] = "not_judged"
+		section["reason"] = "the judge could not grade this run"
+		return section
+	}
+	if overallScore != nil {
+		section["score"] = *overallScore
+	}
+	switch {
+	case instantFailHit:
+		section["verdict"] = "rejected"
+	case overallScore != nil && *overallScore >= 0.75:
+		section["verdict"] = "approved"
+	case overallScore != nil && *overallScore >= 0.4:
+		section["verdict"] = "needs_edits"
+	case overallScore != nil:
+		section["verdict"] = "rejected"
+	default:
+		section["verdict"] = "needs_edits"
+	}
+	return section
+}
+
+// publicTryoutJudgeDigest flattens output previews into one bounded text block
+// the judge can grade. Binary previews (base64) are summarized, not inlined.
+func publicTryoutJudgeDigest(outputs []map[string]any) string {
+	sections := make([]string, 0, len(outputs))
+	total := 0
+	for _, output := range outputs {
+		preview, _ := output["preview"].(string)
+		name, _ := output["relative_path"].(string)
+		if name == "" {
+			name, _ = output["key"].(string)
+		}
+		encoding, _ := output["encoding"].(string)
+		if strings.TrimSpace(preview) == "" {
+			continue
+		}
+		if encoding == "base64" {
+			kind, _ := output["type"].(string)
+			sections = append(sections, fmt.Sprintf("=== %s ===\n(binary %s artifact was produced; grade based on the other outputs)", name, kind))
+			continue
+		}
+		if len(preview) > publicJudgeMaxBytesPerOutput {
+			runes := []rune(preview)
+			if len(runes) > publicJudgeMaxBytesPerOutput {
+				preview = string(runes[:publicJudgeMaxBytesPerOutput]) + "\n…(truncated)"
+			}
+		}
+		section := fmt.Sprintf("=== %s ===\n%s", name, preview)
+		if total+len(section) > publicJudgeMaxDigestBytes {
+			break
+		}
+		total += len(section)
+		sections = append(sections, section)
+	}
+	return strings.Join(sections, "\n\n")
+}
+
+func publicJudgeLabel(labels map[string]string, key string) string {
+	if label, ok := labels[key]; ok && strings.TrimSpace(label) != "" {
+		return label
+	}
+	spaced := strings.ReplaceAll(key, "_", " ")
+	if spaced == "" {
+		return "Check"
+	}
+	return strings.ToUpper(spaced[:1]) + spaced[1:]
+}
+
+// publicJudgeReasoning extracts the judge's own "reasoning" text from the
+// first successful call recorded in an LLMJudgeResult payload.
+func publicJudgeReasoning(payload json.RawMessage) string {
+	var decoded struct {
+		Calls []struct {
+			Error        string `json:"error"`
+			ResponseText string `json:"response_text"`
+		} `json:"calls"`
+	}
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		return ""
+	}
+	for _, call := range decoded.Calls {
+		if call.Error != "" || strings.TrimSpace(call.ResponseText) == "" {
+			continue
+		}
+		var response struct {
+			Reasoning string `json:"reasoning"`
+		}
+		if err := json.Unmarshal([]byte(sanitizeJudgeJSON(call.ResponseText)), &response); err != nil {
+			continue
+		}
+		if reasoning := strings.TrimSpace(response.Reasoning); reasoning != "" {
+			return reasoning
+		}
+	}
+	return ""
 }
 
 func isEmptyScorecardValue(value any) bool {

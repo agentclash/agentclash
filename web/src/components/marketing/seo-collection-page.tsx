@@ -115,7 +115,7 @@ export function SeoCollectionPage({
             <span>/</span>
             <span>{eyebrow}</span>
           </nav>
-          <p className="mt-10 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-cyan-200/70">
+          <p className="mt-10 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-cyan-200/70">
             {eyebrow}
           </p>
           <h1 className="mt-5 font-[family-name:var(--font-display)] text-5xl font-normal leading-none tracking-normal text-white sm:text-6xl">

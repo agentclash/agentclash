@@ -96,6 +96,7 @@ type Config struct {
 	AgentTryoutAnonymousWindow           time.Duration
 	AgentTryoutHostedDailySpendCapUSD    float64
 	AgentTryoutAnonymousPerRunCostCapUSD float64
+	AgentTryoutJudgeModels               []string
 }
 
 func LoadConfigFromEnv() (Config, error) {
@@ -300,6 +301,7 @@ func LoadConfigFromEnv() (Config, error) {
 		AgentTryoutAnonymousWindow:           agentTryoutAnonymousWindow,
 		AgentTryoutHostedDailySpendCapUSD:    agentTryoutHostedDailySpendCapUSD,
 		AgentTryoutAnonymousPerRunCostCapUSD: agentTryoutAnonymousPerRunCostCapUSD,
+		AgentTryoutJudgeModels:               commaSeparatedEnv("AGENT_TRYOUT_JUDGE_MODELS"),
 	}
 
 	if err := validateArtifactConfig(cfg); err != nil {
@@ -393,6 +395,27 @@ func int64EnvOrDefault(key string, fallback int64) (int64, error) {
 	}
 
 	return parsed, nil
+}
+
+// commaSeparatedEnv parses an optional comma-separated env var into a slice of
+// trimmed, non-empty values. Unset or empty returns nil so callers keep their
+// built-in defaults.
+func commaSeparatedEnv(key string) []string {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	return values
 }
 
 func nonNegativeIntEnvOrDefault(key string, fallback int) (int, error) {
