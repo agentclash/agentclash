@@ -11,8 +11,10 @@ import {
   Download,
   FileText,
   Gauge,
+  ListChecks,
   Loader2,
   PanelRight,
+  Scale,
 } from "lucide-react";
 
 import {
@@ -27,6 +29,7 @@ import { ApiError } from "@/lib/api/errors";
 import type {
   AgentHarnessKind,
   AgentTryout,
+  AgentTryoutJudgeStrictness,
   AgentTryoutModelPolicy,
   AgentTryoutTemplate,
   TryoutTimelineEvent,
@@ -37,6 +40,12 @@ import {
   tryoutIsActive,
 } from "@/lib/agent-tryout-status";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -168,6 +177,58 @@ const MODEL_OPTIONS: ModelOption[] = [
   },
 ];
 
+// Judge models must match the backend's hosted allowlist
+// (defaultPublicJudgeModels). Judges always run on platform keys.
+const JUDGE_OPTIONS = [
+  { value: "gpt-5-mini", label: "GPT-5 mini" },
+  { value: "claude-haiku-4-5", label: "Claude Haiku" },
+  { value: "gemini-2.5-flash", label: "Gemini Flash" },
+];
+
+const STRICTNESS_OPTIONS: { value: AgentTryoutJudgeStrictness; label: string }[] = [
+  { value: "lenient", label: "Lenient" },
+  { value: "standard", label: "Standard" },
+  { value: "harsh", label: "Harsh" },
+];
+
+function judgeModelLabel(model: string): string {
+  return JUDGE_OPTIONS.find((option) => option.value === model)?.label ?? model;
+}
+
+// Cross-page handoff for the "run it again" funnel loop: the verdict screen
+// stashes the brief + eval answers here, and the welcome screen prefills from
+// it so a rerun takes one click instead of re-typing everything.
+const RERUN_STORAGE_KEY = "agentclash.tryout.rerun";
+
+type RerunPrefill = {
+  templateSlug?: string;
+  fieldValues?: Record<string, string>;
+  evalSetup?: Partial<EvalSetupValues>;
+  judgeModel?: string;
+  judgeStrictness?: AgentTryoutJudgeStrictness;
+  selectedModelKey?: string;
+};
+
+function readRerunPrefill(): RerunPrefill | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(RERUN_STORAGE_KEY);
+    if (!raw) return null;
+    window.sessionStorage.removeItem(RERUN_STORAGE_KEY);
+    return JSON.parse(raw) as RerunPrefill;
+  } catch {
+    return null;
+  }
+}
+
+function writeRerunPrefill(prefill: RerunPrefill) {
+  try {
+    window.sessionStorage.setItem(RERUN_STORAGE_KEY, JSON.stringify(prefill));
+  } catch {
+    // best-effort
+  }
+}
+
 function agentLabel(value: string): string {
   switch (value) {
     case "codex_e2b":
@@ -267,8 +328,29 @@ export function PublicTryoutsClient() {
   const [templates, setTemplates] = useState<AgentTryoutTemplate[]>([]);
   const [templateSlug, setTemplateSlug] = useState("");
   const [selectedModelKey, setSelectedModelKey] = useState("auto");
+  const [judgeModel, setJudgeModel] = useState(JUDGE_OPTIONS[0].value);
+  const [judgeStrictness, setJudgeStrictness] =
+    useState<AgentTryoutJudgeStrictness>("standard");
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [evalSetup, setEvalSetup] = useState<EvalSetupValues>(DEFAULT_EVAL_SETUP);
+  const prefillRef = useRef<RerunPrefill | null>(null);
+
+  // Apply a rerun handoff (same brief, different agent/judge) exactly once.
+  useEffect(() => {
+    if (urlTryoutId) return;
+    const prefill = readRerunPrefill();
+    if (!prefill) return;
+    prefillRef.current = prefill;
+    if (prefill.templateSlug) setTemplateSlug(prefill.templateSlug);
+    if (prefill.evalSetup) {
+      setEvalSetup((current) => ({ ...current, ...prefill.evalSetup }));
+    }
+    if (prefill.judgeModel) setJudgeModel(prefill.judgeModel);
+    if (prefill.judgeStrictness) setJudgeStrictness(prefill.judgeStrictness);
+    if (prefill.selectedModelKey) setSelectedModelKey(prefill.selectedModelKey);
+    if (prefill.fieldValues) setFieldValues(prefill.fieldValues);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [launching, setLaunching] = useState(false);
   const [tryout, setTryout] = useState<AgentTryout | null>(null);
@@ -309,6 +391,15 @@ export function PublicTryoutsClient() {
   }, []);
 
   useEffect(() => {
+    const pending = prefillRef.current;
+    if (
+      pending?.fieldValues &&
+      (!pending.templateSlug || pending.templateSlug === templateSlug)
+    ) {
+      setFieldValues(pending.fieldValues);
+      prefillRef.current = null;
+      return;
+    }
     setFieldValues({});
   }, [templateSlug]);
 
@@ -408,15 +499,8 @@ export function PublicTryoutsClient() {
     evalSetup.unacceptableMistakes.trim().length > 0 &&
     evalSetup.monthlyVolume.trim().length > 0;
 
-  async function handleLaunch(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!template || launching) return;
-    if (!evalReady) {
-      setMessage(
-        "Define the eval first: name one mistake that would fail this work, and your monthly volume.",
-      );
-      return;
-    }
+  async function launchTryout() {
+    if (!template || launching || !evalReady) return;
 
     const input = buildInput(fields, required, fieldValues);
     if ("error" in input) {
@@ -434,12 +518,30 @@ export function PublicTryoutsClient() {
     setMessage(null);
     setQuotaMessage(null);
     try {
-      const nextTryout = await createAnonymousAgentTryout(api, {
+      const payload = {
         template_slug: template.slug,
         input: input.value,
         ...(selectedModel.value ? { selected_harness_kind: selectedModel.value } : {}),
         ...(selectedPolicy ? { selected_model_policy: selectedPolicy } : {}),
-      });
+        judge: { model: judgeModel, strictness: judgeStrictness },
+      };
+      let nextTryout: AgentTryout;
+      try {
+        nextTryout = await createAnonymousAgentTryout(api, payload);
+      } catch (err) {
+        // Backends that predate judge selection reject unknown fields; fall
+        // back to a judgeless run instead of breaking the page.
+        if (
+          err instanceof ApiError &&
+          err.status === 400 &&
+          err.message.toLowerCase().includes("judge")
+        ) {
+          const withoutJudge = { ...payload, judge: undefined };
+          nextTryout = await createAnonymousAgentTryout(api, withoutJudge);
+        } else {
+          throw err;
+        }
+      }
       setTryout(nextTryout);
       setEvents([]);
       router.replace(`/tryouts?tryout=${encodeURIComponent(nextTryout.id)}`, {
@@ -465,7 +567,7 @@ export function PublicTryoutsClient() {
   )}`;
 
   const primaryValue = primaryField ? fieldValues[primaryField[0]] ?? "" : "";
-  const canRun = Boolean(template) && !templatesLoading && !launching && evalReady;
+  const canRun = Boolean(template) && !templatesLoading && !launching;
   const inSession = Boolean(urlTryoutId);
 
   return (
@@ -532,6 +634,10 @@ export function PublicTryoutsClient() {
           setTemplateSlug={setTemplateSlug}
           selectedModelKey={selectedModelKey}
           setSelectedModelKey={setSelectedModelKey}
+          judgeModel={judgeModel}
+          setJudgeModel={setJudgeModel}
+          judgeStrictness={judgeStrictness}
+          setJudgeStrictness={setJudgeStrictness}
           primaryField={primaryField}
           secondaryFields={secondaryFields}
           fieldValues={fieldValues}
@@ -546,7 +652,7 @@ export function PublicTryoutsClient() {
           message={message}
           quotaMessage={quotaMessage}
           loginHref={loginHref}
-          onSubmit={handleLaunch}
+          onLaunch={() => void launchTryout()}
         />
       )}
     </main>
@@ -560,6 +666,10 @@ function TryoutWelcome({
   setTemplateSlug,
   selectedModelKey,
   setSelectedModelKey,
+  judgeModel,
+  setJudgeModel,
+  judgeStrictness,
+  setJudgeStrictness,
   primaryField,
   secondaryFields,
   fieldValues,
@@ -574,7 +684,7 @@ function TryoutWelcome({
   message,
   quotaMessage,
   loginHref,
-  onSubmit,
+  onLaunch,
 }: {
   template: AgentTryoutTemplate | null;
   templates: AgentTryoutTemplate[];
@@ -582,6 +692,10 @@ function TryoutWelcome({
   setTemplateSlug: (value: string) => void;
   selectedModelKey: string;
   setSelectedModelKey: (value: string) => void;
+  judgeModel: string;
+  setJudgeModel: (value: string) => void;
+  judgeStrictness: AgentTryoutJudgeStrictness;
+  setJudgeStrictness: (value: AgentTryoutJudgeStrictness) => void;
   primaryField: [string, FieldSpec] | null;
   secondaryFields: [string, FieldSpec][];
   fieldValues: Record<string, string>;
@@ -599,19 +713,32 @@ function TryoutWelcome({
   message: string | null;
   quotaMessage: string | null;
   loginHref: string;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onLaunch: () => void;
 }) {
+  const [barOpen, setBarOpen] = useState(false);
+  // True when the bar dialog was opened by a send attempt: confirming the bar
+  // should immediately launch the run instead of dropping back to the page.
+  const [launchAfterBar, setLaunchAfterBar] = useState(false);
+
   const enter =
     "animate-in fade-in slide-in-from-bottom-3 fill-mode-both duration-700 motion-reduce:animate-none";
 
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!canRun) return;
+    if (!evalReady) {
+      setLaunchAfterBar(true);
+      setBarOpen(true);
+      return;
+    }
+    onLaunch();
+  }
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
-      <div className="relative mx-auto min-h-full w-full max-w-3xl border-x border-white/[0.06] px-5 pb-24 pt-14 sm:px-12 sm:pt-20">
-        <RegistrationMark className="left-0 top-8" />
-        <RegistrationMark className="right-0 top-8" />
-
+      <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-5 py-12 sm:px-6">
         <p
-          className={cn(MICRO, "text-white/35", enter)}
+          className={cn(MICRO, "text-center text-white/35", enter)}
           style={{ animationDelay: "0ms" }}
         >
           Public tryout · Sandboxed · No signup
@@ -619,186 +746,306 @@ function TryoutWelcome({
         <h1
           className={cn(
             SERIF,
-            "mt-7 max-w-[22ch] text-[clamp(2.5rem,6.2vw,4rem)] font-light leading-[1.04] tracking-tight text-white/95",
+            "mx-auto mt-5 max-w-[20ch] text-center text-[clamp(2.1rem,5vw,3.1rem)] font-light leading-[1.06] tracking-tight text-white/95",
             enter,
           )}
-          style={{ animationDelay: "100ms" }}
+          style={{ animationDelay: "90ms" }}
         >
-          What would make you{" "}
-          <em className="italic text-white/55">reject</em> this work?
+          Put an agent on your work.{" "}
+          <em className="italic text-white/55">Then judge it.</em>
         </h1>
         <p
-          className={cn("mt-6 max-w-xl text-base leading-7 text-white/50", enter)}
-          style={{ animationDelay: "200ms" }}
+          className={cn(
+            "mx-auto mt-4 max-w-md text-center text-base leading-7 text-white/50",
+            enter,
+          )}
+          style={{ animationDelay: "180ms" }}
         >
-          Answer that and you have written your first eval. Then brief a
-          sandboxed agent, watch every step it takes, and see it graded against
-          your own bar.
+          Describe the work. Before the agent runs, you set the bar — and a
+          judge you pick grades the result against it.
         </p>
 
-        <form onSubmit={onSubmit}>
-          <section
-            className={cn("relative mt-16", enter)}
-            style={{ animationDelay: "300ms" }}
-          >
-            <GhostNumeral>01</GhostNumeral>
-            <div className="flex items-baseline justify-between border-b border-white/15 pb-3">
-              <h2 className={cn(SERIF, "text-2xl font-light tracking-tight text-white/90")}>
-                Set the bar
-              </h2>
-              <span className={cn(MICRO, evalReady ? "text-white/55" : "text-white/30")}>
-                {evalReady ? "Complete" : "Required"}
-              </span>
-            </div>
-            <EvalSetupPanel values={evalSetup} onChange={updateEvalSetup} />
-          </section>
-
-          <section
-            className={cn("relative mt-20", enter)}
-            style={{ animationDelay: "400ms" }}
-          >
-            <GhostNumeral>02</GhostNumeral>
-            <div className="flex items-baseline justify-between border-b border-white/15 pb-3">
-              <h2 className={cn(SERIF, "text-2xl font-light tracking-tight text-white/90")}>
-                Brief the agent
-              </h2>
-              <span className={cn(MICRO, "text-white/30")}>
-                {evalReady ? "Open" : "Locked"}
-              </span>
-            </div>
-
-            {evalReady ? (
-              <div className="mt-7 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none">
-                <ComposerShell
-                  value={primaryValue}
-                  onChange={(value) =>
-                    primaryField && updateField(primaryField[0], value)
-                  }
-                  disabled={!template}
-                  placeholder={
-                    template
-                      ? `Describe the work for "${template.name}"…`
-                      : "Loading tasks…"
-                  }
-                  canSubmit={canRun}
-                  submitting={launching}
-                  footer={
-                    <>
-                      <AnimatedPillSelect
-                        icon={<FileText className="size-3.5" />}
-                        value={templateSlug}
-                        onChange={setTemplateSlug}
-                        disabled={templatesLoading}
-                        options={templates.map((t) => ({ value: t.slug, label: t.name }))}
-                      />
-                      <AnimatedPillSelect
-                        icon={<Gauge className="size-3.5" />}
-                        value={selectedModelKey}
-                        onChange={setSelectedModelKey}
-                        options={MODEL_OPTIONS.map((option) => ({
-                          value: modelOptionKey(option),
-                          label: option.label,
-                        }))}
-                      />
-                    </>
-                  }
+        <form
+          onSubmit={handleSubmit}
+          className={cn("mt-8", enter)}
+          style={{ animationDelay: "270ms" }}
+        >
+          <ComposerShell
+            value={primaryValue}
+            onChange={(value) => primaryField && updateField(primaryField[0], value)}
+            disabled={!template}
+            placeholder={
+              template
+                ? `Describe the work for "${template.name}"…`
+                : "Loading tasks…"
+            }
+            canSubmit={canRun}
+            submitting={launching}
+            footer={
+              <>
+                <BarPill ready={evalReady} onClick={() => setBarOpen(true)} />
+                <AnimatedPillSelect
+                  icon={<FileText className="size-3.5" />}
+                  value={templateSlug}
+                  onChange={setTemplateSlug}
+                  disabled={templatesLoading}
+                  options={templates.map((t) => ({ value: t.slug, label: t.name }))}
                 />
+                <AnimatedPillSelect
+                  icon={<Gauge className="size-3.5" />}
+                  value={selectedModelKey}
+                  onChange={setSelectedModelKey}
+                  options={MODEL_OPTIONS.map((option) => ({
+                    value: modelOptionKey(option),
+                    label: option.label,
+                  }))}
+                />
+                <AnimatedPillSelect
+                  icon={<Scale className="size-3.5" />}
+                  value={judgeModel}
+                  onChange={setJudgeModel}
+                  options={JUDGE_OPTIONS.map((option) => ({
+                    value: option.value,
+                    label: `${option.label} judges`,
+                  }))}
+                />
+              </>
+            }
+          />
 
-                {secondaryFields.length > 0 ? (
-                  <div className="mt-4 grid gap-x-10 gap-y-5 sm:grid-cols-2">
-                    {secondaryFields.map(([field, spec]) => (
-                      <CompactField
-                        key={field}
-                        field={field}
-                        spec={spec}
-                        value={fieldValues[field] ?? ""}
-                        required={false}
-                        onChange={updateField}
-                      />
-                    ))}
-                  </div>
-                ) : null}
-
-                {template && primaryField ? (
-                  <div className="mt-8">
-                    <p className={cn(MICRO, "text-white/30")}>Or steal one of these</p>
-                    <ul className="mt-3 divide-y divide-white/[0.07] border-y border-white/[0.07]">
-                      {suggestionsFor(template.slug).map((suggestion) => (
-                        <li key={suggestion}>
-                          <button
-                            type="button"
-                            onClick={() => updateField(primaryField[0], suggestion)}
-                            className="group flex w-full items-baseline gap-3 py-2.5 text-left text-sm leading-6 text-white/50 transition hover:text-white"
-                          >
-                            <span className="font-mono text-2xs text-white/25 transition group-hover:text-white/60">
-                              →
-                            </span>
-                            {suggestion}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
-              </div>
-            ) : (
-              <div className="mt-7 flex h-28 items-center justify-center border border-dashed border-white/10">
-                <p className={cn(MICRO, "text-white/30")}>Answer 01 to unlock the brief</p>
-              </div>
-            )}
-          </section>
+          {secondaryFields.length > 0 ? (
+            <div className="mt-4 grid gap-x-10 gap-y-5 sm:grid-cols-2">
+              {secondaryFields.map(([field, spec]) => (
+                <CompactField
+                  key={field}
+                  field={field}
+                  spec={spec}
+                  value={fieldValues[field] ?? ""}
+                  required={false}
+                  onChange={updateField}
+                />
+              ))}
+            </div>
+          ) : null}
 
           {message ? <Alert text={message} /> : null}
           {quotaMessage ? (
-            <div className="mt-5 border border-white/15 p-4 text-sm text-white/70">
-              <p>{quotaMessage}</p>
+            <div className="mt-6 border border-white/25 p-5">
+              <p className={cn(MICRO, "text-white/45")}>Free runs used</p>
+              <p className="mt-2 text-sm leading-6 text-white/55">{quotaMessage}</p>
+              <p className="mt-2 text-sm leading-6 text-white/70">
+                Your bar is already written. Sign up free to keep grading agents
+                against it, and to save every verdict.
+              </p>
               <Link
                 href={loginHref}
-                className="mt-2 inline-flex items-center gap-1 font-medium text-white hover:underline"
+                className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
               >
-                Save this tryout in a workspace
-                <ArrowRight className="size-3.5" />
+                Keep grading
+                <ArrowRight className="size-4" />
               </Link>
             </div>
           ) : null}
 
-          {template && evalReady ? (
-            <p className="mt-6 font-mono text-2xs leading-5 tracking-[0.04em] text-white/30">
-              {template.description} ·{" "}
+          {template ? (
+            <p className="mt-4 text-center font-mono text-2xs leading-5 tracking-[0.04em] text-white/30">
               {MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey)?.hint ??
                 "Hosted default agent and model"}{" "}
-              · cost cap {`$${template.max_cost_usd.toFixed(2)}`}
+              · judged by {judgeModelLabel(judgeModel)} ({judgeStrictness}) on our
+              keys · cost cap {`$${template.max_cost_usd.toFixed(2)}`}
             </p>
           ) : null}
         </form>
+
+        {template && primaryField ? (
+          <div className={cn("mt-9", enter)} style={{ animationDelay: "360ms" }}>
+            <p className={cn(MICRO, "text-center text-white/30")}>
+              Or steal one of these
+            </p>
+            <ul className="mt-3 divide-y divide-white/[0.07] border-y border-white/[0.07]">
+              {suggestionsFor(template.slug).map((suggestion) => (
+                <li key={suggestion}>
+                  <button
+                    type="button"
+                    onClick={() => updateField(primaryField[0], suggestion)}
+                    className="group flex w-full items-baseline gap-3 py-2.5 text-left text-sm leading-6 text-white/50 transition hover:text-white"
+                  >
+                    <span className="font-mono text-2xs text-white/25 transition group-hover:text-white/60">
+                      →
+                    </span>
+                    {suggestion}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
+
+      <BarDialog
+        open={barOpen}
+        onOpenChange={(open) => {
+          setBarOpen(open);
+          if (!open) setLaunchAfterBar(false);
+        }}
+        values={evalSetup}
+        onChange={updateEvalSetup}
+        strictness={judgeStrictness}
+        setStrictness={setJudgeStrictness}
+        judgeModel={judgeModel}
+        evalReady={evalReady}
+        willLaunch={launchAfterBar}
+        onConfirm={() => {
+          if (!evalReady) return;
+          setBarOpen(false);
+          if (launchAfterBar) {
+            setLaunchAfterBar(false);
+            onLaunch();
+          }
+        }}
+      />
     </div>
   );
 }
 
-function RegistrationMark({ className }: { className: string }) {
+// BarPill is the composer's entry to the eval gate: it shows whether the bar
+// is set and opens the dialog to write or edit it.
+function BarPill({ ready, onClick }: { ready: boolean; onClick: () => void }) {
   return (
-    <span
-      aria-hidden
-      className={cn("pointer-events-none absolute size-2.5", className)}
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-sm border py-1.5 pl-2.5 pr-2.5 font-mono text-2xs transition",
+        ready
+          ? "border-white/12 text-white/60 hover:border-white/30 hover:text-white/90"
+          : "border-white/35 text-white/90 hover:border-white/60",
+      )}
     >
-      <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/20" />
-      <span className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-white/20" />
-    </span>
+      <ListChecks className="size-3.5" />
+      {ready ? "Bar set" : "Set the bar"}
+      {!ready ? (
+        <span
+          aria-hidden
+          className="size-1 rounded-full bg-white/80 animate-pulse motion-reduce:animate-none"
+        />
+      ) : null}
+    </button>
   );
 }
 
-function GhostNumeral({ children }: { children: ReactNode }) {
+// BarDialog is the eval gate: a single modal where the visitor writes the bar
+// the judge will grade against. It blocks the first run until the two
+// required answers exist, then gets out of the way.
+function BarDialog({
+  open,
+  onOpenChange,
+  values,
+  onChange,
+  strictness,
+  setStrictness,
+  judgeModel,
+  evalReady,
+  willLaunch,
+  onConfirm,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  values: EvalSetupValues;
+  onChange: <Key extends keyof EvalSetupValues>(
+    field: Key,
+    value: EvalSetupValues[Key],
+  ) => void;
+  strictness: AgentTryoutJudgeStrictness;
+  setStrictness: (value: AgentTryoutJudgeStrictness) => void;
+  judgeModel: string;
+  evalReady: boolean;
+  willLaunch: boolean;
+  onConfirm: () => void;
+}) {
   return (
-    <span
-      aria-hidden
-      className={cn(
-        SERIF,
-        "pointer-events-none absolute -top-10 right-0 select-none text-[6rem] font-light leading-none text-white/[0.05] sm:-top-14 sm:text-[8.5rem]",
-      )}
-    >
-      {children}
-    </span>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        className="max-h-[85dvh] gap-0 overflow-y-auto rounded-sm border border-white/12 bg-[#1a1a19] p-6 text-white ring-0 sm:max-w-lg"
+      >
+        <p className={cn(MICRO, "text-white/40")}>Before the agent runs</p>
+        <DialogTitle
+          className={cn(SERIF, "mt-3 text-3xl font-light tracking-tight text-white/95")}
+        >
+          What would make you{" "}
+          <em className="italic text-white/55">reject</em> this work?
+        </DialogTitle>
+        <DialogDescription className="mt-3 text-sm leading-6 text-white/50">
+          Your answers become the judge&apos;s instructions, word for word.
+          That is an eval — and {judgeModelLabel(judgeModel)} will enforce it.
+        </DialogDescription>
+
+        <div className="mt-6 space-y-6">
+          <UnderlineField
+            label="The mistake you would not forgive"
+            required
+            value={values.unacceptableMistakes}
+            onChange={(value) => onChange("unacceptableMistakes", value)}
+            placeholder="Invented numbers, missing citations, off-brand tone"
+          />
+          <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+            <UnderlineField
+              label="The person who signs off"
+              value={values.reviewer}
+              onChange={(value) => onChange("reviewer", value)}
+              placeholder="Support lead, CFO, sales manager"
+            />
+            <UnderlineField
+              label="Runs per month"
+              required
+              value={values.monthlyVolume}
+              onChange={(value) => onChange("monthlyVolume", value)}
+              placeholder="50, 500, 10k"
+            />
+          </div>
+          <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
+            <SegmentedControl
+              label="Optimize for"
+              value={values.priority}
+              options={PRIORITY_OPTIONS}
+              onChange={(value) => onChange("priority", value)}
+            />
+            <SegmentedControl
+              label="Output behavior"
+              value={values.style}
+              options={STYLE_OPTIONS}
+              onChange={(value) => onChange("style", value)}
+            />
+          </div>
+          <SegmentedControl
+            label="How harshly the judge grades"
+            value={strictness}
+            options={STRICTNESS_OPTIONS}
+            onChange={setStrictness}
+          />
+        </div>
+
+        <div className="mt-7 flex items-center justify-between gap-4 border-t border-white/[0.08] pt-4">
+          <button
+            type="button"
+            onClick={() => onOpenChange(false)}
+            className="font-mono text-2xs uppercase tracking-[0.12em] text-white/35 transition hover:text-white/70"
+          >
+            Not yet
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!evalReady}
+            className="inline-flex h-9 items-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {willLaunch ? "Lock the bar and run" : "Lock the bar"}
+            <ArrowRight className="size-4" />
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -955,7 +1202,7 @@ function TryoutSidebar({
 
       {scorecard ? (
         <div className="mt-4 px-1">
-          <ScorecardCard scorecard={scorecard} compact />
+          <VerdictCard scorecard={scorecard} compact />
         </div>
       ) : null}
 
@@ -1101,14 +1348,20 @@ function TryoutChatThread({
     return out;
   }, [timeline]);
 
-  const thinkingLabel =
-    !active || outputs.length > 0
-      ? null
-      : events.length === 0
-        ? "Starting"
-        : timeline[timeline.length - 1]?.kind === "agent"
-          ? "Working"
-          : null;
+  const lastEvent = events[events.length - 1];
+  const judging =
+    active && lastEvent?.type === "scoring" && /grading/i.test(lastEvent.summary);
+  const thinkingLabel = !active
+    ? null
+    : judging
+      ? "The judge is reading"
+      : outputs.length > 0
+        ? null
+        : events.length === 0
+          ? "Starting"
+          : timeline[timeline.length - 1]?.kind === "agent"
+            ? "Working"
+            : null;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1185,13 +1438,23 @@ function TryoutChatThread({
 
           {scorecard && finished ? (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-              <ScorecardCard scorecard={scorecard} />
+              <VerdictCard scorecard={scorecard} />
+            </div>
+          ) : null}
+
+          {scorecard?.judge && finished ? (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <RerunStrip tryout={tryout} judge={scorecard.judge} loginHref={loginHref} />
             </div>
           ) : null}
 
           {finished ? (
             <div className="animate-in fade-in slide-in-from-bottom-3 duration-700">
-              <EvalRoiCalculator tryout={tryout} loginHref={loginHref} />
+              <EvalRoiCalculator
+                tryout={tryout}
+                loginHref={loginHref}
+                initialVolume={evalPlan?.monthly_volume}
+              />
             </div>
           ) : null}
 
@@ -1538,67 +1801,6 @@ function AnimatedPillSelect({
   );
 }
 
-function EvalSetupPanel({
-  values,
-  onChange,
-}: {
-  values: EvalSetupValues;
-  onChange: <Key extends keyof EvalSetupValues>(
-    field: Key,
-    value: EvalSetupValues[Key],
-  ) => void;
-}) {
-  return (
-    <div className="mt-8 space-y-8">
-      <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
-        <UnderlineField
-          label="The mistake you would not forgive"
-          required
-          value={values.unacceptableMistakes}
-          onChange={(value) => onChange("unacceptableMistakes", value)}
-          placeholder="Invented numbers, missing citations, off-brand tone"
-        />
-        <UnderlineField
-          label="The person who signs off"
-          value={values.reviewer}
-          onChange={(value) => onChange("reviewer", value)}
-          placeholder="Support lead, CFO, sales manager"
-        />
-      </div>
-
-      <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
-        <SegmentedControl
-          label="Optimize for"
-          value={values.priority}
-          options={PRIORITY_OPTIONS}
-          onChange={(value) => onChange("priority", value)}
-        />
-        <SegmentedControl
-          label="Output behavior"
-          value={values.style}
-          options={STYLE_OPTIONS}
-          onChange={(value) => onChange("style", value)}
-        />
-      </div>
-
-      <div className="max-w-xs">
-        <UnderlineField
-          label="Runs per month"
-          required
-          value={values.monthlyVolume}
-          onChange={(value) => onChange("monthlyVolume", value)}
-          placeholder="50, 500, 10k"
-        />
-      </div>
-
-      <p className="max-w-md text-sm leading-6 text-white/35">
-        These answers become the rubric the agent is graded against. That is the
-        whole trick: an eval is just your standards, written down.
-      </p>
-    </div>
-  );
-}
-
 function UnderlineField({
   label,
   value,
@@ -1698,6 +1900,252 @@ function Alert({ text }: { text: string }) {
   return (
     <div className="mt-5 border-l-2 border-white/40 pl-4 text-sm leading-6 text-white/70">
       {text}
+    </div>
+  );
+}
+
+// modelKeyFromPolicy maps a tryout's stored model policy back to the
+// MODEL_OPTIONS key so reruns can rotate to a different agent.
+function modelKeyFromPolicy(policy: unknown): string {
+  if (!policy || typeof policy !== "object") return "auto";
+  const models = (policy as { models?: unknown }).models;
+  if (!Array.isArray(models) || models.length === 0) return "auto";
+  const first = models[0] as { provider?: unknown; model?: unknown };
+  const match = MODEL_OPTIONS.find(
+    (option) => option.provider === first.provider && option.model === first.model,
+  );
+  return match ? modelOptionKey(match) : "auto";
+}
+
+// RerunStrip drives the comparison loop: one click reruns the same brief and
+// the same bar with a different agent, a harsher judge, or a different judge.
+function RerunStrip({
+  tryout,
+  judge,
+  loginHref,
+}: {
+  tryout: AgentTryout;
+  judge: TryoutJudgeSection;
+  loginHref: string;
+}) {
+  const router = useRouter();
+
+  function basePrefill(): RerunPrefill {
+    const fieldValues: Record<string, string> = {};
+    for (const [key, value] of Object.entries(tryout.input_snapshot ?? {})) {
+      if (key === "eval_setup") continue;
+      if (typeof value === "string") fieldValues[key] = value;
+      else if (typeof value === "number") fieldValues[key] = String(value);
+    }
+    const setup = evalSetupFromInput(tryout.input_snapshot);
+    return {
+      templateSlug: tryout.template_slug,
+      fieldValues,
+      evalSetup: setup
+        ? {
+            unacceptableMistakes: setup.unacceptable_mistakes,
+            reviewer: setup.human_reviewer,
+            priority: setup.business_priority,
+            style: setup.output_style,
+            monthlyVolume: setup.monthly_volume,
+          }
+        : undefined,
+      selectedModelKey: modelKeyFromPolicy(tryout.selected_model_policy),
+      judgeModel: judge.model,
+      judgeStrictness:
+        judge.strictness === "lenient" || judge.strictness === "harsh"
+          ? judge.strictness
+          : "standard",
+    };
+  }
+
+  function rerun(overrides: Partial<RerunPrefill>) {
+    writeRerunPrefill({ ...basePrefill(), ...overrides });
+    router.push("/tryouts");
+  }
+
+  const currentModelKey = modelKeyFromPolicy(tryout.selected_model_policy);
+  const currentOption = MODEL_OPTIONS.find(
+    (option) => modelOptionKey(option) === currentModelKey,
+  );
+  const nextAgent =
+    MODEL_OPTIONS.find(
+      (option) =>
+        option.model &&
+        option.provider !== currentOption?.provider &&
+        modelOptionKey(option) !== currentModelKey,
+    ) ?? MODEL_OPTIONS.find((option) => option.model && modelOptionKey(option) !== currentModelKey);
+  const nextJudge =
+    JUDGE_OPTIONS.find((option) => option.value !== judge.model) ?? JUDGE_OPTIONS[0];
+
+  return (
+    <div className="border border-white/12 p-5 sm:p-6">
+      <p className={cn(MICRO, "text-white/40")}>Do not take one run&apos;s word for it</p>
+      <p className="mt-2 max-w-lg text-sm leading-6 text-white/50">
+        This is the whole point of an eval: the bar stays fixed, everything else
+        can change, and the verdicts stay comparable.
+      </p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        {nextAgent ? (
+          <RerunButton
+            onClick={() =>
+              rerun({ selectedModelKey: modelOptionKey(nextAgent) })
+            }
+          >
+            Same brief, run {nextAgent.label} instead
+          </RerunButton>
+        ) : null}
+        {judge.strictness !== "harsh" ? (
+          <RerunButton onClick={() => rerun({ judgeStrictness: "harsh" })}>
+            Same brief, harsher judge
+          </RerunButton>
+        ) : null}
+        <RerunButton onClick={() => rerun({ judgeModel: nextJudge.value })}>
+          Let {nextJudge.label} judge instead
+        </RerunButton>
+      </div>
+      <p className="mt-4 border-t border-white/[0.07] pt-3 text-xs leading-5 text-white/35">
+        The bar you wrote is reusable.{" "}
+        <Link href={loginHref} className="text-white/60 underline-offset-4 hover:text-white hover:underline">
+          Save this eval
+        </Link>{" "}
+        and it grades every future run, automatically.
+      </p>
+    </div>
+  );
+}
+
+function RerunButton({
+  onClick,
+  children,
+}: {
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="border border-white/15 px-3 py-1.5 text-left font-mono text-2xs text-white/65 transition hover:border-white/40 hover:text-white"
+    >
+      {children}
+    </button>
+  );
+}
+
+const VERDICT_WORDS: Record<TryoutJudgeSection["verdict"], string> = {
+  approved: "Approved",
+  needs_edits: "Needs edits",
+  rejected: "Rejected",
+  not_judged: "Not judged",
+};
+
+// VerdictCard is the centerpiece of the funnel: the judge the visitor chose,
+// grading the work against the visitor's own words, with its reasoning quoted.
+function VerdictCard({
+  scorecard,
+  compact,
+}: {
+  scorecard: TryoutScorecard;
+  compact?: boolean;
+}) {
+  const judge = scorecard.judge;
+  if (!judge) return <ScorecardCard scorecard={scorecard} compact={compact} />;
+  const grade = judge.score != null ? 1 + judge.score * 4 : null;
+
+  return (
+    <div
+      className={cn(
+        "border",
+        judge.verdict === "approved" ? "border-white/30" : "border-white/12",
+        compact ? "p-4" : "p-5 sm:p-6",
+      )}
+    >
+      <div className="flex items-baseline justify-between gap-3">
+        <p className={cn(MICRO, "text-white/40")}>The verdict</p>
+        <p className="font-mono text-2xs uppercase tracking-[0.14em] text-white/30">
+          {judgeModelLabel(judge.model)}
+          {judge.strictness ? ` · ${judge.strictness}` : ""}
+        </p>
+      </div>
+
+      <div className="mt-4 flex items-end justify-between gap-4">
+        <p
+          className={cn(
+            SERIF,
+            "font-light leading-none",
+            compact ? "text-3xl" : "text-4xl sm:text-5xl",
+            judge.verdict === "rejected" ? "text-white/55" : "text-white/95",
+          )}
+        >
+          {VERDICT_WORDS[judge.verdict]}
+        </p>
+        {grade != null ? (
+          <p className={cn(SERIF, "font-light leading-none text-white/85", compact ? "text-2xl" : "text-3xl sm:text-4xl")}>
+            {grade.toFixed(1)}
+            <span className="text-lg text-white/35"> / 5</span>
+          </p>
+        ) : null}
+      </div>
+      <p className="mt-3 text-xs leading-5 text-white/40">
+        Graded by the judge you chose, against the bar you wrote in step 01.
+      </p>
+      {judge.reason ? (
+        <p className="mt-2 text-sm leading-6 text-white/55">{judge.reason}</p>
+      ) : null}
+
+      {!compact && judge.criteria.length > 0 ? (
+        <ul className="mt-5 divide-y divide-white/[0.07] border-t border-white/[0.07]">
+          {judge.criteria.map((criterion) => (
+            <li key={criterion.key} className="py-3">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-sm leading-6 text-white/75">{criterion.label}</span>
+                <span
+                  className={cn(
+                    "font-mono text-2xs uppercase tracking-[0.14em]",
+                    criterion.status === "passed"
+                      ? "text-white/80"
+                      : criterion.status === "failed"
+                        ? "text-white/35 line-through"
+                        : "text-white/25",
+                  )}
+                >
+                  {criterion.status === "skipped" ? "not graded" : criterion.status}
+                </span>
+              </div>
+              {criterion.reasoning ? (
+                <p className="mt-1 max-w-xl text-xs leading-5 text-white/40">
+                  “{criterion.reasoning}”
+                </p>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {!compact && scorecard.checks.length > 0 ? (
+        <div className="mt-5">
+          <p className={cn(MICRO, "text-white/30")}>Automatic checks</p>
+          <ul className="mt-2 divide-y divide-white/[0.06]">
+            {scorecard.checks.map((check) => (
+              <li
+                key={check.key}
+                className="flex items-baseline justify-between gap-3 py-1.5 text-xs"
+              >
+                <span className="text-white/50">{fieldLabel(check.key)}</span>
+                <span
+                  className={cn(
+                    "font-mono text-2xs uppercase tracking-[0.14em]",
+                    check.status === "passed" ? "text-white/60" : "text-white/25",
+                  )}
+                >
+                  {check.status}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2063,7 +2511,7 @@ function friendlyTraceSummary(event: TryoutTimelineEvent): string {
     case "validation":
       return "Checked the output against validators";
     case "scoring":
-      return "Updated the eval scorecard";
+      return summary.startsWith("Judge") ? summary : "Updated the eval scorecard";
     default:
       return summary || "Working";
   }
@@ -2283,6 +2731,26 @@ type TryoutScorecardCheck = {
   status: "passed" | "failed" | "skipped";
 };
 
+type TryoutJudgeCriterion = {
+  key: string;
+  label: string;
+  mode: string;
+  status: "passed" | "failed" | "skipped";
+  score?: number;
+  reasoning?: string;
+  confidence?: string;
+  reason?: string;
+};
+
+type TryoutJudgeSection = {
+  model: string;
+  strictness?: string;
+  verdict: "approved" | "needs_edits" | "rejected" | "not_judged";
+  score?: number;
+  reason?: string;
+  criteria: TryoutJudgeCriterion[];
+};
+
 type TryoutScorecard = {
   passed_validators: number;
   total_validators: number;
@@ -2290,7 +2758,58 @@ type TryoutScorecard = {
   passed: boolean;
   dimensions: string[];
   checks: TryoutScorecardCheck[];
+  judge: TryoutJudgeSection | null;
 };
+
+function tryoutJudgeSection(raw: unknown): TryoutJudgeSection | null {
+  if (!raw || typeof raw !== "object") return null;
+  const section = raw as Record<string, unknown>;
+  if (typeof section.model !== "string" || section.model.trim() === "") return null;
+  const verdict =
+    section.verdict === "approved" ||
+    section.verdict === "needs_edits" ||
+    section.verdict === "rejected" ||
+    section.verdict === "not_judged"
+      ? section.verdict
+      : "not_judged";
+  const criteria: TryoutJudgeCriterion[] = Array.isArray(section.criteria)
+    ? section.criteria
+        .map((item): TryoutJudgeCriterion | null => {
+          if (!item || typeof item !== "object") return null;
+          const criterion = item as Record<string, unknown>;
+          const status =
+            criterion.status === "passed" || criterion.status === "failed"
+              ? criterion.status
+              : "skipped";
+          const key = typeof criterion.key === "string" ? criterion.key : "criterion";
+          return {
+            key,
+            label:
+              typeof criterion.label === "string" && criterion.label.trim()
+                ? criterion.label
+                : fieldLabel(key),
+            mode: typeof criterion.mode === "string" ? criterion.mode : "",
+            status,
+            score: typeof criterion.score === "number" ? criterion.score : undefined,
+            reasoning:
+              typeof criterion.reasoning === "string" ? criterion.reasoning : undefined,
+            confidence:
+              typeof criterion.confidence === "string" ? criterion.confidence : undefined,
+            reason: typeof criterion.reason === "string" ? criterion.reason : undefined,
+          };
+        })
+        .filter((item): item is TryoutJudgeCriterion => item !== null)
+    : [];
+  return {
+    model: section.model,
+    strictness:
+      typeof section.strictness === "string" ? section.strictness : undefined,
+    verdict,
+    score: typeof section.score === "number" ? section.score : undefined,
+    reason: typeof section.reason === "string" ? section.reason : undefined,
+    criteria,
+  };
+}
 
 function tryoutScorecard(summary: unknown): TryoutScorecard | null {
   if (!summary || typeof summary !== "object") return null;
@@ -2326,6 +2845,7 @@ function tryoutScorecard(summary: unknown): TryoutScorecard | null {
       ? card.dimensions.filter((d): d is string => typeof d === "string")
       : [],
     checks,
+    judge: tryoutJudgeSection(card.judge),
   };
 }
 
@@ -2369,17 +2889,36 @@ function usd(value: number): string {
   return `$${value.toFixed(2)}`;
 }
 
+// parseMonthlyVolume turns freeform answers like "500", "10k", or "2,000 runs"
+// into a number for the ROI inputs.
+function parseMonthlyVolume(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const match = raw.replaceAll(",", "").match(/(\d+(?:\.\d+)?)\s*(k|m)?/i);
+  if (!match) return null;
+  let value = Number(match[1]);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  const unit = (match[2] ?? "").toLowerCase();
+  if (unit === "k") value *= 1_000;
+  if (unit === "m") value *= 1_000_000;
+  return Math.round(value);
+}
+
 function EvalRoiCalculator({
   tryout,
   loginHref,
+  initialVolume,
 }: {
   tryout: AgentTryout;
   loginHref: string;
+  initialVolume?: string;
 }) {
   const anchor = ROI_ANCHORS[tryout.template_slug] ?? DEFAULT_ANCHOR;
   const [company, setCompany] = useState("");
   const [email, setEmail] = useState("");
-  const [volume, setVolume] = useState("5000");
+  const [volume, setVolume] = useState(() => {
+    const parsed = parseMonthlyVolume(initialVolume);
+    return parsed != null ? String(parsed) : "5000";
+  });
   const [humanCost, setHumanCost] = useState(String(anchor.humanCostPerTask));
 
   const monthlyVolume = Math.max(0, Number(volume) || 0);

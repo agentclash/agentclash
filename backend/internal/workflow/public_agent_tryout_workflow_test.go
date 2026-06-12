@@ -1,7 +1,9 @@
 package workflow
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -9,7 +11,145 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/runevents"
+	"github.com/google/uuid"
 )
+
+// fakePublicTryoutRepo is a minimal PublicAgentTryoutRepository capturing
+// recorded timeline events for assertions.
+type fakePublicTryoutRepo struct {
+	events []repository.RecordAgentTryoutEventParams
+}
+
+func (f *fakePublicTryoutRepo) GetAgentTryoutByID(context.Context, uuid.UUID) (repository.AgentTryout, error) {
+	return repository.AgentTryout{}, nil
+}
+
+func (f *fakePublicTryoutRepo) UpdateAgentTryoutStatus(_ context.Context, params repository.UpdateAgentTryoutStatusParams) (repository.AgentTryout, error) {
+	return repository.AgentTryout{ID: params.ID}, nil
+}
+
+func (f *fakePublicTryoutRepo) RecordAgentTryoutEvent(_ context.Context, params repository.RecordAgentTryoutEventParams) (repository.AgentTryoutEvent, error) {
+	f.events = append(f.events, params)
+	return repository.AgentTryoutEvent{}, nil
+}
+
+func (f *fakePublicTryoutRepo) ClaimNextPendingAgentTryoutTurn(context.Context, uuid.UUID) (repository.AgentTryoutTurn, bool, error) {
+	return repository.AgentTryoutTurn{}, false, nil
+}
+
+func (f *fakePublicTryoutRepo) MarkAgentTryoutTurnProcessed(context.Context, int64) error {
+	return nil
+}
+
+func publicJudgeSpecSnapshot() json.RawMessage {
+	return json.RawMessage(`{
+		"validators":[{"key":"has_summary","type":"json_field","field":"summary"}],
+		"judge_mode":"hybrid",
+		"llm_judges":[
+			{"mode":"rubric","key":"overall_quality","model":"gpt-5-mini","rubric":"Score the work 1-5 against the operator's bar.","context_from":["final_output"],"samples":1,"score_scale":{"min":1,"max":5}},
+			{"mode":"assertion","key":"instant_fail","model":"gpt-5-mini","assertion":"The output does not invent numbers.","context_from":["final_output"],"samples":1}
+		],
+		"judge_meta":{"model":"gpt-5-mini","strictness":"standard","labels":{"overall_quality":"Overall, against your bar","instant_fail":"Avoids your instant fail"}}
+	}`)
+}
+
+func TestRunPublicTryoutJudgesMergesVerdictAndReasoning(t *testing.T) {
+	repo := &fakePublicTryoutRepo{}
+	client := &provider.FakeClient{
+		Response: provider.Response{
+			ProviderKey:     "openai",
+			ProviderModelID: "gpt-5-mini",
+			OutputText:      `{"score":5,"pass":true,"confidence":"high","reasoning":"Grounded in the supplied notes; nothing fabricated."}`,
+		},
+	}
+	activities := &Activities{publicTryoutRepo: repo, judgeClient: client}
+
+	section := activities.runPublicTryoutJudges(context.Background(), repository.AgentTryout{
+		ID:                     uuid.New(),
+		EvaluationSpecSnapshot: publicJudgeSpecSnapshot(),
+	}, []map[string]any{
+		{"key": "structured_minutes", "type": "json", "relative_path": "minutes.json", "preview": `{"summary":"Weekly sync","action_items":[{"owner":"Dana"}]}`},
+	})
+
+	if section == nil {
+		t.Fatal("runPublicTryoutJudges() = nil, want judge section")
+	}
+	if section["verdict"] != "approved" {
+		t.Fatalf("verdict = %v, want approved", section["verdict"])
+	}
+	if section["model"] != "gpt-5-mini" {
+		t.Fatalf("model = %v, want gpt-5-mini", section["model"])
+	}
+	criteria, ok := section["criteria"].([]map[string]any)
+	if !ok || len(criteria) != 2 {
+		t.Fatalf("criteria = %#v, want 2 entries", section["criteria"])
+	}
+	for _, criterion := range criteria {
+		if criterion["status"] != "passed" {
+			t.Fatalf("criterion %v status = %v, want passed", criterion["key"], criterion["status"])
+		}
+		if reasoning, _ := criterion["reasoning"].(string); !strings.Contains(reasoning, "Grounded") {
+			t.Fatalf("criterion %v reasoning = %v, want judge reasoning", criterion["key"], criterion["reasoning"])
+		}
+	}
+	if len(client.Requests) != 2 {
+		t.Fatalf("judge calls = %d, want one per declaration", len(client.Requests))
+	}
+	for _, request := range client.Requests {
+		if request.CredentialReference != "env://OPENAI_API_KEY" {
+			t.Fatalf("credential = %q, want platform env key", request.CredentialReference)
+		}
+	}
+	if len(repo.events) == 0 || repo.events[0].EventType != string(runevents.EventTypeScoringStarted) {
+		t.Fatalf("events = %#v, want scoring.started first", repo.events)
+	}
+}
+
+func TestRunPublicTryoutJudgesWithoutJudgesReturnsNil(t *testing.T) {
+	activities := &Activities{publicTryoutRepo: &fakePublicTryoutRepo{}, judgeClient: &provider.FakeClient{}}
+	section := activities.runPublicTryoutJudges(context.Background(), repository.AgentTryout{
+		ID:                     uuid.New(),
+		EvaluationSpecSnapshot: json.RawMessage(`{"validators":[]}`),
+	}, nil)
+	if section != nil {
+		t.Fatalf("section = %#v, want nil when no judges configured", section)
+	}
+}
+
+func TestRunPublicTryoutJudgesDegradesWhenJudgeFails(t *testing.T) {
+	repo := &fakePublicTryoutRepo{}
+	client := &provider.FakeClient{Err: fmt.Errorf("provider unavailable")}
+	activities := &Activities{publicTryoutRepo: repo, judgeClient: client}
+
+	section := activities.runPublicTryoutJudges(context.Background(), repository.AgentTryout{
+		ID:                     uuid.New(),
+		EvaluationSpecSnapshot: publicJudgeSpecSnapshot(),
+	}, []map[string]any{
+		{"key": "structured_minutes", "type": "json", "relative_path": "minutes.json", "preview": `{"summary":"Weekly sync"}`},
+	})
+
+	if section == nil {
+		t.Fatal("runPublicTryoutJudges() = nil, want degraded section")
+	}
+	if section["verdict"] != "not_judged" {
+		t.Fatalf("verdict = %v, want not_judged when every call fails", section["verdict"])
+	}
+}
+
+func TestRunPublicTryoutJudgesNoOutputsIsNotJudged(t *testing.T) {
+	repo := &fakePublicTryoutRepo{}
+	activities := &Activities{publicTryoutRepo: repo, judgeClient: &provider.FakeClient{}}
+
+	section := activities.runPublicTryoutJudges(context.Background(), repository.AgentTryout{
+		ID:                     uuid.New(),
+		EvaluationSpecSnapshot: publicJudgeSpecSnapshot(),
+	}, nil)
+
+	if section == nil || section["verdict"] != "not_judged" {
+		t.Fatalf("section = %#v, want not_judged verdict", section)
+	}
+}
 
 func TestNormalizePublicAgentTryoutConfigDefaultsToEnvCredential(t *testing.T) {
 	config := NormalizePublicAgentTryoutConfig(PublicAgentTryoutConfig{})
