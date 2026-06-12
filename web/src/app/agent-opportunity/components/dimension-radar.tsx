@@ -29,9 +29,13 @@ export function DimensionRadar({
     return () => cancelAnimationFrame(frame);
   }, []);
 
+  const avg = Math.round(
+    (metrics.workflowFit + metrics.roiSignal + metrics.evalReadiness + metrics.riskProfile) / 4,
+  );
+
   return (
     <div
-      className={cn("flex flex-col gap-4", className)}
+      className={cn("flex flex-col gap-6", className)}
       role="img"
       aria-label={`Dimension profile: ${ROWS.map(
         (row) => `${row.label} ${metrics[row.key]} of 100`,
@@ -46,7 +50,7 @@ export function DimensionRadar({
             </span>
             <div className="relative flex-1 overflow-hidden rounded-sm bg-white/[0.06]">
               <div
-                className="h-2 rounded-sm bg-white transition-[width] duration-700 ease-out motion-reduce:transition-none"
+                className="h-4 rounded-sm bg-white transition-[width] duration-700 ease-out motion-reduce:transition-none"
                 style={{
                   width: mounted ? `${Math.max(2, Math.min(100, value))}%` : "0%",
                 }}
@@ -58,6 +62,17 @@ export function DimensionRadar({
           </div>
         );
       })}
+
+      <div className="mt-2 border-t border-white/[0.08] pt-4">
+        <div className="flex items-baseline gap-3">
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">Average</span>
+          <span className="font-mono text-[24px] font-medium tabular-nums text-white/90">{avg}</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">/100</span>
+        </div>
+        <p className="mt-2 text-[11px] leading-5 text-white/35">
+          Based on workflow analysis, public signals, and market benchmarks.
+        </p>
+      </div>
     </div>
   );
 }
