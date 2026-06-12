@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowRight,
   ArrowUp,
@@ -794,8 +801,10 @@ function TryoutWelcome({
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col justify-center overflow-y-auto">
-      <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6 sm:py-5 pb-[max(1rem,env(safe-area-inset-bottom))]">
+    <div className="relative min-h-0 flex-1 overflow-y-auto">
+      <div
+        className="mx-auto flex w-full min-h-full max-w-3xl flex-col justify-center px-4 py-5 sm:px-6 sm:py-8 pb-[max(1rem,env(safe-area-inset-bottom))]"
+      >
         <h1
           className="mx-auto max-w-2xl text-center text-[clamp(1.35rem,3.2vw,1.875rem)] font-semibold tracking-tight text-white/88 animate-in fade-in slide-in-from-bottom-2 fill-mode-both duration-700 motion-reduce:animate-none"
         >
@@ -834,7 +843,7 @@ function TryoutWelcome({
                 </div>
               ) : null
             }
-            footerClassName="[&>*:not(:first-child)]:md:min-w-0 [&>*:not(:first-child)]:md:flex-1"
+            footerClassName="sm:flex-wrap"
             footer={
               <>
                 <button
@@ -894,7 +903,11 @@ function TryoutWelcome({
           />
 
           {!quotaMessage && (
-            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+            <div
+              className="mt-3 flex flex-wrap items-center justify-center gap-2"
+              role="group"
+              aria-label="Try an example"
+            >
               {TRYOUT_STARTERS.filter((starter) =>
                 templates.some((item) => item.slug === starter.slug),
               ).map((starter) => (
@@ -902,6 +915,7 @@ function TryoutWelcome({
                   key={starter.slug}
                   type="button"
                   disabled={templatesLoading}
+                  aria-pressed={templateSlug === starter.slug}
                   onClick={() =>
                     onApplyStarter(starter.slug, starter.field, starter.prompt)
                   }
@@ -972,6 +986,10 @@ function BarPill({ ready, onClick }: { ready: boolean; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
+      aria-required={!ready || undefined}
+      aria-label={
+        ready ? "Evaluation bar configured" : "Set the evaluation bar (required)"
+      }
       className={cn(
         "inline-flex shrink-0 items-center gap-1.5 rounded-sm border py-1.5 pl-2.5 pr-2.5 font-mono text-2xs transition",
         ready
@@ -1577,8 +1595,8 @@ function UserBubble({ text, animate }: { text: string; animate?: boolean }) {
           "animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none",
       )}
     >
-      <div className="max-w-[85%] rounded-sm bg-[#e9e9e5] px-4 py-2.5 text-base leading-7 text-[#161614]">
-        {text}
+      <div className="max-w-[min(85%,100%)] rounded-sm bg-[#e9e9e5] px-3 py-2.5 text-base leading-7 text-[#161614] sm:max-w-[85%] sm:px-4">
+        <p className="whitespace-pre-wrap break-words">{text}</p>
       </div>
     </div>
   );
@@ -1767,7 +1785,29 @@ function ComposerShell({
   rows?: number;
   onSubmit?: () => void;
 }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const textareaRows = rows ?? (compact ? 1 : 3);
+  const maxTextareaHeight = compact ? 160 : 224;
+
+  const syncTextareaHeight = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const nextHeight = Math.min(textarea.scrollHeight, maxTextareaHeight);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > maxTextareaHeight ? "auto" : "hidden";
+  }, [maxTextareaHeight]);
+
+  useLayoutEffect(() => {
+    syncTextareaHeight();
+  }, [value, syncTextareaHeight]);
+
+  useEffect(() => {
+    const onResize = () => syncTextareaHeight();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [syncTextareaHeight]);
 
   return (
     <div
@@ -1777,6 +1817,7 @@ function ComposerShell({
       )}
     >
       <textarea
+        ref={textareaRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
@@ -1790,14 +1831,22 @@ function ComposerShell({
         rows={textareaRows}
         disabled={disabled}
         placeholder={placeholder}
-        className="block w-full resize-none bg-transparent px-2 pt-1 text-base leading-7 text-white outline-none placeholder:text-white/30 sm:px-3 sm:pt-2"
+        className={cn(
+          "block w-full resize-none bg-transparent px-2 pt-1 text-base leading-7 text-white outline-none placeholder:text-white/30 sm:px-3 sm:pt-2",
+          compact ? "max-h-40" : "max-h-56",
+        )}
       />
       {aboveFooter}
-      <div className="flex items-end justify-between gap-2 px-0.5 pb-0.5 pt-1.5 sm:items-center sm:px-1">
+      <div
+        className={cn(
+          "flex gap-2 px-0.5 pb-0.5 pt-1.5 sm:px-1",
+          footer ? "items-end justify-between" : "justify-end",
+        )}
+      >
         {footer ? (
           <div
             className={cn(
-              "flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:gap-2 md:flex-nowrap",
+              "flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:gap-2",
               footerClassName,
             )}
           >
@@ -1811,7 +1860,7 @@ function ComposerShell({
           onClick={onSubmit}
           disabled={!canSubmit || submitting}
           aria-label="Send"
-          className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-white text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40 sm:ml-1"
+          className="flex size-9 shrink-0 items-center justify-center self-end rounded-sm bg-white text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40 sm:ml-1"
         >
           {submitting ? (
             <Loader2 className="size-4 animate-spin" />
@@ -1849,7 +1898,7 @@ function AnimatedPillSelect({
     <DropdownMenu>
       <DropdownMenuTrigger
         disabled={disabled}
-        className="inline-flex w-full max-w-full min-w-0 shrink-0 items-center gap-1.5 rounded-sm border border-white/12 py-1.5 pl-2 pr-1.5 font-mono text-2xs text-white/60 transition hover:border-white/30 hover:text-white/90 data-popup-open:border-white/40 data-popup-open:text-white disabled:opacity-50 sm:pl-2.5 sm:pr-2 md:w-auto"
+        className="inline-flex max-w-full min-w-0 shrink-0 items-center gap-1.5 rounded-sm border border-white/12 py-1.5 pl-2 pr-1.5 font-mono text-2xs text-white/60 transition hover:border-white/30 hover:text-white/90 data-popup-open:border-white/40 data-popup-open:text-white disabled:opacity-50 max-sm:max-w-[calc(100%-2.5rem)] sm:pl-2.5 sm:pr-2"
       >
         <span className="shrink-0 text-white/45">{icon}</span>
         <span className="min-w-0 truncate">{selected?.label ?? "Select"}</span>
