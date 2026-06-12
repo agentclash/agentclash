@@ -958,7 +958,10 @@ func publicTryoutJudgeDigest(outputs []map[string]any) string {
 			continue
 		}
 		if len(preview) > publicJudgeMaxBytesPerOutput {
-			preview = preview[:publicJudgeMaxBytesPerOutput] + "\n…(truncated)"
+			runes := []rune(preview)
+			if len(runes) > publicJudgeMaxBytesPerOutput {
+				preview = string(runes[:publicJudgeMaxBytesPerOutput]) + "\n…(truncated)"
+			}
 		}
 		section := fmt.Sprintf("=== %s ===\n%s", name, preview)
 		if total+len(section) > publicJudgeMaxDigestBytes {
