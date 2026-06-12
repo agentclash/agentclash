@@ -23,6 +23,7 @@ const RADIUS = 86;
 const RINGS = [25, 50, 75, 100];
 
 const CYAN = "#22d3ee";
+const GRADIENT_ID = "radar-fill-" + Math.random().toString(36).slice(2);
 
 function pointAt(axisIndex: number, value: number): [number, number] {
   const angle = (Math.PI / 2) * axisIndex - Math.PI / 2;
@@ -73,7 +74,7 @@ export function DimensionRadar({
       className={cn("block w-full", className)}
     >
       <defs>
-        <radialGradient id="radar-fill" cx="50%" cy="50%" r="65%">
+        <radialGradient id={GRADIENT_ID} cx="50%" cy="50%" r="65%">
           <stop offset="0%" stopColor={CYAN} stopOpacity="0.32" />
           <stop offset="100%" stopColor={CYAN} stopOpacity="0.05" />
         </radialGradient>
@@ -115,7 +116,7 @@ export function DimensionRadar({
       >
         <polygon
           points={polygon}
-          fill="url(#radar-fill)"
+          fill={`url(#${GRADIENT_ID})`}
           stroke={CYAN}
           strokeWidth={2}
           strokeLinejoin="round"
