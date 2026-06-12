@@ -816,16 +816,92 @@ func agentTryoutHarnessSlug(template AgentTryoutTemplate) string {
 }
 
 func agentTryoutTaskPrompt(template AgentTryoutTemplate, input json.RawMessage) string {
-	return strings.Join([]string{
-		"You are running an AgentClash tryout template.",
-		"Template: " + template.Name + " (" + template.Slug + ")",
-		"Goal: " + template.Description,
-		"Use only the available sandbox tools and produce a concise, inspectable result for the user.",
-		"User input JSON:",
+	instructions := strings.TrimSpace(agentTryoutRuntimeInstructions(template.Runtime))
+	specs := expectedArtifactsFromRuntime(template.Runtime)
+
+	lines := []string{
+		"You are an expert AI agent completing a real office-work task inside a sandboxed Linux workspace at /workspace.",
+		"The user is judging the QUALITY of the files you deliver, so produce polished, professional, ready-to-use output — never a draft, outline, or plan-only response.",
+		"",
+		"TASK: " + template.Name + " (" + template.Slug + ")",
+		"GOAL: " + template.Description,
+	}
+	if instructions != "" {
+		lines = append(lines, "", "INSTRUCTIONS:", instructions)
+	}
+	if len(specs) > 0 {
+		lines = append(lines, "", "DELIVERABLES — create these exact files in /workspace (every one must exist and be non-empty when you finish):")
+		for _, spec := range specs {
+			path := strings.TrimSpace(spec.Path)
+			if path == "" {
+				continue
+			}
+			detail := fmt.Sprintf("- %s (%s)", path, strings.TrimSpace(spec.Type))
+			if key := strings.TrimSpace(spec.Key); key != "" {
+				detail += " — " + key
+			}
+			lines = append(lines, detail)
+		}
+	}
+	lines = append(lines,
+		"",
+		"TOOLCHAIN (pre-installed; no network access — do not attempt installs or downloads):",
+		"- Python 3 with: python-pptx, python-docx, openpyxl, xlsxwriter, pandas, numpy, matplotlib, seaborn, plotly+kaleido, reportlab, fpdf2, weasyprint, pypdf, pdfplumber, Pillow, Jinja2, markdown.",
+		"- CLI tools: pandoc, LibreOffice (soffice), poppler-utils, graphviz, sqlite3.",
+		"- Generate real binary files with these libraries. To convert a .pptx/.docx to PDF: soffice --headless --convert-to pdf <file>.",
+		"",
+		"QUALITY BAR:",
+		"- Use real content derived from the user's input below — no lorem ipsum or [placeholder] text.",
+		"- Any JSON deliverable must be valid JSON with the fields named in the instructions.",
+		"- Before finishing, verify each file: re-read JSON you wrote, and check that binary files are non-trivial in size.",
+		"",
+		"When you are done, end your final message with a short \"Deliverables\" summary listing each file you created and one line on what it contains.",
+		"Do not reveal secrets, API keys, or environment variables.",
+		"",
+		"USER INPUT:",
 		"```json",
-		string(input),
+		strings.TrimSpace(string(input)),
 		"```",
-	}, "\n")
+	)
+	return strings.Join(lines, "\n")
+}
+
+// agentTryoutRuntimeInstructions extracts the free-text "instructions" directive
+// from a template runtime blob, if present.
+func agentTryoutRuntimeInstructions(runtime json.RawMessage) string {
+	if len(runtime) == 0 {
+		return ""
+	}
+	var parsed struct {
+		Instructions string `json:"instructions"`
+	}
+	_ = json.Unmarshal(runtime, &parsed)
+	return parsed.Instructions
+}
+
+// agentTryoutArtifactSpec mirrors a runtime.expected_artifacts entry. It is a
+// deliberate structural twin of workflow.capturedArtifactSpec; the api and
+// workflow packages do not import one another for layering reasons, so this
+// small shape is duplicated rather than shared. Keep the JSON tags in sync.
+type agentTryoutArtifactSpec struct {
+	Key  string `json:"key"`
+	Type string `json:"type"`
+	Path string `json:"path"`
+}
+
+// expectedArtifactsFromRuntime parses runtime.expected_artifacts from a template
+// runtime blob so the task prompt can enumerate the exact deliverable files.
+func expectedArtifactsFromRuntime(runtime json.RawMessage) []agentTryoutArtifactSpec {
+	if len(runtime) == 0 {
+		return nil
+	}
+	var parsed struct {
+		ExpectedArtifacts []agentTryoutArtifactSpec `json:"expected_artifacts"`
+	}
+	if err := json.Unmarshal(runtime, &parsed); err != nil {
+		return nil
+	}
+	return parsed.ExpectedArtifacts
 }
 
 func agentTryoutEvaluationConfig(template AgentTryoutTemplate, tryout repository.AgentTryout) json.RawMessage {
@@ -1675,7 +1751,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			Available:          true,
 			InputSchema:        json.RawMessage(`{"type":"object","required":["notes"],"additionalProperties":false,"properties":{"notes":{"type":"string"},"audience":{"type":"string"}}}`),
 			ToolPolicy:         json.RawMessage(`{"tools":["file_writer"],"sandbox":{"filesystem":"workspace","shell":"disabled"},"network":{"mode":"disabled"},"external_side_effects":false}`),
-			Runtime:            json.RawMessage(`{"adapter":"meeting_minutes_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"action_plan","type":"markdown","path":"action-plan.md"},{"key":"structured_minutes","type":"json","path":"minutes.json"}],"validation":{"validators":[{"key":"has_summary","type":"json_field","field":"summary"},{"key":"has_action_items","type":"json_field","field":"action_items"}],"score_dimensions":["correctness","reliability","latency","cost"]}}`),
+			Runtime:            json.RawMessage(`{"adapter":"meeting_minutes_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"action_plan","type":"markdown","path":"action-plan.md"},{"key":"structured_minutes","type":"json","path":"minutes.json"}],"instructions":"Turn the notes or transcript into professional meeting minutes. Write action-plan.md as a clean, scannable document with sections: Summary, Key Decisions, Risks, and an Action Items table (columns: Item, Owner, Due). Write minutes.json with fields: summary (string), decisions (array of strings), risks (array of strings), action_items (array of {item, owner, due}). Ground every decision and action item in the notes — do not invent attendees, dates, or decisions that are not supported.","validation":{"validators":[{"key":"has_summary","type":"json_field","field":"summary"},{"key":"has_action_items","type":"json_field","field":"action_items"}],"score_dimensions":["correctness","reliability","latency","cost"]}}`),
 			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"has_summary","type":"json_field","field":"summary"},{"key":"has_action_items","type":"json_field","field":"action_items"}],"scorecard":{"dimensions":["correctness","reliability","latency","cost"]}}`),
 			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
 			AnonymousEnabled:   true,
@@ -1721,7 +1797,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			Available:          true,
 			InputSchema:        json.RawMessage(`{"type":"object","required":["data"],"additionalProperties":false,"properties":{"data":{"type":"string"},"instructions":{"type":"string"}}}`),
 			ToolPolicy:         json.RawMessage(`{"tools":["file_writer"],"sandbox":{"filesystem":"workspace","shell":"disabled"},"network":{"mode":"disabled"},"external_side_effects":false}`),
-			Runtime:            json.RawMessage(`{"adapter":"spreadsheet_builder_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"spreadsheet","type":"csv","path":"spreadsheet.csv"},{"key":"analysis","type":"json","path":"analysis.json"}],"validation":{"validators":[{"key":"has_columns","type":"json_field","field":"columns"},{"key":"has_insights","type":"json_field","field":"insights"}],"score_dimensions":["correctness","reliability","latency","cost"]}}`),
+			Runtime:            json.RawMessage(`{"adapter":"spreadsheet_builder_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"spreadsheet","type":"csv","path":"spreadsheet.csv"},{"key":"analysis","type":"json","path":"analysis.json"}],"instructions":"Turn the pasted data or description into a clean, analysis-ready spreadsheet. Write spreadsheet.csv with a clear header row, the normalized source rows, and useful derived columns (totals, ratios, categories) when they help. Write analysis.json with fields: columns (array of column names), rows (number of data rows), insights (array of short factual findings), summary (string). Keep numbers internally consistent and clearly labeled; do not fabricate data points that are not implied by the input.","validation":{"validators":[{"key":"has_columns","type":"json_field","field":"columns"},{"key":"has_insights","type":"json_field","field":"insights"}],"score_dimensions":["correctness","reliability","latency","cost"]}}`),
 			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"has_columns","type":"json_field","field":"columns"},{"key":"has_insights","type":"json_field","field":"insights"}],"scorecard":{"dimensions":["correctness","reliability","latency","cost"]}}`),
 			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
 			AnonymousEnabled:   true,
@@ -1736,7 +1812,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			Available:          true,
 			InputSchema:        json.RawMessage(`{"type":"object","required":["updates"],"additionalProperties":false,"properties":{"updates":{"type":"string"},"period":{"type":"string"},"audience":{"type":"string"}}}`),
 			ToolPolicy:         json.RawMessage(`{"tools":["file_writer"],"sandbox":{"filesystem":"workspace","shell":"disabled"},"network":{"mode":"disabled"},"external_side_effects":false}`),
-			Runtime:            json.RawMessage(`{"adapter":"status_report_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"report","type":"markdown","path":"status-report.md"},{"key":"structured_report","type":"json","path":"report.json"}],"validation":{"validators":[{"key":"has_highlights","type":"json_field","field":"highlights"},{"key":"has_next_steps","type":"json_field","field":"next_steps"}],"score_dimensions":["correctness","reliability","latency","cost"]}}`),
+			Runtime:            json.RawMessage(`{"adapter":"status_report_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"report","type":"markdown","path":"status-report.md"},{"key":"structured_report","type":"json","path":"report.json"}],"instructions":"Turn the scattered bullet updates into a polished, executive-ready status report. Write status-report.md with clear sections: Highlights, In Progress, Risks / Blockers, and Next Steps — grouped, scannable, and concise. Write report.json with fields: summary (string), highlights (array of strings), risks (array of strings), next_steps (array of strings). Reflect only what is in the updates; do not invent progress or commitments.","validation":{"validators":[{"key":"has_highlights","type":"json_field","field":"highlights"},{"key":"has_next_steps","type":"json_field","field":"next_steps"}],"score_dimensions":["correctness","reliability","latency","cost"]}}`),
 			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"has_highlights","type":"json_field","field":"highlights"},{"key":"has_next_steps","type":"json_field","field":"next_steps"}],"scorecard":{"dimensions":["correctness","reliability","latency","cost"]}}`),
 			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
 			AnonymousEnabled:   true,
@@ -1751,7 +1827,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			Available:          true,
 			InputSchema:        json.RawMessage(`{"type":"object","required":["emails"],"additionalProperties":false,"properties":{"emails":{"type":"string"},"priorities":{"type":"string"}}}`),
 			ToolPolicy:         json.RawMessage(`{"tools":["file_writer"],"sandbox":{"filesystem":"workspace","shell":"disabled"},"network":{"mode":"disabled"},"external_side_effects":false}`),
-			Runtime:            json.RawMessage(`{"adapter":"inbox_triage_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"triage_board","type":"markdown","path":"triage.md"},{"key":"structured_triage","type":"json","path":"triage.json"}],"validation":{"validators":[{"key":"has_queue","type":"json_field","field":"queue"}],"score_dimensions":["correctness","reliability","latency","cost"]}}`),
+			Runtime:            json.RawMessage(`{"adapter":"inbox_triage_v1","sandbox":{"filesystem":"workspace","shell":"disabled","network":"disabled"},"expected_artifacts":[{"key":"triage_board","type":"markdown","path":"triage.md"},{"key":"structured_triage","type":"json","path":"triage.json"}],"instructions":"Prioritize the pasted emails and draft replies. Write triage.md as a prioritized table (columns: Priority, Sender, Subject, Suggested Action) followed by a ready-to-send draft reply for each email that needs a response. Write triage.json with field queue (array of {sender, subject, priority (high|medium|low), needs_reply (boolean), draft_reply (string)}). Base priority on urgency and the provided priorities; do not invent senders or facts not in the emails.","validation":{"validators":[{"key":"has_queue","type":"json_field","field":"queue"}],"score_dimensions":["correctness","reliability","latency","cost"]}}`),
 			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"has_queue","type":"json_field","field":"queue"}],"scorecard":{"dimensions":["correctness","reliability","latency","cost"]}}`),
 			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
 			AnonymousEnabled:   true,
@@ -1766,7 +1842,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			Available:          true,
 			InputSchema:        json.RawMessage(`{"type":"object","required":["task"],"additionalProperties":false,"properties":{"task":{"type":"string"},"fixture":{"type":"string"}}}`),
 			ToolPolicy:         json.RawMessage(`{"tools":["sandbox_shell","file_editor"],"sandbox":{"filesystem":"workspace","shell":"allowed"},"network":{"mode":"disabled"},"external_side_effects":false}`),
-			Runtime:            json.RawMessage(`{"adapter":"tiny_bugfix_v1","sandbox":{"filesystem":"workspace","shell":"allowed","network":"disabled"},"expected_artifacts":[{"key":"diff","type":"patch","path":"changes.patch"},{"key":"test_result","type":"json","path":"test-result.json"}],"validation":{"validators":[{"key":"tests_pass","type":"command_exit_code"}],"score_dimensions":["correctness","reliability","latency","cost"]}}`),
+			Runtime:            json.RawMessage(`{"adapter":"tiny_bugfix_v1","sandbox":{"filesystem":"workspace","shell":"allowed","network":"disabled"},"expected_artifacts":[{"key":"diff","type":"patch","path":"changes.patch"},{"key":"test_result","type":"json","path":"test-result.json"}],"instructions":"Inspect the fixture, find the root cause of the described bug, and make a minimal, focused fix. Save the change as changes.patch (a unified git diff). Run the tests and write test-result.json with fields: passed (boolean), tests_run (number), tests_failed (number), summary (string). Keep the diff minimal — do not reformat unrelated code or add unrelated features.","validation":{"validators":[{"key":"tests_pass","type":"command_exit_code"}],"score_dimensions":["correctness","reliability","latency","cost"]}}`),
 			EvaluationSpec:     json.RawMessage(`{"validators":[{"key":"tests_pass","type":"command_exit_code"}],"scorecard":{"dimensions":["correctness","reliability","latency","cost"]}}`),
 			DefaultModelPolicy: json.RawMessage(`{"mode":"hosted_default","max_models":1}`),
 			AnonymousEnabled:   false,
