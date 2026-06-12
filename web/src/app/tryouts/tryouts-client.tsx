@@ -519,13 +519,30 @@ export function PublicTryoutsClient() {
     setMessage(null);
     setQuotaMessage(null);
     try {
-      const nextTryout = await createAnonymousAgentTryout(api, {
+      const payload = {
         template_slug: template.slug,
         input: input.value,
         ...(selectedModel.value ? { selected_harness_kind: selectedModel.value } : {}),
         ...(selectedPolicy ? { selected_model_policy: selectedPolicy } : {}),
         judge: { model: judgeModel, strictness: judgeStrictness },
-      });
+      };
+      let nextTryout: AgentTryout;
+      try {
+        nextTryout = await createAnonymousAgentTryout(api, payload);
+      } catch (err) {
+        // Backends that predate judge selection reject unknown fields; fall
+        // back to a judgeless run instead of breaking the page.
+        if (
+          err instanceof ApiError &&
+          err.status === 400 &&
+          err.message.toLowerCase().includes("judge")
+        ) {
+          const withoutJudge = { ...payload, judge: undefined };
+          nextTryout = await createAnonymousAgentTryout(api, withoutJudge);
+        } else {
+          throw err;
+        }
+      }
       setTryout(nextTryout);
       setEvents([]);
       router.replace(`/tryouts?tryout=${encodeURIComponent(nextTryout.id)}`, {
