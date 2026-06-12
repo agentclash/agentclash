@@ -4,11 +4,29 @@ import { Suspense } from "react";
 import { PublicTryoutsClient } from "./tryouts-client";
 
 export const metadata: Metadata = {
-  title: "Try an AI agent on office work",
+  title: "Free AI Agent Tryout for Business Workflows",
   description:
-    "Run a public AgentClash tryout on office-work tasks like PDFs, spreadsheets, meeting notes, and inbox triage.",
+    "Test AI agents on real business workflows before you integrate: customer support, invoice extraction, contract review, sales outreach, inbox triage, and status reports. Free sandboxed tryout with scored verdicts.",
+  keywords: [
+    "AI agent evaluation",
+    "integrate AI into business",
+    "AI workflow automation",
+    "customer support AI",
+    "document AI extraction",
+    "contract review AI",
+    "AI agent pilot",
+    "enterprise AI testing",
+    "AI automation ROI",
+    "agent quality bar",
+  ],
   alternates: {
     canonical: "/tryouts",
+  },
+  openGraph: {
+    title: "Free AI Agent Tryout for Business Workflows | AgentClash",
+    description:
+      "Run a free sandboxed AI agent on support, finance, legal, and ops tasks. Set your quality bar and get a scored verdict before production.",
+    url: "/tryouts",
   },
 };
 
