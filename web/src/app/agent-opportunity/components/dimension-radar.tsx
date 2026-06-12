@@ -4,43 +4,16 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { OpportunityMetrics } from "../report-metrics";
 
-type Axis = {
+type Row = {
   key: keyof OpportunityMetrics;
   label: string;
 };
 
-// Order is positional: top, right, bottom, left.
-const AXES: Axis[] = [
+const ROWS: Row[] = [
   { key: "workflowFit", label: "Workflow fit" },
   { key: "roiSignal", label: "ROI signal" },
-  { key: "evalReadiness", label: "Eval ready" },
+  { key: "evalReadiness", label: "Eval readiness" },
   { key: "riskProfile", label: "Risk safety" },
-];
-
-const CX = 170;
-const CY = 138;
-const RADIUS = 84;
-const RINGS = [25, 50, 75, 100];
-
-function pointAt(axisIndex: number, value: number): [number, number] {
-  const angle = (Math.PI / 2) * axisIndex - Math.PI / 2;
-  const r = (RADIUS * Math.max(0, Math.min(100, value))) / 100;
-  return [CX + r * Math.cos(angle), CY + r * Math.sin(angle)];
-}
-
-function ringPath(value: number): string {
-  return AXES.map((_, index) => pointAt(index, value).join(",")).join(" ");
-}
-
-const LABEL_ANCHORS: {
-  anchor: "start" | "middle" | "end";
-  dx: number;
-  dy: number;
-}[] = [
-  { anchor: "middle", dx: 0, dy: -16 },
-  { anchor: "start", dx: 14, dy: 0 },
-  { anchor: "middle", dx: 0, dy: 24 },
-  { anchor: "end", dx: -14, dy: 0 },
 ];
 
 export function DimensionRadar({
@@ -56,92 +29,50 @@ export function DimensionRadar({
     return () => cancelAnimationFrame(frame);
   }, []);
 
-  const values = AXES.map((axis) => metrics[axis.key]);
-  const polygon = values
-    .map((value, index) => pointAt(index, value).join(","))
-    .join(" ");
+  const avg = Math.round(
+    (metrics.workflowFit + metrics.roiSignal + metrics.evalReadiness + metrics.riskProfile) / 4,
+  );
 
   return (
-    <svg
-      viewBox="0 0 340 276"
+    <div
+      className={cn("flex flex-col gap-6", className)}
       role="img"
-      aria-label={`Dimension profile: ${AXES.map(
-        (axis, index) => `${axis.label} ${values[index]} of 100`,
+      aria-label={`Dimension profile: ${ROWS.map(
+        (row) => `${row.label} ${metrics[row.key]} of 100`,
       ).join(", ")}`}
-      className={cn("block w-full", className)}
     >
-      {RINGS.map((ring) => (
-        <polygon
-          key={ring}
-          points={ringPath(ring)}
-          fill="none"
-          stroke="rgba(255,255,255,0.07)"
-          strokeWidth={1}
-        />
-      ))}
-      {AXES.map((axis, index) => {
-        const [x, y] = pointAt(index, 100);
+      {ROWS.map((row) => {
+        const value = metrics[row.key];
         return (
-          <line
-            key={axis.key}
-            x1={CX}
-            y1={CY}
-            x2={x}
-            y2={y}
-            stroke="rgba(255,255,255,0.1)"
-            strokeWidth={1}
-          />
+          <div key={row.key} className="flex items-center gap-4">
+            <span className="w-28 shrink-0 text-right font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">
+              {row.label}
+            </span>
+            <div className="relative flex-1 overflow-hidden rounded-sm bg-white/[0.06]">
+              <div
+                className="h-4 rounded-sm bg-white transition-[width] duration-700 ease-out motion-reduce:transition-none"
+                style={{
+                  width: mounted ? `${Math.max(2, Math.min(100, value))}%` : "0%",
+                }}
+              />
+            </div>
+            <span className="w-10 shrink-0 font-mono text-[13px] font-medium tabular-nums text-white/90">
+              {value}
+            </span>
+          </div>
         );
       })}
 
-      <g
-        className="motion-reduce:transition-none"
-        style={{
-          transformOrigin: `${CX}px ${CY}px`,
-          transform: mounted ? "scale(1)" : "scale(0.35)",
-          opacity: mounted ? 1 : 0,
-          transition:
-            "transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 500ms ease",
-        }}
-      >
-        <polygon
-          points={polygon}
-          fill="rgba(255,255,255,0.07)"
-          stroke="rgba(255,255,255,0.75)"
-          strokeWidth={1.5}
-          strokeLinejoin="round"
-        />
-        {values.map((value, index) => {
-          const [x, y] = pointAt(index, value);
-          return (
-            <circle key={AXES[index].key} cx={x} cy={y} r={2.5} fill="#fff" />
-          );
-        })}
-      </g>
-
-      {AXES.map((axis, index) => {
-        const [x, y] = pointAt(index, 100);
-        const { anchor, dx, dy } = LABEL_ANCHORS[index];
-        return (
-          <g key={axis.key} textAnchor={anchor}>
-            <text
-              x={x + dx}
-              y={y + dy}
-              className="fill-white font-mono text-[13px] tabular-nums"
-            >
-              {values[index]}
-            </text>
-            <text
-              x={x + dx}
-              y={y + dy + 12}
-              className="fill-white/35 font-mono text-[8.5px] uppercase"
-              style={{ letterSpacing: "0.14em" }}
-            >
-              {axis.label}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
+      <div className="mt-2 border-t border-white/[0.08] pt-4">
+        <div className="flex items-baseline gap-3">
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">Average</span>
+          <span className="font-mono text-[24px] font-medium tabular-nums text-white/90">{avg}</span>
+          <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">/100</span>
+        </div>
+        <p className="mt-2 text-[11px] leading-5 text-white/35">
+          Based on workflow analysis, public signals, and market benchmarks.
+        </p>
+      </div>
+    </div>
   );
 }
