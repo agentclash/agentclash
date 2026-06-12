@@ -66,6 +66,30 @@ func TestPublicTryoutScorecardArtifactProducedValidator(t *testing.T) {
 	}
 }
 
+func TestPublicTryoutTaskPromptIncludesEvalSetup(t *testing.T) {
+	prompt := publicTryoutTaskPrompt(repository.AgentTryout{
+		TemplateSlug: "slide-deck",
+		InputSnapshot: json.RawMessage(`{
+			"brief":"Make a partner pitch deck",
+			"eval_setup":{
+				"unacceptable_mistakes":"invented customer logos",
+				"derived_rubric":[{"key":"accuracy","label":"Grounded claims","checks":["no invented logos"]}]
+			}
+		}`),
+		TemplateSnapshot: json.RawMessage(`{"name":"Brief to Slide Deck","description":"Make slides","runtime":{}}`),
+	})
+
+	if !strings.Contains(prompt, "Business eval setup") {
+		t.Fatalf("prompt = %q, want business eval setup section", prompt)
+	}
+	if !strings.Contains(prompt, "invented customer logos") {
+		t.Fatalf("prompt = %q, want eval failure mode", prompt)
+	}
+	if !strings.Contains(prompt, "Treat this as the user's acceptance criteria") {
+		t.Fatalf("prompt = %q, want acceptance criteria instruction", prompt)
+	}
+}
+
 func TestPublicTurnCommandResumesSessionAfterFirstTurn(t *testing.T) {
 	join := func(parts []string) string { return strings.Join(parts, " ") }
 

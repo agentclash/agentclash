@@ -14,6 +14,7 @@ import {
   Download,
   FileText,
   Gauge,
+  ListChecks,
   Loader2,
   Lock,
   PanelRight,
@@ -79,6 +80,59 @@ type ModelOption = AgentOption & {
   provider?: "openai" | "anthropic" | "openrouter";
   model?: string;
 };
+
+type EvalPriority = "accuracy" | "polish" | "speed" | "cost" | "compliance";
+type EvalStyle = "consistent" | "balanced" | "creative";
+
+type EvalSetupValues = {
+  unacceptableMistakes: string;
+  reviewer: string;
+  priority: EvalPriority;
+  style: EvalStyle;
+  monthlyVolume: string;
+};
+
+type EvalRubricItem = {
+  key: string;
+  label: string;
+  checks: string[];
+};
+
+type DerivedEvalSetup = {
+  version: string;
+  unacceptable_mistakes: string;
+  human_reviewer: string;
+  business_priority: EvalPriority;
+  output_style: EvalStyle;
+  monthly_volume: string;
+  derived_rubric: EvalRubricItem[];
+  suggested_generation_settings: {
+    temperature: string;
+    reason: string;
+  };
+};
+
+const DEFAULT_EVAL_SETUP: EvalSetupValues = {
+  unacceptableMistakes: "",
+  reviewer: "Operations owner",
+  priority: "accuracy",
+  style: "consistent",
+  monthlyVolume: "",
+};
+
+const PRIORITY_OPTIONS: { value: EvalPriority; label: string }[] = [
+  { value: "accuracy", label: "Correct facts" },
+  { value: "polish", label: "Client-ready" },
+  { value: "speed", label: "Fast enough" },
+  { value: "cost", label: "Cheap at scale" },
+  { value: "compliance", label: "Policy-safe" },
+];
+
+const STYLE_OPTIONS: { value: EvalStyle; label: string }[] = [
+  { value: "consistent", label: "Same every time" },
+  { value: "balanced", label: "Balanced" },
+  { value: "creative", label: "More creative" },
+];
 
 const MODEL_OPTIONS: ModelOption[] = [
   { value: "", label: "Auto", hint: "Hosted default agent and model" },
@@ -242,6 +296,7 @@ export function PublicTryoutsClient() {
   const [templateSlug, setTemplateSlug] = useState("");
   const [selectedModelKey, setSelectedModelKey] = useState("auto");
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
+  const [evalSetup, setEvalSetup] = useState<EvalSetupValues>(DEFAULT_EVAL_SETUP);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [launching, setLaunching] = useState(false);
   const [tryout, setTryout] = useState<AgentTryout | null>(null);
@@ -370,6 +425,13 @@ export function PublicTryoutsClient() {
     setFieldValues((current) => ({ ...current, [field]: value }));
   }, []);
 
+  const updateEvalSetup = useCallback(
+    <Key extends keyof EvalSetupValues>(field: Key, value: EvalSetupValues[Key]) => {
+      setEvalSetup((current) => ({ ...current, [field]: value }));
+    },
+    [],
+  );
+
   async function handleLaunch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!template || launching) return;
@@ -379,6 +441,8 @@ export function PublicTryoutsClient() {
       setMessage(input.error);
       return;
     }
+    input.value.eval_setup = buildEvalSetup(evalSetup, template?.name ?? "agent task");
+
     const selectedModel =
       MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey) ??
       MODEL_OPTIONS[0];
@@ -492,6 +556,8 @@ export function PublicTryoutsClient() {
           secondaryFields={secondaryFields}
           fieldValues={fieldValues}
           updateField={updateField}
+          evalSetup={evalSetup}
+          updateEvalSetup={updateEvalSetup}
           primaryValue={primaryValue}
           canRun={canRun}
           launching={launching}
@@ -517,6 +583,8 @@ function TryoutWelcome({
   secondaryFields,
   fieldValues,
   updateField,
+  evalSetup,
+  updateEvalSetup,
   primaryValue,
   canRun,
   launching,
@@ -536,6 +604,11 @@ function TryoutWelcome({
   secondaryFields: [string, FieldSpec][];
   fieldValues: Record<string, string>;
   updateField: (field: string, value: string) => void;
+  evalSetup: EvalSetupValues;
+  updateEvalSetup: <Key extends keyof EvalSetupValues>(
+    field: Key,
+    value: EvalSetupValues[Key],
+  ) => void;
   primaryValue: string;
   canRun: boolean;
   launching: boolean;
@@ -605,6 +678,8 @@ function TryoutWelcome({
             ))}
           </div>
         ) : null}
+
+        <EvalSetupPanel values={evalSetup} onChange={updateEvalSetup} />
 
         {message ? <Alert text={message} /> : null}
         {quotaMessage ? (
@@ -783,6 +858,7 @@ function TryoutSidebar({
   const agentRan = tryout.selected_harness_kind
     ? `${modelRan} · ${agentLabel(tryout.selected_harness_kind)}`
     : modelRan;
+  const evalPlan = evalSetupFromInput(tryout.input_snapshot);
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", compact ? "pt-2" : "p-4")}>
@@ -813,6 +889,12 @@ function TryoutSidebar({
       {scorecard ? (
         <div className="mt-4 px-1">
           <ScorecardCard scorecard={scorecard} compact />
+        </div>
+      ) : null}
+
+      {evalPlan ? (
+        <div className="mt-4 px-1">
+          <EvalPlanCard setup={evalPlan} compact />
         </div>
       ) : null}
 
@@ -890,6 +972,10 @@ function TryoutChatThread({
 
   const active = tryoutIsActive(tryout.status);
   const finished = !active;
+  const evalPlan = useMemo(
+    () => evalSetupFromInput(tryout.input_snapshot),
+    [tryout.input_snapshot],
+  );
 
   useEffect(() => {
     setFollowUps([]);
@@ -928,7 +1014,7 @@ function TryoutChatThread({
       items.push({
         kind: "agent",
         id: `e${event.cursor}`,
-        text: event.summary,
+        text: friendlyTraceSummary(event),
         at: new Date(event.occurred_at).getTime(),
         eventType: event.type,
       });
@@ -1002,6 +1088,12 @@ function TryoutChatThread({
             .map((output) => (
             <ArtifactChatCard key={`${output.key}-${output.relative_path}`} output={output} />
           ))}
+
+          {evalPlan && (outputs.length > 0 || finished) ? (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <EvalPlanCard setup={evalPlan} />
+            </div>
+          ) : null}
 
           {scorecard && finished ? (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
@@ -1359,6 +1451,110 @@ function AnimatedPillSelect({
   );
 }
 
+function EvalSetupPanel({
+  values,
+  onChange,
+}: {
+  values: EvalSetupValues;
+  onChange: <Key extends keyof EvalSetupValues>(
+    field: Key,
+    value: EvalSetupValues[Key],
+  ) => void;
+}) {
+  return (
+    <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.025] p-3">
+      <div className="flex items-center gap-2">
+        <ListChecks className="size-4 text-white/45" />
+        <div>
+          <p className="text-sm font-medium text-white/85">Eval setup</p>
+          <p className="text-xs text-white/45">A short rubric is generated from these answers.</p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <label className="rounded-xl border border-white/8 bg-black/40 px-3 py-2">
+          <span className="block text-xs text-white/45">What mistake would fail this?</span>
+          <input
+            value={values.unacceptableMistakes}
+            onChange={(event) => onChange("unacceptableMistakes", event.target.value)}
+            placeholder="Inventing numbers, missing citations, off-brand tone"
+            className="mt-1 w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
+          />
+        </label>
+        <label className="rounded-xl border border-white/8 bg-black/40 px-3 py-2">
+          <span className="block text-xs text-white/45">Who would approve it?</span>
+          <input
+            value={values.reviewer}
+            onChange={(event) => onChange("reviewer", event.target.value)}
+            placeholder="Support lead, CFO, sales manager"
+            className="mt-1 w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
+          />
+        </label>
+      </div>
+
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <SegmentedControl
+          label="Optimize for"
+          value={values.priority}
+          options={PRIORITY_OPTIONS}
+          onChange={(value) => onChange("priority", value)}
+        />
+        <SegmentedControl
+          label="Output behavior"
+          value={values.style}
+          options={STYLE_OPTIONS}
+          onChange={(value) => onChange("style", value)}
+        />
+      </div>
+
+      <label className="mt-3 flex items-center gap-2 rounded-xl border border-white/8 bg-black/40 px-3 py-2">
+        <span className="shrink-0 text-xs text-white/45">Monthly volume</span>
+        <input
+          value={values.monthlyVolume}
+          onChange={(event) => onChange("monthlyVolume", event.target.value)}
+          placeholder="50, 500, 10k"
+          className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
+        />
+      </label>
+    </div>
+  );
+}
+
+function SegmentedControl<TValue extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: TValue;
+  options: { value: TValue; label: string }[];
+  onChange: (value: TValue) => void;
+}) {
+  return (
+    <div>
+      <p className="mb-1.5 text-xs text-white/45">{label}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((option) => (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={cn(
+              "rounded-full border px-2.5 py-1 text-xs transition",
+              option.value === value
+                ? "border-white/35 bg-white text-black"
+                : "border-white/10 bg-black/35 text-white/55 hover:border-white/25 hover:text-white",
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function CompactField({
   field,
   spec,
@@ -1446,6 +1642,49 @@ function ScorecardCard({
   );
 }
 
+function EvalPlanCard({
+  setup,
+  compact,
+}: {
+  setup: DerivedEvalSetup;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border border-white/10 bg-white/[0.02]",
+        compact ? "p-3" : "p-4",
+      )}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold tracking-tight">Generated eval</h3>
+        <span className="text-xs text-white/38">{priorityLabel(setup.business_priority)}</span>
+      </div>
+      <p className="mt-2 text-sm leading-6 text-white/58">
+        Reviewer: {setup.human_reviewer}. Behavior: {styleLabel(setup.output_style)}.
+      </p>
+      {setup.unacceptable_mistakes ? (
+        <p className="mt-1 text-sm leading-6 text-white/58">
+          Fail condition: {setup.unacceptable_mistakes}
+        </p>
+      ) : null}
+      {!compact ? (
+        <ul className="mt-3 space-y-2">
+          {setup.derived_rubric.slice(0, 4).map((item) => (
+            <li key={item.key} className="rounded-lg border border-white/8 bg-black/35 p-2.5">
+              <p className="text-sm font-medium text-white/82">{item.label}</p>
+              <p className="mt-1 text-xs leading-5 text-white/48">{item.checks.join(" · ")}</p>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      <p className="mt-3 text-xs leading-5 text-white/38">
+        Suggested setting: {setup.suggested_generation_settings.temperature} temperature.
+      </p>
+    </div>
+  );
+}
+
 function DownloadButton({ label, onClick }: { label: string; onClick: () => void }) {
   return (
     <Button
@@ -1486,7 +1725,7 @@ function formatInputSnapshot(input: Record<string, unknown>): string {
     if (typeof value === "string" && value.trim()) return value.trim();
   }
   const strings = Object.entries(input)
-    .filter(([, value]) => typeof value === "string" && value.trim())
+    .filter(([key, value]) => key !== "eval_setup" && typeof value === "string" && value.trim())
     .map(([key, value]) => `${fieldLabel(key)}: ${value}`);
   if (strings.length === 1) return strings[0].split(": ").slice(1).join(": ");
   if (strings.length > 1) return strings.join("\n\n");
@@ -1529,6 +1768,194 @@ function buildInput(
     }
   }
   return { value: input };
+}
+
+function buildEvalSetup(values: EvalSetupValues, taskName: string): DerivedEvalSetup {
+  const unacceptable = values.unacceptableMistakes.trim();
+  const reviewer = values.reviewer.trim() || DEFAULT_EVAL_SETUP.reviewer;
+  const volume = values.monthlyVolume.trim();
+  const priority = values.priority;
+  const style = values.style;
+
+  const rubric: EvalRubricItem[] = [
+    {
+      key: "business_fit",
+      label: `${reviewer} would accept it`,
+      checks: [
+        `Solves the ${taskName} request`,
+        "Uses the supplied context instead of generic filler",
+        "Makes the next human review step obvious",
+      ],
+    },
+    {
+      key: "priority_match",
+      label: priorityRubricLabel(priority),
+      checks: priorityRubricChecks(priority),
+    },
+    {
+      key: "failure_mode",
+      label: unacceptable ? "Avoids the named failure mode" : "Avoids obvious failure modes",
+      checks: [
+        unacceptable || "Does not invent facts, omit required sections, or leave placeholders",
+        "Flags uncertainty instead of hiding it",
+      ],
+    },
+    {
+      key: "operational_readiness",
+      label: "Ready to repeat in production",
+      checks: [
+        volume ? `Suitable for about ${volume} runs per month` : "Clear enough to scale beyond a demo",
+        "Outputs are structured enough to validate automatically",
+      ],
+    },
+  ];
+
+  return {
+    version: "public_tryouts_eval_setup_v1",
+    unacceptable_mistakes: unacceptable,
+    human_reviewer: reviewer,
+    business_priority: priority,
+    output_style: style,
+    monthly_volume: volume,
+    derived_rubric: rubric,
+    suggested_generation_settings: generationSettingsFor(style, priority),
+  };
+}
+
+function evalSetupFromInput(input: Record<string, unknown>): DerivedEvalSetup | null {
+  const value = input?.eval_setup;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const setup = value as Partial<DerivedEvalSetup>;
+  if (!Array.isArray(setup.derived_rubric) || setup.derived_rubric.length === 0) {
+    return null;
+  }
+  return {
+    version: typeof setup.version === "string" ? setup.version : "public_tryouts_eval_setup_v1",
+    unacceptable_mistakes:
+      typeof setup.unacceptable_mistakes === "string" ? setup.unacceptable_mistakes : "",
+    human_reviewer:
+      typeof setup.human_reviewer === "string" && setup.human_reviewer.trim()
+        ? setup.human_reviewer
+        : DEFAULT_EVAL_SETUP.reviewer,
+    business_priority: isEvalPriority(setup.business_priority)
+      ? setup.business_priority
+      : DEFAULT_EVAL_SETUP.priority,
+    output_style: isEvalStyle(setup.output_style)
+      ? setup.output_style
+      : DEFAULT_EVAL_SETUP.style,
+    monthly_volume: typeof setup.monthly_volume === "string" ? setup.monthly_volume : "",
+    derived_rubric: setup.derived_rubric.filter(isEvalRubricItem),
+    suggested_generation_settings:
+      setup.suggested_generation_settings &&
+      typeof setup.suggested_generation_settings === "object" &&
+      typeof setup.suggested_generation_settings.temperature === "string" &&
+      typeof setup.suggested_generation_settings.reason === "string"
+        ? setup.suggested_generation_settings
+        : generationSettingsFor(DEFAULT_EVAL_SETUP.style, DEFAULT_EVAL_SETUP.priority),
+  };
+}
+
+function isEvalPriority(value: unknown): value is EvalPriority {
+  return PRIORITY_OPTIONS.some((option) => option.value === value);
+}
+
+function isEvalStyle(value: unknown): value is EvalStyle {
+  return STYLE_OPTIONS.some((option) => option.value === value);
+}
+
+function isEvalRubricItem(value: unknown): value is EvalRubricItem {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Partial<EvalRubricItem>;
+  return (
+    typeof item.key === "string" &&
+    typeof item.label === "string" &&
+    Array.isArray(item.checks) &&
+    item.checks.every((check) => typeof check === "string")
+  );
+}
+
+function generationSettingsFor(
+  style: EvalStyle,
+  priority: EvalPriority,
+): DerivedEvalSetup["suggested_generation_settings"] {
+  if (style === "creative" && priority !== "compliance") {
+    return {
+      temperature: "medium",
+      reason: "Allow more variation because the user values creative alternatives.",
+    };
+  }
+  if (priority === "speed" || priority === "cost") {
+    return {
+      temperature: "low",
+      reason: "Keep outputs predictable so cheaper or faster models can be compared fairly.",
+    };
+  }
+  return {
+    temperature: "low",
+    reason: "Prefer repeatable outputs because the rubric depends on correctness and reviewer trust.",
+  };
+}
+
+function priorityRubricLabel(priority: EvalPriority): string {
+  switch (priority) {
+    case "polish":
+      return "Looks client-ready";
+    case "speed":
+      return "Finishes quickly enough";
+    case "cost":
+      return "Makes economic sense";
+    case "compliance":
+      return "Stays inside policy";
+    default:
+      return "Gets the facts right";
+  }
+}
+
+function priorityRubricChecks(priority: EvalPriority): string[] {
+  switch (priority) {
+    case "polish":
+      return ["Clear structure", "Tone fits the audience", "No rough-draft leftovers"];
+    case "speed":
+      return ["Completes without extra back-and-forth", "Avoids unnecessary tool calls"];
+    case "cost":
+      return ["Avoids wasteful retries", "Output quality justifies model cost"];
+    case "compliance":
+      return ["Follows supplied policies", "Calls out risky or missing information"];
+    default:
+      return ["Grounded in user input", "No fabricated claims", "Important details preserved"];
+  }
+}
+
+function priorityLabel(priority: EvalPriority): string {
+  return PRIORITY_OPTIONS.find((option) => option.value === priority)?.label ?? "Correct facts";
+}
+
+function styleLabel(style: EvalStyle): string {
+  return STYLE_OPTIONS.find((option) => option.value === style)?.label ?? "Same every time";
+}
+
+function friendlyTraceSummary(event: TryoutTimelineEvent): string {
+  const summary = event.summary.trim();
+  const lower = summary.toLowerCase();
+  switch (event.type) {
+    case "planning":
+      return "Planned the next step";
+    case "tool_call":
+      return lower.includes("complete") ? "Finished a tool step" : "Used a tool";
+    case "sandbox_command":
+      return lower.includes("soffice") || lower.includes("libreoffice")
+        ? "Exported the deck preview"
+        : "Ran a sandbox command";
+    case "file_written":
+    case "file_activity":
+      return summary.replace(/^wrote file:?/i, "Created").replace(/^file written:?/i, "Created");
+    case "validation":
+      return "Checked the output against validators";
+    case "scoring":
+      return "Updated the eval scorecard";
+    default:
+      return summary || "Working";
+  }
 }
 
 function fieldLabel(field: string): string {

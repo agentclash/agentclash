@@ -1368,6 +1368,9 @@ func validateAgentTryoutInputSchema(template AgentTryoutTemplate, object map[str
 	}
 	if schema.AdditionalProperties != nil && !*schema.AdditionalProperties {
 		for key := range object {
+			if key == "eval_setup" {
+				continue
+			}
 			if _, ok := schema.Properties[key]; !ok {
 				return fmt.Errorf("%w: unsupported field %q", ErrInvalidAgentTryoutInput, key)
 			}
@@ -1383,6 +1386,14 @@ func validateAgentTryoutInputSchema(template AgentTryoutTemplate, object map[str
 		}
 		if !agentTryoutInputValueMatchesType(value, property.Type) {
 			return fmt.Errorf("%w: field %q must be %s", ErrInvalidAgentTryoutInput, key, property.Type)
+		}
+	}
+	if value, ok := object["eval_setup"]; ok {
+		if value == nil {
+			return fmt.Errorf("%w: field %q must be object", ErrInvalidAgentTryoutInput, "eval_setup")
+		}
+		if !agentTryoutInputValueMatchesType(value, "object") {
+			return fmt.Errorf("%w: field %q must be object", ErrInvalidAgentTryoutInput, "eval_setup")
 		}
 	}
 	return nil
@@ -1629,7 +1640,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			AnonymousEnabled:   true,
 			MaxInputBytes:      64 * 1024,
 			MaxDurationSeconds: 120,
-			MaxCostUSD:         0.25,
+			MaxCostUSD:         10.0,
 		},
 		{
 			Slug:               "structured-data",
@@ -1645,7 +1656,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			AnonymousEnabled:   true,
 			MaxInputBytes:      64 * 1024,
 			MaxDurationSeconds: 120,
-			MaxCostUSD:         0.25,
+			MaxCostUSD:         10.0,
 		},
 		{
 			Slug:               "slide-deck",
@@ -1660,7 +1671,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			AnonymousEnabled:   true,
 			MaxInputBytes:      64 * 1024,
 			MaxDurationSeconds: 180,
-			MaxCostUSD:         0.35,
+			MaxCostUSD:         10.0,
 		},
 		{
 			Slug:               "spreadsheet-builder",
@@ -1675,7 +1686,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			AnonymousEnabled:   true,
 			MaxInputBytes:      64 * 1024,
 			MaxDurationSeconds: 180,
-			MaxCostUSD:         0.35,
+			MaxCostUSD:         10.0,
 		},
 		{
 			Slug:               "status-report",
@@ -1690,7 +1701,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			AnonymousEnabled:   true,
 			MaxInputBytes:      64 * 1024,
 			MaxDurationSeconds: 120,
-			MaxCostUSD:         0.25,
+			MaxCostUSD:         10.0,
 		},
 		{
 			Slug:               "inbox-triage",
@@ -1705,7 +1716,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			AnonymousEnabled:   true,
 			MaxInputBytes:      64 * 1024,
 			MaxDurationSeconds: 150,
-			MaxCostUSD:         0.3,
+			MaxCostUSD:         10.0,
 		},
 		{
 			Slug:               "tiny-bugfix",
@@ -1739,7 +1750,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			AnonymousEnabled:   true,
 			MaxInputBytes:      96 * 1024,
 			MaxDurationSeconds: 150,
-			MaxCostUSD:         0.3,
+			MaxCostUSD:         10.0,
 		},
 		{
 			Slug:               "document-extraction",
@@ -1754,7 +1765,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			AnonymousEnabled:   true,
 			MaxInputBytes:      96 * 1024,
 			MaxDurationSeconds: 150,
-			MaxCostUSD:         0.3,
+			MaxCostUSD:         10.0,
 		},
 		{
 			Slug:               "contract-review",
@@ -1769,7 +1780,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			AnonymousEnabled:   true,
 			MaxInputBytes:      128 * 1024,
 			MaxDurationSeconds: 180,
-			MaxCostUSD:         0.5,
+			MaxCostUSD:         10.0,
 		},
 		{
 			Slug:               "sdr-outreach",
@@ -1784,7 +1795,7 @@ func builtinAgentTryoutTemplates() []AgentTryoutTemplate {
 			AnonymousEnabled:   true,
 			MaxInputBytes:      64 * 1024,
 			MaxDurationSeconds: 120,
-			MaxCostUSD:         0.25,
+			MaxCostUSD:         10.0,
 		},
 	}
 }
