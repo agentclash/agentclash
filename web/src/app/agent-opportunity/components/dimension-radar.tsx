@@ -17,10 +17,12 @@ const AXES: Axis[] = [
   { key: "riskProfile", label: "Risk safety" },
 ];
 
-const CX = 170;
-const CY = 138;
-const RADIUS = 84;
+const CX = 185;
+const CY = 140;
+const RADIUS = 86;
 const RINGS = [25, 50, 75, 100];
+
+const CYAN = "#22d3ee";
 
 function pointAt(axisIndex: number, value: number): [number, number] {
   const angle = (Math.PI / 2) * axisIndex - Math.PI / 2;
@@ -37,9 +39,9 @@ const LABEL_ANCHORS: {
   dx: number;
   dy: number;
 }[] = [
-  { anchor: "middle", dx: 0, dy: -16 },
+  { anchor: "middle", dx: 0, dy: -18 },
   { anchor: "start", dx: 14, dy: 0 },
-  { anchor: "middle", dx: 0, dy: 24 },
+  { anchor: "middle", dx: 0, dy: 26 },
   { anchor: "end", dx: -14, dy: 0 },
 ];
 
@@ -63,19 +65,26 @@ export function DimensionRadar({
 
   return (
     <svg
-      viewBox="0 0 340 276"
+      viewBox="0 0 370 286"
       role="img"
       aria-label={`Dimension profile: ${AXES.map(
         (axis, index) => `${axis.label} ${values[index]} of 100`,
       ).join(", ")}`}
       className={cn("block w-full", className)}
     >
+      <defs>
+        <radialGradient id="radar-fill" cx="50%" cy="50%" r="65%">
+          <stop offset="0%" stopColor={CYAN} stopOpacity="0.32" />
+          <stop offset="100%" stopColor={CYAN} stopOpacity="0.05" />
+        </radialGradient>
+      </defs>
+
       {RINGS.map((ring) => (
         <polygon
           key={ring}
           points={ringPath(ring)}
           fill="none"
-          stroke="rgba(255,255,255,0.07)"
+          stroke="rgba(255,255,255,0.1)"
           strokeWidth={1}
         />
       ))}
@@ -88,7 +97,7 @@ export function DimensionRadar({
             y1={CY}
             x2={x}
             y2={y}
-            stroke="rgba(255,255,255,0.1)"
+            stroke="rgba(255,255,255,0.13)"
             strokeWidth={1}
           />
         );
@@ -98,23 +107,28 @@ export function DimensionRadar({
         className="motion-reduce:transition-none"
         style={{
           transformOrigin: `${CX}px ${CY}px`,
-          transform: mounted ? "scale(1)" : "scale(0.35)",
+          transform: mounted ? "scale(1)" : "scale(0.3)",
           opacity: mounted ? 1 : 0,
           transition:
-            "transform 700ms cubic-bezier(0.22, 1, 0.36, 1), opacity 500ms ease",
+            "transform 800ms cubic-bezier(0.22, 1, 0.36, 1), opacity 600ms ease",
         }}
       >
         <polygon
           points={polygon}
-          fill="rgba(255,255,255,0.07)"
-          stroke="rgba(255,255,255,0.75)"
-          strokeWidth={1.5}
+          fill="url(#radar-fill)"
+          stroke={CYAN}
+          strokeWidth={2}
           strokeLinejoin="round"
+          style={{ filter: `drop-shadow(0 0 8px ${CYAN}80)` }}
         />
         {values.map((value, index) => {
           const [x, y] = pointAt(index, value);
           return (
-            <circle key={AXES[index].key} cx={x} cy={y} r={2.5} fill="#fff" />
+            <g key={AXES[index].key}>
+              <circle cx={x} cy={y} r={5} fill={CYAN} opacity={0.25} />
+              <circle cx={x} cy={y} r={3} fill={CYAN} />
+              <circle cx={x} cy={y} r={1.4} fill="#fff" />
+            </g>
           );
         })}
       </g>
@@ -127,15 +141,15 @@ export function DimensionRadar({
             <text
               x={x + dx}
               y={y + dy}
-              className="fill-white font-mono text-[13px] tabular-nums"
+              className="fill-white font-mono text-[15px] font-medium tabular-nums"
             >
               {values[index]}
             </text>
             <text
               x={x + dx}
-              y={y + dy + 12}
-              className="fill-white/35 font-mono text-[8.5px] uppercase"
-              style={{ letterSpacing: "0.14em" }}
+              y={y + dy + 14}
+              className="fill-white/60 font-mono text-[10px] uppercase"
+              style={{ letterSpacing: "0.12em" }}
             >
               {axis.label}
             </text>
