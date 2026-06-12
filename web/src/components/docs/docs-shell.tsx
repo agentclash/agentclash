@@ -71,7 +71,7 @@ export function DocsShell({
       </header>
 
       <div className="mx-auto flex w-full max-w-[1536px] items-start px-6 lg:px-8">
-        <aside className="sticky top-16 hidden h-[calc(100vh-4rem)] w-64 shrink-0 overflow-y-auto border-r border-white/[0.08] pt-8 lg:block">
+        <aside className="sticky top-16 hidden h-[calc(100dvh-4rem)] w-64 shrink-0 overflow-y-auto border-r border-white/[0.08] pt-8 lg:block">
           <DocsSidebar sections={sections} currentHref={currentHref} />
         </aside>
 

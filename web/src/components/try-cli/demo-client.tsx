@@ -229,7 +229,7 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
 
   if (trialUsed) {
     return (
-      <div className="relative flex min-h-[calc(100vh-4rem)] items-center justify-center px-6 py-20">
+      <div className="relative flex min-h-[calc(100dvh-4rem)] items-center justify-center px-6 py-20">
         <div
           aria-hidden
           className="pointer-events-none absolute left-1/2 top-1/3 -z-10 h-[420px] w-[420px] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(255,255,255,0.10),transparent_70%)] blur-2xl"
@@ -283,7 +283,7 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
   }
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] flex-col">
+    <div className="flex h-[calc(100dvh-4rem)] flex-col">
       {/* Demo toolbar */}
       <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-white/[0.06] px-5 py-3 sm:px-8">
         <div className="flex items-center gap-3">

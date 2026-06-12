@@ -50,7 +50,7 @@ export default async function OrgLayout({
           currentUserId: session.user_id,
         }}
       >
-        <div className="flex min-h-screen">
+        <div className="flex min-h-dvh">
           <OrgSettingsSidebar
             orgSlug={orgSlug}
             orgName={org.name}
