@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { JsonLd, blogIndexSchema } from "@/components/marketing/json-ld";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
+import { AgentPromoBanner } from "@/components/marketing/agent-promo-banner";
 import { ResearchAudienceCTA } from "@/components/marketing/research-audience-cta";
 import { ResourcePackCTA } from "@/components/marketing/resource-pack-cta";
 import { getAllPosts } from "@/lib/blog";
@@ -53,7 +54,7 @@ export default function BlogPage() {
   const posts = getAllPosts();
 
   return (
-    <MarketingShell>
+    <MarketingShell banner={<AgentPromoBanner page="blog" />}>
       <JsonLd id="agentclash-blog-index-schema" data={blogIndexSchema(posts)} />
       <section className="mx-auto w-full max-w-3xl px-6 py-16">
         <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/35">
