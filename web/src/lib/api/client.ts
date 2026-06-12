@@ -126,7 +126,11 @@ async function requestWithMeta<T>(
   }
 
   if (body !== undefined && !headers["Content-Type"]) {
-    headers["Content-Type"] = "application/json";
+    if (typeof FormData !== "undefined" && body instanceof FormData) {
+      // Let the browser set multipart boundary.
+    } else {
+      headers["Content-Type"] = "application/json";
+    }
   }
 
   let res: Response;
@@ -136,8 +140,8 @@ async function requestWithMeta<T>(
       headers,
       body:
         body !== undefined
-          ? typeof body === "string"
-            ? body
+          ? typeof body === "string" || (typeof FormData !== "undefined" && body instanceof FormData)
+            ? (body as BodyInit)
             : JSON.stringify(body)
           : undefined,
       signal: opts.signal,
@@ -200,6 +204,10 @@ export function createApiClient(token?: string) {
 
     post<T>(path: string, body?: unknown, opts?: RequestOptions): Promise<T> {
       return request<T>("POST", path, token, body, opts);
+    },
+
+    postMultipart<T>(path: string, formData: FormData, opts?: RequestOptions): Promise<T> {
+      return request<T>("POST", path, token, formData, opts);
     },
 
     postWithMeta<T>(

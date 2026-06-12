@@ -2767,6 +2767,13 @@ export interface AgentTryoutJudgeSelection {
   strictness?: AgentTryoutJudgeStrictness;
 }
 
+export interface AgentTryoutInputAttachment {
+  id: string;
+  filename: string;
+  media_type: string;
+  size_bytes: number;
+}
+
 export interface CreateAgentTryoutInput {
   template_slug: string;
   input: Record<string, unknown>;

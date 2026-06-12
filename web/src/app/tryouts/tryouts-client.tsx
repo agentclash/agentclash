@@ -3,7 +3,14 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowRight,
   ArrowUp,
@@ -13,8 +20,10 @@ import {
   Gauge,
   ListChecks,
   Loader2,
+  Paperclip,
   PanelRight,
   Scale,
+  X,
 } from "lucide-react";
 
 import {
@@ -23,12 +32,14 @@ import {
   getPublicAgentTryoutEvents,
   listAgentTryoutTemplates,
   submitAgentTryoutTurn,
+  uploadAgentTryoutInputAttachment,
 } from "@/lib/api/agent-tryouts";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type {
   AgentHarnessKind,
   AgentTryout,
+  AgentTryoutInputAttachment,
   AgentTryoutJudgeStrictness,
   AgentTryoutModelPolicy,
   AgentTryoutTemplate,
@@ -39,6 +50,7 @@ import {
   formatTryoutLatency,
   tryoutIsActive,
 } from "@/lib/agent-tryout-status";
+import { ClashMark } from "@/components/marketing/clash-mark";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -191,6 +203,34 @@ const STRICTNESS_OPTIONS: { value: AgentTryoutJudgeStrictness; label: string }[]
   { value: "harsh", label: "Harsh" },
 ];
 
+const TRYOUT_STARTERS = [
+  {
+    slug: "support-ticket-resolution",
+    field: "ticket",
+    label: "Support ticket",
+    prompt:
+      "Customer was charged twice for order #48291. They want a refund today and mention they may cancel if we do not fix billing.",
+  },
+  {
+    slug: "meeting-minutes",
+    field: "notes",
+    label: "Meeting notes",
+    prompt:
+      "Product sync: EU API latency hit 2s, mobile release blocked on App Store review, marketing launch may slip to next week.",
+  },
+  {
+    slug: "inbox-triage",
+    field: "emails",
+    label: "Inbox triage",
+    prompt:
+      "From: legal@vendor.com — contract amendment needed before EOD.\nFrom: customer — where is my refund?\nFrom: ceo — quick sync on Q3 numbers?",
+  },
+] as const;
+
+const MAX_TRYOUT_ATTACHMENTS = 5;
+const TRYOUT_ATTACHMENT_ACCEPT =
+  "application/pdf,image/jpeg,image/png,image/gif,image/webp";
+
 function judgeModelLabel(model: string): string {
   return JUDGE_OPTIONS.find((option) => option.value === model)?.label ?? model;
 }
@@ -267,153 +307,6 @@ function modelLabelFromPolicy(policy: unknown): string {
   return match?.label ?? first.model;
 }
 
-const TASK_SUGGESTIONS: Record<string, string[]> = {
-  "support-ticket-resolution": [
-    "Customer says their invoice was charged twice and wants a refund today. Draft a reply and decide whether to escalate.",
-    "Angry customer threatening to churn over downtime. Reply empathetically, cite our SLA, flag for a human.",
-  ],
-  "document-extraction": [
-    "Extract line items, totals, and vendor from this invoice, then render a clean summary PDF.",
-    "Pull every date, amount, and party from this contract into a spreadsheet.",
-  ],
-  "contract-review": [
-    "Review this NDA for one-sided indemnity and unlimited liability. List risks with severity.",
-    "Compare these payment terms against net-30 standard and propose redlines.",
-  ],
-  "sdr-outreach": [
-    "Qualify this prospect for our eval platform and draft a 3-sentence cold email.",
-    "Write a follow-up to a VP Eng who opened but didn't reply, referencing their hiring spike.",
-  ],
-  "spreadsheet-builder": [
-    "Turn this raw sales data into a spreadsheet with a pivot summary and a bar chart PNG.",
-    "Build a 12-month cashflow model from these assumptions and chart the runway.",
-  ],
-  "slide-deck": [
-    "Make a 6-slide deck for 10 year olds explaining what AI is, with a simple chart.",
-    "Turn this product brief into a PowerPoint with speaker notes and one diagram.",
-  ],
-  "status-report": [
-    "Turn these scattered updates into a polished weekly status report and export it as a PDF.",
-    "Summarize this sprint into highlights, risks, and next steps.",
-    "Weekly product update for leadership: wins, slips, and what needs a decision.",
-  ],
-  "meeting-minutes": [
-    "Summarize these notes into minutes with owners and due dates.",
-    "Extract action items and render them as a one-page PDF checklist.",
-    "Board meeting notes: decisions, risks, and follow-ups for the exec team.",
-  ],
-  "inbox-triage": [
-    "Prioritize these 8 emails and draft replies for the urgent ones.",
-    "Sort this inbox by urgency, flag compliance risks, and draft holds for anything ambiguous.",
-    "Customer escalation thread plus three routine billing questions: triage and draft responses.",
-  ],
-};
-
-const GENERIC_SUGGESTIONS = [
-  "Generate a PDF report from this data with a chart.",
-  "Build a spreadsheet with formulas and a summary tab.",
-  "Turn this into a labeled bar chart and explain the trend.",
-  "Summarize this for an executive who has two minutes to read.",
-  "Flag anything that would fail a compliance review before we ship.",
-];
-
-type TryoutShowcaseItem = {
-  slug: string;
-  tag: string;
-  headline: string;
-  example: string;
-  primaryField: string;
-};
-
-const TRYOUT_SHOWCASE: TryoutShowcaseItem[] = [
-  {
-    slug: "support-ticket-resolution",
-    tag: "Customer support",
-    headline: "Resolve support tickets",
-    example:
-      "Customer says their invoice was charged twice and wants a refund today. Draft a reply and decide whether to escalate.",
-    primaryField: "ticket",
-  },
-  {
-    slug: "document-extraction",
-    tag: "Finance / AP",
-    headline: "Extract invoice data",
-    example:
-      "Extract line items, totals, and vendor from this invoice, then flag any missing fields for human review.",
-    primaryField: "document",
-  },
-  {
-    slug: "contract-review",
-    tag: "Legal ops",
-    headline: "Review contract clauses",
-    example:
-      "Review this NDA for one-sided indemnity and unlimited liability. List risks with severity and quote the clause.",
-    primaryField: "contract",
-  },
-  {
-    slug: "sdr-outreach",
-    tag: "Sales",
-    headline: "Qualify leads & draft outreach",
-    example:
-      "VP Engineering at a 200-person SaaS company, hiring 3 platform engineers. Draft a 3-sentence cold email for our eval platform.",
-    primaryField: "prospect",
-  },
-  {
-    slug: "inbox-triage",
-    tag: "Ops",
-    headline: "Triage inbox batches",
-    example:
-      "Prioritize these 8 emails, draft replies for urgent ones, and flag anything that needs a human before we respond.",
-    primaryField: "emails",
-  },
-  {
-    slug: "meeting-minutes",
-    tag: "Product / PM",
-    headline: "Minutes to action plan",
-    example:
-      "Summarize these notes into minutes with owners, due dates, and risks. Export a one-page action plan.",
-    primaryField: "notes",
-  },
-  {
-    slug: "status-report",
-    tag: "Leadership",
-    headline: "Status reports",
-    example:
-      "Turn these scattered sprint updates into a polished weekly status with highlights, risks, and next steps.",
-    primaryField: "updates",
-  },
-  {
-    slug: "spreadsheet-builder",
-    tag: "Analytics",
-    headline: "Data to spreadsheet",
-    example:
-      "Turn this raw sales data into a spreadsheet with a pivot summary and a bar chart PNG.",
-    primaryField: "data",
-  },
-  {
-    slug: "slide-deck",
-    tag: "Marketing",
-    headline: "Brief to slide deck",
-    example:
-      "Make a 6-slide deck explaining our AI evaluation platform for a VP of Engineering, with one chart slide.",
-    primaryField: "brief",
-  },
-];
-
-function suggestionsFor(slug: string): string[] {
-  const showcase = TRYOUT_SHOWCASE.find((item) => item.slug === slug);
-  const curated = TASK_SUGGESTIONS[slug] ?? GENERIC_SUGGESTIONS;
-  if (showcase && !curated.includes(showcase.example)) {
-    return [showcase.example, ...curated];
-  }
-  return curated;
-}
-
-function showcaseForTemplates(templates: AgentTryoutTemplate[]): TryoutShowcaseItem[] {
-  const slugs = new Set(templates.map((template) => template.slug));
-  return TRYOUT_SHOWCASE.filter((item) => slugs.has(item.slug));
-}
-
 const api = createApiClient();
 
 const SERIF = "[font-family:var(--font-race-display)]";
@@ -433,10 +326,6 @@ export function PublicTryoutsClient() {
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [evalSetup, setEvalSetup] = useState<EvalSetupValues>(DEFAULT_EVAL_SETUP);
   const prefillRef = useRef<RerunPrefill | null>(null);
-  const showcasePrefillRef = useRef<{
-    slug: string;
-    values: Record<string, string>;
-  } | null>(null);
 
   // Apply a rerun handoff (same brief, different agent/judge) exactly once.
   useEffect(() => {
@@ -461,6 +350,9 @@ export function PublicTryoutsClient() {
   const [tryoutLoading, setTryoutLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [quotaMessage, setQuotaMessage] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<AgentTryoutInputAttachment[]>([]);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -503,14 +395,23 @@ export function PublicTryoutsClient() {
       prefillRef.current = null;
       return;
     }
-    const showcasePending = showcasePrefillRef.current;
-    if (showcasePending && showcasePending.slug === templateSlug) {
-      setFieldValues(showcasePending.values);
-      showcasePrefillRef.current = null;
-      return;
-    }
     setFieldValues({});
   }, [templateSlug]);
+
+  const applyTryoutStarter = useCallback(
+    (slug: string, field: string, prompt: string) => {
+      if (slug !== templateSlug) {
+        prefillRef.current = {
+          templateSlug: slug,
+          fieldValues: { [field]: prompt },
+        };
+        setTemplateSlug(slug);
+        return;
+      }
+      setFieldValues((current) => ({ ...current, [field]: prompt }));
+    },
+    [templateSlug],
+  );
 
   useEffect(() => {
     if (!urlTryoutId) {
@@ -591,8 +492,6 @@ export function PublicTryoutsClient() {
       null,
     [fields, required],
   );
-  const secondaryFields = fields.filter(([field]) => field !== primaryField?.[0]);
-
   const updateField = useCallback((field: string, value: string) => {
     setFieldValues((current) => ({ ...current, [field]: value }));
   }, []);
@@ -608,6 +507,41 @@ export function PublicTryoutsClient() {
     evalSetup.unacceptableMistakes.trim().length > 0 &&
     evalSetup.monthlyVolume.trim().length > 0;
 
+  async function handleAttachFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    if (attachments.length >= MAX_TRYOUT_ATTACHMENTS) {
+      setMessage(`You can attach up to ${MAX_TRYOUT_ATTACHMENTS} files.`);
+      return;
+    }
+    setAttachmentUploading(true);
+    setMessage(null);
+    try {
+      const uploaded: AgentTryoutInputAttachment[] = [];
+      for (const file of Array.from(files)) {
+        if (attachments.length + uploaded.length >= MAX_TRYOUT_ATTACHMENTS) {
+          break;
+        }
+        uploaded.push(await uploadAgentTryoutInputAttachment(api, file));
+      }
+      setAttachments((current) => [...current, ...uploaded]);
+    } catch (err) {
+      setMessage(
+        err instanceof ApiError
+          ? err.message
+          : "Could not upload that file. Use a PDF or image under 15 MB.",
+      );
+    } finally {
+      setAttachmentUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments((current) => current.filter((item) => item.id !== id));
+  }
+
   async function launchTryout() {
     if (!template || launching || !evalReady) return;
 
@@ -617,6 +551,11 @@ export function PublicTryoutsClient() {
       return;
     }
     input.value.eval_setup = buildEvalSetup(evalSetup, template?.name ?? "agent task");
+    if (attachments.length > 0) {
+      input.value.input_attachments = attachments.map((attachment) => ({
+        id: attachment.id,
+      }));
+    }
 
     const selectedModel =
       MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey) ??
@@ -678,31 +617,22 @@ export function PublicTryoutsClient() {
   const primaryValue = primaryField ? fieldValues[primaryField[0]] ?? "" : "";
   const canRun = Boolean(template) && !templatesLoading && !launching;
   const inSession = Boolean(urlTryoutId);
-  const showcaseItems = useMemo(() => showcaseForTemplates(templates), [templates]);
-
-  const selectShowcase = useCallback(
-    (item: TryoutShowcaseItem) => {
-      const values = { [item.primaryField]: item.example };
-      if (templateSlug === item.slug) {
-        setFieldValues(values);
-        showcasePrefillRef.current = null;
-        return;
-      }
-      showcasePrefillRef.current = { slug: item.slug, values };
-      setTemplateSlug(item.slug);
-    },
-    [templateSlug],
-  );
-
   return (
-    <main className="flex h-[100dvh] flex-col overflow-hidden bg-[#131312] text-white">
-      <header className="relative z-10 flex shrink-0 items-center justify-between gap-4 border-b border-white/[0.07] px-4 py-3 sm:px-6">
+    <main
+      className="flex h-dvh max-h-dvh flex-col overflow-hidden bg-[#131312] text-white"
+    >
+      <header className="relative z-10 flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.07] px-4 py-3 sm:gap-4 sm:px-6">
         <div className="flex items-baseline gap-4">
           <Link
             href="/"
-            className="text-sm font-semibold tracking-tight text-white/90"
+            className="inline-flex items-center gap-2 text-white/90"
           >
-            AgentClash
+            <ClashMark className="size-5 sm:size-6" />
+            <span
+              className="font-[family-name:var(--font-display)] text-lg tracking-[-0.01em] sm:text-xl"
+            >
+              AgentClash
+            </span>
           </Link>
           {tryout ? (
             <span className={cn(MICRO, "hidden text-white/35 sm:inline")}>
@@ -763,7 +693,6 @@ export function PublicTryoutsClient() {
           judgeStrictness={judgeStrictness}
           setJudgeStrictness={setJudgeStrictness}
           primaryField={primaryField}
-          secondaryFields={secondaryFields}
           fieldValues={fieldValues}
           updateField={updateField}
           evalSetup={evalSetup}
@@ -776,9 +705,13 @@ export function PublicTryoutsClient() {
           message={message}
           quotaMessage={quotaMessage}
           loginHref={loginHref}
-          showcaseItems={showcaseItems}
-          onSelectShowcase={selectShowcase}
           onLaunch={() => void launchTryout()}
+          onApplyStarter={applyTryoutStarter}
+          attachments={attachments}
+          attachmentUploading={attachmentUploading}
+          fileInputRef={fileInputRef}
+          onAttachFiles={handleAttachFiles}
+          onRemoveAttachment={removeAttachment}
         />
       )}
     </main>
@@ -797,7 +730,6 @@ function TryoutWelcome({
   judgeStrictness,
   setJudgeStrictness,
   primaryField,
-  secondaryFields,
   fieldValues,
   updateField,
   evalSetup,
@@ -810,9 +742,13 @@ function TryoutWelcome({
   message,
   quotaMessage,
   loginHref,
-  showcaseItems,
-  onSelectShowcase,
   onLaunch,
+  onApplyStarter,
+  attachments,
+  attachmentUploading,
+  fileInputRef,
+  onAttachFiles,
+  onRemoveAttachment,
 }: {
   template: AgentTryoutTemplate | null;
   templates: AgentTryoutTemplate[];
@@ -825,7 +761,6 @@ function TryoutWelcome({
   judgeStrictness: AgentTryoutJudgeStrictness;
   setJudgeStrictness: (value: AgentTryoutJudgeStrictness) => void;
   primaryField: [string, FieldSpec] | null;
-  secondaryFields: [string, FieldSpec][];
   fieldValues: Record<string, string>;
   updateField: (field: string, value: string) => void;
   evalSetup: EvalSetupValues;
@@ -841,17 +776,18 @@ function TryoutWelcome({
   message: string | null;
   quotaMessage: string | null;
   loginHref: string;
-  showcaseItems: TryoutShowcaseItem[];
-  onSelectShowcase: (item: TryoutShowcaseItem) => void;
   onLaunch: () => void;
+  onApplyStarter: (slug: string, field: string, prompt: string) => void;
+  attachments: AgentTryoutInputAttachment[];
+  attachmentUploading: boolean;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  onAttachFiles: (files: FileList | null) => void;
+  onRemoveAttachment: (id: string) => void;
 }) {
   const [barOpen, setBarOpen] = useState(false);
   // True when the bar dialog was opened by a send attempt: confirming the bar
   // should immediately launch the run instead of dropping back to the page.
   const [launchAfterBar, setLaunchAfterBar] = useState(false);
-
-  const enter =
-    "animate-in fade-in slide-in-from-bottom-3 fill-mode-both duration-700 motion-reduce:animate-none";
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -865,61 +801,76 @@ function TryoutWelcome({
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
-      <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col justify-center px-5 py-10 sm:px-6 sm:py-12">
-        <p
-          className={cn(MICRO, "text-center text-white/35", enter)}
-          style={{ animationDelay: "0ms" }}
-        >
-          Free AI agent evaluation · Sandboxed · No signup
-        </p>
+    <div className="relative min-h-0 flex-1 overflow-y-auto">
+      <div
+        className="mx-auto flex w-full min-h-full max-w-3xl flex-col justify-center px-4 py-5 sm:px-6 sm:py-8 pb-[max(1rem,env(safe-area-inset-bottom))]"
+      >
         <h1
-          className={cn(
-            "mx-auto mt-5 max-w-[28ch] text-center font-sans text-[clamp(2rem,4.8vw,3.25rem)] font-semibold leading-[1.08] tracking-tight text-white/95",
-            enter,
-          )}
-          style={{ animationDelay: "90ms" }}
+          className="mx-auto max-w-2xl text-center text-[clamp(1.35rem,3.2vw,1.875rem)] font-semibold tracking-tight text-white/88 animate-in fade-in slide-in-from-bottom-2 fill-mode-both duration-700 motion-reduce:animate-none"
         >
-          Test AI agents on real business work before you integrate them
+          See how an agent scores on your workflow
         </h1>
-        <p
-          className={cn(
-            "mx-auto mt-4 max-w-xl text-center text-base leading-7 text-white/50",
-            enter,
-          )}
-          style={{ animationDelay: "180ms" }}
-        >
-          Run a free sandboxed tryout on customer support, finance, legal, sales,
-          and ops workflows. Set the quality bar your team would enforce in
-          production, pick a judge, and get a scored verdict with artifacts you
-          can share before an AI pilot or automation rollout.
-        </p>
-        <ul className="sr-only">
-          {showcaseItems.map((item) => (
-            <li key={item.slug}>
-              {item.headline}: {item.tag} AI workflow automation example
-            </li>
-          ))}
-        </ul>
-
-        <form
-          onSubmit={handleSubmit}
-          className={cn("mt-8", enter)}
-          style={{ animationDelay: "270ms" }}
-        >
+        <form onSubmit={handleSubmit} className="mt-5 sm:mt-6">
           <ComposerShell
             value={primaryValue}
             onChange={(value) => primaryField && updateField(primaryField[0], value)}
-            disabled={!template}
+            disabled={!template || attachmentUploading}
             placeholder={
-              template
-                ? `Describe the work for "${template.name}"…`
-                : "Loading tasks…"
+              template ? "Describe the task or paste your brief…" : "Loading…"
             }
-            canSubmit={canRun}
+            canSubmit={canRun && !attachmentUploading}
             submitting={launching}
+            rows={2}
+            aboveFooter={
+              attachments.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 px-2 pb-1 sm:px-3">
+                  {attachments.map((attachment) => (
+                    <span
+                      key={attachment.id}
+                      className="inline-flex max-w-full items-center gap-1 rounded-sm border border-white/12 bg-white/[0.03] py-0.5 pl-2 pr-1 font-mono text-2xs text-white/65"
+                    >
+                      <span className="truncate">{attachment.filename}</span>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${attachment.filename}`}
+                        onClick={() => onRemoveAttachment(attachment.id)}
+                        className="rounded-sm p-0.5 text-white/40 transition hover:text-white"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null
+            }
+            footerClassName="sm:flex-wrap"
             footer={
               <>
+                <button
+                  type="button"
+                  disabled={
+                    !template ||
+                    attachmentUploading ||
+                    attachments.length >= MAX_TRYOUT_ATTACHMENTS
+                  }
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label="Attach PDF or image"
+                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm border border-white/12 text-white/55 transition hover:border-white/30 hover:text-white disabled:opacity-40"
+                >
+                  {attachmentUploading ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Paperclip className="size-3.5" />
+                  )}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  multiple
+                  accept={TRYOUT_ATTACHMENT_ACCEPT}
+                  onChange={(event) => onAttachFiles(event.target.files)}
+                />
                 <BarPill ready={evalReady} onClick={() => setBarOpen(true)} />
                 <AnimatedPillSelect
                   icon={<FileText className="size-3.5" />}
@@ -943,27 +894,43 @@ function TryoutWelcome({
                   onChange={setJudgeModel}
                   options={JUDGE_OPTIONS.map((option) => ({
                     value: option.value,
-                    label: `${option.label} judges`,
+                    label: option.label,
+                    menuLabel: `${option.label} judges`,
                   }))}
                 />
               </>
             }
           />
 
-          {secondaryFields.length > 0 ? (
-            <div className="mt-4 grid gap-x-10 gap-y-5 sm:grid-cols-2">
-              {secondaryFields.map(([field, spec]) => (
-                <CompactField
-                  key={field}
-                  field={field}
-                  spec={spec}
-                  value={fieldValues[field] ?? ""}
-                  required={false}
-                  onChange={updateField}
-                />
+          {!quotaMessage && (
+            <div
+              className="mt-3 flex flex-wrap items-center justify-center gap-2"
+              role="group"
+              aria-label="Try an example"
+            >
+              {TRYOUT_STARTERS.filter((starter) =>
+                templates.some((item) => item.slug === starter.slug),
+              ).map((starter) => (
+                <button
+                  key={starter.slug}
+                  type="button"
+                  disabled={templatesLoading}
+                  aria-pressed={templateSlug === starter.slug}
+                  onClick={() =>
+                    onApplyStarter(starter.slug, starter.field, starter.prompt)
+                  }
+                  className={cn(
+                    "rounded-sm border px-3 py-1.5 font-mono text-2xs transition",
+                    templateSlug === starter.slug
+                      ? "border-white/22 text-white/70"
+                      : "border-white/10 text-white/40 hover:border-white/18 hover:text-white/60",
+                  )}
+                >
+                  {starter.label}
+                </button>
               ))}
             </div>
-          ) : null}
+          )}
 
           {message ? <Alert text={message} /> : null}
           {quotaMessage ? (
@@ -984,39 +951,7 @@ function TryoutWelcome({
             </div>
           ) : null}
         </form>
-
-        {template && primaryField ? (
-          <div className={cn("mt-9", enter)} style={{ animationDelay: "360ms" }}>
-            <p className={cn(MICRO, "text-center text-white/30")}>
-              Or steal one of these prompts
-            </p>
-            <ul className="mt-3 divide-y divide-white/[0.07] border-y border-white/[0.07]">
-              {suggestionsFor(template.slug).slice(0, 5).map((suggestion) => (
-                <li key={suggestion}>
-                  <button
-                    type="button"
-                    onClick={() => updateField(primaryField[0], suggestion)}
-                    className="group flex w-full items-baseline gap-3 py-2.5 text-left text-sm leading-6 text-white/50 transition hover:text-white"
-                  >
-                    <span className="font-mono text-2xs text-white/25 transition group-hover:text-white/60">
-                      →
-                    </span>
-                    {suggestion}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : null}
       </div>
-
-      {showcaseItems.length > 0 ? (
-        <TryoutTemplateMarquee
-          items={showcaseItems}
-          activeSlug={templateSlug}
-          onSelect={onSelectShowcase}
-        />
-      ) : null}
 
       <BarDialog
         open={barOpen}
@@ -1044,88 +979,6 @@ function TryoutWelcome({
   );
 }
 
-function TryoutTemplateMarquee({
-  items,
-  activeSlug,
-  onSelect,
-}: {
-  items: TryoutShowcaseItem[];
-  activeSlug: string;
-  onSelect: (item: TryoutShowcaseItem) => void;
-}) {
-  const loop = [...items, ...items];
-
-  return (
-    <section
-      className="shrink-0 border-t border-white/[0.07] bg-[#0f0f0e]/80 pb-6 pt-5"
-      aria-label="AI workflow templates to try"
-    >
-      <div className="mx-auto max-w-6xl px-5 sm:px-6">
-        <p className={cn(MICRO, "text-center text-white/30")}>
-          Business workflows you can test today
-        </p>
-      </div>
-      <div
-        className="relative mt-4 overflow-hidden motion-reduce:overflow-x-auto motion-reduce:px-5 motion-reduce:pb-1"
-      >
-        <div
-          className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-[#0f0f0e] to-transparent motion-reduce:hidden sm:w-20"
-          aria-hidden
-        />
-        <div
-          className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-[#0f0f0e] to-transparent motion-reduce:hidden sm:w-20"
-          aria-hidden
-        />
-        <div
-          className="flex w-max gap-3 motion-safe:animate-[tryout-marquee_55s_linear_infinite]"
-        >
-          {loop.map((item, index) => {
-            const isMirror = index >= items.length;
-            const cardClass = cn(
-              "group w-[17rem] shrink-0 rounded-sm border px-4 py-3 text-left transition sm:w-[19rem]",
-              item.slug === activeSlug
-                ? "border-white/35 bg-white/[0.06]"
-                : "border-white/10 bg-white/[0.02]",
-              !isMirror && "hover:border-white/25 hover:bg-white/[0.04]",
-            );
-
-            if (isMirror) {
-              return (
-                <div key={`${item.slug}-${index}`} aria-hidden className={cardClass}>
-                  <span className={cn(MICRO, "text-white/35")}>{item.tag}</span>
-                  <p className="mt-2 text-sm font-medium leading-snug text-white/90">
-                    {item.headline}
-                  </p>
-                  <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/45">
-                    {item.example}
-                  </p>
-                </div>
-              );
-            }
-
-            return (
-              <button
-                key={`${item.slug}-${index}`}
-                type="button"
-                onClick={() => onSelect(item)}
-                className={cardClass}
-              >
-                <span className={cn(MICRO, "text-white/35")}>{item.tag}</span>
-                <p className="mt-2 text-sm font-medium leading-snug text-white/90">
-                  {item.headline}
-                </p>
-                <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/45 transition group-hover:text-white/60">
-                  {item.example}
-                </p>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </section>
-  );
-}
-
 // BarPill is the composer's entry to the eval gate: it shows whether the bar
 // is set and opens the dialog to write or edit it.
 function BarPill({ ready, onClick }: { ready: boolean; onClick: () => void }) {
@@ -1133,8 +986,12 @@ function BarPill({ ready, onClick }: { ready: boolean; onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
+      aria-required={!ready || undefined}
+      aria-label={
+        ready ? "Evaluation bar configured" : "Set the evaluation bar (required)"
+      }
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-sm border py-1.5 pl-2.5 pr-2.5 font-mono text-2xs transition",
+        "inline-flex shrink-0 items-center gap-1.5 rounded-sm border py-1.5 pl-2.5 pr-2.5 font-mono text-2xs transition",
         ready
           ? "border-white/12 text-white/60 hover:border-white/30 hover:text-white/90"
           : "border-white/35 text-white/90 hover:border-white/60",
@@ -1222,20 +1079,12 @@ function BarDialog({
               placeholder="50, 500, 10k"
             />
           </div>
-          <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
-            <SegmentedControl
-              label="Optimize for"
-              value={values.priority}
-              options={PRIORITY_OPTIONS}
-              onChange={(value) => onChange("priority", value)}
-            />
-            <SegmentedControl
-              label="Output behavior"
-              value={values.style}
-              options={STYLE_OPTIONS}
-              onChange={(value) => onChange("style", value)}
-            />
-          </div>
+          <SegmentedControl
+            label="Output behavior"
+            value={values.style}
+            options={STYLE_OPTIONS}
+            onChange={(value) => onChange("style", value)}
+          />
           <SegmentedControl
             label="How harshly the judge grades"
             value={strictness}
@@ -1746,8 +1595,8 @@ function UserBubble({ text, animate }: { text: string; animate?: boolean }) {
           "animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none",
       )}
     >
-      <div className="max-w-[85%] rounded-sm bg-[#e9e9e5] px-4 py-2.5 text-base leading-7 text-[#161614]">
-        {text}
+      <div className="max-w-[min(85%,100%)] rounded-sm bg-[#e9e9e5] px-3 py-2.5 text-base leading-7 text-[#161614] sm:max-w-[85%] sm:px-4">
+        <p className="whitespace-pre-wrap break-words">{text}</p>
       </div>
     </div>
   );
@@ -1916,8 +1765,11 @@ function ComposerShell({
   placeholder,
   canSubmit,
   submitting,
+  aboveFooter,
   footer,
+  footerClassName,
   compact,
+  rows,
   onSubmit,
 }: {
   value: string;
@@ -1926,18 +1778,46 @@ function ComposerShell({
   placeholder: string;
   canSubmit: boolean;
   submitting: boolean;
+  aboveFooter?: ReactNode;
   footer?: ReactNode;
+  footerClassName?: string;
   compact?: boolean;
+  rows?: number;
   onSubmit?: () => void;
 }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const textareaRows = rows ?? (compact ? 1 : 3);
+  const maxTextareaHeight = compact ? 160 : 224;
+
+  const syncTextareaHeight = useCallback(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    const nextHeight = Math.min(textarea.scrollHeight, maxTextareaHeight);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY =
+      textarea.scrollHeight > maxTextareaHeight ? "auto" : "hidden";
+  }, [maxTextareaHeight]);
+
+  useLayoutEffect(() => {
+    syncTextareaHeight();
+  }, [value, syncTextareaHeight]);
+
+  useEffect(() => {
+    const onResize = () => syncTextareaHeight();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [syncTextareaHeight]);
+
   return (
     <div
       className={cn(
-        "rounded-sm border border-white/12 bg-white/[0.015] p-2 transition focus-within:border-white/35",
+        "rounded-sm border border-white/12 bg-white/[0.015] p-2.5 transition focus-within:border-white/35 sm:p-3",
         compact && "shadow-none",
       )}
     >
       <textarea
+        ref={textareaRef}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
@@ -1948,19 +1828,39 @@ function ComposerShell({
             }
           }
         }}
-        rows={compact ? 1 : 3}
+        rows={textareaRows}
         disabled={disabled}
         placeholder={placeholder}
-        className="block w-full resize-none bg-transparent px-3 pt-2 text-base leading-7 text-white outline-none placeholder:text-white/30"
+        className={cn(
+          "block w-full resize-none bg-transparent px-2 pt-1 text-base leading-7 text-white outline-none placeholder:text-white/30 sm:px-3 sm:pt-2",
+          compact ? "max-h-40" : "max-h-56",
+        )}
       />
-      <div className="flex items-center justify-between gap-2 px-1 pb-0.5 pt-1">
-        {footer ? <div className="flex flex-wrap items-center gap-2">{footer}</div> : <span />}
+      {aboveFooter}
+      <div
+        className={cn(
+          "flex gap-2 px-0.5 pb-0.5 pt-1.5 sm:px-1",
+          footer ? "items-end justify-between" : "justify-end",
+        )}
+      >
+        {footer ? (
+          <div
+            className={cn(
+              "flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:gap-2",
+              footerClassName,
+            )}
+          >
+            {footer}
+          </div>
+        ) : (
+          <span />
+        )}
         <button
           type={onSubmit ? "button" : "submit"}
           onClick={onSubmit}
           disabled={!canSubmit || submitting}
           aria-label="Send"
-          className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-white text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex size-9 shrink-0 items-center justify-center self-end rounded-sm bg-white text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40 sm:ml-1"
         >
           {submitting ? (
             <Loader2 className="size-4 animate-spin" />
@@ -1973,6 +1873,12 @@ function ComposerShell({
   );
 }
 
+type PillSelectOption = {
+  value: string;
+  label: string;
+  menuLabel?: string;
+};
+
 function AnimatedPillSelect({
   icon,
   value,
@@ -1983,7 +1889,7 @@ function AnimatedPillSelect({
   icon: ReactNode;
   value: string;
   onChange: (value: string) => void;
-  options: { value: string; label: string }[];
+  options: PillSelectOption[];
   disabled?: boolean;
 }) {
   const selected = options.find((option) => option.value === value);
@@ -1992,11 +1898,11 @@ function AnimatedPillSelect({
     <DropdownMenu>
       <DropdownMenuTrigger
         disabled={disabled}
-        className="inline-flex items-center gap-1.5 rounded-sm border border-white/12 py-1.5 pl-2.5 pr-2 font-mono text-2xs text-white/60 transition hover:border-white/30 hover:text-white/90 data-popup-open:border-white/40 data-popup-open:text-white disabled:opacity-50"
+        className="inline-flex max-w-full min-w-0 shrink-0 items-center gap-1.5 rounded-sm border border-white/12 py-1.5 pl-2 pr-1.5 font-mono text-2xs text-white/60 transition hover:border-white/30 hover:text-white/90 data-popup-open:border-white/40 data-popup-open:text-white disabled:opacity-50 max-sm:max-w-[calc(100%-2.5rem)] sm:pl-2.5 sm:pr-2"
       >
-        <span className="text-white/45">{icon}</span>
-        <span className="max-w-[9rem] truncate">{selected?.label ?? "Select"}</span>
-        <ChevronDown className="size-3.5 text-white/40 transition-transform duration-200 group-data-popup-open:rotate-180" />
+        <span className="shrink-0 text-white/45">{icon}</span>
+        <span className="min-w-0 truncate">{selected?.label ?? "Select"}</span>
+        <ChevronDown className="size-3.5 shrink-0 text-white/40 transition-transform duration-200 group-data-popup-open:rotate-180" />
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
@@ -2011,7 +1917,7 @@ function AnimatedPillSelect({
               option.value === value && "bg-white/10 text-white",
             )}
           >
-            {option.label}
+            {option.menuLabel ?? option.label}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -2098,9 +2004,13 @@ function CompactField({
 }) {
   return (
     <label className="block">
-      <span className={cn(MICRO, "flex items-baseline justify-between tracking-[0.16em] text-white/40")}>
+      <span className="flex items-baseline justify-between gap-3 text-sm text-white/50">
         {fieldLabel(field)}
-        {required ? null : <span className="text-white/25">opt</span>}
+        {required ? null : (
+          <span className="font-mono text-2xs uppercase tracking-[0.12em] text-white/30">
+            Optional
+          </span>
+        )}
       </span>
       <input
         type={spec.type === "string" ? "text" : "number"}
@@ -2440,12 +2350,7 @@ function EvalPlanCard({
 }) {
   return (
     <div className={cn("border border-white/12", compact ? "p-4" : "p-5 sm:p-6")}>
-      <div className="flex items-baseline justify-between gap-3">
-        <p className={cn(MICRO, "text-white/40")}>Your rubric</p>
-        <span className="font-mono text-2xs uppercase tracking-[0.14em] text-white/30">
-          {priorityLabel(setup.business_priority)}
-        </span>
-      </div>
+      <p className={cn(MICRO, "text-white/40")}>Your rubric</p>
       <p className="mt-3 text-sm leading-6 text-white/55">
         Graded as if {setup.human_reviewer} signs off. Behavior:{" "}
         {styleLabel(setup.output_style).toLowerCase()}.
@@ -2703,10 +2608,6 @@ function priorityRubricChecks(priority: EvalPriority): string[] {
   }
 }
 
-function priorityLabel(priority: EvalPriority): string {
-  return PRIORITY_OPTIONS.find((option) => option.value === priority)?.label ?? "Correct facts";
-}
-
 function styleLabel(style: EvalStyle): string {
   return STYLE_OPTIONS.find((option) => option.value === style)?.label ?? "Same every time";
 }
@@ -2735,7 +2636,33 @@ function friendlyTraceSummary(event: TryoutTimelineEvent): string {
   }
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  audience: "Who this is for",
+  checklist: "What to check",
+  contract: "Contract text",
+  document: "Document",
+  emails: "Emails",
+  notes: "Notes or transcript",
+  ticket: "Support ticket",
+  brief: "Brief",
+  data: "Data",
+  updates: "Updates",
+  prospect: "Prospect",
+  offer: "Your offer",
+  priorities: "How to prioritize",
+  knowledge_base: "Knowledge base",
+  policy: "Support policy",
+  fields: "Fields to extract",
+  instructions: "Extra instructions",
+  period: "Reporting period",
+  slide_count: "Number of slides",
+  tone: "Tone",
+  fixture: "Code fixture",
+  task: "Bug description",
+};
+
 function fieldLabel(field: string): string {
+  if (FIELD_LABELS[field]) return FIELD_LABELS[field];
   const spaced = field.replaceAll("_", " ");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }

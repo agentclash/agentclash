@@ -18,6 +18,7 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -78,6 +79,7 @@ type AgentTryoutRepository interface {
 
 type AgentTryoutService interface {
 	ListTemplates(ctx context.Context) ([]AgentTryoutTemplate, error)
+	UploadAnonymousTryoutInputAttachment(ctx context.Context, input UploadAgentTryoutInputAttachmentInput) (AgentTryoutInputAttachment, error)
 	CreateAnonymousTryout(ctx context.Context, input CreateAnonymousAgentTryoutInput) (repository.AgentTryout, error)
 	SubmitAnonymousTryoutTurn(ctx context.Context, id uuid.UUID, input SubmitAgentTryoutTurnInput) error
 	CreateWorkspaceTryout(ctx context.Context, caller Caller, input CreateWorkspaceAgentTryoutInput) (repository.AgentTryout, error)
@@ -170,15 +172,17 @@ type AgentTryoutQuotaConfig struct {
 }
 
 type AgentTryoutManager struct {
-	authorizer     WorkspaceAuthorizer
-	repo           AgentTryoutRepository
-	now            func() time.Time
-	templates      map[string]AgentTryoutTemplate
-	execution      *agentTryoutExecutionDispatcher
-	quota          *AgentTryoutQuotaConfig
-	rerunGate      AgentTryoutRerunGate
-	artifactSigner ArtifactContentSigner
-	judgeModels    []string
+	authorizer              WorkspaceAuthorizer
+	repo                    AgentTryoutRepository
+	now                     func() time.Time
+	templates               map[string]AgentTryoutTemplate
+	execution               *agentTryoutExecutionDispatcher
+	quota                   *AgentTryoutQuotaConfig
+	rerunGate               AgentTryoutRerunGate
+	artifactSigner          ArtifactContentSigner
+	judgeModels             []string
+	inputAttachmentStore    storage.Store
+	inputAttachmentMaxBytes int64
 }
 
 // WithArtifactSigner enables signed download URLs on a tryout's captured output
@@ -292,6 +296,14 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 	if err := validateAgentTryoutInput(template, input.Input); err != nil {
 		return repository.AgentTryout{}, err
 	}
+	fingerprintHash := hashAnonymousFingerprint(input.AnonymousFingerprint)
+	resolvedInput, err := m.resolveTryoutInputForCreate(ctx, fingerprintHash, input.Input)
+	if err != nil {
+		return repository.AgentTryout{}, err
+	}
+	if int64(len(resolvedInput)) > template.MaxInputBytes {
+		return repository.AgentTryout{}, fmt.Errorf("%w: input exceeds %d bytes", ErrInvalidAgentTryoutInput, template.MaxInputBytes)
+	}
 	selectedHarness, err := normalizeSelectedHarnessKind(input.SelectedHarnessKind)
 	if err != nil {
 		return repository.AgentTryout{}, err
@@ -312,14 +324,13 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 		now = m.now()
 	}
 	expiresAt := now.UTC().Add(defaultAgentTryoutTTL)
-	fingerprintHash := hashAnonymousFingerprint(input.AnonymousFingerprint)
 	createParams := repository.CreateAgentTryoutParams{
 		TemplateSlug:             template.Slug,
 		Status:                   repository.AgentTryoutStatusQueued,
-		InputSnapshot:            input.Input,
+		InputSnapshot:            resolvedInput,
 		TemplateSnapshot:         templateSnapshot(template),
 		ToolPolicySnapshot:       template.ToolPolicy,
-		EvaluationSpecSnapshot:   evaluationSpecWithPublicJudge(template.EvaluationSpec, judge, input.Input, template.Name),
+		EvaluationSpecSnapshot:   evaluationSpecWithPublicJudge(template.EvaluationSpec, judge, resolvedInput, template.Name),
 		SelectedModelPolicy:      selectedModelPolicy,
 		SelectedHarnessKind:      selectedHarness,
 		Summary:                  json.RawMessage(`{}`),
@@ -1081,6 +1092,7 @@ type agentTryoutShareResponse struct {
 
 func registerPublicAgentTryoutRoutes(router chi.Router, logger *slog.Logger, service AgentTryoutService) {
 	router.Get("/agent-tryout-templates", listAgentTryoutTemplatesHandler(logger, service))
+	router.Post("/agent-tryout-input-attachments", uploadAgentTryoutInputAttachmentHandler(logger, service))
 	router.Post("/agent-tryouts", createAnonymousAgentTryoutHandler(logger, service))
 	router.Post("/agent-tryouts/{tryoutID}/turns", submitAnonymousAgentTryoutTurnHandler(logger, service))
 	router.Get("/agent-tryouts/{tryoutID}", getPublicAgentTryoutHandler(logger, service))
@@ -1392,7 +1404,7 @@ func validateAgentTryoutInputSchema(template AgentTryoutTemplate, object map[str
 	}
 	if schema.AdditionalProperties != nil && !*schema.AdditionalProperties {
 		for key := range object {
-			if key == "eval_setup" {
+			if key == "eval_setup" || key == "input_attachments" {
 				continue
 			}
 			if _, ok := schema.Properties[key]; !ok {
@@ -1418,6 +1430,11 @@ func validateAgentTryoutInputSchema(template AgentTryoutTemplate, object map[str
 		}
 		if !agentTryoutInputValueMatchesType(value, "object") {
 			return fmt.Errorf("%w: field %q must be object", ErrInvalidAgentTryoutInput, "eval_setup")
+		}
+	}
+	if value, ok := object["input_attachments"]; ok {
+		if err := validateTryoutInputAttachmentsField(value); err != nil {
+			return err
 		}
 	}
 	return nil

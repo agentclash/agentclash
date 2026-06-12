@@ -4,9 +4,9 @@ import { Suspense } from "react";
 import { PublicTryoutsClient } from "./tryouts-client";
 
 export const metadata: Metadata = {
-  title: "Free AI Agent Tryout for Business Workflows",
+  title: "Free AI Agent Tryout",
   description:
-    "Test AI agents on real business workflows before you integrate: customer support, invoice extraction, contract review, sales outreach, inbox triage, and status reports. Free sandboxed tryout with scored verdicts.",
+    "Write what you would reject in production, run a sandboxed tryout on real work, and get a scored verdict with outputs before you deploy.",
   keywords: [
     "AI agent evaluation",
     "integrate AI into business",

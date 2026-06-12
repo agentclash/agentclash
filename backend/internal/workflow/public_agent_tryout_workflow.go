@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"path"
 	"strings"
 	"time"
@@ -175,6 +176,10 @@ func (a *Activities) executePublicTryoutSandbox(ctx context.Context, tryout repo
 		return nil, err
 	}
 	defer func() { _ = session.Destroy(context.Background()) }()
+
+	if err := a.stagePublicTryoutInputAttachments(ctx, session, tryout.InputSnapshot); err != nil {
+		return nil, err
+	}
 
 	deadline := time.Now().Add(sessionCap)
 	var outputs []map[string]any
@@ -599,6 +604,7 @@ func publicTryoutTaskPrompt(tryout repository.AgentTryout) string {
 		"```",
 	}
 	lines = append(lines, publicTryoutEvalSetupPrompt(tryout.InputSnapshot)...)
+	lines = append(lines, publicTryoutInputAttachmentsPrompt(tryout.InputSnapshot)...)
 	lines = append(lines,
 		"Runtime instructions JSON:",
 		"```json",
@@ -633,6 +639,112 @@ func publicTryoutEvalSetupPrompt(input json.RawMessage) []string {
 		"```",
 	}
 }
+
+func publicTryoutInputAttachmentsPrompt(input json.RawMessage) []string {
+	attachments := publicTryoutResolvedInputAttachments(input)
+	if len(attachments) == 0 {
+		return nil
+	}
+	lines := []string{
+		"User-provided input files are staged in the sandbox workspace. Read and use them as source material for this task.",
+	}
+	for _, attachment := range attachments {
+		filename, _ := attachment["filename"].(string)
+		workspacePath, _ := attachment["workspace_path"].(string)
+		mediaType, _ := attachment["media_type"].(string)
+		if strings.TrimSpace(workspacePath) == "" {
+			continue
+		}
+		label := strings.TrimSpace(filename)
+		if label == "" {
+			label = workspacePath
+		}
+		typeLabel := strings.TrimSpace(mediaType)
+		if typeLabel != "" {
+			label += " (" + typeLabel + ")"
+		}
+		lines = append(lines, fmt.Sprintf("- %s at /workspace/%s", label, strings.TrimPrefix(workspacePath, "/")))
+	}
+	return lines
+}
+
+func publicTryoutResolvedInputAttachments(input json.RawMessage) []map[string]any {
+	var object map[string]any
+	if err := json.Unmarshal(input, &object); err != nil {
+		return nil
+	}
+	value, ok := object["input_attachments"]
+	if !ok || value == nil {
+		return nil
+	}
+	items, ok := value.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		attachment, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(stringFromAny(attachment["storage_key"])) == "" {
+			continue
+		}
+		out = append(out, attachment)
+	}
+	return out
+}
+
+func stringFromAny(value any) string {
+	raw, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(raw)
+}
+
+func (a *Activities) stagePublicTryoutInputAttachments(
+	ctx context.Context,
+	session sandbox.Session,
+	inputSnapshot json.RawMessage,
+) error {
+	attachments := publicTryoutResolvedInputAttachments(inputSnapshot)
+	if len(attachments) == 0 {
+		return nil
+	}
+	if a.artifactStore == nil {
+		return fmt.Errorf("artifact store is not configured for tryout input attachments")
+	}
+	for _, attachment := range attachments {
+		storageKey := stringFromAny(attachment["storage_key"])
+		workspacePath := stringFromAny(attachment["workspace_path"])
+		if storageKey == "" || workspacePath == "" {
+			return fmt.Errorf("tryout input attachment is missing staging metadata")
+		}
+		reader, _, err := a.artifactStore.OpenObject(ctx, storageKey)
+		if err != nil {
+			return fmt.Errorf("open tryout input attachment %q: %w", storageKey, err)
+		}
+		content, err := io.ReadAll(io.LimitReader(reader, defaultAgentTryoutInputAttachmentMaxBytes+1))
+		closeErr := reader.Close()
+		if err != nil {
+			return fmt.Errorf("read tryout input attachment %q: %w", storageKey, err)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("close tryout input attachment %q: %w", storageKey, closeErr)
+		}
+		if int64(len(content)) > defaultAgentTryoutInputAttachmentMaxBytes {
+			return fmt.Errorf("tryout input attachment %q exceeds maximum size", storageKey)
+		}
+		targetPath := path.Join(agentHarnessWorkspaceDir, workspacePath)
+		if err := session.UploadFile(ctx, targetPath, content); err != nil {
+			return fmt.Errorf("stage tryout input attachment to %s: %w", targetPath, err)
+		}
+	}
+	return nil
+}
+
+const defaultAgentTryoutInputAttachmentMaxBytes = 15 << 20
 
 func publicTryoutExecutionConfig(tryout repository.AgentTryout) json.RawMessage {
 	var template struct {

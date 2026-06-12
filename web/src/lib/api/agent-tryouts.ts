@@ -3,6 +3,7 @@ import type {
   AgentTryout,
   AgentTryoutCompareResult,
   AgentTryoutEventsResponse,
+  AgentTryoutInputAttachment,
   AgentTryoutPromotionResult,
   AgentTryoutTemplate,
   CreateAgentTryoutInput,
@@ -26,6 +27,18 @@ export function createAnonymousAgentTryout(
   input: CreateAgentTryoutInput,
 ): Promise<AgentTryout> {
   return api.post<AgentTryout>("/v1/agent-tryouts", input);
+}
+
+export function uploadAgentTryoutInputAttachment(
+  api: ApiClient,
+  file: File,
+): Promise<AgentTryoutInputAttachment> {
+  const formData = new FormData();
+  formData.append("file", file, file.name);
+  return api.postMultipart<AgentTryoutInputAttachment>(
+    "/v1/agent-tryout-input-attachments",
+    formData,
+  );
 }
 
 export function getPublicAgentTryout(
