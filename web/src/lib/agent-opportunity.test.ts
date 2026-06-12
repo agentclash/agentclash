@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   AgentOpportunityError,
   extractPageSnapshot,
+  fetchCompanyResearch,
   fetchCompanySnapshot,
   isPrivateIPAddress,
   normalizePublicUrl,
@@ -92,6 +93,28 @@ describe("fetchCompanySnapshot", () => {
     await expect(
       fetchCompanySnapshot("https://example.com", fetchImpl as typeof fetch),
     ).rejects.toMatchObject({ code: "fetch_failed" });
+  });
+});
+
+describe("fetchCompanyResearch", () => {
+  it("returns the primary snapshot and ignores failed supplementary pages", async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url === "https://example.com/") {
+        return new Response(
+          "<html><head><title>Example</title></head><body>Support automation.</body></html>",
+          { headers: { "content-type": "text/html" } },
+        );
+      }
+      throw new Error("missing page");
+    });
+
+    const research = await fetchCompanyResearch(
+      "https://example.com/",
+      fetchImpl as typeof fetch,
+    );
+
+    expect(research.primary.title).toBe("Example");
+    expect(research.supplementary).toHaveLength(0);
   });
 });
 

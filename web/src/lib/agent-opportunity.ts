@@ -46,6 +46,11 @@ export type PageSnapshot = {
   text: string;
 };
 
+export type CompanyResearchBundle = {
+  primary: PageSnapshot;
+  supplementary: PageSnapshot[];
+};
+
 export type AgentOpportunityInput = {
   url: string;
   companySize?: string;
@@ -360,6 +365,109 @@ export async function fetchCompanySnapshot(
   );
 }
 
+const SUPPLEMENTARY_PATHS = ["/about", "/pricing", "/docs", "/product", "/solutions"];
+
+export async function fetchCompanyResearch(
+  normalizedUrl: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<CompanyResearchBundle> {
+  const primary = await fetchCompanySnapshot(normalizedUrl, fetchImpl);
+  const origin = new URL(normalizedUrl).origin;
+  const primaryPath = new URL(normalizedUrl).pathname.replace(/\/$/, "") || "/";
+  const supplementary: PageSnapshot[] = [];
+
+  for (const path of SUPPLEMENTARY_PATHS) {
+    if (path === primaryPath || supplementary.length >= 2) break;
+    try {
+      const candidate = await normalizePublicUrl(`${origin}${path}`);
+      supplementary.push(await fetchCompanySnapshot(candidate, fetchImpl));
+    } catch {
+      // Optional enrichment only.
+    }
+  }
+
+  return { primary, supplementary };
+}
+
+const AGENT_OPPORTUNITY_SYSTEM_PROMPT = `You are a senior AI agent automation analyst working for AgentClash.
+
+Your job is to decide, with evidence, whether a company should build an AI agent now, later, or not at all. You must be skeptical and conservative. Most companies do not need a customer-facing agent yet.
+
+Research protocol (follow in order):
+1. Use web search to learn what the company sells, who they serve, hiring signals, support/docs posture, and any public automation or AI claims. Prefer primary sources: the company site, docs, careers pages, and reputable news.
+2. Cross-check the provided page snapshots. Call out mismatches between search results and fetched pages.
+3. Identify repeatable workflows with clear inputs, outputs, and success criteria. Ignore vague "AI everywhere" ideas.
+4. Estimate ROI as ranges, never point estimates. Tie hours saved to a plausible team size and ticket/doc volume.
+5. List concrete failure modes (policy errors, PII leakage, wrong escalations, tool misuse) and how AgentClash should test them before launch.
+6. Recommend a narrow AgentClash eval pack: realistic cases, adversarial cases, and measurable success criteria tied to the best workflow candidate.
+
+Verdict rules:
+- not_yet: no repeatable workflow, weak public evidence, or risk outweighs upside.
+- eval_first: plausible workflow but evidence is thin or risks are high; test before building.
+- narrow_pilot: one workflow is credible with bounded scope and clear human escalation.
+- strong_fit: multiple high-fit workflows, strong public evidence, and risks are manageable with eval gates.
+
+Output discipline:
+- Do not flatter the company or assume they need an agent.
+- Cite research gaps in evidenceLimitations when search or snapshots are incomplete.
+- Return JSON matching the schema exactly.`;
+
+const OPENAI_POLL_INTERVAL_MS = 2500;
+const OPENAI_POLL_TIMEOUT_MS = 90_000;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+type OpenAIResponsesPayload = {
+  id?: string;
+  status?: string;
+  output_text?: string;
+  output?: unknown;
+  error?: { message?: string };
+};
+
+async function pollOpenAIResponse(
+  responseId: string,
+  apiKey: string,
+  fetchImpl: typeof fetch,
+): Promise<OpenAIResponsesPayload> {
+  const deadline = Date.now() + OPENAI_POLL_TIMEOUT_MS;
+
+  while (Date.now() < deadline) {
+    await sleep(OPENAI_POLL_INTERVAL_MS);
+    const response = await fetchImpl(
+      `https://api.openai.com/v1/responses/${responseId}`,
+      {
+        headers: { authorization: `Bearer ${apiKey}` },
+      },
+    );
+    if (!response.ok) {
+      throw new AgentOpportunityError(
+        "openai_failed",
+        "OpenAI could not finish the report.",
+        502,
+      );
+    }
+
+    const payload = (await response.json()) as OpenAIResponsesPayload;
+    const status = payload.status ?? "completed";
+    if (status === "completed") return payload;
+    if (status === "failed" || status === "cancelled" || status === "incomplete") {
+      const message =
+        payload.error?.message?.trim() ||
+        `OpenAI returned status ${status}.`;
+      throw new AgentOpportunityError("openai_failed", message, 502);
+    }
+  }
+
+  throw new AgentOpportunityError(
+    "openai_failed",
+    "OpenAI took too long to generate the report.",
+    504,
+  );
+}
+
 function assertString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -588,16 +696,18 @@ function extractOpenAIText(payload: unknown): string {
 
 export async function analyzeAgentOpportunity({
   input,
-  snapshot,
+  research,
   apiKey = process.env.OPENAI_API_KEY,
   model = process.env.AGENT_OPPORTUNITY_OPENAI_MODEL || "gpt-5.4-mini",
   fetchImpl = fetch,
+  enableWebSearch = process.env.AGENT_OPPORTUNITY_WEB_SEARCH !== "false",
 }: {
   input: AgentOpportunityInput;
-  snapshot: PageSnapshot;
+  research: CompanyResearchBundle;
   apiKey?: string;
   model?: string;
   fetchImpl?: typeof fetch;
+  enableWebSearch?: boolean;
 }): Promise<AgentOpportunityReport> {
   if (!apiKey) {
     throw new AgentOpportunityError(
@@ -615,21 +725,35 @@ export async function analyzeAgentOpportunity({
     },
     body: JSON.stringify({
       model,
+      tools: enableWebSearch ? [{ type: "web_search_preview" }] : undefined,
       input: [
         {
-          role: "system",
-          content:
-            "You are an honest AI agent automation analyst for AgentClash. Decide whether a company should build an AI agent, where it would help, where it would fail, and how AgentClash should evaluate it before deployment. Do not overstate savings. If the company does not clearly need an agent, say so.",
+          role: "developer",
+          content: AGENT_OPPORTUNITY_SYSTEM_PROMPT,
         },
         {
           role: "user",
           content: JSON.stringify({
             submitted: input,
-            page: snapshot,
-            instructions: [
-              "Base your analysis only on the public page snapshot and user-provided context.",
-              "Use conservative savings ranges. Avoid fake precision.",
-              "Tie recommended evaluation cases to real workflows visible from the site.",
+            research: {
+              primaryPage: research.primary,
+              supplementaryPages: research.supplementary,
+            },
+            analysisTargets: [
+              `Company URL: ${input.url}`,
+              input.companySize
+                ? `Declared company size: ${input.companySize}`
+                : null,
+              input.currentPain
+                ? `Declared main pain: ${input.currentPain}`
+                : null,
+              input.monthlySupportVolume
+                ? `Declared support volume: ${input.monthlySupportVolume}`
+                : null,
+            ].filter(Boolean),
+            outputRequirements: [
+              "Use web search plus the page snapshots as evidence.",
+              "Prefer one strong workflow over a laundry list of agents.",
               "Return JSON matching the schema exactly.",
             ],
           }),
@@ -652,7 +776,15 @@ export async function analyzeAgentOpportunity({
     );
   }
 
-  const payload = await response.json().catch(() => null);
+  let payload = (await response.json().catch(() => null)) as OpenAIResponsesPayload | null;
+  if (
+    payload?.id &&
+    payload.status &&
+    !["completed", "failed", "cancelled", "incomplete"].includes(payload.status)
+  ) {
+    payload = await pollOpenAIResponse(payload.id, apiKey, fetchImpl);
+  }
+
   const text = extractOpenAIText(payload);
   if (!text) {
     throw new AgentOpportunityError(

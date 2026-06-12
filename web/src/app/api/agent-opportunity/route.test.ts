@@ -134,18 +134,17 @@ describe("POST /api/agent-opportunity", () => {
 
   it("returns a complete report with mocked page and OpenAI fetches", async () => {
     process.env.OPENAI_API_KEY = "sk-test";
-    fetchMock
-      .mockResolvedValueOnce(
-        new Response(
-          "<html><head><title>Example</title></head><body>Support automation for customer teams.</body></html>",
-          { headers: { "content-type": "text/html" } },
-        ),
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ output_text: JSON.stringify(report) }), {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === "https://api.openai.com/v1/responses") {
+        return new Response(JSON.stringify({ output_text: JSON.stringify(report) }), {
           headers: { "content-type": "application/json" },
-        }),
+        });
+      }
+      return new Response(
+        "<html><head><title>Example</title></head><body>Support automation for customer teams.</body></html>",
+        { headers: { "content-type": "text/html" } },
       );
+    });
     const { POST } = await import("./route");
 
     const response = await POST(
@@ -160,10 +159,15 @@ describe("POST /api/agent-opportunity", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    const openAIRequest = fetchMock.mock.calls[1];
-    expect(openAIRequest[0]).toBe("https://api.openai.com/v1/responses");
-    expect(openAIRequest[1].headers.authorization).toBe("Bearer sk-test");
+    expect(fetchMock.mock.calls[0][0]).toBe("http://93.184.216.34/");
+    const openAIRequest = fetchMock.mock.calls.find(
+      (call) => call[0] === "https://api.openai.com/v1/responses",
+    );
+    expect(openAIRequest).toBeTruthy();
+    expect(openAIRequest?.[1].headers.authorization).toBe("Bearer sk-test");
+    const openAIBody = JSON.parse(openAIRequest?.[1].body as string);
+    expect(openAIBody.tools).toEqual([{ type: "web_search_preview" }]);
+    expect(openAIBody.input[0].content).toContain("Research protocol");
     await expect(response.json()).resolves.toMatchObject({
       ok: true,
       report: {

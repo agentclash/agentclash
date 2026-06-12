@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import {
   AgentOpportunityError,
   analyzeAgentOpportunity,
-  fetchCompanySnapshot,
+  fetchCompanyResearch,
   normalizePublicUrl,
   type AgentOpportunityInput,
 } from "@/lib/agent-opportunity";
@@ -136,10 +136,10 @@ export async function POST(request: Request) {
       );
     }
 
-    const snapshot = await fetchCompanySnapshot(normalizedUrl);
+    const research = await fetchCompanyResearch(normalizedUrl);
     const report = await analyzeAgentOpportunity({
       input: { ...input, url: normalizedUrl },
-      snapshot,
+      research,
     });
 
     return NextResponse.json({ ok: true, report });

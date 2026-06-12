@@ -160,6 +160,12 @@ describe("sitemap", () => {
       changeFrequency: "weekly",
       priority: 0.9,
     });
+    expect(
+      byUrl.get("https://www.agentclash.dev/agent-opportunity"),
+    ).toMatchObject({
+      changeFrequency: "weekly",
+      priority: 0.91,
+    });
   });
 
   it("includes docs pages and blog posts from source readers", () => {
