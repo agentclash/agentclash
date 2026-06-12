@@ -680,13 +680,19 @@ export function PublicTryoutsClient() {
   const inSession = Boolean(urlTryoutId);
   const showcaseItems = useMemo(() => showcaseForTemplates(templates), [templates]);
 
-  const selectShowcase = useCallback((item: TryoutShowcaseItem) => {
-    showcasePrefillRef.current = {
-      slug: item.slug,
-      values: { [item.primaryField]: item.example },
-    };
-    setTemplateSlug(item.slug);
-  }, []);
+  const selectShowcase = useCallback(
+    (item: TryoutShowcaseItem) => {
+      const values = { [item.primaryField]: item.example };
+      if (templateSlug === item.slug) {
+        setFieldValues(values);
+        showcasePrefillRef.current = null;
+        return;
+      }
+      showcasePrefillRef.current = { slug: item.slug, values };
+      setTemplateSlug(item.slug);
+    },
+    [templateSlug],
+  );
 
   return (
     <main className="flex h-[100dvh] flex-col overflow-hidden bg-[#131312] text-white">
@@ -1059,39 +1065,61 @@ function TryoutTemplateMarquee({
           Business workflows you can test today
         </p>
       </div>
-      <div className="relative mt-4 overflow-hidden">
+      <div
+        className="relative mt-4 overflow-hidden motion-reduce:overflow-x-auto motion-reduce:px-5 motion-reduce:pb-1"
+      >
         <div
-          className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-[#0f0f0e] to-transparent sm:w-20"
+          className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-[#0f0f0e] to-transparent motion-reduce:hidden sm:w-20"
           aria-hidden
         />
         <div
-          className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-[#0f0f0e] to-transparent sm:w-20"
+          className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-[#0f0f0e] to-transparent motion-reduce:hidden sm:w-20"
           aria-hidden
         />
         <div
-          className="flex w-max gap-3 motion-reduce:overflow-x-auto motion-reduce:px-5 motion-reduce:pb-1 motion-safe:animate-[tryout-marquee_55s_linear_infinite]"
+          className="flex w-max gap-3 motion-safe:animate-[tryout-marquee_55s_linear_infinite]"
         >
-          {loop.map((item, index) => (
-            <button
-              key={`${item.slug}-${index}`}
-              type="button"
-              onClick={() => onSelect(item)}
-              className={cn(
-                "group w-[17rem] shrink-0 rounded-sm border px-4 py-3 text-left transition sm:w-[19rem]",
-                item.slug === activeSlug
-                  ? "border-white/35 bg-white/[0.06]"
-                  : "border-white/10 bg-white/[0.02] hover:border-white/25 hover:bg-white/[0.04]",
-              )}
-            >
-              <span className={cn(MICRO, "text-white/35")}>{item.tag}</span>
-              <p className="mt-2 text-sm font-medium leading-snug text-white/90">
-                {item.headline}
-              </p>
-              <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/45 transition group-hover:text-white/60">
-                {item.example}
-              </p>
-            </button>
-          ))}
+          {loop.map((item, index) => {
+            const isMirror = index >= items.length;
+            const cardClass = cn(
+              "group w-[17rem] shrink-0 rounded-sm border px-4 py-3 text-left transition sm:w-[19rem]",
+              item.slug === activeSlug
+                ? "border-white/35 bg-white/[0.06]"
+                : "border-white/10 bg-white/[0.02]",
+              !isMirror && "hover:border-white/25 hover:bg-white/[0.04]",
+            );
+
+            if (isMirror) {
+              return (
+                <div key={`${item.slug}-${index}`} aria-hidden className={cardClass}>
+                  <span className={cn(MICRO, "text-white/35")}>{item.tag}</span>
+                  <p className="mt-2 text-sm font-medium leading-snug text-white/90">
+                    {item.headline}
+                  </p>
+                  <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/45">
+                    {item.example}
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <button
+                key={`${item.slug}-${index}`}
+                type="button"
+                onClick={() => onSelect(item)}
+                className={cardClass}
+              >
+                <span className={cn(MICRO, "text-white/35")}>{item.tag}</span>
+                <p className="mt-2 text-sm font-medium leading-snug text-white/90">
+                  {item.headline}
+                </p>
+                <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/45 transition group-hover:text-white/60">
+                  {item.example}
+                </p>
+              </button>
+            );
+          })}
         </div>
       </div>
     </section>
