@@ -57,7 +57,7 @@ const OFFERS: Offer[] = [
 
 type Props = {
   /** Page surface this banner renders on, used for analytics. */
-  page: string;
+  page: "home" | "blog" | "benchmarks";
 };
 
 export function AgentPromoBanner({ page }: Props) {
