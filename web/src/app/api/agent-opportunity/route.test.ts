@@ -97,6 +97,41 @@ describe("POST /api/agent-opportunity", () => {
     });
   });
 
+  it("rate limits by the proxy-appended forwarded IP, not spoofed leftmost values", async () => {
+    delete process.env.OPENAI_API_KEY;
+    const { POST } = await import("./route");
+
+    for (let index = 0; index < 5; index += 1) {
+      const response = await POST(
+        new Request("https://agentclash.dev/api/agent-opportunity", {
+          method: "POST",
+          headers: {
+            "x-forwarded-for": `203.0.113.${index}, 198.51.100.42`,
+          },
+          body: JSON.stringify({ url: "http://93.184.216.34" }),
+        }),
+      );
+
+      expect(response.status).toBe(503);
+    }
+
+    const limited = await POST(
+      new Request("https://agentclash.dev/api/agent-opportunity", {
+        method: "POST",
+        headers: {
+          "x-forwarded-for": "203.0.113.250, 198.51.100.42",
+        },
+        body: JSON.stringify({ url: "http://93.184.216.34" }),
+      }),
+    );
+
+    expect(limited.status).toBe(429);
+    await expect(limited.json()).resolves.toMatchObject({
+      ok: false,
+      code: "rate_limited",
+    });
+  });
+
   it("returns a complete report with mocked page and OpenAI fetches", async () => {
     process.env.OPENAI_API_KEY = "sk-test";
     fetchMock

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AgentOpportunityError,
   extractPageSnapshot,
+  fetchCompanySnapshot,
   isPrivateIPAddress,
   normalizePublicUrl,
   parseAgentOpportunityReport,
@@ -59,6 +60,7 @@ describe("extractPageSnapshot", () => {
             <h1>Support automation</h1>
             <script>window.secret = "nope"</script>
             <p>Resolve customer questions faster &amp; route edge cases.</p>
+            <p>Safety &lt; speed &#8217; support &#x2019; routing &apos;done&apos;.</p>
           </body>
         </html>`,
     );
@@ -67,8 +69,29 @@ describe("extractPageSnapshot", () => {
     expect(snapshot.description).toBe("AI support for commerce teams");
     expect(snapshot.text).toContain("Support automation");
     expect(snapshot.text).toContain("faster & route");
+    expect(snapshot.text).toContain(
+      `Safety < speed ${String.fromCodePoint(8217)} support ${String.fromCodePoint(
+        8217,
+      )} routing 'done'.`,
+    );
     expect(snapshot.text).not.toContain("window.secret");
     expect(snapshot.text).not.toContain("hidden");
+  });
+});
+
+describe("fetchCompanySnapshot", () => {
+  it("rejects pages with oversized content-length before reading the body", async () => {
+    const response = new Response("tiny", {
+      headers: {
+        "content-type": "text/html",
+        "content-length": String(1024 * 1024),
+      },
+    });
+    const fetchImpl = async () => response;
+
+    await expect(
+      fetchCompanySnapshot("https://example.com", fetchImpl as typeof fetch),
+    ).rejects.toMatchObject({ code: "fetch_failed" });
   });
 });
 

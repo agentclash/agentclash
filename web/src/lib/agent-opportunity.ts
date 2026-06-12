@@ -72,6 +72,7 @@ export class AgentOpportunityError extends Error {
 
 const MAX_URL_LENGTH = 2048;
 const MAX_TEXT_CHARS = 12000;
+const MAX_HTML_BYTES = 256 * 1024;
 const USER_AGENT =
   "AgentClash-Agent-Opportunity-Report/1.0 (+https://agentclash.dev)";
 
@@ -228,6 +229,21 @@ export function extractPageSnapshot(url: string, html: string): PageSnapshot {
     .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
     .replace(/&#39;/gi, "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#(\d+);/g, (_match, code: string) => {
+      const parsed = Number(code);
+      return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= 0x10ffff
+        ? String.fromCodePoint(parsed)
+        : " ";
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_match, hex: string) => {
+      const parsed = Number.parseInt(hex, 16);
+      return Number.isSafeInteger(parsed) && parsed >= 0 && parsed <= 0x10ffff
+        ? String.fromCodePoint(parsed)
+        : " ";
+    })
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, MAX_TEXT_CHARS);
@@ -238,6 +254,47 @@ export function extractPageSnapshot(url: string, html: string): PageSnapshot {
     description: description.replace(/\s+/g, " ").slice(0, 300),
     text,
   };
+}
+
+async function readLimitedResponseText(response: Response): Promise<string> {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength) {
+    const parsedLength = Number(contentLength);
+    if (Number.isFinite(parsedLength) && parsedLength > MAX_HTML_BYTES) {
+      throw new AgentOpportunityError(
+        "fetch_failed",
+        "That page is too large to analyze from this public endpoint.",
+        502,
+      );
+    }
+  }
+
+  if (!response.body) {
+    return (await response.text()).slice(0, MAX_HTML_BYTES);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks: string[] = [];
+  let bytesRead = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    bytesRead += value.byteLength;
+    if (bytesRead > MAX_HTML_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw new AgentOpportunityError(
+        "fetch_failed",
+        "That page is too large to analyze from this public endpoint.",
+        502,
+      );
+    }
+    chunks.push(decoder.decode(value, { stream: true }));
+  }
+
+  chunks.push(decoder.decode());
+  return chunks.join("");
 }
 
 export async function fetchCompanySnapshot(
@@ -293,7 +350,7 @@ export async function fetchCompanySnapshot(
       );
     }
 
-    return extractPageSnapshot(currentUrl, await response.text());
+    return extractPageSnapshot(currentUrl, await readLimitedResponseText(response));
   }
 
   throw new AgentOpportunityError(

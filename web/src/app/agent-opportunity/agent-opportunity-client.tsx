@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useState } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -233,7 +233,7 @@ export function AgentOpportunityClient() {
   const [error, setError] = useState("");
   const [report, setReport] = useState<AgentOpportunityReport | null>(null);
 
-  const canSubmit = useMemo(() => url.trim().length > 0 && !loading, [loading, url]);
+  const canSubmit = url.trim().length > 0 && !loading;
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

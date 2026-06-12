@@ -12,6 +12,7 @@ export const dynamic = "force-dynamic";
 
 const RATE_LIMIT_WINDOW_MS = 10 * 60 * 1000;
 const RATE_LIMIT_MAX_REQUESTS = 5;
+const RATE_LIMIT_MAX_BUCKETS = 10000;
 const rateLimitBuckets = new Map<string, { count: number; resetAt: number }>();
 
 function optionalString(value: unknown, maxLength = 160): string | undefined {
@@ -22,12 +23,29 @@ function optionalString(value: unknown, maxLength = 160): string | undefined {
 
 function getClientKey(request: Request) {
   const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) return forwardedFor.split(",")[0].trim();
+  if (forwardedFor) {
+    const proxyAppendedIp = forwardedFor.split(",").pop()?.trim();
+    if (proxyAppendedIp) return proxyAppendedIp;
+  }
   return request.headers.get("x-real-ip") ?? "unknown";
+}
+
+function pruneRateLimitBuckets(now: number) {
+  for (const [key, bucket] of rateLimitBuckets) {
+    if (bucket.resetAt <= now) rateLimitBuckets.delete(key);
+  }
+
+  while (rateLimitBuckets.size >= RATE_LIMIT_MAX_BUCKETS) {
+    const oldestKey = rateLimitBuckets.keys().next().value as string | undefined;
+    if (!oldestKey) break;
+    rateLimitBuckets.delete(oldestKey);
+  }
 }
 
 function rateLimit(request: Request) {
   const now = Date.now();
+  pruneRateLimitBuckets(now);
+
   const key = getClientKey(request);
   const existing = rateLimitBuckets.get(key);
   if (!existing || existing.resetAt <= now) {
