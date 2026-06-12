@@ -39,8 +39,8 @@ const (
 	defaultDodoEnvironment                      = "test"
 	defaultAgentTryoutAnonymousLimit            = 4
 	defaultAgentTryoutAnonymousWindow           = 24 * time.Hour
-	defaultAgentTryoutHostedDailySpendCapUSD    = 25.0
-	defaultAgentTryoutAnonymousPerRunCostCapUSD = 1.0
+	defaultAgentTryoutHostedDailySpendCapUSD    = 250.0
+	defaultAgentTryoutAnonymousPerRunCostCapUSD = 10.0
 )
 
 var ErrInvalidConfig = errors.New("invalid api server config")

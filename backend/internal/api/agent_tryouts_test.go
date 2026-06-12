@@ -290,6 +290,29 @@ func TestAgentTryoutManagerRejectsClientRuntimePolicyFields(t *testing.T) {
 	}
 }
 
+func TestAgentTryoutManagerAllowsEvalSetupInput(t *testing.T) {
+	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
+	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
+
+	tryout, err := manager.CreateAnonymousTryout(context.Background(), CreateAnonymousAgentTryoutInput{
+		TemplateSlug: "meeting-minutes",
+		Input: json.RawMessage(`{
+			"notes":"hello",
+			"eval_setup":{
+				"unacceptable_mistakes":"invented facts",
+				"derived_rubric":[{"key":"accuracy","label":"Gets facts right","checks":["no fabrication"]}]
+			}
+		}`),
+		AnonymousFingerprint: "203.0.113.10",
+	})
+	if err != nil {
+		t.Fatalf("CreateAnonymousTryout returned error: %v", err)
+	}
+	if !bytes.Contains(tryout.InputSnapshot, []byte(`"eval_setup"`)) {
+		t.Fatalf("input snapshot = %s, want eval_setup preserved", tryout.InputSnapshot)
+	}
+}
+
 func TestAgentTryoutManagerRejectsOversizedInput(t *testing.T) {
 	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
@@ -311,8 +334,8 @@ func TestAgentTryoutManagerAllowsAnonymousWithinQuotaAndSpendCaps(t *testing.T) 
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithQuota(AgentTryoutQuotaConfig{
 		AnonymousLimit:            1,
 		AnonymousWindow:           24 * time.Hour,
-		HostedDailySpendCapUSD:    1,
-		AnonymousPerRunCostCapUSD: 1,
+		HostedDailySpendCapUSD:    20,
+		AnonymousPerRunCostCapUSD: 10,
 	})
 
 	tryout, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
@@ -323,8 +346,8 @@ func TestAgentTryoutManagerAllowsAnonymousWithinQuotaAndSpendCaps(t *testing.T) 
 	if err != nil {
 		t.Fatalf("CreateAnonymousTryout returned error: %v", err)
 	}
-	if tryout.CostLimitUSD != 0.25 {
-		t.Fatalf("cost limit = %v, want template limit 0.25", tryout.CostLimitUSD)
+	if tryout.CostLimitUSD != 10 {
+		t.Fatalf("cost limit = %v, want template limit 10", tryout.CostLimitUSD)
 	}
 	if len(repo.tryouts) != 1 {
 		t.Fatalf("tryouts created = %d, want 1", len(repo.tryouts))
@@ -337,8 +360,8 @@ func TestAgentTryoutManagerRejectsAnonymousQuotaExhaustedBeforeCreate(t *testing
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithQuota(AgentTryoutQuotaConfig{
 		AnonymousLimit:            1,
 		AnonymousWindow:           24 * time.Hour,
-		HostedDailySpendCapUSD:    1,
-		AnonymousPerRunCostCapUSD: 1,
+		HostedDailySpendCapUSD:    20,
+		AnonymousPerRunCostCapUSD: 10,
 	})
 	input := CreateAnonymousAgentTryoutInput{
 		TemplateSlug:         "meeting-minutes",
@@ -389,8 +412,8 @@ func TestAgentTryoutManagerRejectsQuotaAccountingUnavailableBeforeCreate(t *test
 			manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithQuota(AgentTryoutQuotaConfig{
 				AnonymousLimit:            1,
 				AnonymousWindow:           24 * time.Hour,
-				HostedDailySpendCapUSD:    1,
-				AnonymousPerRunCostCapUSD: 1,
+				HostedDailySpendCapUSD:    20,
+				AnonymousPerRunCostCapUSD: 10,
 			})
 
 			_, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
@@ -411,12 +434,12 @@ func TestAgentTryoutManagerRejectsQuotaAccountingUnavailableBeforeCreate(t *test
 func TestAgentTryoutManagerRejectsHostedSpendCapExceededBeforeCreate(t *testing.T) {
 	ctx := context.Background()
 	repo := newFakeAgentTryoutRepository(uuid.New(), uuid.New())
-	repo.hostedSpendUSD = 0.90
+	repo.hostedSpendUSD = 9.90
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithQuota(AgentTryoutQuotaConfig{
 		AnonymousLimit:            1,
 		AnonymousWindow:           24 * time.Hour,
-		HostedDailySpendCapUSD:    1,
-		AnonymousPerRunCostCapUSD: 1,
+		HostedDailySpendCapUSD:    10,
+		AnonymousPerRunCostCapUSD: 10,
 	})
 
 	_, err := manager.CreateAnonymousTryout(ctx, CreateAnonymousAgentTryoutInput{
@@ -438,7 +461,7 @@ func TestAgentTryoutManagerRejectsPerRunCostCapExceededBeforeCreate(t *testing.T
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo).WithQuota(AgentTryoutQuotaConfig{
 		AnonymousLimit:            1,
 		AnonymousWindow:           24 * time.Hour,
-		HostedDailySpendCapUSD:    1,
+		HostedDailySpendCapUSD:    20,
 		AnonymousPerRunCostCapUSD: 0.10,
 	})
 

@@ -574,7 +574,7 @@ func publicTryoutTaskPrompt(tryout repository.AgentTryout) string {
 	if description == "" {
 		description = "Complete the requested office-work task."
 	}
-	return strings.Join([]string{
+	lines := []string{
 		"You are running a public AgentClash tryout.",
 		"Task: " + name + " (" + tryout.TemplateSlug + ")",
 		"Goal: " + description,
@@ -584,11 +584,41 @@ func publicTryoutTaskPrompt(tryout repository.AgentTryout) string {
 		"```json",
 		string(tryout.InputSnapshot),
 		"```",
+	}
+	lines = append(lines, publicTryoutEvalSetupPrompt(tryout.InputSnapshot)...)
+	lines = append(lines,
 		"Runtime instructions JSON:",
 		"```json",
 		string(template.Runtime),
 		"```",
-	}, "\n")
+	)
+	return strings.Join(lines, "\n")
+}
+
+func publicTryoutEvalSetupPrompt(input json.RawMessage) []string {
+	var object map[string]any
+	if err := json.Unmarshal(input, &object); err != nil {
+		return nil
+	}
+	value, ok := object["eval_setup"]
+	if !ok || value == nil {
+		return nil
+	}
+	setup, ok := value.(map[string]any)
+	if !ok {
+		return nil
+	}
+	normalized, err := json.MarshalIndent(setup, "", "  ")
+	if err != nil {
+		return nil
+	}
+	return []string{
+		"Business eval setup:",
+		"Treat this as the user's acceptance criteria. Optimize for the rubric, avoid the named failure modes, and make outputs easy for a human evaluator to inspect.",
+		"```json",
+		string(normalized),
+		"```",
+	}
 }
 
 func publicTryoutExecutionConfig(tryout repository.AgentTryout) json.RawMessage {
