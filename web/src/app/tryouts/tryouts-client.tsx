@@ -10,11 +10,8 @@ import {
   ChevronDown,
   Download,
   FileText,
-  Gauge,
-  ListChecks,
   Loader2,
   PanelRight,
-  Scale,
 } from "lucide-react";
 
 import {
@@ -319,8 +316,7 @@ const GENERIC_SUGGESTIONS = [
 
 type TryoutShowcaseItem = {
   slug: string;
-  tag: string;
-  headline: string;
+  label: string;
   example: string;
   primaryField: string;
 };
@@ -328,72 +324,63 @@ type TryoutShowcaseItem = {
 const TRYOUT_SHOWCASE: TryoutShowcaseItem[] = [
   {
     slug: "support-ticket-resolution",
-    tag: "Customer support",
-    headline: "Resolve support tickets",
+    label: "Support",
     example:
       "Customer says their invoice was charged twice and wants a refund today. Draft a reply and decide whether to escalate.",
     primaryField: "ticket",
   },
   {
     slug: "document-extraction",
-    tag: "Finance / AP",
-    headline: "Extract invoice data",
+    label: "Invoices",
     example:
       "Extract line items, totals, and vendor from this invoice, then flag any missing fields for human review.",
     primaryField: "document",
   },
   {
     slug: "contract-review",
-    tag: "Legal ops",
-    headline: "Review contract clauses",
+    label: "Contracts",
     example:
       "Review this NDA for one-sided indemnity and unlimited liability. List risks with severity and quote the clause.",
     primaryField: "contract",
   },
   {
     slug: "sdr-outreach",
-    tag: "Sales",
-    headline: "Qualify leads & draft outreach",
+    label: "Outbound",
     example:
       "VP Engineering at a 200-person SaaS company, hiring 3 platform engineers. Draft a 3-sentence cold email for our eval platform.",
     primaryField: "prospect",
   },
   {
     slug: "inbox-triage",
-    tag: "Ops",
-    headline: "Triage inbox batches",
+    label: "Inbox",
     example:
       "Prioritize these 8 emails, draft replies for urgent ones, and flag anything that needs a human before we respond.",
     primaryField: "emails",
   },
   {
     slug: "meeting-minutes",
-    tag: "Product / PM",
-    headline: "Minutes to action plan",
+    label: "Meetings",
     example:
       "Summarize these notes into minutes with owners, due dates, and risks. Export a one-page action plan.",
     primaryField: "notes",
   },
   {
     slug: "status-report",
-    tag: "Leadership",
-    headline: "Status reports",
+    label: "Status",
     example:
       "Turn these scattered sprint updates into a polished weekly status with highlights, risks, and next steps.",
     primaryField: "updates",
   },
   {
     slug: "spreadsheet-builder",
-    tag: "Analytics",
-    headline: "Data to spreadsheet",
+    label: "Spreadsheets",
     example:
       "Turn this raw sales data into a spreadsheet with a pivot summary and a bar chart PNG.",
     primaryField: "data",
   },
   {
     slug: "slide-deck",
-    tag: "Marketing",
-    headline: "Brief to slide deck",
+    label: "Slides",
     example:
       "Make a 6-slide deck explaining our AI evaluation platform for a VP of Engineering, with one chart slide.",
     primaryField: "brief",
@@ -850,9 +837,6 @@ function TryoutWelcome({
   // should immediately launch the run instead of dropping back to the page.
   const [launchAfterBar, setLaunchAfterBar] = useState(false);
 
-  const enter =
-    "animate-in fade-in slide-in-from-bottom-3 fill-mode-both duration-700 motion-reduce:animate-none";
-
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!canRun) return;
@@ -866,70 +850,47 @@ function TryoutWelcome({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
-      <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col justify-center px-5 py-10 sm:px-6 sm:py-12">
-        <p
-          className={cn(MICRO, "text-center text-white/35", enter)}
-          style={{ animationDelay: "0ms" }}
-        >
-          Free AI agent evaluation · Sandboxed · No signup
-        </p>
-        <h1
-          className={cn(
-            "mx-auto mt-5 max-w-[28ch] text-center font-sans text-[clamp(2rem,4.8vw,3.25rem)] font-semibold leading-[1.08] tracking-tight text-white/95",
-            enter,
-          )}
-          style={{ animationDelay: "90ms" }}
-        >
-          Test AI agents on real business work before you integrate them
+      <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col justify-center px-5 py-14 sm:px-6 sm:py-20">
+        <h1 className="text-center text-2xl font-semibold tracking-tight text-white sm:text-[1.75rem]">
+          Run an agent on real work
         </h1>
-        <p
-          className={cn(
-            "mx-auto mt-4 max-w-xl text-center text-base leading-7 text-white/50",
-            enter,
-          )}
-          style={{ animationDelay: "180ms" }}
-        >
-          Run a free sandboxed tryout on customer support, finance, legal, sales,
-          and ops workflows. Set the quality bar your team would enforce in
-          production, pick a judge, and get a scored verdict with artifacts you
-          can share before an AI pilot or automation rollout.
+        <p className="mt-3 text-center text-sm leading-6 text-white/45">
+          Set the bar, pick a workflow, get a scored verdict. Free sandbox, no
+          signup.
         </p>
         <ul className="sr-only">
           {showcaseItems.map((item) => (
-            <li key={item.slug}>
-              {item.headline}: {item.tag} AI workflow automation example
-            </li>
+            <li key={item.slug}>{item.label} workflow example</li>
           ))}
         </ul>
 
-        <form
-          onSubmit={handleSubmit}
-          className={cn("mt-8", enter)}
-          style={{ animationDelay: "270ms" }}
-        >
+        {showcaseItems.length > 0 ? (
+          <TryoutWorkflowChips
+            className="mt-8"
+            items={showcaseItems}
+            activeSlug={templateSlug}
+            onSelect={onSelectShowcase}
+          />
+        ) : null}
+
+        <form onSubmit={handleSubmit} className="mt-8">
           <ComposerShell
             value={primaryValue}
             onChange={(value) => primaryField && updateField(primaryField[0], value)}
             disabled={!template}
-            placeholder={
-              template
-                ? `Describe the work for "${template.name}"…`
-                : "Loading tasks…"
-            }
+            placeholder={template ? "Describe the task…" : "Loading…"}
             canSubmit={canRun}
             submitting={launching}
             footer={
               <>
                 <BarPill ready={evalReady} onClick={() => setBarOpen(true)} />
                 <AnimatedPillSelect
-                  icon={<FileText className="size-3.5" />}
                   value={templateSlug}
                   onChange={setTemplateSlug}
                   disabled={templatesLoading}
                   options={templates.map((t) => ({ value: t.slug, label: t.name }))}
                 />
                 <AnimatedPillSelect
-                  icon={<Gauge className="size-3.5" />}
                   value={selectedModelKey}
                   onChange={setSelectedModelKey}
                   options={MODEL_OPTIONS.map((option) => ({
@@ -938,12 +899,11 @@ function TryoutWelcome({
                   }))}
                 />
                 <AnimatedPillSelect
-                  icon={<Scale className="size-3.5" />}
                   value={judgeModel}
                   onChange={setJudgeModel}
                   options={JUDGE_OPTIONS.map((option) => ({
                     value: option.value,
-                    label: `${option.label} judges`,
+                    label: option.label,
                   }))}
                 />
               </>
@@ -986,37 +946,20 @@ function TryoutWelcome({
         </form>
 
         {template && primaryField ? (
-          <div className={cn("mt-9", enter)} style={{ animationDelay: "360ms" }}>
-            <p className={cn(MICRO, "text-center text-white/30")}>
-              Or steal one of these prompts
-            </p>
-            <ul className="mt-3 divide-y divide-white/[0.07] border-y border-white/[0.07]">
-              {suggestionsFor(template.slug).slice(0, 5).map((suggestion) => (
-                <li key={suggestion}>
-                  <button
-                    type="button"
-                    onClick={() => updateField(primaryField[0], suggestion)}
-                    className="group flex w-full items-baseline gap-3 py-2.5 text-left text-sm leading-6 text-white/50 transition hover:text-white"
-                  >
-                    <span className="font-mono text-2xs text-white/25 transition group-hover:text-white/60">
-                      →
-                    </span>
-                    {suggestion}
-                  </button>
-                </li>
-              ))}
-            </ul>
+          <div className="mt-8 border-t border-white/[0.06] pt-6">
+            {suggestionsFor(template.slug).slice(0, 3).map((suggestion) => (
+              <button
+                key={suggestion}
+                type="button"
+                onClick={() => updateField(primaryField[0], suggestion)}
+                className="block w-full py-2 text-left text-sm leading-6 text-white/40 transition hover:text-white/70"
+              >
+                {suggestion}
+              </button>
+            ))}
           </div>
         ) : null}
       </div>
-
-      {showcaseItems.length > 0 ? (
-        <TryoutTemplateMarquee
-          items={showcaseItems}
-          activeSlug={templateSlug}
-          onSelect={onSelectShowcase}
-        />
-      ) : null}
 
       <BarDialog
         open={barOpen}
@@ -1044,85 +987,41 @@ function TryoutWelcome({
   );
 }
 
-function TryoutTemplateMarquee({
+function TryoutWorkflowChips({
   items,
   activeSlug,
   onSelect,
+  className,
 }: {
   items: TryoutShowcaseItem[];
   activeSlug: string;
   onSelect: (item: TryoutShowcaseItem) => void;
+  className?: string;
 }) {
-  const loop = [...items, ...items];
-
   return (
-    <section
-      className="shrink-0 border-t border-white/[0.07] bg-[#0f0f0e]/80 pb-6 pt-5"
-      aria-label="AI workflow templates to try"
+    <div
+      className={cn("flex flex-wrap justify-center gap-2", className)}
+      role="listbox"
+      aria-label="Workflow templates"
     >
-      <div className="mx-auto max-w-6xl px-5 sm:px-6">
-        <p className={cn(MICRO, "text-center text-white/30")}>
-          Business workflows you can test today
-        </p>
-      </div>
-      <div
-        className="relative mt-4 overflow-hidden motion-reduce:overflow-x-auto motion-reduce:px-5 motion-reduce:pb-1"
-      >
-        <div
-          className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-[#0f0f0e] to-transparent motion-reduce:hidden sm:w-20"
-          aria-hidden
-        />
-        <div
-          className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-[#0f0f0e] to-transparent motion-reduce:hidden sm:w-20"
-          aria-hidden
-        />
-        <div
-          className="flex w-max gap-3 motion-safe:animate-[tryout-marquee_55s_linear_infinite]"
+      {items.map((item) => (
+        <button
+          key={item.slug}
+          type="button"
+          role="option"
+          aria-selected={item.slug === activeSlug}
+          onClick={() => onSelect(item)}
+          className={cn(
+            "rounded-full px-3.5 py-1 text-[13px] transition",
+            item.slug === activeSlug
+              ? "bg-white text-black"
+              : "text-white/45 hover:text-white/75",
+          )}
         >
-          {loop.map((item, index) => {
-            const isMirror = index >= items.length;
-            const cardClass = cn(
-              "group w-[17rem] shrink-0 rounded-sm border px-4 py-3 text-left transition sm:w-[19rem]",
-              item.slug === activeSlug
-                ? "border-white/35 bg-white/[0.06]"
-                : "border-white/10 bg-white/[0.02]",
-              !isMirror && "hover:border-white/25 hover:bg-white/[0.04]",
-            );
-
-            if (isMirror) {
-              return (
-                <div key={`${item.slug}-${index}`} aria-hidden className={cardClass}>
-                  <span className={cn(MICRO, "text-white/35")}>{item.tag}</span>
-                  <p className="mt-2 text-sm font-medium leading-snug text-white/90">
-                    {item.headline}
-                  </p>
-                  <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/45">
-                    {item.example}
-                  </p>
-                </div>
-              );
-            }
-
-            return (
-              <button
-                key={`${item.slug}-${index}`}
-                type="button"
-                onClick={() => onSelect(item)}
-                className={cardClass}
-              >
-                <span className={cn(MICRO, "text-white/35")}>{item.tag}</span>
-                <p className="mt-2 text-sm font-medium leading-snug text-white/90">
-                  {item.headline}
-                </p>
-                <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/45 transition group-hover:text-white/60">
-                  {item.example}
-                </p>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </section>
+          {item.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -1134,20 +1033,11 @@ function BarPill({ ready, onClick }: { ready: boolean; onClick: () => void }) {
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-sm border py-1.5 pl-2.5 pr-2.5 font-mono text-2xs transition",
-        ready
-          ? "border-white/12 text-white/60 hover:border-white/30 hover:text-white/90"
-          : "border-white/35 text-white/90 hover:border-white/60",
+        "text-[13px] transition",
+        ready ? "text-white/45 hover:text-white/70" : "text-white/85 hover:text-white",
       )}
     >
-      <ListChecks className="size-3.5" />
       {ready ? "Bar set" : "Set the bar"}
-      {!ready ? (
-        <span
-          aria-hidden
-          className="size-1 rounded-full bg-white/80 animate-pulse motion-reduce:animate-none"
-        />
-      ) : null}
     </button>
   );
 }
@@ -1933,7 +1823,7 @@ function ComposerShell({
   return (
     <div
       className={cn(
-        "rounded-sm border border-white/12 bg-white/[0.015] p-2 transition focus-within:border-white/35",
+        "rounded-lg border border-white/10 bg-white/[0.03] p-2 transition focus-within:border-white/25",
         compact && "shadow-none",
       )}
     >
@@ -1980,7 +1870,7 @@ function AnimatedPillSelect({
   options,
   disabled,
 }: {
-  icon: ReactNode;
+  icon?: ReactNode;
   value: string;
   onChange: (value: string) => void;
   options: { value: string; label: string }[];
@@ -1992,11 +1882,11 @@ function AnimatedPillSelect({
     <DropdownMenu>
       <DropdownMenuTrigger
         disabled={disabled}
-        className="inline-flex items-center gap-1.5 rounded-sm border border-white/12 py-1.5 pl-2.5 pr-2 font-mono text-2xs text-white/60 transition hover:border-white/30 hover:text-white/90 data-popup-open:border-white/40 data-popup-open:text-white disabled:opacity-50"
+        className="inline-flex max-w-[10rem] items-center gap-1 truncate text-[13px] text-white/45 transition hover:text-white/75 data-popup-open:text-white/90 disabled:opacity-50"
       >
-        <span className="text-white/45">{icon}</span>
-        <span className="max-w-[9rem] truncate">{selected?.label ?? "Select"}</span>
-        <ChevronDown className="size-3.5 text-white/40 transition-transform duration-200 group-data-popup-open:rotate-180" />
+        {icon ? <span className="text-white/35">{icon}</span> : null}
+        <span className="truncate">{selected?.label ?? "Select"}</span>
+        <ChevronDown className="size-3 shrink-0 text-white/30" />
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
