@@ -7,17 +7,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   ArrowUp,
-  Calculator,
-  CheckCircle2,
   ChevronDown,
   Download,
   FileText,
   Gauge,
   Loader2,
   PanelRight,
-  ShieldAlert,
-  TrendingUp,
-  XCircle,
 } from "lucide-react";
 
 import {
@@ -261,22 +256,8 @@ function suggestionsFor(slug: string): string[] {
 
 const api = createApiClient();
 
-function ThinkingIndicator({ label = "Thinking" }: { label?: string }) {
-  return (
-    <div className="flex items-center gap-2.5 pl-3.5 animate-in fade-in duration-500">
-      <div className="flex items-center gap-1" aria-hidden>
-        {[0, 1, 2].map((index) => (
-          <span
-            key={index}
-            className="size-1 rounded-full bg-white/30 animate-pulse"
-            style={{ animationDelay: `${index * 180}ms` }}
-          />
-        ))}
-      </div>
-      <span className="text-xs text-white/40">{label}</span>
-    </div>
-  );
-}
+const SERIF = "[font-family:var(--font-race-display)]";
+const MICRO = "font-mono text-[10px] uppercase tracking-[0.22em]";
 
 export function PublicTryoutsClient() {
   const router = useRouter();
@@ -488,9 +469,9 @@ export function PublicTryoutsClient() {
   const inSession = Boolean(urlTryoutId);
 
   return (
-    <main className="flex h-[100dvh] flex-col overflow-hidden bg-black text-white">
-      <header className="relative z-10 flex shrink-0 items-center justify-between gap-4 border-b border-white/10 px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-3">
+    <main className="flex h-[100dvh] flex-col overflow-hidden bg-[#131312] text-white">
+      <header className="relative z-10 flex shrink-0 items-center justify-between gap-4 border-b border-white/[0.07] px-4 py-3 sm:px-6">
+        <div className="flex items-baseline gap-4">
           <Link
             href="/"
             className="text-sm font-semibold tracking-tight text-white/90"
@@ -498,7 +479,7 @@ export function PublicTryoutsClient() {
             AgentClash
           </Link>
           {tryout ? (
-            <span className="hidden text-xs uppercase tracking-[0.12em] text-white/40 sm:inline">
+            <span className={cn(MICRO, "hidden text-white/35 sm:inline")}>
               {tryout.status}
             </span>
           ) : null}
@@ -528,7 +509,7 @@ export function PublicTryoutsClient() {
           )}
           <Link
             href={loginHref}
-            className="rounded-full border border-white/15 px-3 py-1.5 text-sm text-white/80 transition hover:border-white/30 hover:text-white"
+            className="rounded-sm border border-white/15 px-3 py-1.5 text-sm text-white/80 transition hover:border-white/40 hover:text-white"
           >
             Sign in
           </Link>
@@ -620,121 +601,204 @@ function TryoutWelcome({
   loginHref: string;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
+  const enter =
+    "animate-in fade-in slide-in-from-bottom-3 fill-mode-both duration-700 motion-reduce:animate-none";
+
   return (
-    <div className="relative flex flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-8 sm:px-6">
-      <h1 className="text-center text-[clamp(2rem,7vw,3.5rem)] font-semibold leading-none tracking-tight">
-        Try an agent on real work
-      </h1>
-      <p className="mt-3 max-w-lg text-center text-base text-white/55">
-        First say what a failing result looks like. That is an eval. Then chat
-        with a sandboxed agent and watch it get scored against your answers.
-      </p>
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
+      <div className="relative mx-auto min-h-full w-full max-w-3xl border-x border-white/[0.06] px-5 pb-24 pt-14 sm:px-12 sm:pt-20">
+        <RegistrationMark className="left-0 top-8" />
+        <RegistrationMark className="right-0 top-8" />
 
-      <form onSubmit={onSubmit} className="mt-8 w-full max-w-2xl">
-        <EvalSetupPanel values={evalSetup} onChange={updateEvalSetup} done={evalReady} />
+        <p
+          className={cn(MICRO, "text-white/35", enter)}
+          style={{ animationDelay: "0ms" }}
+        >
+          Public tryout · Sandboxed · No signup
+        </p>
+        <h1
+          className={cn(
+            SERIF,
+            "mt-7 max-w-[22ch] text-[clamp(2.5rem,6.2vw,4rem)] font-light leading-[1.04] tracking-tight text-white/95",
+            enter,
+          )}
+          style={{ animationDelay: "100ms" }}
+        >
+          What would make you{" "}
+          <em className="italic text-white/55">reject</em> this work?
+        </h1>
+        <p
+          className={cn("mt-6 max-w-xl text-[15px] leading-7 text-white/50", enter)}
+          style={{ animationDelay: "200ms" }}
+        >
+          Answer that and you have written your first eval. Then brief a
+          sandboxed agent, watch every step it takes, and see it graded against
+          your own bar.
+        </p>
 
-        <div className={cn("mt-4", !evalReady && "pointer-events-none opacity-40")}>
-          <p className="mb-2 text-xs uppercase tracking-[0.14em] text-white/35">
-            Step 2 · Give the agent the work
-          </p>
-        <ComposerShell
-          value={primaryValue}
-          onChange={(value) =>
-            primaryField && updateField(primaryField[0], value)
-          }
-          disabled={!template || !evalReady}
-          placeholder={
-            !template
-              ? "Loading tasks…"
-              : evalReady
-                ? `Describe the work for "${template.name}"…`
-                : "Finish step 1 to unlock the chat"
-          }
-          canSubmit={canRun}
-          submitting={launching}
-          footer={
-            <>
-              <AnimatedPillSelect
-                icon={<FileText className="size-3.5" />}
-                value={templateSlug}
-                onChange={setTemplateSlug}
-                disabled={templatesLoading}
-                options={templates.map((t) => ({ value: t.slug, label: t.name }))}
-              />
-              <AnimatedPillSelect
-                icon={<Gauge className="size-3.5" />}
-                value={selectedModelKey}
-                onChange={setSelectedModelKey}
-                options={MODEL_OPTIONS.map((option) => ({
-                  value: modelOptionKey(option),
-                  label: option.label,
-                }))}
-              />
-            </>
-          }
-        />
+        <form onSubmit={onSubmit}>
+          <section
+            className={cn("relative mt-16", enter)}
+            style={{ animationDelay: "300ms" }}
+          >
+            <GhostNumeral>01</GhostNumeral>
+            <div className="flex items-baseline justify-between border-b border-white/15 pb-3">
+              <h2 className={cn(SERIF, "text-2xl font-light tracking-tight text-white/90")}>
+                Set the bar
+              </h2>
+              <span className={cn(MICRO, evalReady ? "text-white/55" : "text-white/30")}>
+                {evalReady ? "Complete" : "Required"}
+              </span>
+            </div>
+            <EvalSetupPanel values={evalSetup} onChange={updateEvalSetup} />
+          </section>
 
-        {secondaryFields.length > 0 ? (
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {secondaryFields.map(([field, spec]) => (
-              <CompactField
-                key={field}
-                field={field}
-                spec={spec}
-                value={fieldValues[field] ?? ""}
-                required={false}
-                onChange={updateField}
-              />
-            ))}
-          </div>
-        ) : null}
-        </div>
+          <section
+            className={cn("relative mt-20", enter)}
+            style={{ animationDelay: "400ms" }}
+          >
+            <GhostNumeral>02</GhostNumeral>
+            <div className="flex items-baseline justify-between border-b border-white/15 pb-3">
+              <h2 className={cn(SERIF, "text-2xl font-light tracking-tight text-white/90")}>
+                Brief the agent
+              </h2>
+              <span className={cn(MICRO, "text-white/30")}>
+                {evalReady ? "Open" : "Locked"}
+              </span>
+            </div>
 
-        {message ? <Alert text={message} /> : null}
-        {quotaMessage ? (
-          <div className="mt-3 rounded-2xl border border-white/15 bg-white/[0.04] p-3 text-sm text-white/70">
-            <p>{quotaMessage}</p>
-            <Link
-              href={loginHref}
-              className="mt-2 inline-flex items-center gap-1 font-medium text-white hover:underline"
-            >
-              Save this tryout in a workspace
-              <ArrowRight className="size-3.5" />
-            </Link>
-          </div>
-        ) : null}
+            {evalReady ? (
+              <div className="mt-7 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none">
+                <ComposerShell
+                  value={primaryValue}
+                  onChange={(value) =>
+                    primaryField && updateField(primaryField[0], value)
+                  }
+                  disabled={!template}
+                  placeholder={
+                    template
+                      ? `Describe the work for "${template.name}"…`
+                      : "Loading tasks…"
+                  }
+                  canSubmit={canRun}
+                  submitting={launching}
+                  footer={
+                    <>
+                      <AnimatedPillSelect
+                        icon={<FileText className="size-3.5" />}
+                        value={templateSlug}
+                        onChange={setTemplateSlug}
+                        disabled={templatesLoading}
+                        options={templates.map((t) => ({ value: t.slug, label: t.name }))}
+                      />
+                      <AnimatedPillSelect
+                        icon={<Gauge className="size-3.5" />}
+                        value={selectedModelKey}
+                        onChange={setSelectedModelKey}
+                        options={MODEL_OPTIONS.map((option) => ({
+                          value: modelOptionKey(option),
+                          label: option.label,
+                        }))}
+                      />
+                    </>
+                  }
+                />
 
-        {template ? (
-          <p className="mt-3 text-center text-xs text-white/40">
-            {template.description} ·{" "}
-            {MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey)?.hint ??
-              "Hosted default agent and model"}{" "}
-            · cap{" "}
-            {`$${template.max_cost_usd.toFixed(2)}`}
-          </p>
-        ) : null}
-      </form>
+                {secondaryFields.length > 0 ? (
+                  <div className="mt-4 grid gap-x-10 gap-y-5 sm:grid-cols-2">
+                    {secondaryFields.map(([field, spec]) => (
+                      <CompactField
+                        key={field}
+                        field={field}
+                        spec={spec}
+                        value={fieldValues[field] ?? ""}
+                        required={false}
+                        onChange={updateField}
+                      />
+                    ))}
+                  </div>
+                ) : null}
 
-      {template && primaryField && evalReady ? (
-        <div className="mt-6 w-full max-w-2xl">
-          <p className="mb-2 text-center text-xs uppercase tracking-[0.14em] text-white/35">
-            Try one of these
-          </p>
-          <div className="flex flex-wrap justify-center gap-2">
-            {suggestionsFor(template.slug).map((suggestion) => (
-              <button
-                key={suggestion}
-                type="button"
-                onClick={() => updateField(primaryField[0], suggestion)}
-                className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-left text-xs text-white/60 transition hover:border-white/25 hover:text-white"
+                {template && primaryField ? (
+                  <div className="mt-8">
+                    <p className={cn(MICRO, "text-white/30")}>Or steal one of these</p>
+                    <ul className="mt-3 divide-y divide-white/[0.07] border-y border-white/[0.07]">
+                      {suggestionsFor(template.slug).map((suggestion) => (
+                        <li key={suggestion}>
+                          <button
+                            type="button"
+                            onClick={() => updateField(primaryField[0], suggestion)}
+                            className="group flex w-full items-baseline gap-3 py-2.5 text-left text-[13px] leading-6 text-white/50 transition hover:text-white"
+                          >
+                            <span className="font-mono text-[10px] text-white/25 transition group-hover:text-white/60">
+                              →
+                            </span>
+                            {suggestion}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="mt-7 flex h-28 items-center justify-center border border-dashed border-white/10">
+                <p className={cn(MICRO, "text-white/30")}>Answer 01 to unlock the brief</p>
+              </div>
+            )}
+          </section>
+
+          {message ? <Alert text={message} /> : null}
+          {quotaMessage ? (
+            <div className="mt-5 border border-white/15 p-4 text-sm text-white/70">
+              <p>{quotaMessage}</p>
+              <Link
+                href={loginHref}
+                className="mt-2 inline-flex items-center gap-1 font-medium text-white hover:underline"
               >
-                {suggestion.length > 70 ? suggestion.slice(0, 70) + "…" : suggestion}
-              </button>
-            ))}
-          </div>
-        </div>
-      ) : null}
+                Save this tryout in a workspace
+                <ArrowRight className="size-3.5" />
+              </Link>
+            </div>
+          ) : null}
+
+          {template && evalReady ? (
+            <p className="mt-6 font-mono text-[10px] leading-5 tracking-[0.04em] text-white/30">
+              {template.description} ·{" "}
+              {MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey)?.hint ??
+                "Hosted default agent and model"}{" "}
+              · cost cap {`$${template.max_cost_usd.toFixed(2)}`}
+            </p>
+          ) : null}
+        </form>
+      </div>
     </div>
+  );
+}
+
+function RegistrationMark({ className }: { className: string }) {
+  return (
+    <span
+      aria-hidden
+      className={cn("pointer-events-none absolute size-2.5", className)}
+    >
+      <span className="absolute left-1/2 top-0 h-full w-px -translate-x-1/2 bg-white/20" />
+      <span className="absolute left-0 top-1/2 h-px w-full -translate-y-1/2 bg-white/20" />
+    </span>
+  );
+}
+
+function GhostNumeral({ children }: { children: ReactNode }) {
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        SERIF,
+        "pointer-events-none absolute -top-10 right-0 select-none text-[6rem] font-light leading-none text-white/[0.05] sm:-top-14 sm:text-[8.5rem]",
+      )}
+    >
+      {children}
+    </span>
   );
 }
 
@@ -815,7 +879,7 @@ function TryoutSidebarMobile({
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-full border-white/15 bg-transparent text-white hover:bg-white/10 lg:hidden"
+            className="h-8 rounded-sm border-white/15 bg-transparent text-white hover:bg-white/10 lg:hidden"
           />
         }
       >
@@ -824,7 +888,7 @@ function TryoutSidebarMobile({
       </SheetTrigger>
       <SheetContent
         side="right"
-        className="w-full border-white/10 bg-zinc-950/80 text-white sm:max-w-md"
+        className="w-full border-white/10 bg-[#131312] text-white sm:max-w-md"
       >
         <SheetHeader>
           <SheetTitle className="text-white">Trace & downloads</SheetTitle>
@@ -865,9 +929,9 @@ function TryoutSidebar({
 
   return (
     <div className={cn("flex min-h-0 flex-1 flex-col", compact ? "pt-2" : "p-4")}>
-      <div className="space-y-1 px-1">
-        <p className="text-sm font-medium text-white/90">{tryout.template_slug}</p>
-        <p className="text-xs text-white/45">
+      <div className="space-y-2 px-1">
+        <p className={cn(MICRO, "text-white/55")}>{tryout.template_slug}</p>
+        <p className="text-xs text-white/40">
           {agentRan} · {formatTryoutLatency(tryout.latency_ms)} ·{" "}
           {formatTryoutCost(tryout)}
         </p>
@@ -902,10 +966,8 @@ function TryoutSidebar({
       ) : null}
 
       {outputs.length > 0 ? (
-        <div className="mt-4 min-h-0 px-1">
-          <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-white/40">
-            Artifacts
-          </p>
+        <div className="mt-5 min-h-0 px-1">
+          <p className={cn(MICRO, "mb-3 text-white/35")}>Artifacts</p>
           <div className="space-y-2">
             {outputs.map((output) => (
               <ArtifactPreviewCard key={`${output.key}-${output.relative_path}`} output={output} />
@@ -914,25 +976,24 @@ function TryoutSidebar({
         </div>
       ) : null}
 
-      <div className="mt-4 flex min-h-0 flex-1 flex-col px-1">
-        <p className="mb-2 text-xs font-medium uppercase tracking-[0.12em] text-white/40">
-          Event log
-        </p>
-        <ol className="min-h-0 flex-1 space-y-0 overflow-y-auto rounded-xl border border-white/10 bg-black/80">
+      <div className="mt-5 flex min-h-0 flex-1 flex-col px-1">
+        <p className={cn(MICRO, "mb-3 text-white/35")}>Raw event log</p>
+        <ol className="ml-1 min-h-0 flex-1 space-y-3 overflow-y-auto border-l border-white/10 pl-4">
           {events.length === 0 ? (
-            <li className="p-3 text-xs text-white/45">
+            <li className="text-xs text-white/40">
               {tryoutIsActive(tryout.status)
                 ? "Waiting for events…"
                 : "No events recorded."}
             </li>
           ) : (
             events.map((event) => (
-              <li
-                key={event.cursor}
-                className="border-b border-white/6 px-3 py-2 text-xs last:border-b-0"
-              >
-                <p className="text-white/75">{event.summary}</p>
-                <time className="mt-0.5 block text-[10px] text-white/35">
+              <li key={event.cursor} className="relative">
+                <span
+                  aria-hidden
+                  className="absolute -left-[19px] top-[5px] size-[5px] rounded-full bg-white/25"
+                />
+                <p className="text-xs leading-5 text-white/60">{event.summary}</p>
+                <time className="mt-0.5 block font-mono text-[9px] uppercase tracking-[0.1em] text-white/25">
                   {new Date(event.occurred_at).toLocaleTimeString()}
                 </time>
               </li>
@@ -943,7 +1004,7 @@ function TryoutSidebar({
 
       <Link
         href={loginHref}
-        className="mt-4 inline-flex h-9 items-center justify-center gap-1.5 rounded-full bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
+        className="mt-5 inline-flex h-9 items-center justify-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
       >
         Save and rerun
         <ArrowRight className="size-4" />
@@ -1025,6 +1086,30 @@ function TryoutChatThread({
     return items.sort((a, b) => a.at - b.at);
   }, [initialUserText, followUps, events, tryout.created_at]);
 
+  const blocks = useMemo(() => {
+    const out: ChatBlock[] = [];
+    for (const item of timeline) {
+      const last = out[out.length - 1];
+      if (item.kind === "user") {
+        out.push({ kind: "user", item });
+      } else if (last?.kind === "steps") {
+        last.items.push(item);
+      } else {
+        out.push({ kind: "steps", id: item.id, items: [item] });
+      }
+    }
+    return out;
+  }, [timeline]);
+
+  const thinkingLabel =
+    !active || outputs.length > 0
+      ? null
+      : events.length === 0
+        ? "Starting"
+        : timeline[timeline.length - 1]?.kind === "agent"
+          ? "Working"
+          : null;
+
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [timeline.length, outputs.length, scorecard, finished]);
@@ -1065,23 +1150,25 @@ function TryoutChatThread({
   return (
     <>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8">
-        <div className="mx-auto flex max-w-3xl flex-col gap-4">
-          {timeline.map((item, index) =>
-            item.kind === "user" ? (
-              <UserBubble key={item.id} text={item.text} animate={index === timeline.length - 1} />
+        <div className="mx-auto flex max-w-3xl flex-col gap-5">
+          {blocks.map((block, index) =>
+            block.kind === "user" ? (
+              <UserBubble
+                key={block.item.id}
+                text={block.item.text}
+                animate={index === blocks.length - 1}
+              />
             ) : (
-              <AgentStepBubble
-                key={item.id}
-                text={item.text}
-                animate={index === timeline.length - 1}
+              <TraceBlock
+                key={block.id}
+                items={block.items}
+                thinking={index === blocks.length - 1 ? thinkingLabel : null}
               />
             ),
           )}
 
-          {active && events.length === 0 ? <ThinkingIndicator label="Starting" /> : null}
-
-          {active && outputs.length === 0 && timeline.length > 0 && timeline[timeline.length - 1]?.kind === "agent" ? (
-            <ThinkingIndicator />
+          {thinkingLabel && blocks[blocks.length - 1]?.kind !== "steps" ? (
+            <TraceBlock items={[]} thinking={thinkingLabel} />
           ) : null}
 
           {outputs
@@ -1112,7 +1199,7 @@ function TryoutChatThread({
         </div>
       </div>
 
-      <div className="shrink-0 border-t border-white/10 bg-black/95 px-4 py-3 backdrop-blur sm:px-8">
+      <div className="shrink-0 border-t border-white/[0.07] bg-[#131312]/95 px-4 py-3 backdrop-blur sm:px-8">
         <div className="mx-auto max-w-3xl">
           {active ? (
             <>
@@ -1165,37 +1252,61 @@ type ChatItem = {
   at: number;
 };
 
+type ChatBlock =
+  | { kind: "user"; item: ChatItem }
+  | { kind: "steps"; id: string; items: ChatItem[] };
+
 function UserBubble({ text, animate }: { text: string; animate?: boolean }) {
   return (
     <div
       className={cn(
         "flex justify-end",
-        animate && "animate-in fade-in slide-in-from-bottom-2 duration-300",
+        animate &&
+          "animate-in fade-in slide-in-from-bottom-2 duration-300 motion-reduce:animate-none",
       )}
     >
-      <div className="max-w-[85%] rounded-2xl rounded-br-md bg-white px-4 py-2.5 text-[15px] leading-7 text-black">
+      <div className="max-w-[85%] rounded-sm bg-[#e9e9e5] px-4 py-2.5 text-[15px] leading-7 text-[#161614]">
         {text}
       </div>
     </div>
   );
 }
 
-function AgentStepBubble({
-  text,
-  animate,
+function TraceBlock({
+  items,
+  thinking,
 }: {
-  text: string;
-  animate?: boolean;
+  items: ChatItem[];
+  thinking?: string | null;
 }) {
   return (
-    <div
-      className={cn(
-        "flex items-start gap-2.5 pl-1 text-sm leading-6 text-white/55",
-        animate && "animate-in fade-in duration-300",
-      )}
-    >
-      <span className="mt-2.5 size-1 shrink-0 rounded-full bg-white/30" aria-hidden />
-      <span className="min-w-0 whitespace-pre-wrap">{text}</span>
+    <div className="ml-1 border-l border-white/10 py-0.5 pl-5">
+      <div className="flex flex-col gap-2.5">
+        {items.map((item) => (
+          <div
+            key={item.id}
+            className="relative text-sm leading-6 text-white/55 animate-in fade-in duration-300 motion-reduce:animate-none"
+          >
+            <span
+              aria-hidden
+              className="absolute -left-[23px] top-[9.5px] size-[5px] rounded-full bg-white/30"
+            />
+            <span className="whitespace-pre-wrap">{item.text}</span>
+          </div>
+        ))}
+        {thinking ? (
+          <div className="relative flex h-6 items-center animate-in fade-in duration-300 motion-reduce:animate-none">
+            <span
+              aria-hidden
+              className="absolute -left-[24.5px] flex size-2"
+            >
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/25 motion-reduce:animate-none" />
+              <span className="relative inline-flex size-2 rounded-full bg-white/45" />
+            </span>
+            <span className={cn(MICRO, "text-white/35")}>{thinking}</span>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -1209,7 +1320,7 @@ function ArtifactChatCard({ output }: { output: TryoutOutputPreview }) {
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
-      <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.02]">
+      <div className="overflow-hidden rounded-sm border border-white/12">
         <div className="flex items-center justify-between gap-2 border-b border-white/8 px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2">
             <FileText className="size-4 shrink-0 text-white/40" />
@@ -1290,7 +1401,7 @@ function ArtifactPreviewBody({ output }: { output: TryoutOutputPreview }) {
 
 function ArtifactPreviewCard({ output }: { output: TryoutOutputPreview }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+    <div className="rounded-sm border border-white/10 p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-xs font-medium text-white/80">
@@ -1341,8 +1452,8 @@ function ComposerShell({
   return (
     <div
       className={cn(
-        "rounded-2xl border border-white/10 bg-white/[0.02] p-2 transition focus-within:border-white/25",
-        compact && "rounded-xl shadow-none",
+        "rounded-sm border border-white/12 bg-white/[0.015] p-2 transition focus-within:border-white/35",
+        compact && "shadow-none",
       )}
     >
       <textarea
@@ -1368,7 +1479,7 @@ function ComposerShell({
           onClick={onSubmit}
           disabled={!canSubmit || submitting}
           aria-label="Send"
-          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-white text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {submitting ? (
             <Loader2 className="size-4 animate-spin" />
@@ -1400,7 +1511,7 @@ function AnimatedPillSelect({
     <DropdownMenu>
       <DropdownMenuTrigger
         disabled={disabled}
-        className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.03] py-1.5 pl-3 pr-2.5 text-sm text-white/70 transition hover:border-white/20 data-popup-open:border-white/30 data-popup-open:bg-white/[0.06] disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-sm border border-white/12 py-1.5 pl-2.5 pr-2 font-mono text-[11px] text-white/60 transition hover:border-white/30 hover:text-white/90 data-popup-open:border-white/40 data-popup-open:text-white disabled:opacity-50"
       >
         <span className="text-white/45">{icon}</span>
         <span className="max-w-[9rem] truncate">{selected?.label ?? "Select"}</span>
@@ -1408,7 +1519,7 @@ function AnimatedPillSelect({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        className="min-w-[12rem] border-white/10 bg-zinc-950 text-white"
+        className="min-w-[12rem] rounded-sm border-white/10 bg-[#181817] text-white"
       >
         {options.map((option) => (
           <DropdownMenuItem
@@ -1430,75 +1541,90 @@ function AnimatedPillSelect({
 function EvalSetupPanel({
   values,
   onChange,
-  done,
 }: {
   values: EvalSetupValues;
   onChange: <Key extends keyof EvalSetupValues>(
     field: Key,
     value: EvalSetupValues[Key],
   ) => void;
-  done: boolean;
 }) {
   return (
-    <div>
-      <div className="mb-2 flex items-baseline justify-between">
-        <p className="text-xs uppercase tracking-[0.14em] text-white/35">
-          Step 1 · Define what failure looks like
-        </p>
-        <p className="text-xs text-white/35">{done ? "Done" : "Required"}</p>
+    <div className="mt-8 space-y-8">
+      <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
+        <UnderlineField
+          label="The mistake you would not forgive"
+          required
+          value={values.unacceptableMistakes}
+          onChange={(value) => onChange("unacceptableMistakes", value)}
+          placeholder="Invented numbers, missing citations, off-brand tone"
+        />
+        <UnderlineField
+          label="The person who signs off"
+          value={values.reviewer}
+          onChange={(value) => onChange("reviewer", value)}
+          placeholder="Support lead, CFO, sales manager"
+        />
       </div>
-      <div className="rounded-2xl border border-white/10 p-3">
-        <div className="grid gap-2 sm:grid-cols-2">
-          <label className="rounded-xl border border-white/8 px-3 py-2">
-            <span className="block text-xs text-white/45">What mistake would fail this?</span>
-            <input
-              value={values.unacceptableMistakes}
-              onChange={(event) => onChange("unacceptableMistakes", event.target.value)}
-              placeholder="Inventing numbers, missing citations, off-brand tone"
-              className="mt-1 w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
-            />
-          </label>
-          <label className="rounded-xl border border-white/8 px-3 py-2">
-            <span className="block text-xs text-white/45">Who would approve it?</span>
-            <input
-              value={values.reviewer}
-              onChange={(event) => onChange("reviewer", event.target.value)}
-              placeholder="Support lead, CFO, sales manager"
-              className="mt-1 w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
-            />
-          </label>
-        </div>
 
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          <SegmentedControl
-            label="Optimize for"
-            value={values.priority}
-            options={PRIORITY_OPTIONS}
-            onChange={(value) => onChange("priority", value)}
-          />
-          <SegmentedControl
-            label="Output behavior"
-            value={values.style}
-            options={STYLE_OPTIONS}
-            onChange={(value) => onChange("style", value)}
-          />
-        </div>
-
-        <label className="mt-3 flex items-center gap-2 rounded-xl border border-white/8 px-3 py-2">
-          <span className="shrink-0 text-xs text-white/45">How many times a month?</span>
-          <input
-            value={values.monthlyVolume}
-            onChange={(event) => onChange("monthlyVolume", event.target.value)}
-            placeholder="50, 500, 10k"
-            className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
-          />
-        </label>
-        <p className="mt-2 text-xs leading-5 text-white/35">
-          These answers become the rubric the agent is scored against. That is all
-          an eval is.
-        </p>
+      <div className="grid gap-x-10 gap-y-8 sm:grid-cols-2">
+        <SegmentedControl
+          label="Optimize for"
+          value={values.priority}
+          options={PRIORITY_OPTIONS}
+          onChange={(value) => onChange("priority", value)}
+        />
+        <SegmentedControl
+          label="Output behavior"
+          value={values.style}
+          options={STYLE_OPTIONS}
+          onChange={(value) => onChange("style", value)}
+        />
       </div>
+
+      <div className="max-w-xs">
+        <UnderlineField
+          label="Runs per month"
+          required
+          value={values.monthlyVolume}
+          onChange={(value) => onChange("monthlyVolume", value)}
+          placeholder="50, 500, 10k"
+        />
+      </div>
+
+      <p className="max-w-md text-[13px] leading-6 text-white/35">
+        These answers become the rubric the agent is graded against. That is the
+        whole trick: an eval is just your standards, written down.
+      </p>
     </div>
+  );
+}
+
+function UnderlineField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  required,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="block">
+      <span className={cn(MICRO, "flex items-baseline justify-between tracking-[0.16em] text-white/40")}>
+        {label}
+        {required ? <span className="text-white/25">req</span> : null}
+      </span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="mt-2.5 w-full border-b border-white/15 bg-transparent pb-2 text-[15px] text-white outline-none transition-colors placeholder:text-white/20 focus:border-white/50"
+      />
+    </label>
   );
 }
 
@@ -1515,18 +1641,18 @@ function SegmentedControl<TValue extends string>({
 }) {
   return (
     <div>
-      <p className="mb-1.5 text-xs text-white/45">{label}</p>
-      <div className="flex flex-wrap gap-1.5">
+      <p className={cn(MICRO, "tracking-[0.16em] text-white/40")}>{label}</p>
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
         {options.map((option) => (
           <button
             key={option.value}
             type="button"
             onClick={() => onChange(option.value)}
             className={cn(
-              "rounded-full border px-2.5 py-1 text-xs transition",
+              "border px-2.5 py-1 font-mono text-[10px] uppercase tracking-[0.08em] transition",
               option.value === value
-                ? "border-white/35 bg-white text-black"
-                : "border-white/10 bg-black/35 text-white/55 hover:border-white/25 hover:text-white",
+                ? "border-white bg-white text-black"
+                : "border-white/12 text-white/45 hover:border-white/35 hover:text-white/85",
             )}
           >
             {option.label}
@@ -1551,10 +1677,10 @@ function CompactField({
   onChange: (field: string, value: string) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 rounded-xl border border-white/8 px-3 py-1.5">
-      <span className="shrink-0 text-xs text-white/45">
+    <label className="block">
+      <span className={cn(MICRO, "flex items-baseline justify-between tracking-[0.16em] text-white/40")}>
         {fieldLabel(field)}
-        {required ? "" : " (opt)"}
+        {required ? null : <span className="text-white/25">opt</span>}
       </span>
       <input
         type={spec.type === "string" ? "text" : "number"}
@@ -1562,7 +1688,7 @@ function CompactField({
         min={spec.minimum}
         max={spec.maximum}
         onChange={(event) => onChange(field, event.target.value)}
-        className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
+        className="mt-2.5 w-full border-b border-white/15 bg-transparent pb-2 text-[15px] text-white outline-none transition-colors placeholder:text-white/20 focus:border-white/50"
       />
     </label>
   );
@@ -1570,7 +1696,7 @@ function CompactField({
 
 function Alert({ text }: { text: string }) {
   return (
-    <div className="mt-3 rounded-xl border border-white/15 bg-white/[0.03] p-3 text-sm text-white/70">
+    <div className="mt-5 border-l-2 border-white/40 pl-4 text-sm leading-6 text-white/70">
       {text}
     </div>
   );
@@ -1585,37 +1711,52 @@ function ScorecardCard({
 }) {
   const pct = Math.round(scorecard.score * 100);
   return (
-    <div
-      className={cn(
-        "rounded-xl border border-white/10 bg-white/[0.02]",
-        compact ? "p-3" : "p-4",
-      )}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold tracking-tight">Eval scorecard</h3>
-        <span className="text-sm font-medium text-white/80">
-          {pct}% · {scorecard.passed_validators}/{scorecard.total_validators}
-        </span>
+    <div className={cn("border border-white/12", compact ? "p-4" : "p-5 sm:p-6")}>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className={cn(MICRO, "text-white/40")}>Eval scorecard</p>
+          <p className="mt-2 text-xs text-white/35">
+            {scorecard.passed_validators} of {scorecard.total_validators} checks
+            passed
+          </p>
+        </div>
+        <p
+          className={cn(
+            SERIF,
+            "font-light leading-none text-white/90",
+            compact ? "text-4xl" : "text-5xl sm:text-6xl",
+          )}
+        >
+          {pct}
+          <span className={cn(compact ? "text-xl" : "text-2xl", "text-white/35")}>%</span>
+        </p>
       </div>
-      <div className="mt-3 h-px w-full overflow-hidden rounded-full bg-white/10">
+      <div className="mt-4 h-px w-full bg-white/10">
         <div
-          className="h-full rounded-full bg-white/70 transition-all duration-700"
+          className="h-full bg-white/70 transition-all duration-700"
           style={{ width: `${pct}%` }}
         />
       </div>
       {!compact && scorecard.checks.length > 0 ? (
-        <ul className="mt-3 space-y-1.5">
+        <ul className="mt-4 divide-y divide-white/[0.07]">
           {scorecard.checks.map((check) => (
-            <li key={check.key} className="flex items-center gap-2 text-sm">
-              {check.status === "passed" ? (
-                <CheckCircle2 className="size-4 shrink-0 text-white/70" />
-              ) : check.status === "failed" ? (
-                <XCircle className="size-4 shrink-0 text-white/35" />
-              ) : (
-                <span className="size-4 shrink-0 rounded-full border border-white/25" />
-              )}
-              <span className="text-white/75">{fieldLabel(check.key)}</span>
-              <span className="ml-auto text-xs text-white/35">{check.status}</span>
+            <li
+              key={check.key}
+              className="flex items-baseline justify-between gap-3 py-2.5 text-sm"
+            >
+              <span className="text-white/65">{fieldLabel(check.key)}</span>
+              <span
+                className={cn(
+                  "font-mono text-[10px] uppercase tracking-[0.14em]",
+                  check.status === "passed"
+                    ? "text-white/80"
+                    : check.status === "failed"
+                      ? "text-white/30 line-through"
+                      : "text-white/25",
+                )}
+              >
+                {check.status}
+              </span>
             </li>
           ))}
         </ul>
@@ -1632,36 +1773,42 @@ function EvalPlanCard({
   compact?: boolean;
 }) {
   return (
-    <div
-      className={cn(
-        "rounded-xl border border-white/10 bg-white/[0.02]",
-        compact ? "p-3" : "p-4",
-      )}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <h3 className="text-sm font-semibold tracking-tight">Generated eval</h3>
-        <span className="text-xs text-white/38">{priorityLabel(setup.business_priority)}</span>
+    <div className={cn("border border-white/12", compact ? "p-4" : "p-5 sm:p-6")}>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className={cn(MICRO, "text-white/40")}>Your rubric</p>
+        <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-white/30">
+          {priorityLabel(setup.business_priority)}
+        </span>
       </div>
-      <p className="mt-2 text-sm leading-6 text-white/58">
-        Reviewer: {setup.human_reviewer}. Behavior: {styleLabel(setup.output_style)}.
+      <p className="mt-3 text-sm leading-6 text-white/55">
+        Graded as if {setup.human_reviewer} signs off. Behavior:{" "}
+        {styleLabel(setup.output_style).toLowerCase()}.
       </p>
       {setup.unacceptable_mistakes ? (
-        <p className="mt-1 text-sm leading-6 text-white/58">
-          Fail condition: {setup.unacceptable_mistakes}
+        <p className="mt-1 text-sm leading-6 text-white/55">
+          Instant fail: {setup.unacceptable_mistakes}
         </p>
       ) : null}
       {!compact ? (
-        <ul className="mt-3 space-y-2">
-          {setup.derived_rubric.slice(0, 4).map((item) => (
-            <li key={item.key} className="rounded-lg border border-white/8 bg-black/35 p-2.5">
-              <p className="text-sm font-medium text-white/82">{item.label}</p>
-              <p className="mt-1 text-xs leading-5 text-white/48">{item.checks.join(" · ")}</p>
+        <ul className="mt-4 divide-y divide-white/[0.07] border-t border-white/[0.07]">
+          {setup.derived_rubric.slice(0, 4).map((item, index) => (
+            <li key={item.key} className="flex gap-4 py-3">
+              <span className="font-mono text-[10px] leading-6 text-white/25">
+                0{index + 1}
+              </span>
+              <div>
+                <p className="text-sm leading-6 text-white/80">{item.label}</p>
+                <p className="mt-0.5 text-xs leading-5 text-white/40">
+                  {item.checks.join(" · ")}
+                </p>
+              </div>
             </li>
           ))}
         </ul>
       ) : null}
-      <p className="mt-3 text-xs leading-5 text-white/38">
-        Suggested setting: {setup.suggested_generation_settings.temperature} temperature.
+      <p className="mt-3 text-xs leading-5 text-white/35">
+        Suggested setting: {setup.suggested_generation_settings.temperature}{" "}
+        temperature.
       </p>
     </div>
   );
@@ -1673,7 +1820,7 @@ function DownloadButton({ label, onClick }: { label: string; onClick: () => void
       type="button"
       variant="outline"
       onClick={onClick}
-      className="h-7 rounded-full border-white/15 bg-transparent px-2.5 text-xs text-white hover:bg-white/10"
+      className="h-7 rounded-sm border-white/15 bg-transparent px-2.5 font-mono text-[10px] uppercase tracking-[0.1em] text-white/70 hover:bg-white/10 hover:text-white"
     >
       <Download className="size-3" />
       {label}
@@ -2248,64 +2395,52 @@ function EvalRoiCalculator({
   const netUpside = capturedSavings + costWithoutEvals;
 
   return (
-    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-      <div className="flex items-center gap-2">
-        <Calculator className="size-4 text-white/40" />
-        <h3 className="text-sm font-semibold tracking-tight">
-          What this is worth at your scale
-        </h3>
-      </div>
-      <p className="mt-1.5 text-sm leading-6 text-white/50">
-        You just watched an agent finish one {anchor.label}. Here is the business
-        case for evaluating it before you wire it into production.
+    <div className="border border-white/12 p-5 sm:p-6">
+      <p className={cn(MICRO, "text-white/40")}>The business case</p>
+      <p className="mt-3 max-w-lg text-sm leading-6 text-white/50">
+        You just watched an agent finish one {anchor.label}. This is what grading
+        it before production is worth at your scale.
       </p>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-6 grid gap-x-8 gap-y-6 sm:grid-cols-2 lg:grid-cols-4">
         <RoiInput label="Company" value={company} onChange={setCompany} placeholder="Acme Inc" />
         <RoiInput label="Work email" value={email} onChange={setEmail} placeholder="you@acme.com" />
         <RoiInput label={`${anchor.label}s / month`} value={volume} onChange={setVolume} numeric />
         <RoiInput label="Human $ / task" value={humanCost} onChange={setHumanCost} numeric />
       </div>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-          <div className="flex items-center gap-2 text-white/55">
-            <ShieldAlert className="size-4" />
-            <p className="text-sm font-medium">Integrate without evals</p>
-          </div>
-          <p className="mt-2 text-3xl font-semibold tracking-tight text-white">
+      <div className="mt-7 grid divide-y divide-white/[0.08] border-y border-white/[0.08] sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+        <div className="py-5 sm:pr-8">
+          <p className={cn(MICRO, "text-white/35")}>Ship blind</p>
+          <p className={cn(SERIF, "mt-3 text-4xl font-light leading-none text-white/90 sm:text-5xl")}>
             {usd(costWithoutEvals)}
-            <span className="text-base font-normal text-white/40"> /yr at risk</span>
           </p>
+          <p className="mt-2 text-xs text-white/35">per year at risk</p>
         </div>
-
-        <div className="rounded-xl border border-white/15 bg-white/[0.04] p-4">
-          <div className="flex items-center gap-2 text-white/70">
-            <TrendingUp className="size-4" />
-            <p className="text-sm font-medium">Evaluate with AgentClash</p>
-          </div>
-          <p className="mt-2 text-3xl font-semibold tracking-tight text-white">
+        <div className="py-5 sm:pl-8">
+          <p className={cn(MICRO, "text-white/55")}>Ship graded</p>
+          <p className={cn(SERIF, "mt-3 text-4xl font-light leading-none text-white sm:text-5xl")}>
             {usd(capturedSavings)}
-            <span className="text-base font-normal text-white/40"> /yr captured</span>
           </p>
+          <p className="mt-2 text-xs text-white/35">per year captured</p>
         </div>
       </div>
 
-      <div className="mt-4 flex flex-col items-start justify-between gap-3 rounded-xl border border-white/10 bg-black/40 p-4 sm:flex-row sm:items-center">
-        <p className="text-sm text-white/65">
+      <div className="mt-6 flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+        <p className="text-sm leading-6 text-white/60">
           Evaluating first is worth{" "}
-          <span className="font-semibold text-white">{usd(netUpside)}/yr</span>{" "}
-          to {company.trim() || "your team"} on this workflow alone.
+          <span className="font-medium text-white">{usd(netUpside)}/yr</span> to{" "}
+          {company.trim() || "your team"} on this workflow alone.
         </p>
         <Link
           href={`/enterprise?from=tryout&task=${encodeURIComponent(tryout.template_slug)}${email.trim() ? `&email=${encodeURIComponent(email.trim())}` : ""}`}
-          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
         >
           Talk to us about integrating
           <ArrowRight className="size-4" />
         </Link>
       </div>
-      <p className="mt-2 text-xs text-white/35">
+      <p className="mt-3 text-xs text-white/35">
         Adjust the inputs to match your numbers.{" "}
         <Link href={loginHref} className="text-white/55 hover:underline">
           Save this analysis →
@@ -2330,7 +2465,7 @@ function RoiInput({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs text-white/45">{label}</span>
+      <span className={cn(MICRO, "block tracking-[0.16em] text-white/40")}>{label}</span>
       <input
         type={numeric ? "number" : "text"}
         inputMode={numeric ? "decimal" : undefined}
@@ -2338,7 +2473,7 @@ function RoiInput({
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 text-sm text-white outline-none placeholder:text-white/25 focus:border-white/25 focus:ring-1 focus:ring-white/10"
+        className="mt-2 w-full border-b border-white/15 bg-transparent pb-1.5 text-sm text-white outline-none transition-colors placeholder:text-white/20 focus:border-white/50"
       />
     </label>
   );
