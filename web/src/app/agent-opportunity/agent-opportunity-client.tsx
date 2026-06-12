@@ -59,21 +59,20 @@ const VERDICT_ORDER: AgentOpportunityReport["shouldBuildAgent"][] = [
 ];
 
 const toneDot: Record<Tone, string> = {
-  good: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.7)]",
-  warn: "bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,0.7)]",
-  bad: "bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.7)]",
-  neutral: "bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.7)]",
+  good: "bg-emerald-400",
+  warn: "bg-amber-300",
+  bad: "bg-red-400",
+  neutral: "bg-white",
 };
 
 const toneSegment: Record<Tone, string> = {
-  good: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.55)]",
-  warn: "bg-amber-300 shadow-[0_0_8px_rgba(252,211,77,0.55)]",
-  bad: "bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.55)]",
-  neutral: "bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.55)]",
+  good: "bg-emerald-400",
+  warn: "bg-amber-300",
+  bad: "bg-red-400",
+  neutral: "bg-white",
 };
 
-const ADVERSARIAL_STRIPES =
-  "repeating-linear-gradient(135deg, rgba(252,211,77,0.85) 0, rgba(252,211,77,0.85) 2px, transparent 2px, transparent 6px)";
+const ADVERSARIAL_FILL = "bg-white/30";
 
 function levelCount(level: UseCase["fit"]): number {
   return level === "high" ? 3 : level === "medium" ? 2 : 1;
@@ -128,7 +127,7 @@ function ScaleBar({ value, className }: { value: number; className?: string }) {
       aria-hidden
     >
       <div
-        className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-emerald-400 shadow-[0_0_10px_rgba(34,211,238,0.5)] transition-[width] duration-700 ease-out motion-reduce:transition-none"
+        className="h-full rounded-full bg-white transition-[width] duration-700 ease-out motion-reduce:transition-none"
         style={{
           width: mounted ? `${Math.max(2, Math.min(100, value))}%` : "0%",
         }}
@@ -377,10 +376,10 @@ export function ReportDashboard({
                 className={cn(
                   "size-2.5 rounded-full",
                   useCase.fit === "high"
-                    ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]"
+                    ? "bg-emerald-400"
                     : useCase.fit === "medium"
-                      ? "bg-amber-300 shadow-[0_0_6px_rgba(252,211,77,0.4)]"
-                      : "bg-red-400/80",
+                      ? "bg-amber-300"
+                      : "bg-red-400/60",
                 )}
               />
             ))}
@@ -398,10 +397,10 @@ export function ReportDashboard({
                 className={cn(
                   "h-2.5 w-5 rounded-[2px]",
                   risk.severity === "high"
-                    ? "bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.6)]"
+                    ? "bg-red-400"
                     : risk.severity === "medium"
-                      ? "bg-amber-300/90"
-                      : "bg-emerald-400/70",
+                      ? "bg-amber-300"
+                      : "bg-emerald-400",
                 )}
               />
             ))}
@@ -473,7 +472,7 @@ export function ReportDashboard({
             aria-hidden
           >
             <div
-              className="bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.5)]"
+              className="bg-white"
               style={{
                 width: `${
                   (report.evaluationPack.recommendedCases /
@@ -482,22 +481,15 @@ export function ReportDashboard({
                 }%`,
               }}
             />
-            <div
-              className="flex-1"
-              style={{ backgroundImage: ADVERSARIAL_STRIPES }}
-            />
+            <div className={cn("flex-1", ADVERSARIAL_FILL)} />
           </div>
           <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[11px] tracking-[0.04em] text-white/65">
             <span className="flex items-center gap-1.5">
-              <span className="size-2 rounded-[1px] bg-cyan-400" aria-hidden />
+              <span className="size-2 rounded-[1px] bg-white" aria-hidden />
               {report.evaluationPack.recommendedCases} realistic
             </span>
             <span className="flex items-center gap-1.5">
-              <span
-                className="size-2 rounded-[1px]"
-                style={{ backgroundImage: ADVERSARIAL_STRIPES }}
-                aria-hidden
-              />
+              <span className={cn("size-2 rounded-[1px]", ADVERSARIAL_FILL)} aria-hidden />
               {report.evaluationPack.adversarialCases} adversarial
             </span>
           </div>
@@ -507,7 +499,7 @@ export function ReportDashboard({
                 key={criterion}
                 className="flex gap-2 text-[13px] leading-5 text-white/75"
               >
-                <span className="font-mono text-emerald-300">✓</span>
+                <span className="font-mono text-white/60">✓</span>
                 {criterion}
               </li>
             ))}
@@ -564,7 +556,7 @@ function LoadingPanel({ step }: { step: number }) {
   return (
     <section className="mt-10 border border-white/[0.08] bg-[#080808] p-6">
       <div className="flex items-center gap-3">
-        <Loader2 className="size-5 animate-spin text-cyan-300" />
+        <Loader2 className="size-5 animate-spin text-white/70" />
         <div>
           <p className="text-sm font-medium text-white">
             Generating your report
@@ -594,9 +586,9 @@ function LoadingPanel({ step }: { step: number }) {
                 className={cn(
                   "flex size-6 items-center justify-center border font-mono text-[11px]",
                   done
-                    ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-300"
+                    ? "border-white/30 bg-white/10 text-white"
                     : active
-                      ? "border-cyan-400/50 text-cyan-300"
+                      ? "border-white/40 text-white"
                       : "border-white/15",
                 )}
               >
@@ -605,7 +597,7 @@ function LoadingPanel({ step }: { step: number }) {
               {label}
               {active ? (
                 <span
-                  className="size-1.5 animate-pulse rounded-full bg-cyan-300"
+                  className="size-1.5 animate-pulse rounded-full bg-white/70"
                   aria-hidden
                 />
               ) : null}
