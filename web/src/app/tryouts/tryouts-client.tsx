@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity,
   ArrowRight,
   ArrowUp,
   Calculator,
@@ -14,14 +13,10 @@ import {
   Download,
   FileText,
   Gauge,
-  ListChecks,
   Loader2,
-  Lock,
   PanelRight,
   ShieldAlert,
-  Terminal,
   TrendingUp,
-  Wrench,
   XCircle,
 } from "lucide-react";
 
@@ -45,9 +40,7 @@ import {
   formatTryoutCost,
   formatTryoutLatency,
   tryoutIsActive,
-  tryoutStatusVariant,
 } from "@/lib/agent-tryout-status";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -270,19 +263,17 @@ const api = createApiClient();
 
 function ThinkingIndicator({ label = "Thinking" }: { label?: string }) {
   return (
-    <div className="flex justify-start animate-in fade-in duration-500">
-      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-        <div className="flex items-center gap-1" aria-hidden>
-          {[0, 1, 2].map((index) => (
-            <span
-              key={index}
-              className="size-1.5 rounded-full bg-white/35 animate-pulse"
-              style={{ animationDelay: `${index * 180}ms` }}
-            />
-          ))}
-        </div>
-        <span className="text-sm text-white/45">{label}</span>
+    <div className="flex items-center gap-2.5 pl-3.5 animate-in fade-in duration-500">
+      <div className="flex items-center gap-1" aria-hidden>
+        {[0, 1, 2].map((index) => (
+          <span
+            key={index}
+            className="size-1 rounded-full bg-white/30 animate-pulse"
+            style={{ animationDelay: `${index * 180}ms` }}
+          />
+        ))}
       </div>
+      <span className="text-xs text-white/40">{label}</span>
     </div>
   );
 }
@@ -432,9 +423,19 @@ export function PublicTryoutsClient() {
     [],
   );
 
+  const evalReady =
+    evalSetup.unacceptableMistakes.trim().length > 0 &&
+    evalSetup.monthlyVolume.trim().length > 0;
+
   async function handleLaunch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!template || launching) return;
+    if (!evalReady) {
+      setMessage(
+        "Define the eval first: name one mistake that would fail this work, and your monthly volume.",
+      );
+      return;
+    }
 
     const input = buildInput(fields, required, fieldValues);
     if ("error" in input) {
@@ -483,13 +484,11 @@ export function PublicTryoutsClient() {
   )}`;
 
   const primaryValue = primaryField ? fieldValues[primaryField[0]] ?? "" : "";
-  const canRun = Boolean(template) && !templatesLoading && !launching;
+  const canRun = Boolean(template) && !templatesLoading && !launching && evalReady;
   const inSession = Boolean(urlTryoutId);
 
   return (
     <main className="flex h-[100dvh] flex-col overflow-hidden bg-black text-white">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.05),transparent_55%)]" />
-
       <header className="relative z-10 flex shrink-0 items-center justify-between gap-4 border-b border-white/10 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-3">
           <Link
@@ -499,9 +498,9 @@ export function PublicTryoutsClient() {
             AgentClash
           </Link>
           {tryout ? (
-            <Badge variant={tryoutStatusVariant(tryout.status)} className="hidden sm:inline-flex">
+            <span className="hidden text-xs uppercase tracking-[0.12em] text-white/40 sm:inline">
               {tryout.status}
-            </Badge>
+            </span>
           ) : null}
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
@@ -558,6 +557,7 @@ export function PublicTryoutsClient() {
           updateField={updateField}
           evalSetup={evalSetup}
           updateEvalSetup={updateEvalSetup}
+          evalReady={evalReady}
           primaryValue={primaryValue}
           canRun={canRun}
           launching={launching}
@@ -585,6 +585,7 @@ function TryoutWelcome({
   updateField,
   evalSetup,
   updateEvalSetup,
+  evalReady,
   primaryValue,
   canRun,
   launching,
@@ -609,6 +610,7 @@ function TryoutWelcome({
     field: Key,
     value: EvalSetupValues[Key],
   ) => void;
+  evalReady: boolean;
   primaryValue: string;
   canRun: boolean;
   launching: boolean;
@@ -624,21 +626,29 @@ function TryoutWelcome({
         Try an agent on real work
       </h1>
       <p className="mt-3 max-w-lg text-center text-base text-white/55">
-        Chat with a sandboxed agent. When it finishes, see the eval scorecard and
-        what shipping it is worth at your scale.
+        First say what a failing result looks like. That is an eval. Then chat
+        with a sandboxed agent and watch it get scored against your answers.
       </p>
 
       <form onSubmit={onSubmit} className="mt-8 w-full max-w-2xl">
+        <EvalSetupPanel values={evalSetup} onChange={updateEvalSetup} done={evalReady} />
+
+        <div className={cn("mt-4", !evalReady && "pointer-events-none opacity-40")}>
+          <p className="mb-2 text-xs uppercase tracking-[0.14em] text-white/35">
+            Step 2 · Give the agent the work
+          </p>
         <ComposerShell
           value={primaryValue}
           onChange={(value) =>
             primaryField && updateField(primaryField[0], value)
           }
-          disabled={!template}
+          disabled={!template || !evalReady}
           placeholder={
-            template
-              ? `Describe the work for "${template.name}"…`
-              : "Loading tasks…"
+            !template
+              ? "Loading tasks…"
+              : evalReady
+                ? `Describe the work for "${template.name}"…`
+                : "Finish step 1 to unlock the chat"
           }
           canSubmit={canRun}
           submitting={launching}
@@ -678,8 +688,7 @@ function TryoutWelcome({
             ))}
           </div>
         ) : null}
-
-        <EvalSetupPanel values={evalSetup} onChange={updateEvalSetup} />
+        </div>
 
         {message ? <Alert text={message} /> : null}
         {quotaMessage ? (
@@ -706,7 +715,7 @@ function TryoutWelcome({
         ) : null}
       </form>
 
-      {template && primaryField ? (
+      {template && primaryField && evalReady ? (
         <div className="mt-6 w-full max-w-2xl">
           <p className="mb-2 text-center text-xs uppercase tracking-[0.14em] text-white/35">
             Try one of these
@@ -725,12 +734,6 @@ function TryoutWelcome({
           </div>
         </div>
       ) : null}
-
-      <div className="mt-8 hidden w-full max-w-2xl gap-3 sm:grid-cols-3">
-        <ProofItem icon={Lock} label="Sandboxed" text="Real tools, capped cost." />
-        <ProofItem icon={Activity} label="Live trace" text="Every step in the sidebar." />
-        <ProofItem icon={FileText} label="Evals built in" text="Scorecard when the run ends." />
-      </div>
     </div>
   );
 }
@@ -770,7 +773,7 @@ function TryoutSession({
 
   return (
     <div className="relative flex min-h-0 flex-1">
-      <aside className="hidden w-80 shrink-0 flex-col border-r border-white/10 bg-zinc-950/80/60 lg:flex">
+      <aside className="hidden w-80 shrink-0 flex-col border-r border-white/10 lg:flex">
         <TryoutSidebar
           tryout={tryout}
           events={events}
@@ -1016,7 +1019,6 @@ function TryoutChatThread({
         id: `e${event.cursor}`,
         text: friendlyTraceSummary(event),
         at: new Date(event.occurred_at).getTime(),
-        eventType: event.type,
       });
     }
 
@@ -1071,7 +1073,6 @@ function TryoutChatThread({
               <AgentStepBubble
                 key={item.id}
                 text={item.text}
-                eventType={item.eventType}
                 animate={index === timeline.length - 1}
               />
             ),
@@ -1162,7 +1163,6 @@ type ChatItem = {
   id: string;
   text: string;
   at: number;
-  eventType?: TryoutTimelineEvent["type"];
 };
 
 function UserBubble({ text, animate }: { text: string; animate?: boolean }) {
@@ -1182,46 +1182,22 @@ function UserBubble({ text, animate }: { text: string; animate?: boolean }) {
 
 function AgentStepBubble({
   text,
-  eventType,
   animate,
 }: {
   text: string;
-  eventType?: TryoutTimelineEvent["type"];
   animate?: boolean;
 }) {
   return (
     <div
       className={cn(
-        "flex justify-start",
-        animate && "animate-in fade-in slide-in-from-bottom-2 duration-300",
+        "flex items-start gap-2.5 pl-1 text-sm leading-6 text-white/55",
+        animate && "animate-in fade-in duration-300",
       )}
     >
-      <div className="flex max-w-[90%] items-start gap-2.5 rounded-2xl rounded-bl-md border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-sm leading-6 text-white/75">
-        <EventStepIcon type={eventType} />
-        <span className="min-w-0 whitespace-pre-wrap">{text}</span>
-      </div>
+      <span className="mt-2.5 size-1 shrink-0 rounded-full bg-white/30" aria-hidden />
+      <span className="min-w-0 whitespace-pre-wrap">{text}</span>
     </div>
   );
-}
-
-function EventStepIcon({ type }: { type?: TryoutTimelineEvent["type"] }) {
-  const className = "mt-0.5 size-4 shrink-0 text-white/35";
-  switch (type) {
-    case "tool_call":
-      return <Wrench className={className} />;
-    case "sandbox_command":
-      return <Terminal className={className} />;
-    case "file_written":
-    case "file_activity":
-      return <FileText className={className} />;
-    case "validation":
-    case "scoring":
-      return <CheckCircle2 className={className} />;
-    case "planning":
-      return <Gauge className={className} />;
-    default:
-      return <Activity className={className} />;
-  }
 }
 
 function ArtifactChatCard({ output }: { output: TryoutOutputPreview }) {
@@ -1314,7 +1290,7 @@ function ArtifactPreviewBody({ output }: { output: TryoutOutputPreview }) {
 
 function ArtifactPreviewCard({ output }: { output: TryoutOutputPreview }) {
   return (
-    <div className="rounded-xl border border-white/10 bg-[#0c0c0a]/80 p-3">
+    <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-xs font-medium text-white/80">
@@ -1454,68 +1430,74 @@ function AnimatedPillSelect({
 function EvalSetupPanel({
   values,
   onChange,
+  done,
 }: {
   values: EvalSetupValues;
   onChange: <Key extends keyof EvalSetupValues>(
     field: Key,
     value: EvalSetupValues[Key],
   ) => void;
+  done: boolean;
 }) {
   return (
-    <div className="mt-3 rounded-2xl border border-white/10 bg-white/[0.025] p-3">
-      <div className="flex items-center gap-2">
-        <ListChecks className="size-4 text-white/45" />
-        <div>
-          <p className="text-sm font-medium text-white/85">Eval setup</p>
-          <p className="text-xs text-white/45">A short rubric is generated from these answers.</p>
+    <div>
+      <div className="mb-2 flex items-baseline justify-between">
+        <p className="text-xs uppercase tracking-[0.14em] text-white/35">
+          Step 1 · Define what failure looks like
+        </p>
+        <p className="text-xs text-white/35">{done ? "Done" : "Required"}</p>
+      </div>
+      <div className="rounded-2xl border border-white/10 p-3">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <label className="rounded-xl border border-white/8 px-3 py-2">
+            <span className="block text-xs text-white/45">What mistake would fail this?</span>
+            <input
+              value={values.unacceptableMistakes}
+              onChange={(event) => onChange("unacceptableMistakes", event.target.value)}
+              placeholder="Inventing numbers, missing citations, off-brand tone"
+              className="mt-1 w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
+            />
+          </label>
+          <label className="rounded-xl border border-white/8 px-3 py-2">
+            <span className="block text-xs text-white/45">Who would approve it?</span>
+            <input
+              value={values.reviewer}
+              onChange={(event) => onChange("reviewer", event.target.value)}
+              placeholder="Support lead, CFO, sales manager"
+              className="mt-1 w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
+            />
+          </label>
         </div>
-      </div>
 
-      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        <label className="rounded-xl border border-white/8 bg-black/40 px-3 py-2">
-          <span className="block text-xs text-white/45">What mistake would fail this?</span>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <SegmentedControl
+            label="Optimize for"
+            value={values.priority}
+            options={PRIORITY_OPTIONS}
+            onChange={(value) => onChange("priority", value)}
+          />
+          <SegmentedControl
+            label="Output behavior"
+            value={values.style}
+            options={STYLE_OPTIONS}
+            onChange={(value) => onChange("style", value)}
+          />
+        </div>
+
+        <label className="mt-3 flex items-center gap-2 rounded-xl border border-white/8 px-3 py-2">
+          <span className="shrink-0 text-xs text-white/45">How many times a month?</span>
           <input
-            value={values.unacceptableMistakes}
-            onChange={(event) => onChange("unacceptableMistakes", event.target.value)}
-            placeholder="Inventing numbers, missing citations, off-brand tone"
-            className="mt-1 w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
+            value={values.monthlyVolume}
+            onChange={(event) => onChange("monthlyVolume", event.target.value)}
+            placeholder="50, 500, 10k"
+            className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
           />
         </label>
-        <label className="rounded-xl border border-white/8 bg-black/40 px-3 py-2">
-          <span className="block text-xs text-white/45">Who would approve it?</span>
-          <input
-            value={values.reviewer}
-            onChange={(event) => onChange("reviewer", event.target.value)}
-            placeholder="Support lead, CFO, sales manager"
-            className="mt-1 w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
-          />
-        </label>
+        <p className="mt-2 text-xs leading-5 text-white/35">
+          These answers become the rubric the agent is scored against. That is all
+          an eval is.
+        </p>
       </div>
-
-      <div className="mt-3 grid gap-3 sm:grid-cols-2">
-        <SegmentedControl
-          label="Optimize for"
-          value={values.priority}
-          options={PRIORITY_OPTIONS}
-          onChange={(value) => onChange("priority", value)}
-        />
-        <SegmentedControl
-          label="Output behavior"
-          value={values.style}
-          options={STYLE_OPTIONS}
-          onChange={(value) => onChange("style", value)}
-        />
-      </div>
-
-      <label className="mt-3 flex items-center gap-2 rounded-xl border border-white/8 bg-black/40 px-3 py-2">
-        <span className="shrink-0 text-xs text-white/45">Monthly volume</span>
-        <input
-          value={values.monthlyVolume}
-          onChange={(event) => onChange("monthlyVolume", event.target.value)}
-          placeholder="50, 500, 10k"
-          className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/25"
-        />
-      </label>
     </div>
   );
 }
@@ -1569,7 +1551,7 @@ function CompactField({
   onChange: (field: string, value: string) => void;
 }) {
   return (
-    <label className="flex items-center gap-2 rounded-xl border border-white/8 bg-zinc-950/80/55 px-3 py-1.5">
+    <label className="flex items-center gap-2 rounded-xl border border-white/8 px-3 py-1.5">
       <span className="shrink-0 text-xs text-white/45">
         {fieldLabel(field)}
         {required ? "" : " (opt)"}
@@ -1696,24 +1678,6 @@ function DownloadButton({ label, onClick }: { label: string; onClick: () => void
       <Download className="size-3" />
       {label}
     </Button>
-  );
-}
-
-function ProofItem({
-  icon: Icon,
-  label,
-  text,
-}: {
-  icon: typeof Lock;
-  label: string;
-  text: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-white/8 bg-zinc-950/80/45 p-4">
-      <Icon className="size-4 text-white/35" />
-      <p className="mt-3 font-medium text-white/85">{label}</p>
-      <p className="mt-1 text-sm leading-6 text-white/55">{text}</p>
-    </div>
   );
 }
 
