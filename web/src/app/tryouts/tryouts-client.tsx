@@ -295,13 +295,17 @@ const TASK_SUGGESTIONS: Record<string, string[]> = {
   "status-report": [
     "Turn these scattered updates into a polished weekly status report and export it as a PDF.",
     "Summarize this sprint into highlights, risks, and next steps.",
+    "Weekly product update for leadership: wins, slips, and what needs a decision.",
   ],
   "meeting-minutes": [
     "Summarize these notes into minutes with owners and due dates.",
     "Extract action items and render them as a one-page PDF checklist.",
+    "Board meeting notes: decisions, risks, and follow-ups for the exec team.",
   ],
   "inbox-triage": [
     "Prioritize these 8 emails and draft replies for the urgent ones.",
+    "Sort this inbox by urgency, flag compliance risks, and draft holds for anything ambiguous.",
+    "Customer escalation thread plus three routine billing questions: triage and draft responses.",
   ],
 };
 
@@ -309,10 +313,105 @@ const GENERIC_SUGGESTIONS = [
   "Generate a PDF report from this data with a chart.",
   "Build a spreadsheet with formulas and a summary tab.",
   "Turn this into a labeled bar chart and explain the trend.",
+  "Summarize this for an executive who has two minutes to read.",
+  "Flag anything that would fail a compliance review before we ship.",
+];
+
+type TryoutShowcaseItem = {
+  slug: string;
+  tag: string;
+  headline: string;
+  example: string;
+  primaryField: string;
+};
+
+const TRYOUT_SHOWCASE: TryoutShowcaseItem[] = [
+  {
+    slug: "support-ticket-resolution",
+    tag: "Customer support",
+    headline: "Resolve support tickets",
+    example:
+      "Customer says their invoice was charged twice and wants a refund today. Draft a reply and decide whether to escalate.",
+    primaryField: "ticket",
+  },
+  {
+    slug: "document-extraction",
+    tag: "Finance / AP",
+    headline: "Extract invoice data",
+    example:
+      "Extract line items, totals, and vendor from this invoice, then flag any missing fields for human review.",
+    primaryField: "document",
+  },
+  {
+    slug: "contract-review",
+    tag: "Legal ops",
+    headline: "Review contract clauses",
+    example:
+      "Review this NDA for one-sided indemnity and unlimited liability. List risks with severity and quote the clause.",
+    primaryField: "contract",
+  },
+  {
+    slug: "sdr-outreach",
+    tag: "Sales",
+    headline: "Qualify leads & draft outreach",
+    example:
+      "VP Engineering at a 200-person SaaS company, hiring 3 platform engineers. Draft a 3-sentence cold email for our eval platform.",
+    primaryField: "prospect",
+  },
+  {
+    slug: "inbox-triage",
+    tag: "Ops",
+    headline: "Triage inbox batches",
+    example:
+      "Prioritize these 8 emails, draft replies for urgent ones, and flag anything that needs a human before we respond.",
+    primaryField: "emails",
+  },
+  {
+    slug: "meeting-minutes",
+    tag: "Product / PM",
+    headline: "Minutes to action plan",
+    example:
+      "Summarize these notes into minutes with owners, due dates, and risks. Export a one-page action plan.",
+    primaryField: "notes",
+  },
+  {
+    slug: "status-report",
+    tag: "Leadership",
+    headline: "Status reports",
+    example:
+      "Turn these scattered sprint updates into a polished weekly status with highlights, risks, and next steps.",
+    primaryField: "updates",
+  },
+  {
+    slug: "spreadsheet-builder",
+    tag: "Analytics",
+    headline: "Data to spreadsheet",
+    example:
+      "Turn this raw sales data into a spreadsheet with a pivot summary and a bar chart PNG.",
+    primaryField: "data",
+  },
+  {
+    slug: "slide-deck",
+    tag: "Marketing",
+    headline: "Brief to slide deck",
+    example:
+      "Make a 6-slide deck explaining our AI evaluation platform for a VP of Engineering, with one chart slide.",
+    primaryField: "brief",
+  },
 ];
 
 function suggestionsFor(slug: string): string[] {
-  return TASK_SUGGESTIONS[slug] ?? GENERIC_SUGGESTIONS;
+  const showcase = TRYOUT_SHOWCASE.find((item) => item.slug === slug);
+  const curated = TASK_SUGGESTIONS[slug] ?? GENERIC_SUGGESTIONS;
+  if (showcase && !curated.includes(showcase.example)) {
+    return [showcase.example, ...curated];
+  }
+  return curated;
+}
+
+function showcaseForTemplates(templates: AgentTryoutTemplate[]): TryoutShowcaseItem[] {
+  const slugs = new Set(templates.map((template) => template.slug));
+  return TRYOUT_SHOWCASE.filter((item) => slugs.has(item.slug));
 }
 
 const api = createApiClient();
@@ -334,6 +433,10 @@ export function PublicTryoutsClient() {
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [evalSetup, setEvalSetup] = useState<EvalSetupValues>(DEFAULT_EVAL_SETUP);
   const prefillRef = useRef<RerunPrefill | null>(null);
+  const showcasePrefillRef = useRef<{
+    slug: string;
+    values: Record<string, string>;
+  } | null>(null);
 
   // Apply a rerun handoff (same brief, different agent/judge) exactly once.
   useEffect(() => {
@@ -398,6 +501,12 @@ export function PublicTryoutsClient() {
     ) {
       setFieldValues(pending.fieldValues);
       prefillRef.current = null;
+      return;
+    }
+    const showcasePending = showcasePrefillRef.current;
+    if (showcasePending && showcasePending.slug === templateSlug) {
+      setFieldValues(showcasePending.values);
+      showcasePrefillRef.current = null;
       return;
     }
     setFieldValues({});
@@ -569,6 +678,21 @@ export function PublicTryoutsClient() {
   const primaryValue = primaryField ? fieldValues[primaryField[0]] ?? "" : "";
   const canRun = Boolean(template) && !templatesLoading && !launching;
   const inSession = Boolean(urlTryoutId);
+  const showcaseItems = useMemo(() => showcaseForTemplates(templates), [templates]);
+
+  const selectShowcase = useCallback(
+    (item: TryoutShowcaseItem) => {
+      const values = { [item.primaryField]: item.example };
+      if (templateSlug === item.slug) {
+        setFieldValues(values);
+        showcasePrefillRef.current = null;
+        return;
+      }
+      showcasePrefillRef.current = { slug: item.slug, values };
+      setTemplateSlug(item.slug);
+    },
+    [templateSlug],
+  );
 
   return (
     <main className="flex h-[100dvh] flex-col overflow-hidden bg-[#131312] text-white">
@@ -652,6 +776,8 @@ export function PublicTryoutsClient() {
           message={message}
           quotaMessage={quotaMessage}
           loginHref={loginHref}
+          showcaseItems={showcaseItems}
+          onSelectShowcase={selectShowcase}
           onLaunch={() => void launchTryout()}
         />
       )}
@@ -684,6 +810,8 @@ function TryoutWelcome({
   message,
   quotaMessage,
   loginHref,
+  showcaseItems,
+  onSelectShowcase,
   onLaunch,
 }: {
   template: AgentTryoutTemplate | null;
@@ -713,6 +841,8 @@ function TryoutWelcome({
   message: string | null;
   quotaMessage: string | null;
   loginHref: string;
+  showcaseItems: TryoutShowcaseItem[];
+  onSelectShowcase: (item: TryoutShowcaseItem) => void;
   onLaunch: () => void;
 }) {
   const [barOpen, setBarOpen] = useState(false);
@@ -736,34 +866,41 @@ function TryoutWelcome({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
-      <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col justify-center px-5 py-12 sm:px-6">
+      <div className="mx-auto flex min-h-0 w-full max-w-2xl flex-1 flex-col justify-center px-5 py-10 sm:px-6 sm:py-12">
         <p
           className={cn(MICRO, "text-center text-white/35", enter)}
           style={{ animationDelay: "0ms" }}
         >
-          Public tryout · Sandboxed · No signup
+          Free AI agent evaluation · Sandboxed · No signup
         </p>
         <h1
           className={cn(
-            SERIF,
-            "mx-auto mt-5 max-w-[20ch] text-center text-[clamp(2.1rem,5vw,3.1rem)] font-light leading-[1.06] tracking-tight text-white/95",
+            "mx-auto mt-5 max-w-[28ch] text-center font-sans text-[clamp(2rem,4.8vw,3.25rem)] font-semibold leading-[1.08] tracking-tight text-white/95",
             enter,
           )}
           style={{ animationDelay: "90ms" }}
         >
-          Put an agent on your work.{" "}
-          <em className="italic text-white/55">Then judge it.</em>
+          Test AI agents on real business work before you integrate them
         </h1>
         <p
           className={cn(
-            "mx-auto mt-4 max-w-md text-center text-base leading-7 text-white/50",
+            "mx-auto mt-4 max-w-xl text-center text-base leading-7 text-white/50",
             enter,
           )}
           style={{ animationDelay: "180ms" }}
         >
-          Describe the work. Before the agent runs, you set the bar — and a
-          judge you pick grades the result against it.
+          Run a free sandboxed tryout on customer support, finance, legal, sales,
+          and ops workflows. Set the quality bar your team would enforce in
+          production, pick a judge, and get a scored verdict with artifacts you
+          can share before an AI pilot or automation rollout.
         </p>
+        <ul className="sr-only">
+          {showcaseItems.map((item) => (
+            <li key={item.slug}>
+              {item.headline}: {item.tag} AI workflow automation example
+            </li>
+          ))}
+        </ul>
 
         <form
           onSubmit={handleSubmit}
@@ -846,24 +983,15 @@ function TryoutWelcome({
               </Link>
             </div>
           ) : null}
-
-          {template ? (
-            <p className="mt-4 text-center font-mono text-2xs leading-5 tracking-[0.04em] text-white/30">
-              {MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey)?.hint ??
-                "Hosted default agent and model"}{" "}
-              · judged by {judgeModelLabel(judgeModel)} ({judgeStrictness}) on our
-              keys · cost cap {`$${template.max_cost_usd.toFixed(2)}`}
-            </p>
-          ) : null}
         </form>
 
         {template && primaryField ? (
           <div className={cn("mt-9", enter)} style={{ animationDelay: "360ms" }}>
             <p className={cn(MICRO, "text-center text-white/30")}>
-              Or steal one of these
+              Or steal one of these prompts
             </p>
             <ul className="mt-3 divide-y divide-white/[0.07] border-y border-white/[0.07]">
-              {suggestionsFor(template.slug).map((suggestion) => (
+              {suggestionsFor(template.slug).slice(0, 5).map((suggestion) => (
                 <li key={suggestion}>
                   <button
                     type="button"
@@ -881,6 +1009,14 @@ function TryoutWelcome({
           </div>
         ) : null}
       </div>
+
+      {showcaseItems.length > 0 ? (
+        <TryoutTemplateMarquee
+          items={showcaseItems}
+          activeSlug={templateSlug}
+          onSelect={onSelectShowcase}
+        />
+      ) : null}
 
       <BarDialog
         open={barOpen}
@@ -905,6 +1041,88 @@ function TryoutWelcome({
         }}
       />
     </div>
+  );
+}
+
+function TryoutTemplateMarquee({
+  items,
+  activeSlug,
+  onSelect,
+}: {
+  items: TryoutShowcaseItem[];
+  activeSlug: string;
+  onSelect: (item: TryoutShowcaseItem) => void;
+}) {
+  const loop = [...items, ...items];
+
+  return (
+    <section
+      className="shrink-0 border-t border-white/[0.07] bg-[#0f0f0e]/80 pb-6 pt-5"
+      aria-label="AI workflow templates to try"
+    >
+      <div className="mx-auto max-w-6xl px-5 sm:px-6">
+        <p className={cn(MICRO, "text-center text-white/30")}>
+          Business workflows you can test today
+        </p>
+      </div>
+      <div
+        className="relative mt-4 overflow-hidden motion-reduce:overflow-x-auto motion-reduce:px-5 motion-reduce:pb-1"
+      >
+        <div
+          className="pointer-events-none absolute inset-y-0 left-0 z-10 w-12 bg-gradient-to-r from-[#0f0f0e] to-transparent motion-reduce:hidden sm:w-20"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute inset-y-0 right-0 z-10 w-12 bg-gradient-to-l from-[#0f0f0e] to-transparent motion-reduce:hidden sm:w-20"
+          aria-hidden
+        />
+        <div
+          className="flex w-max gap-3 motion-safe:animate-[tryout-marquee_55s_linear_infinite]"
+        >
+          {loop.map((item, index) => {
+            const isMirror = index >= items.length;
+            const cardClass = cn(
+              "group w-[17rem] shrink-0 rounded-sm border px-4 py-3 text-left transition sm:w-[19rem]",
+              item.slug === activeSlug
+                ? "border-white/35 bg-white/[0.06]"
+                : "border-white/10 bg-white/[0.02]",
+              !isMirror && "hover:border-white/25 hover:bg-white/[0.04]",
+            );
+
+            if (isMirror) {
+              return (
+                <div key={`${item.slug}-${index}`} aria-hidden className={cardClass}>
+                  <span className={cn(MICRO, "text-white/35")}>{item.tag}</span>
+                  <p className="mt-2 text-sm font-medium leading-snug text-white/90">
+                    {item.headline}
+                  </p>
+                  <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/45">
+                    {item.example}
+                  </p>
+                </div>
+              );
+            }
+
+            return (
+              <button
+                key={`${item.slug}-${index}`}
+                type="button"
+                onClick={() => onSelect(item)}
+                className={cardClass}
+              >
+                <span className={cn(MICRO, "text-white/35")}>{item.tag}</span>
+                <p className="mt-2 text-sm font-medium leading-snug text-white/90">
+                  {item.headline}
+                </p>
+                <p className="mt-2 line-clamp-2 text-xs leading-5 text-white/45 transition group-hover:text-white/60">
+                  {item.example}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
   );
 }
 

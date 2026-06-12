@@ -88,6 +88,15 @@ body {
 
 /* Clash mark — the two-agent logo collision. Single allowed motion on the
    landing page; everything else is static. */
+@keyframes tryout-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
 @keyframes clash-left {
   0% { transform: translateX(-24px); }
   18% { transform: translateX(0); }
