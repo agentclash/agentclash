@@ -22,8 +22,8 @@ export function ComparisonTable({ columns, rows }: Props) {
 
   return (
     <div>
-      {/* Mobile: stacked per-capability cards */}
-      <div className="md:hidden space-y-10">
+      {/* Mobile + tablet: stacked per-capability cards */}
+      <div className="lg:hidden space-y-10">
         {rows.map((row) => (
           <div
             key={`m-${row.label}`}
@@ -75,8 +75,8 @@ export function ComparisonTable({ columns, rows }: Props) {
       </div>
 
       {/* Desktop: full matrix */}
-      <div className="hidden md:block -mx-8 sm:mx-0 overflow-x-auto">
-        <div className="min-w-[1040px] px-8 sm:px-0">
+      <div className="hidden lg:block overflow-x-auto">
+        <div className="min-w-[1040px]">
           <div className={`grid ${gridTemplate} border-b border-white/[0.12]`}>
             <div className="pb-5 pr-4">
               <p className="text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.18em] text-white/35">
