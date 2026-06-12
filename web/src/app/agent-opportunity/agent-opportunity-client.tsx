@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgentOpportunityReport } from "@/lib/agent-opportunity";
+import { captureWebEvent } from "@/lib/analytics/posthog-client";
+import { WEB_EVENTS } from "@/lib/analytics/events";
 import { DimensionRadar } from "./components/dimension-radar";
 import { OpportunityMap } from "./components/opportunity-map";
 import { RiskHeatmap } from "./components/risk-heatmap";
@@ -721,6 +723,12 @@ export function AgentOpportunityClient() {
         return;
       }
       setReport(payload.report);
+      captureWebEvent(WEB_EVENTS.AGENT_OPPORTUNITY_REPORT_GENERATED, {
+        verdict: payload.report.shouldBuildAgent,
+        use_case_count: payload.report.useCases.length,
+        ...(companySize ? { company_size: companySize } : {}),
+        ...(currentPain ? { current_pain: currentPain } : {}),
+      });
     } catch {
       setError("The report request failed. Please try again.");
     } finally {

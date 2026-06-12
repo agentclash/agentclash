@@ -36,6 +36,8 @@ import {
 } from "@/lib/api/agent-tryouts";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
+import { captureWebEvent } from "@/lib/analytics/posthog-client";
+import { WEB_EVENTS } from "@/lib/analytics/events";
 import type {
   AgentHarnessKind,
   AgentTryout,
@@ -72,6 +74,21 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+
+// Analytics helpers for the public tryouts funnel. Privacy: derive email_domain
+// only — never send raw email or company name to PostHog.
+function tryoutEmailDomain(email: string): string | undefined {
+  const at = email.lastIndexOf("@");
+  if (at < 0 || at === email.length - 1) return undefined;
+  return email.slice(at + 1).trim().toLowerCase() || undefined;
+}
+
+function trackTryoutSignup(location: string, tryoutId?: string): void {
+  captureWebEvent(WEB_EVENTS.TRYOUT_SIGNUP_CTA_CLICKED, {
+    location,
+    ...(tryoutId ? { tryout_id: tryoutId } : {}),
+  });
+}
 
 type FieldSpec = {
   type: string;
@@ -592,10 +609,19 @@ export function PublicTryoutsClient() {
       }
       setTryout(nextTryout);
       setEvents([]);
+      captureWebEvent(WEB_EVENTS.TRYOUT_SESSION_STARTED, {
+        tryout_id: nextTryout.id,
+        template_slug: template.slug,
+        model_key: selectedModelKey,
+      });
       router.replace(`/tryouts?tryout=${encodeURIComponent(nextTryout.id)}`, {
         scroll: false,
       });
     } catch (err) {
+      captureWebEvent(WEB_EVENTS.TRYOUT_LAUNCH_FAILED, {
+        template_slug: template.slug,
+        ...(err instanceof ApiError ? { status_code: err.status } : {}),
+      });
       if (err instanceof ApiError) {
         if (err.status === 402 || err.status === 429) {
           setQuotaMessage(err.message);
@@ -665,6 +691,7 @@ export function PublicTryoutsClient() {
           )}
           <Link
             href={loginHref}
+            onClick={() => trackTryoutSignup("header")}
             className="rounded-sm border border-white/15 px-3 py-1.5 text-sm text-white/80 transition hover:border-white/40 hover:text-white"
           >
             Sign in
@@ -943,6 +970,7 @@ function TryoutWelcome({
               </p>
               <Link
                 href={loginHref}
+                onClick={() => trackTryoutSignup("quota")}
                 className="mt-4 inline-flex h-9 items-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
               >
                 Keep grading
@@ -1318,6 +1346,7 @@ function TryoutSidebar({
 
       <Link
         href={loginHref}
+        onClick={() => trackTryoutSignup("save_rerun", tryout.id)}
         className="mt-5 inline-flex h-9 items-center justify-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
       >
         Save and rerun
@@ -1441,6 +1470,10 @@ function TryoutChatThread({
     setError(null);
     try {
       await submitAgentTryoutTurn(api, tryout.id, { message: text });
+      captureWebEvent(WEB_EVENTS.TRYOUT_MESSAGE_SENT, {
+        tryout_id: tryout.id,
+        message_length: text.length,
+      });
       setFollowUps((current) => [
         ...current,
         { id: `u${Date.now()}`, text, at: Date.now() },
@@ -1460,6 +1493,7 @@ function TryoutChatThread({
     setEnding(true);
     try {
       await submitAgentTryoutTurn(api, tryout.id, { end: true });
+      captureWebEvent(WEB_EVENTS.TRYOUT_SESSION_ENDED, { tryout_id: tryout.id });
     } catch {
       // best-effort
     } finally {
@@ -1562,7 +1596,11 @@ function TryoutChatThread({
           ) : (
             <p className="text-center text-sm text-white/45">
               Session complete.{" "}
-              <Link href={loginHref} className="text-white underline-offset-4 hover:underline">
+              <Link
+                href={loginHref}
+                onClick={() => trackTryoutSignup("end_session", tryout.id)}
+                className="text-white underline-offset-4 hover:underline"
+              >
                 Sign in
               </Link>{" "}
               to save this run and wire it into evals.
@@ -3118,6 +3156,12 @@ function EvalRoiCalculator({
         </p>
         <Link
           href={`/enterprise?from=tryout&task=${encodeURIComponent(tryout.template_slug)}${email.trim() ? `&email=${encodeURIComponent(email.trim())}` : ""}`}
+          onClick={() =>
+            captureWebEvent(WEB_EVENTS.TRYOUT_ROI_CTA_CLICKED, {
+              template_slug: tryout.template_slug,
+              ...(tryoutEmailDomain(email) ? { email_domain: tryoutEmailDomain(email) } : {}),
+            })
+          }
           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-sm bg-white px-4 text-sm font-medium text-black transition hover:bg-white/90"
         >
           Talk to us about integrating

@@ -27,6 +27,26 @@ export const WEB_EVENTS = {
   RUN_CREATED: "web.run.created",
   /** User promoted a run failure to a regression case. */
   REGRESSION_CASE_PROMOTED: "web.regression.case_promoted",
+
+  // Public agent-tryouts funnel (anonymous visitors trying an agent).
+  /** Anonymous tryout session successfully launched. */
+  TRYOUT_SESSION_STARTED: "web.tryout.session_started",
+  /** Tryout launch failed (quota, rate limit, or other error). */
+  TRYOUT_LAUNCH_FAILED: "web.tryout.launch_failed",
+  /** User sent a follow-up message in a tryout session. */
+  TRYOUT_MESSAGE_SENT: "web.tryout.message_sent",
+  /** User ended a tryout session. */
+  TRYOUT_SESSION_ENDED: "web.tryout.session_ended",
+  /** User clicked a sign-in / save CTA from the tryout surface. */
+  TRYOUT_SIGNUP_CTA_CLICKED: "web.tryout.signup_cta_clicked",
+  /** User clicked the "talk to us" CTA in the tryout ROI calculator. */
+  TRYOUT_ROI_CTA_CLICKED: "web.tryout.roi_cta_clicked",
+
+  // Adjacent lead-capture surfaces.
+  /** Visitor submitted a marketing resource lead form. */
+  RESOURCE_LEAD_SUBMITTED: "web.resource.lead_submitted",
+  /** Agent-opportunity report generated for a visitor. */
+  AGENT_OPPORTUNITY_REPORT_GENERATED: "web.agent_opportunity.report_generated",
 } as const;
 
 export type WebEventName = (typeof WEB_EVENTS)[keyof typeof WEB_EVENTS];
@@ -39,4 +59,26 @@ export interface WebEventPayloads {
   [WEB_EVENTS.PACK_UPLOADED]: { workspace_id: string; pack_id?: string };
   [WEB_EVENTS.RUN_CREATED]: { workspace_id: string; run_id?: string };
   [WEB_EVENTS.REGRESSION_CASE_PROMOTED]: { workspace_id: string; case_id?: string };
+  [WEB_EVENTS.TRYOUT_SESSION_STARTED]: {
+    tryout_id: string;
+    template_slug: string;
+    model_key: string;
+  };
+  [WEB_EVENTS.TRYOUT_LAUNCH_FAILED]: { template_slug: string; status_code?: number };
+  [WEB_EVENTS.TRYOUT_MESSAGE_SENT]: { tryout_id: string; message_length: number };
+  [WEB_EVENTS.TRYOUT_SESSION_ENDED]: { tryout_id: string };
+  [WEB_EVENTS.TRYOUT_SIGNUP_CTA_CLICKED]: { location: string; tryout_id?: string };
+  [WEB_EVENTS.TRYOUT_ROI_CTA_CLICKED]: { template_slug?: string; email_domain?: string };
+  [WEB_EVENTS.RESOURCE_LEAD_SUBMITTED]: {
+    source: string;
+    resource: string;
+    intent?: string;
+    email_domain?: string;
+  };
+  [WEB_EVENTS.AGENT_OPPORTUNITY_REPORT_GENERATED]: {
+    verdict: string;
+    use_case_count: number;
+    company_size?: string;
+    current_pain?: string;
+  };
 }

@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import { useState } from "react";
+import { captureWebEvent } from "@/lib/analytics/posthog-client";
+import { WEB_EVENTS } from "@/lib/analytics/events";
 
 type Props = {
   source: string;
@@ -46,6 +48,17 @@ export function ResourceLeadForm({
         setError(payload?.error ?? "Something went wrong. Try again.");
         return;
       }
+
+      // Privacy: email_domain only — never send the raw email to PostHog.
+      const emailDomain = email.includes("@")
+        ? email.split("@").pop()?.trim().toLowerCase() || undefined
+        : undefined;
+      captureWebEvent(WEB_EVENTS.RESOURCE_LEAD_SUBMITTED, {
+        source,
+        resource,
+        intent: "resource-download",
+        ...(emailDomain ? { email_domain: emailDomain } : {}),
+      });
 
       const params = new URLSearchParams({
         email: email.trim().toLowerCase(),

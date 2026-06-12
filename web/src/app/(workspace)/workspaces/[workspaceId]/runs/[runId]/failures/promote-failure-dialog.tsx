@@ -9,6 +9,8 @@ import { toast } from "sonner";
 
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
+import { captureWebEvent } from "@/lib/analytics/posthog-client";
+import { WEB_EVENTS } from "@/lib/analytics/events";
 import {
   buildPromotionOverrides,
   defaultPromotionSeverityForFailure,
@@ -231,6 +233,11 @@ export function PromoteFailureDialog({
           }),
         },
       );
+
+      captureWebEvent(WEB_EVENTS.REGRESSION_CASE_PROMOTED, {
+        workspace_id: workspaceId,
+        case_id: result.case.id,
+      });
 
       const caseHref = `/workspaces/${workspaceId}/regression-suites/${result.case.suite_id}/cases/${result.case.id}`;
       if (result.created) {
