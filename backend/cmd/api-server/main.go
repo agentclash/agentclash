@@ -130,7 +130,7 @@ func main() {
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
 	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)
 	publicShareManager := api.NewPublicShareManager(authorizer, repo, cfg.FrontendURL).WithArtifactSigner(artifactManager)
-	agentTryoutManager := api.NewAgentTryoutManager(authorizer, repo).WithArtifactSigner(artifactManager).WithPublicJudgeModels(cfg.AgentTryoutJudgeModels).WithQuota(api.AgentTryoutQuotaConfig{
+	agentTryoutManager := api.NewAgentTryoutManager(authorizer, repo).WithArtifactSigner(artifactManager).WithInputAttachmentStore(artifactStore, cfg.ArtifactMaxUploadBytes).WithPublicJudgeModels(cfg.AgentTryoutJudgeModels).WithQuota(api.AgentTryoutQuotaConfig{
 		AnonymousLimit:            cfg.AgentTryoutAnonymousLimit,
 		AnonymousWindow:           cfg.AgentTryoutAnonymousWindow,
 		HostedDailySpendCapUSD:    cfg.AgentTryoutHostedDailySpendCapUSD,

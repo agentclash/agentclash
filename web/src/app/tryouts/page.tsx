@@ -6,7 +6,7 @@ import { PublicTryoutsClient } from "./tryouts-client";
 export const metadata: Metadata = {
   title: "Free AI Agent Tryout",
   description:
-    "Run a free sandboxed AI agent on support, finance, legal, and ops workflows. Set your quality bar and get a scored verdict before production.",
+    "Write what you would reject in production, run a sandboxed tryout on real work, and get a scored verdict with outputs before you deploy.",
   keywords: [
     "AI agent evaluation",
     "integrate AI into business",

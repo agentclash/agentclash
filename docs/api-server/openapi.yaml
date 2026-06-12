@@ -5177,6 +5177,44 @@ paths:
         "500":
           $ref: "#/components/responses/InternalError"
 
+  /v1/agent-tryout-input-attachments:
+    post:
+      operationId: uploadAgentTryoutInputAttachment
+      summary: Upload a PDF or image for an anonymous tryout input
+      description: >
+        Stages a file for inclusion in a subsequent anonymous tryout create request.
+        Attachments are bound to the caller fingerprint and referenced by id in
+        `input.input_attachments` when creating a tryout.
+      tags: [AgentTryouts]
+      security: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF or image file (JPEG, PNG, GIF, WebP), up to 15 MB
+      responses:
+        "201":
+          description: Attachment uploaded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTryoutInputAttachment"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "413":
+          description: Attachment exceeds maximum upload size
+        "503":
+          description: Attachment storage unavailable
+        "500":
+          $ref: "#/components/responses/InternalError"
+
   /v1/agent-tryouts:
     post:
       operationId: createAnonymousAgentTryout
@@ -13035,6 +13073,21 @@ components:
         max_cost_usd:
           type: number
           format: double
+
+    AgentTryoutInputAttachment:
+      type: object
+      required: [id, filename, media_type, size_bytes]
+      properties:
+        id:
+          type: string
+          format: uuid
+        filename:
+          type: string
+        media_type:
+          type: string
+        size_bytes:
+          type: integer
+          format: int64
 
     ListAgentTryoutTemplatesResponse:
       type: object

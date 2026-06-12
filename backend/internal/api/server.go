@@ -428,6 +428,10 @@ func (noopAgentTryoutService) ListTemplates(context.Context) ([]AgentTryoutTempl
 	return nil, errors.New("agent tryout service is not configured")
 }
 
+func (noopAgentTryoutService) UploadAnonymousTryoutInputAttachment(context.Context, UploadAgentTryoutInputAttachmentInput) (AgentTryoutInputAttachment, error) {
+	return AgentTryoutInputAttachment{}, errors.New("agent tryout service is not configured")
+}
+
 func (noopAgentTryoutService) CreateAnonymousTryout(context.Context, CreateAnonymousAgentTryoutInput) (repository.AgentTryout, error) {
 	return repository.AgentTryout{}, errors.New("agent tryout service is not configured")
 }

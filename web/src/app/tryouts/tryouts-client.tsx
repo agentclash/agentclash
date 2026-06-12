@@ -10,8 +10,13 @@ import {
   ChevronDown,
   Download,
   FileText,
+  Gauge,
+  ListChecks,
   Loader2,
+  Paperclip,
   PanelRight,
+  Scale,
+  X,
 } from "lucide-react";
 
 import {
@@ -20,12 +25,14 @@ import {
   getPublicAgentTryoutEvents,
   listAgentTryoutTemplates,
   submitAgentTryoutTurn,
+  uploadAgentTryoutInputAttachment,
 } from "@/lib/api/agent-tryouts";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type {
   AgentHarnessKind,
   AgentTryout,
+  AgentTryoutInputAttachment,
   AgentTryoutJudgeStrictness,
   AgentTryoutModelPolicy,
   AgentTryoutTemplate,
@@ -36,6 +43,7 @@ import {
   formatTryoutLatency,
   tryoutIsActive,
 } from "@/lib/agent-tryout-status";
+import { ClashMark } from "@/components/marketing/clash-mark";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -188,6 +196,34 @@ const STRICTNESS_OPTIONS: { value: AgentTryoutJudgeStrictness; label: string }[]
   { value: "harsh", label: "Harsh" },
 ];
 
+const TRYOUT_STARTERS = [
+  {
+    slug: "support-ticket-resolution",
+    field: "ticket",
+    label: "Support ticket",
+    prompt:
+      "Customer was charged twice for order #48291. They want a refund today and mention they may cancel if we do not fix billing.",
+  },
+  {
+    slug: "meeting-minutes",
+    field: "notes",
+    label: "Meeting notes",
+    prompt:
+      "Product sync: EU API latency hit 2s, mobile release blocked on App Store review, marketing launch may slip to next week.",
+  },
+  {
+    slug: "inbox-triage",
+    field: "emails",
+    label: "Inbox triage",
+    prompt:
+      "From: legal@vendor.com — contract amendment needed before EOD.\nFrom: customer — where is my refund?\nFrom: ceo — quick sync on Q3 numbers?",
+  },
+] as const;
+
+const MAX_TRYOUT_ATTACHMENTS = 5;
+const TRYOUT_ATTACHMENT_ACCEPT =
+  "application/pdf,image/jpeg,image/png,image/gif,image/webp";
+
 function judgeModelLabel(model: string): string {
   return JUDGE_OPTIONS.find((option) => option.value === model)?.label ?? model;
 }
@@ -264,143 +300,6 @@ function modelLabelFromPolicy(policy: unknown): string {
   return match?.label ?? first.model;
 }
 
-const TASK_SUGGESTIONS: Record<string, string[]> = {
-  "support-ticket-resolution": [
-    "Customer says their invoice was charged twice and wants a refund today. Draft a reply and decide whether to escalate.",
-    "Angry customer threatening to churn over downtime. Reply empathetically, cite our SLA, flag for a human.",
-  ],
-  "document-extraction": [
-    "Extract line items, totals, and vendor from this invoice, then render a clean summary PDF.",
-    "Pull every date, amount, and party from this contract into a spreadsheet.",
-  ],
-  "contract-review": [
-    "Review this NDA for one-sided indemnity and unlimited liability. List risks with severity.",
-    "Compare these payment terms against net-30 standard and propose redlines.",
-  ],
-  "sdr-outreach": [
-    "Qualify this prospect for our eval platform and draft a 3-sentence cold email.",
-    "Write a follow-up to a VP Eng who opened but didn't reply, referencing their hiring spike.",
-  ],
-  "spreadsheet-builder": [
-    "Turn this raw sales data into a spreadsheet with a pivot summary and a bar chart PNG.",
-    "Build a 12-month cashflow model from these assumptions and chart the runway.",
-  ],
-  "slide-deck": [
-    "Make a 6-slide deck for 10 year olds explaining what AI is, with a simple chart.",
-    "Turn this product brief into a PowerPoint with speaker notes and one diagram.",
-  ],
-  "status-report": [
-    "Turn these scattered updates into a polished weekly status report and export it as a PDF.",
-    "Summarize this sprint into highlights, risks, and next steps.",
-    "Weekly product update for leadership: wins, slips, and what needs a decision.",
-  ],
-  "meeting-minutes": [
-    "Summarize these notes into minutes with owners and due dates.",
-    "Extract action items and render them as a one-page PDF checklist.",
-    "Board meeting notes: decisions, risks, and follow-ups for the exec team.",
-  ],
-  "inbox-triage": [
-    "Prioritize these 8 emails and draft replies for the urgent ones.",
-    "Sort this inbox by urgency, flag compliance risks, and draft holds for anything ambiguous.",
-    "Customer escalation thread plus three routine billing questions: triage and draft responses.",
-  ],
-};
-
-const GENERIC_SUGGESTIONS = [
-  "Generate a PDF report from this data with a chart.",
-  "Build a spreadsheet with formulas and a summary tab.",
-  "Turn this into a labeled bar chart and explain the trend.",
-  "Summarize this for an executive who has two minutes to read.",
-  "Flag anything that would fail a compliance review before we ship.",
-];
-
-type TryoutShowcaseItem = {
-  slug: string;
-  label: string;
-  example: string;
-  primaryField: string;
-};
-
-const TRYOUT_SHOWCASE: TryoutShowcaseItem[] = [
-  {
-    slug: "support-ticket-resolution",
-    label: "Support",
-    example:
-      "Customer says their invoice was charged twice and wants a refund today. Draft a reply and decide whether to escalate.",
-    primaryField: "ticket",
-  },
-  {
-    slug: "document-extraction",
-    label: "Invoices",
-    example:
-      "Extract line items, totals, and vendor from this invoice, then flag any missing fields for human review.",
-    primaryField: "document",
-  },
-  {
-    slug: "contract-review",
-    label: "Contracts",
-    example:
-      "Review this NDA for one-sided indemnity and unlimited liability. List risks with severity and quote the clause.",
-    primaryField: "contract",
-  },
-  {
-    slug: "sdr-outreach",
-    label: "Outbound",
-    example:
-      "VP Engineering at a 200-person SaaS company, hiring 3 platform engineers. Draft a 3-sentence cold email for our eval platform.",
-    primaryField: "prospect",
-  },
-  {
-    slug: "inbox-triage",
-    label: "Inbox",
-    example:
-      "Prioritize these 8 emails, draft replies for urgent ones, and flag anything that needs a human before we respond.",
-    primaryField: "emails",
-  },
-  {
-    slug: "meeting-minutes",
-    label: "Meetings",
-    example:
-      "Summarize these notes into minutes with owners, due dates, and risks. Export a one-page action plan.",
-    primaryField: "notes",
-  },
-  {
-    slug: "status-report",
-    label: "Status",
-    example:
-      "Turn these scattered sprint updates into a polished weekly status with highlights, risks, and next steps.",
-    primaryField: "updates",
-  },
-  {
-    slug: "spreadsheet-builder",
-    label: "Spreadsheets",
-    example:
-      "Turn this raw sales data into a spreadsheet with a pivot summary and a bar chart PNG.",
-    primaryField: "data",
-  },
-  {
-    slug: "slide-deck",
-    label: "Slides",
-    example:
-      "Make a 6-slide deck explaining our AI evaluation platform for a VP of Engineering, with one chart slide.",
-    primaryField: "brief",
-  },
-];
-
-function suggestionsFor(slug: string): string[] {
-  const showcase = TRYOUT_SHOWCASE.find((item) => item.slug === slug);
-  const curated = TASK_SUGGESTIONS[slug] ?? GENERIC_SUGGESTIONS;
-  if (showcase && !curated.includes(showcase.example)) {
-    return [showcase.example, ...curated];
-  }
-  return curated;
-}
-
-function showcaseForTemplates(templates: AgentTryoutTemplate[]): TryoutShowcaseItem[] {
-  const slugs = new Set(templates.map((template) => template.slug));
-  return TRYOUT_SHOWCASE.filter((item) => slugs.has(item.slug));
-}
-
 const api = createApiClient();
 
 const SERIF = "[font-family:var(--font-race-display)]";
@@ -420,10 +319,6 @@ export function PublicTryoutsClient() {
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [evalSetup, setEvalSetup] = useState<EvalSetupValues>(DEFAULT_EVAL_SETUP);
   const prefillRef = useRef<RerunPrefill | null>(null);
-  const showcasePrefillRef = useRef<{
-    slug: string;
-    values: Record<string, string>;
-  } | null>(null);
 
   // Apply a rerun handoff (same brief, different agent/judge) exactly once.
   useEffect(() => {
@@ -448,6 +343,9 @@ export function PublicTryoutsClient() {
   const [tryoutLoading, setTryoutLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [quotaMessage, setQuotaMessage] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<AgentTryoutInputAttachment[]>([]);
+  const [attachmentUploading, setAttachmentUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -490,14 +388,23 @@ export function PublicTryoutsClient() {
       prefillRef.current = null;
       return;
     }
-    const showcasePending = showcasePrefillRef.current;
-    if (showcasePending && showcasePending.slug === templateSlug) {
-      setFieldValues(showcasePending.values);
-      showcasePrefillRef.current = null;
-      return;
-    }
     setFieldValues({});
   }, [templateSlug]);
+
+  const applyTryoutStarter = useCallback(
+    (slug: string, field: string, prompt: string) => {
+      if (slug !== templateSlug) {
+        prefillRef.current = {
+          templateSlug: slug,
+          fieldValues: { [field]: prompt },
+        };
+        setTemplateSlug(slug);
+        return;
+      }
+      setFieldValues((current) => ({ ...current, [field]: prompt }));
+    },
+    [templateSlug],
+  );
 
   useEffect(() => {
     if (!urlTryoutId) {
@@ -578,8 +485,6 @@ export function PublicTryoutsClient() {
       null,
     [fields, required],
   );
-  const secondaryFields = fields.filter(([field]) => field !== primaryField?.[0]);
-
   const updateField = useCallback((field: string, value: string) => {
     setFieldValues((current) => ({ ...current, [field]: value }));
   }, []);
@@ -595,6 +500,41 @@ export function PublicTryoutsClient() {
     evalSetup.unacceptableMistakes.trim().length > 0 &&
     evalSetup.monthlyVolume.trim().length > 0;
 
+  async function handleAttachFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    if (attachments.length >= MAX_TRYOUT_ATTACHMENTS) {
+      setMessage(`You can attach up to ${MAX_TRYOUT_ATTACHMENTS} files.`);
+      return;
+    }
+    setAttachmentUploading(true);
+    setMessage(null);
+    try {
+      const uploaded: AgentTryoutInputAttachment[] = [];
+      for (const file of Array.from(files)) {
+        if (attachments.length + uploaded.length >= MAX_TRYOUT_ATTACHMENTS) {
+          break;
+        }
+        uploaded.push(await uploadAgentTryoutInputAttachment(api, file));
+      }
+      setAttachments((current) => [...current, ...uploaded]);
+    } catch (err) {
+      setMessage(
+        err instanceof ApiError
+          ? err.message
+          : "Could not upload that file. Use a PDF or image under 15 MB.",
+      );
+    } finally {
+      setAttachmentUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  }
+
+  function removeAttachment(id: string) {
+    setAttachments((current) => current.filter((item) => item.id !== id));
+  }
+
   async function launchTryout() {
     if (!template || launching || !evalReady) return;
 
@@ -604,6 +544,11 @@ export function PublicTryoutsClient() {
       return;
     }
     input.value.eval_setup = buildEvalSetup(evalSetup, template?.name ?? "agent task");
+    if (attachments.length > 0) {
+      input.value.input_attachments = attachments.map((attachment) => ({
+        id: attachment.id,
+      }));
+    }
 
     const selectedModel =
       MODEL_OPTIONS.find((option) => modelOptionKey(option) === selectedModelKey) ??
@@ -665,31 +610,22 @@ export function PublicTryoutsClient() {
   const primaryValue = primaryField ? fieldValues[primaryField[0]] ?? "" : "";
   const canRun = Boolean(template) && !templatesLoading && !launching;
   const inSession = Boolean(urlTryoutId);
-  const showcaseItems = useMemo(() => showcaseForTemplates(templates), [templates]);
-
-  const selectShowcase = useCallback(
-    (item: TryoutShowcaseItem) => {
-      const values = { [item.primaryField]: item.example };
-      if (templateSlug === item.slug) {
-        setFieldValues(values);
-        showcasePrefillRef.current = null;
-        return;
-      }
-      showcasePrefillRef.current = { slug: item.slug, values };
-      setTemplateSlug(item.slug);
-    },
-    [templateSlug],
-  );
-
   return (
-    <main className="flex h-[100dvh] flex-col overflow-hidden bg-[#131312] text-white">
-      <header className="relative z-10 flex shrink-0 items-center justify-between gap-4 border-b border-white/[0.07] px-4 py-3 sm:px-6">
+    <main
+      className="flex h-dvh max-h-dvh flex-col overflow-hidden bg-[#131312] text-white"
+    >
+      <header className="relative z-10 flex shrink-0 items-center justify-between gap-3 border-b border-white/[0.07] px-4 py-3 sm:gap-4 sm:px-6">
         <div className="flex items-baseline gap-4">
           <Link
             href="/"
-            className="text-sm font-semibold tracking-tight text-white/90"
+            className="inline-flex items-center gap-2 text-white/90"
           >
-            AgentClash
+            <ClashMark className="size-5 sm:size-6" />
+            <span
+              className="font-[family-name:var(--font-display)] text-lg tracking-[-0.01em] sm:text-xl"
+            >
+              AgentClash
+            </span>
           </Link>
           {tryout ? (
             <span className={cn(MICRO, "hidden text-white/35 sm:inline")}>
@@ -750,7 +686,6 @@ export function PublicTryoutsClient() {
           judgeStrictness={judgeStrictness}
           setJudgeStrictness={setJudgeStrictness}
           primaryField={primaryField}
-          secondaryFields={secondaryFields}
           fieldValues={fieldValues}
           updateField={updateField}
           evalSetup={evalSetup}
@@ -763,9 +698,13 @@ export function PublicTryoutsClient() {
           message={message}
           quotaMessage={quotaMessage}
           loginHref={loginHref}
-          showcaseItems={showcaseItems}
-          onSelectShowcase={selectShowcase}
           onLaunch={() => void launchTryout()}
+          onApplyStarter={applyTryoutStarter}
+          attachments={attachments}
+          attachmentUploading={attachmentUploading}
+          fileInputRef={fileInputRef}
+          onAttachFiles={handleAttachFiles}
+          onRemoveAttachment={removeAttachment}
         />
       )}
     </main>
@@ -784,7 +723,6 @@ function TryoutWelcome({
   judgeStrictness,
   setJudgeStrictness,
   primaryField,
-  secondaryFields,
   fieldValues,
   updateField,
   evalSetup,
@@ -797,9 +735,13 @@ function TryoutWelcome({
   message,
   quotaMessage,
   loginHref,
-  showcaseItems,
-  onSelectShowcase,
   onLaunch,
+  onApplyStarter,
+  attachments,
+  attachmentUploading,
+  fileInputRef,
+  onAttachFiles,
+  onRemoveAttachment,
 }: {
   template: AgentTryoutTemplate | null;
   templates: AgentTryoutTemplate[];
@@ -812,7 +754,6 @@ function TryoutWelcome({
   judgeStrictness: AgentTryoutJudgeStrictness;
   setJudgeStrictness: (value: AgentTryoutJudgeStrictness) => void;
   primaryField: [string, FieldSpec] | null;
-  secondaryFields: [string, FieldSpec][];
   fieldValues: Record<string, string>;
   updateField: (field: string, value: string) => void;
   evalSetup: EvalSetupValues;
@@ -828,9 +769,13 @@ function TryoutWelcome({
   message: string | null;
   quotaMessage: string | null;
   loginHref: string;
-  showcaseItems: TryoutShowcaseItem[];
-  onSelectShowcase: (item: TryoutShowcaseItem) => void;
   onLaunch: () => void;
+  onApplyStarter: (slug: string, field: string, prompt: string) => void;
+  attachments: AgentTryoutInputAttachment[];
+  attachmentUploading: boolean;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+  onAttachFiles: (files: FileList | null) => void;
+  onRemoveAttachment: (id: string) => void;
 }) {
   const [barOpen, setBarOpen] = useState(false);
   // True when the bar dialog was opened by a send attempt: confirming the bar
@@ -849,48 +794,84 @@ function TryoutWelcome({
   }
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col overflow-y-auto">
-      <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col justify-center px-5 py-14 sm:px-6 sm:py-20">
-        <h1 className="text-center text-2xl font-semibold tracking-tight text-white sm:text-[1.75rem]">
-          Run an agent on real work
+    <div className="relative flex min-h-0 flex-1 flex-col justify-center overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6 sm:py-5 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <h1
+          className="mx-auto max-w-2xl text-center text-[clamp(1.35rem,3.2vw,1.875rem)] font-semibold tracking-tight text-white/88 animate-in fade-in slide-in-from-bottom-2 fill-mode-both duration-700 motion-reduce:animate-none"
+        >
+          See how an agent scores on your workflow
         </h1>
-        <p className="mt-3 text-center text-sm leading-6 text-white/45">
-          Set the bar, pick a workflow, get a scored verdict. Free sandbox, no
-          signup.
-        </p>
-        <ul className="sr-only">
-          {showcaseItems.map((item) => (
-            <li key={item.slug}>{item.label} workflow example</li>
-          ))}
-        </ul>
-
-        {showcaseItems.length > 0 ? (
-          <TryoutWorkflowChips
-            className="mt-8"
-            items={showcaseItems}
-            activeSlug={templateSlug}
-            onSelect={onSelectShowcase}
-          />
-        ) : null}
-
-        <form onSubmit={handleSubmit} className="mt-8">
+        <form onSubmit={handleSubmit} className="mt-5 sm:mt-6">
           <ComposerShell
             value={primaryValue}
             onChange={(value) => primaryField && updateField(primaryField[0], value)}
-            disabled={!template}
-            placeholder={template ? "Describe the task…" : "Loading…"}
-            canSubmit={canRun}
+            disabled={!template || attachmentUploading}
+            placeholder={
+              template ? "Describe the task or paste your brief…" : "Loading…"
+            }
+            canSubmit={canRun && !attachmentUploading}
             submitting={launching}
+            rows={2}
+            aboveFooter={
+              attachments.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5 px-2 pb-1 sm:px-3">
+                  {attachments.map((attachment) => (
+                    <span
+                      key={attachment.id}
+                      className="inline-flex max-w-full items-center gap-1 rounded-sm border border-white/12 bg-white/[0.03] py-0.5 pl-2 pr-1 font-mono text-2xs text-white/65"
+                    >
+                      <span className="truncate">{attachment.filename}</span>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${attachment.filename}`}
+                        onClick={() => onRemoveAttachment(attachment.id)}
+                        className="rounded-sm p-0.5 text-white/40 transition hover:text-white"
+                      >
+                        <X className="size-3" />
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null
+            }
+            footerClassName="[&>*:not(:first-child)]:md:min-w-0 [&>*:not(:first-child)]:md:flex-1"
             footer={
               <>
+                <button
+                  type="button"
+                  disabled={
+                    !template ||
+                    attachmentUploading ||
+                    attachments.length >= MAX_TRYOUT_ATTACHMENTS
+                  }
+                  onClick={() => fileInputRef.current?.click()}
+                  aria-label="Attach PDF or image"
+                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm border border-white/12 text-white/55 transition hover:border-white/30 hover:text-white disabled:opacity-40"
+                >
+                  {attachmentUploading ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Paperclip className="size-3.5" />
+                  )}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  multiple
+                  accept={TRYOUT_ATTACHMENT_ACCEPT}
+                  onChange={(event) => onAttachFiles(event.target.files)}
+                />
                 <BarPill ready={evalReady} onClick={() => setBarOpen(true)} />
                 <AnimatedPillSelect
+                  icon={<FileText className="size-3.5" />}
                   value={templateSlug}
                   onChange={setTemplateSlug}
                   disabled={templatesLoading}
                   options={templates.map((t) => ({ value: t.slug, label: t.name }))}
                 />
                 <AnimatedPillSelect
+                  icon={<Gauge className="size-3.5" />}
                   value={selectedModelKey}
                   onChange={setSelectedModelKey}
                   options={MODEL_OPTIONS.map((option) => ({
@@ -899,31 +880,43 @@ function TryoutWelcome({
                   }))}
                 />
                 <AnimatedPillSelect
+                  icon={<Scale className="size-3.5" />}
                   value={judgeModel}
                   onChange={setJudgeModel}
                   options={JUDGE_OPTIONS.map((option) => ({
                     value: option.value,
                     label: option.label,
+                    menuLabel: `${option.label} judges`,
                   }))}
                 />
               </>
             }
           />
 
-          {secondaryFields.length > 0 ? (
-            <div className="mt-4 grid gap-x-10 gap-y-5 sm:grid-cols-2">
-              {secondaryFields.map(([field, spec]) => (
-                <CompactField
-                  key={field}
-                  field={field}
-                  spec={spec}
-                  value={fieldValues[field] ?? ""}
-                  required={false}
-                  onChange={updateField}
-                />
+          {!quotaMessage && (
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              {TRYOUT_STARTERS.filter((starter) =>
+                templates.some((item) => item.slug === starter.slug),
+              ).map((starter) => (
+                <button
+                  key={starter.slug}
+                  type="button"
+                  disabled={templatesLoading}
+                  onClick={() =>
+                    onApplyStarter(starter.slug, starter.field, starter.prompt)
+                  }
+                  className={cn(
+                    "rounded-sm border px-3 py-1.5 font-mono text-2xs transition",
+                    templateSlug === starter.slug
+                      ? "border-white/22 text-white/70"
+                      : "border-white/10 text-white/40 hover:border-white/18 hover:text-white/60",
+                  )}
+                >
+                  {starter.label}
+                </button>
               ))}
             </div>
-          ) : null}
+          )}
 
           {message ? <Alert text={message} /> : null}
           {quotaMessage ? (
@@ -944,21 +937,6 @@ function TryoutWelcome({
             </div>
           ) : null}
         </form>
-
-        {template && primaryField ? (
-          <div className="mt-8 border-t border-white/[0.06] pt-6">
-            {suggestionsFor(template.slug).slice(0, 3).map((suggestion) => (
-              <button
-                key={suggestion}
-                type="button"
-                onClick={() => updateField(primaryField[0], suggestion)}
-                className="block w-full py-2 text-left text-sm leading-6 text-white/40 transition hover:text-white/70"
-              >
-                {suggestion}
-              </button>
-            ))}
-          </div>
-        ) : null}
       </div>
 
       <BarDialog
@@ -987,44 +965,6 @@ function TryoutWelcome({
   );
 }
 
-function TryoutWorkflowChips({
-  items,
-  activeSlug,
-  onSelect,
-  className,
-}: {
-  items: TryoutShowcaseItem[];
-  activeSlug: string;
-  onSelect: (item: TryoutShowcaseItem) => void;
-  className?: string;
-}) {
-  return (
-    <div
-      className={cn("flex flex-wrap justify-center gap-2", className)}
-      role="listbox"
-      aria-label="Workflow templates"
-    >
-      {items.map((item) => (
-        <button
-          key={item.slug}
-          type="button"
-          role="option"
-          aria-selected={item.slug === activeSlug}
-          onClick={() => onSelect(item)}
-          className={cn(
-            "rounded-full px-3.5 py-1 text-[13px] transition",
-            item.slug === activeSlug
-              ? "bg-white text-black"
-              : "text-white/45 hover:text-white/75",
-          )}
-        >
-          {item.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 // BarPill is the composer's entry to the eval gate: it shows whether the bar
 // is set and opens the dialog to write or edit it.
 function BarPill({ ready, onClick }: { ready: boolean; onClick: () => void }) {
@@ -1033,11 +973,20 @@ function BarPill({ ready, onClick }: { ready: boolean; onClick: () => void }) {
       type="button"
       onClick={onClick}
       className={cn(
-        "text-[13px] transition",
-        ready ? "text-white/45 hover:text-white/70" : "text-white/85 hover:text-white",
+        "inline-flex shrink-0 items-center gap-1.5 rounded-sm border py-1.5 pl-2.5 pr-2.5 font-mono text-2xs transition",
+        ready
+          ? "border-white/12 text-white/60 hover:border-white/30 hover:text-white/90"
+          : "border-white/35 text-white/90 hover:border-white/60",
       )}
     >
+      <ListChecks className="size-3.5" />
       {ready ? "Bar set" : "Set the bar"}
+      {!ready ? (
+        <span
+          aria-hidden
+          className="size-1 rounded-full bg-white/80 animate-pulse motion-reduce:animate-none"
+        />
+      ) : null}
     </button>
   );
 }
@@ -1112,20 +1061,12 @@ function BarDialog({
               placeholder="50, 500, 10k"
             />
           </div>
-          <div className="grid gap-x-8 gap-y-6 sm:grid-cols-2">
-            <SegmentedControl
-              label="Optimize for"
-              value={values.priority}
-              options={PRIORITY_OPTIONS}
-              onChange={(value) => onChange("priority", value)}
-            />
-            <SegmentedControl
-              label="Output behavior"
-              value={values.style}
-              options={STYLE_OPTIONS}
-              onChange={(value) => onChange("style", value)}
-            />
-          </div>
+          <SegmentedControl
+            label="Output behavior"
+            value={values.style}
+            options={STYLE_OPTIONS}
+            onChange={(value) => onChange("style", value)}
+          />
           <SegmentedControl
             label="How harshly the judge grades"
             value={strictness}
@@ -1806,8 +1747,11 @@ function ComposerShell({
   placeholder,
   canSubmit,
   submitting,
+  aboveFooter,
   footer,
+  footerClassName,
   compact,
+  rows,
   onSubmit,
 }: {
   value: string;
@@ -1816,14 +1760,19 @@ function ComposerShell({
   placeholder: string;
   canSubmit: boolean;
   submitting: boolean;
+  aboveFooter?: ReactNode;
   footer?: ReactNode;
+  footerClassName?: string;
   compact?: boolean;
+  rows?: number;
   onSubmit?: () => void;
 }) {
+  const textareaRows = rows ?? (compact ? 1 : 3);
+
   return (
     <div
       className={cn(
-        "rounded-lg border border-white/10 bg-white/[0.03] p-2 transition focus-within:border-white/25",
+        "rounded-sm border border-white/12 bg-white/[0.015] p-2.5 transition focus-within:border-white/35 sm:p-3",
         compact && "shadow-none",
       )}
     >
@@ -1838,19 +1787,31 @@ function ComposerShell({
             }
           }
         }}
-        rows={compact ? 1 : 3}
+        rows={textareaRows}
         disabled={disabled}
         placeholder={placeholder}
-        className="block w-full resize-none bg-transparent px-3 pt-2 text-base leading-7 text-white outline-none placeholder:text-white/30"
+        className="block w-full resize-none bg-transparent px-2 pt-1 text-base leading-7 text-white outline-none placeholder:text-white/30 sm:px-3 sm:pt-2"
       />
-      <div className="flex items-center justify-between gap-2 px-1 pb-0.5 pt-1">
-        {footer ? <div className="flex flex-wrap items-center gap-2">{footer}</div> : <span />}
+      {aboveFooter}
+      <div className="flex items-end justify-between gap-2 px-0.5 pb-0.5 pt-1.5 sm:items-center sm:px-1">
+        {footer ? (
+          <div
+            className={cn(
+              "flex min-w-0 flex-1 flex-wrap items-center gap-1.5 sm:gap-2 md:flex-nowrap",
+              footerClassName,
+            )}
+          >
+            {footer}
+          </div>
+        ) : (
+          <span />
+        )}
         <button
           type={onSubmit ? "button" : "submit"}
           onClick={onSubmit}
           disabled={!canSubmit || submitting}
           aria-label="Send"
-          className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-white text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="flex size-9 shrink-0 items-center justify-center rounded-sm bg-white text-black transition hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-40 sm:ml-1"
         >
           {submitting ? (
             <Loader2 className="size-4 animate-spin" />
@@ -1863,6 +1824,12 @@ function ComposerShell({
   );
 }
 
+type PillSelectOption = {
+  value: string;
+  label: string;
+  menuLabel?: string;
+};
+
 function AnimatedPillSelect({
   icon,
   value,
@@ -1870,10 +1837,10 @@ function AnimatedPillSelect({
   options,
   disabled,
 }: {
-  icon?: ReactNode;
+  icon: ReactNode;
   value: string;
   onChange: (value: string) => void;
-  options: { value: string; label: string }[];
+  options: PillSelectOption[];
   disabled?: boolean;
 }) {
   const selected = options.find((option) => option.value === value);
@@ -1882,11 +1849,11 @@ function AnimatedPillSelect({
     <DropdownMenu>
       <DropdownMenuTrigger
         disabled={disabled}
-        className="inline-flex max-w-[10rem] items-center gap-1 truncate text-[13px] text-white/45 transition hover:text-white/75 data-popup-open:text-white/90 disabled:opacity-50"
+        className="inline-flex w-full max-w-full min-w-0 shrink-0 items-center gap-1.5 rounded-sm border border-white/12 py-1.5 pl-2 pr-1.5 font-mono text-2xs text-white/60 transition hover:border-white/30 hover:text-white/90 data-popup-open:border-white/40 data-popup-open:text-white disabled:opacity-50 sm:pl-2.5 sm:pr-2 md:w-auto"
       >
-        {icon ? <span className="text-white/35">{icon}</span> : null}
-        <span className="truncate">{selected?.label ?? "Select"}</span>
-        <ChevronDown className="size-3 shrink-0 text-white/30" />
+        <span className="shrink-0 text-white/45">{icon}</span>
+        <span className="min-w-0 truncate">{selected?.label ?? "Select"}</span>
+        <ChevronDown className="size-3.5 shrink-0 text-white/40 transition-transform duration-200 group-data-popup-open:rotate-180" />
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
@@ -1901,7 +1868,7 @@ function AnimatedPillSelect({
               option.value === value && "bg-white/10 text-white",
             )}
           >
-            {option.label}
+            {option.menuLabel ?? option.label}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
@@ -1988,9 +1955,13 @@ function CompactField({
 }) {
   return (
     <label className="block">
-      <span className={cn(MICRO, "flex items-baseline justify-between tracking-[0.16em] text-white/40")}>
+      <span className="flex items-baseline justify-between gap-3 text-sm text-white/50">
         {fieldLabel(field)}
-        {required ? null : <span className="text-white/25">opt</span>}
+        {required ? null : (
+          <span className="font-mono text-2xs uppercase tracking-[0.12em] text-white/30">
+            Optional
+          </span>
+        )}
       </span>
       <input
         type={spec.type === "string" ? "text" : "number"}
@@ -2330,12 +2301,7 @@ function EvalPlanCard({
 }) {
   return (
     <div className={cn("border border-white/12", compact ? "p-4" : "p-5 sm:p-6")}>
-      <div className="flex items-baseline justify-between gap-3">
-        <p className={cn(MICRO, "text-white/40")}>Your rubric</p>
-        <span className="font-mono text-2xs uppercase tracking-[0.14em] text-white/30">
-          {priorityLabel(setup.business_priority)}
-        </span>
-      </div>
+      <p className={cn(MICRO, "text-white/40")}>Your rubric</p>
       <p className="mt-3 text-sm leading-6 text-white/55">
         Graded as if {setup.human_reviewer} signs off. Behavior:{" "}
         {styleLabel(setup.output_style).toLowerCase()}.
@@ -2593,10 +2559,6 @@ function priorityRubricChecks(priority: EvalPriority): string[] {
   }
 }
 
-function priorityLabel(priority: EvalPriority): string {
-  return PRIORITY_OPTIONS.find((option) => option.value === priority)?.label ?? "Correct facts";
-}
-
 function styleLabel(style: EvalStyle): string {
   return STYLE_OPTIONS.find((option) => option.value === style)?.label ?? "Same every time";
 }
@@ -2625,7 +2587,33 @@ function friendlyTraceSummary(event: TryoutTimelineEvent): string {
   }
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  audience: "Who this is for",
+  checklist: "What to check",
+  contract: "Contract text",
+  document: "Document",
+  emails: "Emails",
+  notes: "Notes or transcript",
+  ticket: "Support ticket",
+  brief: "Brief",
+  data: "Data",
+  updates: "Updates",
+  prospect: "Prospect",
+  offer: "Your offer",
+  priorities: "How to prioritize",
+  knowledge_base: "Knowledge base",
+  policy: "Support policy",
+  fields: "Fields to extract",
+  instructions: "Extra instructions",
+  period: "Reporting period",
+  slide_count: "Number of slides",
+  tone: "Tone",
+  fixture: "Code fixture",
+  task: "Bug description",
+};
+
 function fieldLabel(field: string): string {
+  if (FIELD_LABELS[field]) return FIELD_LABELS[field];
   const spaced = field.replaceAll("_", " ");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }

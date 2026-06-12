@@ -206,6 +206,31 @@ func TestPublicTryoutScorecardArtifactProducedValidator(t *testing.T) {
 	}
 }
 
+func TestPublicTryoutTaskPromptIncludesInputAttachments(t *testing.T) {
+	prompt := publicTryoutTaskPrompt(repository.AgentTryout{
+		TemplateSlug: "meeting-minutes",
+		InputSnapshot: json.RawMessage(`{
+			"notes":"Summarize the deck",
+			"input_attachments":[
+				{
+					"filename":"brief.pdf",
+					"media_type":"application/pdf",
+					"storage_key":"agent-tryout-input-attachments/abc/content",
+					"workspace_path":"input/brief.pdf"
+				}
+			]
+		}`),
+		TemplateSnapshot: json.RawMessage(`{"name":"Meeting Minutes","description":"Turn notes into actions","runtime":{}}`),
+	})
+
+	if !strings.Contains(prompt, "User-provided input files are staged in the sandbox workspace") {
+		t.Fatalf("prompt = %q, want input attachment instructions", prompt)
+	}
+	if !strings.Contains(prompt, "/workspace/input/brief.pdf") {
+		t.Fatalf("prompt = %q, want staged file path", prompt)
+	}
+}
+
 func TestPublicTryoutTaskPromptIncludesEvalSetup(t *testing.T) {
 	prompt := publicTryoutTaskPrompt(repository.AgentTryout{
 		TemplateSlug: "slide-deck",

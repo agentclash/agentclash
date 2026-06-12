@@ -1490,6 +1490,10 @@ func (s *fakeAgentTryoutService) ListTemplates(context.Context) ([]AgentTryoutTe
 	return s.templates, nil
 }
 
+func (s *fakeAgentTryoutService) UploadAnonymousTryoutInputAttachment(context.Context, UploadAgentTryoutInputAttachmentInput) (AgentTryoutInputAttachment, error) {
+	return AgentTryoutInputAttachment{}, nil
+}
+
 func (s *fakeAgentTryoutService) CreateAnonymousTryout(_ context.Context, input CreateAnonymousAgentTryoutInput) (repository.AgentTryout, error) {
 	s.createAnonymousInput = input
 	if s.createAnonymousErr != nil {
