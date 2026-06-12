@@ -117,6 +117,7 @@ type CreateAnonymousAgentTryoutInput struct {
 	Input                json.RawMessage
 	SelectedHarnessKind  string
 	SelectedModelPolicy  json.RawMessage
+	Judge                *AgentTryoutJudgeSelection
 	AnonymousFingerprint string
 	Now                  time.Time
 }
@@ -177,6 +178,7 @@ type AgentTryoutManager struct {
 	quota          *AgentTryoutQuotaConfig
 	rerunGate      AgentTryoutRerunGate
 	artifactSigner ArtifactContentSigner
+	judgeModels    []string
 }
 
 // WithArtifactSigner enables signed download URLs on a tryout's captured output
@@ -193,11 +195,27 @@ func NewAgentTryoutManager(authorizer WorkspaceAuthorizer, repo AgentTryoutRepos
 		bySlug[template.Slug] = template
 	}
 	return &AgentTryoutManager{
-		authorizer: authorizer,
-		repo:       repo,
-		now:        time.Now,
-		templates:  bySlug,
+		authorizer:  authorizer,
+		repo:        repo,
+		now:         time.Now,
+		templates:   bySlug,
+		judgeModels: defaultPublicJudgeModels(),
 	}
+}
+
+// WithPublicJudgeModels overrides the hosted LLM-judge allowlist for anonymous
+// tryouts. An empty list keeps the built-in default.
+func (m *AgentTryoutManager) WithPublicJudgeModels(models []string) *AgentTryoutManager {
+	cleaned := make([]string, 0, len(models))
+	for _, model := range models {
+		if trimmed := strings.TrimSpace(model); trimmed != "" {
+			cleaned = append(cleaned, trimmed)
+		}
+	}
+	if len(cleaned) > 0 {
+		m.judgeModels = cleaned
+	}
+	return m
 }
 
 func (m *AgentTryoutManager) WithExecution(starter AgentHarnessExecutionWorkflowStarter, config AgentTryoutExecutionConfig) *AgentTryoutManager {
@@ -285,6 +303,10 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 	if err := validatePublicTryoutModelSelection(selectedHarness, selectedModelPolicy); err != nil {
 		return repository.AgentTryout{}, err
 	}
+	judge, err := normalizePublicTryoutJudge(input.Judge, m.judgeModels)
+	if err != nil {
+		return repository.AgentTryout{}, err
+	}
 	now := input.Now
 	if now.IsZero() {
 		now = m.now()
@@ -297,7 +319,7 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 		InputSnapshot:            input.Input,
 		TemplateSnapshot:         templateSnapshot(template),
 		ToolPolicySnapshot:       template.ToolPolicy,
-		EvaluationSpecSnapshot:   template.EvaluationSpec,
+		EvaluationSpecSnapshot:   evaluationSpecWithPublicJudge(template.EvaluationSpec, judge, input.Input, template.Name),
 		SelectedModelPolicy:      selectedModelPolicy,
 		SelectedHarnessKind:      selectedHarness,
 		Summary:                  json.RawMessage(`{}`),
@@ -984,10 +1006,11 @@ func (m *AgentTryoutManager) lookupTemplate(slug string) (AgentTryoutTemplate, e
 }
 
 type createAgentTryoutRequest struct {
-	TemplateSlug        string          `json:"template_slug"`
-	Input               json.RawMessage `json:"input"`
-	SelectedHarnessKind string          `json:"selected_harness_kind,omitempty"`
-	SelectedModelPolicy json.RawMessage `json:"selected_model_policy,omitempty"`
+	TemplateSlug        string                     `json:"template_slug"`
+	Input               json.RawMessage            `json:"input"`
+	SelectedHarnessKind string                     `json:"selected_harness_kind,omitempty"`
+	SelectedModelPolicy json.RawMessage            `json:"selected_model_policy,omitempty"`
+	Judge               *AgentTryoutJudgeSelection `json:"judge,omitempty"`
 }
 
 type claimAgentTryoutRequest struct {
@@ -1102,6 +1125,7 @@ func createAnonymousAgentTryoutHandler(logger *slog.Logger, service AgentTryoutS
 			Input:                req.Input,
 			SelectedHarnessKind:  req.SelectedHarnessKind,
 			SelectedModelPolicy:  req.SelectedModelPolicy,
+			Judge:                req.Judge,
 			AnonymousFingerprint: anonymousFingerprintFromRequest(r),
 		})
 		if err != nil {

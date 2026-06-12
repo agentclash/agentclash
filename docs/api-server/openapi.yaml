@@ -13060,6 +13060,33 @@ components:
             Optional agent harness to run the tryout. One of codex_e2b,
             claude_e2b, openclaw_e2b, hermes_e2b. Empty uses the hosted default.
           enum: [codex_e2b, claude_e2b, openclaw_e2b, hermes_e2b]
+        selected_model_policy:
+          type: object
+          additionalProperties: true
+          description: Optional explicit model policy for the selected harness.
+        judge:
+          $ref: "#/components/schemas/AgentTryoutJudgeSelection"
+
+    AgentTryoutJudgeSelection:
+      type: object
+      description: >-
+        LLM-as-judge selection for anonymous tryouts. The judge always runs on
+        hosted platform keys; the model must come from the hosted allowlist
+        (default gpt-5-mini, claude-haiku-4-5, gemini-2.5-flash). Omitting the
+        object enables the default judge. The selection is baked into the
+        tryout's evaluation_spec_snapshot as llm_judges declarations, and the
+        verdict appears in the completed summary under scorecard.judge with
+        model, strictness, verdict (approved | needs_edits | rejected |
+        not_judged), score, and per-criterion entries carrying status and the
+        judge's reasoning.
+      properties:
+        model:
+          type: string
+          description: Judge model from the hosted allowlist. Empty uses the default.
+        strictness:
+          type: string
+          enum: [lenient, standard, harsh]
+          description: How harshly the judge grades. Defaults to standard.
 
     ClaimAgentTryoutRequest:
       type: object

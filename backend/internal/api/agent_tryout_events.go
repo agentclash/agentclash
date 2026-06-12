@@ -187,10 +187,16 @@ func tryoutEventSummary(t runevents.Type, facts map[string]any) string {
 		runevents.EventTypeGraderVerificationCodeExecuted:
 		return "Validation"
 	case runevents.EventTypeScoringStarted:
+		if model := factString(facts, "provider_model_id"); model != "" {
+			return fmt.Sprintf("Judge (%s) is grading against your bar", model)
+		}
 		return "Scoring started"
 	case runevents.EventTypeScoringMetricRecorded:
 		return joinSummary("Scored", factString(facts, "metric_key"))
 	case runevents.EventTypeScoringCompleted:
+		if verdict := factString(facts, "verdict"); verdict != "" {
+			return fmt.Sprintf("Judge verdict: %s", strings.ReplaceAll(verdict, "_", " "))
+		}
 		return "Scoring completed"
 	case runevents.EventTypeScoringFailed:
 		return "Scoring failed"
