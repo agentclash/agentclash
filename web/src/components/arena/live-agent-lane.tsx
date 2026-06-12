@@ -203,7 +203,7 @@ export function LiveAgentLane({
       {/* === Streaming model output === */}
       {isActive && lane.streamingOutput && (
         <div className="mb-3">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground mb-1">
+          <div className="text-2xs uppercase tracking-[0.16em] text-muted-foreground mb-1">
             Streaming
           </div>
           <pre className="max-h-32 overflow-auto rounded-md bg-background border border-border px-2.5 py-1.5 text-xs font-[family-name:var(--font-mono)] whitespace-pre-wrap break-words">
@@ -215,7 +215,7 @@ export function LiveAgentLane({
       {/* === Live ticker === */}
       {(isActive || lane.ticker.length > 0) && (
         <div className="mb-3">
-          <div className="text-[10px] uppercase tracking-[0.16em] text-muted-foreground mb-1">
+          <div className="text-2xs uppercase tracking-[0.16em] text-muted-foreground mb-1">
             Activity
           </div>
           <LiveEventTicker entries={lane.ticker} />

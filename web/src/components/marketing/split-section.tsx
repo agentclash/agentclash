@@ -25,7 +25,7 @@ export function SplitSection({
       <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-2 md:gap-20 items-center">
         <div className={reverse ? "md:order-2" : ""}>
           {eyebrow ? (
-            <p className="mb-6 inline-flex items-center gap-2 text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.22em] text-white/45">
+            <p className="mb-6 inline-flex items-center gap-2 text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.22em] text-white/45">
               <span className="inline-block size-1 rounded-full bg-white/60" />
               {eyebrow}
             </p>
@@ -33,7 +33,7 @@ export function SplitSection({
           <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2rem,4.5vw,3.75rem)] max-w-[22ch]">
             {title}
           </h2>
-          <div className="mt-8 max-w-[52ch] text-[15px] sm:text-lg leading-[1.65] text-white/55">
+          <div className="mt-8 max-w-[52ch] text-base sm:text-lg leading-[1.65] text-white/55">
             {body}
           </div>
         </div>

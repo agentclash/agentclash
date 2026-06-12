@@ -43,7 +43,7 @@ export function CopyMarkdownButton({
       onClick={handleCopy}
       className={cn(
         "inline-flex items-center gap-1.5 px-2.5 h-7 rounded-md border transition-colors",
-        "text-[11px] uppercase tracking-[0.12em]",
+        "text-2xs uppercase tracking-[0.12em]",
         copied
           ? "border-emerald-500/30 bg-emerald-500/[0.06] text-emerald-300"
           : "border-white/10 bg-white/[0.02] text-white/55 hover:text-white/85 hover:border-white/20",

@@ -118,7 +118,7 @@ export default function ComparePage() {
               <span>/</span>
               <span>Compare</span>
             </nav>
-            <p className="mt-10 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-cyan-200/70">
+            <p className="mt-10 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-cyan-200/70">
               Agent eval vs prompt eval
             </p>
             <h1 className="mt-5 max-w-[18ch] font-[family-name:var(--font-display)] text-4xl font-normal leading-[1.05] tracking-tight text-white sm:text-6xl">
@@ -147,7 +147,7 @@ export default function ComparePage() {
                   <tr className="border-b border-white/[0.14]">
                     <th
                       scope="col"
-                      className="py-4 pr-4 text-[11px] font-medium uppercase tracking-[0.16em] text-white/40"
+                      className="py-4 pr-4 text-2xs font-medium uppercase tracking-[0.16em] text-white/40"
                     >
                       Capability
                     </th>
@@ -162,7 +162,7 @@ export default function ComparePage() {
                         <span className="block text-sm font-semibold">
                           {column.name}
                         </span>
-                        <span className="mt-1 block text-[9px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/35">
+                        <span className="mt-1 block text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/35">
                           {column.tag}
                         </span>
                       </th>
@@ -176,10 +176,10 @@ export default function ComparePage() {
                       className="border-b border-white/[0.06] align-top"
                     >
                       <th scope="row" className="py-5 pr-6 font-normal">
-                        <span className="block text-[15px] text-white/85">
+                        <span className="block text-base text-white/85">
                           {row.label}
                         </span>
-                        <span className="mt-1 block max-w-[42ch] text-[12px] leading-5 text-white/40">
+                        <span className="mt-1 block max-w-[42ch] text-xs leading-5 text-white/40">
                           {row.sub}
                         </span>
                       </th>
@@ -233,7 +233,7 @@ export default function ComparePage() {
 
         <section className="border-t border-white/[0.06] px-6 py-16 sm:px-12 sm:py-24">
           <div className="mx-auto max-w-[960px]">
-            <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-normal text-white/35">
+            <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
               FAQ
             </p>
             <h2 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl">

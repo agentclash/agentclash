@@ -124,7 +124,7 @@ export function LiveEventTicker({
               </div>
               {entry.kind === "system" && entry.headline === "Race standings injected" && entry.detail && (
                 <div className="pl-[4.5rem] w-full">
-                  <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap break-words font-[family-name:var(--font-mono)] bg-muted/30 p-2 rounded border border-border/50">
+                  <pre className="text-2xs text-muted-foreground whitespace-pre-wrap break-words font-[family-name:var(--font-mono)] bg-muted/30 p-2 rounded border border-border/50">
                     {entry.detail}
                   </pre>
                 </div>

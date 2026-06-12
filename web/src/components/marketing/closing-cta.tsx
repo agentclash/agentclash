@@ -15,7 +15,7 @@ export function ClosingCTA({ title, body, children }: Props) {
             {title}
           </h2>
           {body ? (
-            <div className="mt-8 max-w-[52ch] text-[15px] sm:text-lg leading-[1.6] text-white/55">
+            <div className="mt-8 max-w-[52ch] text-base sm:text-lg leading-[1.6] text-white/55">
               {body}
             </div>
           ) : null}

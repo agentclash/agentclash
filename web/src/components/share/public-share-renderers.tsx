@@ -350,7 +350,7 @@ function PublicComparisonStrip({
     <div className="rounded-md border border-white/[0.08] bg-white/[0.015]">
       <div className="flex items-center gap-2.5 px-4 h-11 border-b border-white/[0.06]">
         <Trophy className="size-3.5 text-white/40" />
-        <h2 className="text-[11px] leading-none text-white/75 uppercase tracking-[0.22em] font-medium">
+        <h2 className="text-2xs leading-none text-white/75 uppercase tracking-[0.22em] font-medium">
           Comparison
         </h2>
       </div>
@@ -364,7 +364,7 @@ function PublicComparisonStrip({
                 current ? "bg-white/[0.04]" : ""
               }`}
             >
-              <span className="w-8 text-[11px] font-[family-name:var(--font-mono)] text-white/45">
+              <span className="w-8 text-2xs font-[family-name:var(--font-mono)] text-white/45">
                 #{index + 1}
               </span>
               <span className="min-w-0 flex-1 truncate text-sm text-white/85">

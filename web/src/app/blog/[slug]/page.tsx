@@ -103,13 +103,13 @@ export default async function BlogPostPage({ params }: Props) {
       <article className="mx-auto w-full max-w-3xl px-6 py-16">
         <Link
           href="/blog"
-          className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35 transition-colors hover:text-white/55"
+          className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/35 transition-colors hover:text-white/55"
         >
           &larr; Blog
         </Link>
 
         <header className="mt-6 mb-8">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] text-white/40">
+          <p className="font-[family-name:var(--font-mono)] text-2xs text-white/40">
             {post.date} &middot; {post.author}
           </p>
           <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl tracking-[-0.02em] leading-[1.15] sm:text-4xl">

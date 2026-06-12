@@ -11,7 +11,7 @@ export function ResourcePackCTA({ className = "", compact = false }: Props) {
     <aside
       className={`rounded-lg border border-white/[0.1] bg-white/[0.035] p-5 sm:p-6 ${className}`}
     >
-      <p className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/40">
+      <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/40">
         Free resource pack
       </p>
       <h2 className="mt-3 text-lg font-sans font-semibold tracking-tight text-white">

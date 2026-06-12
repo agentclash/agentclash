@@ -96,26 +96,26 @@ function TurnBlock({ turn }: { turn: TranscriptTurn }) {
     <div className="px-4 py-4 sm:px-5">
       {/* Turn header */}
       <div className="mb-3 flex items-center gap-2">
-        <span className="font-[family-name:var(--font-mono)] text-[10px] uppercase tracking-[0.18em] text-white/35">
+        <span className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.18em] text-white/35">
           Turn {turn.turn_index}
         </span>
         {turn.phase_id && (
           <Badge
             variant="outline"
-            className="border-white/10 bg-white/[0.03] px-1.5 py-0 text-[10px] font-normal text-white/55"
+            className="border-white/10 bg-white/[0.03] px-1.5 py-0 text-2xs font-normal text-white/55"
           >
             {turn.phase_id}
           </Badge>
         )}
         {turn.mismatch && (
-          <Badge variant="destructive" className="px-1.5 py-0 text-[10px]">
+          <Badge variant="destructive" className="px-1.5 py-0 text-2xs">
             mismatch
           </Badge>
         )}
         {turn.awaiting_human && (
           <Badge
             variant="outline"
-            className="flex items-center gap-1 border-amber-500/30 bg-amber-500/[0.06] px-1.5 py-0 text-[10px] font-normal text-amber-400/90"
+            className="flex items-center gap-1 border-amber-500/30 bg-amber-500/[0.06] px-1.5 py-0 text-2xs font-normal text-amber-400/90"
           >
             <Clock className="size-3" /> awaiting human
           </Badge>
@@ -164,7 +164,7 @@ function SpeakerRow({
     <div className="flex flex-col gap-1.5">
       <div
         className={cn(
-          "flex items-center gap-1.5 text-[10px] uppercase tracking-[0.16em]",
+          "flex items-center gap-1.5 text-2xs uppercase tracking-[0.16em]",
           accent === "student" ? "text-cyan-300/70" : "text-violet-300/70",
         )}
       >
@@ -175,7 +175,7 @@ function SpeakerRow({
       </div>
       <div
         className={cn(
-          "rounded-md border px-3.5 py-2.5 text-[13px] leading-relaxed whitespace-pre-wrap break-words",
+          "rounded-md border px-3.5 py-2.5 text-sm leading-relaxed whitespace-pre-wrap break-words",
           accent === "student"
             ? "border-cyan-400/15 bg-cyan-400/[0.04] text-white/85"
             : "border-violet-400/15 bg-violet-400/[0.04] text-white/85",

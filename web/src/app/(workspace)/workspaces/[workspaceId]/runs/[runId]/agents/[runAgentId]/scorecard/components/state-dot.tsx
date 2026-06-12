@@ -75,8 +75,8 @@ export function StateDot({ state, size = 6 }: { state: StateKind; size?: number 
         side="top"
         className="max-w-[240px] bg-[#0b0b0b] border border-white/10 text-white/85 px-3 py-2"
       >
-        <div className="font-medium text-[11px]">{copy.label}</div>
-        <div className="text-[11px] text-white/55 mt-0.5">{copy.body}</div>
+        <div className="font-medium text-2xs">{copy.label}</div>
+        <div className="text-2xs text-white/55 mt-0.5">{copy.body}</div>
       </TooltipContent>
     </Tooltip>
   );

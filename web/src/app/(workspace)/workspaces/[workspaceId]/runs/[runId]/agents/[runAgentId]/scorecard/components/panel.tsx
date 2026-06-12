@@ -52,7 +52,7 @@ export function PanelHeader({
       )}
     >
       {icon && <span className="text-white/40">{icon}</span>}
-      <h2 className="text-[11px] leading-none text-white/75 uppercase tracking-[0.22em] font-medium">
+      <h2 className="text-2xs leading-none text-white/75 uppercase tracking-[0.22em] font-medium">
         {title}
       </h2>
       {trailing && <div className="ml-auto">{trailing}</div>}

@@ -81,13 +81,13 @@ export default async function BenchmarkReportPage({ params }: Props) {
       <article className="mx-auto w-full max-w-3xl px-6 py-16">
         <Link
           href="/benchmarks"
-          className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35 transition-colors hover:text-white/55"
+          className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/35 transition-colors hover:text-white/55"
         >
           &larr; Benchmarks
         </Link>
 
         <header className="mt-6">
-          <p className="font-[family-name:var(--font-mono)] text-[11px] text-white/40">
+          <p className="font-[family-name:var(--font-mono)] text-2xs text-white/40">
             {report.date} &middot; {report.featuredModel}
             {report.challengePack ? ` · ${report.challengePack}` : ""}
           </p>
@@ -108,7 +108,7 @@ export default async function BenchmarkReportPage({ params }: Props) {
         )}
 
         <section className="mt-8">
-          <h2 className="mb-3 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35">
+          <h2 className="mb-3 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/35">
             Scoreboard
           </h2>
           <BenchmarkScoreboard
@@ -131,7 +131,7 @@ export default async function BenchmarkReportPage({ params }: Props) {
 
         {report.tasks.length > 0 && (
           <section className="mt-10">
-            <h2 className="mb-3 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/35">
+            <h2 className="mb-3 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/35">
               The tasks
             </h2>
             <ol className="flex flex-col gap-2">
@@ -141,7 +141,7 @@ export default async function BenchmarkReportPage({ params }: Props) {
                   className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3"
                 >
                   <div className="flex items-baseline gap-2">
-                    <span className="font-[family-name:var(--font-mono)] text-[11px] text-white/30">
+                    <span className="font-[family-name:var(--font-mono)] text-2xs text-white/30">
                       {String(index + 1).padStart(2, "0")}
                     </span>
                     <span className="text-sm font-medium text-white/85">

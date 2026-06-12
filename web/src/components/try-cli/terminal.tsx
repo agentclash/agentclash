@@ -142,7 +142,7 @@ export function TryCliTerminal({ sessionId, status, onReady }: Props) {
         <span className="size-2.5 rounded-full bg-white/15" />
         <span className="size-2.5 rounded-full bg-white/15" />
         <span className="size-2.5 rounded-full bg-white/15" />
-        <span className="ml-2 font-[family-name:var(--font-mono)] text-[11px] text-white/30">
+        <span className="ml-2 font-[family-name:var(--font-mono)] text-2xs text-white/30">
           e2b · disposable sandbox
         </span>
       </div>

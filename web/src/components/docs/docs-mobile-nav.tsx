@@ -24,7 +24,7 @@ export function DocsMobileNav({
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger
-        className="inline-flex items-center gap-2 rounded-xl border border-white/[0.08] px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/55 transition-colors hover:border-white/15 hover:text-white/75 lg:hidden"
+        className="inline-flex min-h-9 items-center gap-2 rounded-xl border border-white/[0.08] px-3 py-2 text-2xs font-semibold uppercase tracking-wider text-white/55 transition-colors hover:border-white/15 hover:text-white/75 lg:hidden"
         aria-label="Open docs navigation"
       >
         <Menu className="size-4" />

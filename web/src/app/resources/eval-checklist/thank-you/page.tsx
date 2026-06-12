@@ -12,7 +12,7 @@ export const metadata: Metadata = {
 };
 
 const eyebrowClass =
-  "font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.16em] text-white/40";
+  "font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.16em] text-white/40";
 
 export default function EvalChecklistThankYouPage() {
   return (

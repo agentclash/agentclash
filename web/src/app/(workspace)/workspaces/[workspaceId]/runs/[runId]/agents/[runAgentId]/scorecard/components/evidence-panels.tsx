@@ -38,7 +38,7 @@ export function ValidatorsPanel({
         title="Validators"
         icon={<FlaskConical className="size-3.5" />}
         trailing={
-          <span className="text-[11px] text-white/45 font-[family-name:var(--font-mono)]">
+          <span className="text-2xs text-white/45 font-[family-name:var(--font-mono)]">
             {passCount}/{validators.length}
           </span>
         }
@@ -51,7 +51,7 @@ export function ValidatorsPanel({
           >
             <StateDot state={normalizeState(v.verdict, v.state)} />
             <span className="text-sm text-white/85 truncate">{v.key}</span>
-            <span className="text-[10px] uppercase tracking-[0.12em] text-white/35 shrink-0">
+            <span className="text-2xs uppercase tracking-[0.12em] text-white/35 shrink-0">
               {v.type.replace(/_/g, " ")}
             </span>
             <span className="flex-1" />
@@ -89,7 +89,7 @@ export function MetricsPanel({
         title="Metrics"
         icon={<Activity className="size-3.5" />}
         trailing={
-          <span className="text-[11px] text-white/45 font-[family-name:var(--font-mono)]">
+          <span className="text-2xs text-white/45 font-[family-name:var(--font-mono)]">
             {availableCount}/{metrics.length}
           </span>
         }
@@ -102,7 +102,7 @@ export function MetricsPanel({
           >
             <StateDot state={m.state === "available" ? "available" : "unavailable"} />
             <span className="text-sm text-white/85 truncate">{m.key}</span>
-            <span className="text-[10px] uppercase tracking-[0.12em] text-white/35 shrink-0">
+            <span className="text-2xs uppercase tracking-[0.12em] text-white/35 shrink-0">
               {m.collector.replace(/_/g, " ")}
             </span>
             <span className="flex-1" />
@@ -139,7 +139,7 @@ export function JudgesPanel({
         title="LLM Judges"
         icon={<Bot className="size-3.5" />}
         trailing={
-          <span className="text-[11px] text-white/45 font-[family-name:var(--font-mono)]">
+          <span className="text-2xs text-white/45 font-[family-name:var(--font-mono)]">
             {availableCount}/{judges.length}
           </span>
         }
@@ -158,15 +158,15 @@ export function JudgesPanel({
               <span className="text-sm text-white/85 truncate">
                 {judge.judge_key}
               </span>
-              <span className="text-[10px] uppercase tracking-[0.12em] text-white/35 shrink-0">
+              <span className="text-2xs uppercase tracking-[0.12em] text-white/35 shrink-0">
                 {judge.mode.replace(/_/g, " ")}
               </span>
               <span className="flex-1" />
-              <span className="hidden sm:inline font-[family-name:var(--font-mono)] text-[11px] text-white/35 tabular-nums shrink-0">
+              <span className="hidden sm:inline font-[family-name:var(--font-mono)] text-2xs text-white/35 tabular-nums shrink-0">
                 {judge.sample_count}×{judge.model_count}
               </span>
               {judge.confidence && (
-                <span className="hidden md:inline text-[10px] uppercase tracking-[0.12em] text-white/40 shrink-0">
+                <span className="hidden md:inline text-2xs uppercase tracking-[0.12em] text-white/40 shrink-0">
                   {judge.confidence}
                 </span>
               )}

@@ -53,7 +53,7 @@ export function ChangelogPeriodDetail({
       <header className="border-b border-white/[0.08] pb-8">
         <time
           dateTime={period.endDate}
-          className="font-[family-name:var(--font-mono)] text-[11px] text-white/45"
+          className="font-[family-name:var(--font-mono)] text-2xs text-white/45"
         >
           {period.label}
         </time>
@@ -68,7 +68,7 @@ export function ChangelogPeriodDetail({
             {period.themes.map((theme) => (
               <li
                 key={theme}
-                className="rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-[11px] text-white/50"
+                className="rounded-md border border-white/[0.08] bg-white/[0.03] px-2.5 py-1 text-2xs text-white/50"
               >
                 {theme}
               </li>
@@ -78,7 +78,7 @@ export function ChangelogPeriodDetail({
       </header>
 
       <section className="mt-10">
-        <h2 className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.16em] text-white/35">
+        <h2 className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.16em] text-white/35">
           What shipped
         </h2>
         <div className="mt-5 space-y-8">
@@ -106,7 +106,7 @@ export function ChangelogPeriodDetail({
                       entry.text
                     )}
                     {entry.detail ? (
-                      <p className="mt-1 text-[13px] leading-relaxed text-white/40">
+                      <p className="mt-1 text-sm leading-relaxed text-white/40">
                         {entry.detail}
                       </p>
                     ) : null}
@@ -121,10 +121,10 @@ export function ChangelogPeriodDetail({
       {pullRequests.length > 0 ? (
         <section className="mt-12 border-t border-white/[0.08] pt-10">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.16em] text-white/35">
+            <h2 className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.16em] text-white/35">
               Merged pull requests
             </h2>
-            <span className="text-[11px] text-white/30">{pullRequests.length} PRs</span>
+            <span className="text-2xs text-white/30">{pullRequests.length} PRs</span>
           </div>
           <ol className="mt-5 divide-y divide-white/[0.06] rounded-lg border border-white/[0.08]">
             {pullRequests.map((pullRequest) => (
@@ -135,7 +135,7 @@ export function ChangelogPeriodDetail({
                   rel="noopener noreferrer"
                   className="flex items-start gap-3 px-4 py-3 text-sm transition-colors hover:bg-white/[0.03]"
                 >
-                  <span className="shrink-0 font-[family-name:var(--font-mono)] text-[11px] text-white/35">
+                  <span className="shrink-0 font-[family-name:var(--font-mono)] text-2xs text-white/35">
                     #{pullRequest.number}
                   </span>
                   <span className="min-w-0 flex-1 leading-relaxed text-white/70 hover:text-white/90">

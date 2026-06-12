@@ -115,7 +115,7 @@ function ValidatorInspector({
         <DataRow
           label="Type"
           value={
-            <span className="font-[family-name:var(--font-mono)] text-[11px] text-white/60">
+            <span className="font-[family-name:var(--font-mono)] text-2xs text-white/60">
               {detail.type}
             </span>
           }
@@ -193,7 +193,7 @@ function MetricInspector({ detail }: { detail: MetricDetail }) {
         <DataRow
           label="Collector"
           value={
-            <span className="font-[family-name:var(--font-mono)] text-[11px] text-white/60">
+            <span className="font-[family-name:var(--font-mono)] text-2xs text-white/60">
               {detail.collector}
             </span>
           }
@@ -243,7 +243,7 @@ function ValueDisplay({ detail }: { detail: MetricDetail }) {
   }
   if (detail.text_value != null) {
     return (
-      <pre className="text-[12px] text-white/80 whitespace-pre-wrap font-[family-name:var(--font-mono)] max-h-64 overflow-y-auto">
+      <pre className="text-xs text-white/80 whitespace-pre-wrap font-[family-name:var(--font-mono)] max-h-64 overflow-y-auto">
         {detail.text_value}
       </pre>
     );
@@ -318,7 +318,7 @@ function JudgeInspector({ detail }: { detail: LLMJudgeResult }) {
         {parsed.reason && (
           <div className="flex items-start gap-2 border border-red-500/25 bg-red-500/[0.04] rounded-md px-3 py-2.5">
             <XCircle className="size-3.5 text-red-400 shrink-0 mt-0.5" />
-            <div className="text-[12px] text-red-200/85 leading-snug">
+            <div className="text-xs text-red-200/85 leading-snug">
               {parsed.reason}
               {parsed.unableToJudgeCount != null && parsed.unableToJudgeCount > 0 && (
                 <span className="ml-2 text-red-300/70 font-[family-name:var(--font-mono)]">
@@ -334,7 +334,7 @@ function JudgeInspector({ detail }: { detail: LLMJudgeResult }) {
             <AlertTriangle className="size-3.5 text-amber-400 shrink-0 mt-0.5" />
             <ul className="flex-1 space-y-1">
               {parsed.warnings.map((w, i) => (
-                <li key={i} className="text-[11px] text-amber-200/80 leading-snug">
+                <li key={i} className="text-2xs text-amber-200/80 leading-snug">
                   {w}
                 </li>
               ))}
@@ -351,7 +351,7 @@ function JudgeInspector({ detail }: { detail: LLMJudgeResult }) {
                   key={ms.model}
                   className="flex items-center gap-3 px-3 h-9"
                 >
-                  <span className="text-[12px] text-white/75 truncate flex-1 font-[family-name:var(--font-mono)]">
+                  <span className="text-xs text-white/75 truncate flex-1 font-[family-name:var(--font-mono)]">
                     {ms.model}
                   </span>
                   <div className="h-[3px] w-28 bg-white/[0.06] rounded-full overflow-hidden">
@@ -420,20 +420,20 @@ function ModelSampleGroup({
   return (
     <details open={defaultOpen} className="group">
       <summary className="flex items-center gap-3 px-3 h-9 cursor-pointer border border-white/[0.06] rounded-md hover:bg-white/[0.02] group-open:rounded-b-none group-open:border-b-0">
-        <span className="font-[family-name:var(--font-mono)] text-[12px] text-white/75 flex-1 truncate">
+        <span className="font-[family-name:var(--font-mono)] text-xs text-white/75 flex-1 truncate">
           {model}
         </span>
         {avg != null && (
           <span
             className={cn(
-              "font-[family-name:var(--font-mono)] text-[11px] tabular-nums",
+              "font-[family-name:var(--font-mono)] text-2xs tabular-nums",
               scoreColor(avg),
             )}
           >
             {(avg * 100).toFixed(1)}
           </span>
         )}
-        <span className="text-[10px] text-white/40 uppercase tracking-[0.12em]">
+        <span className="text-2xs text-white/40 uppercase tracking-[0.12em]">
           {calls.length}
           {calls.length === 1 ? " sample" : " samples"}
         </span>
@@ -480,7 +480,7 @@ function VarianceSpread({
           style={{ left: `${meanPct}%` }}
         />
       </div>
-      <div className="flex justify-between text-[10px] mt-1.5 uppercase tracking-[0.14em] text-white/35">
+      <div className="flex justify-between text-2xs mt-1.5 uppercase tracking-[0.14em] text-white/35">
         <span>min</span>
         <span className="text-emerald-300/80">
           mean {meanPct.toFixed(1)}
@@ -499,7 +499,7 @@ function Tick({ pct, label }: { pct: number; label: string }) {
       style={{ left: `${pct}%` }}
     >
       <div className="w-[2px] h-2 bg-white/40 mx-auto" />
-      <div className="text-[9px] text-white/40 font-[family-name:var(--font-mono)] tabular-nums mt-1 whitespace-nowrap text-center">
+      <div className="text-2xs text-white/40 font-[family-name:var(--font-mono)] tabular-nums mt-1 whitespace-nowrap text-center">
         {label}
       </div>
     </div>
@@ -529,7 +529,7 @@ function InspectorHeader({
 }) {
   return (
     <div className="border-b border-white/[0.06] px-6 pt-5 pb-4">
-      <div className="flex items-center gap-2 text-[10px] uppercase tracking-[0.18em] text-white/40 mb-2">
+      <div className="flex items-center gap-2 text-2xs uppercase tracking-[0.18em] text-white/40 mb-2">
         <StateDot state={stateKind} />
         {kicker}
         {subtitle && (
@@ -542,7 +542,7 @@ function InspectorHeader({
         )}
       </div>
       <div className="flex items-baseline justify-between gap-4">
-        <h2 className="text-[17px] leading-tight text-white/95 truncate font-medium tracking-[-0.01em]">
+        <h2 className="text-base leading-tight text-white/95 truncate font-medium tracking-[-0.01em]">
           {humanizeKey(title)}
         </h2>
         {score != null && (
@@ -556,7 +556,7 @@ function InspectorHeader({
           </span>
         )}
       </div>
-      <div className="mt-0.5 text-[11px] text-white/35 font-[family-name:var(--font-mono)] truncate">
+      <div className="mt-0.5 text-2xs text-white/35 font-[family-name:var(--font-mono)] truncate">
         {title}
       </div>
     </div>
@@ -572,7 +572,7 @@ function DataRow({
 }) {
   return (
     <div className="flex items-start gap-4 border-b border-white/[0.04] pb-3">
-      <span className="text-[10px] uppercase tracking-[0.16em] text-white/35 w-24 shrink-0 pt-1">
+      <span className="text-2xs uppercase tracking-[0.16em] text-white/35 w-24 shrink-0 pt-1">
         {label}
       </span>
       <div className="flex-1 min-w-0">{value}</div>
@@ -589,7 +589,7 @@ function Section({
 }) {
   return (
     <div>
-      <h3 className="text-[10px] uppercase tracking-[0.2em] text-white/55 mb-2.5 font-medium">
+      <h3 className="text-2xs uppercase tracking-[0.2em] text-white/55 mb-2.5 font-medium">
         {title}
       </h3>
       {children}
@@ -600,7 +600,7 @@ function Section({
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-[#060606] px-3 py-2.5 flex flex-col gap-0.5">
-      <span className="text-[9px] uppercase tracking-[0.16em] text-white/35">
+      <span className="text-2xs uppercase tracking-[0.16em] text-white/35">
         {label}
       </span>
       <span className="font-[family-name:var(--font-mono)] text-sm text-white/90 tabular-nums">
@@ -635,16 +635,16 @@ function ReplaySourceLink({
   const body = (
     <div className="flex items-center justify-between gap-3">
       <div className="flex flex-col gap-0.5 min-w-0">
-        <span className="text-[10px] uppercase tracking-[0.18em] text-white/45">
+        <span className="text-2xs uppercase tracking-[0.18em] text-white/45">
           {label}
         </span>
-        <span className="font-[family-name:var(--font-mono)] text-[12px] text-white/85 truncate">
+        <span className="font-[family-name:var(--font-mono)] text-xs text-white/85 truncate">
           #{source.sequence}
           {meta ? ` · ${meta}` : ""}
         </span>
       </div>
       {href && (
-        <span className="flex items-center gap-1 text-[11px] uppercase tracking-[0.18em] text-white/65 group-hover:text-white">
+        <span className="flex items-center gap-1 text-2xs uppercase tracking-[0.18em] text-white/65 group-hover:text-white">
           View in replay
           <ArrowUpRight className="size-3.5" />
         </span>

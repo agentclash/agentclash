@@ -93,7 +93,7 @@ export function CLIInstallStrip({
   learnMoreLabel?: string;
 }) {
   return (
-    <div className="inline-flex items-center gap-3 rounded-md border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 font-[family-name:var(--font-mono)] text-[12px] text-white/55">
+    <div className="inline-flex items-center gap-3 rounded-md border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 font-[family-name:var(--font-mono)] text-xs text-white/55">
       <span className="text-white/30 select-none">$</span>
       <code className="text-white/85">{command}</code>
       <span className="text-white/20">·</span>

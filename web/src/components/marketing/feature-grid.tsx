@@ -38,7 +38,7 @@ export function FeatureGrid({ features, columns = 3 }: Props) {
             </div>
           )}
 
-          <p className="mt-8 text-[11px] font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/40">
+          <p className="mt-8 text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/40">
             {feature.label}
           </p>
 
@@ -46,7 +46,7 @@ export function FeatureGrid({ features, columns = 3 }: Props) {
             {feature.title}
           </h3>
 
-          <p className="mt-4 text-[14px] leading-[1.65] text-white/55">
+          <p className="mt-4 text-sm leading-[1.65] text-white/55">
             {feature.body}
           </p>
         </li>

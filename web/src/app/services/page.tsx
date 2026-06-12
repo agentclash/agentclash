@@ -149,7 +149,7 @@ export const metadata: Metadata = {
 };
 
 const eyebrowClass =
-  "font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.16em] text-white/40";
+  "font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.16em] text-white/40";
 
 export default function ServicesPage() {
   return (
@@ -222,7 +222,7 @@ export default function ServicesPage() {
                     <h3 className="text-lg font-sans font-semibold tracking-[-0.01em] text-white">
                       {offering.name}
                     </h3>
-                    <span className="font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.12em] text-white/40">
+                    <span className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.12em] text-white/40">
                       {offering.duration}
                     </span>
                   </div>

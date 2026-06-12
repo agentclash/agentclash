@@ -565,7 +565,7 @@ function FailureClusterRollups({
                     <div className="text-sm font-semibold tabular-nums">
                       {cluster.count}
                     </div>
-                    <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                    <div className="text-2xs uppercase tracking-[0.14em] text-muted-foreground">
                       failures
                     </div>
                   </div>
@@ -573,7 +573,7 @@ function FailureClusterRollups({
                     <div className="text-sm font-semibold tabular-nums">
                       {cluster.promotable_count}
                     </div>
-                    <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                    <div className="text-2xs uppercase tracking-[0.14em] text-muted-foreground">
                       promote
                     </div>
                   </div>
@@ -582,7 +582,7 @@ function FailureClusterRollups({
                       <div className="text-sm font-semibold tabular-nums">
                         {history.prior_run_count}
                       </div>
-                      <div className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+                      <div className="text-2xs uppercase tracking-[0.14em] text-muted-foreground">
                         prior
                       </div>
                     </div>
@@ -696,7 +696,7 @@ function FilterSelect({
 }) {
   return (
     <label className="flex flex-col gap-1">
-      <span className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+      <span className="text-2xs uppercase tracking-[0.14em] text-muted-foreground">
         {label}
       </span>
       <select
@@ -843,7 +843,7 @@ function FailureRow({
 
           <div className="mt-2 border-l-2 border-border pl-3 pr-2">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
+              <span className="text-2xs uppercase tracking-[0.14em] text-muted-foreground">
                 Likely issue area
               </span>
               <Badge variant="outline">{item.remediation.label}</Badge>
