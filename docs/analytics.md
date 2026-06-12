@@ -34,15 +34,53 @@ they don't create junk person profiles (and don't inflate MAU billing).
 - `api.request` — non-CLI authenticated request (no browser origin).
 - `web.api.request` — request carrying a browser Origin/Referer.
 
-`/healthz` and `/v1/model-catalog` are skipped.
+**Attribution:** `workspace_id` comes from the `authorizeWorkspaceAccess`
+context, falling back to the `{workspaceID}` route param. `org_id` comes from a
+`{organizationID}` route param, else the caller's single org membership — it is
+**omitted** for multi-org callers rather than guessed (a stable-but-wrong org
+would pollute per-org rollups).
+
+**Skipped:** `/healthz*`, `/v1/model-catalog`, and `/v1/cli-auth/device/token`
+(the login-poll endpoint — `agentclash auth login` polls it ~120×/login). The
+one-shot `/v1/cli-auth/device` initiation is intentionally *not* skipped. Note:
+both device endpoints currently sit outside `trackUsage` (registered on the
+top-level router, not the authenticated `/v1` group), so they emit nothing
+today regardless; the skip is defensive in case they are ever moved under
+tracking.
 
 ### Web (`web/src/lib/analytics/events.ts`)
 - `$pageview` — auto-captured on every App Router navigation
   (`web/src/components/posthog-provider.tsx`).
 - `web.auth.login.success` — once per fresh tab session after login.
-- `web.workspace.created`, `web.provider_account.added`, `web.run.created`,
-  and (defined, wire as needed) `web.org.created`, `web.pack.uploaded`,
-  `web.regression.case_promoted`.
+- `web.org.created` + `web.workspace.created` — onboarding wizard
+  (`web/src/app/onboard/onboarding-wizard.tsx`). `web.workspace.created` also
+  fires from the standalone create-workspace dialog, so the onboarding funnel
+  counts both paths.
+- `web.provider_account.added`, `web.run.created`.
+- `web.pack.uploaded` — challenge-pack publish dialog (`publish-pack-dialog.tsx`).
+- `web.regression.case_promoted` — run-failure → regression case promotion
+  (`promote-failure-dialog.tsx`).
+
+**Public agent-tryouts funnel** (anonymous visitors; stitched per-browser by
+posthog-js — `web/src/app/tryouts/tryouts-client.tsx`):
+- `web.tryout.session_started` — `tryout_id`, `template_slug`, `model_key`.
+- `web.tryout.launch_failed` — `template_slug`, `status_code`.
+- `web.tryout.message_sent` — `tryout_id`, `message_length`.
+- `web.tryout.session_ended` — `tryout_id`.
+- `web.tryout.signup_cta_clicked` — `location`
+  (`header`/`quota`/`save_rerun`/`end_session`), `tryout_id?`.
+- `web.tryout.roi_cta_clicked` — `template_slug`, `email_domain?`.
+
+**Lead-capture surfaces:**
+- `web.resource.lead_submitted` — marketing resource form
+  (`resource-lead-form.tsx`): `source`, `resource`, `intent`, `email_domain?`.
+- `web.agent_opportunity.report_generated` — opportunity report
+  (`agent-opportunity-client.tsx`): `verdict`, `use_case_count`,
+  `company_size?`, `current_pain?`.
+
+**Privacy — no raw PII in properties.** Lead/ROI surfaces collect an email, but
+events only ever carry the derived **`email_domain`** (e.g. `acme.com`), never
+the raw address, and never the company name. Keep it that way when adding events.
 
 ### Worker run lifecycle (`backend/internal/worker/posthog_recorder.go`)
 - `run.started`, `run.completed`, `run.failed`. Props: `run_id`,
@@ -92,6 +130,7 @@ Creates the "AgentClash — Usage" dashboard with the insights below. Idempotent
 | Top CLI commands | Trends on `cli.command.invoked`, breakdown by `command` (or the provisioned HogQL insight) |
 | Top pages / routes | Trends on `$pageview` breakdown by `$pathname`; API routes via `api.request` breakdown by `route` |
 | Onboarding drop-off | **Funnels** — the two provisioned funnels (`Onboarding funnel — web` / `— CLI`) |
+| Tryouts drop-off | **Funnels** — the provisioned `Tryouts funnel` (`/tryouts` view → session → message → signup) |
 | User journeys | **Paths** |
 | DAU / WAU / MAU | Trends with "Active users" math at day/week/month interval |
 | Signups over time | **Lifecycle** insight ("new" series) — no dedicated signup event needed |

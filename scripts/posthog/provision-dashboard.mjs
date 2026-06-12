@@ -76,8 +76,10 @@ function hogqlInsight(name, description, sql) {
   };
 }
 
-// Native funnel insight. steps: [{ event, command? }] — command adds an
-// event-property filter so multiple steps can share the same event name.
+// Native funnel insight. steps: [{ event, command?, properties?, label? }].
+// `command` is shorthand for an exact event-property filter (so multiple steps
+// can share one event name); `properties` is an escape hatch for arbitrary
+// PostHog property filters (e.g. matching $current_url on $pageview).
 function funnelInsight(name, description, steps) {
   return {
     name,
@@ -95,7 +97,9 @@ function funnelInsight(name, description, steps) {
                 { key: "command", value: s.command, operator: "exact", type: "event" },
               ],
             }
-          : {}),
+          : s.properties
+            ? { properties: s.properties }
+            : {}),
       })),
     },
   };
@@ -153,11 +157,12 @@ const INSIGHTS = [
   ),
   hogqlInsight(
     "Daily active users (30d)",
-    "Distinct authenticated users per day across CLI + web.",
+    "Distinct identified users per day across CLI + web. Excludes the shared server-side 'anonymous' distinct_id so unauthenticated traffic doesn't collapse into one fake DAU.",
     `
     SELECT toDate(timestamp) AS day, count(DISTINCT person_id) AS dau
     FROM events
     WHERE timestamp > now() - INTERVAL 30 day
+      AND distinct_id != 'anonymous'
     GROUP BY day
     ORDER BY day
   `,
@@ -210,6 +215,22 @@ const INSIGHTS = [
       { event: "cli.command.invoked", command: "challenge-pack.publish", label: "pack publish" },
       { event: "cli.command.invoked", command: "deployment.create", label: "deployment create" },
       { event: "cli.command.invoked", command: "run.create", label: "run create" },
+    ],
+  ),
+  funnelInsight(
+    "Tryouts funnel",
+    "Public agent tryout drop-off: visited /tryouts → started a session → sent a message → clicked a signup CTA. Anonymous visitors stitch per-browser via posthog-js.",
+    [
+      {
+        event: "$pageview",
+        label: "Visited /tryouts",
+        properties: [
+          { key: "$current_url", value: "/tryouts", operator: "icontains", type: "event" },
+        ],
+      },
+      { event: "web.tryout.session_started", label: "Started session" },
+      { event: "web.tryout.message_sent", label: "Sent a message" },
+      { event: "web.tryout.signup_cta_clicked", label: "Clicked signup" },
     ],
   ),
   lifecycleInsight(

@@ -119,6 +119,14 @@ var trackingSkipPrefixes = []string{
 // trackingSkipExact lists exact paths to skip in addition to prefix matches.
 var trackingSkipExact = map[string]struct{}{
 	"/v1/model-catalog": {},
+	// Device-token polling: `agentclash auth login` polls this endpoint every
+	// ~5s for up to 10 minutes (~120 hits per login). It currently sits outside
+	// the trackUsage middleware (registered on the top-level router in
+	// server.go, not the authenticated /v1 group), so no events are emitted for
+	// it today — but skip it explicitly so that if the route is ever moved under
+	// tracking, polling can never flood analytics. The one-shot initiation
+	// endpoint (/v1/cli-auth/device) is intentionally NOT skipped.
+	"/v1/cli-auth/device/token": {},
 }
 
 func shouldSkipTracking(path string) bool {
@@ -215,13 +223,25 @@ func trackUsage(logger *slog.Logger, hog posthog.Client) func(http.Handler) http
 			if caller, err := CallerFromContext(r.Context()); err == nil {
 				authenticated = true
 				distinctID = caller.UserID.String()
+
+				// workspace_id: prefer the value set by authorizeWorkspaceAccess;
+				// fall back to the {workspaceID} URL param for workspace-scoped
+				// routes that resolve access in the handler rather than in
+				// middleware (so the property is set consistently across both).
 				if wsID, wsErr := WorkspaceIDFromContext(r.Context()); wsErr == nil {
 					props["workspace_id"] = wsID.String()
+				} else if urlWS, ok := uuidURLParam(r, "workspaceID"); ok {
+					props["workspace_id"] = urlWS.String()
 				}
-				// Best-effort org attribution: pick the first membership.
-				for orgID := range caller.OrganizationMemberships {
-					props["org_id"] = orgID.String()
-					break
+
+				// org_id: prefer an explicit {organizationID} from the route;
+				// otherwise attribute only when unambiguous (exactly one
+				// membership). Never guess among multiple orgs — a stable but
+				// possibly-wrong org_id pollutes per-org rollups, so omit it.
+				if urlOrg, ok := uuidURLParam(r, "organizationID"); ok {
+					props["org_id"] = urlOrg.String()
+				} else if len(caller.OrganizationMemberships) == 1 {
+					props["org_id"] = SortedOrganizationMemberships(caller.OrganizationMemberships)[0].OrganizationID.String()
 				}
 			}
 			if !authenticated {
@@ -244,6 +264,22 @@ func trackUsage(logger *slog.Logger, hog posthog.Client) func(http.Handler) http
 			})
 		})
 	}
+}
+
+// uuidURLParam reads a chi URL param and parses it as a UUID. It is safe to
+// call post-serve: the RouteContext (and the params populated during routing)
+// persists in the request context, which is exactly how RoutePattern() is read
+// above. Returns ok=false when the param is absent or not a valid UUID.
+func uuidURLParam(r *http.Request, name string) (uuid.UUID, bool) {
+	raw := chi.URLParam(r, name)
+	if raw == "" {
+		return uuid.Nil, false
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, false
+	}
+	return id, true
 }
 
 // isLikelyWebOrigin returns true if the request carries an Origin or Referer

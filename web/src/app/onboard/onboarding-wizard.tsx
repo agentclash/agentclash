@@ -6,6 +6,8 @@ import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type { OnboardResult } from "@/lib/api/types";
+import { captureWebEvent } from "@/lib/analytics/posthog-client";
+import { WEB_EVENTS } from "@/lib/analytics/events";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Loader2, ArrowRight, Sparkles } from "lucide-react";
@@ -31,6 +33,17 @@ export function OnboardingWizard() {
       const result = await api.post<OnboardResult>("/v1/onboarding", {
         organization_name: orgName.trim(),
         workspace_name: workspaceName.trim(),
+      });
+
+      captureWebEvent(WEB_EVENTS.ORG_CREATED, {
+        organization_id: result.organization.id,
+      });
+      // Wizard path creates org + workspace together; fire workspace.created
+      // here too so the onboarding funnel counts these users (the standalone
+      // create-workspace dialog is the only other emitter).
+      captureWebEvent(WEB_EVENTS.WORKSPACE_CREATED, {
+        workspace_id: result.workspace.id,
+        organization_id: result.organization.id,
       });
 
       toast.success("You're all set!");
