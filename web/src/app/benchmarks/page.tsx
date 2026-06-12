@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { MarketingShell } from "@/components/marketing/marketing-shell";
+import { AgentPromoBanner } from "@/components/marketing/agent-promo-banner";
 import { BenchmarksHubContent } from "@/components/marketing/benchmarks/benchmarks-hub-content";
 import { JsonLd, benchmarkHubSchema } from "@/components/marketing/json-ld";
 import { getAllReports } from "@/lib/benchmarks";
@@ -46,7 +47,7 @@ export default function BenchmarksPage() {
   const published = reports.filter((report) => !report.sample);
 
   return (
-    <MarketingShell>
+    <MarketingShell banner={<AgentPromoBanner page="benchmarks" />}>
       <JsonLd
         id="agentclash-benchmarks-hub-schema"
         data={benchmarkHubSchema(

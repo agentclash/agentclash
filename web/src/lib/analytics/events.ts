@@ -47,6 +47,8 @@ export const WEB_EVENTS = {
   RESOURCE_LEAD_SUBMITTED: "web.resource.lead_submitted",
   /** Agent-opportunity report generated for a visitor. */
   AGENT_OPPORTUNITY_REPORT_GENERATED: "web.agent_opportunity.report_generated",
+  /** Visitor clicked an offer in the top-of-page marketing promo banner. */
+  PROMO_BANNER_CLICKED: "web.marketing.promo_banner_clicked",
 } as const;
 
 export type WebEventName = (typeof WEB_EVENTS)[keyof typeof WEB_EVENTS];
@@ -80,5 +82,13 @@ export interface WebEventPayloads {
     use_case_count: number;
     company_size?: string;
     current_pain?: string;
+  };
+  [WEB_EVENTS.PROMO_BANNER_CLICKED]: {
+    /** Which offer was clicked, e.g. "agent_opportunity" or "tryout". */
+    offer: string;
+    /** Destination route the offer links to. */
+    destination: string;
+    /** Page surface the banner rendered on, e.g. "home", "blog", "benchmarks". */
+    page: string;
   };
 }

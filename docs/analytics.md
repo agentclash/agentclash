@@ -78,6 +78,11 @@ posthog-js — `web/src/app/tryouts/tryouts-client.tsx`):
   (`agent-opportunity-client.tsx`): `verdict`, `use_case_count`,
   `company_size?`, `current_pain?`.
 
+**Marketing promo banner:**
+- `web.marketing.promo_banner_clicked` — top-of-page promo banner offer click
+  (`agent-promo-banner.tsx`, shown on home/blog/benchmarks): `offer`
+  (`agent_opportunity`/`tryout`), `destination`, `page` (`home`/`blog`/`benchmarks`).
+
 **Privacy — no raw PII in properties.** Lead/ROI surfaces collect an email, but
 events only ever carry the derived **`email_domain`** (e.g. `acme.com`), never
 the raw address, and never the company name. Keep it that way when adding events.
