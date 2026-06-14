@@ -42,6 +42,7 @@ func registerProtectedRoutes(
 	billingService BillingService,
 	multiTurnService MultiTurnService,
 	vibeEvalService VibeEvalService,
+	vibeEvalAgentManager *VibeEvalAgentManager,
 ) {
 	entitlementGate := entitlementGateFromBillingService(billingService)
 
@@ -245,6 +246,15 @@ func registerProtectedRoutes(
 		Get("/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}", getVibeEvalDraftHandler(logger, vibeEvalService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Patch("/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}", updateVibeEvalDraftHandler(logger, vibeEvalService))
+	// Guide-agent endpoints (Step 2). Registered only when VIBEEVAL_GUIDE_* is configured;
+	// otherwise the feature stays dark (like other optional services). The handlers run their
+	// own action-tier authz (manage-drafts for turns, read for transcript) before streaming.
+	if vibeEvalAgentManager != nil {
+		router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+			Post("/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/turns", createVibeEvalTurnHandler(logger, vibeEvalAgentManager))
+		router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+			Get("/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/messages", listVibeEvalMessagesHandler(logger, vibeEvalAgentManager))
+	}
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/artifacts", listWorkspaceArtifactsHandler(logger, artifactService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).

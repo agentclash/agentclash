@@ -60,6 +60,7 @@ type routerOptions struct {
 	cliAuthServices            []CLIAuthService
 	multiTurnService           MultiTurnService
 	vibeEvalService            VibeEvalService
+	vibeEvalAgentManager       *VibeEvalAgentManager
 	posthogClient              posthog.Client
 }
 
@@ -98,6 +99,7 @@ func NewServer(
 	eventSubscriber pubsub.EventSubscriber,
 	multiTurnService MultiTurnService,
 	vibeEvalService VibeEvalService,
+	vibeEvalAgentManager *VibeEvalAgentManager,
 	posthogClient posthog.Client,
 	cliAuthServices ...CLIAuthService,
 ) *Server {
@@ -138,6 +140,7 @@ func NewServer(
 		eventSubscriber:            eventSubscriber,
 		multiTurnService:           multiTurnService,
 		vibeEvalService:            vibeEvalService,
+		vibeEvalAgentManager:       vibeEvalAgentManager,
 		posthogClient:              posthogClient,
 		cliAuthServices:            cliAuthServices,
 	})
@@ -288,6 +291,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	billingService := opts.billingService
 	multiTurnService := opts.multiTurnService
 	vibeEvalService := opts.vibeEvalService
+	vibeEvalAgentManager := opts.vibeEvalAgentManager
 	eventSubscriber := opts.eventSubscriber
 	var cliAuthService CLIAuthService
 	if len(opts.cliAuthServices) > 0 {
@@ -401,7 +405,7 @@ func buildRouter(opts routerOptions) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(authenticateRequest(logger, authenticator))
 			r.Use(trackUsage(logger, opts.posthogClient))
-			registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, agentTryoutService, billingService, multiTurnService, vibeEvalService)
+			registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, agentTryoutService, billingService, multiTurnService, vibeEvalService, vibeEvalAgentManager)
 		})
 	})
 

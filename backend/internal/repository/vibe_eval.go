@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
@@ -247,4 +248,137 @@ func cloneRawMessage(raw []byte) json.RawMessage {
 		return nil
 	}
 	return append(json.RawMessage(nil), raw...)
+}
+
+// VibeEvalMessage is one persisted guide-conversation transcript row (Step 2, migration 00058).
+type VibeEvalMessage struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	Seq            int64
+	Role           string
+	Content        string
+	RedactionState string
+	ToolCallID     string
+	ToolName       string
+	ToolArgs       json.RawMessage
+	ToolCalls      json.RawMessage
+	Usage          json.RawMessage
+	CreatedAt      time.Time
+}
+
+// AppendVibeEvalMessageParams is the input for AppendVibeEvalMessage. seq, workspace_id, and
+// organization_id are derived from the conversation row in SQL.
+type AppendVibeEvalMessageParams struct {
+	ConversationID uuid.UUID
+	Role           string
+	Content        string
+	RedactionState string
+	ToolCallID     string
+	ToolName       string
+	ToolArgs       json.RawMessage
+	ToolCalls      json.RawMessage
+	Usage          json.RawMessage
+}
+
+// AppendVibeEvalMessage appends a transcript message. It runs as a two-statement transaction:
+// it first locks the conversation row (FOR NO KEY UPDATE) and then inserts with seq=MAX+1. The
+// lock and insert MUST be separate statements so that, under READ COMMITTED, the insert's
+// MAX(seq) is evaluated against a snapshot taken after the lock wait — a concurrent appender
+// that waited on the lock then sees the prior row and computes the next seq, instead of
+// colliding on a stale MAX. Returns ErrVibeEvalConversationNotFound when the conversation does
+// not exist.
+func (r *Repository) AppendVibeEvalMessage(ctx context.Context, params AppendVibeEvalMessageParams) (VibeEvalMessage, error) {
+	toolArgs := []byte(params.ToolArgs)
+	if len(toolArgs) == 0 {
+		toolArgs = []byte("{}")
+	}
+	usage := []byte(params.Usage)
+	if len(usage) == 0 {
+		usage = []byte("{}")
+	}
+	toolCalls := []byte(params.ToolCalls)
+	if len(toolCalls) == 0 {
+		toolCalls = []byte("[]")
+	}
+
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return VibeEvalMessage{}, fmt.Errorf("begin vibe eval message append: %w", err)
+	}
+	defer rollback(ctx, tx)
+	q := r.queries.WithTx(tx)
+
+	conv, err := q.LockVibeEvalConversationForAppend(ctx, repositorysqlc.LockVibeEvalConversationForAppendParams{
+		ConversationID: params.ConversationID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return VibeEvalMessage{}, ErrVibeEvalConversationNotFound
+		}
+		return VibeEvalMessage{}, err
+	}
+
+	row, err := q.InsertVibeEvalMessage(ctx, repositorysqlc.InsertVibeEvalMessageParams{
+		OrganizationID: conv.OrganizationID,
+		WorkspaceID:    conv.WorkspaceID,
+		ConversationID: params.ConversationID,
+		Role:           params.Role,
+		Content:        params.Content,
+		RedactionState: params.RedactionState,
+		ToolCallID:     params.ToolCallID,
+		ToolName:       params.ToolName,
+		ToolArgs:       toolArgs,
+		ToolCalls:      toolCalls,
+		Usage:          usage,
+	})
+	if err != nil {
+		return VibeEvalMessage{}, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return VibeEvalMessage{}, fmt.Errorf("commit vibe eval message append: %w", err)
+	}
+	return mapVibeEvalMessage(row)
+}
+
+// ListVibeEvalMessagesByConversationID returns a conversation's transcript in seq order.
+func (r *Repository) ListVibeEvalMessagesByConversationID(ctx context.Context, conversationID uuid.UUID) ([]VibeEvalMessage, error) {
+	rows, err := r.queries.ListVibeEvalMessagesByConversationID(ctx, repositorysqlc.ListVibeEvalMessagesByConversationIDParams{ConversationID: conversationID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]VibeEvalMessage, 0, len(rows))
+	for _, row := range rows {
+		m, err := mapVibeEvalMessage(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, nil
+}
+
+func mapVibeEvalMessage(row repositorysqlc.VibeEvalMessage) (VibeEvalMessage, error) {
+	createdAt, err := requiredTime("vibe_eval_messages.created_at", row.CreatedAt)
+	if err != nil {
+		return VibeEvalMessage{}, err
+	}
+	return VibeEvalMessage{
+		ID:             row.ID,
+		OrganizationID: row.OrganizationID,
+		WorkspaceID:    row.WorkspaceID,
+		ConversationID: row.ConversationID,
+		Seq:            row.Seq,
+		Role:           row.Role,
+		Content:        row.Content,
+		RedactionState: row.RedactionState,
+		ToolCallID:     row.ToolCallID,
+		ToolName:       row.ToolName,
+		ToolArgs:       cloneRawMessage(row.ToolArgs),
+		ToolCalls:      cloneRawMessage(row.ToolCalls),
+		Usage:          cloneRawMessage(row.Usage),
+		CreatedAt:      createdAt,
+	}, nil
 }

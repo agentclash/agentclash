@@ -5017,6 +5017,69 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/turns:
+    post:
+      operationId: createVibeEvalTurn
+      summary: Run a Vibe Eval guide-agent turn (Server-Sent Events stream)
+      description: >
+        Runs one bounded guide-agent turn and streams its events as Server-Sent Events.
+        Authorization (manage-drafts tier) is checked before the stream begins, so a 403 is
+        returned as a normal HTTP error. Each SSE frame is `event: <type>` + `data: <json>`
+        where type is one of `assistant.text`, `tool.call`, `tool.result`, `turn.completed`,
+        or `error`. Only registered when the guide agent is configured on the server.
+      tags: [VibeEvals]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/VibeEvalConversationID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateVibeEvalTurnRequest"
+      responses:
+        "200":
+          description: Server-Sent Events stream of turn events.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: "SSE frames: `event: <type>` then `data: <json>` per event."
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/messages:
+    get:
+      operationId: listVibeEvalMessages
+      summary: List a Vibe Eval conversation's transcript
+      tags: [VibeEvals]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/VibeEvalConversationID"
+      responses:
+        "200":
+          description: Conversation transcript in sequence order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListVibeEvalMessagesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/drafts:
     post:
       operationId: createVibeEvalDraft
@@ -12735,6 +12798,56 @@ components:
         phase:
           type: string
           enum: [plan, author, validate, publish, run, analyze, regress, admin]
+
+    CreateVibeEvalTurnRequest:
+      type: object
+      required: [message]
+      properties:
+        message:
+          type: string
+          description: The user's message for this guide-agent turn.
+
+    VibeEvalMessageResponse:
+      type: object
+      required: [id, conversation_id, seq, role, content, redaction_state, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        conversation_id:
+          type: string
+          format: uuid
+        seq:
+          type: integer
+          format: int64
+          description: Monotonic per-conversation sequence number.
+        role:
+          type: string
+          enum: [user, assistant, tool]
+        content:
+          type: string
+          description: >
+            Verbatim text for user/assistant rows; redacted evidence form for tool rows.
+        redaction_state:
+          type: string
+          enum: [none, applied, not_applicable]
+        tool_call_id:
+          type: string
+          description: Links a tool result to its assistant tool call.
+        tool_name:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ListVibeEvalMessagesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VibeEvalMessageResponse"
 
     VibeEvalConversationResponse:
       type: object

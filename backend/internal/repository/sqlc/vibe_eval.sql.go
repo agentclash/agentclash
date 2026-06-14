@@ -200,6 +200,88 @@ func (q *Queries) GetVibeEvalDraftByID(ctx context.Context, arg GetVibeEvalDraft
 	return i, err
 }
 
+const insertVibeEvalMessage = `-- name: InsertVibeEvalMessage :one
+INSERT INTO vibe_eval_messages (
+    organization_id,
+    workspace_id,
+    conversation_id,
+    seq,
+    role,
+    content,
+    redaction_state,
+    tool_call_id,
+    tool_name,
+    tool_args,
+    tool_calls,
+    usage
+)
+VALUES (
+    $1,
+    $2,
+    $3,
+    COALESCE((SELECT MAX(m.seq) FROM vibe_eval_messages m WHERE m.conversation_id = $3), 0) + 1,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    $11
+)
+RETURNING id, organization_id, workspace_id, conversation_id, seq, role, content, redaction_state, tool_call_id, tool_name, tool_args, tool_calls, usage, created_at
+`
+
+type InsertVibeEvalMessageParams struct {
+	OrganizationID uuid.UUID
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	Role           string
+	Content        string
+	RedactionState string
+	ToolCallID     string
+	ToolName       string
+	ToolArgs       []byte
+	ToolCalls      []byte
+	Usage          []byte
+}
+
+// Step 2 of the append: runs after LockVibeEvalConversationForAppend in the same transaction,
+// so MAX(seq) is computed against a post-lock snapshot. org/workspace come from the locked row.
+func (q *Queries) InsertVibeEvalMessage(ctx context.Context, arg InsertVibeEvalMessageParams) (VibeEvalMessage, error) {
+	row := q.db.QueryRow(ctx, insertVibeEvalMessage,
+		arg.OrganizationID,
+		arg.WorkspaceID,
+		arg.ConversationID,
+		arg.Role,
+		arg.Content,
+		arg.RedactionState,
+		arg.ToolCallID,
+		arg.ToolName,
+		arg.ToolArgs,
+		arg.ToolCalls,
+		arg.Usage,
+	)
+	var i VibeEvalMessage
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.WorkspaceID,
+		&i.ConversationID,
+		&i.Seq,
+		&i.Role,
+		&i.Content,
+		&i.RedactionState,
+		&i.ToolCallID,
+		&i.ToolName,
+		&i.ToolArgs,
+		&i.ToolCalls,
+		&i.Usage,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listVibeEvalConversationsByWorkspaceID = `-- name: ListVibeEvalConversationsByWorkspaceID :many
 SELECT id, organization_id, workspace_id, created_by_user_id, title, phase, status, active_draft_id, created_at, updated_at, archived_at
 FROM vibe_eval_conversations
@@ -288,6 +370,88 @@ func (q *Queries) ListVibeEvalDraftsByConversationID(ctx context.Context, arg Li
 		return nil, err
 	}
 	return items, nil
+}
+
+const listVibeEvalMessagesByConversationID = `-- name: ListVibeEvalMessagesByConversationID :many
+SELECT id, organization_id, workspace_id, conversation_id, seq, role, content, redaction_state, tool_call_id, tool_name, tool_args, tool_calls, usage, created_at
+FROM vibe_eval_messages
+WHERE conversation_id = $1
+ORDER BY seq ASC
+`
+
+type ListVibeEvalMessagesByConversationIDParams struct {
+	ConversationID uuid.UUID
+}
+
+func (q *Queries) ListVibeEvalMessagesByConversationID(ctx context.Context, arg ListVibeEvalMessagesByConversationIDParams) ([]VibeEvalMessage, error) {
+	rows, err := q.db.Query(ctx, listVibeEvalMessagesByConversationID, arg.ConversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []VibeEvalMessage
+	for rows.Next() {
+		var i VibeEvalMessage
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.WorkspaceID,
+			&i.ConversationID,
+			&i.Seq,
+			&i.Role,
+			&i.Content,
+			&i.RedactionState,
+			&i.ToolCallID,
+			&i.ToolName,
+			&i.ToolArgs,
+			&i.ToolCalls,
+			&i.Usage,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockVibeEvalConversationForAppend = `-- name: LockVibeEvalConversationForAppend :one
+SELECT
+    vibe_eval_conversations.id,
+    vibe_eval_conversations.organization_id,
+    vibe_eval_conversations.workspace_id
+FROM vibe_eval_conversations
+WHERE vibe_eval_conversations.id = $1
+FOR NO KEY UPDATE
+`
+
+type LockVibeEvalConversationForAppendParams struct {
+	ConversationID uuid.UUID
+}
+
+type LockVibeEvalConversationForAppendRow struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	WorkspaceID    uuid.UUID
+}
+
+// Step 1 of a two-statement append (run inside a repository transaction). Locks the
+// conversation row FOR NO KEY UPDATE so concurrent appends to the same conversation serialize.
+// NO KEY UPDATE (not FOR UPDATE) still mutually excludes concurrent appenders while staying
+// compatible with the FOR KEY SHARE locks that FK checks from sibling inserts
+// (e.g. vibe_eval_drafts referencing this conversation) take on the same row.
+// The lock must be taken in its OWN statement: under READ COMMITTED, the following INSERT then
+// runs with a fresh snapshot taken AFTER the lock wait, so its MAX(seq) sees the prior
+// appender's committed row. A single CTE statement would compute MAX(seq) against the snapshot
+// taken before the lock wait and could still collide on seq.
+func (q *Queries) LockVibeEvalConversationForAppend(ctx context.Context, arg LockVibeEvalConversationForAppendParams) (LockVibeEvalConversationForAppendRow, error) {
+	row := q.db.QueryRow(ctx, lockVibeEvalConversationForAppend, arg.ConversationID)
+	var i LockVibeEvalConversationForAppendRow
+	err := row.Scan(&i.ID, &i.OrganizationID, &i.WorkspaceID)
+	return i, err
 }
 
 const setVibeEvalConversationActiveDraft = `-- name: SetVibeEvalConversationActiveDraft :one

@@ -115,6 +115,9 @@ type Querier interface {
 	InsertRunAgentStatusHistory(ctx context.Context, arg InsertRunAgentStatusHistoryParams) (RunAgentStatusHistory, error)
 	InsertRunEvent(ctx context.Context, arg InsertRunEventParams) (RunEvent, error)
 	InsertRunStatusHistory(ctx context.Context, arg InsertRunStatusHistoryParams) (RunStatusHistory, error)
+	// Step 2 of the append: runs after LockVibeEvalConversationForAppend in the same transaction,
+	// so MAX(seq) is computed against a post-lock snapshot. org/workspace come from the locked row.
+	InsertVibeEvalMessage(ctx context.Context, arg InsertVibeEvalMessageParams) (VibeEvalMessage, error)
 	ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context, arg ListActiveAgentDeploymentsByWorkspaceIDParams) ([]ListActiveAgentDeploymentsByWorkspaceIDRow, error)
 	ListAgentBuildVersionsByBuildID(ctx context.Context, arg ListAgentBuildVersionsByBuildIDParams) ([]AgentBuildVersion, error)
 	ListAgentBuildsByWorkspaceID(ctx context.Context, arg ListAgentBuildsByWorkspaceIDParams) ([]AgentBuild, error)
@@ -165,7 +168,18 @@ type Querier interface {
 	ListRunsByWorkspaceID(ctx context.Context, arg ListRunsByWorkspaceIDParams) ([]Run, error)
 	ListVibeEvalConversationsByWorkspaceID(ctx context.Context, arg ListVibeEvalConversationsByWorkspaceIDParams) ([]VibeEvalConversation, error)
 	ListVibeEvalDraftsByConversationID(ctx context.Context, arg ListVibeEvalDraftsByConversationIDParams) ([]VibeEvalDraft, error)
+	ListVibeEvalMessagesByConversationID(ctx context.Context, arg ListVibeEvalMessagesByConversationIDParams) ([]VibeEvalMessage, error)
 	LockActiveDatasetForVersion(ctx context.Context, arg LockActiveDatasetForVersionParams) (uuid.UUID, error)
+	// Step 1 of a two-statement append (run inside a repository transaction). Locks the
+	// conversation row FOR NO KEY UPDATE so concurrent appends to the same conversation serialize.
+	// NO KEY UPDATE (not FOR UPDATE) still mutually excludes concurrent appenders while staying
+	// compatible with the FOR KEY SHARE locks that FK checks from sibling inserts
+	// (e.g. vibe_eval_drafts referencing this conversation) take on the same row.
+	// The lock must be taken in its OWN statement: under READ COMMITTED, the following INSERT then
+	// runs with a fresh snapshot taken AFTER the lock wait, so its MAX(seq) sees the prior
+	// appender's committed row. A single CTE statement would compute MAX(seq) against the snapshot
+	// taken before the lock wait and could still collide on seq.
+	LockVibeEvalConversationForAppend(ctx context.Context, arg LockVibeEvalConversationForAppendParams) (LockVibeEvalConversationForAppendRow, error)
 	MarkAgentBuildVersionReady(ctx context.Context, arg MarkAgentBuildVersionReadyParams) error
 	MarkBillingCheckoutIntentCompleted(ctx context.Context, arg MarkBillingCheckoutIntentCompletedParams) (int64, error)
 	MarkDatasetTraceCandidatePromotedIfPending(ctx context.Context, arg MarkDatasetTraceCandidatePromotedIfPendingParams) (DatasetTraceCandidate, error)

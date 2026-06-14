@@ -172,6 +172,20 @@ func main() {
 	infraManager := api.NewInfrastructureManager(repo).WithProviderClient(providerRouter)
 	workspaceSecretsManager := api.NewWorkspaceSecretsManager(repo)
 	vibeEvalManager := api.NewVibeEvalManager(authorizer, repo)
+	// Guide agent (Step 2) is optional: enabled only when VIBEEVAL_GUIDE_* is configured.
+	// It reuses the shared providerRouter and the run/scorecard read managers as read-only tools.
+	var vibeEvalAgentManager *api.VibeEvalAgentManager
+	if guideCfg, ok := api.VibeEvalGuideConfigFromEnv(); ok {
+		m, gerr := api.NewVibeEvalAgentManager(authorizer, repo, providerRouter, guideCfg, runReadManager, replayReadManager, challengePackReadManager)
+		if gerr != nil {
+			logger.Error("failed to initialize vibe eval guide agent", "error", gerr)
+			os.Exit(1)
+		}
+		vibeEvalAgentManager = m
+		logger.Info("vibe eval guide agent: enabled")
+	} else {
+		logger.Info("vibe eval guide agent: disabled (VIBEEVAL_GUIDE_* not set)")
+	}
 	cliAuthManager := api.NewCLIAuthManager(repo, logger, cfg.FrontendURL)
 	cliTokenAuth := api.NewCLITokenAuthenticator(repo, logger)
 
@@ -248,6 +262,7 @@ func main() {
 		eventSubscriber,
 		multiTurnManager,
 		vibeEvalManager,
+		vibeEvalAgentManager,
 		posthogClient,
 		cliAuthManager,
 	)

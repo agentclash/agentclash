@@ -664,6 +664,23 @@ type VibeEvalDraft struct {
 	UpdatedAt                       pgtype.Timestamptz
 }
 
+type VibeEvalMessage struct {
+	ID             uuid.UUID
+	OrganizationID uuid.UUID
+	WorkspaceID    uuid.UUID
+	ConversationID uuid.UUID
+	Seq            int64
+	Role           string
+	Content        string
+	RedactionState string
+	ToolCallID     string
+	ToolName       string
+	ToolArgs       []byte
+	ToolCalls      []byte
+	Usage          []byte
+	CreatedAt      pgtype.Timestamptz
+}
+
 type WorkspaceRegressionCase struct {
 	ID                           uuid.UUID
 	SuiteID                      uuid.UUID
