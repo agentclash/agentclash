@@ -17,10 +17,18 @@ import (
 // and inserting in a second statement that gets a post-lock snapshot.
 //
 // Skips automatically when DATABASE_URL is unset (same gate as every other integration test).
-// Run against local PG with the migrations applied:
 //
-//	DATABASE_URL=postgres://agentclash:agentclash@127.0.0.1:5433/agentclash?sslmode=disable \
+// WARNING — DESTRUCTIVE: like all repository integration tests, this calls seedFixture, which
+// TRUNCATEs core tables (organizations, users, …) CASCADE. Point DATABASE_URL at a DISPOSABLE
+// database, never a dev/shared DB you care about. Example with a throwaway container:
+//
+//	docker run -d --name ac-throwaway-pg -p 5434:5432 \
+//	  -e POSTGRES_DB=agentclash -e POSTGRES_USER=agentclash -e POSTGRES_PASSWORD=agentclash postgres:17-alpine
+//	DATABASE_URL=postgres://agentclash:agentclash@127.0.0.1:5434/agentclash?sslmode=disable \
+//	  ./scripts/db/apply-goose-migrations.sh "$DATABASE_URL"
+//	DATABASE_URL=postgres://agentclash:agentclash@127.0.0.1:5434/agentclash?sslmode=disable \
 //	  go test -race -count=1 -run TestRepositoryAppendVibeEvalMessageConcurrentSeqIsContiguous ./internal/repository
+//	docker rm -f ac-throwaway-pg
 func TestRepositoryAppendVibeEvalMessageConcurrentSeqIsContiguous(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
