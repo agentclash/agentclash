@@ -10,6 +10,7 @@ import (
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 var (
@@ -381,4 +382,342 @@ func mapVibeEvalMessage(row repositorysqlc.VibeEvalMessage) (VibeEvalMessage, er
 		Usage:          cloneRawMessage(row.Usage),
 		CreatedAt:      createdAt,
 	}, nil
+}
+
+// --- Tool-invocation audit log (Step 3, migration 00059, #875 §6) ---
+
+var (
+	// ErrVibeEvalConfirmationNotFound is returned when a pending confirmation id does not exist.
+	ErrVibeEvalConfirmationNotFound = errors.New("vibe eval pending confirmation not found")
+	// ErrVibeEvalConfirmationNotResolvable is returned when the atomic resolve matches no row:
+	// the confirmation was already resolved, has expired, or the presented payload hash differs.
+	ErrVibeEvalConfirmationNotResolvable = errors.New("vibe eval pending confirmation not resolvable")
+)
+
+// VibeEvalToolInvocation is one append-only audit row for a draft+ tool call.
+type VibeEvalToolInvocation struct {
+	ID                  uuid.UUID
+	OrganizationID      uuid.UUID
+	WorkspaceID         uuid.UUID
+	ConversationID      uuid.UUID
+	MessageID           *uuid.UUID
+	ActorUserID         uuid.UUID
+	ToolName            string
+	Action              string
+	RiskTier            string
+	PayloadHash         string
+	ConfirmationID      *uuid.UUID
+	RequestPayload      json.RawMessage
+	ResultPayload       json.RawMessage
+	CreditReservationID *uuid.UUID
+	Outcome             string
+	CreatedAt           time.Time
+}
+
+// AppendVibeEvalToolInvocationParams is the input for AppendVibeEvalToolInvocation.
+type AppendVibeEvalToolInvocationParams struct {
+	OrganizationID      uuid.UUID
+	WorkspaceID         uuid.UUID
+	ConversationID      uuid.UUID
+	MessageID           *uuid.UUID
+	ActorUserID         uuid.UUID
+	ToolName            string
+	Action              string
+	RiskTier            string
+	PayloadHash         string
+	ConfirmationID      *uuid.UUID
+	RequestPayload      json.RawMessage
+	ResultPayload       json.RawMessage
+	CreditReservationID *uuid.UUID
+	Outcome             string
+}
+
+// AppendVibeEvalToolInvocation writes one audit row. request/result payloads must already be
+// audit-scrubbed (metadata only) by the caller.
+func (r *Repository) AppendVibeEvalToolInvocation(ctx context.Context, params AppendVibeEvalToolInvocationParams) (VibeEvalToolInvocation, error) {
+	row, err := r.queries.AppendVibeEvalToolInvocation(ctx, repositorysqlc.AppendVibeEvalToolInvocationParams{
+		OrganizationID:      params.OrganizationID,
+		WorkspaceID:         params.WorkspaceID,
+		ConversationID:      params.ConversationID,
+		MessageID:           params.MessageID,
+		ActorUserID:         params.ActorUserID,
+		ToolName:            params.ToolName,
+		Action:              params.Action,
+		RiskTier:            params.RiskTier,
+		PayloadHash:         params.PayloadHash,
+		ConfirmationID:      params.ConfirmationID,
+		RequestPayload:      jsonOrEmptyObject(params.RequestPayload),
+		ResultPayload:       jsonOrEmptyObject(params.ResultPayload),
+		CreditReservationID: params.CreditReservationID,
+		Outcome:             params.Outcome,
+	})
+	if err != nil {
+		return VibeEvalToolInvocation{}, err
+	}
+	return mapVibeEvalToolInvocation(row)
+}
+
+// ListVibeEvalToolInvocationsByConversationID returns a conversation's audit trail, newest first.
+func (r *Repository) ListVibeEvalToolInvocationsByConversationID(ctx context.Context, conversationID uuid.UUID) ([]VibeEvalToolInvocation, error) {
+	rows, err := r.queries.ListVibeEvalToolInvocationsByConversationID(ctx, repositorysqlc.ListVibeEvalToolInvocationsByConversationIDParams{ConversationID: conversationID})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]VibeEvalToolInvocation, 0, len(rows))
+	for _, row := range rows {
+		item, err := mapVibeEvalToolInvocation(row)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+func mapVibeEvalToolInvocation(row repositorysqlc.VibeEvalToolInvocation) (VibeEvalToolInvocation, error) {
+	createdAt, err := requiredTime("vibe_eval_tool_invocations.created_at", row.CreatedAt)
+	if err != nil {
+		return VibeEvalToolInvocation{}, err
+	}
+	return VibeEvalToolInvocation{
+		ID:                  row.ID,
+		OrganizationID:      row.OrganizationID,
+		WorkspaceID:         row.WorkspaceID,
+		ConversationID:      row.ConversationID,
+		MessageID:           row.MessageID,
+		ActorUserID:         row.ActorUserID,
+		ToolName:            row.ToolName,
+		Action:              row.Action,
+		RiskTier:            row.RiskTier,
+		PayloadHash:         row.PayloadHash,
+		ConfirmationID:      row.ConfirmationID,
+		RequestPayload:      cloneRawMessage(row.RequestPayload),
+		ResultPayload:       cloneRawMessage(row.ResultPayload),
+		CreditReservationID: row.CreditReservationID,
+		Outcome:             row.Outcome,
+		CreatedAt:           createdAt,
+	}, nil
+}
+
+// --- Pending confirmations (Step 3, migration 00060, #875 §5.3) ---
+
+// VibeEvalPendingConfirmation is one propose→confirm record for a workspace_write+ tool call.
+type VibeEvalPendingConfirmation struct {
+	ID               uuid.UUID
+	OrganizationID   uuid.UUID
+	WorkspaceID      uuid.UUID
+	ConversationID   uuid.UUID
+	MessageID        *uuid.UUID
+	ProposedByUserID uuid.UUID
+	ToolName         string
+	ToolCallID       string
+	Action           string
+	RiskTier         string
+	PayloadHash      string
+	BoundArgs        json.RawMessage
+	Summary          string
+	Estimate         json.RawMessage
+	Status           string
+	ResolvedByUserID *uuid.UUID
+	ResolvedAt       *time.Time
+	ExpiresAt        time.Time
+	CreatedAt        time.Time
+}
+
+// CreateVibeEvalPendingConfirmationParams is the input for CreateVibeEvalPendingConfirmation.
+type CreateVibeEvalPendingConfirmationParams struct {
+	OrganizationID   uuid.UUID
+	WorkspaceID      uuid.UUID
+	ConversationID   uuid.UUID
+	MessageID        *uuid.UUID
+	ProposedByUserID uuid.UUID
+	ToolName         string
+	ToolCallID       string
+	Action           string
+	RiskTier         string
+	PayloadHash      string
+	BoundArgs        json.RawMessage
+	Summary          string
+	Estimate         json.RawMessage
+	ExpiresAt        time.Time
+}
+
+// CreateVibeEvalPendingConfirmation records a proposed confirmation in 'pending' state. It runs
+// as a transaction that first transitions the conversation's lapsed 'pending' rows to 'expired'
+// (so a stale row no longer occupies the active partial unique index) and then inserts — a
+// duplicate ACTIVE proposal for the same (conversation, tool, payload_hash) still fails the
+// unique index.
+func (r *Repository) CreateVibeEvalPendingConfirmation(ctx context.Context, params CreateVibeEvalPendingConfirmationParams) (VibeEvalPendingConfirmation, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return VibeEvalPendingConfirmation{}, fmt.Errorf("begin pending confirmation create: %w", err)
+	}
+	defer rollback(ctx, tx)
+	q := r.queries.WithTx(tx)
+
+	if _, err := q.ExpireStaleVibeEvalPendingConfirmations(ctx, repositorysqlc.ExpireStaleVibeEvalPendingConfirmationsParams{
+		ConversationID: params.ConversationID,
+	}); err != nil {
+		return VibeEvalPendingConfirmation{}, err
+	}
+
+	row, err := q.CreateVibeEvalPendingConfirmation(ctx, repositorysqlc.CreateVibeEvalPendingConfirmationParams{
+		OrganizationID:   params.OrganizationID,
+		WorkspaceID:      params.WorkspaceID,
+		ConversationID:   params.ConversationID,
+		MessageID:        params.MessageID,
+		ProposedByUserID: params.ProposedByUserID,
+		ToolName:         params.ToolName,
+		ToolCallID:       params.ToolCallID,
+		Action:           params.Action,
+		RiskTier:         params.RiskTier,
+		PayloadHash:      params.PayloadHash,
+		BoundArgs:        jsonOrEmptyObject(params.BoundArgs),
+		Summary:          params.Summary,
+		Estimate:         nilIfEmpty(params.Estimate),
+		ExpiresAt:        pgtype.Timestamptz{Time: params.ExpiresAt.UTC(), Valid: true},
+	})
+	if err != nil {
+		return VibeEvalPendingConfirmation{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return VibeEvalPendingConfirmation{}, fmt.Errorf("commit pending confirmation create: %w", err)
+	}
+	return mapVibeEvalPendingConfirmation(row)
+}
+
+// GetVibeEvalPendingConfirmationByID fetches a confirmation by id.
+func (r *Repository) GetVibeEvalPendingConfirmationByID(ctx context.Context, id uuid.UUID) (VibeEvalPendingConfirmation, error) {
+	row, err := r.queries.GetVibeEvalPendingConfirmationByID(ctx, repositorysqlc.GetVibeEvalPendingConfirmationByIDParams{ID: id})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return VibeEvalPendingConfirmation{}, ErrVibeEvalConfirmationNotFound
+		}
+		return VibeEvalPendingConfirmation{}, err
+	}
+	return mapVibeEvalPendingConfirmation(row)
+}
+
+// ApproveVibeEvalPendingConfirmation atomically claims a pending confirmation, transitioning it
+// 'pending' -> 'executing' (the bound effect then runs). DenyVibeEvalPendingConfirmation does
+// 'pending' -> 'denied'. Both return ErrVibeEvalConfirmationNotResolvable when no row matches
+// (already resolved, expired, or payload-hash mismatch) — the caller must reject. Named methods
+// (rather than a generic newStatus arg) keep callers from moving the row to an illegal state.
+func (r *Repository) ApproveVibeEvalPendingConfirmation(ctx context.Context, id uuid.UUID, presentedHash string, resolvedBy uuid.UUID) (VibeEvalPendingConfirmation, error) {
+	return r.resolveVibeEvalPendingConfirmation(ctx, id, "executing", presentedHash, resolvedBy)
+}
+
+// DenyVibeEvalPendingConfirmation atomically transitions a pending confirmation to 'denied'.
+func (r *Repository) DenyVibeEvalPendingConfirmation(ctx context.Context, id uuid.UUID, presentedHash string, resolvedBy uuid.UUID) (VibeEvalPendingConfirmation, error) {
+	return r.resolveVibeEvalPendingConfirmation(ctx, id, "denied", presentedHash, resolvedBy)
+}
+
+func (r *Repository) resolveVibeEvalPendingConfirmation(ctx context.Context, id uuid.UUID, newStatus, presentedHash string, resolvedBy uuid.UUID) (VibeEvalPendingConfirmation, error) {
+	resolver := resolvedBy
+	row, err := r.queries.ResolveVibeEvalPendingConfirmation(ctx, repositorysqlc.ResolveVibeEvalPendingConfirmationParams{
+		NewStatus:        newStatus,
+		ResolvedByUserID: &resolver,
+		ID:               id,
+		PayloadHash:      presentedHash,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return VibeEvalPendingConfirmation{}, ErrVibeEvalConfirmationNotResolvable
+		}
+		return VibeEvalPendingConfirmation{}, err
+	}
+	return mapVibeEvalPendingConfirmation(row)
+}
+
+// GetVibeEvalPendingConfirmationForResume returns a confirmation only if it is still 'executing'
+// and the presented hash matches — the crash-safe re-entry primitive. A retried POST that lost
+// the Approve race uses this to decide "already executing, re-enter effect" vs reject. Returns
+// ErrVibeEvalConfirmationNotResolvable when not resumable.
+func (r *Repository) GetVibeEvalPendingConfirmationForResume(ctx context.Context, id uuid.UUID, presentedHash string) (VibeEvalPendingConfirmation, error) {
+	row, err := r.queries.GetVibeEvalPendingConfirmationForResume(ctx, repositorysqlc.GetVibeEvalPendingConfirmationForResumeParams{
+		ID:          id,
+		PayloadHash: presentedHash,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return VibeEvalPendingConfirmation{}, ErrVibeEvalConfirmationNotResolvable
+		}
+		return VibeEvalPendingConfirmation{}, err
+	}
+	return mapVibeEvalPendingConfirmation(row)
+}
+
+// MarkVibeEvalPendingConfirmationSucceeded / Failed transition a claimed ('executing')
+// confirmation to its terminal status. ErrVibeEvalConfirmationNotResolvable when the row is no
+// longer 'executing' (already finalized) so the effect is finalized exactly once.
+func (r *Repository) MarkVibeEvalPendingConfirmationSucceeded(ctx context.Context, id uuid.UUID) (VibeEvalPendingConfirmation, error) {
+	return r.markVibeEvalPendingConfirmationResult(ctx, id, "succeeded")
+}
+
+// MarkVibeEvalPendingConfirmationFailed transitions a claimed confirmation to 'failed'.
+func (r *Repository) MarkVibeEvalPendingConfirmationFailed(ctx context.Context, id uuid.UUID) (VibeEvalPendingConfirmation, error) {
+	return r.markVibeEvalPendingConfirmationResult(ctx, id, "failed")
+}
+
+func (r *Repository) markVibeEvalPendingConfirmationResult(ctx context.Context, id uuid.UUID, status string) (VibeEvalPendingConfirmation, error) {
+	row, err := r.queries.MarkVibeEvalPendingConfirmationResult(ctx, repositorysqlc.MarkVibeEvalPendingConfirmationResultParams{
+		Status: status,
+		ID:     id,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return VibeEvalPendingConfirmation{}, ErrVibeEvalConfirmationNotResolvable
+		}
+		return VibeEvalPendingConfirmation{}, err
+	}
+	return mapVibeEvalPendingConfirmation(row)
+}
+
+func mapVibeEvalPendingConfirmation(row repositorysqlc.VibeEvalPendingConfirmation) (VibeEvalPendingConfirmation, error) {
+	createdAt, err := requiredTime("vibe_eval_pending_confirmations.created_at", row.CreatedAt)
+	if err != nil {
+		return VibeEvalPendingConfirmation{}, err
+	}
+	expiresAt, err := requiredTime("vibe_eval_pending_confirmations.expires_at", row.ExpiresAt)
+	if err != nil {
+		return VibeEvalPendingConfirmation{}, err
+	}
+	return VibeEvalPendingConfirmation{
+		ID:               row.ID,
+		OrganizationID:   row.OrganizationID,
+		WorkspaceID:      row.WorkspaceID,
+		ConversationID:   row.ConversationID,
+		MessageID:        row.MessageID,
+		ProposedByUserID: row.ProposedByUserID,
+		ToolName:         row.ToolName,
+		ToolCallID:       row.ToolCallID,
+		Action:           row.Action,
+		RiskTier:         row.RiskTier,
+		PayloadHash:      row.PayloadHash,
+		BoundArgs:        cloneRawMessage(row.BoundArgs),
+		Summary:          row.Summary,
+		Estimate:         cloneRawMessage(row.Estimate),
+		Status:           row.Status,
+		ResolvedByUserID: row.ResolvedByUserID,
+		ResolvedAt:       optionalTime(row.ResolvedAt),
+		ExpiresAt:        expiresAt,
+		CreatedAt:        createdAt,
+	}, nil
+}
+
+// jsonOrEmptyObject coerces an empty/nil RawMessage to a JSON "{}" so NOT NULL jsonb columns
+// keep their object default instead of attempting a NULL insert.
+func jsonOrEmptyObject(raw json.RawMessage) []byte {
+	if len(raw) == 0 {
+		return []byte("{}")
+	}
+	return raw
+}
+
+// nilIfEmpty returns nil for an empty RawMessage so a nullable jsonb column stores SQL NULL.
+func nilIfEmpty(raw json.RawMessage) []byte {
+	if len(raw) == 0 {
+		return nil
+	}
+	return raw
 }

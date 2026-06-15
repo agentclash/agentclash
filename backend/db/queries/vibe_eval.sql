@@ -140,3 +140,134 @@ SELECT *
 FROM vibe_eval_messages
 WHERE conversation_id = @conversation_id
 ORDER BY seq ASC;
+
+-- name: AppendVibeEvalToolInvocation :one
+-- Append-only audit row for one draft+ tool call (#875 §6). request_payload/result_payload are
+-- audit-scrubbed metadata only. confirmation_id is a soft reference (no FK).
+INSERT INTO vibe_eval_tool_invocations (
+    organization_id,
+    workspace_id,
+    conversation_id,
+    message_id,
+    actor_user_id,
+    tool_name,
+    action,
+    risk_tier,
+    payload_hash,
+    confirmation_id,
+    request_payload,
+    result_payload,
+    credit_reservation_id,
+    outcome
+)
+VALUES (
+    @organization_id,
+    @workspace_id,
+    @conversation_id,
+    sqlc.narg('message_id'),
+    @actor_user_id,
+    @tool_name,
+    @action,
+    @risk_tier,
+    @payload_hash,
+    sqlc.narg('confirmation_id'),
+    @request_payload,
+    @result_payload,
+    sqlc.narg('credit_reservation_id'),
+    @outcome
+)
+RETURNING *;
+
+-- name: ListVibeEvalToolInvocationsByConversationID :many
+SELECT *
+FROM vibe_eval_tool_invocations
+WHERE conversation_id = @conversation_id
+ORDER BY created_at DESC, id DESC;
+
+-- name: CreateVibeEvalPendingConfirmation :one
+-- Propose half of the confirmation engine (#875 §5.3). bound_args is the verbatim args to
+-- execute on approve; payload_hash binds the confirmation to exactly those args.
+INSERT INTO vibe_eval_pending_confirmations (
+    organization_id,
+    workspace_id,
+    conversation_id,
+    message_id,
+    proposed_by_user_id,
+    tool_name,
+    tool_call_id,
+    action,
+    risk_tier,
+    payload_hash,
+    bound_args,
+    summary,
+    estimate,
+    expires_at
+)
+VALUES (
+    @organization_id,
+    @workspace_id,
+    @conversation_id,
+    sqlc.narg('message_id'),
+    @proposed_by_user_id,
+    @tool_name,
+    @tool_call_id,
+    @action,
+    @risk_tier,
+    @payload_hash,
+    @bound_args,
+    @summary,
+    sqlc.narg('estimate'),
+    @expires_at
+)
+RETURNING *;
+
+-- name: ExpireStaleVibeEvalPendingConfirmations :many
+-- Transition lapsed 'pending' rows for a conversation to 'expired' so they leave the active
+-- partial unique index and stop blocking re-proposal (#875 §5.3). The create path runs this in
+-- the same tx before inserting.
+UPDATE vibe_eval_pending_confirmations
+SET status = 'expired', resolved_at = now()
+WHERE conversation_id = @conversation_id
+  AND status = 'pending'
+  AND expires_at <= now()
+RETURNING *;
+
+-- name: GetVibeEvalPendingConfirmationForResume :one
+-- Crash-safe re-entry: returns the row only if it is still 'executing' and the presented hash
+-- matches, so a retried POST can resume effect execution exactly once. 0 rows => not resumable.
+SELECT *
+FROM vibe_eval_pending_confirmations
+WHERE id = @id
+  AND status = 'executing'
+  AND payload_hash = @payload_hash
+LIMIT 1;
+
+-- name: GetVibeEvalPendingConfirmationByID :one
+SELECT *
+FROM vibe_eval_pending_confirmations
+WHERE id = @id
+LIMIT 1;
+
+-- name: ResolveVibeEvalPendingConfirmation :one
+-- Atomic, single-use transition out of 'pending' (#875 §5.3). Only the request that matches a
+-- still-pending, unexpired row with the presented payload_hash wins (0 rows => already resolved,
+-- expired, or hash mismatch => reject). @new_status is 'executing' (approve) or 'denied' (deny).
+UPDATE vibe_eval_pending_confirmations
+SET
+    status = @new_status,
+    resolved_by_user_id = @resolved_by_user_id,
+    resolved_at = now()
+WHERE id = @id
+  AND status = 'pending'
+  AND expires_at > now()
+  AND payload_hash = @payload_hash
+RETURNING *;
+
+-- name: MarkVibeEvalPendingConfirmationResult :one
+-- Terminal transition after the bound effect runs: 'executing' -> 'succeeded' | 'failed'.
+-- Conditioned on status='executing' so a crashed/retried effect transitions exactly once.
+UPDATE vibe_eval_pending_confirmations
+SET status = @status
+WHERE id = @id
+  AND status = 'executing'
+RETURNING *;

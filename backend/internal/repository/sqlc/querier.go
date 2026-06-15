@@ -11,6 +11,9 @@ import (
 )
 
 type Querier interface {
+	// Append-only audit row for one draft+ tool call (#875 §6). request_payload/result_payload are
+	// audit-scrubbed metadata only. confirmation_id is a soft reference (no FK).
+	AppendVibeEvalToolInvocation(ctx context.Context, arg AppendVibeEvalToolInvocationParams) (VibeEvalToolInvocation, error)
 	ApplyHostedRunEvent(ctx context.Context, arg ApplyHostedRunEventParams) (HostedRunExecution, error)
 	ArchiveDataset(ctx context.Context, arg ArchiveDatasetParams) (Dataset, error)
 	AttachRunToEvalSession(ctx context.Context, arg AttachRunToEvalSessionParams) (Run, error)
@@ -58,8 +61,15 @@ type Querier interface {
 	CreateRunCaseSelection(ctx context.Context, arg CreateRunCaseSelectionParams) (RunCaseSelection, error)
 	CreateVibeEvalConversation(ctx context.Context, arg CreateVibeEvalConversationParams) (VibeEvalConversation, error)
 	CreateVibeEvalDraft(ctx context.Context, arg CreateVibeEvalDraftParams) (VibeEvalDraft, error)
+	// Propose half of the confirmation engine (#875 §5.3). bound_args is the verbatim args to
+	// execute on approve; payload_hash binds the confirmation to exactly those args.
+	CreateVibeEvalPendingConfirmation(ctx context.Context, arg CreateVibeEvalPendingConfirmationParams) (VibeEvalPendingConfirmation, error)
 	DeletePlayground(ctx context.Context, arg DeletePlaygroundParams) error
 	DeletePlaygroundTestCase(ctx context.Context, arg DeletePlaygroundTestCaseParams) error
+	// Transition lapsed 'pending' rows for a conversation to 'expired' so they leave the active
+	// partial unique index and stop blocking re-proposal (#875 §5.3). The create path runs this in
+	// the same tx before inserting.
+	ExpireStaleVibeEvalPendingConfirmations(ctx context.Context, arg ExpireStaleVibeEvalPendingConfirmationsParams) ([]VibeEvalPendingConfirmation, error)
 	FindOrganizationByDodoSubscriptionOrCustomer(ctx context.Context, arg FindOrganizationByDodoSubscriptionOrCustomerParams) (uuid.UUID, error)
 	FinishBillingWebhookEvent(ctx context.Context, arg FinishBillingWebhookEventParams) (int64, error)
 	GetAgentBuildByID(ctx context.Context, arg GetAgentBuildByIDParams) (AgentBuild, error)
@@ -107,6 +117,10 @@ type Querier interface {
 	GetRunnableChallengePackVersionByID(ctx context.Context, arg GetRunnableChallengePackVersionByIDParams) (ChallengePackVersion, error)
 	GetVibeEvalConversationByID(ctx context.Context, arg GetVibeEvalConversationByIDParams) (VibeEvalConversation, error)
 	GetVibeEvalDraftByID(ctx context.Context, arg GetVibeEvalDraftByIDParams) (VibeEvalDraft, error)
+	GetVibeEvalPendingConfirmationByID(ctx context.Context, arg GetVibeEvalPendingConfirmationByIDParams) (VibeEvalPendingConfirmation, error)
+	// Crash-safe re-entry: returns the row only if it is still 'executing' and the presented hash
+	// matches, so a retried POST can resume effect execution exactly once. 0 rows => not resumable.
+	GetVibeEvalPendingConfirmationForResume(ctx context.Context, arg GetVibeEvalPendingConfirmationForResumeParams) (VibeEvalPendingConfirmation, error)
 	GetWorkspaceUsageWindowRaceCount(ctx context.Context, arg GetWorkspaceUsageWindowRaceCountParams) (int32, error)
 	InsertDatasetBaseline(ctx context.Context, arg InsertDatasetBaselineParams) (DatasetBaseline, error)
 	InsertDatasetExample(ctx context.Context, arg InsertDatasetExampleParams) (DatasetExample, error)
@@ -169,6 +183,7 @@ type Querier interface {
 	ListVibeEvalConversationsByWorkspaceID(ctx context.Context, arg ListVibeEvalConversationsByWorkspaceIDParams) ([]VibeEvalConversation, error)
 	ListVibeEvalDraftsByConversationID(ctx context.Context, arg ListVibeEvalDraftsByConversationIDParams) ([]VibeEvalDraft, error)
 	ListVibeEvalMessagesByConversationID(ctx context.Context, arg ListVibeEvalMessagesByConversationIDParams) ([]VibeEvalMessage, error)
+	ListVibeEvalToolInvocationsByConversationID(ctx context.Context, arg ListVibeEvalToolInvocationsByConversationIDParams) ([]VibeEvalToolInvocation, error)
 	LockActiveDatasetForVersion(ctx context.Context, arg LockActiveDatasetForVersionParams) (uuid.UUID, error)
 	// Step 1 of a two-statement append (run inside a repository transaction). Locks the
 	// conversation row FOR NO KEY UPDATE so concurrent appends to the same conversation serialize.
@@ -186,12 +201,19 @@ type Querier interface {
 	MarkHostedRunExecutionAccepted(ctx context.Context, arg MarkHostedRunExecutionAcceptedParams) (HostedRunExecution, error)
 	MarkHostedRunExecutionFailed(ctx context.Context, arg MarkHostedRunExecutionFailedParams) (HostedRunExecution, error)
 	MarkHostedRunExecutionTimedOut(ctx context.Context, arg MarkHostedRunExecutionTimedOutParams) (HostedRunExecution, error)
+	// Terminal transition after the bound effect runs: 'executing' -> 'succeeded' | 'failed'.
+	// Conditioned on status='executing' so a crashed/retried effect transitions exactly once.
+	MarkVibeEvalPendingConfirmationResult(ctx context.Context, arg MarkVibeEvalPendingConfirmationResultParams) (VibeEvalPendingConfirmation, error)
 	NextDatasetVersionNumber(ctx context.Context, arg NextDatasetVersionNumberParams) (int32, error)
 	PatchDataset(ctx context.Context, arg PatchDatasetParams) (Dataset, error)
 	PatchDatasetExample(ctx context.Context, arg PatchDatasetExampleParams) (DatasetExample, error)
 	PatchRegressionCase(ctx context.Context, arg PatchRegressionCaseParams) (WorkspaceRegressionCase, error)
 	PatchRegressionSuite(ctx context.Context, arg PatchRegressionSuiteParams) (WorkspaceRegressionSuite, error)
 	RecordDatasetEvalRun(ctx context.Context, arg RecordDatasetEvalRunParams) (DatasetEvalRun, error)
+	// Atomic, single-use transition out of 'pending' (#875 §5.3). Only the request that matches a
+	// still-pending, unexpired row with the presented payload_hash wins (0 rows => already resolved,
+	// expired, or hash mismatch => reject). @new_status is 'executing' (approve) or 'denied' (deny).
+	ResolveVibeEvalPendingConfirmation(ctx context.Context, arg ResolveVibeEvalPendingConfirmationParams) (VibeEvalPendingConfirmation, error)
 	ResolveWorkspaceOrganization(ctx context.Context, arg ResolveWorkspaceOrganizationParams) (uuid.UUID, error)
 	SetAgentTryoutRunID(ctx context.Context, arg SetAgentTryoutRunIDParams) (AgentTryout, error)
 	SetDatasetGenerationJobTemporalIDs(ctx context.Context, arg SetDatasetGenerationJobTemporalIDsParams) (DatasetGenerationJob, error)

@@ -9,7 +9,102 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
+
+const appendVibeEvalToolInvocation = `-- name: AppendVibeEvalToolInvocation :one
+INSERT INTO vibe_eval_tool_invocations (
+    organization_id,
+    workspace_id,
+    conversation_id,
+    message_id,
+    actor_user_id,
+    tool_name,
+    action,
+    risk_tier,
+    payload_hash,
+    confirmation_id,
+    request_payload,
+    result_payload,
+    credit_reservation_id,
+    outcome
+)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    $11,
+    $12,
+    $13,
+    $14
+)
+RETURNING id, organization_id, workspace_id, conversation_id, message_id, actor_user_id, tool_name, action, risk_tier, payload_hash, confirmation_id, request_payload, result_payload, credit_reservation_id, outcome, created_at
+`
+
+type AppendVibeEvalToolInvocationParams struct {
+	OrganizationID      uuid.UUID
+	WorkspaceID         uuid.UUID
+	ConversationID      uuid.UUID
+	MessageID           *uuid.UUID
+	ActorUserID         uuid.UUID
+	ToolName            string
+	Action              string
+	RiskTier            string
+	PayloadHash         string
+	ConfirmationID      *uuid.UUID
+	RequestPayload      []byte
+	ResultPayload       []byte
+	CreditReservationID *uuid.UUID
+	Outcome             string
+}
+
+// Append-only audit row for one draft+ tool call (#875 §6). request_payload/result_payload are
+// audit-scrubbed metadata only. confirmation_id is a soft reference (no FK).
+func (q *Queries) AppendVibeEvalToolInvocation(ctx context.Context, arg AppendVibeEvalToolInvocationParams) (VibeEvalToolInvocation, error) {
+	row := q.db.QueryRow(ctx, appendVibeEvalToolInvocation,
+		arg.OrganizationID,
+		arg.WorkspaceID,
+		arg.ConversationID,
+		arg.MessageID,
+		arg.ActorUserID,
+		arg.ToolName,
+		arg.Action,
+		arg.RiskTier,
+		arg.PayloadHash,
+		arg.ConfirmationID,
+		arg.RequestPayload,
+		arg.ResultPayload,
+		arg.CreditReservationID,
+		arg.Outcome,
+	)
+	var i VibeEvalToolInvocation
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.WorkspaceID,
+		&i.ConversationID,
+		&i.MessageID,
+		&i.ActorUserID,
+		&i.ToolName,
+		&i.Action,
+		&i.RiskTier,
+		&i.PayloadHash,
+		&i.ConfirmationID,
+		&i.RequestPayload,
+		&i.ResultPayload,
+		&i.CreditReservationID,
+		&i.Outcome,
+		&i.CreatedAt,
+	)
+	return i, err
+}
 
 const createVibeEvalConversation = `-- name: CreateVibeEvalConversation :one
 INSERT INTO vibe_eval_conversations (
@@ -136,6 +231,159 @@ func (q *Queries) CreateVibeEvalDraft(ctx context.Context, arg CreateVibeEvalDra
 	return i, err
 }
 
+const createVibeEvalPendingConfirmation = `-- name: CreateVibeEvalPendingConfirmation :one
+INSERT INTO vibe_eval_pending_confirmations (
+    organization_id,
+    workspace_id,
+    conversation_id,
+    message_id,
+    proposed_by_user_id,
+    tool_name,
+    tool_call_id,
+    action,
+    risk_tier,
+    payload_hash,
+    bound_args,
+    summary,
+    estimate,
+    expires_at
+)
+VALUES (
+    $1,
+    $2,
+    $3,
+    $4,
+    $5,
+    $6,
+    $7,
+    $8,
+    $9,
+    $10,
+    $11,
+    $12,
+    $13,
+    $14
+)
+RETURNING id, organization_id, workspace_id, conversation_id, message_id, proposed_by_user_id, tool_name, tool_call_id, action, risk_tier, payload_hash, bound_args, summary, estimate, status, resolved_by_user_id, resolved_at, expires_at, created_at
+`
+
+type CreateVibeEvalPendingConfirmationParams struct {
+	OrganizationID   uuid.UUID
+	WorkspaceID      uuid.UUID
+	ConversationID   uuid.UUID
+	MessageID        *uuid.UUID
+	ProposedByUserID uuid.UUID
+	ToolName         string
+	ToolCallID       string
+	Action           string
+	RiskTier         string
+	PayloadHash      string
+	BoundArgs        []byte
+	Summary          string
+	Estimate         []byte
+	ExpiresAt        pgtype.Timestamptz
+}
+
+// Propose half of the confirmation engine (#875 §5.3). bound_args is the verbatim args to
+// execute on approve; payload_hash binds the confirmation to exactly those args.
+func (q *Queries) CreateVibeEvalPendingConfirmation(ctx context.Context, arg CreateVibeEvalPendingConfirmationParams) (VibeEvalPendingConfirmation, error) {
+	row := q.db.QueryRow(ctx, createVibeEvalPendingConfirmation,
+		arg.OrganizationID,
+		arg.WorkspaceID,
+		arg.ConversationID,
+		arg.MessageID,
+		arg.ProposedByUserID,
+		arg.ToolName,
+		arg.ToolCallID,
+		arg.Action,
+		arg.RiskTier,
+		arg.PayloadHash,
+		arg.BoundArgs,
+		arg.Summary,
+		arg.Estimate,
+		arg.ExpiresAt,
+	)
+	var i VibeEvalPendingConfirmation
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.WorkspaceID,
+		&i.ConversationID,
+		&i.MessageID,
+		&i.ProposedByUserID,
+		&i.ToolName,
+		&i.ToolCallID,
+		&i.Action,
+		&i.RiskTier,
+		&i.PayloadHash,
+		&i.BoundArgs,
+		&i.Summary,
+		&i.Estimate,
+		&i.Status,
+		&i.ResolvedByUserID,
+		&i.ResolvedAt,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const expireStaleVibeEvalPendingConfirmations = `-- name: ExpireStaleVibeEvalPendingConfirmations :many
+UPDATE vibe_eval_pending_confirmations
+SET status = 'expired', resolved_at = now()
+WHERE conversation_id = $1
+  AND status = 'pending'
+  AND expires_at <= now()
+RETURNING id, organization_id, workspace_id, conversation_id, message_id, proposed_by_user_id, tool_name, tool_call_id, action, risk_tier, payload_hash, bound_args, summary, estimate, status, resolved_by_user_id, resolved_at, expires_at, created_at
+`
+
+type ExpireStaleVibeEvalPendingConfirmationsParams struct {
+	ConversationID uuid.UUID
+}
+
+// Transition lapsed 'pending' rows for a conversation to 'expired' so they leave the active
+// partial unique index and stop blocking re-proposal (#875 §5.3). The create path runs this in
+// the same tx before inserting.
+func (q *Queries) ExpireStaleVibeEvalPendingConfirmations(ctx context.Context, arg ExpireStaleVibeEvalPendingConfirmationsParams) ([]VibeEvalPendingConfirmation, error) {
+	rows, err := q.db.Query(ctx, expireStaleVibeEvalPendingConfirmations, arg.ConversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []VibeEvalPendingConfirmation
+	for rows.Next() {
+		var i VibeEvalPendingConfirmation
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.WorkspaceID,
+			&i.ConversationID,
+			&i.MessageID,
+			&i.ProposedByUserID,
+			&i.ToolName,
+			&i.ToolCallID,
+			&i.Action,
+			&i.RiskTier,
+			&i.PayloadHash,
+			&i.BoundArgs,
+			&i.Summary,
+			&i.Estimate,
+			&i.Status,
+			&i.ResolvedByUserID,
+			&i.ResolvedAt,
+			&i.ExpiresAt,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getVibeEvalConversationByID = `-- name: GetVibeEvalConversationByID :one
 SELECT id, organization_id, workspace_id, created_by_user_id, title, phase, status, active_draft_id, created_at, updated_at, archived_at
 FROM vibe_eval_conversations
@@ -196,6 +444,87 @@ func (q *Queries) GetVibeEvalDraftByID(ctx context.Context, arg GetVibeEvalDraft
 		&i.UpdatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getVibeEvalPendingConfirmationByID = `-- name: GetVibeEvalPendingConfirmationByID :one
+SELECT id, organization_id, workspace_id, conversation_id, message_id, proposed_by_user_id, tool_name, tool_call_id, action, risk_tier, payload_hash, bound_args, summary, estimate, status, resolved_by_user_id, resolved_at, expires_at, created_at
+FROM vibe_eval_pending_confirmations
+WHERE id = $1
+LIMIT 1
+`
+
+type GetVibeEvalPendingConfirmationByIDParams struct {
+	ID uuid.UUID
+}
+
+func (q *Queries) GetVibeEvalPendingConfirmationByID(ctx context.Context, arg GetVibeEvalPendingConfirmationByIDParams) (VibeEvalPendingConfirmation, error) {
+	row := q.db.QueryRow(ctx, getVibeEvalPendingConfirmationByID, arg.ID)
+	var i VibeEvalPendingConfirmation
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.WorkspaceID,
+		&i.ConversationID,
+		&i.MessageID,
+		&i.ProposedByUserID,
+		&i.ToolName,
+		&i.ToolCallID,
+		&i.Action,
+		&i.RiskTier,
+		&i.PayloadHash,
+		&i.BoundArgs,
+		&i.Summary,
+		&i.Estimate,
+		&i.Status,
+		&i.ResolvedByUserID,
+		&i.ResolvedAt,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const getVibeEvalPendingConfirmationForResume = `-- name: GetVibeEvalPendingConfirmationForResume :one
+SELECT id, organization_id, workspace_id, conversation_id, message_id, proposed_by_user_id, tool_name, tool_call_id, action, risk_tier, payload_hash, bound_args, summary, estimate, status, resolved_by_user_id, resolved_at, expires_at, created_at
+FROM vibe_eval_pending_confirmations
+WHERE id = $1
+  AND status = 'executing'
+  AND payload_hash = $2
+LIMIT 1
+`
+
+type GetVibeEvalPendingConfirmationForResumeParams struct {
+	ID          uuid.UUID
+	PayloadHash string
+}
+
+// Crash-safe re-entry: returns the row only if it is still 'executing' and the presented hash
+// matches, so a retried POST can resume effect execution exactly once. 0 rows => not resumable.
+func (q *Queries) GetVibeEvalPendingConfirmationForResume(ctx context.Context, arg GetVibeEvalPendingConfirmationForResumeParams) (VibeEvalPendingConfirmation, error) {
+	row := q.db.QueryRow(ctx, getVibeEvalPendingConfirmationForResume, arg.ID, arg.PayloadHash)
+	var i VibeEvalPendingConfirmation
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.WorkspaceID,
+		&i.ConversationID,
+		&i.MessageID,
+		&i.ProposedByUserID,
+		&i.ToolName,
+		&i.ToolCallID,
+		&i.Action,
+		&i.RiskTier,
+		&i.PayloadHash,
+		&i.BoundArgs,
+		&i.Summary,
+		&i.Estimate,
+		&i.Status,
+		&i.ResolvedByUserID,
+		&i.ResolvedAt,
+		&i.ExpiresAt,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -418,6 +747,54 @@ func (q *Queries) ListVibeEvalMessagesByConversationID(ctx context.Context, arg 
 	return items, nil
 }
 
+const listVibeEvalToolInvocationsByConversationID = `-- name: ListVibeEvalToolInvocationsByConversationID :many
+SELECT id, organization_id, workspace_id, conversation_id, message_id, actor_user_id, tool_name, action, risk_tier, payload_hash, confirmation_id, request_payload, result_payload, credit_reservation_id, outcome, created_at
+FROM vibe_eval_tool_invocations
+WHERE conversation_id = $1
+ORDER BY created_at DESC, id DESC
+`
+
+type ListVibeEvalToolInvocationsByConversationIDParams struct {
+	ConversationID uuid.UUID
+}
+
+func (q *Queries) ListVibeEvalToolInvocationsByConversationID(ctx context.Context, arg ListVibeEvalToolInvocationsByConversationIDParams) ([]VibeEvalToolInvocation, error) {
+	rows, err := q.db.Query(ctx, listVibeEvalToolInvocationsByConversationID, arg.ConversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []VibeEvalToolInvocation
+	for rows.Next() {
+		var i VibeEvalToolInvocation
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrganizationID,
+			&i.WorkspaceID,
+			&i.ConversationID,
+			&i.MessageID,
+			&i.ActorUserID,
+			&i.ToolName,
+			&i.Action,
+			&i.RiskTier,
+			&i.PayloadHash,
+			&i.ConfirmationID,
+			&i.RequestPayload,
+			&i.ResultPayload,
+			&i.CreditReservationID,
+			&i.Outcome,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockVibeEvalConversationForAppend = `-- name: LockVibeEvalConversationForAppend :one
 SELECT
     vibe_eval_conversations.id,
@@ -451,6 +828,103 @@ func (q *Queries) LockVibeEvalConversationForAppend(ctx context.Context, arg Loc
 	row := q.db.QueryRow(ctx, lockVibeEvalConversationForAppend, arg.ConversationID)
 	var i LockVibeEvalConversationForAppendRow
 	err := row.Scan(&i.ID, &i.OrganizationID, &i.WorkspaceID)
+	return i, err
+}
+
+const markVibeEvalPendingConfirmationResult = `-- name: MarkVibeEvalPendingConfirmationResult :one
+UPDATE vibe_eval_pending_confirmations
+SET status = $1
+WHERE id = $2
+  AND status = 'executing'
+RETURNING id, organization_id, workspace_id, conversation_id, message_id, proposed_by_user_id, tool_name, tool_call_id, action, risk_tier, payload_hash, bound_args, summary, estimate, status, resolved_by_user_id, resolved_at, expires_at, created_at
+`
+
+type MarkVibeEvalPendingConfirmationResultParams struct {
+	Status string
+	ID     uuid.UUID
+}
+
+// Terminal transition after the bound effect runs: 'executing' -> 'succeeded' | 'failed'.
+// Conditioned on status='executing' so a crashed/retried effect transitions exactly once.
+func (q *Queries) MarkVibeEvalPendingConfirmationResult(ctx context.Context, arg MarkVibeEvalPendingConfirmationResultParams) (VibeEvalPendingConfirmation, error) {
+	row := q.db.QueryRow(ctx, markVibeEvalPendingConfirmationResult, arg.Status, arg.ID)
+	var i VibeEvalPendingConfirmation
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.WorkspaceID,
+		&i.ConversationID,
+		&i.MessageID,
+		&i.ProposedByUserID,
+		&i.ToolName,
+		&i.ToolCallID,
+		&i.Action,
+		&i.RiskTier,
+		&i.PayloadHash,
+		&i.BoundArgs,
+		&i.Summary,
+		&i.Estimate,
+		&i.Status,
+		&i.ResolvedByUserID,
+		&i.ResolvedAt,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const resolveVibeEvalPendingConfirmation = `-- name: ResolveVibeEvalPendingConfirmation :one
+UPDATE vibe_eval_pending_confirmations
+SET
+    status = $1,
+    resolved_by_user_id = $2,
+    resolved_at = now()
+WHERE id = $3
+  AND status = 'pending'
+  AND expires_at > now()
+  AND payload_hash = $4
+RETURNING id, organization_id, workspace_id, conversation_id, message_id, proposed_by_user_id, tool_name, tool_call_id, action, risk_tier, payload_hash, bound_args, summary, estimate, status, resolved_by_user_id, resolved_at, expires_at, created_at
+`
+
+type ResolveVibeEvalPendingConfirmationParams struct {
+	NewStatus        string
+	ResolvedByUserID *uuid.UUID
+	ID               uuid.UUID
+	PayloadHash      string
+}
+
+// Atomic, single-use transition out of 'pending' (#875 §5.3). Only the request that matches a
+// still-pending, unexpired row with the presented payload_hash wins (0 rows => already resolved,
+// expired, or hash mismatch => reject). @new_status is 'executing' (approve) or 'denied' (deny).
+func (q *Queries) ResolveVibeEvalPendingConfirmation(ctx context.Context, arg ResolveVibeEvalPendingConfirmationParams) (VibeEvalPendingConfirmation, error) {
+	row := q.db.QueryRow(ctx, resolveVibeEvalPendingConfirmation,
+		arg.NewStatus,
+		arg.ResolvedByUserID,
+		arg.ID,
+		arg.PayloadHash,
+	)
+	var i VibeEvalPendingConfirmation
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.WorkspaceID,
+		&i.ConversationID,
+		&i.MessageID,
+		&i.ProposedByUserID,
+		&i.ToolName,
+		&i.ToolCallID,
+		&i.Action,
+		&i.RiskTier,
+		&i.PayloadHash,
+		&i.BoundArgs,
+		&i.Summary,
+		&i.Estimate,
+		&i.Status,
+		&i.ResolvedByUserID,
+		&i.ResolvedAt,
+		&i.ExpiresAt,
+		&i.CreatedAt,
+	)
 	return i, err
 }
 

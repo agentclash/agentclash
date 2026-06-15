@@ -681,6 +681,47 @@ type VibeEvalMessage struct {
 	CreatedAt      pgtype.Timestamptz
 }
 
+type VibeEvalPendingConfirmation struct {
+	ID               uuid.UUID
+	OrganizationID   uuid.UUID
+	WorkspaceID      uuid.UUID
+	ConversationID   uuid.UUID
+	MessageID        *uuid.UUID
+	ProposedByUserID uuid.UUID
+	ToolName         string
+	ToolCallID       string
+	Action           string
+	RiskTier         string
+	PayloadHash      string
+	BoundArgs        []byte
+	Summary          string
+	Estimate         []byte
+	Status           string
+	ResolvedByUserID *uuid.UUID
+	ResolvedAt       pgtype.Timestamptz
+	ExpiresAt        pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+}
+
+type VibeEvalToolInvocation struct {
+	ID                  uuid.UUID
+	OrganizationID      uuid.UUID
+	WorkspaceID         uuid.UUID
+	ConversationID      uuid.UUID
+	MessageID           *uuid.UUID
+	ActorUserID         uuid.UUID
+	ToolName            string
+	Action              string
+	RiskTier            string
+	PayloadHash         string
+	ConfirmationID      *uuid.UUID
+	RequestPayload      []byte
+	ResultPayload       []byte
+	CreditReservationID *uuid.UUID
+	Outcome             string
+	CreatedAt           pgtype.Timestamptz
+}
+
 type WorkspaceRegressionCase struct {
 	ID                           uuid.UUID
 	SuiteID                      uuid.UUID
