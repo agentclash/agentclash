@@ -52,7 +52,7 @@ const geistMono = Geist_Mono({
 
 const siteUrl = "https://www.agentclash.dev";
 const siteDescription =
-  "Open-source AI agent evaluation platform. Race coding, research, support & ops agents head-to-head on real tasks — replay, scorecards & CI regression gates.";
+  "Open-source AI agent evaluation platform. Find where your agents break on real tasks, replay every failure, promote regressions, and gate releases on scorecards.";
 
 // Webmaster-verification metadata (Google Search Console + Bing). See
 // lib/seo `webmasterVerification` and docs/frontend/seo-verification.md.
@@ -74,7 +74,8 @@ export const metadata: Metadata = {
     "coding agent benchmark",
     "LLM agent evaluation",
     "agent eval CI",
-    "head-to-head AI benchmarks",
+    "agent failure debugging",
+    "agent regression testing",
     "agent evaluation",
     "LLM testing",
   ],
@@ -92,7 +93,7 @@ export const metadata: Metadata = {
         url: "/og-image.png",
         width: 1200,
         height: 630,
-        alt: "AgentClash — Same challenge. Same tools. Six AI models race head-to-head.",
+        alt: "AgentClash — Find where your agent broke. Replay failures and gate releases.",
       },
     ],
   },

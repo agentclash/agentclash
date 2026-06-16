@@ -185,7 +185,7 @@ export function publisherSchema(): Record<string, unknown> {
     alternateName: "Agent Clash",
     url: SITE_URL,
     description:
-      "Open-source AI agent evaluation platform for racing agents head-to-head on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
+      "Open-source AI agent evaluation platform for finding agent failures on real tasks, replaying every step, promoting regressions, and gating releases on scorecards.",
     logo: {
       "@type": "ImageObject",
       url: `${SITE_URL}/icon.svg`,
@@ -218,7 +218,7 @@ export function websiteSchema(): Record<string, unknown> {
     alternateName: "Agent Clash",
     url: SITE_URL,
     description:
-      "Open-source AI agent evaluation platform. Race agents head-to-head on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
+      "Open-source AI agent evaluation platform. Find where agents break on real tasks, replay failures, promote regressions, and gate releases on scorecards.",
     publisher: publisherSchema(),
   };
 }
@@ -233,7 +233,7 @@ export function softwareSourceCodeSchema(): Record<string, unknown> {
     name: "AgentClash",
     alternateName: "Agent Clash",
     description:
-      "Open-source race engine that pits AI models and agents against each other on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
+      "Open-source AI agent evaluation platform for replayable failures, regression gates, sandboxed tool use, and CI-ready scorecards on real tasks.",
     url: SITE_URL,
     codeRepository: "https://github.com/agentclash/agentclash",
     programmingLanguage: ["Go", "TypeScript"],
@@ -354,7 +354,7 @@ type BenchmarkReportSchemaInput = {
 
 // A benchmark report carries both an editorial article and a structured
 // comparison. We emit a breadcrumb, a BlogPosting (via articleSchema), and a
-// Dataset node — the Dataset is what makes the head-to-head legible to search
+// Dataset node — the Dataset is what makes the comparison legible to search
 // and answer engines for "benchmark" intent.
 export function benchmarkReportSchema(
   report: BenchmarkReportSchemaInput,
@@ -383,7 +383,7 @@ export function benchmarkReportSchema(
       keywords: [
         "AI agent benchmark",
         "LLM agent evaluation",
-        "head-to-head model comparison",
+        "same-task model comparison",
         ...report.results.map((result) => result.model),
       ],
       variableMeasured: [
@@ -433,7 +433,7 @@ export function benchmarkHubSchema(
       "@type": "CollectionPage",
       name: "AgentClash AI Agent Benchmarks",
       description:
-        "Public AI agent benchmarks hub with frozen challenge packs, head-to-head races, replay evidence, scorecards, and monthly reports.",
+        "Public AI agent benchmarks hub with frozen challenge packs, same-task eval runs, replay evidence, scorecards, and monthly reports.",
       url: pageUrl,
       isPartOf: {
         "@type": "WebSite",

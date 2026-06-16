@@ -182,7 +182,7 @@ describe("parseAgentOpportunityReport", () => {
       adversarialCases: 8,
       successCriteria: ["90% correct routing", "No policy hallucinations"],
     },
-    nextSteps: ["Collect real tickets", "Run an AgentClash race"],
+    nextSteps: ["Collect real tickets", "Run an AgentClash eval"],
     evidenceLimitations: ["Only public homepage content was analyzed."],
   };
 

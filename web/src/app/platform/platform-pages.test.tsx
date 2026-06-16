@@ -69,7 +69,7 @@ describe("platform pages structured data", () => {
     expect(software).toMatchObject({
       name: "AI Agent Evaluation Platform for Real Tasks - AgentClash",
       description:
-        "Evaluate AI agents on real tasks with same-tools races, sandboxed execution, replay, scorecards, challenge packs, and CI regression gates.",
+        "Evaluate AI agents on real tasks with same-task evals, sandboxed execution, replay, scorecards, challenge packs, and CI regression gates.",
       url: "https://www.agentclash.dev/platform/agent-evaluation",
       applicationCategory: "DeveloperApplication",
       applicationSubCategory: "AI agent evaluation platform",
@@ -132,7 +132,7 @@ describe("platform page social metadata", () => {
   it("adds explicit social image metadata for agent evaluation", () => {
     const title = "AI Agent Evaluation Platform for Real Tasks - AgentClash";
     const description =
-      "Evaluate AI agents on real tasks with same-tools races, sandboxed execution, replay, scorecards, challenge packs, and CI regression gates.";
+      "Evaluate AI agents on real tasks with same-task evals, sandboxed execution, replay, scorecards, challenge packs, and CI regression gates.";
 
     expect(agentEvaluationMetadata).toMatchObject({
       title,

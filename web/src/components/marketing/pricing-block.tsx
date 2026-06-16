@@ -38,7 +38,7 @@ export function PricingBlock() {
           </div>
 
           <p className="mt-10 mx-auto max-w-[64ch] text-center text-sm leading-6 text-white/60">
-            BYOK on every tier — we never mark up tokens. Race quota pools at
+            BYOK on every tier — we never mark up tokens. Eval quotas pool at
             the workspace level.
           </p>
         </div>

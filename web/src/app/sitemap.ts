@@ -86,7 +86,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       images: [
         ogImage({
           title: "AI Agent Benchmarks",
-          subtitle: "Frozen packs, head-to-head races, replay evidence",
+          subtitle: "Frozen packs, same-task eval runs, replay evidence",
           kind: "Benchmark",
         }),
       ],

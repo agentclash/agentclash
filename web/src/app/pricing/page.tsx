@@ -27,7 +27,7 @@ const faqItems = [
   {
     question: "Is AgentClash free?",
     answer:
-      "Yes. AgentClash is open source under the MIT license, so you can self-host the engine on your own infrastructure for free. There is also a free hosted tier with 25 races per month, one seat, and bring-your-own LLM keys — no credit card required.",
+      "Yes. AgentClash is open source under the MIT license, so you can self-host the engine on your own infrastructure for free. There is also a free hosted tier with 25 eval runs per month, one seat, and bring-your-own LLM keys — no credit card required.",
   },
   {
     question: "How much does AgentClash cost?",
@@ -37,7 +37,7 @@ const faqItems = [
   {
     question: "Do you mark up LLM tokens?",
     answer:
-      "No. AgentClash is bring-your-own-key (BYOK) on every tier — you connect your own LLM provider keys and pay providers directly. We never mark up tokens. Race quota pools at the workspace level.",
+      "No. AgentClash is bring-your-own-key (BYOK) on every tier — you connect your own LLM provider keys and pay providers directly. We never mark up tokens. Eval quota pools at the workspace level.",
   },
   {
     question: "Can I self-host AgentClash instead of paying?",
@@ -113,7 +113,7 @@ export default function PricingPage() {
               Prefer to self-host?
             </h2>
             <p className="mt-4 max-w-[70ch] text-sm leading-7 text-white/60">
-              AgentClash is MIT-licensed and open source. Run the full race
+              AgentClash is MIT-licensed and open source. Run the full eval platform
               engine — API server, Temporal worker, sandboxes, scoring — on your
               own infrastructure at no license cost. The hosted tiers exist only
               to save you the ops and add team features. Start from the{" "}
@@ -162,7 +162,7 @@ export default function PricingPage() {
                 href="/auth/login"
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
               >
-                Start first race
+                Run your first eval
                 <ArrowRight className="size-4" />
               </Link>
               <Link

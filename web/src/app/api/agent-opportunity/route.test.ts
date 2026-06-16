@@ -39,7 +39,7 @@ const report = {
     adversarialCases: 8,
     successCriteria: ["No policy hallucinations", "90% correct routing"],
   },
-  nextSteps: ["Collect real tickets", "Run a same-task AgentClash race"],
+  nextSteps: ["Collect real tickets", "Run a same-task AgentClash eval"],
   evidenceLimitations: ["Only public homepage content was available."],
 };
 

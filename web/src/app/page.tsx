@@ -38,7 +38,7 @@ const softwareApplicationSchema = {
   ...productSchema({
     name: "AgentClash",
     description:
-      "Open-source AI agent evaluation platform for racing agents head-to-head on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
+      "Open-source AI agent evaluation platform for finding agent failures on real tasks, replaying every step, promoting regressions, and gating releases on scorecards.",
     url: SITE_URL,
     applicationSubCategory: "AI agent evaluation platform",
     softwareVersion: "beta",

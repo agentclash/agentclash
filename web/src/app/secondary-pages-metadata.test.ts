@@ -55,14 +55,14 @@ describe("secondary public page social metadata", () => {
     expect(teamMetadata).toMatchObject({
       title: "Team - AgentClash",
       description:
-        "Meet the engineers building AgentClash, an open-source AI agent evaluation platform for real-task races, replay, scorecards, and CI gates.",
+        "Meet the engineers building AgentClash, an open-source AI agent evaluation platform for real-task evals, replay, scorecards, and CI gates.",
       alternates: {
         canonical: "/team",
       },
       openGraph: {
         title: "Team - AgentClash",
         description:
-          "Meet the engineers building AgentClash, an open-source AI agent evaluation platform for real-task races, replay, scorecards, and CI gates.",
+          "Meet the engineers building AgentClash, an open-source AI agent evaluation platform for real-task evals, replay, scorecards, and CI gates.",
         url: "/team",
         type: "website",
         locale: "en_US",
@@ -79,7 +79,7 @@ describe("secondary public page social metadata", () => {
         card: "summary_large_image",
         title: "Team - AgentClash",
         description:
-          "Meet the engineers building AgentClash, an open-source AI agent evaluation platform for real-task races, replay, scorecards, and CI gates.",
+          "Meet the engineers building AgentClash, an open-source AI agent evaluation platform for real-task evals, replay, scorecards, and CI gates.",
         images: [
           {
             url: "/twitter-image.png",

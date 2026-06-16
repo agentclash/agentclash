@@ -55,11 +55,11 @@ describe("blog index social metadata", () => {
     expect(blogMetadata).toMatchObject({
       title: "AI Agent Evaluation Blog - AgentClash",
       description:
-        "Engineering notes on AI agent evaluation, head-to-head agent evals, replayable failures, scorecards, and CI regression gates.",
+        "Engineering notes on AI agent evaluation, same-task agent evals, replayable failures, scorecards, and CI regression gates.",
       openGraph: {
         title: "AI Agent Evaluation Blog - AgentClash",
         description:
-          "Engineering notes on AI agent evaluation, head-to-head agent evals, replayable failures, scorecards, and CI regression gates.",
+          "Engineering notes on AI agent evaluation, same-task agent evals, replayable failures, scorecards, and CI regression gates.",
         url: "/blog",
         type: "website",
         locale: "en_US",
@@ -76,7 +76,7 @@ describe("blog index social metadata", () => {
         card: "summary_large_image",
         title: "AI Agent Evaluation Blog - AgentClash",
         description:
-          "Engineering notes on AI agent evaluation, head-to-head agent evals, replayable failures, scorecards, and CI regression gates.",
+          "Engineering notes on AI agent evaluation, same-task agent evals, replayable failures, scorecards, and CI regression gates.",
         images: [
           {
             url: "/twitter-image.png",

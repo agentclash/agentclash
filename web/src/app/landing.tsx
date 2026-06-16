@@ -1368,21 +1368,21 @@ const LANDING_FEATURES: Array<{
     label: "Regression suites",
     title: "Every failure becomes a test.",
     body:
-      "When a model flunks, the failing trace freezes into a permanent regression. Next week's race replays it. The suite sharpens itself — by the time a new model arrives, it walks into a track paved by every mistake the last one made.",
+      "When a model flunks, the failing trace freezes into a permanent regression. Every future eval replays it. The suite sharpens itself — each escaped failure becomes a test the next agent cannot skip.",
     glyph: <RegressionGlyph />,
   },
   {
     label: "Comparison",
-    title: "Diff two races, side by side.",
+    title: "Diff two runs, side by side.",
     body:
       "Same challenge, new model, or same model with a new prompt. See exactly what moved: completion, cost, latency, tool trajectory, scorecard axes. No guessing which upgrade mattered.",
     glyph: <CompareGlyph />,
   },
   {
     label: "CI/CD",
-    title: "Gate the merge on the race.",
+    title: "Gate the merge on the eval.",
     body:
-      "Trigger races from GitHub Actions, a webhook, or the CLI. Fail the build when your agent regresses on the scorecard you care about. Eval moves from a dashboard you visit to a check that blocks bad code.",
+      "Trigger evals from GitHub Actions, a webhook, or the CLI. Fail the build when your agent regresses on the scorecard you care about. Eval moves from a dashboard you visit to a check that blocks bad code.",
     glyph: <CiCdGlyph />,
   },
 ];
@@ -1514,15 +1514,15 @@ export default function HomePage({
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>
             <h1 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(3rem,7vw,7.5rem)] max-w-[16ch]">
-              Open-source AI agent evaluation.
+              Find where your agent broke.
               <br />
-              <span className="text-white/40">Real tasks. Not vibes.</span>
+              <span className="text-white/40">Before users do.</span>
             </h1>
 
             <p className="mt-10 max-w-[46ch] text-lg sm:text-xl leading-[1.5] text-white/55">
-              Governed head-to-head benchmarks for teams evaluating coding and
-              support agents. Same tools, same constraints — replay every
-              trajectory and gate releases on scorecards leadership can trust.
+              Run agents on your real tasks. Replay every failure step-by-step,
+              promote regressions automatically, and gate releases on scorecards
+              leadership can audit.
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
@@ -1643,14 +1643,14 @@ export default function HomePage({
               A fresh microVM for every agent.
             </h2>
             <p className="mt-10 max-w-[48ch] text-lg leading-[1.6] text-white/60">
-              Each racer boots into its own Firecracker microVM — isolated
-              filesystem, isolated network, no shared kernel. When the race
+              Each agent boots into its own Firecracker microVM — isolated
+              filesystem, isolated network, no shared kernel. When the run
               ends, the sandbox is torn down. The next one spins up clean.
             </p>
             <p className="mt-6 max-w-[48ch] text-lg leading-[1.6] text-white/60">
               That isolation isn&apos;t just safety. It&apos;s what makes
-              the race fair. No model gets a warm cache. No prompt leaks
-              between lanes. The only variable in the race is the model.
+              the comparison fair. No model gets a warm cache. No prompt leaks
+              between lanes. The only variable is the agent you are testing.
             </p>
             <p className="mt-10 max-w-[48ch] text-sm text-white/40">
               Powered by{" "}
@@ -1680,7 +1680,7 @@ export default function HomePage({
               Real tools. Real effects.
             </h2>
             <p className="mt-10 max-w-[50ch] text-lg leading-[1.6] text-white/60">
-              Agents race with the same primitives a developer uses —
+              Agents work with the same primitives a developer uses —
               file I/O, data queries, HTTP, shell, test runners. Real
               commands, real sandboxed effects, not a transcript of
               imagined tool calls.
@@ -1709,7 +1709,7 @@ export default function HomePage({
             <p className="mt-6 max-w-[54ch] text-sm text-white/45">
               Fine-grained policy per pack: allowed tool kinds, shell
               access, network access, max calls per run. Benchmark under
-              tight constraints, or unlock full-power for dev races.
+              tight constraints, or unlock full-power for development evals.
             </p>
           </div>
           <div>
@@ -1796,13 +1796,12 @@ export default function HomePage({
             <div className="mt-10 space-y-6">
               <p className="text-lg leading-[1.6] text-white/60">
                 When a model flunks a challenge, the failing trace is
-                frozen into a permanent test. Next week&apos;s race
-                replays it. The following month&apos;s does too.
+                frozen into a permanent test. Every future eval replays it.
+                The following month&apos;s does too.
               </p>
               <p className="text-lg leading-[1.6] text-white/60">
-                Your eval suite sharpens itself with use. By the time a
-                new model arrives, it walks into a track that was paved
-                by every mistake the last model made.
+                Your eval suite sharpens itself with use. Each escaped
+                failure becomes a regression the next agent cannot skip.
               </p>
             </div>
           </div>
@@ -1820,8 +1819,8 @@ export default function HomePage({
               From challenge to scoreboard.
             </h2>
             <p className="max-w-[38ch] text-base leading-[1.6] text-white/50">
-              Set up a head-to-head race in under a minute. Watch a verdict
-              arrive in the time it takes to finish a coffee.
+              Set up an eval in under a minute. Inspect failures in the
+              time it takes to finish a coffee.
             </p>
           </div>
 
@@ -1878,16 +1877,16 @@ export default function HomePage({
                 },
                 {
                   n: "02",
-                  title: "Pick your models",
+                  title: "Run your agents",
                   body:
-                    "Line up six or eight contestants across providers. Same tool policy, same time budget, same starting state.",
+                    "Point AgentClash at the models or harnesses you ship. Same tool policy, same time budget, same starting state.",
                   glyph: <LineupGlyph />,
                 },
                 {
                   n: "03",
-                  title: "Watch them race",
+                  title: "Inspect failures",
                   body:
-                    "Live scoring as they work. Composite metric across completion, speed, token efficiency, and tool strategy.",
+                    "Scrub the replay to the step where things broke. Scorecards show completion, cost, latency, and tool strategy.",
                   glyph: <TrackGlyph />,
                 },
               ].map((step) => (
@@ -1916,7 +1915,7 @@ export default function HomePage({
         <div className="mx-auto max-w-[1440px]">
           <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between md:gap-16">
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4rem)] max-w-[20ch]">
-              What teams race here.
+              What teams debug here.
             </h2>
             <p className="max-w-[44ch] text-sm leading-[1.6] text-white/50">
               Five task families AgentClash is built for. Hover any
@@ -1946,7 +1945,7 @@ export default function HomePage({
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.5rem,6vw,5.5rem)] max-w-[20ch]">
               They test prompts.
               <br />
-              <span className="text-white/40">We race agents.</span>
+              <span className="text-white/40">We debug agents.</span>
             </h2>
             <p className="max-w-[46ch] text-base leading-[1.6] text-white/50">
               The tools below are excellent at prompt engineering — scoring
@@ -2104,7 +2103,7 @@ export default function HomePage({
                 <span className="text-white/40">than you think.</span>
               </h2>
               <p className="mt-10 max-w-[48ch] text-lg sm:text-xl leading-[1.5] text-white/55">
-                The race engine is the visible part. Under the hood sit eight
+                Failure reports are the visible part. Under the hood sit eight
                 capabilities most teams quietly want from an eval platform
                 but rarely get in one place. Trust us — or better, scroll.
               </p>
@@ -2252,12 +2251,12 @@ export default function HomePage({
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(2.75rem,6vw,6rem)] max-w-[16ch]">
               Stop guessing.
               <br />
-              <span className="text-white/40">Start racing.</span>
+              <span className="text-white/40">Start evaluating.</span>
             </h2>
             <p className="mt-6 max-w-[44ch] text-base leading-[1.6] text-white/50">
               Book an eval workshop to baseline your agents on real workloads —
-              or start racing in the hosted product when your team is ready to
-              self-serve.
+              or run your first eval in the hosted product when your team is
+              ready to self-serve.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap gap-3">
               {user ? (

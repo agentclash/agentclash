@@ -80,7 +80,7 @@ function page(
         text: "Describe the workload as a challenge pack with inputs, tools, scoring rules, and artifacts.",
       },
       {
-        title: "Race the agents",
+        title: "Run the agents",
         text: "Run every candidate against the same task with the same constraints.",
       },
       {
@@ -104,16 +104,16 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "OSS users/founders",
     pageTitle: "Open Source AI Agent Evaluation Platform - AgentClash",
     metaDescription:
-      "AgentClash is an open-source AI agent evaluation platform for real-task races, replay evidence, scorecards, challenge packs, and CI regression gates.",
+      "AgentClash is an open-source AI agent evaluation platform for real-task evals, replay evidence, scorecards, challenge packs, and CI regression gates.",
     socialImageAlt: "AgentClash open source AI agent evaluation social preview.",
     eyebrow: "Open source",
     h1: "Open source AI agent evaluation for real tasks",
     heroDescription:
-      "AgentClash is MIT-licensed and self-hostable. Run head-to-head agent races on your workloads, keep replay evidence, and turn failures into reusable regression gates without a black-box vendor loop.",
+      "AgentClash is MIT-licensed and self-hostable. Run same-task agent evals on your workloads, keep replay evidence, and turn failures into reusable regression gates without a black-box vendor loop.",
     proofSectionTitle: "What open-source eval should include",
     proofSectionDescription:
       "Open source matters when your eval stack needs to run inside your repo, your CI, and your sandbox policy — not just inside someone else's hosted UI.",
-    workflowSectionTitle: "From local race to team-wide gate",
+    workflowSectionTitle: "From first eval to team-wide gate",
     docsSectionTitle: "Start with the repo",
     docsSectionDescription:
       "Clone AgentClash, boot the local stack, and wire the same challenge packs into hosted runs or pull request gates.",
@@ -162,7 +162,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "Dev shorthand",
     pageTitle: "Agent Evals for Real Tasks, Replay, and CI Gates - AgentClash",
     metaDescription:
-      "Run agent evals on real tasks with same-tools races, replay evidence, scorecards, challenge packs, and regression gates — not just final-answer checks.",
+      "Run agent evals on real tasks with same-task evals with the same tools, replay evidence, scorecards, challenge packs, and regression gates — not just final-answer checks.",
     socialImageAlt: "AgentClash agent evals social preview.",
     eyebrow: "Agent evals",
     h1: "Agent evals that cover the whole trajectory",
@@ -212,7 +212,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "Broad category",
     pageTitle: "LLM Agent Evaluation on Real Workloads - AgentClash",
     metaDescription:
-      "Evaluate LLM agents on real tasks with sandboxed tool use, head-to-head races, replay trails, scorecards, and CI regression gates.",
+      "Evaluate LLM agents on real tasks with sandboxed tool use, same-task eval runs, replay trails, scorecards, and CI regression gates.",
     socialImageAlt: "AgentClash LLM agent evaluation social preview.",
     eyebrow: "LLM agents",
     h1: "LLM agent evaluation beyond single-turn answers",
@@ -246,7 +246,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Can we compare multiple LLM agents fairly?",
         answer:
-          "Yes. AgentClash races candidates on the same challenge pack with the same tool policy, time budget, and sandbox resources.",
+          "Yes. AgentClash runs candidates on the same challenge pack with the same tool policy, time budget, and sandbox resources.",
       },
       {
         question: "Does AgentClash work with hosted model providers?",
@@ -267,7 +267,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     eyebrow: "Framework",
     h1: "An agent evaluation framework built for production tasks",
     heroDescription:
-      "Teams comparing agent evaluation frameworks should look past leaderboard scores. AgentClash gives you repeatable workloads, head-to-head races, replay evidence, and release gates you can audit in git.",
+      "Teams comparing agent evaluation frameworks should look past leaderboard scores. AgentClash gives you repeatable workloads, same-task eval runs, replay evidence, and release gates you can audit in git.",
     proofSectionTitle: "What a serious framework includes",
     proofSectionDescription:
       "A useful agent evaluation framework packages tasks, enforces fair constraints, scores trajectories, and makes failures reusable.",
@@ -325,7 +325,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "Test loop",
     docsSectionTitle: "Start testing with docs",
     docsSectionDescription:
-      "Write a challenge pack, run a race, inspect replay, then wire the same workload into CI.",
+      "Write a challenge pack, run an eval, inspect replay, then wire the same workload into CI.",
     faqSectionTitle: "AI agent testing FAQ",
     applicationSubCategory: "AI agent testing software",
     breadcrumbs: [
@@ -511,9 +511,9 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
           "Public leaderboards summarize generic tasks. AgentClash benchmarks your agents on your tools, repositories, APIs, and release constraints.",
       },
       {
-        question: "Can we benchmark multiple agents head-to-head?",
+        question: "Can we benchmark multiple agents same-task?",
         answer:
-          "Yes. AgentClash races candidates on the same challenge pack with the same sandbox policy and produces comparable scorecards.",
+          "Yes. AgentClash runs candidates on the same challenge pack with the same sandbox policy and produces comparable scorecards.",
       },
       {
         question: "Can a benchmark become a regression test?",
@@ -599,7 +599,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "Coding eval workflow",
     docsSectionTitle: "Start with a real bug",
     docsSectionDescription:
-      "Promote a failed coding-agent run into a challenge pack, then race model and harness changes before they reach users.",
+      "Promote a failed coding-agent run into a challenge pack, then eval model and harness changes before they reach users.",
     faqSectionTitle: "Coding agent evaluation FAQ",
     applicationSubCategory: "Coding agent evaluation software",
     breadcrumbs: [
@@ -987,7 +987,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Where should teams start?",
         answer:
-          "Promote one escaped failure into a challenge pack, establish a baseline run, then compare the next candidate in CI or a benchmark race.",
+          "Promote one escaped failure into a challenge pack, establish a baseline run, then compare the next candidate in CI or a benchmark eval.",
       },
     ],
     relatedLinks: [
@@ -1024,7 +1024,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       "Challenge packs are AgentClash's unit of repeatable agent evaluation. Encode the task once so every model, prompt, or harness change reruns the same workload with the same constraints.",
     proofSectionTitle: "What packs contain",
     proofSectionDescription:
-      "Inputs, tool policy, sandbox resources, validators, judges, artifacts, and pass conditions that together define a fair race or regression test.",
+      "Inputs, tool policy, sandbox resources, validators, judges, artifacts, and pass conditions that together define a fair eval or regression test.",
     workflowSectionTitle: "From pack to gate",
     docsSectionTitle: "Authoring resources",
     docsSectionDescription:
@@ -1051,7 +1051,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Can one pack power both benchmarks and CI?",
         answer:
-          "Yes. The same frozen pack can back a public benchmark race and an internal release gate once your team trusts the scoring rules.",
+          "Yes. The same frozen pack can back a public benchmark eval and an internal release gate once your team trusts the scoring rules.",
       },
       {
         question: "Where are examples?",
@@ -1072,7 +1072,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       },
       {
         title: "Benchmarks hub",
-        text: "Public races on frozen packs.",
+        text: "Public eval runs on frozen packs.",
         href: "/benchmarks",
       },
       ...sharedDocsLinks.slice(1, 3),
@@ -1307,7 +1307,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Can challenge packs run locally and in CI?",
         answer:
-          "Yes. The same pack can power exploratory races, hosted runs, and pull request gates.",
+          "Yes. The same pack can power exploratory evals, hosted runs, and pull request gates.",
       },
       {
         question: "How do teams create challenge packs?",

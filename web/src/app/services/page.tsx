@@ -90,7 +90,7 @@ const crossLinks = [
   {
     href: "/platform/agent-evaluation",
     label: "Evaluation platform",
-    description: "Same-tools races, sandbox execution, replay, and scorecards.",
+    description: "Same-task evals, sandbox execution, replay, and scorecards.",
   },
   {
     href: "/docs",

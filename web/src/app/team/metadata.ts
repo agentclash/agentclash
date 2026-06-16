@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 const PAGE_TITLE = "Team - AgentClash";
 const PAGE_DESCRIPTION =
-  "Meet the engineers building AgentClash, an open-source AI agent evaluation platform for real-task races, replay, scorecards, and CI gates.";
+  "Meet the engineers building AgentClash, an open-source AI agent evaluation platform for real-task evals, replay, scorecards, and CI gates.";
 const SOCIAL_IMAGE_ALT = "AgentClash team social preview.";
 
 export const teamMetadata: Metadata = {

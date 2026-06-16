@@ -3,8 +3,8 @@
 // These columns and rows power BOTH the landing-page comparison section and the
 // /compare pages (hub + per-competitor). Keeping them here prevents the two from
 // drifting apart. Verdicts are the positioning AgentClash already publishes on
-// the landing page: prompt-eval tools score single model calls; AgentClash races
-// tool-using agents head-to-head in a sandbox and scores the whole trajectory.
+// the landing page: prompt-eval tools score single model calls; AgentClash runs
+// tool-using agents on the same task in a sandbox and scores the whole trajectory.
 
 export type MarkKind = "yes" | "partial" | "no";
 
@@ -55,7 +55,7 @@ export const COMPARISON_ROWS: ComparisonRow[] = [
     cells: ["yes", "no", "no", "no", "no", "no", "no"],
   },
   {
-    label: "Head-to-head concurrent race",
+    label: "Same-task concurrent eval",
     sub: "Every model runs the same task at the same time, on the same budget. No staggered runs, no warm caches.",
     cells: ["yes", "no", "no", "no", "no", "no", "no"],
   },
@@ -76,7 +76,7 @@ export const COMPARISON_ROWS: ComparisonRow[] = [
   },
   {
     label: "Failures auto-promote to regression",
-    sub: "Flunked traces freeze into permanent tests and replay in every future race, by default.",
+    sub: "Flunked traces freeze into permanent tests and replay in every future eval, by default.",
     cells: ["yes", "partial", "partial", "partial", "partial", "partial", "no"],
   },
 ];
@@ -153,7 +153,7 @@ const matrixCompetitors: Competitor[] = COMPARISON_COLUMNS.map(
 // six prompt-eval tools so it remains readable). Each verdict tuple is aligned to
 // COMPARISON_ROWS order and reflects the tool's real, current capabilities —
 // honest and complimentary, never overclaiming. Sandboxed tool execution and the
-// head-to-head concurrent race are AgentClash-specific, so they read "no" here.
+// Same-task concurrent eval are AgentClash-specific, so they read "no" here.
 type ExtendedCompetitor = {
   name: string;
   tag: string;
@@ -234,15 +234,15 @@ export function competitorFaq(
   return [
     {
       question: `Is AgentClash a ${competitor.name} alternative?`,
-      answer: `AgentClash and ${competitor.name} overlap but solve different problems. ${competitor.name} is a ${competitor.tag} tool, while AgentClash is an agent-evaluation engine that races agents head-to-head on real tasks in a sandbox, scores the full trajectory, and gates CI on regressions. If you need to evaluate tool-using agents end-to-end, AgentClash is the closer fit; for single-call prompt and output scoring, ${competitor.name} may be all you need.`,
+      answer: `AgentClash and ${competitor.name} overlap but solve different problems. ${competitor.name} is a ${competitor.tag} tool, while AgentClash is an agent-evaluation platform that runs agents on real tasks in a sandbox, scores the full trajectory, and gates CI on regressions. If you need to evaluate tool-using agents end-to-end, AgentClash is the closer fit; for single-call prompt and output scoring, ${competitor.name} may be all you need.`,
     },
     {
       question: `What is the difference between AgentClash and ${competitor.name}?`,
-      answer: `${competitor.whereItFits} AgentClash focuses on multi-turn agents that take actions: each model gets a fresh microVM, real tools, the same time budget, and a head-to-head race, and the verdict scores the trajectory — not just the final text.`,
+      answer: `${competitor.whereItFits} AgentClash focuses on multi-turn agents that take actions: each model gets a fresh microVM, real tools, the same time budget, and a same-task eval run, and the verdict scores the trajectory — not just the final text.`,
     },
     {
       question: `Can I use AgentClash and ${competitor.name} together?`,
-      answer: `Yes. Many teams keep ${competitor.name} for prompt-level evaluation and observability and add AgentClash for end-to-end, sandboxed agent races and CI regression gates. They are complementary layers of an evaluation stack.`,
+      answer: `Yes. Many teams keep ${competitor.name} for prompt-level evaluation and observability and add AgentClash for end-to-end, sandboxed agent evals and CI regression gates. They are complementary layers of an evaluation stack.`,
     },
   ];
 }

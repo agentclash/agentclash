@@ -36,7 +36,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!competitor) return {};
 
   const title = `AgentClash vs ${competitor.name}: Agent Evaluation vs Prompt Evaluation`;
-  const description = `How AgentClash compares to ${competitor.name}. ${competitor.name} is a ${competitor.tag} tool; AgentClash races tool-using agents head-to-head in a sandbox, scores the full trajectory, and gates CI on regressions.`;
+  const description = `How AgentClash compares to ${competitor.name}. ${competitor.name} is a ${competitor.tag} tool; AgentClash runs tool-using agents on the same task in a sandbox, scores the full trajectory, and gates CI on regressions.`;
   const path = `/compare/${competitor.slug}`;
   const image = ogImageUrl({
     title: `AgentClash vs ${competitor.name}`,
@@ -88,7 +88,7 @@ export default async function CompareCompetitorPage({ params }: Props) {
           faqSchema(faq),
           productSchema({
             name: "AgentClash",
-            description: `AgentClash is an agent-evaluation engine — an alternative to ${competitor.name} for teams evaluating tool-using agents head-to-head on real tasks.`,
+            description: `AgentClash is an agent-evaluation engine — an alternative to ${competitor.name} for teams evaluating tool-using agents on the same task on real tasks.`,
             url: path,
             applicationSubCategory: "AI agent evaluation platform",
             featureList: AGENT_EVALUATION_FEATURES,
@@ -120,8 +120,8 @@ export default async function CompareCompetitorPage({ params }: Props) {
             </h1>
             <p className="mt-8 max-w-[64ch] text-base leading-8 text-white/62 sm:text-lg">
               {competitor.name} is excellent at {competitor.tag}. AgentClash is
-              built for agent evaluation: it races tool-using agents
-              head-to-head in a fresh sandbox, scores the whole trajectory, and
+              built for agent evaluation: it runs tool-using agents
+              on the same task in a fresh sandbox, scores the whole trajectory, and
               turns failures into CI regression gates.
             </p>
           </div>
@@ -238,7 +238,7 @@ export default async function CompareCompetitorPage({ params }: Props) {
                 href="/auth/login"
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
               >
-                Start first race
+                Run your first eval
                 <ArrowRight className="size-4" />
               </Link>
               <Link

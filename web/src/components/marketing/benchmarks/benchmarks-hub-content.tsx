@@ -92,7 +92,7 @@ export function BenchmarksHubContent({ published }: Props) {
         Head-to-head AI agent benchmarks you can reproduce
       </h1>
       <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/50 sm:text-base">
-        Public races on frozen challenge packs: same tools, same constraints,
+        Public eval runs on frozen challenge packs: same tools, same constraints,
         full trajectory scoring, and replay evidence. Not a vibes leaderboard.
         Run the same benchmark on your agents when you are ready to gate releases.
       </p>
@@ -147,9 +147,9 @@ export function BenchmarksHubContent({ published }: Props) {
             <span id="monthly-process-heading">How we publish benchmark reports</span>
           </SectionTitle>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/50">
-            The first measured head-to-head is in progress. When it ships, this
+            The first measured same-task is in progress. When it ships, this
             hub will summarize winners, scorecards, and replay links. Until then,
-            here is the process we follow for every public race and monthly
+            here is the process we follow for every public eval and monthly
             reliability report.
           </p>
           <ol className="mt-6 flex flex-col gap-3">
@@ -187,7 +187,7 @@ export function BenchmarksHubContent({ published }: Props) {
         </SectionTitle>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/50">
           Static leaderboards hide setup drift. AgentClash benchmarks are
-          head-to-head races on pinned packs so you can compare models, replay
+          same-task eval runs on pinned packs so you can compare models, replay
           evidence, and promote the same workload to a CI gate.
         </p>
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
@@ -289,7 +289,7 @@ export function BenchmarksHubContent({ published }: Props) {
         <section className="mt-14" aria-labelledby="all-reports-heading">
           <SectionEyebrow>All reports</SectionEyebrow>
           <SectionTitle>
-            <span id="all-reports-heading">Every head-to-head we have published</span>
+            <span id="all-reports-heading">Every same-task we have published</span>
           </SectionTitle>
           <div className="mt-6 flex flex-col gap-3">
             {published.map((report) => (
