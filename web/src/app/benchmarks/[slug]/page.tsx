@@ -103,7 +103,7 @@ export default async function BenchmarkReportPage({ params }: Props) {
           <div className="mt-6 rounded-lg border border-amber-400/25 bg-amber-400/[0.06] px-4 py-3 text-xs leading-relaxed text-amber-200/80">
             <span className="font-medium text-amber-200">Sample data.</span>{" "}
             This report uses representative numbers to illustrate the format. Run
-            the work to publish a report with real results.
+            the eval to publish a report with real results.
           </div>
         )}
 

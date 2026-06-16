@@ -162,7 +162,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "Dev shorthand",
     pageTitle: "Agent Evals for Real Tasks, Replay, and CI Gates - AgentClash",
     metaDescription:
-      "Run agent evals on real tasks with same-task evals with the same tools, replay evidence, scorecards, challenge packs, and regression gates — not just final-answer checks.",
+      "Run agent evals on real tasks with the same tools, full replay evidence, scorecards, challenge packs, and regression gates. Not just final-answer checks.",
     socialImageAlt: "AgentClash agent evals social preview.",
     eyebrow: "Agent evals",
     h1: "Agent evals that cover the whole trajectory",
@@ -511,7 +511,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
           "Public leaderboards summarize generic tasks. AgentClash benchmarks your agents on your tools, repositories, APIs, and release constraints.",
       },
       {
-        question: "Can we benchmark multiple agents same-task?",
+        question: "Can we benchmark multiple agents on the same task?",
         answer:
           "Yes. AgentClash runs candidates on the same challenge pack with the same sandbox policy and produces comparable scorecards.",
       },

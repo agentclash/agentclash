@@ -289,7 +289,7 @@ export function BenchmarksHubContent({ published }: Props) {
         <section className="mt-14" aria-labelledby="all-reports-heading">
           <SectionEyebrow>All reports</SectionEyebrow>
           <SectionTitle>
-            <span id="all-reports-heading">Every same-task we have published</span>
+            <span id="all-reports-heading">Every same-task eval we have published</span>
           </SectionTitle>
           <div className="mt-6 flex flex-col gap-3">
             {published.map((report) => (

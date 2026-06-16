@@ -153,7 +153,7 @@ const matrixCompetitors: Competitor[] = COMPARISON_COLUMNS.map(
 // six prompt-eval tools so it remains readable). Each verdict tuple is aligned to
 // COMPARISON_ROWS order and reflects the tool's real, current capabilities —
 // honest and complimentary, never overclaiming. Sandboxed tool execution and the
-// Same-task concurrent eval are AgentClash-specific, so they read "no" here.
+// Same-task concurrent evals are AgentClash-specific, so they read "no" here.
 type ExtendedCompetitor = {
   name: string;
   tag: string;

@@ -88,7 +88,7 @@ export default async function CompareCompetitorPage({ params }: Props) {
           faqSchema(faq),
           productSchema({
             name: "AgentClash",
-            description: `AgentClash is an agent-evaluation engine — an alternative to ${competitor.name} for teams evaluating tool-using agents on the same task on real tasks.`,
+            description: `AgentClash is an agent-evaluation engine — an alternative to ${competitor.name} for teams evaluating tool-using agents on the same real tasks in a sandbox.`,
             url: path,
             applicationSubCategory: "AI agent evaluation platform",
             featureList: AGENT_EVALUATION_FEATURES,
