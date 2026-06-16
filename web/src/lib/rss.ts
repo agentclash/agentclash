@@ -160,7 +160,7 @@ export function buildBenchmarkRssFeed(
     "    <title>AgentClash Model Benchmarks</title>",
     `    <link>${escapeXml(indexUrl)}</link>`,
     `    <atom:link href="${escapeXml(feedUrl)}" rel="self" type="application/rss+xml" />`,
-    "    <description>Head-to-head AI agent benchmarks — new models raced against the field on real agentic tasks.</description>",
+    "    <description>Same-task AI agent benchmarks — new models evaluated against the field on real agentic tasks.</description>",
     "    <language>en</language>",
     `    <lastBuildDate>${lastBuildDate}</lastBuildDate>`,
     ...items,

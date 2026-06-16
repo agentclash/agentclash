@@ -54,7 +54,7 @@ export const AGENT_OPPORTUNITY_FAQ = [
   {
     question: "When should we run an AI agent evaluation before launch?",
     answer:
-      "Before any customer-facing agent touches policy, billing, refunds, healthcare, or financial advice. AgentClash recommends realistic and adversarial eval cases tied to the workflow you plan to ship. This report includes a starter eval pack you can turn into a race in AgentClash.",
+      "Before any customer-facing agent touches policy, billing, refunds, healthcare, or financial advice. AgentClash recommends realistic and adversarial eval cases tied to the workflow you plan to ship. This report includes a starter eval pack you can turn into an eval in AgentClash.",
   },
   {
     question: "How is this different from a chatbot ROI calculator?",
@@ -74,6 +74,6 @@ export const AGENT_OPPORTUNITY_SECTIONS = [
   },
   {
     title: "Agent evaluation before production",
-    body: "An AI agent evaluation should happen before customers see the workflow. AgentClash turns the recommended cases from this report into head-to-head agent races with replay evidence, so you can compare models and catch failure modes early.",
+    body: "An AI agent evaluation should happen before customers see the workflow. AgentClash turns the recommended cases from this report into same-task agent evals with replay evidence, so you can compare models and catch failure modes early.",
   },
 ] as const;

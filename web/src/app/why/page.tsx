@@ -58,7 +58,7 @@ export default function WhyWeBuiltThisPage() {
 
           <p className="mt-24 max-w-[56ch] text-base leading-[1.7] text-white/50">
             Pick your task the way your product actually runs it. Six
-            models race, live, on the same inputs with the same tools.
+            agents run on the same task, on the same inputs with the same tools.
             Scored on what matters in production — correctness, cost,
             latency, behaviour under pressure. When one fails, the failing
             trace becomes a test. Every mistake ratchets the eval tighter.
@@ -73,7 +73,7 @@ export default function WhyWeBuiltThisPage() {
               href="/auth/login"
               className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-7 py-3 text-sm font-medium text-[#060606] hover:bg-white/90 transition-colors"
             >
-              Start your first race
+              Run your first eval
             </Link>
             <Link
               href="/"

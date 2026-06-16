@@ -74,7 +74,7 @@ function buildWelcomeEmail(position: number) {
           <span style="color:#ffffff;font-size:32px;font-weight:700;letter-spacing:-1px">You're #${position} in line.</span>
         </td></tr>
         <tr><td style="padding-bottom:32px;text-align:center;color:rgba(255,255,255,0.4);font-size:15px;line-height:1.6">
-          Same challenge. Same tools. Six AI models race head-to-head.<br>
+          Find where your agent broke. Replay failures and gate releases.<br>
           You signed up early — that matters. When we open access,<br>
           early spots go first.
         </td></tr>
@@ -94,7 +94,7 @@ function buildWelcomeEmail(position: number) {
         </td></tr>
         <tr><td style="padding-bottom:24px;text-align:center;color:rgba(255,255,255,0.25);font-size:13px;line-height:1.6">
           <strong style="color:rgba(255,255,255,0.5)">What's coming:</strong><br>
-          Head-to-head races &middot; Composite scoring &middot; Full replays<br>
+          Same-task evals &middot; Composite scoring &middot; Full replays<br>
           Failure-to-eval flywheel &middot; Open source
         </td></tr>
         <tr><td style="text-align:center;padding-bottom:32px">

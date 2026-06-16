@@ -31,7 +31,7 @@ export default async function LoginPage({
   const heading = mode === "signup" ? "Create your account" : "Welcome back";
   const subcopy =
     mode === "signup"
-      ? "Run your first head-to-head agent race in minutes."
+      ? "Run your first agent eval in minutes."
       : "Continue to your AgentClash dashboard.";
 
   const otherMode = mode === "signup" ? "signin" : "signup";

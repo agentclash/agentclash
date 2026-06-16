@@ -44,7 +44,7 @@ export function ExpandedCardsBlock({ cards }: { cards: ExpandedCard[] }) {
             …and many more.
           </p>
           <p className="text-sm leading-[1.55] text-white/55">
-            Whatever agent you can dream up — race it on AgentClash.
+            Whatever agent you ship — debug it on AgentClash.
           </p>
         </div>
       </div>

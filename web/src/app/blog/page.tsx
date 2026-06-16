@@ -10,7 +10,7 @@ import { blogRssAlternate } from "@/lib/seo";
 
 const PAGE_TITLE = "AI Agent Evaluation Blog - AgentClash";
 const PAGE_DESCRIPTION =
-  "Engineering notes on AI agent evaluation, head-to-head agent evals, replayable failures, scorecards, and CI regression gates.";
+  "Engineering notes on AI agent evaluation, same-task agent evals, replayable failures, scorecards, and CI regression gates.";
 const SOCIAL_IMAGE_ALT =
   "AgentClash AI agent evaluation blog social preview.";
 
@@ -64,7 +64,7 @@ export default function BlogPage() {
           AI agent evaluation, in practice
         </h1>
         <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/45">
-          Engineering notes on head-to-head agent evals, replayable failures,
+          Engineering notes on same-task agent evals, replayable failures,
           scorecards, and release gates — for teams deciding which agents to
           ship.
         </p>

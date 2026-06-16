@@ -69,7 +69,7 @@ const workflow = [
   },
   {
     num: "02",
-    title: "Race candidates",
+    title: "Run candidates",
     text: "Run agents in a sandbox with the same tools, time budget, and scoring rules.",
   },
   {
@@ -123,7 +123,7 @@ const crossLinks = [
   {
     href: "/platform/agent-evaluation",
     label: "Agent evaluation platform",
-    description: "Same-tools races, sandbox execution, and replay on real tasks.",
+    description: "Same-task evals, sandbox execution, and replay on real tasks.",
   },
   {
     href: "/platform/agent-regression-testing",

@@ -22,7 +22,7 @@ const PAGE_PATH = "/compare";
 const PAGE_TITLE =
   "Best AI Agent Evaluation Tools: AgentClash vs Prompt-Eval Platforms";
 const PAGE_DESCRIPTION =
-  "Compare AgentClash with Braintrust, LangSmith, Promptfoo, Langfuse, Arize Phoenix, and OpenAI Evals. See how sandboxed, multi-turn, head-to-head agent evaluation differs from prompt evaluation.";
+  "Compare AgentClash with Braintrust, LangSmith, Promptfoo, Langfuse, Arize Phoenix, and OpenAI Evals. See how sandboxed, multi-turn, same-task agent evaluation differs from prompt evaluation.";
 const SOCIAL_IMAGE = ogImageUrl({
   title: "AgentClash vs prompt-eval tools",
   subtitle: "Agent evaluation, not prompt evaluation",
@@ -39,7 +39,7 @@ const faqItems = [
   {
     question: "What are the best AI agent evaluation tools?",
     answer:
-      "Braintrust, LangSmith, Promptfoo, Langfuse, Arize Phoenix, and OpenAI Evals are excellent for prompt-level evaluation, tracing, and observability. AgentClash is purpose-built for evaluating tool-using agents head-to-head in a sandbox, with replay, scorecards, and CI regression gates.",
+      "Braintrust, LangSmith, Promptfoo, Langfuse, Arize Phoenix, and OpenAI Evals are excellent for prompt-level evaluation, tracing, and observability. AgentClash is purpose-built for evaluating tool-using agents on the same task in a sandbox, with replay, scorecards, and CI regression gates.",
   },
   {
     question: "Is AgentClash open source?",
@@ -122,7 +122,7 @@ export default function ComparePage() {
               Agent eval vs prompt eval
             </p>
             <h1 className="mt-5 max-w-[18ch] font-[family-name:var(--font-display)] text-4xl font-normal leading-[1.05] tracking-tight text-white sm:text-6xl">
-              They test prompts. AgentClash races agents.
+              They test prompts. AgentClash debugs agents.
             </h1>
             <p className="mt-8 max-w-[64ch] text-base leading-8 text-white/62 sm:text-lg">
               {PAGE_DESCRIPTION}
@@ -206,7 +206,7 @@ export default function ComparePage() {
         <section className="px-6 py-16 sm:px-12 sm:py-24">
           <div className="mx-auto max-w-[1440px]">
             <h2 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-              Compare AgentClash head-to-head
+              Compare AgentClash side by side
             </h2>
             <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {COMPETITORS.map((competitor) => (
@@ -256,7 +256,7 @@ export default function ComparePage() {
                 href="/auth/login"
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
               >
-                Start first race
+                Run your first eval
                 <ArrowRight className="size-4" />
               </Link>
               <Link

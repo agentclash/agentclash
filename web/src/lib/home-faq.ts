@@ -7,7 +7,7 @@ export const HOME_FAQ: Array<{ question: string; answer: string }> = [
   {
     question: "What is AgentClash?",
     answer:
-      "AgentClash is an open-source AI agent evaluation platform. It races coding, research, support, and ops agents head-to-head on the same real task — same tools, same constraints, same time budget — then scores the full trajectory and lets you replay every action.",
+      "AgentClash is an open-source AI agent evaluation platform. It runs your agents on real tasks with the same tools and constraints, captures replayable failure evidence, scores the full trajectory, and lets you promote failed runs into permanent regression tests.",
   },
   {
     question:
@@ -18,7 +18,7 @@ export const HOME_FAQ: Array<{ question: string; answer: string }> = [
   {
     question: "Can I run AgentClash in CI?",
     answer:
-      "Yes. AgentClash compares a candidate run against a baseline and fails CI when the candidate regresses on the scorecard or release gate you define. Failed runs can be promoted into permanent regression tests that replay in every future race.",
+      "Yes. AgentClash compares a candidate run against a baseline and fails CI when the candidate regresses on the scorecard or release gate you define. Failed runs can be promoted into permanent regression tests that replay in every future eval.",
   },
   {
     question: "Is AgentClash open source, and can I self-host it?",
@@ -28,11 +28,11 @@ export const HOME_FAQ: Array<{ question: string; answer: string }> = [
   {
     question: "Which models and providers does AgentClash support?",
     answer:
-      "300+ models via OpenRouter, plus first-class OpenAI, Anthropic, Gemini, xAI, Mistral, and OpenRouter providers. Tool calls are normalised to a single schema across providers so races stay fair.",
+      "300+ models via OpenRouter, plus first-class OpenAI, Anthropic, Gemini, xAI, Mistral, and OpenRouter providers. Tool calls are normalised to a single schema across providers so evals stay comparable.",
   },
   {
     question: "How do I get started with AgentClash?",
     answer:
-      "Install the CLI with npm install -g agentclash (or run against the hosted backend), then follow the quickstart to author a challenge pack and start your first head-to-head race.",
+      "Install the CLI with npm install -g agentclash (or run against the hosted backend), then follow the quickstart to author a challenge pack and run your first agent eval.",
   },
 ];

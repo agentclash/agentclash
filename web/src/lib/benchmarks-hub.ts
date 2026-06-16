@@ -2,12 +2,12 @@ export const BENCHMARKS_HUB_FAQ = [
   {
     question: "How is AgentClash different from a static leaderboard?",
     answer:
-      "Leaderboards summarize one-off scores on generic tasks. AgentClash runs head-to-head races on frozen challenge packs with the same tools, sandbox policy, and iteration budget, then publishes replay evidence and scorecards you can reuse as regression gates.",
+      "Leaderboards summarize one-off scores on generic tasks. AgentClash runs same-task evals on frozen challenge packs with the same tools, sandbox policy, and iteration budget, then publishes replay evidence and scorecards you can reuse as regression gates.",
   },
   {
     question: "What gets frozen in a public benchmark?",
     answer:
-      "The challenge pack version, runtime constraints, tool policy, scoring spec, and input cases. Every model in a race sees the same workload so differences show up in trajectories, not setup drift.",
+      "The challenge pack version, runtime constraints, tool policy, scoring spec, and input cases. Every model in an eval run sees the same workload so differences show up in trajectories, not setup drift.",
   },
   {
     question: "Can we run the same benchmark on our agents?",
@@ -17,14 +17,14 @@ export const BENCHMARKS_HUB_FAQ = [
   {
     question: "How often do you publish benchmark reports?",
     answer:
-      "We publish when major models ship and on a monthly reliability cadence. Subscribe to the benchmarks RSS feed or check this hub for the latest head-to-head summary and links to full replays.",
+      "We publish when major models ship and on a monthly reliability cadence. Subscribe to the benchmarks RSS feed or check this hub for the latest same-task summary and links to full replays.",
   },
 ] as const;
 
 export const BENCHMARKS_METHODOLOGY = [
   {
     title: "Frozen challenge pack",
-    text: "Each race pins a versioned YAML pack: prompts, tools, sandbox, evaluation spec, and input cases. No moving targets mid-benchmark.",
+    text: "Each eval run pins a versioned YAML pack: prompts, tools, sandbox, evaluation spec, and input cases. No moving targets mid-benchmark.",
   },
   {
     title: "Same runtime constraints",
@@ -40,7 +40,7 @@ export const BENCHMARKS_METHODOLOGY = [
   },
   {
     title: "Replay and evidence",
-    text: "Runs preserve tool calls, artifacts, and judge rationale so reviewers can audit a verdict without rerunning the race.",
+    text: "Runs preserve tool calls, artifacts, and judge rationale so reviewers can audit a verdict without rerunning the eval.",
   },
   {
     title: "Gate verdict",
@@ -89,7 +89,7 @@ export const BENCHMARKS_READING = [
   },
   {
     href: "/blog/why-agentclash-races-agents-head-to-head",
-    title: "Why AgentClash races agents head-to-head",
+    title: "Why AgentClash finds agent failures on real tasks",
   },
 ] as const;
 
@@ -114,7 +114,7 @@ export const BENCHMARKS_PACK_LINKS = [
 
 export const BENCHMARKS_MONTHLY_PROCESS = [
   "Pin a challenge pack version, git commit, and runtime constraints in the report appendix.",
-  "Race every candidate on the same pack with identical tools, sandbox, and budgets.",
+  "Run every candidate on the same pack with identical tools, sandbox, and budgets.",
   "Export ranking JSON (`agentclash run ranking`) and attach replay plus validator evidence.",
   "Publish measured MDX on /benchmarks and a shareable monthly blog summary.",
   "Summarize on this hub, RSS feed, and changelog; promote failures into pack coverage.",

@@ -100,7 +100,7 @@ function ProductVisual() {
           <div className="flex items-center gap-2">
             <span className="size-2 rounded-full bg-emerald-300" />
             <span className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/45">
-              live race
+              live eval
             </span>
           </div>
           <span className="rounded-md border border-white/[0.08] px-2 py-1 font-[family-name:var(--font-mono)] text-2xs text-white/45">
@@ -227,7 +227,7 @@ export function SeoLandingPage({ config }: { config: SeoPageConfig }) {
                   href="/auth/login"
                   className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
                 >
-                  Start first race
+                  Run your first eval
                   <ArrowRight className="size-4" />
                 </Link>
                 <Link
@@ -368,7 +368,7 @@ export function SeoLandingPage({ config }: { config: SeoPageConfig }) {
                 href="/auth/login"
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
               >
-                Start first race
+                Run your first eval
                 <ArrowRight className="size-4" />
               </Link>
               <a

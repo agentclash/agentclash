@@ -112,7 +112,7 @@ export function GET(request: Request): Response {
             }}
           >
             <div>agentclash.dev</div>
-            <div>Same challenge. Same tools. Agents race head-to-head.</div>
+            <div>Same task. Same tools. Find where the agent broke.</div>
           </div>
         </div>
       ),

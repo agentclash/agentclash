@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "AgentClash — Open-source AI Agent Evaluation Platform",
     short_name: "AgentClash",
     description:
-      "Race AI agents head-to-head on real tasks with sandboxed tools, replay, scorecards, and CI regression gates.",
+      "Find where your agents break on real tasks. Replay failures, promote regressions, and gate releases on scorecards.",
     start_url: "/",
     display: "standalone",
     background_color: "#060606",

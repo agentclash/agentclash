@@ -22,7 +22,7 @@ import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
 const PAGE_PATH = "/platform/agent-evaluation";
 const PAGE_TITLE = "AI Agent Evaluation Platform for Real Tasks - AgentClash";
 const PAGE_DESCRIPTION =
-  "Evaluate AI agents on real tasks with same-tools races, sandboxed execution, replay, scorecards, challenge packs, and CI regression gates.";
+  "Evaluate AI agents on real tasks with same-task evals, sandboxed execution, replay, scorecards, challenge packs, and CI regression gates.";
 const SOCIAL_IMAGE_ALT =
   "AgentClash AI agent evaluation platform social preview.";
 
@@ -189,7 +189,7 @@ function ProductVisual() {
           <div className="flex items-center gap-2">
             <span className="size-2 rounded-full bg-emerald-300" />
             <span className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/45">
-              live race
+              live eval
             </span>
           </div>
           <span className="rounded-md border border-white/[0.08] px-2 py-1 font-[family-name:var(--font-mono)] text-2xs text-white/45">
@@ -309,7 +309,7 @@ export default function AgentEvaluationPage() {
                   href="/auth/login"
                   className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
                 >
-                  Start first race
+                  Run your first eval
                   <ArrowRight className="size-4" />
                 </Link>
                 <Link
@@ -466,7 +466,7 @@ export default function AgentEvaluationPage() {
                 href="/auth/login"
                 className="inline-flex items-center justify-center gap-2 rounded-md bg-white px-6 py-3 text-sm font-medium text-[#060606] transition-colors hover:bg-white/90"
               >
-                Start first race
+                Run your first eval
                 <ArrowRight className="size-4" />
               </Link>
               <a
