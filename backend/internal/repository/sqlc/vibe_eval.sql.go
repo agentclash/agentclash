@@ -384,6 +384,29 @@ func (q *Queries) ExpireStaleVibeEvalPendingConfirmations(ctx context.Context, a
 	return items, nil
 }
 
+const getVibeEvalConfirmedToolOutcome = `-- name: GetVibeEvalConfirmedToolOutcome :one
+SELECT outcome
+FROM vibe_eval_tool_invocations
+WHERE confirmation_id = $1
+  AND outcome IN ('ok', 'error')
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+type GetVibeEvalConfirmedToolOutcomeParams struct {
+	ConfirmationID *uuid.UUID
+}
+
+// The durable, outcome-aware execution result for a confirmation: the latest ok/error audit row
+// (the confirmation_required propose row is excluded). 0 rows ⇒ the confirmed effect never ran (or
+// ran but its best-effort audit write was lost — the caller treats that ambiguity conservatively).
+func (q *Queries) GetVibeEvalConfirmedToolOutcome(ctx context.Context, arg GetVibeEvalConfirmedToolOutcomeParams) (string, error) {
+	row := q.db.QueryRow(ctx, getVibeEvalConfirmedToolOutcome, arg.ConfirmationID)
+	var outcome string
+	err := row.Scan(&outcome)
+	return outcome, err
+}
+
 const getVibeEvalConversationByID = `-- name: GetVibeEvalConversationByID :one
 SELECT id, organization_id, workspace_id, created_by_user_id, title, phase, status, active_draft_id, created_at, updated_at, archived_at
 FROM vibe_eval_conversations

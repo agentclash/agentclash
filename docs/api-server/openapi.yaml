@@ -5080,6 +5080,52 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/confirmations/{confirmationID}:
+    post:
+      operationId: resolveVibeEvalConfirmation
+      summary: Approve or deny a Vibe Eval pending confirmation (Server-Sent Events stream)
+      description: >
+        Approves or denies a workspace_write+ action the guide agent proposed, then streams the
+        continuation turn as Server-Sent Events. The bound action is authorized and the
+        confirmation's payload_hash (echoed from the confirmation.required card) is matched before
+        the action runs; a mismatch or an already-resolved/expired confirmation yields an `error`
+        SSE event. Approving resumes and executes the bound action; denying records the denial and
+        continues. Only registered when the guide agent is configured on the server.
+      tags: [VibeEvals]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/VibeEvalConversationID"
+        - name: confirmationID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveVibeEvalConfirmationRequest"
+      responses:
+        "200":
+          description: Server-Sent Events stream of the continuation turn.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: "SSE frames: `event: <type>` then `data: <json>` per event."
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/drafts:
     post:
       operationId: createVibeEvalDraft
@@ -12806,6 +12852,19 @@ components:
         message:
           type: string
           description: The user's message for this guide-agent turn.
+
+    ResolveVibeEvalConfirmationRequest:
+      type: object
+      required: [approve, payload_hash]
+      properties:
+        approve:
+          type: boolean
+          description: true to approve and execute the bound action, false to deny.
+        payload_hash:
+          type: string
+          description: >
+            The payload_hash echoed from the confirmation.required card. Binds the resolve to
+            exactly the proposed action's args (anti bait-and-switch); a mismatch is rejected.
 
     VibeEvalMessageResponse:
       type: object

@@ -29,6 +29,8 @@ type PendingConfirmation struct {
 
 // NewPendingConfirmation is the input to ConfirmationStore.Create.
 type NewPendingConfirmation struct {
+	OrganizationID   uuid.UUID
+	WorkspaceID      uuid.UUID
 	ConversationID   uuid.UUID
 	MessageID        *uuid.UUID
 	ProposedByUserID uuid.UUID
@@ -66,6 +68,8 @@ const (
 // ToolInvocationAudit is one metadata-only audit record (#875 §6). It never carries secrets or raw
 // artifact contents; the backing AuditWriter scrubs request/result payloads to structured metadata.
 type ToolInvocationAudit struct {
+	OrganizationID uuid.UUID
+	WorkspaceID    uuid.UUID
 	ConversationID uuid.UUID
 	MessageID      *uuid.UUID
 	Actor          Actor

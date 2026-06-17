@@ -59,7 +59,8 @@ type Event struct {
 	ConfirmationID string    `json:"confirmation_id,omitempty"`
 	Action         string    `json:"action,omitempty"`
 	Summary        string    `json:"summary,omitempty"`
-	ExpiresAt      string    `json:"expires_at,omitempty"` // RFC3339, on confirmation.required
+	PayloadHash    string    `json:"payload_hash,omitempty"` // the client echoes this on resolve (hash of args, not the args)
+	ExpiresAt      string    `json:"expires_at,omitempty"`   // RFC3339, on confirmation.required
 	StopReason     string    `json:"stop_reason,omitempty"`
 }
 
@@ -257,7 +258,7 @@ func (l *AgentLoop) runLoop(ctx context.Context, actor Actor, authorizer Workspa
 			}
 			result.StopReason = "confirmation_required"
 			result.PendingConfirmation = &pc
-			sink(Event{Type: EventConfirmationRequired, ToolName: pc.ToolName, ToolCallID: pc.ToolCallID, ConfirmationID: pc.ID.String(), Action: pc.Action, Summary: pc.Summary, ExpiresAt: pc.ExpiresAt.UTC().Format(time.RFC3339)})
+			sink(Event{Type: EventConfirmationRequired, ToolName: pc.ToolName, ToolCallID: pc.ToolCallID, ConfirmationID: pc.ID.String(), Action: pc.Action, Summary: pc.Summary, PayloadHash: pc.PayloadHash, ExpiresAt: pc.ExpiresAt.UTC().Format(time.RFC3339)})
 			return l.finish(result, sink), nil
 		}
 
@@ -304,6 +305,8 @@ func (l *AgentLoop) requireConfirmation(ctx context.Context, actor Actor, conv C
 	mid := messageID
 	hash := payloadHash(tc.Name, tc.Arguments)
 	pc, err := l.confirmations.Create(ctx, NewPendingConfirmation{
+		OrganizationID:   conv.OrganizationID,
+		WorkspaceID:      conv.WorkspaceID,
 		ConversationID:   conv.ID,
 		MessageID:        &mid,
 		ProposedByUserID: actor.UserID,
@@ -397,6 +400,8 @@ func requiresAudit(tier RiskTier) bool {
 // turn). request is the raw tool args (the AuditWriter scrubs); result is metadata-only.
 func (l *AgentLoop) auditInvocation(ctx context.Context, conv Conversation, actor Actor, messageID, confirmationID *uuid.UUID, toolName, action string, tier RiskTier, hash string, request, result json.RawMessage, outcome string) {
 	_ = l.audit.Append(ctx, ToolInvocationAudit{
+		OrganizationID: conv.OrganizationID,
+		WorkspaceID:    conv.WorkspaceID,
 		ConversationID: conv.ID,
 		MessageID:      messageID,
 		Actor:          actor,
@@ -523,6 +528,30 @@ func assertConfirmedCallPresent(batch []provider.ToolCall, pc PendingConfirmatio
 		}
 	}
 	return fmt.Errorf("confirmation %s tool_call %q not found in deferred batch", pc.ID, pc.ToolCallID)
+}
+
+// ContinueTurn replays the conversation and continues the model loop WITHOUT appending a user
+// message or executing any deferred batch. The api manager uses it for the crash-safe finalize
+// path: a confirmed effect already executed (its tool-result is persisted) but finalization
+// failed; on retry we must NOT re-execute — just let the model respond over the existing history.
+func (l *AgentLoop) ContinueTurn(ctx context.Context, actor Actor, authorizer WorkspaceAuthorizer, conv Conversation, sink EventSink) (TurnResult, error) {
+	if sink == nil {
+		sink = func(Event) {}
+	}
+	var result TurnResult
+	pmsgs := []provider.Message{{Role: "system", Content: systemPrompt(conv.Phase)}}
+	history, err := l.messages.History(ctx, conv.ID)
+	if err != nil {
+		return result, err
+	}
+	for _, m := range history {
+		pm, err := toProviderMessage(m)
+		if err != nil {
+			return result, fmt.Errorf("rebuild history for conversation %s: %w", conv.ID, err)
+		}
+		pmsgs = append(pmsgs, pm)
+	}
+	return l.runLoop(ctx, actor, authorizer, conv, pmsgs, result, 0, sink)
 }
 
 // deferredBatch returns the tool-call array of the assistant message that proposed pc.

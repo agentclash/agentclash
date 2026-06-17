@@ -254,6 +254,8 @@ func registerProtectedRoutes(
 			Post("/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/turns", createVibeEvalTurnHandler(logger, vibeEvalAgentManager))
 		router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 			Get("/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/messages", listVibeEvalMessagesHandler(logger, vibeEvalAgentManager))
+		router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+			Post("/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/confirmations/{confirmationID}", resolveVibeEvalConfirmationHandler(logger, vibeEvalAgentManager))
 	}
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/artifacts", listWorkspaceArtifactsHandler(logger, artifactService))

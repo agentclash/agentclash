@@ -533,7 +533,9 @@ func handleVibeEvalError(w http.ResponseWriter, logger *slog.Logger, err error) 
 		writeError(w, http.StatusNotFound, "conversation_not_found", "vibe eval conversation not found")
 	case errors.Is(err, repository.ErrVibeEvalDraftNotFound):
 		writeError(w, http.StatusNotFound, "draft_not_found", "vibe eval draft not found")
-	case errors.Is(err, ErrForbidden):
+	case errors.Is(err, repository.ErrVibeEvalConfirmationNotFound):
+		writeError(w, http.StatusNotFound, "confirmation_not_found", "vibe eval pending confirmation not found")
+	case errors.Is(err, ErrForbidden), errors.Is(err, ErrUnauthenticated), errors.Is(err, ErrCallerMissing):
 		writeAuthzError(w, err)
 	default:
 		logger.Error("vibe eval request failed", "error", err)

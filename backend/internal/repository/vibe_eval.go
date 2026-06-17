@@ -474,6 +474,23 @@ func (r *Repository) ListVibeEvalToolInvocationsByConversationID(ctx context.Con
 	return out, nil
 }
 
+// GetVibeEvalConfirmedToolOutcome returns the latest ok/error audit outcome recorded for a
+// confirmation's executed tool. found=false when no execution audit row exists yet (the effect
+// never ran, or ran but its best-effort audit write was lost).
+func (r *Repository) GetVibeEvalConfirmedToolOutcome(ctx context.Context, confirmationID uuid.UUID) (outcome string, found bool, err error) {
+	cid := confirmationID
+	o, err := r.queries.GetVibeEvalConfirmedToolOutcome(ctx, repositorysqlc.GetVibeEvalConfirmedToolOutcomeParams{
+		ConfirmationID: &cid,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	return o, true, nil
+}
+
 func mapVibeEvalToolInvocation(row repositorysqlc.VibeEvalToolInvocation) (VibeEvalToolInvocation, error) {
 	createdAt, err := requiredTime("vibe_eval_tool_invocations.created_at", row.CreatedAt)
 	if err != nil {

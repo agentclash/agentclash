@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -68,6 +69,82 @@ func createVibeEvalTurnHandler(logger *slog.Logger, mgr *VibeEvalAgentManager) h
 				"type":  string(vibeeval.EventError),
 				"error": "turn failed",
 			})
+		}
+	}
+}
+
+// resolveVibeEvalConfirmationHandler approves or denies a pending confirmation and streams the
+// continuation turn over SSE. Ownership + bound-action authorization happen BEFORE the SSE switch
+// (so not-found/forbidden return as normal HTTP errors); the atomic resolve + execution stream.
+func resolveVibeEvalConfirmationHandler(logger *slog.Logger, mgr *VibeEvalAgentManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, workspaceID, ok := vibeEvalCallerAndWorkspace(w, r)
+		if !ok {
+			return
+		}
+		conversationID, ok := parseVibeEvalURLUUID(w, "conversationID", "invalid_conversation_id", r)
+		if !ok {
+			return
+		}
+		confirmationID, ok := parseVibeEvalURLUUID(w, "confirmationID", "invalid_confirmation_id", r)
+		if !ok {
+			return
+		}
+		var req struct {
+			Approve     *bool  `json:"approve"`
+			PayloadHash string `json:"payload_hash"`
+		}
+		if !decodeVibeEvalJSON(w, r, &req) {
+			return
+		}
+		// approve must be explicit — a missing field must NOT silently deny this high-impact action.
+		if req.Approve == nil {
+			writeError(w, http.StatusBadRequest, "validation_error", "approve is required")
+			return
+		}
+		if strings.TrimSpace(req.PayloadHash) == "" {
+			writeError(w, http.StatusBadRequest, "validation_error", "payload_hash is required")
+			return
+		}
+
+		conv, pc, err := mgr.LoadConfirmationForResolve(r.Context(), caller, workspaceID, conversationID, confirmationID)
+		if err != nil {
+			handleVibeEvalError(w, logger, err)
+			return
+		}
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			writeError(w, http.StatusInternalServerError, "streaming_unsupported", "streaming is not supported")
+			return
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.WriteHeader(http.StatusOK)
+		flusher.Flush()
+
+		writeFrame := func(eventType string, payload any) {
+			data, err := json.Marshal(payload)
+			if err != nil {
+				return
+			}
+			fmt.Fprintf(w, "event: %s\n", eventType)
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+		sink := func(e vibeeval.Event) { writeFrame(string(e.Type), e) }
+
+		if _, err := mgr.ResolveConfirmation(r.Context(), caller, conv, pc, *req.Approve, req.PayloadHash, sink); err != nil {
+			// Headers already sent — surface as an error event. The not-resolvable case (already
+			// resolved / expired / payload-hash mismatch) is a normal client outcome, not a 500.
+			msg := "resolve failed"
+			if errors.Is(err, repository.ErrVibeEvalConfirmationNotResolvable) {
+				msg = "confirmation not resolvable (already resolved, expired, or payload hash mismatch)"
+			} else {
+				logger.Error("vibe eval confirmation resolve failed", "error", err)
+			}
+			writeFrame(string(vibeeval.EventError), map[string]string{"type": string(vibeeval.EventError), "error": msg})
 		}
 	}
 }

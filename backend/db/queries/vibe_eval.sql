@@ -184,6 +184,17 @@ FROM vibe_eval_tool_invocations
 WHERE conversation_id = @conversation_id
 ORDER BY created_at DESC, id DESC;
 
+-- name: GetVibeEvalConfirmedToolOutcome :one
+-- The durable, outcome-aware execution result for a confirmation: the latest ok/error audit row
+-- (the confirmation_required propose row is excluded). 0 rows ⇒ the confirmed effect never ran (or
+-- ran but its best-effort audit write was lost — the caller treats that ambiguity conservatively).
+SELECT outcome
+FROM vibe_eval_tool_invocations
+WHERE confirmation_id = @confirmation_id
+  AND outcome IN ('ok', 'error')
+ORDER BY created_at DESC, id DESC
+LIMIT 1;
+
 -- name: CreateVibeEvalPendingConfirmation :one
 -- Propose half of the confirmation engine (#875 §5.3). bound_args is the verbatim args to
 -- execute on approve; payload_hash binds the confirmation to exactly those args.

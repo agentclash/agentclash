@@ -115,6 +115,10 @@ type Querier interface {
 	GetRunComparisonByRunIDs(ctx context.Context, arg GetRunComparisonByRunIDsParams) (RunComparison, error)
 	GetRunScorecardByRunID(ctx context.Context, arg GetRunScorecardByRunIDParams) (RunScorecard, error)
 	GetRunnableChallengePackVersionByID(ctx context.Context, arg GetRunnableChallengePackVersionByIDParams) (ChallengePackVersion, error)
+	// The durable, outcome-aware execution result for a confirmation: the latest ok/error audit row
+	// (the confirmation_required propose row is excluded). 0 rows ⇒ the confirmed effect never ran (or
+	// ran but its best-effort audit write was lost — the caller treats that ambiguity conservatively).
+	GetVibeEvalConfirmedToolOutcome(ctx context.Context, arg GetVibeEvalConfirmedToolOutcomeParams) (string, error)
 	GetVibeEvalConversationByID(ctx context.Context, arg GetVibeEvalConversationByIDParams) (VibeEvalConversation, error)
 	GetVibeEvalDraftByID(ctx context.Context, arg GetVibeEvalDraftByIDParams) (VibeEvalDraft, error)
 	GetVibeEvalPendingConfirmationByID(ctx context.Context, arg GetVibeEvalPendingConfirmationByIDParams) (VibeEvalPendingConfirmation, error)
