@@ -858,9 +858,13 @@ func decodeVibeEvalJSON(w http.ResponseWriter, r *http.Request, dest any) bool {
 
 func handleVibeEvalError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	var validationErr VibeEvalValidationError
+	var gateErr billingpkg.GateError
 	switch {
 	case errors.As(err, &validationErr):
 		writeError(w, http.StatusBadRequest, validationErr.Code, validationErr.Message)
+	case errors.As(err, &gateErr):
+		// Entitlement gate (e.g. publish_draft without private_challenge_packs) → 403, not 500.
+		writeBillingGateError(w, gateErr.Decision)
 	case errors.Is(err, repository.ErrVibeEvalConversationNotFound):
 		writeError(w, http.StatusNotFound, "conversation_not_found", "vibe eval conversation not found")
 	case errors.Is(err, repository.ErrVibeEvalDraftNotFound):
