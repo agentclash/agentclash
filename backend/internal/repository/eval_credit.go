@@ -132,17 +132,28 @@ func (r *Repository) grantEvalCreditOnce(ctx context.Context, orgID uuid.UUID, g
 		return WalletBalance{}, fmt.Errorf("begin grant eval credit: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	bal, err := r.grantEvalCreditInTx(ctx, tx, orgID, grantKey, micros, ref)
+	if err != nil {
+		return WalletBalance{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return WalletBalance{}, fmt.Errorf("commit grant: %w", err)
+	}
+	return bal, nil
+}
 
+// grantEvalCreditInTx applies an idempotent grant within an existing transaction. Used both by the
+// standalone GrantEvalCredit and to seed the signup grant atomically with org creation.
+func (r *Repository) grantEvalCreditInTx(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, grantKey string, micros int64, ref CreditRef) (WalletBalance, error) {
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO org_eval_credit_wallets (organization_id) VALUES ($1)
 		ON CONFLICT (organization_id) DO NOTHING
 	`, orgID); err != nil {
 		return WalletBalance{}, fmt.Errorf("ensure wallet: %w", err)
 	}
-
 	// Idempotency: a prior grant with this key must match the amount exactly.
 	var existing int64
-	err = tx.QueryRow(ctx, `
+	err := tx.QueryRow(ctx, `
 		SELECT amount_micros FROM org_eval_credit_ledger
 		WHERE organization_id = $1 AND entry_type = 'grant' AND idempotency_key = $2
 	`, orgID, grantKey).Scan(&existing)
@@ -155,7 +166,6 @@ func (r *Repository) grantEvalCreditOnce(ctx context.Context, orgID uuid.UUID, g
 	case !errors.Is(err, pgx.ErrNoRows):
 		return WalletBalance{}, fmt.Errorf("check grant idempotency: %w", err)
 	}
-
 	if _, err := tx.Exec(ctx, `
 		UPDATE org_eval_credit_wallets SET available_micros = available_micros + $2, updated_at = now()
 		WHERE organization_id = $1
@@ -165,14 +175,21 @@ func (r *Repository) grantEvalCreditOnce(ctx context.Context, orgID uuid.UUID, g
 	if err := insertEvalCreditLedger(ctx, tx, orgID, "grant", micros, micros, 0, 0, grantKey, nil, ref, nil); err != nil {
 		return WalletBalance{}, fmt.Errorf("grant ledger: %w", err)
 	}
-	bal, err := r.readWalletTx(ctx, tx, orgID)
-	if err != nil {
-		return WalletBalance{}, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return WalletBalance{}, fmt.Errorf("commit grant: %w", err)
-	}
-	return bal, nil
+	return r.readWalletTx(ctx, tx, orgID)
+}
+
+// SignupEvalCreditMicros is the eval credit granted to every new org ($3.00). signupEvalCreditGrantKey
+// is the stable idempotency key so re-runs / imports / backfill never double-grant.
+const (
+	SignupEvalCreditMicros   = 3_000_000
+	signupEvalCreditGrantKey = "signup-eval-credit:v1"
+)
+
+// SeedOrgEvalCreditTx grants the signup eval credit to a new org inside an existing transaction
+// (atomic with org creation). Idempotent on the stable grant key.
+func (r *Repository) SeedOrgEvalCreditTx(ctx context.Context, tx pgx.Tx, orgID uuid.UUID) error {
+	_, err := r.grantEvalCreditInTx(ctx, tx, orgID, signupEvalCreditGrantKey, SignupEvalCreditMicros, CreditRef{Reason: "signup eval credit"})
+	return err
 }
 
 // ReserveEvalCredit holds `micros` against the org wallet. Idempotent on reservationKey: a repeat with

@@ -3653,6 +3653,11 @@ func (r *Repository) Onboard(ctx context.Context, input OnboardInput) (OnboardRe
 		return OnboardResult{}, fmt.Errorf("insert workspace admin membership: %w", err)
 	}
 
+	// Seed the signup eval credit ($3.00) atomically with org creation (idempotent on the stable key).
+	if err := r.SeedOrgEvalCreditTx(ctx, tx, org.ID); err != nil {
+		return OnboardResult{}, fmt.Errorf("seed eval credit: %w", err)
+	}
+
 	if err := tx.Commit(ctx); err != nil {
 		return OnboardResult{}, fmt.Errorf("commit tx: %w", err)
 	}
@@ -4516,6 +4521,11 @@ func (r *Repository) CreateOrganizationWithAdmin(ctx context.Context, input Crea
 	`, org.ID, defaultEntitlements.PlanKey, defaultEntitlements.BillingPeriod, defaultEntitlements.Status, defaultEntitlements.SeatQuantity, defaultEntitlements.SeatsLimit, defaultEntitlements.WorkspacesLimit, defaultEntitlements.RacesPerWorkspaceMonth, defaultEntitlements.MaxModelsPerRace, defaultEntitlements.ReplayRetentionDays, defaultEntitlements.ConcurrentRaces, featureFlags)
 	if err != nil {
 		return OrganizationRow{}, fmt.Errorf("insert default organization entitlements: %w", err)
+	}
+
+	// Seed the signup eval credit ($3.00) atomically with org creation (idempotent on the stable key).
+	if err := r.SeedOrgEvalCreditTx(ctx, tx, org.ID); err != nil {
+		return OrganizationRow{}, fmt.Errorf("seed eval credit: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
