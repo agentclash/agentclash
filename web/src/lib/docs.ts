@@ -80,9 +80,9 @@ const PUBLIC_PRODUCT_PAGES: PublicProductPage[] = [
     title: "AgentClash Pricing",
     href: "/pricing",
     description:
-      "AgentClash pricing — a free hosted tier and open-source self-hosting, paid Pro ($49/seat/mo) and Team ($100/seat/mo) tiers, and custom Enterprise. Bring your own LLM keys on every tier.",
+      "AgentClash pricing — a free hosted tier and open-source self-hosting, paid Pro ($49/mo) and Team ($100/mo) tiers, and custom Enterprise. Bring your own LLM keys on every tier.",
     searchKeywords:
-      "AgentClash pricing cost plans tiers free open source self-host Pro Team Enterprise per seat BYOK bring your own key managed hosted",
+      "AgentClash pricing cost plans tiers free open source self-host Pro Team Enterprise workspace BYOK bring your own key managed hosted",
   },
   {
     title: "Product Changelog",

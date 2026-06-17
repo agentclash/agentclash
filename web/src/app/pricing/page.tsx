@@ -12,9 +12,9 @@ import { ogImageUrl } from "@/lib/seo";
 import { CompareShell } from "../compare/_components/compare-shell";
 
 const PAGE_PATH = "/pricing";
-const PAGE_TITLE = "AgentClash Pricing: Free, Open-Source, Pro, Team & Enterprise";
+const PAGE_TITLE = "AgentClash Pricing: Free, Pro, Team & Enterprise";
 const PAGE_DESCRIPTION =
-  "AgentClash pricing — a free hosted tier and free open-source self-hosting, Pro at $49/seat/mo and Team at $100/seat/mo (cheaper billed annually), and custom Enterprise. Bring your own LLM keys on every tier; we never mark up tokens.";
+  "AgentClash pricing — start free with hosted runs or self-host the open-source engine, then upgrade to Pro at $49/mo or Team at $100/mo when you need more runs, retention, and governance. Bring your own LLM keys on every tier; we never mark up tokens.";
 const SOCIAL_IMAGE = ogImageUrl({
   title: "AgentClash Pricing",
   subtitle: "Free and open-source, with hosted Pro, Team & Enterprise",
@@ -27,12 +27,12 @@ const faqItems = [
   {
     question: "Is AgentClash free?",
     answer:
-      "Yes. AgentClash is open source under the MIT license, so you can self-host the engine on your own infrastructure for free. There is also a free hosted tier with 25 eval runs per month, one seat, and bring-your-own LLM keys — no credit card required.",
+      "Yes. AgentClash is open source under the MIT license, so you can self-host the engine on your own infrastructure for free. There is also a free hosted tier with 25 eval runs per month and bring-your-own LLM keys, so you can run real evals before upgrading.",
   },
   {
     question: "How much does AgentClash cost?",
     answer:
-      "Self-hosting is free. The hosted Free tier is $0. Pro is $49 per seat per month ($39 billed annually) with a five-seat minimum, Team is $100 per seat per month ($80 billed annually), and Enterprise is custom. Pro and Team include a free 45-day trial with no credit card.",
+      "Self-hosting is free. The hosted Free tier is $0. Pro is $49 per month ($39 billed annually), Team is $100 per month ($80 billed annually), and Enterprise is custom.",
   },
   {
     question: "Do you mark up LLM tokens?",
@@ -42,7 +42,7 @@ const faqItems = [
   {
     question: "Can I self-host AgentClash instead of paying?",
     answer:
-      "Yes. The engine is MIT-licensed and open source. You can run the full stack on your own infrastructure at no license cost; the paid hosted tiers exist to skip the ops and add team features like private challenge packs, CI integration, SSO, and audit logs.",
+      "Yes. The engine is MIT-licensed and open source. You can run the full stack on your own infrastructure at no license cost; the paid hosted tiers exist to skip the ops and add more runs, private challenge packs, CI integration, SSO, and audit logs.",
   },
 ];
 
@@ -95,7 +95,7 @@ export default function PricingPage() {
               Pricing
             </p>
             <h1 className="mt-5 max-w-[20ch] font-[family-name:var(--font-display)] text-4xl font-normal leading-[1.05] tracking-tight text-white sm:text-6xl">
-              Free and open-source. Hosted when you want to skip the ops.
+              Start free. Pay when evals become part of shipping.
             </h1>
             <p className="mt-8 max-w-[64ch] text-base leading-8 text-white/62 sm:text-lg">
               {PAGE_DESCRIPTION}

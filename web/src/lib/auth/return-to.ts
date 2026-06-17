@@ -11,6 +11,7 @@ const ALLOWED_RETURN_PATHS = new Set([
   DEVICE_PATH,
   GITHUB_SETUP_PATH,
 ]);
+const PLAN_INTENT_PATTERN = /^(pro|team)$/;
 const RETURN_TO_BASE_URL = "http://agentclash.local";
 
 export function sanitizeReturnTo(raw: string | null | undefined): string {
@@ -49,7 +50,19 @@ export function sanitizeReturnTo(raw: string | null | undefined): string {
     return buildGitHubSetupReturnTo(parsed.searchParams);
   }
 
+  if (parsed.pathname === DEFAULT_RETURN_TO) {
+    return buildDashboardReturnTo(parsed.searchParams);
+  }
+
   return DEFAULT_RETURN_TO;
+}
+
+export function buildDashboardReturnTo(searchParams: URLSearchParams): string {
+  const plan = searchParams.get("plan");
+  if (!plan || !PLAN_INTENT_PATTERN.test(plan)) {
+    return DEFAULT_RETURN_TO;
+  }
+  return `${DEFAULT_RETURN_TO}?${new URLSearchParams({ plan }).toString()}`;
 }
 
 export function buildInviteReturnTo(

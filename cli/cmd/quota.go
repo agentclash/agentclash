@@ -42,7 +42,6 @@ var quotaCmd = &cobra.Command{
 		}
 		rc.Output.PrintDetail("Monthly races", quotaCounterLine(mapObject(quota, "monthly_races")))
 		rc.Output.PrintDetail("Concurrent races", quotaCounterLine(mapObject(quota, "concurrent_races")))
-		rc.Output.PrintDetail("Seats", quotaCounterLine(mapObject(quota, "seats")))
 		if resetAt := mapString(mapObject(quota, "monthly_races"), "reset_at"); resetAt != "" {
 			rc.Output.PrintDetail("Quota resets", resetAt)
 		}

@@ -216,7 +216,7 @@ func (e *APIError) IsBillingGate() bool {
 func (e *APIError) BillingMessage() string {
 	current := planLabel(e.PlanKey)
 	upgrade := planLabel(e.UpgradeTarget)
-	action := "Open the organization billing page in the AgentClash web app to start a trial or upgrade."
+	action := "Open the organization billing page in the AgentClash web app to upgrade."
 	if e.UpgradeTarget == "" {
 		action = "Open the organization billing page in the AgentClash web app to update billing."
 	}
@@ -242,7 +242,7 @@ func (e *APIError) BillingMessage() string {
 			detail = fmt.Sprintf("%s Limit: %d.", detail, *e.Limit)
 		}
 	case "seat_limit_exceeded":
-		detail = fmt.Sprintf("%s seat limit is reached.", current)
+		detail = fmt.Sprintf("%s member limit is reached.", current)
 		if e.Limit != nil {
 			detail = fmt.Sprintf("%s Limit: %d.", detail, *e.Limit)
 		}

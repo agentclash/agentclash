@@ -16,7 +16,7 @@ export function planLabel(planKey?: string): string {
 export function billingStatusLabel(status?: string): string {
   switch (status) {
     case "trialing":
-      return "Trial";
+      return "Promotional";
     case "active":
       return "Active";
     case "expired":
@@ -67,21 +67,21 @@ export function billingGateToastMessage(err: unknown): string | null {
   const current = planLabel(err.planKey);
   const upgrade = planLabel(err.upgradeTarget);
   const reset = err.resetAt ? ` Resets ${formatBillingDate(err.resetAt)}.` : "";
-  const expiry = err.expiresAt ? ` Trial ended ${formatBillingDate(err.expiresAt)}.` : "";
+  const expiry = err.expiresAt ? ` Access ended ${formatBillingDate(err.expiresAt)}.` : "";
 
   switch (err.code) {
     case "feature_not_entitled":
-      return `${current} does not include this feature. Start a trial or upgrade to ${upgrade}.`;
+      return `${current} does not include this feature. Upgrade to ${upgrade}.`;
     case "quota_exceeded":
-      return `${current} has used ${err.used ?? "all"} of ${formatBillingLimit(err.limit)} monthly runs.${reset} Start a trial or upgrade to continue.`;
+      return `${current} has used ${err.used ?? "all"} of ${formatBillingLimit(err.limit)} monthly runs.${reset} Upgrade to continue.`;
     case "concurrency_limit_exceeded":
       return `${current} allows ${formatBillingLimit(err.limit)} concurrent run${err.limit === 1 ? "" : "s"}. Try again after one finishes, or upgrade to ${upgrade}.`;
     case "plan_limit_exceeded":
-      return `${current} allows up to ${formatBillingLimit(err.limit)} models per run. Start a trial or upgrade to ${upgrade}.`;
+      return `${current} allows up to ${formatBillingLimit(err.limit)} models per run. Upgrade to ${upgrade}.`;
     case "seat_limit_exceeded":
-      return `${current} has reached its seat limit. Start a trial or upgrade to ${upgrade}.`;
+      return `${current} has reached its member limit. Upgrade to ${upgrade}.`;
     case "workspace_limit_exceeded":
-      return `${current} has reached its workspace limit. Start a trial or upgrade to ${upgrade}.`;
+      return `${current} has reached its workspace limit. Upgrade to ${upgrade}.`;
     case "entitlement_expired":
       return `${current} access has expired.${expiry} Add billing to continue.`;
     case "entitlement_inactive":

@@ -17,13 +17,12 @@ import {
   billingStatusLabel,
   formatBillingDate,
   formatBillingLimit,
-  isFreeActive,
   planLabel,
 } from "@/lib/billing";
 import { useOrgContext } from "../org-context";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CreditCard, ExternalLink, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { CreditCard, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 type SelfServePeriod = "monthly" | "yearly";
@@ -34,12 +33,12 @@ const PRICE_COPY: Record<string, Record<SelfServePeriod, { value: string; suffix
     yearly: { value: "$0", suffix: "/ month" },
   },
   pro: {
-    monthly: { value: "$49", suffix: "/ seat / month", note: "Billed monthly" },
-    yearly: { value: "$39", suffix: "/ seat / month", note: "$468 / seat / year" },
+    monthly: { value: "$49", suffix: "/ month", note: "Billed monthly" },
+    yearly: { value: "$39", suffix: "/ month", note: "$468 / year" },
   },
   team: {
-    monthly: { value: "$100", suffix: "/ seat / month", note: "Billed monthly" },
-    yearly: { value: "$80", suffix: "/ seat / month", note: "$960 / seat / year" },
+    monthly: { value: "$100", suffix: "/ month", note: "Billed monthly" },
+    yearly: { value: "$80", suffix: "/ month", note: "$960 / year" },
   },
 };
 
@@ -56,22 +55,17 @@ function PlanCard({
   plan,
   currentPlan,
   billingPeriod,
-  trialAvailable,
   busyAction,
-  onStartTrial,
   onCheckout,
 }: {
   plan: BillingPlan;
   currentPlan: string;
   billingPeriod: SelfServePeriod;
-  trialAvailable: boolean;
   busyAction: string | null;
-  onStartTrial: (plan: BillingPlan) => void;
   onCheckout: (plan: BillingPlan) => void;
 }) {
   const isCurrent = plan.key === currentPlan;
   const busy = busyAction === plan.key;
-  const canTrial = trialAvailable && (plan.key === "pro" || plan.key === "team");
   const canCheckout = plan.key !== "free" && plan.key !== "enterprise";
   const price = PRICE_COPY[plan.key]?.[billingPeriod];
 
@@ -82,10 +76,10 @@ function PlanCard({
           <h3 className="text-sm font-semibold">{plan.display_name}</h3>
           <p className="mt-1 text-xs text-muted-foreground">
             {plan.key === "free"
-              ? "Stay on Free while you evaluate."
+              ? "Run real evals before you pay."
               : plan.key === "enterprise"
                 ? "Custom limits and billing terms."
-                : "Start a 45-day trial or create checkout."}
+                : "Upgrade when you need more runs, retention, or governance."}
           </p>
         </div>
         {isCurrent && <Badge variant="secondary">Current</Badge>}
@@ -108,7 +102,6 @@ function PlanCard({
       )}
 
       <div className="mt-4 space-y-2">
-        <LimitRow label="Seats" value={plan.limits.seats.value} />
         <LimitRow
           label="Runs / workspace"
           value={plan.limits.races_per_workspace_month.value}
@@ -120,24 +113,9 @@ function PlanCard({
       </div>
 
       <div className="mt-auto flex flex-wrap gap-2 pt-4">
-        {canTrial && (
-          <Button
-            size="sm"
-            disabled={busy}
-            onClick={() => onStartTrial(plan)}
-          >
-            {busy ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Sparkles className="size-4" />
-            )}
-            Start Trial
-          </Button>
-        )}
         {canCheckout && (
           <Button
             size="sm"
-            variant={canTrial ? "outline" : "default"}
             disabled={busy}
             onClick={() => onCheckout(plan)}
           >
@@ -146,7 +124,7 @@ function PlanCard({
             ) : (
               <CreditCard className="size-4" />
             )}
-            Checkout
+            Upgrade
           </Button>
         )}
       </div>
@@ -201,7 +179,6 @@ export function BillingSettingsClient() {
     [plansData],
   );
   const entitlements = overview?.entitlements;
-  const trialAvailable = isFreeActive(entitlements);
   const hasDodoCustomer = Boolean(overview?.account?.dodo_customer_id);
   const checkoutReturned = searchParams.get("checkout") === "pending";
   const dodoReturnStatus = searchParams.get("status");
@@ -216,27 +193,6 @@ export function BillingSettingsClient() {
     }, 4000);
     return () => window.clearInterval(interval);
   }, [checkoutPending, checkoutReturned, mutate]);
-
-  async function startTrial(plan: BillingPlan) {
-    setBusyAction(plan.key);
-    try {
-      const token = await getAccessToken();
-      const api = createApiClient(token ?? undefined);
-      await api.post<BillingOverviewResponse>(
-        `/v1/organizations/${orgId}/billing/trial`,
-        {
-          plan_key: plan.key,
-          billing_period: billingPeriod,
-        },
-      );
-      toast.success(`${plan.display_name} trial started`);
-      await mutate();
-    } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to start trial");
-    } finally {
-      setBusyAction(null);
-    }
-  }
 
   async function createCheckout(plan: BillingPlan) {
     setBusyAction(plan.key);
@@ -260,7 +216,7 @@ export function BillingSettingsClient() {
         {
           plan_key: plan.key,
           billing_period: billingPeriod,
-          seat_quantity: Math.max(plan.minimum_seats, plan.default_seats),
+          seat_quantity: 1,
           return_url: returnURL.toString(),
         },
       );
@@ -308,7 +264,7 @@ export function BillingSettingsClient() {
         <div>
           <h1 className="text-lg font-semibold tracking-tight">Billing</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Review your plan, trial status, and usage limits.
+            Review your plan, usage, and upgrade options.
           </p>
         </div>
         <Button
@@ -381,7 +337,7 @@ export function BillingSettingsClient() {
           </div>
           {entitlements.expires_at && (
             <div className="text-right text-sm">
-              <p className="text-muted-foreground">Trial ends</p>
+              <p className="text-muted-foreground">Access ends</p>
               <p className="font-medium">
                 {formatBillingDate(entitlements.expires_at)}
               </p>
@@ -389,7 +345,6 @@ export function BillingSettingsClient() {
           )}
         </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2">
-          <LimitRow label="Seats" value={entitlements.seats_limit} />
           <LimitRow label="Workspaces" value={entitlements.workspaces_limit} />
           <LimitRow
             label="Runs / workspace / month"
@@ -410,21 +365,6 @@ export function BillingSettingsClient() {
         </div>
       </section>
 
-      {trialAvailable && (
-        <section className="rounded-lg border border-primary/20 bg-primary/5 p-4">
-          <div className="flex items-start gap-3">
-            <RefreshCw className="mt-0.5 size-4 text-primary" />
-            <div>
-              <h2 className="text-sm font-semibold">Try a paid plan for 45 days</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Pick the plan you want to evaluate. The trial grants only that
-                plan&apos;s limits and expires automatically after 45 days.
-              </p>
-            </div>
-          </div>
-        </section>
-      )}
-
       <section>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-sm font-semibold">Plans</h2>
@@ -437,9 +377,7 @@ export function BillingSettingsClient() {
               plan={plan}
               currentPlan={entitlements.plan_key}
               billingPeriod={billingPeriod}
-              trialAvailable={trialAvailable}
               busyAction={busyAction}
-              onStartTrial={startTrial}
               onCheckout={createCheckout}
             />
           ))}

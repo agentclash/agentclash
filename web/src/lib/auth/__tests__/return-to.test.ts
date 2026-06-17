@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildInviteReturnTo,
   buildGitHubSetupReturnTo,
+  buildDashboardReturnTo,
   buildDeviceReturnTo,
   normalizeDeviceUserCode,
   sanitizeReturnTo,
@@ -29,6 +30,13 @@ describe("sanitizeReturnTo", () => {
     ).toBe(
       "/github/setup?installation_id=42&state=abc_DEF-123.sig_456&setup_action=install",
     );
+  });
+
+  it("preserves paid plan intent on the dashboard return path", () => {
+    expect(sanitizeReturnTo("/dashboard?plan=pro&evil=https://example.com")).toBe(
+      "/dashboard?plan=pro",
+    );
+    expect(sanitizeReturnTo("/dashboard?plan=enterprise")).toBe("/dashboard");
   });
 
   it("preserves invite accept routes", () => {
@@ -59,6 +67,17 @@ describe("github setup return-to helpers", () => {
   it("requires installation id and signed state", () => {
     expect(buildGitHubSetupReturnTo(new URLSearchParams("installation_id=x"))).toBe(
       "/github/setup",
+    );
+  });
+});
+
+describe("dashboard return-to helpers", () => {
+  it("keeps only supported paid plan intent", () => {
+    expect(buildDashboardReturnTo(new URLSearchParams("plan=team"))).toBe(
+      "/dashboard?plan=team",
+    );
+    expect(buildDashboardReturnTo(new URLSearchParams("plan=free"))).toBe(
+      "/dashboard",
     );
   });
 });

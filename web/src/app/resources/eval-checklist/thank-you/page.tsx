@@ -64,7 +64,7 @@ export default function EvalChecklistThankYouPage() {
                 href="/enterprise"
                 className="inline-flex min-h-11 items-center justify-center rounded-lg bg-white px-5 text-sm font-semibold text-[#060606] transition-colors hover:bg-white/90"
               >
-                See enterprise pilot
+                See enterprise rollout
               </Link>
               <a
                 href="mailto:hello@agentclash.dev?subject=AgentClash%20eval%20architecture%20review"

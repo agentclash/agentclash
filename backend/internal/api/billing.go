@@ -188,52 +188,11 @@ func (m *BillingManager) StartTrial(ctx context.Context, caller Caller, orgID uu
 	if err := m.orgAuthz.AuthorizeOrganizationAdmin(ctx, caller, orgID); err != nil {
 		return repository.BillingOverview{}, err
 	}
-	current, err := m.repo.GetOrganizationEntitlements(ctx, orgID)
-	if err != nil {
-		return repository.BillingOverview{}, err
-	}
-	if current.PlanKey != billingpkg.PlanFree {
-		return repository.BillingOverview{}, validationError("trial_not_available", "trial is only available from the Free plan")
-	}
-	planKey := strings.TrimSpace(input.PlanKey)
-	if planKey != billingpkg.PlanPro && planKey != billingpkg.PlanTeam {
-		return repository.BillingOverview{}, validationError("invalid_plan_key", "plan_key must be pro or team")
-	}
-	plan, ok := m.planByKey(planKey)
-	if !ok {
-		return repository.BillingOverview{}, validationError("invalid_plan_key", "plan_key must be pro or team")
-	}
-	period := strings.TrimSpace(input.BillingPeriod)
-	if period == "" {
-		period = billingpkg.PeriodMonthly
-	}
-	if err := billingpkg.ValidateBillingPeriod(plan, period); err != nil {
-		return repository.BillingOverview{}, validationError("invalid_billing_period", err.Error())
-	}
-	seatQuantity := plan.DefaultSeats
-	if seatQuantity < plan.MinimumSeats {
-		seatQuantity = plan.MinimumSeats
-	}
-	expiresAt := m.now().UTC().Add(45 * 24 * time.Hour)
-	entitlements := billingpkg.MaterializeEntitlements(plan, period, seatQuantity, billingpkg.EntitlementStatusTrialing)
-	entitlements.ExpiresAt = &expiresAt
-	if _, err := m.repo.CreateBillingTrialGrant(ctx, repository.BillingTrialGrantInput{
-		OrganizationID:  orgID,
-		PlanKey:         plan.Key,
-		BillingPeriod:   period,
-		StartedByUserID: caller.UserID,
-		StartedAt:       m.now().UTC(),
-		ExpiresAt:       expiresAt,
-	}); err != nil {
-		if errors.Is(err, repository.ErrBillingTrialAlreadyUsed) {
-			return repository.BillingOverview{}, validationError("trial_not_available", "this organization has already used its self-serve trial")
-		}
-		return repository.BillingOverview{}, err
-	}
-	if err := m.repo.UpsertOrganizationEntitlements(ctx, orgID, entitlements, nil, &expiresAt); err != nil {
-		return repository.BillingOverview{}, err
-	}
-	return m.repo.GetBillingOverview(ctx, orgID)
+	_ = input
+	return repository.BillingOverview{}, validationError(
+		"trial_retired",
+		"self-serve paid trials have been retired; use checkout when Free is not enough",
+	)
 }
 
 func (m *BillingManager) CreateCheckout(ctx context.Context, caller Caller, orgID uuid.UUID, input CreateBillingCheckoutInput) (CreateBillingCheckoutResult, error) {
@@ -641,9 +600,8 @@ func (m *BillingManager) createDodoCheckoutSession(ctx context.Context, caller C
 	if productID == "" {
 		return "", "", validationError("invalid_billing_period", "selected plan does not have a Dodo product for this billing period")
 	}
-	// Dodo subscription line items must have quantity=1; per-seat billing is
-	// expressed via add-ons, not by multiplying the subscription quantity.
-	// See https://docs.dodopayments.com/developer-resources/seat-based-pricing.
+	// AgentClash plans are workspace-priced. Keep the Dodo subscription line
+	// item at quantity=1 and store legacy quantity metadata for compatibility.
 	requestPayload := map[string]any{
 		"product_cart": []map[string]any{
 			{
