@@ -176,6 +176,13 @@ type RunnableDeployment struct {
 	AgentDeploymentSnapshotID uuid.UUID
 	SpendPolicyID             *uuid.UUID
 	RoutingPolicyID           *uuid.UUID
+	// Frozen billing identity from the snapshot (4d-1). SourceProviderAccountID set ⇒ BYOK lane.
+	// OutputCostPerMillionTokens is the FROZEN model-alias output rate (0 when absent — the estimate
+	// blocks on a non-positive managed rate; it is never silently defaulted on conversion failure).
+	SourceProviderAccountID    *uuid.UUID
+	ProviderKey                string
+	ProviderModelID            string
+	OutputCostPerMillionTokens float64
 }
 
 type CreateQueuedRunAgentParams struct {
@@ -471,18 +478,46 @@ func (r *Repository) ListRunnableDeploymentsWithLatestSnapshot(
 
 	deployments := make([]RunnableDeployment, 0, len(rows))
 	for _, row := range rows {
+		// Convert the frozen rate carefully: NULL → 0 (the managed estimate then blocks on a
+		// non-positive rate), but an INVALID numeric surfaces as an error — never a silent 0.
+		outputRate, err := numericRateToFloat64(row.OutputCostPerMillionTokens)
+		if err != nil {
+			return nil, fmt.Errorf("convert frozen output rate for deployment %s: %w", row.ID, err)
+		}
 		deployments = append(deployments, RunnableDeployment{
-			ID:                        row.ID,
-			OrganizationID:            row.OrganizationID,
-			WorkspaceID:               row.WorkspaceID,
-			Name:                      row.Name,
-			AgentDeploymentSnapshotID: row.AgentDeploymentSnapshotID,
-			SpendPolicyID:             row.SpendPolicyID,
-			RoutingPolicyID:           row.RoutingPolicyID,
+			ID:                         row.ID,
+			OrganizationID:             row.OrganizationID,
+			WorkspaceID:                row.WorkspaceID,
+			Name:                       row.Name,
+			AgentDeploymentSnapshotID:  row.AgentDeploymentSnapshotID,
+			SpendPolicyID:              row.SpendPolicyID,
+			RoutingPolicyID:            row.RoutingPolicyID,
+			SourceProviderAccountID:    row.SourceProviderAccountID,
+			ProviderKey:                derefString(row.ProviderKey),
+			ProviderModelID:            derefString(row.ProviderModelID),
+			OutputCostPerMillionTokens: outputRate,
 		})
 	}
 
 	return deployments, nil
+}
+
+// numericRateToFloat64 converts a frozen-rate pgtype.Numeric to float64. A NULL numeric → 0 (a
+// legitimate "no rate"; callers treat a non-positive managed rate as a block). A present-but-
+// uninterpretable numeric returns an error — it must NEVER be silently coerced to 0 (that could make a
+// managed run free). Distinct from numericToFloat64, which swallows the error to 0.
+func numericRateToFloat64(n pgtype.Numeric) (float64, error) {
+	if !n.Valid {
+		return 0, nil
+	}
+	f, err := n.Float64Value()
+	if err != nil {
+		return 0, fmt.Errorf("numeric to float64: %w", err)
+	}
+	if !f.Valid {
+		return 0, errors.New("numeric to float64: result is not valid")
+	}
+	return f.Float64, nil
 }
 
 func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRunParams) (CreateQueuedRunResult, error) {

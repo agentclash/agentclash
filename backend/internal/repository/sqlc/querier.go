@@ -181,6 +181,10 @@ type Querier interface {
 	ListRunRegressionCoverageCasesByRunID(ctx context.Context, arg ListRunRegressionCoverageCasesByRunIDParams) ([]ListRunRegressionCoverageCasesByRunIDRow, error)
 	ListRunStatusHistoryByRunID(ctx context.Context, arg ListRunStatusHistoryByRunIDParams) ([]RunStatusHistory, error)
 	ListRunnableChallengePVersionsByPackID(ctx context.Context, arg ListRunnableChallengePVersionsByPackIDParams) ([]ListRunnableChallengePVersionsByPackIDRow, error)
+	// The frozen billing identity for each lane comes from the SNAPSHOT path (4d-1):
+	// source_provider_account_id is the BYOK signal; the model identity (provider_key/provider_model_id)
+	// and the FROZEN output rate (model_aliases.output_cost_per_million_tokens) drive the eval-credit
+	// estimate. LEFT JOINs so a deployment with no managed alias still returns one row.
 	ListRunnableDeploymentsWithLatestSnapshot(ctx context.Context, arg ListRunnableDeploymentsWithLatestSnapshotParams) ([]ListRunnableDeploymentsWithLatestSnapshotRow, error)
 	ListRunsByEvalSessionID(ctx context.Context, arg ListRunsByEvalSessionIDParams) ([]Run, error)
 	ListRunsByWorkspaceID(ctx context.Context, arg ListRunsByWorkspaceIDParams) ([]Run, error)

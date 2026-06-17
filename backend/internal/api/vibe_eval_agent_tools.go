@@ -253,6 +253,63 @@ func (t publishDraftTool) Execute(ctx context.Context, _ vibeeval.Actor, conv vi
 	return vibeeval.ToolOutput{Result: meta, AuditResult: meta}, nil
 }
 
+// --- estimate_eval_cost (read tier, no confirmation) ---
+
+// vibeEvalCostEstimator is the manager surface the estimate tool wraps (RunCreationManager satisfies it).
+type vibeEvalCostEstimator interface {
+	EstimateEvalCost(ctx context.Context, caller Caller, input EstimateEvalCostInput) (CostEstimate, error)
+}
+
+type estimateEvalCostTool struct{ estimator vibeEvalCostEstimator }
+
+func (estimateEvalCostTool) Name() string                { return "estimate_eval_cost" }
+func (estimateEvalCostTool) Phases() []string            { return []string{vibeeval.PhaseRun} }
+func (estimateEvalCostTool) RiskTier() vibeeval.RiskTier { return vibeeval.ReadTier }
+func (estimateEvalCostTool) RequiredAction() string      { return string(ActionReadWorkspace) }
+func (estimateEvalCostTool) Definition() provider.ToolDefinition {
+	return provider.ToolDefinition{
+		Name:        "estimate_eval_cost",
+		Description: "Estimate the managed eval credit a run would reserve, for a challenge_pack_version and agent deployments.",
+		Parameters:  json.RawMessage(`{"type":"object","required":["challenge_pack_version_id","agent_deployment_ids"],"properties":{"challenge_pack_version_id":{"type":"string","description":"challenge pack version UUID"},"agent_deployment_ids":{"type":"array","items":{"type":"string"},"description":"agent deployment UUIDs"}}}`),
+	}
+}
+
+func (t estimateEvalCostTool) Execute(ctx context.Context, _ vibeeval.Actor, conv vibeeval.Conversation, args json.RawMessage) (vibeeval.ToolOutput, error) {
+	caller, err := CallerFromContext(ctx)
+	if err != nil {
+		return vibeeval.ToolOutput{}, err
+	}
+	var in struct {
+		ChallengePackVersionID string   `json:"challenge_pack_version_id"`
+		AgentDeploymentIDs     []string `json:"agent_deployment_ids"`
+	}
+	if err := json.Unmarshal(args, &in); err != nil {
+		return vibeeval.ToolOutput{}, fmt.Errorf("invalid args: %w", err)
+	}
+	versionID, err := uuid.Parse(in.ChallengePackVersionID)
+	if err != nil {
+		return vibeeval.ToolOutput{}, fmt.Errorf("challenge_pack_version_id is not a UUID: %w", err)
+	}
+	deploymentIDs := make([]uuid.UUID, 0, len(in.AgentDeploymentIDs))
+	for _, raw := range in.AgentDeploymentIDs {
+		id, err := uuid.Parse(raw)
+		if err != nil {
+			return vibeeval.ToolOutput{}, fmt.Errorf("agent_deployment_id %q is not a UUID: %w", raw, err)
+		}
+		deploymentIDs = append(deploymentIDs, id)
+	}
+	est, err := t.estimator.EstimateEvalCost(ctx, caller, EstimateEvalCostInput{
+		WorkspaceID: conv.WorkspaceID, ChallengePackVersionID: versionID, AgentDeploymentIDs: deploymentIDs,
+	})
+	if err != nil {
+		return vibeeval.ToolOutput{}, err
+	}
+	return vibeeval.ToolOutput{
+		Result:      est,
+		AuditResult: map[string]any{"total_micros": est.TotalMicros, "lanes": len(est.Lanes)},
+	}, nil
+}
+
 // --- get_run_status ---
 
 type getRunStatusTool struct{ runs runStatusReader }

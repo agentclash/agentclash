@@ -9,6 +9,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const getChallengeInputSetByID = `-- name: GetChallengeInputSetByID :one
@@ -155,12 +156,20 @@ SELECT DISTINCT ON (agent_deployments.id)
     agent_deployments.name,
     agent_deployment_snapshots.id AS agent_deployment_snapshot_id,
     agent_deployments.spend_policy_id,
-    agent_deployments.routing_policy_id
+    agent_deployments.routing_policy_id,
+    agent_deployment_snapshots.source_provider_account_id,
+    model_catalog_entries.provider_key,
+    model_catalog_entries.provider_model_id,
+    model_aliases.output_cost_per_million_tokens
 FROM agent_deployments
 JOIN agent_deployment_snapshots
   ON agent_deployment_snapshots.agent_deployment_id = agent_deployments.id
  AND agent_deployment_snapshots.organization_id = agent_deployments.organization_id
  AND agent_deployment_snapshots.workspace_id = agent_deployments.workspace_id
+LEFT JOIN model_aliases
+  ON model_aliases.id = agent_deployment_snapshots.source_model_alias_id
+LEFT JOIN model_catalog_entries
+  ON model_catalog_entries.id = model_aliases.model_catalog_entry_id
 WHERE agent_deployments.workspace_id = $1
   AND agent_deployments.id = ANY($2::uuid[])
   AND agent_deployments.status = 'active'
@@ -174,15 +183,23 @@ type ListRunnableDeploymentsWithLatestSnapshotParams struct {
 }
 
 type ListRunnableDeploymentsWithLatestSnapshotRow struct {
-	ID                        uuid.UUID
-	OrganizationID            uuid.UUID
-	WorkspaceID               uuid.UUID
-	Name                      string
-	AgentDeploymentSnapshotID uuid.UUID
-	SpendPolicyID             *uuid.UUID
-	RoutingPolicyID           *uuid.UUID
+	ID                         uuid.UUID
+	OrganizationID             uuid.UUID
+	WorkspaceID                uuid.UUID
+	Name                       string
+	AgentDeploymentSnapshotID  uuid.UUID
+	SpendPolicyID              *uuid.UUID
+	RoutingPolicyID            *uuid.UUID
+	SourceProviderAccountID    *uuid.UUID
+	ProviderKey                *string
+	ProviderModelID            *string
+	OutputCostPerMillionTokens pgtype.Numeric
 }
 
+// The frozen billing identity for each lane comes from the SNAPSHOT path (4d-1):
+// source_provider_account_id is the BYOK signal; the model identity (provider_key/provider_model_id)
+// and the FROZEN output rate (model_aliases.output_cost_per_million_tokens) drive the eval-credit
+// estimate. LEFT JOINs so a deployment with no managed alias still returns one row.
 func (q *Queries) ListRunnableDeploymentsWithLatestSnapshot(ctx context.Context, arg ListRunnableDeploymentsWithLatestSnapshotParams) ([]ListRunnableDeploymentsWithLatestSnapshotRow, error) {
 	rows, err := q.db.Query(ctx, listRunnableDeploymentsWithLatestSnapshot, arg.WorkspaceID, arg.DeploymentIds)
 	if err != nil {
@@ -200,6 +217,10 @@ func (q *Queries) ListRunnableDeploymentsWithLatestSnapshot(ctx context.Context,
 			&i.AgentDeploymentSnapshotID,
 			&i.SpendPolicyID,
 			&i.RoutingPolicyID,
+			&i.SourceProviderAccountID,
+			&i.ProviderKey,
+			&i.ProviderModelID,
+			&i.OutputCostPerMillionTokens,
 		); err != nil {
 			return nil, err
 		}
