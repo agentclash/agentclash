@@ -10,9 +10,28 @@ import type { SessionResponse, UserMeResponse } from "@/lib/api/types";
  *   - Has workspace memberships → /workspaces/{first workspace id}
  *   - Has org but no workspace → /orgs/{first org slug}/workspaces
  */
-export default async function DashboardPage() {
+export default async function DashboardPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ plan?: string }>;
+}) {
+  return DashboardRedirectPage({ searchParams: await searchParams });
+}
+
+function planIntent(searchParams?: { plan?: string }): "pro" | "team" | null {
+  return searchParams?.plan === "pro" || searchParams?.plan === "team"
+    ? searchParams.plan
+    : null;
+}
+
+async function DashboardRedirectPage({
+  searchParams,
+}: {
+  searchParams?: { plan?: string };
+}) {
   const { user, accessToken } = await withAuth();
   if (!user) redirect("/auth/login");
+  const requestedPlan = planIntent(searchParams);
 
   let session: SessionResponse | null = null;
   let errorMessage: string | null = null;
@@ -57,7 +76,24 @@ export default async function DashboardPage() {
 
   // Redirects must be outside try/catch — Next.js redirect() throws internally.
   if (session.organization_memberships.length === 0) {
-    redirect("/onboard");
+    redirect(requestedPlan ? `/onboard?plan=${requestedPlan}` : "/onboard");
+  }
+
+  let billingRedirectTarget: string | null = null;
+  if (requestedPlan) {
+    try {
+      const api = createApiClient(accessToken);
+      const userMe = await api.get<UserMeResponse>("/v1/users/me");
+      const firstOrg = userMe.organizations[0];
+      if (firstOrg) {
+        billingRedirectTarget = `/orgs/${firstOrg.slug}/billing?plan=${requestedPlan}`;
+      }
+    } catch {
+      // Fall back to the normal dashboard routing below.
+    }
+  }
+  if (billingRedirectTarget) {
+    redirect(billingRedirectTarget);
   }
 
   const firstWorkspace = session.workspace_memberships[0];
@@ -80,5 +116,5 @@ export default async function DashboardPage() {
     redirect(orgRedirectTarget);
   }
 
-  redirect("/onboard");
+  redirect(requestedPlan ? `/onboard?plan=${requestedPlan}` : "/onboard");
 }

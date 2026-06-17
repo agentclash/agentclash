@@ -5,7 +5,7 @@ import { getRequiredServerAuth, toInitialAuth } from "@/lib/auth/server";
 import type { UserMeResponse, SessionResponse } from "@/lib/api/types";
 import { OrgSettingsSidebar } from "./org-settings-sidebar";
 import { OrgProvider } from "./org-context";
-import { TrialUpgradePrompt } from "@/components/billing/trial-upgrade-prompt";
+import { UpgradePrompt } from "@/components/billing/upgrade-prompt";
 import { PostHogIdentify } from "@/components/posthog-identify";
 
 export default async function OrgLayout({
@@ -56,7 +56,7 @@ export default async function OrgLayout({
             orgName={org.name}
             isAdmin={isAdmin}
           />
-          <TrialUpgradePrompt
+          <UpgradePrompt
             orgId={org.id}
             orgSlug={org.slug}
             isOrgAdmin={isAdmin}

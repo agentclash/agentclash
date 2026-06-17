@@ -148,7 +148,7 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
       setDemo(d);
 
       // Resume an existing live session for this demo on reload (so a refresh
-      // doesn't burn the one free trial); otherwise start a fresh one.
+      // doesn't burn the one free demo); otherwise start a fresh one.
       let saved: { id: string; slug: string; expiresAt: number } | null = null;
       try {
         const raw = localStorage.getItem(SESSION_KEY);
@@ -239,7 +239,7 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
             <Sparkles className="size-5 text-white/80" />
           </div>
           <h1 className="font-[family-name:var(--font-display)] text-[clamp(2rem,4vw,3rem)] font-normal leading-[1.05] tracking-[-0.03em]">
-            That&apos;s your free trial.
+            That&apos;s your free demo.
           </h1>
           <p className="mx-auto mt-4 max-w-sm text-white/55">
             Hope {demo?.name ?? "it"} felt good. Sign in with AgentClash to keep going —
@@ -344,7 +344,7 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
                   }`}
                 />
               </span>
-              Free trial · {remaining || "—"}
+              Free demo · {remaining || "—"}
             </span>
           ) : (
             <span className="inline-flex items-center gap-1.5 font-[family-name:var(--font-mono)] text-xs text-white/45">
@@ -371,11 +371,11 @@ export function TryCliDemoClient({ slug, initialDemo = null }: Props) {
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         <aside className="w-full shrink-0 space-y-7 overflow-y-auto border-b border-white/[0.06] p-5 md:w-80 md:border-b-0 md:border-r">
-          {/* Free-trial card (anonymous, gateway-backed) */}
+          {/* Free-demo card (anonymous, gateway-backed) */}
           {trial && (
             <div className="rounded-lg border border-emerald-500/25 bg-emerald-500/[0.06] p-4">
               <h2 className="text-xs font-medium uppercase tracking-wide text-emerald-300">
-                Free trial · no key needed
+                Free demo · no key needed
               </h2>
               <p className="mt-2 text-xs leading-relaxed text-white/60">
                 Running on AgentClash credentials for a few minutes — just run the commands

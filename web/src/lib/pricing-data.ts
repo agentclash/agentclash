@@ -44,10 +44,10 @@ export const PRICING_TIERS: Tier[] = [
       yearly: { value: "$0", suffix: "/ month" },
     },
     blurb:
-      "Hosted, no ops. Generous enough to actually evaluate the product on your task.",
-    cta: { label: "Run your first eval", href: "/auth/login" },
+      "Run real evals first. Upgrade only when you need more runs, retention, or team controls.",
+    cta: { label: "Start free", href: "/auth/login?mode=signup" },
     features: [
-      "1 seat, 1 workspace",
+      "1 workspace",
       "25 eval runs / month",
       "Up to 4 models per run",
       "7-day replay retention",
@@ -62,26 +62,26 @@ export const PRICING_TIERS: Tier[] = [
     prices: {
       monthly: {
         value: "$49",
-        suffix: "/ seat / month",
+        suffix: "/ month",
         note: "Billed monthly",
       },
       yearly: {
         value: "$39",
-        suffix: "/ seat / month",
-        note: "Billed annually · $468 / seat / yr",
+        suffix: "/ month",
+        note: "Billed annually · $468 / yr",
       },
     },
     blurb:
-      "For teams running real evals against real production tasks. Five seats minimum.",
+      "For teams moving from evaluation to repeated release checks.",
     cta: {
-      label: "Start free 45-day trial",
-      href: "/auth/login?plan=pro",
+      label: "Upgrade to Pro",
+      href: "/auth/login?mode=signup&returnTo=/dashboard%3Fplan%3Dpro",
       primary: true,
-      sublabel: "No credit card required",
+      sublabel: "Start on Free, pay when you need more",
     },
     features: [
       "Everything in Free, plus:",
-      "500 eval runs / seat / month",
+      "500 eval runs / workspace / month",
       "Up to 8 models per run",
       "30-day replay retention",
       "Hosted sandbox with included credit",
@@ -97,25 +97,25 @@ export const PRICING_TIERS: Tier[] = [
     prices: {
       monthly: {
         value: "$100",
-        suffix: "/ seat / month",
+        suffix: "/ month",
         note: "Billed monthly",
       },
       yearly: {
         value: "$80",
-        suffix: "/ seat / month",
-        note: "Billed annually · $960 / seat / yr",
+        suffix: "/ month",
+        note: "Billed annually · $960 / yr",
       },
     },
     blurb:
       "For teams running evals across multiple products and surfaces.",
     cta: {
-      label: "Start free 45-day trial",
-      href: "/auth/login?plan=team",
-      sublabel: "No credit card required",
+      label: "Upgrade to Team",
+      href: "/auth/login?mode=signup&returnTo=/dashboard%3Fplan%3Dteam",
+      sublabel: "For higher run volume and governance",
     },
     features: [
       "Everything in Pro, plus:",
-      "2,000 eval runs / seat / month",
+      "2,000 eval runs / workspace / month",
       "Up to 12 models per run",
       "90-day replay retention",
       "10 concurrent eval runs",
@@ -133,7 +133,7 @@ export const PRICING_TIERS: Tier[] = [
       yearly: { value: "Custom", suffix: "" },
     },
     blurb:
-      "Compliance, SSO, dedicated support. 45-day pilot available — no card needed.",
+      "Compliance, SSO, dedicated support, and paid rollout help.",
     cta: { label: "Talk to us", href: "mailto:hello@agentclash.dev" },
     features: [
       "Everything in Team, plus:",

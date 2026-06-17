@@ -12,7 +12,7 @@ export const BENCHMARKS_HUB_FAQ = [
   {
     question: "Can we run the same benchmark on our agents?",
     answer:
-      "Yes. Book an eval workshop or start a Team pilot. We pin the same pack on your workloads, baseline your current agent, and deliver scorecards and CI gates your platform team can ship on.",
+      "Yes. Book an eval workshop or start a Team workspace. We pin the same pack on your workloads, baseline your current agent, and deliver scorecards and CI gates your platform team can ship on.",
   },
   {
     question: "How often do you publish benchmark reports?",

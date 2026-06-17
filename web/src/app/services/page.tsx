@@ -63,7 +63,7 @@ const offerings = [
 const guardrails = [
   "Every engagement produces artifacts in your AgentClash workspace: packs, baselines, gates, or CI handoff.",
   "We do not run black-box evals outside your tenancy. You own the packs and the evidence.",
-  "Services are paid engagements. The free 45-day Team pilot is still the default path if you want to self-serve first.",
+  "Services are paid engagements. The hosted Free plan is still the default path if you want to run evals yourself first.",
   "No vague SOWs. Each package above has a fixed duration and named deliverable.",
 ];
 
@@ -79,8 +79,8 @@ const intakeFields = [
 const crossLinks = [
   {
     href: "/enterprise",
-    label: "Enterprise pilot",
-    description: "45-day Team pilot with no credit card. Self-serve product access first.",
+    label: "Enterprise rollout",
+    description: "Start free, then upgrade when evals become part of release governance.",
   },
   {
     href: "/pricing",
@@ -101,9 +101,9 @@ const crossLinks = [
 
 const faqItems = [
   {
-    question: "How is this different from the Team pilot?",
+    question: "How is this different from the Team plan?",
     answer:
-      "The Team pilot is product access in your workspace. Services are fixed-scope engagements where our team builds packs, baselines, or gates with you. Many teams start the pilot and add a 2-week Benchmark & Gate Setup sprint.",
+      "Team is product access in your workspace. Services are fixed-scope paid engagements where our team builds packs, baselines, or gates with you. Many teams start on Free or Team and add a 2-week Benchmark & Gate Setup sprint.",
   },
   {
     question: "Do we keep the challenge packs after the engagement?",
@@ -123,7 +123,7 @@ const faqItems = [
   {
     question: "Are services free?",
     answer:
-      "No. The four packages above are paid, fixed-scope engagements. The discovery call is free. Product access starts free on the Team pilot and paid tiers on the pricing page.",
+      "No. The four packages above are paid, fixed-scope engagements. The discovery call is free. Product access starts on the hosted Free plan or paid tiers on the pricing page.",
   },
 ];
 
@@ -192,12 +192,12 @@ export default function ServicesPage() {
           <p className="mt-4 max-w-[58ch] text-sm leading-6 text-white/45">
             These packages are paid engagements, scoped after discovery. The{" "}
             <Link
-              href="/enterprise"
+              href="/pricing"
               className="text-white/65 underline decoration-white/20 underline-offset-4 transition-colors hover:text-white/85"
             >
-              Team pilot
+              hosted Free plan
             </Link>{" "}
-            is free self-serve product access if you want to start on your own.
+            is self-serve product access if you want to start on your own.
           </p>
           <EnterprisePageCTA className="mt-10" />
         </div>
@@ -332,7 +332,7 @@ export default function ServicesPage() {
               href="/enterprise"
               className="text-white/80 underline decoration-white/25 underline-offset-4 transition-colors hover:text-white"
             >
-              Team pilot
+              Free plan
             </Link>{" "}
             if that is the better first step.
           </p>

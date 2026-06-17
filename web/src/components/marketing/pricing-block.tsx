@@ -19,11 +19,11 @@ export function PricingBlock() {
         <div className="mx-auto max-w-[1440px]">
           <div className="text-center">
             <h2 className="text-3xl sm:text-5xl font-semibold tracking-tight text-white">
-              Free for 45 days.
+              Run real evals for free.
             </h2>
             <p className="mt-4 mx-auto max-w-[44ch] text-sm leading-6 text-white/75">
-              No credit card. Self-host the engine for free, or skip the ops
-              with hosted.
+              Start on hosted Free or self-host the engine. Upgrade only when
+              you need more runs, retention, or governance.
             </p>
 
             <div className="mt-10 flex justify-center">

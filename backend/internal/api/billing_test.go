@@ -105,7 +105,7 @@ func TestBillingManagerGetWorkspaceQuotaSeparatesRaceAndConcurrencyUsage(t *test
 	repo.entitlements = billingpkg.MaterializeEntitlements(
 		billingpkg.MustPlan(billingpkg.PlanPro),
 		billingpkg.PeriodMonthly,
-		5,
+		1,
 		billingpkg.EntitlementStatusActive,
 	)
 	repo.usage.RaceCount = 47
@@ -130,9 +130,9 @@ func TestBillingManagerGetWorkspaceQuotaSeparatesRaceAndConcurrencyUsage(t *test
 	if result.PlanKey != billingpkg.PlanPro {
 		t.Fatalf("plan key = %q, want pro", result.PlanKey)
 	}
-	assertQuotaCounter(t, "monthly races", result.MonthlyRaces, 47, 2500, 2453)
+	assertQuotaCounter(t, "monthly races", result.MonthlyRaces, 47, 500, 453)
 	assertQuotaCounter(t, "concurrent races", result.ConcurrentRaces, 2, 3, 1)
-	assertQuotaCounter(t, "seats", result.Seats, 3, 25, 22)
+	assertQuotaUnlimited(t, "seats", result.Seats, 3)
 	assertTimePtr(t, "monthly races reset_at", result.MonthlyRaces.ResetAt, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	if !result.WindowStart.Equal(time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)) {
 		t.Fatalf("window start = %s, want 2026-05-01", result.WindowStart)
@@ -184,7 +184,7 @@ func TestBillingManagerProcessesSignedDodoWebhook(t *testing.T) {
 	if repo.entitlements.ExpiresAt != nil {
 		t.Fatalf("active paid entitlement expires_at = %v, want nil", repo.entitlements.ExpiresAt)
 	}
-	assertIntPtr(t, "pro materialized quota", repo.entitlements.RacesPerWorkspaceMonth, 2500)
+	assertIntPtr(t, "pro materialized quota", repo.entitlements.RacesPerWorkspaceMonth, 500)
 
 	result, err = manager.ProcessDodoWebhook(context.Background(), headers, []byte(body))
 	if err != nil {
@@ -220,7 +220,7 @@ func TestBillingManagerProcessesTrialingDodoWebhookWithExpiry(t *testing.T) {
 	if repo.entitlements.ExpiresAt == nil || repo.entitlements.ExpiresAt.Format(time.RFC3339) != "2026-06-13T00:00:00Z" {
 		t.Fatalf("expires_at = %v, want 2026-06-13T00:00:00Z", repo.entitlements.ExpiresAt)
 	}
-	assertIntPtr(t, "team trial quota", repo.entitlements.RacesPerWorkspaceMonth, 4000)
+	assertIntPtr(t, "team promotional quota", repo.entitlements.RacesPerWorkspaceMonth, 2000)
 	assertIntPtr(t, "team trial models", repo.entitlements.MaxModelsPerRace, 12)
 }
 
@@ -427,7 +427,7 @@ func TestCreateBillingCheckoutHandlerDecodesSnakeCaseJSON(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+repo.orgID.String()+"/billing/checkout", bytes.NewBufferString(`{
 		"plan_key":"pro",
 		"billing_period":"monthly",
-		"seat_quantity":5,
+		"seat_quantity":1,
 		"return_url":"http://localhost:3000/billing/return"
 	}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -439,49 +439,14 @@ func TestCreateBillingCheckoutHandlerDecodesSnakeCaseJSON(t *testing.T) {
 	if rr.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body=%s", rr.Code, rr.Body.String())
 	}
-	if !strings.Contains(rr.Body.String(), `"plan_key":"pro"`) || !strings.Contains(rr.Body.String(), `"seat_quantity":5`) {
+	if !strings.Contains(rr.Body.String(), `"plan_key":"pro"`) || !strings.Contains(rr.Body.String(), `"seat_quantity":1`) {
 		t.Fatalf("checkout response did not preserve decoded fields: %s", rr.Body.String())
 	}
 }
 
-func TestBillingManagerStartTrialMaterializesSelectedPlan(t *testing.T) {
+func TestBillingManagerStartTrialIsRetired(t *testing.T) {
 	workspaceID := uuid.New()
 	repo := newFakeBillingRepository(workspaceID)
-	now := time.Date(2026, 4, 30, 12, 0, 0, 0, time.UTC)
-	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
-		WebhookSecret: "secret",
-	})
-	manager.now = func() time.Time { return now }
-	caller := Caller{
-		UserID: uuid.New(),
-		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
-			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
-		},
-	}
-
-	overview, err := manager.StartTrial(context.Background(), caller, repo.orgID, StartBillingTrialInput{
-		PlanKey:       billingpkg.PlanTeam,
-		BillingPeriod: billingpkg.PeriodMonthly,
-	})
-	if err != nil {
-		t.Fatalf("StartTrial returned error: %v", err)
-	}
-	if overview.Entitlements.PlanKey != billingpkg.PlanTeam {
-		t.Fatalf("plan = %q, want team", overview.Entitlements.PlanKey)
-	}
-	if overview.Entitlements.Status != billingpkg.EntitlementStatusTrialing {
-		t.Fatalf("status = %q, want trialing", overview.Entitlements.Status)
-	}
-	if overview.Entitlements.ExpiresAt == nil || !overview.Entitlements.ExpiresAt.Equal(now.Add(45*24*time.Hour)) {
-		t.Fatalf("expires_at = %v, want %v", overview.Entitlements.ExpiresAt, now.Add(45*24*time.Hour))
-	}
-	assertIntPtr(t, "team trial model limit", overview.Entitlements.MaxModelsPerRace, 12)
-}
-
-func TestBillingManagerStartTrialRejectsExistingPaidPlan(t *testing.T) {
-	workspaceID := uuid.New()
-	repo := newFakeBillingRepository(workspaceID)
-	repo.entitlements = billingpkg.MaterializeEntitlements(billingpkg.MustPlan(billingpkg.PlanPro), billingpkg.PeriodMonthly, 5, billingpkg.EntitlementStatusTrialing)
 	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
 		WebhookSecret: "secret",
 	})
@@ -500,35 +465,8 @@ func TestBillingManagerStartTrialRejectsExistingPaidPlan(t *testing.T) {
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("error = %v, want validation error", err)
 	}
-	if validationErr.Code != "trial_not_available" {
-		t.Fatalf("code = %q, want trial_not_available", validationErr.Code)
-	}
-}
-
-func TestBillingManagerStartTrialRejectsRepeatAfterReturnToFree(t *testing.T) {
-	workspaceID := uuid.New()
-	repo := newFakeBillingRepository(workspaceID)
-	manager := NewBillingManager(NewCallerOrganizationAuthorizer(), NewCallerWorkspaceAuthorizer(), repo, BillingManagerConfig{
-		WebhookSecret: "secret",
-	})
-	caller := Caller{
-		UserID: uuid.New(),
-		OrganizationMemberships: map[uuid.UUID]OrganizationMembership{
-			repo.orgID: {OrganizationID: repo.orgID, Role: "org_admin"},
-		},
-	}
-
-	if _, err := manager.StartTrial(context.Background(), caller, repo.orgID, StartBillingTrialInput{PlanKey: billingpkg.PlanPro}); err != nil {
-		t.Fatalf("first StartTrial returned error: %v", err)
-	}
-	repo.entitlements = billingpkg.DefaultEntitlements()
-	_, err := manager.StartTrial(context.Background(), caller, repo.orgID, StartBillingTrialInput{PlanKey: billingpkg.PlanTeam})
-	var validationErr validationErrorEnvelope
-	if !errors.As(err, &validationErr) {
-		t.Fatalf("error = %v, want validation error", err)
-	}
-	if validationErr.Code != "trial_not_available" {
-		t.Fatalf("code = %q, want trial_not_available", validationErr.Code)
+	if validationErr.Code != "trial_retired" {
+		t.Fatalf("code = %q, want trial_retired", validationErr.Code)
 	}
 }
 
@@ -570,7 +508,7 @@ func TestBillingManagerCreateCheckoutUsesDodoAPIWhenConfigured(t *testing.T) {
 	result, err := manager.CreateCheckout(context.Background(), caller, repo.orgID, CreateBillingCheckoutInput{
 		PlanKey:       "pro",
 		BillingPeriod: "monthly",
-		SeatQuantity:  5,
+		SeatQuantity:  1,
 		ReturnURL:     "http://localhost:3000/billing/return",
 	})
 	if err != nil {
@@ -606,8 +544,8 @@ func TestBillingManagerCreateCheckoutUsesDodoAPIWhenConfigured(t *testing.T) {
 	if metadata["organization_id"] != repo.orgID.String() || metadata["checkout_intent_id"] != result.CheckoutIntentID.String() || metadata["plan_key"] != "pro" {
 		t.Fatalf("metadata = %#v, want org/intent/plan", metadata)
 	}
-	if metadata["seat_quantity"] != "5" {
-		t.Fatalf("metadata seat_quantity = %#v, want string 5", metadata["seat_quantity"])
+	if metadata["seat_quantity"] != "1" {
+		t.Fatalf("metadata seat_quantity = %#v, want string 1", metadata["seat_quantity"])
 	}
 	returnURL, ok := capturedPayload["return_url"].(string)
 	if !ok || !strings.Contains(returnURL, "checkout=pending") || !strings.Contains(returnURL, "checkout_intent_id="+result.CheckoutIntentID.String()) {
@@ -721,7 +659,7 @@ func TestCreateBillingCheckoutHandlerKeepsDodoErrorGeneric(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/v1/organizations/"+repo.orgID.String()+"/billing/checkout", bytes.NewBufferString(`{
 		"plan_key":"pro",
 		"billing_period":"monthly",
-		"seat_quantity":5,
+		"seat_quantity":1,
 		"return_url":"http://localhost:3000/billing/return"
 	}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -1076,6 +1014,19 @@ func assertQuotaCounter(t *testing.T, label string, got QuotaCounter, wantUsed i
 	}
 	assertIntPtr(t, label+" limit", got.Limit, wantLimit)
 	assertIntPtr(t, label+" remaining", got.Remaining, wantRemaining)
+}
+
+func assertQuotaUnlimited(t *testing.T, label string, got QuotaCounter, wantUsed int) {
+	t.Helper()
+	if got.Used != wantUsed {
+		t.Fatalf("%s used = %d, want %d", label, got.Used, wantUsed)
+	}
+	if got.Limit != nil {
+		t.Fatalf("%s limit = %d, want nil", label, *got.Limit)
+	}
+	if got.Remaining != nil {
+		t.Fatalf("%s remaining = %d, want nil", label, *got.Remaining)
+	}
 }
 
 func assertTimePtr(t *testing.T, label string, got *time.Time, want time.Time) {

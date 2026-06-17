@@ -121,7 +121,6 @@ export function pricingSchema(): Record<string, unknown> {
   const offers = PRICING_TIERS.map((tier) => {
     const monthly = tier.prices.monthly;
     const amount = parsePriceAmount(monthly.value);
-    const perSeat = monthly.suffix.includes("seat");
 
     const base: Record<string, unknown> = {
       "@type": "Offer",
@@ -153,7 +152,7 @@ export function pricingSchema(): Record<string, unknown> {
         "@type": "UnitPriceSpecification",
         price: amount,
         priceCurrency: "USD",
-        unitText: perSeat ? "seat per month" : "month",
+        unitText: "workspace per month",
         billingIncrement: 1,
       },
     };

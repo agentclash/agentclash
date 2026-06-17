@@ -174,7 +174,7 @@ func TestAPIErrorBillingMessageIsActionable(t *testing.T) {
 		"Free monthly run quota is exhausted",
 		"Used 25 of 25",
 		"organization billing page",
-		"start a trial or upgrade",
+		"upgrade",
 	} {
 		if !strings.Contains(message, want) {
 			t.Fatalf("message = %q, want %q", message, want)

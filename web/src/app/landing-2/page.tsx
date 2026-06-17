@@ -126,7 +126,7 @@ export default function Landing2() {
             }}>
               Start for free
             </button>
-            <span style={{ fontSize: "13px", color: "var(--text-3)" }}>No credit card</span>
+            <span style={{ fontSize: "13px", color: "var(--text-3)" }}>Free workspace</span>
           </div>
         </section>
 
@@ -342,7 +342,7 @@ export default function Landing2() {
             Ship agents with <em style={{ color: "var(--accent)" }}>proof</em>.
           </h2>
           <p style={{ color: "var(--text-2)", marginBottom: "28px", fontSize: "16px" }}>
-            Free to start. No credit card.
+            Free to start. Upgrade when evals become release gates.
           </p>
           <button style={{
             padding: "12px 28px",

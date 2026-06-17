@@ -2,7 +2,7 @@ import { AuthenticatedAppProviders } from "@/app/providers";
 import { getRequiredInitialAuth, getWorkspaceShellData } from "@/lib/auth/server";
 import { Sidebar } from "@/components/app-shell/sidebar";
 import { TopBar } from "@/components/app-shell/top-bar";
-import { TrialUpgradePrompt } from "@/components/billing/trial-upgrade-prompt";
+import { UpgradePrompt } from "@/components/billing/upgrade-prompt";
 import { WorkspaceBillingBanner } from "@/components/billing/workspace-billing-banner";
 import { ActivationBanner } from "@/components/onboarding/activation-banner";
 import { PostHogIdentify } from "@/components/posthog-identify";
@@ -62,7 +62,7 @@ export default async function WorkspaceLayout({
             orgName={orgName}
             orgSlug={orgSlug}
           />
-          <TrialUpgradePrompt
+          <UpgradePrompt
             orgId={orgId}
             orgSlug={orgSlug}
             isOrgAdmin={orgRole === "org_admin"}

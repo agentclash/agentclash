@@ -22,8 +22,8 @@ describe("billing helpers", () => {
       isFreeActive({
         plan_key: "pro",
         billing_period: "monthly",
-        status: "trialing",
-        seat_quantity: 5,
+        status: "active",
+        seat_quantity: 1,
         feature_flags: {},
       }),
     ).toBe(false);
@@ -46,6 +46,6 @@ describe("billing helpers", () => {
 
     expect(message).toContain("Free");
     expect(message).toContain("25");
-    expect(message).toContain("Start a trial");
+    expect(message).toContain("Upgrade");
   });
 });

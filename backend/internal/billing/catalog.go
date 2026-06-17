@@ -111,7 +111,7 @@ func CatalogWithDodoProductIDs(productIDs DodoProductIDs) []Plan {
 			DefaultSeats:   1,
 			BillingPeriods: []string{PeriodMonthly},
 			Limits: PlanLimits{
-				Seats:                  valueLimit(1),
+				Seats:                  unlimitedLimit(),
 				Workspaces:             valueLimit(1),
 				RacesPerWorkspaceMonth: valueLimit(25),
 				MaxModelsPerRace:       valueLimit(4),
@@ -128,13 +128,13 @@ func CatalogWithDodoProductIDs(productIDs DodoProductIDs) []Plan {
 		{
 			Key:            PlanPro,
 			DisplayName:    "Pro",
-			MinimumSeats:   5,
-			DefaultSeats:   5,
+			MinimumSeats:   1,
+			DefaultSeats:   1,
 			BillingPeriods: []string{PeriodMonthly, PeriodYearly},
 			Limits: PlanLimits{
-				Seats:                  perSeatLimit(5),
+				Seats:                  unlimitedLimit(),
 				Workspaces:             valueLimit(1),
-				RacesPerWorkspaceMonth: perSeatLimit(500),
+				RacesPerWorkspaceMonth: valueLimit(500),
 				MaxModelsPerRace:       valueLimit(8),
 				ReplayRetentionDays:    valueLimit(30),
 				ConcurrentRaces:        valueLimit(3),
@@ -156,9 +156,9 @@ func CatalogWithDodoProductIDs(productIDs DodoProductIDs) []Plan {
 			DefaultSeats:   1,
 			BillingPeriods: []string{PeriodMonthly, PeriodYearly},
 			Limits: PlanLimits{
-				Seats:                  perSeatLimit(1),
+				Seats:                  unlimitedLimit(),
 				Workspaces:             unlimitedLimit(),
-				RacesPerWorkspaceMonth: perSeatLimit(2000),
+				RacesPerWorkspaceMonth: valueLimit(2000),
 				MaxModelsPerRace:       valueLimit(12),
 				ReplayRetentionDays:    valueLimit(90),
 				ConcurrentRaces:        valueLimit(10),
@@ -182,7 +182,7 @@ func CatalogWithDodoProductIDs(productIDs DodoProductIDs) []Plan {
 			DefaultSeats:   1,
 			BillingPeriods: []string{PeriodCustom},
 			Limits: PlanLimits{
-				Seats:                  customLimit(),
+				Seats:                  unlimitedLimit(),
 				Workspaces:             customLimit(),
 				RacesPerWorkspaceMonth: customLimit(),
 				MaxModelsPerRace:       customLimit(),
@@ -270,7 +270,7 @@ func ValidateSeatQuantity(plan Plan, seatQuantity int) error {
 		return fmt.Errorf("%w: seat_quantity must be positive", ErrSeatQuantityBelowLimit)
 	}
 	if seatQuantity < plan.MinimumSeats {
-		return fmt.Errorf("%w: %s requires at least %d seats", ErrSeatQuantityBelowLimit, plan.Key, plan.MinimumSeats)
+		return fmt.Errorf("%w: %s requires subscription quantity of at least %d", ErrSeatQuantityBelowLimit, plan.Key, plan.MinimumSeats)
 	}
 	return nil
 }

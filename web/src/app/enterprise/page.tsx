@@ -15,9 +15,9 @@ import { ogImageUrl } from "@/lib/seo";
 
 const PAGE_PATH = "/enterprise";
 const PAGE_TITLE =
-  "Enterprise AI Agent Evaluation — Release Gates & Pilot | AgentClash";
+  "Enterprise AI Agent Evaluation — Release Gates | AgentClash";
 const PAGE_DESCRIPTION =
-  "Prove which agent is safe to ship with governed benchmarks, replay evidence, scorecards, and CI release gates. Start a 45-day Team pilot with no credit card.";
+  "Prove which agent is safe to ship with governed benchmarks, replay evidence, scorecards, and CI release gates. Start free, then run a paid rollout when evaluation becomes part of shipping.";
 const SOCIAL_IMAGE = ogImageUrl({
   title: "Enterprise Agent Evaluation",
   subtitle: "Release gates platform teams can defend",
@@ -29,7 +29,7 @@ const enterpriseTier = PRICING_TIERS.find((tier) => tier.name === "Enterprise");
 const trustItems = [
   "MIT open source",
   "Bring your own keys",
-  "45-day Team pilot",
+  "Freemium hosted plan",
   "No token markup",
 ];
 
@@ -84,7 +84,7 @@ const workflow = [
   },
 ];
 
-const pilotIncludes = [
+const rolloutIncludes = [
   "Dedicated workspace on the Team tier",
   "Challenge packs and replay retention",
   "CI integration and audit logs",
@@ -93,9 +93,9 @@ const pilotIncludes = [
 
 const faqItems = [
   {
-    question: "Can we self-host instead of using the hosted pilot?",
+    question: "Can we self-host instead of using the hosted product?",
     answer:
-      "Yes. AgentClash is MIT-licensed and open source. Many enterprises start hosted for the 45-day Team pilot, then move to self-host or a hybrid model. See the self-host guide in docs for the full stack.",
+      "Yes. AgentClash is MIT-licensed and open source. Many enterprises start hosted on Free or Team, then move to self-host or a hybrid model. See the self-host guide in docs for the full stack.",
   },
   {
     question: "Do you mark up LLM tokens?",
@@ -105,12 +105,12 @@ const faqItems = [
   {
     question: "What about data residency for UAE and other regions?",
     answer:
-      "Hosted pilots run on our standard cloud regions today. Enterprise contracts can discuss dedicated deployment, private networking, and residency requirements during the architecture review. Contact hello@agentclash.dev.",
+      "Hosted plans run on our standard cloud regions today. Enterprise contracts can discuss dedicated deployment, private networking, and residency requirements during the architecture review. Contact hello@agentclash.dev.",
   },
   {
-    question: "How is the 45-day Team pilot different from a services engagement?",
+    question: "How is the Team plan different from a services engagement?",
     answer:
-      "The pilot is product access on the Team tier: your workspace, challenge packs, and gates, with no credit card required. Optional hands-on eval sprints (pack build, benchmark setup) are fixed-scope services. Ask us about a 2-week eval sprint intro.",
+      "Team is product access: your workspace, challenge packs, and gates. Optional hands-on eval sprints (pack build, benchmark setup) are fixed-scope paid services. Ask us about a 2-week eval sprint intro.",
   },
 ];
 
@@ -334,21 +334,21 @@ export default function EnterprisePage() {
         </div>
       </section>
 
-      {/* Pilot offer */}
+      {/* Rollout offer */}
       <section className="px-6 pt-28 sm:px-12 sm:pt-40">
         <div className="mx-auto max-w-[1080px]">
           <div className="rounded-2xl border border-white/[0.1] bg-white/[0.02] p-8 sm:p-12">
-            <p className={eyebrowClass}>Pilot offer</p>
+            <p className={eyebrowClass}>Rollout offer</p>
             <h2 className="mt-4 max-w-[18ch] text-3xl font-sans font-semibold tracking-[-0.02em] text-white sm:text-[2.5rem] sm:leading-[1.1]">
-              Start with a 45-day Team pilot
+              Start free, then roll into Team when the benchmark matters
             </h2>
             <p className="mt-5 max-w-[58ch] text-base leading-7 text-white/60">
-              Run governed benchmarks on your workloads in a dedicated
-              workspace: challenge packs, replay retention, CI integration, and
-              workspace audit logs. No credit card required.
+              Run the first evals on Free. When you need more run volume,
+              replay retention, CI integration, and workspace audit logs,
+              upgrade the same workspace to Team.
             </p>
             <ul className="mt-10 grid gap-x-12 gap-y-4 border-t border-white/[0.08] pt-8 sm:grid-cols-2">
-              {pilotIncludes.map((item) => (
+              {rolloutIncludes.map((item) => (
                 <li
                   key={item}
                   className="text-base leading-7 text-white/70"
@@ -359,10 +359,10 @@ export default function EnterprisePage() {
             </ul>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Link
-                href="/auth/login?plan=team"
+                href="/auth/login?mode=signup&returnTo=/dashboard%3Fplan%3Dteam"
                 className="inline-flex items-center justify-center rounded-lg bg-white px-7 py-3.5 text-sm font-semibold text-[#060606] transition-colors hover:bg-white/90"
               >
-                Start Team pilot
+                Start free
               </Link>
               <a
                 href="mailto:hello@agentclash.dev?subject=AgentClash%202-week%20eval%20sprint"
@@ -372,8 +372,8 @@ export default function EnterprisePage() {
               </a>
             </div>
             <p className="mt-6 max-w-[64ch] text-sm leading-6 text-white/45">
-              The Team pilot is self-serve product access. Fixed-scope eval
-              sprints are optional{" "}
+              Team is self-serve product access for active evaluation programs.
+              Fixed-scope eval sprints are optional{" "}
               <Link
                 href="/services"
                 className="text-white/65 underline decoration-white/20 underline-offset-4 transition-colors hover:text-white/85"
@@ -432,7 +432,7 @@ export default function EnterprisePage() {
           </h2>
           <p className="mt-6 max-w-[52ch] text-lg leading-8 text-white/55">
             Book a 30-minute eval architecture review, or email us to scope a
-            Team pilot on your workloads.
+            Team rollout on your workloads.
           </p>
           <EnterprisePageCTA className="mt-10" />
         </div>

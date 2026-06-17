@@ -14,20 +14,22 @@ func TestCatalogContainsPublicPlansAndLimits(t *testing.T) {
 
 	free := MustPlan(PlanFree)
 	freeEntitlements := MaterializeEntitlements(free, PeriodMonthly, 1, "active")
-	assertIntPtr(t, "free seats", freeEntitlements.SeatsLimit, 1)
+	assertNilPtr(t, "free seats", freeEntitlements.SeatsLimit)
 	assertIntPtr(t, "free workspaces", freeEntitlements.WorkspacesLimit, 1)
 	assertIntPtr(t, "free quota", freeEntitlements.RacesPerWorkspaceMonth, 25)
 	assertIntPtr(t, "free models", freeEntitlements.MaxModelsPerRace, 4)
 	assertIntPtr(t, "free retention", freeEntitlements.ReplayRetentionDays, 7)
 	assertIntPtr(t, "free concurrency", freeEntitlements.ConcurrentRaces, 1)
 
-	proEntitlements := MaterializeEntitlements(MustPlan(PlanPro), PeriodMonthly, 5, "active")
-	assertIntPtr(t, "pro quota", proEntitlements.RacesPerWorkspaceMonth, 2500)
+	proEntitlements := MaterializeEntitlements(MustPlan(PlanPro), PeriodMonthly, 1, "active")
+	assertNilPtr(t, "pro seats", proEntitlements.SeatsLimit)
+	assertIntPtr(t, "pro quota", proEntitlements.RacesPerWorkspaceMonth, 500)
 	assertIntPtr(t, "pro models", proEntitlements.MaxModelsPerRace, 8)
 	assertIntPtr(t, "pro concurrency", proEntitlements.ConcurrentRaces, 3)
 
-	teamEntitlements := MaterializeEntitlements(MustPlan(PlanTeam), PeriodYearly, 2, "active")
-	assertIntPtr(t, "team quota", teamEntitlements.RacesPerWorkspaceMonth, 4000)
+	teamEntitlements := MaterializeEntitlements(MustPlan(PlanTeam), PeriodYearly, 1, "active")
+	assertNilPtr(t, "team seats", teamEntitlements.SeatsLimit)
+	assertIntPtr(t, "team quota", teamEntitlements.RacesPerWorkspaceMonth, 2000)
 	assertIntPtr(t, "team models", teamEntitlements.MaxModelsPerRace, 12)
 	assertIntPtr(t, "team retention", teamEntitlements.ReplayRetentionDays, 90)
 	assertIntPtr(t, "team concurrency", teamEntitlements.ConcurrentRaces, 10)
@@ -36,7 +38,7 @@ func TestCatalogContainsPublicPlansAndLimits(t *testing.T) {
 	}
 }
 
-func TestDodoProductMappingAndSeatValidation(t *testing.T) {
+func TestDodoProductMappingAndQuantityValidation(t *testing.T) {
 	plans := CatalogWithDodoProductIDs(testDodoProductIDs())
 	mapping, err := MapDodoProductFromCatalog("agentclash_pro_yearly", plans)
 	if err != nil {
@@ -49,7 +51,7 @@ func TestDodoProductMappingAndSeatValidation(t *testing.T) {
 	_, err = SubscriptionEntitlementsFromCatalog(DodoSubscriptionInput{
 		ProductID: "agentclash_pro_monthly",
 		Status:    "active",
-		Quantity:  4,
+		Quantity:  0,
 	}, plans)
 	if !errors.Is(err, ErrSeatQuantityBelowLimit) {
 		t.Fatalf("SubscriptionEntitlements error = %v, want ErrSeatQuantityBelowLimit", err)
@@ -58,7 +60,7 @@ func TestDodoProductMappingAndSeatValidation(t *testing.T) {
 	entitlements, err := SubscriptionEntitlementsFromCatalog(DodoSubscriptionInput{
 		ProductID: "agentclash_team_monthly",
 		Status:    "trialing",
-		Quantity:  3,
+		Quantity:  1,
 	}, plans)
 	if err != nil {
 		t.Fatalf("SubscriptionEntitlements returned error: %v", err)
@@ -69,7 +71,7 @@ func TestDodoProductMappingAndSeatValidation(t *testing.T) {
 	if entitlements.Status != EntitlementStatusTrialing {
 		t.Fatalf("entitlement status = %q, want trialing", entitlements.Status)
 	}
-	assertIntPtr(t, "team per-seat quota", entitlements.RacesPerWorkspaceMonth, 6000)
+	assertIntPtr(t, "team quota", entitlements.RacesPerWorkspaceMonth, 2000)
 }
 
 func TestInactiveDodoStatusDoesNotGrantPaidEntitlements(t *testing.T) {
@@ -157,5 +159,12 @@ func assertIntPtr(t *testing.T, label string, got *int, want int) {
 	}
 	if *got != want {
 		t.Fatalf("%s = %d, want %d", label, *got, want)
+	}
+}
+
+func assertNilPtr(t *testing.T, label string, got *int) {
+	t.Helper()
+	if got != nil {
+		t.Fatalf("%s = %d, want nil", label, *got)
 	}
 }

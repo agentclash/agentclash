@@ -59,7 +59,7 @@ func CheckEntitlementActive(entitlements EffectiveEntitlements, now time.Time) G
 		return GateDecision{
 			Allowed:       false,
 			Code:          GateCodeEntitlementExpired,
-			Message:       fmt.Sprintf("%s trial has expired. Add billing to continue.", entitlements.PlanKey),
+			Message:       fmt.Sprintf("%s access has expired. Add billing to continue.", entitlements.PlanKey),
 			PlanKey:       entitlements.PlanKey,
 			UpgradeTarget: expiredUpgradeTarget(entitlements.PlanKey, entitlements.UpgradeTarget),
 			ExpiresAt:     cloneTime(entitlements.ExpiresAt),
@@ -72,7 +72,7 @@ func CheckEntitlementActive(entitlements EffectiveEntitlements, now time.Time) G
 		return GateDecision{
 			Allowed:       false,
 			Code:          GateCodeEntitlementExpired,
-			Message:       fmt.Sprintf("%s trial has expired. Add billing to continue.", entitlements.PlanKey),
+			Message:       fmt.Sprintf("%s access has expired. Add billing to continue.", entitlements.PlanKey),
 			PlanKey:       entitlements.PlanKey,
 			UpgradeTarget: expiredUpgradeTarget(entitlements.PlanKey, entitlements.UpgradeTarget),
 			ExpiresAt:     cloneTime(entitlements.ExpiresAt),
@@ -170,7 +170,7 @@ func CheckSeatLimit(entitlements EffectiveEntitlements, activeSeats int, request
 	return GateDecision{
 		Allowed:       false,
 		Code:          GateCodeSeatLimitExceeded,
-		Message:       fmt.Sprintf("%s seat limit is exhausted", entitlements.PlanKey),
+		Message:       fmt.Sprintf("%s member limit is exhausted", entitlements.PlanKey),
 		PlanKey:       entitlements.PlanKey,
 		UpgradeTarget: entitlements.UpgradeTarget,
 		Limit:         cloneInt(entitlements.SeatsLimit),
