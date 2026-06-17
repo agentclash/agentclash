@@ -40,6 +40,7 @@ type vibeEvalDraftAuthor interface {
 	GetDraft(ctx context.Context, caller Caller, input GetVibeEvalDraftInput) (repository.VibeEvalDraft, error)
 	UpdateDraft(ctx context.Context, caller Caller, input UpdateVibeEvalDraftInput) (repository.VibeEvalDraft, error)
 	ValidateDraft(ctx context.Context, caller Caller, input ValidateVibeEvalDraftInput) (ValidateVibeEvalDraftResult, error)
+	PublishDraft(ctx context.Context, caller Caller, input PublishVibeEvalDraftInput) (PublishVibeEvalDraftResult, error)
 }
 
 const draftKindEnumJSON = `{"type":"string","enum":["eval_plan","challenge_pack","input_cases","scoring","runtime"]}`
@@ -197,6 +198,59 @@ func (t validateDraftTool) Execute(ctx context.Context, _ vibeeval.Actor, conv v
 		Result:      map[string]any{"draft_id": res.Draft.ID.String(), "valid": res.Valid, "validation_state": res.Draft.ValidationState, "errors": res.Errors},
 		AuditResult: map[string]any{"draft_id": res.Draft.ID.String(), "valid": res.Valid, "error_count": len(res.Errors)},
 	}, nil
+}
+
+// --- publish_draft (workspace_write tier → confirmation required; loop audits) ---
+
+type publishDraftTool struct{ drafts vibeEvalDraftAuthor }
+
+func (publishDraftTool) Name() string                { return "publish_draft" }
+func (publishDraftTool) Phases() []string            { return []string{vibeeval.PhasePublish} }
+func (publishDraftTool) RiskTier() vibeeval.RiskTier { return vibeeval.WorkspaceWriteTier }
+func (publishDraftTool) RequiredAction() string      { return string(ActionPublishChallengePack) }
+func (publishDraftTool) Definition() provider.ToolDefinition {
+	return provider.ToolDefinition{
+		Name:        "publish_draft",
+		Description: "Publish a validated challenge_pack draft as a runnable challenge pack. Requires confirmation.",
+		Parameters:  json.RawMessage(`{"type":"object","required":["draft_id"],"properties":{"draft_id":{"type":"string","description":"draft UUID"}}}`),
+	}
+}
+
+func (t publishDraftTool) Execute(ctx context.Context, _ vibeeval.Actor, conv vibeeval.Conversation, args json.RawMessage) (vibeeval.ToolOutput, error) {
+	caller, err := CallerFromContext(ctx)
+	if err != nil {
+		return vibeeval.ToolOutput{}, err
+	}
+	var in struct {
+		DraftID string `json:"draft_id"`
+	}
+	if err := json.Unmarshal(args, &in); err != nil {
+		return vibeeval.ToolOutput{}, fmt.Errorf("invalid args: %w", err)
+	}
+	draftID, err := uuid.Parse(in.DraftID)
+	if err != nil {
+		return vibeeval.ToolOutput{}, fmt.Errorf("draft_id is not a UUID: %w", err)
+	}
+	// Conversation locality: the agent may only publish drafts of THIS conversation.
+	current, err := t.drafts.GetDraft(ctx, caller, GetVibeEvalDraftInput{WorkspaceID: conv.WorkspaceID, DraftID: draftID})
+	if err != nil {
+		return vibeeval.ToolOutput{}, err
+	}
+	if current.ConversationID != conv.ID {
+		return vibeeval.ToolOutput{}, repository.ErrVibeEvalDraftNotFound
+	}
+	res, err := t.drafts.PublishDraft(ctx, caller, PublishVibeEvalDraftInput{WorkspaceID: conv.WorkspaceID, DraftID: draftID})
+	if err != nil {
+		return vibeeval.ToolOutput{}, err
+	}
+	// Metadata-only — IDs and state, never bundle content.
+	meta := map[string]any{
+		"draft_id":                  res.Draft.ID.String(),
+		"challenge_pack_id":         res.ChallengePackID.String(),
+		"challenge_pack_version_id": res.ChallengePackVersionID.String(),
+		"already_published":         res.AlreadyPublished,
+	}
+	return vibeeval.ToolOutput{Result: meta, AuditResult: meta}, nil
 }
 
 // --- get_run_status ---

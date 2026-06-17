@@ -277,6 +277,53 @@ func (r *Repository) PublishChallengePackBundle(ctx context.Context, params Publ
 	return published, nil
 }
 
+// ResolvePublishedChallengePackBundle resolves the existing published identity (pack, version, spec,
+// input sets) for a bundle's (workspace, slug, version_number). It is used to recover the effect
+// after a duplicate-version publish (crash/race) — without republishing. The bundle artifact is not
+// part of the effect identity and is left nil. ErrChallengePackVersionExists is returned when no such
+// version is found (the caller should not have reached recovery in that case).
+func (r *Repository) ResolvePublishedChallengePackBundle(ctx context.Context, workspaceID uuid.UUID, slug string, versionNumber int32) (PublishedChallengePack, error) {
+	var packID, versionID, specID uuid.UUID
+	if err := r.db.QueryRow(ctx, `
+		SELECT
+			cpv.challenge_pack_id,
+			cpv.id,
+			(SELECT es.id FROM evaluation_specs es WHERE es.challenge_pack_version_id = cpv.id LIMIT 1)
+		FROM challenge_pack_versions cpv
+		JOIN challenge_packs cp ON cp.id = cpv.challenge_pack_id
+		WHERE cp.workspace_id = $1 AND cp.slug = $2 AND cpv.version_number = $3
+	`, workspaceID, slug, versionNumber).Scan(&packID, &versionID, &specID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return PublishedChallengePack{}, ErrChallengePackVersionExists
+		}
+		return PublishedChallengePack{}, fmt.Errorf("resolve published challenge pack version: %w", err)
+	}
+
+	rows, err := r.db.Query(ctx, `SELECT id FROM challenge_input_sets WHERE challenge_pack_version_id = $1 ORDER BY input_key`, versionID)
+	if err != nil {
+		return PublishedChallengePack{}, fmt.Errorf("resolve published input sets: %w", err)
+	}
+	defer rows.Close()
+	inputSetIDs := make([]uuid.UUID, 0)
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return PublishedChallengePack{}, fmt.Errorf("scan published input set: %w", err)
+		}
+		inputSetIDs = append(inputSetIDs, id)
+	}
+	if err := rows.Err(); err != nil {
+		return PublishedChallengePack{}, fmt.Errorf("iterate published input sets: %w", err)
+	}
+
+	return PublishedChallengePack{
+		ChallengePackID:        packID,
+		ChallengePackVersionID: versionID,
+		EvaluationSpecID:       specID,
+		InputSetIDs:            inputSetIDs,
+	}, nil
+}
+
 func resolveOrCreateChallengePack(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, bundle challengepack.Bundle) (uuid.UUID, error) {
 	var (
 		packID         uuid.UUID

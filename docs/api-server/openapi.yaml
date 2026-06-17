@@ -5264,6 +5264,37 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}/publish:
+    post:
+      operationId: publishVibeEvalDraft
+      summary: Publish a validated Vibe Eval challenge_pack draft
+      description: >
+        Publishes a validated challenge_pack draft as a runnable challenge pack (requires the
+        private-pack entitlement). Idempotent by effect identity — an already-published draft returns
+        its existing pack/version without republishing. Shares the PublishDraft manager path with the
+        confirmation-gated publish_draft guide tool; this REST entrypoint is a direct human action.
+      tags: [VibeEvals]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/VibeEvalDraftID"
+      responses:
+        "200":
+          description: Publish result (IDs only).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishVibeEvalDraftResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/agent-tryout-templates:
     get:
       operationId: listAgentTryoutTemplates
@@ -13092,6 +13123,22 @@ components:
                 type: string
               message:
                 type: string
+
+    PublishVibeEvalDraftResponse:
+      type: object
+      required: [draft, challenge_pack_id, challenge_pack_version_id, already_published]
+      properties:
+        draft:
+          $ref: "#/components/schemas/VibeEvalDraftResponse"
+        challenge_pack_id:
+          type: string
+          format: uuid
+        challenge_pack_version_id:
+          type: string
+          format: uuid
+        already_published:
+          type: boolean
+          description: true when the result came from the effect-identity idempotency short-circuit.
 
     # --- Agent Tryouts ---
 

@@ -85,11 +85,26 @@ WHERE id = @id
 LIMIT 1;
 
 -- name: UpdateVibeEvalDraft :one
+-- Editing content unpublishes the draft: the published refs are cleared so a stale published
+-- version can never be reused as an idempotency signal for changed content (3c-3 effect identity).
 UPDATE vibe_eval_drafts
 SET
     content = @content,
     validation_state = @validation_state,
     validation_errors = @validation_errors,
+    published_challenge_pack_id = NULL,
+    published_challenge_pack_version_id = NULL,
+    updated_by_user_id = @updated_by_user_id
+WHERE id = @id
+RETURNING *;
+
+-- name: MarkVibeEvalDraftPublished :one
+UPDATE vibe_eval_drafts
+SET
+    validation_state = 'valid',
+    validation_errors = '[]'::jsonb,
+    published_challenge_pack_id = @published_challenge_pack_id,
+    published_challenge_pack_version_id = @published_challenge_pack_version_id,
     updated_by_user_id = @updated_by_user_id
 WHERE id = @id
 RETURNING *;

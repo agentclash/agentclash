@@ -10,13 +10,28 @@ import (
 	"github.com/google/uuid"
 )
 
-type fakeBundleValidator struct {
+// fakeVibeEvalPacks fakes the challenge-pack authoring surface (validate/publish/resolve).
+type fakeVibeEvalPacks struct {
 	resp ValidateChallengePackResponse
 	err  error
+
+	publishResp PublishChallengePackResponse
+	publishErr  error
+	publishes   int
+
+	resolveResp PublishChallengePackResponse
+	resolveErr  error
 }
 
-func (f fakeBundleValidator) ValidateBundle(context.Context, uuid.UUID, []byte) (ValidateChallengePackResponse, error) {
+func (f *fakeVibeEvalPacks) ValidateBundle(context.Context, uuid.UUID, []byte) (ValidateChallengePackResponse, error) {
 	return f.resp, f.err
+}
+func (f *fakeVibeEvalPacks) PublishBundle(context.Context, uuid.UUID, []byte) (PublishChallengePackResponse, error) {
+	f.publishes++
+	return f.publishResp, f.publishErr
+}
+func (f *fakeVibeEvalPacks) ResolvePublishedBundle(context.Context, uuid.UUID, []byte) (PublishChallengePackResponse, error) {
+	return f.resolveResp, f.resolveErr
 }
 
 func seedVibeEvalDraft(repo *fakeVibeEvalRepo, ws, convID uuid.UUID, kind, content string) repository.VibeEvalDraft {
@@ -32,7 +47,7 @@ func seedVibeEvalDraft(repo *fakeVibeEvalRepo, ws, convID uuid.UUID, kind, conte
 func TestVibeEvalManager_ValidateDraftValid(t *testing.T) {
 	ws, org, user := uuid.New(), uuid.New(), uuid.New()
 	repo := newFakeVibeEvalRepo(org, ws)
-	mgr := NewVibeEvalManager(fakeVibeEvalAuthorizer{}, repo).WithBundleValidator(fakeBundleValidator{resp: ValidateChallengePackResponse{Valid: true}})
+	mgr := NewVibeEvalManager(fakeVibeEvalAuthorizer{}, repo).WithChallengePackAuthoring(&fakeVibeEvalPacks{resp: ValidateChallengePackResponse{Valid: true}})
 	caller := vibeEvalCaller(user, ws, RoleWorkspaceMember)
 	draft := seedVibeEvalDraft(repo, ws, uuid.New(), "challenge_pack", `{"bundle_yaml":"name: x"}`)
 
@@ -51,7 +66,7 @@ func TestVibeEvalManager_ValidateDraftValid(t *testing.T) {
 func TestVibeEvalManager_ValidateDraftInvalid(t *testing.T) {
 	ws, org, user := uuid.New(), uuid.New(), uuid.New()
 	repo := newFakeVibeEvalRepo(org, ws)
-	mgr := NewVibeEvalManager(fakeVibeEvalAuthorizer{}, repo).WithBundleValidator(fakeBundleValidator{resp: ValidateChallengePackResponse{
+	mgr := NewVibeEvalManager(fakeVibeEvalAuthorizer{}, repo).WithChallengePackAuthoring(&fakeVibeEvalPacks{resp: ValidateChallengePackResponse{
 		Valid:  false,
 		Errors: []validationErrorDetail{{Field: "pack.slug", Message: "required"}},
 	}})
@@ -71,7 +86,7 @@ func TestVibeEvalManager_ValidateDraftMissingBundleIsInvalid(t *testing.T) {
 	ws, org, user := uuid.New(), uuid.New(), uuid.New()
 	repo := newFakeVibeEvalRepo(org, ws)
 	// Bundle validator should NOT be consulted — the missing bundle is invalid before that.
-	mgr := NewVibeEvalManager(fakeVibeEvalAuthorizer{}, repo).WithBundleValidator(fakeBundleValidator{err: errors.New("should not be called")})
+	mgr := NewVibeEvalManager(fakeVibeEvalAuthorizer{}, repo).WithChallengePackAuthoring(&fakeVibeEvalPacks{err: errors.New("should not be called")})
 	caller := vibeEvalCaller(user, ws, RoleWorkspaceMember)
 	draft := seedVibeEvalDraft(repo, ws, uuid.New(), "challenge_pack", `{"notes":"no bundle here"}`)
 
@@ -90,7 +105,7 @@ func TestVibeEvalManager_ValidateDraftMissingBundleIsInvalid(t *testing.T) {
 func TestVibeEvalManager_ValidateDraftForbidden(t *testing.T) {
 	ws, org, user := uuid.New(), uuid.New(), uuid.New()
 	repo := newFakeVibeEvalRepo(org, ws)
-	mgr := NewVibeEvalManager(fakeVibeEvalAuthorizer{}, repo).WithBundleValidator(fakeBundleValidator{resp: ValidateChallengePackResponse{Valid: true}})
+	mgr := NewVibeEvalManager(fakeVibeEvalAuthorizer{}, repo).WithChallengePackAuthoring(&fakeVibeEvalPacks{resp: ValidateChallengePackResponse{Valid: true}})
 	// Viewer can read but cannot manage drafts.
 	viewer := vibeEvalCaller(user, ws, RoleWorkspaceViewer)
 	draft := seedVibeEvalDraft(repo, ws, uuid.New(), "challenge_pack", `{"bundle_yaml":"name: x"}`)
@@ -103,7 +118,7 @@ func TestVibeEvalManager_ValidateDraftForbidden(t *testing.T) {
 func TestVibeEvalManager_ValidateDraftWrongWorkspace(t *testing.T) {
 	ws, org, user := uuid.New(), uuid.New(), uuid.New()
 	repo := newFakeVibeEvalRepo(org, ws)
-	mgr := NewVibeEvalManager(fakeVibeEvalAuthorizer{}, repo).WithBundleValidator(fakeBundleValidator{resp: ValidateChallengePackResponse{Valid: true}})
+	mgr := NewVibeEvalManager(fakeVibeEvalAuthorizer{}, repo).WithChallengePackAuthoring(&fakeVibeEvalPacks{resp: ValidateChallengePackResponse{Valid: true}})
 	caller := vibeEvalCaller(user, ws, RoleWorkspaceMember)
 	draft := seedVibeEvalDraft(repo, ws, uuid.New(), "challenge_pack", `{"bundle_yaml":"name: x"}`)
 
@@ -116,7 +131,7 @@ func TestVibeEvalManager_ValidateDraftWrongWorkspace(t *testing.T) {
 func TestVibeEvalManager_ValidateDraftWrongKind(t *testing.T) {
 	ws, org, user := uuid.New(), uuid.New(), uuid.New()
 	repo := newFakeVibeEvalRepo(org, ws)
-	mgr := NewVibeEvalManager(fakeVibeEvalAuthorizer{}, repo).WithBundleValidator(fakeBundleValidator{resp: ValidateChallengePackResponse{Valid: true}})
+	mgr := NewVibeEvalManager(fakeVibeEvalAuthorizer{}, repo).WithChallengePackAuthoring(&fakeVibeEvalPacks{resp: ValidateChallengePackResponse{Valid: true}})
 	caller := vibeEvalCaller(user, ws, RoleWorkspaceMember)
 	draft := seedVibeEvalDraft(repo, ws, uuid.New(), "eval_plan", `{"bundle_yaml":"name: x"}`)
 

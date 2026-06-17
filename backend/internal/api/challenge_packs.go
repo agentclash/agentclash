@@ -122,11 +122,15 @@ type ChallengePackAuthoringRepository interface {
 	GetArtifactByID(ctx context.Context, artifactID uuid.UUID) (repository.Artifact, error)
 	GetOrganizationIDByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, error)
 	PublishChallengePackBundle(ctx context.Context, params repository.PublishChallengePackBundleParams) (repository.PublishedChallengePack, error)
+	ResolvePublishedChallengePackBundle(ctx context.Context, workspaceID uuid.UUID, slug string, versionNumber int32) (repository.PublishedChallengePack, error)
 }
 
 type ChallengePackAuthoringService interface {
 	ValidateBundle(ctx context.Context, workspaceID uuid.UUID, bundleYAML []byte) (ValidateChallengePackResponse, error)
 	PublishBundle(ctx context.Context, workspaceID uuid.UUID, bundleYAML []byte) (PublishChallengePackResponse, error)
+	// ResolvePublishedBundle returns the existing published identity for a bundle whose version is
+	// already published — used to recover a duplicate-version publish without republishing.
+	ResolvePublishedBundle(ctx context.Context, workspaceID uuid.UUID, bundleYAML []byte) (PublishChallengePackResponse, error)
 }
 
 type ChallengePackAuthoringManager struct {
@@ -234,6 +238,26 @@ func (m *ChallengePackAuthoringManager) PublishBundle(ctx context.Context, works
 	}
 	cleanupBundleArtifact = nil
 
+	return PublishChallengePackResponse{
+		ChallengePackID:        published.ChallengePackID,
+		ChallengePackVersionID: published.ChallengePackVersionID,
+		EvaluationSpecID:       published.EvaluationSpecID,
+		InputSetIDs:            published.InputSetIDs,
+		BundleArtifactID:       published.BundleArtifactID,
+	}, nil
+}
+
+// ResolvePublishedBundle parses the bundle to its (slug, version) identity and resolves the existing
+// published pack/version/spec/input-sets — the recovery path for a duplicate-version publish.
+func (m *ChallengePackAuthoringManager) ResolvePublishedBundle(ctx context.Context, workspaceID uuid.UUID, bundleYAML []byte) (PublishChallengePackResponse, error) {
+	bundle, err := challengepack.ParseYAML(bundleYAML)
+	if err != nil {
+		return PublishChallengePackResponse{}, err
+	}
+	published, err := m.repo.ResolvePublishedChallengePackBundle(ctx, workspaceID, bundle.Pack.Slug, bundle.Version.Number)
+	if err != nil {
+		return PublishChallengePackResponse{}, err
+	}
 	return PublishChallengePackResponse{
 		ChallengePackID:        published.ChallengePackID,
 		ChallengePackVersionID: published.ChallengePackVersionID,

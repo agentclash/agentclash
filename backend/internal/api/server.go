@@ -510,6 +510,9 @@ func (noopVibeEvalService) UpdateDraft(context.Context, Caller, UpdateVibeEvalDr
 func (noopVibeEvalService) ValidateDraft(context.Context, Caller, ValidateVibeEvalDraftInput) (ValidateVibeEvalDraftResult, error) {
 	return ValidateVibeEvalDraftResult{}, errors.New("vibe eval service is not configured")
 }
+func (noopVibeEvalService) PublishDraftAndAudit(context.Context, Caller, PublishVibeEvalDraftInput) (PublishVibeEvalDraftResult, error) {
+	return PublishVibeEvalDraftResult{}, errors.New("vibe eval service is not configured")
+}
 
 type noopCompareReadService struct{}
 
@@ -638,5 +641,8 @@ func (noopChallengePackAuthoringService) ValidateBundle(_ context.Context, _ uui
 }
 
 func (noopChallengePackAuthoringService) PublishBundle(_ context.Context, _ uuid.UUID, _ []byte) (PublishChallengePackResponse, error) {
+	return PublishChallengePackResponse{}, errors.New("challenge pack authoring service is not configured")
+}
+func (noopChallengePackAuthoringService) ResolvePublishedBundle(_ context.Context, _ uuid.UUID, _ []byte) (PublishChallengePackResponse, error) {
 	return PublishChallengePackResponse{}, errors.New("challenge pack authoring service is not configured")
 }

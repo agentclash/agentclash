@@ -179,6 +179,12 @@ type fakeVibeEvalRepo struct {
 	now           time.Time
 	conversations map[uuid.UUID]repository.VibeEvalConversation
 	drafts        map[uuid.UUID]repository.VibeEvalDraft
+	toolAudits    []repository.AppendVibeEvalToolInvocationParams
+}
+
+func (r *fakeVibeEvalRepo) AppendVibeEvalToolInvocation(_ context.Context, params repository.AppendVibeEvalToolInvocationParams) (repository.VibeEvalToolInvocation, error) {
+	r.toolAudits = append(r.toolAudits, params)
+	return repository.VibeEvalToolInvocation{}, nil
 }
 
 func newFakeVibeEvalRepo(orgID, workspaceID uuid.UUID) *fakeVibeEvalRepo {
@@ -288,6 +294,26 @@ func (r *fakeVibeEvalRepo) UpdateVibeEvalDraft(_ context.Context, params reposit
 	item.Content = params.Content
 	item.ValidationState = params.ValidationState
 	item.ValidationErrors = params.ValidationErrors
+	// Editing content unpublishes the draft (matches the UpdateVibeEvalDraft query).
+	item.PublishedChallengePackID = nil
+	item.PublishedChallengePackVersionID = nil
+	item.UpdatedByUserID = params.UpdatedByUserID
+	item.UpdatedAt = r.now.Add(time.Second)
+	r.drafts[item.ID] = item
+	return item, nil
+}
+
+func (r *fakeVibeEvalRepo) MarkVibeEvalDraftPublished(_ context.Context, params repository.MarkVibeEvalDraftPublishedParams) (repository.VibeEvalDraft, error) {
+	item, ok := r.drafts[params.ID]
+	if !ok {
+		return repository.VibeEvalDraft{}, repository.ErrVibeEvalDraftNotFound
+	}
+	packID := params.PublishedChallengePackID
+	versionID := params.PublishedChallengePackVersionID
+	item.ValidationState = "valid"
+	item.ValidationErrors = []byte("[]")
+	item.PublishedChallengePackID = &packID
+	item.PublishedChallengePackVersionID = &versionID
 	item.UpdatedByUserID = params.UpdatedByUserID
 	item.UpdatedAt = r.now.Add(time.Second)
 	r.drafts[item.ID] = item

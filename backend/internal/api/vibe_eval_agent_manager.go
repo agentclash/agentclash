@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -25,9 +26,10 @@ type vibeEvalLoopRunner interface {
 }
 
 type VibeEvalAgentManager struct {
-	authorizer WorkspaceAuthorizer
-	repo       *repository.Repository
-	loop       vibeEvalLoopRunner
+	authorizer     WorkspaceAuthorizer
+	repo           *repository.Repository
+	loop           vibeEvalLoopRunner
+	recoveryProbes map[string]recoveryProbe // per-tool-name ambiguous-recovery effect probes
 }
 
 // NewVibeEvalAgentManager wires the read-only Step-2 agent. router is the api-server's
@@ -51,6 +53,7 @@ func NewVibeEvalAgentManager(
 		createDraftTool{drafts: drafts},
 		updateDraftTool{drafts: drafts},
 		validateDraftTool{drafts: drafts},
+		publishDraftTool{drafts: drafts},
 	}
 	for _, t := range tools {
 		if !roleAllows(RoleWorkspaceAdmin, Action(t.RequiredAction())) {
@@ -70,7 +73,13 @@ func NewVibeEvalAgentManager(
 		WithConfirmationStore(vibeEvalConfirmationStore{repo: repo}).
 		WithAuditWriter(vibeEvalAuditWriter{repo: repo})
 
-	return &VibeEvalAgentManager{authorizer: authorizer, repo: repo, loop: loop}, nil
+	mgr := &VibeEvalAgentManager{authorizer: authorizer, repo: repo, loop: loop}
+	// publish_draft is idempotent by effect identity → its ambiguous-recovery probe consults the
+	// draft's published version rather than re-executing.
+	mgr.recoveryProbes = map[string]recoveryProbe{
+		"publish_draft": mgr.publishEffectSucceeded,
+	}
+	return mgr, nil
 }
 
 // AuthorizeTurn checks the caller may run a guide turn in the workspace (member+). The
@@ -187,13 +196,55 @@ func (m *VibeEvalAgentManager) ResolveConfirmation(ctx context.Context, caller C
 		return vibeeval.TurnResult{}, err
 	}
 	if ran {
-		if err := m.finalizeRanConfirmation(ctx, pc.ID, false); err != nil {
+		// Narrow per-tool recovery probe: an idempotent write tool (e.g. publish_draft) can confirm
+		// its effect succeeded from durable effect state — a stronger signal than the lost audit row.
+		// It never re-executes (re-entering ResumeConfirmedTurn would duplicate the tool_call_id in
+		// the transcript). Unknown → keep the conservative failed fallback.
+		succeeded := false
+		if probe, ok := m.recoveryProbes[executing.ToolName]; ok {
+			s, perr := probe(ctx, executing)
+			if perr != nil {
+				return vibeeval.TurnResult{}, perr
+			}
+			succeeded = s
+		}
+		if err := m.finalizeRanConfirmation(ctx, pc.ID, succeeded); err != nil {
 			return vibeeval.TurnResult{}, err
 		}
 		return m.loop.ContinueTurn(ctx, actor, authz, vconv, sink)
 	}
 	// Claimed but the effect never ran (crash before execution) → safe to execute now.
 	return m.loop.ResumeConfirmedTurn(ctx, actor, authz, vconv, toVibeevalPendingConfirmation(executing), true, sink)
+}
+
+// recoveryProbe reports whether an ambiguous (executing, no audit row) confirmation's effect actually
+// succeeded, by consulting the tool's durable effect state. (false, nil) means "unknown" → the caller
+// keeps the conservative failed fallback.
+type recoveryProbe func(ctx context.Context, pc repository.VibeEvalPendingConfirmation) (bool, error)
+
+// publishEffectSucceeded is the publish_draft recovery probe: the effect succeeded iff the bound
+// draft now records a published challenge-pack version (effect identity) AND belongs to THIS
+// confirmation's conversation+workspace — the same locality the live tool path enforces, so a bound
+// draft_id from another conversation/workspace can never be recovered as success here.
+func (m *VibeEvalAgentManager) publishEffectSucceeded(ctx context.Context, pc repository.VibeEvalPendingConfirmation) (bool, error) {
+	var args struct {
+		DraftID string `json:"draft_id"`
+	}
+	if err := json.Unmarshal(pc.BoundArgs, &args); err != nil {
+		return false, nil
+	}
+	draftID, err := uuid.Parse(args.DraftID)
+	if err != nil {
+		return false, nil
+	}
+	draft, err := m.repo.GetVibeEvalDraftByID(ctx, draftID)
+	if err != nil {
+		return false, nil
+	}
+	if draft.ConversationID != pc.ConversationID || draft.WorkspaceID != pc.WorkspaceID {
+		return false, nil
+	}
+	return draft.PublishedChallengePackVersionID != nil, nil
 }
 
 // finalizeRanConfirmation marks an already-executed confirmation succeeded or failed. A

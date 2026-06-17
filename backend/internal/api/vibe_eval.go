@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -27,6 +28,8 @@ type VibeEvalRepository interface {
 	GetVibeEvalDraftByID(ctx context.Context, id uuid.UUID) (repository.VibeEvalDraft, error)
 	UpdateVibeEvalDraft(ctx context.Context, params repository.UpdateVibeEvalDraftParams) (repository.VibeEvalDraft, error)
 	MarkVibeEvalDraftValidation(ctx context.Context, params repository.MarkVibeEvalDraftValidationParams) (repository.VibeEvalDraft, error)
+	MarkVibeEvalDraftPublished(ctx context.Context, params repository.MarkVibeEvalDraftPublishedParams) (repository.VibeEvalDraft, error)
+	AppendVibeEvalToolInvocation(ctx context.Context, params repository.AppendVibeEvalToolInvocationParams) (repository.VibeEvalToolInvocation, error)
 }
 
 type VibeEvalService interface {
@@ -38,27 +41,43 @@ type VibeEvalService interface {
 	GetDraft(ctx context.Context, caller Caller, input GetVibeEvalDraftInput) (repository.VibeEvalDraft, error)
 	UpdateDraft(ctx context.Context, caller Caller, input UpdateVibeEvalDraftInput) (repository.VibeEvalDraft, error)
 	ValidateDraft(ctx context.Context, caller Caller, input ValidateVibeEvalDraftInput) (ValidateVibeEvalDraftResult, error)
+	PublishDraftAndAudit(ctx context.Context, caller Caller, input PublishVibeEvalDraftInput) (PublishVibeEvalDraftResult, error)
 }
 
-// vibeEvalBundleValidator validates a challenge-pack bundle (the existing ChallengePackAuthoringService).
-type vibeEvalBundleValidator interface {
+// vibeEvalChallengePackAuthoring is the challenge-pack authoring surface VibeEval needs (the existing
+// ChallengePackAuthoringManager satisfies it): validate, publish, and resolve-already-published.
+type vibeEvalChallengePackAuthoring interface {
 	ValidateBundle(ctx context.Context, workspaceID uuid.UUID, bundleYAML []byte) (ValidateChallengePackResponse, error)
+	PublishBundle(ctx context.Context, workspaceID uuid.UUID, bundleYAML []byte) (PublishChallengePackResponse, error)
+	ResolvePublishedBundle(ctx context.Context, workspaceID uuid.UUID, bundleYAML []byte) (PublishChallengePackResponse, error)
+}
+
+// vibeEvalEntitlementGate gates publishing new challenge-pack effects (private-pack entitlement).
+type vibeEvalEntitlementGate interface {
+	CheckWorkspaceFeature(ctx context.Context, workspaceID uuid.UUID, feature string) error
 }
 
 type VibeEvalManager struct {
-	authorizer    WorkspaceAuthorizer
-	repo          VibeEvalRepository
-	bundleChecker vibeEvalBundleValidator // optional; required only for validate_draft (challenge_pack)
+	authorizer  WorkspaceAuthorizer
+	repo        VibeEvalRepository
+	packs       vibeEvalChallengePackAuthoring // optional; required for validate_draft / publish_draft
+	entitlement vibeEvalEntitlementGate        // optional; gates new publish effects
 }
 
 func NewVibeEvalManager(authorizer WorkspaceAuthorizer, repo VibeEvalRepository) *VibeEvalManager {
 	return &VibeEvalManager{authorizer: authorizer, repo: repo}
 }
 
-// WithBundleValidator wires the challenge-pack bundle validator (enables ValidateDraft). Kept as a
-// setter so NewVibeEvalManager and its existing callers/tests are unchanged.
-func (m *VibeEvalManager) WithBundleValidator(v vibeEvalBundleValidator) *VibeEvalManager {
-	m.bundleChecker = v
+// WithChallengePackAuthoring wires the challenge-pack authoring service (enables validate_draft and
+// publish_draft). Setter-style so NewVibeEvalManager and its existing callers stay unchanged.
+func (m *VibeEvalManager) WithChallengePackAuthoring(p vibeEvalChallengePackAuthoring) *VibeEvalManager {
+	m.packs = p
+	return m
+}
+
+// WithEntitlementGate wires the entitlement gate consulted before a NEW publish effect.
+func (m *VibeEvalManager) WithEntitlementGate(g vibeEvalEntitlementGate) *VibeEvalManager {
+	m.entitlement = g
 	return m
 }
 
@@ -116,6 +135,21 @@ type ValidateVibeEvalDraftResult struct {
 	Draft  repository.VibeEvalDraft
 	Valid  bool
 	Errors []validationErrorDetail
+}
+
+type PublishVibeEvalDraftInput struct {
+	WorkspaceID uuid.UUID
+	DraftID     uuid.UUID
+}
+
+type PublishVibeEvalDraftResult struct {
+	Draft                  repository.VibeEvalDraft
+	ChallengePackID        uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	EvaluationSpecID       uuid.UUID
+	InputSetIDs            []uuid.UUID
+	BundleArtifactID       *uuid.UUID
+	AlreadyPublished       bool // true when returned from the effect-identity idempotency short-circuit
 }
 
 func (m *VibeEvalManager) CreateConversation(ctx context.Context, caller Caller, input CreateVibeEvalConversationInput) (repository.VibeEvalConversation, error) {
@@ -261,8 +295,8 @@ func (m *VibeEvalManager) ValidateDraft(ctx context.Context, caller Caller, inpu
 	if draft.DraftKind != "challenge_pack" {
 		return ValidateVibeEvalDraftResult{}, VibeEvalValidationError{Code: "validation_error", Message: "draft must be a challenge_pack draft to validate"}
 	}
-	if m.bundleChecker == nil {
-		return ValidateVibeEvalDraftResult{}, errors.New("vibe eval bundle validator is not configured")
+	if m.packs == nil {
+		return ValidateVibeEvalDraftResult{}, errors.New("vibe eval challenge-pack authoring is not configured")
 	}
 	bundleYAML, bundleErr := vibeEvalDraftBundleYAML(draft)
 	if bundleErr != nil {
@@ -270,7 +304,7 @@ func (m *VibeEvalManager) ValidateDraft(ctx context.Context, caller Caller, inpu
 		// structured errors), not a request error — the agent should learn what to fix and retry.
 		return m.markVibeEvalDraftInvalid(ctx, caller, draft, bundleErr)
 	}
-	validation, err := m.bundleChecker.ValidateBundle(ctx, draft.WorkspaceID, bundleYAML)
+	validation, err := m.packs.ValidateBundle(ctx, draft.WorkspaceID, bundleYAML)
 	if err != nil {
 		return ValidateVibeEvalDraftResult{}, err
 	}
@@ -333,6 +367,142 @@ func (m *VibeEvalManager) markVibeEvalDraftInvalid(ctx context.Context, caller C
 		return ValidateVibeEvalDraftResult{}, err
 	}
 	return ValidateVibeEvalDraftResult{Draft: updated, Valid: false, Errors: errs}, nil
+}
+
+// PublishDraft publishes a validated challenge_pack draft as a runnable challenge pack. Workspace-write
+// tier (the guide-tool confirmation is enforced by the loop; REST is a direct human action). The ONE
+// manager path shared by the publish_draft tool and the REST endpoint. Idempotent by EFFECT IDENTITY:
+// an already-published draft returns its existing pack/version without republishing or re-gating.
+func (m *VibeEvalManager) PublishDraft(ctx context.Context, caller Caller, input PublishVibeEvalDraftInput) (PublishVibeEvalDraftResult, error) {
+	draft, err := m.GetDraft(ctx, caller, GetVibeEvalDraftInput{WorkspaceID: input.WorkspaceID, DraftID: input.DraftID})
+	if err != nil {
+		return PublishVibeEvalDraftResult{}, err
+	}
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, draft.WorkspaceID, ActionPublishChallengePack); err != nil {
+		return PublishVibeEvalDraftResult{}, err
+	}
+
+	// Effect-identity idempotency: a draft that already records a published pack/version is published
+	// for its CURRENT content (UpdateDraft clears these on edit). Return it WITHOUT re-publishing or a
+	// new entitlement check — this is the retry/recovery path and must not fail on entitlement changes.
+	if draft.PublishedChallengePackID != nil && draft.PublishedChallengePackVersionID != nil {
+		return PublishVibeEvalDraftResult{
+			Draft:                  draft,
+			ChallengePackID:        *draft.PublishedChallengePackID,
+			ChallengePackVersionID: *draft.PublishedChallengePackVersionID,
+			AlreadyPublished:       true,
+		}, nil
+	}
+
+	if draft.DraftKind != "challenge_pack" {
+		return PublishVibeEvalDraftResult{}, VibeEvalValidationError{Code: "validation_error", Message: "draft must be a challenge_pack draft to publish"}
+	}
+	if draft.ValidationState != "valid" {
+		return PublishVibeEvalDraftResult{}, VibeEvalValidationError{Code: "validation_error", Message: "draft must be validated before publish"}
+	}
+	if m.packs == nil {
+		return PublishVibeEvalDraftResult{}, errors.New("vibe eval challenge-pack authoring is not configured")
+	}
+	bundleYAML, bundleErr := vibeEvalDraftBundleYAML(draft)
+	if bundleErr != nil {
+		_, _ = m.markVibeEvalDraftInvalid(ctx, caller, draft, bundleErr)
+		return PublishVibeEvalDraftResult{}, bundleErr
+	}
+
+	// Entitlement gate applies only to a NEW publish effect (after the already-published short-circuit).
+	if m.entitlement != nil {
+		if err := m.entitlement.CheckWorkspaceFeature(ctx, draft.WorkspaceID, billingpkg.FeaturePrivateChallengePacks); err != nil {
+			return PublishVibeEvalDraftResult{}, err
+		}
+	}
+
+	published, err := m.packs.PublishBundle(ctx, draft.WorkspaceID, bundleYAML)
+	if err != nil {
+		var validationErr ChallengePackAuthoringValidationError
+		if errors.As(err, &validationErr) {
+			validationErrors, marshalErr := json.Marshal(validationErr.Errors)
+			if marshalErr != nil {
+				return PublishVibeEvalDraftResult{}, fmt.Errorf("marshal validation errors: %w", marshalErr)
+			}
+			_, _ = m.repo.MarkVibeEvalDraftValidation(ctx, repository.MarkVibeEvalDraftValidationParams{
+				ID:               draft.ID,
+				ValidationState:  "invalid",
+				ValidationErrors: validationErrors,
+				UpdatedByUserID:  caller.UserID,
+			})
+			return PublishVibeEvalDraftResult{}, err
+		}
+		if errors.Is(err, repository.ErrChallengePackVersionExists) {
+			// Duplicate-version recovery (crash/race: the version was created but the draft was not
+			// marked published). Resolve the existing effect concretely instead of failing/republishing.
+			published, err = m.packs.ResolvePublishedBundle(ctx, draft.WorkspaceID, bundleYAML)
+			if err != nil {
+				return PublishVibeEvalDraftResult{}, err
+			}
+		} else {
+			return PublishVibeEvalDraftResult{}, err
+		}
+	}
+
+	updated, err := m.repo.MarkVibeEvalDraftPublished(ctx, repository.MarkVibeEvalDraftPublishedParams{
+		ID:                              draft.ID,
+		PublishedChallengePackID:        published.ChallengePackID,
+		PublishedChallengePackVersionID: published.ChallengePackVersionID,
+		UpdatedByUserID:                 caller.UserID,
+	})
+	if err != nil {
+		return PublishVibeEvalDraftResult{}, err
+	}
+	return PublishVibeEvalDraftResult{
+		Draft:                  updated,
+		ChallengePackID:        published.ChallengePackID,
+		ChallengePackVersionID: published.ChallengePackVersionID,
+		EvaluationSpecID:       published.EvaluationSpecID,
+		InputSetIDs:            published.InputSetIDs,
+		BundleArtifactID:       published.BundleArtifactID,
+	}, nil
+}
+
+// PublishDraftAndAudit is the REST entrypoint: it runs PublishDraft and writes exactly ONE
+// metadata-only audit row for the REST path. The guide-tool path calls PublishDraft directly and is
+// audited by the loop — so neither path double-audits.
+func (m *VibeEvalManager) PublishDraftAndAudit(ctx context.Context, caller Caller, input PublishVibeEvalDraftInput) (PublishVibeEvalDraftResult, error) {
+	// Load the draft up front so the audit row has org/conversation identity even if publish fails.
+	draft, err := m.GetDraft(ctx, caller, GetVibeEvalDraftInput{WorkspaceID: input.WorkspaceID, DraftID: input.DraftID})
+	if err != nil {
+		return PublishVibeEvalDraftResult{}, err
+	}
+	result, pubErr := m.PublishDraft(ctx, caller, input)
+	m.auditRESTPublish(ctx, caller, draft, result, pubErr)
+	return result, pubErr
+}
+
+func (m *VibeEvalManager) auditRESTPublish(ctx context.Context, caller Caller, draft repository.VibeEvalDraft, result PublishVibeEvalDraftResult, pubErr error) {
+	outcome := "ok"
+	resultPayload := json.RawMessage(`{}`)
+	if pubErr != nil {
+		outcome = "error"
+	} else {
+		resultPayload, _ = json.Marshal(map[string]any{
+			"challenge_pack_id":         result.ChallengePackID,
+			"challenge_pack_version_id": result.ChallengePackVersionID,
+			"already_published":         result.AlreadyPublished,
+		})
+	}
+	requestPayload, _ := json.Marshal(map[string]any{"draft_id": draft.ID})
+	// Best-effort: audit must never fail the publish.
+	_, _ = m.repo.AppendVibeEvalToolInvocation(ctx, repository.AppendVibeEvalToolInvocationParams{
+		OrganizationID: draft.OrganizationID,
+		WorkspaceID:    draft.WorkspaceID,
+		ConversationID: draft.ConversationID,
+		ActorUserID:    caller.UserID,
+		ToolName:       "publish_draft",
+		Action:         string(ActionPublishChallengePack),
+		RiskTier:       "workspace_write",
+		RequestPayload: requestPayload,
+		ResultPayload:  resultPayload,
+		Outcome:        outcome,
+	})
 }
 
 func validVibeEvalPhase(phase string) bool {
@@ -624,6 +794,30 @@ func validateVibeEvalDraftHandler(logger *slog.Logger, service VibeEvalService) 
 			"draft":  mapVibeEvalDraftResponse(result.Draft),
 			"valid":  result.Valid,
 			"errors": result.Errors,
+		})
+	}
+}
+
+func publishVibeEvalDraftHandler(logger *slog.Logger, service VibeEvalService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, workspaceID, ok := vibeEvalCallerAndWorkspace(w, r)
+		if !ok {
+			return
+		}
+		draftID, ok := parseVibeEvalURLUUID(w, "draftID", "invalid_draft_id", r)
+		if !ok {
+			return
+		}
+		result, err := service.PublishDraftAndAudit(r.Context(), caller, PublishVibeEvalDraftInput{WorkspaceID: workspaceID, DraftID: draftID})
+		if err != nil {
+			handleVibeEvalError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"draft":                     mapVibeEvalDraftResponse(result.Draft),
+			"challenge_pack_id":         result.ChallengePackID,
+			"challenge_pack_version_id": result.ChallengePackVersionID,
+			"already_published":         result.AlreadyPublished,
 		})
 	}
 }

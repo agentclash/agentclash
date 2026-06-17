@@ -15,9 +15,11 @@ type fakeDraftAuthor struct {
 	created        []CreateVibeEvalDraftInput
 	updated        []UpdateVibeEvalDraftInput
 	validated      []ValidateVibeEvalDraftInput
+	published      []PublishVibeEvalDraftInput
 	draft          repository.VibeEvalDraft // returned by Create/Update
 	getDraft       repository.VibeEvalDraft // returned by GetDraft (the ownership pre-check)
 	validateResult ValidateVibeEvalDraftResult
+	publishResult  PublishVibeEvalDraftResult
 }
 
 func (f *fakeDraftAuthor) CreateDraft(_ context.Context, _ Caller, input CreateVibeEvalDraftInput) (repository.VibeEvalDraft, error) {
@@ -34,6 +36,10 @@ func (f *fakeDraftAuthor) UpdateDraft(_ context.Context, _ Caller, input UpdateV
 func (f *fakeDraftAuthor) ValidateDraft(_ context.Context, _ Caller, input ValidateVibeEvalDraftInput) (ValidateVibeEvalDraftResult, error) {
 	f.validated = append(f.validated, input)
 	return f.validateResult, nil
+}
+func (f *fakeDraftAuthor) PublishDraft(_ context.Context, _ Caller, input PublishVibeEvalDraftInput) (PublishVibeEvalDraftResult, error) {
+	f.published = append(f.published, input)
+	return f.publishResult, nil
 }
 
 func TestCreateDraftTool(t *testing.T) {
@@ -156,5 +162,55 @@ func TestValidateDraftToolRejectsCrossConversationDraft(t *testing.T) {
 	}
 	if len(fake.validated) != 0 {
 		t.Fatal("ValidateDraft must NOT be called for a cross-conversation draft")
+	}
+}
+
+func TestPublishDraftTool(t *testing.T) {
+	id, packID, versionID := uuid.New(), uuid.New(), uuid.New()
+	conv := vibeeval.Conversation{ID: uuid.New(), WorkspaceID: uuid.New()}
+	fake := &fakeDraftAuthor{
+		getDraft:      repository.VibeEvalDraft{ID: id, ConversationID: conv.ID, WorkspaceID: conv.WorkspaceID, DraftKind: "challenge_pack"},
+		publishResult: PublishVibeEvalDraftResult{Draft: repository.VibeEvalDraft{ID: id}, ChallengePackID: packID, ChallengePackVersionID: versionID},
+	}
+	tool := publishDraftTool{drafts: fake}
+	if tool.RiskTier() != vibeeval.WorkspaceWriteTier {
+		t.Fatalf("risk tier = %q, want workspace_write (confirmation-tier)", tool.RiskTier())
+	}
+	if tool.RequiredAction() != string(ActionPublishChallengePack) {
+		t.Fatalf("action = %q, want publish_challenge_pack", tool.RequiredAction())
+	}
+	ctx := context.WithValue(context.Background(), callerContextKey{}, Caller{UserID: uuid.New()})
+	out, err := tool.Execute(ctx, vibeeval.Actor{}, conv, json.RawMessage(`{"draft_id":"`+id.String()+`"}`))
+	if err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+	if len(fake.published) != 1 || fake.published[0].DraftID != id || fake.published[0].WorkspaceID != conv.WorkspaceID {
+		t.Fatalf("PublishDraft input mismatch: %+v", fake.published)
+	}
+	if out.AuditResult["challenge_pack_version_id"] != versionID.String() {
+		t.Fatalf("audit = %+v, want version id", out.AuditResult)
+	}
+	// Metadata must NOT carry bundle content.
+	for k := range out.Result.(map[string]any) {
+		if k == "bundle_yaml" || k == "content" {
+			t.Fatalf("result leaked bundle content key %q", k)
+		}
+	}
+}
+
+func TestPublishDraftToolRejectsCrossConversationDraft(t *testing.T) {
+	id := uuid.New()
+	conv := vibeeval.Conversation{ID: uuid.New(), WorkspaceID: uuid.New()}
+	fake := &fakeDraftAuthor{
+		getDraft: repository.VibeEvalDraft{ID: id, ConversationID: uuid.New(), WorkspaceID: conv.WorkspaceID, DraftKind: "challenge_pack"},
+	}
+	tool := publishDraftTool{drafts: fake}
+	ctx := context.WithValue(context.Background(), callerContextKey{}, Caller{UserID: uuid.New()})
+	_, err := tool.Execute(ctx, vibeeval.Actor{}, conv, json.RawMessage(`{"draft_id":"`+id.String()+`"}`))
+	if !errors.Is(err, repository.ErrVibeEvalDraftNotFound) {
+		t.Fatalf("err = %v, want ErrVibeEvalDraftNotFound", err)
+	}
+	if len(fake.published) != 0 {
+		t.Fatal("PublishDraft must NOT be called for a cross-conversation draft")
 	}
 }

@@ -248,6 +248,8 @@ func registerProtectedRoutes(
 		Patch("/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}", updateVibeEvalDraftHandler(logger, vibeEvalService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}/validate", validateVibeEvalDraftHandler(logger, vibeEvalService))
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}/publish", publishVibeEvalDraftHandler(logger, vibeEvalService))
 	// Guide-agent endpoints (Step 2). Registered only when VIBEEVAL_GUIDE_* is configured;
 	// otherwise the feature stays dark (like other optional services). The handlers run their
 	// own action-tier authz (manage-drafts for turns, read for transcript) before streaming.

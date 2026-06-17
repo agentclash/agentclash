@@ -205,6 +205,7 @@ type Querier interface {
 	MarkHostedRunExecutionAccepted(ctx context.Context, arg MarkHostedRunExecutionAcceptedParams) (HostedRunExecution, error)
 	MarkHostedRunExecutionFailed(ctx context.Context, arg MarkHostedRunExecutionFailedParams) (HostedRunExecution, error)
 	MarkHostedRunExecutionTimedOut(ctx context.Context, arg MarkHostedRunExecutionTimedOutParams) (HostedRunExecution, error)
+	MarkVibeEvalDraftPublished(ctx context.Context, arg MarkVibeEvalDraftPublishedParams) (VibeEvalDraft, error)
 	// Content-preserving validation update (validate_draft) — sets only validation state/errors.
 	MarkVibeEvalDraftValidation(ctx context.Context, arg MarkVibeEvalDraftValidationParams) (VibeEvalDraft, error)
 	// Terminal transition after the bound effect runs: 'executing' -> 'succeeded' | 'failed'.
@@ -238,6 +239,8 @@ type Querier interface {
 	UpdatePlaygroundTestCase(ctx context.Context, arg UpdatePlaygroundTestCaseParams) (PlaygroundTestCase, error)
 	UpdateRunAgentStatus(ctx context.Context, arg UpdateRunAgentStatusParams) (RunAgent, error)
 	UpdateRunStatus(ctx context.Context, arg UpdateRunStatusParams) (Run, error)
+	// Editing content unpublishes the draft: the published refs are cleared so a stale published
+	// version can never be reused as an idempotency signal for changed content (3c-3 effect identity).
 	UpdateVibeEvalDraft(ctx context.Context, arg UpdateVibeEvalDraftParams) (VibeEvalDraft, error)
 	UpsertBillingAccount(ctx context.Context, arg UpsertBillingAccountParams) error
 	UpsertBillingSubscription(ctx context.Context, arg UpsertBillingSubscriptionParams) (BillingSubscription, error)

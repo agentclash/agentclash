@@ -93,7 +93,9 @@ func TestVibeEvalManagerResolveConfirmationMatrix(t *testing.T) {
 		return pc
 	}
 	mgrWith := func(loop vibeEvalLoopRunner) *VibeEvalAgentManager {
-		return &VibeEvalAgentManager{repo: repo, loop: loop}
+		m := &VibeEvalAgentManager{repo: repo, loop: loop}
+		m.recoveryProbes = map[string]recoveryProbe{"publish_draft": m.publishEffectSucceeded}
+		return m
 	}
 
 	t.Run("approve fresh resumes with execute", func(t *testing.T) {
@@ -232,6 +234,110 @@ func TestVibeEvalManagerResolveConfirmationMatrix(t *testing.T) {
 			t.Fatalf("resolve: %v", err)
 		}
 		// Ran (message exists) but outcome unknown → conservative failed, never succeeded; no re-exec.
+		assertFinalizeNoReExecute(t, f, pc.ID, "failed")
+	})
+
+	// Publish recovery probe: ambiguous (executing, tool-result, no audit row) BUT the bound draft now
+	// records a published version → the effect succeeded; finalize succeeded, do NOT re-execute.
+	t.Run("publish recovery ambiguous with published effect marks succeeded", func(t *testing.T) {
+		f := &fakeResolveLoop{}
+		// Real pack + version rows (FK targets for the draft's published refs).
+		packID, versionID := uuid.New(), uuid.New()
+		if _, err := db.Exec(ctx, `INSERT INTO challenge_packs (id, workspace_id, slug, name, family) VALUES ($1,$2,$3,'n','f')`, packID, ws, "slug-"+packID.String()[:8]); err != nil {
+			t.Fatalf("seed pack: %v", err)
+		}
+		if _, err := db.Exec(ctx, `INSERT INTO challenge_pack_versions (id, challenge_pack_id, version_number, manifest_checksum) VALUES ($1,$2,1,'sum')`, versionID, packID); err != nil {
+			t.Fatalf("seed version: %v", err)
+		}
+		draft, err := repo.CreateVibeEvalDraft(ctx, repository.CreateVibeEvalDraftParams{
+			OrganizationID: org, WorkspaceID: ws, ConversationID: conv.ID, DraftKind: "challenge_pack",
+			Content: []byte(`{"bundle_yaml":"name: x"}`), ValidationState: "valid", ValidationErrors: []byte("[]"),
+			CreatedByUserID: user, UpdatedByUserID: user,
+		})
+		if err != nil {
+			t.Fatalf("create draft: %v", err)
+		}
+		if _, err := repo.MarkVibeEvalDraftPublished(ctx, repository.MarkVibeEvalDraftPublishedParams{
+			ID: draft.ID, PublishedChallengePackID: packID, PublishedChallengePackVersionID: versionID, UpdatedByUserID: user,
+		}); err != nil {
+			t.Fatalf("mark published: %v", err)
+		}
+		pc, err := repo.CreateVibeEvalPendingConfirmation(ctx, repository.CreateVibeEvalPendingConfirmationParams{
+			OrganizationID: org, WorkspaceID: ws, ConversationID: conv.ID, ProposedByUserID: user,
+			ToolName: "publish_draft", ToolCallID: "tc-pub", Action: "publish_challenge_pack",
+			RiskTier: "workspace_write", PayloadHash: "h-pub", Summary: "s", ExpiresAt: time.Now().Add(time.Hour),
+			BoundArgs: []byte(`{"draft_id":"` + draft.ID.String() + `"}`),
+		})
+		if err != nil {
+			t.Fatalf("create confirmation: %v", err)
+		}
+		if _, err := repo.ApproveVibeEvalPendingConfirmation(ctx, pc.ID, "h-pub", user); err != nil {
+			t.Fatalf("pre-approve: %v", err)
+		}
+		// Tool-result message but NO audit row → ambiguous; the probe must consult the published effect.
+		if _, err := repo.AppendVibeEvalMessage(ctx, repository.AppendVibeEvalMessageParams{
+			ConversationID: conv.ID, Role: "tool", Content: "evidence", RedactionState: "applied", ToolCallID: "tc-pub", ToolName: "publish_draft",
+		}); err != nil {
+			t.Fatalf("append tool result: %v", err)
+		}
+		if _, err := mgrWith(f).ResolveConfirmation(ctx, caller, conv, pc, true, "h-pub", nil); err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+		assertFinalizeNoReExecute(t, f, pc.ID, "succeeded")
+	})
+
+	// Locality: a published draft that belongs to a DIFFERENT conversation must NOT be recovered as
+	// success for this confirmation — the probe enforces conversation/workspace locality.
+	t.Run("publish recovery rejects cross-conversation published draft", func(t *testing.T) {
+		f := &fakeResolveLoop{}
+		packID, versionID := uuid.New(), uuid.New()
+		if _, err := db.Exec(ctx, `INSERT INTO challenge_packs (id, workspace_id, slug, name, family) VALUES ($1,$2,$3,'n','f')`, packID, ws, "slugx-"+packID.String()[:8]); err != nil {
+			t.Fatalf("seed pack: %v", err)
+		}
+		if _, err := db.Exec(ctx, `INSERT INTO challenge_pack_versions (id, challenge_pack_id, version_number, manifest_checksum) VALUES ($1,$2,1,'sum')`, versionID, packID); err != nil {
+			t.Fatalf("seed version: %v", err)
+		}
+		otherConv, err := repo.CreateVibeEvalConversation(ctx, repository.CreateVibeEvalConversationParams{
+			OrganizationID: org, WorkspaceID: ws, CreatedByUserID: user, Title: "other", Phase: "publish", Status: "active",
+		})
+		if err != nil {
+			t.Fatalf("create other conversation: %v", err)
+		}
+		draft, err := repo.CreateVibeEvalDraft(ctx, repository.CreateVibeEvalDraftParams{
+			OrganizationID: org, WorkspaceID: ws, ConversationID: otherConv.ID, DraftKind: "challenge_pack",
+			Content: []byte(`{"bundle_yaml":"name: x"}`), ValidationState: "valid", ValidationErrors: []byte("[]"),
+			CreatedByUserID: user, UpdatedByUserID: user,
+		})
+		if err != nil {
+			t.Fatalf("create draft: %v", err)
+		}
+		if _, err := repo.MarkVibeEvalDraftPublished(ctx, repository.MarkVibeEvalDraftPublishedParams{
+			ID: draft.ID, PublishedChallengePackID: packID, PublishedChallengePackVersionID: versionID, UpdatedByUserID: user,
+		}); err != nil {
+			t.Fatalf("mark published: %v", err)
+		}
+		// Confirmation lives in THIS conv but is bound to the OTHER conversation's published draft.
+		pc, err := repo.CreateVibeEvalPendingConfirmation(ctx, repository.CreateVibeEvalPendingConfirmationParams{
+			OrganizationID: org, WorkspaceID: ws, ConversationID: conv.ID, ProposedByUserID: user,
+			ToolName: "publish_draft", ToolCallID: "tc-xconv", Action: "publish_challenge_pack",
+			RiskTier: "workspace_write", PayloadHash: "h-xconv", Summary: "s", ExpiresAt: time.Now().Add(time.Hour),
+			BoundArgs: []byte(`{"draft_id":"` + draft.ID.String() + `"}`),
+		})
+		if err != nil {
+			t.Fatalf("create confirmation: %v", err)
+		}
+		if _, err := repo.ApproveVibeEvalPendingConfirmation(ctx, pc.ID, "h-xconv", user); err != nil {
+			t.Fatalf("pre-approve: %v", err)
+		}
+		if _, err := repo.AppendVibeEvalMessage(ctx, repository.AppendVibeEvalMessageParams{
+			ConversationID: conv.ID, Role: "tool", Content: "evidence", RedactionState: "applied", ToolCallID: "tc-xconv", ToolName: "publish_draft",
+		}); err != nil {
+			t.Fatalf("append tool result: %v", err)
+		}
+		if _, err := mgrWith(f).ResolveConfirmation(ctx, caller, conv, pc, true, "h-xconv", nil); err != nil {
+			t.Fatalf("resolve: %v", err)
+		}
+		// Published, but cross-conversation → probe returns unknown → conservative failed.
 		assertFinalizeNoReExecute(t, f, pc.ID, "failed")
 	})
 }

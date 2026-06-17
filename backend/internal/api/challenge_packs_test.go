@@ -103,6 +103,10 @@ func (f *fakeChallengePackAuthoringRepository) PublishChallengePackBundle(_ cont
 	return f.published, nil
 }
 
+func (f *fakeChallengePackAuthoringRepository) ResolvePublishedChallengePackBundle(_ context.Context, _ uuid.UUID, _ string, _ int32) (repository.PublishedChallengePack, error) {
+	return f.published, nil
+}
+
 type fakeChallengePackEntitlementGate struct {
 	err              error
 	checkedWorkspace uuid.UUID

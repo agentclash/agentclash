@@ -201,6 +201,35 @@ type MarkVibeEvalDraftValidationParams struct {
 	UpdatedByUserID  uuid.UUID
 }
 
+// MarkVibeEvalDraftPublishedParams records the published challenge-pack/version on a draft (the
+// effect identity for publish idempotency).
+type MarkVibeEvalDraftPublishedParams struct {
+	ID                              uuid.UUID
+	PublishedChallengePackID        uuid.UUID
+	PublishedChallengePackVersionID uuid.UUID
+	UpdatedByUserID                 uuid.UUID
+}
+
+// MarkVibeEvalDraftPublished records the published pack/version on the draft and forces the draft
+// valid (a published draft is, by construction, a valid one).
+func (r *Repository) MarkVibeEvalDraftPublished(ctx context.Context, params MarkVibeEvalDraftPublishedParams) (VibeEvalDraft, error) {
+	packID := params.PublishedChallengePackID
+	versionID := params.PublishedChallengePackVersionID
+	row, err := r.queries.MarkVibeEvalDraftPublished(ctx, repositorysqlc.MarkVibeEvalDraftPublishedParams{
+		ID:                              params.ID,
+		PublishedChallengePackID:        &packID,
+		PublishedChallengePackVersionID: &versionID,
+		UpdatedByUserID:                 params.UpdatedByUserID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return VibeEvalDraft{}, ErrVibeEvalDraftNotFound
+		}
+		return VibeEvalDraft{}, err
+	}
+	return mapVibeEvalDraft(row)
+}
+
 // MarkVibeEvalDraftValidation records a draft's validation outcome without touching its content.
 func (r *Repository) MarkVibeEvalDraftValidation(ctx context.Context, params MarkVibeEvalDraftValidationParams) (VibeEvalDraft, error) {
 	row, err := r.queries.MarkVibeEvalDraftValidation(ctx, repositorysqlc.MarkVibeEvalDraftValidationParams{
