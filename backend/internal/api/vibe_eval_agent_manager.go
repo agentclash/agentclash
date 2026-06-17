@@ -41,12 +41,15 @@ func NewVibeEvalAgentManager(
 	runs runStatusReader,
 	scorecards scorecardReader,
 	packs challengePackLister,
+	drafts vibeEvalDraftAuthor,
 ) (*VibeEvalAgentManager, error) {
 	registry := vibeeval.NewRegistry()
 	tools := []vibeeval.Tool{
 		getRunStatusTool{runs: runs},
 		readScorecardTool{scorecards: scorecards},
 		listChallengePacksTool{packs: packs},
+		createDraftTool{drafts: drafts},
+		updateDraftTool{drafts: drafts},
 	}
 	for _, t := range tools {
 		if !roleAllows(RoleWorkspaceAdmin, Action(t.RequiredAction())) {
