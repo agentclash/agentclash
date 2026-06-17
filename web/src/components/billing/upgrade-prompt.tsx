@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useApiQuery } from "@/lib/api/swr";
 import type {
@@ -28,6 +28,22 @@ function storageKey(orgId: string) {
   return `agentclash:billing-upgrade-prompt-dismissed:${orgId}`;
 }
 
+const DISMISSED_EVENT = "agentclash:billing-upgrade-prompt-dismissed";
+
+function subscribeDismissed(callback: () => void) {
+  window.addEventListener("storage", callback);
+  window.addEventListener(DISMISSED_EVENT, callback);
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(DISMISSED_EVENT, callback);
+  };
+}
+
+function dismissedSnapshot(orgId?: string, isOrgAdmin = false) {
+  if (!orgId || !isOrgAdmin) return true;
+  return window.localStorage.getItem(storageKey(orgId)) === "true";
+}
+
 export function UpgradePrompt({
   orgId,
   orgSlug,
@@ -35,7 +51,6 @@ export function UpgradePrompt({
 }: UpgradePromptProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [dismissed, setDismissed] = useState(true);
   const shouldFetch = Boolean(orgId && isOrgAdmin);
   const { data: overview } = useApiQuery<BillingOverviewResponse>(
     shouldFetch ? `/v1/organizations/${orgId}/billing` : null,
@@ -43,11 +58,11 @@ export function UpgradePrompt({
   const { data: plansData } = useApiQuery<BillingPlansResponse>(
     shouldFetch ? "/v1/billing/plans" : null,
   );
-
-  useEffect(() => {
-    if (!orgId || !isOrgAdmin) return;
-    setDismissed(window.localStorage.getItem(storageKey(orgId)) === "true");
-  }, [isOrgAdmin, orgId]);
+  const dismissed = useSyncExternalStore(
+    subscribeDismissed,
+    useCallback(() => dismissedSnapshot(orgId, isOrgAdmin), [isOrgAdmin, orgId]),
+    () => true,
+  );
 
   const upgradePlans = useMemo(
     () => (plansData?.items ?? []).filter((plan) => plan.key === "pro" || plan.key === "team"),
@@ -62,7 +77,7 @@ export function UpgradePrompt({
 
   function dismiss() {
     if (orgId) window.localStorage.setItem(storageKey(orgId), "true");
-    setDismissed(true);
+    window.dispatchEvent(new Event(DISMISSED_EVENT));
   }
 
   return (
