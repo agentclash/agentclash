@@ -1562,6 +1562,20 @@ func (r *fakeRunRepository) GetRunByID(_ context.Context, id uuid.UUID) (domain.
 	return cloneRun(r.run), nil
 }
 
+// Eval-credit settlement stubs (4c): no managed reservation by default → FinalizeRunCredit no-ops.
+func (r *fakeRunRepository) GetOpenReservationByRunID(_ context.Context, _ uuid.UUID) (repository.CreditReservation, bool, error) {
+	return repository.CreditReservation{}, false, nil
+}
+func (r *fakeRunRepository) GetRunActualCostMicros(_ context.Context, _ uuid.UUID) (int64, error) {
+	return 0, nil
+}
+func (r *fakeRunRepository) SettleEvalCredit(_ context.Context, _ uuid.UUID, _ string, _ int64, _ repository.CreditRef) error {
+	return nil
+}
+func (r *fakeRunRepository) ReleaseEvalCredit(_ context.Context, _ uuid.UUID, _ string, _ repository.CreditRef) error {
+	return nil
+}
+
 func (r *fakeRunRepository) ListRunAgentsByRunID(_ context.Context, runID uuid.UUID) ([]domain.RunAgent, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()

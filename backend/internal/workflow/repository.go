@@ -26,6 +26,11 @@ type RunRepository interface {
 	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
 	ListRunAgentsByRunID(ctx context.Context, runID uuid.UUID) ([]domain.RunAgent, error)
 	GetRunAgentByID(ctx context.Context, id uuid.UUID) (domain.RunAgent, error)
+	// Eval credit settlement (4c): the worker finalizes a managed run's reservation at a terminal state.
+	GetOpenReservationByRunID(ctx context.Context, runID uuid.UUID) (repository.CreditReservation, bool, error)
+	GetRunActualCostMicros(ctx context.Context, runID uuid.UUID) (int64, error)
+	SettleEvalCredit(ctx context.Context, reservationID uuid.UUID, settlementKey string, actualMicros int64, ref repository.CreditRef) error
+	ReleaseEvalCredit(ctx context.Context, reservationID uuid.UUID, releaseKey string, ref repository.CreditRef) error
 	GetRunAgentExecutionContextByID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentExecutionContext, error)
 	LoadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error)
 	CreateEvaluationSpec(ctx context.Context, params repository.CreateEvaluationSpecParams) (repository.EvaluationSpecRecord, error)

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -25,6 +26,9 @@ var (
 	ErrEvalCreditReservationResolved = errors.New("eval credit reservation already resolved")
 	// ErrEvalCreditWalletNotFound is returned when reading a wallet that was never granted/seeded.
 	ErrEvalCreditWalletNotFound = errors.New("eval credit wallet not found")
+	// ErrMultipleOpenEvalCreditReservations is returned when a run has more than one open reservation,
+	// which violates the one-reservation-per-run invariant (never settle one and silently leak the rest).
+	ErrMultipleOpenEvalCreditReservations = errors.New("multiple open eval credit reservations for run")
 )
 
 // WalletBalance is the current eval-credit position for an org. available = granted - reserved - spent.
@@ -399,6 +403,79 @@ func (r *Repository) GetEvalCreditBalance(ctx context.Context, orgID uuid.UUID) 
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	return r.readWalletTx(ctx, tx, orgID)
+}
+
+// GetOpenReservationByRunID returns the run's open eval-credit reservation, if any. Used by the
+// worker's settlement activity (4c) — a run with no open reservation is BYOK / unmanaged and settles
+// to a no-op.
+func (r *Repository) GetOpenReservationByRunID(ctx context.Context, runID uuid.UUID) (CreditReservation, bool, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT id, organization_id, reservation_key, amount_micros, status
+		FROM org_eval_credit_reservations
+		WHERE run_id = $1 AND status = 'open'
+		ORDER BY created_at
+	`, runID)
+	if err != nil {
+		return CreditReservation{}, false, fmt.Errorf("get open reservation by run: %w", err)
+	}
+	defer rows.Close()
+
+	var found []CreditReservation
+	for rows.Next() {
+		var res CreditReservation
+		if err := rows.Scan(&res.ID, &res.OrganizationID, &res.ReservationKey, &res.AmountMicros, &res.Status); err != nil {
+			return CreditReservation{}, false, fmt.Errorf("scan open reservation: %w", err)
+		}
+		found = append(found, res)
+	}
+	if err := rows.Err(); err != nil {
+		return CreditReservation{}, false, fmt.Errorf("iterate open reservations: %w", err)
+	}
+	switch len(found) {
+	case 0:
+		return CreditReservation{}, false, nil
+	case 1:
+		return found[0], true, nil
+	default:
+		// One-reservation-per-run is an invariant; settling one would silently leak the others.
+		return CreditReservation{}, false, fmt.Errorf("%w: run %s has %d", ErrMultipleOpenEvalCreditReservations, runID, len(found))
+	}
+}
+
+// GetRunActualCostMicros sums a run's observed model cost from the persisted per-agent scorecards
+// (the run_model_cost_usd metric) and converts USD → micros. A run/agent with no scorecard yet
+// (failed/cancelled before scoring) contributes 0. Note: run_cost_summaries is NOT populated by the
+// current scoring path, so the per-agent scorecards are the authoritative cost surface.
+//
+// COST CONTRACT (explicit for 4d): this sums ALL agents' costs, which is correct only when every
+// cost-incurring lane in the run is AgentClash-managed (the all-managed case 4c settles today). A
+// MIXED run (some lanes BYOK, some managed) would over-charge the managed reservation for BYOK spend.
+// 4d owns the resolution: either reserve/settle only the managed portion (per-lane cost), or treat a
+// run with any managed lane as fully managed and reserve accordingly — and record the chosen billing
+// mode in the reservation so settlement is not guessing. Until 4d, only fully-managed runs get a
+// reservation, so summing all agents matches what is reserved.
+func (r *Repository) GetRunActualCostMicros(ctx context.Context, runID uuid.UUID) (int64, error) {
+	agents, err := r.ListRunAgentsByRunID(ctx, runID)
+	if err != nil {
+		return 0, fmt.Errorf("list run agents for cost: %w", err)
+	}
+	var totalUSD float64
+	for _, agent := range agents {
+		sc, err := r.GetRunAgentScorecardByRunAgentID(ctx, agent.ID)
+		if errors.Is(err, ErrRunAgentScorecardNotFound) {
+			continue
+		}
+		if err != nil {
+			return 0, fmt.Errorf("get run agent scorecard: %w", err)
+		}
+		if cost := totalCostUSDFromRunAgentScorecardDocument(sc.Scorecard); cost != nil && *cost > 0 {
+			totalUSD += *cost
+		}
+	}
+	if totalUSD <= 0 {
+		return 0, nil
+	}
+	return int64(math.Round(totalUSD * 1_000_000)), nil
 }
 
 func (r *Repository) readWalletTx(ctx context.Context, tx pgx.Tx, orgID uuid.UUID) (WalletBalance, error) {

@@ -26,6 +26,27 @@ var defaultActivityOptions = sdkworkflow.ActivityOptions{
 	},
 }
 
+// finalizeRunCreditActivityOptions retries eval-credit settlement generously — defaultActivityOptions
+// is MaximumAttempts:1, but financial correctness must survive transient DB hiccups.
+var finalizeRunCreditActivityOptions = sdkworkflow.ActivityOptions{
+	StartToCloseTimeout: defaultActivityTimeout,
+	RetryPolicy: &temporal.RetryPolicy{
+		MaximumAttempts:    8,
+		InitialInterval:    time.Second,
+		BackoffCoefficient: 2.0,
+		MaximumInterval:    30 * time.Second,
+	},
+}
+
+// executeFinalizeRunCredit runs the FinalizeRunCredit activity (idempotent settlement/release) with
+// dedicated retry options on the given context.
+func executeFinalizeRunCredit(ctx sdkworkflow.Context, runID uuid.UUID, terminalStatus string) error {
+	finalizeCtx := sdkworkflow.WithActivityOptions(ctx, finalizeRunCreditActivityOptions)
+	return sdkworkflow.ExecuteActivity(finalizeCtx, finalizeRunCreditActivityName, FinalizeRunCreditInput{
+		RunID: runID, TerminalStatus: terminalStatus,
+	}).Get(finalizeCtx, nil)
+}
+
 func RunWorkflow(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 	ctx = sdkworkflow.WithActivityOptions(ctx, defaultActivityOptions)
 
@@ -88,6 +109,11 @@ func runWorkflow(ctx sdkworkflow.Context, input RunWorkflowInput) error {
 	}
 	scoreSummary, err := scoreEvaluatingRunAgents(ctx, input.RunID, updatedRunAgents)
 	if err != nil {
+		return err
+	}
+	// Settle eval credit before completing — block the Completed transition until finalization succeeds
+	// (the activity is idempotent + retried). The scorecard is persisted by scoring above.
+	if err := executeFinalizeRunCredit(ctx, input.RunID, "completed"); err != nil {
 		return err
 	}
 	if err := transitionRunStatus(ctx, input.RunID, domain.RunStatusCompleted, stringPtr(scoreSummary)); err != nil {
@@ -300,6 +326,11 @@ func markRunFailed(ctx sdkworkflow.Context, runID uuid.UUID, workflowErr error) 
 		return fmt.Errorf("run workflow failed: %v; additionally failed to mark run failed: %w", workflowErr, activityErr)
 	}
 
+	// Cleanup AFTER the terminal transition: finalize eval credit (settle observed spend, else release)
+	// best-effort + retried. The run-failure outcome is authoritative and must not be blocked or masked
+	// by a settlement hiccup; a persistently stuck reservation is recoverable later (reaper — future work).
+	_ = executeFinalizeRunCredit(ctx, runID, "failed")
+
 	return workflowErr
 }
 
@@ -327,6 +358,10 @@ func markRunCancelled(ctx sdkworkflow.Context, runID uuid.UUID, workflowErr erro
 		}
 		return fmt.Errorf("run workflow cancelled: %v; additionally failed to mark run cancelled: %w", workflowErr, activityErr)
 	}
+
+	// Cleanup AFTER the terminal transition: finalize eval credit (release the hold for a
+	// cancelled-before-spend run) best-effort + retried on the disconnected context.
+	_ = executeFinalizeRunCredit(disconnectedCtx, runID, "cancelled")
 
 	return workflowErr
 }

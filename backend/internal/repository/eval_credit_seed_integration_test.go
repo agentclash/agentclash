@@ -77,23 +77,28 @@ func TestEvalCreditSeed_NoOrgWithoutWallet(t *testing.T) {
 
 	// Create orgs via both production paths.
 	u1 := seedUser(t, ctx, db)
-	if _, err := repo.CreateOrganizationWithAdmin(ctx, repository.CreateOrgWithAdminInput{Name: "A", Slug: uniqueSlug("a"), UserID: u1}); err != nil {
+	org1, err := repo.CreateOrganizationWithAdmin(ctx, repository.CreateOrgWithAdminInput{Name: "A", Slug: uniqueSlug("a"), UserID: u1})
+	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
 	u2 := seedUser(t, ctx, db)
-	if _, err := repo.Onboard(ctx, repository.OnboardInput{UserID: u2, OrganizationName: "B", OrganizationSlug: uniqueSlug("b"), WorkspaceName: "W", WorkspaceSlug: uniqueSlug("bw")}); err != nil {
+	res, err := repo.Onboard(ctx, repository.OnboardInput{UserID: u2, OrganizationName: "B", OrganizationSlug: uniqueSlug("b"), WorkspaceName: "W", WorkspaceSlug: uniqueSlug("bw")})
+	if err != nil {
 		t.Fatalf("onboard: %v", err)
 	}
 
+	// Scoped to the orgs THIS test created — a shared test DB has other tests' fixture orgs inserted
+	// via raw SQL that legitimately predate the wallet.
 	var orphans int
 	if err := db.QueryRow(ctx, `
 		SELECT count(*) FROM organizations o
-		WHERE NOT EXISTS (SELECT 1 FROM org_eval_credit_wallets w WHERE w.organization_id = o.id)
-	`).Scan(&orphans); err != nil {
+		WHERE o.id = ANY($1)
+		  AND NOT EXISTS (SELECT 1 FROM org_eval_credit_wallets w WHERE w.organization_id = o.id)
+	`, []uuid.UUID{org1.ID, res.Organization.ID}).Scan(&orphans); err != nil {
 		t.Fatalf("scan orphans: %v", err)
 	}
 	if orphans != 0 {
-		t.Fatalf("%d organization(s) have no eval-credit wallet", orphans)
+		t.Fatalf("%d production-path organization(s) have no eval-credit wallet", orphans)
 	}
 }
 
