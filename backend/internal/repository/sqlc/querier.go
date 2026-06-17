@@ -205,6 +205,8 @@ type Querier interface {
 	MarkHostedRunExecutionAccepted(ctx context.Context, arg MarkHostedRunExecutionAcceptedParams) (HostedRunExecution, error)
 	MarkHostedRunExecutionFailed(ctx context.Context, arg MarkHostedRunExecutionFailedParams) (HostedRunExecution, error)
 	MarkHostedRunExecutionTimedOut(ctx context.Context, arg MarkHostedRunExecutionTimedOutParams) (HostedRunExecution, error)
+	// Content-preserving validation update (validate_draft) — sets only validation state/errors.
+	MarkVibeEvalDraftValidation(ctx context.Context, arg MarkVibeEvalDraftValidationParams) (VibeEvalDraft, error)
 	// Terminal transition after the bound effect runs: 'executing' -> 'succeeded' | 'failed'.
 	// Conditioned on status='executing' so a crashed/retried effect transitions exactly once.
 	MarkVibeEvalPendingConfirmationResult(ctx context.Context, arg MarkVibeEvalPendingConfirmationResultParams) (VibeEvalPendingConfirmation, error)

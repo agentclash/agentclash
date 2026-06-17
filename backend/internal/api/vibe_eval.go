@@ -26,6 +26,7 @@ type VibeEvalRepository interface {
 	ListVibeEvalDraftsByConversationID(ctx context.Context, conversationID uuid.UUID) ([]repository.VibeEvalDraft, error)
 	GetVibeEvalDraftByID(ctx context.Context, id uuid.UUID) (repository.VibeEvalDraft, error)
 	UpdateVibeEvalDraft(ctx context.Context, params repository.UpdateVibeEvalDraftParams) (repository.VibeEvalDraft, error)
+	MarkVibeEvalDraftValidation(ctx context.Context, params repository.MarkVibeEvalDraftValidationParams) (repository.VibeEvalDraft, error)
 }
 
 type VibeEvalService interface {
@@ -36,15 +37,29 @@ type VibeEvalService interface {
 	ListDrafts(ctx context.Context, caller Caller, input ListVibeEvalDraftsInput) ([]repository.VibeEvalDraft, error)
 	GetDraft(ctx context.Context, caller Caller, input GetVibeEvalDraftInput) (repository.VibeEvalDraft, error)
 	UpdateDraft(ctx context.Context, caller Caller, input UpdateVibeEvalDraftInput) (repository.VibeEvalDraft, error)
+	ValidateDraft(ctx context.Context, caller Caller, input ValidateVibeEvalDraftInput) (ValidateVibeEvalDraftResult, error)
+}
+
+// vibeEvalBundleValidator validates a challenge-pack bundle (the existing ChallengePackAuthoringService).
+type vibeEvalBundleValidator interface {
+	ValidateBundle(ctx context.Context, workspaceID uuid.UUID, bundleYAML []byte) (ValidateChallengePackResponse, error)
 }
 
 type VibeEvalManager struct {
-	authorizer WorkspaceAuthorizer
-	repo       VibeEvalRepository
+	authorizer    WorkspaceAuthorizer
+	repo          VibeEvalRepository
+	bundleChecker vibeEvalBundleValidator // optional; required only for validate_draft (challenge_pack)
 }
 
 func NewVibeEvalManager(authorizer WorkspaceAuthorizer, repo VibeEvalRepository) *VibeEvalManager {
 	return &VibeEvalManager{authorizer: authorizer, repo: repo}
+}
+
+// WithBundleValidator wires the challenge-pack bundle validator (enables ValidateDraft). Kept as a
+// setter so NewVibeEvalManager and its existing callers/tests are unchanged.
+func (m *VibeEvalManager) WithBundleValidator(v vibeEvalBundleValidator) *VibeEvalManager {
+	m.bundleChecker = v
+	return m
 }
 
 type VibeEvalValidationError struct {
@@ -90,6 +105,17 @@ type UpdateVibeEvalDraftInput struct {
 	Content          json.RawMessage
 	ValidationState  string
 	ValidationErrors json.RawMessage
+}
+
+type ValidateVibeEvalDraftInput struct {
+	WorkspaceID uuid.UUID
+	DraftID     uuid.UUID
+}
+
+type ValidateVibeEvalDraftResult struct {
+	Draft  repository.VibeEvalDraft
+	Valid  bool
+	Errors []validationErrorDetail
 }
 
 func (m *VibeEvalManager) CreateConversation(ctx context.Context, caller Caller, input CreateVibeEvalConversationInput) (repository.VibeEvalConversation, error) {
@@ -218,6 +244,95 @@ func (m *VibeEvalManager) UpdateDraft(ctx context.Context, caller Caller, input 
 		ValidationErrors: normalizeArrayJSON(input.ValidationErrors),
 		UpdatedByUserID:  caller.UserID,
 	})
+}
+
+// ValidateDraft validates a challenge_pack draft's bundle and records its validation state/errors
+// (content-preserving). Draft tier — no confirmation. Shared by the REST endpoint and the
+// validate_draft guide tool (one manager path). It does NOT compute a publish payload hash or
+// publish anything (Step 3c-3).
+func (m *VibeEvalManager) ValidateDraft(ctx context.Context, caller Caller, input ValidateVibeEvalDraftInput) (ValidateVibeEvalDraftResult, error) {
+	draft, err := m.GetDraft(ctx, caller, GetVibeEvalDraftInput{WorkspaceID: input.WorkspaceID, DraftID: input.DraftID})
+	if err != nil {
+		return ValidateVibeEvalDraftResult{}, err
+	}
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, draft.WorkspaceID, ActionManageVibeEvalDrafts); err != nil {
+		return ValidateVibeEvalDraftResult{}, err
+	}
+	if draft.DraftKind != "challenge_pack" {
+		return ValidateVibeEvalDraftResult{}, VibeEvalValidationError{Code: "validation_error", Message: "draft must be a challenge_pack draft to validate"}
+	}
+	if m.bundleChecker == nil {
+		return ValidateVibeEvalDraftResult{}, errors.New("vibe eval bundle validator is not configured")
+	}
+	bundleYAML, bundleErr := vibeEvalDraftBundleYAML(draft)
+	if bundleErr != nil {
+		// A missing/malformed bundle is a normal INVALID validation outcome (persist invalid +
+		// structured errors), not a request error — the agent should learn what to fix and retry.
+		return m.markVibeEvalDraftInvalid(ctx, caller, draft, bundleErr)
+	}
+	validation, err := m.bundleChecker.ValidateBundle(ctx, draft.WorkspaceID, bundleYAML)
+	if err != nil {
+		return ValidateVibeEvalDraftResult{}, err
+	}
+	state := "invalid"
+	validationErrors := []byte("[]")
+	if validation.Valid {
+		state = "valid"
+	} else {
+		validationErrors, err = json.Marshal(validation.Errors)
+		if err != nil {
+			return ValidateVibeEvalDraftResult{}, fmt.Errorf("marshal validation errors: %w", err)
+		}
+	}
+	updated, err := m.repo.MarkVibeEvalDraftValidation(ctx, repository.MarkVibeEvalDraftValidationParams{
+		ID:               draft.ID,
+		ValidationState:  state,
+		ValidationErrors: validationErrors,
+		UpdatedByUserID:  caller.UserID,
+	})
+	if err != nil {
+		return ValidateVibeEvalDraftResult{}, err
+	}
+	return ValidateVibeEvalDraftResult{Draft: updated, Valid: validation.Valid, Errors: validation.Errors}, nil
+}
+
+// vibeEvalDraftBundleYAML extracts the challenge-pack bundle YAML from a draft's content
+// (accepts bundle_yaml | yaml | manifest_yaml).
+func vibeEvalDraftBundleYAML(draft repository.VibeEvalDraft) ([]byte, error) {
+	var content struct {
+		BundleYAML   string `json:"bundle_yaml"`
+		YAML         string `json:"yaml"`
+		ManifestYAML string `json:"manifest_yaml"`
+	}
+	if err := json.Unmarshal(draft.Content, &content); err != nil {
+		return nil, VibeEvalValidationError{Code: "validation_error", Message: "draft content must be a JSON object"}
+	}
+	for _, candidate := range []string{content.BundleYAML, content.YAML, content.ManifestYAML} {
+		if y := strings.TrimSpace(candidate); y != "" {
+			return []byte(y), nil
+		}
+	}
+	return nil, VibeEvalValidationError{Code: "validation_error", Message: "challenge_pack draft content must include bundle_yaml"}
+}
+
+// markVibeEvalDraftInvalid records a draft as invalid with a single structured error (used when the
+// bundle is missing/malformed, which is a validation outcome rather than a request error).
+func (m *VibeEvalManager) markVibeEvalDraftInvalid(ctx context.Context, caller Caller, draft repository.VibeEvalDraft, cause error) (ValidateVibeEvalDraftResult, error) {
+	errs := []validationErrorDetail{{Field: "bundle_yaml", Message: cause.Error()}}
+	errsJSON, err := json.Marshal(errs)
+	if err != nil {
+		return ValidateVibeEvalDraftResult{}, fmt.Errorf("marshal validation errors: %w", err)
+	}
+	updated, err := m.repo.MarkVibeEvalDraftValidation(ctx, repository.MarkVibeEvalDraftValidationParams{
+		ID:               draft.ID,
+		ValidationState:  "invalid",
+		ValidationErrors: errsJSON,
+		UpdatedByUserID:  caller.UserID,
+	})
+	if err != nil {
+		return ValidateVibeEvalDraftResult{}, err
+	}
+	return ValidateVibeEvalDraftResult{Draft: updated, Valid: false, Errors: errs}, nil
 }
 
 func validVibeEvalPhase(phase string) bool {
@@ -487,6 +602,29 @@ func updateVibeEvalDraftHandler(logger *slog.Logger, service VibeEvalService) ht
 			return
 		}
 		writeJSON(w, http.StatusOK, mapVibeEvalDraftResponse(result))
+	}
+}
+
+func validateVibeEvalDraftHandler(logger *slog.Logger, service VibeEvalService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, workspaceID, ok := vibeEvalCallerAndWorkspace(w, r)
+		if !ok {
+			return
+		}
+		draftID, ok := parseVibeEvalURLUUID(w, "draftID", "invalid_draft_id", r)
+		if !ok {
+			return
+		}
+		result, err := service.ValidateDraft(r.Context(), caller, ValidateVibeEvalDraftInput{WorkspaceID: workspaceID, DraftID: draftID})
+		if err != nil {
+			handleVibeEvalError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"draft":  mapVibeEvalDraftResponse(result.Draft),
+			"valid":  result.Valid,
+			"errors": result.Errors,
+		})
 	}
 }
 

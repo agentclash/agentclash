@@ -5234,6 +5234,36 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
+  /v1/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}/validate:
+    post:
+      operationId: validateVibeEvalDraft
+      summary: Validate a Vibe Eval challenge_pack draft
+      description: >
+        Validates a challenge_pack draft's bundle and records its validation state and structured
+        errors (content-preserving). Draft tier — no confirmation. Same manager path as the
+        validate_draft guide tool.
+      tags: [VibeEvals]
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/VibeEvalDraftID"
+      responses:
+        "200":
+          description: Validation result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidateVibeEvalDraftResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/agent-tryout-templates:
     get:
       operationId: listAgentTryoutTemplates
@@ -13043,6 +13073,25 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/VibeEvalDraftResponse"
+
+    ValidateVibeEvalDraftResponse:
+      type: object
+      required: [draft, valid, errors]
+      properties:
+        draft:
+          $ref: "#/components/schemas/VibeEvalDraftResponse"
+        valid:
+          type: boolean
+        errors:
+          type: array
+          description: Structured validation errors (empty when valid).
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
 
     # --- Agent Tryouts ---
 

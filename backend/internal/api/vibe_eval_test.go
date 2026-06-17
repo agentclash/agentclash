@@ -293,3 +293,16 @@ func (r *fakeVibeEvalRepo) UpdateVibeEvalDraft(_ context.Context, params reposit
 	r.drafts[item.ID] = item
 	return item, nil
 }
+
+func (r *fakeVibeEvalRepo) MarkVibeEvalDraftValidation(_ context.Context, params repository.MarkVibeEvalDraftValidationParams) (repository.VibeEvalDraft, error) {
+	item, ok := r.drafts[params.ID]
+	if !ok {
+		return repository.VibeEvalDraft{}, repository.ErrVibeEvalDraftNotFound
+	}
+	item.ValidationState = params.ValidationState
+	item.ValidationErrors = params.ValidationErrors
+	item.UpdatedByUserID = params.UpdatedByUserID
+	item.UpdatedAt = r.now.Add(time.Second)
+	r.drafts[item.ID] = item
+	return item, nil
+}

@@ -171,7 +171,7 @@ func main() {
 	onboardingManager := api.NewOnboardingManager(repo)
 	infraManager := api.NewInfrastructureManager(repo).WithProviderClient(providerRouter)
 	workspaceSecretsManager := api.NewWorkspaceSecretsManager(repo)
-	vibeEvalManager := api.NewVibeEvalManager(authorizer, repo)
+	vibeEvalManager := api.NewVibeEvalManager(authorizer, repo).WithBundleValidator(challengePackAuthoringManager)
 	// Guide agent (Step 2) is optional: enabled only when VIBEEVAL_GUIDE_* is configured.
 	// It reuses the shared providerRouter and the run/scorecard read managers as read-only tools.
 	var vibeEvalAgentManager *api.VibeEvalAgentManager

@@ -39,6 +39,7 @@ type vibeEvalDraftAuthor interface {
 	CreateDraft(ctx context.Context, caller Caller, input CreateVibeEvalDraftInput) (repository.VibeEvalDraft, error)
 	GetDraft(ctx context.Context, caller Caller, input GetVibeEvalDraftInput) (repository.VibeEvalDraft, error)
 	UpdateDraft(ctx context.Context, caller Caller, input UpdateVibeEvalDraftInput) (repository.VibeEvalDraft, error)
+	ValidateDraft(ctx context.Context, caller Caller, input ValidateVibeEvalDraftInput) (ValidateVibeEvalDraftResult, error)
 }
 
 const draftKindEnumJSON = `{"type":"string","enum":["eval_plan","challenge_pack","input_cases","scoring","runtime"]}`
@@ -144,6 +145,58 @@ func (t updateDraftTool) Execute(ctx context.Context, _ vibeeval.Actor, conv vib
 		return vibeeval.ToolOutput{}, err
 	}
 	return draftToolOutput(draft), nil
+}
+
+// --- validate_draft (draft tier, no confirmation, audited) ---
+
+type validateDraftTool struct{ drafts vibeEvalDraftAuthor }
+
+func (validateDraftTool) Name() string { return "validate_draft" }
+func (validateDraftTool) Phases() []string {
+	return []string{vibeeval.PhaseAuthor, vibeeval.PhaseValidate}
+}
+func (validateDraftTool) RiskTier() vibeeval.RiskTier { return vibeeval.DraftTier }
+func (validateDraftTool) RequiredAction() string      { return string(ActionManageVibeEvalDrafts) }
+func (validateDraftTool) Definition() provider.ToolDefinition {
+	return provider.ToolDefinition{
+		Name:        "validate_draft",
+		Description: "Validate a challenge_pack draft's bundle and record its validation state and errors.",
+		Parameters:  json.RawMessage(`{"type":"object","required":["draft_id"],"properties":{"draft_id":{"type":"string","description":"draft UUID"}}}`),
+	}
+}
+
+func (t validateDraftTool) Execute(ctx context.Context, _ vibeeval.Actor, conv vibeeval.Conversation, args json.RawMessage) (vibeeval.ToolOutput, error) {
+	caller, err := CallerFromContext(ctx)
+	if err != nil {
+		return vibeeval.ToolOutput{}, err
+	}
+	var in struct {
+		DraftID string `json:"draft_id"`
+	}
+	if err := json.Unmarshal(args, &in); err != nil {
+		return vibeeval.ToolOutput{}, fmt.Errorf("invalid args: %w", err)
+	}
+	draftID, err := uuid.Parse(in.DraftID)
+	if err != nil {
+		return vibeeval.ToolOutput{}, fmt.Errorf("draft_id is not a UUID: %w", err)
+	}
+	// Conversation locality: the agent may only validate drafts of THIS conversation.
+	current, err := t.drafts.GetDraft(ctx, caller, GetVibeEvalDraftInput{WorkspaceID: conv.WorkspaceID, DraftID: draftID})
+	if err != nil {
+		return vibeeval.ToolOutput{}, err
+	}
+	if current.ConversationID != conv.ID {
+		return vibeeval.ToolOutput{}, repository.ErrVibeEvalDraftNotFound
+	}
+	res, err := t.drafts.ValidateDraft(ctx, caller, ValidateVibeEvalDraftInput{WorkspaceID: conv.WorkspaceID, DraftID: draftID})
+	if err != nil {
+		return vibeeval.ToolOutput{}, err
+	}
+	return vibeeval.ToolOutput{
+		// Structured validation metadata only — never the bundle content.
+		Result:      map[string]any{"draft_id": res.Draft.ID.String(), "valid": res.Valid, "validation_state": res.Draft.ValidationState, "errors": res.Errors},
+		AuditResult: map[string]any{"draft_id": res.Draft.ID.String(), "valid": res.Valid, "error_count": len(res.Errors)},
+	}, nil
 }
 
 // --- get_run_status ---

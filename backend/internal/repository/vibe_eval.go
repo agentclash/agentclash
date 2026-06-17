@@ -193,6 +193,31 @@ func (r *Repository) UpdateVibeEvalDraft(ctx context.Context, params UpdateVibeE
 	return mapVibeEvalDraft(row)
 }
 
+// MarkVibeEvalDraftValidationParams updates only a draft's validation state/errors (content-preserving).
+type MarkVibeEvalDraftValidationParams struct {
+	ID               uuid.UUID
+	ValidationState  string
+	ValidationErrors json.RawMessage
+	UpdatedByUserID  uuid.UUID
+}
+
+// MarkVibeEvalDraftValidation records a draft's validation outcome without touching its content.
+func (r *Repository) MarkVibeEvalDraftValidation(ctx context.Context, params MarkVibeEvalDraftValidationParams) (VibeEvalDraft, error) {
+	row, err := r.queries.MarkVibeEvalDraftValidation(ctx, repositorysqlc.MarkVibeEvalDraftValidationParams{
+		ID:               params.ID,
+		ValidationState:  params.ValidationState,
+		ValidationErrors: params.ValidationErrors,
+		UpdatedByUserID:  params.UpdatedByUserID,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return VibeEvalDraft{}, ErrVibeEvalDraftNotFound
+		}
+		return VibeEvalDraft{}, err
+	}
+	return mapVibeEvalDraft(row)
+}
+
 func mapVibeEvalConversation(row repositorysqlc.VibeEvalConversation) (VibeEvalConversation, error) {
 	createdAt, err := requiredTime("vibe_eval_conversations.created_at", row.CreatedAt)
 	if err != nil {

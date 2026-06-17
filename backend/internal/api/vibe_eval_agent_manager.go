@@ -50,6 +50,7 @@ func NewVibeEvalAgentManager(
 		listChallengePacksTool{packs: packs},
 		createDraftTool{drafts: drafts},
 		updateDraftTool{drafts: drafts},
+		validateDraftTool{drafts: drafts},
 	}
 	for _, t := range tools {
 		if !roleAllows(RoleWorkspaceAdmin, Action(t.RequiredAction())) {

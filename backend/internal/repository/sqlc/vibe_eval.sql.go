@@ -854,6 +854,51 @@ func (q *Queries) LockVibeEvalConversationForAppend(ctx context.Context, arg Loc
 	return i, err
 }
 
+const markVibeEvalDraftValidation = `-- name: MarkVibeEvalDraftValidation :one
+UPDATE vibe_eval_drafts
+SET
+    validation_state = $1,
+    validation_errors = $2,
+    updated_by_user_id = $3
+WHERE id = $4
+RETURNING id, organization_id, workspace_id, conversation_id, draft_kind, content, validation_state, validation_errors, published_challenge_pack_id, published_challenge_pack_version_id, created_by_user_id, updated_by_user_id, created_at, updated_at
+`
+
+type MarkVibeEvalDraftValidationParams struct {
+	ValidationState  string
+	ValidationErrors []byte
+	UpdatedByUserID  uuid.UUID
+	ID               uuid.UUID
+}
+
+// Content-preserving validation update (validate_draft) — sets only validation state/errors.
+func (q *Queries) MarkVibeEvalDraftValidation(ctx context.Context, arg MarkVibeEvalDraftValidationParams) (VibeEvalDraft, error) {
+	row := q.db.QueryRow(ctx, markVibeEvalDraftValidation,
+		arg.ValidationState,
+		arg.ValidationErrors,
+		arg.UpdatedByUserID,
+		arg.ID,
+	)
+	var i VibeEvalDraft
+	err := row.Scan(
+		&i.ID,
+		&i.OrganizationID,
+		&i.WorkspaceID,
+		&i.ConversationID,
+		&i.DraftKind,
+		&i.Content,
+		&i.ValidationState,
+		&i.ValidationErrors,
+		&i.PublishedChallengePackID,
+		&i.PublishedChallengePackVersionID,
+		&i.CreatedByUserID,
+		&i.UpdatedByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const markVibeEvalPendingConfirmationResult = `-- name: MarkVibeEvalPendingConfirmationResult :one
 UPDATE vibe_eval_pending_confirmations
 SET status = $1

@@ -68,6 +68,16 @@ FROM vibe_eval_drafts
 WHERE conversation_id = @conversation_id
 ORDER BY updated_at DESC;
 
+-- name: MarkVibeEvalDraftValidation :one
+-- Content-preserving validation update (validate_draft) — sets only validation state/errors.
+UPDATE vibe_eval_drafts
+SET
+    validation_state = @validation_state,
+    validation_errors = @validation_errors,
+    updated_by_user_id = @updated_by_user_id
+WHERE id = @id
+RETURNING *;
+
 -- name: GetVibeEvalDraftByID :one
 SELECT *
 FROM vibe_eval_drafts
