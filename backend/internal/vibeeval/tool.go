@@ -23,6 +23,23 @@ type Tool interface {
 	Execute(ctx context.Context, actor Actor, conv Conversation, args json.RawMessage) (ToolOutput, error)
 }
 
+// CostEstimator is implemented by cost-incurring tools. The engine calls EstimateCost at PROPOSE time
+// for CostIncurringTier tools — after authorization, before persisting the confirmation — to produce
+// the server-computed, immutable cost envelope shown on the confirmation card and bound at confirmed
+// execution. The returned JSON is opaque to the engine; the tool owns its shape. An error means the
+// action is unpriceable and MUST NOT be proposed.
+type CostEstimator interface {
+	EstimateCost(ctx context.Context, actor Actor, conv Conversation, args json.RawMessage) (json.RawMessage, error)
+}
+
+// ConfirmedTool is implemented by tools whose confirmed execution must read the approved confirmation
+// (e.g. to reserve exactly the approved cost envelope). On resume, the engine calls ExecuteConfirmed
+// for the matching call instead of Execute, passing the resolved PendingConfirmation. A ConfirmedTool's
+// plain Execute should refuse (the action requires a confirmation's approved estimate).
+type ConfirmedTool interface {
+	ExecuteConfirmed(ctx context.Context, actor Actor, conv Conversation, args json.RawMessage, pc PendingConfirmation) (ToolOutput, error)
+}
+
 // ToolOutput is a tool's result. Result re-enters model context only after redaction
 // (EvidenceRedactor). AuditResult is a metadata-only summary (no secrets/contents); the
 // generalized audit log consumes it in Step 3.

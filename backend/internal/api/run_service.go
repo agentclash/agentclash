@@ -92,6 +92,21 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		return CreateRunResult{}, err
 	}
 
+	// Fail closed on any malformed reservation request — never silently drop it. A negative amount is
+	// invalid; a positive amount needs a stable preallocated run id (the reservation is keyed "run:<id>").
+	if input.ReservationMicros < 0 {
+		return CreateRunResult{}, RunCreationValidationError{
+			Code:    "invalid_reservation",
+			Message: "reservation amount must not be negative",
+		}
+	}
+	if input.ReservationMicros > 0 && input.RunID == uuid.Nil {
+		return CreateRunResult{}, RunCreationValidationError{
+			Code:    "invalid_reservation",
+			Message: "a managed eval-credit reservation requires a preallocated run id",
+		}
+	}
+
 	if len(input.AgentDeploymentIDs) == 0 {
 		return CreateRunResult{}, RunCreationValidationError{
 			Code:    "invalid_agent_deployment_ids",
@@ -306,6 +321,8 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 	}
 
 	result, err := m.repo.CreateQueuedRun(ctx, repository.CreateQueuedRunParams{
+		RunID:                  input.RunID,
+		EvalCreditReservation:  evalCreditReservationFor(input.RunID, input.ReservationMicros),
 		OrganizationID:         organizationID,
 		WorkspaceID:            input.WorkspaceID,
 		ChallengePackVersionID: input.ChallengePackVersionID,

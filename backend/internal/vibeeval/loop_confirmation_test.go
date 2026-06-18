@@ -16,12 +16,19 @@ var errTest = errors.New("test error")
 // --- confirmation/audit fakes ---
 
 type fakeWriteTool struct {
-	name    string
-	action  string
-	tier    RiskTier
-	called  *bool
-	result  any
-	execErr error
+	name        string
+	action      string
+	tier        RiskTier
+	called      *bool
+	result      any
+	execErr     error
+	estimate    json.RawMessage // returned by EstimateCost (cost-incurring tools)
+	estimateErr error
+}
+
+// EstimateCost makes fakeWriteTool a CostEstimator; the loop only calls it for CostIncurringTier tools.
+func (t fakeWriteTool) EstimateCost(context.Context, Actor, Conversation, json.RawMessage) (json.RawMessage, error) {
+	return t.estimate, t.estimateErr
 }
 
 func (t fakeWriteTool) Name() string           { return t.name }
@@ -61,6 +68,7 @@ func (s *fakeConfirmationStore) Create(_ context.Context, nc NewPendingConfirmat
 		PayloadHash:    nc.PayloadHash,
 		BoundArgs:      nc.BoundArgs,
 		Summary:        nc.Summary,
+		Estimate:       nc.Estimate,
 		Status:         "pending",
 		ExpiresAt:      nc.ExpiresAt,
 	}, nil
@@ -482,5 +490,61 @@ func TestRunTurn_PartialLimitsStillGiveConfirmationTTL(t *testing.T) {
 	}
 	if !cs.created[0].ExpiresAt.After(time.Now().Add(time.Minute)) {
 		t.Fatalf("ExpiresAt = %v, want a non-zero TTL well in the future (ConfirmationTTL defaulted)", cs.created[0].ExpiresAt)
+	}
+}
+
+func TestRunTurn_CostIncurringStoresEstimateAndSSE(t *testing.T) {
+	estimate := json.RawMessage(`{"schema_version":1,"kind":"create_run","amount_micros":1500000,"run_id":"11111111-1111-1111-1111-111111111111"}`)
+	reg := NewRegistry()
+	reg.Register(fakeWriteTool{name: "create_run", action: "create_run", tier: CostIncurringTier, result: "x", estimate: estimate})
+
+	inv := &scriptedInvoker{responses: []provider.Response{
+		{ToolCalls: []provider.ToolCall{{ID: "tc1", Name: "create_run", Arguments: json.RawMessage(`{"x":1}`)}}},
+	}}
+	cs := &fakeConfirmationStore{}
+	var events []Event
+	res, err := newConfirmLoop(inv, &memStore{}, reg, cs, &fakeAuditWriter{}).RunTurn(context.Background(), Actor{UserID: uuid.New()}, allowAll{}, conv(), "run it", func(e Event) { events = append(events, e) })
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+	if res.StopReason != "confirmation_required" {
+		t.Fatalf("stop reason = %q, want confirmation_required", res.StopReason)
+	}
+	if len(cs.created) != 1 || string(cs.created[0].Estimate) != string(estimate) {
+		t.Fatalf("stored estimate = %s, want %s", cs.created[0].Estimate, estimate)
+	}
+	var carried bool
+	for _, e := range events {
+		if e.Type == EventConfirmationRequired && string(e.Estimate) == string(estimate) {
+			carried = true
+		}
+	}
+	if !carried {
+		t.Fatal("confirmation.required SSE must carry the estimate envelope")
+	}
+}
+
+func TestRunTurn_EstimateFailureNoConfirmation(t *testing.T) {
+	called := false
+	reg := NewRegistry()
+	reg.Register(fakeWriteTool{name: "create_run", action: "create_run", tier: CostIncurringTier, called: &called, estimateErr: errTest})
+
+	inv := &scriptedInvoker{responses: []provider.Response{
+		{ToolCalls: []provider.ToolCall{{ID: "tc1", Name: "create_run", Arguments: json.RawMessage(`{"x":1}`)}}},
+		{OutputText: "ok"}, // the model reacts after the synthetic error result
+	}}
+	cs := &fakeConfirmationStore{}
+	res, err := newConfirmLoop(inv, &memStore{}, reg, cs, &fakeAuditWriter{}).RunTurn(context.Background(), Actor{UserID: uuid.New()}, allowAll{}, conv(), "run it", nil)
+	if err != nil {
+		t.Fatalf("RunTurn: %v", err)
+	}
+	if len(cs.created) != 0 {
+		t.Fatalf("estimate failure must create NO confirmation, got %d", len(cs.created))
+	}
+	if called {
+		t.Fatal("the tool must not execute when the estimate fails")
+	}
+	if res.StopReason == "confirmation_required" {
+		t.Fatal("must not stop for confirmation when the estimate failed")
 	}
 }

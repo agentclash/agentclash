@@ -61,7 +61,10 @@ type Event struct {
 	Summary        string    `json:"summary,omitempty"`
 	PayloadHash    string    `json:"payload_hash,omitempty"` // the client echoes this on resolve (hash of args, not the args)
 	ExpiresAt      string    `json:"expires_at,omitempty"`   // RFC3339, on confirmation.required
-	StopReason     string    `json:"stop_reason,omitempty"`
+	// Estimate is the server-computed cost envelope on confirmation.required for cost-incurring tools,
+	// so the human approves the exact cost. Opaque JSON (the proposing tool owns the shape).
+	Estimate   json.RawMessage `json:"estimate,omitempty"`
+	StopReason string          `json:"stop_reason,omitempty"`
 }
 
 // EventSink receives turn events as they happen. nil is tolerated.
@@ -250,7 +253,23 @@ func (l *AgentLoop) runLoop(ctx context.Context, actor Actor, authorizer Workspa
 				}
 				continue
 			}
-			pc, err := l.requireConfirmation(ctx, actor, conv, assistantMsg.ID, tc)
+			// Cost-incurring tools produce a server-computed estimate at propose time (after authz,
+			// before the confirmation is persisted) so the human approves the exact cost envelope. If
+			// the estimate cannot be produced, propose nothing and block the batch with synthetic
+			// results — an unpriceable managed action must never reach a confirmation card.
+			estimate, eerr := l.estimateConfirmationCost(ctx, actor, conv, tc)
+			if eerr != nil {
+				for _, btc := range resp.ToolCalls {
+					action, tier := l.actionAndTier(btc.Name)
+					content, reason := "not executed because a required confirmation could not be prepared", "estimate_unavailable"
+					if btc.ID == tc.ID {
+						content = "error: " + eerr.Error()
+					}
+					pmsgs = append(pmsgs, l.appendSyntheticToolResult(ctx, conv, actor, &assistantMsg.ID, nil, btc, action, tier, content, AuditOutcomeError, reason, sink))
+				}
+				continue
+			}
+			pc, err := l.requireConfirmation(ctx, actor, conv, assistantMsg.ID, tc, estimate)
 			if err != nil {
 				sink(Event{Type: EventError, Text: err.Error()})
 				result.StopReason = "error"
@@ -258,7 +277,7 @@ func (l *AgentLoop) runLoop(ctx context.Context, actor Actor, authorizer Workspa
 			}
 			result.StopReason = "confirmation_required"
 			result.PendingConfirmation = &pc
-			sink(Event{Type: EventConfirmationRequired, ToolName: pc.ToolName, ToolCallID: pc.ToolCallID, ConfirmationID: pc.ID.String(), Action: pc.Action, Summary: pc.Summary, PayloadHash: pc.PayloadHash, ExpiresAt: pc.ExpiresAt.UTC().Format(time.RFC3339)})
+			sink(Event{Type: EventConfirmationRequired, ToolName: pc.ToolName, ToolCallID: pc.ToolCallID, ConfirmationID: pc.ID.String(), Action: pc.Action, Summary: pc.Summary, PayloadHash: pc.PayloadHash, Estimate: pc.Estimate, ExpiresAt: pc.ExpiresAt.UTC().Format(time.RFC3339)})
 			return l.finish(result, sink), nil
 		}
 
@@ -297,7 +316,7 @@ func (l *AgentLoop) firstConfirmationTierCall(calls []provider.ToolCall) int {
 // the propose as outcome=confirmation_required. The caller (runLoop) has already authorized the
 // action before reaching here, so a card is never shown for a forbidden action; the api endpoint
 // re-authorizes again on resolve (defense in depth).
-func (l *AgentLoop) requireConfirmation(ctx context.Context, actor Actor, conv Conversation, messageID uuid.UUID, tc provider.ToolCall) (PendingConfirmation, error) {
+func (l *AgentLoop) requireConfirmation(ctx context.Context, actor Actor, conv Conversation, messageID uuid.UUID, tc provider.ToolCall, estimate json.RawMessage) (PendingConfirmation, error) {
 	if l.confirmations == nil {
 		return PendingConfirmation{}, fmt.Errorf("confirmation store not configured for tool %s", tc.Name)
 	}
@@ -317,6 +336,7 @@ func (l *AgentLoop) requireConfirmation(ctx context.Context, actor Actor, conv C
 		PayloadHash:      hash,
 		BoundArgs:        append(json.RawMessage(nil), tc.Arguments...),
 		Summary:          confirmationSummary(tool),
+		Estimate:         estimate,
 		ExpiresAt:        time.Now().Add(l.limits.ConfirmationTTL),
 	})
 	if err != nil {
@@ -330,14 +350,41 @@ func confirmationSummary(tool Tool) string {
 	return "Confirm " + tool.Name() + " (" + string(tool.RiskTier()) + ")"
 }
 
+// estimateConfirmationCost computes the approved cost envelope for a cost-incurring tool at propose
+// time. Only CostIncurringTier tools are estimated; a CostIncurringTier tool MUST implement
+// CostEstimator (a missing implementation is a configuration error and blocks the propose). Non-cost
+// tiers return nil (no estimate). An error propagates so the batch is blocked, not proposed.
+func (l *AgentLoop) estimateConfirmationCost(ctx context.Context, actor Actor, conv Conversation, tc provider.ToolCall) (json.RawMessage, error) {
+	tool, ok := l.registry.Resolve(tc.Name)
+	if !ok || tool.RiskTier() != CostIncurringTier {
+		return nil, nil
+	}
+	estimator, ok := tool.(CostEstimator)
+	if !ok {
+		return nil, fmt.Errorf("cost-incurring tool %s does not implement CostEstimator", tc.Name)
+	}
+	estimate, err := estimator.EstimateCost(ctx, actor, conv, tc.Arguments)
+	if err != nil {
+		return nil, err
+	}
+	if len(estimate) == 0 {
+		return nil, fmt.Errorf("cost estimate for %s was empty", tc.Name)
+	}
+	return estimate, nil
+}
+
 // executeTool resolves, authorizes, runs, redacts, and persists one tool call. It returns the
 // audit record and the provider tool-result message to append. A draft+ tier call writes one
 // audit row (outcome ok/error) regardless of exit path; messageID links the assistant tool-call
 // row and confirmationID is set when this call was resolved from a confirmation.
-func (l *AgentLoop) executeTool(ctx context.Context, actor Actor, authorizer WorkspaceAuthorizer, conv Conversation, tc provider.ToolCall, messageID, confirmationID *uuid.UUID, sink EventSink) (rec ToolInvocationRecord, msg provider.Message) {
+func (l *AgentLoop) executeTool(ctx context.Context, actor Actor, authorizer WorkspaceAuthorizer, conv Conversation, tc provider.ToolCall, messageID *uuid.UUID, confirmed *PendingConfirmation, sink EventSink) (rec ToolInvocationRecord, msg provider.Message) {
 	rec = ToolInvocationRecord{ToolName: tc.Name}
 	sink(Event{Type: EventToolCall, ToolName: tc.Name, ToolCallID: tc.ID})
 
+	var confirmationID *uuid.UUID
+	if confirmed != nil {
+		confirmationID = &confirmed.ID
+	}
 	outcome := AuditOutcomeError
 	var resultMeta json.RawMessage
 	defer func() {
@@ -365,7 +412,20 @@ func (l *AgentLoop) executeTool(ctx context.Context, actor Actor, authorizer Wor
 		return rec, fail("error: not authorized for " + tc.Name)
 	}
 
-	out, err := tool.Execute(ctx, actor, conv, tc.Arguments)
+	// The confirmed call dispatches to ExecuteConfirmed (passing the approved confirmation) when the
+	// tool implements it, so a cost-incurring tool reserves exactly the approved estimate. All other
+	// paths use Execute.
+	var out ToolOutput
+	var err error
+	if confirmed != nil && tc.ID == confirmed.ToolCallID {
+		if ct, ok := tool.(ConfirmedTool); ok {
+			out, err = ct.ExecuteConfirmed(ctx, actor, conv, tc.Arguments, *confirmed)
+		} else {
+			out, err = tool.Execute(ctx, actor, conv, tc.Arguments)
+		}
+	} else {
+		out, err = tool.Execute(ctx, actor, conv, tc.Arguments)
+	}
 	if err != nil {
 		rec.Error = err.Error()
 		return rec, fail("error executing " + tc.Name + ": " + err.Error())
@@ -470,7 +530,7 @@ func (l *AgentLoop) ResumeConfirmedTurn(ctx context.Context, actor Actor, author
 			if approve {
 				bound := provider.ToolCall{ID: pc.ToolCallID, Name: pc.ToolName, Arguments: pc.BoundArgs}
 				var rec ToolInvocationRecord
-				rec, toolMsg = l.executeTool(ctx, actor, authorizer, conv, bound, pc.MessageID, &pc.ID, sink)
+				rec, toolMsg = l.executeTool(ctx, actor, authorizer, conv, bound, pc.MessageID, &pc, sink)
 				result.ToolInvocations = append(result.ToolInvocations, rec)
 				toolCalls++
 				// Surface finalization failures: a swallowed MarkSucceeded leaves the row 'executing',

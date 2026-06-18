@@ -192,7 +192,19 @@ type CreateQueuedRunAgentParams struct {
 	Label                     string
 }
 
+// EvalCreditReservation requests an eval-credit reservation made atomically with run creation (4d-2).
+// AmountMicros must be > 0 (BYOK/all-managed-zero runs pass nil — no reservation). Key is the
+// idempotency key (the guide path uses "run:<run_id>").
+type EvalCreditReservation struct {
+	AmountMicros int64
+	Key          string
+}
+
 type CreateQueuedRunParams struct {
+	// RunID, when set, is the preallocated run id (the guide confirmed path supplies it so the
+	// reservation key and the run share a stable id across retry/re-entry). Zero ⇒ a fresh id is minted.
+	RunID                  uuid.UUID
+	EvalCreditReservation  *EvalCreditReservation
 	OrganizationID         uuid.UUID
 	WorkspaceID            uuid.UUID
 	ChallengePackVersionID uuid.UUID
@@ -525,11 +537,38 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 		return CreateQueuedRunResult{}, err
 	}
 
+	// Stable run id: the guide confirmed path preallocates it (so reserve + create share an id that is
+	// idempotent across retry); REST/manual creates mint a fresh one.
+	preallocated := params.RunID != uuid.Nil
+	if !preallocated {
+		params.RunID = uuid.New()
+	}
+
 	tx, err := r.db.Begin(ctx)
 	if err != nil {
 		return CreateQueuedRunResult{}, fmt.Errorf("begin queued run creation transaction: %w", err)
 	}
 	defer rollback(ctx, tx)
+	qtx := r.queries.WithTx(tx)
+
+	// Idempotency on the preallocated id: if the run already exists, reserve+create already committed
+	// on a prior attempt — return it rather than failing on a duplicate primary key (4d-2). But verify
+	// it is the SAME requested effect first: returning a run with this id that was created for a
+	// different org/workspace/challenge/agents/reservation would mask a corrupt or colliding request.
+	if preallocated {
+		if existing, err := qtx.GetRunByID(ctx, repositorysqlc.GetRunByIDParams{ID: params.RunID}); err == nil {
+			run, mapErr := mapRun(existing)
+			if mapErr != nil {
+				return CreateQueuedRunResult{}, fmt.Errorf("map existing run %s: %w", params.RunID, mapErr)
+			}
+			if err := verifyExistingRunMatchesRequest(ctx, qtx, tx, run, params); err != nil {
+				return CreateQueuedRunResult{}, err
+			}
+			return CreateQueuedRunResult{Run: run}, nil
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return CreateQueuedRunResult{}, fmt.Errorf("check existing run %s: %w", params.RunID, err)
+		}
+	}
 
 	if params.EntitlementGate != nil {
 		if err := enforceRunEntitlementGate(ctx, tx, params.WorkspaceID, params.EntitlementGate); err != nil {
@@ -537,7 +576,17 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 		}
 	}
 
-	result, err := createQueuedRunWithQueries(ctx, r.queries.WithTx(tx), params, time.Now().UTC())
+	// Reserve eval credit in the SAME tx as run creation: insufficient credit rolls back both, so a
+	// queued run never exists without its backing reservation (4d-2).
+	if params.EvalCreditReservation != nil && params.EvalCreditReservation.AmountMicros > 0 {
+		runID := params.RunID
+		if _, err := r.reserveEvalCreditInTx(ctx, tx, params.OrganizationID, params.EvalCreditReservation.Key,
+			params.EvalCreditReservation.AmountMicros, CreditRef{RunID: &runID, Reason: "vibe eval run reservation"}); err != nil {
+			return CreateQueuedRunResult{}, err
+		}
+	}
+
+	result, err := createQueuedRunWithQueries(ctx, qtx, params, time.Now().UTC())
 	if err != nil {
 		return CreateQueuedRunResult{}, err
 	}
@@ -547,6 +596,97 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 	}
 
 	return result, nil
+}
+
+// ErrRunIdempotencyMismatch means a preallocated run id already exists but for a DIFFERENT requested
+// effect (org/workspace/challenge/agents/reservation) — the retry is not the same operation.
+var ErrRunIdempotencyMismatch = errors.New("preallocated run id exists for a different request")
+
+// verifyExistingRunMatchesRequest proves a pre-existing run (found on the idempotent retry path) is the
+// same effect the caller is requesting, so returning it as success is safe (4d-2 idempotency).
+func verifyExistingRunMatchesRequest(ctx context.Context, qtx *repositorysqlc.Queries, tx pgx.Tx, run domain.Run, params CreateQueuedRunParams) error {
+	if run.OrganizationID != params.OrganizationID || run.WorkspaceID != params.WorkspaceID || run.ChallengePackVersionID != params.ChallengePackVersionID {
+		return fmt.Errorf("%w: tenancy/challenge differ for run %s", ErrRunIdempotencyMismatch, run.ID)
+	}
+	// Normalize OfficialPackMode the same way create does (empty ⇒ full) before comparing.
+	wantOfficialPackMode := params.OfficialPackMode
+	if wantOfficialPackMode == "" {
+		wantOfficialPackMode = domain.OfficialPackModeFull
+	}
+	if run.OfficialPackMode != wantOfficialPackMode ||
+		run.ExecutionMode != params.ExecutionMode ||
+		run.RaceContext != params.RaceContext ||
+		!uuidPtrEqual(run.ChallengeInputSetID, params.ChallengeInputSetID) ||
+		!int32PtrEqual(run.RaceContextMinStepGap, params.RaceContextMinStepGap) {
+		return fmt.Errorf("%w: run-shaping fields differ for run %s", ErrRunIdempotencyMismatch, run.ID)
+	}
+
+	agents, err := qtx.ListRunAgentsByRunID(ctx, repositorysqlc.ListRunAgentsByRunIDParams{RunID: run.ID})
+	if err != nil {
+		return fmt.Errorf("load existing run agents for %s: %w", run.ID, err)
+	}
+	if len(agents) != len(params.RunAgents) {
+		return fmt.Errorf("%w: run %s has %d agents, request has %d", ErrRunIdempotencyMismatch, run.ID, len(agents), len(params.RunAgents))
+	}
+	existingByLane := make(map[int32]repositorysqlc.RunAgent, len(agents))
+	for _, a := range agents {
+		existingByLane[a.LaneIndex] = a
+	}
+	for _, want := range params.RunAgents {
+		got, ok := existingByLane[want.LaneIndex]
+		if !ok || uuidValue(got.AgentDeploymentID) != want.AgentDeploymentID || uuidValue(got.AgentDeploymentSnapshotID) != want.AgentDeploymentSnapshotID {
+			return fmt.Errorf("%w: run %s lane %d differs", ErrRunIdempotencyMismatch, run.ID, want.LaneIndex)
+		}
+	}
+
+	// Reservation compatibility: if a reservation was requested, the same-keyed reservation must exist
+	// with the same amount (it was committed atomically with the run on the first attempt).
+	if params.EvalCreditReservation != nil {
+		var amount int64
+		var resRunID *uuid.UUID
+		var status string
+		err := tx.QueryRow(ctx, `SELECT amount_micros, run_id, status FROM org_eval_credit_reservations WHERE organization_id = $1 AND reservation_key = $2`,
+			params.OrganizationID, params.EvalCreditReservation.Key).Scan(&amount, &resRunID, &status)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("%w: run %s has no reservation %q", ErrRunIdempotencyMismatch, run.ID, params.EvalCreditReservation.Key)
+		}
+		if err != nil {
+			return fmt.Errorf("check existing reservation for run %s: %w", run.ID, err)
+		}
+		if amount != params.EvalCreditReservation.AmountMicros {
+			return fmt.Errorf("%w: run %s reservation amount %d != requested %d", ErrRunIdempotencyMismatch, run.ID, amount, params.EvalCreditReservation.AmountMicros)
+		}
+		if uuidValue(resRunID) != run.ID {
+			return fmt.Errorf("%w: reservation %q belongs to run %v, not %s", ErrRunIdempotencyMismatch, params.EvalCreditReservation.Key, resRunID, run.ID)
+		}
+		switch status {
+		case "open", "settled", "released":
+		default:
+			return fmt.Errorf("%w: reservation %q has unexpected status %q", ErrRunIdempotencyMismatch, params.EvalCreditReservation.Key, status)
+		}
+	}
+	return nil
+}
+
+func uuidValue(p *uuid.UUID) uuid.UUID {
+	if p == nil {
+		return uuid.Nil
+	}
+	return *p
+}
+
+func uuidPtrEqual(a, b *uuid.UUID) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
+func int32PtrEqual(a, b *int32) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
 }
 
 func enforceRunEntitlementGate(ctx context.Context, tx pgx.Tx, workspaceID uuid.UUID, gate *RunEntitlementGate) error {
@@ -699,6 +839,11 @@ func createQueuedRunWithQueries(
 	if params.OfficialPackMode == "" {
 		params.OfficialPackMode = domain.OfficialPackModeFull
 	}
+	// Every run is created with an explicit id (CreateQueuedRun preallocates for the guide path; other
+	// callers mint here) so the insert id is always valid.
+	if params.RunID == uuid.Nil {
+		params.RunID = uuid.New()
+	}
 
 	queuedAtValue := pgtype.Timestamptz{Time: queuedAt.UTC(), Valid: true}
 	executionPlan := cloneJSON(params.ExecutionPlan)
@@ -711,6 +856,7 @@ func createQueuedRunWithQueries(
 	}
 
 	runRow, err := queries.CreateRun(ctx, repositorysqlc.CreateRunParams{
+		ID:                     params.RunID,
 		OrganizationID:         params.OrganizationID,
 		WorkspaceID:            params.WorkspaceID,
 		ChallengePackVersionID: cloneUUIDPtr(&params.ChallengePackVersionID),

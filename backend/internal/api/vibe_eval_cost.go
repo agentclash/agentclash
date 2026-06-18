@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/scoring"
 	"github.com/google/uuid"
 )
@@ -39,6 +40,10 @@ func (m *RunCreationManager) EstimateEvalCost(ctx context.Context, caller Caller
 	// Visibility: the challenge-pack version must be visible to the workspace (same rule as CreateRun).
 	version, err := m.repo.GetRunnableChallengePackVersionByID(ctx, input.ChallengePackVersionID)
 	if err != nil {
+		// Normalize not-found to a client validation error (the id isn't a runnable version for them).
+		if errors.Is(err, repository.ErrChallengePackVersionNotFound) {
+			return CostEstimate{}, RunCreationValidationError{Code: "invalid_challenge_pack_version_id", Message: "challenge_pack_version_id must be a runnable version visible to the selected workspace"}
+		}
 		return CostEstimate{}, err
 	}
 	if version.WorkspaceID != nil && *version.WorkspaceID != input.WorkspaceID {

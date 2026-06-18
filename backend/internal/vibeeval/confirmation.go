@@ -23,8 +23,11 @@ type PendingConfirmation struct {
 	PayloadHash    string
 	BoundArgs      json.RawMessage // exact args to execute on approve
 	Summary        string
-	Status         string
-	ExpiresAt      time.Time
+	// Estimate is server-generated, immutable confirmation metadata (e.g. a cost-incurring tool's
+	// approved cost envelope). Opaque to the engine; the proposing tool owns the shape.
+	Estimate  json.RawMessage
+	Status    string
+	ExpiresAt time.Time
 }
 
 // NewPendingConfirmation is the input to ConfirmationStore.Create.
@@ -41,6 +44,7 @@ type NewPendingConfirmation struct {
 	PayloadHash      string
 	BoundArgs        json.RawMessage
 	Summary          string
+	Estimate         json.RawMessage // server-computed approved estimate envelope (cost-incurring tools)
 	ExpiresAt        time.Time
 }
 

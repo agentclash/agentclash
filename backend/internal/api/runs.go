@@ -70,7 +70,13 @@ type CreateRunInput struct {
 	SeriesMatrixKey            string
 	SeriesDeploymentLineup     string
 	CIMetadata                 *domain.RunCIMetadata
-	DatasetEvalRun            *repository.RecordDatasetEvalRunParams
+	DatasetEvalRun             *repository.RecordDatasetEvalRunParams
+	// RunID, when set, preallocates the run id (the guide confirmed path supplies it so the eval-credit
+	// reservation and the run share a stable, idempotent id). Zero ⇒ a fresh id is minted.
+	RunID uuid.UUID
+	// ReservationMicros, when > 0, reserves that much managed eval credit atomically with run creation
+	// (keyed "run:<RunID>"). 0 ⇒ no reservation (BYOK / REST). Requires RunID to be set.
+	ReservationMicros int64
 }
 
 type CreateRunResult struct {

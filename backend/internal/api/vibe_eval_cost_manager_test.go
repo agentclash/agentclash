@@ -97,3 +97,28 @@ func TestEstimateEvalCost_Manager_RejectsVersionNotVisible(t *testing.T) {
 		t.Fatalf("err = %v, want version-visibility rejection", err)
 	}
 }
+
+func TestCreateRun_Manager_FailsClosedReservationWithoutRunID(t *testing.T) {
+	ws := uuid.New()
+	repo := &fakeRunCreationRepository{}
+	_, err := estimateManager(repo).CreateRun(context.Background(), estimateCaller(ws), CreateRunInput{
+		WorkspaceID: ws, ChallengePackVersionID: uuid.New(), AgentDeploymentIDs: []uuid.UUID{uuid.New()},
+		ReservationMicros: 1_000_000, // > 0 but RunID is zero
+	})
+	var verr RunCreationValidationError
+	if !errors.As(err, &verr) || verr.Code != "invalid_reservation" {
+		t.Fatalf("err = %v, want invalid_reservation (fail closed)", err)
+	}
+}
+
+func TestCreateRun_Manager_FailsClosedNegativeReservation(t *testing.T) {
+	ws := uuid.New()
+	_, err := estimateManager(&fakeRunCreationRepository{}).CreateRun(context.Background(), estimateCaller(ws), CreateRunInput{
+		WorkspaceID: ws, ChallengePackVersionID: uuid.New(), AgentDeploymentIDs: []uuid.UUID{uuid.New()},
+		RunID: uuid.New(), ReservationMicros: -5, // negative must fail closed, not become "no reservation"
+	})
+	var verr RunCreationValidationError
+	if !errors.As(err, &verr) || verr.Code != "invalid_reservation" {
+		t.Fatalf("err = %v, want invalid_reservation for negative amount", err)
+	}
+}

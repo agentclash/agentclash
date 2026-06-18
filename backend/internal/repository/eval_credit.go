@@ -237,9 +237,31 @@ func (r *Repository) reserveEvalCreditOnce(ctx context.Context, orgID uuid.UUID,
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
+	res, err := r.reserveEvalCreditInTx(ctx, tx, orgID, reservationKey, micros, ref)
+	if err != nil {
+		return CreditReservation{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return CreditReservation{}, fmt.Errorf("commit reserve: %w", err)
+	}
+	return res, nil
+}
+
+// reserveEvalCreditInTx performs the idempotency check + atomic conditional debit + reservation/ledger
+// insert within an EXISTING transaction (so reserve can be atomic with run creation — 4d-2). Returns
+// ErrInsufficientEvalCredit when the wallet lacks credit; the caller rolls the tx back. A unique
+// violation on the key (concurrent same-key reserve) propagates for the caller to resolve idempotently.
+func (r *Repository) reserveEvalCreditInTx(ctx context.Context, tx pgx.Tx, orgID uuid.UUID, reservationKey string, micros int64, ref CreditRef) (CreditReservation, error) {
+	if micros <= 0 {
+		return CreditReservation{}, fmt.Errorf("reserve amount must be positive, got %d", micros)
+	}
+	if reservationKey == "" {
+		return CreditReservation{}, ErrEvalCreditMissingKey
+	}
+
 	// Idempotency: an existing reservation with this key (any status) is returned if the amount matches.
 	var ex CreditReservation
-	err = tx.QueryRow(ctx, `
+	err := tx.QueryRow(ctx, `
 		SELECT id, organization_id, reservation_key, amount_micros, status
 		FROM org_eval_credit_reservations WHERE organization_id = $1 AND reservation_key = $2
 	`, orgID, reservationKey).Scan(&ex.ID, &ex.OrganizationID, &ex.ReservationKey, &ex.AmountMicros, &ex.Status)
@@ -275,9 +297,6 @@ func (r *Repository) reserveEvalCreditOnce(ctx context.Context, orgID uuid.UUID,
 	}
 	if err := insertEvalCreditLedger(ctx, tx, orgID, "reserve", micros, -micros, micros, 0, reservationKey, &res.ID, ref, nil); err != nil {
 		return CreditReservation{}, fmt.Errorf("reserve ledger: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return CreditReservation{}, fmt.Errorf("commit reserve: %w", err)
 	}
 	return res, nil
 }

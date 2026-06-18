@@ -31,6 +31,7 @@ func (s vibeEvalConfirmationStore) Create(ctx context.Context, nc vibeeval.NewPe
 		PayloadHash:      nc.PayloadHash,
 		BoundArgs:        nc.BoundArgs,
 		Summary:          nc.Summary,
+		Estimate:         nc.Estimate,
 		ExpiresAt:        nc.ExpiresAt,
 	})
 	if err != nil {
@@ -85,6 +86,7 @@ func toVibeevalPendingConfirmation(row repository.VibeEvalPendingConfirmation) v
 		PayloadHash:    row.PayloadHash,
 		BoundArgs:      row.BoundArgs,
 		Summary:        row.Summary,
+		Estimate:       row.Estimate,
 		Status:         row.Status,
 		ExpiresAt:      row.ExpiresAt,
 	}

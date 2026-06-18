@@ -1,5 +1,6 @@
 -- name: CreateRun :one
 INSERT INTO runs (
+    id,
     organization_id,
     workspace_id,
     challenge_pack_version_id,
@@ -21,6 +22,7 @@ INSERT INTO runs (
     race_context,
     race_context_min_step_gap
 ) VALUES (
+    @id,
     @organization_id,
     @workspace_id,
     @challenge_pack_version_id,

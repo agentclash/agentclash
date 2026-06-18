@@ -32,6 +32,7 @@ func (q *Queries) CountRunsByWorkspaceID(ctx context.Context, arg CountRunsByWor
 
 const createRun = `-- name: CreateRun :one
 INSERT INTO runs (
+    id,
     organization_id,
     workspace_id,
     challenge_pack_version_id,
@@ -72,12 +73,14 @@ INSERT INTO runs (
     $17,
     $18,
     $19,
-    $20
+    $20,
+    $21
 )
 RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap, ci_metadata, source_type
 `
 
 type CreateRunParams struct {
+	ID                     uuid.UUID
 	OrganizationID         uuid.UUID
 	WorkspaceID            uuid.UUID
 	ChallengePackVersionID *uuid.UUID
@@ -102,6 +105,7 @@ type CreateRunParams struct {
 
 func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, error) {
 	row := q.db.QueryRow(ctx, createRun,
+		arg.ID,
 		arg.OrganizationID,
 		arg.WorkspaceID,
 		arg.ChallengePackVersionID,
