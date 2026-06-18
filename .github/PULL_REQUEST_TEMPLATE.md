@@ -24,6 +24,13 @@
 - [ ] If a backend route changed, `docs/api-server/openapi.yaml` is updated
 - [ ] If DB queries changed, `sqlc generate` was run
 
+## Contributor agreement
+
+<!-- Applies once the CLA policy is active and the automated CLA Assistant check appears. -->
+
+- [ ] If a CLA Assistant check appears on this PR, I have followed it or confirmed I am covered by a maintainer-approved exception
+- [ ] I have the right to submit these contributions under the project license and any active CLA
+
 ## Notes for reviewers
 
 <!-- Anything reviewers should focus on, follow-ups, or known gaps. -->
