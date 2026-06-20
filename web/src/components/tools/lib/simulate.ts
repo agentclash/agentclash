@@ -8,12 +8,12 @@ import type { ComposedDefinition, PrimitiveDefinition, ToolDefinition } from "./
 export interface ResolvedStep {
   id: string;
   ref: string;
-  inputs: Record<string, string>;
+  inputs: Record<string, unknown>;
 }
 
 export interface SimulationResult {
   /** For primitive tools: the resolved args sent to the base primitive. */
-  args?: Record<string, string>;
+  args?: Record<string, unknown>;
   /** For composed tools: the resolved inputs per step. */
   steps?: ResolvedStep[];
   /** For mock primitive tools: a human note (no resolution needed). */
@@ -35,13 +35,24 @@ function resolveString(input: string, sample: Record<string, string>): string {
   });
 }
 
+function resolveValue(value: unknown, sample: Record<string, string>): unknown {
+  if (typeof value === "string") return resolveString(value, sample);
+  if (Array.isArray(value)) return value.map((v) => resolveValue(v, sample));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [k, resolveValue(v, sample)]),
+    );
+  }
+  return value;
+}
+
 function resolveRecord(
-  rec: Record<string, string> | undefined,
+  rec: Record<string, unknown> | undefined,
   sample: Record<string, string>,
-): Record<string, string> {
-  const out: Record<string, string> = {};
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(rec ?? {})) {
-    out[k] = typeof v === "string" ? resolveString(v, sample) : String(v);
+    out[k] = resolveValue(v, sample);
   }
   return out;
 }

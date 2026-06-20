@@ -108,6 +108,38 @@ export function placeholdersIn(value: unknown): string[] {
   return out;
 }
 
+/**
+ * Hydrate a possibly-partial stored definition into a complete, editable shape
+ * for the given tool type. Tolerates legacy/empty definitions.
+ */
+export function normalizeDefinition(type: ToolType, raw: unknown): ToolDefinition {
+  const base = emptyDefinition(type);
+  if (!raw || typeof raw !== "object") return base;
+  const r = raw as Record<string, unknown>;
+
+  if (type === "primitive" && base.tool_type === "primitive") {
+    const rawImpl = (r.implementation as Record<string, unknown> | undefined) ?? {};
+    return {
+      tool_type: "primitive",
+      description: typeof r.description === "string" ? r.description : base.description,
+      parameters: (r.parameters as ToolDefinition["parameters"]) ?? base.parameters,
+      implementation: { ...base.implementation, ...rawImpl } as PrimitiveDefinition["implementation"],
+    };
+  }
+
+  return {
+    tool_type: "composed",
+    description: typeof r.description === "string" ? r.description : base.description,
+    parameters: (r.parameters as ToolDefinition["parameters"]) ?? base.parameters,
+    steps: Array.isArray(r.steps) ? (r.steps as ComposedDefinition["steps"]) : [],
+  };
+}
+
+/** Whether a tool kind can be edited by the visual builder. */
+export function isBuilderToolType(kind: string): kind is ToolType {
+  return kind === "primitive" || kind === "composed";
+}
+
 /** A short human label for a tool type. */
 export function toolTypeLabel(type: string): string {
   if (type === "primitive") return "Primitive";

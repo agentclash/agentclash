@@ -42,7 +42,7 @@ export type PrimitiveMode = "delegate" | "mock";
 export interface PrimitiveImplementation {
   mode: PrimitiveMode;
   primitive?: string;
-  args?: Record<string, string>;
+  args?: Record<string, unknown>;
   mock?: MockConfig;
 }
 
@@ -58,7 +58,7 @@ export type StepRefType = "primitive" | "tool";
 export interface ComposedStep {
   id: string;
   ref: { type: StepRefType; name: string };
-  inputs: Record<string, string>;
+  inputs: Record<string, unknown>;
 }
 
 export interface ComposedDefinition {
