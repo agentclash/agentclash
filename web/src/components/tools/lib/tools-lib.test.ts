@@ -9,10 +9,32 @@ import {
 } from "./definition";
 import { validateDefinition } from "./validate";
 import { simulate } from "./simulate";
-import type { ComposedDefinition, PrimitiveDefinition } from "./types";
+import type { ComposedDefinition, PrimitiveDefinition, ToolPrimitive } from "./types";
+
+const HTTP: ToolPrimitive = {
+  name: "http_request",
+  description: "",
+  kind: "network",
+  delegatable: true,
+  parameters: {
+    type: "object",
+    properties: { method: { type: "string" }, url: { type: "string" }, headers: { type: "object" }, body: { type: "string" } },
+    required: ["method", "url"],
+  },
+};
+const READ: ToolPrimitive = {
+  name: "read_file",
+  description: "",
+  kind: "file",
+  delegatable: true,
+  parameters: { type: "object", properties: { path: { type: "string" } }, required: ["path"] },
+};
 
 const ctx = (over: Partial<Parameters<typeof validateDefinition>[1]> = {}) => ({
-  delegatablePrimitives: new Set(["http_request", "read_file"]),
+  primitives: new Map<string, ToolPrimitive>([
+    ["http_request", HTTP],
+    ["read_file", READ],
+  ]),
   knownToolSlugs: new Set(["check_policy"]),
   ...over,
 });
@@ -54,8 +76,27 @@ describe("validateDefinition - primitive", () => {
   it("passes a valid http delegate", () => {
     const def = emptyPrimitiveDefinition();
     def.parameters = paramsToSchema([{ name: "order_id", type: "string", required: true }]);
-    def.implementation = { mode: "delegate", primitive: "http_request", args: { url: "https://x/${order_id}", auth: "${secrets.K}" } };
+    def.implementation = { mode: "delegate", primitive: "http_request", args: { method: "GET", url: "https://x/${order_id}", headers: "Bearer ${secrets.K}" } };
     expect(validateDefinition(def, ctx())).toEqual([]);
+  });
+
+  it("flags a missing required primitive argument", () => {
+    const def = emptyPrimitiveDefinition();
+    def.implementation = { mode: "delegate", primitive: "read_file", args: {} };
+    expect(validateDefinition(def, ctx()).some((i) => i.message.includes("Missing required argument"))).toBe(true);
+  });
+
+  it("flags an unknown primitive argument", () => {
+    const def = emptyPrimitiveDefinition();
+    def.parameters = paramsToSchema([{ name: "p", type: "string", required: false }]);
+    def.implementation = { mode: "delegate", primitive: "read_file", args: { path: "${p}", bogus: "x" } };
+    expect(validateDefinition(def, ctx()).some((i) => i.message.includes("Unknown argument"))).toBe(true);
+  });
+
+  it("requires a response for the static mock strategy", () => {
+    const def = emptyPrimitiveDefinition();
+    def.implementation = { mode: "mock", mock: { strategy: "static" } };
+    expect(validateDefinition(def, ctx()).some((i) => i.path === "implementation.mock.response")).toBe(true);
   });
 
   it("flags unknown primitive", () => {
@@ -97,7 +138,7 @@ describe("validateDefinition - composed", () => {
   it("passes a valid two-step chain", () => {
     const d = base();
     d.steps = [
-      { id: "s1", ref: { type: "primitive", name: "http_request" }, inputs: { url: "https://x/${params.order_id}" } },
+      { id: "s1", ref: { type: "primitive", name: "http_request" }, inputs: { method: "GET", url: "https://x/${params.order_id}" } },
       { id: "s2", ref: { type: "tool", name: "check_policy" }, inputs: { total: "${params.amount}", prior: "${steps.s1.body}" } },
     ];
     expect(validateDefinition(d, ctx({ selfSlug: "refund_flow" }))).toEqual([]);

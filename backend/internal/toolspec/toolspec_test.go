@@ -2,6 +2,7 @@ package toolspec
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -48,6 +49,15 @@ func mustErrField(t *testing.T, errs ValidationErrors, field string) {
 	t.Fatalf("expected a validation error on field %q; got %v", field, errs)
 }
 
+func containsMsg(errs ValidationErrors, substr string) bool {
+	for _, e := range errs {
+		if strings.Contains(e.Message, substr) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestValidateDefinition_Primitive_Delegate_OK(t *testing.T) {
 	def := json.RawMessage(`{
 		"tool_type":"primitive",
@@ -83,6 +93,47 @@ func TestValidateDefinition_Primitive_SecretsOnlyHTTP(t *testing.T) {
 	}`)
 	errs := ValidateDefinition(ToolTypePrimitive, def, ValidateOptions{})
 	mustErrField(t, errs, "definition.implementation.args")
+}
+
+func TestValidateDefinition_Primitive_MissingRequiredArg(t *testing.T) {
+	// read_file requires "path"; empty args must be rejected.
+	def := json.RawMessage(`{"tool_type":"primitive","implementation":{"mode":"delegate","primitive":"read_file","args":{}}}`)
+	errs := ValidateDefinition(ToolTypePrimitive, def, ValidateOptions{})
+	mustErrField(t, errs, "definition.implementation.args")
+	if !containsMsg(errs, "missing required argument") {
+		t.Fatalf("expected missing-required-argument error; got %v", errs)
+	}
+}
+
+func TestValidateDefinition_Primitive_UnknownArg(t *testing.T) {
+	def := json.RawMessage(`{
+		"tool_type":"primitive",
+		"parameters":{"type":"object","properties":{"p":{"type":"string"}}},
+		"implementation":{"mode":"delegate","primitive":"read_file","args":{"path":"${p}","bogus":"x"}}
+	}`)
+	errs := ValidateDefinition(ToolTypePrimitive, def, ValidateOptions{})
+	if !containsMsg(errs, "unknown argument") {
+		t.Fatalf("expected unknown-argument error; got %v", errs)
+	}
+}
+
+func TestValidateDefinition_Mock_Static_MissingResponse(t *testing.T) {
+	def := json.RawMessage(`{"tool_type":"primitive","implementation":{"mode":"mock","mock":{"strategy":"static"}}}`)
+	errs := ValidateDefinition(ToolTypePrimitive, def, ValidateOptions{})
+	mustErrField(t, errs, "definition.implementation.mock.response")
+}
+
+func TestValidateDefinition_Mock_Lookup_MissingFields(t *testing.T) {
+	def := json.RawMessage(`{"tool_type":"primitive","implementation":{"mode":"mock","mock":{"strategy":"lookup"}}}`)
+	errs := ValidateDefinition(ToolTypePrimitive, def, ValidateOptions{})
+	mustErrField(t, errs, "definition.implementation.mock.lookup_key")
+	mustErrField(t, errs, "definition.implementation.mock.responses")
+}
+
+func TestValidateDefinition_Mock_Echo_MissingTemplate(t *testing.T) {
+	def := json.RawMessage(`{"tool_type":"primitive","implementation":{"mode":"mock","mock":{"strategy":"echo"}}}`)
+	errs := ValidateDefinition(ToolTypePrimitive, def, ValidateOptions{})
+	mustErrField(t, errs, "definition.implementation.mock.template")
 }
 
 func TestValidateDefinition_Primitive_Mock_OK(t *testing.T) {

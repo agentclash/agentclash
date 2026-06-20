@@ -317,6 +317,41 @@ func TestDeleteToolByAdmin(t *testing.T) {
 	}
 }
 
+func TestDeleteToolDeniedForGlobalTool(t *testing.T) {
+	toolID := uuid.New()
+	// Global tool (nil workspace_id) must not be deletable by a workspace caller.
+	svc := stubInfraService{toolFound: true, tool: repository.ToolRow{ID: toolID, WorkspaceID: nil, ToolKind: toolspec.ToolTypePrimitive}}
+	router := newToolRouter(t, svc)
+
+	req := httptest.NewRequest(http.MethodDelete, "/v1/tools/"+toolID.String(), nil)
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, uuid.New().String()+":workspace_admin")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for global tool delete, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdateToolInvalidLifecycleStatus(t *testing.T) {
+	wsID := uuid.New()
+	toolID := uuid.New()
+	svc := stubInfraService{toolFound: true, tool: repository.ToolRow{ID: toolID, WorkspaceID: &wsID, ToolKind: toolspec.ToolTypePrimitive}}
+	router := newToolRouter(t, svc)
+
+	req := httptest.NewRequest(http.MethodPatch, "/v1/tools/"+toolID.String(), strings.NewReader(`{"lifecycle_status":"archived"}`))
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, wsID.String()+":workspace_admin")
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid lifecycle_status, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestDeleteToolNotFound(t *testing.T) {
 	toolID := uuid.New()
 	svc := stubInfraService{toolFound: false}

@@ -509,11 +509,17 @@ func infraDeleteHandler[Row WorkspaceOwned](
 			return
 		}
 
-		if wsID := row.GetWorkspaceID(); wsID != nil {
-			if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, *wsID, ActionManageInfrastructure); err != nil {
-				writeAuthzError(w, err)
-				return
-			}
+		// A nil workspace means this row cannot be authorized via workspace
+		// membership. Rather than silently skipping authorization (which would
+		// let any authenticated caller delete global resources), deny it.
+		wsID := row.GetWorkspaceID()
+		if wsID == nil {
+			writeError(w, http.StatusNotFound, "not_found", resourceName+" not found")
+			return
+		}
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, *wsID, ActionManageInfrastructure); err != nil {
+			writeAuthzError(w, err)
+			return
 		}
 
 		if err := del(r.Context(), id); err != nil {
@@ -812,6 +818,16 @@ func updateToolHandler(logger *slog.Logger, authorizer WorkspaceAuthorizer, svc 
 		var input UpdateToolInput
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
+			return
+		}
+		// Only active/disabled are settable here; archiving goes through DELETE.
+		// Reject unknown values up front so an invalid status is a 400, not a 500
+		// from the DB CHECK constraint, and so "archived" can't create a row whose
+		// lifecycle_status disagrees with archived_at.
+		switch strings.TrimSpace(input.LifecycleStatus) {
+		case "", "active", "disabled":
+		default:
+			writeError(w, http.StatusBadRequest, "validation_error", `lifecycle_status must be "active" or "disabled"`)
 			return
 		}
 		row, err := svc.UpdateTool(r.Context(), caller, id, input)

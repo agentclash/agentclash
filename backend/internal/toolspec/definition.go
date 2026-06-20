@@ -163,6 +163,7 @@ func validatePrimitive(raw json.RawMessage, declared map[string]struct{}) Valida
 			errs = append(errs, ValidationError{Field: "definition.implementation.primitive", Message: fmt.Sprintf("primitive %q cannot be used as a building block", primitive)})
 		}
 		errs = append(errs, validateArgsPlaceholders("definition.implementation.args", impl.Args, declared, primitive == PrimitiveHTTPRequest)...)
+		errs = append(errs, validatePrimitiveArgs("definition.implementation.args", spec, impl.Args)...)
 	case ModeMock:
 		errs = append(errs, validateMock("definition.implementation.mock", impl.Mock)...)
 	default:
@@ -177,15 +178,77 @@ func validateMock(field string, raw json.RawMessage) ValidationErrors {
 		return ValidationErrors{{Field: field, Message: "is required for mock mode"}}
 	}
 	var mock struct {
-		Strategy string `json:"strategy"`
+		Strategy  string          `json:"strategy"`
+		Response  json.RawMessage `json:"response"`
+		LookupKey string          `json:"lookup_key"`
+		Responses json.RawMessage `json:"responses"`
+		Template  json.RawMessage `json:"template"`
 	}
 	if err := json.Unmarshal(raw, &mock); err != nil {
 		return ValidationErrors{{Field: field, Message: "must be valid JSON"}}
 	}
-	if _, ok := mockStrategies[strings.TrimSpace(mock.Strategy)]; !ok {
+	strategy := strings.TrimSpace(mock.Strategy)
+	if _, ok := mockStrategies[strategy]; !ok {
 		return ValidationErrors{{Field: field + ".strategy", Message: `must be one of "static", "lookup", "echo"`}}
 	}
-	return nil
+	// Mirror the engine's per-strategy requirements (engine.newMockTool) so an
+	// incomplete mock is rejected at authoring time rather than failing at run time.
+	var errs ValidationErrors
+	switch strategy {
+	case "static":
+		if len(mock.Response) == 0 {
+			errs = append(errs, ValidationError{Field: field + ".response", Message: `is required for the "static" strategy`})
+		}
+	case "lookup":
+		if strings.TrimSpace(mock.LookupKey) == "" {
+			errs = append(errs, ValidationError{Field: field + ".lookup_key", Message: `is required for the "lookup" strategy`})
+		}
+		if len(mock.Responses) == 0 {
+			errs = append(errs, ValidationError{Field: field + ".responses", Message: `is required for the "lookup" strategy`})
+		}
+	case "echo":
+		if len(mock.Template) == 0 {
+			errs = append(errs, ValidationError{Field: field + ".template", Message: `is required for the "echo" strategy`})
+		}
+	}
+	return errs
+}
+
+// validatePrimitiveArgs checks the arg KEYS against the primitive's own JSON
+// schema: every required argument must be present (and non-blank), and no
+// unknown argument may be passed (primitives are additionalProperties:false).
+// Value types are not enforced because args are commonly templated strings.
+func validatePrimitiveArgs(field string, spec PrimitiveSpec, rawArgs json.RawMessage) ValidationErrors {
+	var errs ValidationErrors
+	args := map[string]json.RawMessage{}
+	if len(strings.TrimSpace(string(rawArgs))) > 0 {
+		if err := json.Unmarshal(rawArgs, &args); err != nil {
+			return ValidationErrors{{Field: field, Message: "must be a JSON object"}}
+		}
+	}
+	var schema struct {
+		Properties map[string]json.RawMessage `json:"properties"`
+		Required   []string                   `json:"required"`
+	}
+	_ = json.Unmarshal(spec.Parameters, &schema)
+
+	for _, req := range schema.Required {
+		v, ok := args[req]
+		if !ok || isBlankJSON(v) {
+			errs = append(errs, ValidationError{Field: field, Message: fmt.Sprintf("missing required argument %q for %s", req, spec.Name)})
+		}
+	}
+	for key := range args {
+		if _, ok := schema.Properties[key]; !ok {
+			errs = append(errs, ValidationError{Field: field, Message: fmt.Sprintf("unknown argument %q for %s", key, spec.Name)})
+		}
+	}
+	return errs
+}
+
+func isBlankJSON(v json.RawMessage) bool {
+	s := strings.TrimSpace(string(v))
+	return s == "" || s == `""` || s == "null"
 }
 
 func validateComposed(raw json.RawMessage, declared map[string]struct{}, opts ValidateOptions) ValidationErrors {
@@ -227,6 +290,8 @@ func validateComposed(raw json.RawMessage, declared map[string]struct{}, opts Va
 				errs = append(errs, ValidationError{Field: field + ".ref.name", Message: fmt.Sprintf("unknown primitive %q", refName)})
 			} else if !spec.Delegatable {
 				errs = append(errs, ValidationError{Field: field + ".ref.name", Message: fmt.Sprintf("primitive %q cannot be used as a step", refName)})
+			} else {
+				errs = append(errs, validatePrimitiveArgs(field+".inputs", spec, step.Inputs)...)
 			}
 			isHTTP = refName == PrimitiveHTTPRequest
 		case "tool":

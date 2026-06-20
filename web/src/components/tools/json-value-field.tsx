@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
 import { monoControlClass } from "./field";
+import { useReportJsonValidity } from "./json-validity";
 
 /**
  * Edits an arbitrary JSON value with live parse + error. Reports `undefined`
@@ -28,6 +29,7 @@ export function JsonValueField({
     value === undefined ? "" : JSON.stringify(value, null, 2),
   );
   const [error, setError] = useState("");
+  useReportJsonValidity(useId(), error !== "");
 
   function handle(next: string) {
     setRaw(next);

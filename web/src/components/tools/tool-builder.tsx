@@ -20,6 +20,7 @@ import { DefinitionPreview } from "./definition-preview";
 import { SimulatePanel } from "./simulate-panel";
 import { Field, controlClass } from "./field";
 import { ToolTypeBadge } from "./tool-type-badge";
+import { JsonValidityProvider } from "./json-validity";
 import { useToolPrimitives } from "./use-tool-primitives";
 import { declaredParamNames, emptyDefinition } from "./lib/definition";
 import { validateDefinition } from "./lib/validate";
@@ -51,14 +52,15 @@ export function ToolBuilder({
     initialDefinition ?? emptyDefinition(toolType),
   );
   const [submitting, setSubmitting] = useState(false);
+  const [jsonInvalid, setJsonInvalid] = useState(false);
 
   const { primitives } = useToolPrimitives();
   const { data: toolsData } = useApiListQuery<ToolRecord>(
     `/v1/workspaces/${workspaceId}/tools`,
   );
 
-  const delegatablePrimitives = useMemo(
-    () => new Set(primitives.filter((p) => p.delegatable).map((p) => p.name)),
+  const primitivesByName = useMemo(
+    () => new Map(primitives.filter((p) => p.delegatable).map((p) => [p.name, p] as const)),
     [primitives],
   );
   const toolOptions = useMemo(
@@ -78,16 +80,21 @@ export function ToolBuilder({
     () =>
       primitivesReady
         ? validateDefinition(definition, {
-            delegatablePrimitives,
+            primitives: primitivesByName,
             knownToolSlugs,
             selfSlug: initialSlug,
           })
         : [],
-    [primitivesReady, definition, delegatablePrimitives, knownToolSlugs, initialSlug],
+    [primitivesReady, definition, primitivesByName, knownToolSlugs, initialSlug],
   );
 
+  const previewIssues = jsonInvalid
+    ? [...issues, { path: "editor", message: "Fix the invalid JSON in the highlighted field(s)." }]
+    : issues;
+
   const paramNames = declaredParamNames(definition);
-  const canSave = primitivesReady && name.trim().length > 0 && issues.length === 0 && !submitting;
+  const canSave =
+    primitivesReady && name.trim().length > 0 && issues.length === 0 && !jsonInvalid && !submitting;
 
   async function save() {
     if (!name.trim()) {
@@ -149,28 +156,30 @@ export function ToolBuilder({
       />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
-        <div className="space-y-6">
-          <Field label="Name" htmlFor="tool-name" hint="A human-friendly name. A stable slug is derived from it.">
-            <input
-              id="tool-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={toolType === "primitive" ? "e.g. lookup_order" : "e.g. refund_flow"}
-              className={controlClass}
-            />
-          </Field>
+        <JsonValidityProvider onChange={setJsonInvalid}>
+          <div className="space-y-6">
+            <Field label="Name" htmlFor="tool-name" hint="A human-friendly name. A stable slug is derived from it.">
+              <input
+                id="tool-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={toolType === "primitive" ? "e.g. lookup_order" : "e.g. refund_flow"}
+                className={controlClass}
+              />
+            </Field>
 
-          {definition.tool_type === "primitive" ? (
-            <PrimitiveBuilder def={definition} onChange={setDefinition} primitives={primitives} />
-          ) : (
-            <ComposedBuilder
-              def={definition}
-              onChange={setDefinition}
-              primitives={primitives}
-              tools={toolOptions}
-            />
-          )}
-        </div>
+            {definition.tool_type === "primitive" ? (
+              <PrimitiveBuilder def={definition} onChange={setDefinition} primitives={primitives} />
+            ) : (
+              <ComposedBuilder
+                def={definition}
+                onChange={setDefinition}
+                primitives={primitives}
+                tools={toolOptions}
+              />
+            )}
+          </div>
+        </JsonValidityProvider>
 
         <div className="lg:sticky lg:top-4 lg:self-start">
           <Tabs defaultValue="preview">
@@ -179,7 +188,7 @@ export function ToolBuilder({
               <TabsTrigger value="simulate">Simulate</TabsTrigger>
             </TabsList>
             <TabsContent value="preview" className="pt-3">
-              <DefinitionPreview definition={definition} issues={issues} />
+              <DefinitionPreview definition={definition} issues={previewIssues} />
             </TabsContent>
             <TabsContent value="simulate" className="pt-3">
               <SimulatePanel definition={definition} paramNames={paramNames} />

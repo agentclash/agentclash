@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
 import { controlClass, monoControlClass } from "./field";
+import { useReportJsonValidity } from "./json-validity";
 import type { ToolPrimitive } from "./lib/types";
 
 /**
@@ -26,6 +27,7 @@ export function ArgsEditor({
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const [rawByKey, setRawByKey] = useState<Record<string, string>>({});
   const [errByKey, setErrByKey] = useState<Record<string, string>>({});
+  useReportJsonValidity(useId(), Object.values(errByKey).some(Boolean));
 
   if (!primitive) {
     return (
