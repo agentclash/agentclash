@@ -7,6 +7,32 @@ contribution.
 
 By participating you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md).
 
+## Developer Certificate of Origin (DCO)
+
+AgentClash uses the [Developer Certificate of Origin](DCO.md) (DCO) instead of a
+CLA. Contributions stay under the project's MIT license — inbound equals
+outbound, and AgentClash takes no additional or relicensing rights over your
+work.
+
+Every commit must carry a `Signed-off-by` trailer matching the commit author.
+Add it with the `-s` flag:
+
+```bash
+git commit -s -m "feat: ..."        # sign off as you commit
+git commit -s --amend --no-edit     # add a sign-off to your latest commit
+```
+
+The trailer looks like `Signed-off-by: Your Name <you@example.com>` and certifies
+that you wrote the change, or otherwise have the right to submit it under the MIT
+license, per clauses (a)–(d) of the [DCO](DCO.md). This applies to everyone,
+founders included — there are no exceptions or allowlists. (An automated DCO
+check may be added later; until then, please self-check your sign-offs.)
+
+If your employer or another party may own your work, get the needed authorization
+before contributing. Do not include private keys, proprietary code, customer
+data, or third-party material you do not have the right to contribute under the
+MIT license.
+
 ## Repository layout
 
 AgentClash is a monorepo with three independently buildable parts:
@@ -54,7 +80,8 @@ If you add/modify a backend API route, update `docs/api-server/openapi.yaml`.
    failure path where it applies).
 4. Make sure builds, `vet`/`lint`, type checks, and tests pass for every part you
    touched.
-5. Open the PR against `main` and fill in the template.
+5. Sign off your commits with `git commit -s` (see the [DCO](DCO.md)).
+6. Open the PR against `main` and fill in the template.
 
 ## Reporting bugs & requesting features
 

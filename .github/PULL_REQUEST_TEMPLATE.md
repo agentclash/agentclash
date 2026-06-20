@@ -24,6 +24,13 @@
 - [ ] If a backend route changed, `docs/api-server/openapi.yaml` is updated
 - [ ] If DB queries changed, `sqlc generate` was run
 
+## Developer Certificate of Origin
+
+<!-- AgentClash uses a DCO instead of a CLA. See DCO.md. -->
+
+- [ ] My commits are signed off (`git commit -s`) per the project DCO (DCO.md)
+- [ ] I have the right to submit these contributions under the project's MIT license
+
 ## Notes for reviewers
 
 <!-- Anything reviewers should focus on, follow-ups, or known gaps. -->
