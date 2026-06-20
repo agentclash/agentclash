@@ -1,9 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
-import { cn } from "@/lib/utils";
-import { monoControlClass } from "./field";
-import { useReportJsonValidity } from "./json-validity";
+import { JsonValueField } from "./json-value-field";
 import { KeyValueEditor } from "./key-value-editor";
 import { ValueField } from "./value-field";
 import { primitiveReferences, typeLabel } from "./lib/friendly";
@@ -80,9 +77,10 @@ export function ArgsEditor({
               allowSecret={allowSecrets}
             />
           ) : prop.type === "array" ? (
-            <JsonArgField
+            <JsonValueField
               value={args[key]}
               onChange={(v) => setArg(key, v)}
+              rows={3}
               placeholder="[ ]"
             />
           ) : (
@@ -97,52 +95,6 @@ export function ArgsEditor({
           )}
         </div>
       ))}
-    </div>
-  );
-}
-
-/** A small JSON editor for list/array arguments, with live parse + validity. */
-function JsonArgField({
-  value,
-  onChange,
-  placeholder,
-}: {
-  value: unknown;
-  onChange: (value: unknown) => void;
-  placeholder?: string;
-}) {
-  const [raw, setRaw] = useState(() =>
-    value === undefined ? "" : JSON.stringify(value, null, 2),
-  );
-  const [error, setError] = useState("");
-  useReportJsonValidity(useId(), error !== "");
-
-  function handle(next: string) {
-    setRaw(next);
-    if (next.trim() === "") {
-      setError("");
-      onChange(undefined);
-      return;
-    }
-    try {
-      onChange(JSON.parse(next));
-      setError("");
-    } catch {
-      setError("Invalid JSON");
-    }
-  }
-
-  return (
-    <div>
-      <textarea
-        value={raw}
-        onChange={(e) => handle(e.target.value)}
-        rows={3}
-        spellCheck={false}
-        placeholder={placeholder}
-        className={cn(monoControlClass, error && "border-destructive")}
-      />
-      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
     </div>
   );
 }

@@ -1,11 +1,10 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useState } from "react";
 import { Code, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { controlClass, monoControlClass } from "./field";
-import { useReportJsonValidity } from "./json-validity";
+import { controlClass } from "./field";
+import { JsonValueField } from "./json-value-field";
 import { ValueField } from "./value-field";
 import type { ValueReference } from "./lib/friendly";
 
@@ -35,7 +34,7 @@ export function KeyValueEditor({
   if (jsonMode) {
     return (
       <div className="space-y-1.5">
-        <JsonMode value={value} onChange={onChange} />
+        <JsonValueField value={value} onChange={onChange} rows={3} placeholder="{ }" />
         <ModeToggle
           icon={<Plus className="size-3" />}
           label="Switch to key/value rows"
@@ -56,6 +55,9 @@ export function KeyValueEditor({
     onChange(Object.keys(next).length === 0 ? undefined : next);
   }
   function setKey(oldKey: string, newKey: string) {
+    // Refuse a rename that would collide with another row — otherwise the two
+    // would merge and one value would be silently dropped.
+    if (newKey !== oldKey && rows.some(([k]) => k === newKey)) return;
     const next: Record<string, string> = {};
     for (const [k, v] of rows) next[k === oldKey ? newKey : k] = v;
     commit(next);
@@ -156,49 +158,6 @@ function ModeToggle({
       {icon}
       {label}
     </button>
-  );
-}
-
-function JsonMode({
-  value,
-  onChange,
-}: {
-  value: unknown;
-  onChange: (value: unknown) => void;
-}) {
-  const [raw, setRaw] = useState(() =>
-    value === undefined ? "" : JSON.stringify(value, null, 2),
-  );
-  const [error, setError] = useState("");
-  useReportJsonValidity(useId(), error !== "");
-
-  function handle(next: string) {
-    setRaw(next);
-    if (next.trim() === "") {
-      setError("");
-      onChange(undefined);
-      return;
-    }
-    try {
-      onChange(JSON.parse(next));
-      setError("");
-    } catch {
-      setError("Invalid JSON");
-    }
-  }
-
-  return (
-    <div>
-      <textarea
-        value={raw}
-        onChange={(e) => handle(e.target.value)}
-        rows={3}
-        spellCheck={false}
-        placeholder="{ }"
-        className={cn(monoControlClass, error && "border-destructive")}
-      />
-      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
-    </div>
   );
 }
 

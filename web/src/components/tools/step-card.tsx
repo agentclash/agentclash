@@ -148,6 +148,8 @@ function StepInputsEditor({
   const references = stepReferences(paramNames, earlierStepIds, stepNumberById);
 
   function setKey(oldKey: string, newKey: string) {
+    // Don't merge into an existing input — that would silently drop a value.
+    if (newKey !== oldKey && newKey in inputs) return;
     const next: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(inputs)) next[k === oldKey ? newKey : k] = v;
     onChange(next);

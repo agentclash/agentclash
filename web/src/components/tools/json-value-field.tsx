@@ -5,10 +5,13 @@ import { cn } from "@/lib/utils";
 import { monoControlClass } from "./field";
 import { useReportJsonValidity } from "./json-validity";
 
+const serialize = (value: unknown) => (value === undefined ? "" : JSON.stringify(value));
+
 /**
  * Edits an arbitrary JSON value with live parse + error. Reports `undefined`
- * when emptied. Initial value is captured on mount, so render it only once the
- * parent's value is ready (e.g. after an edit fetch resolves).
+ * when emptied. Resyncs the textarea if the parent replaces `value` out from
+ * under it (e.g. switching operations), but leaves in-progress invalid text
+ * alone so the user never loses what they're typing.
  */
 export function JsonValueField({
   label,
@@ -29,18 +32,33 @@ export function JsonValueField({
     value === undefined ? "" : JSON.stringify(value, null, 2),
   );
   const [error, setError] = useState("");
+  // Serialized form of the value this textarea is in sync with. Updated by our
+  // own edits below; if it diverges from the incoming prop, the parent replaced
+  // the value out from under us and we resync (the React-endorsed pattern of
+  // adjusting state during render rather than in an effect).
+  const [synced, setSynced] = useState(() => serialize(value));
   useReportJsonValidity(useId(), error !== "");
+
+  const incoming = serialize(value);
+  if (incoming !== synced) {
+    setSynced(incoming);
+    setRaw(value === undefined ? "" : JSON.stringify(value, null, 2));
+    setError("");
+  }
 
   function handle(next: string) {
     setRaw(next);
     if (next.trim() === "") {
       setError("");
+      setSynced("");
       onChange(undefined);
       return;
     }
     try {
-      onChange(JSON.parse(next));
+      const parsed = JSON.parse(next);
       setError("");
+      setSynced(serialize(parsed));
+      onChange(parsed);
     } catch {
       setError("Invalid JSON");
     }
