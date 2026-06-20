@@ -190,6 +190,12 @@ func (r *providerAccountTestRepo) GetToolByID(context.Context, uuid.UUID) (repos
 func (r *providerAccountTestRepo) ListToolsByWorkspaceID(context.Context, uuid.UUID) ([]repository.ToolRow, error) {
 	return nil, nil
 }
+func (r *providerAccountTestRepo) UpdateTool(context.Context, repository.UpdateToolParams) (repository.ToolRow, error) {
+	return repository.ToolRow{}, nil
+}
+func (r *providerAccountTestRepo) ArchiveTool(context.Context, uuid.UUID) error {
+	return nil
+}
 func (r *providerAccountTestRepo) CreateKnowledgeSource(context.Context, repository.CreateKnowledgeSourceParams) (repository.KnowledgeSourceRow, error) {
 	return repository.KnowledgeSourceRow{}, nil
 }
