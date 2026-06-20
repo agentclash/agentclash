@@ -5,7 +5,9 @@ import { cn } from "@/lib/utils";
 import { ArgsEditor } from "./args-editor";
 import { controlClass } from "./field";
 import { JsonValueField } from "./json-value-field";
+import { OperationPicker } from "./operation-picker";
 import { ParametersEditor } from "./parameters-editor";
+import { MOCK_STRATEGY_OPTIONS } from "./lib/friendly";
 import { declaredParamNames, paramsToSchema, schemaToParams } from "./lib/definition";
 import type {
   MockStrategy,
@@ -15,11 +17,17 @@ import type {
 } from "./lib/types";
 
 const MODES: { value: PrimitiveMode; label: string; hint: string }[] = [
-  { value: "delegate", label: "Call a primitive", hint: "Wrap one base operation (HTTP, shell, file, data)." },
-  { value: "mock", label: "Mock response", hint: "Return a canned response for rehearsing evals." },
+  {
+    value: "delegate",
+    label: "Do it for real",
+    hint: "Perform an actual operation — call an API, run a command, touch a file.",
+  },
+  {
+    value: "mock",
+    label: "Return a canned response",
+    hint: "Skip the real work and return a fixed answer. Handy for rehearsing evals.",
+  },
 ];
-
-const STRATEGIES: MockStrategy[] = ["static", "lookup", "echo"];
 
 export function PrimitiveBuilder({
   def,
@@ -34,11 +42,6 @@ export function PrimitiveBuilder({
     () => primitives.filter((p) => p.delegatable),
     [primitives],
   );
-  const byKind = useMemo(() => {
-    const groups: Record<string, ToolPrimitive[]> = {};
-    for (const p of delegatable) (groups[p.kind] ??= []).push(p);
-    return groups;
-  }, [delegatable]);
 
   const impl = def.implementation;
   const selectedPrimitive =
@@ -57,7 +60,7 @@ export function PrimitiveBuilder({
       />
 
       <div className="space-y-2">
-        <h3 className="text-sm font-medium">Implementation</h3>
+        <h3 className="text-sm font-medium">When the agent calls this tool…</h3>
         <div className="grid grid-cols-2 gap-2">
           {MODES.map((m) => (
             <button
@@ -79,39 +82,33 @@ export function PrimitiveBuilder({
       </div>
 
       {impl.mode === "delegate" ? (
-        <div className="space-y-3">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">Primitive</label>
-            <select
-              value={impl.primitive ?? ""}
-              onChange={(e) => setImpl({ primitive: e.target.value })}
-              className={controlClass}
-            >
-              <option value="">Select a primitive…</option>
-              {Object.entries(byKind).map(([kind, items]) => (
-                <optgroup key={kind} label={kind}>
-                  {items.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-            {selectedPrimitive && (
-              <p className="mt-1 text-xs text-muted-foreground">{selectedPrimitive.description}</p>
-            )}
-          </div>
-          <div>
-            <h4 className="mb-1.5 text-sm font-medium">Arguments</h4>
-            <ArgsEditor
-              primitive={selectedPrimitive}
-              args={impl.args ?? {}}
-              onChange={(args) => setImpl({ args })}
-              paramNames={declaredParamNames(def)}
-              allowSecrets={impl.primitive === "http_request"}
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <h4 className="text-sm font-medium">Operation</h4>
+            <p className="text-xs text-muted-foreground">
+              The action this tool performs under the hood.
+            </p>
+            <OperationPicker
+              primitives={delegatable}
+              selected={impl.primitive ?? ""}
+              onSelect={(name) => setImpl({ primitive: name })}
             />
           </div>
+          {selectedPrimitive && (
+            <div className="space-y-1.5">
+              <h4 className="text-sm font-medium">Details</h4>
+              <p className="text-xs text-muted-foreground">
+                Fill these in with fixed text, or insert an agent input.
+              </p>
+              <ArgsEditor
+                primitive={selectedPrimitive}
+                args={impl.args ?? {}}
+                onChange={(args) => setImpl({ args })}
+                paramNames={declaredParamNames(def)}
+                allowSecrets={impl.primitive === "http_request"}
+              />
+            </div>
+          )}
         </div>
       ) : (
         <MockEditor
@@ -130,27 +127,30 @@ function MockEditor({
   mock: NonNullable<PrimitiveDefinition["implementation"]["mock"]>;
   onChange: (mock: NonNullable<PrimitiveDefinition["implementation"]["mock"]>) => void;
 }) {
+  const activeHint = MOCK_STRATEGY_OPTIONS.find((s) => s.value === mock.strategy)?.hint;
+
   return (
     <div className="space-y-3">
       <div>
-        <label className="mb-1.5 block text-sm font-medium">Strategy</label>
+        <label className="mb-1.5 block text-sm font-medium">How should the response be chosen?</label>
         <select
           value={mock.strategy}
           onChange={(e) => onChange({ ...mock, strategy: e.target.value as MockStrategy })}
           className={controlClass}
         >
-          {STRATEGIES.map((s) => (
-            <option key={s} value={s}>
-              {s}
+          {MOCK_STRATEGY_OPTIONS.map((s) => (
+            <option key={s.value} value={s.value}>
+              {s.label}
             </option>
           ))}
         </select>
+        {activeHint && <p className="mt-1 text-xs text-muted-foreground">{activeHint}</p>}
       </div>
 
       {mock.strategy === "static" && (
         <JsonValueField
           label="Response"
-          hint="Returned verbatim on every call."
+          hint="Returned on every call. Enter it as JSON, e.g. { &quot;status&quot;: &quot;ok&quot; }."
           value={mock.response}
           onChange={(response) => onChange({ ...mock, response })}
         />
@@ -158,7 +158,7 @@ function MockEditor({
       {mock.strategy === "lookup" && (
         <>
           <div>
-            <label className="mb-1.5 block text-sm font-medium">Lookup key</label>
+            <label className="mb-1.5 block text-sm font-medium">Which input decides the response?</label>
             <input
               value={mock.lookup_key ?? ""}
               onChange={(e) => onChange({ ...mock, lookup_key: e.target.value })}
@@ -167,8 +167,8 @@ function MockEditor({
             />
           </div>
           <JsonValueField
-            label="Responses"
-            hint='Map of key value → response, with "*" as the fallback.'
+            label="Responses by value"
+            hint='A JSON object mapping each input value to its response. Use "*" for the fallback.'
             value={mock.responses}
             onChange={(responses) =>
               onChange({ ...mock, responses: responses as Record<string, unknown> })
@@ -179,7 +179,7 @@ function MockEditor({
       {mock.strategy === "echo" && (
         <JsonValueField
           label="Template (optional)"
-          hint="Echoes the call input, merged over this template."
+          hint="Returns the agent's input, merged over this JSON template."
           value={mock.template}
           onChange={(template) => onChange({ ...mock, template })}
         />

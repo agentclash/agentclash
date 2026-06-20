@@ -29,6 +29,7 @@ export function ComposedBuilder({
   const dragIndex = useRef<number | null>(null);
   const params = schemaToParams(def.parameters);
   const paramNames = declaredParamNames(def);
+  const stepNumberById = new Map(def.steps.map((s, i) => [s.id, i + 1] as const));
 
   function setSteps(steps: ComposedStep[]) {
     onChange({ ...def, steps });
@@ -60,26 +61,23 @@ export function ComposedBuilder({
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-medium">Steps</h3>
+          <h3 className="text-sm font-medium">Steps, run in order</h3>
           <Button type="button" variant="outline" size="sm" onClick={addStep}>
             <Plus data-icon="inline-start" className="size-3.5" />
             Add step
           </Button>
         </div>
         <p className="text-xs text-muted-foreground">
-          Each step runs a primitive or another saved tool. Map its inputs from
-          the tool&apos;s parameters (
-          <code className="font-[family-name:var(--font-mono)]">{"${params.x}"}</code>)
-          or earlier steps (
-          <code className="font-[family-name:var(--font-mono)]">{"${steps.s1.output}"}</code>).
-          Drag to reorder.
+          Each step does one operation or runs another saved tool. In a step’s
+          inputs, use “Insert” to pass in an agent input or an earlier step’s
+          result. Drag to reorder.
         </p>
 
         {def.steps.length === 0 ? (
           <EmptyState
             icon={<Workflow className="size-9" />}
             title="No steps yet"
-            description="Add the first step to start composing."
+            description="Add the first step to get started."
           />
         ) : (
           <div className="space-y-0">
@@ -95,6 +93,7 @@ export function ComposedBuilder({
                   index={i}
                   total={def.steps.length}
                   earlierStepIds={def.steps.slice(0, i).map((s) => s.id)}
+                  stepNumberById={stepNumberById}
                   paramNames={paramNames}
                   primitives={primitives}
                   toolOptions={tools}

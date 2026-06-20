@@ -4,15 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { toast } from "sonner";
-import {
-  Boxes,
-  MoreHorizontal,
-  Pencil,
-  Plus,
-  Trash2,
-  Workflow,
-  Wrench,
-} from "lucide-react";
+import { MoreHorizontal, Pencil, Plus, Trash2, Wrench } from "lucide-react";
 
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
@@ -70,29 +62,11 @@ function ToolsList({ workspaceId }: { workspaceId: string }) {
     }
   }
 
-  const newToolMenu = (
-    <DropdownMenu>
-      <DropdownMenuTrigger render={<Button size="sm" />}>
-        <Plus data-icon="inline-start" className="size-4" />
-        New tool
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        <DropdownMenuItem render={<Link href={`/workspaces/${workspaceId}/tools/new?type=primitive`} />}>
-          <Boxes className="size-4" />
-          <div>
-            <div className="text-sm">Primitive</div>
-            <div className="text-xs text-muted-foreground">One operation (HTTP, shell, file, mock)</div>
-          </div>
-        </DropdownMenuItem>
-        <DropdownMenuItem render={<Link href={`/workspaces/${workspaceId}/tools/new?type=composed`} />}>
-          <Workflow className="size-4" />
-          <div>
-            <div className="text-sm">Composed</div>
-            <div className="text-xs text-muted-foreground">Chain primitives and other tools</div>
-          </div>
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+  const newToolButton = (
+    <Button size="sm" render={<Link href={`/workspaces/${workspaceId}/tools/new`} />}>
+      <Plus data-icon="inline-start" className="size-4" />
+      New tool
+    </Button>
   );
 
   if (isLoading && !data) return <WorkspaceListLoading rows={6} />;
@@ -101,8 +75,8 @@ function ToolsList({ workspaceId }: { workspaceId: string }) {
     <div>
       <PageHeader
         title="Tools"
-        description="Build tools agents can call during runs — single-operation primitives or composed multi-step tools."
-        actions={items.length > 0 ? newToolMenu : undefined}
+        description="Give agents tools they can use during a run — like calling an API or running a command. No code or YAML."
+        actions={items.length > 0 ? newToolButton : undefined}
       />
 
       {error ? (
@@ -113,8 +87,8 @@ function ToolsList({ workspaceId }: { workspaceId: string }) {
         <EmptyState
           icon={<Wrench className="size-10" />}
           title="No tools yet"
-          description="Create a primitive tool (one operation) or a composed tool (a chain of steps) — no YAML required."
-          action={{ label: "New primitive tool", href: `/workspaces/${workspaceId}/tools/new?type=primitive` }}
+          description="Build a tool agents can use during a run — call an API, run a command, or chain a few steps together. No code required."
+          action={{ label: "New tool", href: `/workspaces/${workspaceId}/tools/new` }}
         />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
