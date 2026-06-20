@@ -7,7 +7,7 @@ import { controlClass } from "./field";
 import { JsonValueField } from "./json-value-field";
 import { OperationPicker } from "./operation-picker";
 import { ParametersEditor } from "./parameters-editor";
-import { MOCK_STRATEGY_OPTIONS } from "./lib/friendly";
+import { MOCK_STRATEGY_OPTIONS, primitiveReferences } from "./lib/friendly";
 import { declaredParamNames, paramsToSchema, schemaToParams } from "./lib/definition";
 import type {
   MockStrategy,
@@ -104,7 +104,7 @@ export function PrimitiveBuilder({
                 primitive={selectedPrimitive}
                 args={impl.args ?? {}}
                 onChange={(args) => setImpl({ args })}
-                paramNames={declaredParamNames(def)}
+                references={primitiveReferences(declaredParamNames(def))}
                 allowSecrets={impl.primitive === "http_request"}
               />
             </div>
@@ -120,7 +120,7 @@ export function PrimitiveBuilder({
   );
 }
 
-function MockEditor({
+export function MockEditor({
   mock,
   onChange,
 }: {

@@ -3,26 +3,28 @@
 import { JsonValueField } from "./json-value-field";
 import { KeyValueEditor } from "./key-value-editor";
 import { ValueField } from "./value-field";
-import { primitiveReferences, typeLabel } from "./lib/friendly";
+import { typeLabel, type ValueReference } from "./lib/friendly";
 import type { JsonSchemaType, ToolPrimitive } from "./lib/types";
 
 /**
  * Fills in what a base operation needs. Fields are derived from the operation's
  * own schema: plain values use a ValueField (type literal text or insert an agent
  * input), key/value groups use a KeyValueEditor, lists fall back to JSON. The user
- * never types `${...}` — references are inserted from a menu.
+ * never types `${...}` — references are inserted from a menu. The caller supplies
+ * the available references so this works for both primitive args and composed
+ * step inputs.
  */
 export function ArgsEditor({
   primitive,
   args,
   onChange,
-  paramNames,
+  references,
   allowSecrets,
 }: {
   primitive: ToolPrimitive | null;
   args: Record<string, unknown>;
   onChange: (args: Record<string, unknown>) => void;
-  paramNames: string[];
+  references: ValueReference[];
   allowSecrets: boolean;
 }) {
   if (!primitive) {
@@ -36,7 +38,6 @@ export function ArgsEditor({
   const props = primitive.parameters?.properties ?? {};
   const required = new Set(primitive.parameters?.required ?? []);
   const entries = Object.entries(props);
-  const references = primitiveReferences(paramNames);
 
   function setArg(key: string, value: unknown) {
     const next = { ...args };
