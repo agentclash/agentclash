@@ -7,37 +7,31 @@ contribution.
 
 By participating you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md).
 
-## Contributor license policy
+## Developer Certificate of Origin (DCO)
 
-AgentClash is preparing to require a Contributor License Agreement (CLA), but
-the policy is not active until all of these are true:
+AgentClash uses the [Developer Certificate of Origin](DCO.md) (DCO) instead of a
+CLA. Contributions stay under the project's MIT license — inbound equals
+outbound, and AgentClash takes no additional or relicensing rights over your
+work.
 
-- the final legal entity name replaces the placeholder in
-  [CONTRIBUTOR_LICENSE_AGREEMENT.md](CONTRIBUTOR_LICENSE_AGREEMENT.md);
-- counsel or another qualified reviewer approves the text;
-- CLA Assistant is configured for this repository; and
-- the CLA Assistant status check is required in GitHub branch protection or
-  repository rulesets.
+Every commit must carry a `Signed-off-by` trailer matching the commit author.
+Add it with the `-s` flag:
 
-Until then, contributions continue under the existing inbound=outbound MIT
-policy described in [License](#license).
+```bash
+git commit -s -m "feat: ..."        # sign off as you commit
+git commit -s --amend --no-edit     # add a sign-off to your latest commit
+```
 
-If adopted, this CLA is broader than inbound=outbound MIT. It grants the named
-AgentClash legal entity a sublicensable copyright license, an express patent
-license, and permission to distribute contributions under future project
-licenses, including non-MIT or commercial terms. Contributors should not sign it
-unless they are comfortable with that effect.
+The trailer looks like `Signed-off-by: Your Name <you@example.com>` and certifies
+that you wrote the change, or otherwise have the right to submit it under the MIT
+license, per clauses (a)–(d) of the [DCO](DCO.md). This applies to everyone,
+founders included — there are no exceptions or allowlists. (An automated DCO
+check may be added later; until then, please self-check your sign-offs.)
 
-Once the policy is active, non-founder contributors will need to pass the CLA
-Assistant check before merge. The founders `Atharva-Kanherkar`,
-`AyushRajSinghParihar`, and `Shubham2582` are intended to be treated as
-internally covered contributors through private founder or company paperwork
-outside this public repository.
-
-If your employer owns or may own your work, get the needed authorization before
-submitting a contribution. Do not include private keys, proprietary code,
-customer data, or third-party material unless you have the right to contribute it
-under the project license and any active CLA.
+If your employer or another party may own your work, get the needed authorization
+before contributing. Do not include private keys, proprietary code, customer
+data, or third-party material you do not have the right to contribute under the
+MIT license.
 
 ## Repository layout
 
@@ -86,8 +80,7 @@ If you add/modify a backend API route, update `docs/api-server/openapi.yaml`.
    failure path where it applies).
 4. Make sure builds, `vet`/`lint`, type checks, and tests pass for every part you
    touched.
-5. If a CLA Assistant check appears on the PR, follow the signing link or ask a
-   maintainer whether you are covered by a documented exception.
+5. Sign off your commits with `git commit -s` (see the [DCO](DCO.md)).
 6. Open the PR against `main` and fill in the template.
 
 ## Reporting bugs & requesting features
@@ -98,5 +91,4 @@ a public issue — see [SECURITY.md](SECURITY.md).
 ## License
 
 By contributing, you agree that your contributions are licensed under the
-project's [MIT License](LICENSE). If the proposed CLA policy is adopted later,
-future contributions will also be subject to the active CLA terms.
+project's [MIT License](LICENSE).
