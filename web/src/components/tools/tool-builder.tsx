@@ -22,7 +22,7 @@ import { Field, controlClass } from "./field";
 import { ToolTypeBadge } from "./tool-type-badge";
 import { JsonValidityProvider } from "./json-validity";
 import { useToolPrimitives } from "./use-tool-primitives";
-import { declaredParamNames, emptyDefinition } from "./lib/definition";
+import { declaredParamNames, presetDefinition } from "./lib/definition";
 import { validateDefinition } from "./lib/validate";
 import type { ToolDefinition, ToolRecord, ToolType } from "./lib/types";
 
@@ -34,6 +34,7 @@ export function ToolBuilder({
   initialName,
   initialSlug,
   initialDefinition,
+  start,
 }: {
   workspaceId: string;
   mode: "create" | "edit";
@@ -42,6 +43,7 @@ export function ToolBuilder({
   initialName?: string;
   initialSlug?: string;
   initialDefinition?: ToolDefinition;
+  start?: string;
 }) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
@@ -49,7 +51,7 @@ export function ToolBuilder({
 
   const [name, setName] = useState(initialName ?? "");
   const [definition, setDefinition] = useState<ToolDefinition>(
-    initialDefinition ?? emptyDefinition(toolType),
+    initialDefinition ?? presetDefinition(toolType, start),
   );
   const [submitting, setSubmitting] = useState(false);
   const [jsonInvalid, setJsonInvalid] = useState(false);
@@ -135,8 +137,8 @@ export function ToolBuilder({
           <span className="inline-flex items-center gap-2">
             <ToolTypeBadge kind={toolType} />
             {toolType === "primitive"
-              ? "A single operation agents can call."
-              : "An ordered chain of primitives and other tools."}
+              ? "A single action the agent can take during a run."
+              : "Several actions the agent runs in order."}
           </span>
         }
         actions={
@@ -158,12 +160,33 @@ export function ToolBuilder({
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
         <JsonValidityProvider onChange={setJsonInvalid}>
           <div className="space-y-6">
-            <Field label="Name" htmlFor="tool-name" hint="A human-friendly name. A stable slug is derived from it.">
+            <Field
+              label="Name"
+              htmlFor="tool-name"
+              hint="What the agent sees when it calls this tool. A short id is generated automatically."
+            >
               <input
                 id="tool-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder={toolType === "primitive" ? "e.g. lookup_order" : "e.g. refund_flow"}
+                className={controlClass}
+              />
+            </Field>
+
+            <Field
+              label="Description"
+              htmlFor="tool-description"
+              hint="The agent reads this to decide when to use the tool. Be specific about what it does."
+            >
+              <textarea
+                id="tool-description"
+                value={definition.description ?? ""}
+                onChange={(e) =>
+                  setDefinition({ ...definition, description: e.target.value })
+                }
+                rows={2}
+                placeholder="e.g. Look up an order by its id and return its status and items."
                 className={controlClass}
               />
             </Field>
@@ -182,15 +205,15 @@ export function ToolBuilder({
         </JsonValidityProvider>
 
         <div className="lg:sticky lg:top-4 lg:self-start">
-          <Tabs defaultValue="preview">
+          <Tabs defaultValue="summary">
             <TabsList className="w-full">
-              <TabsTrigger value="preview">Preview</TabsTrigger>
-              <TabsTrigger value="simulate">Simulate</TabsTrigger>
+              <TabsTrigger value="summary">Summary</TabsTrigger>
+              <TabsTrigger value="test">Test it</TabsTrigger>
             </TabsList>
-            <TabsContent value="preview" className="pt-3">
+            <TabsContent value="summary" className="pt-3">
               <DefinitionPreview definition={definition} issues={previewIssues} />
             </TabsContent>
-            <TabsContent value="simulate" className="pt-3">
+            <TabsContent value="test" className="pt-3">
               <SimulatePanel definition={definition} paramNames={paramNames} />
             </TabsContent>
           </Tabs>

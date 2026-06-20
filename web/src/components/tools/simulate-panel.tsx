@@ -24,11 +24,11 @@ export function SimulatePanel({
     <div className="space-y-3">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
         <Play className="size-3.5" />
-        Enter sample inputs to preview how placeholders resolve. Nothing is executed.
+        Enter example inputs to preview what each step would receive. Nothing actually runs.
       </div>
 
       {paramNames.length === 0 ? (
-        <p className="text-xs text-muted-foreground">This tool has no parameters.</p>
+        <p className="text-xs text-muted-foreground">This tool takes no inputs.</p>
       ) : (
         <div className="space-y-2">
           {paramNames.map((name) => (
@@ -48,7 +48,7 @@ export function SimulatePanel({
       )}
 
       <div>
-        <div className="mb-1.5 text-xs font-medium text-muted-foreground">Resolved</div>
+        <div className="mb-1.5 text-xs font-medium text-muted-foreground">What gets sent</div>
         {result.note ? (
           <p className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
             {result.note}

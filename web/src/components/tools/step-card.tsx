@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronUp, GripVertical, Plus, Trash2 } from "lucide-react";
 import { controlClass } from "./field";
+import { ValueField } from "./value-field";
+import { operationLabel, stepReferences } from "./lib/friendly";
 import type { ComposedStep, StepRefType, ToolPrimitive } from "./lib/types";
 
 export function StepCard({
@@ -12,6 +12,7 @@ export function StepCard({
   index,
   total,
   earlierStepIds,
+  stepNumberById,
   paramNames,
   primitives,
   toolOptions,
@@ -27,6 +28,7 @@ export function StepCard({
   index: number;
   total: number;
   earlierStepIds: string[];
+  stepNumberById: Map<string, number>;
   paramNames: string[];
   primitives: ToolPrimitive[];
   toolOptions: { slug: string; name: string }[];
@@ -58,9 +60,7 @@ export function StepCard({
         <span className="flex size-5 items-center justify-center rounded-full bg-muted text-xs font-medium tabular-nums">
           {index + 1}
         </span>
-        <code className="font-[family-name:var(--font-mono)] text-xs text-muted-foreground">
-          {step.id}
-        </code>
+        <span className="text-xs font-medium text-muted-foreground">Step {index + 1}</span>
         <div className="ml-auto flex items-center">
           <Button type="button" variant="ghost" size="icon-sm" onClick={onMoveUp} disabled={index === 0} aria-label="Move up">
             <ChevronUp className="size-3.5" />
@@ -75,27 +75,27 @@ export function StepCard({
       </div>
 
       <div className="space-y-3 p-3">
-        <div className="grid grid-cols-[8rem_1fr] gap-2">
+        <div className="grid grid-cols-[9rem_1fr] gap-2">
           <select
             value={step.ref.type}
             onChange={(e) => setRef({ type: e.target.value as StepRefType, name: "" })}
-            aria-label="Reference type"
+            aria-label="What this step runs"
             className={controlClass}
           >
-            <option value="primitive">Primitive</option>
-            <option value="tool">Saved tool</option>
+            <option value="primitive">Built-in operation</option>
+            <option value="tool">Another saved tool</option>
           </select>
           {step.ref.type === "primitive" ? (
             <select
               value={step.ref.name}
               onChange={(e) => setRef({ name: e.target.value })}
-              aria-label="Primitive"
+              aria-label="Operation"
               className={controlClass}
             >
-              <option value="">Select a primitive…</option>
+              <option value="">Choose an operation…</option>
               {delegatable.map((p) => (
                 <option key={p.name} value={p.name}>
-                  {p.name}
+                  {operationLabel(p.name)}
                 </option>
               ))}
             </select>
@@ -106,10 +106,10 @@ export function StepCard({
               aria-label="Tool"
               className={controlClass}
             >
-              <option value="">Select a tool…</option>
+              <option value="">Choose a tool…</option>
               {toolOptions.map((t) => (
                 <option key={t.slug} value={t.slug}>
-                  {t.name} ({t.slug})
+                  {t.name}
                 </option>
               ))}
             </select>
@@ -121,6 +121,7 @@ export function StepCard({
           onChange={(inputs) => onChange({ ...step, inputs })}
           paramNames={paramNames}
           earlierStepIds={earlierStepIds}
+          stepNumberById={stepNumberById}
           allowSecrets={isHTTP}
         />
       </div>
@@ -133,16 +134,18 @@ function StepInputsEditor({
   onChange,
   paramNames,
   earlierStepIds,
+  stepNumberById,
   allowSecrets,
 }: {
   inputs: Record<string, unknown>;
   onChange: (inputs: Record<string, unknown>) => void;
   paramNames: string[];
   earlierStepIds: string[];
+  stepNumberById: Map<string, number>;
   allowSecrets: boolean;
 }) {
-  const [focusedKey, setFocusedKey] = useState<string | null>(null);
   const rows = Object.entries(inputs);
+  const references = stepReferences(paramNames, earlierStepIds, stepNumberById);
 
   function setKey(oldKey: string, newKey: string) {
     const next: Record<string, unknown> = {};
@@ -163,68 +166,40 @@ function StepInputsEditor({
     while (name in inputs) name = `input${++n}`;
     onChange({ ...inputs, [name]: "" });
   }
-  function insert(token: string) {
-    if (!focusedKey) return;
-    const cur = typeof inputs[focusedKey] === "string" ? (inputs[focusedKey] as string) : "";
-    setValue(focusedKey, cur + token);
-  }
-
-  const chips = [
-    ...paramNames.map((p) => `\${params.${p}}`),
-    ...earlierStepIds.map((s) => `\${steps.${s}.output}`),
-    ...(allowSecrets ? ["${secrets.NAME}"] : []),
-  ];
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground">Inputs</span>
+        <span className="text-xs font-medium text-muted-foreground">Inputs for this step</span>
         <Button type="button" variant="ghost" size="xs" onClick={add}>
           <Plus data-icon="inline-start" className="size-3" />
           Add input
         </Button>
       </div>
       {rows.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No inputs mapped.</p>
+        <p className="text-xs text-muted-foreground">No inputs set for this step yet.</p>
       ) : (
         rows.map(([key, value]) => (
-          <div key={key} className="grid grid-cols-[10rem_1fr_auto] items-center gap-2">
+          <div key={key} className="grid grid-cols-[9rem_1fr_auto] items-start gap-2">
             <input
               value={key}
               onChange={(e) => setKey(key, e.target.value)}
               aria-label="Input name"
               className={`${controlClass} font-[family-name:var(--font-mono)] text-xs`}
             />
-            <input
+            <ValueField
               value={typeof value === "string" ? value : JSON.stringify(value)}
-              onChange={(e) => setValue(key, e.target.value)}
-              onFocus={() => setFocusedKey(key)}
-              placeholder="value or ${params.x}"
-              aria-label="Input value"
-              className={`${controlClass} font-[family-name:var(--font-mono)] text-xs`}
+              onChange={(v) => setValue(key, v)}
+              placeholder="Type a value or insert one"
+              references={references}
+              allowSecret={allowSecrets}
+              ariaLabel="Input value"
             />
             <Button type="button" variant="ghost" size="icon-sm" onClick={() => remove(key)} aria-label="Remove input">
               <Trash2 className="size-3.5 text-muted-foreground" />
             </Button>
           </div>
         ))
-      )}
-      {chips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {chips.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => insert(c)}
-              disabled={!focusedKey}
-              className={cn(
-                "rounded-md border border-border bg-background px-1.5 py-0.5 font-[family-name:var(--font-mono)] text-[11px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50",
-              )}
-            >
-              {c}
-            </button>
-          ))}
-        </div>
       )}
     </div>
   );

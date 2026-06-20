@@ -39,6 +39,33 @@ export function emptyDefinition(type: ToolType): ToolDefinition {
   return type === "primitive" ? emptyPrimitiveDefinition() : emptyComposedDefinition();
 }
 
+/**
+ * An empty definition pre-filled for a plain-language starting point chosen on
+ * the chooser screen (e.g. "Call a web API"). Falls back to an empty definition.
+ */
+export function presetDefinition(type: ToolType, start?: string): ToolDefinition {
+  if (type !== "primitive") return emptyComposedDefinition();
+  switch (start) {
+    case "api":
+      return {
+        ...emptyPrimitiveDefinition(),
+        implementation: { mode: "delegate", primitive: "http_request", args: {} },
+      };
+    case "command":
+      return {
+        ...emptyPrimitiveDefinition(),
+        implementation: { mode: "delegate", primitive: "shell_exec", args: {} },
+      };
+    case "mock":
+      return {
+        ...emptyPrimitiveDefinition(),
+        implementation: { mode: "mock", mock: { strategy: "static" } },
+      };
+    default:
+      return emptyPrimitiveDefinition();
+  }
+}
+
 /** Convert a JSON Schema object into the friendly param-row representation. */
 export function schemaToParams(schema: JsonSchemaObject | undefined): ParamField[] {
   if (!schema || !schema.properties) return [];
@@ -140,9 +167,9 @@ export function isBuilderToolType(kind: string): kind is ToolType {
   return kind === "primitive" || kind === "composed";
 }
 
-/** A short human label for a tool type. */
+/** A short, plain-language label for a tool type. */
 export function toolTypeLabel(type: string): string {
-  if (type === "primitive") return "Primitive";
-  if (type === "composed") return "Composed";
+  if (type === "primitive") return "Single action";
+  if (type === "composed") return "Multi-step";
   return type;
 }

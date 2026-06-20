@@ -2,14 +2,18 @@
 
 import { useId, useState } from "react";
 import { cn } from "@/lib/utils";
-import { controlClass, monoControlClass } from "./field";
+import { monoControlClass } from "./field";
 import { useReportJsonValidity } from "./json-validity";
-import type { ToolPrimitive } from "./lib/types";
+import { KeyValueEditor } from "./key-value-editor";
+import { ValueField } from "./value-field";
+import { primitiveReferences, typeLabel } from "./lib/friendly";
+import type { JsonSchemaType, ToolPrimitive } from "./lib/types";
 
 /**
- * Edits the arguments passed to a delegated base primitive. Fields are derived
- * from the primitive's own JSON schema; object-typed args (e.g. HTTP headers)
- * get a JSON editor. A placeholder palette inserts ${param} / ${secrets.X}.
+ * Fills in what a base operation needs. Fields are derived from the operation's
+ * own schema: plain values use a ValueField (type literal text or insert an agent
+ * input), key/value groups use a KeyValueEditor, lists fall back to JSON. The user
+ * never types `${...}` — references are inserted from a menu.
  */
 export function ArgsEditor({
   primitive,
@@ -24,15 +28,10 @@ export function ArgsEditor({
   paramNames: string[];
   allowSecrets: boolean;
 }) {
-  const [focusedKey, setFocusedKey] = useState<string | null>(null);
-  const [rawByKey, setRawByKey] = useState<Record<string, string>>({});
-  const [errByKey, setErrByKey] = useState<Record<string, string>>({});
-  useReportJsonValidity(useId(), Object.values(errByKey).some(Boolean));
-
   if (!primitive) {
     return (
       <p className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
-        Choose a primitive to configure its arguments.
+        Choose an operation above to set up its details.
       </p>
     );
   }
@@ -40,108 +39,110 @@ export function ArgsEditor({
   const props = primitive.parameters?.properties ?? {};
   const required = new Set(primitive.parameters?.required ?? []);
   const entries = Object.entries(props);
+  const references = primitiveReferences(paramNames);
 
-  function setScalar(key: string, value: string) {
+  function setArg(key: string, value: unknown) {
     const next = { ...args };
-    if (value === "") delete next[key];
+    if (value === undefined || value === "") delete next[key];
     else next[key] = value;
     onChange(next);
   }
 
-  function setObject(key: string, raw: string) {
-    setRawByKey((p) => ({ ...p, [key]: raw }));
-    if (raw.trim() === "") {
-      setErrByKey((p) => ({ ...p, [key]: "" }));
-      const next = { ...args };
-      delete next[key];
-      onChange(next);
+  if (entries.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        This operation doesn’t need any details.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {entries.map(([key, prop]) => (
+        <div key={key}>
+          <label className="mb-1 flex items-center gap-2 text-sm font-medium">
+            {key}
+            <span className="text-xs font-normal text-muted-foreground">
+              {typeLabel(prop.type as JsonSchemaType)}
+            </span>
+            {required.has(key) && (
+              <span className="text-xs font-normal text-muted-foreground">· required</span>
+            )}
+          </label>
+          {prop.description && (
+            <p className="mb-1.5 text-xs text-muted-foreground">{prop.description}</p>
+          )}
+          {prop.type === "object" ? (
+            <KeyValueEditor
+              value={args[key]}
+              onChange={(v) => setArg(key, v)}
+              references={references}
+              allowSecret={allowSecrets}
+            />
+          ) : prop.type === "array" ? (
+            <JsonArgField
+              value={args[key]}
+              onChange={(v) => setArg(key, v)}
+              placeholder="[ ]"
+            />
+          ) : (
+            <ValueField
+              value={typeof args[key] === "string" ? (args[key] as string) : ""}
+              onChange={(v) => setArg(key, v)}
+              placeholder={prop.description ?? "Type a value or insert an input"}
+              references={references}
+              allowSecret={allowSecrets}
+              ariaLabel={key}
+            />
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** A small JSON editor for list/array arguments, with live parse + validity. */
+function JsonArgField({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: unknown;
+  onChange: (value: unknown) => void;
+  placeholder?: string;
+}) {
+  const [raw, setRaw] = useState(() =>
+    value === undefined ? "" : JSON.stringify(value, null, 2),
+  );
+  const [error, setError] = useState("");
+  useReportJsonValidity(useId(), error !== "");
+
+  function handle(next: string) {
+    setRaw(next);
+    if (next.trim() === "") {
+      setError("");
+      onChange(undefined);
       return;
     }
     try {
-      const parsed = JSON.parse(raw);
-      setErrByKey((p) => ({ ...p, [key]: "" }));
-      onChange({ ...args, [key]: parsed });
+      onChange(JSON.parse(next));
+      setError("");
     } catch {
-      setErrByKey((p) => ({ ...p, [key]: "Invalid JSON" }));
+      setError("Invalid JSON");
     }
   }
 
-  function insertPlaceholder(token: string) {
-    if (!focusedKey) return;
-    const current = typeof args[focusedKey] === "string" ? (args[focusedKey] as string) : "";
-    setScalar(focusedKey, current + token);
-  }
-
-  const chips = [
-    ...paramNames.map((p) => `\${${p}}`),
-    "${parameters}",
-    ...(allowSecrets ? ["${secrets.NAME}"] : []),
-  ];
-
   return (
-    <div className="space-y-3">
-      {entries.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          This primitive takes no arguments.
-        </p>
-      ) : (
-        entries.map(([key, prop]) => {
-          const isObject = prop.type === "object" || prop.type === "array";
-          const raw =
-            rawByKey[key] ??
-            (args[key] !== undefined ? JSON.stringify(args[key], null, 2) : "");
-          return (
-            <div key={key}>
-              <label className="mb-1 flex items-center gap-2 text-sm font-medium">
-                <code className="font-[family-name:var(--font-mono)] text-xs">{key}</code>
-                <span className="text-xs font-normal text-muted-foreground">{prop.type}</span>
-                {required.has(key) && (
-                  <span className="text-xs font-normal text-muted-foreground">· required</span>
-                )}
-              </label>
-              {isObject ? (
-                <textarea
-                  value={raw}
-                  onChange={(e) => setObject(key, e.target.value)}
-                  rows={3}
-                  spellCheck={false}
-                  placeholder="{ }"
-                  className={cn(monoControlClass, errByKey[key] && "border-destructive")}
-                />
-              ) : (
-                <input
-                  value={typeof args[key] === "string" ? (args[key] as string) : ""}
-                  onChange={(e) => setScalar(key, e.target.value)}
-                  onFocus={() => setFocusedKey(key)}
-                  placeholder={prop.description ?? "value or ${param}"}
-                  className={`${controlClass} font-[family-name:var(--font-mono)] text-xs`}
-                />
-              )}
-              {errByKey[key] && <p className="mt-1 text-xs text-destructive">{errByKey[key]}</p>}
-            </div>
-          );
-        })
-      )}
-
-      {chips.length > 0 && entries.some(([, p]) => p.type !== "object" && p.type !== "array") && (
-        <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-border bg-muted/30 p-2">
-          <span className="text-xs text-muted-foreground">Insert:</span>
-          {chips.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => insertPlaceholder(c)}
-              disabled={!focusedKey}
-              className="rounded-md border border-border bg-background px-1.5 py-0.5 font-[family-name:var(--font-mono)] text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
-            >
-              {c}
-            </button>
-          ))}
-          <span className="text-xs text-muted-foreground">
-            {focusedKey ? `→ ${focusedKey}` : "focus a field first"}
-          </span>
-        </div>
-      )}
+    <div>
+      <textarea
+        value={raw}
+        onChange={(e) => handle(e.target.value)}
+        rows={3}
+        spellCheck={false}
+        placeholder={placeholder}
+        className={cn(monoControlClass, error && "border-destructive")}
+      />
+      {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
     </div>
   );
 }
