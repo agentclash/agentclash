@@ -2098,6 +2098,26 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenError"
 
+  /v1/tool-primitives:
+    get:
+      operationId: listToolPrimitives
+      tags: [Tools]
+      summary: List base primitive tools available as building blocks
+      description: >-
+        Returns the static catalog of base primitives that primitive tools can
+        delegate to and composed tools can chain. Read-only and not workspace-scoped.
+      security:
+        - bearerJWT: []
+      responses:
+        "200":
+          description: Primitive catalog
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListToolPrimitivesResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
   /v1/tools/{toolID}:
     get:
       operationId: getTool
@@ -2116,6 +2136,58 @@ paths:
                 $ref: "#/components/schemas/ToolResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      operationId: updateTool
+      tags: [Tools]
+      summary: Update a tool definition
+      description: >-
+        Updates the mutable fields of a tool. The slug and tool_kind are
+        immutable so composed tools that reference this tool by slug keep
+        resolving. The definition is validated before it is persisted.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ToolID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateToolRequest"
+      responses:
+        "200":
+          description: Tool updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+    delete:
+      operationId: deleteTool
+      tags: [Tools]
+      summary: Archive a tool definition
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/ToolID"
+      responses:
+        "204":
+          description: Tool archived
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -8959,17 +9031,38 @@ components:
 
     CreateToolRequest:
       type: object
-      required: [name, tool_kind, capability_key]
+      required: [name, tool_kind]
       properties:
         name:
           type: string
         tool_kind:
+          type: string
+          enum: [primitive, composed]
+          description: Whether the tool is a single-operation primitive or a multi-step composed tool.
+        capability_key:
+          type: string
+          description: Optional stable capability identifier. Defaults to the generated slug when omitted.
+        definition:
+          type: object
+          additionalProperties: true
+          description: Canonical tool definition (see toolspec). Validated before persistence.
+
+    UpdateToolRequest:
+      type: object
+      description: >-
+        Mutable fields of a tool. tool_kind and slug are immutable. Omitted name,
+        capability_key and lifecycle_status keep their existing values.
+      properties:
+        name:
           type: string
         capability_key:
           type: string
         definition:
           type: object
           additionalProperties: true
+        lifecycle_status:
+          type: string
+          enum: [active, disabled]
 
     ToolResponse:
       type: object
@@ -9009,6 +9102,34 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ToolResponse"
+
+    ToolPrimitive:
+      type: object
+      required: [name, description, kind, parameters, delegatable]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        kind:
+          type: string
+          enum: [core, file, data, network, build, shell]
+        parameters:
+          type: object
+          additionalProperties: true
+          description: JSON Schema describing the primitive's arguments.
+        delegatable:
+          type: boolean
+          description: Whether a custom tool may delegate to or compose this primitive.
+
+    ListToolPrimitivesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolPrimitive"
 
     # --- Knowledge Sources ---
 
