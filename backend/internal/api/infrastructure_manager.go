@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/toolspec"
 	"github.com/google/uuid"
 )
 
@@ -43,6 +45,8 @@ type InfrastructureRepository interface {
 	CreateTool(ctx context.Context, p repository.CreateToolParams) (repository.ToolRow, error)
 	GetToolByID(ctx context.Context, id uuid.UUID) (repository.ToolRow, error)
 	ListToolsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.ToolRow, error)
+	UpdateTool(ctx context.Context, p repository.UpdateToolParams) (repository.ToolRow, error)
+	ArchiveTool(ctx context.Context, id uuid.UUID) error
 
 	// Knowledge Sources
 	CreateKnowledgeSource(ctx context.Context, p repository.CreateKnowledgeSourceParams) (repository.KnowledgeSourceRow, error)
@@ -375,13 +379,20 @@ func (m *InfrastructureManager) CreateTool(ctx context.Context, caller Caller, w
 		return repository.ToolRow{}, fmt.Errorf("resolve org: %w", err)
 	}
 	slug := generateSlug(input.Name)
+	capabilityKey := strings.TrimSpace(input.CapabilityKey)
+	if capabilityKey == "" {
+		capabilityKey = slug
+	}
+	if err := m.validateToolDefinition(ctx, workspaceID, input.ToolKind, slug, input.Definition); err != nil {
+		return repository.ToolRow{}, err
+	}
 	return m.repo.CreateTool(ctx, repository.CreateToolParams{
 		OrganizationID: orgID,
 		WorkspaceID:    workspaceID,
 		Name:           input.Name,
 		Slug:           slug,
 		ToolKind:       input.ToolKind,
-		CapabilityKey:  input.CapabilityKey,
+		CapabilityKey:  capabilityKey,
 		Definition:     input.Definition,
 	})
 }
@@ -392,6 +403,61 @@ func (m *InfrastructureManager) ListTools(ctx context.Context, workspaceID uuid.
 
 func (m *InfrastructureManager) GetTool(ctx context.Context, id uuid.UUID) (repository.ToolRow, error) {
 	return m.repo.GetToolByID(ctx, id)
+}
+
+func (m *InfrastructureManager) UpdateTool(ctx context.Context, caller Caller, id uuid.UUID, input UpdateToolInput) (repository.ToolRow, error) {
+	existing, err := m.repo.GetToolByID(ctx, id)
+	if err != nil {
+		return repository.ToolRow{}, err
+	}
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		name = existing.Name
+	}
+	capabilityKey := strings.TrimSpace(input.CapabilityKey)
+	if capabilityKey == "" {
+		capabilityKey = existing.CapabilityKey
+	}
+	// tool_kind and slug are immutable; validate the new definition against the
+	// existing tool_kind, excluding this tool's own slug to reject self-reference.
+	if existing.WorkspaceID != nil {
+		if err := m.validateToolDefinition(ctx, *existing.WorkspaceID, existing.ToolKind, existing.Slug, input.Definition); err != nil {
+			return repository.ToolRow{}, err
+		}
+	}
+	return m.repo.UpdateTool(ctx, repository.UpdateToolParams{
+		ID:              id,
+		Name:            name,
+		CapabilityKey:   capabilityKey,
+		Definition:      input.Definition,
+		LifecycleStatus: strings.TrimSpace(input.LifecycleStatus),
+	})
+}
+
+func (m *InfrastructureManager) DeleteTool(ctx context.Context, id uuid.UUID) error {
+	return m.repo.ArchiveTool(ctx, id)
+}
+
+// validateToolDefinition runs the canonical toolspec validator. For composed
+// tools it loads the workspace's other tools so step refs of type "tool" can be
+// checked for existence (and self-reference rejected via selfSlug).
+func (m *InfrastructureManager) validateToolDefinition(ctx context.Context, workspaceID uuid.UUID, toolKind, selfSlug string, definition json.RawMessage) error {
+	opts := toolspec.ValidateOptions{SelfSlug: selfSlug}
+	if toolKind == toolspec.ToolTypeComposed {
+		tools, err := m.repo.ListToolsByWorkspaceID(ctx, workspaceID)
+		if err != nil {
+			return fmt.Errorf("load workspace tools: %w", err)
+		}
+		known := make(map[string]struct{}, len(tools))
+		for _, t := range tools {
+			known[t.Slug] = struct{}{}
+		}
+		opts.KnownToolSlugs = known
+	}
+	if errs := toolspec.ValidateDefinition(toolKind, definition, opts); len(errs) > 0 {
+		return &ToolDefinitionError{Errors: errs}
+	}
+	return nil
 }
 
 // --------------------------------------------------------------------------

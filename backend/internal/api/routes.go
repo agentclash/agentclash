@@ -315,9 +315,12 @@ func registerProtectedRoutes(
 	router.Delete("/model-aliases/{aliasID}", infraDeleteHandler(logger, authorizer, "aliasID", infraService.GetModelAlias, infraService.DeleteModelAlias, "model alias"))
 
 	// Tools
+	router.Get("/tool-primitives", listToolPrimitivesHandler())
 	router.Method("POST", "/workspaces/{workspaceID}/tools", wsMiddleware(infraCreateHandler(logger, authorizer, infraService.CreateTool, mapTool)))
 	router.Method("GET", "/workspaces/{workspaceID}/tools", wsMiddleware(infraListHandler(logger, infraService.ListTools, mapTool)))
 	router.Get("/tools/{toolID}", infraGetHandler(logger, authorizer, "toolID", infraService.GetTool, mapTool, "tool"))
+	router.Patch("/tools/{toolID}", updateToolHandler(logger, authorizer, infraService))
+	router.Delete("/tools/{toolID}", infraDeleteHandler(logger, authorizer, "toolID", infraService.GetTool, infraService.DeleteTool, "tool"))
 
 	// Knowledge Sources
 	router.Method("POST", "/workspaces/{workspaceID}/knowledge-sources", wsMiddleware(infraCreateHandler(logger, authorizer, infraService.CreateKnowledgeSource, mapKnowledgeSource)))

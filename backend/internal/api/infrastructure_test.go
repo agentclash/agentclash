@@ -21,6 +21,9 @@ type stubInfraService struct {
 	providerTestResult  ProviderAccountTestResult
 	modelAlias          repository.ModelAliasRow
 	createModelAliasErr error
+	tool                repository.ToolRow
+	toolFound           bool
+	updateToolErr       error
 }
 
 func (s stubInfraService) CreateRuntimeProfile(_ context.Context, _ Caller, _ uuid.UUID, _ CreateRuntimeProfileInput) (repository.RuntimeProfileRow, error) {
@@ -83,7 +86,25 @@ func (s stubInfraService) ListTools(_ context.Context, _ uuid.UUID) ([]repositor
 	return nil, nil
 }
 func (s stubInfraService) GetTool(_ context.Context, _ uuid.UUID) (repository.ToolRow, error) {
+	if s.toolFound {
+		return s.tool, nil
+	}
 	return repository.ToolRow{}, repository.ErrToolNotFound
+}
+func (s stubInfraService) UpdateTool(_ context.Context, _ Caller, _ uuid.UUID, _ UpdateToolInput) (repository.ToolRow, error) {
+	if s.updateToolErr != nil {
+		return repository.ToolRow{}, s.updateToolErr
+	}
+	if !s.toolFound {
+		return repository.ToolRow{}, repository.ErrToolNotFound
+	}
+	return s.tool, nil
+}
+func (s stubInfraService) DeleteTool(_ context.Context, _ uuid.UUID) error {
+	if !s.toolFound {
+		return repository.ErrToolNotFound
+	}
+	return nil
 }
 func (s stubInfraService) CreateKnowledgeSource(_ context.Context, _ Caller, _ uuid.UUID, _ CreateKnowledgeSourceInput) (repository.KnowledgeSourceRow, error) {
 	return repository.KnowledgeSourceRow{}, nil

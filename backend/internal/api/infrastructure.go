@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/toolspec"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -49,6 +50,8 @@ type InfrastructureService interface {
 	CreateTool(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateToolInput) (repository.ToolRow, error)
 	ListTools(ctx context.Context, workspaceID uuid.UUID) ([]repository.ToolRow, error)
 	GetTool(ctx context.Context, id uuid.UUID) (repository.ToolRow, error)
+	UpdateTool(ctx context.Context, caller Caller, id uuid.UUID, input UpdateToolInput) (repository.ToolRow, error)
+	DeleteTool(ctx context.Context, id uuid.UUID) error
 
 	// Knowledge Sources
 	CreateKnowledgeSource(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateKnowledgeSourceInput) (repository.KnowledgeSourceRow, error)
@@ -120,13 +123,43 @@ func (i *CreateModelAliasInput) Validate() error {
 type CreateToolInput struct {
 	Name          string          `json:"name"`
 	ToolKind      string          `json:"tool_kind"`
-	CapabilityKey string          `json:"capability_key"`
+	CapabilityKey string          `json:"capability_key,omitempty"`
 	Definition    json.RawMessage `json:"definition,omitempty"`
 }
 
 func (i *CreateToolInput) Validate() error {
-	return requireFields(map[string]string{"name": i.Name, "tool_kind": i.ToolKind, "capability_key": i.CapabilityKey})
+	if err := requireFields(map[string]string{"name": i.Name, "tool_kind": i.ToolKind}); err != nil {
+		return err
+	}
+	return validateToolKind(i.ToolKind)
 }
+
+// UpdateToolInput carries the mutable fields of a tool. ToolKind and slug are
+// immutable; name, capability_key and lifecycle_status default to their existing
+// values when left empty.
+type UpdateToolInput struct {
+	Name            string          `json:"name,omitempty"`
+	CapabilityKey   string          `json:"capability_key,omitempty"`
+	Definition      json.RawMessage `json:"definition,omitempty"`
+	LifecycleStatus string          `json:"lifecycle_status,omitempty"`
+}
+
+func validateToolKind(kind string) error {
+	switch kind {
+	case toolspec.ToolTypePrimitive, toolspec.ToolTypeComposed:
+		return nil
+	default:
+		return fmt.Errorf("tool_kind must be %q or %q", toolspec.ToolTypePrimitive, toolspec.ToolTypeComposed)
+	}
+}
+
+// ToolDefinitionError wraps validation problems with a tool definition so handlers
+// can return a 400 with field-level detail instead of a 500.
+type ToolDefinitionError struct {
+	Errors toolspec.ValidationErrors
+}
+
+func (e *ToolDefinitionError) Error() string { return e.Errors.Error() }
 
 type CreateKnowledgeSourceInput struct {
 	Name             string          `json:"name"`
@@ -347,6 +380,11 @@ func infraCreateHandler[Input any, Row any, Resp any](
 		}
 		row, err := create(r.Context(), caller, wsID, input)
 		if err != nil {
+			var toolDefErr *ToolDefinitionError
+			if errors.As(err, &toolDefErr) {
+				writeError(w, http.StatusBadRequest, "validation_error", toolDefErr.Error())
+				return
+			}
 			if errors.Is(err, repository.ErrSlugTaken) {
 				writeError(w, http.StatusConflict, "slug_taken", "a resource with that name already exists")
 				return
@@ -728,5 +766,96 @@ func archiveRuntimeProfileHandler(logger *slog.Logger, svc InfrastructureService
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// --------------------------------------------------------------------------
+// Tools: update + primitive catalog
+// --------------------------------------------------------------------------
+
+func updateToolHandler(logger *slog.Logger, authorizer WorkspaceAuthorizer, svc InfrastructureService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+			return
+		}
+		id, err := uuid.Parse(chi.URLParam(r, "toolID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "invalid ID")
+			return
+		}
+		// Fetch first to authorize against the tool's workspace.
+		existing, err := svc.GetTool(r.Context(), id)
+		if err != nil {
+			if isInfraNotFoundErr(err) {
+				writeError(w, http.StatusNotFound, "not_found", "tool not found")
+				return
+			}
+			logger.Error("get tool for update failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to get tool")
+			return
+		}
+		if existing.WorkspaceID != nil {
+			if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, *existing.WorkspaceID, ActionManageInfrastructure); err != nil {
+				writeAuthzError(w, err)
+				return
+			}
+		} else {
+			writeError(w, http.StatusNotFound, "not_found", "tool not found")
+			return
+		}
+		if err := requireJSONContentType(r); err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+			return
+		}
+		var input UpdateToolInput
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
+			return
+		}
+		row, err := svc.UpdateTool(r.Context(), caller, id, input)
+		if err != nil {
+			var toolDefErr *ToolDefinitionError
+			if errors.As(err, &toolDefErr) {
+				writeError(w, http.StatusBadRequest, "validation_error", toolDefErr.Error())
+				return
+			}
+			if isInfraNotFoundErr(err) {
+				writeError(w, http.StatusNotFound, "not_found", "tool not found")
+				return
+			}
+			logger.Error("update tool failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to update tool")
+			return
+		}
+		writeJSON(w, http.StatusOK, mapTool(row))
+	}
+}
+
+type toolPrimitiveResponse struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Kind        string          `json:"kind"`
+	Parameters  json.RawMessage `json:"parameters"`
+	Delegatable bool            `json:"delegatable"`
+}
+
+// listToolPrimitivesHandler returns the static catalog of base primitives a
+// custom tool can delegate to or compose. Global and read-only.
+func listToolPrimitivesHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		prims := toolspec.Primitives()
+		items := make([]toolPrimitiveResponse, len(prims))
+		for i, p := range prims {
+			items[i] = toolPrimitiveResponse{
+				Name:        p.Name,
+				Description: p.Description,
+				Kind:        string(p.Kind),
+				Parameters:  p.Parameters,
+				Delegatable: p.Delegatable,
+			}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"items": items})
 	}
 }

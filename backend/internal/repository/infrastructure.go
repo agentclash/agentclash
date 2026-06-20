@@ -702,6 +702,56 @@ func (r *Repository) ListToolsByWorkspaceID(ctx context.Context, workspaceID uui
 	return result, nil
 }
 
+type UpdateToolParams struct {
+	ID              uuid.UUID
+	Name            string
+	CapabilityKey   string
+	Definition      json.RawMessage
+	LifecycleStatus string
+}
+
+// UpdateTool updates the mutable fields of a tool. The slug and tool_kind are
+// intentionally immutable so that composed tools referencing this tool by slug
+// keep resolving. An empty LifecycleStatus leaves the existing status unchanged.
+func (r *Repository) UpdateTool(ctx context.Context, p UpdateToolParams) (ToolRow, error) {
+	var row ToolRow
+	var createdAt, updatedAt pgtype.Timestamptz
+	err := r.db.QueryRow(ctx, `
+		UPDATE tools
+		SET name = $2,
+		    capability_key = $3,
+		    definition = $4,
+		    lifecycle_status = COALESCE(NULLIF($5, ''), lifecycle_status),
+		    updated_at = now()
+		WHERE id = $1 AND archived_at IS NULL
+		RETURNING id, organization_id, workspace_id, name, slug, tool_kind, capability_key, definition, lifecycle_status, created_at, updated_at
+	`, p.ID, p.Name, p.CapabilityKey, defaultRawJSON(p.Definition), p.LifecycleStatus,
+	).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.Name, &row.Slug, &row.ToolKind,
+		&row.CapabilityKey, &row.Definition, &row.LifecycleStatus, &createdAt, &updatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ToolRow{}, ErrToolNotFound
+		}
+		return ToolRow{}, fmt.Errorf("update tool: %w", err)
+	}
+	row.CreatedAt = createdAt.Time
+	row.UpdatedAt = updatedAt.Time
+	return row, nil
+}
+
+// ArchiveTool soft-deletes a tool by setting archived_at. Subsequent Get/List
+// calls (which filter archived_at IS NULL) will no longer return it.
+func (r *Repository) ArchiveTool(ctx context.Context, id uuid.UUID) error {
+	tag, err := r.db.Exec(ctx, `UPDATE tools SET lifecycle_status = 'archived', archived_at = now(), updated_at = now() WHERE id = $1 AND archived_at IS NULL`, id)
+	if err != nil {
+		return fmt.Errorf("archive tool: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrToolNotFound
+	}
+	return nil
+}
+
 // --------------------------------------------------------------------------
 // Knowledge Sources
 // --------------------------------------------------------------------------
