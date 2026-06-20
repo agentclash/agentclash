@@ -712,20 +712,25 @@ type UpdateToolParams struct {
 
 // UpdateTool updates the mutable fields of a tool. The slug and tool_kind are
 // intentionally immutable so that composed tools referencing this tool by slug
-// keep resolving. An empty LifecycleStatus leaves the existing status unchanged.
+// keep resolving. An empty Definition or LifecycleStatus leaves the existing
+// value unchanged (COALESCE), so callers can perform partial updates.
 func (r *Repository) UpdateTool(ctx context.Context, p UpdateToolParams) (ToolRow, error) {
 	var row ToolRow
 	var createdAt, updatedAt pgtype.Timestamptz
+	var definitionArg any
+	if len(p.Definition) > 0 {
+		definitionArg = string(p.Definition)
+	}
 	err := r.db.QueryRow(ctx, `
 		UPDATE tools
 		SET name = $2,
 		    capability_key = $3,
-		    definition = $4,
+		    definition = COALESCE($4::jsonb, definition),
 		    lifecycle_status = COALESCE(NULLIF($5, ''), lifecycle_status),
 		    updated_at = now()
 		WHERE id = $1 AND archived_at IS NULL
 		RETURNING id, organization_id, workspace_id, name, slug, tool_kind, capability_key, definition, lifecycle_status, created_at, updated_at
-	`, p.ID, p.Name, p.CapabilityKey, defaultRawJSON(p.Definition), p.LifecycleStatus,
+	`, p.ID, p.Name, p.CapabilityKey, definitionArg, p.LifecycleStatus,
 	).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.Name, &row.Slug, &row.ToolKind,
 		&row.CapabilityKey, &row.Definition, &row.LifecycleStatus, &createdAt, &updatedAt)
 	if err != nil {

@@ -383,7 +383,7 @@ func (m *InfrastructureManager) CreateTool(ctx context.Context, caller Caller, w
 	if capabilityKey == "" {
 		capabilityKey = slug
 	}
-	if err := m.validateToolDefinition(ctx, workspaceID, input.ToolKind, slug, input.Definition); err != nil {
+	if err := m.validateToolDefinition(ctx, &workspaceID, input.ToolKind, slug, input.Definition); err != nil {
 		return repository.ToolRow{}, err
 	}
 	return m.repo.CreateTool(ctx, repository.CreateToolParams{
@@ -420,10 +420,10 @@ func (m *InfrastructureManager) UpdateTool(ctx context.Context, caller Caller, i
 	}
 	// tool_kind and slug are immutable; validate the new definition against the
 	// existing tool_kind, excluding this tool's own slug to reject self-reference.
-	if existing.WorkspaceID != nil {
-		if err := m.validateToolDefinition(ctx, *existing.WorkspaceID, existing.ToolKind, existing.Slug, input.Definition); err != nil {
-			return repository.ToolRow{}, err
-		}
+	// A nil/empty definition is a partial update (rename, lifecycle toggle) and is
+	// left to the repository's COALESCE to preserve the stored value.
+	if err := m.validateToolDefinition(ctx, existing.WorkspaceID, existing.ToolKind, existing.Slug, input.Definition); err != nil {
+		return repository.ToolRow{}, err
 	}
 	return m.repo.UpdateTool(ctx, repository.UpdateToolParams{
 		ID:              id,
@@ -438,13 +438,20 @@ func (m *InfrastructureManager) DeleteTool(ctx context.Context, id uuid.UUID) er
 	return m.repo.ArchiveTool(ctx, id)
 }
 
-// validateToolDefinition runs the canonical toolspec validator. For composed
-// tools it loads the workspace's other tools so step refs of type "tool" can be
-// checked for existence (and self-reference rejected via selfSlug).
-func (m *InfrastructureManager) validateToolDefinition(ctx context.Context, workspaceID uuid.UUID, toolKind, selfSlug string, definition json.RawMessage) error {
+// validateToolDefinition runs the canonical toolspec validator. An empty
+// definition is treated as "no change" (partial update) and skips validation.
+// Validation otherwise runs for every caller, regardless of whether the tool is
+// workspace-scoped. For composed tools with a workspace, it loads the other
+// tools so step refs of type "tool" can be checked for existence (and
+// self-reference rejected via selfSlug); without a workspace, tool-ref existence
+// is not checked but every other rule still applies.
+func (m *InfrastructureManager) validateToolDefinition(ctx context.Context, workspaceID *uuid.UUID, toolKind, selfSlug string, definition json.RawMessage) error {
+	if len(strings.TrimSpace(string(definition))) == 0 {
+		return nil
+	}
 	opts := toolspec.ValidateOptions{SelfSlug: selfSlug}
-	if toolKind == toolspec.ToolTypeComposed {
-		tools, err := m.repo.ListToolsByWorkspaceID(ctx, workspaceID)
+	if toolKind == toolspec.ToolTypeComposed && workspaceID != nil {
+		tools, err := m.repo.ListToolsByWorkspaceID(ctx, *workspaceID)
 		if err != nil {
 			return fmt.Errorf("load workspace tools: %w", err)
 		}

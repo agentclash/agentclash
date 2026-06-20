@@ -156,6 +156,44 @@ func TestManagerUpdateToolImmutableSlugAndSelfRefRejected(t *testing.T) {
 	}
 }
 
+func TestManagerUpdateToolAllowsPartialUpdateWithoutDefinition(t *testing.T) {
+	repo := newToolManagerRepo()
+	wsID := uuid.New()
+	repo.existing = repository.ToolRow{ID: uuid.New(), WorkspaceID: &wsID, Name: "Old", Slug: "refund_flow", ToolKind: toolspec.ToolTypeComposed, CapabilityKey: "refund_flow"}
+	m := NewInfrastructureManager(repo)
+
+	// Rename only — no definition supplied. Must not 400 on "definition required".
+	if _, err := m.UpdateTool(context.Background(), Caller{}, repo.existing.ID, UpdateToolInput{Name: "New name"}); err != nil {
+		t.Fatalf("partial update err: %v", err)
+	}
+	if repo.updated == nil {
+		t.Fatal("expected UpdateTool to reach repo")
+	}
+	if repo.updated.Name != "New name" {
+		t.Fatalf("name = %q, want updated", repo.updated.Name)
+	}
+	if len(repo.updated.Definition) != 0 {
+		t.Fatalf("expected nil definition for partial update (repo COALESCEs), got %s", repo.updated.Definition)
+	}
+}
+
+func TestManagerUpdateToolValidatesGlobalTool(t *testing.T) {
+	repo := newToolManagerRepo()
+	// Global (non-workspace) tool: validation must still run.
+	repo.existing = repository.ToolRow{ID: uuid.New(), WorkspaceID: nil, Name: "Global", Slug: "global", ToolKind: toolspec.ToolTypePrimitive, CapabilityKey: "global"}
+	m := NewInfrastructureManager(repo)
+
+	bad := json.RawMessage(`{"tool_type":"primitive","implementation":{"mode":"delegate","primitive":"teleport","args":{}}}`)
+	_, err := m.UpdateTool(context.Background(), Caller{}, repo.existing.ID, UpdateToolInput{Definition: bad})
+	var defErr *ToolDefinitionError
+	if err == nil || !errors.As(err, &defErr) {
+		t.Fatalf("expected validation to run for global tool, got %v", err)
+	}
+	if repo.updated != nil {
+		t.Fatal("invalid definition must not reach repo.UpdateTool")
+	}
+}
+
 func TestManagerDeleteToolArchives(t *testing.T) {
 	repo := newToolManagerRepo()
 	m := NewInfrastructureManager(repo)

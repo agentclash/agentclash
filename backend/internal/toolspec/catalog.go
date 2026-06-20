@@ -139,14 +139,20 @@ func Primitives() []PrimitiveSpec {
 	}
 }
 
+// primitiveIndex is a name-to-spec map built once for O(1) lookups, since
+// PrimitiveByName is called repeatedly during definition validation.
+var primitiveIndex = func() map[string]PrimitiveSpec {
+	m := make(map[string]PrimitiveSpec)
+	for _, p := range Primitives() {
+		m[p.Name] = p
+	}
+	return m
+}()
+
 // PrimitiveByName returns the spec for a primitive name, or ok=false if unknown.
 func PrimitiveByName(name string) (PrimitiveSpec, bool) {
-	for _, p := range Primitives() {
-		if p.Name == name {
-			return p, true
-		}
-	}
-	return PrimitiveSpec{}, false
+	p, ok := primitiveIndex[name]
+	return p, ok
 }
 
 // PrimitiveNames returns the set of all primitive names.
