@@ -11,7 +11,8 @@ import { PageHeader } from "@/components/ui/page-header";
  * routes to the builder with a sensible starting point preselected.
  */
 export function ToolStartChooser({ workspaceId }: { workspaceId: string }) {
-  const base = `/workspaces/${workspaceId}/tools/new`;
+  // The chooser is the classic form-editor entry; keep links in form mode.
+  const base = `/workspaces/${workspaceId}/tools/new?editor=form`;
 
   return (
     <div>
@@ -26,18 +27,18 @@ export function ToolStartChooser({ workspaceId }: { workspaceId: string }) {
 
       <div className="grid gap-3 lg:grid-cols-2">
         <ChoiceCard
-          href={`${base}?type=primitive`}
+          href={`${base}&type=primitive`}
           icon={<Boxes className="size-5" />}
           title="A single action"
           description="The tool does one thing — call an API, run a command, read a file, or return a canned response for testing."
           quickStarts={[
-            { href: `${base}?type=primitive&start=api`, icon: <Globe className="size-3.5" />, label: "Call a web API" },
-            { href: `${base}?type=primitive&start=command`, icon: <Terminal className="size-3.5" />, label: "Run a command" },
-            { href: `${base}?type=primitive&start=mock`, icon: <MessageSquareDashed className="size-3.5" />, label: "Return a sample response" },
+            { href: `${base}&type=primitive&start=api`, icon: <Globe className="size-3.5" />, label: "Call a web API" },
+            { href: `${base}&type=primitive&start=command`, icon: <Terminal className="size-3.5" />, label: "Run a command" },
+            { href: `${base}&type=primitive&start=mock`, icon: <MessageSquareDashed className="size-3.5" />, label: "Return a sample response" },
           ]}
         />
         <ChoiceCard
-          href={`${base}?type=composed`}
+          href={`${base}&type=composed`}
           icon={<Workflow className="size-5" />}
           title="A sequence of steps"
           description="The tool runs several actions in order, passing each result into the next — for example, fetch data, then save it to a file."
