@@ -52,9 +52,19 @@ export function useGuidedTour(
   { autoStartOnce = false, ready = true, config }: GuidedTourOptions = {},
 ): GuidedTour {
   const driverRef = useRef<Driver | null>(null);
+  // Hold the latest steps/config in refs so `start` stays referentially stable
+  // even when a caller passes inline arrays/objects. An unstable `start` would
+  // otherwise re-run the auto-start effect on every render.
+  const stepsRef = useRef(steps);
+  const configRef = useRef(config);
+  useEffect(() => {
+    stepsRef.current = steps;
+    configRef.current = config;
+  });
 
   const start = useCallback(() => {
     if (typeof window === "undefined") return;
+    const userConfig = configRef.current;
     // Recreate the driver each launch so it always reflects the latest steps,
     // and so re-running after a previous tour starts cleanly from step one.
     driverRef.current?.destroy();
@@ -68,13 +78,19 @@ export function useGuidedTour(
       nextBtnText: "Next",
       prevBtnText: "Back",
       doneBtnText: "Got it",
-      ...config,
-      steps,
+      ...userConfig,
+      steps: stepsRef.current,
+      // Mark "seen" only once the tour actually ends (completed or dismissed) —
+      // not the instant it launches. A tour that never renders (e.g. a missing
+      // anchor) then won't suppress the next visit's auto-start.
+      onDestroyed: (element, step, opts) => {
+        markSeen(tourId);
+        userConfig?.onDestroyed?.(element, step, opts);
+      },
     });
     driverRef.current = d;
     d.drive();
-    markSeen(tourId);
-  }, [steps, config, tourId]);
+  }, [tourId]);
 
   // Auto-start once, after anchors are ready.
   useEffect(() => {

@@ -2,7 +2,7 @@
 
 import "@xyflow/react/dist/style.css";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { toast } from "sonner";
@@ -53,6 +53,10 @@ import {
 import { emptyPrimitiveDefinition } from "./lib/definition";
 import { validateDefinition } from "./lib/validate";
 import type { ToolDefinition, ToolRecord, ToolType } from "./lib/types";
+
+// Stable reference — React Flow compares proOptions by identity, so an inline
+// object would trigger redundant internal updates on every render.
+const HIDE_ATTRIBUTION = { hideAttribution: true } as const;
 
 function labelFor(node: CanvasNode): string {
   if (node.kind === "operation") return node.data.primitive ? operationLabel(node.data.primitive) : "operation";
@@ -143,7 +147,13 @@ function CanvasBuilderInner({
   }, [immersive, tour]);
 
   // The canvas resizes when entering/leaving fullscreen; recenter the graph.
+  // Skip the initial mount — <ReactFlow fitView> already fits on first render.
+  const didToggleMount = useRef(false);
   useEffect(() => {
+    if (!didToggleMount.current) {
+      didToggleMount.current = true;
+      return;
+    }
     const t = window.setTimeout(() => fitView({ duration: 200 }), 80);
     return () => window.clearTimeout(t);
   }, [immersive, fitView]);
@@ -318,7 +328,7 @@ function CanvasBuilderInner({
               }}
               fitView
               colorMode="dark"
-              proOptions={{ hideAttribution: true }}
+              proOptions={HIDE_ATTRIBUTION}
             >
               <Background />
               <Controls showInteractive={false} />
