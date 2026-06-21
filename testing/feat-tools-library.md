@@ -14,6 +14,8 @@
 - UUID generation uses a runtime available in the shipped sandbox image.
 - Bulk library creation rejects empty and oversized batches and enforces a bounded HTTP request body.
 - `conflict=suffix` remains deterministic for existing workspace collisions and handles concurrent slug conflicts without silently violating suffix behavior.
+- Re-adding a library tool after deletion restores the archived slug instead of reporting a hidden tool as already present.
+- The frontend validator and dry-run preview understand destination-encoded placeholders used by live library definitions.
 
 ## Unit Tests
 
@@ -23,7 +25,9 @@
 - `TestSafeCalcScript` — normal arithmetic succeeds; code execution, booleans, oversized input, and power amplification fail.
 - `TestCreateToolsFromLibraryInputValidate` — empty and oversized entry arrays fail validation.
 - `TestCreateToolsFromLibraryConflicts` — skip and suffix behavior remain correct.
+- Repository create-tool coverage — a matching archived workspace tool is restored with the new definition and becomes visible again.
 - Template resolution tests — JSON, query, and path encoders escape special characters without changing ordinary values.
+- Frontend definition tests — encoded placeholders validate and simulate using their underlying declared parameter.
 - Frontend gallery tests — added-state uses workspace slugs, bulk add sends catalog slugs, and failure/empty states remain actionable.
 
 ## Integration / Functional Tests
