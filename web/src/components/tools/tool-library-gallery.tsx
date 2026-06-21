@@ -24,6 +24,19 @@ interface FromLibraryResult {
   skipped: { slug: string; reason: string }[];
 }
 
+// Mirror of the backend's generateSlug (api/agent_builds.go): lowercase, collapse
+// non-alphanumerics to "-", trim, cap at 60. Used to predict the slug an added
+// library tool will get, so the gallery can mark it "Added" by that stable key.
+function slugify(name: string): string {
+  let s = name
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (s.length > 60) s = s.slice(0, 60).replace(/-+$/, "");
+  return s;
+}
+
 export function ToolLibraryGallery({ workspaceId }: { workspaceId: string }) {
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
@@ -36,10 +49,13 @@ export function ToolLibraryGallery({ workspaceId }: { workspaceId: string }) {
   const [busy, setBusy] = useState<string | null>(null);
 
   const entries = useMemo(() => data?.items ?? [], [data]);
-  const addedNames = useMemo(
-    () => new Set((toolsData?.items ?? []).map((t) => t.name.toLowerCase())),
+  // Detect already-added entries by slug — the backend's stable dedup key
+  // (generateSlug(name)) — not by name, so a rename doesn't desync the UI.
+  const addedSlugs = useMemo(
+    () => new Set((toolsData?.items ?? []).map((t) => t.slug)),
     [toolsData],
   );
+  const isAdded = (entry: ToolLibraryEntry) => addedSlugs.has(slugify(entry.name));
 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -137,7 +153,7 @@ export function ToolLibraryGallery({ workspaceId }: { workspaceId: string }) {
       ) : (
         <div className="space-y-8">
           {groups.map(([category, items]) => {
-            const addable = items.filter((e) => !addedNames.has(e.name.toLowerCase())).map((e) => e.slug);
+            const addable = items.filter((e) => !isAdded(e)).map((e) => e.slug);
             const packKey = `pack:${category}`;
             return (
               <section key={category}>
@@ -167,7 +183,7 @@ export function ToolLibraryGallery({ workspaceId }: { workspaceId: string }) {
                     <LibraryCard
                       key={entry.slug}
                       entry={entry}
-                      added={addedNames.has(entry.name.toLowerCase())}
+                      added={isAdded(entry)}
                       busy={busy === entry.slug}
                       disabled={busy !== null}
                       onAdd={() => add([entry.slug], entry.slug)}

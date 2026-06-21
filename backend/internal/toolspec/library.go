@@ -159,6 +159,24 @@ func buildLibrary() []LibraryEntry {
 	return entries
 }
 
+// safeCalcScript evaluates ONLY arithmetic over numeric literals. Unlike a bare
+// eval(), it rejects names, calls, attributes and subscripts, so an agent can't
+// smuggle arbitrary Python (e.g. __import__('os')) through the calculator tool.
+const safeCalcScript = `import ast, operator, sys
+_ops = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
+        ast.Div: operator.truediv, ast.FloorDiv: operator.floordiv,
+        ast.Mod: operator.mod, ast.Pow: operator.pow,
+        ast.USub: operator.neg, ast.UAdd: operator.pos}
+def _ev(node):
+    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
+        return node.value
+    if isinstance(node, ast.BinOp) and type(node.op) in _ops:
+        return _ops[type(node.op)](_ev(node.left), _ev(node.right))
+    if isinstance(node, ast.UnaryOp) and type(node.op) in _ops:
+        return _ops[type(node.op)](_ev(node.operand))
+    raise ValueError("only arithmetic over numbers is allowed")
+print(_ev(ast.parse(sys.argv[1], mode="eval").body))`
+
 // rawLibrary is the authored catalog (descriptions injected by buildLibrary).
 func rawLibrary() []LibraryEntry {
 	live := func(slug, name, cat, desc, secret string, tags []string, mockResp map[string]any, liveDef json.RawMessage) LibraryEntry {
@@ -426,7 +444,7 @@ func rawLibrary() []LibraryEntry {
 			Definition: delegateDef(object(nil, fields{}), PrimitiveExec, map[string]any{"command": []any{"date", "-u", "+%Y-%m-%dT%H:%M:%SZ"}})},
 		{Slug: "calculator", Name: "Evaluate a math expression", Category: CatAI, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
 			Description: "Evaluate an arithmetic expression and return the result.", Tags: []string{"utility", "math"},
-			Definition: delegateDef(object([]string{"expression"}, fields{"expression": "string"}), PrimitiveExec, map[string]any{"command": []any{"python3", "-c", "import sys; print(eval(sys.argv[1]))", "${expression}"}})},
+			Definition: delegateDef(object([]string{"expression"}, fields{"expression": "string"}), PrimitiveExec, map[string]any{"command": []any{"python3", "-c", safeCalcScript, "${expression}"}})},
 		{Slug: "generate-uuid", Name: "Generate a UUID", Category: CatAI, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
 			Description: "Generate a random UUID.", Tags: []string{"utility", "id"},
 			Definition: delegateDef(object(nil, fields{}), PrimitiveExec, map[string]any{"command": []any{"uuidgen"}})},
