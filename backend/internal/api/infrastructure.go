@@ -48,6 +48,7 @@ type InfrastructureService interface {
 
 	// Tools
 	CreateTool(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateToolInput) (repository.ToolRow, error)
+	CreateToolsFromLibrary(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateToolsFromLibraryInput) ([]repository.ToolRow, []LibrarySkip, error)
 	ListTools(ctx context.Context, workspaceID uuid.UUID) ([]repository.ToolRow, error)
 	GetTool(ctx context.Context, id uuid.UUID) (repository.ToolRow, error)
 	UpdateTool(ctx context.Context, caller Caller, id uuid.UUID, input UpdateToolInput) (repository.ToolRow, error)
@@ -132,6 +133,49 @@ func (i *CreateToolInput) Validate() error {
 		return err
 	}
 	return validateToolKind(i.ToolKind)
+}
+
+// FromLibraryEntryInput requests one library tool be added to the workspace.
+type FromLibraryEntryInput struct {
+	Slug string `json:"slug"`
+	// Variant selects "default" (instantly-usable, default) or "live" (the real
+	// API call, which needs the tool's secret + a network allowlist).
+	Variant string `json:"variant,omitempty"`
+	// Conflict is "skip" (default) or "suffix" when a tool with the same slug exists.
+	Conflict string `json:"conflict,omitempty"`
+}
+
+// CreateToolsFromLibraryInput adds one or more library tools to a workspace.
+type CreateToolsFromLibraryInput struct {
+	Entries []FromLibraryEntryInput `json:"entries"`
+}
+
+func (i *CreateToolsFromLibraryInput) Validate() error {
+	if len(i.Entries) == 0 {
+		return fmt.Errorf("entries is required")
+	}
+	for _, e := range i.Entries {
+		if strings.TrimSpace(e.Slug) == "" {
+			return fmt.Errorf("each entry requires a slug")
+		}
+		switch e.Variant {
+		case "", "default", "live":
+		default:
+			return fmt.Errorf("variant must be \"default\" or \"live\"")
+		}
+		switch e.Conflict {
+		case "", "skip", "suffix":
+		default:
+			return fmt.Errorf("conflict must be \"skip\" or \"suffix\"")
+		}
+	}
+	return nil
+}
+
+// LibrarySkip reports a library entry that was not added and why.
+type LibrarySkip struct {
+	Slug   string `json:"slug"`
+	Reason string `json:"reason"`
 }
 
 // UpdateToolInput carries the mutable fields of a tool. ToolKind and slug are
@@ -873,5 +917,112 @@ func listToolPrimitivesHandler() http.HandlerFunc {
 			}
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"items": items})
+	}
+}
+
+type toolLibraryEntryResponse struct {
+	Slug           string          `json:"slug"`
+	Name           string          `json:"name"`
+	Category       string          `json:"category"`
+	Description    string          `json:"description"`
+	Tags           []string        `json:"tags"`
+	ToolKind       string          `json:"tool_kind"`
+	Delivery       string          `json:"delivery"`
+	RequiresSecret string          `json:"requires_secret,omitempty"`
+	HasLive        bool            `json:"has_live"`
+	Definition     json.RawMessage `json:"definition"`
+}
+
+func mapLibraryEntry(e toolspec.LibraryEntry) toolLibraryEntryResponse {
+	tags := e.Tags
+	if tags == nil {
+		tags = []string{}
+	}
+	return toolLibraryEntryResponse{
+		Slug:           e.Slug,
+		Name:           e.Name,
+		Category:       e.Category,
+		Description:    e.Description,
+		Tags:           tags,
+		ToolKind:       e.ToolKind,
+		Delivery:       e.Delivery,
+		RequiresSecret: e.RequiresSecret,
+		HasLive:        e.HasLive(),
+		Definition:     e.Definition,
+	}
+}
+
+// listToolLibraryHandler returns the global, read-only catalog of prebuilt tools
+// (optionally filtered by ?category=). Instantiate entries with the from-library
+// endpoint. Global and read-only.
+func listToolLibraryHandler() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		category := strings.TrimSpace(r.URL.Query().Get("category"))
+		entries := toolspec.Library()
+		items := make([]toolLibraryEntryResponse, 0, len(entries))
+		for _, e := range entries {
+			if category != "" && e.Category != category {
+				continue
+			}
+			items = append(items, mapLibraryEntry(e))
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"items":      items,
+			"categories": toolspec.LibraryCategories(),
+		})
+	}
+}
+
+// createToolsFromLibraryHandler instantiates one or more library tools into the
+// workspace as real, editable tools. Returns the created tools plus any skipped
+// (e.g. already added). Bulk, so it doesn't use the single-row infraCreateHandler.
+func createToolsFromLibraryHandler(logger *slog.Logger, authorizer WorkspaceAuthorizer, svc InfrastructureService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+			return
+		}
+		wsID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "workspace ID required")
+			return
+		}
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, wsID, ActionManageInfrastructure); err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		if err := requireJSONContentType(r); err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+			return
+		}
+		var input CreateToolsFromLibraryInput
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
+			return
+		}
+		if err := input.Validate(); err != nil {
+			writeError(w, http.StatusBadRequest, "validation_error", err.Error())
+			return
+		}
+		created, skipped, err := svc.CreateToolsFromLibrary(r.Context(), caller, wsID, input)
+		if err != nil {
+			var toolDefErr *ToolDefinitionError
+			if errors.As(err, &toolDefErr) {
+				writeError(w, http.StatusBadRequest, "validation_error", toolDefErr.Error())
+				return
+			}
+			logger.Error("create tools from library failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to add tools from library")
+			return
+		}
+		items := make([]toolResponse, len(created))
+		for i, row := range created {
+			items[i] = mapTool(row)
+		}
+		if skipped == nil {
+			skipped = []LibrarySkip{}
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"items": items, "skipped": skipped})
 	}
 }

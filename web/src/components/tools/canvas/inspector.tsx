@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
 import { Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ArgsEditor } from "../args-editor";
@@ -21,6 +22,7 @@ import type { ValueReference } from "../lib/friendly";
  */
 export function NodeInspector({
   node,
+  workspaceId,
   references,
   primitives,
   tools,
@@ -29,6 +31,7 @@ export function NodeInspector({
   onClose,
 }: {
   node: CanvasNode;
+  workspaceId: string;
   references: ValueReference[];
   primitives: ToolPrimitive[];
   tools: { slug: string; name: string }[];
@@ -46,9 +49,9 @@ export function NodeInspector({
     node.kind === "inputs"
       ? "Agent inputs"
       : node.kind === "operation"
-        ? "Operation"
+        ? "Built-in action"
         : node.kind === "tool"
-          ? "Tool reference"
+          ? "Your tools"
           : "Canned response";
 
   return (
@@ -78,7 +81,7 @@ export function NodeInspector({
         {node.kind === "operation" && (
           <>
             <div className="space-y-1.5">
-              <h4 className="text-sm font-medium">Operation</h4>
+              <h4 className="text-sm font-medium">Choose an action</h4>
               <OperationPicker
                 primitives={delegatable}
                 selected={node.data.primitive ?? ""}
@@ -103,37 +106,52 @@ export function NodeInspector({
           </>
         )}
 
-        {node.kind === "tool" && (
-          <>
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">Which tool?</label>
-              <select
-                value={node.data.slug ?? ""}
-                onChange={(e) => {
-                  const slug = e.target.value;
-                  const name = tools.find((t) => t.slug === slug)?.name;
-                  onPatch({ slug, toolName: name });
-                }}
-                className={controlClass}
-              >
-                <option value="">Choose a tool…</option>
-                {tools.map((t) => (
-                  <option key={t.slug} value={t.slug}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+        {node.kind === "tool" &&
+          (tools.length === 0 ? (
+            <div className="space-y-2 rounded-md border border-dashed border-border p-3 text-xs text-muted-foreground">
+              <p>This step runs another tool you&apos;ve built — but you don&apos;t have any others yet.</p>
+              <p>
+                <Link
+                  href={`/workspaces/${workspaceId}/tools/new`}
+                  className="text-foreground underline underline-offset-4"
+                >
+                  Add a tool from the library
+                </Link>{" "}
+                or build one first, then come back and connect it. For a single action, use a
+                built-in action instead.
+              </p>
             </div>
-            <StepInputsEditor
-              inputs={node.data.inputs ?? {}}
-              onChange={(inputs) => onPatch({ inputs })}
-              references={references}
-              allowSecrets={false}
-              label="Inputs to pass in"
-              emptyHint="Add the inputs this tool needs."
-            />
-          </>
-        )}
+          ) : (
+            <>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium">Which of your tools?</label>
+                <select
+                  value={node.data.slug ?? ""}
+                  onChange={(e) => {
+                    const slug = e.target.value;
+                    const name = tools.find((t) => t.slug === slug)?.name;
+                    onPatch({ slug, toolName: name });
+                  }}
+                  className={controlClass}
+                >
+                  <option value="">Choose one of your tools…</option>
+                  {tools.map((t) => (
+                    <option key={t.slug} value={t.slug}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <StepInputsEditor
+                inputs={node.data.inputs ?? {}}
+                onChange={(inputs) => onPatch({ inputs })}
+                references={references}
+                allowSecrets={false}
+                label="Inputs to pass in"
+                emptyHint="Add the inputs this tool needs."
+              />
+            </>
+          ))}
 
         {node.kind === "canned" && (
           <MockEditor

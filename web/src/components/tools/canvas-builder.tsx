@@ -342,6 +342,7 @@ function CanvasBuilderInner({
             {selectedNode ? (
               <NodeInspector
                 node={selectedNode}
+                workspaceId={workspaceId}
                 references={references}
                 primitives={primitives}
                 tools={toolOptions}

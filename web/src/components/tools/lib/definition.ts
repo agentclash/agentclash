@@ -54,7 +54,7 @@ export function presetDefinition(type: ToolType, start?: string): ToolDefinition
     case "command":
       return {
         ...emptyPrimitiveDefinition(),
-        implementation: { mode: "delegate", primitive: "shell_exec", args: {} },
+        implementation: { mode: "delegate", primitive: "exec", args: {} },
       };
     case "mock":
       return {

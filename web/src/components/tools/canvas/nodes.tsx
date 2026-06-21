@@ -67,9 +67,9 @@ export function OperationNode({ data, selected }: NodeProps) {
       <Shell
         selected={selected}
         icon={<Boxes className="size-3.5" />}
-        tag="Operation"
-        title={d.primitive ? operationLabel(d.primitive) : "Choose an operation"}
-        subtitle={d.primitive || "Click to configure"}
+        tag="Built-in action"
+        title={d.primitive ? operationLabel(d.primitive) : "Choose an action"}
+        subtitle={d.primitive ? undefined : "Click to configure"}
       />
       <Handle type="source" position={Position.Right} className={handleClass} />
     </>
@@ -84,9 +84,9 @@ export function ToolNode({ data, selected }: NodeProps) {
       <Shell
         selected={selected}
         icon={<Wrench className="size-3.5" />}
-        tag="Tool"
-        title={d.toolName || d.slug || "Choose a tool"}
-        subtitle={d.slug ? "Runs another saved tool" : "Click to configure"}
+        tag="Your tool"
+        title={d.toolName || d.slug || "Pick one of your tools"}
+        subtitle={d.slug ? "Runs another tool you built" : "Click to configure"}
       />
       <Handle type="source" position={Position.Right} className={handleClass} />
     </>

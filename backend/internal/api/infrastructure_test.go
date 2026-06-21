@@ -82,6 +82,9 @@ func (s stubInfraService) DeleteModelAlias(_ context.Context, _ uuid.UUID) error
 func (s stubInfraService) CreateTool(_ context.Context, _ Caller, _ uuid.UUID, _ CreateToolInput) (repository.ToolRow, error) {
 	return repository.ToolRow{}, nil
 }
+func (s stubInfraService) CreateToolsFromLibrary(_ context.Context, _ Caller, _ uuid.UUID, _ CreateToolsFromLibraryInput) ([]repository.ToolRow, []LibrarySkip, error) {
+	return nil, nil, nil
+}
 func (s stubInfraService) ListTools(_ context.Context, _ uuid.UUID) ([]repository.ToolRow, error) {
 	return nil, nil
 }

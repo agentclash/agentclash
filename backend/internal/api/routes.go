@@ -316,7 +316,9 @@ func registerProtectedRoutes(
 
 	// Tools
 	router.Get("/tool-primitives", listToolPrimitivesHandler())
+	router.Get("/tool-library", listToolLibraryHandler())
 	router.Method("POST", "/workspaces/{workspaceID}/tools", wsMiddleware(infraCreateHandler(logger, authorizer, infraService.CreateTool, mapTool)))
+	router.Method("POST", "/workspaces/{workspaceID}/tools/from-library", wsMiddleware(createToolsFromLibraryHandler(logger, authorizer, infraService)))
 	router.Method("GET", "/workspaces/{workspaceID}/tools", wsMiddleware(infraListHandler(logger, infraService.ListTools, mapTool)))
 	router.Get("/tools/{toolID}", infraGetHandler(logger, authorizer, "toolID", infraService.GetTool, mapTool, "tool"))
 	router.Patch("/tools/{toolID}", updateToolHandler(logger, authorizer, infraService))

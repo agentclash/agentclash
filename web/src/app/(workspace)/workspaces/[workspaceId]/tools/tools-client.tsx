@@ -87,8 +87,8 @@ function ToolsList({ workspaceId }: { workspaceId: string }) {
         <EmptyState
           icon={<Wrench className="size-10" />}
           title="No tools yet"
-          description="Build a tool agents can use during a run — call an API, run a command, or chain a few steps together. No code required."
-          action={{ label: "New tool", href: `/workspaces/${workspaceId}/tools/new` }}
+          description="Add a ready-made tool from the library — web search, Slack, read a file, query a database, and more — or build your own. No code required."
+          action={{ label: "Browse the library", href: `/workspaces/${workspaceId}/tools/new` }}
         />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
