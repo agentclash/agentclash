@@ -1,14 +1,29 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Plus, Trash2 } from "lucide-react";
 import { controlClass } from "./field";
 import { TYPE_OPTIONS } from "./lib/friendly";
 import type { JsonSchemaType, ParamField } from "./lib/types";
 
+// Signature of the rows that survive the parent's schema round-trip (named rows
+// only — paramsToSchema discards unnamed ones). Lets us distinguish our own
+// echoed updates from a genuine external change (e.g. selecting another node).
+function committedSig(rows: ParamField[]): string {
+  return JSON.stringify(
+    rows
+      .filter((p) => p.name.trim())
+      .map((p) => [p.name.trim(), p.type, p.required, p.description ?? ""]),
+  );
+}
+
 /**
- * Edits a tool's input parameters as friendly rows. The parent converts to/from
- * JSON Schema with schemaToParams / paramsToSchema.
+ * Edits a tool's input parameters as friendly rows. The parent stores these as a
+ * JSON Schema (schemaToParams / paramsToSchema), which drops rows whose name is
+ * still blank. We therefore keep the working rows in local state so a freshly
+ * added or mid-rename (temporarily blank) row isn't discarded, and only commit
+ * named rows upstream.
  */
 export function ParametersEditor({
   params,
@@ -17,14 +32,28 @@ export function ParametersEditor({
   params: ParamField[];
   onChange: (params: ParamField[]) => void;
 }) {
+  const externalSig = committedSig(params);
+  const [rows, setRows] = useState<ParamField[]>(params);
+  const [seededSig, setSeededSig] = useState(externalSig);
+  // Re-seed only when the committed value changes from outside (not our own echo).
+  if (externalSig !== seededSig) {
+    setRows(params);
+    setSeededSig(externalSig);
+  }
+
+  function commit(next: ParamField[]) {
+    setRows(next);
+    setSeededSig(committedSig(next));
+    onChange(next);
+  }
   function update(index: number, patch: Partial<ParamField>) {
-    onChange(params.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+    commit(rows.map((p, i) => (i === index ? { ...p, ...patch } : p)));
   }
   function remove(index: number) {
-    onChange(params.filter((_, i) => i !== index));
+    commit(rows.filter((_, i) => i !== index));
   }
   function add() {
-    onChange([...params, { name: "", type: "string", required: true }]);
+    commit([...rows, { name: "", type: "string", required: true }]);
   }
 
   return (
@@ -41,13 +70,13 @@ export function ParametersEditor({
         into the fields below using the “Insert” button.
       </p>
 
-      {params.length === 0 ? (
+      {rows.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border p-4 text-center text-xs text-muted-foreground">
           No inputs yet. Add one if the tool needs information from the agent.
         </div>
       ) : (
         <div className="space-y-2">
-          {params.map((p, i) => (
+          {rows.map((p, i) => (
             <div
               key={i}
               className="grid grid-cols-[1fr_9.5rem_auto_auto] items-center gap-2 rounded-lg border border-border p-2"
