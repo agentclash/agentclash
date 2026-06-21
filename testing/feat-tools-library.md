@@ -10,6 +10,7 @@
   - JSON string values containing quotes, backslashes, or newlines remain valid JSON.
   - Form values and query/path components cannot inject additional parameters or path segments.
 - Library live variants never place `${secrets.*}` values in request URLs, where the HTTP primitive can return them to the agent in the response URL.
+- Destination encoding cannot hide `${secrets.*}` references from the existing non-HTTP and `output_path` secret-safety guards.
 - The calculator accepts bounded arithmetic over numeric literals and rejects executable syntax, booleans, oversized expressions, excessive ASTs, non-finite results, and resource-amplifying powers.
 - UUID generation uses a runtime available in the shipped sandbox image.
 - Bulk library creation rejects empty and oversized batches and enforces a bounded HTTP request body.
@@ -27,6 +28,7 @@
 - `TestCreateToolsFromLibraryConflicts` — skip and suffix behavior remain correct.
 - Repository create-tool coverage — a matching archived workspace tool is restored with the new definition and becomes visible again.
 - Template resolution tests — JSON, query, and path encoders escape special characters without changing ordinary values.
+- Secret-safety tests — encoded secret references remain detectable and are rejected in non-HTTP primitives and HTTP definitions with `output_path`.
 - Frontend definition tests — encoded placeholders validate and simulate using their underlying declared parameter.
 - Frontend gallery tests — added-state uses workspace slugs, bulk add sends catalog slugs, and failure/empty states remain actionable.
 
