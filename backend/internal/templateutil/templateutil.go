@@ -102,7 +102,7 @@ func validateTemplateStringReferences(value string, path string, declaredParams 
 		}
 		after := rest[idx+2:]
 		closeIdx := strings.Index(after, "}")
-		expr := after[:closeIdx]
+		expr := unwrapTemplateEncoding(after[:closeIdx])
 
 		switch {
 		case expr == "parameters":
@@ -119,6 +119,15 @@ func validateTemplateStringReferences(value string, path string, declaredParams 
 
 		rest = after[closeIdx+1:]
 	}
+}
+
+func unwrapTemplateEncoding(expr string) string {
+	for _, encoding := range []string{"json", "query", "path"} {
+		if strings.HasPrefix(expr, encoding+":") {
+			return strings.TrimPrefix(expr, encoding+":")
+		}
+	}
+	return expr
 }
 
 func DeclaredToolParameters(parameters json.RawMessage) (map[string]struct{}, error) {

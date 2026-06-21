@@ -40,14 +40,20 @@ export function operationLabel(name: string): string {
   return OPERATION_LABELS[name] ?? name;
 }
 
+// Keys must match the real primitive names from GET /v1/tool-primitives
+// (backend/internal/toolspec/catalog.go), or the picker falls back to the raw name.
 const OPERATION_LABELS: Record<string, string> = {
   http_request: "Call a web API",
-  shell_exec: "Run a shell command",
-  file_read: "Read a file",
-  file_write: "Write a file",
-  file_list: "List files",
-  search_text: "Search file contents",
+  exec: "Run a command",
+  read_file: "Read a file",
+  write_file: "Write a file",
+  list_files: "List files",
   search_files: "Find files by name",
+  search_text: "Search file contents",
+  query_sql: "Query a database (SQL)",
+  query_json: "Query JSON data",
+  run_tests: "Run tests",
+  build: "Build the project",
 };
 
 /** Friendly heading for a primitive `kind` group. */

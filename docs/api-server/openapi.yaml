@@ -2098,6 +2098,70 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenError"
 
+  /v1/workspaces/{workspaceID}/tools/from-library:
+    post:
+      operationId: createToolsFromLibrary
+      tags: [Tools]
+      summary: Add tools from the library into a workspace
+      description: >-
+        Instantiate one or more catalog entries (by slug) as real, editable
+        workspace tools. The server owns the definitions; the client sends only
+        slugs and optional variant/conflict choices. Returns the created tools
+        and any that were skipped (e.g. already added).
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateToolsFromLibraryRequest"
+      responses:
+        "201":
+          description: Tools added from the library
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateToolsFromLibraryResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/tool-library:
+    get:
+      operationId: listToolLibrary
+      tags: [Tools]
+      summary: List the prebuilt tool library
+      description: >-
+        Returns the global, read-only catalog of ready-made tools. Filter by
+        ?category=. Instantiate entries with POST
+        /v1/workspaces/{workspaceID}/tools/from-library. Not workspace-scoped.
+      security:
+        - bearerJWT: []
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional category filter (see the response's categories list).
+      responses:
+        "200":
+          description: Tool library catalog
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListToolLibraryResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+
   /v1/tool-primitives:
     get:
       operationId: listToolPrimitives
@@ -9130,6 +9194,101 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ToolPrimitive"
+
+    ToolLibraryEntry:
+      type: object
+      required: [slug, name, category, description, tags, tool_kind, delivery, has_live, definition]
+      properties:
+        slug:
+          type: string
+          description: Stable catalog slug used to instantiate this entry.
+        name:
+          type: string
+        category:
+          type: string
+        description:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        tool_kind:
+          type: string
+          enum: [primitive, composed]
+        delivery:
+          type: string
+          enum: [live, mock]
+          description: >-
+            "live" means the default definition runs for real; "mock" returns a
+            canned response (a real call may be available via the live variant).
+        requires_secret:
+          type: string
+          description: Workspace secret the live variant needs, if any.
+        has_live:
+          type: boolean
+          description: Whether a real (live) HTTP variant is bundled.
+        definition:
+          type: object
+          additionalProperties: true
+          description: The canonical, instantly-usable tool definition.
+
+    ListToolLibraryResponse:
+      type: object
+      required: [items, categories]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolLibraryEntry"
+        categories:
+          type: array
+          items:
+            type: string
+
+    CreateToolsFromLibraryRequest:
+      type: object
+      required: [entries]
+      properties:
+        entries:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: object
+            required: [slug]
+            properties:
+              slug:
+                type: string
+              variant:
+                type: string
+                enum: [default, live]
+                description: Which variant to instantiate (defaults to "default").
+              conflict:
+                type: string
+                enum: [skip, suffix]
+                description: How to handle an existing tool with the same name (defaults to "skip").
+
+    LibrarySkip:
+      type: object
+      required: [slug, reason]
+      properties:
+        slug:
+          type: string
+        reason:
+          type: string
+
+    CreateToolsFromLibraryResponse:
+      type: object
+      required: [items, skipped]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ToolResponse"
+        skipped:
+          type: array
+          items:
+            $ref: "#/components/schemas/LibrarySkip"
 
     # --- Knowledge Sources ---
 

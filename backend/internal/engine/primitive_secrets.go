@@ -97,7 +97,8 @@ func stringReferencesSecrets(s string) bool {
 		if closeIdx == -1 {
 			return false
 		}
-		if strings.HasPrefix(after[:closeIdx], "secrets.") {
+		_, reference := splitTemplateEncoding(after[:closeIdx])
+		if strings.HasPrefix(reference, "secrets.") {
 			return true
 		}
 		remaining = after[closeIdx+1:]
@@ -130,22 +131,22 @@ var sensitiveResponseHeaders = map[string]struct{}{
 	"cookie":     {},
 	"set-cookie": {},
 	// Common vendor / custom auth headers.
-	"x-api-key":            {},
-	"x-apikey":             {},
-	"api-key":              {},
-	"apikey":               {},
-	"x-auth-token":         {},
-	"x-access-token":       {},
-	"x-access-key":         {},
-	"x-secret-key":         {},
-	"x-session-token":      {},
-	"x-session-id":         {},
-	"x-csrf-token":         {},
-	"x-xsrf-token":         {},
+	"x-api-key":       {},
+	"x-apikey":        {},
+	"api-key":         {},
+	"apikey":          {},
+	"x-auth-token":    {},
+	"x-access-token":  {},
+	"x-access-key":    {},
+	"x-secret-key":    {},
+	"x-session-token": {},
+	"x-session-id":    {},
+	"x-csrf-token":    {},
+	"x-xsrf-token":    {},
 	// AWS SigV4 / STS.
 	"x-amz-security-token": {},
 	// Google Cloud user credential headers.
-	"x-goog-api-key":         {},
+	"x-goog-api-key":                 {},
 	"x-goog-iam-authorization-token": {},
 	// Bare token-style names some APIs use.
 	"token": {},

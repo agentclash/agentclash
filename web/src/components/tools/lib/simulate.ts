@@ -22,7 +22,7 @@ export interface SimulationResult {
 
 function resolveString(input: string, sample: Record<string, string>): string {
   return input.replace(PLACEHOLDER_RE, (_full, rawExpr: string) => {
-    const expr = rawExpr.trim();
+    const { encoding, reference: expr } = splitTemplateEncoding(rawExpr.trim());
     if (expr === "parameters") return JSON.stringify(sample);
     if (expr.startsWith("params.")) {
       const name = expr.slice("params.".length);
@@ -31,8 +31,21 @@ function resolveString(input: string, sample: Record<string, string>): string {
     if (expr.startsWith("secrets.")) return `⟨secret:${expr.slice("secrets.".length)}⟩`;
     if (expr.startsWith("steps.")) return `⟨${expr}⟩`;
     // bare ${param} (primitive delegate syntax)
-    return sample[expr] ?? `⟨${expr}⟩`;
+    const value = sample[expr] ?? `⟨${expr}⟩`;
+    if (encoding === "json") return JSON.stringify(value);
+    if (encoding === "query") return new URLSearchParams([["value", value]]).toString().slice("value=".length);
+    if (encoding === "path") return encodeURIComponent(value);
+    return value;
   });
+}
+
+function splitTemplateEncoding(expr: string): { encoding?: "json" | "query" | "path"; reference: string } {
+  for (const encoding of ["json", "query", "path"] as const) {
+    if (expr.startsWith(`${encoding}:`)) {
+      return { encoding, reference: expr.slice(encoding.length + 1) };
+    }
+  }
+  return { reference: expr };
 }
 
 function resolveValue(value: unknown, sample: Record<string, string>): unknown {

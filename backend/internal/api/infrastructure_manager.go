@@ -397,6 +397,131 @@ func (m *InfrastructureManager) CreateTool(ctx context.Context, caller Caller, w
 	})
 }
 
+// CreateToolsFromLibrary instantiates catalog entries (by slug) into the
+// workspace as real tools. The server owns the definitions — the client only
+// sends slugs/variants, never a definition. Each entry is created through the
+// same validation path as CreateTool. Conflicts skip by default (or suffix the
+// slug); unknown slugs and missing live variants are reported as skips rather
+// than failing the whole batch.
+func (m *InfrastructureManager) CreateToolsFromLibrary(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateToolsFromLibraryInput) ([]repository.ToolRow, []LibrarySkip, error) {
+	orgID, err := m.resolveOrgID(ctx, workspaceID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("resolve org: %w", err)
+	}
+	existing, err := m.repo.ListToolsByWorkspaceID(ctx, workspaceID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("load workspace tools: %w", err)
+	}
+	used := make(map[string]struct{}, len(existing))
+	for _, t := range existing {
+		used[t.Slug] = struct{}{}
+	}
+
+	var created []repository.ToolRow
+	var skipped []LibrarySkip
+	skip := func(slug, reason string) { skipped = append(skipped, LibrarySkip{Slug: slug, Reason: reason}) }
+
+	for _, e := range input.Entries {
+		key := strings.TrimSpace(e.Slug)
+		entry, ok := toolspec.LibraryBySlug(key)
+		if !ok {
+			skip(key, "unknown library tool")
+			continue
+		}
+		definition := entry.Definition
+		if e.Variant == "live" {
+			if !entry.HasLive() {
+				skip(key, "no live variant available")
+				continue
+			}
+			definition = entry.Live
+		}
+
+		baseSlug := generateSlug(entry.Name)
+		slug := baseSlug
+		if _, clash := used[slug]; clash {
+			if e.Conflict != "suffix" {
+				skip(key, "a tool with this name already exists")
+				continue
+			}
+			slug = nextAvailableToolSlug(baseSlug, used)
+		}
+
+		var row repository.ToolRow
+		creationFailed := false
+		const sequentialSlugAttempts = 3
+		for attempt := 0; attempt <= sequentialSlugAttempts; attempt++ {
+			if err := m.validateToolDefinition(ctx, &workspaceID, entry.ToolKind, slug, definition); err != nil {
+				// Catalog entries are validated in toolspec tests, so this is defensive.
+				skip(key, "definition is not valid")
+				creationFailed = true
+				break
+			}
+
+			row, err = m.repo.CreateTool(ctx, repository.CreateToolParams{
+				OrganizationID: orgID,
+				WorkspaceID:    workspaceID,
+				Name:           entry.Name,
+				Slug:           slug,
+				ToolKind:       entry.ToolKind,
+				CapabilityKey:  slug,
+				Definition:     definition,
+			})
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, repository.ErrSlugTaken) {
+				return nil, nil, fmt.Errorf("create tool %q: %w", key, err)
+			}
+			used[slug] = struct{}{}
+			if e.Conflict != "suffix" {
+				break
+			}
+			if attempt == sequentialSlugAttempts-1 {
+				slug = collisionResistantToolSlug(baseSlug)
+			} else {
+				slug = nextAvailableToolSlug(baseSlug, used)
+			}
+		}
+		if creationFailed {
+			continue
+		}
+		if err != nil {
+			skip(key, "a tool with this name already exists")
+			continue
+		}
+		used[slug] = struct{}{}
+		created = append(created, row)
+	}
+
+	return created, skipped, nil
+}
+
+func collisionResistantToolSlug(base string) string {
+	suffix := uuid.NewString()[:8]
+	const maxSlugLength = 60
+	maxBaseLength := maxSlugLength - len(suffix) - 1
+	if len(base) > maxBaseLength {
+		base = strings.TrimRight(base[:maxBaseLength], "-")
+	}
+	return base + "-" + suffix
+}
+
+func nextAvailableToolSlug(base string, used map[string]struct{}) string {
+	if _, clash := used[base]; !clash {
+		return base
+	}
+	// With len(used) occupied slugs, one of these len(used)+1 candidates must
+	// be free. The bound makes this deterministic even for degenerate maps.
+	for n := 2; n <= len(used)+2; n++ {
+		candidate := fmt.Sprintf("%s-%d", base, n)
+		if _, clash := used[candidate]; !clash {
+			return candidate
+		}
+	}
+	panic("unreachable: suffix candidate set exceeds occupied slug count")
+}
+
 func (m *InfrastructureManager) ListTools(ctx context.Context, workspaceID uuid.UUID) ([]repository.ToolRow, error) {
 	return m.repo.ListToolsByWorkspaceID(ctx, workspaceID)
 }

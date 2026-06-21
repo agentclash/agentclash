@@ -632,7 +632,35 @@ type CreateToolParams struct {
 func (r *Repository) CreateTool(ctx context.Context, p CreateToolParams) (ToolRow, error) {
 	var row ToolRow
 	var createdAt, updatedAt pgtype.Timestamptz
+	// A soft-deleted tool still owns its unique slug. Recreating the same tool
+	// restores that row so callers do not see a phantom slug conflict for a tool
+	// that list/get endpoints intentionally hide.
 	err := r.db.QueryRow(ctx, `
+		UPDATE tools
+		SET name = $3,
+		    tool_kind = $5,
+		    capability_key = $6,
+		    definition = $7,
+		    lifecycle_status = 'active',
+		    archived_at = NULL,
+		    updated_at = now()
+		WHERE organization_id = $1 AND workspace_id = $2 AND slug = $4 AND archived_at IS NOT NULL
+		RETURNING id, organization_id, workspace_id, name, slug, tool_kind, capability_key, definition, lifecycle_status, created_at, updated_at
+	`, p.OrganizationID, p.WorkspaceID, p.Name, p.Slug, p.ToolKind, p.CapabilityKey, defaultRawJSON(p.Definition),
+	).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.Name, &row.Slug, &row.ToolKind,
+		&row.CapabilityKey, &row.Definition, &row.LifecycleStatus, &createdAt, &updatedAt)
+	if err == nil {
+		row.CreatedAt = createdAt.Time
+		row.UpdatedAt = updatedAt.Time
+		return row, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return ToolRow{}, fmt.Errorf("restore archived tool: %w", err)
+	}
+
+	row = ToolRow{}
+	createdAt, updatedAt = pgtype.Timestamptz{}, pgtype.Timestamptz{}
+	err = r.db.QueryRow(ctx, `
 		INSERT INTO tools (organization_id, workspace_id, name, slug, tool_kind, capability_key, definition)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, organization_id, workspace_id, name, slug, tool_kind, capability_key, definition, lifecycle_status, created_at, updated_at

@@ -114,7 +114,7 @@ function checkMock(mock: MockConfig | undefined): ValidationIssue[] {
 }
 
 function checkArgPlaceholder(ph: string, params: Set<string>, isHTTP: boolean): ValidationIssue[] {
-  const expr = ph.trim();
+  const expr = unwrapTemplateEncoding(ph.trim());
   if (expr === "") return [{ path: "implementation.args", message: "Empty placeholder ${}." }];
   if (expr === "parameters") return [];
   if (expr.startsWith("secrets.")) {
@@ -124,6 +124,13 @@ function checkArgPlaceholder(ph: string, params: Set<string>, isHTTP: boolean): 
     return [{ path: "implementation.args", message: `Placeholder \${${expr}} is not a declared parameter.` }];
   }
   return [];
+}
+
+function unwrapTemplateEncoding(expr: string): string {
+  for (const encoding of ["json", "query", "path"]) {
+    if (expr.startsWith(`${encoding}:`)) return expr.slice(encoding.length + 1);
+  }
+  return expr;
 }
 
 function validateComposed(

@@ -82,6 +82,9 @@ func (s stubInfraService) DeleteModelAlias(_ context.Context, _ uuid.UUID) error
 func (s stubInfraService) CreateTool(_ context.Context, _ Caller, _ uuid.UUID, _ CreateToolInput) (repository.ToolRow, error) {
 	return repository.ToolRow{}, nil
 }
+func (s stubInfraService) CreateToolsFromLibrary(_ context.Context, _ Caller, _ uuid.UUID, _ CreateToolsFromLibraryInput) ([]repository.ToolRow, []LibrarySkip, error) {
+	return nil, nil, nil
+}
 func (s stubInfraService) ListTools(_ context.Context, _ uuid.UUID) ([]repository.ToolRow, error) {
 	return nil, nil
 }
@@ -241,6 +244,53 @@ func TestCreateRuntimeProfileRequiresAdminRole(t *testing.T) {
 	if recorder.Code != http.StatusForbidden {
 		t.Errorf("expected 403 Forbidden for viewer creating resource, got %d: %s", recorder.Code, recorder.Body.String())
 	}
+}
+
+func TestCreateToolsFromLibraryRequiresAdminAndLimitsBody(t *testing.T) {
+	workspaceID := uuid.New()
+	svc := stubInfraService{}
+	router := newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil, 0,
+		stubRunCreationService{}, stubRunReadService{}, stubReplayReadService{},
+		stubHostedRunIngestionService{}, nil,
+		stubAgentDeploymentReadService{}, stubChallengePackReadService{},
+		stubAgentBuildService{}, noopReleaseGateService{},
+		nil, nil, nil, nil, nil, nil, nil,
+		svc,
+		nil,
+		nil,
+		nil,
+	)
+
+	t.Run("viewer is forbidden", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/tools/from-library", strings.NewReader(`{"entries":[{"slug":"web-search"}]}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(headerUserID, uuid.New().String())
+		req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_viewer")
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusForbidden {
+			t.Fatalf("status = %d, want 403: %s", recorder.Code, recorder.Body.String())
+		}
+	})
+
+	t.Run("oversized body is rejected", func(t *testing.T) {
+		body := `{"entries":[{"slug":"web-search"}],"padding":"` + strings.Repeat("x", maxToolsFromLibraryRequestBytes) + `"}`
+		req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/tools/from-library", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set(headerUserID, uuid.New().String())
+		req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_admin")
+		recorder := httptest.NewRecorder()
+
+		router.ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want 400: %s", recorder.Code, recorder.Body.String())
+		}
+	})
 }
 
 func TestProviderAccountTestRequiresAdminRole(t *testing.T) {

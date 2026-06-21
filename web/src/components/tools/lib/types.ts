@@ -98,3 +98,20 @@ export interface ValidationIssue {
   path: string;
   message: string;
 }
+
+/** One ready-made tool from GET /v1/tool-library. */
+export interface ToolLibraryEntry {
+  slug: string;
+  name: string;
+  category: string;
+  description: string;
+  tags: string[];
+  tool_kind: ToolType;
+  /** "live" runs for real; "mock" returns a canned response. */
+  delivery: "live" | "mock";
+  /** Workspace secret the live variant needs, if any. */
+  requires_secret?: string;
+  /** Whether a real (live) HTTP variant is bundled. */
+  has_live: boolean;
+  definition: ToolDefinition | Record<string, unknown>;
+}

@@ -41,8 +41,8 @@ export interface EditorToolbarProps {
 }
 
 const palette: { kind: AddableKind; label: string; icon: typeof Boxes }[] = [
-  { kind: "operation", label: "Operation", icon: Boxes },
-  { kind: "tool", label: "Tool", icon: Wrench },
+  { kind: "operation", label: "Built-in action", icon: Boxes },
+  { kind: "tool", label: "Your tools", icon: Wrench },
   { kind: "canned", label: "Canned response", icon: MessageSquareDashed },
 ];
 
