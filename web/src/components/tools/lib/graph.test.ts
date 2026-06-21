@@ -196,4 +196,32 @@ describe("validateGraph", () => {
     const issues = validateGraph({ nodes: [inputs()], edges: [] }, "primitive");
     expect(issues.some((i) => /at least one/i.test(i.message))).toBe(true);
   });
+
+  it("flags a cycle between steps so a corrupt order can't be saved", () => {
+    const nodes: CanvasNode[] = [
+      inputs(),
+      { id: "s1", kind: "operation", position: { x: 0, y: 0 }, data: { stepId: "s1", primitive: "http_request" } },
+      { id: "s2", kind: "operation", position: { x: 0, y: 0 }, data: { stepId: "s2", primitive: "file_write" } },
+    ];
+    const edges = [
+      { id: "e1", source: "s1", target: "s2" },
+      { id: "e2", source: "s2", target: "s1" }, // back-edge → cycle
+    ];
+    const issues = validateGraph({ nodes, edges }, inferKind(nodes));
+    expect(issues.some((i) => /loop/i.test(i.message))).toBe(true);
+  });
+
+  it("does not flag a valid linear chain as a cycle", () => {
+    const nodes: CanvasNode[] = [
+      inputs(),
+      { id: "s1", kind: "operation", position: { x: 0, y: 0 }, data: { stepId: "s1", primitive: "http_request" } },
+      { id: "s2", kind: "operation", position: { x: 0, y: 0 }, data: { stepId: "s2", primitive: "file_write" } },
+    ];
+    const edges = [
+      { id: "e1", source: INPUTS_NODE_ID, target: "s1" },
+      { id: "e2", source: "s1", target: "s2" },
+    ];
+    const issues = validateGraph({ nodes, edges }, inferKind(nodes));
+    expect(issues.some((i) => /loop/i.test(i.message))).toBe(false);
+  });
 });

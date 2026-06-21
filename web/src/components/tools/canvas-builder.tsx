@@ -221,7 +221,10 @@ function CanvasBuilderInner({
   );
 
   const onConnect = useCallback(
-    (c: Connection) => setEdges((es) => addEdge(c, es)),
+    (c: Connection) => {
+      if (c.source === c.target) return; // a step can't feed itself
+      setEdges((es) => addEdge(c, es));
+    },
     [setEdges],
   );
 
@@ -297,7 +300,6 @@ function CanvasBuilderInner({
               }}
               fitView
               colorMode="dark"
-              proOptions={{ hideAttribution: true }}
             >
               <Background />
               <Controls showInteractive={false} />

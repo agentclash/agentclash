@@ -164,10 +164,45 @@ function orderedSteps(nodes: CanvasNode[], edges: CanvasEdge[]): CanvasNode[] {
     }
     ready.sort((a, b) => order.indexOf(a) - order.indexOf(b));
   }
-  // Append any nodes left out by a cycle, in original order.
+  // Append any nodes left out by a cycle, in original order. A cyclic graph is
+  // blocked upstream by validateGraph (hasCycle), so this only runs defensively.
   for (const id of order) if (!seen.has(id)) result.push(id);
   const byId = new Map(steps.map((n) => [n.id, n]));
   return result.map((id) => byId.get(id)!).filter(Boolean);
+}
+
+/**
+ * True if the step nodes contain a directed cycle (e.g. a back-edge A → B → A).
+ * Such a graph can't be topologically ordered, so the compiled `composed`
+ * definition would list steps out of dependency order — a step could reference
+ * another whose result hasn't been computed yet. Uses the same edge filtering
+ * as `orderedSteps` (ignores self-loops and edges to/from non-step nodes).
+ */
+function hasCycle(nodes: CanvasNode[], edges: CanvasEdge[]): boolean {
+  const steps = stepNodes(nodes);
+  const ids = new Set(steps.map((n) => n.id));
+  const outs = new Map<string, string[]>(steps.map((n) => [n.id, []]));
+  for (const e of edges) {
+    if (ids.has(e.source) && ids.has(e.target) && e.source !== e.target) {
+      outs.get(e.source)!.push(e.target);
+    }
+  }
+  // 3-colour DFS: gray = on the current path, black = fully explored.
+  const color = new Map<string, 0 | 1 | 2>(steps.map((n) => [n.id, 0]));
+  const visit = (id: string): boolean => {
+    color.set(id, 1);
+    for (const t of outs.get(id) ?? []) {
+      const c = color.get(t);
+      if (c === 1) return true; // back-edge into the current path
+      if (c === 0 && visit(t)) return true;
+    }
+    color.set(id, 2);
+    return false;
+  };
+  for (const n of steps) {
+    if (color.get(n.id) === 0 && visit(n.id)) return true;
+  }
+  return false;
 }
 
 // --- compile: graph → definition --------------------------------------------
@@ -248,6 +283,11 @@ export function validateGraph(graph: ToolGraph, kind: ToolType): GraphIssue[] {
     issues.push({
       message:
         "This is a single-action tool, so it can't have multiple steps. Create a new tool to build a chain.",
+    });
+  }
+  if (hasCycle(graph.nodes, graph.edges)) {
+    issues.push({
+      message: "Steps are connected in a loop. Remove the connection that points back to an earlier step.",
     });
   }
   return issues;
