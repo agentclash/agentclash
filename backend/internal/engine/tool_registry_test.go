@@ -359,6 +359,11 @@ func TestBuildToolRegistry_RejectsSecretsInNonSecretSafePrimitives(t *testing.T)
 			primitive: "query_sql",
 			args:      `{"engine":"sqlite","query":"SELECT * FROM t WHERE k='${secrets.API_KEY}'","database_path":"/workspace/db.sqlite"}`,
 		},
+		{
+			name:      "exec with encoded secret in argv",
+			primitive: "exec",
+			args:      `{"command":["echo","${json:secrets.API_KEY}"]}`,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -410,6 +415,29 @@ func TestBuildToolRegistry_RejectsSecretsWithOutputPath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "output_path") {
 		t.Fatalf("error should mention output_path: %v", err)
+	}
+}
+
+func TestBuildToolRegistry_RejectsEncodedSecretsWithOutputPath(t *testing.T) {
+	manifest := []byte(`{"tools":{"custom":[{
+		"name":"fetch_and_save",
+		"description":"fetches and saves to file",
+		"parameters":{"type":"object","additionalProperties":false},
+		"implementation":{"primitive":"http_request","args":{
+			"method":"POST",
+			"url":"https://api.example.com",
+			"body":"{\"token\":${json:secrets.API_KEY}}",
+			"output_path":"/workspace/data.json"
+		}}
+	}]}}`)
+	_, err := buildToolRegistry(
+		sandbox.ToolPolicy{AllowNetwork: true},
+		manifest,
+		nil,
+		map[string]string{"API_KEY": "real-key"},
+	)
+	if err == nil || !strings.Contains(err.Error(), "output_path") {
+		t.Fatalf("expected encoded secret + output_path rejection, got %v", err)
 	}
 }
 
