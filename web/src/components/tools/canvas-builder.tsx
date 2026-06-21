@@ -2,37 +2,38 @@
 
 import "@xyflow/react/dist/style.css";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { toast } from "sonner";
 import {
   Background,
   Controls,
-  Panel,
   ReactFlow,
   ReactFlowProvider,
   addEdge,
   useEdgesState,
   useNodesState,
+  useReactFlow,
   type Connection,
   type Edge,
   type Node,
 } from "@xyflow/react";
-import { Boxes, Loader2, MessageSquareDashed, PanelsTopLeft, Wrench } from "lucide-react";
+import { PanelsTopLeft } from "lucide-react";
 
+import { cn } from "@/lib/utils";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import { useApiListQuery, useApiMutator } from "@/lib/api/swr";
 import { workspaceResourceKeys } from "@/lib/workspace-resource";
-import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/page-header";
+import { useGuidedTour } from "@/components/onboarding/use-guided-tour";
 
 import { DefinitionPreview } from "./definition-preview";
 import { Field, controlClass } from "./field";
 import { JsonValidityProvider } from "./json-validity";
 import { NodeInspector } from "./canvas/inspector";
+import { EditorToolbar } from "./canvas/editor-toolbar";
+import { CANVAS_TOUR_ID, canvasTourSteps } from "./canvas/tour-steps";
 import { nodeTypes } from "./canvas/nodes";
 import { useToolPrimitives } from "./use-tool-primitives";
 import { operationLabel } from "./lib/friendly";
@@ -52,6 +53,10 @@ import {
 import { emptyPrimitiveDefinition } from "./lib/definition";
 import { validateDefinition } from "./lib/validate";
 import type { ToolDefinition, ToolRecord, ToolType } from "./lib/types";
+
+// Stable reference — React Flow compares proOptions by identity, so an inline
+// object would trigger redundant internal updates on every render.
+const HIDE_ATTRIBUTION = { hideAttribution: true } as const;
 
 function labelFor(node: CanvasNode): string {
   if (node.kind === "operation") return node.data.primitive ? operationLabel(node.data.primitive) : "operation";
@@ -125,6 +130,33 @@ function CanvasBuilderInner({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [jsonInvalid, setJsonInvalid] = useState(false);
+  // Immersive (full-viewport) by default; minimize drops back into the page.
+  const [immersive, setImmersive] = useState(true);
+
+  const { fitView } = useReactFlow();
+  const tour = useGuidedTour(CANVAS_TOUR_ID, canvasTourSteps, { autoStartOnce: true });
+
+  // Esc leaves fullscreen — but only when the guided tour isn't using Esc itself.
+  useEffect(() => {
+    if (!immersive) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !tour.isActive()) setImmersive(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [immersive, tour]);
+
+  // The canvas resizes when entering/leaving fullscreen; recenter the graph.
+  // Skip the initial mount — <ReactFlow fitView> already fits on first render.
+  const didToggleMount = useRef(false);
+  useEffect(() => {
+    if (!didToggleMount.current) {
+      didToggleMount.current = true;
+      return;
+    }
+    const t = window.setTimeout(() => fitView({ duration: 200 }), 80);
+    return () => window.clearTimeout(t);
+  }, [immersive, fitView]);
 
   const { primitives } = useToolPrimitives();
   const { data: toolsData } = useApiListQuery<ToolRecord>(`/v1/workspaces/${workspaceId}/tools`);
@@ -256,36 +288,32 @@ function CanvasBuilderInner({
   }
 
   return (
-    <div>
-      <PageHeader
-        breadcrumbs={[
-          { label: "Tools", href: `/workspaces/${workspaceId}/tools` },
-          { label: mode === "create" ? "New tool" : (initialName ?? "Edit") },
-        ]}
-        title={mode === "create" ? "New tool" : (initialName ?? "Edit tool")}
-        description="Drag from the right edge of a node to the next to connect steps. One node is a simple tool; connect a few to build a chain."
-        actions={
-          <>
-            <Button variant="ghost" size="sm" render={<Link href={formEditorHref} />}>
-              Use form editor
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => router.push(`/workspaces/${workspaceId}/tools`)}
-              disabled={submitting}
-            >
-              Cancel
-            </Button>
-            <Button onClick={save} disabled={!canSave}>
-              {submitting ? <Loader2 className="size-4 animate-spin" /> : "Save tool"}
-            </Button>
-          </>
-        }
+    <div
+      className={cn(
+        "flex flex-col bg-background",
+        immersive
+          ? "fixed inset-0 z-50"
+          : "h-[calc(100dvh-8rem)] min-h-[30rem] overflow-hidden rounded-lg border border-border",
+      )}
+    >
+      <EditorToolbar
+        mode={mode}
+        name={name}
+        onNameChange={setName}
+        onAdd={addNode}
+        onStartTour={tour.start}
+        immersive={immersive}
+        onToggleImmersive={() => setImmersive((v) => !v)}
+        formEditorHref={formEditorHref}
+        onExit={() => router.push(`/workspaces/${workspaceId}/tools`)}
+        onSave={save}
+        canSave={canSave}
+        saving={submitting}
       />
 
       <JsonValidityProvider onChange={setJsonInvalid}>
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_24rem]">
-          <div className="h-[600px] overflow-hidden rounded-lg border border-border">
+        <div className="flex min-h-0 flex-1">
+          <div className="min-w-0 flex-1">
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -300,79 +328,53 @@ function CanvasBuilderInner({
               }}
               fitView
               colorMode="dark"
+              proOptions={HIDE_ATTRIBUTION}
             >
               <Background />
               <Controls showInteractive={false} />
-              <Panel position="top-left" className="flex flex-wrap gap-1.5">
-                <Button type="button" variant="outline" size="sm" onClick={() => addNode("operation")}>
-                  <Boxes data-icon="inline-start" className="size-3.5" />
-                  Operation
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => addNode("tool")}>
-                  <Wrench data-icon="inline-start" className="size-3.5" />
-                  Tool
-                </Button>
-                <Button type="button" variant="outline" size="sm" onClick={() => addNode("canned")}>
-                  <MessageSquareDashed data-icon="inline-start" className="size-3.5" />
-                  Canned response
-                </Button>
-              </Panel>
             </ReactFlow>
           </div>
 
-          <div className="lg:sticky lg:top-4 lg:self-start">
-            <div className="space-y-4 rounded-lg border border-border p-3">
-              <Field
-                label="Name"
-                htmlFor="tool-name"
-                hint="What the agent sees when it calls this tool."
-              >
-                <input
-                  id="tool-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. lookup_order"
-                  className={controlClass}
-                />
-              </Field>
-              <Field
-                label="Description"
-                htmlFor="tool-description"
-                hint="The agent reads this to decide when to use the tool."
-              >
-                <textarea
-                  id="tool-description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={2}
-                  placeholder="e.g. Look up an order by its id and return its status."
-                  className={controlClass}
-                />
-              </Field>
-            </div>
-
-            <div className="mt-4 min-h-[16rem] rounded-lg border border-border">
-              {selectedNode ? (
-                <NodeInspector
-                  node={selectedNode}
-                  references={references}
-                  primitives={primitives}
-                  tools={toolOptions}
-                  onPatch={(patch) => patchNode(selectedNode.id, patch)}
-                  onDelete={() => deleteNode(selectedNode.id)}
-                  onClose={() => setSelectedId(null)}
-                />
-              ) : (
-                <div className="space-y-3 p-3">
+          <aside
+            data-tour="sidebar"
+            className="flex w-80 flex-shrink-0 flex-col overflow-y-auto border-l border-border"
+          >
+            {selectedNode ? (
+              <NodeInspector
+                node={selectedNode}
+                references={references}
+                primitives={primitives}
+                tools={toolOptions}
+                onPatch={(patch) => patchNode(selectedNode.id, patch)}
+                onDelete={() => deleteNode(selectedNode.id)}
+                onClose={() => setSelectedId(null)}
+              />
+            ) : (
+              <div className="space-y-4 p-3">
+                <Field
+                  label="Description"
+                  htmlFor="tool-description"
+                  hint="The agent reads this to decide when to use the tool."
+                >
+                  <textarea
+                    id="tool-description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={2}
+                    placeholder="e.g. Look up an order by its id and return its status."
+                    className={controlClass}
+                  />
+                </Field>
+                <div className="space-y-3 border-t border-border pt-3">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <PanelsTopLeft className="size-3.5" />
                     Select a node to configure it.
                   </div>
                   <DefinitionPreview definition={definition} issues={previewIssues} />
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+            )}
+          </aside>
         </div>
       </JsonValidityProvider>
     </div>
