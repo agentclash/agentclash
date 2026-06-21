@@ -141,6 +141,28 @@ func TestLibraryLiveDefinitionsKeepSecretsOutOfURLs(t *testing.T) {
 	}
 }
 
+func TestLibraryLiveRequestBodiesDeclareContentType(t *testing.T) {
+	for _, entry := range Library() {
+		if !entry.HasLive() {
+			continue
+		}
+		var definition struct {
+			Implementation struct {
+				Args struct {
+					Body    string            `json:"body"`
+					Headers map[string]string `json:"headers"`
+				} `json:"args"`
+			} `json:"implementation"`
+		}
+		if err := json.Unmarshal(entry.Live, &definition); err != nil {
+			t.Fatalf("%s: decode live definition: %v", entry.Slug, err)
+		}
+		if definition.Implementation.Args.Body != "" && definition.Implementation.Args.Headers["Content-Type"] == "" {
+			t.Errorf("%s: live request has a body but no Content-Type header", entry.Slug)
+		}
+	}
+}
+
 func TestSafeCalcScript(t *testing.T) {
 	if _, err := exec.LookPath("python3"); err != nil {
 		t.Skip("python3 is not installed")
