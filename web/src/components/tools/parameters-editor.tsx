@@ -77,53 +77,55 @@ export function ParametersEditor({
       ) : (
         <div className="space-y-2">
           {rows.map((p, i) => (
-            <div
-              key={i}
-              className="grid grid-cols-[1fr_9.5rem_auto_auto] items-center gap-2 rounded-lg border border-border p-2"
-            >
+            // Stacked layout so a row fits a narrow side panel: name on its own
+            // line (never crushed), then type + required + delete, then description.
+            <div key={i} className="space-y-2 rounded-lg border border-border p-2">
               <input
                 value={p.name}
                 onChange={(e) => update(i, { name: e.target.value })}
-                placeholder="name"
+                placeholder="name (e.g. order_id)"
                 aria-label="Input name"
                 className={`${controlClass} font-[family-name:var(--font-mono)] text-xs`}
               />
-              <select
-                value={p.type}
-                onChange={(e) => update(i, { type: e.target.value as JsonSchemaType })}
-                aria-label="Input type"
-                className={`${controlClass} py-1.5`}
-              >
-                {TYPE_OPTIONS.map((t) => (
-                  <option key={t.value} value={t.value}>
-                    {t.label}
-                  </option>
-                ))}
-              </select>
-              <label className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={p.required}
-                  onChange={(e) => update(i, { required: e.target.checked })}
-                  className="size-3.5 accent-primary"
-                />
-                required
-              </label>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                onClick={() => remove(i)}
-                aria-label="Remove input"
-              >
-                <Trash2 className="size-3.5 text-muted-foreground" />
-              </Button>
+              <div className="flex items-center gap-2">
+                <select
+                  value={p.type}
+                  onChange={(e) => update(i, { type: e.target.value as JsonSchemaType })}
+                  aria-label="Input type"
+                  className={`${controlClass} min-w-0 flex-1 py-1.5`}
+                >
+                  {TYPE_OPTIONS.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+                <label className="flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={p.required}
+                    onChange={(e) => update(i, { required: e.target.checked })}
+                    className="size-3.5 accent-primary"
+                  />
+                  required
+                </label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0"
+                  onClick={() => remove(i)}
+                  aria-label="Remove input"
+                >
+                  <Trash2 className="size-3.5 text-muted-foreground" />
+                </Button>
+              </div>
               <input
                 value={p.description ?? ""}
                 onChange={(e) => update(i, { description: e.target.value })}
                 placeholder="What is this input? (optional)"
                 aria-label="Input description"
-                className={`${controlClass} col-span-4 text-xs`}
+                className={`${controlClass} text-xs`}
               />
             </div>
           ))}

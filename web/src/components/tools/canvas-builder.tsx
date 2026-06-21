@@ -337,7 +337,7 @@ function CanvasBuilderInner({
 
           <aside
             data-tour="sidebar"
-            className="flex w-80 flex-shrink-0 flex-col overflow-y-auto border-l border-border"
+            className="flex w-96 flex-shrink-0 flex-col overflow-y-auto overflow-x-hidden border-l border-border"
           >
             {selectedNode ? (
               <NodeInspector
