@@ -449,7 +449,8 @@ func (m *InfrastructureManager) CreateToolsFromLibrary(ctx context.Context, call
 
 		var row repository.ToolRow
 		creationFailed := false
-		for attempt := 0; attempt < 3; attempt++ {
+		const sequentialSlugAttempts = 3
+		for attempt := 0; attempt <= sequentialSlugAttempts; attempt++ {
 			if err := m.validateToolDefinition(ctx, &workspaceID, entry.ToolKind, slug, definition); err != nil {
 				// Catalog entries are validated in toolspec tests, so this is defensive.
 				skip(key, "definition is not valid")
@@ -476,7 +477,11 @@ func (m *InfrastructureManager) CreateToolsFromLibrary(ctx context.Context, call
 			if e.Conflict != "suffix" {
 				break
 			}
-			slug = nextAvailableToolSlug(baseSlug, used)
+			if attempt == sequentialSlugAttempts-1 {
+				slug = collisionResistantToolSlug(baseSlug)
+			} else {
+				slug = nextAvailableToolSlug(baseSlug, used)
+			}
 		}
 		if creationFailed {
 			continue
@@ -490,6 +495,16 @@ func (m *InfrastructureManager) CreateToolsFromLibrary(ctx context.Context, call
 	}
 
 	return created, skipped, nil
+}
+
+func collisionResistantToolSlug(base string) string {
+	suffix := uuid.NewString()[:8]
+	const maxSlugLength = 60
+	maxBaseLength := maxSlugLength - len(suffix) - 1
+	if len(base) > maxBaseLength {
+		base = strings.TrimRight(base[:maxBaseLength], "-")
+	}
+	return base + "-" + suffix
 }
 
 func nextAvailableToolSlug(base string, used map[string]struct{}) string {

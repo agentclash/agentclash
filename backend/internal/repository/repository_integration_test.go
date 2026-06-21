@@ -49,6 +49,56 @@ func TestRepositoryGetRunByID(t *testing.T) {
 	}
 }
 
+func TestRepositoryCreateToolRestoresArchivedSlug(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+	slug := "restorable-tool"
+
+	created, err := repo.CreateTool(ctx, repository.CreateToolParams{
+		OrganizationID: fixture.organizationID,
+		WorkspaceID:    fixture.workspaceID,
+		Name:           "Original tool",
+		Slug:           slug,
+		ToolKind:       "primitive",
+		CapabilityKey:  slug,
+		Definition:     json.RawMessage(`{"version":1}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateTool returned error: %v", err)
+	}
+	if err := repo.ArchiveTool(ctx, created.ID); err != nil {
+		t.Fatalf("ArchiveTool returned error: %v", err)
+	}
+
+	restored, err := repo.CreateTool(ctx, repository.CreateToolParams{
+		OrganizationID: fixture.organizationID,
+		WorkspaceID:    fixture.workspaceID,
+		Name:           "Restored tool",
+		Slug:           slug,
+		ToolKind:       "primitive",
+		CapabilityKey:  slug,
+		Definition:     json.RawMessage(`{"version":2}`),
+	})
+	if err != nil {
+		t.Fatalf("CreateTool restore returned error: %v", err)
+	}
+	if restored.ID != created.ID {
+		t.Fatalf("restored id = %s, want archived id %s", restored.ID, created.ID)
+	}
+	var restoredDefinition map[string]int
+	if err := json.Unmarshal(restored.Definition, &restoredDefinition); err != nil {
+		t.Fatalf("decode restored definition: %v", err)
+	}
+	if restored.Name != "Restored tool" || restored.LifecycleStatus != "active" || restoredDefinition["version"] != 2 {
+		t.Fatalf("restored tool = %#v", restored)
+	}
+	if _, err := repo.GetToolByID(ctx, restored.ID); err != nil {
+		t.Fatalf("restored tool is not visible: %v", err)
+	}
+}
+
 func TestRepositoryUnarchiveModelAliasByKeyInvalidCatalogEntry(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)

@@ -80,6 +80,29 @@ describe("validateDefinition - primitive", () => {
     expect(validateDefinition(def, ctx())).toEqual([]);
   });
 
+  it("accepts destination-encoded references to declared parameters", () => {
+    const def = emptyPrimitiveDefinition();
+    def.parameters = paramsToSchema([
+      { name: "message", type: "string", required: true },
+      { name: "query", type: "string", required: true },
+    ]);
+    def.implementation = {
+      mode: "delegate",
+      primitive: "http_request",
+      args: {
+        method: "POST",
+        url: "https://x.test/?q=${query:query}",
+        body: '{"message":${json:message}}',
+      },
+    };
+    expect(validateDefinition(def, ctx())).toEqual([]);
+    expect(simulate(def, { message: `hello "world"`, query: "a&b c" }).args).toEqual({
+      method: "POST",
+      url: "https://x.test/?q=a%26b+c",
+      body: '{"message":"hello \\"world\\""}',
+    });
+  });
+
   it("flags a missing required primitive argument", () => {
     const def = emptyPrimitiveDefinition();
     def.implementation = { mode: "delegate", primitive: "read_file", args: {} };

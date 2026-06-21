@@ -210,6 +210,28 @@ func TestCreateToolsFromLibraryConflicts(t *testing.T) {
 	if len(created) != 1 || created[0].Slug != "search-the-web-3" {
 		t.Fatalf("expected concurrent conflict retry to create search-the-web-3; got %#v", created)
 	}
+
+	// Sustained contention falls back to a collision-resistant suffix instead
+	// of dropping a valid create after the sequential candidates are claimed.
+	repo = &providerAccountTestRepo{
+		orgID:         uuid.New(),
+		existingTools: []repository.ToolRow{{Slug: "search-the-web"}},
+		slugConflicts: map[string]int{
+			"search-the-web-2": 1,
+			"search-the-web-3": 1,
+			"search-the-web-4": 1,
+		},
+	}
+	mgr = NewInfrastructureManager(repo)
+	created, _, err = mgr.CreateToolsFromLibrary(ctx, Caller{}, wsID, CreateToolsFromLibraryInput{
+		Entries: []FromLibraryEntryInput{{Slug: "web-search", Conflict: "suffix"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created) != 1 || !strings.HasPrefix(created[0].Slug, "search-the-web-") || len(created[0].Slug) != len("search-the-web-")+8 {
+		t.Fatalf("expected collision-resistant suffix after sustained conflicts; got %#v", created)
+	}
 }
 
 func TestCreateToolsFromLibraryInputValidate(t *testing.T) {
