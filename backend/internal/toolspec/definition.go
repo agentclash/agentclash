@@ -359,7 +359,7 @@ func validateComposedInputs(field string, inputs json.RawMessage, declared, prio
 func validateArgsPlaceholders(field string, args json.RawMessage, declared map[string]struct{}, allowSecrets bool) ValidationErrors {
 	var errs ValidationErrors
 	for _, ph := range placeholdersIn(args) {
-		expr := strings.TrimSpace(ph)
+		expr := unwrapTemplateEncoding(strings.TrimSpace(ph))
 		switch {
 		case expr == "":
 			errs = append(errs, ValidationError{Field: field, Message: "empty placeholder ${}"})
@@ -376,6 +376,15 @@ func validateArgsPlaceholders(field string, args json.RawMessage, declared map[s
 		}
 	}
 	return errs
+}
+
+func unwrapTemplateEncoding(expr string) string {
+	for _, encoding := range []string{"json", "query", "path"} {
+		if strings.HasPrefix(expr, encoding+":") {
+			return strings.TrimPrefix(expr, encoding+":")
+		}
+	}
+	return expr
 }
 
 // placeholdersIn walks an arbitrary JSON value and returns every ${...} token

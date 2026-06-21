@@ -36,13 +36,13 @@ const (
 
 // LibraryEntry is one ready-made tool in the catalog.
 type LibraryEntry struct {
-	Slug        string          `json:"slug"`
-	Name        string          `json:"name"`
-	Category    string          `json:"category"`
-	Description string          `json:"description"`
-	Tags        []string        `json:"tags"`
-	ToolKind    string          `json:"tool_kind"`
-	Delivery    string          `json:"delivery"`
+	Slug        string   `json:"slug"`
+	Name        string   `json:"name"`
+	Category    string   `json:"category"`
+	Description string   `json:"description"`
+	Tags        []string `json:"tags"`
+	ToolKind    string   `json:"tool_kind"`
+	Delivery    string   `json:"delivery"`
 	// RequiresSecret is the workspace secret the live variant needs ("" if none).
 	RequiresSecret string `json:"requires_secret,omitempty"`
 	// Definition is the canonical, instantly-usable tool definition.
@@ -76,18 +76,18 @@ func object(required []string, f fields) json.RawMessage {
 
 func delegateDef(params json.RawMessage, primitive string, args map[string]any) json.RawMessage {
 	return mustJSON(map[string]any{
-		"tool_type":   ToolTypePrimitive,
-		"description":  "",
-		"parameters":  params,
+		"tool_type":      ToolTypePrimitive,
+		"description":    "",
+		"parameters":     params,
 		"implementation": map[string]any{"mode": ModeDelegate, "primitive": primitive, "args": args},
 	})
 }
 
 func mockDef(params json.RawMessage, response map[string]any) json.RawMessage {
 	return mustJSON(map[string]any{
-		"tool_type":   ToolTypePrimitive,
-		"description":  "",
-		"parameters":  params,
+		"tool_type":      ToolTypePrimitive,
+		"description":    "",
+		"parameters":     params,
 		"implementation": map[string]any{"mode": ModeMock, "mock": map[string]any{"strategy": "static", "response": response}},
 	})
 }
@@ -162,20 +162,44 @@ func buildLibrary() []LibraryEntry {
 // safeCalcScript evaluates ONLY arithmetic over numeric literals. Unlike a bare
 // eval(), it rejects names, calls, attributes and subscripts, so an agent can't
 // smuggle arbitrary Python (e.g. __import__('os')) through the calculator tool.
-const safeCalcScript = `import ast, operator, sys
+const safeCalcScript = `import ast, math, operator, sys
+MAX_EXPR_LEN = 256
+MAX_NODES = 64
+MAX_ABS_VALUE = 1e100
+MAX_EXPONENT = 100
 _ops = {ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
         ast.Div: operator.truediv, ast.FloorDiv: operator.floordiv,
         ast.Mod: operator.mod, ast.Pow: operator.pow,
         ast.USub: operator.neg, ast.UAdd: operator.pos}
+def _checked(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError("only real numbers are allowed")
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError("result must be finite")
+    if abs(value) > MAX_ABS_VALUE:
+        raise ValueError("result is too large")
+    return value
 def _ev(node):
-    if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
-        return node.value
+    if isinstance(node, ast.Constant):
+        return _checked(node.value)
     if isinstance(node, ast.BinOp) and type(node.op) in _ops:
-        return _ops[type(node.op)](_ev(node.left), _ev(node.right))
+        left, right = _ev(node.left), _ev(node.right)
+        if isinstance(node.op, ast.Pow):
+            if abs(right) > MAX_EXPONENT or abs(left) > 1e6:
+                raise ValueError("power is too large")
+            if left < 0 and not float(right).is_integer():
+                raise ValueError("complex results are not allowed")
+        return _checked(_ops[type(node.op)](left, right))
     if isinstance(node, ast.UnaryOp) and type(node.op) in _ops:
-        return _ops[type(node.op)](_ev(node.operand))
+        return _checked(_ops[type(node.op)](_ev(node.operand)))
     raise ValueError("only arithmetic over numbers is allowed")
-print(_ev(ast.parse(sys.argv[1], mode="eval").body))`
+expr = sys.argv[1]
+if len(expr) > MAX_EXPR_LEN:
+    raise ValueError("expression is too long")
+tree = ast.parse(expr, mode="eval")
+if sum(1 for _ in ast.walk(tree)) > MAX_NODES:
+    raise ValueError("expression is too complex")
+print(_ev(tree.body))`
 
 // rawLibrary is the authored catalog (descriptions injected by buildLibrary).
 func rawLibrary() []LibraryEntry {
@@ -197,8 +221,8 @@ func rawLibrary() []LibraryEntry {
 			Description: "Create or overwrite a file in the agent's workspace.", Tags: []string{"files", "write"},
 			Definition: delegateDef(object([]string{"path", "content"}, fields{"path": "string", "content": "string"}), PrimitiveWriteFile, map[string]any{"path": "${path}", "content": "${content}"})},
 		{Slug: "list-files", Name: "List files", Category: CatFiles, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
-			Description: "List files in the workspace, optionally under a path prefix.", Tags: []string{"files"},
-			Definition: delegateDef(object(nil, fields{"prefix": "string"}), PrimitiveListFiles, map[string]any{"prefix": "${prefix}"})},
+			Description: "List files in the workspace root.", Tags: []string{"files"},
+			Definition: delegateDef(object(nil, fields{}), PrimitiveListFiles, map[string]any{"prefix": ""})},
 		{Slug: "find-files", Name: "Find files by name", Category: CatFiles, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
 			Description: "Find files in the workspace by name or glob pattern.", Tags: []string{"files", "search"},
 			Definition: delegateDef(object([]string{"pattern"}, fields{"pattern": "string"}), PrimitiveSearchFiles, map[string]any{"pattern": "${pattern}"})},
@@ -206,11 +230,11 @@ func rawLibrary() []LibraryEntry {
 			Description: "Search the text inside workspace files with a regular expression.", Tags: []string{"files", "search", "code"},
 			Definition: delegateDef(object([]string{"pattern"}, fields{"pattern": "string"}), PrimitiveSearchText, map[string]any{"pattern": "${pattern}"})},
 		{Slug: "run-tests", Name: "Run the test suite", Category: CatFiles, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
-			Description: "Run the project's tests (auto-detected, or pass a command).", Tags: []string{"code", "tests", "ci"},
-			Definition: delegateDef(object(nil, fields{"command": "string"}), PrimitiveRunTests, map[string]any{"command": "${command}"})},
+			Description: "Run the project's tests with an auto-detected command.", Tags: []string{"code", "tests", "ci"},
+			Definition: delegateDef(object(nil, fields{}), PrimitiveRunTests, map[string]any{})},
 		{Slug: "build-project", Name: "Build the project", Category: CatFiles, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
-			Description: "Build the project (auto-detected, or pass a command).", Tags: []string{"code", "build", "ci"},
-			Definition: delegateDef(object(nil, fields{"command": "string"}), PrimitiveBuild, map[string]any{"command": "${command}"})},
+			Description: "Build the project with an auto-detected command.", Tags: []string{"code", "build", "ci"},
+			Definition: delegateDef(object(nil, fields{}), PrimitiveBuild, map[string]any{})},
 		{Slug: "run-command", Name: "Run a shell command", Category: CatFiles, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
 			Description: "Run a shell command in the agent's workspace.", Tags: []string{"shell", "exec"},
 			Definition: delegateDef(object([]string{"command"}, fields{"command": "string"}), PrimitiveExec, map[string]any{"command": []any{"bash", "-lc", "${command}"}})},
@@ -221,25 +245,25 @@ func rawLibrary() []LibraryEntry {
 			Definition: httpGet(object([]string{"url"}, fields{"url": "string"}), "${url}")},
 		{Slug: "web-search", Name: "Search the web", Category: CatWeb, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
 			Description: "Search the web and get instant-answer results (DuckDuckGo, no key needed).", Tags: []string{"search", "web"},
-			Definition: httpGet(object([]string{"query"}, fields{"query": "string"}), "https://api.duckduckgo.com/?q=${query}&format=json&no_html=1&skip_disambig=1")},
+			Definition: httpGet(object([]string{"query"}, fields{"query": "string"}), "https://api.duckduckgo.com/?q=${query:query}&format=json&no_html=1&skip_disambig=1")},
 		{Slug: "wikipedia-lookup", Name: "Look up Wikipedia", Category: CatWeb, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
 			Description: "Get the summary of a Wikipedia article by title.", Tags: []string{"search", "reference"},
-			Definition: httpGet(object([]string{"title"}, fields{"title": "string"}), "https://en.wikipedia.org/api/rest_v1/page/summary/${title}")},
+			Definition: httpGet(object([]string{"title"}, fields{"title": "string"}), "https://en.wikipedia.org/api/rest_v1/page/summary/${path:title}")},
 		{Slug: "get-weather", Name: "Get the weather", Category: CatWeb, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
 			Description: "Get the current weather for a latitude/longitude (Open-Meteo, no key needed).", Tags: []string{"weather", "api"},
-			Definition: httpGet(object([]string{"latitude", "longitude"}, fields{"latitude": "string", "longitude": "string"}), "https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,wind_speed_10m")},
+			Definition: httpGet(object([]string{"latitude", "longitude"}, fields{"latitude": "string", "longitude": "string"}), "https://api.open-meteo.com/v1/forecast?latitude=${query:latitude}&longitude=${query:longitude}&current=temperature_2m,wind_speed_10m")},
 		{Slug: "geocode-place", Name: "Find coordinates for a place", Category: CatWeb, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
 			Description: "Look up the latitude/longitude of a place by name.", Tags: []string{"maps", "geocode"},
-			Definition: httpGet(object([]string{"name"}, fields{"name": "string"}), "https://geocoding-api.open-meteo.com/v1/search?name=${name}&count=1")},
+			Definition: httpGet(object([]string{"name"}, fields{"name": "string"}), "https://geocoding-api.open-meteo.com/v1/search?name=${query:name}&count=1")},
 		{Slug: "convert-currency", Name: "Convert currency", Category: CatWeb, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
 			Description: "Get exchange rates for a base currency (open.er-api, no key needed).", Tags: []string{"finance", "currency"},
-			Definition: httpGet(object([]string{"base"}, fields{"base": "string"}), "https://open.er-api.com/v6/latest/${base}")},
+			Definition: httpGet(object([]string{"base"}, fields{"base": "string"}), "https://open.er-api.com/v6/latest/${path:base}")},
 		{Slug: "country-info", Name: "Look up country info", Category: CatWeb, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
 			Description: "Get facts about a country by name (REST Countries, no key needed).", Tags: []string{"reference", "geo"},
-			Definition: httpGet(object([]string{"name"}, fields{"name": "string"}), "https://restcountries.com/v3.1/name/${name}")},
+			Definition: httpGet(object([]string{"name"}, fields{"name": "string"}), "https://restcountries.com/v3.1/name/${path:name}")},
 		{Slug: "query-sql", Name: "Query a database (SQL)", Category: CatWeb, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
-			Description: "Run a read-only SQL query against a SQLite database in the workspace.", Tags: []string{"data", "sql", "database"},
-			Definition: delegateDef(object([]string{"query"}, fields{"query": "string", "database_path": "string"}), PrimitiveQuerySQL, map[string]any{"engine": "sqlite", "query": "${query}", "database_path": "${database_path}"})},
+			Description: "Run a SQL query against a SQLite database in the workspace.", Tags: []string{"data", "sql", "database"},
+			Definition: delegateDef(object([]string{"query", "database_path"}, fields{"query": "string", "database_path": "string"}), PrimitiveQuerySQL, map[string]any{"engine": "sqlite", "query": "${query}", "database_path": "${database_path}"})},
 		{Slug: "query-json", Name: "Query JSON data", Category: CatWeb, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
 			Description: "Query or transform a JSON document with a jq expression.", Tags: []string{"data", "json", "jq"},
 			Definition: delegateDef(object([]string{"query", "json"}, fields{"query": "string", "json": "string"}), PrimitiveQueryJSON, map[string]any{"query": "${query}", "json": "${json}"})},
@@ -250,29 +274,25 @@ func rawLibrary() []LibraryEntry {
 			map[string]any{"ok": true, "channel": "C0123456789", "ts": "1718900000.000100"},
 			httpSend(object([]string{"channel", "text"}, fields{"channel": "string", "text": "string"}), "POST", "https://slack.com/api/chat.postMessage",
 				map[string]string{"Authorization": "Bearer ${secrets.SLACK_BOT_TOKEN}", "Content-Type": "application/json"},
-				`{"channel":"${channel}","text":"${text}"}`)),
+				`{"channel":${json:channel},"text":${json:text}}`)),
 		live("send-email", "Send an email", CatComms,
 			"Send a transactional email (Resend).", "RESEND_API_KEY", []string{"email", "notify"},
 			map[string]any{"id": "re_123456789", "status": "queued"},
-			httpSend(object([]string{"to", "subject", "html"}, fields{"to": "string", "subject": "string", "html": "string"}), "POST", "https://api.resend.com/emails",
+			httpSend(object([]string{"from", "to", "subject", "html"}, fields{"from": "string", "to": "string", "subject": "string", "html": "string"}), "POST", "https://api.resend.com/emails",
 				map[string]string{"Authorization": "Bearer ${secrets.RESEND_API_KEY}", "Content-Type": "application/json"},
-				`{"from":"agent@example.com","to":"${to}","subject":"${subject}","html":"${html}"}`)),
+				`{"from":${json:from},"to":${json:to},"subject":${json:subject},"html":${json:html}}`)),
 		live("send-sms", "Send an SMS", CatComms,
 			"Send a text message (Twilio).", "TWILIO_AUTH", []string{"sms", "notify"},
 			map[string]any{"sid": "SM0123456789", "status": "queued"},
-			httpSend(object([]string{"to", "body"}, fields{"to": "string", "body": "string"}), "POST", "https://api.twilio.com/2010-04-01/Messages.json",
+			httpSend(object([]string{"account_sid", "to", "body"}, fields{"account_sid": "string", "to": "string", "body": "string"}), "POST", "https://api.twilio.com/2010-04-01/Accounts/${path:account_sid}/Messages.json",
 				map[string]string{"Authorization": "Basic ${secrets.TWILIO_AUTH}", "Content-Type": "application/x-www-form-urlencoded"},
-				`To=${to}&Body=${body}`)),
-		live("discord-message", "Post to Discord", CatComms,
-			"Post a message to a Discord channel via webhook.", "DISCORD_WEBHOOK_URL", []string{"discord", "chat", "notify"},
-			map[string]any{"id": "112233445566", "type": 0},
-			httpSend(object([]string{"content"}, fields{"content": "string"}), "POST", "${secrets.DISCORD_WEBHOOK_URL}",
-				map[string]string{"Content-Type": "application/json"}, `{"content":"${content}"}`)),
-		live("telegram-message", "Send a Telegram message", CatComms,
-			"Send a message from a Telegram bot.", "TELEGRAM_BOT_TOKEN", []string{"telegram", "chat", "notify"},
-			map[string]any{"ok": true, "result": map[string]any{"message_id": 42}},
-			httpSend(object([]string{"chat_id", "text"}, fields{"chat_id": "string", "text": "string"}), "POST", "https://api.telegram.org/bot${secrets.TELEGRAM_BOT_TOKEN}/sendMessage",
-				map[string]string{"Content-Type": "application/json"}, `{"chat_id":"${chat_id}","text":"${text}"}`)),
+				`To=${query:to}&Body=${query:body}`)),
+		{Slug: "discord-message", Name: "Post to Discord", Category: CatComms, Delivery: DeliveryMock, ToolKind: ToolTypePrimitive,
+			Description: "Post a message to a Discord channel via webhook.", Tags: []string{"discord", "chat", "notify"},
+			Definition: mockDef(object([]string{"content"}, fields{"content": "string"}), map[string]any{"id": "112233445566", "type": 0})},
+		{Slug: "telegram-message", Name: "Send a Telegram message", Category: CatComms, Delivery: DeliveryMock, ToolKind: ToolTypePrimitive,
+			Description: "Send a message from a Telegram bot.", Tags: []string{"telegram", "chat", "notify"},
+			Definition: mockDef(object([]string{"chat_id", "text"}, fields{"chat_id": "string", "text": "string"}), map[string]any{"ok": true, "result": map[string]any{"message_id": 42}})},
 		{Slug: "create-calendar-event", Name: "Create a calendar event", Category: CatComms, Delivery: DeliveryMock, ToolKind: ToolTypePrimitive,
 			Description: "Create an event on a calendar.", Tags: []string{"calendar", "schedule"}, RequiresSecret: "GOOGLE_OAUTH_TOKEN",
 			Definition: mockDef(object([]string{"summary", "start", "end"}, fields{"summary": "string", "start": "string", "end": "string"}),
@@ -286,30 +306,28 @@ func rawLibrary() []LibraryEntry {
 		live("github-create-issue", "Create a GitHub issue", CatDev,
 			"Open an issue in a GitHub repository.", "GITHUB_TOKEN", []string{"github", "issues", "dev"},
 			map[string]any{"number": 101, "state": "open", "html_url": "https://github.com/acme/repo/issues/101"},
-			httpSend(object([]string{"owner", "repo", "title", "body"}, fields{"owner": "string", "repo": "string", "title": "string", "body": "string"}), "POST", "https://api.github.com/repos/${owner}/${repo}/issues",
+			httpSend(object([]string{"owner", "repo", "title", "body"}, fields{"owner": "string", "repo": "string", "title": "string", "body": "string"}), "POST", "https://api.github.com/repos/${path:owner}/${path:repo}/issues",
 				map[string]string{"Authorization": "Bearer ${secrets.GITHUB_TOKEN}", "Accept": "application/vnd.github+json"},
-				`{"title":"${title}","body":"${body}"}`)),
+				`{"title":${json:title},"body":${json:body}}`)),
 		live("github-search-code", "Search code on GitHub", CatDev,
 			"Search code across GitHub repositories.", "GITHUB_TOKEN", []string{"github", "search", "dev"},
 			map[string]any{"total_count": 2, "items": []any{map[string]any{"name": "main.go", "repository": map[string]any{"full_name": "acme/repo"}}}},
-			httpSend(object([]string{"query"}, fields{"query": "string"}), "GET", "https://api.github.com/search/code?q=${query}",
+			httpSend(object([]string{"query"}, fields{"query": "string"}), "GET", "https://api.github.com/search/code?q=${query:query}",
 				map[string]string{"Authorization": "Bearer ${secrets.GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}, "")),
 		live("github-open-pr", "Open a GitHub pull request", CatDev,
 			"Open a pull request in a GitHub repository.", "GITHUB_TOKEN", []string{"github", "pr", "dev"},
 			map[string]any{"number": 55, "state": "open", "html_url": "https://github.com/acme/repo/pull/55"},
-			httpSend(object([]string{"owner", "repo", "title", "head", "base"}, fields{"owner": "string", "repo": "string", "title": "string", "head": "string", "base": "string"}), "POST", "https://api.github.com/repos/${owner}/${repo}/pulls",
+			httpSend(object([]string{"owner", "repo", "title", "head", "base"}, fields{"owner": "string", "repo": "string", "title": "string", "head": "string", "base": "string"}), "POST", "https://api.github.com/repos/${path:owner}/${path:repo}/pulls",
 				map[string]string{"Authorization": "Bearer ${secrets.GITHUB_TOKEN}", "Accept": "application/vnd.github+json"},
-				`{"title":"${title}","head":"${head}","base":"${base}"}`)),
+				`{"title":${json:title},"head":${json:head},"base":${json:base}}`)),
 		{Slug: "gitlab-create-issue", Name: "Create a GitLab issue", Category: CatDev, Delivery: DeliveryMock, ToolKind: ToolTypePrimitive,
 			Description: "Open an issue in a GitLab project.", Tags: []string{"gitlab", "issues", "dev"}, RequiresSecret: "GITLAB_TOKEN",
 			Definition: mockDef(object([]string{"project_id", "title"}, fields{"project_id": "string", "title": "string", "description": "string"}),
 				map[string]any{"iid": 12, "state": "opened", "web_url": "https://gitlab.com/acme/repo/-/issues/12"})},
-		live("jira-create-issue", "Create a Jira issue", CatDev,
-			"Create an issue in Jira.", "JIRA_TOKEN", []string{"jira", "issues", "dev"},
-			map[string]any{"id": "10042", "key": "ENG-42", "self": "https://acme.atlassian.net/rest/api/3/issue/10042"},
-			httpSend(object([]string{"project", "summary", "issue_type"}, fields{"project": "string", "summary": "string", "issue_type": "string"}), "POST", "https://acme.atlassian.net/rest/api/3/issue",
-				map[string]string{"Authorization": "Basic ${secrets.JIRA_TOKEN}", "Content-Type": "application/json"},
-				`{"fields":{"project":{"key":"${project}"},"summary":"${summary}","issuetype":{"name":"${issue_type}"}}}`)),
+		{Slug: "jira-create-issue", Name: "Create a Jira issue", Category: CatDev, Delivery: DeliveryMock, ToolKind: ToolTypePrimitive,
+			Description: "Create an issue in Jira.", Tags: []string{"jira", "issues", "dev"},
+			Definition: mockDef(object([]string{"project", "summary", "issue_type"}, fields{"project": "string", "summary": "string", "issue_type": "string"}),
+				map[string]any{"id": "10042", "key": "ENG-42", "self": "https://acme.atlassian.net/rest/api/3/issue/10042"})},
 		{Slug: "jira-search", Name: "Search Jira issues (JQL)", Category: CatDev, Delivery: DeliveryMock, ToolKind: ToolTypePrimitive,
 			Description: "Search Jira issues with a JQL query.", Tags: []string{"jira", "search", "dev"}, RequiresSecret: "JIRA_TOKEN",
 			Definition: mockDef(object([]string{"jql"}, fields{"jql": "string"}),
@@ -327,7 +345,7 @@ func rawLibrary() []LibraryEntry {
 			map[string]any{"object": "page", "id": "page_123456789", "url": "https://notion.so/page_123456789"},
 			httpSend(object([]string{"parent_id", "title"}, fields{"parent_id": "string", "title": "string"}), "POST", "https://api.notion.com/v1/pages",
 				map[string]string{"Authorization": "Bearer ${secrets.NOTION_TOKEN}", "Notion-Version": "2022-06-28", "Content-Type": "application/json"},
-				`{"parent":{"database_id":"${parent_id}"},"properties":{"title":{"title":[{"text":{"content":"${title}"}}]}}}`)),
+				`{"parent":{"database_id":${json:parent_id}},"properties":{"title":{"title":[{"text":{"content":${json:title}}}]}}}`)),
 		{Slug: "google-sheets-append", Name: "Append a row to Google Sheets", Category: CatDev, Delivery: DeliveryMock, ToolKind: ToolTypePrimitive,
 			Description: "Append a row of values to a Google Sheet.", Tags: []string{"sheets", "data"}, RequiresSecret: "GOOGLE_OAUTH_TOKEN",
 			Definition: mockDef(object([]string{"spreadsheet_id", "values"}, fields{"spreadsheet_id": "string", "values": "string"}),
@@ -337,7 +355,7 @@ func rawLibrary() []LibraryEntry {
 			map[string]any{"id": "ch_123456789", "status": "succeeded", "amount": 2000, "currency": "usd"},
 			httpSend(object([]string{"amount", "currency", "source"}, fields{"amount": "string", "currency": "string", "source": "string"}), "POST", "https://api.stripe.com/v1/charges",
 				map[string]string{"Authorization": "Bearer ${secrets.STRIPE_API_KEY}", "Content-Type": "application/x-www-form-urlencoded"},
-				`amount=${amount}&currency=${currency}&source=${source}`)),
+				`amount=${query:amount}&currency=${query:currency}&source=${query:source}`)),
 		{Slug: "stripe-refund", Name: "Refund a Stripe payment", Category: CatDev, Delivery: DeliveryMock, ToolKind: ToolTypePrimitive,
 			Description: "Issue a refund for a Stripe charge.", Tags: []string{"stripe", "payments", "billing"}, RequiresSecret: "STRIPE_API_KEY",
 			Definition: mockDef(object([]string{"charge_id"}, fields{"charge_id": "string", "amount": "string"}),
@@ -447,7 +465,7 @@ func rawLibrary() []LibraryEntry {
 			Definition: delegateDef(object([]string{"expression"}, fields{"expression": "string"}), PrimitiveExec, map[string]any{"command": []any{"python3", "-c", safeCalcScript, "${expression}"}})},
 		{Slug: "generate-uuid", Name: "Generate a UUID", Category: CatAI, Delivery: DeliveryLive, ToolKind: ToolTypePrimitive,
 			Description: "Generate a random UUID.", Tags: []string{"utility", "id"},
-			Definition: delegateDef(object(nil, fields{}), PrimitiveExec, map[string]any{"command": []any{"uuidgen"}})},
+			Definition: delegateDef(object(nil, fields{}), PrimitiveExec, map[string]any{"command": []any{"python3", "-c", "import uuid; print(uuid.uuid4())"}})},
 	}
 }
 

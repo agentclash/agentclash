@@ -150,9 +150,17 @@ type CreateToolsFromLibraryInput struct {
 	Entries []FromLibraryEntryInput `json:"entries"`
 }
 
+const (
+	maxToolsFromLibraryEntries      = 100
+	maxToolsFromLibraryRequestBytes = 64 << 10
+)
+
 func (i *CreateToolsFromLibraryInput) Validate() error {
 	if len(i.Entries) == 0 {
 		return fmt.Errorf("entries is required")
+	}
+	if len(i.Entries) > maxToolsFromLibraryEntries {
+		return fmt.Errorf("entries must contain at most %d items", maxToolsFromLibraryEntries)
 	}
 	for _, e := range i.Entries {
 		if strings.TrimSpace(e.Slug) == "" {
@@ -996,6 +1004,7 @@ func createToolsFromLibraryHandler(logger *slog.Logger, authorizer WorkspaceAuth
 			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
 			return
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxToolsFromLibraryRequestBytes)
 		var input CreateToolsFromLibraryInput
 		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")

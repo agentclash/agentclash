@@ -1,11 +1,45 @@
 package engine
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/templateutil"
 )
+
+func TestResolveTemplateMap_EncodesReferencesForTheirDestination(t *testing.T) {
+	resolved, err := resolveTemplateMap(map[string]any{
+		"body": `{"message":${json:message}}`,
+		"url":  "https://example.com/${path:segment}?q=${query:query}",
+	}, templateResolutionOptions{
+		parameters: map[string]any{
+			"message": "hello \"world\"\nnext",
+			"segment": "a/b c",
+			"query":   "a&b c",
+		},
+		declaredParams:       map[string]struct{}{"message": {}, "segment": {}, "query": {}},
+		errorOnMissingParams: true,
+	})
+	if err != nil {
+		t.Fatalf("resolveTemplateMap returned error: %v", err)
+	}
+
+	body, ok := resolved["body"].(string)
+	if !ok || !json.Valid([]byte(body)) {
+		t.Fatalf("body = %#v, want valid JSON string", resolved["body"])
+	}
+	var decoded map[string]string
+	if err := json.Unmarshal([]byte(body), &decoded); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+	if decoded["message"] != "hello \"world\"\nnext" {
+		t.Fatalf("message = %q, want original value", decoded["message"])
+	}
+	if resolved["url"] != "https://example.com/a%2Fb%20c?q=a%26b+c" {
+		t.Fatalf("url = %q, want path/query-escaped value", resolved["url"])
+	}
+}
 
 func TestResolveTemplateMap_SubstitutesParametersAndNestedPaths(t *testing.T) {
 	resolved, err := resolveTemplateMap(map[string]any{

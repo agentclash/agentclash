@@ -3,6 +3,7 @@ package engine
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/agentclash/agentclash/backend/internal/templateutil"
@@ -99,8 +100,30 @@ func resolveTemplateString(s string, opts templateResolutionOptions) (any, error
 }
 
 func resolveTemplatePlaceholder(expr string, opts templateResolutionOptions) (string, bool, error) {
+	encoding, reference := splitTemplateEncoding(expr)
+	value, resolved, err := resolveTemplateReferenceValue(reference, opts)
+	if err != nil || !resolved {
+		return "", resolved, err
+	}
+	switch encoding {
+	case "json":
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return "", false, fmt.Errorf("encode template reference %q as JSON: %w", reference, err)
+		}
+		return string(encoded), true, nil
+	case "query":
+		return url.QueryEscape(encodeTemplateValue(value)), true, nil
+	case "path":
+		return url.PathEscape(encodeTemplateValue(value)), true, nil
+	default:
+		return encodeTemplateValue(value), true, nil
+	}
+}
+
+func resolveTemplateReferenceValue(expr string, opts templateResolutionOptions) (any, bool, error) {
 	if expr == "parameters" {
-		return encodeTemplateValue(nonNilParameters(opts.parameters)), true, nil
+		return nonNilParameters(opts.parameters), true, nil
 	}
 
 	if strings.HasPrefix(expr, "secrets.") {
@@ -110,19 +133,29 @@ func resolveTemplatePlaceholder(expr string, opts templateResolutionOptions) (st
 			return value, true, nil
 		}
 		if opts.errorOnMissingSecret {
-			return "", false, fmt.Errorf("cannot resolve secret %q", key)
+			return nil, false, fmt.Errorf("cannot resolve secret %q", key)
 		}
-		return "", false, nil
+		return nil, false, nil
 	}
 
 	_, resolvedValue, ok, err := resolveParameterReference(expr, opts)
 	if err != nil {
-		return "", false, err
+		return nil, false, err
 	}
 	if !ok {
-		return "", false, nil
+		return nil, false, nil
 	}
-	return encodeTemplateValue(resolvedValue), true, nil
+	return resolvedValue, true, nil
+}
+
+func splitTemplateEncoding(expr string) (string, string) {
+	for _, encoding := range []string{"json", "query", "path"} {
+		prefix := encoding + ":"
+		if strings.HasPrefix(expr, prefix) {
+			return encoding, strings.TrimPrefix(expr, prefix)
+		}
+	}
+	return "", expr
 }
 
 func resolveParameterReference(expr string, opts templateResolutionOptions) (string, any, bool, error) {

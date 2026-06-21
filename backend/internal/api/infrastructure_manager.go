@@ -444,42 +444,67 @@ func (m *InfrastructureManager) CreateToolsFromLibrary(ctx context.Context, call
 				skip(key, "a tool with this name already exists")
 				continue
 			}
-			for n := 2; ; n++ {
-				candidate := fmt.Sprintf("%s-%d", baseSlug, n)
-				if _, clash := used[candidate]; !clash {
-					slug = candidate
-					break
-				}
-			}
+			slug = nextAvailableToolSlug(baseSlug, used)
 		}
 
-		if err := m.validateToolDefinition(ctx, &workspaceID, entry.ToolKind, slug, definition); err != nil {
-			// Catalog entries are validated in toolspec tests, so this is defensive.
-			skip(key, "definition is not valid")
+		var row repository.ToolRow
+		creationFailed := false
+		for attempt := 0; attempt < 3; attempt++ {
+			if err := m.validateToolDefinition(ctx, &workspaceID, entry.ToolKind, slug, definition); err != nil {
+				// Catalog entries are validated in toolspec tests, so this is defensive.
+				skip(key, "definition is not valid")
+				creationFailed = true
+				break
+			}
+
+			row, err = m.repo.CreateTool(ctx, repository.CreateToolParams{
+				OrganizationID: orgID,
+				WorkspaceID:    workspaceID,
+				Name:           entry.Name,
+				Slug:           slug,
+				ToolKind:       entry.ToolKind,
+				CapabilityKey:  slug,
+				Definition:     definition,
+			})
+			if err == nil {
+				break
+			}
+			if !errors.Is(err, repository.ErrSlugTaken) {
+				return nil, nil, fmt.Errorf("create tool %q: %w", key, err)
+			}
+			used[slug] = struct{}{}
+			if e.Conflict != "suffix" {
+				break
+			}
+			slug = nextAvailableToolSlug(baseSlug, used)
+		}
+		if creationFailed {
 			continue
 		}
-
-		row, err := m.repo.CreateTool(ctx, repository.CreateToolParams{
-			OrganizationID: orgID,
-			WorkspaceID:    workspaceID,
-			Name:           entry.Name,
-			Slug:           slug,
-			ToolKind:       entry.ToolKind,
-			CapabilityKey:  slug,
-			Definition:     definition,
-		})
 		if err != nil {
-			if errors.Is(err, repository.ErrSlugTaken) {
-				skip(key, "a tool with this name already exists")
-				continue
-			}
-			return nil, nil, fmt.Errorf("create tool %q: %w", key, err)
+			skip(key, "a tool with this name already exists")
+			continue
 		}
 		used[slug] = struct{}{}
 		created = append(created, row)
 	}
 
 	return created, skipped, nil
+}
+
+func nextAvailableToolSlug(base string, used map[string]struct{}) string {
+	if _, clash := used[base]; !clash {
+		return base
+	}
+	// With len(used) occupied slugs, one of these len(used)+1 candidates must
+	// be free. The bound makes this deterministic even for degenerate maps.
+	for n := 2; n <= len(used)+2; n++ {
+		candidate := fmt.Sprintf("%s-%d", base, n)
+		if _, clash := used[candidate]; !clash {
+			return candidate
+		}
+	}
+	panic("unreachable: suffix candidate set exceeds occupied slug count")
 }
 
 func (m *InfrastructureManager) ListTools(ctx context.Context, workspaceID uuid.UUID) ([]repository.ToolRow, error) {

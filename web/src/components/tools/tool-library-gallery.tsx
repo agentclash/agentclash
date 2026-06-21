@@ -229,10 +229,10 @@ function LibraryCard({
             Mock
           </Badge>
         )}
-        {entry.requires_secret && (
+        {entry.has_live && entry.requires_secret && (
           <Badge variant="outline" className="gap-1 text-[11px] text-muted-foreground">
             <KeyRound className="size-3" />
-            Needs API key
+            Live option needs API key
           </Badge>
         )}
       </div>

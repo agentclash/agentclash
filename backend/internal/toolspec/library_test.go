@@ -2,6 +2,8 @@ package toolspec
 
 import (
 	"encoding/json"
+	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -76,5 +78,122 @@ func TestLibraryBySlug(t *testing.T) {
 	}
 	if _, ok := LibraryBySlug("definitely-not-a-tool"); ok {
 		t.Fatal("expected a miss for an unknown slug")
+	}
+}
+
+func TestLibraryDelegateDefinitionsOnlyReferenceRequiredParams(t *testing.T) {
+	for _, entry := range Library() {
+		definitions := map[string]json.RawMessage{"default": entry.Definition}
+		if entry.HasLive() {
+			definitions["live"] = entry.Live
+		}
+		for variant, raw := range definitions {
+			var definition struct {
+				Parameters struct {
+					Required []string `json:"required"`
+				} `json:"parameters"`
+				Implementation struct {
+					Mode string          `json:"mode"`
+					Args json.RawMessage `json:"args"`
+				} `json:"implementation"`
+			}
+			if err := json.Unmarshal(raw, &definition); err != nil {
+				t.Fatalf("%s/%s: decode definition: %v", entry.Slug, variant, err)
+			}
+			if definition.Implementation.Mode != ModeDelegate {
+				continue
+			}
+			required := make(map[string]struct{}, len(definition.Parameters.Required))
+			for _, name := range definition.Parameters.Required {
+				required[name] = struct{}{}
+			}
+			for _, placeholder := range placeholdersIn(definition.Implementation.Args) {
+				reference := unwrapTemplateEncoding(strings.TrimSpace(placeholder))
+				if reference == "parameters" || strings.HasPrefix(reference, "secrets.") {
+					continue
+				}
+				if _, ok := required[reference]; !ok {
+					t.Errorf("%s/%s: delegate arg references optional parameter %q; omitted optional inputs fail runtime resolution", entry.Slug, variant, reference)
+				}
+			}
+		}
+	}
+}
+
+func TestLibraryLiveDefinitionsKeepSecretsOutOfURLs(t *testing.T) {
+	for _, entry := range Library() {
+		if !entry.HasLive() {
+			continue
+		}
+		var definition struct {
+			Implementation struct {
+				Args struct {
+					URL string `json:"url"`
+				} `json:"args"`
+			} `json:"implementation"`
+		}
+		if err := json.Unmarshal(entry.Live, &definition); err != nil {
+			t.Fatalf("%s: decode live definition: %v", entry.Slug, err)
+		}
+		if strings.Contains(definition.Implementation.Args.URL, "${secrets.") {
+			t.Errorf("%s: live URL contains a secret placeholder that the HTTP response URL can expose", entry.Slug)
+		}
+	}
+}
+
+func TestSafeCalcScript(t *testing.T) {
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is not installed")
+	}
+
+	for _, tc := range []struct {
+		name       string
+		expression string
+		want       string
+		wantError  bool
+	}{
+		{name: "arithmetic", expression: "(2 + 3) * 4", want: "20"},
+		{name: "code execution", expression: `__import__("os").getcwd()`, wantError: true},
+		{name: "boolean", expression: "True", wantError: true},
+		{name: "oversized power", expression: "9 ** 999999999", wantError: true},
+		{name: "non finite", expression: "1e309", wantError: true},
+		{name: "too long", expression: strings.Repeat("1+", 130) + "1", wantError: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			output, err := exec.Command("python3", "-c", safeCalcScript, tc.expression).CombinedOutput()
+			if tc.wantError {
+				if err == nil {
+					t.Fatalf("expression unexpectedly succeeded: %s", output)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("expression failed: %v: %s", err, output)
+			}
+			if strings.TrimSpace(string(output)) != tc.want {
+				t.Fatalf("output = %q, want %q", output, tc.want)
+			}
+		})
+	}
+}
+
+func TestGenerateUUIDUsesInstalledSandboxRuntime(t *testing.T) {
+	entry, ok := LibraryBySlug("generate-uuid")
+	if !ok {
+		t.Fatal("generate-uuid entry is missing")
+	}
+	var definition struct {
+		Implementation struct {
+			Args struct {
+				Command []string `json:"command"`
+			} `json:"args"`
+		} `json:"implementation"`
+	}
+	if err := json.Unmarshal(entry.Definition, &definition); err != nil {
+		t.Fatal(err)
+	}
+	command := definition.Implementation.Args.Command
+	if len(command) < 3 || command[0] != "python3" || !strings.Contains(command[2], "uuid.uuid4") {
+		t.Fatalf("command = %#v, want Python stdlib UUID generation", command)
 	}
 }
