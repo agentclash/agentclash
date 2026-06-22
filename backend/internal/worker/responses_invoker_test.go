@@ -98,11 +98,7 @@ func responsesInvokerExecutionContext() repository.RunAgentExecutionContext {
 				ProviderKey:         "openai",
 				CredentialReference: "env://OPENAI_API_KEY",
 			},
-			ModelAlias: &repository.ModelAliasExecutionContext{
-				ModelCatalogEntry: repository.ModelCatalogEntryExecutionContext{
-					ProviderModelID: "o4-mini-deep-research",
-				},
-			},
+			ModelID: "o4-mini-deep-research",
 		},
 	}
 }

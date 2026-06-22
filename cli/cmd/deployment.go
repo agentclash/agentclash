@@ -22,7 +22,7 @@ func init() {
 	deploymentCreateCmd.Flags().String("build-version-id", "", "Agent build version ID")
 	deploymentCreateCmd.Flags().String("runtime-profile-id", "", "Runtime profile ID")
 	deploymentCreateCmd.Flags().String("provider-account-id", "", "Provider account ID")
-	deploymentCreateCmd.Flags().String("model-alias-id", "", "Model alias ID")
+	deploymentCreateCmd.Flags().String("model", "", "Provider model ID")
 }
 
 var deploymentCmd = &cobra.Command{
@@ -111,7 +111,7 @@ var deploymentCreateCmd = &cobra.Command{
 			setFlagIfChanged(cmd, body, "build-version-id", "build_version_id")
 			setFlagIfChanged(cmd, body, "runtime-profile-id", "runtime_profile_id")
 			setFlagIfChanged(cmd, body, "provider-account-id", "provider_account_id")
-			setFlagIfChanged(cmd, body, "model-alias-id", "model_alias_id")
+			setFlagIfChanged(cmd, body, "model", "model")
 		}
 
 		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/agent-deployments", body)

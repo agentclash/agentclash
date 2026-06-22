@@ -4826,7 +4826,7 @@ type CreateAgentDeploymentParams struct {
 	CurrentBuildVersionID uuid.UUID
 	RuntimeProfileID      uuid.UUID
 	ProviderAccountID     *uuid.UUID
-	ModelAliasID          *uuid.UUID
+	Model                 string
 	Name                  string
 	Slug                  string
 	DeploymentConfig      json.RawMessage
@@ -5099,7 +5099,7 @@ func (r *Repository) CreateAgentDeployment(ctx context.Context, params CreateAge
 	row := tx.QueryRow(ctx, `
 		INSERT INTO agent_deployments (
 			organization_id, workspace_id, agent_build_id, current_build_version_id,
-			runtime_profile_id, provider_account_id, model_alias_id,
+			runtime_profile_id, provider_account_id, model_id,
 			name, slug, deployment_type, deployment_config
 		) VALUES (
 			$1, $2, $3, $4,
@@ -5108,7 +5108,7 @@ func (r *Repository) CreateAgentDeployment(ctx context.Context, params CreateAge
 		) RETURNING id, organization_id, workspace_id, agent_build_id, current_build_version_id,
 			name, slug, deployment_type, status, created_at, updated_at
 	`, params.OrganizationID, params.WorkspaceID, params.AgentBuildID, params.CurrentBuildVersionID,
-		params.RuntimeProfileID, params.ProviderAccountID, params.ModelAliasID,
+		params.RuntimeProfileID, params.ProviderAccountID, params.Model,
 		params.Name, params.Slug, params.DeploymentConfig,
 	)
 
@@ -5128,19 +5128,19 @@ func (r *Repository) CreateAgentDeployment(ctx context.Context, params CreateAge
 	// Create the initial deployment snapshot so the deployment is immediately
 	// runnable. The snapshot_hash is derived from the source IDs to enable
 	// deduplication if the same configuration is snapshotted again later.
-	snapshotHash := deploymentSnapshotHash(params.CurrentBuildVersionID, params.RuntimeProfileID, params.ProviderAccountID, params.ModelAliasID)
+	snapshotHash := deploymentSnapshotHash(params.CurrentBuildVersionID, params.RuntimeProfileID, params.ProviderAccountID, params.Model)
 	_, err = tx.Exec(ctx, `
 		INSERT INTO agent_deployment_snapshots (
 			organization_id, workspace_id, agent_build_id,
 			agent_deployment_id, source_agent_build_version_id,
 			source_runtime_profile_id, source_provider_account_id,
-			source_model_alias_id, deployment_type,
+			source_model_id, deployment_type,
 			snapshot_hash, snapshot_config
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'native', $9, $10)
 	`, params.OrganizationID, params.WorkspaceID, params.AgentBuildID,
 		dep.ID, params.CurrentBuildVersionID,
 		params.RuntimeProfileID, params.ProviderAccountID,
-		params.ModelAliasID, snapshotHash, params.DeploymentConfig,
+		params.Model, snapshotHash, params.DeploymentConfig,
 	)
 	if err != nil {
 		return AgentDeploymentRow{}, fmt.Errorf("create initial deployment snapshot: %w", err)
@@ -5156,16 +5156,14 @@ func (r *Repository) CreateAgentDeployment(ctx context.Context, params CreateAge
 // deploymentSnapshotHash builds a deterministic hash from the source IDs that
 // define a deployment's configuration. Used by the unique constraint on
 // (agent_deployment_id, snapshot_hash) to prevent duplicate snapshots.
-func deploymentSnapshotHash(buildVersionID, runtimeProfileID uuid.UUID, providerAccountID, modelAliasID *uuid.UUID) string {
+func deploymentSnapshotHash(buildVersionID, runtimeProfileID uuid.UUID, providerAccountID *uuid.UUID, model string) string {
 	h := sha256.New()
 	h.Write([]byte(buildVersionID.String()))
 	h.Write([]byte(runtimeProfileID.String()))
 	if providerAccountID != nil {
 		h.Write([]byte(providerAccountID.String()))
 	}
-	if modelAliasID != nil {
-		h.Write([]byte(modelAliasID.String()))
-	}
+	h.Write([]byte(model))
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }
 

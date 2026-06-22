@@ -6,8 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/connection"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/toolspec"
@@ -30,16 +30,6 @@ type InfrastructureRepository interface {
 	// Workspace Secrets
 	UpsertWorkspaceSecret(ctx context.Context, params repository.UpsertWorkspaceSecretParams) error
 	LoadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error)
-
-	// Model Catalog
-	ListModelCatalogEntries(ctx context.Context) ([]repository.ModelCatalogEntryRow, error)
-	GetModelCatalogEntryByID(ctx context.Context, id uuid.UUID) (repository.ModelCatalogEntryRow, error)
-
-	// Model Aliases
-	CreateModelAlias(ctx context.Context, p repository.CreateModelAliasParams) (repository.ModelAliasRow, error)
-	GetModelAliasByID(ctx context.Context, id uuid.UUID) (repository.ModelAliasRow, error)
-	ListModelAliasesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.ModelAliasRow, error)
-	ArchiveModelAlias(ctx context.Context, id uuid.UUID) error
 
 	// Tools
 	CreateTool(ctx context.Context, p repository.CreateToolParams) (repository.ToolRow, error)
@@ -66,16 +56,19 @@ type InfrastructureRepository interface {
 }
 
 type InfrastructureManager struct {
-	repo           InfrastructureRepository
-	providerClient provider.Client
+	repo InfrastructureRepository
+	conn *connection.Service
 }
 
 func NewInfrastructureManager(repo InfrastructureRepository) *InfrastructureManager {
-	return &InfrastructureManager{repo: repo}
+	return &InfrastructureManager{repo: repo, conn: connection.NewService(repo, nil)}
 }
 
-func (m *InfrastructureManager) WithProviderClient(client provider.Client) *InfrastructureManager {
-	m.providerClient = client
+// WithConnectionService installs the provider-backed connection service used for
+// smoke tests and live model listing. Without it, those paths report the
+// provider client as unconfigured.
+func (m *InfrastructureManager) WithConnectionService(conn *connection.Service) *InfrastructureManager {
+	m.conn = conn
 	return m
 }
 
@@ -125,248 +118,54 @@ func (m *InfrastructureManager) ArchiveRuntimeProfile(ctx context.Context, id uu
 // --------------------------------------------------------------------------
 
 func (m *InfrastructureManager) CreateProviderAccount(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateProviderAccountInput) (repository.ProviderAccountRow, error) {
-	orgID, err := m.resolveOrgID(ctx, workspaceID)
-	if err != nil {
-		return repository.ProviderAccountRow{}, fmt.Errorf("resolve org: %w", err)
-	}
-
-	credRef := input.CredentialReference
-
-	// When a raw API key is provided, store it as a workspace secret and
-	// set the credential reference to point at it automatically.
-	if input.APIKey != "" {
-		secretKey := fmt.Sprintf("PROVIDER_%s_API_KEY", strings.ToUpper(strings.ReplaceAll(input.ProviderKey, "-", "_")))
-		if err := m.repo.UpsertWorkspaceSecret(ctx, repository.UpsertWorkspaceSecretParams{
-			WorkspaceID: workspaceID,
-			Key:         secretKey,
-			Value:       input.APIKey,
-			ActorUserID: &caller.UserID,
-		}); err != nil {
-			return repository.ProviderAccountRow{}, fmt.Errorf("store api key as workspace secret: %w", err)
-		}
-		credRef = "workspace-secret://" + secretKey
-	}
-
-	return m.repo.CreateProviderAccount(ctx, repository.CreateProviderAccountParams{
-		OrganizationID:      orgID,
-		WorkspaceID:         workspaceID,
+	return m.conn.Create(ctx, workspaceID, connection.CreateConnectionInput{
 		ProviderKey:         input.ProviderKey,
 		Name:                input.Name,
-		CredentialReference: credRef,
+		CredentialReference: input.CredentialReference,
+		APIKey:              input.APIKey,
 		LimitsConfig:        input.LimitsConfig,
+		ActorUserID:         &caller.UserID,
 	})
 }
 
 func (m *InfrastructureManager) ListProviderAccounts(ctx context.Context, workspaceID uuid.UUID) ([]repository.ProviderAccountRow, error) {
-	return m.repo.ListProviderAccountsByWorkspaceID(ctx, workspaceID)
+	return m.conn.List(ctx, workspaceID)
 }
 
 func (m *InfrastructureManager) GetProviderAccount(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error) {
-	return m.repo.GetProviderAccountByID(ctx, id)
+	return m.conn.Get(ctx, id)
 }
 
 func (m *InfrastructureManager) DeleteProviderAccount(ctx context.Context, id uuid.UUID) error {
-	return m.repo.ArchiveProviderAccount(ctx, id)
+	return m.conn.Delete(ctx, id)
 }
 
 func (m *InfrastructureManager) TestProviderAccount(ctx context.Context, account repository.ProviderAccountRow, input ProviderAccountTestInput) (ProviderAccountTestResult, error) {
-	model := strings.TrimSpace(input.Model)
-	if model == "" {
-		model = defaultProviderAccountSmokeModel(account.ProviderKey)
-	}
-	result := ProviderAccountTestResult{
-		AccountID:   account.ID,
-		ProviderKey: account.ProviderKey,
-		Model:       model,
-		Passed:      false,
-		Status:      "failed",
-	}
-	startedAt := time.Now()
-
-	if m.providerClient == nil {
-		result.Code = string(provider.FailureCodeUnsupportedProvider)
-		result.Message = "provider smoke test client is not configured"
-		return result, nil
-	}
-	if model == "" {
-		result.Code = string(provider.FailureCodeUnsupportedProvider)
-		result.Message = fmt.Sprintf("no default smoke-test model is configured for provider %q; pass --model", account.ProviderKey)
-		return result, nil
-	}
-	if account.WorkspaceID == nil {
-		result.Code = "invalid_provider_account"
-		result.Message = "provider account is not attached to a workspace"
-		return result, nil
-	}
-	if account.Status != "" && account.Status != "active" {
-		result.Code = "inactive_provider_account"
-		result.Message = fmt.Sprintf("provider account status is %q", account.Status)
-		return result, nil
-	}
-
-	timeout := providerAccountTestTimeout(input.StepTimeoutSeconds)
-	runCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	secrets := map[string]string{}
-	if strings.HasPrefix(account.CredentialReference, "workspace-secret://") {
-		loaded, err := m.repo.LoadWorkspaceSecrets(ctx, *account.WorkspaceID)
-		if err != nil {
-			return ProviderAccountTestResult{}, fmt.Errorf("load workspace secrets: %w", err)
-		}
-		secrets = loaded
-	}
-	runCtx = provider.WithWorkspaceSecrets(runCtx, secrets)
-	redactionValues := providerAccountRedactionValues(runCtx, secrets, account.CredentialReference)
-
-	response, err := m.providerClient.InvokeModel(runCtx, provider.Request{
-		ProviderKey:         account.ProviderKey,
-		ProviderAccountID:   account.ID.String(),
-		CredentialReference: account.CredentialReference,
-		Model:               model,
-		TraceMode:           "optional",
-		StepTimeout:         timeout,
-		Messages: []provider.Message{
-			{Role: "user", Content: "Reply with exactly: agentclash-smoke-ok"},
-		},
+	result, err := m.conn.Test(ctx, account, connection.TestInput{
+		Model:              input.Model,
+		StepTimeoutSeconds: input.StepTimeoutSeconds,
 	})
-	result.DurationMS = time.Since(startedAt).Milliseconds()
 	if err != nil {
-		return providerAccountFailureResult(result, err, redactionValues, account.CredentialReference), nil
+		return ProviderAccountTestResult{}, err
 	}
-
-	result.Passed = true
-	result.Status = "passed"
-	result.ProviderModelID = response.ProviderModelID
-	result.Message = "provider account smoke test passed"
-	return result, nil
+	return providerAccountTestResponse{
+		AccountID:       result.AccountID,
+		ProviderKey:     result.ProviderKey,
+		Model:           result.Model,
+		ProviderModelID: result.ProviderModelID,
+		Passed:          result.Passed,
+		Status:          result.Status,
+		Code:            result.Code,
+		Message:         result.Message,
+		Retryable:       result.Retryable,
+		DurationMS:      result.DurationMS,
+	}, nil
 }
 
-func providerAccountTestTimeout(seconds int32) time.Duration {
-	if seconds <= 0 {
-		return 20 * time.Second
-	}
-	if seconds > 30 {
-		return 30 * time.Second
-	}
-	return time.Duration(seconds) * time.Second
-}
-
-func defaultProviderAccountSmokeModel(providerKey string) string {
-	switch strings.TrimSpace(providerKey) {
-	case "openai":
-		return "gpt-4.1-mini"
-	case "anthropic":
-		return "claude-haiku-4-5-20251001"
-	case "gemini":
-		return "gemini-2.0-flash"
-	case "xai":
-		return "grok-4-1-fast-reasoning"
-	case "openrouter":
-		return "openai/gpt-4.1-mini"
-	case "mistral":
-		return "mistral-small-latest"
-	default:
-		return ""
-	}
-}
-
-func providerAccountFailureResult(result ProviderAccountTestResult, err error, redactionValues []string, credentialReference string) ProviderAccountTestResult {
-	result.Passed = false
-	result.Status = "failed"
-	if errors.Is(err, context.DeadlineExceeded) {
-		result.Code = string(provider.FailureCodeTimeout)
-		result.Message = "provider account smoke test timed out"
-		return result
-	}
-	if failure, ok := provider.AsFailure(err); ok {
-		result.Code = string(failure.Code)
-		result.Message = sanitizeProviderAccountTestMessage(failure.Message, redactionValues, credentialReference)
-		result.Retryable = failure.Retryable
-		return result
-	}
-	result.Code = string(provider.FailureCodeUnknown)
-	result.Message = sanitizeProviderAccountTestMessage(err.Error(), redactionValues, credentialReference)
-	return result
-}
-
-func providerAccountRedactionValues(ctx context.Context, secrets map[string]string, credentialReference string) []string {
-	values := make([]string, 0, len(secrets)+1)
-	for _, value := range secrets {
-		if value != "" {
-			values = append(values, value)
-		}
-	}
-	if resolved, err := (provider.EnvCredentialResolver{}).Resolve(ctx, credentialReference); err == nil && resolved != "" {
-		values = append(values, resolved)
-	}
-	return values
-}
-
-func sanitizeProviderAccountTestMessage(message string, redactionValues []string, credentialReference string) string {
-	sanitized := message
-	for _, value := range redactionValues {
-		sanitized = strings.ReplaceAll(sanitized, value, "[redacted]")
-	}
-	if credentialReference != "" {
-		sanitized = strings.ReplaceAll(sanitized, credentialReference, "[credential-reference]")
-	}
-	return sanitized
-}
-
-// --------------------------------------------------------------------------
-// Model Catalog
-// --------------------------------------------------------------------------
-
-func (m *InfrastructureManager) ListModelCatalog(ctx context.Context) ([]repository.ModelCatalogEntryRow, error) {
-	return m.repo.ListModelCatalogEntries(ctx)
-}
-
-func (m *InfrastructureManager) GetModelCatalogEntry(ctx context.Context, id uuid.UUID) (repository.ModelCatalogEntryRow, error) {
-	return m.repo.GetModelCatalogEntryByID(ctx, id)
-}
-
-// --------------------------------------------------------------------------
-// Model Aliases
-// --------------------------------------------------------------------------
-
-func (m *InfrastructureManager) CreateModelAlias(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateModelAliasInput) (repository.ModelAliasRow, error) {
-	orgID, err := m.resolveOrgID(ctx, workspaceID)
-	if err != nil {
-		return repository.ModelAliasRow{}, fmt.Errorf("resolve org: %w", err)
-	}
-	catalogID, err := uuid.Parse(input.ModelCatalogEntryID)
-	if err != nil {
-		return repository.ModelAliasRow{}, fmt.Errorf("invalid model_catalog_entry_id: %w", err)
-	}
-	var providerAccountID *uuid.UUID
-	if input.ProviderAccountID != nil {
-		parsed, err := uuid.Parse(*input.ProviderAccountID)
-		if err != nil {
-			return repository.ModelAliasRow{}, fmt.Errorf("invalid provider_account_id: %w", err)
-		}
-		providerAccountID = &parsed
-	}
-	return m.repo.CreateModelAlias(ctx, repository.CreateModelAliasParams{
-		OrganizationID:      orgID,
-		WorkspaceID:         workspaceID,
-		ProviderAccountID:   providerAccountID,
-		ModelCatalogEntryID: catalogID,
-		AliasKey:            input.AliasKey,
-		DisplayName:         input.DisplayName,
-	})
-}
-
-func (m *InfrastructureManager) ListModelAliases(ctx context.Context, workspaceID uuid.UUID) ([]repository.ModelAliasRow, error) {
-	return m.repo.ListModelAliasesByWorkspaceID(ctx, workspaceID)
-}
-
-func (m *InfrastructureManager) GetModelAlias(ctx context.Context, id uuid.UUID) (repository.ModelAliasRow, error) {
-	return m.repo.GetModelAliasByID(ctx, id)
-}
-
-func (m *InfrastructureManager) DeleteModelAlias(ctx context.Context, id uuid.UUID) error {
-	return m.repo.ArchiveModelAlias(ctx, id)
+// ListProviderAccountModels returns the live model list reachable with a
+// connection's credential (cached per account).
+func (m *InfrastructureManager) ListProviderAccountModels(ctx context.Context, account repository.ProviderAccountRow) ([]provider.ModelInfo, error) {
+	return m.conn.ListModels(ctx, account)
 }
 
 // --------------------------------------------------------------------------

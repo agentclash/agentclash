@@ -150,30 +150,28 @@ function buildApiMock() {
         ],
       };
     }
-    if (url === "/v1/workspaces/ws-1/model-aliases") {
+    if (url === "/v1/provider-accounts/pa-1/models") {
       return {
         items: [
           {
-            id: "alias-1",
-            workspace_id: "ws-1",
-            provider_account_id: "pa-1",
-            model_catalog_entry_id: "catalog-1",
-            alias_key: "gpt-5.4-mini",
+            id: "gpt-5.4-mini",
             display_name: "GPT-5.4 Mini",
-            status: "active",
-            created_at: "2026-04-20T08:00:00Z",
-            updated_at: "2026-04-20T08:00:00Z",
+            input_cost_per_mtok: 0.15,
+            output_cost_per_mtok: 0.6,
+            pricing_source: "live",
           },
+        ],
+      };
+    }
+    if (url === "/v1/provider-accounts/pa-2/models") {
+      return {
+        items: [
           {
-            id: "alias-2",
-            workspace_id: "ws-1",
-            provider_account_id: "pa-2",
-            model_catalog_entry_id: "catalog-2",
-            alias_key: "other-model",
+            id: "other-model",
             display_name: "Other Model",
-            status: "active",
-            created_at: "2026-04-20T08:00:00Z",
-            updated_at: "2026-04-20T08:00:00Z",
+            input_cost_per_mtok: 1,
+            output_cost_per_mtok: 2,
+            pricing_source: "static",
           },
         ],
       };
@@ -231,7 +229,7 @@ describe("RunRankingInsightsCard", () => {
     try {
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith("/v1/workspaces/ws-1/provider-accounts");
-        expect(api.get).toHaveBeenCalledWith("/v1/workspaces/ws-1/model-aliases");
+        expect(api.get).toHaveBeenCalledWith("/v1/provider-accounts/pa-1/models");
       });
 
       const providerSelect = document.querySelector(
@@ -242,13 +240,15 @@ describe("RunRankingInsightsCard", () => {
       }
       expect(providerSelect.value).toBe("pa-1");
 
-      const modelSelect = document.querySelector(
-        'select[aria-label="Insight Model Alias"]',
-      );
-      if (!(modelSelect instanceof HTMLSelectElement)) {
-        throw new Error("Insight Model Alias select not found");
-      }
-      expect(modelSelect.value).toBe("alias-1");
+      await waitFor(() => {
+        const modelSelect = document.querySelector(
+          'select[aria-label="Insight Model"]',
+        );
+        if (!(modelSelect instanceof HTMLSelectElement)) {
+          throw new Error("Insight Model select not found");
+        }
+        expect(modelSelect.value).toBe("gpt-5.4-mini");
+      });
 
       const generateButton = Array.from(document.querySelectorAll("button")).find(
         (button) => button.textContent?.includes("Generate insights"),
@@ -262,7 +262,7 @@ describe("RunRankingInsightsCard", () => {
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith("/v1/runs/run-1/ranking-insights", {
           provider_account_id: "pa-1",
-          model_alias_id: "alias-1",
+          model: "gpt-5.4-mini",
         });
       });
 
@@ -336,7 +336,17 @@ describe("RunRankingInsightsCard", () => {
     try {
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith("/v1/workspaces/ws-1/provider-accounts");
-        expect(api.get).toHaveBeenCalledWith("/v1/workspaces/ws-1/model-aliases");
+        expect(api.get).toHaveBeenCalledWith("/v1/provider-accounts/pa-1/models");
+      });
+
+      await waitFor(() => {
+        const modelSelect = document.querySelector(
+          'select[aria-label="Insight Model"]',
+        );
+        if (!(modelSelect instanceof HTMLSelectElement)) {
+          throw new Error("Insight Model select not found");
+        }
+        expect(modelSelect.value).toBe("gpt-5.4-mini");
       });
 
       const generateButton = Array.from(document.querySelectorAll("button")).find(

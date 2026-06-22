@@ -34,10 +34,6 @@ type AgentBuildRepository interface {
 	MarkAgentBuildVersionReady(ctx context.Context, id uuid.UUID) error
 	CreateAgentDeployment(ctx context.Context, params repository.CreateAgentDeploymentParams) (repository.AgentDeploymentRow, error)
 	GetProviderAccountByID(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
-	UpsertModelCatalogEntry(ctx context.Context, providerKey, providerModelID string) (repository.ModelCatalogEntryRow, error)
-	CreateModelAlias(ctx context.Context, p repository.CreateModelAliasParams) (repository.ModelAliasRow, error)
-	ListModelAliasesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.ModelAliasRow, error)
-	UnarchiveModelAliasByKey(ctx context.Context, workspaceID uuid.UUID, aliasKey string, providerAccountID *uuid.UUID, catalogEntryID uuid.UUID) (repository.ModelAliasRow, error)
 }
 
 type AgentBuildService interface {
@@ -83,7 +79,6 @@ type CreateAgentDeploymentInput struct {
 	BuildVersionID    uuid.UUID
 	RuntimeProfileID  uuid.UUID
 	ProviderAccountID *uuid.UUID
-	ModelAliasID      *uuid.UUID
 	Model             string
 	DeploymentConfig  json.RawMessage
 }
@@ -275,25 +270,16 @@ func (m *AgentBuildManager) CreateDeployment(ctx context.Context, caller Caller,
 		return repository.AgentDeploymentRow{}, err
 	}
 
-	// Auto-create model alias when user provides provider_account + model but no alias.
-	if input.ModelAliasID == nil && input.ProviderAccountID != nil && input.Model != "" {
-		alias, resolveErr := m.resolveOrCreateModelAlias(ctx, build.OrganizationID, workspaceID, *input.ProviderAccountID, input.Model)
-		if resolveErr != nil {
-			return repository.AgentDeploymentRow{}, resolveErr
-		}
-		input.ModelAliasID = &alias.ID
-	}
-
 	if input.ProviderAccountID == nil {
 		return repository.AgentDeploymentRow{}, AgentBuildValidationError{
 			Code:    "missing_provider_account",
 			Message: "provider_account_id is required",
 		}
 	}
-	if input.ModelAliasID == nil {
+	if strings.TrimSpace(input.Model) == "" {
 		return repository.AgentDeploymentRow{}, AgentBuildValidationError{
 			Code:    "missing_model",
-			Message: "either model_alias_id or model (e.g. \"gpt-4.1\") is required",
+			Message: "model (e.g. \"gpt-4.1\") is required",
 		}
 	}
 
@@ -306,57 +292,11 @@ func (m *AgentBuildManager) CreateDeployment(ctx context.Context, caller Caller,
 		CurrentBuildVersionID: input.BuildVersionID,
 		RuntimeProfileID:      input.RuntimeProfileID,
 		ProviderAccountID:     input.ProviderAccountID,
-		ModelAliasID:          input.ModelAliasID,
+		Model:                 strings.TrimSpace(input.Model),
 		Name:                  strings.TrimSpace(input.Name),
 		Slug:                  slug,
 		DeploymentConfig:      defaultJSON(input.DeploymentConfig),
 	})
-}
-
-// resolveOrCreateModelAlias looks up the provider account to get its provider_key,
-// upserts a model catalog entry, and finds or creates a model alias.
-func (m *AgentBuildManager) resolveOrCreateModelAlias(ctx context.Context, orgID, workspaceID, providerAccountID uuid.UUID, model string) (repository.ModelAliasRow, error) {
-	account, err := m.repo.GetProviderAccountByID(ctx, providerAccountID)
-	if err != nil {
-		return repository.ModelAliasRow{}, fmt.Errorf("look up provider account: %w", err)
-	}
-
-	catalogEntry, err := m.repo.UpsertModelCatalogEntry(ctx, account.ProviderKey, model)
-	if err != nil {
-		return repository.ModelAliasRow{}, fmt.Errorf("upsert model catalog entry: %w", err)
-	}
-
-	// Reuse an existing active alias for this provider+model if one exists.
-	aliasKey := fmt.Sprintf("auto-%s-%s", account.ProviderKey, model)
-	existing, err := m.repo.ListModelAliasesByWorkspaceID(ctx, workspaceID)
-	if err != nil {
-		return repository.ModelAliasRow{}, fmt.Errorf("list model aliases: %w", err)
-	}
-	for _, a := range existing {
-		if a.AliasKey == aliasKey {
-			return a, nil
-		}
-	}
-
-	// Try to unarchive a previously archived alias with the same key.
-	unarchived, err := m.repo.UnarchiveModelAliasByKey(ctx, workspaceID, aliasKey, &providerAccountID, catalogEntry.ID)
-	if err == nil {
-		return unarchived, nil
-	}
-
-	alias, err := m.repo.CreateModelAlias(ctx, repository.CreateModelAliasParams{
-		OrganizationID:      orgID,
-		WorkspaceID:         workspaceID,
-		ProviderAccountID:   &providerAccountID,
-		ModelCatalogEntryID: catalogEntry.ID,
-		AliasKey:            aliasKey,
-		DisplayName:         model,
-	})
-	if err != nil {
-		return repository.ModelAliasRow{}, fmt.Errorf("auto-create model alias: %w", err)
-	}
-
-	return alias, nil
 }
 
 // --- Request types ---
@@ -389,7 +329,6 @@ type createAgentDeploymentRequest struct {
 	BuildVersionID    string          `json:"build_version_id"`
 	RuntimeProfileID  string          `json:"runtime_profile_id"`
 	ProviderAccountID *string         `json:"provider_account_id,omitempty"`
-	ModelAliasID      *string         `json:"model_alias_id,omitempty"`
 	Model             string          `json:"model,omitempty"`
 	DeploymentConfig  json.RawMessage `json:"deployment_config,omitempty"`
 }
@@ -1067,25 +1006,12 @@ func decodeCreateAgentDeploymentInput(body createAgentDeploymentRequest) (Create
 		providerAccountID = &parsed
 	}
 
-	var modelAliasID *uuid.UUID
-	if body.ModelAliasID != nil && strings.TrimSpace(*body.ModelAliasID) != "" {
-		parsed, parseErr := uuid.Parse(*body.ModelAliasID)
-		if parseErr != nil {
-			return CreateAgentDeploymentInput{}, AgentBuildValidationError{
-				Code:    "invalid_model_alias_id",
-				Message: "model_alias_id must be a valid UUID",
-			}
-		}
-		modelAliasID = &parsed
-	}
-
 	return CreateAgentDeploymentInput{
 		Name:              body.Name,
 		AgentBuildID:      agentBuildID,
 		BuildVersionID:    buildVersionID,
 		RuntimeProfileID:  runtimeProfileID,
 		ProviderAccountID: providerAccountID,
-		ModelAliasID:      modelAliasID,
 		Model:             strings.TrimSpace(body.Model),
 		DeploymentConfig:  body.DeploymentConfig,
 	}, nil

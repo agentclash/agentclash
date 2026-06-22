@@ -60,7 +60,7 @@ SELECT
     ads.source_agent_build_version_id AS snapshot_source_agent_build_version_id,
     ads.source_runtime_profile_id AS snapshot_source_runtime_profile_id,
     ads.source_provider_account_id AS snapshot_source_provider_account_id,
-    ads.source_model_alias_id AS snapshot_source_model_alias_id,
+    ads.source_model_id AS snapshot_source_model_id,
     ads.deployment_type AS snapshot_deployment_type,
     ads.endpoint_url AS snapshot_endpoint_url,
     ads.snapshot_hash AS snapshot_hash,
@@ -83,24 +83,7 @@ SELECT
     pa.provider_key AS provider_account_provider_key,
     pa.name AS provider_account_name,
     pa.credential_reference AS provider_account_credential_reference,
-    pa.limits_config AS provider_account_limits_config,
-
-    ma.id AS model_alias_id,
-    ma.workspace_id AS model_alias_workspace_id,
-    ma.provider_account_id AS model_alias_provider_account_id,
-    ma.model_catalog_entry_id AS model_alias_model_catalog_entry_id,
-    ma.alias_key AS model_alias_alias_key,
-    ma.display_name AS model_alias_display_name,
-
-    mce.id AS model_catalog_entry_id,
-    mce.provider_key AS model_catalog_provider_key,
-    mce.provider_model_id AS model_catalog_provider_model_id,
-    mce.display_name AS model_catalog_display_name,
-    mce.model_family AS model_catalog_model_family,
-    mce.modality AS model_catalog_modality,
-    mce.metadata AS model_catalog_metadata,
-    mce.input_cost_per_million_tokens AS model_catalog_input_cost_per_million_tokens,
-    mce.output_cost_per_million_tokens AS model_catalog_output_cost_per_million_tokens
+    pa.limits_config AS provider_account_limits_config
 FROM run_agents AS ra
 JOIN runs AS r
   ON r.id = ra.run_id
@@ -205,10 +188,5 @@ JOIN runtime_profiles AS rp
 LEFT JOIN provider_accounts AS pa
   ON pa.id = ads.source_provider_account_id
  AND pa.organization_id = ads.organization_id
-LEFT JOIN model_aliases AS ma
-  ON ma.id = ads.source_model_alias_id
- AND ma.organization_id = ads.organization_id
-LEFT JOIN model_catalog_entries AS mce
-  ON mce.id = ma.model_catalog_entry_id
 WHERE ra.id = @id
 LIMIT 1;

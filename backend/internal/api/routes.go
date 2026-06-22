@@ -303,16 +303,7 @@ func registerProtectedRoutes(
 	router.Get("/provider-accounts/{accountID}", infraGetHandler(logger, authorizer, "accountID", infraService.GetProviderAccount, mapProviderAccount, "provider account"))
 	router.Delete("/provider-accounts/{accountID}", infraDeleteHandler(logger, authorizer, "accountID", infraService.GetProviderAccount, infraService.DeleteProviderAccount, "provider account"))
 	router.Post("/provider-accounts/{accountID}/test", testProviderAccountHandler(logger, authorizer, infraService))
-
-	// Model Catalog (global, no workspace scope)
-	router.Get("/model-catalog", listModelCatalogHandler(logger, infraService))
-	router.Get("/model-catalog/{entryID}", getModelCatalogEntryHandler(logger, infraService))
-
-	// Model Aliases
-	router.Method("POST", "/workspaces/{workspaceID}/model-aliases", wsMiddleware(infraCreateHandler(logger, authorizer, infraService.CreateModelAlias, mapModelAlias)))
-	router.Method("GET", "/workspaces/{workspaceID}/model-aliases", wsMiddleware(infraListHandler(logger, infraService.ListModelAliases, mapModelAlias)))
-	router.Get("/model-aliases/{aliasID}", infraGetHandler(logger, authorizer, "aliasID", infraService.GetModelAlias, mapModelAlias, "model alias"))
-	router.Delete("/model-aliases/{aliasID}", infraDeleteHandler(logger, authorizer, "aliasID", infraService.GetModelAlias, infraService.DeleteModelAlias, "model alias"))
+	router.Get("/provider-accounts/{accountID}/models", listProviderAccountModelsHandler(logger, authorizer, infraService))
 
 	// Tools
 	router.Get("/tool-primitives", listToolPrimitivesHandler())

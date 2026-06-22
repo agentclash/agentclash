@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type {
-  ModelAlias,
   KnowledgeSource,
   Playground,
   PlaygroundExperiment,
@@ -32,7 +31,6 @@ export default async function PlaygroundDetailPage({
   let testCases: PlaygroundTestCase[];
   let experiments: PlaygroundExperiment[];
   let providerAccounts: ProviderAccount[];
-  let modelAliases: ModelAlias[];
   let tools: WorkspaceTool[];
   let knowledgeSources: KnowledgeSource[];
 
@@ -42,7 +40,6 @@ export default async function PlaygroundDetailPage({
       testCasesRes,
       experimentsRes,
       providerAccountsRes,
-      modelAliasesRes,
       toolsRes,
       knowledgeSourcesRes,
     ] =
@@ -51,7 +48,6 @@ export default async function PlaygroundDetailPage({
         api.get<{ items: PlaygroundTestCase[] }>(`/v1/playgrounds/${playgroundId}/test-cases`),
         api.get<{ items: PlaygroundExperiment[] }>(`/v1/playgrounds/${playgroundId}/experiments`),
         api.get<{ items: ProviderAccount[] }>(`/v1/workspaces/${workspaceId}/provider-accounts`),
-        api.get<{ items: ModelAlias[] }>(`/v1/workspaces/${workspaceId}/model-aliases`),
         api.get<{ items: WorkspaceTool[] }>(`/v1/workspaces/${workspaceId}/tools`),
         api.get<{ items: KnowledgeSource[] }>(`/v1/workspaces/${workspaceId}/knowledge-sources`),
       ]);
@@ -59,7 +55,6 @@ export default async function PlaygroundDetailPage({
     testCases = testCasesRes.items;
     experiments = experimentsRes.items;
     providerAccounts = providerAccountsRes.items;
-    modelAliases = modelAliasesRes.items;
     tools = toolsRes.items;
     knowledgeSources = knowledgeSourcesRes.items;
   } catch (err) {
@@ -89,7 +84,6 @@ export default async function PlaygroundDetailPage({
         testCases={testCases}
         experiments={experiments}
         providerAccounts={providerAccounts}
-        modelAliases={modelAliases}
         tools={tools}
         knowledgeSources={knowledgeSources}
         comparison={comparison}

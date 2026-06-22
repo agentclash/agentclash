@@ -13,7 +13,7 @@ const completeConfig: CISetupConfig = {
   agentBuildId: "build-1",
   runtimeProfileId: "runtime-1",
   providerAccountId: "provider-1",
-  modelAliasId: "model-1",
+  model: "model-1",
   challengePackVersionId: "pack-version-1",
   inputSetId: "input-set-1",
   regressionSuiteIds: ["suite-1"],
@@ -40,7 +40,7 @@ candidate:
     name: "pr-candidate"
     runtime_profile_id: "runtime-1"
     provider_account_id: "provider-1"
-    model_alias_id: "model-1"
+    model: "model-1"
 evaluation:
   challenge_pack_version_id: "pack-version-1"
   input_set_id: "input-set-1"
@@ -64,7 +64,7 @@ regressions:
     const yaml = generateAgentClashCIManifest({
       ...completeConfig,
       providerAccountId: "",
-      modelAliasId: "",
+      model: "",
       inputSetId: "",
       regressionSuiteIds: [],
       regressionCaseIds: [],
@@ -74,7 +74,7 @@ regressions:
     });
 
     expect(yaml).not.toContain("provider_account_id");
-    expect(yaml).not.toContain("model_alias_id");
+    expect(yaml).not.toContain("model:");
     expect(yaml).not.toContain("input_set_id");
     expect(yaml).not.toContain("regression_suites");
     expect(yaml).not.toContain("regression_cases");

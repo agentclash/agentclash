@@ -972,17 +972,7 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 				ProviderKey:         "openai",
 				CredentialReference: "env://OPENAI_API_KEY",
 			},
-			ModelAlias: &repository.ModelAliasExecutionContext{
-				ID:          uuid.New(),
-				AliasKey:    "primary-model",
-				DisplayName: "Primary Model",
-				ModelCatalogEntry: repository.ModelCatalogEntryExecutionContext{
-					ID:              uuid.New(),
-					ProviderKey:     "openai",
-					ProviderModelID: "gpt-4.1",
-					DisplayName:     "GPT-4.1",
-				},
-			},
+			ModelID: "gpt-4.1",
 		},
 	}
 }

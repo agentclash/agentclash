@@ -1621,8 +1621,8 @@
               "default": "false"
             },
             {
-              "name": "model-alias",
-              "usage": "Model alias ID",
+              "name": "model",
+              "usage": "Provider model ID",
               "type": "string"
             },
             {
@@ -2045,8 +2045,8 @@
               "type": "string"
             },
             {
-              "name": "model-alias-id",
-              "usage": "Model alias ID",
+              "name": "model",
+              "usage": "Provider model ID",
               "type": "string"
             },
             {
@@ -2323,106 +2323,6 @@
           ]
         },
         {
-          "name": "model-alias",
-          "path": "agentclash infra model-alias",
-          "short": "Manage model-aliases",
-          "runnable": false,
-          "subcommands": [
-            {
-              "name": "create",
-              "path": "agentclash infra model-alias create",
-              "short": "Create a model-alias",
-              "runnable": true,
-              "flags": [
-                {
-                  "name": "alias-key",
-                  "usage": "Alias key",
-                  "type": "string"
-                },
-                {
-                  "name": "display-name",
-                  "usage": "Display name",
-                  "type": "string"
-                },
-                {
-                  "name": "from-file",
-                  "usage": "JSON file with resource spec",
-                  "type": "string"
-                },
-                {
-                  "name": "model-catalog-entry-id",
-                  "usage": "Model catalog entry ID",
-                  "type": "string"
-                },
-                {
-                  "name": "provider-account-id",
-                  "usage": "Optional provider account ID",
-                  "type": "string"
-                }
-              ]
-            },
-            {
-              "name": "delete",
-              "path": "agentclash infra model-alias delete",
-              "short": "Delete a model-alias",
-              "runnable": true,
-              "args": [
-                {
-                  "name": "id",
-                  "required": true
-                }
-              ]
-            },
-            {
-              "name": "get",
-              "path": "agentclash infra model-alias get",
-              "short": "Get a model-alias",
-              "runnable": true,
-              "args": [
-                {
-                  "name": "id",
-                  "required": true
-                }
-              ]
-            },
-            {
-              "name": "list",
-              "path": "agentclash infra model-alias list",
-              "short": "List model-aliases",
-              "runnable": true
-            }
-          ]
-        },
-        {
-          "name": "model-catalog",
-          "path": "agentclash infra model-catalog",
-          "short": "Browse the global model catalog",
-          "aliases": [
-            "models"
-          ],
-          "runnable": false,
-          "subcommands": [
-            {
-              "name": "get",
-              "path": "agentclash infra model-catalog get",
-              "short": "Get a model catalog entry",
-              "runnable": true,
-              "args": [
-                {
-                  "name": "id",
-                  "required": true
-                }
-              ]
-            },
-            {
-              "name": "list",
-              "path": "agentclash infra model-catalog list",
-              "short": "List available models",
-              "runnable": true
-            }
-          ]
-        },
-        {
           "name": "provider-account",
           "path": "agentclash infra provider-account",
           "short": "Manage provider-accounts",
@@ -2470,6 +2370,18 @@
               "path": "agentclash infra provider-account list",
               "short": "List provider-accounts",
               "runnable": true
+            },
+            {
+              "name": "models",
+              "path": "agentclash infra provider-account models",
+              "short": "List models available to a provider account",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "id",
+                  "required": true
+                }
+              ]
             },
             {
               "name": "test",
@@ -3412,7 +3324,7 @@
             },
             {
               "name": "provider-account",
-              "usage": "Provider account name or id to use for imported provider aliases",
+              "usage": "Provider account name or id to use for imported providers",
               "type": "string",
               "default": "default"
             }

@@ -12,44 +12,44 @@ import {
 } from "@/components/ui/select";
 import { ToggleGroup } from "@/components/ui/toggle-group";
 import { Loader2, Plus, Trash2, Rocket } from "lucide-react";
-import type { ModelAlias, ProviderAccount } from "@/lib/api/types";
+import type { ProviderAccount, ProviderConnectionModel } from "@/lib/api/types";
 
 interface ModelEntry {
   id: string;
   providerAccountId: string;
-  modelAliasId: string;
+  model: string;
   name: string;
 }
 
 let nextEntryId = 0;
 function createEntry(
   providerAccounts: ProviderAccount[],
-  modelAliases: ModelAlias[],
+  models: ProviderConnectionModel[],
 ): ModelEntry {
   return {
     id: `entry-${nextEntryId++}`,
     providerAccountId: providerAccounts[0]?.id ?? "",
-    modelAliasId: modelAliases[0]?.id ?? "",
+    model: models[0]?.id ?? "",
     name: "",
   };
 }
 
 interface ExperimentLauncherProps {
   providerAccounts: ProviderAccount[];
-  modelAliases: ModelAlias[];
+  models: ProviderConnectionModel[];
   onLaunchSingle: (data: {
     name: string;
     providerAccountId: string;
-    modelAliasId: string;
+    model: string;
   }) => Promise<void>;
   onLaunchBatch: (data: {
-    models: { providerAccountId: string; modelAliasId: string; name: string }[];
+    models: { providerAccountId: string; model: string; name: string }[];
   }) => Promise<void>;
 }
 
 export function ExperimentLauncher({
   providerAccounts,
-  modelAliases,
+  models,
   onLaunchSingle,
   onLaunchBatch,
 }: ExperimentLauncherProps) {
@@ -58,17 +58,17 @@ export function ExperimentLauncher({
   const [singleProvider, setSingleProvider] = useState(
     providerAccounts[0]?.id ?? "",
   );
-  const [singleModel, setSingleModel] = useState(modelAliases[0]?.id ?? "");
+  const [singleModel, setSingleModel] = useState(models[0]?.id ?? "");
   const [entries, setEntries] = useState<ModelEntry[]>(() => [
-    createEntry(providerAccounts, modelAliases),
-    createEntry(providerAccounts, modelAliases),
+    createEntry(providerAccounts, models),
+    createEntry(providerAccounts, models),
   ]);
   const [launching, setLaunching] = useState(false);
 
   function addEntry() {
     setEntries((prev) => [
       ...prev,
-      createEntry(providerAccounts, modelAliases),
+      createEntry(providerAccounts, models),
     ]);
   }
 
@@ -90,14 +90,14 @@ export function ExperimentLauncher({
         await onLaunchSingle({
           name: singleName,
           providerAccountId: singleProvider,
-          modelAliasId: singleModel,
+          model: singleModel,
         });
         setSingleName("");
       } else {
         await onLaunchBatch({
           models: entries.map((entry) => ({
             providerAccountId: entry.providerAccountId,
-            modelAliasId: entry.modelAliasId,
+            model: entry.model,
             name: entry.name,
           })),
         });
@@ -109,7 +109,7 @@ export function ExperimentLauncher({
 
   const hasEmptyModels =
     mode === "multi" &&
-    entries.some((e) => !e.providerAccountId || !e.modelAliasId);
+    entries.some((e) => !e.providerAccountId || !e.model);
   const canSubmit =
     !launching &&
     (mode === "single"
@@ -177,9 +177,9 @@ export function ExperimentLauncher({
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>
               <SelectContent>
-                {modelAliases.map((a) => (
-                  <SelectItem key={a.id} value={a.id}>
-                    {a.display_name}
+                {models.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>
+                    {m.display_name}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -232,18 +232,18 @@ export function ExperimentLauncher({
                   Model
                 </label>
                 <Select
-                  value={entry.modelAliasId}
+                  value={entry.model}
                   onValueChange={(v) =>
-                    v && updateEntry(entry.id, "modelAliasId", v)
+                    v && updateEntry(entry.id, "model", v)
                   }
                 >
                   <SelectTrigger className="w-full">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {modelAliases.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.display_name}
+                    {models.map((m) => (
+                      <SelectItem key={m.id} value={m.id}>
+                        {m.display_name}
                       </SelectItem>
                     ))}
                   </SelectContent>

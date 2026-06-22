@@ -6,7 +6,7 @@ import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import type {
   CreateRunRankingInsightsRequest,
-  ModelAlias,
+  ProviderConnectionModel,
   ProviderAccount,
   Run,
   RunRankingInsightsResponse,
@@ -26,11 +26,12 @@ export function RunRankingInsightsCard({
 }: RunRankingInsightsCardProps) {
   const { getAccessToken } = useAccessToken();
   const [providerAccounts, setProviderAccounts] = useState<ProviderAccount[]>([]);
-  const [modelAliases, setModelAliases] = useState<ModelAlias[]>([]);
+  const [models, setModels] = useState<ProviderConnectionModel[]>([]);
   const [selectedProviderAccountId, setSelectedProviderAccountId] = useState("");
-  const [selectedModelAliasId, setSelectedModelAliasId] = useState("");
+  const [selectedModel, setSelectedModel] = useState("");
   const [insights, setInsights] = useState<RunRankingInsightsResponse | null>(null);
   const [loadingOptions, setLoadingOptions] = useState(true);
+  const [loadingModels, setLoadingModels] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
 
@@ -53,19 +54,13 @@ export function RunRankingInsightsCard({
         setError("");
         const token = await getAccessToken();
         const api = createApiClient(token);
-        const [providerRes, aliasRes] = await Promise.all([
-          api.get<{ items: ProviderAccount[] }>(
-            `/v1/workspaces/${workspaceId}/provider-accounts`,
-          ),
-          api.get<{ items: ModelAlias[] }>(
-            `/v1/workspaces/${workspaceId}/model-aliases`,
-          ),
-        ]);
+        const providerRes = await api.get<{ items: ProviderAccount[] }>(
+          `/v1/workspaces/${workspaceId}/provider-accounts`,
+        );
         if (cancelled) {
           return;
         }
         setProviderAccounts(providerRes.items);
-        setModelAliases(aliasRes.items);
       } catch (fetchError) {
         if (!cancelled) {
           setError(getErrorMessage(fetchError, "Failed to load insight controls."));
@@ -86,15 +81,6 @@ export function RunRankingInsightsCard({
   const activeProviderAccounts = providerAccounts.filter(
     (account) => account.status === "active",
   );
-  const activeModelAliases = modelAliases.filter((alias) => alias.status === "active");
-  const compatibleModelAliases = activeModelAliases.filter((alias) => {
-    if (!selectedProviderAccountId) {
-      return true;
-    }
-    return (
-      !alias.provider_account_id || alias.provider_account_id === selectedProviderAccountId
-    );
-  });
 
   const providerIds = activeProviderAccounts.map((account) => account.id).join(",");
   useEffect(() => {
@@ -111,27 +97,48 @@ export function RunRankingInsightsCard({
     setSelectedProviderAccountId(activeProviderAccounts[0].id);
   }, [activeProviderAccounts, providerIds, selectedProviderAccountId]);
 
-  const aliasIds = compatibleModelAliases.map((alias) => alias.id).join(",");
   useEffect(() => {
-    if (!compatibleModelAliases.length) {
-      setSelectedModelAliasId("");
+    if (!selectedProviderAccountId) {
+      setModels([]);
+      setSelectedModel("");
       return;
     }
-    if (
-      selectedModelAliasId &&
-      compatibleModelAliases.some((alias) => alias.id === selectedModelAliasId)
-    ) {
-      return;
-    }
-    setSelectedModelAliasId(compatibleModelAliases[0].id);
-  }, [aliasIds, compatibleModelAliases, selectedModelAliasId]);
+    let cancelled = false;
+    setLoadingModels(true);
+    setModels([]);
+    setSelectedModel("");
+    void (async () => {
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const response = await api.get<{ items: ProviderConnectionModel[] }>(
+          `/v1/provider-accounts/${selectedProviderAccountId}/models`,
+        );
+        if (cancelled) {
+          return;
+        }
+        setModels(response.items);
+        if (response.items.length > 0) {
+          setSelectedModel(response.items[0].id);
+        }
+      } catch {
+        // Live model list is optional — fall back to free-form model entry.
+        if (!cancelled) setModels([]);
+      } finally {
+        if (!cancelled) setLoadingModels(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getAccessToken, selectedProviderAccountId]);
 
   if (!isEligible) {
     return null;
   }
 
   async function handleGenerateInsights() {
-    if (!selectedProviderAccountId || !selectedModelAliasId) {
+    if (!selectedProviderAccountId || !selectedModel.trim()) {
       return;
     }
 
@@ -144,7 +151,7 @@ export function RunRankingInsightsCard({
         `/v1/runs/${run.id}/ranking-insights`,
         {
           provider_account_id: selectedProviderAccountId,
-          model_alias_id: selectedModelAliasId,
+          model: selectedModel.trim(),
         } satisfies CreateRunRankingInsightsRequest,
       );
       setInsights(response);
@@ -159,9 +166,10 @@ export function RunRankingInsightsCard({
 
   const readyToGenerate =
     !loadingOptions &&
+    !loadingModels &&
     !generating &&
     !!selectedProviderAccountId &&
-    !!selectedModelAliasId;
+    !!selectedModel.trim();
 
   return (
     <section className="mb-4 rounded-lg border border-border bg-muted/20 p-4">
@@ -203,25 +211,56 @@ export function RunRankingInsightsCard({
           </label>
 
           <label className="grid gap-1 text-xs font-medium text-muted-foreground">
-            Insight Model Alias
-            <select
-              aria-label="Insight Model Alias"
-              className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
-              value={selectedModelAliasId}
-              onChange={(event) => {
-                setSelectedModelAliasId(event.target.value);
-                setInsights(null);
-                setError("");
-              }}
-              disabled={loadingOptions || generating || compatibleModelAliases.length === 0}
-            >
-              <option value="">Select a model alias</option>
-              {compatibleModelAliases.map((alias) => (
-                <option key={alias.id} value={alias.id}>
-                  {alias.display_name}
-                </option>
-              ))}
-            </select>
+            Insight Model
+            {models.length > 0 ? (
+              <select
+                aria-label="Insight Model"
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                value={selectedModel}
+                onChange={(event) => {
+                  setSelectedModel(event.target.value);
+                  setInsights(null);
+                  setError("");
+                }}
+                disabled={
+                  loadingOptions ||
+                  loadingModels ||
+                  generating ||
+                  !selectedProviderAccountId
+                }
+              >
+                <option value="">Select a model</option>
+                {models.map((providerModel) => (
+                  <option key={providerModel.id} value={providerModel.id}>
+                    {providerModel.display_name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                aria-label="Insight Model"
+                className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground"
+                value={selectedModel}
+                onChange={(event) => {
+                  setSelectedModel(event.target.value);
+                  setInsights(null);
+                  setError("");
+                }}
+                placeholder={
+                  loadingModels
+                    ? "Loading models..."
+                    : !selectedProviderAccountId
+                      ? "Select a provider account first"
+                      : "e.g. gpt-4.1"
+                }
+                disabled={
+                  loadingOptions ||
+                  loadingModels ||
+                  generating ||
+                  !selectedProviderAccountId
+                }
+              />
+            )}
           </label>
 
           <button
@@ -254,10 +293,13 @@ export function RunRankingInsightsCard({
       ) : null}
 
       {!loadingOptions &&
+      !loadingModels &&
       activeProviderAccounts.length > 0 &&
-      compatibleModelAliases.length === 0 ? (
+      !!selectedProviderAccountId &&
+      models.length === 0 &&
+      !selectedModel.trim() ? (
         <div className="mt-4 rounded-md border border-border bg-background p-3 text-sm text-muted-foreground">
-          Add an active model alias that works with the selected provider account.
+          Enter a provider model ID to generate insights for the selected provider account.
         </div>
       ) : null}
 

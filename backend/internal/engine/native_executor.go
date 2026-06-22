@@ -232,7 +232,7 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 			nil,
 		)
 	}
-	if executionContext.Deployment.ModelAlias == nil {
+	if executionContext.Deployment.ModelID == "" {
 		return Result{}, provider.NewFailure(
 			executionContext.Deployment.ProviderAccount.ProviderKey,
 			provider.FailureCodeInvalidRequest,
@@ -377,7 +377,7 @@ func (e NativeExecutor) runAgentLoop(
 			ProviderKey:         executionContext.Deployment.ProviderAccount.ProviderKey,
 			ProviderAccountID:   executionContext.Deployment.ProviderAccount.ID.String(),
 			CredentialReference: executionContext.Deployment.ProviderAccount.CredentialReference,
-			Model:               executionContext.Deployment.ModelAlias.ModelCatalogEntry.ProviderModelID,
+			Model:               executionContext.Deployment.ModelID,
 			TraceMode:           executionContext.Deployment.RuntimeProfile.TraceMode,
 			StepTimeout:         stepTimeout(executionContext),
 			Messages:            cloneMessages(state.messages),
@@ -615,10 +615,10 @@ func hasRaceContextPeer(snapshot map[uuid.UUID]racecontext.StandingsEntry, selfI
 }
 
 func raceContextModelLabel(executionContext repository.RunAgentExecutionContext) string {
-	if executionContext.Deployment.ModelAlias == nil {
+	if executionContext.Deployment.ModelID == "" {
 		return ""
 	}
-	return executionContext.Deployment.ModelAlias.ModelCatalogEntry.ProviderModelID
+	return executionContext.Deployment.ModelID
 }
 
 // evaluateRaceContextCadence decides whether to inject and, if so, what

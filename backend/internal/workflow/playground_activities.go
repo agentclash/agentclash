@@ -134,7 +134,7 @@ func (a *PlaygroundActivities) ExecutePlaygroundTestCase(ctx context.Context, in
 		ProviderKey:         executionContext.ProviderAccount.ProviderKey,
 		ProviderAccountID:   executionContext.ProviderAccount.ID.String(),
 		CredentialReference: executionContext.ProviderAccount.CredentialReference,
-		Model:               executionContext.ModelCatalog.ProviderModelID,
+		Model:               executionContext.Model,
 		TraceMode:           requestConfig.TraceMode,
 		StepTimeout:         requestConfig.StepTimeout,
 		Messages:            messages,

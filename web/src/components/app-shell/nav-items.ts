@@ -12,7 +12,6 @@ import {
   Workflow,
   Settings2,
   Key,
-  Tag,
   Wrench,
   Database,
   FileArchive,
@@ -120,11 +119,6 @@ export const navSections: NavSection[] = [
         label: "Provider Accounts",
         href: (id) => `/workspaces/${id}/provider-accounts`,
         icon: Key,
-      },
-      {
-        label: "Model Aliases",
-        href: (id) => `/workspaces/${id}/model-aliases`,
-        icon: Tag,
       },
       {
         label: "Tools",

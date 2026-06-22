@@ -199,11 +199,7 @@ func smokeExecutionContext(providerKey, credRef, model, instructions string) rep
 				ProviderKey:         providerKey,
 				CredentialReference: credRef,
 			},
-			ModelAlias: &repository.ModelAliasExecutionContext{
-				ModelCatalogEntry: repository.ModelCatalogEntryExecutionContext{
-					ProviderModelID: model,
-				},
-			},
+			ModelID: model,
 		},
 	}
 }

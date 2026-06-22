@@ -1,18 +1,18 @@
 "use client";
 
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import type {
   KnowledgeSource,
-  ModelAlias,
   Playground,
   PlaygroundExperiment,
   PlaygroundExperimentComparison,
   PlaygroundExperimentResult,
   PlaygroundTestCase,
   ProviderAccount,
+  ProviderConnectionModel,
   WorkspaceTool,
 } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
@@ -51,7 +51,7 @@ type TraceMode = "required" | "best_effort" | "disabled";
 interface LaneConfig {
   label: string;
   providerAccountId: string;
-  modelAliasId: string;
+  model: string;
   temperature: string;
   timeoutMs: string;
   traceMode: TraceMode;
@@ -62,12 +62,11 @@ interface LaneConfig {
 function makeLaneConfig(
   label: string,
   providerAccounts: ProviderAccount[],
-  modelAliases: ModelAlias[],
 ): LaneConfig {
   return {
     label,
     providerAccountId: providerAccounts[0]?.id ?? "",
-    modelAliasId: modelAliases[0]?.id ?? "",
+    model: "",
     temperature: "0.2",
     timeoutMs: "120000",
     traceMode: "required",
@@ -121,7 +120,6 @@ export function PlaygroundDetailClient(props: {
   testCases: PlaygroundTestCase[];
   experiments: PlaygroundExperiment[];
   providerAccounts: ProviderAccount[];
-  modelAliases: ModelAlias[];
   tools: WorkspaceTool[];
   knowledgeSources: KnowledgeSource[];
   comparison: PlaygroundExperimentComparison | null;
@@ -141,7 +139,6 @@ function PlaygroundDetailInner({
   testCases,
   experiments: initialExperiments,
   providerAccounts,
-  modelAliases,
   tools,
   knowledgeSources,
   comparison,
@@ -153,7 +150,6 @@ function PlaygroundDetailInner({
   testCases: PlaygroundTestCase[];
   experiments: PlaygroundExperiment[];
   providerAccounts: ProviderAccount[];
-  modelAliases: ModelAlias[];
   tools: WorkspaceTool[];
   knowledgeSources: KnowledgeSource[];
   comparison: PlaygroundExperimentComparison | null;
@@ -171,10 +167,10 @@ function PlaygroundDetailInner({
   const [saving, setSaving] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [baselineLane, setBaselineLane] = useState(() =>
-    makeLaneConfig("Baseline", providerAccounts, modelAliases),
+    makeLaneConfig("Baseline", providerAccounts),
   );
   const [candidateLane, setCandidateLane] = useState(() =>
-    makeLaneConfig("Candidate", providerAccounts, modelAliases),
+    makeLaneConfig("Candidate", providerAccounts),
   );
 
   const { experiments, resultsByExperimentId, isPolling, fetchResultsForExperiment } =
@@ -327,13 +323,13 @@ function PlaygroundDetailInner({
         models: [
           {
             provider_account_id: baselineLane.providerAccountId,
-            model_alias_id: baselineLane.modelAliasId,
+            model: baselineLane.model,
             name: baselineLane.label,
             request_config: laneRequestConfig(baselineLane),
           },
           {
             provider_account_id: candidateLane.providerAccountId,
-            model_alias_id: candidateLane.modelAliasId,
+            model: candidateLane.model,
             name: candidateLane.label,
             request_config: laneRequestConfig(candidateLane),
           },
@@ -419,9 +415,9 @@ function PlaygroundDetailInner({
                     launching ||
                     testCases.length === 0 ||
                     !baselineLane.providerAccountId ||
-                    !baselineLane.modelAliasId ||
+                    !baselineLane.model ||
                     !candidateLane.providerAccountId ||
-                    !candidateLane.modelAliasId
+                    !candidateLane.model
                   }
                 >
                   {launching ? (
@@ -441,7 +437,6 @@ function PlaygroundDetailInner({
                 lane={baselineLane}
                 onChange={setBaselineLane}
                 providerAccounts={providerAccounts}
-                modelAliases={modelAliases}
                 tools={tools}
                 knowledgeSources={knowledgeSources}
                 selectedExperimentId={baselineSelection}
@@ -459,7 +454,6 @@ function PlaygroundDetailInner({
                 lane={candidateLane}
                 onChange={setCandidateLane}
                 providerAccounts={providerAccounts}
-                modelAliases={modelAliases}
                 tools={tools}
                 knowledgeSources={knowledgeSources}
                 selectedExperimentId={candidateSelection}
@@ -616,7 +610,6 @@ function ComparisonLane({
   lane,
   onChange,
   providerAccounts,
-  modelAliases,
   tools,
   knowledgeSources,
   selectedExperimentId,
@@ -630,7 +623,6 @@ function ComparisonLane({
   lane: LaneConfig;
   onChange: (lane: LaneConfig) => void;
   providerAccounts: ProviderAccount[];
-  modelAliases: ModelAlias[];
   tools: WorkspaceTool[];
   knowledgeSources: KnowledgeSource[];
   selectedExperimentId: string;
@@ -639,9 +631,43 @@ function ComparisonLane({
   experiment: PlaygroundExperiment | undefined;
   results: PlaygroundExperimentResult[];
 }) {
+  const { getAccessToken } = useAccessToken();
+  const [models, setModels] = useState<ProviderConnectionModel[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
+
   function patch(update: Partial<LaneConfig>) {
     onChange({ ...lane, ...update });
   }
+
+  const providerAccountId = lane.providerAccountId;
+  useEffect(() => {
+    if (!providerAccountId) {
+      setModels([]);
+      return;
+    }
+    let cancelled = false;
+    setLoadingModels(true);
+    setModels([]);
+    void (async () => {
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const res = await api.get<{ items: ProviderConnectionModel[] }>(
+          `/v1/provider-accounts/${providerAccountId}/models`,
+        );
+        if (cancelled) return;
+        setModels(res.items);
+      } catch {
+        // Live model list is optional — fall back to free-form model entry.
+        if (!cancelled) setModels([]);
+      } finally {
+        if (!cancelled) setLoadingModels(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getAccessToken, providerAccountId]);
 
   return (
     <div className={`border-l-4 ${accent} border-t border-border p-4 first:border-t-0 lg:border-t-0 lg:first:border-r`}>
@@ -684,21 +710,36 @@ function ComparisonLane({
         </div>
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">Model</label>
-          <Select
-            value={lane.modelAliasId}
-            onValueChange={(value) => value && patch({ modelAliasId: value })}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select model" />
-            </SelectTrigger>
-            <SelectContent>
-              {modelAliases.map((alias) => (
-                <SelectItem key={alias.id} value={alias.id}>
-                  {alias.display_name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {models.length > 0 ? (
+            <Select
+              value={lane.model}
+              onValueChange={(value) => value && patch({ model: value })}
+            >
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Select model" />
+              </SelectTrigger>
+              <SelectContent>
+                {models.map((providerModel) => (
+                  <SelectItem key={providerModel.id} value={providerModel.id}>
+                    {providerModel.display_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <Input
+              value={lane.model}
+              onChange={(e) => patch({ model: e.target.value })}
+              placeholder={
+                loadingModels
+                  ? "Loading models..."
+                  : !lane.providerAccountId
+                    ? "Select a provider first"
+                    : "e.g. gpt-4.1"
+              }
+              disabled={loadingModels || !lane.providerAccountId}
+            />
+          )}
         </div>
       </div>
 

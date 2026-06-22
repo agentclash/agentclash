@@ -92,22 +92,6 @@ func (r *templateAgentBuildRepository) GetProviderAccountByID(context.Context, u
 	return repository.ProviderAccountRow{}, nil
 }
 
-func (r *templateAgentBuildRepository) UpsertModelCatalogEntry(context.Context, string, string) (repository.ModelCatalogEntryRow, error) {
-	return repository.ModelCatalogEntryRow{}, nil
-}
-
-func (r *templateAgentBuildRepository) CreateModelAlias(context.Context, repository.CreateModelAliasParams) (repository.ModelAliasRow, error) {
-	return repository.ModelAliasRow{}, nil
-}
-
-func (r *templateAgentBuildRepository) ListModelAliasesByWorkspaceID(context.Context, uuid.UUID) ([]repository.ModelAliasRow, error) {
-	return nil, nil
-}
-
-func (r *templateAgentBuildRepository) UnarchiveModelAliasByKey(context.Context, uuid.UUID, string, *uuid.UUID, uuid.UUID) (repository.ModelAliasRow, error) {
-	return repository.ModelAliasRow{}, repository.ErrModelAliasNotFound
-}
-
 func TestCreateVersionAppliesTemplateDefaultsAndExplicitOverrides(t *testing.T) {
 	buildID := uuid.New()
 	userID := uuid.New()

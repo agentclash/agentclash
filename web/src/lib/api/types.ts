@@ -291,7 +291,7 @@ export interface CreateAgentDeploymentRequest {
   build_version_id: string;
   runtime_profile_id: string;
   provider_account_id?: string;
-  model_alias_id?: string;
+  model?: string;
   deployment_config?: unknown;
 }
 
@@ -557,25 +557,19 @@ export interface ProviderAccount {
   updated_at: string;
 }
 
-/** GET /v1/workspaces/{id}/model-aliases list item */
-export interface ModelAlias {
+/** Source of pricing data for a provider connection model. */
+export type ProviderConnectionModelPricingSource = "live" | "static" | "unknown";
+
+/**
+ * GET /v1/provider-accounts/{accountID}/models item — the live model list for a
+ * provider connection.
+ */
+export interface ProviderConnectionModel {
   id: string;
-  workspace_id?: string;
-  provider_account_id?: string;
-  model_catalog_entry_id: string;
-  provider_key: string;
-  provider_model_id: string;
-  model_display_name: string;
-  alias_key: string;
   display_name: string;
-  status: string;
-  input_cost_per_million_tokens: number;
-  output_cost_per_million_tokens: number;
-  catalog_input_cost_per_million_tokens: number;
-  catalog_output_cost_per_million_tokens: number;
-  pricing_drift_warning?: string;
-  created_at: string;
-  updated_at: string;
+  input_cost_per_mtok: number;
+  output_cost_per_mtok: number;
+  pricing_source: ProviderConnectionModelPricingSource;
 }
 
 // --- Challenge Packs ---
@@ -1106,7 +1100,7 @@ export interface RankingItem {
 
 export interface CreateRunRankingInsightsRequest {
   provider_account_id: string;
-  model_alias_id: string;
+  model: string;
 }
 
 export interface RunRankingInsightsResponse {
@@ -1697,7 +1691,7 @@ export interface PlaygroundExperiment {
   workspace_id: string;
   playground_id: string;
   provider_account_id: string;
-  model_alias_id: string;
+  model: string;
   name: string;
   status: "queued" | "running" | "completed" | "failed";
   request_config: Record<string, unknown>;
@@ -2343,7 +2337,7 @@ export interface StartDatasetGenerationInput {
   strategy: "self_instruct" | "self-instruct";
   target_count: number;
   provider_account_id: string;
-  model_alias_id: string;
+  model: string;
   seeds_tag?: string;
   create_version?: boolean;
   version_label?: string;

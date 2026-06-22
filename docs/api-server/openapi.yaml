@@ -81,10 +81,6 @@ tags:
     description: Execution runtime profile configuration
   - name: ProviderAccounts
     description: LLM provider account credentials
-  - name: ModelCatalog
-    description: Global model registry
-  - name: ModelAliases
-    description: Workspace-scoped model alias mappings
   - name: Tools
     description: Workspace tool definitions
   - name: KnowledgeSources
@@ -1899,121 +1895,26 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
-  # ---------------------------------------------------------------------------
-  # Model Catalog
-  # ---------------------------------------------------------------------------
-  /v1/model-catalog:
+  /v1/provider-accounts/{accountID}/models:
     get:
-      operationId: listModelCatalog
-      tags: [ModelCatalog]
-      summary: List all available models
-      description: Global model registry. No workspace scope required.
-      security:
-        - bearerJWT: []
-      responses:
-        "200":
-          description: List of model catalog entries
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ListModelCatalogResponse"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-
-  /v1/model-catalog/{entryID}:
-    get:
-      operationId: getModelCatalogEntry
-      tags: [ModelCatalog]
-      summary: Get a model catalog entry
+      operationId: listProviderAccountModels
+      tags: [ProviderAccounts]
+      summary: List models available to a provider connection
+      description: >
+        Returns the live model list reachable with the connection's credential,
+        fetched from the provider's API and cached briefly. Pricing is for picker
+        display only and is not used for scoring.
       security:
         - bearerJWT: []
       parameters:
-        - $ref: "#/components/parameters/EntryID"
+        - $ref: "#/components/parameters/AccountID"
       responses:
         "200":
-          description: Model catalog entry details
+          description: Models available to the connection
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ModelCatalogEntryResponse"
-        "400":
-          $ref: "#/components/responses/ValidationError"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "404":
-          $ref: "#/components/responses/NotFoundError"
-
-  # ---------------------------------------------------------------------------
-  # Model Aliases
-  # ---------------------------------------------------------------------------
-  /v1/workspaces/{workspaceID}/model-aliases:
-    post:
-      operationId: createModelAlias
-      tags: [ModelAliases]
-      summary: Create a model alias
-      security:
-        - bearerJWT: []
-      parameters:
-        - $ref: "#/components/parameters/WorkspaceID"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateModelAliasRequest"
-      responses:
-        "201":
-          description: Model alias created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ModelAliasResponse"
-        "400":
-          $ref: "#/components/responses/ValidationError"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "403":
-          $ref: "#/components/responses/ForbiddenError"
-        "409":
-          $ref: "#/components/responses/ConflictError"
-        "415":
-          $ref: "#/components/responses/UnsupportedMediaType"
-    get:
-      operationId: listModelAliases
-      tags: [ModelAliases]
-      summary: List model aliases in a workspace
-      security:
-        - bearerJWT: []
-      parameters:
-        - $ref: "#/components/parameters/WorkspaceID"
-      responses:
-        "200":
-          description: List of model aliases
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ListModelAliasesResponse"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "403":
-          $ref: "#/components/responses/ForbiddenError"
-
-  /v1/model-aliases/{aliasID}:
-    get:
-      operationId: getModelAlias
-      tags: [ModelAliases]
-      summary: Get a model alias
-      security:
-        - bearerJWT: []
-      parameters:
-        - $ref: "#/components/parameters/AliasID"
-      responses:
-        "200":
-          description: Model alias details
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ModelAliasResponse"
+                $ref: "#/components/schemas/ProviderConnectionModelsResponse"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -2022,26 +1923,8 @@ paths:
           $ref: "#/components/responses/ForbiddenError"
         "404":
           $ref: "#/components/responses/NotFoundError"
-    delete:
-      operationId: deleteModelAlias
-      tags: [ModelAliases]
-      summary: Delete (archive) a model alias
-      description: Soft-deletes the model alias by setting its status to archived.
-      security:
-        - bearerJWT: []
-      parameters:
-        - $ref: "#/components/parameters/AliasID"
-      responses:
-        "204":
-          description: Model alias deleted
-        "400":
-          $ref: "#/components/responses/ValidationError"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "403":
-          $ref: "#/components/responses/ForbiddenError"
-        "404":
-          $ref: "#/components/responses/NotFoundError"
+        "502":
+          description: The provider returned an error while listing models
 
   # ---------------------------------------------------------------------------
   # Tools
@@ -6370,20 +6253,6 @@ components:
       schema:
         type: string
         format: uuid
-    EntryID:
-      name: entryID
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
-    AliasID:
-      name: aliasID
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
     ToolID:
       name: toolID
       in: path
@@ -6856,7 +6725,7 @@ components:
 
     StartDatasetGenerationInput:
       type: object
-      required: [strategy, target_count, provider_account_id, model_alias_id]
+      required: [strategy, target_count, provider_account_id, model]
       properties:
         strategy:
           type: string
@@ -6866,7 +6735,7 @@ components:
           minimum: 1
           maximum: 100
         provider_account_id: { type: string, format: uuid }
-        model_alias_id: { type: string, format: uuid }
+        model: { type: string }
         seeds_tag: { type: string }
         create_version: { type: boolean }
         version_label: { type: string }
@@ -8972,124 +8841,34 @@ components:
           items:
             $ref: "#/components/schemas/ProviderAccountResponse"
 
-    # --- Model Catalog ---
-
-    ModelCatalogEntryResponse:
+    ProviderConnectionModel:
       type: object
-      required: [id, provider_key, provider_model_id, display_name, model_family, modality, lifecycle_status, metadata, input_cost_per_million_tokens, output_cost_per_million_tokens, created_at, updated_at]
+      required: [id, display_name, input_cost_per_mtok, output_cost_per_mtok, pricing_source]
       properties:
         id:
           type: string
-          format: uuid
-        provider_key:
-          type: string
-        provider_model_id:
-          type: string
         display_name:
           type: string
-        model_family:
-          type: string
-        modality:
-          type: string
-        lifecycle_status:
-          type: string
-        metadata:
-          type: object
-          additionalProperties: true
-        input_cost_per_million_tokens:
+        input_cost_per_mtok:
           type: number
           format: double
-        output_cost_per_million_tokens:
+          description: USD per million input tokens. Picker display only; not used for scoring.
+        output_cost_per_mtok:
           type: number
           format: double
-        created_at:
+          description: USD per million output tokens. Picker display only; not used for scoring.
+        pricing_source:
           type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
+          enum: [live, static, unknown]
 
-    ListModelCatalogResponse:
+    ProviderConnectionModelsResponse:
       type: object
       required: [items]
       properties:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/ModelCatalogEntryResponse"
-
-    # --- Model Aliases ---
-
-    CreateModelAliasRequest:
-      type: object
-      required: [alias_key, display_name, model_catalog_entry_id]
-      properties:
-        alias_key:
-          type: string
-        display_name:
-          type: string
-        model_catalog_entry_id:
-          type: string
-        provider_account_id:
-          type: string
-
-    ModelAliasResponse:
-      type: object
-      required: [id, model_catalog_entry_id, provider_key, provider_model_id, model_display_name, alias_key, display_name, status, input_cost_per_million_tokens, output_cost_per_million_tokens, catalog_input_cost_per_million_tokens, catalog_output_cost_per_million_tokens, created_at, updated_at]
-      properties:
-        id:
-          type: string
-          format: uuid
-        workspace_id:
-          type: string
-          format: uuid
-        provider_account_id:
-          type: string
-          format: uuid
-        model_catalog_entry_id:
-          type: string
-          format: uuid
-        provider_key:
-          type: string
-        provider_model_id:
-          type: string
-        model_display_name:
-          type: string
-        alias_key:
-          type: string
-        display_name:
-          type: string
-        status:
-          type: string
-        input_cost_per_million_tokens:
-          type: number
-          format: double
-        output_cost_per_million_tokens:
-          type: number
-          format: double
-        catalog_input_cost_per_million_tokens:
-          type: number
-          format: double
-        catalog_output_cost_per_million_tokens:
-          type: number
-          format: double
-        pricing_drift_warning:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-
-    ListModelAliasesResponse:
-      type: object
-      required: [items]
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/ModelAliasResponse"
+            $ref: "#/components/schemas/ProviderConnectionModel"
 
     # --- Tools ---
 
@@ -11416,14 +11195,13 @@ components:
 
     CreateRunRankingInsightsRequest:
       type: object
-      required: [provider_account_id, model_alias_id]
+      required: [provider_account_id, model]
       properties:
         provider_account_id:
           type: string
           format: uuid
-        model_alias_id:
+        model:
           type: string
-          format: uuid
 
     RunRankingInsightsResponse:
       type: object
@@ -13069,7 +12847,7 @@ components:
 
     CreateAgentDeploymentRequest:
       type: object
-      required: [name, agent_build_id, build_version_id, runtime_profile_id]
+      required: [name, agent_build_id, build_version_id, runtime_profile_id, model]
       properties:
         name:
           type: string
@@ -13085,9 +12863,8 @@ components:
         provider_account_id:
           type: string
           format: uuid
-        model_alias_id:
+        model:
           type: string
-          format: uuid
         deployment_config:
           type: object
           additionalProperties: true
@@ -13928,16 +13705,15 @@ components:
 
     CreatePlaygroundExperimentRequest:
       type: object
-      required: [provider_account_id, model_alias_id]
+      required: [provider_account_id, model]
       properties:
         name:
           type: string
         provider_account_id:
           type: string
           format: uuid
-        model_alias_id:
+        model:
           type: string
-          format: uuid
         request_config:
           type: object
           additionalProperties: true
@@ -13951,16 +13727,15 @@ components:
           minItems: 1
           items:
             type: object
-            required: [provider_account_id, model_alias_id]
+            required: [provider_account_id, model]
             properties:
               name:
                 type: string
               provider_account_id:
                 type: string
                 format: uuid
-              model_alias_id:
+              model:
                 type: string
-                format: uuid
               request_config:
                 type: ["object", "null"]
                 additionalProperties: true
@@ -13970,7 +13745,7 @@ components:
 
     PlaygroundExperimentResponse:
       type: object
-      required: [id, workspace_id, playground_id, provider_account_id, model_alias_id, name, status, request_config, summary, created_at, updated_at]
+      required: [id, workspace_id, playground_id, provider_account_id, model, name, status, request_config, summary, created_at, updated_at]
       properties:
         id:
           type: string
@@ -13984,9 +13759,8 @@ components:
         provider_account_id:
           type: string
           format: uuid
-        model_alias_id:
+        model:
           type: string
-          format: uuid
         name:
           type: string
         status:

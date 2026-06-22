@@ -92,7 +92,7 @@ func TestDatasetGenerateFollowStopsOnCancelled(t *testing.T) {
 	go func() {
 		done <- executeCommand(t, []string{
 			"dataset", "generate", "ds-1",
-			"--count", "5", "--provider-account", "pa-1", "--model-alias", "ma-1",
+			"--count", "5", "--provider-account", "pa-1", "--model", "gpt-5.5",
 			"--follow", "--poll-interval", "10ms", "--json",
 		}, srv.URL)
 	}()
@@ -129,7 +129,7 @@ func TestDatasetGenerateFollowTimesOutWithDocumentedCode(t *testing.T) {
 	start := time.Now()
 	err := executeCommand(t, []string{
 		"dataset", "generate", "ds-1",
-		"--count", "5", "--provider-account", "pa-1", "--model-alias", "ma-1",
+		"--count", "5", "--provider-account", "pa-1", "--model", "gpt-5.5",
 		"--follow", "--poll-interval", "10ms", "--timeout", "150ms", "--json",
 	}, srv.URL)
 	if err == nil {

@@ -15,7 +15,7 @@ export interface CISetupConfig {
   runtimeProfileId: string;
   deploymentName: string;
   providerAccountId?: string;
-  modelAliasId?: string;
+  model?: string;
   challengePackVersionId: string;
   inputSetId?: string;
   regressionSuiteIds: string[];
@@ -134,8 +134,8 @@ export function generateAgentClashCIManifest(config: CISetupConfig): string {
       `    provider_account_id: ${yamlScalar(config.providerAccountId)}`,
     );
   }
-  if (config.modelAliasId?.trim()) {
-    lines.push(`    model_alias_id: ${yamlScalar(config.modelAliasId)}`);
+  if (config.model?.trim()) {
+    lines.push(`    model: ${yamlScalar(config.model)}`);
   }
 
   lines.push(

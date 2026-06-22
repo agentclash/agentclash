@@ -14,7 +14,7 @@ import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type {
   DatasetGenerationJob,
-  ModelAlias,
+  ProviderConnectionModel,
   ProviderAccount,
 } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
@@ -54,9 +54,10 @@ export function StartGenerationDialog({
   const [providerAccounts, setProviderAccounts] = useState<ProviderAccount[]>(
     [],
   );
-  const [modelAliases, setModelAliases] = useState<ModelAlias[]>([]);
+  const [models, setModels] = useState<ProviderConnectionModel[]>([]);
+  const [loadingModels, setLoadingModels] = useState(false);
   const [providerAccountId, setProviderAccountId] = useState("");
-  const [modelAliasId, setModelAliasId] = useState("");
+  const [model, setModel] = useState("");
   const [targetCount, setTargetCount] = useState("10");
   const [seedsTag, setSeedsTag] = useState("");
   const [createVersion, setCreateVersion] = useState(true);
@@ -77,20 +78,13 @@ export function StartGenerationDialog({
     try {
       const token = await getAccessToken();
       const api = createApiClient(token);
-      const [accounts, aliases] = await Promise.all([
-        api.paginated<ProviderAccount>(
-          `/v1/workspaces/${workspaceId}/provider-accounts`,
-          { limit: 100 },
-        ),
-        api.paginated<ModelAlias>(
-          `/v1/workspaces/${workspaceId}/model-aliases`,
-          { limit: 100 },
-        ),
-      ]);
+      const accounts = await api.paginated<ProviderAccount>(
+        `/v1/workspaces/${workspaceId}/provider-accounts`,
+        { limit: 100 },
+      );
       setProviderAccounts(
         accounts.items.filter((a) => a.status === "active"),
       );
-      setModelAliases(aliases.items.filter((a) => a.status === "active"));
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Failed to load generation options",
@@ -99,6 +93,34 @@ export function StartGenerationDialog({
       setLoading(false);
     }
   }, [getAccessToken, workspaceId]);
+
+  const loadModels = useCallback(
+    async (accountId: string) => {
+      setLoadingModels(true);
+      setModels([]);
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const res = await api.get<{ items: ProviderConnectionModel[] }>(
+          `/v1/provider-accounts/${accountId}/models`,
+        );
+        setModels(res.items);
+      } catch {
+        // Live model list is optional — fall back to free-form model entry.
+        setModels([]);
+      } finally {
+        setLoadingModels(false);
+      }
+    },
+    [getAccessToken],
+  );
+
+  function handleProviderAccountChange(accountId: string) {
+    setProviderAccountId(accountId);
+    setModel("");
+    setModels([]);
+    if (accountId) void loadModels(accountId);
+  }
 
   const loadRecentJobs = useCallback(async () => {
     const ids = readStoredGenerationJobIds(datasetId);
@@ -175,8 +197,8 @@ export function StartGenerationDialog({
 
   async function handleStart() {
     const count = Number(targetCount);
-    if (!providerAccountId || !modelAliasId) {
-      toast.error("Select a provider account and model alias");
+    if (!providerAccountId || !model.trim()) {
+      toast.error("Select a provider account and model");
       return;
     }
     if (!Number.isInteger(count) || count < 1 || count > 100) {
@@ -196,7 +218,7 @@ export function StartGenerationDialog({
           strategy: "self_instruct",
           target_count: count,
           provider_account_id: providerAccountId,
-          model_alias_id: modelAliasId,
+          model: model.trim(),
           seeds_tag: seedsTag.trim() || undefined,
           create_version: createVersion,
           version_label: versionLabel.trim() || undefined,
@@ -226,7 +248,7 @@ export function StartGenerationDialog({
         <DialogHeader>
           <DialogTitle>Synthetic generation</DialogTitle>
           <DialogDescription>
-            Self-instruct generation using a workspace model alias.
+            Self-instruct generation using a provider connection model.
           </DialogDescription>
         </DialogHeader>
         {job ? (
@@ -300,7 +322,7 @@ export function StartGenerationDialog({
               </label>
               <select
                 value={providerAccountId}
-                onChange={(e) => setProviderAccountId(e.target.value)}
+                onChange={(e) => handleProviderAccountChange(e.target.value)}
                 className={inputClass}
               >
                 <option value="">Select account...</option>
@@ -313,20 +335,37 @@ export function StartGenerationDialog({
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium">
-                Model alias
+                Model
               </label>
-              <select
-                value={modelAliasId}
-                onChange={(e) => setModelAliasId(e.target.value)}
-                className={inputClass}
-              >
-                <option value="">Select alias...</option>
-                {modelAliases.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.display_name} ({a.alias_key})
-                  </option>
-                ))}
-              </select>
+              {models.length > 0 ? (
+                <select
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  className={inputClass}
+                  disabled={loadingModels}
+                >
+                  <option value="">Select model...</option>
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.display_name} ({m.id})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                  placeholder={
+                    loadingModels
+                      ? "Loading models..."
+                      : !providerAccountId
+                        ? "Select a provider account first"
+                        : "e.g. gpt-4.1, claude-sonnet-4-6"
+                  }
+                  disabled={loadingModels || !providerAccountId}
+                  className={inputClass}
+                />
+              )}
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium">
