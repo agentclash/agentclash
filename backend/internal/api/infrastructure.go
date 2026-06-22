@@ -386,10 +386,6 @@ func infraCreateHandler[Input any, Row any, Resp any](
 				writeError(w, http.StatusConflict, "slug_taken", "a resource with that name already exists")
 				return
 			}
-			if errors.Is(err, repository.ErrModelCatalogNotFound) {
-				writeError(w, http.StatusBadRequest, "validation_error", "model_catalog_entry_id must reference an existing model catalog entry")
-				return
-			}
 			logger.Error("create failed", "error", err)
 			writeError(w, http.StatusInternalServerError, "internal_error", "failed to create resource")
 			return
@@ -628,7 +624,7 @@ func listProviderAccountModelsHandler(logger *slog.Logger, authorizer WorkspaceA
 			writeError(w, http.StatusNotFound, "not_found", "provider account not found")
 			return
 		}
-		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, *account.WorkspaceID, ActionManageInfrastructure); err != nil {
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, *account.WorkspaceID, ActionReadWorkspace); err != nil {
 			writeAuthzError(w, err)
 			return
 		}
@@ -664,8 +660,6 @@ func listProviderAccountModelsHandler(logger *slog.Logger, authorizer WorkspaceA
 func isInfraNotFoundErr(err error) bool {
 	return errors.Is(err, repository.ErrRuntimeProfileNotFound) ||
 		errors.Is(err, repository.ErrProviderAccountNotFound) ||
-		errors.Is(err, repository.ErrModelAliasNotFound) ||
-		errors.Is(err, repository.ErrModelCatalogNotFound) ||
 		errors.Is(err, repository.ErrToolNotFound) ||
 		errors.Is(err, repository.ErrKnowledgeSourceNotFound) ||
 		errors.Is(err, repository.ErrRoutingPolicyNotFound) ||

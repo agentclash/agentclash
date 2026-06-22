@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"slices"
 	"sort"
@@ -69,11 +70,11 @@ func (c OpenAICompatibleClient) ListModels(ctx context.Context, request ListMode
 		// OpenRouter reports pricing as USD-per-token strings; scale to per-Mtok.
 		if entry.Pricing != nil {
 			if in, ok := parseUSDPerToken(entry.Pricing.Prompt); ok {
-				info.InputCostPerMTok = in * 1_000_000
 				if out, ok := parseUSDPerToken(entry.Pricing.Completion); ok {
+					info.InputCostPerMTok = in * 1_000_000
 					info.OutputCostPerMTok = out * 1_000_000
+					info.PricingSource = PricingSourceLive
 				}
-				info.PricingSource = PricingSourceLive
 			}
 		}
 		models = append(models, info)
@@ -199,7 +200,7 @@ func parseUSDPerToken(s string) (float64, bool) {
 		return 0, false
 	}
 	v, err := strconv.ParseFloat(s, 64)
-	if err != nil || v < 0 {
+	if err != nil || math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
 		return 0, false
 	}
 	return v, true

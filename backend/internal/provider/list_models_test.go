@@ -70,6 +70,35 @@ func TestOpenRouterListModelsUsesLivePricing(t *testing.T) {
 	}
 }
 
+func TestOpenRouterListModelsFallsBackWhenLivePricingIsPartial(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":[{"id":"gpt-4.1-mini","pricing":{"prompt":"0.000003","completion":""}}]}`))
+	}))
+	defer server.Close()
+
+	client := NewOpenAICompatibleClient(server.Client(), server.URL+"/api/v1", staticCredentialResolver{value: "k"})
+	models, err := client.ListModels(context.Background(), ListModelsRequest{ProviderKey: "openai", CredentialReference: "ref"})
+	if err != nil {
+		t.Fatalf("ListModels: %v", err)
+	}
+	if len(models) != 1 {
+		t.Fatalf("want 1 model, got %d", len(models))
+	}
+	model := models[0]
+	if model.PricingSource != PricingSourceStatic || model.InputCostPerMTok != 0.40 || model.OutputCostPerMTok != 1.60 {
+		t.Fatalf("partial live pricing should use complete static fallback: %+v", model)
+	}
+}
+
+func TestParseUSDPerTokenRejectsNonFiniteValues(t *testing.T) {
+	for _, value := range []string{"NaN", "+Inf", "-Inf"} {
+		if parsed, ok := parseUSDPerToken(value); ok {
+			t.Fatalf("parseUSDPerToken(%q) = %v, true; want rejected", value, parsed)
+		}
+	}
+}
+
 func TestAnthropicListModels(t *testing.T) {
 	var gotKey, gotVersion string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

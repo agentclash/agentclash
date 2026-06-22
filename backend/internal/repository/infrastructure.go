@@ -18,8 +18,6 @@ import (
 var (
 	ErrRuntimeProfileNotFound  = errors.New("runtime profile not found")
 	ErrProviderAccountNotFound = errors.New("provider account not found")
-	ErrModelAliasNotFound      = errors.New("model alias not found")
-	ErrModelCatalogNotFound    = errors.New("model catalog entry not found")
 	ErrToolNotFound            = errors.New("tool not found")
 	ErrKnowledgeSourceNotFound = errors.New("knowledge source not found")
 	ErrRoutingPolicyNotFound   = errors.New("routing policy not found")

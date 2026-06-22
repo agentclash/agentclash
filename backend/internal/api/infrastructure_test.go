@@ -379,6 +379,32 @@ func TestProviderAccountTestReturnsResult(t *testing.T) {
 	}
 }
 
+func TestListProviderAccountModelsRejectsOtherWorkspace(t *testing.T) {
+	workspaceID := uuid.New()
+	accountID := uuid.New()
+	svc := stubInfraService{providerAccount: repository.ProviderAccountRow{
+		ID: accountID, WorkspaceID: &workspaceID, ProviderKey: "openai", Status: "active",
+	}}
+	router := newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(), NewCallerWorkspaceAuthorizer(),
+		nil, 0, stubRunCreationService{}, stubRunReadService{}, stubReplayReadService{},
+		stubHostedRunIngestionService{}, nil, stubAgentDeploymentReadService{}, stubChallengePackReadService{},
+		stubAgentBuildService{}, noopReleaseGateService{}, nil, nil, nil, nil, nil, nil, nil,
+		svc, nil, nil, nil,
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/provider-accounts/"+accountID.String()+"/models", nil)
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, uuid.New().String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for another workspace, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestListProviderAccountModelsReturnsItems(t *testing.T) {
 	workspaceID := uuid.New()
 	accountID := uuid.New()
@@ -413,7 +439,7 @@ func TestListProviderAccountModelsReturnsItems(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/provider-accounts/"+accountID.String()+"/models", nil)
 	req.Header.Set(headerUserID, uuid.New().String())
-	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_admin")
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
 	recorder := httptest.NewRecorder()
 
 	router.ServeHTTP(recorder, req)

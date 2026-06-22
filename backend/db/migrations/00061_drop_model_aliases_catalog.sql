@@ -2,18 +2,19 @@
 
 -- Collapse the model_aliases + model_catalog_entries indirection. Deployments,
 -- deployment snapshots, and playground experiments now store the provider model
--- id directly. Dataset generation already stores its model in the job config
--- JSON (migrated in application code), so it needs no schema change here.
+-- id directly. Dataset generation stores its model in job-config JSON, which
+-- this migration rewrites in place before dropping the alias/catalog tables.
 
--- 1. Add the new model_id columns (nullable-by-default empty string).
+-- 1. Add the new model-id columns as nullable. Backfill and validate them
+-- before tightening constraints, per the repository's expand/validate rules.
 ALTER TABLE agent_deployments
-ADD COLUMN model_id text NOT NULL DEFAULT '';
+ADD COLUMN model_id text;
 
 ALTER TABLE agent_deployment_snapshots
-ADD COLUMN source_model_id text NOT NULL DEFAULT '';
+ADD COLUMN source_model_id text;
 
 ALTER TABLE playground_experiments
-ADD COLUMN model_id text NOT NULL DEFAULT '';
+ADD COLUMN model_id text;
 
 -- 2. Backfill from the alias -> catalog provider_model_id. The alias FKs were
 --    ON DELETE RESTRICT, so no dangling references should exist.
@@ -34,6 +35,66 @@ SET model_id = mce.provider_model_id
 FROM model_aliases ma
 JOIN model_catalog_entries mce ON mce.id = ma.model_catalog_entry_id
 WHERE ma.id = pe.model_alias_id;
+
+-- Dataset generation stores its selected model in JSON. Rewrite every legacy
+-- job before the alias/catalog rows disappear so queued and running workflows
+-- remain executable after this deploy.
+UPDATE dataset_generation_jobs j
+SET config = jsonb_set(
+    j.config - 'model_alias_id',
+    '{model}',
+    to_jsonb(mce.provider_model_id),
+    true
+)
+FROM model_aliases ma
+JOIN model_catalog_entries mce ON mce.id = ma.model_catalog_entry_id
+WHERE j.config ? 'model_alias_id'
+  AND ma.id::text = (j.config ->> 'model_alias_id');
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM dataset_generation_jobs
+        WHERE config ? 'model_alias_id'
+    ) THEN
+        RAISE EXCEPTION 'cannot drop model aliases: one or more dataset generation jobs were not backfilled';
+    END IF;
+END;
+$$;
+
+-- Historical hosted-external deployments legitimately had no model alias.
+-- Preserve those rows as an empty model while enforcing the invariant for all
+-- native execution paths and for playground experiments.
+UPDATE agent_deployments SET model_id = '' WHERE model_id IS NULL;
+UPDATE agent_deployment_snapshots SET source_model_id = '' WHERE source_model_id IS NULL;
+
+ALTER TABLE agent_deployments
+ALTER COLUMN model_id SET DEFAULT '',
+ALTER COLUMN model_id SET NOT NULL,
+ADD CONSTRAINT agent_deployments_model_id_required
+CHECK (deployment_type <> 'native' OR btrim(model_id) <> '') NOT VALID;
+
+ALTER TABLE agent_deployments
+VALIDATE CONSTRAINT agent_deployments_model_id_required;
+
+ALTER TABLE agent_deployment_snapshots
+ALTER COLUMN source_model_id SET DEFAULT '',
+ALTER COLUMN source_model_id SET NOT NULL,
+ADD CONSTRAINT agent_deployment_snapshots_model_id_required
+CHECK (deployment_type <> 'native' OR btrim(source_model_id) <> '') NOT VALID;
+
+ALTER TABLE agent_deployment_snapshots
+VALIDATE CONSTRAINT agent_deployment_snapshots_model_id_required;
+
+ALTER TABLE playground_experiments
+ALTER COLUMN model_id SET DEFAULT '',
+ALTER COLUMN model_id SET NOT NULL,
+ADD CONSTRAINT playground_experiments_model_id_required
+CHECK (btrim(model_id) <> '') NOT VALID;
+
+ALTER TABLE playground_experiments
+VALIDATE CONSTRAINT playground_experiments_model_id_required;
 
 -- 3. Drop the alias visibility checks from the deployment/snapshot scope
 --    validation triggers (reproduced from migration 00005 minus the alias block).

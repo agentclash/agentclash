@@ -1214,8 +1214,6 @@ func writePlaygroundServiceError(logger *slog.Logger, w http.ResponseWriter, r *
 		writeError(w, http.StatusNotFound, "playground_experiment_not_found", "playground experiment not found")
 	case errors.Is(err, repository.ErrProviderAccountNotFound):
 		writeError(w, http.StatusNotFound, "provider_account_not_found", "provider account not found")
-	case errors.Is(err, repository.ErrModelAliasNotFound):
-		writeError(w, http.StatusNotFound, "model_alias_not_found", "model alias not found")
 	default:
 		logger.Error("playground request failed", "method", r.Method, "path", r.URL.Path, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
