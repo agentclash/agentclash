@@ -774,8 +774,6 @@ type fakeRunReadRepository struct {
 	recentComparableRunCalls int
 	spendPolicies            []repository.SpendPolicyRow
 	providerAccount          repository.ProviderAccountRow
-	modelAlias               repository.ModelAliasRow
-	modelCatalogEntry        repository.ModelCatalogEntryRow
 	workspaceSecrets         map[string]string
 	getRunErr                error
 	getEvalSessionErr        error
@@ -787,8 +785,6 @@ type fakeRunReadRepository struct {
 	listRecentRunsErr        error
 	listEvalSessionsErr      error
 	getProviderAccountErr    error
-	getModelAliasErr         error
-	getModelCatalogErr       error
 	listSpendPoliciesErr     error
 	loadWorkspaceSecretsErr  error
 	transitionRunStatusErr   error
@@ -892,14 +888,6 @@ func (f *fakeRunReadRepository) CountRunsByWorkspaceID(_ context.Context, _ uuid
 
 func (f *fakeRunReadRepository) GetProviderAccountByID(_ context.Context, _ uuid.UUID) (repository.ProviderAccountRow, error) {
 	return f.providerAccount, f.getProviderAccountErr
-}
-
-func (f *fakeRunReadRepository) GetModelAliasByID(_ context.Context, _ uuid.UUID) (repository.ModelAliasRow, error) {
-	return f.modelAlias, f.getModelAliasErr
-}
-
-func (f *fakeRunReadRepository) GetModelCatalogEntryByID(_ context.Context, _ uuid.UUID) (repository.ModelCatalogEntryRow, error) {
-	return f.modelCatalogEntry, f.getModelCatalogErr
 }
 
 func (f *fakeRunReadRepository) ListSpendPoliciesByWorkspaceID(_ context.Context, _ uuid.UUID) ([]repository.SpendPolicyRow, error) {

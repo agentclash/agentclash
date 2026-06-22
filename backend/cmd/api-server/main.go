@@ -11,6 +11,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/budget"
 	"github.com/agentclash/agentclash/backend/internal/email"
 	"github.com/agentclash/agentclash/backend/internal/posthog"
+	"github.com/agentclash/agentclash/backend/internal/connection"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/ratelimit"
@@ -181,7 +182,7 @@ func main() {
 	orgMembershipManager := api.NewOrgMembershipManager(orgAuthz, repo, emailSender, cfg.FrontendURL, billingManager)
 	wsMembershipManager := api.NewWorkspaceMembershipManager(repo, emailSender, cfg.FrontendURL, billingManager)
 	onboardingManager := api.NewOnboardingManager(repo)
-	infraManager := api.NewInfrastructureManager(repo).WithProviderClient(providerRouter)
+	infraManager := api.NewInfrastructureManager(repo).WithConnectionService(connection.NewService(repo, providerRouter))
 	workspaceSecretsManager := api.NewWorkspaceSecretsManager(repo)
 	vibeEvalManager := api.NewVibeEvalManager(authorizer, repo)
 	cliAuthManager := api.NewCLIAuthManager(repo, logger, cfg.FrontendURL)

@@ -1,7 +1,7 @@
 ---
 title: Configure Runtime Resources
-description: Create secrets, provider accounts, model aliases, runtime profiles, and deployments in the order the current product expects.
-dateModified: 2026-06-01
+description: Create secrets, provider accounts, runtime profiles, and model-backed deployments in the order the current product expects.
+dateModified: 2026-06-22
 ---
 
 Goal: assemble the resource chain that turns a ready build version into a runnable deployment.
@@ -23,18 +23,7 @@ agentclash secret list
 
 The list endpoint returns metadata only. Secret values are not exposed back to you.
 
-## 2. Inspect the model catalog
-
-Model aliases point at model catalog entries, so fetch the catalog first:
-
-```bash
-agentclash infra model-catalog list
-agentclash infra model-catalog get <MODEL_CATALOG_ENTRY_ID>
-```
-
-This gives you the model entry ID you will use when creating the alias.
-
-## 3. Create a provider account
+## 2. Create a provider account
 
 There are two ways to do this.
 
@@ -71,6 +60,16 @@ agentclash infra provider-account create --from-file provider-account.json
 
 The current infrastructure manager does not keep that raw value on the account row. It stores the key as a workspace secret and rewrites the provider account to use a `workspace-secret://...` credential reference automatically.
 
+## 3. Choose a provider model
+
+List the models available through the connected provider account:
+
+```bash
+agentclash infra provider-account models <PROVIDER_ACCOUNT_ID>
+```
+
+Keep the exact model ID returned by the provider. You will pass it directly to deployment creation.
+
 ## 4. Create a runtime profile
 
 A runtime profile controls execution target and limits.
@@ -101,30 +100,7 @@ Create it:
 agentclash infra runtime-profile create --from-file runtime-profile.json
 ```
 
-## 5. Create a model alias
-
-A model alias gives the workspace a stable handle for one model catalog entry.
-
-`model-alias.json`:
-
-```json
-{
-  "alias_key": "primary-chat",
-  "display_name": "Primary Chat Model",
-  "model_catalog_entry_id": "<MODEL_CATALOG_ENTRY_ID>",
-  "provider_account_id": "<PROVIDER_ACCOUNT_ID>"
-}
-```
-
-Create it:
-
-```bash
-agentclash infra model-alias create --from-file model-alias.json
-```
-
-Use aliases when you want deployment configuration and playgrounds to refer to a stable workspace label instead of a raw provider model identifier.
-
-## 6. Create the deployment
+## 5. Create the deployment
 
 The current deployment create contract requires:
 
@@ -136,7 +112,7 @@ The current deployment create contract requires:
 Optional but commonly useful:
 
 - `provider_account_id`
-- `model_alias_id`
+- `model`
 
 Fast path with flags:
 
@@ -147,7 +123,7 @@ agentclash deployment create \
   --build-version-id <BUILD_VERSION_ID> \
   --runtime-profile-id <RUNTIME_PROFILE_ID> \
   --provider-account-id <PROVIDER_ACCOUNT_ID> \
-  --model-alias-id <MODEL_ALIAS_ID>
+  --model <PROVIDER_MODEL_ID>
 ```
 
 JSON-file path if you want the full request shape:
@@ -161,7 +137,7 @@ JSON-file path if you want the full request shape:
   "build_version_id": "<BUILD_VERSION_ID>",
   "runtime_profile_id": "<RUNTIME_PROFILE_ID>",
   "provider_account_id": "<PROVIDER_ACCOUNT_ID>",
-  "model_alias_id": "<MODEL_ALIAS_ID>",
+  "model": "<PROVIDER_MODEL_ID>",
   "deployment_config": {}
 }
 ```
@@ -172,12 +148,12 @@ Then:
 agentclash deployment create --from-file deployment.json
 ```
 
-## 7. List what you created
+## 6. List what you created
 
 ```bash
 agentclash infra runtime-profile list
 agentclash infra provider-account list
-agentclash infra model-alias list
+agentclash infra provider-account models <PROVIDER_ACCOUNT_ID>
 agentclash deployment list
 ```
 
@@ -201,7 +177,7 @@ You should now have:
 - a workspace secret for provider credentials
 - a provider account that resolves credentials indirectly
 - a runtime profile defining execution limits
-- a model alias pointing at a model catalog entry
+- the exact provider model ID used by the deployment
 - a deployment that can be selected during run creation
 
 ## Troubleshooting
@@ -210,9 +186,9 @@ You should now have:
 
 The current API requires a ready build version. Mark the build version ready before deploying it.
 
-### I do not know which model alias to create
+### I do not know which model to use
 
-Start from `agentclash infra model-catalog list`, then create the alias only after you know which catalog entry and provider account you want to bind.
+Start from `agentclash infra provider-account models <PROVIDER_ACCOUNT_ID>`. If discovery fails, use `agentclash infra provider-account test <PROVIDER_ACCOUNT_ID> --model <MODEL_ID>` to verify the connection and model.
 
 ### I passed an API key directly and now cannot see it again
 

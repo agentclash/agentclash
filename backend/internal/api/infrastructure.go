@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"math"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/toolspec"
 	"github.com/go-chi/chi/v5"
@@ -35,16 +35,7 @@ type InfrastructureService interface {
 	GetProviderAccount(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
 	DeleteProviderAccount(ctx context.Context, id uuid.UUID) error
 	TestProviderAccount(ctx context.Context, account repository.ProviderAccountRow, input ProviderAccountTestInput) (ProviderAccountTestResult, error)
-
-	// Model Catalog (global, read-only)
-	ListModelCatalog(ctx context.Context) ([]repository.ModelCatalogEntryRow, error)
-	GetModelCatalogEntry(ctx context.Context, id uuid.UUID) (repository.ModelCatalogEntryRow, error)
-
-	// Model Aliases
-	CreateModelAlias(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateModelAliasInput) (repository.ModelAliasRow, error)
-	ListModelAliases(ctx context.Context, workspaceID uuid.UUID) ([]repository.ModelAliasRow, error)
-	GetModelAlias(ctx context.Context, id uuid.UUID) (repository.ModelAliasRow, error)
-	DeleteModelAlias(ctx context.Context, id uuid.UUID) error
+	ListProviderAccountModels(ctx context.Context, account repository.ProviderAccountRow) ([]provider.ModelInfo, error)
 
 	// Tools
 	CreateTool(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateToolInput) (repository.ToolRow, error)
@@ -108,17 +99,6 @@ func (i *CreateProviderAccountInput) Validate() error {
 		return fmt.Errorf("either api_key or credential_reference is required")
 	}
 	return nil
-}
-
-type CreateModelAliasInput struct {
-	AliasKey            string  `json:"alias_key"`
-	DisplayName         string  `json:"display_name"`
-	ModelCatalogEntryID string  `json:"model_catalog_entry_id"`
-	ProviderAccountID   *string `json:"provider_account_id,omitempty"`
-}
-
-func (i *CreateModelAliasInput) Validate() error {
-	return requireFields(map[string]string{"alias_key": i.AliasKey, "display_name": i.DisplayName, "model_catalog_entry_id": i.ModelCatalogEntryID})
 }
 
 type CreateToolInput struct {
@@ -302,41 +282,6 @@ type providerAccountTestResponse struct {
 
 type ProviderAccountTestResult = providerAccountTestResponse
 
-type modelCatalogResponse struct {
-	ID                         uuid.UUID       `json:"id"`
-	ProviderKey                string          `json:"provider_key"`
-	ProviderModelID            string          `json:"provider_model_id"`
-	DisplayName                string          `json:"display_name"`
-	ModelFamily                string          `json:"model_family"`
-	Modality                   string          `json:"modality"`
-	LifecycleStatus            string          `json:"lifecycle_status"`
-	Metadata                   json.RawMessage `json:"metadata"`
-	InputCostPerMillionTokens  float64         `json:"input_cost_per_million_tokens"`
-	OutputCostPerMillionTokens float64         `json:"output_cost_per_million_tokens"`
-	CreatedAt                  time.Time       `json:"created_at"`
-	UpdatedAt                  time.Time       `json:"updated_at"`
-}
-
-type modelAliasResponse struct {
-	ID                                uuid.UUID  `json:"id"`
-	WorkspaceID                       *uuid.UUID `json:"workspace_id,omitempty"`
-	ProviderAccountID                 *uuid.UUID `json:"provider_account_id,omitempty"`
-	ModelCatalogEntryID               uuid.UUID  `json:"model_catalog_entry_id"`
-	ProviderKey                       string     `json:"provider_key"`
-	ProviderModelID                   string     `json:"provider_model_id"`
-	ModelDisplayName                  string     `json:"model_display_name"`
-	AliasKey                          string     `json:"alias_key"`
-	DisplayName                       string     `json:"display_name"`
-	Status                            string     `json:"status"`
-	InputCostPerMillionTokens         float64    `json:"input_cost_per_million_tokens"`
-	OutputCostPerMillionTokens        float64    `json:"output_cost_per_million_tokens"`
-	CatalogInputCostPerMillionTokens  float64    `json:"catalog_input_cost_per_million_tokens"`
-	CatalogOutputCostPerMillionTokens float64    `json:"catalog_output_cost_per_million_tokens"`
-	PricingDriftWarning               string     `json:"pricing_drift_warning,omitempty"`
-	CreatedAt                         time.Time  `json:"created_at"`
-	UpdatedAt                         time.Time  `json:"updated_at"`
-}
-
 type toolResponse struct {
 	ID              uuid.UUID       `json:"id"`
 	WorkspaceID     *uuid.UUID      `json:"workspace_id,omitempty"`
@@ -439,10 +384,6 @@ func infraCreateHandler[Input any, Row any, Resp any](
 			}
 			if errors.Is(err, repository.ErrSlugTaken) {
 				writeError(w, http.StatusConflict, "slug_taken", "a resource with that name already exists")
-				return
-			}
-			if errors.Is(err, repository.ErrModelCatalogNotFound) {
-				writeError(w, http.StatusBadRequest, "validation_error", "model_catalog_entry_id must reference an existing model catalog entry")
 				return
 			}
 			logger.Error("create failed", "error", err)
@@ -642,11 +583,83 @@ func testProviderAccountHandler(logger *slog.Logger, authorizer WorkspaceAuthori
 	}
 }
 
+type providerConnectionModelsResponse struct {
+	Items []providerConnectionModel `json:"items"`
+}
+
+type providerConnectionModel struct {
+	ID                string  `json:"id"`
+	DisplayName       string  `json:"display_name"`
+	InputCostPerMTok  float64 `json:"input_cost_per_mtok"`
+	OutputCostPerMTok float64 `json:"output_cost_per_mtok"`
+	PricingSource     string  `json:"pricing_source"`
+}
+
+// listProviderAccountModelsHandler returns the live model list reachable with a
+// provider connection's credential, for use in model pickers.
+func listProviderAccountModelsHandler(logger *slog.Logger, authorizer WorkspaceAuthorizer, svc InfrastructureService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+			return
+		}
+
+		accountID, err := uuid.Parse(chi.URLParam(r, "accountID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "invalid ID")
+			return
+		}
+		account, err := svc.GetProviderAccount(r.Context(), accountID)
+		if err != nil {
+			if isInfraNotFoundErr(err) {
+				writeError(w, http.StatusNotFound, "not_found", "provider account not found")
+				return
+			}
+			logger.Error("get provider account for model listing failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to get provider account")
+			return
+		}
+		if account.WorkspaceID == nil {
+			writeError(w, http.StatusNotFound, "not_found", "provider account not found")
+			return
+		}
+		if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, *account.WorkspaceID, ActionReadWorkspace); err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		models, err := svc.ListProviderAccountModels(r.Context(), account)
+		if err != nil {
+			// Provider-side failures (bad key, provider down, capability not
+			// supported) map to 502; the failure code is surfaced without the raw
+			// provider message to avoid leaking credentials.
+			if failure, ok := provider.AsFailure(err); ok {
+				writeError(w, http.StatusBadGateway, string(failure.Code), "provider returned an error while listing models")
+				return
+			}
+			logger.Error("list provider account models failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "internal_error", "failed to list models")
+			return
+		}
+
+		items := make([]providerConnectionModel, len(models))
+		for i, m := range models {
+			items[i] = providerConnectionModel{
+				ID:                m.ID,
+				DisplayName:       m.DisplayName,
+				InputCostPerMTok:  m.InputCostPerMTok,
+				OutputCostPerMTok: m.OutputCostPerMTok,
+				PricingSource:     m.PricingSource,
+			}
+		}
+		writeJSON(w, http.StatusOK, providerConnectionModelsResponse{Items: items})
+	}
+}
+
 func isInfraNotFoundErr(err error) bool {
 	return errors.Is(err, repository.ErrRuntimeProfileNotFound) ||
 		errors.Is(err, repository.ErrProviderAccountNotFound) ||
-		errors.Is(err, repository.ErrModelAliasNotFound) ||
-		errors.Is(err, repository.ErrModelCatalogNotFound) ||
 		errors.Is(err, repository.ErrToolNotFound) ||
 		errors.Is(err, repository.ErrKnowledgeSourceNotFound) ||
 		errors.Is(err, repository.ErrRoutingPolicyNotFound) ||
@@ -673,50 +686,6 @@ func mapProviderAccount(r repository.ProviderAccountRow) providerAccountResponse
 		CredentialReference: r.CredentialReference, Status: r.Status, LimitsConfig: r.LimitsConfig,
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
-}
-
-func mapModelCatalog(r repository.ModelCatalogEntryRow) modelCatalogResponse {
-	return modelCatalogResponse{
-		ID: r.ID, ProviderKey: r.ProviderKey, ProviderModelID: r.ProviderModelID,
-		DisplayName: r.DisplayName, ModelFamily: r.ModelFamily, Modality: r.Modality,
-		LifecycleStatus: r.LifecycleStatus, Metadata: r.Metadata,
-		InputCostPerMillionTokens:  r.InputCostPerMillionTokens,
-		OutputCostPerMillionTokens: r.OutputCostPerMillionTokens,
-		CreatedAt:                  r.CreatedAt, UpdatedAt: r.UpdatedAt,
-	}
-}
-
-func mapModelAlias(r repository.ModelAliasRow) modelAliasResponse {
-	return modelAliasResponse{
-		ID: r.ID, WorkspaceID: r.WorkspaceID, ProviderAccountID: r.ProviderAccountID,
-		ModelCatalogEntryID: r.ModelCatalogEntryID,
-		ProviderKey:         r.CatalogProviderKey, ProviderModelID: r.CatalogProviderModelID, ModelDisplayName: r.CatalogDisplayName,
-		AliasKey: r.AliasKey, DisplayName: r.DisplayName,
-		Status: r.Status, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-		InputCostPerMillionTokens:         r.InputCostPerMillionTokens,
-		OutputCostPerMillionTokens:        r.OutputCostPerMillionTokens,
-		CatalogInputCostPerMillionTokens:  r.CatalogInputCostPerMillionTokens,
-		CatalogOutputCostPerMillionTokens: r.CatalogOutputCostPerMillionTokens,
-		PricingDriftWarning:               modelAliasPricingDriftWarning(r),
-	}
-}
-
-func modelAliasPricingDriftWarning(r repository.ModelAliasRow) string {
-	const epsilon = 1e-9
-	inputDrift := math.Abs(r.InputCostPerMillionTokens-r.CatalogInputCostPerMillionTokens) > epsilon
-	outputDrift := math.Abs(r.OutputCostPerMillionTokens-r.CatalogOutputCostPerMillionTokens) > epsilon
-	if !inputDrift && !outputDrift {
-		return ""
-	}
-	return fmt.Sprintf(
-		"alias pricing differs from current catalog pricing for %s/%s: alias input/output %.6f/%.6f, catalog input/output %.6f/%.6f per 1M tokens",
-		r.CatalogProviderKey,
-		r.CatalogProviderModelID,
-		r.InputCostPerMillionTokens,
-		r.OutputCostPerMillionTokens,
-		r.CatalogInputCostPerMillionTokens,
-		r.CatalogOutputCostPerMillionTokens,
-	)
 }
 
 func mapTool(r repository.ToolRow) toolResponse {
@@ -747,43 +716,6 @@ func mapSpendPolicy(r repository.SpendPolicyRow) spendPolicyResponse {
 		ID: r.ID, WorkspaceID: r.WorkspaceID, Name: r.Name, CurrencyCode: r.CurrencyCode,
 		WindowKind: r.WindowKind, SoftLimit: r.SoftLimit, HardLimit: r.HardLimit,
 		Config: r.Config, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-	}
-}
-
-// --------------------------------------------------------------------------
-// Model Catalog Handlers (global, no workspace scope)
-// --------------------------------------------------------------------------
-
-func listModelCatalogHandler(logger *slog.Logger, svc InfrastructureService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		entries, err := svc.ListModelCatalog(r.Context())
-		if err != nil {
-			logger.Error("list model catalog failed", "error", err)
-			writeError(w, http.StatusInternalServerError, "internal_error", "failed to list model catalog")
-			return
-		}
-		items := make([]modelCatalogResponse, len(entries))
-		for i, e := range entries {
-			items[i] = mapModelCatalog(e)
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"items": items})
-	}
-}
-
-func getModelCatalogEntryHandler(logger *slog.Logger, svc InfrastructureService) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		raw := chi.URLParam(r, "entryID")
-		id, err := uuid.Parse(raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_request", "invalid ID")
-			return
-		}
-		entry, err := svc.GetModelCatalogEntry(r.Context(), id)
-		if err != nil {
-			writeError(w, http.StatusNotFound, "not_found", "model catalog entry not found")
-			return
-		}
-		writeJSON(w, http.StatusOK, mapModelCatalog(entry))
 	}
 }
 

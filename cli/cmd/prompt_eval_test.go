@@ -85,7 +85,7 @@ func TestPromptEvalValidateRejectsLocalSemanticErrors(t *testing.T) {
 		{name: "empty regex", body: strings.Replace(validPromptEvalYAML(), "type: contains\n        value: Bonjour", "type: regex\n        value: \"\"", 1), max: 100, wantErr: "regex_match requires a non-empty pattern"},
 		{name: "empty json schema", body: strings.Replace(validPromptEvalYAML(), "type: contains\n        value: Bonjour", "type: json_schema\n        value: \"\"", 1), max: 100, wantErr: "json_schema requires"},
 		{name: "no tests", body: strings.Replace(validPromptEvalYAML(), "tests:\n  - key: greeting\n    vars:\n      input: Say hello in French\n    expect:\n      output: Bonjour\n    assert:\n      - type: contains\n        value: Bonjour\n        metric: correctness", "tests: []", 1), max: 100, wantErr: "at least one test"},
-		{name: "missing model selector", body: strings.Replace(validPromptEvalYAML(), "  - alias: gpt-5.5\n    provider_account: default", "  - provider_account: default", 1), max: 100, wantErr: "alias or model_alias_id"},
+		{name: "missing model selector", body: strings.Replace(validPromptEvalYAML(), "  - model: gpt-5.5\n    provider_account: default", "  - provider_account: default", 1), max: 100, wantErr: "must set model"},
 		{name: "max cases", body: validPromptEvalYAML(), max: 0, wantErr: "--max-cases must be greater than 0"},
 		{name: "unknown yaml key", body: strings.Replace(validPromptEvalYAML(), "models:", "modls:", 1), max: 100, wantErr: "field modls not found"},
 		{name: "bad assertion threshold", body: strings.Replace(validPromptEvalYAML(), "assertion_pass_rate: 0.9", "assertion_pass_rate: 1.2", 1), max: 100, wantErr: "thresholds.assertion_pass_rate must be between 0 and 1"},
@@ -107,7 +107,7 @@ func TestPromptEvalValidateRejectsLocalSemanticErrors(t *testing.T) {
 }
 
 func TestPromptEvalValidateRejectsCaseCountOverMax(t *testing.T) {
-	body := strings.Replace(validPromptEvalYAML(), "  - alias: gpt-5.5\n    provider_account: default", "  - alias: gpt-5.5\n    provider_account: default\n  - alias: gpt-5.5-mini\n    provider_account: default", 1)
+	body := strings.Replace(validPromptEvalYAML(), "  - model: gpt-5.5\n    provider_account: default", "  - model: gpt-5.5\n    provider_account: default\n  - model: gpt-5.5-mini\n    provider_account: default", 1)
 	path := writePromptEvalFixture(t, body)
 	result := validatePromptEvalFile(path, 1)
 	if result.Valid || !containsPromptEvalMessage(result.Errors, "case count 2 exceeds --max-cases 1") {
@@ -208,7 +208,7 @@ tests:
 	if cfg.Name != "refund-import" || cfg.Prompt.Template != "Reply to {{input}}" {
 		t.Fatalf("unexpected imported config: %+v", cfg)
 	}
-	if len(cfg.Models) != 1 || cfg.Models[0].Alias != "gpt-5.5" || cfg.Models[0].ProviderAccount != "ci-openai" {
+	if len(cfg.Models) != 1 || cfg.Models[0].Model != "gpt-5.5" || cfg.Models[0].ProviderAccount != "ci-openai" {
 		t.Fatalf("models = %+v", cfg.Models)
 	}
 	if len(cfg.Tests) != 1 || cfg.Tests[0].Key != "greeting" || len(cfg.Tests[0].Assert) != 2 {
@@ -216,6 +216,28 @@ tests:
 	}
 	if result := validatePromptEvalConfigForTest(cfg); !result.Valid {
 		t.Fatalf("imported config should validate: %v", result.Errors)
+	}
+}
+
+func TestPromptEvalImportPromptfooAllowsSlashModelIDs(t *testing.T) {
+	path := writePromptEvalFixture(t, strings.Replace(
+		validPromptfooYAML(),
+		"openai:gpt-5.5",
+		"openrouter:anthropic/claude-sonnet-4",
+		1,
+	))
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"prompt-eval", "import-promptfoo", path, "--provider-account", "ci-openrouter"}, "http://unused")
+	out := stdout.finish()
+	if err != nil {
+		t.Fatalf("import-promptfoo error: %v\n%s", err, out)
+	}
+	var cfg promptEvalConfig
+	if err := yaml.Unmarshal([]byte(out), &cfg); err != nil {
+		t.Fatalf("decode imported yaml: %v\n%s", err, out)
+	}
+	if len(cfg.Models) != 1 || cfg.Models[0].Model != "anthropic/claude-sonnet-4" {
+		t.Fatalf("models = %+v", cfg.Models)
 	}
 }
 
@@ -338,7 +360,7 @@ func TestPromptEvalValidateCIRequiresRemote(t *testing.T) {
 	}
 }
 
-func TestPromptEvalValidateRemoteResolvesAliasesAndProviderAccounts(t *testing.T) {
+func TestPromptEvalValidateRemoteResolvesModelsAndProviderAccounts(t *testing.T) {
 	path := writePromptEvalFixture(t, validPromptEvalYAML())
 	srv := promptEvalRemoteFakeAPI(t, promptEvalRemoteFakeOptions{})
 	defer srv.Close()
@@ -359,43 +381,32 @@ func TestPromptEvalValidateRemoteResolvesAliasesAndProviderAccounts(t *testing.T
 	if got := result.Remote.Models[0].ProviderAccountID; got != "pa-1" {
 		t.Fatalf("provider_account_id = %q, want pa-1", got)
 	}
+	if got := result.Remote.Models[0].Model; got != "gpt-5.5" {
+		t.Fatalf("model = %q, want gpt-5.5", got)
+	}
 }
 
 func TestPromptEvalValidateRemoteFollowsPagination(t *testing.T) {
 	path := writePromptEvalFixture(t, validPromptEvalYAML())
-	srv := promptEvalRemoteFakeAPI(t, promptEvalRemoteFakeOptions{PaginateAliases: true})
+	srv := promptEvalRemoteFakeAPI(t, promptEvalRemoteFakeOptions{PaginateProviderAccounts: true})
 	defer srv.Close()
 
 	result := runPromptEvalRemoteValidateJSON(t, path, srv.URL, false)
 	if !result.Valid {
 		t.Fatalf("remote validate errors = %v", result.Errors)
 	}
-	if got := result.Remote.Models[0].ModelAliasID; got != "alias-1" {
-		t.Fatalf("model_alias_id = %q, want alias-1", got)
+	if got := result.Remote.Models[0].ProviderAccountID; got != "pa-1" {
+		t.Fatalf("provider_account_id = %q, want pa-1", got)
 	}
 }
 
-func TestPromptEvalValidateRemoteRejectsUnknownOrAmbiguousModelAlias(t *testing.T) {
-	for _, tc := range []struct {
-		name    string
-		options promptEvalRemoteFakeOptions
-		want    string
-	}{
-		{name: "unknown", options: promptEvalRemoteFakeOptions{ModelAliases: []map[string]any{}}, want: "model alias \"gpt-5.5\" was not found"},
-		{name: "ambiguous", options: promptEvalRemoteFakeOptions{ModelAliases: []map[string]any{
-			{"id": "alias-1", "alias_key": "gpt-5.5", "provider_key": "openai", "provider_account_id": "pa-1"},
-			{"id": "alias-2", "alias_key": "gpt-5.5", "provider_key": "openai", "provider_account_id": "pa-1"},
-		}}, want: "matched 2 workspace aliases"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			path := writePromptEvalFixture(t, validPromptEvalYAML())
-			srv := promptEvalRemoteFakeAPI(t, tc.options)
-			defer srv.Close()
-			result := runPromptEvalRemoteValidateJSON(t, path, srv.URL, false)
-			if result.Valid || !containsPromptEvalMessage(result.Errors, tc.want) {
-				t.Fatalf("errors = %v, want %q", result.Errors, tc.want)
-			}
-		})
+func TestPromptEvalValidateRemoteRejectsUnknownProviderAccount(t *testing.T) {
+	path := writePromptEvalFixture(t, strings.Replace(validPromptEvalYAML(), "provider_account: default", "provider_account: nonexistent", 1))
+	srv := promptEvalRemoteFakeAPI(t, promptEvalRemoteFakeOptions{})
+	defer srv.Close()
+	result := runPromptEvalRemoteValidateJSON(t, path, srv.URL, false)
+	if result.Valid || !containsPromptEvalMessage(result.Errors, "provider_account \"nonexistent\" was not found") {
+		t.Fatalf("errors = %v, want unknown provider account", result.Errors)
 	}
 }
 
@@ -540,7 +551,7 @@ func TestPromptEvalRunCreatesPlaygroundTestCasesAndExperiments(t *testing.T) {
 	if got := len(mapSlice(expectations, "prompt_eval_assertions")); got != 7 {
 		t.Fatalf("prompt_eval_assertions = %d, want 7", got)
 	}
-	if len(fake.experimentCreates) != 1 || fake.experimentCreates[0]["model_alias_id"] != "alias-1" || fake.experimentCreates[0]["provider_account_id"] != "pa-1" {
+	if len(fake.experimentCreates) != 1 || fake.experimentCreates[0]["model"] != "gpt-5.5" || fake.experimentCreates[0]["provider_account_id"] != "pa-1" {
 		t.Fatalf("experiment create payloads = %#v", fake.experimentCreates)
 	}
 }
@@ -848,7 +859,7 @@ prompt:
     You are a support assistant.
     Reply to: {{input}}
 models:
-  - alias: gpt-5.5
+  - model: gpt-5.5
     provider_account: default
 tests:
   - key: greeting
@@ -920,7 +931,7 @@ prompt:
   template: |
     Reply to: {{input}}
 models:
-  - alias: gpt-5.5
+  - model: gpt-5.5
     provider_account: default
 tests:
   - key: all
@@ -952,12 +963,11 @@ tests:
 }
 
 type promptEvalRemoteFakeOptions struct {
-	ModelAliases     []map[string]any
-	ProviderAccounts []map[string]any
-	Playgrounds      []map[string]any
-	TestCases        []map[string]any
-	OnWrite          func()
-	PaginateAliases  bool
+	ProviderAccounts         []map[string]any
+	Playgrounds              []map[string]any
+	TestCases                []map[string]any
+	OnWrite                  func()
+	PaginateProviderAccounts bool
 }
 
 // promptEvalAuthEnv makes a prompt-eval test hermetic and authenticated:
@@ -974,10 +984,6 @@ func promptEvalAuthEnv(t *testing.T) {
 func promptEvalRemoteFakeAPI(t *testing.T, options promptEvalRemoteFakeOptions) *httptest.Server {
 	t.Helper()
 	promptEvalAuthEnv(t)
-	modelAliases := options.ModelAliases
-	if modelAliases == nil {
-		modelAliases = []map[string]any{{"id": "alias-1", "alias_key": "gpt-5.5", "provider_key": "openai", "provider_account_id": "pa-1"}}
-	}
 	providerAccounts := options.ProviderAccounts
 	if providerAccounts == nil {
 		providerAccounts = []map[string]any{{"id": "pa-1", "provider_key": "openai", "name": "OpenAI", "status": "active"}}
@@ -1001,13 +1007,11 @@ func promptEvalRemoteFakeAPI(t *testing.T, options promptEvalRemoteFakeOptions) 
 		}
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
-		case "/v1/workspaces/ws-1/model-aliases":
-			if options.PaginateAliases && r.URL.Query().Get("cursor") == "" {
+		case "/v1/workspaces/ws-1/provider-accounts":
+			if options.PaginateProviderAccounts && r.URL.Query().Get("cursor") == "" {
 				json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{}, "next_cursor": "page-2"})
 				return
 			}
-			json.NewEncoder(w).Encode(map[string]any{"items": modelAliases})
-		case "/v1/workspaces/ws-1/provider-accounts":
 			json.NewEncoder(w).Encode(map[string]any{"items": providerAccounts})
 		case "/v1/workspaces/ws-1/playgrounds":
 			json.NewEncoder(w).Encode(map[string]any{"items": playgrounds})
@@ -1101,8 +1105,6 @@ func newPromptEvalRunFake(t *testing.T, state *promptEvalRunFakeState) *promptEv
 		defer f.mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
 		switch {
-		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/model-aliases":
-			json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": "alias-1", "alias_key": "gpt-5.5", "provider_account_id": "pa-1"}}})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/provider-accounts":
 			json.NewEncoder(w).Encode(map[string]any{"items": []map[string]any{{"id": "pa-1", "provider_key": "openai", "status": "active"}}})
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/workspaces/ws-1/playgrounds":

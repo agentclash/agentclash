@@ -418,7 +418,7 @@ describe("Runs API", () => {
     const api = createApiClient("token");
     const result = await api.post("/v1/runs/run-1/ranking-insights", {
       provider_account_id: "pa-1",
-      model_alias_id: "alias-1",
+      model: "gpt-5.4-mini",
     });
 
     expect(result).toEqual(insights);
@@ -431,7 +431,7 @@ describe("Runs API", () => {
         }),
         body: JSON.stringify({
           provider_account_id: "pa-1",
-          model_alias_id: "alias-1",
+          model: "gpt-5.4-mini",
         }),
       }),
     );

@@ -127,13 +127,13 @@ func buildSimulatorPrompt(input Input) string {
 // ResolveTarget picks provider credentials from the run agent execution context.
 // Falls back to the deployment's provider account when simulator-specific config is absent.
 func ResolveTarget(executionContext repository.RunAgentExecutionContext) (providerKey, providerAccountID, credentialRef, model string, err error) {
-	if executionContext.Deployment.ProviderAccount == nil || executionContext.Deployment.ModelAlias == nil {
-		return "", "", "", "", provider.NewFailure("", provider.FailureCodeInvalidRequest, "multi_turn llm simulator requires deployment provider account and model alias", false, nil)
+	if executionContext.Deployment.ProviderAccount == nil || executionContext.Deployment.ModelID == "" {
+		return "", "", "", "", provider.NewFailure("", provider.FailureCodeInvalidRequest, "multi_turn llm simulator requires deployment provider account and model", false, nil)
 	}
 	return executionContext.Deployment.ProviderAccount.ProviderKey,
 		executionContext.Deployment.ProviderAccount.ID.String(),
 		executionContext.Deployment.ProviderAccount.CredentialReference,
-		executionContext.Deployment.ModelAlias.ModelCatalogEntry.ProviderModelID,
+		executionContext.Deployment.ModelID,
 		nil
 }
 

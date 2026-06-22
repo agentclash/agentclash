@@ -20,7 +20,6 @@ type DatasetGenerationRepository interface {
 	CreateDatasetGenerationJob(context.Context, repository.CreateDatasetGenerationJobParams) (repository.DatasetGenerationJob, error)
 	GetDatasetGenerationJobByID(context.Context, uuid.UUID) (repository.DatasetGenerationJob, error)
 	GetProviderAccountByID(context.Context, uuid.UUID) (repository.ProviderAccountRow, error)
-	GetModelAliasByID(context.Context, uuid.UUID) (repository.ModelAliasRow, error)
 	ListDatasetExamplesByDatasetID(context.Context, repository.ListDatasetExamplesParams) ([]repository.DatasetExample, error)
 }
 
@@ -45,7 +44,7 @@ type StartDatasetGenerationInput struct {
 	Strategy          string
 	TargetCount       int32
 	ProviderAccountID uuid.UUID
-	ModelAliasID      uuid.UUID
+	Model             string
 	SeedsTag          string
 	CreateVersion     bool
 	VersionLabel      string
@@ -91,18 +90,8 @@ func (m *DatasetManager) StartDatasetGeneration(ctx context.Context, caller Call
 	if providerAccount.WorkspaceID == nil || *providerAccount.WorkspaceID != input.WorkspaceID {
 		return repository.DatasetGenerationJob{}, ErrForbidden
 	}
-	modelAlias, err := genRepo.GetModelAliasByID(ctx, input.ModelAliasID)
-	if err != nil {
-		return repository.DatasetGenerationJob{}, err
-	}
-	if modelAlias.WorkspaceID == nil || *modelAlias.WorkspaceID != input.WorkspaceID {
-		return repository.DatasetGenerationJob{}, ErrForbidden
-	}
-	if !strings.EqualFold(providerAccount.ProviderKey, modelAlias.CatalogProviderKey) {
-		return repository.DatasetGenerationJob{}, errors.New("provider_account provider does not match model alias provider")
-	}
-	if modelAlias.ProviderAccountID != nil && *modelAlias.ProviderAccountID != input.ProviderAccountID {
-		return repository.DatasetGenerationJob{}, errors.New("provider_account_id does not match model alias provider account")
+	if strings.TrimSpace(input.Model) == "" {
+		return repository.DatasetGenerationJob{}, errors.New("model is required")
 	}
 
 	active := domain.DatasetExampleStatusActive
@@ -130,7 +119,7 @@ func (m *DatasetManager) StartDatasetGeneration(ctx context.Context, caller Call
 
 	config, err := json.Marshal(datasetgeneration.JobConfig{
 		ProviderAccountID: input.ProviderAccountID,
-		ModelAliasID:      input.ModelAliasID,
+		Model:             strings.TrimSpace(input.Model),
 		SeedsTag:          strings.TrimSpace(input.SeedsTag),
 		CreateVersion:     input.CreateVersion,
 		VersionLabel:      strings.TrimSpace(input.VersionLabel),
@@ -186,7 +175,7 @@ func startDatasetGenerationHandler(logger *slog.Logger, service DatasetService) 
 			Strategy          string    `json:"strategy"`
 			TargetCount       int32     `json:"target_count"`
 			ProviderAccountID uuid.UUID `json:"provider_account_id"`
-			ModelAliasID      uuid.UUID `json:"model_alias_id"`
+			Model             string    `json:"model"`
 			SeedsTag          string    `json:"seeds_tag,omitempty"`
 			CreateVersion     bool      `json:"create_version,omitempty"`
 			VersionLabel      string    `json:"version_label,omitempty"`
@@ -195,8 +184,8 @@ func startDatasetGenerationHandler(logger *slog.Logger, service DatasetService) 
 			writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
 			return
 		}
-		if body.Strategy == "" || body.TargetCount <= 0 || body.ProviderAccountID == uuid.Nil || body.ModelAliasID == uuid.Nil {
-			writeError(w, http.StatusBadRequest, "invalid_request", "strategy, target_count, provider_account_id, and model_alias_id are required")
+		if body.Strategy == "" || body.TargetCount <= 0 || body.ProviderAccountID == uuid.Nil || strings.TrimSpace(body.Model) == "" {
+			writeError(w, http.StatusBadRequest, "invalid_request", "strategy, target_count, provider_account_id, and model are required")
 			return
 		}
 		job, err := service.StartDatasetGeneration(r.Context(), caller, StartDatasetGenerationInput{
@@ -208,7 +197,7 @@ func startDatasetGenerationHandler(logger *slog.Logger, service DatasetService) 
 			SeedsTag:          body.SeedsTag,
 			CreateVersion:     body.CreateVersion,
 			VersionLabel:      body.VersionLabel,
-			ModelAliasID:      body.ModelAliasID,
+			Model:             body.Model,
 		})
 		if err != nil {
 			handleDatasetGenerationError(w, logger, err)
@@ -250,11 +239,9 @@ func handleDatasetGenerationError(w http.ResponseWriter, logger *slog.Logger, er
 		writeError(w, http.StatusNotFound, "dataset_generation_job_not_found", "dataset generation job not found")
 	case errors.Is(err, repository.ErrProviderAccountNotFound):
 		writeError(w, http.StatusNotFound, "provider_account_not_found", "provider account not found")
-	case errors.Is(err, repository.ErrModelAliasNotFound):
-		writeError(w, http.StatusNotFound, "model_alias_not_found", "model alias not found")
 	case errors.Is(err, ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "forbidden")
-	case err != nil && (err.Error() == "target_count must be between 1 and 100" || err.Error() == "dataset must have at least one active seed example" || err.Error() == "provider_account provider does not match model alias provider" || err.Error() == "provider_account_id does not match model alias provider account"):
+	case err != nil && (err.Error() == "target_count must be between 1 and 100" || err.Error() == "dataset must have at least one active seed example" || err.Error() == "model is required"):
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error())
 	default:
 		handleDatasetError(w, logger, err)

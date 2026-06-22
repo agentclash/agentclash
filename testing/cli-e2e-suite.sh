@@ -99,7 +99,6 @@ CREATED_ORG=0
 CREATED_WORKSPACE=0
 RUNTIME_PROFILE_ID=""
 PROVIDER_ACCOUNT_ID=""
-MODEL_ALIAS_ID=""
 TOOL_ID=""
 KNOWLEDGE_SOURCE_ID=""
 ROUTING_POLICY_ID=""
@@ -288,11 +287,6 @@ cleanup() {
   if [[ -n "$SECRET_KEY" && -n "$WORKSPACE_ID" ]]; then
     "${BASE[@]}" --workspace "$WORKSPACE_ID" secret delete "$SECRET_KEY" >/dev/null 2>&1 || true
   fi
-  if [[ -n "$MODEL_ALIAS_ID" && -z "$DEPLOYMENT_ID" ]]; then
-    "${BASE[@]}" infra model-alias delete "$MODEL_ALIAS_ID" >/dev/null 2>&1 || cleanup_failed=1
-  elif [[ -n "$MODEL_ALIAS_ID" ]]; then
-    printf 'note - model alias retained because deployment %s references it\n' "$DEPLOYMENT_ID"
-  fi
   if [[ -n "$PROVIDER_ACCOUNT_ID" && -z "$DEPLOYMENT_ID" ]]; then
     "${BASE[@]}" infra provider-account delete "$PROVIDER_ACCOUNT_ID" >/dev/null 2>&1 || cleanup_failed=1
   elif [[ -n "$PROVIDER_ACCOUNT_ID" ]]; then
@@ -374,12 +368,11 @@ EOF
 resource_suite() {
   need_jq || return 1
 
-  local suffix prefix org_slug workspace_slug alias_key model_id provider_key provider_model_id
+  local suffix prefix org_slug workspace_slug provider_key provider_model_id
   suffix="$(date -u +%Y%m%d%H%M%S)-$RANDOM"
   prefix="codex-e2e-$suffix"
   org_slug="$prefix-org"
   workspace_slug="$prefix-ws"
-  alias_key="codex_e2e_${suffix//[^A-Za-z0-9]/_}"
   SECRET_KEY="CODEX_E2E_${suffix//[^A-Za-z0-9]/_}"
 
   say "Resource Mode"
@@ -434,21 +427,8 @@ resource_suite() {
   WS_BASE=("${BASE[@]}" --workspace "$WORKSPACE_ID")
   WS_JSON=("${JSON[@]}" --workspace "$WORKSPACE_ID")
 
-  say "Model Catalog"
-  if expect_json "model-catalog list" '.items | type == "array"' "${JSON[@]}" infra model-catalog list; then
-    model_id="$(jq -r '.items[0].id // empty' "$LAST_OUT")"
-    provider_key="$(jq -r '.items[0].provider_key // "openai"' "$LAST_OUT")"
-    provider_model_id="$(jq -r '.items[0].provider_model_id // "gpt-4.1-mini"' "$LAST_OUT")"
-    if [[ -n "$model_id" ]]; then
-      expect_json "model-catalog get" '.id' "${JSON[@]}" infra model-catalog get "$model_id" || true
-    else
-      skip "model-catalog get skipped because catalog is empty"
-    fi
-  else
-    model_id=""
-    provider_key="openai"
-    provider_model_id="gpt-4.1-mini"
-  fi
+  provider_key="openai"
+  provider_model_id="gpt-4.1-mini"
 
   say "Infrastructure Creates"
   jq -n --arg name "Codex E2E Runtime $suffix" '{
@@ -475,21 +455,6 @@ resource_suite() {
     "${WS_JSON[@]}" infra provider-account create --from-file "$WORKDIR/provider-account.json" || return 1
   PROVIDER_ACCOUNT_ID="$(json_get '.id')"
   expect_success "get provider account" "${WS_BASE[@]}" infra provider-account get "$PROVIDER_ACCOUNT_ID" || true
-
-  if [[ -n "$model_id" ]]; then
-    jq -n --arg alias "$alias_key" --arg display "Codex E2E Alias $suffix" --arg model "$model_id" --arg provider_account "$PROVIDER_ACCOUNT_ID" '{
-      alias_key: $alias,
-      display_name: $display,
-      model_catalog_entry_id: $model,
-      provider_account_id: $provider_account
-    }' >"$WORKDIR/model-alias.json"
-    expect_json "create model alias" '.id' \
-      "${WS_JSON[@]}" infra model-alias create --from-file "$WORKDIR/model-alias.json" || return 1
-    MODEL_ALIAS_ID="$(json_get '.id')"
-    expect_success "get model alias" "${WS_BASE[@]}" infra model-alias get "$MODEL_ALIAS_ID" || true
-  else
-    skip "model alias create skipped because model catalog is empty"
-  fi
 
   jq -n --arg name "Codex E2E Tool $suffix" '{
     name: $name,
@@ -534,7 +499,7 @@ resource_suite() {
   SPEND_POLICY_ID="$(jq -r '.id // empty' "$LAST_OUT" 2>/dev/null || true)"
 
   say "Workspace Lists"
-  for resource in runtime-profile provider-account model-alias tool knowledge-source routing-policy spend-policy; do
+  for resource in runtime-profile provider-account tool knowledge-source routing-policy spend-policy; do
     expect_success "infra $resource list" "${WS_BASE[@]}" infra "$resource" list || true
     expect_json "infra $resource list json" '.items | type == "array"' "${WS_JSON[@]}" infra "$resource" list || true
   done
@@ -598,27 +563,27 @@ resource_suite() {
     fi
   fi
 
-  if [[ -n "$BUILD_ID" && -n "$BUILD_VERSION_ID" && -n "$RUNTIME_PROFILE_ID" && -n "$PROVIDER_ACCOUNT_ID" && -n "$MODEL_ALIAS_ID" ]]; then
+  if [[ -n "$BUILD_ID" && -n "$BUILD_VERSION_ID" && -n "$RUNTIME_PROFILE_ID" && -n "$PROVIDER_ACCOUNT_ID" ]]; then
     jq -n \
       --arg name "Codex E2E Deployment $suffix" \
       --arg build "$BUILD_ID" \
       --arg version "$BUILD_VERSION_ID" \
       --arg runtime "$RUNTIME_PROFILE_ID" \
       --arg provider "$PROVIDER_ACCOUNT_ID" \
-      --arg alias "$MODEL_ALIAS_ID" \
+      --arg model "$provider_model_id" \
       '{
         name: $name,
         agent_build_id: $build,
         build_version_id: $version,
         runtime_profile_id: $runtime,
         provider_account_id: $provider,
-        model_alias_id: $alias,
+        model: $model,
         deployment_config: {suite: "codex-e2e"}
       }' >"$WORKDIR/deployment.json"
     expect_json "create deployment" '.id' "${WS_JSON[@]}" deployment create --from-file "$WORKDIR/deployment.json" || true
     DEPLOYMENT_ID="$(jq -r '.id // empty' "$LAST_OUT" 2>/dev/null || true)"
   else
-    skip "deployment create skipped because build/runtime/provider/model prerequisites are missing"
+    skip "deployment create skipped because build/runtime/provider prerequisites are missing"
   fi
   expect_success "deployment list after create" "${WS_BASE[@]}" deployment list || true
 
@@ -667,11 +632,11 @@ resource_suite() {
     PLAYGROUND_TEST_CASE_ID="$(jq -r '.id // empty' "$LAST_OUT" 2>/dev/null || true)"
     expect_success "list playground test cases" "${WS_BASE[@]}" playground test-case list "$PLAYGROUND_ID" || true
 
-    if [[ "$RUN_EXPERIMENTS" -eq 1 && -n "$PROVIDER_ACCOUNT_ID" && -n "$MODEL_ALIAS_ID" ]]; then
-      jq -n --arg provider "$PROVIDER_ACCOUNT_ID" --arg alias "$MODEL_ALIAS_ID" '{
+    if [[ "$RUN_EXPERIMENTS" -eq 1 && -n "$PROVIDER_ACCOUNT_ID" ]]; then
+      jq -n --arg provider "$PROVIDER_ACCOUNT_ID" --arg model "$provider_model_id" '{
         name: "codex-e2e-experiment-a",
         provider_account_id: $provider,
-        model_alias_id: $alias,
+        model: $model,
         request_config: {temperature: 0}
       }' >"$WORKDIR/playground-experiment-a.json"
       expect_json "create playground experiment A" '.id' \
@@ -751,16 +716,6 @@ expect_success "auth tokens list table" "${BASE[@]}" auth tokens list || true
 say "Read-Only API Surface"
 expect_json "org list json" '.items | type == "array"' "${JSON[@]}" org list || true
 expect_success "org list table" "${BASE[@]}" org list || true
-expect_json "model catalog list json" '.items | type == "array"' "${JSON[@]}" infra model-catalog list || true
-if command -v jq >/dev/null 2>&1 && [[ -s "$LAST_OUT" ]]; then
-  first_model="$(jq -r '.items[0].id // empty' "$LAST_OUT" 2>/dev/null || true)"
-  if [[ -n "$first_model" ]]; then
-    expect_success "model catalog get first item" "${BASE[@]}" infra model-catalog get "$first_model" || true
-  else
-    skip "model catalog get skipped because catalog is empty"
-  fi
-fi
-
 configured_org="$("${BASE[@]}" config get default_org 2>/dev/null || true)"
 configured_workspace="$("${BASE[@]}" config get default_workspace 2>/dev/null || true)"
 
@@ -781,7 +736,6 @@ if [[ -n "${AGENTCLASH_WORKSPACE:-$configured_workspace}" ]]; then
     "secret list" \
     "infra runtime-profile list" \
     "infra provider-account list" \
-    "infra model-alias list" \
     "infra tool list" \
     "infra knowledge-source list" \
     "infra routing-policy list" \

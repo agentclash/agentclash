@@ -129,13 +129,13 @@ func (q *Queries) CreateAgentBuildVersion(ctx context.Context, arg CreateAgentBu
 const createAgentDeployment = `-- name: CreateAgentDeployment :one
 INSERT INTO agent_deployments (
     organization_id, workspace_id, agent_build_id, current_build_version_id,
-    runtime_profile_id, provider_account_id, model_alias_id,
+    runtime_profile_id, provider_account_id, model_id,
     name, slug, deployment_type, deployment_config
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7,
     $8, $9, 'native', $10
-) RETURNING id, organization_id, workspace_id, agent_build_id, current_build_version_id, runtime_profile_id, provider_account_id, model_alias_id, routing_policy_id, spend_policy_id, name, slug, deployment_type, endpoint_url, healthcheck_url, status, deployment_config, created_at, updated_at, archived_at
+) RETURNING id, organization_id, workspace_id, agent_build_id, current_build_version_id, runtime_profile_id, provider_account_id, routing_policy_id, spend_policy_id, name, slug, deployment_type, endpoint_url, healthcheck_url, status, deployment_config, created_at, updated_at, archived_at, model_id
 `
 
 type CreateAgentDeploymentParams struct {
@@ -145,7 +145,7 @@ type CreateAgentDeploymentParams struct {
 	CurrentBuildVersionID uuid.UUID
 	RuntimeProfileID      uuid.UUID
 	ProviderAccountID     *uuid.UUID
-	ModelAliasID          *uuid.UUID
+	ModelID               string
 	Name                  string
 	Slug                  string
 	DeploymentConfig      []byte
@@ -159,7 +159,7 @@ func (q *Queries) CreateAgentDeployment(ctx context.Context, arg CreateAgentDepl
 		arg.CurrentBuildVersionID,
 		arg.RuntimeProfileID,
 		arg.ProviderAccountID,
-		arg.ModelAliasID,
+		arg.ModelID,
 		arg.Name,
 		arg.Slug,
 		arg.DeploymentConfig,
@@ -173,7 +173,6 @@ func (q *Queries) CreateAgentDeployment(ctx context.Context, arg CreateAgentDepl
 		&i.CurrentBuildVersionID,
 		&i.RuntimeProfileID,
 		&i.ProviderAccountID,
-		&i.ModelAliasID,
 		&i.RoutingPolicyID,
 		&i.SpendPolicyID,
 		&i.Name,
@@ -186,6 +185,7 @@ func (q *Queries) CreateAgentDeployment(ctx context.Context, arg CreateAgentDepl
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ArchivedAt,
+		&i.ModelID,
 	)
 	return i, err
 }

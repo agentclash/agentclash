@@ -27,7 +27,7 @@ End-to-end dataset operations in a workspace: versioned example banks, eval runs
 - Workspace ID and dataset ID (create datasets via API/UI if none exist).
 - For eval/gate: dataset version ID, challenge pack version ID, challenge key, deployment IDs.
 - For gate: baseline ID and candidate run ID (or `--eval` to start eval inline).
-- For generate: `--count`, `--provider-account`, `--model-alias`.
+- For generate: `--count`, `--provider-account`, `--model`.
 
 ## Environment
 ```bash
@@ -91,7 +91,7 @@ agentclash dataset test <dataset-id> \
 agentclash dataset generate <dataset-id> \
   --count 50 \
   --provider-account <account-id> \
-  --model-alias <alias-id> \
+  --model <provider-model-id> \
   --create-version \
   --version-label "synthetic-v1" \
   --follow
@@ -122,7 +122,7 @@ agentclash dataset sync-regression-suite <dataset-id> \
 ## Failure Modes
 - Gate without `--baseline` → required.
 - Gate without `--run` and without `--eval` → provide one.
-- Generate missing provider/model → all three of count, provider-account, model-alias required.
+- Generate missing provider/model → all three of count, provider-account, and model required.
 - Sync regression without version/pack/challenge → all three flags required.
 
 ## Safety Notes

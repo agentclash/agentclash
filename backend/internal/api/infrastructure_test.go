@@ -10,20 +10,20 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
 
 // stubInfraService implements InfrastructureService for testing.
 type stubInfraService struct {
-	profiles            []repository.RuntimeProfileRow
-	providerAccount     repository.ProviderAccountRow
-	providerTestResult  ProviderAccountTestResult
-	modelAlias          repository.ModelAliasRow
-	createModelAliasErr error
-	tool                repository.ToolRow
-	toolFound           bool
-	updateToolErr       error
+	profiles           []repository.RuntimeProfileRow
+	providerAccount    repository.ProviderAccountRow
+	providerTestResult ProviderAccountTestResult
+	providerModels     []provider.ModelInfo
+	tool               repository.ToolRow
+	toolFound          bool
+	updateToolErr      error
 }
 
 func (s stubInfraService) CreateRuntimeProfile(_ context.Context, _ Caller, _ uuid.UUID, _ CreateRuntimeProfileInput) (repository.RuntimeProfileRow, error) {
@@ -57,28 +57,9 @@ func (s stubInfraService) DeleteProviderAccount(_ context.Context, _ uuid.UUID) 
 func (s stubInfraService) TestProviderAccount(_ context.Context, _ repository.ProviderAccountRow, _ ProviderAccountTestInput) (ProviderAccountTestResult, error) {
 	return s.providerTestResult, nil
 }
-func (s stubInfraService) ListModelCatalog(_ context.Context) ([]repository.ModelCatalogEntryRow, error) {
-	return nil, nil
+func (s stubInfraService) ListProviderAccountModels(_ context.Context, _ repository.ProviderAccountRow) ([]provider.ModelInfo, error) {
+	return s.providerModels, nil
 }
-func (s stubInfraService) GetModelCatalogEntry(_ context.Context, _ uuid.UUID) (repository.ModelCatalogEntryRow, error) {
-	return repository.ModelCatalogEntryRow{}, nil
-}
-func (s stubInfraService) CreateModelAlias(_ context.Context, _ Caller, _ uuid.UUID, _ CreateModelAliasInput) (repository.ModelAliasRow, error) {
-	if s.createModelAliasErr != nil {
-		return repository.ModelAliasRow{}, s.createModelAliasErr
-	}
-	return repository.ModelAliasRow{}, nil
-}
-func (s stubInfraService) ListModelAliases(_ context.Context, _ uuid.UUID) ([]repository.ModelAliasRow, error) {
-	return nil, nil
-}
-func (s stubInfraService) GetModelAlias(_ context.Context, _ uuid.UUID) (repository.ModelAliasRow, error) {
-	if s.modelAlias.ID != uuid.Nil {
-		return s.modelAlias, nil
-	}
-	return repository.ModelAliasRow{}, repository.ErrModelAliasNotFound
-}
-func (s stubInfraService) DeleteModelAlias(_ context.Context, _ uuid.UUID) error { return nil }
 func (s stubInfraService) CreateTool(_ context.Context, _ Caller, _ uuid.UUID, _ CreateToolInput) (repository.ToolRow, error) {
 	return repository.ToolRow{}, nil
 }
@@ -342,112 +323,6 @@ func TestProviderAccountTestRequiresAdminRole(t *testing.T) {
 	}
 }
 
-func TestGetModelAliasIncludesPricingAndDriftWarning(t *testing.T) {
-	workspaceID := uuid.New()
-	aliasID := uuid.New()
-	catalogID := uuid.New()
-
-	svc := stubInfraService{
-		modelAlias: repository.ModelAliasRow{
-			ID:                                aliasID,
-			WorkspaceID:                       &workspaceID,
-			ModelCatalogEntryID:               catalogID,
-			AliasKey:                          "fast-model",
-			DisplayName:                       "Fast Model",
-			Status:                            "active",
-			InputCostPerMillionTokens:         0.4,
-			OutputCostPerMillionTokens:        1.6,
-			CatalogProviderKey:                "openai",
-			CatalogProviderModelID:            "gpt-4.1-mini",
-			CatalogDisplayName:                "GPT 4.1 Mini",
-			CatalogInputCostPerMillionTokens:  0.5,
-			CatalogOutputCostPerMillionTokens: 2.0,
-			CreatedAt:                         time.Now(),
-			UpdatedAt:                         time.Now(),
-		},
-	}
-
-	router := newRouter("dev", nil,
-		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		NewDevelopmentAuthenticator(),
-		NewCallerWorkspaceAuthorizer(),
-		nil, 0,
-		stubRunCreationService{}, stubRunReadService{}, stubReplayReadService{},
-		stubHostedRunIngestionService{}, nil,
-		stubAgentDeploymentReadService{}, stubChallengePackReadService{},
-		stubAgentBuildService{}, noopReleaseGateService{},
-		nil, nil, nil, nil, nil, nil, nil,
-		svc,
-		nil,
-		nil,
-		nil,
-	)
-
-	req := httptest.NewRequest(http.MethodGet, "/v1/model-aliases/"+aliasID.String(), nil)
-	req.Header.Set(headerUserID, uuid.New().String())
-	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
-	recorder := httptest.NewRecorder()
-
-	router.ServeHTTP(recorder, req)
-
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("expected 200 OK, got %d: %s", recorder.Code, recorder.Body.String())
-	}
-	var response modelAliasResponse
-	if err := json.NewDecoder(recorder.Body).Decode(&response); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if response.InputCostPerMillionTokens != 0.4 || response.OutputCostPerMillionTokens != 1.6 {
-		t.Fatalf("alias pricing = %.2f/%.2f, want 0.4/1.6", response.InputCostPerMillionTokens, response.OutputCostPerMillionTokens)
-	}
-	if response.CatalogInputCostPerMillionTokens != 0.5 || response.CatalogOutputCostPerMillionTokens != 2.0 {
-		t.Fatalf("catalog pricing = %.2f/%.2f, want 0.5/2.0", response.CatalogInputCostPerMillionTokens, response.CatalogOutputCostPerMillionTokens)
-	}
-	if !strings.Contains(response.PricingDriftWarning, "alias pricing differs from current catalog pricing") {
-		t.Fatalf("pricing_drift_warning = %q", response.PricingDriftWarning)
-	}
-}
-
-func TestCreateModelAliasMissingCatalogEntryReturnsValidationError(t *testing.T) {
-	workspaceID := uuid.New()
-	svc := stubInfraService{createModelAliasErr: repository.ErrModelCatalogNotFound}
-
-	router := newRouter("dev", nil,
-		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
-		NewDevelopmentAuthenticator(),
-		NewCallerWorkspaceAuthorizer(),
-		nil, 0,
-		stubRunCreationService{}, stubRunReadService{}, stubReplayReadService{},
-		stubHostedRunIngestionService{}, nil,
-		stubAgentDeploymentReadService{}, stubChallengePackReadService{},
-		stubAgentBuildService{}, noopReleaseGateService{},
-		nil, nil, nil, nil, nil, nil, nil,
-		svc,
-		nil,
-		nil,
-		nil,
-	)
-
-	req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/model-aliases", strings.NewReader(`{
-		"alias_key": "missing",
-		"display_name": "Missing",
-		"model_catalog_entry_id": "`+uuid.NewString()+`"
-	}`))
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set(headerUserID, uuid.New().String())
-	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_admin")
-	recorder := httptest.NewRecorder()
-
-	router.ServeHTTP(recorder, req)
-
-	if recorder.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 Bad Request, got %d: %s", recorder.Code, recorder.Body.String())
-	}
-	if !strings.Contains(recorder.Body.String(), "model_catalog_entry_id must reference an existing model catalog entry") {
-		t.Fatalf("response body missing validation message: %s", recorder.Body.String())
-	}
-}
-
 func TestProviderAccountTestReturnsResult(t *testing.T) {
 	workspaceID := uuid.New()
 	accountID := uuid.New()
@@ -501,6 +376,83 @@ func TestProviderAccountTestReturnsResult(t *testing.T) {
 	}
 	if !result.Passed || result.Status != "passed" {
 		t.Fatalf("result = %#v, want passed", result)
+	}
+}
+
+func TestListProviderAccountModelsRejectsOtherWorkspace(t *testing.T) {
+	workspaceID := uuid.New()
+	accountID := uuid.New()
+	svc := stubInfraService{providerAccount: repository.ProviderAccountRow{
+		ID: accountID, WorkspaceID: &workspaceID, ProviderKey: "openai", Status: "active",
+	}}
+	router := newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(), NewCallerWorkspaceAuthorizer(),
+		nil, 0, stubRunCreationService{}, stubRunReadService{}, stubReplayReadService{},
+		stubHostedRunIngestionService{}, nil, stubAgentDeploymentReadService{}, stubChallengePackReadService{},
+		stubAgentBuildService{}, noopReleaseGateService{}, nil, nil, nil, nil, nil, nil, nil,
+		svc, nil, nil, nil,
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/provider-accounts/"+accountID.String()+"/models", nil)
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, uuid.New().String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for another workspace, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestListProviderAccountModelsReturnsItems(t *testing.T) {
+	workspaceID := uuid.New()
+	accountID := uuid.New()
+
+	svc := stubInfraService{
+		providerAccount: repository.ProviderAccountRow{
+			ID:          accountID,
+			WorkspaceID: &workspaceID,
+			ProviderKey: "openai",
+			Status:      "active",
+		},
+		providerModels: []provider.ModelInfo{
+			{ID: "gpt-4.1", DisplayName: "GPT-4.1", InputCostPerMTok: 2.0, OutputCostPerMTok: 8.0, PricingSource: provider.PricingSourceStatic},
+		},
+	}
+
+	router := newRouter("dev", nil,
+		slog.New(slog.NewTextHandler(testWriter{t}, nil)),
+		NewDevelopmentAuthenticator(),
+		NewCallerWorkspaceAuthorizer(),
+		nil, 0,
+		stubRunCreationService{}, stubRunReadService{}, stubReplayReadService{},
+		stubHostedRunIngestionService{}, nil,
+		stubAgentDeploymentReadService{}, stubChallengePackReadService{},
+		stubAgentBuildService{}, noopReleaseGateService{},
+		nil, nil, nil, nil, nil, nil, nil,
+		svc,
+		nil,
+		nil,
+		nil,
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/provider-accounts/"+accountID.String()+"/models", nil)
+	req.Header.Set(headerUserID, uuid.New().String())
+	req.Header.Set(headerWorkspaceMemberships, workspaceID.String()+":workspace_member")
+	recorder := httptest.NewRecorder()
+
+	router.ServeHTTP(recorder, req)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK, got %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var resp providerConnectionModelsResponse
+	if err := json.NewDecoder(recorder.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode result: %v", err)
+	}
+	if len(resp.Items) != 1 || resp.Items[0].ID != "gpt-4.1" || resp.Items[0].PricingSource != provider.PricingSourceStatic {
+		t.Fatalf("items = %#v", resp.Items)
 	}
 }
 

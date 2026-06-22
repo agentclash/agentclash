@@ -55,9 +55,8 @@ func TestShouldSkipTracking(t *testing.T) {
 	}{
 		{"/healthz", true},
 		{"/healthz/ready", true},
-		{"/v1/model-catalog", true},
 		{"/v1/cli-auth/device/token", true}, // noisy login polling — skipped
-		{"/v1/cli-auth/device", false},       // one-shot initiation — kept
+		{"/v1/cli-auth/device", false},      // one-shot initiation — kept
 		{"/v1/runs", false},
 		{"/v1/workspaces/abc/runs", false},
 		{"/v1/auth/session", false},

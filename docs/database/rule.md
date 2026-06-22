@@ -302,21 +302,19 @@ Provider data is shared infrastructure and should not be buried inside agent tab
 Tables in this area will likely include:
 
 - `provider_accounts`
-- `model_catalog_entries`
-- `model_aliases`
 - `routing_policies`
 - `spend_policies`
 
 Rules:
 
 - provider credentials belong to provider-account rows or secret references, not agent rows
-- model catalog rows should be reusable across many builds and deployments
+- provider model IDs belong on the execution resources and snapshots that use them
 - routing and spend policy should be independently attachable
 
 The database should make it possible to answer:
 
 - which provider account powered this deployment
-- which logical model alias mapped to which provider model at the time
+- which provider model ID the deployment used at the time
 - which spend policy or routing policy applied
 
 If that cannot be reconstructed later, the schema is too loose.

@@ -21,7 +21,6 @@ describe("workspaceResourceKeys", () => {
       ["/v1/workspaces/ws-1/agent-builds"],
       ["/v1/workspaces/ws-1/runtime-profiles"],
       ["/v1/workspaces/ws-1/provider-accounts"],
-      ["/v1/workspaces/ws-1/model-aliases"],
     ]);
   });
 });

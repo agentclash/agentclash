@@ -118,7 +118,6 @@ var trackingSkipPrefixes = []string{
 
 // trackingSkipExact lists exact paths to skip in addition to prefix matches.
 var trackingSkipExact = map[string]struct{}{
-	"/v1/model-catalog": {},
 	// Device-token polling: `agentclash auth login` polls this endpoint every
 	// ~5s for up to 10 minutes (~120 hits per login). It currently sits outside
 	// the trackUsage middleware (registered on the top-level router in

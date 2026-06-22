@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import { useApiMutator } from "@/lib/api/swr";
@@ -13,7 +13,7 @@ import type {
   AgentDeploymentCreateResponse,
   RuntimeProfile,
   ProviderAccount,
-  ModelAlias,
+  ProviderConnectionModel,
 } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,7 +46,6 @@ export function CreateDeploymentDialog({
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [model, setModel] = useState("");
-  const [selectedAliasId, setSelectedAliasId] = useState("");
   const [deploymentConfig, setDeploymentConfig] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -54,26 +53,26 @@ export function CreateDeploymentDialog({
   const [readyVersions, setReadyVersions] = useState<AgentBuildVersion[]>([]);
   const [profiles, setProfiles] = useState<RuntimeProfile[]>([]);
   const [accounts, setAccounts] = useState<ProviderAccount[]>([]);
-  const [aliases, setAliases] = useState<ModelAlias[]>([]);
+  const [models, setModels] = useState<ProviderConnectionModel[]>([]);
   const [loading, setLoading] = useState(false);
   const [loadingVersions, setLoadingVersions] = useState(false);
+  const [loadingModels, setLoadingModels] = useState(false);
+  const modelRequestRef = useRef(0);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const token = await getAccessToken();
       const api = createApiClient(token);
-      const [buildsRes, profilesRes, accountsRes, aliasesRes] =
+      const [buildsRes, profilesRes, accountsRes] =
         await Promise.all([
           api.get<{ items: AgentBuild[] }>(`/v1/workspaces/${workspaceId}/agent-builds`),
           api.get<{ items: RuntimeProfile[] }>(`/v1/workspaces/${workspaceId}/runtime-profiles`),
           api.get<{ items: ProviderAccount[] }>(`/v1/workspaces/${workspaceId}/provider-accounts`),
-          api.get<{ items: ModelAlias[] }>(`/v1/workspaces/${workspaceId}/model-aliases`),
         ]);
       setBuilds(buildsRes.items);
       setProfiles(profilesRes.items);
       setAccounts(accountsRes.items);
-      setAliases(aliasesRes.items);
     } catch {
       toast.error("Failed to load data");
     } finally {
@@ -84,6 +83,39 @@ export function CreateDeploymentDialog({
   useEffect(() => {
     if (open) loadData();
   }, [open, loadData]);
+
+  const loadModels = useCallback(
+    async (accountId: string) => {
+      const requestId = ++modelRequestRef.current;
+      setLoadingModels(true);
+      setModels([]);
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const res = await api.get<{ items: ProviderConnectionModel[] }>(
+          `/v1/provider-accounts/${accountId}/models`,
+        );
+        if (modelRequestRef.current === requestId) setModels(res.items);
+      } catch {
+        // Live model list is optional — fall back to free-form model entry.
+        if (modelRequestRef.current === requestId) setModels([]);
+      } finally {
+        if (modelRequestRef.current === requestId) setLoadingModels(false);
+      }
+    },
+    [getAccessToken],
+  );
+
+  function handleAccountChange(accountId: string) {
+    setSelectedAccountId(accountId);
+    setModel("");
+    setModels([]);
+    if (accountId) loadModels(accountId);
+    else {
+      modelRequestRef.current += 1;
+      setLoadingModels(false);
+    }
+  }
 
   const loadVersions = useCallback(
     async (buildId: string) => {
@@ -117,7 +149,7 @@ export function CreateDeploymentDialog({
 
   async function handleCreate() {
     if (!name.trim() || !selectedBuildId || !selectedVersionId || !selectedProfileId || !selectedAccountId) return;
-    if (!model.trim() && !selectedAliasId) return;
+    if (!model.trim()) return;
 
     let configJson: unknown = undefined;
     if (deploymentConfig.trim()) {
@@ -141,8 +173,7 @@ export function CreateDeploymentDialog({
           build_version_id: selectedVersionId,
           runtime_profile_id: selectedProfileId,
           provider_account_id: selectedAccountId,
-          model_alias_id: selectedAliasId || undefined,
-          model: model.trim() || undefined,
+          model: model.trim(),
           deployment_config: configJson,
         },
       );
@@ -158,21 +189,22 @@ export function CreateDeploymentDialog({
   }
 
   function resetForm() {
+    modelRequestRef.current += 1;
     setName("");
     setSelectedBuildId("");
     setSelectedVersionId("");
     setSelectedProfileId("");
     setSelectedAccountId("");
     setModel("");
-    setSelectedAliasId("");
+    setModels([]);
+    setLoadingModels(false);
     setDeploymentConfig("");
     setReadyVersions([]);
   }
 
   const selectClass =
     "block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50";
-  const hasModel = model.trim() || selectedAliasId;
-  const canSubmit = name.trim() && selectedBuildId && selectedVersionId && selectedProfileId && selectedAccountId && hasModel;
+  const canSubmit = name.trim() && selectedBuildId && selectedVersionId && selectedProfileId && selectedAccountId && model.trim();
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -237,7 +269,7 @@ export function CreateDeploymentDialog({
 
           <div>
             <label className="mb-1.5 block text-sm font-medium">Provider Account</label>
-            <select value={selectedAccountId} onChange={(e) => setSelectedAccountId(e.target.value)} disabled={loading} className={selectClass}>
+            <select value={selectedAccountId} onChange={(e) => handleAccountChange(e.target.value)} disabled={loading} className={selectClass}>
               <option value="">{loading ? "Loading..." : accounts.length === 0 ? "No accounts — create one first" : "Select a provider account"}</option>
               {accounts.map((a) => (
                 <option key={a.id} value={a.id}>{a.name} ({a.provider_key})</option>
@@ -247,34 +279,37 @@ export function CreateDeploymentDialog({
 
           <div>
             <label className="mb-1.5 block text-sm font-medium">Model</label>
-            <input
-              type="text"
-              value={model}
-              onChange={(e) => { setModel(e.target.value); if (e.target.value.trim()) setSelectedAliasId(""); }}
-              placeholder="e.g. gpt-4.1, claude-sonnet-4-6"
-              disabled={!!selectedAliasId}
-              className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50"
-            />
+            {models.length > 0 ? (
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                disabled={loadingModels}
+                className={selectClass}
+              >
+                <option value="">Select a model</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id}>{m.display_name} ({m.id})</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                placeholder="e.g. gpt-4.1, claude-sonnet-4-6"
+                disabled={loadingModels}
+                className="block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50 disabled:opacity-50"
+              />
+            )}
             <p className="mt-1 text-xs text-muted-foreground">
-              The provider model ID. Or pick an existing model alias below.
+              {loadingModels
+                ? "Loading available models…"
+                : !selectedAccountId
+                  ? "Select a provider account to load its models."
+                  : models.length > 0
+                    ? "Pick a model from this provider connection."
+                    : "The provider model ID."}
             </p>
-          </div>
-
-          <div>
-            <label className="mb-1.5 block text-sm font-medium">
-              Model Alias <span className="text-muted-foreground font-normal">(advanced)</span>
-            </label>
-            <select
-              value={selectedAliasId}
-              onChange={(e) => { setSelectedAliasId(e.target.value); if (e.target.value) setModel(""); }}
-              disabled={loading}
-              className={selectClass}
-            >
-              <option value="">None — use model name above</option>
-              {aliases.map((a) => (
-                <option key={a.id} value={a.id}>{a.display_name} ({a.alias_key})</option>
-              ))}
-            </select>
           </div>
 
           <JsonField

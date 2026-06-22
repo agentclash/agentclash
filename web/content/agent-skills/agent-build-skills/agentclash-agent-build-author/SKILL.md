@@ -88,7 +88,7 @@ Build version creation and draft update accept:
     "refuse_if": ["missing required evidence"]
   },
   "model_spec": {
-    "preferred_model_alias": "primary-chat",
+    "preferred_model": "gpt-5.5",
     "temperature": 0.1
   },
   "output_schema": {

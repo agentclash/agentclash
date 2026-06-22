@@ -43,7 +43,7 @@ import type {
   CreateCISetupPullRequestRequest,
   CreateCISetupPullRequestResponse,
   GitHubRepository,
-  ModelAlias,
+  ProviderConnectionModel,
   ProviderAccount,
   RegressionSuite,
   Run,
@@ -93,7 +93,11 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
   const [agentBuildId, setAgentBuildId] = useState("");
   const [runtimeProfileId, setRuntimeProfileId] = useState("");
   const [providerAccountId, setProviderAccountId] = useState("");
-  const [modelAliasId, setModelAliasId] = useState("");
+  const [model, setModel] = useState("");
+  const [providerModels, setProviderModels] = useState<ProviderConnectionModel[]>(
+    [],
+  );
+  const [loadingProviderModels, setLoadingProviderModels] = useState(false);
   const [deploymentName, setDeploymentName] = useState("pr-candidate");
   const [selectedPackId, setSelectedPackId] = useState("");
   const [selectedVersionId, setSelectedVersionId] = useState("");
@@ -146,9 +150,6 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
   const providerAccounts = useApiListQuery<ProviderAccount>(
     `/v1/workspaces/${workspaceId}/provider-accounts`,
   );
-  const modelAliases = useApiListQuery<ModelAlias>(
-    `/v1/workspaces/${workspaceId}/model-aliases`,
-  );
   const regressionSuites = useApiListQuery<RegressionSuite>(
     `/v1/workspaces/${workspaceId}/regression-suites`,
     { limit: 100, offset: 0 },
@@ -183,10 +184,6 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
   const activeProviderAccounts = useMemo(
     () => (providerAccounts.data?.items ?? []).filter((item) => item.status === "active"),
     [providerAccounts.data?.items],
-  );
-  const activeModelAliases = useMemo(
-    () => (modelAliases.data?.items ?? []).filter((item) => item.status === "active"),
-    [modelAliases.data?.items],
   );
   const challengePacks = useMemo(
     () => packs.data?.items ?? [],
@@ -298,18 +295,38 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
       !activeProviderAccounts.some((account) => account.id === providerAccountId)
     ) {
       setProviderAccountId("");
+      setModel("");
     }
   }, [activeProviderAccounts, providerAccountId, providerAccounts.data]);
 
   useEffect(() => {
-    if (!modelAliases.data) return;
-    if (
-      modelAliasId &&
-      !activeModelAliases.some((alias) => alias.id === modelAliasId)
-    ) {
-      setModelAliasId("");
+    if (!providerAccountId) {
+      setProviderModels([]);
+      return;
     }
-  }, [activeModelAliases, modelAliasId, modelAliases.data]);
+    let cancelled = false;
+    setLoadingProviderModels(true);
+    setProviderModels([]);
+    void (async () => {
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token ?? undefined);
+        const response = await api.get<{ items: ProviderConnectionModel[] }>(
+          `/v1/provider-accounts/${providerAccountId}/models`,
+        );
+        if (cancelled) return;
+        setProviderModels(response.items);
+      } catch {
+        // Live model list is optional — fall back to free-form model entry.
+        if (!cancelled) setProviderModels([]);
+      } finally {
+        if (!cancelled) setLoadingProviderModels(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [getAccessToken, providerAccountId]);
 
   useEffect(() => {
     if (!regressionSuites.data) return;
@@ -406,7 +423,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     runtimeProfileId,
     deploymentName,
     providerAccountId: providerAccountId || undefined,
-    modelAliasId: modelAliasId || undefined,
+    model: model || undefined,
     challengePackVersionId: selectedVersionId,
     inputSetId: inputSetId || undefined,
     regressionSuiteIds: selectedRegressionSuiteIds,
@@ -431,7 +448,6 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     packs.isLoading ||
     runtimeProfiles.isLoading ||
     providerAccounts.isLoading ||
-    modelAliases.isLoading ||
     regressionSuites.isLoading ||
     repositories.isLoading ||
     ciProfiles.isLoading ||
@@ -447,7 +463,6 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     packs.error ||
     runtimeProfiles.error ||
     providerAccounts.error ||
-    modelAliases.error ||
     regressionSuites.error ||
     repositories.error ||
     ciProfiles.error ||
@@ -541,7 +556,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
           agentBuildId,
           runtimeProfileId,
           providerAccountId,
-          modelAliasId,
+          model,
           deploymentName,
           selectedVersionId,
           inputSetId,
@@ -608,7 +623,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     setAgentBuildId(stringValue(stored.agentBuildId, ""));
     setRuntimeProfileId(stringValue(stored.runtimeProfileId, ""));
     setProviderAccountId(stringValue(stored.providerAccountId, ""));
-    setModelAliasId(stringValue(stored.modelAliasId, ""));
+    setModel(stringValue(stored.model, ""));
     setDeploymentName(stringValue(stored.deploymentName, "pr-candidate"));
     setSelectedPackId(stringValue(stored.selectedPackId, ""));
     setSelectedVersionId(stringValue(stored.selectedVersionId, ""));
@@ -908,19 +923,33 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
                   ))}
                 </select>
               </Field>
-              <Field label="Model alias">
-                <select
-                  value={modelAliasId}
-                  onChange={(event) => setModelAliasId(event.target.value)}
-                  className={selectClass}
-                >
-                  <option value="">Use build default</option>
-                  {activeModelAliases.map((alias) => (
-                    <option key={alias.id} value={alias.id}>
-                      {alias.display_name || alias.alias_key}
-                    </option>
-                  ))}
-                </select>
+              <Field label="Model">
+                {providerModels.length > 0 ? (
+                  <select
+                    value={model}
+                    onChange={(event) => setModel(event.target.value)}
+                    className={selectClass}
+                    disabled={loadingProviderModels}
+                  >
+                    <option value="">Use build default</option>
+                    {providerModels.map((providerModel) => (
+                      <option key={providerModel.id} value={providerModel.id}>
+                        {providerModel.display_name} ({providerModel.id})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <Input
+                    value={model}
+                    onChange={(event) => setModel(event.target.value)}
+                    placeholder={
+                      loadingProviderModels
+                        ? "Loading models..."
+                        : "Use build default"
+                    }
+                    disabled={loadingProviderModels}
+                  />
+                )}
               </Field>
             </div>
           </Section>
@@ -1510,7 +1539,6 @@ function ResourceLinks({ workspaceId }: { workspaceId: string }) {
     ["Runs", `/workspaces/${workspaceId}/runs`],
     ["Regression suites", `/workspaces/${workspaceId}/regression-suites`],
     ["Provider accounts", `/workspaces/${workspaceId}/provider-accounts`],
-    ["Model aliases", `/workspaces/${workspaceId}/model-aliases`],
   ];
   return (
     <div className="mt-3 flex flex-wrap gap-2">
@@ -1542,7 +1570,7 @@ type StoredCIProfileConfig = {
   agentBuildId?: unknown;
   runtimeProfileId?: unknown;
   providerAccountId?: unknown;
-  modelAliasId?: unknown;
+  model?: unknown;
   deploymentName?: unknown;
   selectedVersionId?: unknown;
   inputSetId?: unknown;
@@ -1571,7 +1599,7 @@ function buildProfileConfig(config: {
   agentBuildId: string;
   runtimeProfileId: string;
   providerAccountId: string;
-  modelAliasId: string;
+  model: string;
   deploymentName: string;
   selectedVersionId: string;
   inputSetId: string;
@@ -1600,7 +1628,7 @@ function buildProfileConfig(config: {
     agentBuildId: config.agentBuildId,
     runtimeProfileId: config.runtimeProfileId,
     providerAccountId: config.providerAccountId,
-    modelAliasId: config.modelAliasId,
+    model: config.model,
     deploymentName: config.deploymentName,
     selectedVersionId: config.selectedVersionId,
     inputSetId: config.inputSetId,

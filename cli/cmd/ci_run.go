@@ -405,8 +405,8 @@ func createCIDeployment(cmd *cobra.Command, rc *RunContext, workspaceID string, 
 	if manifest.Candidate.Deployment.ProviderAccountID != "" {
 		body["provider_account_id"] = manifest.Candidate.Deployment.ProviderAccountID
 	}
-	if manifest.Candidate.Deployment.ModelAliasID != "" {
-		body["model_alias_id"] = manifest.Candidate.Deployment.ModelAliasID
+	if manifest.Candidate.Deployment.Model != "" {
+		body["model"] = manifest.Candidate.Deployment.Model
 	}
 	resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+workspaceID+"/agent-deployments", body)
 	if err != nil {

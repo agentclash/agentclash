@@ -58,10 +58,10 @@ WHERE id = @id AND version_status = 'draft';
 -- name: CreateAgentDeployment :one
 INSERT INTO agent_deployments (
     organization_id, workspace_id, agent_build_id, current_build_version_id,
-    runtime_profile_id, provider_account_id, model_alias_id,
+    runtime_profile_id, provider_account_id, model_id,
     name, slug, deployment_type, deployment_config
 ) VALUES (
     @organization_id, @workspace_id, @agent_build_id, @current_build_version_id,
-    @runtime_profile_id, @provider_account_id, @model_alias_id,
+    @runtime_profile_id, @provider_account_id, @model_id,
     @name, @slug, 'native', @deployment_config
 ) RETURNING *;

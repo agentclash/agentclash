@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/domain"
@@ -27,7 +26,6 @@ func (denyWorkspaceAccessAuthorizer) AuthorizeWorkspace(context.Context, Caller,
 type datasetGenerationFakeRepo struct {
 	*datasetImportFakeRepo
 	providerAccount repository.ProviderAccountRow
-	modelAlias      repository.ModelAliasRow
 	job             repository.DatasetGenerationJob
 }
 
@@ -59,13 +57,6 @@ func (r *datasetGenerationFakeRepo) GetProviderAccountByID(_ context.Context, id
 	return repository.ProviderAccountRow{}, repository.ErrProviderAccountNotFound
 }
 
-func (r *datasetGenerationFakeRepo) GetModelAliasByID(_ context.Context, id uuid.UUID) (repository.ModelAliasRow, error) {
-	if r.modelAlias.ID == id {
-		return r.modelAlias, nil
-	}
-	return repository.ModelAliasRow{}, repository.ErrModelAliasNotFound
-}
-
 func TestStartDatasetGenerationRequiresManageDatasets(t *testing.T) {
 	wsID := uuid.New()
 	datasetID := uuid.New()
@@ -79,35 +70,10 @@ func TestStartDatasetGenerationRequiresManageDatasets(t *testing.T) {
 		Strategy:          "self_instruct",
 		TargetCount:       3,
 		ProviderAccountID: uuid.New(),
-		ModelAliasID:      uuid.New(),
+		Model:             "gpt-4.1",
 	})
 	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("expected forbidden, got %v", err)
-	}
-}
-
-func TestStartDatasetGenerationRejectsProviderMismatch(t *testing.T) {
-	wsID := uuid.New()
-	datasetID := uuid.New()
-	providerID := uuid.New()
-	modelAliasID := uuid.New()
-	repo := &datasetGenerationFakeRepo{
-		datasetImportFakeRepo: newDatasetImportFakeRepo(wsID, datasetID),
-		providerAccount:       repository.ProviderAccountRow{ID: providerID, WorkspaceID: &wsID, ProviderKey: "openai"},
-		modelAlias: repository.ModelAliasRow{
-			ID: modelAliasID, WorkspaceID: &wsID, ProviderAccountID: &providerID, CatalogProviderKey: "google",
-		},
-	}
-	repo.examples = []repository.DatasetExample{{
-		ID: uuid.New(), DatasetID: datasetID, Input: json.RawMessage(`{"q":"seed"}`), Status: domain.DatasetExampleStatusActive,
-	}}
-	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo).WithGenerationWorkflowStarter(datasetGenerationFakeStarter{})
-	_, err := manager.StartDatasetGeneration(context.Background(), Caller{UserID: uuid.New()}, StartDatasetGenerationInput{
-		WorkspaceID: wsID, DatasetID: datasetID, Strategy: "self_instruct", TargetCount: 1,
-		ProviderAccountID: providerID, ModelAliasID: modelAliasID,
-	})
-	if err == nil || !strings.Contains(err.Error(), "provider") {
-		t.Fatalf("expected provider mismatch error, got %v", err)
 	}
 }
 
@@ -115,13 +81,9 @@ func TestStartDatasetGenerationCreatesJob(t *testing.T) {
 	wsID := uuid.New()
 	datasetID := uuid.New()
 	providerID := uuid.New()
-	modelAliasID := uuid.New()
 	repo := &datasetGenerationFakeRepo{
 		datasetImportFakeRepo: newDatasetImportFakeRepo(wsID, datasetID),
 		providerAccount:       repository.ProviderAccountRow{ID: providerID, WorkspaceID: &wsID, ProviderKey: "openai"},
-		modelAlias: repository.ModelAliasRow{
-			ID: modelAliasID, WorkspaceID: &wsID, ProviderAccountID: &providerID, CatalogProviderKey: "openai",
-		},
 	}
 	repo.examples = []repository.DatasetExample{{
 		ID:        uuid.New(),
@@ -136,7 +98,7 @@ func TestStartDatasetGenerationCreatesJob(t *testing.T) {
 		Strategy:          "self-instruct",
 		TargetCount:       2,
 		ProviderAccountID: providerID,
-		ModelAliasID:      modelAliasID,
+		Model:             "gpt-4.1",
 	})
 	if err != nil {
 		t.Fatalf("start generation: %v", err)

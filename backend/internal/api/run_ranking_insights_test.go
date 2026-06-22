@@ -37,7 +37,7 @@ func TestRunReadManagerGenerateRankingInsightsRejectsSingleAgentRun(t *testing.T
 
 	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(workspaceID), runID, GenerateRunRankingInsightsInput{
 		ProviderAccountID: uuid.New(),
-		ModelAliasID:      uuid.New(),
+		Model:             "gpt-5.4-mini",
 	})
 
 	var validationErr RunRankingInsightsValidationError
@@ -69,7 +69,7 @@ func TestRunReadManagerGenerateRankingInsightsRejectsUnavailableRanking(t *testi
 
 	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(workspaceID), runID, GenerateRunRankingInsightsInput{
 		ProviderAccountID: uuid.New(),
-		ModelAliasID:      uuid.New(),
+		Model:             "gpt-5.4-mini",
 	})
 
 	var validationErr RunRankingInsightsValidationError
@@ -85,8 +85,6 @@ func TestRunReadManagerGenerateRankingInsightsInvokesSelectedProvider(t *testing
 	workspaceID := uuid.New()
 	runID := uuid.New()
 	providerAccountID := uuid.New()
-	modelCatalogEntryID := uuid.New()
-	modelAliasID := uuid.New()
 	alphaID := uuid.New()
 	betaID := uuid.New()
 	now := time.Date(2026, 4, 20, 8, 30, 0, 0, time.UTC)
@@ -126,28 +124,13 @@ func TestRunReadManagerGenerateRankingInsightsInvokesSelectedProvider(t *testing
 			CredentialReference: "env://OPENAI_API_KEY",
 			Status:              "active",
 		},
-		modelAlias: repository.ModelAliasRow{
-			ID:                  modelAliasID,
-			WorkspaceID:         uuidPtr(workspaceID),
-			ProviderAccountID:   uuidPtr(providerAccountID),
-			ModelCatalogEntryID: modelCatalogEntryID,
-			AliasKey:            "insights-default",
-			DisplayName:         "Insights Default",
-			Status:              "active",
-		},
-		modelCatalogEntry: repository.ModelCatalogEntryRow{
-			ID:              modelCatalogEntryID,
-			ProviderKey:     "openai",
-			ProviderModelID: "gpt-5.4-mini",
-			DisplayName:     "GPT-5.4 Mini",
-		},
 	})
 	manager = manager.WithInsightsClient(client)
 	manager.now = func() time.Time { return now }
 
 	result, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(workspaceID), runID, GenerateRunRankingInsightsInput{
 		ProviderAccountID: providerAccountID,
-		ModelAliasID:      modelAliasID,
+		Model:             "gpt-5.4-mini",
 	})
 	if err != nil {
 		t.Fatalf("GenerateRunRankingInsights returned error: %v", err)
@@ -195,8 +178,6 @@ func TestRunReadManagerGenerateRankingInsightsLoadsWorkspaceSecrets(t *testing.T
 	workspaceID := uuid.New()
 	runID := uuid.New()
 	providerAccountID := uuid.New()
-	modelCatalogEntryID := uuid.New()
-	modelAliasID := uuid.New()
 	alphaID := uuid.New()
 	betaID := uuid.New()
 
@@ -234,20 +215,6 @@ func TestRunReadManagerGenerateRankingInsightsLoadsWorkspaceSecrets(t *testing.T
 			CredentialReference: "workspace-secret://OPENAI_API_KEY",
 			Status:              "active",
 		},
-		modelAlias: repository.ModelAliasRow{
-			ID:                  modelAliasID,
-			WorkspaceID:         uuidPtr(workspaceID),
-			ModelCatalogEntryID: modelCatalogEntryID,
-			AliasKey:            "insights-default",
-			DisplayName:         "Insights Default",
-			Status:              "active",
-		},
-		modelCatalogEntry: repository.ModelCatalogEntryRow{
-			ID:              modelCatalogEntryID,
-			ProviderKey:     "openai",
-			ProviderModelID: "gpt-5.4-mini",
-			DisplayName:     "GPT-5.4 Mini",
-		},
 		workspaceSecrets: map[string]string{
 			"OPENAI_API_KEY": "super-secret",
 		},
@@ -255,7 +222,7 @@ func TestRunReadManagerGenerateRankingInsightsLoadsWorkspaceSecrets(t *testing.T
 
 	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(workspaceID), runID, GenerateRunRankingInsightsInput{
 		ProviderAccountID: providerAccountID,
-		ModelAliasID:      modelAliasID,
+		Model:             "gpt-5.4-mini",
 	})
 	if err != nil {
 		t.Fatalf("GenerateRunRankingInsights returned error: %v", err)
@@ -275,7 +242,7 @@ func TestRunReadManagerGenerateRankingInsightsRejectsForbiddenCallerWithoutInvok
 		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{},
 	}, fixture.runID, GenerateRunRankingInsightsInput{
 		ProviderAccountID: fixture.providerAccountID,
-		ModelAliasID:      fixture.modelAliasID,
+		Model:             fixture.model,
 	})
 	if !errors.Is(err, ErrForbidden) {
 		t.Fatalf("error = %v, want ErrForbidden", err)
@@ -292,7 +259,7 @@ func TestRunReadManagerGenerateRankingInsightsRejectsInactiveProviderAccount(t *
 
 	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
 		ProviderAccountID: fixture.providerAccountID,
-		ModelAliasID:      fixture.modelAliasID,
+		Model:             fixture.model,
 	})
 
 	var validationErr RunRankingInsightsValidationError
@@ -304,47 +271,6 @@ func TestRunReadManagerGenerateRankingInsightsRejectsInactiveProviderAccount(t *
 	}
 	if validationErr.Message != "provider_account_id must reference an active provider account visible to the run workspace" {
 		t.Fatalf("validation message = %q", validationErr.Message)
-	}
-}
-
-func TestRunReadManagerGenerateRankingInsightsRejectsModelAliasBoundToDifferentProviderAccount(t *testing.T) {
-	fixture := newRankingInsightsFixture(t)
-	fixture.repo.modelAlias.ProviderAccountID = uuidPtr(uuid.New())
-	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), fixture.repo).WithInsightsClient(&provider.FakeClient{})
-
-	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
-		ProviderAccountID: fixture.providerAccountID,
-		ModelAliasID:      fixture.modelAliasID,
-	})
-
-	var validationErr RunRankingInsightsValidationError
-	if !errors.As(err, &validationErr) {
-		t.Fatalf("error = %v, want validation error", err)
-	}
-	if validationErr.Code != "invalid_model_alias_id" {
-		t.Fatalf("validation code = %q, want invalid_model_alias_id", validationErr.Code)
-	}
-	if validationErr.Message != "model_alias_id must reference an active model alias visible to the run workspace" {
-		t.Fatalf("validation message = %q", validationErr.Message)
-	}
-}
-
-func TestRunReadManagerGenerateRankingInsightsRejectsModelCatalogProviderMismatch(t *testing.T) {
-	fixture := newRankingInsightsFixture(t)
-	fixture.repo.modelCatalogEntry.ProviderKey = "anthropic"
-	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), fixture.repo).WithInsightsClient(&provider.FakeClient{})
-
-	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
-		ProviderAccountID: fixture.providerAccountID,
-		ModelAliasID:      fixture.modelAliasID,
-	})
-
-	var validationErr RunRankingInsightsValidationError
-	if !errors.As(err, &validationErr) {
-		t.Fatalf("error = %v, want validation error", err)
-	}
-	if validationErr.Code != "invalid_model_alias_id" {
-		t.Fatalf("validation code = %q, want invalid_model_alias_id", validationErr.Code)
 	}
 }
 
@@ -362,7 +288,7 @@ func TestRunReadManagerGenerateRankingInsightsRejectsBudgetExceeded(t *testing.T
 
 	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
 		ProviderAccountID: fixture.providerAccountID,
-		ModelAliasID:      fixture.modelAliasID,
+		Model:             fixture.model,
 	})
 
 	var validationErr RunRankingInsightsValidationError
@@ -385,7 +311,7 @@ func TestRunReadManagerGenerateRankingInsightsRejectsRateLimitedRun(t *testing.T
 
 	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
 		ProviderAccountID: fixture.providerAccountID,
-		ModelAliasID:      fixture.modelAliasID,
+		Model:             fixture.model,
 	})
 
 	var rateLimitErr RunRankingInsightsRateLimitError
@@ -410,7 +336,7 @@ func TestRunReadManagerGenerateRankingInsightsRejectsInvalidModelJSON(t *testing
 
 	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
 		ProviderAccountID: fixture.providerAccountID,
-		ModelAliasID:      fixture.modelAliasID,
+		Model:             fixture.model,
 	})
 
 	var validationErr RunRankingInsightsValidationError
@@ -444,7 +370,7 @@ func TestRunReadManagerGenerateRankingInsightsRejectsWinnerOutsideRun(t *testing
 
 	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
 		ProviderAccountID: fixture.providerAccountID,
-		ModelAliasID:      fixture.modelAliasID,
+		Model:             fixture.model,
 	})
 
 	var validationErr RunRankingInsightsValidationError
@@ -479,7 +405,7 @@ func TestRunReadManagerGenerateRankingInsightsRejectsWinnerDivergingFromDetermin
 
 	_, err := manager.GenerateRunRankingInsights(context.Background(), newRunInsightsCaller(fixture.workspaceID), fixture.runID, GenerateRunRankingInsightsInput{
 		ProviderAccountID: fixture.providerAccountID,
-		ModelAliasID:      fixture.modelAliasID,
+		Model:             fixture.model,
 	})
 
 	var validationErr RunRankingInsightsValidationError
@@ -498,12 +424,11 @@ func TestCreateRunRankingInsightsEndpointReturnsInsights(t *testing.T) {
 	workspaceID := uuid.New()
 	runID := uuid.New()
 	providerAccountID := uuid.New()
-	modelAliasID := uuid.New()
 	winnerID := uuid.New()
 
 	body, err := json.Marshal(createRunRankingInsightsRequest{
 		ProviderAccountID: providerAccountID.String(),
-		ModelAliasID:      modelAliasID.String(),
+		Model:             "gpt-5.4-mini",
 	})
 	if err != nil {
 		t.Fatalf("marshal request body: %v", err)
@@ -576,11 +501,10 @@ func TestCreateRunRankingInsightsEndpointMapsProviderAuthFailureTo400(t *testing
 	workspaceID := uuid.New()
 	runID := uuid.New()
 	providerAccountID := uuid.New()
-	modelAliasID := uuid.New()
 
 	body, err := json.Marshal(createRunRankingInsightsRequest{
 		ProviderAccountID: providerAccountID.String(),
-		ModelAliasID:      modelAliasID.String(),
+		Model:             "gpt-5.4-mini",
 	})
 	if err != nil {
 		t.Fatalf("marshal request body: %v", err)
@@ -640,11 +564,10 @@ func TestCreateRunRankingInsightsEndpointMapsProviderRateLimitTo429(t *testing.T
 	workspaceID := uuid.New()
 	runID := uuid.New()
 	providerAccountID := uuid.New()
-	modelAliasID := uuid.New()
 
 	body, err := json.Marshal(createRunRankingInsightsRequest{
 		ProviderAccountID: providerAccountID.String(),
-		ModelAliasID:      modelAliasID.String(),
+		Model:             "gpt-5.4-mini",
 	})
 	if err != nil {
 		t.Fatalf("marshal request body: %v", err)
@@ -701,11 +624,10 @@ func TestCreateRunRankingInsightsEndpointMapsManagerRateLimitTo429(t *testing.T)
 	workspaceID := uuid.New()
 	runID := uuid.New()
 	providerAccountID := uuid.New()
-	modelAliasID := uuid.New()
 
 	body, err := json.Marshal(createRunRankingInsightsRequest{
 		ProviderAccountID: providerAccountID.String(),
-		ModelAliasID:      modelAliasID.String(),
+		Model:             "gpt-5.4-mini",
 	})
 	if err != nil {
 		t.Fatalf("marshal request body: %v", err)
@@ -865,14 +787,13 @@ func newRunInsightsCaller(workspaceID uuid.UUID) Caller {
 }
 
 type rankingInsightsFixture struct {
-	workspaceID         uuid.UUID
-	runID               uuid.UUID
-	providerAccountID   uuid.UUID
-	modelCatalogEntryID uuid.UUID
-	modelAliasID        uuid.UUID
-	alphaID             uuid.UUID
-	betaID              uuid.UUID
-	repo                *fakeRunReadRepository
+	workspaceID       uuid.UUID
+	runID             uuid.UUID
+	providerAccountID uuid.UUID
+	model             string
+	alphaID           uuid.UUID
+	betaID            uuid.UUID
+	repo              *fakeRunReadRepository
 }
 
 func newRankingInsightsFixture(t *testing.T) rankingInsightsFixture {
@@ -881,19 +802,16 @@ func newRankingInsightsFixture(t *testing.T) rankingInsightsFixture {
 	workspaceID := uuid.New()
 	runID := uuid.New()
 	providerAccountID := uuid.New()
-	modelCatalogEntryID := uuid.New()
-	modelAliasID := uuid.New()
 	alphaID := uuid.New()
 	betaID := uuid.New()
 
 	return rankingInsightsFixture{
-		workspaceID:         workspaceID,
-		runID:               runID,
-		providerAccountID:   providerAccountID,
-		modelCatalogEntryID: modelCatalogEntryID,
-		modelAliasID:        modelAliasID,
-		alphaID:             alphaID,
-		betaID:              betaID,
+		workspaceID:       workspaceID,
+		runID:             runID,
+		providerAccountID: providerAccountID,
+		model:             "gpt-5.4-mini",
+		alphaID:           alphaID,
+		betaID:            betaID,
 		repo: &fakeRunReadRepository{
 			run: buildInsightsRun(runID, workspaceID),
 			runAgents: []domain.RunAgent{
@@ -907,21 +825,6 @@ func newRankingInsightsFixture(t *testing.T) rankingInsightsFixture {
 				ProviderKey:         "openai",
 				CredentialReference: "env://OPENAI_API_KEY",
 				Status:              "active",
-			},
-			modelAlias: repository.ModelAliasRow{
-				ID:                  modelAliasID,
-				WorkspaceID:         uuidPtr(workspaceID),
-				ProviderAccountID:   uuidPtr(providerAccountID),
-				ModelCatalogEntryID: modelCatalogEntryID,
-				AliasKey:            "insights-default",
-				DisplayName:         "Insights Default",
-				Status:              "active",
-			},
-			modelCatalogEntry: repository.ModelCatalogEntryRow{
-				ID:              modelCatalogEntryID,
-				ProviderKey:     "openai",
-				ProviderModelID: "gpt-5.4-mini",
-				DisplayName:     "GPT-5.4 Mini",
 			},
 		},
 	}

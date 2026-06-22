@@ -44,7 +44,7 @@ func (e NativeExecutor) BeginConversation(ctx context.Context, executionContext 
 			nil,
 		)
 	}
-	if executionContext.Deployment.ModelAlias == nil {
+	if executionContext.Deployment.ModelID == "" {
 		return nil, nil, provider.NewFailure(
 			executionContext.Deployment.ProviderAccount.ProviderKey,
 			provider.FailureCodeInvalidRequest,

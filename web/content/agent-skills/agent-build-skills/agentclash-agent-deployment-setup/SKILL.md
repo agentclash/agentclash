@@ -15,12 +15,12 @@ Turn a ready AgentClash build version plus runtime/provider/model resources into
 ## Use When
 - A user has a ready build version and runtime resources, but no deployment ID yet.
 - A run or eval flow needs `agent_deployment_ids`.
-- A deployment create request is failing because build version readiness, provider account, model alias, runtime profile, or workspace context is wrong.
+- A deployment create request is failing because build version readiness, provider account, provider model, runtime profile, or workspace context is wrong.
 - A coding agent needs to audit whether an existing deployment is runnable before starting `agentclash run create` or `agentclash eval start`.
 
 ## Do Not Use When
 - The CLI is not authenticated or no workspace is selected; use `agentclash-cli-setup` first.
-- Provider accounts, model aliases, runtime profiles, workspace secrets, or workspace tools are missing; use `agentclash-runtime-resources-setup` first.
+- Provider accounts, provider model IDs, runtime profiles, workspace secrets, or workspace tools are missing; use `agentclash-runtime-resources-setup` first.
 - The build version is still a draft or has validation errors; use `agentclash-agent-build-author` first.
 - The user is authoring challenge pack YAML or choosing input sets; use challenge-pack skills.
 
@@ -30,7 +30,7 @@ Turn a ready AgentClash build version plus runtime/provider/model resources into
 - `agent_build_id` and ready `build_version_id`.
 - `runtime_profile_id`.
 - `provider_account_id`.
-- `model_alias_id`, or a raw provider model string such as `gpt-4.1` when creating from JSON so the backend can auto-create/reuse a model alias.
+- A provider model ID such as `gpt-4.1`.
 - Optional `deployment_config` JSON object.
 - Challenge pack or run requirements that affect runtime profile, tool, network, shell, or model compatibility.
 
@@ -47,9 +47,9 @@ Commands that list or create deployments need a resolved workspace. Use `agentcl
 ## Procedure
 1. Verify CLI auth and workspace context with `agentclash doctor`.
 2. Inspect the build and build version with `agentclash build get <BUILD_ID>` and `agentclash build version get <BUILD_VERSION_ID> --json`. Stop if `version_status` is not `ready`.
-3. Confirm runtime resources exist: `agentclash infra runtime-profile get <RUNTIME_PROFILE_ID>`, `agentclash infra provider-account get <PROVIDER_ACCOUNT_ID>`, and either `agentclash infra model-alias get <MODEL_ALIAS_ID>` or a raw model value for JSON-file creation.
+3. Confirm runtime resources exist: `agentclash infra runtime-profile get <RUNTIME_PROFILE_ID>`, `agentclash infra provider-account get <PROVIDER_ACCOUNT_ID>`, and `agentclash infra provider-account models <PROVIDER_ACCOUNT_ID>`.
 4. List existing deployments with `agentclash deployment list --json` to avoid duplicates.
-5. Create the deployment with flags when you already have a model alias ID, or with `--from-file` when you need `deployment_config` or raw `model` auto-alias behavior.
+5. Create the deployment with flags, or with `--from-file` when you need `deployment_config`.
 6. Re-list deployments and record the created deployment ID, status, and `current_build_version_id`.
 7. Check run compatibility by confirming the deployment is active and can be passed to `agentclash run create --deployments <DEPLOYMENT_ID>`.
 8. Report deployment IDs and any blockers for `agentclash-eval-runner`.
@@ -64,26 +64,12 @@ agentclash deployment create \
   --build-version-id <BUILD_VERSION_ID> \
   --runtime-profile-id <RUNTIME_PROFILE_ID> \
   --provider-account-id <PROVIDER_ACCOUNT_ID> \
-  --model-alias-id <MODEL_ALIAS_ID>
+  --model <PROVIDER_MODEL_ID>
 ```
 
-The CLI requires `--name`, `--agent-build-id`, `--build-version-id`, and `--runtime-profile-id` before it sends a flag-based request. The backend then requires `provider_account_id` and either `model_alias_id` or `model`.
+The CLI requires `--name`, `--agent-build-id`, `--build-version-id`, and `--runtime-profile-id` before it sends a flag-based request. Native deployments also require `provider_account_id` and a nonblank `model`.
 
-Use JSON when you need the complete API shape, including `deployment_config` or raw model auto-aliasing:
-
-```json
-{
-  "name": "support-bot-prod",
-  "agent_build_id": "<AGENT_BUILD_ID>",
-  "build_version_id": "<BUILD_VERSION_ID>",
-  "runtime_profile_id": "<RUNTIME_PROFILE_ID>",
-  "provider_account_id": "<PROVIDER_ACCOUNT_ID>",
-  "model_alias_id": "<MODEL_ALIAS_ID>",
-  "deployment_config": {}
-}
-```
-
-Raw model auto-alias path:
+Use JSON when you need the complete API shape, including `deployment_config`:
 
 ```json
 {
@@ -97,8 +83,6 @@ Raw model auto-alias path:
 }
 ```
 
-When `provider_account_id` plus `model` is supplied and `model_alias_id` is omitted, the backend looks up the provider account, upserts a model catalog entry, and reuses/unarchives/creates a model alias.
-
 ## Commands
 ```bash
 export AGENTCLASH_API_URL="https://api.agentclash.dev"
@@ -109,7 +93,7 @@ agentclash build version get <BUILD_VERSION_ID> --json
 
 agentclash infra runtime-profile get <RUNTIME_PROFILE_ID>
 agentclash infra provider-account get <PROVIDER_ACCOUNT_ID>
-agentclash infra model-alias get <MODEL_ALIAS_ID>
+agentclash infra provider-account models <PROVIDER_ACCOUNT_ID>
 
 agentclash deployment list --json
 agentclash deployment create --help
@@ -132,7 +116,7 @@ agentclash run create \
 - The deployment should be active in `agentclash deployment list --json`.
 - The deployment should point to the intended ready build version via `current_build_version_id`.
 - Runtime profile settings should satisfy the challenge pack: shell, network, timeout, max iterations, and max tool calls.
-- Provider account and model alias should match the build's `model_spec` expectations.
+- Provider account and model should match the build's `model_spec` expectations.
 - Run creation requires at least one deployment. Non-interactive runs use `--deployments`; TTY runs can prompt from active deployments.
 - Backend run creation requires deployment IDs to reference active deployments with snapshots in the selected workspace.
 
@@ -141,7 +125,7 @@ agentclash run create \
 - `missing required flags when --from-file is not used`: pass `--name`, `--agent-build-id`, `--build-version-id`, and `--runtime-profile-id`, or use `--from-file`.
 - `only ready versions can be deployed`: return to `agentclash-agent-build-author`, validate the version, and mark it ready.
 - `provider_account_id is required`: create/select a provider account with `agentclash-runtime-resources-setup`.
-- `either model_alias_id or model ... is required`: pass `--model-alias-id` with flags, or use `--from-file` with either `model_alias_id` or raw `model`.
+- `model is required`: pass the exact provider model ID with `--model` or in the JSON file.
 - `*_id must be a valid UUID`: copy IDs from `build get`, `build version get --json`, `infra ... get`, or `deployment list --json`.
 - Run creation rejects the deployment: confirm it is active, belongs to the selected workspace, and has a snapshot.
 
@@ -161,7 +145,7 @@ Build: <agent_build_id>
 Build version: <build_version_id> (<ready | blocked>)
 Runtime profile: <runtime_profile_id>
 Provider account: <provider_account_id>
-Model: <model_alias_id | raw model auto-alias>
+Model: <provider model ID>
 Run compatibility: <ready | blocked>
 Next skill: agentclash-eval-runner
 Notes: <runtime/model/provider/challenge-pack caveats>

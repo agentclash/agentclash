@@ -19,7 +19,7 @@ import (
 
 type GenerateRunRankingInsightsInput struct {
 	ProviderAccountID uuid.UUID
-	ModelAliasID      uuid.UUID
+	Model             string
 }
 
 type GenerateRunRankingInsightsResult struct {
@@ -64,7 +64,7 @@ type runRankingModelInsight struct {
 
 type createRunRankingInsightsRequest struct {
 	ProviderAccountID string `json:"provider_account_id"`
-	ModelAliasID      string `json:"model_alias_id"`
+	Model             string `json:"model"`
 }
 
 type RunRankingInsightsValidationError struct {
@@ -144,31 +144,10 @@ func (m *RunReadManager) GenerateRunRankingInsights(ctx context.Context, caller 
 		}
 	}
 
-	modelAlias, err := m.repo.GetModelAliasByID(ctx, input.ModelAliasID)
-	if err != nil {
-		return GenerateRunRankingInsightsResult{}, err
-	}
-	if !modelAliasVisibleToWorkspace(modelAlias, run.WorkspaceID) {
+	if strings.TrimSpace(input.Model) == "" {
 		return GenerateRunRankingInsightsResult{}, RunRankingInsightsValidationError{
-			Code:    "invalid_model_alias_id",
-			Message: "model_alias_id must reference an active model alias visible to the run workspace",
-		}
-	}
-	if modelAlias.ProviderAccountID != nil && *modelAlias.ProviderAccountID != providerAccount.ID {
-		return GenerateRunRankingInsightsResult{}, RunRankingInsightsValidationError{
-			Code:    "invalid_model_alias_id",
-			Message: "model_alias_id must reference an active model alias visible to the run workspace",
-		}
-	}
-
-	modelCatalogEntry, err := m.repo.GetModelCatalogEntryByID(ctx, modelAlias.ModelCatalogEntryID)
-	if err != nil {
-		return GenerateRunRankingInsightsResult{}, err
-	}
-	if modelCatalogEntry.ProviderKey != providerAccount.ProviderKey {
-		return GenerateRunRankingInsightsResult{}, RunRankingInsightsValidationError{
-			Code:    "invalid_model_alias_id",
-			Message: "model_alias_id must reference an active model alias visible to the run workspace",
+			Code:    "invalid_model",
+			Message: "model is required",
 		}
 	}
 
@@ -188,7 +167,7 @@ func (m *RunReadManager) GenerateRunRankingInsights(ctx context.Context, caller 
 		ProviderKey:         providerAccount.ProviderKey,
 		ProviderAccountID:   providerAccount.ID.String(),
 		CredentialReference: providerAccount.CredentialReference,
-		Model:               modelCatalogEntry.ProviderModelID,
+		Model:               strings.TrimSpace(input.Model),
 		StepTimeout:         m.insightsTimeout,
 		Messages: []provider.Message{
 			{
@@ -216,7 +195,7 @@ Return JSON only. Do not wrap the JSON in markdown fences.
 			"run_id":              run.ID,
 			"workspace_id":        run.WorkspaceID,
 			"provider_account_id": providerAccount.ID,
-			"model_alias_id":      modelAlias.ID,
+			"model":               strings.TrimSpace(input.Model),
 			"feature":             "run_ranking_insights",
 			"grounding_scope":     "current_run_only",
 		}),
@@ -241,9 +220,9 @@ Return JSON only. Do not wrap the JSON in markdown fences.
 			"run_id", run.ID,
 			"provider_key", providerAccount.ProviderKey,
 			"provider_account_id", providerAccount.ID,
-			"model_alias_id", modelAlias.ID,
+			"model", strings.TrimSpace(input.Model),
 		)
-		insights.ProviderModelID = modelCatalogEntry.ProviderModelID
+		insights.ProviderModelID = strings.TrimSpace(input.Model)
 	}
 
 	return GenerateRunRankingInsightsResult{
@@ -428,15 +407,15 @@ func createRunRankingInsightsHandler(logger *slog.Logger, service RunReadService
 			writeError(w, http.StatusBadRequest, "invalid_provider_account_id", "provider_account_id must be a valid UUID")
 			return
 		}
-		modelAliasID, err := uuid.Parse(strings.TrimSpace(body.ModelAliasID))
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_model_alias_id", "model_alias_id must be a valid UUID")
+		model := strings.TrimSpace(body.Model)
+		if model == "" {
+			writeError(w, http.StatusBadRequest, "invalid_model", "model is required")
 			return
 		}
 
 		result, err := service.GenerateRunRankingInsights(r.Context(), caller, runID, GenerateRunRankingInsightsInput{
 			ProviderAccountID: providerAccountID,
-			ModelAliasID:      modelAliasID,
+			Model:             model,
 		})
 		if err != nil {
 			var validationErr RunRankingInsightsValidationError
@@ -450,10 +429,6 @@ func createRunRankingInsightsHandler(logger *slog.Logger, service RunReadService
 				writeError(w, http.StatusNotFound, "run_not_found", "run not found")
 			case errors.Is(err, repository.ErrProviderAccountNotFound):
 				writeError(w, http.StatusBadRequest, "invalid_provider_account_id", "provider_account_id must reference an active provider account visible to the run workspace")
-			case errors.Is(err, repository.ErrModelAliasNotFound):
-				writeError(w, http.StatusBadRequest, "invalid_model_alias_id", "model_alias_id must reference an active model alias visible to the run workspace")
-			case errors.Is(err, repository.ErrModelCatalogNotFound):
-				writeError(w, http.StatusBadRequest, "invalid_model_alias_id", "model_alias_id must reference a valid model catalog entry")
 			case errors.Is(err, ErrForbidden):
 				writeAuthzError(w, err)
 			default:
@@ -521,10 +496,6 @@ func (m *RunReadManager) checkRunRankingInsightsRateLimit(workspaceID uuid.UUID,
 
 func providerAccountVisibleToWorkspace(account repository.ProviderAccountRow, workspaceID uuid.UUID) bool {
 	return account.WorkspaceID != nil && *account.WorkspaceID == workspaceID && account.Status == "active"
-}
-
-func modelAliasVisibleToWorkspace(alias repository.ModelAliasRow, workspaceID uuid.UUID) bool {
-	return alias.WorkspaceID != nil && *alias.WorkspaceID == workspaceID && alias.Status == "active"
 }
 
 func sanitizeRunRankingPayload(ranking *runRankingPayload) *runRankingPayload {

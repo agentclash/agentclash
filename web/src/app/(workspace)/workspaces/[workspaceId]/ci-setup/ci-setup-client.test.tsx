@@ -480,7 +480,6 @@ function listResponse(path: string) {
     ];
   }
   if (path.includes("/provider-accounts")) return [];
-  if (path.includes("/model-aliases")) return [];
   if (path.includes("/regression-suites")) {
     return [
       {

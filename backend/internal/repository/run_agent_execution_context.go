@@ -91,7 +91,9 @@ type AgentDeploymentExecutionContext struct {
 	AgentBuildVersion         AgentBuildVersionExecutionContext
 	RuntimeProfile            RuntimeProfileExecutionContext
 	ProviderAccount           *ProviderAccountExecutionContext
-	ModelAlias                *ModelAliasExecutionContext
+	// ModelID is the provider model id chosen for this deployment (e.g.
+	// "claude-sonnet-4-20250514"), sent directly to the provider.
+	ModelID string
 }
 
 type AgentBuildVersionExecutionContext struct {
@@ -130,27 +132,6 @@ type ProviderAccountExecutionContext struct {
 	Name                string
 	CredentialReference string
 	LimitsConfig        json.RawMessage
-}
-
-type ModelAliasExecutionContext struct {
-	ID                uuid.UUID
-	WorkspaceID       *uuid.UUID
-	ProviderAccountID *uuid.UUID
-	AliasKey          string
-	DisplayName       string
-	ModelCatalogEntry ModelCatalogEntryExecutionContext
-}
-
-type ModelCatalogEntryExecutionContext struct {
-	ID                         uuid.UUID
-	ProviderKey                string
-	ProviderModelID            string
-	DisplayName                string
-	ModelFamily                string
-	Modality                   string
-	Metadata                   json.RawMessage
-	InputCostPerMillionTokens  float64
-	OutputCostPerMillionTokens float64
 }
 
 func (r *Repository) GetRunAgentExecutionContextByID(ctx context.Context, runAgentID uuid.UUID) (RunAgentExecutionContext, error) {
@@ -228,16 +209,10 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			Reason:     "snapshot provider account reference is missing",
 		}
 	}
-	if row.SnapshotSourceModelAliasID != nil && row.ModelAliasID == nil {
+	if row.SnapshotDeploymentType == "native" && strings.TrimSpace(row.SnapshotSourceModelID) == "" {
 		return RunAgentExecutionContext{}, FrozenExecutionContextError{
 			RunAgentID: row.RunAgentID,
-			Reason:     "snapshot model alias reference is missing",
-		}
-	}
-	if row.ModelAliasID != nil && row.ModelCatalogEntryID == nil {
-		return RunAgentExecutionContext{}, FrozenExecutionContextError{
-			RunAgentID: row.RunAgentID,
-			Reason:     "snapshot model catalog entry reference is missing",
+			Reason:     "snapshot model id is missing",
 		}
 	}
 	if row.SnapshotDeploymentType == "hosted_external" {
@@ -265,13 +240,6 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			Reason:     "hosted deployment snapshot is missing endpoint_url",
 		}
 	}
-	if row.ProviderAccountID != nil && row.ModelAliasProviderAccountID != nil && *row.ProviderAccountID != *row.ModelAliasProviderAccountID {
-		return RunAgentExecutionContext{}, FrozenExecutionContextError{
-			RunAgentID: row.RunAgentID,
-			Reason:     "snapshot provider account does not match model alias provider account",
-		}
-	}
-
 	challengeDefinitionsJSON, err := decodeExecutionContextJSON("challenge_pack_challenges", row.ChallengePackChallenges)
 	if err != nil {
 		return RunAgentExecutionContext{}, err
@@ -376,6 +344,7 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 				RunTimeoutSeconds:  row.RuntimeProfileRunTimeoutSeconds,
 				ProfileConfig:      cloneJSON(row.RuntimeProfileProfileConfig),
 			},
+			ModelID: row.SnapshotSourceModelID,
 		},
 	}
 
@@ -402,28 +371,6 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			Name:                *row.ProviderAccountName,
 			CredentialReference: *row.ProviderAccountCredentialReference,
 			LimitsConfig:        cloneJSON(row.ProviderAccountLimitsConfig),
-		}
-	}
-
-	if row.ModelAliasID != nil {
-		// Safe because these model_aliases/model_catalog_entries columns are NOT NULL in the schema.
-		executionContext.Deployment.ModelAlias = &ModelAliasExecutionContext{
-			ID:                *row.ModelAliasID,
-			WorkspaceID:       cloneUUIDPtr(row.ModelAliasWorkspaceID),
-			ProviderAccountID: cloneUUIDPtr(row.ModelAliasProviderAccountID),
-			AliasKey:          *row.ModelAliasAliasKey,
-			DisplayName:       *row.ModelAliasDisplayName,
-			ModelCatalogEntry: ModelCatalogEntryExecutionContext{
-				ID:                         *row.ModelCatalogEntryID,
-				ProviderKey:                *row.ModelCatalogProviderKey,
-				ProviderModelID:            *row.ModelCatalogProviderModelID,
-				DisplayName:                *row.ModelCatalogDisplayName,
-				ModelFamily:                *row.ModelCatalogModelFamily,
-				Modality:                   *row.ModelCatalogModality,
-				Metadata:                   cloneJSON(row.ModelCatalogMetadata),
-				InputCostPerMillionTokens:  derefFloat64(numericPtr(row.ModelCatalogInputCostPerMillionTokens)),
-				OutputCostPerMillionTokens: derefFloat64(numericPtr(row.ModelCatalogOutputCostPerMillionTokens)),
-			},
 		}
 	}
 

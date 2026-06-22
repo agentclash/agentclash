@@ -146,7 +146,7 @@ func (a *DatasetGenerationActivities) ExecuteSyntheticDatasetGeneration(ctx cont
 			ProviderKey:         executionContext.ProviderAccount.ProviderKey,
 			ProviderAccountID:   executionContext.ProviderAccount.ID.String(),
 			CredentialReference: executionContext.ProviderAccount.CredentialReference,
-			Model:               executionContext.ModelCatalog.ProviderModelID,
+			Model:               executionContext.Model,
 			TraceMode:           "required",
 			StepTimeout:         120 * time.Second,
 			Messages:            []provider.Message{{Role: "user", Content: prompt}},
@@ -167,8 +167,8 @@ func (a *DatasetGenerationActivities) ExecuteSyntheticDatasetGeneration(ctx cont
 		totalInputTokens += response.Usage.InputTokens
 		totalOutputTokens += response.Usage.OutputTokens
 		totalCostUSD += datasetgeneration.ComputeCostUSD(response.Usage.InputTokens, response.Usage.OutputTokens, datasetgeneration.ModelPricing{
-			InputCostPerMillionTokens:  executionContext.ModelCatalog.InputCostPerMillionTokens,
-			OutputCostPerMillionTokens: executionContext.ModelCatalog.OutputCostPerMillionTokens,
+			InputCostPerMillionTokens:  executionContext.InputCostPerMillionTokens,
+			OutputCostPerMillionTokens: executionContext.OutputCostPerMillionTokens,
 		})
 
 		candidate, parseErr := datasetgeneration.ParseSelfInstructResponse(response.OutputText)
@@ -205,10 +205,9 @@ func (a *DatasetGenerationActivities) ExecuteSyntheticDatasetGeneration(ctx cont
 		externalID := fmt.Sprintf("gen:%s:%s", executionContext.Job.ID, hash)
 		metadata := mustMarshalJSON(map[string]any{
 			"generator":           executionContext.Job.Strategy,
-			"generation_job_id":     executionContext.Job.ID,
-			"model_alias_id":        executionContext.Config.ModelAliasID,
-			"provider_account_id":   executionContext.Config.ProviderAccountID,
-			"provider_model_id":     executionContext.ModelCatalog.ProviderModelID,
+			"generation_job_id":   executionContext.Job.ID,
+			"provider_account_id": executionContext.Config.ProviderAccountID,
+			"provider_model_id":   executionContext.Model,
 		})
 		if _, upsertErr := a.repo.UpsertDatasetExample(ctx, repository.UpsertDatasetExampleParams{
 			DatasetID:  executionContext.Dataset.ID,

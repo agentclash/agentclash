@@ -6,7 +6,7 @@ dateModified: 2026-06-01
 
 AgentClash CI should gate an agent revision, not only a prompt diff.
 
-Prompt-focused tools can usually watch `prompts/**` and rerun a prompt eval. AgentClash's main product model is richer: an agent change can touch instructions, workflow code, tool bindings, model aliases, runtime limits, output schemas, guardrails, or retrieval configuration. The CI contract therefore needs to name the candidate agent build, deployment settings, challenge workload, baseline, and gate policy explicitly.
+Prompt-focused tools can usually watch `prompts/**` and rerun a prompt eval. AgentClash's main product model is richer: an agent change can touch instructions, workflow code, tool bindings, provider models, runtime limits, output schemas, guardrails, or retrieval configuration. The CI contract therefore needs to name the candidate agent build, deployment settings, challenge workload, baseline, and gate policy explicitly.
 
 ## The manifest is the contract
 
@@ -39,7 +39,7 @@ candidate:
     name: pr-candidate
     runtime_profile_id: 00000000-0000-0000-0000-000000000002
     provider_account_id: 00000000-0000-0000-0000-000000000003
-    model_alias_id: 00000000-0000-0000-0000-000000000004
+    model: gpt-5.5
 evaluation:
   challenge_pack_version_id: 00000000-0000-0000-0000-000000000005
   input_set_id: 00000000-0000-0000-0000-000000000006
@@ -58,7 +58,7 @@ regressions:
 
 The IDs in the generated file are placeholders. Replace them with workspace resources before using the manifest for a real gate.
 
-Local validation is always offline. Add `--remote` when you want the CLI to call the AgentClash API and verify that the manifest's agent build, runtime profile, provider account, model alias, challenge pack version, input set, regression suites or cases, and baseline are visible from the selected workspace. Because this makes real authenticated API calls, set `AGENTCLASH_API_URL`, `AGENTCLASH_TOKEN`, and `AGENTCLASH_WORKSPACE` in CI and expect normal API latency, rate limits, and token scoping rules. JSON output includes a `remote.checks[]` entry per referenced field, so CI can report whether a failure came from the local manifest contract or from an API/resource check.
+Local validation is always offline. Add `--remote` when you want the CLI to call the AgentClash API and verify that the manifest's agent build, runtime profile, provider account, challenge pack version, input set, regression suites or cases, and baseline are visible from the selected workspace. Because this makes real authenticated API calls, set `AGENTCLASH_API_URL`, `AGENTCLASH_TOKEN`, and `AGENTCLASH_WORKSPACE` in CI and expect normal API latency, rate limits, and token scoping rules. JSON output includes a `remote.checks[]` entry per referenced field, so CI can report whether a failure came from the local manifest contract or from an API/resource check.
 
 ## What each section means
 

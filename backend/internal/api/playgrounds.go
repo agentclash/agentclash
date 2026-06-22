@@ -37,7 +37,6 @@ type PlaygroundRepository interface {
 	ListPlaygroundExperimentResultsByExperimentID(ctx context.Context, experimentID uuid.UUID) ([]repository.PlaygroundExperimentResult, error)
 	BuildPlaygroundExperimentComparison(ctx context.Context, input repository.PlaygroundComparisonInput) (repository.PlaygroundExperimentComparison, error)
 	GetProviderAccountByID(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
-	GetModelAliasByID(ctx context.Context, id uuid.UUID) (repository.ModelAliasRow, error)
 }
 
 type PlaygroundWorkflowStarter interface {
@@ -130,7 +129,7 @@ type CreatePlaygroundExperimentInput struct {
 	PlaygroundID      uuid.UUID
 	Name              string
 	ProviderAccountID uuid.UUID
-	ModelAliasID      uuid.UUID
+	Model             string
 	RequestConfig     json.RawMessage
 }
 
@@ -143,7 +142,7 @@ type BatchCreatePlaygroundExperimentsInput struct {
 type BatchExperimentModelEntry struct {
 	Name              string
 	ProviderAccountID uuid.UUID
-	ModelAliasID      uuid.UUID
+	Model             string
 	RequestConfig     json.RawMessage
 }
 
@@ -316,14 +315,10 @@ func (m *PlaygroundManager) CreatePlaygroundExperiment(ctx context.Context, call
 			Message: "provider_account_id must belong to the playground workspace",
 		}
 	}
-	modelAlias, err := m.repo.GetModelAliasByID(ctx, input.ModelAliasID)
-	if err != nil {
-		return repository.PlaygroundExperiment{}, err
-	}
-	if modelAlias.WorkspaceID == nil || *modelAlias.WorkspaceID != playground.WorkspaceID {
+	if strings.TrimSpace(input.Model) == "" {
 		return repository.PlaygroundExperiment{}, PlaygroundValidationError{
-			Code:    "invalid_model_alias_id",
-			Message: "model_alias_id must belong to the playground workspace",
+			Code:    "invalid_model",
+			Message: "model is required",
 		}
 	}
 	name := strings.TrimSpace(input.Name)
@@ -335,7 +330,7 @@ func (m *PlaygroundManager) CreatePlaygroundExperiment(ctx context.Context, call
 		WorkspaceID:       playground.WorkspaceID,
 		PlaygroundID:      playground.ID,
 		ProviderAccountID: providerAccount.ID,
-		ModelAliasID:      modelAlias.ID,
+		Model:             strings.TrimSpace(input.Model),
 		Name:              name,
 		RequestConfig:     normalizeObjectJSON(input.RequestConfig),
 		Summary:           json.RawMessage(`{}`),
@@ -365,7 +360,7 @@ func (m *PlaygroundManager) BatchCreatePlaygroundExperiments(ctx context.Context
 			PlaygroundID:      input.PlaygroundID,
 			Name:              model.Name,
 			ProviderAccountID: model.ProviderAccountID,
-			ModelAliasID:      model.ModelAliasID,
+			Model:             model.Model,
 			RequestConfig:     requestConfig,
 		})
 		if err != nil {
@@ -453,14 +448,14 @@ type playgroundTestCaseRequest struct {
 type playgroundExperimentRequest struct {
 	Name              string          `json:"name"`
 	ProviderAccountID string          `json:"provider_account_id"`
-	ModelAliasID      string          `json:"model_alias_id"`
+	Model             string          `json:"model"`
 	RequestConfig     json.RawMessage `json:"request_config"`
 }
 
 type parsedPlaygroundExperimentRequest struct {
 	Name              string
 	ProviderAccountID uuid.UUID
-	ModelAliasID      uuid.UUID
+	Model             string
 	RequestConfig     json.RawMessage
 }
 
@@ -471,7 +466,7 @@ type batchPlaygroundExperimentRequest struct {
 
 type batchExperimentModelEntry struct {
 	ProviderAccountID string          `json:"provider_account_id"`
-	ModelAliasID      string          `json:"model_alias_id"`
+	Model             string          `json:"model"`
 	Name              string          `json:"name"`
 	RequestConfig     json.RawMessage `json:"request_config"`
 }
@@ -502,7 +497,7 @@ type playgroundExperimentResponse struct {
 	WorkspaceID        uuid.UUID                   `json:"workspace_id"`
 	PlaygroundID       uuid.UUID                   `json:"playground_id"`
 	ProviderAccountID  uuid.UUID                   `json:"provider_account_id"`
-	ModelAliasID       uuid.UUID                   `json:"model_alias_id"`
+	Model              string                      `json:"model"`
 	Name               string                      `json:"name"`
 	Status             repository.PlaygroundStatus `json:"status"`
 	RequestConfig      json.RawMessage             `json:"request_config"`
@@ -822,7 +817,7 @@ func createPlaygroundExperimentHandler(logger *slog.Logger, service PlaygroundSe
 			PlaygroundID:      playgroundID,
 			Name:              request.Name,
 			ProviderAccountID: request.ProviderAccountID,
-			ModelAliasID:      request.ModelAliasID,
+			Model:             request.Model,
 			RequestConfig:     request.RequestConfig,
 		})
 		if err != nil {
@@ -865,15 +860,10 @@ func batchCreatePlaygroundExperimentsHandler(logger *slog.Logger, service Playgr
 				writePlaygroundDecodeError(logger, w, r, err)
 				return
 			}
-			modelAliasID, err := parsePlaygroundUUID(entry.ModelAliasID, "model_alias_id", "invalid_model_alias_id")
-			if err != nil {
-				writePlaygroundDecodeError(logger, w, r, err)
-				return
-			}
 			models = append(models, BatchExperimentModelEntry{
 				Name:              entry.Name,
 				ProviderAccountID: providerAccountID,
-				ModelAliasID:      modelAliasID,
+				Model:             strings.TrimSpace(entry.Model),
 				RequestConfig:     entry.RequestConfig,
 			})
 		}
@@ -1016,14 +1006,10 @@ func decodePlaygroundExperimentRequest(w http.ResponseWriter, r *http.Request) (
 	if err != nil {
 		return parsedPlaygroundExperimentRequest{}, err
 	}
-	modelAliasID, err := parsePlaygroundUUID(body.ModelAliasID, "model_alias_id", "invalid_model_alias_id")
-	if err != nil {
-		return parsedPlaygroundExperimentRequest{}, err
-	}
 	return parsedPlaygroundExperimentRequest{
 		Name:              body.Name,
 		ProviderAccountID: providerAccountID,
-		ModelAliasID:      modelAliasID,
+		Model:             strings.TrimSpace(body.Model),
 		RequestConfig:     body.RequestConfig,
 	}, nil
 }
@@ -1153,7 +1139,7 @@ func mapPlaygroundExperimentResponse(experiment repository.PlaygroundExperiment)
 		WorkspaceID:        experiment.WorkspaceID,
 		PlaygroundID:       experiment.PlaygroundID,
 		ProviderAccountID:  experiment.ProviderAccountID,
-		ModelAliasID:       experiment.ModelAliasID,
+		Model:              experiment.Model,
 		Name:               experiment.Name,
 		Status:             experiment.Status,
 		RequestConfig:      experiment.RequestConfig,
@@ -1228,8 +1214,6 @@ func writePlaygroundServiceError(logger *slog.Logger, w http.ResponseWriter, r *
 		writeError(w, http.StatusNotFound, "playground_experiment_not_found", "playground experiment not found")
 	case errors.Is(err, repository.ErrProviderAccountNotFound):
 		writeError(w, http.StatusNotFound, "provider_account_not_found", "provider account not found")
-	case errors.Is(err, repository.ErrModelAliasNotFound):
-		writeError(w, http.StatusNotFound, "model_alias_not_found", "model alias not found")
 	default:
 		logger.Error("playground request failed", "method", r.Method, "path", r.URL.Path, "error", err)
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")

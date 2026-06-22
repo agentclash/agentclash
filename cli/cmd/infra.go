@@ -1,9 +1,7 @@
 package cmd
 
 import (
-	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/agentclash/agentclash/cli/internal/output"
@@ -40,23 +38,6 @@ var infraResources = []infraResource{
 		Columns: []output.Column{{Header: "ID"}, {Header: "Provider"}, {Header: "Name"}, {Header: "Status"}, {Header: "Created"}},
 		RowMapper: func(item map[string]any) []string {
 			return []string{str(item["id"]), str(item["provider_key"]), str(item["name"]), output.StatusColor(str(item["status"])), str(item["created_at"])}
-		},
-	},
-	{
-		Name: "model-alias", Plural: "model-aliases",
-		ListPath: "/v1/workspaces/%s/model-aliases", CreatePath: "/v1/workspaces/%s/model-aliases",
-		GetPath: "/v1/model-aliases/%s", DeletePath: "/v1/model-aliases/%s",
-		Columns: []output.Column{{Header: "ID"}, {Header: "Alias Key"}, {Header: "Model"}, {Header: "Input/M"}, {Header: "Output/M"}, {Header: "Status"}, {Header: "Created"}},
-		RowMapper: func(item map[string]any) []string {
-			return []string{
-				str(item["id"]),
-				str(item["alias_key"]),
-				modelAliasModelLabel(item),
-				fmtPricingRate(item["input_cost_per_million_tokens"]),
-				fmtPricingRate(item["output_cost_per_million_tokens"]),
-				output.StatusColor(str(item["status"])),
-				str(item["created_at"]),
-			}
 		},
 	},
 	{
@@ -98,11 +79,6 @@ var infraResources = []infraResource{
 func init() {
 	rootCmd.AddCommand(infraCmd)
 
-	// Add model-catalog separately (global, not workspace-scoped).
-	infraCmd.AddCommand(modelCatalogCmd)
-	modelCatalogCmd.AddCommand(modelCatalogListCmd)
-	modelCatalogCmd.AddCommand(modelCatalogGetCmd)
-
 	// Generate CRUD subcommands for each workspace-scoped resource.
 	for _, res := range infraResources {
 		infraCmd.AddCommand(newInfraResourceCmd(res))
@@ -112,7 +88,7 @@ func init() {
 var infraCmd = &cobra.Command{
 	Use:   "infra",
 	Short: "Manage infrastructure resources",
-	Long:  "Manage runtime profiles, provider accounts, model aliases,\ntools, knowledge sources, routing policies, and spend policies.",
+	Long:  "Manage runtime profiles, provider accounts,\ntools, knowledge sources, routing policies, and spend policies.",
 }
 
 func newInfraResourceCmd(res infraResource) *cobra.Command {
@@ -224,10 +200,6 @@ func newInfraResourceCmd(res infraResource) *cobra.Command {
 					return err
 				}
 
-				if !rc.Output.IsStructured() && res.Name == "model-alias" {
-					printModelAliasDetails(rc.Output, item)
-					return nil
-				}
 				return rc.Output.PrintRaw(item)
 			},
 		}
@@ -292,6 +264,51 @@ func addInfraResourceExtraCommands(parent *cobra.Command, resourceName string) {
 	switch resourceName {
 	case "provider-account":
 		parent.AddCommand(providerAccountTestCmd())
+		parent.AddCommand(providerAccountModelsCmd())
+	}
+}
+
+func providerAccountModelsCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "models <id>",
+		Short: "List models available to a provider account",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			rc := GetRunContext(cmd)
+
+			resp, err := rc.Client.Get(cmd.Context(), "/v1/provider-accounts/"+args[0]+"/models", nil)
+			if err != nil {
+				return err
+			}
+			if apiErr := resp.ParseError(); apiErr != nil {
+				return apiErr
+			}
+
+			var result struct {
+				Items []map[string]any `json:"items"`
+			}
+			if err := resp.DecodeJSON(&result); err != nil {
+				return err
+			}
+
+			if rc.Output.IsStructured() {
+				return rc.Output.PrintRaw(result)
+			}
+
+			cols := []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Input/M"}, {Header: "Output/M"}, {Header: "Pricing Source"}}
+			rows := make([][]string, len(result.Items))
+			for i, item := range result.Items {
+				rows[i] = []string{
+					str(item["id"]),
+					str(item["display_name"]),
+					fmtPricingRate(item["input_cost_per_mtok"]),
+					fmtPricingRate(item["output_cost_per_mtok"]),
+					str(item["pricing_source"]),
+				}
+			}
+			rc.Output.PrintTable(cols, rows)
+			return nil
+		},
 	}
 }
 
@@ -360,39 +377,6 @@ func printProviderAccountTestResult(formatter *output.Formatter, result map[stri
 	}
 }
 
-func printModelAliasDetails(formatter *output.Formatter, alias map[string]any) {
-	formatter.PrintDetail("ID", str(alias["id"]))
-	formatter.PrintDetail("Alias Key", str(alias["alias_key"]))
-	formatter.PrintDetail("Display Name", str(alias["display_name"]))
-	formatter.PrintDetail("Status", output.StatusColor(str(alias["status"])))
-	formatter.PrintDetail("Provider", str(alias["provider_key"]))
-	formatter.PrintDetail("Model", str(alias["provider_model_id"]))
-	formatter.PrintDetail("Model Name", str(alias["model_display_name"]))
-	formatter.PrintDetail("Model Catalog", str(alias["model_catalog_entry_id"]))
-	if providerAccountID := str(alias["provider_account_id"]); providerAccountID != "" {
-		formatter.PrintDetail("Provider Account", providerAccountID)
-	}
-	formatter.PrintDetail("Input / 1M", fmtPricingRate(alias["input_cost_per_million_tokens"]))
-	formatter.PrintDetail("Output / 1M", fmtPricingRate(alias["output_cost_per_million_tokens"]))
-	formatter.PrintDetail("Catalog Input / 1M", fmtPricingRate(alias["catalog_input_cost_per_million_tokens"]))
-	formatter.PrintDetail("Catalog Output / 1M", fmtPricingRate(alias["catalog_output_cost_per_million_tokens"]))
-	if warning := str(alias["pricing_drift_warning"]); warning != "" {
-		formatter.PrintWarning(warning)
-	}
-}
-
-func modelAliasModelLabel(item map[string]any) string {
-	provider := str(item["provider_key"])
-	model := str(item["provider_model_id"])
-	if provider == "" {
-		return model
-	}
-	if model == "" {
-		return provider
-	}
-	return provider + "/" + model
-}
-
 func fmtPricingRate(v any) string {
 	if v == nil {
 		return "-"
@@ -403,140 +387,10 @@ func fmtPricingRate(v any) string {
 	return str(v)
 }
 
-func addInfraCreateFlags(cmd *cobra.Command, resourceName string) {
-	switch resourceName {
-	case "model-alias":
-		cmd.Flags().String("alias-key", "", "Alias key")
-		cmd.Flags().String("display-name", "", "Display name")
-		cmd.Flags().String("model-catalog-entry-id", "", "Model catalog entry ID")
-		cmd.Flags().String("provider-account-id", "", "Optional provider account ID")
-	}
-}
+func addInfraCreateFlags(_ *cobra.Command, _ string) {}
 
-func applyInfraCreateFlags(cmd *cobra.Command, resourceName string, body map[string]any) {
-	switch resourceName {
-	case "model-alias":
-		setFlagIfChanged(cmd, body, "alias-key", "alias_key")
-		setFlagIfChanged(cmd, body, "display-name", "display_name")
-		setFlagIfChanged(cmd, body, "model-catalog-entry-id", "model_catalog_entry_id")
-		setFlagIfChanged(cmd, body, "provider-account-id", "provider_account_id")
-	}
-}
+func applyInfraCreateFlags(_ *cobra.Command, _ string, _ map[string]any) {}
 
-func validateInfraCreateBody(resourceName string, body map[string]any) error {
-	switch resourceName {
-	case "model-alias":
-		missing := missingStringFields(body, map[string]string{
-			"alias_key":              "--alias-key",
-			"display_name":           "--display-name",
-			"model_catalog_entry_id": "--model-catalog-entry-id",
-		})
-		if len(missing) > 0 {
-			return fmt.Errorf("missing required model-alias fields: %s (set flags or provide them in --from-file)", strings.Join(missing, ", "))
-		}
-	}
+func validateInfraCreateBody(_ string, _ map[string]any) error {
 	return nil
-}
-
-func missingStringFields(body map[string]any, fieldFlags map[string]string) []string {
-	missing := make([]string, 0, len(fieldFlags))
-	for field, flagName := range fieldFlags {
-		value, ok := body[field].(string)
-		if !ok || strings.TrimSpace(value) == "" {
-			missing = append(missing, flagName)
-		}
-	}
-	sort.Strings(missing)
-	return missing
-}
-
-// --- Model Catalog (global, not workspace-scoped) ---
-
-var modelCatalogCmd = &cobra.Command{
-	Use:     "model-catalog",
-	Aliases: []string{"models"},
-	Short:   "Browse the global model catalog",
-}
-
-var modelCatalogListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List available models",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		rc := GetRunContext(cmd)
-
-		resp, err := rc.Client.Get(cmd.Context(), "/v1/model-catalog", nil)
-		if err != nil {
-			return err
-		}
-		if apiErr := resp.ParseError(); apiErr != nil {
-			return apiErr
-		}
-
-		var result struct {
-			Items []map[string]any `json:"items"`
-		}
-		if err := resp.DecodeJSON(&result); err != nil {
-			return err
-		}
-
-		if rc.Output.IsStructured() {
-			return rc.Output.PrintRaw(result)
-		}
-
-		cols := []output.Column{{Header: "ID"}, {Header: "Provider"}, {Header: "Model"}, {Header: "Family"}, {Header: "Status"}}
-		rows := make([][]string, len(result.Items))
-		for i, item := range result.Items {
-			rows[i] = []string{
-				str(item["id"]),
-				str(item["provider_key"]),
-				str(item["display_name"]),
-				str(item["model_family"]),
-				output.StatusColor(str(item["lifecycle_status"])),
-			}
-		}
-		rc.Output.PrintTable(cols, rows)
-		return nil
-	},
-}
-
-var modelCatalogGetCmd = &cobra.Command{
-	Use:   "get <id>",
-	Short: "Get a model catalog entry",
-	Args:  cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		rc := GetRunContext(cmd)
-
-		resp, err := rc.Client.Get(cmd.Context(), "/v1/model-catalog/"+args[0], nil)
-		if err != nil {
-			return err
-		}
-		if apiErr := resp.ParseError(); apiErr != nil {
-			return apiErr
-		}
-
-		var entry map[string]any
-		if err := resp.DecodeJSON(&entry); err != nil {
-			return err
-		}
-
-		if rc.Output.IsStructured() {
-			return rc.Output.PrintRaw(entry)
-		}
-
-		rc.Output.PrintDetail("ID", str(entry["id"]))
-		rc.Output.PrintDetail("Provider", str(entry["provider_key"]))
-		rc.Output.PrintDetail("Model ID", str(entry["provider_model_id"]))
-		rc.Output.PrintDetail("Display Name", str(entry["display_name"]))
-		rc.Output.PrintDetail("Family", str(entry["model_family"]))
-		rc.Output.PrintDetail("Modality", str(entry["modality"]))
-		rc.Output.PrintDetail("Status", output.StatusColor(str(entry["lifecycle_status"])))
-		rc.Output.PrintDetail("Input / 1M", fmtPricingRate(entry["input_cost_per_million_tokens"]))
-		rc.Output.PrintDetail("Output / 1M", fmtPricingRate(entry["output_cost_per_million_tokens"]))
-
-		if md, ok := entry["metadata"]; ok && md != nil {
-			mdJSON, _ := json.MarshalIndent(md, "", "  ")
-			fmt.Fprintf(rc.Output.Writer(), "\n%s\n%s\n", output.Bold("Metadata:"), string(mdJSON))
-		}
-		return nil
-	},
 }

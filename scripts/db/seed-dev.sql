@@ -47,17 +47,6 @@ INSERT INTO provider_accounts (id, organization_id, provider_key, name, credenti
 VALUES ('66666666-6666-6666-6666-666666666661', '33333333-3333-3333-3333-333333333333', 'openai', 'OpenAI Dev', 'env:OPENAI_API_KEY')
 ON CONFLICT (id) DO NOTHING;
 
-INSERT INTO model_catalog_entries (id, provider_key, provider_model_id, display_name, model_family)
-VALUES
-  ('77777777-7777-7777-7777-777777777771', 'openai', 'gpt-4.1', 'GPT-4.1', 'gpt-4'),
-  ('77777777-7777-7777-7777-777777777772', 'anthropic', 'claude-sonnet-4-6', 'Claude Sonnet 4.6', 'claude-4')
-ON CONFLICT (provider_key, provider_model_id) DO NOTHING;
-
-INSERT INTO model_aliases (id, organization_id, provider_account_id, model_catalog_entry_id, alias_key, display_name)
-VALUES
-  ('88888888-8888-8888-8888-888888888881', '33333333-3333-3333-3333-333333333333', '66666666-6666-6666-6666-666666666661', '77777777-7777-7777-7777-777777777771', 'gpt-4.1', 'GPT-4.1')
-ON CONFLICT (id) DO NOTHING;
-
 INSERT INTO routing_policies (id, organization_id, name, policy_kind, config)
 VALUES ('99999999-9999-9999-9999-999999999991', '33333333-3333-3333-3333-333333333333', 'single-model-dev', 'single_model', '{}'::jsonb)
 ON CONFLICT (id) DO NOTHING;
@@ -84,17 +73,17 @@ VALUES
 ON CONFLICT (agent_build_id, version_number) DO NOTHING;
 
 -- ─── Agent Deployments ───
-INSERT INTO agent_deployments (id, organization_id, workspace_id, agent_build_id, current_build_version_id, runtime_profile_id, provider_account_id, model_alias_id, routing_policy_id, spend_policy_id, name, slug, deployment_type, endpoint_url, status)
+INSERT INTO agent_deployments (id, organization_id, workspace_id, agent_build_id, current_build_version_id, runtime_profile_id, provider_account_id, model_id, routing_policy_id, spend_policy_id, name, slug, deployment_type, endpoint_url, status)
 VALUES
-  ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01', '33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222', 'cccccccc-cccc-cccc-cccc-cccccccccc01', 'dddddddd-dddd-dddd-dddd-dddddddddd01', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1', '66666666-6666-6666-6666-666666666661', '88888888-8888-8888-8888-888888888881', '99999999-9999-9999-9999-999999999991', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'GPT-4.1', 'gpt-4-1', 'hosted_external', 'https://api.openai.com/v1', 'active'),
-  ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeee02', '33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222', 'cccccccc-cccc-cccc-cccc-cccccccccc02', 'dddddddd-dddd-dddd-dddd-dddddddddd02', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1', '66666666-6666-6666-6666-666666666661', '88888888-8888-8888-8888-888888888881', '99999999-9999-9999-9999-999999999991', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Claude Sonnet 4.6', 'claude-sonnet', 'hosted_external', 'https://api.anthropic.com/v1', 'active')
+  ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01', '33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222', 'cccccccc-cccc-cccc-cccc-cccccccccc01', 'dddddddd-dddd-dddd-dddd-dddddddddd01', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1', '66666666-6666-6666-6666-666666666661', 'gpt-4.1', '99999999-9999-9999-9999-999999999991', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'GPT-4.1', 'gpt-4-1', 'hosted_external', 'https://api.openai.com/v1', 'active'),
+  ('eeeeeeee-eeee-eeee-eeee-eeeeeeeeee02', '33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222', 'cccccccc-cccc-cccc-cccc-cccccccccc02', 'dddddddd-dddd-dddd-dddd-dddddddddd02', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1', '66666666-6666-6666-6666-666666666661', 'claude-sonnet-4-6', '99999999-9999-9999-9999-999999999991', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Claude Sonnet 4.6', 'claude-sonnet', 'hosted_external', 'https://api.anthropic.com/v1', 'active')
 ON CONFLICT (id) DO NOTHING;
 
 -- ─── Agent Deployment Snapshots (required by run creation) ───
-INSERT INTO agent_deployment_snapshots (id, organization_id, workspace_id, agent_build_id, agent_deployment_id, source_agent_build_version_id, source_runtime_profile_id, source_provider_account_id, source_model_alias_id, source_routing_policy_id, source_spend_policy_id, deployment_type, endpoint_url, snapshot_hash, snapshot_config)
+INSERT INTO agent_deployment_snapshots (id, organization_id, workspace_id, agent_build_id, agent_deployment_id, source_agent_build_version_id, source_runtime_profile_id, source_provider_account_id, source_model_id, source_routing_policy_id, source_spend_policy_id, deployment_type, endpoint_url, snapshot_hash, snapshot_config)
 VALUES
-  ('ffffffff-ffff-ffff-ffff-ffffffffffff', '33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222', 'cccccccc-cccc-cccc-cccc-cccccccccc01', 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01', 'dddddddd-dddd-dddd-dddd-dddddddddd01', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1', '66666666-6666-6666-6666-666666666661', '88888888-8888-8888-8888-888888888881', '99999999-9999-9999-9999-999999999991', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'hosted_external', 'https://api.openai.com/v1', 'snap-gpt41-v1', '{}'),
-  ('ffffffff-ffff-ffff-ffff-fffffffffff2', '33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222', 'cccccccc-cccc-cccc-cccc-cccccccccc02', 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeee02', 'dddddddd-dddd-dddd-dddd-dddddddddd02', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1', '66666666-6666-6666-6666-666666666661', '88888888-8888-8888-8888-888888888881', '99999999-9999-9999-9999-999999999991', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'hosted_external', 'https://api.anthropic.com/v1', 'snap-claude-v1', '{}')
+  ('ffffffff-ffff-ffff-ffff-ffffffffffff', '33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222', 'cccccccc-cccc-cccc-cccc-cccccccccc01', 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeee01', 'dddddddd-dddd-dddd-dddd-dddddddddd01', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1', '66666666-6666-6666-6666-666666666661', 'gpt-4.1', '99999999-9999-9999-9999-999999999991', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'hosted_external', 'https://api.openai.com/v1', 'snap-gpt41-v1', '{}'),
+  ('ffffffff-ffff-ffff-ffff-fffffffffff2', '33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222', 'cccccccc-cccc-cccc-cccc-cccccccccc02', 'eeeeeeee-eeee-eeee-eeee-eeeeeeeeee02', 'dddddddd-dddd-dddd-dddd-dddddddddd02', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbb1', '66666666-6666-6666-6666-666666666661', 'claude-sonnet-4-6', '99999999-9999-9999-9999-999999999991', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'hosted_external', 'https://api.anthropic.com/v1', 'snap-claude-v1', '{}')
 ON CONFLICT (agent_deployment_id, snapshot_hash) DO NOTHING;
 
 COMMIT;

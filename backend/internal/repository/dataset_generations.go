@@ -9,6 +9,7 @@ import (
 
 	datasetgeneration "github.com/agentclash/agentclash/backend/internal/datasets/generation"
 	"github.com/agentclash/agentclash/backend/internal/domain"
+	"github.com/agentclash/agentclash/backend/internal/provider"
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -122,8 +123,12 @@ type DatasetGenerationExecutionContext struct {
 	Seeds           []datasetgeneration.SeedExample
 	ExistingInputs  map[string]struct{}
 	ProviderAccount ProviderAccountRow
-	ModelAlias      ModelAliasRow
-	ModelCatalog    ModelCatalogEntryRow
+	// Model is the provider model id to generate with. Pricing is best-effort
+	// from the static fallback map (0 when unknown) and is used only for the
+	// job's cost estimate, never for scoring.
+	Model                      string
+	InputCostPerMillionTokens  float64
+	OutputCostPerMillionTokens float64
 }
 
 func (r *Repository) CreateDatasetGenerationJob(ctx context.Context, params CreateDatasetGenerationJobParams) (DatasetGenerationJob, error) {
@@ -243,14 +248,9 @@ func (r *Repository) GetDatasetGenerationExecutionContextByID(ctx context.Contex
 	if err != nil {
 		return DatasetGenerationExecutionContext{}, err
 	}
-	modelAlias, err := r.GetModelAliasByID(ctx, cfg.ModelAliasID)
-	if err != nil {
-		return DatasetGenerationExecutionContext{}, err
-	}
-	modelCatalog, err := r.GetModelCatalogEntryByID(ctx, modelAlias.ModelCatalogEntryID)
-	if err != nil {
-		return DatasetGenerationExecutionContext{}, err
-	}
+	// Pricing is best-effort: the static fallback map yields 0 when the model is
+	// unknown, which only affects the job's cost estimate.
+	inputCost, outputCost, _ := provider.StaticModelPrice(providerAccount.ProviderKey, cfg.Model)
 
 	active := domain.DatasetExampleStatusActive
 	examples, err := r.ListDatasetExamplesByDatasetID(ctx, ListDatasetExamplesParams{
@@ -278,14 +278,15 @@ func (r *Repository) GetDatasetGenerationExecutionContextByID(ctx context.Contex
 	}
 
 	return DatasetGenerationExecutionContext{
-		Job:             job,
-		Dataset:         dataset,
-		Config:          cfg,
-		Seeds:           seeds,
-		ExistingInputs:  existing,
-		ProviderAccount: providerAccount,
-		ModelAlias:      modelAlias,
-		ModelCatalog:    modelCatalog,
+		Job:                        job,
+		Dataset:                    dataset,
+		Config:                     cfg,
+		Seeds:                      seeds,
+		ExistingInputs:             existing,
+		ProviderAccount:            providerAccount,
+		Model:                      cfg.Model,
+		InputCostPerMillionTokens:  inputCost,
+		OutputCostPerMillionTokens: outputCost,
 	}, nil
 }
 

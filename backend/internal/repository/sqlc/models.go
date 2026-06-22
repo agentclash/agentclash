@@ -54,7 +54,6 @@ type AgentDeployment struct {
 	CurrentBuildVersionID uuid.UUID
 	RuntimeProfileID      uuid.UUID
 	ProviderAccountID     *uuid.UUID
-	ModelAliasID          *uuid.UUID
 	RoutingPolicyID       *uuid.UUID
 	SpendPolicyID         *uuid.UUID
 	Name                  string
@@ -67,6 +66,7 @@ type AgentDeployment struct {
 	CreatedAt             pgtype.Timestamptz
 	UpdatedAt             pgtype.Timestamptz
 	ArchivedAt            pgtype.Timestamptz
+	ModelID               string
 }
 
 type AgentTryout struct {
@@ -479,7 +479,6 @@ type PlaygroundExperiment struct {
 	WorkspaceID        uuid.UUID
 	PlaygroundID       uuid.UUID
 	ProviderAccountID  uuid.UUID
-	ModelAliasID       uuid.UUID
 	Name               string
 	Status             string
 	RequestConfig      []byte
@@ -493,6 +492,7 @@ type PlaygroundExperiment struct {
 	CreatedByUserID    *uuid.UUID
 	CreatedAt          pgtype.Timestamptz
 	UpdatedAt          pgtype.Timestamptz
+	ModelID            string
 }
 
 type PlaygroundExperimentResult struct {

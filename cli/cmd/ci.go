@@ -291,7 +291,7 @@ type ciManifestCandidateDeployment struct {
 	Name              string `yaml:"name,omitempty" json:"name,omitempty"`
 	RuntimeProfileID  string `yaml:"runtime_profile_id" json:"runtime_profile_id"`
 	ProviderAccountID string `yaml:"provider_account_id,omitempty" json:"provider_account_id,omitempty"`
-	ModelAliasID      string `yaml:"model_alias_id,omitempty" json:"model_alias_id,omitempty"`
+	Model             string `yaml:"model,omitempty" json:"model,omitempty"`
 }
 
 type ciManifestEvaluation struct {
@@ -418,7 +418,7 @@ candidate:
     name: pr-candidate
     runtime_profile_id: 00000000-0000-0000-0000-000000000002
     provider_account_id: 00000000-0000-0000-0000-000000000003
-    model_alias_id: 00000000-0000-0000-0000-000000000004
+    model: gpt-5.5
 evaluation:
   challenge_pack_version_id: 00000000-0000-0000-0000-000000000005
   input_set_id: 00000000-0000-0000-0000-000000000006
@@ -479,23 +479,12 @@ func validateCIManifestRemote(cmd *cobra.Command, rc *RunContext, workspaceID, m
 		return result, err
 	}
 	var err error
-	var providerAccount map[string]any
 	if manifest.Candidate.Deployment.ProviderAccountID != "" {
-		providerAccount, err = validateCIManifestRemoteListResource(cmd, rc, &result, workspaceID, "candidate.deployment.provider_account_id", "provider_account", manifest.Candidate.Deployment.ProviderAccountID, "/v1/workspaces/%s/provider-accounts")
-		if err != nil {
+		if _, err = validateCIManifestRemoteListResource(cmd, rc, &result, workspaceID, "candidate.deployment.provider_account_id", "provider_account", manifest.Candidate.Deployment.ProviderAccountID, "/v1/workspaces/%s/provider-accounts"); err != nil {
 			result.addAPIError(err)
 			return result, err
 		}
 	}
-	var modelAlias map[string]any
-	if manifest.Candidate.Deployment.ModelAliasID != "" {
-		modelAlias, err = validateCIManifestRemoteListResource(cmd, rc, &result, workspaceID, "candidate.deployment.model_alias_id", "model_alias", manifest.Candidate.Deployment.ModelAliasID, "/v1/workspaces/%s/model-aliases")
-		if err != nil {
-			result.addAPIError(err)
-			return result, err
-		}
-	}
-	validateCIManifestRemoteModelProvider(&result, manifest, providerAccount, modelAlias)
 
 	packID, versionID, err := validateCIManifestRemoteChallengeVersion(cmd, rc, &result, workspaceID, manifest.Evaluation.ChallengePackVersionID)
 	if err != nil {
@@ -566,24 +555,6 @@ func validateCIManifestRemoteListResource(cmd *cobra.Command, rc *RunContext, re
 	}
 	result.addPass(field, resource, id, fmt.Sprintf("%s exists in the selected workspace", resource))
 	return item, nil
-}
-
-func validateCIManifestRemoteModelProvider(result *ciManifestRemoteValidationResult, manifest ciManifest, providerAccount map[string]any, modelAlias map[string]any) {
-	if providerAccount == nil || modelAlias == nil {
-		return
-	}
-	providerAccountID := strings.TrimSpace(manifest.Candidate.Deployment.ProviderAccountID)
-	aliasProviderID := strings.TrimSpace(mapString(modelAlias, "provider_account_id"))
-	if providerAccountID == "" || aliasProviderID == "" || aliasProviderID == providerAccountID {
-		return
-	}
-	result.addFailure(
-		"candidate.deployment.model_alias_id",
-		"model_alias",
-		manifest.Candidate.Deployment.ModelAliasID,
-		"incompatible",
-		fmt.Sprintf("model alias %s uses provider account %s, not candidate.deployment.provider_account_id %s", manifest.Candidate.Deployment.ModelAliasID, aliasProviderID, providerAccountID),
-	)
 }
 
 func validateCIManifestRemoteChallengeVersion(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, versionID string) (string, string, error) {

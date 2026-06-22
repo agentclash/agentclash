@@ -14,7 +14,7 @@ func init() {
 	datasetGenerateCmd.Flags().String("strategy", "self-instruct", "Generation strategy (v1: self-instruct)")
 	datasetGenerateCmd.Flags().Int("count", 0, "Target number of accepted synthetic examples")
 	datasetGenerateCmd.Flags().String("provider-account", "", "Provider account ID")
-	datasetGenerateCmd.Flags().String("model-alias", "", "Model alias ID")
+	datasetGenerateCmd.Flags().String("model", "", "Provider model ID")
 	datasetGenerateCmd.Flags().String("seeds-tag", "", "Only use seed examples with this tag")
 	datasetGenerateCmd.Flags().Bool("create-version", false, "Snapshot a dataset version when generation completes")
 	datasetGenerateCmd.Flags().String("version-label", "", "Optional label for the generated dataset version")
@@ -40,12 +40,12 @@ var datasetGenerateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		modelAlias, err := cmd.Flags().GetString("model-alias")
+		model, err := cmd.Flags().GetString("model")
 		if err != nil {
 			return err
 		}
-		if count <= 0 || providerAccount == "" || modelAlias == "" {
-			return fmt.Errorf("--count, --provider-account, and --model-alias are required")
+		if count <= 0 || providerAccount == "" || model == "" {
+			return fmt.Errorf("--count, --provider-account, and --model are required")
 		}
 
 		strategy, _ := cmd.Flags().GetString("strategy")
@@ -58,7 +58,7 @@ var datasetGenerateCmd = &cobra.Command{
 			"strategy":            strategy,
 			"target_count":        count,
 			"provider_account_id": providerAccount,
-			"model_alias_id":      modelAlias,
+			"model":               model,
 			"create_version":      createVersion,
 		}
 		if seedsTag != "" {

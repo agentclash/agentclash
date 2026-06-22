@@ -48,8 +48,6 @@ export const workspaceResourceKeys = {
     apiQueryKey(`/v1/workspaces/${workspaceId}/runtime-profiles`),
   providerAccounts: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/provider-accounts`),
-  modelAliases: (workspaceId: string): ApiQueryKey =>
-    apiQueryKey(`/v1/workspaces/${workspaceId}/model-aliases`),
   tools: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/tools`),
   knowledgeSources: (workspaceId: string): ApiQueryKey =>
@@ -87,7 +85,6 @@ export const workspaceMutationKeys = {
       workspaceResourceKeys.builds(workspaceId),
       workspaceResourceKeys.runtimeProfiles(workspaceId),
       workspaceResourceKeys.providerAccounts(workspaceId),
-      workspaceResourceKeys.modelAliases(workspaceId),
     ];
   },
   createRunDialog(workspaceId: string): ApiQueryKey[] {

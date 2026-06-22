@@ -68,7 +68,7 @@ type PlaygroundExperiment struct {
 	WorkspaceID        uuid.UUID
 	PlaygroundID       uuid.UUID
 	ProviderAccountID  uuid.UUID
-	ModelAliasID       uuid.UUID
+	Model              string
 	Name               string
 	Status             PlaygroundStatus
 	RequestConfig      json.RawMessage
@@ -116,8 +116,8 @@ type PlaygroundExperimentExecutionContext struct {
 	Playground      Playground
 	TestCases       []PlaygroundTestCase
 	ProviderAccount ProviderAccountRow
-	ModelAlias      ModelAliasRow
-	ModelCatalog    ModelCatalogEntryRow
+	// Model is the provider model id chosen for the experiment.
+	Model string
 }
 
 type CreatePlaygroundParams struct {
@@ -159,7 +159,7 @@ type CreatePlaygroundExperimentParams struct {
 	WorkspaceID       uuid.UUID
 	PlaygroundID      uuid.UUID
 	ProviderAccountID uuid.UUID
-	ModelAliasID      uuid.UUID
+	Model             string
 	Name              string
 	RequestConfig     json.RawMessage
 	Summary           json.RawMessage
@@ -421,7 +421,7 @@ func (r *Repository) CreatePlaygroundExperiment(ctx context.Context, params Crea
 		WorkspaceID:       params.WorkspaceID,
 		PlaygroundID:      params.PlaygroundID,
 		ProviderAccountID: params.ProviderAccountID,
-		ModelAliasID:      params.ModelAliasID,
+		ModelID:           params.Model,
 		Name:              params.Name,
 		Status:            string(PlaygroundExperimentStatusQueued),
 		RequestConfig:     normalizeJSON(params.RequestConfig),
@@ -598,21 +598,12 @@ func (r *Repository) GetPlaygroundExperimentExecutionContextByID(ctx context.Con
 	if err != nil {
 		return PlaygroundExperimentExecutionContext{}, err
 	}
-	modelAlias, err := r.GetModelAliasByID(ctx, experiment.ModelAliasID)
-	if err != nil {
-		return PlaygroundExperimentExecutionContext{}, err
-	}
-	modelCatalog, err := r.GetModelCatalogEntryByID(ctx, modelAlias.ModelCatalogEntryID)
-	if err != nil {
-		return PlaygroundExperimentExecutionContext{}, err
-	}
 	return PlaygroundExperimentExecutionContext{
 		Experiment:      experiment,
 		Playground:      playground,
 		TestCases:       testCases,
 		ProviderAccount: providerAccount,
-		ModelAlias:      modelAlias,
-		ModelCatalog:    modelCatalog,
+		Model:           experiment.Model,
 	}, nil
 }
 
@@ -735,7 +726,7 @@ func mapPlaygroundExperiment(row repositorysqlc.PlaygroundExperiment) (Playgroun
 		WorkspaceID:        row.WorkspaceID,
 		PlaygroundID:       row.PlaygroundID,
 		ProviderAccountID:  row.ProviderAccountID,
-		ModelAliasID:       row.ModelAliasID,
+		Model:              row.ModelID,
 		Name:               row.Name,
 		Status:             PlaygroundStatus(row.Status),
 		RequestConfig:      cloneJSON(row.RequestConfig),

@@ -13,10 +13,12 @@ var ErrUnsupportedStrategy = errors.New("unsupported dataset generation strategy
 
 type JobConfig struct {
 	ProviderAccountID uuid.UUID `json:"provider_account_id"`
-	ModelAliasID      uuid.UUID `json:"model_alias_id"`
-	SeedsTag          string    `json:"seeds_tag,omitempty"`
-	CreateVersion     bool      `json:"create_version,omitempty"`
-	VersionLabel      string    `json:"version_label,omitempty"`
+	// Model is the provider model id to generate with (e.g. "gpt-4.1-mini"),
+	// chosen directly from the provider connection's live model list.
+	Model         string `json:"model"`
+	SeedsTag      string `json:"seeds_tag,omitempty"`
+	CreateVersion bool   `json:"create_version,omitempty"`
+	VersionLabel  string `json:"version_label,omitempty"`
 }
 
 type SeedExample struct {
@@ -56,8 +58,8 @@ func DecodeJobConfig(raw json.RawMessage) (JobConfig, error) {
 	if cfg.ProviderAccountID == uuid.Nil {
 		return JobConfig{}, errors.New("provider_account_id is required")
 	}
-	if cfg.ModelAliasID == uuid.Nil {
-		return JobConfig{}, errors.New("model_alias_id is required")
+	if cfg.Model == "" {
+		return JobConfig{}, errors.New("model is required")
 	}
 	return cfg, nil
 }

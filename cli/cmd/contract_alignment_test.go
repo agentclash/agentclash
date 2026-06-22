@@ -31,7 +31,7 @@ func TestDeploymentCreateBuildVersionFlagsUseCurrentRequestShape(t *testing.T) {
 		"--build-version-id", "version-1",
 		"--runtime-profile-id", "runtime-1",
 		"--provider-account-id", "provider-1",
-		"--model-alias-id", "alias-1",
+		"--model", "gpt-5.5",
 	}, srv.URL)
 	if err != nil {
 		t.Fatalf("deployment create error: %v", err)
@@ -42,6 +42,12 @@ func TestDeploymentCreateBuildVersionFlagsUseCurrentRequestShape(t *testing.T) {
 	}
 	if gotBody["build_version_id"] != "version-1" {
 		t.Fatalf("build_version_id = %v, want version-1", gotBody["build_version_id"])
+	}
+	if gotBody["model"] != "gpt-5.5" {
+		t.Fatalf("model = %v, want gpt-5.5", gotBody["model"])
+	}
+	if _, exists := gotBody["model_alias_id"]; exists {
+		t.Fatalf("request body unexpectedly used legacy model_alias_id: %v", gotBody)
 	}
 	if _, exists := gotBody["agent_build_version_id"]; exists {
 		t.Fatalf("request body unexpectedly used legacy agent_build_version_id: %v", gotBody)

@@ -527,7 +527,6 @@ func TestCIValidateRemoteSuccess(t *testing.T) {
 		"candidate.build.agent_build_id",
 		"candidate.deployment.runtime_profile_id",
 		"candidate.deployment.provider_account_id",
-		"candidate.deployment.model_alias_id",
 		"evaluation.challenge_pack_version_id",
 		"evaluation.input_set_id",
 		"evaluation.regression_suites",
@@ -1761,14 +1760,6 @@ func remoteCIValidateRoutes(t *testing.T, overrides map[string]http.HandlerFunc)
 				"id":           "00000000-0000-0000-0000-000000000003",
 				"workspace_id": "ws-1",
 				"name":         "CI provider",
-			}},
-		}),
-		"GET /v1/workspaces/ws-1/model-aliases": jsonHandler(200, map[string]any{
-			"items": []map[string]any{{
-				"id":                  "00000000-0000-0000-0000-000000000004",
-				"workspace_id":        "ws-1",
-				"provider_account_id": "00000000-0000-0000-0000-000000000003",
-				"display_name":        "CI model",
 			}},
 		}),
 		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{

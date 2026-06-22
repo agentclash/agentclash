@@ -81,7 +81,7 @@ INSERT INTO playground_experiments (
     workspace_id,
     playground_id,
     provider_account_id,
-    model_alias_id,
+    model_id,
     name,
     status,
     request_config,
@@ -102,7 +102,7 @@ VALUES (
     $10,
     $11
 )
-RETURNING id, organization_id, workspace_id, playground_id, provider_account_id, model_alias_id, name, status, request_config, summary, temporal_workflow_id, temporal_run_id, queued_at, started_at, finished_at, failed_at, created_by_user_id, created_at, updated_at
+RETURNING id, organization_id, workspace_id, playground_id, provider_account_id, name, status, request_config, summary, temporal_workflow_id, temporal_run_id, queued_at, started_at, finished_at, failed_at, created_by_user_id, created_at, updated_at, model_id
 `
 
 type CreatePlaygroundExperimentParams struct {
@@ -110,7 +110,7 @@ type CreatePlaygroundExperimentParams struct {
 	WorkspaceID       uuid.UUID
 	PlaygroundID      uuid.UUID
 	ProviderAccountID uuid.UUID
-	ModelAliasID      uuid.UUID
+	ModelID           string
 	Name              string
 	Status            string
 	RequestConfig     []byte
@@ -125,7 +125,7 @@ func (q *Queries) CreatePlaygroundExperiment(ctx context.Context, arg CreatePlay
 		arg.WorkspaceID,
 		arg.PlaygroundID,
 		arg.ProviderAccountID,
-		arg.ModelAliasID,
+		arg.ModelID,
 		arg.Name,
 		arg.Status,
 		arg.RequestConfig,
@@ -140,7 +140,6 @@ func (q *Queries) CreatePlaygroundExperiment(ctx context.Context, arg CreatePlay
 		&i.WorkspaceID,
 		&i.PlaygroundID,
 		&i.ProviderAccountID,
-		&i.ModelAliasID,
 		&i.Name,
 		&i.Status,
 		&i.RequestConfig,
@@ -154,6 +153,7 @@ func (q *Queries) CreatePlaygroundExperiment(ctx context.Context, arg CreatePlay
 		&i.CreatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ModelID,
 	)
 	return i, err
 }
@@ -260,7 +260,7 @@ func (q *Queries) GetPlaygroundByID(ctx context.Context, arg GetPlaygroundByIDPa
 }
 
 const getPlaygroundExperimentByID = `-- name: GetPlaygroundExperimentByID :one
-SELECT id, organization_id, workspace_id, playground_id, provider_account_id, model_alias_id, name, status, request_config, summary, temporal_workflow_id, temporal_run_id, queued_at, started_at, finished_at, failed_at, created_by_user_id, created_at, updated_at
+SELECT id, organization_id, workspace_id, playground_id, provider_account_id, name, status, request_config, summary, temporal_workflow_id, temporal_run_id, queued_at, started_at, finished_at, failed_at, created_by_user_id, created_at, updated_at, model_id
 FROM playground_experiments
 WHERE id = $1
 LIMIT 1
@@ -279,7 +279,6 @@ func (q *Queries) GetPlaygroundExperimentByID(ctx context.Context, arg GetPlaygr
 		&i.WorkspaceID,
 		&i.PlaygroundID,
 		&i.ProviderAccountID,
-		&i.ModelAliasID,
 		&i.Name,
 		&i.Status,
 		&i.RequestConfig,
@@ -293,6 +292,7 @@ func (q *Queries) GetPlaygroundExperimentByID(ctx context.Context, arg GetPlaygr
 		&i.CreatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ModelID,
 	)
 	return i, err
 }
@@ -380,7 +380,7 @@ func (q *Queries) ListPlaygroundExperimentResultsByExperimentID(ctx context.Cont
 }
 
 const listPlaygroundExperimentsByPlaygroundID = `-- name: ListPlaygroundExperimentsByPlaygroundID :many
-SELECT id, organization_id, workspace_id, playground_id, provider_account_id, model_alias_id, name, status, request_config, summary, temporal_workflow_id, temporal_run_id, queued_at, started_at, finished_at, failed_at, created_by_user_id, created_at, updated_at
+SELECT id, organization_id, workspace_id, playground_id, provider_account_id, name, status, request_config, summary, temporal_workflow_id, temporal_run_id, queued_at, started_at, finished_at, failed_at, created_by_user_id, created_at, updated_at, model_id
 FROM playground_experiments
 WHERE playground_id = $1
 ORDER BY created_at DESC
@@ -405,7 +405,6 @@ func (q *Queries) ListPlaygroundExperimentsByPlaygroundID(ctx context.Context, a
 			&i.WorkspaceID,
 			&i.PlaygroundID,
 			&i.ProviderAccountID,
-			&i.ModelAliasID,
 			&i.Name,
 			&i.Status,
 			&i.RequestConfig,
@@ -419,6 +418,7 @@ func (q *Queries) ListPlaygroundExperimentsByPlaygroundID(ctx context.Context, a
 			&i.CreatedByUserID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.ModelID,
 		); err != nil {
 			return nil, err
 		}
@@ -518,7 +518,7 @@ SET
     temporal_workflow_id = $1,
     temporal_run_id = $2
 WHERE id = $3
-RETURNING id, organization_id, workspace_id, playground_id, provider_account_id, model_alias_id, name, status, request_config, summary, temporal_workflow_id, temporal_run_id, queued_at, started_at, finished_at, failed_at, created_by_user_id, created_at, updated_at
+RETURNING id, organization_id, workspace_id, playground_id, provider_account_id, name, status, request_config, summary, temporal_workflow_id, temporal_run_id, queued_at, started_at, finished_at, failed_at, created_by_user_id, created_at, updated_at, model_id
 `
 
 type SetPlaygroundExperimentTemporalIDsParams struct {
@@ -536,7 +536,6 @@ func (q *Queries) SetPlaygroundExperimentTemporalIDs(ctx context.Context, arg Se
 		&i.WorkspaceID,
 		&i.PlaygroundID,
 		&i.ProviderAccountID,
-		&i.ModelAliasID,
 		&i.Name,
 		&i.Status,
 		&i.RequestConfig,
@@ -550,6 +549,7 @@ func (q *Queries) SetPlaygroundExperimentTemporalIDs(ctx context.Context, arg Se
 		&i.CreatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ModelID,
 	)
 	return i, err
 }
@@ -610,7 +610,7 @@ SET
     finished_at = $4,
     failed_at = $5
 WHERE id = $6
-RETURNING id, organization_id, workspace_id, playground_id, provider_account_id, model_alias_id, name, status, request_config, summary, temporal_workflow_id, temporal_run_id, queued_at, started_at, finished_at, failed_at, created_by_user_id, created_at, updated_at
+RETURNING id, organization_id, workspace_id, playground_id, provider_account_id, name, status, request_config, summary, temporal_workflow_id, temporal_run_id, queued_at, started_at, finished_at, failed_at, created_by_user_id, created_at, updated_at, model_id
 `
 
 type UpdatePlaygroundExperimentStatusParams struct {
@@ -638,7 +638,6 @@ func (q *Queries) UpdatePlaygroundExperimentStatus(ctx context.Context, arg Upda
 		&i.WorkspaceID,
 		&i.PlaygroundID,
 		&i.ProviderAccountID,
-		&i.ModelAliasID,
 		&i.Name,
 		&i.Status,
 		&i.RequestConfig,
@@ -652,6 +651,7 @@ func (q *Queries) UpdatePlaygroundExperimentStatus(ctx context.Context, arg Upda
 		&i.CreatedByUserID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ModelID,
 	)
 	return i, err
 }

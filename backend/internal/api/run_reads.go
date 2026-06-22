@@ -37,8 +37,6 @@ type RunReadRepository interface {
 	CountRunsByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
 	TransitionRunStatus(ctx context.Context, params repository.TransitionRunStatusParams) (domain.Run, error)
 	GetProviderAccountByID(ctx context.Context, id uuid.UUID) (repository.ProviderAccountRow, error)
-	GetModelAliasByID(ctx context.Context, id uuid.UUID) (repository.ModelAliasRow, error)
-	GetModelCatalogEntryByID(ctx context.Context, id uuid.UUID) (repository.ModelCatalogEntryRow, error)
 	ListSpendPoliciesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.SpendPolicyRow, error)
 	LoadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error)
 }

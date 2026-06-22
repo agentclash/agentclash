@@ -62,7 +62,7 @@ candidate:
     name: pr-candidate
     runtime_profile_id: 00000000-0000-0000-0000-000000000002
     provider_account_id: 00000000-0000-0000-0000-000000000003
-    model_alias_id: 00000000-0000-0000-0000-000000000004
+    model: gpt-5.5
 evaluation:
   challenge_pack_version_id: 00000000-0000-0000-0000-000000000005
   input_set_id: 00000000-0000-0000-0000-000000000006
@@ -86,7 +86,7 @@ Exact fields the current CLI parses:
 - `candidate.build.spec_file`: required relative path inside the repository; absolute paths and `..` escapes are rejected by `ci run`.
 - `candidate.deployment.name`: optional deployment name; if blank, `ci run` generates `agentclash-ci-<unix>`.
 - `candidate.deployment.runtime_profile_id`: required.
-- `candidate.deployment.provider_account_id` and `candidate.deployment.model_alias_id`: optional; remote validation checks both exist and rejects a model alias whose `provider_account_id` conflicts with the provider account field.
+- `candidate.deployment.provider_account_id` and `candidate.deployment.model`: optional individually, but required together when `ci run` creates the candidate deployment. Remote validation checks that the provider account exists.
 - `evaluation.challenge_pack_version_id`: required.
 - `evaluation.input_set_id`, `evaluation.regression_suites`, and `evaluation.regression_cases`: optional; blank regression entries are invalid.
 - `baseline.run_id`: locked baseline run, preferred for PR gates.

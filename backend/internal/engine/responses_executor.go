@@ -86,7 +86,7 @@ func (e ResponsesExecutor) Execute(ctx context.Context, executionContext reposit
 			nil,
 		)
 	}
-	if executionContext.Deployment.ModelAlias == nil {
+	if executionContext.Deployment.ModelID == "" {
 		return Result{}, provider.NewFailure(
 			executionContext.Deployment.ProviderAccount.ProviderKey,
 			provider.FailureCodeInvalidRequest,
@@ -180,7 +180,7 @@ func (e ResponsesExecutor) Execute(ctx context.Context, executionContext reposit
 		ProviderKey:         executionContext.Deployment.ProviderAccount.ProviderKey,
 		ProviderAccountID:   executionContext.Deployment.ProviderAccount.ID.String(),
 		CredentialReference: executionContext.Deployment.ProviderAccount.CredentialReference,
-		Model:               executionContext.Deployment.ModelAlias.ModelCatalogEntry.ProviderModelID,
+		Model:               executionContext.Deployment.ModelID,
 		TraceMode:           executionContext.Deployment.RuntimeProfile.TraceMode,
 		StepTimeout:         stepTimeout(executionContext),
 		Messages:            messages,
@@ -194,7 +194,7 @@ func (e ResponsesExecutor) Execute(ctx context.Context, executionContext reposit
 		ProviderKey:         executionContext.Deployment.ProviderAccount.ProviderKey,
 		ProviderAccountID:   executionContext.Deployment.ProviderAccount.ID.String(),
 		CredentialReference: executionContext.Deployment.ProviderAccount.CredentialReference,
-		Model:               executionContext.Deployment.ModelAlias.ModelCatalogEntry.ProviderModelID,
+		Model:               executionContext.Deployment.ModelID,
 		TraceMode:           executionContext.Deployment.RuntimeProfile.TraceMode,
 		RunTimeout:          runTimeout(executionContext),
 		Instructions:        instructions,

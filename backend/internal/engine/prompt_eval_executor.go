@@ -77,7 +77,7 @@ func (e PromptEvalExecutor) Execute(ctx context.Context, executionContext reposi
 			nil,
 		)
 	}
-	if executionContext.Deployment.ModelAlias == nil {
+	if executionContext.Deployment.ModelID == "" {
 		return Result{}, provider.NewFailure(
 			executionContext.Deployment.ProviderAccount.ProviderKey,
 			provider.FailureCodeInvalidRequest,
@@ -128,7 +128,7 @@ func (e PromptEvalExecutor) Execute(ctx context.Context, executionContext reposi
 		ProviderKey:         executionContext.Deployment.ProviderAccount.ProviderKey,
 		ProviderAccountID:   executionContext.Deployment.ProviderAccount.ID.String(),
 		CredentialReference: executionContext.Deployment.ProviderAccount.CredentialReference,
-		Model:               executionContext.Deployment.ModelAlias.ModelCatalogEntry.ProviderModelID,
+		Model:               executionContext.Deployment.ModelID,
 		TraceMode:           executionContext.Deployment.RuntimeProfile.TraceMode,
 		StepTimeout:         stepTimeout(executionContext),
 		Messages:            messages,

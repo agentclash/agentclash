@@ -52,7 +52,7 @@ func init() {
 	promptEvalImportPromptfooCmd.Flags().Bool("force", false, "Overwrite --out when it already exists")
 	promptEvalImportPromptfooCmd.Flags().Bool("lossy", false, "Allow documented lossy conversions")
 	promptEvalImportPromptfooCmd.Flags().String("name", "", "Prompt eval name for the generated config")
-	promptEvalImportPromptfooCmd.Flags().String("provider-account", "default", "Provider account name or id to use for imported provider aliases")
+	promptEvalImportPromptfooCmd.Flags().String("provider-account", "default", "Provider account name or id to use for imported providers")
 }
 
 var promptEvalCmd = &cobra.Command{
@@ -271,8 +271,7 @@ type promptEvalPrompt struct {
 }
 
 type promptEvalModel struct {
-	Alias           string `yaml:"alias,omitempty" json:"alias,omitempty"`
-	ModelAliasID    string `yaml:"model_alias_id,omitempty" json:"model_alias_id,omitempty"`
+	Model           string `yaml:"model,omitempty" json:"model,omitempty"`
 	ProviderAccount string `yaml:"provider_account,omitempty" json:"provider_account,omitempty"`
 }
 
@@ -365,8 +364,7 @@ type promptEvalRemoteValidation struct {
 }
 
 type promptEvalRemoteModel struct {
-	Alias             string `json:"alias,omitempty" yaml:"alias,omitempty"`
-	ModelAliasID      string `json:"model_alias_id" yaml:"model_alias_id"`
+	Model             string `json:"model" yaml:"model"`
 	ProviderAccountID string `json:"provider_account_id" yaml:"provider_account_id"`
 }
 
@@ -421,7 +419,7 @@ type promptEvalRunPlayground struct {
 type promptEvalRunExperiment struct {
 	ExperimentID      string `json:"experiment_id" yaml:"experiment_id"`
 	ExperimentURL     string `json:"experiment_url,omitempty" yaml:"experiment_url,omitempty"`
-	ModelAliasID      string `json:"model_alias_id" yaml:"model_alias_id"`
+	Model             string `json:"model" yaml:"model"`
 	ProviderAccountID string `json:"provider_account_id" yaml:"provider_account_id"`
 	Status            string `json:"status,omitempty" yaml:"status,omitempty"`
 }
@@ -475,7 +473,7 @@ func buildPromptEvalScaffold(name string) ([]byte, error) {
 		Prompt: promptEvalPrompt{Template: `You are a helpful assistant.
 Reply to: {{input}}
 `},
-		Models: []promptEvalModel{{Alias: "gpt-5.5", ProviderAccount: "default"}},
+		Models: []promptEvalModel{{Model: "gpt-5.5", ProviderAccount: "default"}},
 		Tests: []promptEvalTest{{
 			Key:  "greeting",
 			Vars: map[string]any{"input": "Say hello in French"},
@@ -609,7 +607,7 @@ func promptfooCompatibilityMatrix(lossy bool) []promptfooImportFeature {
 	}
 	return []promptfooImportFeature{
 		{Feature: "prompts", Status: "supported", Notes: "exactly one inline string prompt"},
-		{Feature: "providers", Status: "supported", Notes: "inline string providers become model aliases"},
+		{Feature: "providers", Status: "supported", Notes: "inline string providers become model ids"},
 		{Feature: "tests.vars", Status: "supported", Notes: "inline vars maps only"},
 		{Feature: "equals/is-equal", Status: "supported", Notes: "maps to exact_match"},
 		{Feature: "contains", Status: "supported", Notes: "maps to contains"},
@@ -654,11 +652,11 @@ func promptfooImportProviders(raw any, providerAccount string) ([]promptEvalMode
 	}
 	models := make([]promptEvalModel, 0, len(values))
 	for i, provider := range values {
-		alias := promptfooProviderAlias(provider)
-		if alias == "" {
+		model := promptfooProviderModel(provider)
+		if model == "" {
 			return nil, []string{fmt.Sprintf("providers[%d] must be an inline string provider", i)}
 		}
-		models = append(models, promptEvalModel{Alias: alias, ProviderAccount: strings.TrimSpace(providerAccount)})
+		models = append(models, promptEvalModel{Model: model, ProviderAccount: strings.TrimSpace(providerAccount)})
 	}
 	return models, nil
 }
@@ -751,8 +749,8 @@ func validatePromptEvalConfig(cfg promptEvalConfig, maxCases int, result *prompt
 		result.Errors = append(result.Errors, "at least one model is required")
 	}
 	for i, model := range cfg.Models {
-		if strings.TrimSpace(model.Alias) == "" && strings.TrimSpace(model.ModelAliasID) == "" {
-			result.Errors = append(result.Errors, fmt.Sprintf("models[%d] must set alias or model_alias_id", i))
+		if strings.TrimSpace(model.Model) == "" {
+			result.Errors = append(result.Errors, fmt.Sprintf("models[%d] must set model", i))
 		}
 		if strings.TrimSpace(model.ProviderAccount) == "default" {
 			result.Warnings = append(result.Warnings, fmt.Sprintf("models[%d].provider_account uses default; pin a provider account before committing CI configs", i))
@@ -817,30 +815,19 @@ func validatePromptEvalRemote(cmd *cobra.Command, rc *RunContext, cfg promptEval
 	remote := &promptEvalRemoteValidation{WorkspaceID: workspaceID}
 	result.Remote = remote
 
-	modelAliases, err := promptEvalListRemoteItems(cmd, rc, fmt.Sprintf("/v1/workspaces/%s/model-aliases", workspaceID))
-	if err != nil {
-		result.Errors = append(result.Errors, err.Error())
-		return
-	}
 	providerAccounts, err := promptEvalListRemoteItems(cmd, rc, fmt.Sprintf("/v1/workspaces/%s/provider-accounts", workspaceID))
 	if err != nil {
 		result.Errors = append(result.Errors, err.Error())
 		return
 	}
 	for i, model := range cfg.Models {
-		resolvedAlias, err := promptEvalResolveModelAlias(model, modelAliases)
-		if err != nil {
-			result.Errors = append(result.Errors, fmt.Sprintf("models[%d]: %v", i, err))
-			continue
-		}
-		resolvedProvider, err := promptEvalResolveProviderAccount(model, resolvedAlias, providerAccounts, ciMode)
+		resolvedProvider, err := promptEvalResolveProviderAccount(model, providerAccounts, ciMode)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("models[%d]: %v", i, err))
 			continue
 		}
 		remote.Models = append(remote.Models, promptEvalRemoteModel{
-			Alias:             strings.TrimSpace(model.Alias),
-			ModelAliasID:      mapString(resolvedAlias, "id"),
+			Model:             strings.TrimSpace(model.Model),
 			ProviderAccountID: mapString(resolvedProvider, "id"),
 		})
 	}
@@ -1046,7 +1033,7 @@ func createPromptEvalExperiment(cmd *cobra.Command, rc *RunContext, playgroundID
 	body := map[string]any{
 		"name":                playgroundName,
 		"provider_account_id": model.ProviderAccountID,
-		"model_alias_id":      model.ModelAliasID,
+		"model":               model.Model,
 	}
 	resp, err := rc.Client.Post(cmd.Context(), fmt.Sprintf("/v1/playgrounds/%s/experiments", playgroundID), body)
 	if err != nil {
@@ -1063,7 +1050,7 @@ func createPromptEvalExperiment(cmd *cobra.Command, rc *RunContext, playgroundID
 	return promptEvalRunExperiment{
 		ExperimentID:      id,
 		ExperimentURL:     promptEvalUIURL(created, "experiment", id),
-		ModelAliasID:      model.ModelAliasID,
+		Model:             model.Model,
 		ProviderAccountID: model.ProviderAccountID,
 		Status:            mapString(created, "status"),
 	}, nil
@@ -1418,36 +1405,7 @@ func promptEvalListRemoteItems(cmd *cobra.Command, rc *RunContext, path string) 
 	return out, nil
 }
 
-func promptEvalResolveModelAlias(model promptEvalModel, aliases []map[string]any) (map[string]any, error) {
-	if id := strings.TrimSpace(model.ModelAliasID); id != "" {
-		for _, item := range aliases {
-			if mapString(item, "id") == id {
-				return item, nil
-			}
-		}
-		return nil, fmt.Errorf("model_alias_id %q was not found in the workspace", id)
-	}
-	alias := strings.TrimSpace(model.Alias)
-	matches := []map[string]any{}
-	for _, item := range aliases {
-		for _, key := range []string{"alias", "alias_key", "key", "name", "display_name"} {
-			if mapString(item, key) == alias {
-				matches = append(matches, item)
-				break
-			}
-		}
-	}
-	switch len(matches) {
-	case 0:
-		return nil, fmt.Errorf("model alias %q was not found", alias)
-	case 1:
-		return matches[0], nil
-	default:
-		return nil, fmt.Errorf("model alias %q matched %d workspace aliases; use model_alias_id", alias, len(matches))
-	}
-}
-
-func promptEvalResolveProviderAccount(model promptEvalModel, alias map[string]any, providers []map[string]any, ciMode bool) (map[string]any, error) {
+func promptEvalResolveProviderAccount(model promptEvalModel, providers []map[string]any, ciMode bool) (map[string]any, error) {
 	selector := strings.TrimSpace(model.ProviderAccount)
 	if selector == "" {
 		return nil, fmt.Errorf("provider_account is required for --remote")
@@ -1456,16 +1414,9 @@ func promptEvalResolveProviderAccount(model promptEvalModel, alias map[string]an
 		if ciMode {
 			return nil, fmt.Errorf("provider_account: default is not allowed with --ci; pin a provider account")
 		}
-		aliasProviderID := mapString(alias, "provider_account_id")
-		if aliasProviderID != "" {
-			for _, item := range providers {
-				if promptEvalProviderActive(item) && mapString(item, "id") == aliasProviderID {
-					return item, nil
-				}
-			}
-			return nil, fmt.Errorf("default provider account %q from model alias was not found", aliasProviderID)
-		}
-		return nil, fmt.Errorf("model alias does not expose provider_account_id; set provider_account explicitly")
+		return promptEvalSingleProviderMatch(providers, func(map[string]any) bool {
+			return true
+		}, "default provider account")
 	}
 	return promptEvalSingleProviderMatch(providers, func(item map[string]any) bool {
 		return mapString(item, "id") == selector ||
@@ -1681,17 +1632,17 @@ func promptfooStringList(raw any) []string {
 	}
 }
 
-func promptfooProviderAlias(provider string) string {
+func promptfooProviderModel(provider string) string {
 	provider = strings.TrimSpace(provider)
 	if provider == "" || strings.HasPrefix(provider, "file://") || strings.Contains(provider, "{{") {
 		return ""
 	}
 	parts := strings.Split(provider, ":")
-	alias := strings.TrimSpace(parts[len(parts)-1])
-	if alias == "" || strings.Contains(alias, "/") {
+	model := strings.TrimSpace(parts[len(parts)-1])
+	if model == "" {
 		return ""
 	}
-	return alias
+	return model
 }
 
 func promptfooTestKey(index int, description string) string {
@@ -1847,10 +1798,10 @@ func renderPromptEvalRun(rc *RunContext, result promptEvalRunResult) {
 	rows := [][]string{}
 	for _, playground := range result.Playgrounds {
 		for _, experiment := range playground.Experiments {
-			rows = append(rows, []string{playground.PlaygroundID, experiment.ExperimentID, experiment.ModelAliasID, output.StatusColor(experiment.Status)})
+			rows = append(rows, []string{playground.PlaygroundID, experiment.ExperimentID, experiment.Model, output.StatusColor(experiment.Status)})
 		}
 	}
-	rc.Output.PrintTable([]output.Column{{Header: "Playground"}, {Header: "Experiment"}, {Header: "Model Alias"}, {Header: "Status"}}, rows)
+	rc.Output.PrintTable([]output.Column{{Header: "Playground"}, {Header: "Experiment"}, {Header: "Model"}, {Header: "Status"}}, rows)
 }
 
 func renderPromptEvalResults(rc *RunContext, result promptEvalResultsEnvelope) {

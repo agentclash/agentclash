@@ -386,9 +386,7 @@ func TestSyncRaceContextStepStartUpdatesStoreBeforeSnapshot(t *testing.T) {
 	execCtx.Run.ID = uuid.New()
 	execCtx.Run.RaceContext = true
 	execCtx.RunAgent.ID = self
-	execCtx.Deployment.ModelAlias = &repository.ModelAliasExecutionContext{
-		ModelCatalogEntry: repository.ModelCatalogEntryExecutionContext{ProviderModelID: "gpt-5"},
-	}
+	execCtx.Deployment.ModelID = "gpt-5"
 	state := &loopState{stepCount: 3}
 
 	executor.syncRaceContextStepStart(context.Background(), execCtx, state)

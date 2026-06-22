@@ -42,18 +42,6 @@ PROVIDER_ACCOUNT_ID="53535353-9999-9999-9999-999999999999"
 AGENT_BUILD_ID="53535353-cccc-cccc-cccc-cccccccccccc"
 AGENT_BUILD_VERSION_ID="53535353-dddd-dddd-dddd-dddddddddddd"
 
-MODEL_CATALOG_ENTRY_GPT54_ID="53535353-a001-a001-a001-a001a001a001"
-MODEL_CATALOG_ENTRY_GPT54N_ID="53535353-a002-a002-a002-a002a002a002"
-MODEL_CATALOG_ENTRY_GPT41_ID="53535353-a003-a003-a003-a003a003a003"
-MODEL_CATALOG_ENTRY_GPT41M_ID="53535353-a004-a004-a004-a004a004a004"
-MODEL_CATALOG_ENTRY_GPT4OM_ID="53535353-a005-a005-a005-a005a005a005"
-
-MODEL_ALIAS_GPT54_ID="53535353-b001-b001-b001-b001b001b001"
-MODEL_ALIAS_GPT54N_ID="53535353-b002-b002-b002-b002b002b002"
-MODEL_ALIAS_GPT41_ID="53535353-b003-b003-b003-b003b003b003"
-MODEL_ALIAS_GPT41M_ID="53535353-b004-b004-b004-b004b004b004"
-MODEL_ALIAS_GPT4OM_ID="53535353-b005-b005-b005-b005b005b005"
-
 AGENT_DEPLOYMENT_GPT54_ID="53535353-e001-e001-e001-e001e001e001"
 AGENT_DEPLOYMENT_GPT54N_ID="53535353-e002-e002-e002-e002e002e002"
 AGENT_DEPLOYMENT_GPT41_ID="53535353-e003-e003-e003-e003e003e003"
@@ -97,7 +85,7 @@ INPUT_PAYLOAD="$(jq -nc \
 echo "==> Seeding SWE-bench-inspired coding fixture into ${DATABASE_URL}"
 
 psql "${DATABASE_URL}" <<SQL
-TRUNCATE TABLE challenge_packs, organizations, users, model_catalog_entries RESTART IDENTITY CASCADE;
+TRUNCATE TABLE challenge_packs, organizations, users RESTART IDENTITY CASCADE;
 
 INSERT INTO organizations (id, name, slug)
 VALUES ('${ORG_ID}', 'Local Coding Benchmark Org', 'local-coding-benchmark-org');
@@ -386,37 +374,6 @@ VALUES (
   '{"rpm":60}'::jsonb
 );
 
-INSERT INTO model_catalog_entries (
-  id,
-  provider_key,
-  provider_model_id,
-  display_name,
-  model_family,
-  metadata
-)
-VALUES
-  ('${MODEL_CATALOG_ENTRY_GPT54_ID}', 'openai', 'gpt-5.4', 'GPT-5.4', 'gpt-5.4', '{"tier":"frontier","pack":"swebench-mini"}'::jsonb),
-  ('${MODEL_CATALOG_ENTRY_GPT54N_ID}', 'openai', 'gpt-5.4-nano', 'GPT-5.4 Nano', 'gpt-5.4-nano', '{"tier":"small","pack":"swebench-mini"}'::jsonb),
-  ('${MODEL_CATALOG_ENTRY_GPT41_ID}', 'openai', 'gpt-4.1', 'GPT-4.1', 'gpt-4.1', '{"tier":"frontier","pack":"swebench-mini"}'::jsonb),
-  ('${MODEL_CATALOG_ENTRY_GPT41M_ID}', 'openai', 'gpt-4.1-mini', 'GPT-4.1 Mini', 'gpt-4.1-mini', '{"tier":"small","pack":"swebench-mini"}'::jsonb),
-  ('${MODEL_CATALOG_ENTRY_GPT4OM_ID}', 'openai', 'gpt-4o-mini', 'GPT-4o Mini', 'gpt-4o-mini', '{"tier":"small","pack":"swebench-mini"}'::jsonb);
-
-INSERT INTO model_aliases (
-  id,
-  organization_id,
-  workspace_id,
-  provider_account_id,
-  model_catalog_entry_id,
-  alias_key,
-  display_name
-)
-VALUES
-  ('${MODEL_ALIAS_GPT54_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_CATALOG_ENTRY_GPT54_ID}', 'swebench-gpt-5-4', 'SWE-bench GPT-5.4'),
-  ('${MODEL_ALIAS_GPT54N_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_CATALOG_ENTRY_GPT54N_ID}', 'swebench-gpt-5-4-nano', 'SWE-bench GPT-5.4 Nano'),
-  ('${MODEL_ALIAS_GPT41_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_CATALOG_ENTRY_GPT41_ID}', 'swebench-gpt-4-1', 'SWE-bench GPT-4.1'),
-  ('${MODEL_ALIAS_GPT41M_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_CATALOG_ENTRY_GPT41M_ID}', 'swebench-gpt-4-1-mini', 'SWE-bench GPT-4.1 Mini'),
-  ('${MODEL_ALIAS_GPT4OM_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_CATALOG_ENTRY_GPT4OM_ID}', 'swebench-gpt-4o-mini', 'SWE-bench GPT-4o Mini');
-
 INSERT INTO agent_builds (
   id,
   organization_id,
@@ -465,18 +422,18 @@ INSERT INTO agent_deployments (
   current_build_version_id,
   runtime_profile_id,
   provider_account_id,
-  model_alias_id,
+  model_id,
   name,
   slug,
   deployment_type,
   deployment_config
 )
 VALUES
-  ('${AGENT_DEPLOYMENT_GPT54_ID}',  '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_ALIAS_GPT54_ID}',  'SWE-bench GPT-5.4',      'swebench-gpt-5-4',      'native', '{}'::jsonb),
-  ('${AGENT_DEPLOYMENT_GPT54N_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_ALIAS_GPT54N_ID}', 'SWE-bench GPT-5.4 Nano', 'swebench-gpt-5-4-nano', 'native', '{}'::jsonb),
-  ('${AGENT_DEPLOYMENT_GPT41_ID}',  '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_ALIAS_GPT41_ID}',  'SWE-bench GPT-4.1',      'swebench-gpt-4-1',      'native', '{}'::jsonb),
-  ('${AGENT_DEPLOYMENT_GPT41M_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_ALIAS_GPT41M_ID}', 'SWE-bench GPT-4.1 Mini', 'swebench-gpt-4-1-mini', 'native', '{}'::jsonb),
-  ('${AGENT_DEPLOYMENT_GPT4OM_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_ALIAS_GPT4OM_ID}', 'SWE-bench GPT-4o Mini',  'swebench-gpt-4o-mini',  'native', '{}'::jsonb);
+  ('${AGENT_DEPLOYMENT_GPT54_ID}',  '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', 'gpt-5.4',      'SWE-bench GPT-5.4',      'swebench-gpt-5-4',      'native', '{}'::jsonb),
+  ('${AGENT_DEPLOYMENT_GPT54N_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', 'gpt-5.4-nano', 'SWE-bench GPT-5.4 Nano', 'swebench-gpt-5-4-nano', 'native', '{}'::jsonb),
+  ('${AGENT_DEPLOYMENT_GPT41_ID}',  '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', 'gpt-4.1',      'SWE-bench GPT-4.1',      'swebench-gpt-4-1',      'native', '{}'::jsonb),
+  ('${AGENT_DEPLOYMENT_GPT41M_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', 'gpt-4.1-mini', 'SWE-bench GPT-4.1 Mini', 'swebench-gpt-4-1-mini', 'native', '{}'::jsonb),
+  ('${AGENT_DEPLOYMENT_GPT4OM_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', 'gpt-4o-mini',  'SWE-bench GPT-4o Mini',  'swebench-gpt-4o-mini',  'native', '{}'::jsonb);
 
 INSERT INTO agent_deployment_snapshots (
   id,
@@ -487,17 +444,17 @@ INSERT INTO agent_deployment_snapshots (
   source_agent_build_version_id,
   source_runtime_profile_id,
   source_provider_account_id,
-  source_model_alias_id,
+  source_model_id,
   deployment_type,
   snapshot_hash,
   snapshot_config
 )
 VALUES
-  ('${AGENT_DEPLOYMENT_SNAPSHOT_GPT54_ID}',  '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_DEPLOYMENT_GPT54_ID}',  '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_ALIAS_GPT54_ID}',  'native', 'swebench-gpt-5-4-snapshot',      '{"temperature":0.1}'::jsonb),
-  ('${AGENT_DEPLOYMENT_SNAPSHOT_GPT54N_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_DEPLOYMENT_GPT54N_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_ALIAS_GPT54N_ID}', 'native', 'swebench-gpt-5-4-nano-snapshot', '{"temperature":0.1}'::jsonb),
-  ('${AGENT_DEPLOYMENT_SNAPSHOT_GPT41_ID}',  '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_DEPLOYMENT_GPT41_ID}',  '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_ALIAS_GPT41_ID}',  'native', 'swebench-gpt-4-1-snapshot',      '{"temperature":0.1}'::jsonb),
-  ('${AGENT_DEPLOYMENT_SNAPSHOT_GPT41M_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_DEPLOYMENT_GPT41M_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_ALIAS_GPT41M_ID}', 'native', 'swebench-gpt-4-1-mini-snapshot', '{"temperature":0.1}'::jsonb),
-  ('${AGENT_DEPLOYMENT_SNAPSHOT_GPT4OM_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_DEPLOYMENT_GPT4OM_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', '${MODEL_ALIAS_GPT4OM_ID}', 'native', 'swebench-gpt-4o-mini-snapshot',  '{"temperature":0.1}'::jsonb);
+  ('${AGENT_DEPLOYMENT_SNAPSHOT_GPT54_ID}',  '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_DEPLOYMENT_GPT54_ID}',  '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', 'gpt-5.4',      'native', 'swebench-gpt-5-4-snapshot',      '{"temperature":0.1}'::jsonb),
+  ('${AGENT_DEPLOYMENT_SNAPSHOT_GPT54N_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_DEPLOYMENT_GPT54N_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', 'gpt-5.4-nano', 'native', 'swebench-gpt-5-4-nano-snapshot', '{"temperature":0.1}'::jsonb),
+  ('${AGENT_DEPLOYMENT_SNAPSHOT_GPT41_ID}',  '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_DEPLOYMENT_GPT41_ID}',  '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', 'gpt-4.1',      'native', 'swebench-gpt-4-1-snapshot',      '{"temperature":0.1}'::jsonb),
+  ('${AGENT_DEPLOYMENT_SNAPSHOT_GPT41M_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_DEPLOYMENT_GPT41M_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', 'gpt-4.1-mini', 'native', 'swebench-gpt-4-1-mini-snapshot', '{"temperature":0.1}'::jsonb),
+  ('${AGENT_DEPLOYMENT_SNAPSHOT_GPT4OM_ID}', '${ORG_ID}', '${WORKSPACE_ID}', '${AGENT_BUILD_ID}', '${AGENT_DEPLOYMENT_GPT4OM_ID}', '${AGENT_BUILD_VERSION_ID}', '${RUNTIME_PROFILE_ID}', '${PROVIDER_ACCOUNT_ID}', 'gpt-4o-mini',  'native', 'swebench-gpt-4o-mini-snapshot',  '{"temperature":0.1}'::jsonb);
 SQL
 
 cat <<EOF
