@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { createApiClient } from "@/lib/api/client";
 import { useApiMutator } from "@/lib/api/swr";
@@ -57,6 +57,7 @@ export function CreateDeploymentDialog({
   const [loading, setLoading] = useState(false);
   const [loadingVersions, setLoadingVersions] = useState(false);
   const [loadingModels, setLoadingModels] = useState(false);
+  const modelRequestRef = useRef(0);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -85,6 +86,7 @@ export function CreateDeploymentDialog({
 
   const loadModels = useCallback(
     async (accountId: string) => {
+      const requestId = ++modelRequestRef.current;
       setLoadingModels(true);
       setModels([]);
       try {
@@ -93,12 +95,12 @@ export function CreateDeploymentDialog({
         const res = await api.get<{ items: ProviderConnectionModel[] }>(
           `/v1/provider-accounts/${accountId}/models`,
         );
-        setModels(res.items);
+        if (modelRequestRef.current === requestId) setModels(res.items);
       } catch {
         // Live model list is optional — fall back to free-form model entry.
-        setModels([]);
+        if (modelRequestRef.current === requestId) setModels([]);
       } finally {
-        setLoadingModels(false);
+        if (modelRequestRef.current === requestId) setLoadingModels(false);
       }
     },
     [getAccessToken],
@@ -109,6 +111,10 @@ export function CreateDeploymentDialog({
     setModel("");
     setModels([]);
     if (accountId) loadModels(accountId);
+    else {
+      modelRequestRef.current += 1;
+      setLoadingModels(false);
+    }
   }
 
   const loadVersions = useCallback(
@@ -183,6 +189,7 @@ export function CreateDeploymentDialog({
   }
 
   function resetForm() {
+    modelRequestRef.current += 1;
     setName("");
     setSelectedBuildId("");
     setSelectedVersionId("");
@@ -190,6 +197,7 @@ export function CreateDeploymentDialog({
     setSelectedAccountId("");
     setModel("");
     setModels([]);
+    setLoadingModels(false);
     setDeploymentConfig("");
     setReadyVersions([]);
   }

@@ -48,6 +48,7 @@ export function StartGenerationDialog({
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const modelRequestRef = useRef(0);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -96,6 +97,7 @@ export function StartGenerationDialog({
 
   const loadModels = useCallback(
     async (accountId: string) => {
+      const requestId = ++modelRequestRef.current;
       setLoadingModels(true);
       setModels([]);
       try {
@@ -104,12 +106,12 @@ export function StartGenerationDialog({
         const res = await api.get<{ items: ProviderConnectionModel[] }>(
           `/v1/provider-accounts/${accountId}/models`,
         );
-        setModels(res.items);
+        if (modelRequestRef.current === requestId) setModels(res.items);
       } catch {
         // Live model list is optional — fall back to free-form model entry.
-        setModels([]);
+        if (modelRequestRef.current === requestId) setModels([]);
       } finally {
-        setLoadingModels(false);
+        if (modelRequestRef.current === requestId) setLoadingModels(false);
       }
     },
     [getAccessToken],
@@ -120,6 +122,10 @@ export function StartGenerationDialog({
     setModel("");
     setModels([]);
     if (accountId) void loadModels(accountId);
+    else {
+      modelRequestRef.current += 1;
+      setLoadingModels(false);
+    }
   }
 
   const loadRecentJobs = useCallback(async () => {
