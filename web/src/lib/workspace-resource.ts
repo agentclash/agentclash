@@ -87,6 +87,12 @@ export const workspaceMutationKeys = {
       workspaceResourceKeys.providerAccounts(workspaceId),
     ];
   },
+  quickCreateAgentDialog(workspaceId: string): ApiQueryKey[] {
+    return [
+      workspaceResourceKeys.builds(workspaceId),
+      workspaceResourceKeys.deployments(workspaceId),
+    ];
+  },
   createRunDialog(workspaceId: string): ApiQueryKey[] {
     return [
       workspaceResourceKeys.challengePacks(workspaceId),

@@ -47,6 +47,7 @@ type AgentBuildService interface {
 	ValidateVersion(ctx context.Context, id uuid.UUID) (ValidateBuildVersionResult, error)
 	MarkVersionReady(ctx context.Context, id uuid.UUID) error
 	CreateDeployment(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateAgentDeploymentInput) (repository.AgentDeploymentRow, error)
+	QuickCreate(ctx context.Context, caller Caller, workspaceID uuid.UUID, input QuickCreateAgentInput) (QuickCreateAgentResult, error)
 }
 
 type CreateAgentBuildInput struct {
@@ -81,6 +82,33 @@ type CreateAgentDeploymentInput struct {
 	ProviderAccountID *uuid.UUID
 	Model             string
 	DeploymentConfig  json.RawMessage
+}
+
+// QuickCreateAgentInput collapses the build -> version -> ready -> deployment
+// chain into a single request. Callers supply only what an agent fundamentally
+// is (a name and its instructions) and what it should run on (a model on a
+// provider account, against a runtime profile); the build, its first version,
+// the ready transition, and the deployment are all derived for them.
+type QuickCreateAgentInput struct {
+	Name              string
+	Description       string
+	Instructions      string
+	AgentKind         string
+	Template          string
+	ModelSpec         json.RawMessage
+	RuntimeProfileID  uuid.UUID
+	ProviderAccountID *uuid.UUID
+	Model             string
+	DeploymentConfig  json.RawMessage
+}
+
+// QuickCreateAgentResult returns every object materialized by QuickCreate so the
+// caller can link to the build/version for the advanced views and run the
+// deployment immediately.
+type QuickCreateAgentResult struct {
+	Build      repository.AgentBuild
+	Version    repository.AgentBuildVersion
+	Deployment repository.AgentDeploymentRow
 }
 
 type ValidateBuildVersionResult struct {
@@ -299,6 +327,92 @@ func (m *AgentBuildManager) CreateDeployment(ctx context.Context, caller Caller,
 	})
 }
 
+// QuickCreate runs the full build -> version -> ready -> deployment chain in one
+// call. It orchestrates the existing manager methods rather than introducing a
+// new persistence path, so each step keeps its own validation and the
+// deployment snapshot is created exactly as it is for the advanced flow.
+//
+// The steps are not wrapped in a single transaction: a mid-chain failure can
+// leave an orphaned build/version (a harmless draft/ready definition with no
+// deployment). The deployment-time inputs are therefore validated up front so
+// the common failure modes are rejected before anything is written.
+func (m *AgentBuildManager) QuickCreate(ctx context.Context, caller Caller, workspaceID uuid.UUID, input QuickCreateAgentInput) (QuickCreateAgentResult, error) {
+	name := strings.TrimSpace(input.Name)
+	if name == "" {
+		return QuickCreateAgentResult{}, AgentBuildValidationError{Code: "invalid_name", Message: "name is required"}
+	}
+
+	instructions := strings.TrimSpace(input.Instructions)
+	template := strings.TrimSpace(input.Template)
+	if instructions == "" && template == "" {
+		return QuickCreateAgentResult{}, AgentBuildValidationError{
+			Code:    "missing_instructions",
+			Message: "instructions or template is required",
+		}
+	}
+
+	// Validate the deployment target before writing the build so a bad model or
+	// provider account does not leave an orphaned build behind.
+	if input.RuntimeProfileID == uuid.Nil {
+		return QuickCreateAgentResult{}, AgentBuildValidationError{Code: "missing_runtime_profile", Message: "runtime_profile_id is required"}
+	}
+	if input.ProviderAccountID == nil {
+		return QuickCreateAgentResult{}, AgentBuildValidationError{Code: "missing_provider_account", Message: "provider_account_id is required"}
+	}
+	if strings.TrimSpace(input.Model) == "" {
+		return QuickCreateAgentResult{}, AgentBuildValidationError{Code: "missing_model", Message: "model (e.g. \"gpt-4.1\") is required"}
+	}
+
+	build, err := m.CreateBuild(ctx, caller, workspaceID, CreateAgentBuildInput{
+		Name:        name,
+		Description: input.Description,
+	})
+	if err != nil {
+		return QuickCreateAgentResult{}, err
+	}
+
+	versionInput := CreateAgentBuildVersionInput{
+		Template:  template,
+		AgentKind: input.AgentKind,
+		ModelSpec: input.ModelSpec,
+	}
+	// An explicit instructions string wins; otherwise the template supplies the
+	// policy spec (and therefore the required "instructions" field).
+	if instructions != "" {
+		policySpec, marshalErr := json.Marshal(map[string]string{"instructions": instructions})
+		if marshalErr != nil {
+			return QuickCreateAgentResult{}, marshalErr
+		}
+		versionInput.PolicySpec = policySpec
+	}
+
+	version, err := m.CreateVersion(ctx, caller, build.ID, versionInput)
+	if err != nil {
+		return QuickCreateAgentResult{}, err
+	}
+
+	if err := m.MarkVersionReady(ctx, version.ID); err != nil {
+		return QuickCreateAgentResult{}, err
+	}
+	// MarkVersionReady mutates persisted state, not the local copy.
+	version.VersionStatus = "ready"
+
+	deployment, err := m.CreateDeployment(ctx, caller, workspaceID, CreateAgentDeploymentInput{
+		Name:              name,
+		AgentBuildID:      build.ID,
+		BuildVersionID:    version.ID,
+		RuntimeProfileID:  input.RuntimeProfileID,
+		ProviderAccountID: input.ProviderAccountID,
+		Model:             input.Model,
+		DeploymentConfig:  input.DeploymentConfig,
+	})
+	if err != nil {
+		return QuickCreateAgentResult{}, err
+	}
+
+	return QuickCreateAgentResult{Build: build, Version: version, Deployment: deployment}, nil
+}
+
 // --- Request types ---
 
 type createAgentBuildRequest struct {
@@ -330,6 +444,19 @@ type createAgentDeploymentRequest struct {
 	RuntimeProfileID  string          `json:"runtime_profile_id"`
 	ProviderAccountID *string         `json:"provider_account_id,omitempty"`
 	Model             string          `json:"model,omitempty"`
+	DeploymentConfig  json.RawMessage `json:"deployment_config,omitempty"`
+}
+
+type quickCreateAgentRequest struct {
+	Name              string          `json:"name"`
+	Description       string          `json:"description,omitempty"`
+	Instructions      string          `json:"instructions,omitempty"`
+	AgentKind         string          `json:"agent_kind,omitempty"`
+	Template          string          `json:"template,omitempty"`
+	ModelSpec         json.RawMessage `json:"model_spec,omitempty"`
+	RuntimeProfileID  string          `json:"runtime_profile_id"`
+	ProviderAccountID *string         `json:"provider_account_id"`
+	Model             string          `json:"model"`
 	DeploymentConfig  json.RawMessage `json:"deployment_config,omitempty"`
 }
 
@@ -425,6 +552,15 @@ type agentDeploymentCreateResponse struct {
 	Status                string    `json:"status"`
 	CreatedAt             time.Time `json:"created_at"`
 	UpdatedAt             time.Time `json:"updated_at"`
+}
+
+// quickCreateAgentResponse surfaces all three objects the quick-create flow
+// produces. The deployment is the runnable result; the build and version are
+// included so the UI can deep-link into the advanced views.
+type quickCreateAgentResponse struct {
+	Build      agentBuildResponse            `json:"build"`
+	Version    agentBuildVersionResponse     `json:"version"`
+	Deployment agentDeploymentCreateResponse `json:"deployment"`
 }
 
 // --- Error type ---
@@ -886,17 +1022,72 @@ func createAgentDeploymentHandler(logger *slog.Logger, service AgentBuildService
 			return
 		}
 
-		writeJSON(w, http.StatusCreated, agentDeploymentCreateResponse{
-			ID:                    dep.ID,
-			WorkspaceID:           dep.WorkspaceID,
-			AgentBuildID:          dep.AgentBuildID,
-			CurrentBuildVersionID: dep.CurrentBuildVersionID,
-			Name:                  dep.Name,
-			Slug:                  dep.Slug,
-			DeploymentType:        dep.DeploymentType,
-			Status:                dep.Status,
-			CreatedAt:             dep.CreatedAt,
-			UpdatedAt:             dep.UpdatedAt,
+		writeJSON(w, http.StatusCreated, buildAgentDeploymentCreateResponse(dep))
+	}
+}
+
+func quickCreateAgentHandler(logger *slog.Logger, service AgentBuildService, authorizer WorkspaceAuthorizer) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, err := CallerFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		workspaceID, err := WorkspaceIDFromContext(r.Context())
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+
+		// Quick-create runs the whole build -> version -> ready -> deployment
+		// chain, so the caller must be authorized for every step, not just the
+		// terminal deployment.
+		for _, action := range []Action{
+			ActionCreateAgentBuild,
+			ActionCreateAgentBuildVersion,
+			ActionMarkAgentBuildReady,
+			ActionCreateAgentDeployment,
+		} {
+			if err := AuthorizeWorkspaceAction(r.Context(), authorizer, caller, workspaceID, action); err != nil {
+				writeAuthzError(w, err)
+				return
+			}
+		}
+
+		if err := requireJSONContentType(r); err != nil {
+			writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", err.Error())
+			return
+		}
+
+		r.Body = http.MaxBytesReader(w, r.Body, maxAgentBuildRequestBytes)
+
+		var body quickCreateAgentRequest
+		if err := decodeJSON(r, &body); err != nil {
+			handleDecodeError(w, logger, r, err)
+			return
+		}
+
+		input, err := decodeQuickCreateAgentInput(body)
+		if err != nil {
+			handleServiceError(w, logger, r, err)
+			return
+		}
+
+		result, err := service.QuickCreate(r.Context(), caller, workspaceID, input)
+		if err != nil {
+			if errors.Is(err, repository.ErrAgentBuildNotFound) || errors.Is(err, repository.ErrAgentBuildVersionNotFound) {
+				writeError(w, http.StatusNotFound, "not_found", "agent build or version not found")
+				return
+			}
+			handleServiceError(w, logger, r, err)
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, quickCreateAgentResponse{
+			Build:      buildAgentBuildResponse(result.Build),
+			Version:    buildAgentBuildVersionResponse(result.Version),
+			Deployment: buildAgentDeploymentCreateResponse(result.Deployment),
 		})
 	}
 }
@@ -936,6 +1127,21 @@ func buildAgentBuildVersionResponse(v repository.AgentBuildVersion) agentBuildVe
 		Tools:            buildToolBindingResponses(v.Tools),
 		KnowledgeSources: buildKnowledgeSourceBindingResponses(v.KnowledgeSources),
 		CreatedAt:        v.CreatedAt,
+	}
+}
+
+func buildAgentDeploymentCreateResponse(dep repository.AgentDeploymentRow) agentDeploymentCreateResponse {
+	return agentDeploymentCreateResponse{
+		ID:                    dep.ID,
+		WorkspaceID:           dep.WorkspaceID,
+		AgentBuildID:          dep.AgentBuildID,
+		CurrentBuildVersionID: dep.CurrentBuildVersionID,
+		Name:                  dep.Name,
+		Slug:                  dep.Slug,
+		DeploymentType:        dep.DeploymentType,
+		Status:                dep.Status,
+		CreatedAt:             dep.CreatedAt,
+		UpdatedAt:             dep.UpdatedAt,
 	}
 }
 
@@ -1015,6 +1221,48 @@ func decodeCreateAgentDeploymentInput(body createAgentDeploymentRequest) (Create
 		Model:             strings.TrimSpace(body.Model),
 		DeploymentConfig:  body.DeploymentConfig,
 	}, nil
+}
+
+func decodeQuickCreateAgentInput(body quickCreateAgentRequest) (QuickCreateAgentInput, error) {
+	if strings.TrimSpace(body.Name) == "" {
+		return QuickCreateAgentInput{}, AgentBuildValidationError{
+			Code:    "invalid_name",
+			Message: "name is required",
+		}
+	}
+
+	runtimeProfileID, err := uuid.Parse(strings.TrimSpace(body.RuntimeProfileID))
+	if err != nil {
+		return QuickCreateAgentInput{}, AgentBuildValidationError{
+			Code:    "invalid_runtime_profile_id",
+			Message: "runtime_profile_id must be a valid UUID",
+		}
+	}
+
+	input := QuickCreateAgentInput{
+		Name:             body.Name,
+		Description:      body.Description,
+		Instructions:     body.Instructions,
+		AgentKind:        body.AgentKind,
+		Template:         body.Template,
+		ModelSpec:        body.ModelSpec,
+		RuntimeProfileID: runtimeProfileID,
+		Model:            strings.TrimSpace(body.Model),
+		DeploymentConfig: body.DeploymentConfig,
+	}
+
+	if body.ProviderAccountID != nil && strings.TrimSpace(*body.ProviderAccountID) != "" {
+		providerAccountID, parseErr := uuid.Parse(strings.TrimSpace(*body.ProviderAccountID))
+		if parseErr != nil {
+			return QuickCreateAgentInput{}, AgentBuildValidationError{
+				Code:    "invalid_provider_account_id",
+				Message: "provider_account_id must be a valid UUID",
+			}
+		}
+		input.ProviderAccountID = &providerAccountID
+	}
+
+	return input, nil
 }
 
 func decodeCreateAgentBuildVersionInput(body createAgentBuildVersionRequest) (CreateAgentBuildVersionInput, error) {

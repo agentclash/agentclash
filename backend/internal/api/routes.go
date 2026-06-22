@@ -267,6 +267,10 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/agent-deployments", createAgentDeploymentHandler(logger, agentBuildService, authorizer))
 
+	// Quick-create collapses build + version + ready + deployment into one call.
+	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
+		Post("/workspaces/{workspaceID}/agent-builds/quick-create", quickCreateAgentHandler(logger, agentBuildService, authorizer))
+
 	// Workspace Secrets (admin-only via ActionManageSecrets)
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/secrets", listWorkspaceSecretsHandler(logger, workspaceSecretsService, authorizer))

@@ -57,3 +57,6 @@ func (stubAgentBuildService) MarkVersionReady(_ context.Context, _ uuid.UUID) er
 func (stubAgentBuildService) CreateDeployment(_ context.Context, _ Caller, _ uuid.UUID, _ CreateAgentDeploymentInput) (repository.AgentDeploymentRow, error) {
 	return repository.AgentDeploymentRow{}, errors.New("not implemented")
 }
+func (stubAgentBuildService) QuickCreate(_ context.Context, _ Caller, _ uuid.UUID, _ QuickCreateAgentInput) (QuickCreateAgentResult, error) {
+	return QuickCreateAgentResult{}, errors.New("not implemented")
+}

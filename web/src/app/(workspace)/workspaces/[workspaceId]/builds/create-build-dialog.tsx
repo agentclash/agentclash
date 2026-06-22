@@ -65,10 +65,10 @@ export function CreateBuildDialog({ workspaceId }: CreateBuildDialogProps) {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
-        render={<Button size="sm" />}
+        render={<Button size="sm" variant="outline" />}
       >
         <Plus data-icon="inline-start" className="size-4" />
-        New Agent Build
+        New build (advanced)
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
