@@ -4995,6 +4995,43 @@ paths:
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
+  /v1/workspaces/{workspaceID}/agent-builds/quick-create:
+    post:
+      operationId: quickCreateAgent
+      tags: [AgentBuilds]
+      summary: Quick-create an agent
+      description: >
+        Collapses the build, first version, ready transition, and deployment
+        into a single call. Supply the agent's name and instructions (or a
+        template) plus a model on a provider account against a runtime profile;
+        the build, version, ready transition, and deployment are derived. The
+        advanced per-step endpoints remain available for power users.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/QuickCreateAgentRequest"
+      responses:
+        "201":
+          description: Agent created (build, version, and deployment)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/QuickCreateAgentResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
   # ---------------------------------------------------------------------------
   # Playgrounds
   # ---------------------------------------------------------------------------
@@ -12899,6 +12936,53 @@ components:
         updated_at:
           type: string
           format: date-time
+
+    QuickCreateAgentRequest:
+      type: object
+      required: [name, runtime_profile_id, provider_account_id, model]
+      description: >
+        Either instructions or template must be provided. An explicit
+        instructions string takes precedence; otherwise the template supplies
+        the agent's policy.
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        instructions:
+          type: string
+          description: System prompt for the agent. Stored as the version policy.
+        agent_kind:
+          type: string
+          description: Defaults to llm_agent.
+        template:
+          type: string
+          description: Built-in build-version template key (e.g. honest-agent).
+        model_spec:
+          type: object
+          additionalProperties: true
+        runtime_profile_id:
+          type: string
+          format: uuid
+        provider_account_id:
+          type: string
+          format: uuid
+        model:
+          type: string
+        deployment_config:
+          type: object
+          additionalProperties: true
+
+    QuickCreateAgentResponse:
+      type: object
+      required: [build, version, deployment]
+      properties:
+        build:
+          $ref: "#/components/schemas/AgentBuild"
+        version:
+          $ref: "#/components/schemas/AgentBuildVersion"
+        deployment:
+          $ref: "#/components/schemas/AgentDeploymentCreateResponse"
 
     # --- Hosted Runs ---
 

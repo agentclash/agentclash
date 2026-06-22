@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/table";
 import { Bot } from "lucide-react";
 import { CreateBuildDialog } from "./create-build-dialog";
+import { QuickCreateAgentDialog } from "./quick-create-agent-dialog";
 
 const statusVariant: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
   active: "default",
@@ -36,7 +37,10 @@ export function BuildsClient({ workspaceId }: { workspaceId: string }) {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-lg font-semibold tracking-tight">Agent Builds</h1>
-        <CreateBuildDialog workspaceId={workspaceId} />
+        <div className="flex items-center gap-2">
+          <CreateBuildDialog workspaceId={workspaceId} />
+          <QuickCreateAgentDialog workspaceId={workspaceId} />
+        </div>
       </div>
 
       {error ? (
