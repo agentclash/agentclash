@@ -49,6 +49,7 @@ type BillingRepository interface {
 	CountActiveWorkspaces(ctx context.Context, orgID uuid.UUID) (int, error)
 	CountActiveWorkspaceRuns(ctx context.Context, workspaceID uuid.UUID) (int, error)
 	GetWorkspaceUsageSnapshot(ctx context.Context, workspaceID uuid.UUID, windowStart, windowEnd time.Time) (repository.WorkspaceUsageSnapshot, error)
+	ConsumeGuideAgentTurn(ctx context.Context, workspaceID uuid.UUID, entitlements billingpkg.EffectiveEntitlements, windowStart, windowEnd time.Time) error
 	CreateBillingCheckoutIntent(ctx context.Context, input repository.BillingCheckoutIntentInput) (repository.BillingCheckoutIntent, error)
 	UpsertBillingAccount(ctx context.Context, orgID uuid.UUID, dodoCustomerID string, billingEmail string, status string) error
 	GetBillingAccount(ctx context.Context, orgID uuid.UUID) (repository.BillingAccount, error)
@@ -143,16 +144,17 @@ type WorkspaceGateSummary struct {
 }
 
 type WorkspaceQuotaResult struct {
-	OrganizationID  uuid.UUID    `json:"organization_id"`
-	WorkspaceID     uuid.UUID    `json:"workspace_id"`
-	PlanKey         string       `json:"plan_key"`
-	BillingPeriod   string       `json:"billing_period"`
-	Status          string       `json:"status"`
-	MonthlyRaces    QuotaCounter `json:"monthly_races"`
-	ConcurrentRaces QuotaCounter `json:"concurrent_races"`
-	Seats           QuotaCounter `json:"seats"`
-	WindowStart     time.Time    `json:"window_start"`
-	WindowEnd       time.Time    `json:"window_end"`
+	OrganizationID         uuid.UUID    `json:"organization_id"`
+	WorkspaceID            uuid.UUID    `json:"workspace_id"`
+	PlanKey                string       `json:"plan_key"`
+	BillingPeriod          string       `json:"billing_period"`
+	Status                 string       `json:"status"`
+	MonthlyRaces           QuotaCounter `json:"monthly_races"`
+	MonthlyGuideAgentTurns QuotaCounter `json:"monthly_guide_agent_turns"`
+	ConcurrentRaces        QuotaCounter `json:"concurrent_races"`
+	Seats                  QuotaCounter `json:"seats"`
+	WindowStart            time.Time    `json:"window_start"`
+	WindowEnd              time.Time    `json:"window_end"`
 }
 
 type QuotaCounter struct {
@@ -376,6 +378,11 @@ func (m *BillingManager) GetWorkspaceQuota(ctx context.Context, caller Caller, w
 			result.Entitlements.RacesPerWorkspaceMonth,
 			&result.Usage.WindowEnd,
 		),
+		MonthlyGuideAgentTurns: quotaCounter(
+			result.Usage.GuideAgentTurnCount,
+			result.Entitlements.GuideAgentTurnsPerWorkspaceMonth,
+			&result.Usage.WindowEnd,
+		),
 		ConcurrentRaces: quotaCounter(
 			result.Usage.ActiveRuns,
 			result.Entitlements.ConcurrentRaces,
@@ -420,6 +427,23 @@ func (m *BillingManager) BuildRunGate(ctx context.Context, workspaceID uuid.UUID
 		WindowStart:     windowStart,
 		WindowEnd:       windowEnd,
 	}, nil
+}
+
+// ConsumeGuideAgentTurn atomically meters one guide-agent turn against the workspace's monthly allowance
+// (4e). It resolves the org entitlements, rejects an inactive entitlement, and delegates to the
+// repository's atomic window increment, which returns billingpkg.GateError (no increment) when the
+// allowance is exhausted. Distinct from the eval-credit wallet — platform guide-agent usage only.
+func (m *BillingManager) ConsumeGuideAgentTurn(ctx context.Context, workspaceID uuid.UUID) error {
+	_, entitlements, err := m.repo.ResolveWorkspaceEntitlements(ctx, workspaceID)
+	if err != nil {
+		return err
+	}
+	now := m.now().UTC()
+	if decision := billingpkg.CheckEntitlementActive(entitlements, now); !decision.Allowed {
+		return billingpkg.GateError{Decision: decision}
+	}
+	windowStart, windowEnd := usageWindow(now)
+	return m.repo.ConsumeGuideAgentTurn(ctx, workspaceID, entitlements, windowStart, windowEnd)
 }
 
 func (m *BillingManager) BuildWorkspaceCreationGate(ctx context.Context, orgID uuid.UUID) (*repository.OrganizationEntitlementGate, error) {

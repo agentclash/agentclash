@@ -125,7 +125,7 @@ type Querier interface {
 	// Crash-safe re-entry: returns the row only if it is still 'executing' and the presented hash
 	// matches, so a retried POST can resume effect execution exactly once. 0 rows => not resumable.
 	GetVibeEvalPendingConfirmationForResume(ctx context.Context, arg GetVibeEvalPendingConfirmationForResumeParams) (VibeEvalPendingConfirmation, error)
-	GetWorkspaceUsageWindowRaceCount(ctx context.Context, arg GetWorkspaceUsageWindowRaceCountParams) (int32, error)
+	GetWorkspaceUsageWindowCounts(ctx context.Context, arg GetWorkspaceUsageWindowCountsParams) (GetWorkspaceUsageWindowCountsRow, error)
 	InsertDatasetBaseline(ctx context.Context, arg InsertDatasetBaselineParams) (DatasetBaseline, error)
 	InsertDatasetExample(ctx context.Context, arg InsertDatasetExampleParams) (DatasetExample, error)
 	InsertDatasetExampleRevision(ctx context.Context, arg InsertDatasetExampleRevisionParams) (DatasetExampleRevision, error)

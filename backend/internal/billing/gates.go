@@ -133,6 +133,32 @@ func CheckRaceQuota(entitlements EffectiveEntitlements, used int, requested int,
 	}
 }
 
+// CheckGuideAgentAllowance gates monthly guide-agent turns per workspace (4e), mirroring CheckRaceQuota.
+// A nil limit is unlimited. This is the platform guide-agent usage allowance, NOT the eval-credit wallet.
+func CheckGuideAgentAllowance(entitlements EffectiveEntitlements, used int, requested int, resetAt time.Time) GateDecision {
+	if decision := CheckEntitlementActive(entitlements, time.Now().UTC()); !decision.Allowed {
+		return decision
+	}
+	if entitlements.GuideAgentTurnsPerWorkspaceMonth == nil || used+requested <= *entitlements.GuideAgentTurnsPerWorkspaceMonth {
+		return Allow(entitlements)
+	}
+	remaining := *entitlements.GuideAgentTurnsPerWorkspaceMonth - used
+	if remaining < 0 {
+		remaining = 0
+	}
+	return GateDecision{
+		Allowed:       false,
+		Code:          GateCodeQuotaExceeded,
+		Message:       fmt.Sprintf("%s workspace guide-agent turn allowance is exhausted", entitlements.PlanKey),
+		PlanKey:       entitlements.PlanKey,
+		UpgradeTarget: entitlements.UpgradeTarget,
+		Limit:         cloneInt(entitlements.GuideAgentTurnsPerWorkspaceMonth),
+		Used:          used,
+		Remaining:     &remaining,
+		ResetAt:       &resetAt,
+	}
+}
+
 func CheckConcurrency(entitlements EffectiveEntitlements, active int, requested int) GateDecision {
 	if decision := CheckEntitlementActive(entitlements, time.Now().UTC()); !decision.Allowed {
 		return decision

@@ -554,6 +554,7 @@ SELECT
     max_models_per_race,
     replay_retention_days,
     concurrency_limit,
+    guide_agent_turns_per_workspace_month,
     feature_flags,
     source_subscription_id,
     effective_at,
@@ -568,21 +569,22 @@ type GetOrganizationEntitlementsParams struct {
 }
 
 type GetOrganizationEntitlementsRow struct {
-	PlanKey                string
-	BillingPeriod          string
-	Status                 string
-	SeatQuantity           int32
-	SeatsLimit             *int32
-	WorkspacesLimit        *int32
-	RacesPerWorkspaceMonth *int32
-	MaxModelsPerRace       *int32
-	ReplayRetentionDays    *int32
-	ConcurrencyLimit       *int32
-	FeatureFlags           []byte
-	SourceSubscriptionID   *uuid.UUID
-	EffectiveAt            pgtype.Timestamptz
-	ExpiresAt              pgtype.Timestamptz
-	UpdatedAt              pgtype.Timestamptz
+	PlanKey                          string
+	BillingPeriod                    string
+	Status                           string
+	SeatQuantity                     int32
+	SeatsLimit                       *int32
+	WorkspacesLimit                  *int32
+	RacesPerWorkspaceMonth           *int32
+	MaxModelsPerRace                 *int32
+	ReplayRetentionDays              *int32
+	ConcurrencyLimit                 *int32
+	GuideAgentTurnsPerWorkspaceMonth *int32
+	FeatureFlags                     []byte
+	SourceSubscriptionID             *uuid.UUID
+	EffectiveAt                      pgtype.Timestamptz
+	ExpiresAt                        pgtype.Timestamptz
+	UpdatedAt                        pgtype.Timestamptz
 }
 
 func (q *Queries) GetOrganizationEntitlements(ctx context.Context, arg GetOrganizationEntitlementsParams) (GetOrganizationEntitlementsRow, error) {
@@ -599,6 +601,7 @@ func (q *Queries) GetOrganizationEntitlements(ctx context.Context, arg GetOrgani
 		&i.MaxModelsPerRace,
 		&i.ReplayRetentionDays,
 		&i.ConcurrencyLimit,
+		&i.GuideAgentTurnsPerWorkspaceMonth,
 		&i.FeatureFlags,
 		&i.SourceSubscriptionID,
 		&i.EffectiveAt,
@@ -608,23 +611,28 @@ func (q *Queries) GetOrganizationEntitlements(ctx context.Context, arg GetOrgani
 	return i, err
 }
 
-const getWorkspaceUsageWindowRaceCount = `-- name: GetWorkspaceUsageWindowRaceCount :one
-SELECT race_count
+const getWorkspaceUsageWindowCounts = `-- name: GetWorkspaceUsageWindowCounts :one
+SELECT race_count, guide_agent_turn_count
 FROM workspace_usage_windows
 WHERE workspace_id = $1
   AND window_start = $2
 `
 
-type GetWorkspaceUsageWindowRaceCountParams struct {
+type GetWorkspaceUsageWindowCountsParams struct {
 	WorkspaceID uuid.UUID
 	WindowStart pgtype.Timestamptz
 }
 
-func (q *Queries) GetWorkspaceUsageWindowRaceCount(ctx context.Context, arg GetWorkspaceUsageWindowRaceCountParams) (int32, error) {
-	row := q.db.QueryRow(ctx, getWorkspaceUsageWindowRaceCount, arg.WorkspaceID, arg.WindowStart)
-	var race_count int32
-	err := row.Scan(&race_count)
-	return race_count, err
+type GetWorkspaceUsageWindowCountsRow struct {
+	RaceCount           int32
+	GuideAgentTurnCount int32
+}
+
+func (q *Queries) GetWorkspaceUsageWindowCounts(ctx context.Context, arg GetWorkspaceUsageWindowCountsParams) (GetWorkspaceUsageWindowCountsRow, error) {
+	row := q.db.QueryRow(ctx, getWorkspaceUsageWindowCounts, arg.WorkspaceID, arg.WindowStart)
+	var i GetWorkspaceUsageWindowCountsRow
+	err := row.Scan(&i.RaceCount, &i.GuideAgentTurnCount)
+	return i, err
 }
 
 const markBillingCheckoutIntentCompleted = `-- name: MarkBillingCheckoutIntentCompleted :execrows
@@ -846,6 +854,7 @@ INSERT INTO organization_entitlements (
     max_models_per_race,
     replay_retention_days,
     concurrency_limit,
+    guide_agent_turns_per_workspace_month,
     feature_flags,
     source_subscription_id,
     effective_at,
@@ -863,10 +872,11 @@ VALUES (
     $9,
     $10,
     $11,
-    $12::jsonb,
-    $13,
+    $12,
+    $13::jsonb,
+    $14,
     now(),
-    $14
+    $15
 )
 ON CONFLICT (organization_id) DO UPDATE SET
     plan_key = EXCLUDED.plan_key,
@@ -879,6 +889,7 @@ ON CONFLICT (organization_id) DO UPDATE SET
     max_models_per_race = EXCLUDED.max_models_per_race,
     replay_retention_days = EXCLUDED.replay_retention_days,
     concurrency_limit = EXCLUDED.concurrency_limit,
+    guide_agent_turns_per_workspace_month = EXCLUDED.guide_agent_turns_per_workspace_month,
     feature_flags = EXCLUDED.feature_flags,
     source_subscription_id = EXCLUDED.source_subscription_id,
     effective_at = EXCLUDED.effective_at,
@@ -886,20 +897,21 @@ ON CONFLICT (organization_id) DO UPDATE SET
 `
 
 type UpsertOrganizationEntitlementsParams struct {
-	OrganizationID         uuid.UUID
-	PlanKey                string
-	BillingPeriod          string
-	Status                 string
-	SeatQuantity           int32
-	SeatsLimit             *int32
-	WorkspacesLimit        *int32
-	RacesPerWorkspaceMonth *int32
-	MaxModelsPerRace       *int32
-	ReplayRetentionDays    *int32
-	ConcurrencyLimit       *int32
-	FeatureFlags           []byte
-	SourceSubscriptionID   *uuid.UUID
-	ExpiresAt              pgtype.Timestamptz
+	OrganizationID                   uuid.UUID
+	PlanKey                          string
+	BillingPeriod                    string
+	Status                           string
+	SeatQuantity                     int32
+	SeatsLimit                       *int32
+	WorkspacesLimit                  *int32
+	RacesPerWorkspaceMonth           *int32
+	MaxModelsPerRace                 *int32
+	ReplayRetentionDays              *int32
+	ConcurrencyLimit                 *int32
+	GuideAgentTurnsPerWorkspaceMonth *int32
+	FeatureFlags                     []byte
+	SourceSubscriptionID             *uuid.UUID
+	ExpiresAt                        pgtype.Timestamptz
 }
 
 func (q *Queries) UpsertOrganizationEntitlements(ctx context.Context, arg UpsertOrganizationEntitlementsParams) error {
@@ -915,6 +927,7 @@ func (q *Queries) UpsertOrganizationEntitlements(ctx context.Context, arg Upsert
 		arg.MaxModelsPerRace,
 		arg.ReplayRetentionDays,
 		arg.ConcurrencyLimit,
+		arg.GuideAgentTurnsPerWorkspaceMonth,
 		arg.FeatureFlags,
 		arg.SourceSubscriptionID,
 		arg.ExpiresAt,

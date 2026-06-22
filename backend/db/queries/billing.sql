@@ -16,6 +16,7 @@ SELECT
     max_models_per_race,
     replay_retention_days,
     concurrency_limit,
+    guide_agent_turns_per_workspace_month,
     feature_flags,
     source_subscription_id,
     effective_at,
@@ -37,6 +38,7 @@ INSERT INTO organization_entitlements (
     max_models_per_race,
     replay_retention_days,
     concurrency_limit,
+    guide_agent_turns_per_workspace_month,
     feature_flags,
     source_subscription_id,
     effective_at,
@@ -54,6 +56,7 @@ VALUES (
     @max_models_per_race,
     @replay_retention_days,
     @concurrency_limit,
+    @guide_agent_turns_per_workspace_month,
     @feature_flags::jsonb,
     sqlc.narg('source_subscription_id'),
     now(),
@@ -70,6 +73,7 @@ ON CONFLICT (organization_id) DO UPDATE SET
     max_models_per_race = EXCLUDED.max_models_per_race,
     replay_retention_days = EXCLUDED.replay_retention_days,
     concurrency_limit = EXCLUDED.concurrency_limit,
+    guide_agent_turns_per_workspace_month = EXCLUDED.guide_agent_turns_per_workspace_month,
     feature_flags = EXCLUDED.feature_flags,
     source_subscription_id = EXCLUDED.source_subscription_id,
     effective_at = EXCLUDED.effective_at,
@@ -93,8 +97,8 @@ FROM runs
 WHERE workspace_id = @workspace_id
   AND status IN ('queued', 'provisioning', 'running', 'scoring');
 
--- name: GetWorkspaceUsageWindowRaceCount :one
-SELECT race_count
+-- name: GetWorkspaceUsageWindowCounts :one
+SELECT race_count, guide_agent_turn_count
 FROM workspace_usage_windows
 WHERE workspace_id = @workspace_id
   AND window_start = @window_start;

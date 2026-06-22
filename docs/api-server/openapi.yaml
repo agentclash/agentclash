@@ -8413,12 +8413,14 @@ components:
 
     WorkspaceUsageSnapshot:
       type: object
-      required: [workspace_id, race_count, active_runs, window_start, window_end]
+      required: [workspace_id, race_count, guide_agent_turn_count, active_runs, window_start, window_end]
       properties:
         workspace_id:
           type: string
           format: uuid
         race_count:
+          type: integer
+        guide_agent_turn_count:
           type: integer
         active_runs:
           type: integer
@@ -8518,6 +8520,7 @@ components:
           billing_period,
           status,
           monthly_races,
+          monthly_guide_agent_turns,
           concurrent_races,
           seats,
           window_start,
@@ -8537,6 +8540,8 @@ components:
         status:
           type: string
         monthly_races:
+          $ref: "#/components/schemas/QuotaCounter"
+        monthly_guide_agent_turns:
           $ref: "#/components/schemas/QuotaCounter"
         concurrent_races:
           $ref: "#/components/schemas/QuotaCounter"

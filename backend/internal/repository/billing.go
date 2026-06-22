@@ -160,11 +160,12 @@ type BillingOverview struct {
 }
 
 type WorkspaceUsageSnapshot struct {
-	WorkspaceID uuid.UUID `json:"workspace_id"`
-	RaceCount   int       `json:"race_count"`
-	ActiveRuns  int       `json:"active_runs"`
-	WindowStart time.Time `json:"window_start"`
-	WindowEnd   time.Time `json:"window_end"`
+	WorkspaceID         uuid.UUID `json:"workspace_id"`
+	RaceCount           int       `json:"race_count"`
+	GuideAgentTurnCount int       `json:"guide_agent_turn_count"`
+	ActiveRuns          int       `json:"active_runs"`
+	WindowStart         time.Time `json:"window_start"`
+	WindowEnd           time.Time `json:"window_end"`
 }
 
 type RunEntitlementGate struct {
@@ -227,20 +228,21 @@ func upsertOrganizationEntitlements(ctx context.Context, queries *repositorysqlc
 		return fmt.Errorf("marshal feature flags: %w", err)
 	}
 	if err := queries.UpsertOrganizationEntitlements(ctx, repositorysqlc.UpsertOrganizationEntitlementsParams{
-		OrganizationID:         orgID,
-		PlanKey:                entitlements.PlanKey,
-		BillingPeriod:          entitlements.BillingPeriod,
-		Status:                 entitlements.Status,
-		SeatQuantity:           int32(entitlements.SeatQuantity),
-		SeatsLimit:             int32Ptr(entitlements.SeatsLimit),
-		WorkspacesLimit:        int32Ptr(entitlements.WorkspacesLimit),
-		RacesPerWorkspaceMonth: int32Ptr(entitlements.RacesPerWorkspaceMonth),
-		MaxModelsPerRace:       int32Ptr(entitlements.MaxModelsPerRace),
-		ReplayRetentionDays:    int32Ptr(entitlements.ReplayRetentionDays),
-		ConcurrencyLimit:       int32Ptr(entitlements.ConcurrentRaces),
-		FeatureFlags:           featureFlags,
-		SourceSubscriptionID:   sourceSubscriptionID,
-		ExpiresAt:              toPGTimestamp(expiresAt),
+		OrganizationID:                   orgID,
+		PlanKey:                          entitlements.PlanKey,
+		BillingPeriod:                    entitlements.BillingPeriod,
+		Status:                           entitlements.Status,
+		SeatQuantity:                     int32(entitlements.SeatQuantity),
+		SeatsLimit:                       int32Ptr(entitlements.SeatsLimit),
+		WorkspacesLimit:                  int32Ptr(entitlements.WorkspacesLimit),
+		RacesPerWorkspaceMonth:           int32Ptr(entitlements.RacesPerWorkspaceMonth),
+		MaxModelsPerRace:                 int32Ptr(entitlements.MaxModelsPerRace),
+		ReplayRetentionDays:              int32Ptr(entitlements.ReplayRetentionDays),
+		ConcurrencyLimit:                 int32Ptr(entitlements.ConcurrentRaces),
+		GuideAgentTurnsPerWorkspaceMonth: int32Ptr(entitlements.GuideAgentTurnsPerWorkspaceMonth),
+		FeatureFlags:                     featureFlags,
+		SourceSubscriptionID:             sourceSubscriptionID,
+		ExpiresAt:                        toPGTimestamp(expiresAt),
 	}); err != nil {
 		return fmt.Errorf("upsert organization entitlements: %w", err)
 	}
@@ -277,12 +279,12 @@ func (r *Repository) CountActiveWorkspaceRuns(ctx context.Context, workspaceID u
 }
 
 func (r *Repository) GetWorkspaceUsageSnapshot(ctx context.Context, workspaceID uuid.UUID, windowStart, windowEnd time.Time) (WorkspaceUsageSnapshot, error) {
-	count, err := r.queries.GetWorkspaceUsageWindowRaceCount(ctx, repositorysqlc.GetWorkspaceUsageWindowRaceCountParams{
+	counts, err := r.queries.GetWorkspaceUsageWindowCounts(ctx, repositorysqlc.GetWorkspaceUsageWindowCountsParams{
 		WorkspaceID: workspaceID,
 		WindowStart: pgtype.Timestamptz{Time: windowStart.UTC(), Valid: true},
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
-		count = 0
+		counts = repositorysqlc.GetWorkspaceUsageWindowCountsRow{}
 	} else if err != nil {
 		return WorkspaceUsageSnapshot{}, fmt.Errorf("get workspace usage window: %w", err)
 	}
@@ -291,11 +293,12 @@ func (r *Repository) GetWorkspaceUsageSnapshot(ctx context.Context, workspaceID 
 		return WorkspaceUsageSnapshot{}, err
 	}
 	return WorkspaceUsageSnapshot{
-		WorkspaceID: workspaceID,
-		RaceCount:   int(count),
-		ActiveRuns:  activeRuns,
-		WindowStart: windowStart,
-		WindowEnd:   windowEnd,
+		WorkspaceID:         workspaceID,
+		RaceCount:           int(counts.RaceCount),
+		GuideAgentTurnCount: int(counts.GuideAgentTurnCount),
+		ActiveRuns:          activeRuns,
+		WindowStart:         windowStart,
+		WindowEnd:           windowEnd,
 	}, nil
 }
 
@@ -609,18 +612,19 @@ func mapEffectiveEntitlements(row repositorysqlc.GetOrganizationEntitlementsRow)
 		featureFlags = map[string]bool{}
 	}
 	entitlements := billing.EffectiveEntitlements{
-		PlanKey:                row.PlanKey,
-		BillingPeriod:          row.BillingPeriod,
-		Status:                 row.Status,
-		SeatQuantity:           int(row.SeatQuantity),
-		SeatsLimit:             intPtrFromInt32(row.SeatsLimit),
-		WorkspacesLimit:        intPtrFromInt32(row.WorkspacesLimit),
-		RacesPerWorkspaceMonth: intPtrFromInt32(row.RacesPerWorkspaceMonth),
-		MaxModelsPerRace:       intPtrFromInt32(row.MaxModelsPerRace),
-		ReplayRetentionDays:    intPtrFromInt32(row.ReplayRetentionDays),
-		ConcurrentRaces:        intPtrFromInt32(row.ConcurrencyLimit),
-		FeatureFlags:           featureFlags,
-		ExpiresAt:              optionalTime(row.ExpiresAt),
+		PlanKey:                          row.PlanKey,
+		BillingPeriod:                    row.BillingPeriod,
+		Status:                           row.Status,
+		SeatQuantity:                     int(row.SeatQuantity),
+		SeatsLimit:                       intPtrFromInt32(row.SeatsLimit),
+		WorkspacesLimit:                  intPtrFromInt32(row.WorkspacesLimit),
+		RacesPerWorkspaceMonth:           intPtrFromInt32(row.RacesPerWorkspaceMonth),
+		MaxModelsPerRace:                 intPtrFromInt32(row.MaxModelsPerRace),
+		ReplayRetentionDays:              intPtrFromInt32(row.ReplayRetentionDays),
+		ConcurrentRaces:                  intPtrFromInt32(row.ConcurrencyLimit),
+		GuideAgentTurnsPerWorkspaceMonth: intPtrFromInt32(row.GuideAgentTurnsPerWorkspaceMonth),
+		FeatureFlags:                     featureFlags,
+		ExpiresAt:                        optionalTime(row.ExpiresAt),
 	}
 	if plan, ok := billing.PlanByKey(entitlements.PlanKey); ok {
 		entitlements.UpgradeTarget = plan.UpgradeTarget

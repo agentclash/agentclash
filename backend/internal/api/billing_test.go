@@ -109,6 +109,7 @@ func TestBillingManagerGetWorkspaceQuotaSeparatesRaceAndConcurrencyUsage(t *test
 		billingpkg.EntitlementStatusActive,
 	)
 	repo.usage.RaceCount = 47
+	repo.usage.GuideAgentTurnCount = 1200
 	repo.usage.ActiveRuns = 2
 	repo.activeMembers = 3
 	now := time.Date(2026, 5, 10, 9, 0, 0, 0, time.UTC)
@@ -131,6 +132,9 @@ func TestBillingManagerGetWorkspaceQuotaSeparatesRaceAndConcurrencyUsage(t *test
 		t.Fatalf("plan key = %q, want pro", result.PlanKey)
 	}
 	assertQuotaCounter(t, "monthly races", result.MonthlyRaces, 47, 2500, 2453)
+	// Pro @ 5 seats → guide-agent allowance 1000*5 = 5000; used 1200 → remaining 3800.
+	assertQuotaCounter(t, "monthly guide-agent turns", result.MonthlyGuideAgentTurns, 1200, 5000, 3800)
+	assertTimePtr(t, "guide turns reset_at", result.MonthlyGuideAgentTurns.ResetAt, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	assertQuotaCounter(t, "concurrent races", result.ConcurrentRaces, 2, 3, 1)
 	assertQuotaCounter(t, "seats", result.Seats, 3, 25, 22)
 	assertTimePtr(t, "monthly races reset_at", result.MonthlyRaces.ResetAt, time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
@@ -862,6 +866,11 @@ type fakeBillingRepository struct {
 	account       repository.BillingAccount
 	checkoutInput repository.BillingCheckoutIntentInput
 	trialUsed     bool
+
+	// 4e guide-agent turn allowance: configurable behaviour + observed call args.
+	guideTurnErr      error
+	guideTurnConsumed int
+	guideTurnUsed     int
 }
 
 func newFakeBillingRepository(workspaceID uuid.UUID) *fakeBillingRepository {
@@ -922,6 +931,14 @@ func (f *fakeBillingRepository) GetWorkspaceUsageSnapshot(_ context.Context, _ u
 	usage.WindowStart = windowStart
 	usage.WindowEnd = windowEnd
 	return usage, nil
+}
+
+func (f *fakeBillingRepository) ConsumeGuideAgentTurn(_ context.Context, _ uuid.UUID, _ billingpkg.EffectiveEntitlements, _, _ time.Time) error {
+	if f.guideTurnErr != nil {
+		return f.guideTurnErr
+	}
+	f.guideTurnConsumed++
+	return nil
 }
 
 func (f *fakeBillingRepository) CreateBillingCheckoutIntent(_ context.Context, input repository.BillingCheckoutIntentInput) (repository.BillingCheckoutIntent, error) {

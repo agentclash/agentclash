@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -25,10 +26,19 @@ type vibeEvalLoopRunner interface {
 	ContinueTurn(ctx context.Context, actor vibeeval.Actor, authorizer vibeeval.WorkspaceAuthorizer, conv vibeeval.Conversation, sink vibeeval.EventSink) (vibeeval.TurnResult, error)
 }
 
+// guideTurnMeter atomically consumes one guide-agent turn against the workspace's monthly allowance (4e),
+// returning billingpkg.GateError when exhausted. BillingManager satisfies it. Kept narrow so the vibeeval
+// manager depends only on the metering capability, not the whole billing surface.
+type guideTurnMeter interface {
+	ConsumeGuideAgentTurn(ctx context.Context, workspaceID uuid.UUID) error
+}
+
 type VibeEvalAgentManager struct {
 	authorizer     WorkspaceAuthorizer
 	repo           *repository.Repository
 	loop           vibeEvalLoopRunner
+	meter          guideTurnMeter
+	now            func() time.Time
 	recoveryProbes map[string]recoveryProbe // per-tool-name ambiguous-recovery effect probes
 }
 
@@ -46,7 +56,13 @@ func NewVibeEvalAgentManager(
 	drafts vibeEvalDraftAuthor,
 	runCreator vibeEvalRunCreator,
 	sessionCreator vibeEvalSessionCreator,
+	meter guideTurnMeter,
 ) (*VibeEvalAgentManager, error) {
+	// The guide-turn allowance meter is required in production (every fresh turn / approve is metered).
+	// Fail fast rather than risk a nil-pointer at the first turn.
+	if meter == nil {
+		return nil, fmt.Errorf("vibe-eval guide-turn meter is required")
+	}
 	registry := vibeeval.NewRegistry()
 	tools := []vibeeval.Tool{
 		getRunStatusTool{runs: runs},
@@ -78,7 +94,7 @@ func NewVibeEvalAgentManager(
 		WithConfirmationStore(vibeEvalConfirmationStore{repo: repo}).
 		WithAuditWriter(vibeEvalAuditWriter{repo: repo})
 
-	mgr := &VibeEvalAgentManager{authorizer: authorizer, repo: repo, loop: loop}
+	mgr := &VibeEvalAgentManager{authorizer: authorizer, repo: repo, loop: loop, meter: meter, now: time.Now}
 	// publish_draft is idempotent by effect identity → its ambiguous-recovery probe consults the
 	// draft's published version rather than re-executing.
 	mgr.recoveryProbes = map[string]recoveryProbe{
@@ -91,6 +107,44 @@ func NewVibeEvalAgentManager(
 // handler calls this BEFORE switching to SSE so a 403 returns as a normal HTTP error.
 func (m *VibeEvalAgentManager) AuthorizeTurn(ctx context.Context, caller Caller, workspaceID uuid.UUID) error {
 	return AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspaceID, ActionManageVibeEvalDrafts)
+}
+
+// RequireConversation verifies the conversation exists and belongs to the workspace. The create-turn
+// handler calls this BEFORE metering (4e blocker): otherwise a caller authorized for the workspace could
+// POST to a missing or cross-workspace conversation and burn a guide-agent turn for a non-genuine turn.
+// RunTurn re-checks the same locality (a cheap duplicate read) before it runs the model.
+func (m *VibeEvalAgentManager) RequireConversation(ctx context.Context, workspaceID, conversationID uuid.UUID) error {
+	conv, err := m.repo.GetVibeEvalConversationByID(ctx, conversationID)
+	if err != nil {
+		return err
+	}
+	if conv.WorkspaceID != workspaceID {
+		return repository.ErrVibeEvalConversationNotFound
+	}
+	return nil
+}
+
+// MeterFreshTurn consumes one guide-agent turn allowance for a fresh user turn (4e). The handler calls
+// this BEFORE the SSE switch (and AFTER RequireConversation), so an exhausted allowance returns a clean
+// 402 (billingpkg.GateError) with no model call. A turn that passes is counted even if it later errors
+// mid-stream (consumed at accept-time).
+func (m *VibeEvalAgentManager) MeterFreshTurn(ctx context.Context, workspaceID uuid.UUID) error {
+	return m.meter.ConsumeGuideAgentTurn(ctx, workspaceID)
+}
+
+// MeterConfirmationResolve consumes one guide-agent turn allowance ONLY for a genuine fresh APPROVE
+// resume (4e, B1-adjusted + D): deny is always allowed and never counted; an approve for a non-resolvable
+// confirmation (wrong payload hash, expired, or already resolved/executing) is never counted, since it
+// will not drive a model call. The genuineness predicate is the pre-SSE check; the atomic consume
+// provides the 402. A rare resolve-retry that races the claim may over-count by one (accepted).
+func (m *VibeEvalAgentManager) MeterConfirmationResolve(ctx context.Context, workspaceID uuid.UUID, pc repository.VibeEvalPendingConfirmation, presentedHash string, approve bool) error {
+	if !approve {
+		return nil
+	}
+	if pc.Status != "pending" || pc.PayloadHash != presentedHash || !m.now().UTC().Before(pc.ExpiresAt.UTC()) {
+		return nil
+	}
+	return m.meter.ConsumeGuideAgentTurn(ctx, workspaceID)
 }
 
 // RunTurn loads the conversation, bridges the caller, and runs one bounded turn. The handler

@@ -178,7 +178,7 @@ func main() {
 	// It reuses the shared providerRouter and the run/scorecard read managers as read-only tools.
 	var vibeEvalAgentManager *api.VibeEvalAgentManager
 	if guideCfg, ok := api.VibeEvalGuideConfigFromEnv(); ok {
-		m, gerr := api.NewVibeEvalAgentManager(authorizer, repo, providerRouter, guideCfg, runReadManager, replayReadManager, challengePackReadManager, vibeEvalManager, runCreationManager, runCreationManager)
+		m, gerr := api.NewVibeEvalAgentManager(authorizer, repo, providerRouter, guideCfg, runReadManager, replayReadManager, challengePackReadManager, vibeEvalManager, runCreationManager, runCreationManager, billingManager)
 		if gerr != nil {
 			logger.Error("failed to initialize vibe eval guide agent", "error", gerr)
 			os.Exit(1)

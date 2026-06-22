@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/vibeeval"
 	"github.com/google/uuid"
@@ -37,6 +38,23 @@ func createVibeEvalTurnHandler(logger *slog.Logger, mgr *VibeEvalAgentManager) h
 		}
 		if err := mgr.AuthorizeTurn(r.Context(), caller, workspaceID); err != nil {
 			writeAuthzError(w, err)
+			return
+		}
+		// Validate the conversation BEFORE metering (4e): a missing or cross-workspace conversation must
+		// NOT burn a guide-agent turn — it is not a genuine turn and makes no model call.
+		if err := mgr.RequireConversation(r.Context(), workspaceID, conversationID); err != nil {
+			handleVibeEvalError(w, logger, err)
+			return
+		}
+		// Meter the guide-agent turn allowance BEFORE the SSE switch (4e): an exhausted allowance is a
+		// clean 402 with no model call. A fresh user turn always consumes one.
+		if err := mgr.MeterFreshTurn(r.Context(), workspaceID); err != nil {
+			var gateErr billingpkg.GateError
+			if errors.As(err, &gateErr) {
+				writeBillingGateError(w, gateErr.Decision)
+				return
+			}
+			handleVibeEvalError(w, logger, err)
 			return
 		}
 
@@ -109,6 +127,18 @@ func resolveVibeEvalConfirmationHandler(logger *slog.Logger, mgr *VibeEvalAgentM
 
 		conv, pc, err := mgr.LoadConfirmationForResolve(r.Context(), caller, workspaceID, conversationID, confirmationID)
 		if err != nil {
+			handleVibeEvalError(w, logger, err)
+			return
+		}
+		// Meter the guide-agent turn allowance BEFORE the SSE switch (4e): only a genuine fresh APPROVE
+		// resume consumes a turn. Deny is always allowed and uncounted; an approve for a non-resolvable
+		// confirmation is uncounted (no model call). An exhausted allowance is a clean 402.
+		if err := mgr.MeterConfirmationResolve(r.Context(), workspaceID, pc, req.PayloadHash, *req.Approve); err != nil {
+			var gateErr billingpkg.GateError
+			if errors.As(err, &gateErr) {
+				writeBillingGateError(w, gateErr.Decision)
+				return
+			}
 			handleVibeEvalError(w, logger, err)
 			return
 		}

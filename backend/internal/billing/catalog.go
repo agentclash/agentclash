@@ -40,12 +40,13 @@ type Limit struct {
 }
 
 type PlanLimits struct {
-	Seats                  Limit `json:"seats"`
-	Workspaces             Limit `json:"workspaces"`
-	RacesPerWorkspaceMonth Limit `json:"races_per_workspace_month"`
-	MaxModelsPerRace       Limit `json:"max_models_per_race"`
-	ReplayRetentionDays    Limit `json:"replay_retention_days"`
-	ConcurrentRaces        Limit `json:"concurrent_races"`
+	Seats                            Limit `json:"seats"`
+	Workspaces                       Limit `json:"workspaces"`
+	RacesPerWorkspaceMonth           Limit `json:"races_per_workspace_month"`
+	MaxModelsPerRace                 Limit `json:"max_models_per_race"`
+	ReplayRetentionDays              Limit `json:"replay_retention_days"`
+	ConcurrentRaces                  Limit `json:"concurrent_races"`
+	GuideAgentTurnsPerWorkspaceMonth Limit `json:"guide_agent_turns_per_workspace_month"`
 }
 
 type Plan struct {
@@ -83,19 +84,22 @@ func (ids DodoProductIDs) Validate() error {
 }
 
 type EffectiveEntitlements struct {
-	PlanKey                string          `json:"plan_key"`
-	BillingPeriod          string          `json:"billing_period"`
-	Status                 string          `json:"status"`
-	SeatQuantity           int             `json:"seat_quantity"`
-	SeatsLimit             *int            `json:"seats_limit"`
-	WorkspacesLimit        *int            `json:"workspaces_limit"`
-	RacesPerWorkspaceMonth *int            `json:"races_per_workspace_month"`
-	MaxModelsPerRace       *int            `json:"max_models_per_race"`
-	ReplayRetentionDays    *int            `json:"replay_retention_days"`
-	ConcurrentRaces        *int            `json:"concurrent_races"`
-	FeatureFlags           map[string]bool `json:"feature_flags"`
-	UpgradeTarget          string          `json:"upgrade_target,omitempty"`
-	ExpiresAt              *time.Time      `json:"expires_at,omitempty"`
+	PlanKey                string `json:"plan_key"`
+	BillingPeriod          string `json:"billing_period"`
+	Status                 string `json:"status"`
+	SeatQuantity           int    `json:"seat_quantity"`
+	SeatsLimit             *int   `json:"seats_limit"`
+	WorkspacesLimit        *int   `json:"workspaces_limit"`
+	RacesPerWorkspaceMonth *int   `json:"races_per_workspace_month"`
+	MaxModelsPerRace       *int   `json:"max_models_per_race"`
+	ReplayRetentionDays    *int   `json:"replay_retention_days"`
+	ConcurrentRaces        *int   `json:"concurrent_races"`
+	// GuideAgentTurnsPerWorkspaceMonth is the monthly guide-agent turn allowance (4e), separate from the
+	// eval-credit wallet. nil ⇒ unlimited/custom.
+	GuideAgentTurnsPerWorkspaceMonth *int            `json:"guide_agent_turns_per_workspace_month"`
+	FeatureFlags                     map[string]bool `json:"feature_flags"`
+	UpgradeTarget                    string          `json:"upgrade_target,omitempty"`
+	ExpiresAt                        *time.Time      `json:"expires_at,omitempty"`
 }
 
 func Catalog() []Plan {
@@ -111,12 +115,13 @@ func CatalogWithDodoProductIDs(productIDs DodoProductIDs) []Plan {
 			DefaultSeats:   1,
 			BillingPeriods: []string{PeriodMonthly},
 			Limits: PlanLimits{
-				Seats:                  valueLimit(1),
-				Workspaces:             valueLimit(1),
-				RacesPerWorkspaceMonth: valueLimit(25),
-				MaxModelsPerRace:       valueLimit(4),
-				ReplayRetentionDays:    valueLimit(7),
-				ConcurrentRaces:        valueLimit(1),
+				Seats:                            valueLimit(1),
+				Workspaces:                       valueLimit(1),
+				RacesPerWorkspaceMonth:           valueLimit(25),
+				MaxModelsPerRace:                 valueLimit(4),
+				ReplayRetentionDays:              valueLimit(7),
+				ConcurrentRaces:                  valueLimit(1),
+				GuideAgentTurnsPerWorkspaceMonth: valueLimit(50),
 			},
 			FeatureFlags: map[string]bool{
 				"byok_llm":          true,
@@ -132,12 +137,13 @@ func CatalogWithDodoProductIDs(productIDs DodoProductIDs) []Plan {
 			DefaultSeats:   5,
 			BillingPeriods: []string{PeriodMonthly, PeriodYearly},
 			Limits: PlanLimits{
-				Seats:                  perSeatLimit(5),
-				Workspaces:             valueLimit(1),
-				RacesPerWorkspaceMonth: perSeatLimit(500),
-				MaxModelsPerRace:       valueLimit(8),
-				ReplayRetentionDays:    valueLimit(30),
-				ConcurrentRaces:        valueLimit(3),
+				Seats:                            perSeatLimit(5),
+				Workspaces:                       valueLimit(1),
+				RacesPerWorkspaceMonth:           perSeatLimit(500),
+				MaxModelsPerRace:                 valueLimit(8),
+				ReplayRetentionDays:              valueLimit(30),
+				ConcurrentRaces:                  valueLimit(3),
+				GuideAgentTurnsPerWorkspaceMonth: perSeatLimit(1000),
 			},
 			FeatureFlags: map[string]bool{
 				"byok_llm":                   true,
@@ -156,12 +162,13 @@ func CatalogWithDodoProductIDs(productIDs DodoProductIDs) []Plan {
 			DefaultSeats:   1,
 			BillingPeriods: []string{PeriodMonthly, PeriodYearly},
 			Limits: PlanLimits{
-				Seats:                  perSeatLimit(1),
-				Workspaces:             unlimitedLimit(),
-				RacesPerWorkspaceMonth: perSeatLimit(2000),
-				MaxModelsPerRace:       valueLimit(12),
-				ReplayRetentionDays:    valueLimit(90),
-				ConcurrentRaces:        valueLimit(10),
+				Seats:                            perSeatLimit(1),
+				Workspaces:                       unlimitedLimit(),
+				RacesPerWorkspaceMonth:           perSeatLimit(2000),
+				MaxModelsPerRace:                 valueLimit(12),
+				ReplayRetentionDays:              valueLimit(90),
+				ConcurrentRaces:                  valueLimit(10),
+				GuideAgentTurnsPerWorkspaceMonth: perSeatLimit(4000),
 			},
 			FeatureFlags: map[string]bool{
 				"byok_llm":                   true,
@@ -182,12 +189,13 @@ func CatalogWithDodoProductIDs(productIDs DodoProductIDs) []Plan {
 			DefaultSeats:   1,
 			BillingPeriods: []string{PeriodCustom},
 			Limits: PlanLimits{
-				Seats:                  customLimit(),
-				Workspaces:             customLimit(),
-				RacesPerWorkspaceMonth: customLimit(),
-				MaxModelsPerRace:       customLimit(),
-				ReplayRetentionDays:    unlimitedLimit(),
-				ConcurrentRaces:        customLimit(),
+				Seats:                            customLimit(),
+				Workspaces:                       customLimit(),
+				RacesPerWorkspaceMonth:           customLimit(),
+				MaxModelsPerRace:                 customLimit(),
+				ReplayRetentionDays:              unlimitedLimit(),
+				ConcurrentRaces:                  customLimit(),
+				GuideAgentTurnsPerWorkspaceMonth: customLimit(),
 			},
 			FeatureFlags: map[string]bool{
 				"byok_llm":                   true,
@@ -290,18 +298,19 @@ func MaterializeEntitlements(plan Plan, billingPeriod string, seatQuantity int, 
 		status = EntitlementStatusActive
 	}
 	return EffectiveEntitlements{
-		PlanKey:                plan.Key,
-		BillingPeriod:          billingPeriod,
-		Status:                 status,
-		SeatQuantity:           seatQuantity,
-		SeatsLimit:             materializeLimit(plan.Limits.Seats, seatQuantity),
-		WorkspacesLimit:        materializeLimit(plan.Limits.Workspaces, seatQuantity),
-		RacesPerWorkspaceMonth: materializeLimit(plan.Limits.RacesPerWorkspaceMonth, seatQuantity),
-		MaxModelsPerRace:       materializeLimit(plan.Limits.MaxModelsPerRace, seatQuantity),
-		ReplayRetentionDays:    materializeLimit(plan.Limits.ReplayRetentionDays, seatQuantity),
-		ConcurrentRaces:        materializeLimit(plan.Limits.ConcurrentRaces, seatQuantity),
-		FeatureFlags:           cloneFlags(plan.FeatureFlags),
-		UpgradeTarget:          plan.UpgradeTarget,
+		PlanKey:                          plan.Key,
+		BillingPeriod:                    billingPeriod,
+		Status:                           status,
+		SeatQuantity:                     seatQuantity,
+		SeatsLimit:                       materializeLimit(plan.Limits.Seats, seatQuantity),
+		WorkspacesLimit:                  materializeLimit(plan.Limits.Workspaces, seatQuantity),
+		RacesPerWorkspaceMonth:           materializeLimit(plan.Limits.RacesPerWorkspaceMonth, seatQuantity),
+		MaxModelsPerRace:                 materializeLimit(plan.Limits.MaxModelsPerRace, seatQuantity),
+		ReplayRetentionDays:              materializeLimit(plan.Limits.ReplayRetentionDays, seatQuantity),
+		ConcurrentRaces:                  materializeLimit(plan.Limits.ConcurrentRaces, seatQuantity),
+		GuideAgentTurnsPerWorkspaceMonth: materializeLimit(plan.Limits.GuideAgentTurnsPerWorkspaceMonth, seatQuantity),
+		FeatureFlags:                     cloneFlags(plan.FeatureFlags),
+		UpgradeTarget:                    plan.UpgradeTarget,
 	}
 }
 
