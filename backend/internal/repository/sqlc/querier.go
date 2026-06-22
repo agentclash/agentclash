@@ -13,6 +13,7 @@ import (
 type Querier interface {
 	AppendAgentTryoutTurn(ctx context.Context, arg AppendAgentTryoutTurnParams) (AgentTryoutTurn, error)
 	ApplyHostedRunEvent(ctx context.Context, arg ApplyHostedRunEventParams) (HostedRunExecution, error)
+	ArchiveChallengePiece(ctx context.Context, arg ArchiveChallengePieceParams) (ChallengePiece, error)
 	ArchiveDataset(ctx context.Context, arg ArchiveDatasetParams) (Dataset, error)
 	AttachRunToEvalSession(ctx context.Context, arg AttachRunToEvalSessionParams) (Run, error)
 	BeginBillingWebhookEvent(ctx context.Context, arg BeginBillingWebhookEventParams) (string, error)
@@ -40,6 +41,8 @@ type Querier interface {
 	CreateAgentTryout(ctx context.Context, arg CreateAgentTryoutParams) (AgentTryout, error)
 	CreateBillingCheckoutIntent(ctx context.Context, arg CreateBillingCheckoutIntentParams) (CreateBillingCheckoutIntentRow, error)
 	CreateBillingTrialGrant(ctx context.Context, arg CreateBillingTrialGrantParams) (BillingTrialGrant, error)
+	CreateChallengePackDraft(ctx context.Context, arg CreateChallengePackDraftParams) (ChallengePackDraft, error)
+	CreateChallengePiece(ctx context.Context, arg CreateChallengePieceParams) (ChallengePiece, error)
 	CreateDataset(ctx context.Context, arg CreateDatasetParams) (Dataset, error)
 	CreateDatasetEvalChallengeInputSet(ctx context.Context, arg CreateDatasetEvalChallengeInputSetParams) (ChallengeInputSet, error)
 	CreateDatasetGenerationJob(ctx context.Context, arg CreateDatasetGenerationJobParams) (DatasetGenerationJob, error)
@@ -62,6 +65,7 @@ type Querier interface {
 	CreateRunCaseSelection(ctx context.Context, arg CreateRunCaseSelectionParams) (RunCaseSelection, error)
 	CreateVibeEvalConversation(ctx context.Context, arg CreateVibeEvalConversationParams) (VibeEvalConversation, error)
 	CreateVibeEvalDraft(ctx context.Context, arg CreateVibeEvalDraftParams) (VibeEvalDraft, error)
+	DeleteChallengePackDraft(ctx context.Context, arg DeleteChallengePackDraftParams) error
 	DeletePlayground(ctx context.Context, arg DeletePlaygroundParams) error
 	DeletePlaygroundTestCase(ctx context.Context, arg DeletePlaygroundTestCaseParams) error
 	FindOrganizationByDodoSubscriptionOrCustomer(ctx context.Context, arg FindOrganizationByDodoSubscriptionOrCustomerParams) (uuid.UUID, error)
@@ -73,6 +77,8 @@ type Querier interface {
 	GetBillingSubscriptionByDodoID(ctx context.Context, arg GetBillingSubscriptionByDodoIDParams) (BillingSubscription, error)
 	GetChallengeIdentityForDatasetEval(ctx context.Context, arg GetChallengeIdentityForDatasetEvalParams) (uuid.UUID, error)
 	GetChallengeInputSetByID(ctx context.Context, arg GetChallengeInputSetByIDParams) (ChallengeInputSet, error)
+	GetChallengePackDraftByID(ctx context.Context, arg GetChallengePackDraftByIDParams) (ChallengePackDraft, error)
+	GetChallengePieceByID(ctx context.Context, arg GetChallengePieceByIDParams) (ChallengePiece, error)
 	GetDatasetBaselineByID(ctx context.Context, arg GetDatasetBaselineByIDParams) (DatasetBaseline, error)
 	GetDatasetByID(ctx context.Context, arg GetDatasetByIDParams) (GetDatasetByIDRow, error)
 	GetDatasetEvalRunByRunID(ctx context.Context, arg GetDatasetEvalRunByRunIDParams) (DatasetEvalRun, error)
@@ -126,7 +132,10 @@ type Querier interface {
 	ListAgentTryoutsByWorkspaceID(ctx context.Context, arg ListAgentTryoutsByWorkspaceIDParams) ([]AgentTryout, error)
 	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, arg ListChallengeIdentityIDsByPackVersionIDParams) ([]uuid.UUID, error)
 	ListChallengeInputSetsByVersionID(ctx context.Context, arg ListChallengeInputSetsByVersionIDParams) ([]ListChallengeInputSetsByVersionIDRow, error)
+	ListChallengePackDraftsByWorkspace(ctx context.Context, arg ListChallengePackDraftsByWorkspaceParams) ([]ChallengePackDraft, error)
 	ListChallengePacks(ctx context.Context) ([]ListChallengePacksRow, error)
+	ListChallengePiecesByIDs(ctx context.Context, arg ListChallengePiecesByIDsParams) ([]ChallengePiece, error)
+	ListChallengePiecesByWorkspace(ctx context.Context, arg ListChallengePiecesByWorkspaceParams) ([]ChallengePiece, error)
 	ListDatasetBaselinesByDatasetID(ctx context.Context, arg ListDatasetBaselinesByDatasetIDParams) ([]DatasetBaseline, error)
 	ListDatasetEvalResults(ctx context.Context, arg ListDatasetEvalResultsParams) ([]ListDatasetEvalResultsRow, error)
 	ListDatasetEvalResultsForRun(ctx context.Context, arg ListDatasetEvalResultsForRunParams) ([]ListDatasetEvalResultsForRunRow, error)
@@ -179,6 +188,8 @@ type Querier interface {
 	MarkHostedRunExecutionFailed(ctx context.Context, arg MarkHostedRunExecutionFailedParams) (HostedRunExecution, error)
 	MarkHostedRunExecutionTimedOut(ctx context.Context, arg MarkHostedRunExecutionTimedOutParams) (HostedRunExecution, error)
 	NextDatasetVersionNumber(ctx context.Context, arg NextDatasetVersionNumberParams) (int32, error)
+	PatchChallengePackDraft(ctx context.Context, arg PatchChallengePackDraftParams) (ChallengePackDraft, error)
+	PatchChallengePiece(ctx context.Context, arg PatchChallengePieceParams) (ChallengePiece, error)
 	PatchDataset(ctx context.Context, arg PatchDatasetParams) (Dataset, error)
 	PatchDatasetExample(ctx context.Context, arg PatchDatasetExampleParams) (DatasetExample, error)
 	PatchRegressionCase(ctx context.Context, arg PatchRegressionCaseParams) (WorkspaceRegressionCase, error)

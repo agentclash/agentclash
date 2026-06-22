@@ -44,6 +44,7 @@ type routerOptions struct {
 	githubIntegrationService   GitHubIntegrationService
 	challengePackReadService   ChallengePackReadService
 	challengePackAuthoringSvc  ChallengePackAuthoringService
+	challengePackBuilderSvc    ChallengePackBuilderService
 	agentBuildService          AgentBuildService
 	userService                UserService
 	orgService                 OrganizationService
@@ -83,6 +84,7 @@ func NewServer(
 	githubIntegrationService GitHubIntegrationService,
 	challengePackReadService ChallengePackReadService,
 	challengePackAuthoringService ChallengePackAuthoringService,
+	challengePackBuilderService ChallengePackBuilderService,
 	agentBuildService AgentBuildService,
 	userService UserService,
 	orgService OrganizationService,
@@ -123,6 +125,7 @@ func NewServer(
 		githubIntegrationService:   githubIntegrationService,
 		challengePackReadService:   challengePackReadService,
 		challengePackAuthoringSvc:  challengePackAuthoringService,
+		challengePackBuilderSvc:    challengePackBuilderService,
 		agentBuildService:          agentBuildService,
 		userService:                userService,
 		orgService:                 orgService,
@@ -275,6 +278,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	regressionService := opts.regressionService
 	datasetService := opts.datasetService
 	challengePackAuthoringService := opts.challengePackAuthoringSvc
+	challengePackBuilderService := opts.challengePackBuilderSvc
 	userService := opts.userService
 	orgService := opts.orgService
 	wsService := opts.workspaceService
@@ -315,6 +319,9 @@ func buildRouter(opts routerOptions) http.Handler {
 	}
 	if challengePackAuthoringService == nil {
 		challengePackAuthoringService = noopChallengePackAuthoringService{}
+	}
+	if challengePackBuilderService == nil {
+		challengePackBuilderService = noopChallengePackBuilderService{}
 	}
 	if agentHarnessService == nil {
 		agentHarnessService = noopAgentHarnessService{}
@@ -401,7 +408,7 @@ func buildRouter(opts routerOptions) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(authenticateRequest(logger, authenticator))
 			r.Use(trackUsage(logger, opts.posthogClient))
-			registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, agentTryoutService, billingService, multiTurnService, vibeEvalService)
+			registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, challengePackBuilderService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, agentTryoutService, billingService, multiTurnService, vibeEvalService)
 		})
 	})
 

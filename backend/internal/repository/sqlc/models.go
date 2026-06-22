@@ -185,6 +185,20 @@ type ChallengeInputSet struct {
 	ArchivedAt             pgtype.Timestamptz
 }
 
+type ChallengePackDraft struct {
+	ID                     uuid.UUID
+	WorkspaceID            uuid.UUID
+	Name                   string
+	ExecutionMode          string
+	ChallengePackID        *uuid.UUID
+	Composition            []byte
+	Status                 string
+	LastPublishedVersionID *uuid.UUID
+	CreatedByUserID        *uuid.UUID
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+}
+
 type ChallengePackVersion struct {
 	ID               uuid.UUID
 	ChallengePackID  uuid.UUID
@@ -196,6 +210,21 @@ type ChallengePackVersion struct {
 	CreatedAt        pgtype.Timestamptz
 	UpdatedAt        pgtype.Timestamptz
 	ArchivedAt       pgtype.Timestamptz
+}
+
+type ChallengePiece struct {
+	ID              uuid.UUID
+	WorkspaceID     uuid.UUID
+	Kind            string
+	Slug            string
+	Name            string
+	Description     string
+	Definition      []byte
+	LifecycleStatus string
+	CreatedByUserID *uuid.UUID
+	CreatedAt       pgtype.Timestamptz
+	UpdatedAt       pgtype.Timestamptz
+	ArchivedAt      pgtype.Timestamptz
 }
 
 type Dataset struct {
