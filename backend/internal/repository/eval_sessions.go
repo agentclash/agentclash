@@ -39,6 +39,7 @@ func (r *Repository) CreateEvalSession(ctx context.Context, params CreateEvalSes
 	}
 
 	row, err := r.queries.CreateEvalSession(ctx, repositorysqlc.CreateEvalSessionParams{
+		ID:                     uuid.New(),
 		Status:                 string(domain.EvalSessionStatusQueued),
 		Repetitions:            params.Repetitions,
 		AggregationConfig:      normalizeJSON(params.AggregationConfig),

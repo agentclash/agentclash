@@ -45,6 +45,7 @@ func NewVibeEvalAgentManager(
 	packs challengePackLister,
 	drafts vibeEvalDraftAuthor,
 	runCreator vibeEvalRunCreator,
+	sessionCreator vibeEvalSessionCreator,
 ) (*VibeEvalAgentManager, error) {
 	registry := vibeeval.NewRegistry()
 	tools := []vibeeval.Tool{
@@ -57,6 +58,7 @@ func NewVibeEvalAgentManager(
 		publishDraftTool{drafts: drafts},
 		estimateEvalCostTool{estimator: runCreator},
 		createRunTool{runs: runCreator},
+		createEvalSessionTool{sessions: sessionCreator},
 	}
 	for _, t := range tools {
 		if !roleAllows(RoleWorkspaceAdmin, Action(t.RequiredAction())) {

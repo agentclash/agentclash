@@ -244,6 +244,13 @@ func decodeCreateEvalSessionRequest(_ context.Context, r *http.Request) (CreateE
 	if err != nil {
 		return CreateEvalSessionInput{}, err
 	}
+	return buildCreateEvalSessionInput(body, workspaceID)
+}
+
+// buildCreateEvalSessionInput maps a decoded request body to a CreateEvalSessionInput for a given
+// workspace. Shared by the REST decoder (workspace from body) and the create_eval_session guide tool
+// (workspace from the conversation), so both go through one validation/parse path.
+func buildCreateEvalSessionInput(body createEvalSessionRequest, workspaceID uuid.UUID) (CreateEvalSessionInput, error) {
 	challengePackVersionID, err := parseRequiredUUID(body.ChallengePackVersionID, "challenge_pack_version_id", "invalid_challenge_pack_version_id")
 	if err != nil {
 		return CreateEvalSessionInput{}, err

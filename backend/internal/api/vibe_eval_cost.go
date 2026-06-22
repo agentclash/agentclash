@@ -72,11 +72,12 @@ func (m *RunCreationManager) EstimateEvalCost(ctx context.Context, caller Caller
 	lanes := make([]evalCostLane, 0, len(deployments))
 	for _, d := range deployments {
 		lanes = append(lanes, evalCostLane{
-			DeploymentID:         d.ID,
-			Managed:              d.SourceProviderAccountID == nil, // a frozen source provider account ⇒ BYOK
-			ProviderKey:          d.ProviderKey,
-			ProviderModelID:      d.ProviderModelID,
-			OutputRatePerMillion: d.OutputCostPerMillionTokens,
+			DeploymentID:              d.ID,
+			AgentDeploymentSnapshotID: d.AgentDeploymentSnapshotID,
+			Managed:                   d.SourceProviderAccountID == nil, // a frozen source provider account ⇒ BYOK
+			ProviderKey:               d.ProviderKey,
+			ProviderModelID:           d.ProviderModelID,
+			OutputRatePerMillion:      d.OutputCostPerMillionTokens,
 		})
 	}
 	return estimateEvalCost(lanes, limits)
@@ -120,25 +121,30 @@ var (
 // FROZEN on the snapshot's model alias (model_aliases.output_cost_per_million_tokens) — never a live
 // catalog read — so reservation pricing cannot drift after deployment.
 type evalCostLane struct {
-	DeploymentID         uuid.UUID
-	Managed              bool
-	ProviderKey          string
-	ProviderModelID      string
-	OutputRatePerMillion float64
+	DeploymentID              uuid.UUID
+	AgentDeploymentSnapshotID uuid.UUID
+	Managed                   bool
+	ProviderKey               string
+	ProviderModelID           string
+	OutputRatePerMillion      float64
 }
 
 // EvalCostLaneEstimate is the per-lane breakdown shown on the confirmation card and recorded in the
 // estimate/audit metadata. Non-secret only: provider/model, the runtime limit applied, the output rate
 // used, and the lane micros — never provider-account IDs or credential references.
 type EvalCostLaneEstimate struct {
-	DeploymentID         uuid.UUID `json:"deployment_id"`
-	Managed              bool      `json:"managed"`
-	ProviderKey          string    `json:"provider_key,omitempty"`
-	ProviderModelID      string    `json:"provider_model_id,omitempty"`
-	Basis                string    `json:"basis"`                             // byok | max_cost_usd | max_total_tokens_output_rate
-	RuntimeLimit         string    `json:"runtime_limit,omitempty"`           // e.g. "max_cost_usd=2.5" | "max_total_tokens=1000000"
-	OutputRatePerMillion *float64  `json:"output_rate_per_million,omitempty"` // only for the token-rate basis
-	Micros               int64     `json:"micros"`
+	DeploymentID uuid.UUID `json:"deployment_id"`
+	// AgentDeploymentSnapshotID pins the FROZEN snapshot the estimate priced/classified. Confirmed
+	// execution compares it against the freshly-expanded lane so a changed snapshot/model/BYOK lane can
+	// never bind an approved amount (non-secret — a frozen snapshot id, not a provider account).
+	AgentDeploymentSnapshotID uuid.UUID `json:"agent_deployment_snapshot_id"`
+	Managed                   bool      `json:"managed"`
+	ProviderKey               string    `json:"provider_key,omitempty"`
+	ProviderModelID           string    `json:"provider_model_id,omitempty"`
+	Basis                     string    `json:"basis"`                             // byok | max_cost_usd | max_total_tokens_output_rate
+	RuntimeLimit              string    `json:"runtime_limit,omitempty"`           // e.g. "max_cost_usd=2.5" | "max_total_tokens=1000000"
+	OutputRatePerMillion      *float64  `json:"output_rate_per_million,omitempty"` // only for the token-rate basis
+	Micros                    int64     `json:"micros"`
 }
 
 // CostEstimate is the conservative managed-spend ceiling for a run (the reservation amount).
@@ -171,7 +177,8 @@ func estimateEvalCost(lanes []evalCostLane, limits scoring.RuntimeLimits) (CostE
 	for _, l := range lanes {
 		if !l.Managed {
 			estimate.Lanes = append(estimate.Lanes, EvalCostLaneEstimate{
-				DeploymentID: l.DeploymentID, Managed: false, ProviderKey: l.ProviderKey,
+				DeploymentID: l.DeploymentID, AgentDeploymentSnapshotID: l.AgentDeploymentSnapshotID,
+				Managed: false, ProviderKey: l.ProviderKey,
 				ProviderModelID: l.ProviderModelID, Micros: 0, Basis: "byok",
 			})
 			continue
@@ -187,7 +194,7 @@ func estimateEvalCost(lanes []evalCostLane, limits scoring.RuntimeLimits) (CostE
 }
 
 func laneManagedEstimate(l evalCostLane, limits scoring.RuntimeLimits) (EvalCostLaneEstimate, error) {
-	est := EvalCostLaneEstimate{DeploymentID: l.DeploymentID, Managed: true, ProviderKey: l.ProviderKey, ProviderModelID: l.ProviderModelID}
+	est := EvalCostLaneEstimate{DeploymentID: l.DeploymentID, AgentDeploymentSnapshotID: l.AgentDeploymentSnapshotID, Managed: true, ProviderKey: l.ProviderKey, ProviderModelID: l.ProviderModelID}
 	if limits.MaxCostUSD != nil {
 		est.Basis = "max_cost_usd"
 		est.RuntimeLimit = fmt.Sprintf("max_cost_usd=%g", *limits.MaxCostUSD)

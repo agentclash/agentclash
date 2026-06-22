@@ -74,6 +74,74 @@ func TestListRunnableDeployments_SnapshotBillingFields(t *testing.T) {
 	}
 }
 
+// TestListRunnableDeploymentsByBuildVersionID_SnapshotBillingFields proves the build-version
+// participant path surfaces the SAME frozen billing identity as the deployment-id path (4d-3 blocker):
+// without it, build-version eval-session participants would be misclassified managed/BYOK or priced at
+// zero.
+func TestListRunnableDeploymentsByBuildVersionID_SnapshotBillingFields(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	repo := repository.New(db)
+
+	org := uuid.New()
+	ws := uuid.New()
+	user := uuid.New()
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := db.Exec(ctx, sql, args...); err != nil {
+			t.Fatalf("seed: %v\nsql: %s", err, sql)
+		}
+	}
+	exec(`INSERT INTO organizations (id, name, slug) VALUES ($1,$2,$3)`, org, "o", uniqueSlug("o"))
+	exec(`INSERT INTO workspaces (id, organization_id, name, slug) VALUES ($1,$2,$3,$4)`, ws, org, "w", uniqueSlug("w"))
+	exec(`INSERT INTO users (id, workos_user_id, email, display_name) VALUES ($1,$2,$3,$4)`, user, "wk-"+user.String()[:8], user.String()[:8]+"@e.com", "U")
+
+	runtimeProfile := uuid.New()
+	exec(`INSERT INTO runtime_profiles (id, organization_id, workspace_id, name, slug, execution_target) VALUES ($1,$2,$3,$4,$5,'native')`, runtimeProfile, org, ws, "rp", uniqueSlug("rp"))
+	providerAccount := uuid.New()
+	exec(`INSERT INTO provider_accounts (id, organization_id, workspace_id, provider_key, name, credential_reference, limits_config) VALUES ($1,$2,$3,'openai','acct','secret://x','{}'::jsonb)`, providerAccount, org, ws)
+	catalog := uuid.New()
+	modelID := "gpt-4.1-" + catalog.String()[:8]
+	exec(`INSERT INTO model_catalog_entries (id, provider_key, provider_model_id, display_name, model_family, metadata) VALUES ($1,'openai',$2,'GPT-4.1','gpt-4.1','{}'::jsonb)`, catalog, modelID)
+	alias := uuid.New()
+	exec(`INSERT INTO model_aliases (id, organization_id, workspace_id, provider_account_id, model_catalog_entry_id, alias_key, display_name, output_cost_per_million_tokens) VALUES ($1,$2,$3,$4,$5,'a','A',5.0)`, alias, org, ws, providerAccount, catalog)
+	build := uuid.New()
+	exec(`INSERT INTO agent_builds (id, organization_id, workspace_id, name, slug, created_by_user_id) VALUES ($1,$2,$3,'b',$4,$5)`, build, org, ws, uniqueSlug("b"), user)
+	buildVersion := uuid.New()
+	exec(`INSERT INTO agent_build_versions (id, agent_build_id, version_number, version_status, build_definition, prompt_spec, output_schema, trace_contract, created_by_user_id) VALUES ($1,$2,1,'ready','{}'::jsonb,'p','{}'::jsonb,'{}'::jsonb,$3)`, buildVersion, build, user)
+
+	managed := seedDeploymentWithSnapshot(t, ctx, db, org, ws, build, buildVersion, runtimeProfile, alias, nil, alias)
+	byok := seedDeploymentWithSnapshot(t, ctx, db, org, ws, build, buildVersion, runtimeProfile, alias, &providerAccount, alias)
+
+	results, err := repo.ListRunnableDeploymentsByBuildVersionID(ctx, ws, []uuid.UUID{buildVersion})
+	if err != nil {
+		t.Fatalf("list by build version: %v", err)
+	}
+	byID := map[uuid.UUID]repository.RunnableDeployment{}
+	for _, r := range results {
+		if r.AgentBuildVersionID != buildVersion {
+			t.Fatalf("build version id = %s, want %s", r.AgentBuildVersionID, buildVersion)
+		}
+		byID[r.Deployment.ID] = r.Deployment
+	}
+	m, b := byID[managed], byID[byok]
+
+	// Managed lane: identity + FROZEN rate populated from the snapshot path (not zero / not unclassified).
+	if m.SourceProviderAccountID != nil {
+		t.Fatalf("managed lane SourceProviderAccountID = %v, want nil", m.SourceProviderAccountID)
+	}
+	if m.ProviderKey != "openai" || m.ProviderModelID != modelID {
+		t.Fatalf("managed lane model identity = %s/%s, want openai/%s", m.ProviderKey, m.ProviderModelID, modelID)
+	}
+	if m.OutputCostPerMillionTokens != 5.0 {
+		t.Fatalf("managed lane frozen rate = %v, want 5.0 (build-version path must surface it)", m.OutputCostPerMillionTokens)
+	}
+	// BYOK lane: source provider account present (correctly classified BYOK).
+	if b.SourceProviderAccountID == nil || *b.SourceProviderAccountID != providerAccount {
+		t.Fatalf("byok lane SourceProviderAccountID = %v, want %s", b.SourceProviderAccountID, providerAccount)
+	}
+}
+
 func seedDeploymentWithSnapshot(t *testing.T, ctx context.Context, db *pgxpool.Pool, org, ws, build, buildVersion, runtimeProfile, alias uuid.UUID, sourceProviderAccount *uuid.UUID, sourceAlias uuid.UUID) uuid.UUID {
 	t.Helper()
 	deployment := uuid.New()

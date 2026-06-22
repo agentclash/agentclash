@@ -1,5 +1,6 @@
 -- name: CreateEvalSession :one
 INSERT INTO eval_sessions (
+    id,
     status,
     repetitions,
     aggregation_config,
@@ -9,6 +10,7 @@ INSERT INTO eval_sessions (
     started_at,
     finished_at
 ) VALUES (
+    @id,
     @status,
     @repetitions,
     @aggregation_config,

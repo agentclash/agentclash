@@ -60,6 +60,7 @@ func (q *Queries) AttachRunToEvalSession(ctx context.Context, arg AttachRunToEva
 
 const createEvalSession = `-- name: CreateEvalSession :one
 INSERT INTO eval_sessions (
+    id,
     status,
     repetitions,
     aggregation_config,
@@ -76,12 +77,14 @@ INSERT INTO eval_sessions (
     $5,
     $6,
     $7,
-    $8
+    $8,
+    $9
 )
 RETURNING id, status, repetitions, aggregation_config, success_threshold_config, routing_task_snapshot, schema_version, created_at, started_at, finished_at, updated_at
 `
 
 type CreateEvalSessionParams struct {
+	ID                     uuid.UUID
 	Status                 string
 	Repetitions            int32
 	AggregationConfig      []byte
@@ -94,6 +97,7 @@ type CreateEvalSessionParams struct {
 
 func (q *Queries) CreateEvalSession(ctx context.Context, arg CreateEvalSessionParams) (EvalSession, error) {
 	row := q.db.QueryRow(ctx, createEvalSession,
+		arg.ID,
 		arg.Status,
 		arg.Repetitions,
 		arg.AggregationConfig,
