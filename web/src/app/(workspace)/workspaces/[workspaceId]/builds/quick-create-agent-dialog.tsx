@@ -159,14 +159,17 @@ export function QuickCreateAgentDialog({
       toast.success(`Created and deployed "${result.build.name}"`);
       setOpen(false);
       resetForm();
-      await mutateMany(workspaceMutationKeys.quickCreateAgentDialog(workspaceId));
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Failed to create agent",
       );
+      return;
     } finally {
       setSubmitting(false);
     }
+    // Revalidate the lists in the background — a refresh failure must not
+    // surface as a create failure (the create already succeeded above).
+    void mutateMany(workspaceMutationKeys.quickCreateAgentDialog(workspaceId));
   }
 
   return (

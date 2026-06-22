@@ -1240,7 +1240,7 @@ func decodeQuickCreateAgentInput(body quickCreateAgentRequest) (QuickCreateAgent
 	}
 
 	input := QuickCreateAgentInput{
-		Name:             body.Name,
+		Name:             strings.TrimSpace(body.Name),
 		Description:      body.Description,
 		Instructions:     body.Instructions,
 		AgentKind:        body.AgentKind,
