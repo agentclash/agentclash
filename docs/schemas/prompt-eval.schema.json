@@ -31,20 +31,14 @@
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "alias": {
-            "type": "string"
-          },
-          "model_alias_id": {
+          "model": {
             "type": "string"
           },
           "provider_account": {
             "type": "string"
           }
         },
-        "anyOf": [
-          { "required": ["alias"] },
-          { "required": ["model_alias_id"] }
-        ]
+        "required": ["model"]
       }
     },
     "tests": {

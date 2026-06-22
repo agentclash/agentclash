@@ -40,8 +40,6 @@ CHALLENGE_INPUT_SET_ID="abababab-abab-abab-abab-abababababab"
 CHALLENGE_INPUT_ITEM_ID="cdcdcdcd-cdcd-cdcd-cdcd-cdcdcdcdcdcd"
 RUNTIME_PROFILE_ID="88888888-8888-8888-8888-888888888888"
 PROVIDER_ACCOUNT_ID="99999999-9999-9999-9999-999999999999"
-MODEL_CATALOG_ENTRY_ID="aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
-MODEL_ALIAS_ID="bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
 AGENT_BUILD_ID="cccccccc-cccc-cccc-cccc-cccccccccccc"
 AGENT_BUILD_VERSION_ID="dddddddd-dddd-dddd-dddd-dddddddddddd"
 AGENT_DEPLOYMENT_ID="eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
@@ -50,7 +48,7 @@ AGENT_DEPLOYMENT_SNAPSHOT_ID="ffffffff-ffff-ffff-ffff-ffffffffffff"
 echo "==> Seeding local curl fixture into ${DATABASE_URL}"
 
 psql "${DATABASE_URL}" <<SQL
-TRUNCATE TABLE challenge_packs, organizations, users, model_catalog_entries RESTART IDENTITY CASCADE;
+TRUNCATE TABLE challenge_packs, organizations, users RESTART IDENTITY CASCADE;
 
 INSERT INTO organizations (id, name, slug)
 VALUES ('${ORG_ID}', 'Local Smoke Org', 'local-smoke-org');
@@ -280,42 +278,6 @@ VALUES (
   '{"rpm":60}'::jsonb
 );
 
-INSERT INTO model_catalog_entries (
-  id,
-  provider_key,
-  provider_model_id,
-  display_name,
-  model_family,
-  metadata
-)
-VALUES (
-  '${MODEL_CATALOG_ENTRY_ID}',
-  'openai',
-  '${OPENAI_MODEL}',
-  '${OPENAI_MODEL}',
-  '${OPENAI_MODEL}',
-  '{"tier":"smoke"}'::jsonb
-);
-
-INSERT INTO model_aliases (
-  id,
-  organization_id,
-  workspace_id,
-  provider_account_id,
-  model_catalog_entry_id,
-  alias_key,
-  display_name
-)
-VALUES (
-  '${MODEL_ALIAS_ID}',
-  '${ORG_ID}',
-  '${WORKSPACE_ID}',
-  '${PROVIDER_ACCOUNT_ID}',
-  '${MODEL_CATALOG_ENTRY_ID}',
-  'local-primary-model',
-  'Local Primary Model'
-);
-
 INSERT INTO agent_builds (
   id,
   organization_id,
@@ -364,7 +326,7 @@ INSERT INTO agent_deployments (
   current_build_version_id,
   runtime_profile_id,
   provider_account_id,
-  model_alias_id,
+  model_id,
   name,
   slug,
   deployment_type,
@@ -378,7 +340,7 @@ VALUES (
   '${AGENT_BUILD_VERSION_ID}',
   '${RUNTIME_PROFILE_ID}',
   '${PROVIDER_ACCOUNT_ID}',
-  '${MODEL_ALIAS_ID}',
+  '${OPENAI_MODEL}',
   'Local Smoke Deployment',
   'local-smoke-deployment',
   'native',
@@ -394,7 +356,7 @@ INSERT INTO agent_deployment_snapshots (
   source_agent_build_version_id,
   source_runtime_profile_id,
   source_provider_account_id,
-  source_model_alias_id,
+  source_model_id,
   deployment_type,
   snapshot_hash,
   snapshot_config
@@ -408,7 +370,7 @@ VALUES (
   '${AGENT_BUILD_VERSION_ID}',
   '${RUNTIME_PROFILE_ID}',
   '${PROVIDER_ACCOUNT_ID}',
-  '${MODEL_ALIAS_ID}',
+  '${OPENAI_MODEL}',
   'native',
   'local-smoke-snapshot',
   '{"temperature":0.1}'::jsonb

@@ -1,7 +1,7 @@
 ---
 title: Agents and Deployments
 description: Understand how AgentClash turns a build plus runtime/provider resources into a concrete deployment that can be scheduled into a run.
-dateModified: 2026-06-01
+dateModified: 2026-06-22
 ---
 
 A deployment is the workspace-scoped runnable target that AgentClash can attach to a run.
@@ -13,7 +13,7 @@ AgentClash is stricter than a typical playground because it has to compare like 
 - which build is being run
 - which build version is current
 - which runtime policy applies
-- which provider credentials or model mapping are attached
+- which provider credentials and provider model are attached
 
 That concrete object is the deployment.
 
@@ -29,7 +29,7 @@ The current API schema for `CreateAgentDeploymentRequest` requires:
 It also supports these optional fields:
 
 - `provider_account_id`
-- `model_alias_id`
+- `model`
 - `deployment_config`
 
 The OpenAPI description also says only ready build versions can be deployed. A build version is "ready" once its status has moved from `draft` to `ready` (the other terminal status is `archived`); a draft or archived version cannot be attached to a deployment.
@@ -75,18 +75,9 @@ workspace-secret://PROVIDER_<PROVIDER_KEY>_API_KEY
 
 So the product already prefers indirection over plaintext credentials on the resource itself.
 
-## Model aliases are not just display sugar
+## Provider model IDs are explicit
 
-The user question usually comes out as “provider alias” or “model alias.” In the current product surface, the real resource is `model alias`.
-
-A model alias maps a workspace-friendly key to a model catalog entry, and can optionally be tied to a provider account. The current fields are:
-
-- `alias_key`
-- `display_name`
-- `model_catalog_entry_id`
-- optional `provider_account_id`
-
-That gives you a stable name inside the workspace even if the underlying provider model identifier is ugly or if you need multiple account-specific mappings.
+Deployments now store the provider's model identifier directly. Use `agentclash infra provider-account models <PROVIDER_ACCOUNT_ID>` to discover models reachable with an account, then pass the selected ID as `model`. Deployment snapshots preserve that value for historical runs.
 
 ## A deployment is where these pieces come together
 
@@ -95,7 +86,7 @@ A good way to think about the chain is:
 - agent build version: what logic is being deployed
 - runtime profile: how it is allowed to execute
 - provider account: which credentials or spend limits back external model calls
-- model alias: which model selection the deployment should use consistently
+- model: which provider model the deployment should use consistently
 - deployment: the runnable handle used by runs
 
 This is why the docs should not collapse deployment into “selected model.” The object is richer than that.
@@ -105,7 +96,7 @@ This is why the docs should not collapse deployment into “selected model.” T
 The current repo already exposes the resource model across multiple surfaces:
 
 - CLI `deployment create` and `deployment list`
-- workspace pages for runtime profiles, provider accounts, model aliases, deployments, secrets, and tools
+- workspace pages for runtime profiles, provider accounts, deployments, secrets, and tools
 - run creation UI that asks for challenge pack and deployment selection separately
 
 That separation is deliberate. A run is an execution event. A deployment is reusable infrastructure state.

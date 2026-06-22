@@ -23,7 +23,7 @@ Promotion is asynchronous and user-initiated. `prompt-eval run --follow` must re
 | Assertion signature | Playground evaluation spec validator key/type/metric | Determines which playground group produced the result. |
 | Result row | Playground experiment result validator row | Candidate failure evidence. |
 | Failed assertion row | Regression case candidate | A behavior that should be preserved and rechecked later. |
-| Playground experiment | Evidence run | Source run containing actual output, model alias, provider account, and timestamps. |
+| Playground experiment | Evidence run | Source run containing actual output, provider model ID, provider account, and timestamps. |
 | Regression suite | Regression asset container | Durable home for promoted prompt-eval failures. |
 | Challenge-pack case | Future executable representation | A promoted failure can later be compiled into challenge-pack-like coverage, but prompt eval should not pretend it already is one. |
 
@@ -55,14 +55,14 @@ Recommended fields:
   "source_assertion_key": "contains_correctness_1",
   "source_assertion_type": "contains",
   "source_metric": "correctness",
-  "source_model_alias_id": "ma_...",
+  "source_model": "gpt-5.5",
   "source_provider_account_id": "pa_..."
 }
 ```
 
 Regression case payloads should preserve:
 
-- `payload_snapshot`: prompt variables, rendered prompt when available, model alias/provider account, actual output excerpt, and experiment/result ids.
+- `payload_snapshot`: prompt variables, rendered prompt when available, provider model ID/account, actual output excerpt, and experiment/result ids.
 - `expected_contract`: assertion type, expected value, metric, and threshold context.
 - `failure_summary`: short human-readable assertion failure.
 - `failure_class`: `prompt_eval_assertion_failure` or `prompt_eval_execution_error`.
@@ -80,7 +80,7 @@ source_kind=prompt_eval
 source_config_hash
 source_case_key
 source_assertion_key
-source_model_alias_id
+source_model
 normalized_expected_contract_hash
 ```
 
@@ -129,7 +129,7 @@ Add entry points from:
 The review screen should show:
 
 - case key, assertion type, metric, expected value, actual output excerpt
-- model alias and provider account
+- provider model ID and provider account
 - prompt variables and rendered prompt where available
 - proposed regression title, severity, and failure summary
 - dedupe status: new, already proposed, active, blocked
@@ -151,7 +151,7 @@ This avoids a bad loop where one failing prompt eval immediately mutates future 
 
 - Backend endpoint and repository idempotency for prompt-eval failure promotion.
 - Regression case metadata/source-kind additions.
-- Confirm `prompt-eval run --follow --json` exposes or can recover all promotion provenance before implementing the CLI: metric, assertion key, prompt/test snapshot, playground test case id, model alias id, and provider account id. Add read-only lookup calls if needed; do not add promotion side effects to the run loop.
+- Confirm `prompt-eval run --follow --json` exposes or can recover all promotion provenance before implementing the CLI: metric, assertion key, prompt/test snapshot, playground test case id, provider model ID, and provider account id. Add read-only lookup calls if needed; do not add promotion side effects to the run loop.
 - CLI `prompt-eval promote-failures`.
 - Web promotion review screen.
 - CI comment link to prefilled promotion view once the route exists.

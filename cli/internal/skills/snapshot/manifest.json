@@ -1,17 +1,17 @@
 {
-  "snapshot_version": "c08a76ce9fd6",
+  "snapshot_version": "5674fc82b113",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
       "role": "agent-builds",
       "requires_cli": true,
-      "sha256": "4e37b7d77c34f2cc64cfab80f8e8914d1bfc1743f2bfdf2863796efc8887146d"
+      "sha256": "13d6ffb4888419635066da3647bf9328e33ff5cc55e87d9ce647df74177409da"
     },
     {
       "name": "agentclash-agent-deployment-setup",
       "role": "agent-deployments",
       "requires_cli": true,
-      "sha256": "4c14f26a7c53de60add3aecd46e5a0f65e1d9cb9e42b732ee83a5b281c1a83bc"
+      "sha256": "76bc7df69767c2a176c5e31f0e1d01532c0b8aa565b55473e50a7960a3e59ff9"
     },
     {
       "name": "agentclash-agent-harness-setup",
@@ -71,7 +71,7 @@
       "name": "agentclash-ci-release-gate",
       "role": "ci",
       "requires_cli": true,
-      "sha256": "eff5a5f5092f32cd8f11bfe494e746cd6ed2404505b1ec1c7972db50617a4712"
+      "sha256": "905978a29d85f601759f421064a45db6073a1015727aa552e99791bb14fd70d6"
     },
     {
       "name": "agentclash-cli-setup",
@@ -89,7 +89,7 @@
       "name": "agentclash-dataset-workflows",
       "role": "dataset",
       "requires_cli": true,
-      "sha256": "084f68ccaaa17bcb463300adc8dcc2f0b9e29afb0eec5bf14250046dec12a31c"
+      "sha256": "3a26c97b748657f6ff2983dcd0bf4de0b127acf4fc60279b479f2944754a3491"
     },
     {
       "name": "agentclash-eval-runner",
@@ -131,7 +131,7 @@
       "name": "agentclash-runtime-resources-setup",
       "role": "runtime-resources",
       "requires_cli": true,
-      "sha256": "256ec74d3cc8410fba33b3eb039afe651d4d390a9614a44a6824ab4b70384c62"
+      "sha256": "8c91b5193053f1242dedec9e065c340f9a3761416a743ca5e1ce5da25ff367ef"
     },
     {
       "name": "agentclash-scorecard-reader",

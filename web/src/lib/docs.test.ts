@@ -307,7 +307,7 @@ describe("agent skill docs", () => {
 
     expect(doc?.title).toBe("Runtime Resources Setup Skill");
     expect(doc?.content).toContain("workspace-secret://OPENAI_API_KEY");
-    expect(doc?.content).toContain("agentclash infra model-catalog list");
+    expect(doc?.content).toContain("agentclash infra provider-account models");
     expect(doc?.content).toContain("agentclash infra runtime-profile create --from-file");
     expect(doc?.content).toContain("workspace tools are `agentclash infra tool ...` resources");
     expect(doc?.content).toContain("\"capability_key\": \"inventory.lookup\"");

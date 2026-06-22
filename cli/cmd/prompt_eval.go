@@ -1801,7 +1801,7 @@ func renderPromptEvalRun(rc *RunContext, result promptEvalRunResult) {
 			rows = append(rows, []string{playground.PlaygroundID, experiment.ExperimentID, experiment.Model, output.StatusColor(experiment.Status)})
 		}
 	}
-	rc.Output.PrintTable([]output.Column{{Header: "Playground"}, {Header: "Experiment"}, {Header: "Model Alias"}, {Header: "Status"}}, rows)
+	rc.Output.PrintTable([]output.Column{{Header: "Playground"}, {Header: "Experiment"}, {Header: "Model"}, {Header: "Status"}}, rows)
 }
 
 func renderPromptEvalResults(rc *RunContext, result promptEvalResultsEnvelope) {
