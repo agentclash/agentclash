@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import { Package } from "lucide-react";
 import { PublishPackDialog } from "./publish-pack-dialog";
+import { NewPackButton } from "./new-pack-button";
 
 const lifecycleVariant: Record<string, "default" | "secondary" | "outline"> = {
   runnable: "default",
@@ -47,7 +48,10 @@ export function ChallengePacksClient({ workspaceId }: { workspaceId: string }) {
             Benchmark definitions that agents are tested against.
           </p>
         </div>
-        <PublishPackDialog workspaceId={workspaceId} />
+        <div className="flex items-center gap-2">
+          <NewPackButton workspaceId={workspaceId} />
+          <PublishPackDialog workspaceId={workspaceId} />
+        </div>
       </div>
 
       {error ? (

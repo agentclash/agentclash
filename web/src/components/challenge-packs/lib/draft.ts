@@ -108,6 +108,18 @@ export function setDimensions(composition: Composition, dimensions: DimensionDec
 }
 
 /**
+ * The `key` of every inline piece of a kind — used to populate scorecard
+ * dimension references and case challenge-key selects. Library-referenced
+ * pieces (no inline definition) are resolved server-side, so they don't
+ * contribute keys to the client-side pickers yet.
+ */
+export function pieceKeys(composition: Composition, kind: PieceKind): string[] {
+  return pieceRefs(composition, kind)
+    .map((ref) => (ref.inline as { key?: string } | undefined)?.key)
+    .filter((key): key is string => typeof key === "string" && key.length > 0);
+}
+
+/**
  * Count of cases across inline input-set pieces. Library-referenced input sets
  * are counted server-side at compile time (their definitions aren't resolved
  * client-side), so this is a lower bound used only for the live preview.
