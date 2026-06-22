@@ -63,11 +63,17 @@ BEGIN
 END;
 $$;
 
--- Historical hosted-external deployments legitimately had no model alias.
--- Preserve those rows as an empty model while enforcing the invariant for all
--- native execution paths and for playground experiments.
+-- Some legacy rows have no recoverable model id: historical hosted-external
+-- deployments legitimately had no alias, and a few older native deployments /
+-- playground experiments lost their alias before this migration ran. Coerce
+-- every remaining NULL to '' (so SET NOT NULL succeeds), then add the model-id
+-- invariant as a CHECK that is enforced for all NEW and UPDATED rows (NOT VALID)
+-- but is NOT retroactively validated against those un-fixable legacy rows —
+-- VALIDATE on dirty production data aborts the whole deploy. A follow-up
+-- migration can reconcile the legacy rows and VALIDATE once they are clean.
 UPDATE agent_deployments SET model_id = '' WHERE model_id IS NULL;
 UPDATE agent_deployment_snapshots SET source_model_id = '' WHERE source_model_id IS NULL;
+UPDATE playground_experiments SET model_id = '' WHERE model_id IS NULL;
 
 ALTER TABLE agent_deployments
 ALTER COLUMN model_id SET DEFAULT '',
@@ -75,26 +81,17 @@ ALTER COLUMN model_id SET NOT NULL,
 ADD CONSTRAINT agent_deployments_model_id_required
 CHECK (deployment_type <> 'native' OR btrim(model_id) <> '') NOT VALID;
 
-ALTER TABLE agent_deployments
-VALIDATE CONSTRAINT agent_deployments_model_id_required;
-
 ALTER TABLE agent_deployment_snapshots
 ALTER COLUMN source_model_id SET DEFAULT '',
 ALTER COLUMN source_model_id SET NOT NULL,
 ADD CONSTRAINT agent_deployment_snapshots_model_id_required
 CHECK (deployment_type <> 'native' OR btrim(source_model_id) <> '') NOT VALID;
 
-ALTER TABLE agent_deployment_snapshots
-VALIDATE CONSTRAINT agent_deployment_snapshots_model_id_required;
-
 ALTER TABLE playground_experiments
 ALTER COLUMN model_id SET DEFAULT '',
 ALTER COLUMN model_id SET NOT NULL,
 ADD CONSTRAINT playground_experiments_model_id_required
 CHECK (btrim(model_id) <> '') NOT VALID;
-
-ALTER TABLE playground_experiments
-VALIDATE CONSTRAINT playground_experiments_model_id_required;
 
 -- 3. Drop the alias visibility checks from the deployment/snapshot scope
 --    validation triggers (reproduced from migration 00005 minus the alias block).
