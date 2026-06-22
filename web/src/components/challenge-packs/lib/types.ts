@@ -135,14 +135,53 @@ export interface CaseExpectation {
   source?: string;
 }
 
+// --- multi-turn user simulator (mirror of challengepack.UserSimulatorSpec) ---
+
+export type UserSimulatorActor = "scripted" | "llm" | "human";
+
+export type UserSimulatorTrigger =
+  | "always"
+  | "on_assistant_mismatch"
+  | "on_validator_fail"
+  | "on_judge_below"
+  | "on_agent_loop"
+  | "on_max_llm_turns"
+  | "manual"
+  | "never";
+
+export interface UserSimulatorTurn {
+  message: string;
+  expects?: CaseExpectation[];
+}
+
+export interface UserSimulatorPhase {
+  id: string;
+  actor: UserSimulatorActor;
+  trigger?: UserSimulatorTrigger;
+  turns?: UserSimulatorTurn[];
+  persona?: string;
+  max_turns?: number;
+  until?: string[];
+  timeout_ms?: number;
+  on_timeout?: string;
+  model?: string;
+}
+
+export interface UserSimulatorSpec {
+  schema_version?: number;
+  kind?: string;
+  max_turns?: number;
+  phases: UserSimulatorPhase[];
+}
+
 export interface CaseDefinition {
   challenge_key: string;
   case_key?: string;
   payload?: Record<string, unknown>;
   inputs?: CaseInput[];
   expectations?: CaseExpectation[];
-  // user_simulator is the multi-turn phase flow; typed in the multi-turn phase.
-  user_simulator?: unknown;
+  // Required for multi_turn execution mode; ignored otherwise.
+  user_simulator?: UserSimulatorSpec;
 }
 
 export interface InputSetDefinition {

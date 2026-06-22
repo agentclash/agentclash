@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { pieceKeys, updatePieceRef } from "../lib/draft";
 import type { CaseDefinition, InputSetDefinition } from "../lib/types";
 import { usePackDraft } from "../use-pack-draft";
+import { CaseFlowEditor } from "./flow-editor";
 
 export function InputSetEditor({ index }: { index: number }) {
   const { state, update } = usePackDraft();
@@ -18,6 +19,7 @@ export function InputSetEditor({ index }: { index: number }) {
   }) as InputSetDefinition;
   const challengeKeys = pieceKeys(state.composition, "challenge");
   const cases = def.cases ?? [];
+  const executionMode = state.composition.version.execution_mode ?? "native";
 
   const set = (patch: Partial<InputSetDefinition>) =>
     update((c) => updatePieceRef(c, "input_set", index, { inline: { ...def, ...patch } }));
@@ -95,6 +97,12 @@ export function InputSetEditor({ index }: { index: number }) {
                 </Button>
               </div>
               <PayloadField value={cs.payload} onChange={(payload) => setCase(i, { payload })} />
+              {executionMode === "multi_turn" && (
+                <CaseFlowEditor
+                  value={cs.user_simulator}
+                  onChange={(user_simulator) => setCase(i, { user_simulator })}
+                />
+              )}
             </div>
           ))}
         </div>
