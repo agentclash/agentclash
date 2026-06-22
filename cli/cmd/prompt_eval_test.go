@@ -219,6 +219,28 @@ tests:
 	}
 }
 
+func TestPromptEvalImportPromptfooAllowsSlashModelIDs(t *testing.T) {
+	path := writePromptEvalFixture(t, strings.Replace(
+		validPromptfooYAML(),
+		"openai:gpt-5.5",
+		"openrouter:anthropic/claude-sonnet-4",
+		1,
+	))
+	stdout := captureStdout(t)
+	err := executeCommand(t, []string{"prompt-eval", "import-promptfoo", path, "--provider-account", "ci-openrouter"}, "http://unused")
+	out := stdout.finish()
+	if err != nil {
+		t.Fatalf("import-promptfoo error: %v\n%s", err, out)
+	}
+	var cfg promptEvalConfig
+	if err := yaml.Unmarshal([]byte(out), &cfg); err != nil {
+		t.Fatalf("decode imported yaml: %v\n%s", err, out)
+	}
+	if len(cfg.Models) != 1 || cfg.Models[0].Model != "anthropic/claude-sonnet-4" {
+		t.Fatalf("models = %+v", cfg.Models)
+	}
+}
+
 func TestPromptEvalImportPromptfooWritesOutputWithForce(t *testing.T) {
 	path := writePromptEvalFixture(t, validPromptfooYAML())
 	outPath := filepath.Join(t.TempDir(), "prompt-eval.yaml")

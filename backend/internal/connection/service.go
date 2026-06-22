@@ -160,6 +160,15 @@ func (s *Service) ListModels(ctx context.Context, account repository.ProviderAcc
 	if cached, ok := s.cache.get(account.ID); ok {
 		return cached, nil
 	}
+	if s.router == nil {
+		return nil, provider.NewFailure(
+			account.ProviderKey,
+			provider.FailureCodeUnsupportedCapability,
+			"provider model-list client is not configured",
+			false,
+			nil,
+		)
+	}
 	resolvedCtx, _, err := s.credentialContext(ctx, account)
 	if err != nil {
 		return nil, err

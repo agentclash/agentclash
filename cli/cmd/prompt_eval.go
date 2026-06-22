@@ -1639,7 +1639,7 @@ func promptfooProviderModel(provider string) string {
 	}
 	parts := strings.Split(provider, ":")
 	model := strings.TrimSpace(parts[len(parts)-1])
-	if model == "" || strings.Contains(model, "/") {
+	if model == "" {
 		return ""
 	}
 	return model

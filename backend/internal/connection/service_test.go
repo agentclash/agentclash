@@ -211,3 +211,15 @@ func TestListModelsCachesAndServesStaleOnError(t *testing.T) {
 		t.Fatalf("want stale entry, got %#v", got)
 	}
 }
+
+func TestListModelsUnconfiguredRouterReturnsFailure(t *testing.T) {
+	svc := NewService(&fakeRepo{}, nil)
+	_, err := svc.ListModels(context.Background(), repository.ProviderAccountRow{ProviderKey: "openai"})
+	if err == nil {
+		t.Fatal("ListModels returned nil error with an unconfigured router")
+	}
+	failure, ok := provider.AsFailure(err)
+	if !ok || failure.Code != provider.FailureCodeUnsupportedCapability {
+		t.Fatalf("ListModels error = %v, want unsupported-capability failure", err)
+	}
+}
