@@ -320,3 +320,39 @@ export interface CompileDraftResponse {
   spec_card: SpecCard;
   yaml: string;
 }
+
+// --- challenge pack catalog (the curated library / "templates") ---
+
+/** Editorial grouping for the library gallery (mirror of challengepack catalog categories). */
+export type CatalogCategory = "enterprise" | "agent_capability" | "safety";
+
+/** A curated, ready-to-run pack from GET /v1/challenge-pack-catalog. */
+export interface CatalogPack {
+  slug: string;
+  name: string;
+  family: string;
+  category?: CatalogCategory;
+  tags?: string[];
+  description?: string;
+  difficulty?: string;
+  execution_mode: ExecutionMode;
+  estimated_cost_usd?: number;
+  estimated_runtime_ms?: number;
+  spec_card: SpecCard;
+}
+
+/** Catalog detail (GET /v1/challenge-pack-catalog/{slug}) — adds the runnable YAML. */
+export interface CatalogPackDetail extends CatalogPack {
+  yaml: string;
+}
+
+/** Response of POST .../challenge-pack-catalog/{slug}/instantiate. */
+export interface InstantiateCatalogPackResponse {
+  challenge_pack_id: string;
+  challenge_pack_version_id: string;
+  evaluation_spec_id?: string;
+  input_set_ids?: string[];
+  slug: string;
+  already_existed: boolean;
+  runnable: boolean;
+}

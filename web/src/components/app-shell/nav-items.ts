@@ -17,6 +17,7 @@ import {
   FileArchive,
   Lock,
   Cog,
+  LibraryBig,
   type LucideIcon,
 } from "lucide-react";
 
@@ -64,6 +65,11 @@ export const navSections: NavSection[] = [
         label: "Challenge Packs",
         href: (id) => `/workspaces/${id}/challenge-packs`,
         icon: PackageOpen,
+      },
+      {
+        label: "Pack Library",
+        href: (id) => `/workspaces/${id}/challenge-packs/library`,
+        icon: LibraryBig,
       },
       {
         label: "Datasets",
