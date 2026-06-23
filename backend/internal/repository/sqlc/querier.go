@@ -117,6 +117,7 @@ type Querier interface {
 	GetRunnableChallengePackVersionByID(ctx context.Context, arg GetRunnableChallengePackVersionByIDParams) (ChallengePackVersion, error)
 	GetVibeEvalConversationByID(ctx context.Context, arg GetVibeEvalConversationByIDParams) (VibeEvalConversation, error)
 	GetVibeEvalDraftByID(ctx context.Context, arg GetVibeEvalDraftByIDParams) (VibeEvalDraft, error)
+	GetWorkspaceChallengePackVersionBySlug(ctx context.Context, arg GetWorkspaceChallengePackVersionBySlugParams) (GetWorkspaceChallengePackVersionBySlugRow, error)
 	GetWorkspaceUsageWindowRaceCount(ctx context.Context, arg GetWorkspaceUsageWindowRaceCountParams) (int32, error)
 	InsertDatasetBaseline(ctx context.Context, arg InsertDatasetBaselineParams) (DatasetBaseline, error)
 	InsertDatasetExample(ctx context.Context, arg InsertDatasetExampleParams) (DatasetExample, error)
