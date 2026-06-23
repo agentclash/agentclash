@@ -180,6 +180,9 @@ export function PackDraftProvider({
       await patchDraft(token, workspaceId, draftId, { composition: compositionRef.current });
       const result = await publishDraft(token, workspaceId, draftId);
       toast.success("Challenge pack published");
+      // Re-enable the button before navigating so an intercepted navigation
+      // (redirect, route guard) can't leave Publish permanently disabled.
+      dispatch({ type: "publishingDone" });
       router.push(`/workspaces/${workspaceId}/challenge-packs/${result.challenge_pack_id}`);
     } catch (err) {
       if (err instanceof ApiError) {
