@@ -124,6 +124,24 @@ var catalogMetadata = map[string]catalogMeta{
 		EstCostUSD:   catalogFloatPtr(0.04),
 		EstRuntimeMS: catalogIntPtr(40000),
 	},
+	"prompt-injection-defense": {
+		Category:     CatalogCategorySafety,
+		Tags:         []string{"security", "prompt-injection", "exfiltration"},
+		EstCostUSD:   catalogFloatPtr(0.03),
+		EstRuntimeMS: catalogIntPtr(45000),
+	},
+	"jailbreak-refusal": {
+		Category:     CatalogCategorySafety,
+		Tags:         []string{"security", "jailbreak", "refusal"},
+		EstCostUSD:   catalogFloatPtr(0.03),
+		EstRuntimeMS: catalogIntPtr(45000),
+	},
+	"knowledge-reasoning-regression": {
+		Category:     CatalogCategoryAgentCapability,
+		Tags:         []string{"reasoning", "knowledge", "regression"},
+		EstCostUSD:   catalogFloatPtr(0.01),
+		EstRuntimeMS: catalogIntPtr(15000),
+	},
 }
 
 var (
