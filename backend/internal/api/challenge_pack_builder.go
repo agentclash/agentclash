@@ -33,6 +33,9 @@ type ChallengePackBuilderRepository interface {
 	ListChallengePackDrafts(ctx context.Context, workspaceID uuid.UUID) ([]repository.ChallengePackDraft, error)
 	PatchChallengePackDraft(ctx context.Context, params repository.PatchChallengePackDraftParams) (repository.ChallengePackDraft, error)
 	DeleteChallengePackDraft(ctx context.Context, id uuid.UUID) error
+	// Used to hydrate a draft from an already-published pack (edit-in-builder).
+	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
+	WorkspacePublicPacksEnabled(ctx context.Context, workspaceID uuid.UUID) (bool, error)
 }
 
 // ChallengePackBuilderService is the full builder surface: reusable piece CRUD,
@@ -80,6 +83,10 @@ type CreateDraftInput struct {
 	ChallengePackID *uuid.UUID
 	Composition     json.RawMessage
 	CreatedBy       uuid.UUID
+	// FromChallengePackVersionID, when set, hydrates the draft's composition from
+	// an already-published pack version (edit-in-builder). Mutually exclusive
+	// with Composition.
+	FromChallengePackVersionID *uuid.UUID
 }
 
 type PatchDraftInput struct {
@@ -226,20 +233,96 @@ func (m *ChallengePackBuilderManager) CreateDraft(ctx context.Context, caller Ca
 	if err := m.authorize(ctx, caller, input.WorkspaceID); err != nil {
 		return repository.ChallengePackDraft{}, err
 	}
-	if strings.TrimSpace(input.Name) == "" {
-		return repository.ChallengePackDraft{}, builderValidationError("name", "is required")
-	}
 	if input.ExecutionMode != "" && !isValidExecutionMode(input.ExecutionMode) {
 		return repository.ChallengePackDraft{}, builderValidationError("execution_mode", "must be one of native, prompt_eval, responses, multi_turn")
 	}
+
+	name := input.Name
+	executionMode := input.ExecutionMode
+	composition := input.Composition
+	challengePackID := input.ChallengePackID
+
+	// Edit-in-builder: hydrate the composition from an already-published pack.
+	if input.FromChallengePackVersionID != nil {
+		if len(composition) > 0 {
+			return repository.ChallengePackDraft{}, builderValidationError("composition", "must be omitted when from_challenge_pack_version_id is set")
+		}
+		hydrated, err := m.hydrateDraftFromVersion(ctx, input.WorkspaceID, *input.FromChallengePackVersionID)
+		if err != nil {
+			return repository.ChallengePackDraft{}, err
+		}
+		composition = hydrated.composition
+		challengePackID = &hydrated.challengePackID
+		if executionMode == "" {
+			executionMode = hydrated.executionMode
+		}
+		if strings.TrimSpace(name) == "" {
+			name = hydrated.name
+		}
+	}
+
+	if strings.TrimSpace(name) == "" {
+		return repository.ChallengePackDraft{}, builderValidationError("name", "is required")
+	}
+
 	return m.repo.CreateChallengePackDraft(ctx, repository.CreateChallengePackDraftParams{
 		WorkspaceID:     input.WorkspaceID,
-		Name:            input.Name,
-		ExecutionMode:   input.ExecutionMode,
-		ChallengePackID: input.ChallengePackID,
-		Composition:     input.Composition,
+		Name:            name,
+		ExecutionMode:   executionMode,
+		ChallengePackID: challengePackID,
+		Composition:     composition,
 		CreatedByUserID: optionalUserID(input.CreatedBy),
 	})
+}
+
+type hydratedDraft struct {
+	composition     json.RawMessage
+	name            string
+	executionMode   string
+	challengePackID uuid.UUID
+}
+
+// hydrateDraftFromVersion loads a published pack version, decompiles its
+// manifest into a builder composition, and returns it for seeding a new draft.
+// Visibility mirrors run creation: a workspace can only open its own packs, or
+// global packs when public packs are enabled.
+func (m *ChallengePackBuilderManager) hydrateDraftFromVersion(ctx context.Context, workspaceID, versionID uuid.UUID) (hydratedDraft, error) {
+	version, err := m.repo.GetRunnableChallengePackVersionByID(ctx, versionID)
+	if err != nil {
+		return hydratedDraft{}, err
+	}
+	if version.WorkspaceID != nil && *version.WorkspaceID != workspaceID {
+		return hydratedDraft{}, repository.ErrChallengePackVersionNotFound
+	}
+	if version.WorkspaceID == nil {
+		enabled, accessErr := m.repo.WorkspacePublicPacksEnabled(ctx, workspaceID)
+		if accessErr != nil {
+			return hydratedDraft{}, accessErr
+		}
+		if !enabled {
+			return hydratedDraft{}, repository.ErrChallengePackVersionNotFound
+		}
+	}
+
+	bundle, err := challengepack.ManifestToBundle(version.Manifest)
+	if err != nil {
+		return hydratedDraft{}, fmt.Errorf("reconstruct bundle from manifest: %w", err)
+	}
+	comp, err := challengepack.BundleToComposition(bundle)
+	if err != nil {
+		return hydratedDraft{}, fmt.Errorf("decompose bundle into composition: %w", err)
+	}
+	encoded, err := json.Marshal(comp)
+	if err != nil {
+		return hydratedDraft{}, fmt.Errorf("marshal hydrated composition: %w", err)
+	}
+
+	return hydratedDraft{
+		composition:     encoded,
+		name:            bundle.Pack.Name,
+		executionMode:   bundle.Version.ExecutionMode,
+		challengePackID: version.ChallengePackID,
+	}, nil
 }
 
 func (m *ChallengePackBuilderManager) GetDraft(ctx context.Context, caller Caller, workspaceID, draftID uuid.UUID) (repository.ChallengePackDraft, error) {
@@ -600,22 +683,24 @@ func createChallengePackDraftHandler(logger *slog.Logger, service ChallengePackB
 			return
 		}
 		var req struct {
-			Name            string          `json:"name"`
-			ExecutionMode   string          `json:"execution_mode"`
-			ChallengePackID *uuid.UUID      `json:"challenge_pack_id"`
-			Composition     json.RawMessage `json:"composition"`
+			Name                       string          `json:"name"`
+			ExecutionMode              string          `json:"execution_mode"`
+			ChallengePackID            *uuid.UUID      `json:"challenge_pack_id"`
+			Composition                json.RawMessage `json:"composition"`
+			FromChallengePackVersionID *uuid.UUID      `json:"from_challenge_pack_version_id"`
 		}
 		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
 			return
 		}
 		draft, err := service.CreateDraft(r.Context(), caller, CreateDraftInput{
-			WorkspaceID:     workspaceID,
-			Name:            req.Name,
-			ExecutionMode:   req.ExecutionMode,
-			ChallengePackID: req.ChallengePackID,
-			Composition:     req.Composition,
-			CreatedBy:       caller.UserID,
+			WorkspaceID:                workspaceID,
+			Name:                       req.Name,
+			ExecutionMode:              req.ExecutionMode,
+			ChallengePackID:            req.ChallengePackID,
+			Composition:                req.Composition,
+			CreatedBy:                  caller.UserID,
+			FromChallengePackVersionID: req.FromChallengePackVersionID,
 		})
 		if err != nil {
 			handleChallengePackBuilderError(w, logger, err)
