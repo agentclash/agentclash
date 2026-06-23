@@ -16,16 +16,18 @@ UPDATE challenge_pieces
 SET lifecycle_status = 'archived',
     archived_at = now()
 WHERE id = $1
+  AND workspace_id = $2
   AND lifecycle_status = 'active'
 RETURNING id, workspace_id, kind, slug, name, description, definition, lifecycle_status, created_by_user_id, created_at, updated_at, archived_at
 `
 
 type ArchiveChallengePieceParams struct {
-	ID uuid.UUID
+	ID          uuid.UUID
+	WorkspaceID uuid.UUID
 }
 
 func (q *Queries) ArchiveChallengePiece(ctx context.Context, arg ArchiveChallengePieceParams) (ChallengePiece, error) {
-	row := q.db.QueryRow(ctx, archiveChallengePiece, arg.ID)
+	row := q.db.QueryRow(ctx, archiveChallengePiece, arg.ID, arg.WorkspaceID)
 	var i ChallengePiece
 	err := row.Scan(
 		&i.ID,
@@ -107,6 +109,7 @@ const getChallengePieceByID = `-- name: GetChallengePieceByID :one
 SELECT id, workspace_id, kind, slug, name, description, definition, lifecycle_status, created_by_user_id, created_at, updated_at, archived_at
 FROM challenge_pieces
 WHERE id = $1
+  AND lifecycle_status = 'active'
 LIMIT 1
 `
 
@@ -138,15 +141,17 @@ const listChallengePiecesByIDs = `-- name: ListChallengePiecesByIDs :many
 SELECT id, workspace_id, kind, slug, name, description, definition, lifecycle_status, created_by_user_id, created_at, updated_at, archived_at
 FROM challenge_pieces
 WHERE id = ANY ($1::uuid[])
+  AND workspace_id = $2
   AND lifecycle_status = 'active'
 `
 
 type ListChallengePiecesByIDsParams struct {
-	Ids []uuid.UUID
+	Ids         []uuid.UUID
+	WorkspaceID uuid.UUID
 }
 
 func (q *Queries) ListChallengePiecesByIDs(ctx context.Context, arg ListChallengePiecesByIDsParams) ([]ChallengePiece, error) {
-	rows, err := q.db.Query(ctx, listChallengePiecesByIDs, arg.Ids)
+	rows, err := q.db.Query(ctx, listChallengePiecesByIDs, arg.Ids, arg.WorkspaceID)
 	if err != nil {
 		return nil, err
 	}
@@ -232,6 +237,7 @@ SET name = COALESCE($1, name),
     description = COALESCE($3, description),
     definition = COALESCE($4::jsonb, definition)
 WHERE id = $5
+  AND workspace_id = $6
   AND lifecycle_status = 'active'
 RETURNING id, workspace_id, kind, slug, name, description, definition, lifecycle_status, created_by_user_id, created_at, updated_at, archived_at
 `
@@ -242,6 +248,7 @@ type PatchChallengePieceParams struct {
 	Description *string
 	Definition  []byte
 	ID          uuid.UUID
+	WorkspaceID uuid.UUID
 }
 
 func (q *Queries) PatchChallengePiece(ctx context.Context, arg PatchChallengePieceParams) (ChallengePiece, error) {
@@ -251,6 +258,7 @@ func (q *Queries) PatchChallengePiece(ctx context.Context, arg PatchChallengePie
 		arg.Description,
 		arg.Definition,
 		arg.ID,
+		arg.WorkspaceID,
 	)
 	var i ChallengePiece
 	err := row.Scan(

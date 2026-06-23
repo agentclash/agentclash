@@ -54,6 +54,7 @@ type CreateChallengePieceParams struct {
 
 type PatchChallengePieceParams struct {
 	ID          uuid.UUID
+	WorkspaceID uuid.UUID
 	Name        *string
 	Slug        *string
 	Description *string
@@ -105,11 +106,11 @@ func (r *Repository) ListChallengePieces(ctx context.Context, workspaceID uuid.U
 
 // ListChallengePiecesByIDs resolves a set of pieces by id (used at compile time
 // to snapshot referenced pieces into a manifest).
-func (r *Repository) ListChallengePiecesByIDs(ctx context.Context, ids []uuid.UUID) ([]ChallengePiece, error) {
+func (r *Repository) ListChallengePiecesByIDs(ctx context.Context, workspaceID uuid.UUID, ids []uuid.UUID) ([]ChallengePiece, error) {
 	if len(ids) == 0 {
 		return nil, nil
 	}
-	rows, err := r.queries.ListChallengePiecesByIDs(ctx, repositorysqlc.ListChallengePiecesByIDsParams{Ids: ids})
+	rows, err := r.queries.ListChallengePiecesByIDs(ctx, repositorysqlc.ListChallengePiecesByIDsParams{Ids: ids, WorkspaceID: workspaceID})
 	if err != nil {
 		return nil, fmt.Errorf("list challenge pieces by ids: %w", err)
 	}
@@ -119,6 +120,7 @@ func (r *Repository) ListChallengePiecesByIDs(ctx context.Context, ids []uuid.UU
 func (r *Repository) PatchChallengePiece(ctx context.Context, params PatchChallengePieceParams) (ChallengePiece, error) {
 	row, err := r.queries.PatchChallengePiece(ctx, repositorysqlc.PatchChallengePieceParams{
 		ID:          params.ID,
+		WorkspaceID: params.WorkspaceID,
 		Name:        trimmedPtr(params.Name),
 		Slug:        trimmedPtr(params.Slug),
 		Description: params.Description,
@@ -136,8 +138,8 @@ func (r *Repository) PatchChallengePiece(ctx context.Context, params PatchChalle
 	return mapChallengePiece(row)
 }
 
-func (r *Repository) ArchiveChallengePiece(ctx context.Context, id uuid.UUID) error {
-	if _, err := r.queries.ArchiveChallengePiece(ctx, repositorysqlc.ArchiveChallengePieceParams{ID: id}); err != nil {
+func (r *Repository) ArchiveChallengePiece(ctx context.Context, workspaceID, id uuid.UUID) error {
+	if _, err := r.queries.ArchiveChallengePiece(ctx, repositorysqlc.ArchiveChallengePieceParams{ID: id, WorkspaceID: workspaceID}); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ErrChallengePieceNotFound
 		}

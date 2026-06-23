@@ -13034,6 +13034,7 @@ components:
           name,
           description,
           definition,
+          lifecycle_status,
           created_at,
           updated_at,
         ]
@@ -13061,6 +13062,9 @@ components:
           type: object
           additionalProperties: true
           description: Free-form piece definition; its shape depends on `kind`.
+        lifecycle_status:
+          type: string
+          enum: [active, archived]
         created_at:
           type: string
           format: date-time

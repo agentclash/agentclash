@@ -22,6 +22,7 @@ RETURNING *;
 SELECT *
 FROM challenge_pieces
 WHERE id = @id
+  AND lifecycle_status = 'active'
 LIMIT 1;
 
 -- name: ListChallengePiecesByWorkspace :many
@@ -36,6 +37,7 @@ ORDER BY created_at DESC, id DESC;
 SELECT *
 FROM challenge_pieces
 WHERE id = ANY (@ids::uuid[])
+  AND workspace_id = @workspace_id
   AND lifecycle_status = 'active';
 
 -- name: PatchChallengePiece :one
@@ -45,6 +47,7 @@ SET name = COALESCE(sqlc.narg('name'), name),
     description = COALESCE(sqlc.narg('description'), description),
     definition = COALESCE(sqlc.narg('definition')::jsonb, definition)
 WHERE id = @id
+  AND workspace_id = @workspace_id
   AND lifecycle_status = 'active'
 RETURNING *;
 
@@ -53,5 +56,6 @@ UPDATE challenge_pieces
 SET lifecycle_status = 'archived',
     archived_at = now()
 WHERE id = @id
+  AND workspace_id = @workspace_id
   AND lifecycle_status = 'active'
 RETURNING *;

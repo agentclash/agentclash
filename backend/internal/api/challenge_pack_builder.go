@@ -25,9 +25,9 @@ type ChallengePackBuilderRepository interface {
 	CreateChallengePiece(ctx context.Context, params repository.CreateChallengePieceParams) (repository.ChallengePiece, error)
 	GetChallengePieceByID(ctx context.Context, id uuid.UUID) (repository.ChallengePiece, error)
 	ListChallengePieces(ctx context.Context, workspaceID uuid.UUID, kind *string) ([]repository.ChallengePiece, error)
-	ListChallengePiecesByIDs(ctx context.Context, ids []uuid.UUID) ([]repository.ChallengePiece, error)
+	ListChallengePiecesByIDs(ctx context.Context, workspaceID uuid.UUID, ids []uuid.UUID) ([]repository.ChallengePiece, error)
 	PatchChallengePiece(ctx context.Context, params repository.PatchChallengePieceParams) (repository.ChallengePiece, error)
-	ArchiveChallengePiece(ctx context.Context, id uuid.UUID) error
+	ArchiveChallengePiece(ctx context.Context, workspaceID, id uuid.UUID) error
 	CreateChallengePackDraft(ctx context.Context, params repository.CreateChallengePackDraftParams) (repository.ChallengePackDraft, error)
 	GetChallengePackDraftByID(ctx context.Context, id uuid.UUID) (repository.ChallengePackDraft, error)
 	ListChallengePackDrafts(ctx context.Context, workspaceID uuid.UUID) ([]repository.ChallengePackDraft, error)
@@ -200,6 +200,7 @@ func (m *ChallengePackBuilderManager) PatchPiece(ctx context.Context, caller Cal
 	}
 	return m.repo.PatchChallengePiece(ctx, repository.PatchChallengePieceParams{
 		ID:          input.PieceID,
+		WorkspaceID: input.WorkspaceID,
 		Name:        input.Name,
 		Slug:        input.Slug,
 		Description: input.Description,
@@ -211,7 +212,7 @@ func (m *ChallengePackBuilderManager) ArchivePiece(ctx context.Context, caller C
 	if _, err := m.GetPiece(ctx, caller, workspaceID, pieceID); err != nil {
 		return err
 	}
-	return m.repo.ArchiveChallengePiece(ctx, pieceID)
+	return m.repo.ArchiveChallengePiece(ctx, workspaceID, pieceID)
 }
 
 func (m *ChallengePackBuilderManager) ListDrafts(ctx context.Context, caller Caller, workspaceID uuid.UUID) ([]repository.ChallengePackDraft, error) {
@@ -358,14 +359,13 @@ func (m *ChallengePackBuilderManager) composeDraft(ctx context.Context, draft re
 
 	resolved := challengepack.ResolvedPieces{}
 	if ids := composition.ReferencedPieceIDs(); len(ids) > 0 {
-		pieces, err := m.repo.ListChallengePiecesByIDs(ctx, ids)
+		pieces, err := m.repo.ListChallengePiecesByIDs(ctx, draft.WorkspaceID, ids)
 		if err != nil {
 			return challengepack.Bundle{}, fmt.Errorf("resolve referenced pieces: %w", err)
 		}
+		// The query is already workspace-scoped, so every returned piece
+		// belongs to the draft's workspace.
 		for _, piece := range pieces {
-			if piece.WorkspaceID != draft.WorkspaceID {
-				continue
-			}
 			resolved[piece.ID] = piece.Definition
 		}
 	}
@@ -774,6 +774,8 @@ func handleChallengePackBuilderError(w http.ResponseWriter, logger *slog.Logger,
 	var builderValidation ChallengePackBuilderValidationError
 	var authoringValidation ChallengePackAuthoringValidationError
 	switch {
+	case errors.Is(err, errChallengePackBuilderUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "challenge pack builder is not configured")
 	case errors.As(err, &builderValidation):
 		writeJSON(w, http.StatusBadRequest, ValidateChallengePackResponse{Valid: false, Errors: builderValidation.Errors})
 	case errors.As(err, &authoringValidation):
@@ -799,15 +801,16 @@ func handleChallengePackBuilderError(w http.ResponseWriter, logger *slog.Logger,
 // --- response shapes ---
 
 type challengePieceResponse struct {
-	ID          uuid.UUID       `json:"id"`
-	WorkspaceID uuid.UUID       `json:"workspace_id"`
-	Kind        string          `json:"kind"`
-	Slug        string          `json:"slug"`
-	Name        string          `json:"name"`
-	Description string          `json:"description"`
-	Definition  json.RawMessage `json:"definition"`
-	CreatedAt   time.Time       `json:"created_at"`
-	UpdatedAt   time.Time       `json:"updated_at"`
+	ID              uuid.UUID       `json:"id"`
+	WorkspaceID     uuid.UUID       `json:"workspace_id"`
+	Kind            string          `json:"kind"`
+	Slug            string          `json:"slug"`
+	Name            string          `json:"name"`
+	Description     string          `json:"description"`
+	Definition      json.RawMessage `json:"definition"`
+	LifecycleStatus string          `json:"lifecycle_status"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
 }
 
 type challengePackDraftResponse struct {
@@ -836,15 +839,16 @@ func buildChallengePieceResponse(piece repository.ChallengePiece) challengePiece
 		definition = json.RawMessage("{}")
 	}
 	return challengePieceResponse{
-		ID:          piece.ID,
-		WorkspaceID: piece.WorkspaceID,
-		Kind:        piece.Kind,
-		Slug:        piece.Slug,
-		Name:        piece.Name,
-		Description: piece.Description,
-		Definition:  definition,
-		CreatedAt:   piece.CreatedAt,
-		UpdatedAt:   piece.UpdatedAt,
+		ID:              piece.ID,
+		WorkspaceID:     piece.WorkspaceID,
+		Kind:            piece.Kind,
+		Slug:            piece.Slug,
+		Name:            piece.Name,
+		Description:     piece.Description,
+		Definition:      definition,
+		LifecycleStatus: piece.LifecycleStatus,
+		CreatedAt:       piece.CreatedAt,
+		UpdatedAt:       piece.UpdatedAt,
 	}
 }
 
