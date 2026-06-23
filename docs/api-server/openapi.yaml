@@ -4736,6 +4736,113 @@ paths:
                       $ref: "#/components/schemas/StarterPiece"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
+  /v1/challenge-pack-catalog:
+    get:
+      operationId: listChallengePackCatalog
+      tags: [ChallengePacks]
+      summary: List the curated challenge-pack library
+      description: >
+        A global, read-only catalog of ready-to-run challenge packs ("templates")
+        users can clone into a workspace. Not workspace-scoped. The raw YAML body
+        is omitted from list items; fetch the detail endpoint for it.
+      security:
+        - bearerJWT: []
+      parameters:
+        - name: family
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [enterprise, agent_capability, safety]
+      responses:
+        "200":
+          description: Curated catalog entries
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ChallengePackCatalogSummary"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+  /v1/challenge-pack-catalog/{slug}:
+    get:
+      operationId: getChallengePackCatalogEntry
+      tags: [ChallengePacks]
+      summary: Get a catalog entry including its runnable YAML
+      security:
+        - bearerJWT: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Catalog entry with raw YAML
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengePackCatalogEntry"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+  /v1/workspaces/{workspaceID}/challenge-pack-catalog/{slug}/instantiate:
+    post:
+      operationId: instantiateChallengePackCatalog
+      tags: [ChallengePacks]
+      summary: Clone a catalog pack into the workspace
+      description: >
+        Clones a curated library pack into the caller's workspace as a runnable,
+        fully-owned pack. Idempotent: adding the same template twice returns the
+        existing pack (200, already_existed=true) instead of erroring. Returns 201
+        for a fresh clone. The curated library is not gated by the private-packs
+        entitlement.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Workspace already had this pack; returns the existing copy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstantiateChallengePackCatalogResponse"
+        "201":
+          description: Catalog pack cloned into the workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InstantiateChallengePackCatalogResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: A different pack already uses this slug in the workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
   /v1/workspaces/{workspaceID}/challenge-pieces:
     get:
       operationId: listChallengePieces
@@ -13020,6 +13127,74 @@ components:
         bundle_artifact_id:
           type: string
           format: uuid
+
+    ChallengePackCatalogSummary:
+      type: object
+      required: [slug, name, family, execution_mode, spec_card]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        family:
+          type: string
+        category:
+          type: string
+          enum: [enterprise, agent_capability, safety]
+        tags:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+        difficulty:
+          type: string
+          enum: [easy, medium, hard, expert]
+        execution_mode:
+          type: string
+        estimated_cost_usd:
+          type: number
+        estimated_runtime_ms:
+          type: integer
+          format: int64
+        spec_card:
+          $ref: "#/components/schemas/SpecCard"
+
+    ChallengePackCatalogEntry:
+      allOf:
+        - $ref: "#/components/schemas/ChallengePackCatalogSummary"
+        - type: object
+          required: [yaml]
+          properties:
+            yaml:
+              type: string
+              description: The raw, runnable challenge-pack bundle YAML.
+
+    InstantiateChallengePackCatalogResponse:
+      type: object
+      required: [challenge_pack_id, challenge_pack_version_id, slug, already_existed, runnable]
+      properties:
+        challenge_pack_id:
+          type: string
+          format: uuid
+        challenge_pack_version_id:
+          type: string
+          format: uuid
+        evaluation_spec_id:
+          type: string
+          format: uuid
+        input_set_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        slug:
+          type: string
+        already_existed:
+          type: boolean
+          description: True when the workspace already had this pack and the existing copy was returned.
+        runnable:
+          type: boolean
 
     # --- Challenge Pack Builder ---
 

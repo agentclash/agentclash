@@ -5,6 +5,7 @@ import type { ChallengePack } from "@/lib/api/types";
 import { useApiListQuery } from "@/lib/api/swr";
 import { WorkspaceListLoading } from "@/components/app-shell/workspace-loading";
 import { Badge } from "@/components/ui/badge";
+import { buttonVariants } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { VoiceModeBadges } from "@/components/voice/voice-mode-badges";
 import { latestChallengePackVersion } from "@/lib/voice-evals";
@@ -49,6 +50,12 @@ export function ChallengePacksClient({ workspaceId }: { workspaceId: string }) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <Link
+            href={`/workspaces/${workspaceId}/challenge-packs/library`}
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            Browse library
+          </Link>
           <NewPackButton workspaceId={workspaceId} />
           <PublishPackDialog workspaceId={workspaceId} />
         </div>
@@ -62,7 +69,11 @@ export function ChallengePacksClient({ workspaceId }: { workspaceId: string }) {
         <EmptyState
           icon={<Package className="size-10" />}
           title="No challenge packs"
-          description="Publish your first challenge pack to define benchmarks for agent evaluation."
+          description="Start from a ready-made template in the library — add it to your workspace and run it in one click — or publish your own."
+          action={{
+            label: "Browse the library",
+            href: `/workspaces/${workspaceId}/challenge-packs/library`,
+          }}
         />
       ) : (
         <div className="rounded-lg border border-border">

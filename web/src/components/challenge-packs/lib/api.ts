@@ -9,6 +9,7 @@ import type {
   CompileDraftResponse,
   Composition,
   ExecutionMode,
+  InstantiateCatalogPackResponse,
   PieceKind,
 } from "./types";
 
@@ -91,4 +92,30 @@ export async function createPiece(
   body: { kind: PieceKind; slug: string; name: string; description?: string; definition: unknown },
 ): Promise<ChallengePiece> {
   return createApiClient(token ?? undefined).post<ChallengePiece>(piecesPath(workspaceId), body);
+}
+
+// --- catalog (the curated library) ---
+// Reads use the SWR hooks against these paths; the instantiate mutation goes
+// through a fresh access token like the other authoring mutations above.
+
+export function catalogPath(): string {
+  return "/v1/challenge-pack-catalog";
+}
+
+export function catalogPackPath(slug: string): string {
+  return `${catalogPath()}/${slug}`;
+}
+
+export function catalogInstantiatePath(workspaceId: string, slug: string): string {
+  return `/v1/workspaces/${workspaceId}/challenge-pack-catalog/${slug}/instantiate`;
+}
+
+export async function instantiateCatalogPack(
+  token: Token,
+  workspaceId: string,
+  slug: string,
+): Promise<InstantiateCatalogPackResponse> {
+  return createApiClient(token ?? undefined).post<InstantiateCatalogPackResponse>(
+    catalogInstantiatePath(workspaceId, slug),
+  );
 }

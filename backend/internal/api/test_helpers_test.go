@@ -27,6 +27,10 @@ func (stubChallengePackAuthoringService) PublishBundle(_ context.Context, _ uuid
 	return PublishChallengePackResponse{}, errors.New("not implemented")
 }
 
+func (stubChallengePackAuthoringService) InstantiateCatalogPack(_ context.Context, _ uuid.UUID, _ string) (InstantiateCatalogPackResponse, error) {
+	return InstantiateCatalogPackResponse{}, errors.New("not implemented")
+}
+
 func (stubAgentBuildService) CreateBuild(_ context.Context, _ Caller, _ uuid.UUID, _ CreateAgentBuildInput) (repository.AgentBuild, error) {
 	return repository.AgentBuild{}, errors.New("not implemented")
 }
