@@ -4706,6 +4706,36 @@ paths:
   # ---------------------------------------------------------------------------
   # Challenge Pack Builder (reusable pieces + drafts)
   # ---------------------------------------------------------------------------
+  /v1/challenge-piece-library:
+    get:
+      operationId: listChallengePieceLibrary
+      tags: [ChallengePacks]
+      summary: List built-in starter pieces
+      description: A global, read-only catalog of starter pieces the builder can clone into a pack. Not workspace-scoped.
+      security:
+        - bearerJWT: []
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [validator, judge, input_set, challenge]
+      responses:
+        "200":
+          description: Starter piece catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StarterPiece"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
   /v1/workspaces/{workspaceID}/challenge-pieces:
     get:
       operationId: listChallengePieces
@@ -13046,6 +13076,24 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ChallengePiece"
+
+    StarterPiece:
+      type: object
+      required: [kind, slug, name, description, definition]
+      properties:
+        kind:
+          type: string
+          enum: [validator, judge, input_set, challenge]
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        definition:
+          type: object
+          additionalProperties: true
+          description: Free-form piece definition; its shape depends on `kind`.
 
     CreateChallengePieceRequest:
       type: object
