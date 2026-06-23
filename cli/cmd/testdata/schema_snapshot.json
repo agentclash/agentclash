@@ -888,6 +888,32 @@
       "runnable": false,
       "subcommands": [
         {
+          "name": "catalog",
+          "path": "agentclash challenge-pack catalog",
+          "short": "Browse and use the curated challenge-pack library",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "list",
+              "path": "agentclash challenge-pack catalog list",
+              "short": "List the curated, ready-to-run challenge packs",
+              "runnable": true
+            },
+            {
+              "name": "use",
+              "path": "agentclash challenge-pack catalog use",
+              "short": "Add a library pack to your workspace and make it runnable",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "slug",
+                  "required": true
+                }
+              ]
+            }
+          ]
+        },
+        {
           "name": "init",
           "path": "agentclash challenge-pack init",
           "short": "Scaffold a minimal challenge pack YAML bundle",
