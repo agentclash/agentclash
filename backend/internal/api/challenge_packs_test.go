@@ -82,6 +82,7 @@ type fakeChallengePackAuthoringRepository struct {
 	bySlugPackID uuid.UUID
 	bySlugVerID  uuid.UUID
 	bySlugFound  bool
+	bySlugErr    error
 }
 
 func (f *fakeChallengePackAuthoringRepository) GetArtifactByID(_ context.Context, artifactID uuid.UUID) (repository.Artifact, error) {
@@ -111,6 +112,9 @@ func (f *fakeChallengePackAuthoringRepository) PublishChallengePackBundle(_ cont
 }
 
 func (f *fakeChallengePackAuthoringRepository) GetWorkspaceChallengePackVersionBySlug(_ context.Context, _ uuid.UUID, _ string) (uuid.UUID, uuid.UUID, bool, error) {
+	if f.bySlugErr != nil {
+		return uuid.Nil, uuid.Nil, false, f.bySlugErr
+	}
 	return f.bySlugPackID, f.bySlugVerID, f.bySlugFound, nil
 }
 

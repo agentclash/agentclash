@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -18,23 +19,15 @@ import (
 // own copy. Used by the catalog instantiate path to return the existing pack
 // idempotently when the same template is added twice.
 func (r *Repository) GetWorkspaceChallengePackVersionBySlug(ctx context.Context, workspaceID uuid.UUID, slug string) (challengePackID uuid.UUID, versionID uuid.UUID, found bool, err error) {
-	row := r.db.QueryRow(ctx, `
-SELECT p.id, v.id
-FROM challenge_packs p
-JOIN challenge_pack_versions v ON v.challenge_pack_id = p.id
-WHERE p.workspace_id = $1
-  AND p.slug = $2
-  AND p.archived_at IS NULL
-  AND v.lifecycle_status = 'runnable'
-  AND v.archived_at IS NULL
-ORDER BY v.version_number DESC
-LIMIT 1`, workspaceID, slug)
-
-	if scanErr := row.Scan(&challengePackID, &versionID); scanErr != nil {
-		if errors.Is(scanErr, pgx.ErrNoRows) {
+	row, err := r.queries.GetWorkspaceChallengePackVersionBySlug(ctx, repositorysqlc.GetWorkspaceChallengePackVersionBySlugParams{
+		WorkspaceID: workspaceID,
+		Slug:        slug,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return uuid.Nil, uuid.Nil, false, nil
 		}
-		return uuid.Nil, uuid.Nil, false, fmt.Errorf("get workspace challenge pack version by slug: %w", scanErr)
+		return uuid.Nil, uuid.Nil, false, fmt.Errorf("get workspace challenge pack version by slug: %w", err)
 	}
-	return challengePackID, versionID, true, nil
+	return row.ChallengePackID, row.ChallengePackVersionID, true, nil
 }

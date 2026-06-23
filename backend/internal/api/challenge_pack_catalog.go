@@ -105,6 +105,8 @@ func instantiateChallengePackCatalogHandler(logger *slog.Logger, service Challen
 				writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 			case errors.Is(err, repository.ErrChallengePackMetadataConflict):
 				writeError(w, http.StatusConflict, "challenge_pack_metadata_conflict", err.Error())
+			case errors.Is(err, repository.ErrChallengePackVersionExists):
+				writeError(w, http.StatusConflict, "challenge_pack_version_exists", err.Error())
 			default:
 				logger.Error("instantiate challenge pack catalog request failed", "slug", slug, "error", err)
 				writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")

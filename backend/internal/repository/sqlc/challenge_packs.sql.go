@@ -12,6 +12,36 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getWorkspaceChallengePackVersionBySlug = `-- name: GetWorkspaceChallengePackVersionBySlug :one
+SELECT p.id AS challenge_pack_id, v.id AS challenge_pack_version_id
+FROM challenge_packs p
+JOIN challenge_pack_versions v ON v.challenge_pack_id = p.id
+WHERE p.workspace_id = $1::uuid
+  AND p.slug = $2
+  AND p.archived_at IS NULL
+  AND v.lifecycle_status = 'runnable'
+  AND v.archived_at IS NULL
+ORDER BY v.version_number DESC
+LIMIT 1
+`
+
+type GetWorkspaceChallengePackVersionBySlugParams struct {
+	WorkspaceID uuid.UUID
+	Slug        string
+}
+
+type GetWorkspaceChallengePackVersionBySlugRow struct {
+	ChallengePackID        uuid.UUID
+	ChallengePackVersionID uuid.UUID
+}
+
+func (q *Queries) GetWorkspaceChallengePackVersionBySlug(ctx context.Context, arg GetWorkspaceChallengePackVersionBySlugParams) (GetWorkspaceChallengePackVersionBySlugRow, error) {
+	row := q.db.QueryRow(ctx, getWorkspaceChallengePackVersionBySlug, arg.WorkspaceID, arg.Slug)
+	var i GetWorkspaceChallengePackVersionBySlugRow
+	err := row.Scan(&i.ChallengePackID, &i.ChallengePackVersionID)
+	return i, err
+}
+
 const listChallengePacks = `-- name: ListChallengePacks :many
 SELECT cp.id, cp.name, cp.description, cp.created_at, cp.updated_at
 FROM challenge_packs cp
