@@ -9,9 +9,9 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/api"
 	"github.com/agentclash/agentclash/backend/internal/budget"
+	"github.com/agentclash/agentclash/backend/internal/connection"
 	"github.com/agentclash/agentclash/backend/internal/email"
 	"github.com/agentclash/agentclash/backend/internal/posthog"
-	"github.com/agentclash/agentclash/backend/internal/connection"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/ratelimit"
@@ -130,6 +130,7 @@ func main() {
 	})
 	challengePackReadManager := api.NewChallengePackReadManager(repo)
 	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)
+	challengePackBuilderManager := api.NewChallengePackBuilderManager(authorizer, repo, challengePackAuthoringManager)
 	publicShareManager := api.NewPublicShareManager(authorizer, repo, cfg.FrontendURL).WithArtifactSigner(artifactManager)
 	agentTryoutManager := api.NewAgentTryoutManager(authorizer, repo).WithArtifactSigner(artifactManager).WithInputAttachmentStore(artifactStore, cfg.ArtifactMaxUploadBytes).WithPublicJudgeModels(cfg.AgentTryoutJudgeModels).WithQuota(api.AgentTryoutQuotaConfig{
 		AnonymousLimit:            cfg.AgentTryoutAnonymousLimit,
@@ -246,6 +247,7 @@ func main() {
 		githubIntegrationManager,
 		challengePackReadManager,
 		challengePackAuthoringManager,
+		challengePackBuilderManager,
 		agentBuildManager,
 		userManager,
 		orgManager,

@@ -4704,6 +4704,392 @@ paths:
           $ref: "#/components/responses/NotFoundError"
 
   # ---------------------------------------------------------------------------
+  # Challenge Pack Builder (reusable pieces + drafts)
+  # ---------------------------------------------------------------------------
+  /v1/challenge-piece-library:
+    get:
+      operationId: listChallengePieceLibrary
+      tags: [ChallengePacks]
+      summary: List built-in starter pieces
+      description: A global, read-only catalog of starter pieces the builder can clone into a pack. Not workspace-scoped.
+      security:
+        - bearerJWT: []
+      parameters:
+        - name: kind
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [validator, judge, input_set, challenge]
+      responses:
+        "200":
+          description: Starter piece catalog
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/StarterPiece"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+  /v1/workspaces/{workspaceID}/challenge-pieces:
+    get:
+      operationId: listChallengePieces
+      tags: [ChallengePacks]
+      summary: List reusable challenge pieces
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - name: kind
+          in: query
+          description: Filter pieces by kind.
+          schema:
+            type: string
+            enum:
+              - validator
+              - judge
+              - input_set
+              - challenge
+      responses:
+        "200":
+          description: Reusable challenge pieces
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListChallengePiecesResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    post:
+      operationId: createChallengePiece
+      tags: [ChallengePacks]
+      summary: Create a reusable challenge piece
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChallengePieceRequest"
+      responses:
+        "201":
+          description: Challenge piece created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengePiece"
+        "400":
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/workspaces/{workspaceID}/challenge-pieces/{pieceID}:
+    get:
+      operationId: getChallengePiece
+      tags: [ChallengePacks]
+      summary: Get a reusable challenge piece
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ChallengePieceID"
+      responses:
+        "200":
+          description: Challenge piece
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengePiece"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      operationId: patchChallengePiece
+      tags: [ChallengePacks]
+      summary: Patch a reusable challenge piece
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ChallengePieceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchChallengePieceRequest"
+      responses:
+        "200":
+          description: Challenge piece updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengePiece"
+        "400":
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          $ref: "#/components/responses/ConflictError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+    delete:
+      operationId: deleteChallengePiece
+      tags: [ChallengePacks]
+      summary: Delete a reusable challenge piece
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ChallengePieceID"
+      responses:
+        "204":
+          description: Challenge piece deleted
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/challenge-pack-drafts:
+    get:
+      operationId: listChallengePackDrafts
+      tags: [ChallengePacks]
+      summary: List challenge pack drafts
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      responses:
+        "200":
+          description: Challenge pack drafts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListChallengePackDraftsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+    post:
+      operationId: createChallengePackDraft
+      tags: [ChallengePacks]
+      summary: Create a challenge pack draft
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChallengePackDraftRequest"
+      responses:
+        "201":
+          description: Challenge pack draft created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengePackDraft"
+        "400":
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+
+  /v1/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}:
+    get:
+      operationId: getChallengePackDraft
+      tags: [ChallengePacks]
+      summary: Get a challenge pack draft
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ChallengePackDraftID"
+      responses:
+        "200":
+          description: Challenge pack draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengePackDraft"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+    patch:
+      operationId: patchChallengePackDraft
+      tags: [ChallengePacks]
+      summary: Patch a challenge pack draft
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ChallengePackDraftID"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PatchChallengePackDraftRequest"
+      responses:
+        "200":
+          description: Challenge pack draft updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChallengePackDraft"
+        "400":
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+    delete:
+      operationId: deleteChallengePackDraft
+      tags: [ChallengePacks]
+      summary: Delete a challenge pack draft
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ChallengePackDraftID"
+      responses:
+        "204":
+          description: Challenge pack draft deleted
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}/compile:
+    post:
+      operationId: compileChallengePackDraft
+      tags: [ChallengePacks]
+      summary: Compile a challenge pack draft
+      description: >
+        Resolves the draft's referenced pieces and validates the composed
+        bundle without publishing it. Returns a readable spec card, the
+        equivalent YAML, and a validation verdict. An incomplete draft compiles
+        with `valid: false` and the missing pieces reported in `errors`.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ChallengePackDraftID"
+      responses:
+        "200":
+          description: Draft compiled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CompileDraftResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
+  /v1/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}/publish:
+    post:
+      operationId: publishChallengePackDraft
+      tags: [ChallengePacks]
+      summary: Publish a challenge pack draft
+      description: >
+        Composes the draft into a runnable bundle, then validates and publishes
+        it through the same path as the raw-YAML publish endpoint, snapshotting
+        an immutable challenge pack version.
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/ChallengePackDraftID"
+      responses:
+        "201":
+          description: Challenge pack published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublishChallengePackResponse"
+        "400":
+          description: Validation errors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+        "409":
+          description: Challenge pack version or metadata conflict
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ---------------------------------------------------------------------------
   # Agent Builds
   # ---------------------------------------------------------------------------
   /v1/workspaces/{workspaceID}/agent-builds:
@@ -6236,6 +6622,20 @@ components:
         format: uuid
     RegressionCaseID:
       name: caseID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ChallengePieceID:
+      name: pieceID
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ChallengePackDraftID:
+      name: draftID
       in: path
       required: true
       schema:
@@ -12620,6 +13020,298 @@ components:
         bundle_artifact_id:
           type: string
           format: uuid
+
+    # --- Challenge Pack Builder ---
+
+    ChallengePiece:
+      type: object
+      required:
+        [
+          id,
+          workspace_id,
+          kind,
+          slug,
+          name,
+          description,
+          definition,
+          lifecycle_status,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+            - validator
+            - judge
+            - input_set
+            - challenge
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        definition:
+          type: object
+          additionalProperties: true
+          description: Free-form piece definition; its shape depends on `kind`.
+        lifecycle_status:
+          type: string
+          enum: [active, archived]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListChallengePiecesResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChallengePiece"
+
+    StarterPiece:
+      type: object
+      required: [kind, slug, name, description, definition]
+      properties:
+        kind:
+          type: string
+          enum: [validator, judge, input_set, challenge]
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        definition:
+          type: object
+          additionalProperties: true
+          description: Free-form piece definition; its shape depends on `kind`.
+
+    CreateChallengePieceRequest:
+      type: object
+      required: [kind, slug, name, definition]
+      properties:
+        kind:
+          type: string
+          enum:
+            - validator
+            - judge
+            - input_set
+            - challenge
+        slug:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        definition:
+          type: object
+          additionalProperties: true
+          description: Free-form piece definition; its shape depends on `kind`.
+
+    PatchChallengePieceRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+        definition:
+          type: object
+          additionalProperties: true
+          description: Free-form piece definition; its shape depends on the piece's kind.
+
+    ChallengePackDraft:
+      type: object
+      required:
+        [
+          id,
+          workspace_id,
+          name,
+          execution_mode,
+          composition,
+          status,
+          created_at,
+          updated_at,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        workspace_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        execution_mode:
+          type: string
+        challenge_pack_id:
+          type: ["string", "null"]
+          format: uuid
+          description: Set when the draft is linked to an existing challenge pack.
+        composition:
+          type: object
+          additionalProperties: true
+          description: Free-form draft composition referencing reusable pieces.
+        status:
+          type: string
+          enum:
+            - draft
+            - published
+            - discarded
+        last_published_version_id:
+          type: ["string", "null"]
+          format: uuid
+          description: Set after the draft has been published to a challenge pack version.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ListChallengePackDraftsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChallengePackDraft"
+
+    CreateChallengePackDraftRequest:
+      type: object
+      required: [name, execution_mode]
+      properties:
+        name:
+          type: string
+        execution_mode:
+          type: string
+          enum:
+            - native
+            - prompt_eval
+            - responses
+            - multi_turn
+        challenge_pack_id:
+          type: string
+          format: uuid
+          description: Optionally link the draft to an existing challenge pack.
+        composition:
+          type: object
+          additionalProperties: true
+          description: Free-form draft composition referencing reusable pieces.
+
+    PatchChallengePackDraftRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        execution_mode:
+          type: string
+          enum:
+            - native
+            - prompt_eval
+            - responses
+            - multi_turn
+        composition:
+          type: object
+          additionalProperties: true
+          description: Free-form draft composition referencing reusable pieces.
+
+    CompileDraftResponse:
+      type: object
+      required: [valid, errors, spec_card, yaml]
+      properties:
+        valid:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationErrorDetail"
+        spec_card:
+          $ref: "#/components/schemas/SpecCard"
+        yaml:
+          type: string
+          description: The equivalent challenge pack bundle rendered as YAML.
+
+    SpecCard:
+      type: object
+      required:
+        [
+          pack_name,
+          slug,
+          family,
+          execution_mode,
+          challenge_count,
+          case_count,
+          validator_count,
+          judge_count,
+          strategy,
+          dimensions,
+          pass_criteria,
+        ]
+      properties:
+        pack_name:
+          type: string
+        slug:
+          type: string
+        family:
+          type: string
+        description:
+          type: string
+        execution_mode:
+          type: string
+        challenge_count:
+          type: integer
+        case_count:
+          type: integer
+        validator_count:
+          type: integer
+        judge_count:
+          type: integer
+        strategy:
+          type: string
+        dimensions:
+          type: array
+          items:
+            $ref: "#/components/schemas/SpecCardDimension"
+        pass_criteria:
+          type: string
+
+    SpecCardDimension:
+      type: object
+      required: [key, source, gate, summary]
+      properties:
+        key:
+          type: string
+        source:
+          type: string
+        weight:
+          type: number
+        gate:
+          type: boolean
+        pass_threshold:
+          type: number
+        references:
+          type: array
+          items:
+            type: string
+        summary:
+          type: string
 
     # --- Agent Builds ---
 
