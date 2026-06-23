@@ -80,6 +80,7 @@ var cpCatalogUseCmd = &cobra.Command{
 
 		var result map[string]any
 		if err := resp.DecodeJSON(&result); err != nil {
+			sp.StopWithError("Failed")
 			return err
 		}
 
