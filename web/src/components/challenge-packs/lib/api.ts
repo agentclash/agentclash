@@ -54,6 +54,20 @@ export async function createDraft(
   );
 }
 
+// createDraftFromVersion opens an already-published pack version in the builder
+// by hydrating a new draft from it (edit-in-builder). The server decompiles the
+// version's manifest into an editable composition.
+export async function createDraftFromVersion(
+  token: Token,
+  workspaceId: string,
+  body: { from_challenge_pack_version_id: string; name?: string },
+): Promise<ChallengePackDraft> {
+  return createApiClient(token ?? undefined).post<ChallengePackDraft>(
+    draftCollectionPath(workspaceId),
+    body,
+  );
+}
+
 export async function patchDraft(
   token: Token,
   workspaceId: string,

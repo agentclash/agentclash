@@ -5,6 +5,7 @@ import { createApiClient } from "@/lib/api/client";
 import type { ChallengePack } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { CreatePublicShareButton } from "@/components/share/create-public-share-button";
+import { EditPackInBuilderButton } from "@/components/challenge-packs/edit-pack-button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { VoiceModeBadges } from "@/components/voice/voice-mode-badges";
 import {
@@ -70,35 +71,47 @@ export default async function PackDetailPage({
   const sortedVersions = [...pack.versions].sort(
     (a, b) => b.version_number - a.version_number,
   );
+  const latestRunnable = sortedVersions.find(
+    (v) => v.lifecycle_status === "runnable",
+  );
 
   return (
     <div>
       {/* Pack header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-1">
-          <Link
-            href={`/workspaces/${workspaceId}/challenge-packs`}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Challenge Packs
-          </Link>
-          <span className="text-muted-foreground/40">/</span>
-          <h1 className="text-lg font-semibold tracking-tight">{pack.name}</h1>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <Link
+              href={`/workspaces/${workspaceId}/challenge-packs`}
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Challenge Packs
+            </Link>
+            <span className="text-muted-foreground/40">/</span>
+            <h1 className="text-lg font-semibold tracking-tight">{pack.name}</h1>
+          </div>
+          {pack.description && (
+            <p className="text-sm text-muted-foreground">{pack.description}</p>
+          )}
+          <div className="mt-2 flex gap-4 text-xs text-muted-foreground/60">
+            <span>
+              ID:{" "}
+              <code className="font-[family-name:var(--font-mono)]">
+                {pack.id}
+              </code>
+            </span>
+            <span>
+              Created: {new Date(pack.created_at).toLocaleDateString()}
+            </span>
+          </div>
         </div>
-        {pack.description && (
-          <p className="text-sm text-muted-foreground">{pack.description}</p>
+        {latestRunnable && (
+          <EditPackInBuilderButton
+            workspaceId={workspaceId}
+            versionId={latestRunnable.id}
+            packName={pack.name}
+          />
         )}
-        <div className="mt-2 flex gap-4 text-xs text-muted-foreground/60">
-          <span>
-            ID:{" "}
-            <code className="font-[family-name:var(--font-mono)]">
-              {pack.id}
-            </code>
-          </span>
-          <span>
-            Created: {new Date(pack.created_at).toLocaleDateString()}
-          </span>
-        </div>
       </div>
 
       {/* Versions */}

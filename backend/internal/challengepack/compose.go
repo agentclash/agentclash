@@ -31,6 +31,39 @@ type Composition struct {
 	Validators    []PieceRef           `json:"validators,omitempty"`
 	Judges        []PieceRef           `json:"judges,omitempty"`
 	Scorecard     CompositionScorecard `json:"scorecard"`
+	// Advanced carries the pack fields the visual builder does not yet edit
+	// (security policy, custom tools, metrics, behavioral signals, post-
+	// execution checks, runtime limits, pricing, voice modality, etc.). It is
+	// an opaque passthrough: ComposeBundle re-applies it verbatim and
+	// BundleToComposition captures it, so a published pack can be reopened in
+	// the builder and re-published with zero data loss even when the builder UI
+	// can't render those fields. Nil for packs that use none of them.
+	Advanced *CompositionAdvanced `json:"advanced,omitempty"`
+}
+
+// CompositionAdvanced is the lossless escape hatch for everything ComposeBundle
+// would otherwise drop. Each field maps 1:1 onto a Bundle / EvaluationSpec
+// field. Edited today via the YAML escape hatch; dedicated editors can land
+// later without changing this contract.
+type CompositionAdvanced struct {
+	// bundle-level
+	Modality           string              `json:"modality,omitempty"`
+	InterfaceSpec      *InterfaceSpec      `json:"interface_spec,omitempty"`
+	Scenario           *ScenarioSpec       `json:"scenario,omitempty"`
+	Tools              map[string]any      `json:"tools,omitempty"`
+	Security           *SecurityPolicy     `json:"security,omitempty"`
+	Filesystem         map[string]any      `json:"filesystem,omitempty"`
+	DeploymentDefaults *DeploymentDefaults `json:"deployment_defaults,omitempty"`
+	Assets             []AssetReference    `json:"assets,omitempty"`
+	// evaluation-spec-level
+	Metrics             []scoring.MetricDeclaration  `json:"metrics,omitempty"`
+	Behavioral          *scoring.BehavioralConfig    `json:"behavioral,omitempty"`
+	PostExecutionChecks []scoring.PostExecutionCheck `json:"post_execution_checks,omitempty"`
+	RuntimeLimits       scoring.RuntimeLimits        `json:"runtime_limits,omitempty"`
+	Pricing             scoring.PricingConfig        `json:"pricing,omitempty"`
+	// scorecard-level
+	Normalization scoring.ScorecardNormalization `json:"normalization,omitempty"`
+	JudgeLimits   *scoring.JudgeLimits           `json:"judge_limits,omitempty"`
 }
 
 // CompositionVersion holds the pack-version-level config the builder edits
@@ -152,6 +185,10 @@ func ComposeBundle(comp Composition, resolved ResolvedPieces) (Bundle, error) {
 		spec.LLMJudges = append(spec.LLMJudges, judge)
 	}
 
+	// Re-apply the advanced passthrough before defaulting/inference so e.g.
+	// metrics participate in judge-mode inference.
+	applyCompositionAdvanced(&bundle, &spec, comp.Advanced)
+
 	if spec.Name == "" {
 		spec.Name = bundle.Pack.Slug
 	}
@@ -164,6 +201,30 @@ func ComposeBundle(comp Composition, resolved ResolvedPieces) (Bundle, error) {
 
 	bundle.Version.EvaluationSpec = spec
 	return bundle, nil
+}
+
+// applyCompositionAdvanced re-applies the advanced passthrough onto the composed
+// bundle + evaluation spec. No-op when adv is nil.
+func applyCompositionAdvanced(bundle *Bundle, spec *scoring.EvaluationSpec, adv *CompositionAdvanced) {
+	if adv == nil {
+		return
+	}
+	bundle.Modality = adv.Modality
+	bundle.InterfaceSpec = adv.InterfaceSpec
+	bundle.Scenario = adv.Scenario
+	bundle.Tools = adv.Tools
+	bundle.Security = adv.Security
+	bundle.Version.Filesystem = adv.Filesystem
+	bundle.Version.DeploymentDefaults = adv.DeploymentDefaults
+	bundle.Version.Assets = adv.Assets
+
+	spec.Metrics = adv.Metrics
+	spec.Behavioral = adv.Behavioral
+	spec.PostExecutionChecks = adv.PostExecutionChecks
+	spec.RuntimeLimits = adv.RuntimeLimits
+	spec.Pricing = adv.Pricing
+	spec.Scorecard.Normalization = adv.Normalization
+	spec.Scorecard.JudgeLimits = adv.JudgeLimits
 }
 
 // decodePiece resolves a piece reference to its definition JSON and decodes it

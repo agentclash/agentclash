@@ -13370,10 +13370,13 @@ components:
 
     CreateChallengePackDraftRequest:
       type: object
-      required: [name, execution_mode]
       properties:
         name:
           type: string
+          description: >
+            Display name. Required when from_challenge_pack_version_id is
+            omitted; optional when it is set - the server defaults it to the
+            source pack's name.
         execution_mode:
           type: string
           enum:
@@ -13389,6 +13392,13 @@ components:
           type: object
           additionalProperties: true
           description: Free-form draft composition referencing reusable pieces.
+        from_challenge_pack_version_id:
+          type: string
+          format: uuid
+          description: >
+            Hydrate the draft's composition from an already-published pack
+            version (edit-in-builder). Mutually exclusive with `composition`.
+            execution_mode and name default from the source pack.
 
     PatchChallengePackDraftRequest:
       type: object

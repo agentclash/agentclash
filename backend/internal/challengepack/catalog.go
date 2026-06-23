@@ -94,6 +94,36 @@ var catalogMetadata = map[string]catalogMeta{
 		EstCostUSD:   catalogFloatPtr(0.005),
 		EstRuntimeMS: catalogIntPtr(10000),
 	},
+	"customer-support-policy": {
+		Category:     CatalogCategoryEnterprise,
+		Tags:         []string{"support", "multi-turn", "policy", "pii"},
+		EstCostUSD:   catalogFloatPtr(0.08),
+		EstRuntimeMS: catalogIntPtr(90000),
+	},
+	"swe-bug-fix": {
+		Category:     CatalogCategoryEnterprise,
+		Tags:         []string{"coding", "swe", "code-execution"},
+		EstCostUSD:   catalogFloatPtr(0.05),
+		EstRuntimeMS: catalogIntPtr(60000),
+	},
+	"rag-faithfulness": {
+		Category:     CatalogCategoryEnterprise,
+		Tags:         []string{"rag", "faithfulness", "citations"},
+		EstCostUSD:   catalogFloatPtr(0.03),
+		EstRuntimeMS: catalogIntPtr(25000),
+	},
+	"summarization-faithfulness": {
+		Category:     CatalogCategoryEnterprise,
+		Tags:         []string{"summarization", "faithfulness", "content"},
+		EstCostUSD:   catalogFloatPtr(0.02),
+		EstRuntimeMS: catalogIntPtr(20000),
+	},
+	"it-helpdesk-triage": {
+		Category:     CatalogCategoryEnterprise,
+		Tags:         []string{"it-ops", "tools", "safety"},
+		EstCostUSD:   catalogFloatPtr(0.04),
+		EstRuntimeMS: catalogIntPtr(40000),
+	},
 }
 
 var (
