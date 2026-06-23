@@ -77,7 +77,11 @@ func (f *fakeChallengePackReadRepository) ListChallengeInputSetsByVersionID(_ co
 }
 
 type fakeChallengePackAuthoringRepository struct {
-	published repository.PublishedChallengePack
+	published    repository.PublishedChallengePack
+	publishErr   error
+	bySlugPackID uuid.UUID
+	bySlugVerID  uuid.UUID
+	bySlugFound  bool
 }
 
 func (f *fakeChallengePackAuthoringRepository) GetArtifactByID(_ context.Context, artifactID uuid.UUID) (repository.Artifact, error) {
@@ -92,6 +96,9 @@ func (f *fakeChallengePackAuthoringRepository) GetOrganizationIDByWorkspaceID(_ 
 }
 
 func (f *fakeChallengePackAuthoringRepository) PublishChallengePackBundle(_ context.Context, _ repository.PublishChallengePackBundleParams) (repository.PublishedChallengePack, error) {
+	if f.publishErr != nil {
+		return repository.PublishedChallengePack{}, f.publishErr
+	}
 	if f.published.ChallengePackID == uuid.Nil {
 		f.published = repository.PublishedChallengePack{
 			ChallengePackID:        uuid.New(),
@@ -101,6 +108,10 @@ func (f *fakeChallengePackAuthoringRepository) PublishChallengePackBundle(_ cont
 		}
 	}
 	return f.published, nil
+}
+
+func (f *fakeChallengePackAuthoringRepository) GetWorkspaceChallengePackVersionBySlug(_ context.Context, _ uuid.UUID, _ string) (uuid.UUID, uuid.UUID, bool, error) {
+	return f.bySlugPackID, f.bySlugVerID, f.bySlugFound, nil
 }
 
 type fakeChallengePackEntitlementGate struct {

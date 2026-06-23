@@ -652,3 +652,7 @@ func (noopChallengePackAuthoringService) ValidateBundle(_ context.Context, _ uui
 func (noopChallengePackAuthoringService) PublishBundle(_ context.Context, _ uuid.UUID, _ []byte) (PublishChallengePackResponse, error) {
 	return PublishChallengePackResponse{}, errors.New("challenge pack authoring service is not configured")
 }
+
+func (noopChallengePackAuthoringService) InstantiateCatalogPack(_ context.Context, _ uuid.UUID, _ string) (InstantiateCatalogPackResponse, error) {
+	return InstantiateCatalogPackResponse{}, errors.New("challenge pack authoring service is not configured")
+}

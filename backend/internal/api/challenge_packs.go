@@ -122,11 +122,13 @@ type ChallengePackAuthoringRepository interface {
 	GetArtifactByID(ctx context.Context, artifactID uuid.UUID) (repository.Artifact, error)
 	GetOrganizationIDByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, error)
 	PublishChallengePackBundle(ctx context.Context, params repository.PublishChallengePackBundleParams) (repository.PublishedChallengePack, error)
+	GetWorkspaceChallengePackVersionBySlug(ctx context.Context, workspaceID uuid.UUID, slug string) (uuid.UUID, uuid.UUID, bool, error)
 }
 
 type ChallengePackAuthoringService interface {
 	ValidateBundle(ctx context.Context, workspaceID uuid.UUID, bundleYAML []byte) (ValidateChallengePackResponse, error)
 	PublishBundle(ctx context.Context, workspaceID uuid.UUID, bundleYAML []byte) (PublishChallengePackResponse, error)
+	InstantiateCatalogPack(ctx context.Context, workspaceID uuid.UUID, slug string) (InstantiateCatalogPackResponse, error)
 }
 
 type ChallengePackAuthoringManager struct {
@@ -240,6 +242,68 @@ func (m *ChallengePackAuthoringManager) PublishBundle(ctx context.Context, works
 		EvaluationSpecID:       published.EvaluationSpecID,
 		InputSetIDs:            published.InputSetIDs,
 		BundleArtifactID:       published.BundleArtifactID,
+	}, nil
+}
+
+// InstantiateCatalogPackResponse is returned when a curated catalog pack is
+// cloned into a workspace. On a fresh clone it carries the full publish result;
+// when the workspace already has the pack (AlreadyExisted), it carries the
+// existing pack + its latest runnable version so the caller can run it right away.
+type InstantiateCatalogPackResponse struct {
+	ChallengePackID        uuid.UUID   `json:"challenge_pack_id"`
+	ChallengePackVersionID uuid.UUID   `json:"challenge_pack_version_id"`
+	EvaluationSpecID       *uuid.UUID  `json:"evaluation_spec_id,omitempty"`
+	InputSetIDs            []uuid.UUID `json:"input_set_ids,omitempty"`
+	Slug                   string      `json:"slug"`
+	AlreadyExisted         bool        `json:"already_existed"`
+	Runnable               bool        `json:"runnable"`
+}
+
+// InstantiateCatalogPack clones a curated library pack (by slug) into the
+// workspace by republishing its embedded YAML through the normal authoring
+// path, so the result is an ordinary, runnable, fully-owned workspace pack the
+// user can run immediately or open in the builder to tweak.
+//
+// It is idempotent: adding the same template twice returns the existing pack
+// instead of failing on the (challenge_pack_id, version_number) uniqueness
+// constraint.
+func (m *ChallengePackAuthoringManager) InstantiateCatalogPack(ctx context.Context, workspaceID uuid.UUID, slug string) (InstantiateCatalogPackResponse, error) {
+	entry, ok, err := challengepack.CatalogBySlug(slug)
+	if err != nil {
+		return InstantiateCatalogPackResponse{}, err
+	}
+	if !ok {
+		return InstantiateCatalogPackResponse{}, errCatalogPackNotFound
+	}
+
+	published, err := m.PublishBundle(ctx, workspaceID, []byte(entry.YAML))
+	if err != nil {
+		if errors.Is(err, repository.ErrChallengePackVersionExists) {
+			packID, versionID, found, lookupErr := m.repo.GetWorkspaceChallengePackVersionBySlug(ctx, workspaceID, entry.Slug)
+			if lookupErr != nil {
+				return InstantiateCatalogPackResponse{}, lookupErr
+			}
+			if found {
+				return InstantiateCatalogPackResponse{
+					ChallengePackID:        packID,
+					ChallengePackVersionID: versionID,
+					Slug:                   entry.Slug,
+					AlreadyExisted:         true,
+					Runnable:               true,
+				}, nil
+			}
+		}
+		return InstantiateCatalogPackResponse{}, err
+	}
+
+	return InstantiateCatalogPackResponse{
+		ChallengePackID:        published.ChallengePackID,
+		ChallengePackVersionID: published.ChallengePackVersionID,
+		EvaluationSpecID:       &published.EvaluationSpecID,
+		InputSetIDs:            published.InputSetIDs,
+		Slug:                   entry.Slug,
+		AlreadyExisted:         false,
+		Runnable:               true,
 	}, nil
 }
 
