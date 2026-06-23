@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { addPieceRef, PIECE_KINDS, PIECE_KIND_META, pieceRefs } from "../lib/draft";
-import type { ChallengePiece, PieceDefinition, PieceKind, PieceRef } from "../lib/types";
+import type { PieceDefinition, PieceKind, PieceRef } from "../lib/types";
 import { LibraryPicker } from "../pieces/library-picker";
 import { type BuilderSelection, usePackDraft } from "../use-pack-draft";
 
@@ -49,9 +49,9 @@ export function PackOutline() {
     select({ section: "piece", kind, index: count });
   };
 
-  const addFromLibrary = (kind: PieceKind, piece: ChallengePiece) => {
+  const addFromLibrary = (kind: PieceKind, ref: PieceRef) => {
     const count = pieceRefs(composition, kind).length;
-    update((c) => addPieceRef(c, kind, { ref_id: piece.id }));
+    update((c) => addPieceRef(c, kind, ref));
     select({ section: "piece", kind, index: count });
     setPickerKind(null);
   };
@@ -125,7 +125,7 @@ export function PackOutline() {
         <LibraryPicker
           workspaceId={workspaceId}
           kind={pickerKind}
-          onPick={(piece) => addFromLibrary(pickerKind, piece)}
+          onAdd={(ref) => addFromLibrary(pickerKind, ref)}
           onClose={() => setPickerKind(null)}
         />
       )}

@@ -257,6 +257,15 @@ export interface ChallengePiece {
   updated_at: string;
 }
 
+/** A built-in starter piece from GET /v1/challenge-piece-library. */
+export interface StarterPiece {
+  kind: PieceKind;
+  slug: string;
+  name: string;
+  description: string;
+  definition: Record<string, unknown>;
+}
+
 export type ChallengePackDraftStatus = "draft" | "published" | "discarded";
 
 export interface ChallengePackDraft {

@@ -38,6 +38,10 @@ export function piecePath(workspaceId: string, pieceId: string): string {
   return `${piecesPath(workspaceId)}/${pieceId}`;
 }
 
+export function pieceLibraryPath(): string {
+  return "/v1/challenge-piece-library";
+}
+
 export async function createDraft(
   token: Token,
   workspaceId: string,
