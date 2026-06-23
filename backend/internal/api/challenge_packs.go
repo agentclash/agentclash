@@ -292,6 +292,7 @@ func (m *ChallengePackAuthoringManager) InstantiateCatalogPack(ctx context.Conte
 					Runnable:               true,
 				}, nil
 			}
+			return InstantiateCatalogPackResponse{}, fmt.Errorf("catalog pack %q already exists but has no runnable version: %w", entry.Slug, repository.ErrChallengePackVersionExists)
 		}
 		return InstantiateCatalogPackResponse{}, err
 	}

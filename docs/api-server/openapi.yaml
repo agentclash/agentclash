@@ -13370,13 +13370,13 @@ components:
 
     CreateChallengePackDraftRequest:
       type: object
-      required: [name]
       properties:
         name:
           type: string
           description: >
-            Display name. May be empty when from_challenge_pack_version_id is
-            set — the server defaults it to the source pack's name.
+            Display name. Required when from_challenge_pack_version_id is
+            omitted; optional when it is set - the server defaults it to the
+            source pack's name.
         execution_mode:
           type: string
           enum:

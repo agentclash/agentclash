@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -178,6 +179,19 @@ func TestInstantiateCatalogPackManagerIsIdempotent(t *testing.T) {
 	}
 }
 
+func TestInstantiateCatalogPackManagerReturnsConflictWhenExistingPackIsNotRunnable(t *testing.T) {
+	repo := &fakeChallengePackAuthoringRepository{
+		publishErr:  repository.ErrChallengePackVersionExists,
+		bySlugFound: false,
+	}
+	manager := NewChallengePackAuthoringManager(repo, nil)
+
+	_, err := manager.InstantiateCatalogPack(context.Background(), uuid.New(), "text-to-sql")
+	if !errors.Is(err, repository.ErrChallengePackVersionExists) {
+		t.Fatalf("error = %v, want ErrChallengePackVersionExists", err)
+	}
+}
+
 func TestInstantiateCatalogPackManagerUnknownSlug(t *testing.T) {
 	manager := NewChallengePackAuthoringManager(&fakeChallengePackAuthoringRepository{}, nil)
 	_, err := manager.InstantiateCatalogPack(context.Background(), uuid.New(), "does-not-exist")
@@ -218,6 +232,34 @@ func TestInstantiateChallengePackCatalogHandlerReturnsCreated(t *testing.T) {
 	}
 	if !response.Runnable {
 		t.Error("Runnable = false, want true")
+	}
+}
+
+func TestInstantiateChallengePackCatalogHandlerReturnsConflictWhenExistingPackIsNotRunnable(t *testing.T) {
+	logger := catalogTestLogger()
+	service := NewChallengePackAuthoringManager(&fakeChallengePackAuthoringRepository{
+		publishErr:  repository.ErrChallengePackVersionExists,
+		bySlugFound: false,
+	}, nil)
+	workspaceID := uuid.New()
+	userID := uuid.New()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/challenge-pack-catalog/text-to-sql/instantiate", nil)
+	req = withChiURLParam(req, "slug", "text-to-sql")
+	ctx := context.WithValue(req.Context(), callerContextKey{}, Caller{
+		UserID: userID,
+		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{
+			workspaceID: {WorkspaceID: workspaceID, Role: RoleWorkspaceAdmin},
+		},
+	})
+	ctx = context.WithValue(ctx, workspaceIDContextKey{}, workspaceID)
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	instantiateChallengePackCatalogHandler(logger, service, NewCallerWorkspaceAuthorizer()).ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409; body=%s", rec.Code, rec.Body.String())
 	}
 }
 

@@ -871,6 +871,8 @@ func handleChallengePackBuilderError(w http.ResponseWriter, logger *slog.Logger,
 		writeError(w, http.StatusNotFound, "challenge_piece_not_found", "challenge piece not found")
 	case errors.Is(err, repository.ErrChallengePackDraftNotFound):
 		writeError(w, http.StatusNotFound, "challenge_pack_draft_not_found", "challenge pack draft not found")
+	case errors.Is(err, repository.ErrChallengePackVersionNotFound):
+		writeError(w, http.StatusNotFound, "challenge_pack_version_not_found", "challenge pack version not found")
 	case errors.Is(err, repository.ErrChallengePieceSlugConflict):
 		writeError(w, http.StatusConflict, "challenge_piece_slug_conflict", "a piece with this slug already exists in the workspace")
 	case errors.Is(err, repository.ErrChallengePackVersionExists):
