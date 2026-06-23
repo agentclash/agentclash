@@ -1,10 +1,12 @@
 "use client";
 
-import { LayoutGrid, Plus, SlidersHorizontal } from "lucide-react";
+import { LayoutGrid, Library, Plus, SlidersHorizontal } from "lucide-react";
+import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 import { addPieceRef, PIECE_KINDS, PIECE_KIND_META, pieceRefs } from "../lib/draft";
-import type { PieceDefinition, PieceKind, PieceRef } from "../lib/types";
+import type { ChallengePiece, PieceDefinition, PieceKind, PieceRef } from "../lib/types";
+import { LibraryPicker } from "../pieces/library-picker";
 import { type BuilderSelection, usePackDraft } from "../use-pack-draft";
 
 function defaultPieceInline(kind: PieceKind, n: number): PieceDefinition {
@@ -36,14 +38,22 @@ function isSelected(selection: BuilderSelection, target: BuilderSelection): bool
 }
 
 export function PackOutline() {
-  const { state, select, update } = usePackDraft();
+  const { state, workspaceId, select, update } = usePackDraft();
   const { composition, selection } = state;
+  const [pickerKind, setPickerKind] = useState<PieceKind | null>(null);
 
   const addPiece = (kind: PieceKind) => {
     const count = pieceRefs(composition, kind).length;
     const inline = defaultPieceInline(kind, count + 1);
     update((c) => addPieceRef(c, kind, { inline }));
     select({ section: "piece", kind, index: count });
+  };
+
+  const addFromLibrary = (kind: PieceKind, piece: ChallengePiece) => {
+    const count = pieceRefs(composition, kind).length;
+    update((c) => addPieceRef(c, kind, { ref_id: piece.id }));
+    select({ section: "piece", kind, index: count });
+    setPickerKind(null);
   };
 
   return (
@@ -64,15 +74,26 @@ export function PackOutline() {
               <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 {meta.pluralLabel}
               </span>
-              <button
-                type="button"
-                onClick={() => addPiece(kind)}
-                className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                aria-label={`Add ${meta.label}`}
-                title={`Add ${meta.label}`}
-              >
-                <Plus className="size-3.5" />
-              </button>
+              <div className="flex items-center gap-0.5">
+                <button
+                  type="button"
+                  onClick={() => setPickerKind(kind)}
+                  className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  aria-label={`Add ${meta.label} from library`}
+                  title="Add from library"
+                >
+                  <Library className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addPiece(kind)}
+                  className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  aria-label={`Add ${meta.label}`}
+                  title={`New ${meta.label.toLowerCase()}`}
+                >
+                  <Plus className="size-3.5" />
+                </button>
+              </div>
             </div>
             {refs.length === 0 ? (
               <p className="px-2 py-1 text-xs text-muted-foreground/70">{meta.description}</p>
@@ -99,6 +120,15 @@ export function PackOutline() {
           onClick={() => select({ section: "scorecard" })}
         />
       </div>
+
+      {pickerKind && (
+        <LibraryPicker
+          workspaceId={workspaceId}
+          kind={pickerKind}
+          onPick={(piece) => addFromLibrary(pickerKind, piece)}
+          onClose={() => setPickerKind(null)}
+        />
+      )}
     </nav>
   );
 }

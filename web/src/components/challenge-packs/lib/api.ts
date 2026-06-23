@@ -34,6 +34,10 @@ export function piecesPath(workspaceId: string): string {
   return `/v1/workspaces/${workspaceId}/challenge-pieces`;
 }
 
+export function piecePath(workspaceId: string, pieceId: string): string {
+  return `${piecesPath(workspaceId)}/${pieceId}`;
+}
+
 export async function createDraft(
   token: Token,
   workspaceId: string,

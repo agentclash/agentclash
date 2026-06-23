@@ -78,6 +78,7 @@ function reducer(state: State, action: Action): State {
 
 interface PackDraftContextValue {
   state: State;
+  workspaceId: string;
   select: (selection: BuilderSelection) => void;
   update: (updater: (composition: Composition) => Composition) => void;
   publish: () => Promise<void>;
@@ -191,8 +192,8 @@ export function PackDraftProvider({
   }, [getAccessToken, workspaceId, draftId, router]);
 
   const value = useMemo<PackDraftContextValue>(
-    () => ({ state, select, update, publish }),
-    [state, select, update, publish],
+    () => ({ state, workspaceId, select, update, publish }),
+    [state, workspaceId, select, update, publish],
   );
 
   return <PackDraftContext.Provider value={value}>{children}</PackDraftContext.Provider>;
