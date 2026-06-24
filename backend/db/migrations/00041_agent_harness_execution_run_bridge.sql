@@ -1,15 +1,15 @@
 -- +goose Up
 ALTER TABLE runs
-    ADD COLUMN source_type text NOT NULL DEFAULT 'eval_pack'
-        CHECK (source_type IN ('eval_pack', 'agent_harness'));
+    ADD COLUMN source_type text NOT NULL DEFAULT 'challenge_pack'
+        CHECK (source_type IN ('challenge_pack', 'agent_harness'));
 
 ALTER TABLE runs
-    ALTER COLUMN eval_pack_version_id DROP NOT NULL,
+    ALTER COLUMN challenge_pack_version_id DROP NOT NULL,
     ADD CONSTRAINT runs_source_shape_check
         CHECK (
-            (source_type = 'eval_pack' AND eval_pack_version_id IS NOT NULL)
+            (source_type = 'challenge_pack' AND challenge_pack_version_id IS NOT NULL)
             OR
-            (source_type = 'agent_harness' AND eval_pack_version_id IS NULL AND challenge_input_set_id IS NULL)
+            (source_type = 'agent_harness' AND challenge_pack_version_id IS NULL AND challenge_input_set_id IS NULL)
         );
 
 ALTER TABLE run_agents
@@ -74,5 +74,5 @@ ALTER TABLE run_agents
 
 ALTER TABLE runs
     DROP CONSTRAINT IF EXISTS runs_source_shape_check,
-    ALTER COLUMN eval_pack_version_id SET NOT NULL,
+    ALTER COLUMN challenge_pack_version_id SET NOT NULL,
     DROP COLUMN IF EXISTS source_type;

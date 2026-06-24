@@ -3,7 +3,7 @@ CREATE TABLE runs (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id uuid NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
     workspace_id uuid NOT NULL,
-    eval_pack_version_id uuid NOT NULL REFERENCES eval_pack_versions (id) ON DELETE RESTRICT,
+    challenge_pack_version_id uuid NOT NULL REFERENCES challenge_pack_versions (id) ON DELETE RESTRICT,
     challenge_input_set_id uuid,
     created_by_user_id uuid REFERENCES users (id) ON DELETE SET NULL,
     name text NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE runs (
 
 ALTER TABLE runs
 ADD CONSTRAINT runs_challenge_input_set_fk
-FOREIGN KEY (challenge_input_set_id, eval_pack_version_id) REFERENCES challenge_input_sets (id, eval_pack_version_id) ON DELETE RESTRICT;
+FOREIGN KEY (challenge_input_set_id, challenge_pack_version_id) REFERENCES challenge_input_sets (id, challenge_pack_version_id) ON DELETE RESTRICT;
 
 CREATE TABLE run_status_history (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -76,7 +76,7 @@ CREATE TABLE run_agent_status_history (
 );
 
 CREATE INDEX runs_workspace_id_idx ON runs (workspace_id, created_at DESC);
-CREATE INDEX runs_eval_pack_version_id_idx ON runs (eval_pack_version_id);
+CREATE INDEX runs_challenge_pack_version_id_idx ON runs (challenge_pack_version_id);
 CREATE INDEX run_agents_run_id_idx ON run_agents (run_id);
 CREATE INDEX run_agents_snapshot_id_idx ON run_agents (agent_deployment_snapshot_id);
 

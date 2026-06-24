@@ -20,20 +20,20 @@ CREATE TABLE vibe_eval_drafts (
     organization_id uuid NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
     workspace_id uuid NOT NULL,
     conversation_id uuid NOT NULL,
-    draft_kind text NOT NULL CHECK (draft_kind IN ('eval_plan', 'eval_pack', 'input_cases', 'scoring', 'runtime')),
+    draft_kind text NOT NULL CHECK (draft_kind IN ('eval_plan', 'challenge_pack', 'input_cases', 'scoring', 'runtime')),
     content jsonb NOT NULL DEFAULT '{}'::jsonb,
     validation_state text NOT NULL DEFAULT 'unknown' CHECK (validation_state IN ('unknown', 'valid', 'invalid')),
     validation_errors jsonb NOT NULL DEFAULT '[]'::jsonb,
-    published_eval_pack_id uuid,
-    published_eval_pack_version_id uuid,
+    published_challenge_pack_id uuid,
+    published_challenge_pack_version_id uuid,
     created_by_user_id uuid NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
     updated_by_user_id uuid NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     FOREIGN KEY (workspace_id, organization_id) REFERENCES workspaces (id, organization_id) ON DELETE CASCADE,
     FOREIGN KEY (conversation_id, workspace_id) REFERENCES vibe_eval_conversations (id, workspace_id) ON DELETE CASCADE,
-    FOREIGN KEY (published_eval_pack_id) REFERENCES eval_packs (id) ON DELETE SET NULL,
-    FOREIGN KEY (published_eval_pack_version_id) REFERENCES eval_pack_versions (id) ON DELETE SET NULL
+    FOREIGN KEY (published_challenge_pack_id) REFERENCES challenge_packs (id) ON DELETE SET NULL,
+    FOREIGN KEY (published_challenge_pack_version_id) REFERENCES challenge_pack_versions (id) ON DELETE SET NULL
 );
 
 ALTER TABLE vibe_eval_conversations
