@@ -6,7 +6,6 @@
 
 import { Plus, Trash2 } from "lucide-react";
 
-import { Field, controlClass } from "@/components/tools/field";
 import { Button } from "@/components/ui/button";
 import type {
   UserSimulatorActor,
@@ -14,6 +13,8 @@ import type {
   UserSimulatorSpec,
   UserSimulatorTrigger,
 } from "../lib/types";
+import { BuilderSelect } from "../ui/builder-select";
+import { controlClass, Field, FieldRow, monoControlClass } from "../ui/form";
 
 const ACTORS: { value: UserSimulatorActor; label: string }[] = [
   { value: "scripted", label: "Scripted — fixed messages" },
@@ -32,6 +33,8 @@ const TRIGGERS: UserSimulatorTrigger[] = [
   "never",
 ];
 
+const ON_TIMEOUT = ["stop", "fail"];
+
 function defaultSimulator(): UserSimulatorSpec {
   return {
     schema_version: 1,
@@ -49,8 +52,8 @@ export function CaseFlowEditor({
 }) {
   if (!value) {
     return (
-      <div className="rounded-md border border-dashed border-border p-3">
-        <p className="mb-2 text-xs text-muted-foreground">
+      <div className="rounded-md border border-dashed border-builder-border p-3">
+        <p className="mb-2 text-xs text-builder-fg-muted">
           Multi-turn mode: this case needs a conversation flow.
         </p>
         <Button size="xs" variant="outline" onClick={() => onChange(defaultSimulator())}>
@@ -66,15 +69,18 @@ export function CaseFlowEditor({
   const addPhase = () =>
     onChange({
       ...value,
-      phases: [...phases, { id: `phase-${phases.length + 1}`, actor: "scripted", turns: [{ message: "" }] }],
+      phases: [
+        ...phases,
+        { id: `phase-${phases.length + 1}`, actor: "scripted", turns: [{ message: "" }] },
+      ],
     });
   const removePhase = (i: number) =>
     onChange({ ...value, phases: phases.filter((_, j) => j !== i) });
 
   return (
-    <div className="space-y-3 rounded-md border border-border bg-muted/30 p-3">
+    <div className="space-y-3 rounded-md border border-builder-border bg-builder-surface p-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-medium uppercase tracking-wide text-builder-fg-subtle">
           Conversation ({phases.length} phase{phases.length === 1 ? "" : "s"})
         </span>
         <Button size="xs" variant="outline" onClick={addPhase}>
@@ -83,44 +89,40 @@ export function CaseFlowEditor({
       </div>
 
       {phases.map((phase, i) => (
-        <div key={i} className="space-y-3 rounded-md border border-border bg-background p-3">
+        <div key={i} className="space-y-3 rounded-md border border-builder-border bg-builder-panel p-3">
           <div className="flex items-center gap-2">
             <input
-              className={controlClass}
+              className={monoControlClass}
               value={phase.id}
               onChange={(e) => setPhase(i, { id: e.target.value })}
               placeholder="phase id"
             />
-            <select
-              className={controlClass}
+            <BuilderSelect
+              ariaLabel="Actor"
+              className="w-56"
               value={phase.actor}
-              onChange={(e) => setPhase(i, { actor: e.target.value as UserSimulatorActor })}
+              onChange={(v) => setPhase(i, { actor: v as UserSimulatorActor })}
+              options={ACTORS}
+            />
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              onClick={() => removePhase(i)}
+              aria-label="Remove phase"
             >
-              {ACTORS.map((a) => (
-                <option key={a.value} value={a.value}>
-                  {a.label}
-                </option>
-              ))}
-            </select>
-            <Button size="icon-sm" variant="ghost" onClick={() => removePhase(i)} aria-label="Remove phase">
               <Trash2 className="size-4" />
             </Button>
           </div>
 
           {i > 0 && (
-            <Field label="Trigger" hint="when this phase activates">
-              <select
-                className={controlClass}
+            <FieldRow label="Trigger" hint="when this phase activates">
+              <BuilderSelect
+                ariaLabel="Trigger"
                 value={phase.trigger ?? "always"}
-                onChange={(e) => setPhase(i, { trigger: e.target.value as UserSimulatorTrigger })}
-              >
-                {TRIGGERS.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </Field>
+                onChange={(v) => setPhase(i, { trigger: v as UserSimulatorTrigger })}
+                options={TRIGGERS.map((t) => ({ value: t, label: t }))}
+              />
+            </FieldRow>
           )}
 
           {phase.actor === "scripted" && (
@@ -141,32 +143,28 @@ export function CaseFlowEditor({
                   placeholder="Frustrated customer who accepts a clear timeline if treated with empathy"
                 />
               </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Max turns">
-                  <input
-                    className={controlClass}
-                    type="number"
-                    min="1"
-                    value={phase.max_turns ?? ""}
-                    onChange={(e) =>
-                      setPhase(i, {
-                        max_turns: e.target.value ? Number(e.target.value) : undefined,
-                      })
-                    }
-                    placeholder="3"
-                  />
-                </Field>
-                <Field label="Model" hint="optional override">
-                  <input
-                    className={controlClass}
-                    value={phase.model ?? ""}
-                    onChange={(e) => setPhase(i, { model: e.target.value })}
-                  />
-                </Field>
-              </div>
-              <Field label="Exit when" hint='comma-separated, e.g. assistant_emitted:timeline'>
+              <FieldRow label="Max turns">
                 <input
                   className={controlClass}
+                  type="number"
+                  min="1"
+                  value={phase.max_turns ?? ""}
+                  onChange={(e) =>
+                    setPhase(i, { max_turns: e.target.value ? Number(e.target.value) : undefined })
+                  }
+                  placeholder="3"
+                />
+              </FieldRow>
+              <FieldRow label="Model" hint="optional override">
+                <input
+                  className={monoControlClass}
+                  value={phase.model ?? ""}
+                  onChange={(e) => setPhase(i, { model: e.target.value })}
+                />
+              </FieldRow>
+              <FieldRow label="Exit when" hint='comma-separated, e.g. assistant_emitted:timeline'>
+                <input
+                  className={monoControlClass}
                   value={(phase.until ?? []).join(", ")}
                   onChange={(e) =>
                     setPhase(i, {
@@ -177,13 +175,13 @@ export function CaseFlowEditor({
                     })
                   }
                 />
-              </Field>
+              </FieldRow>
             </div>
           )}
 
           {phase.actor === "human" && (
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Timeout (ms)">
+            <div className="space-y-3">
+              <FieldRow label="Timeout (ms)">
                 <input
                   className={controlClass}
                   type="number"
@@ -194,17 +192,15 @@ export function CaseFlowEditor({
                   }
                   placeholder="900000"
                 />
-              </Field>
-              <Field label="On timeout">
-                <select
-                  className={controlClass}
+              </FieldRow>
+              <FieldRow label="On timeout">
+                <BuilderSelect
+                  ariaLabel="On timeout"
                   value={phase.on_timeout ?? "stop"}
-                  onChange={(e) => setPhase(i, { on_timeout: e.target.value })}
-                >
-                  <option value="stop">stop</option>
-                  <option value="fail">fail</option>
-                </select>
-              </Field>
+                  onChange={(v) => setPhase(i, { on_timeout: v })}
+                  options={ON_TIMEOUT.map((t) => ({ value: t, label: t }))}
+                />
+              </FieldRow>
             </div>
           )}
         </div>

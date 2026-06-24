@@ -1,8 +1,9 @@
 "use client";
 
-import { Field, controlClass } from "@/components/tools/field";
 import { updatePieceRef } from "../lib/draft";
 import type { JudgeMethodMode, LLMJudgeDeclaration } from "../lib/types";
+import { BuilderSelect } from "../ui/builder-select";
+import { controlClass, EditorHeader, Field, FieldRow, monoControlClass } from "../ui/form";
 import { usePackDraft } from "../use-pack-draft";
 
 const MODES: { value: JudgeMethodMode; label: string }[] = [
@@ -25,53 +26,47 @@ export function JudgeEditor({ index }: { index: number }) {
     set({ score_scale: { ...scale, ...patch } });
 
   return (
-    <div className="max-w-2xl space-y-5">
-      <h2 className="text-base font-semibold">LLM judge</h2>
-      <p className="text-sm text-muted-foreground">
-        An LLM-as-judge grader. Wire it into a scorecard dimension to make it count.
-      </p>
-      <Field label="Key" hint="unique; referenced by scorecard dimensions">
+    <div className="space-y-6">
+      <EditorHeader
+        title="LLM judge"
+        description="An LLM-as-judge grader. Wire it into a scorecard dimension to make it count."
+      />
+
+      <FieldRow label="Key" hint="unique; referenced by scorecard dimensions">
         <input
-          className={controlClass}
+          className={monoControlClass}
           value={def.key ?? ""}
           onChange={(e) => set({ key: e.target.value })}
           placeholder="empathy"
         />
-      </Field>
-      <div className="grid grid-cols-3 gap-4">
-        <Field label="Mode">
-          <select
-            className={controlClass}
-            value={mode}
-            onChange={(e) => set({ mode: e.target.value as JudgeMethodMode })}
-          >
-            {MODES.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Model">
-          <input
-            className={controlClass}
-            value={def.model ?? ""}
-            onChange={(e) => set({ model: e.target.value })}
-            placeholder="claude-haiku-4-5-20251001"
-          />
-        </Field>
-        <Field label="Samples" hint="median of N">
-          <input
-            className={controlClass}
-            type="number"
-            min="1"
-            max="10"
-            value={def.samples ?? ""}
-            onChange={(e) => set({ samples: e.target.value ? Number(e.target.value) : undefined })}
-            placeholder="3"
-          />
-        </Field>
-      </div>
+      </FieldRow>
+      <FieldRow label="Mode">
+        <BuilderSelect
+          ariaLabel="Mode"
+          value={mode}
+          onChange={(v) => set({ mode: v as JudgeMethodMode })}
+          options={MODES}
+        />
+      </FieldRow>
+      <FieldRow label="Model">
+        <input
+          className={monoControlClass}
+          value={def.model ?? ""}
+          onChange={(e) => set({ model: e.target.value })}
+          placeholder="claude-haiku-4-5-20251001"
+        />
+      </FieldRow>
+      <FieldRow label="Samples" hint="median of N">
+        <input
+          className={controlClass}
+          type="number"
+          min="1"
+          max="10"
+          value={def.samples ?? ""}
+          onChange={(e) => set({ samples: e.target.value ? Number(e.target.value) : undefined })}
+          placeholder="3"
+        />
+      </FieldRow>
 
       {(mode === "rubric" || mode === "reference") && (
         <>
@@ -84,38 +79,39 @@ export function JudgeEditor({ index }: { index: number }) {
               placeholder="Score 5 if the response is empathetic and gives a concrete next step..."
             />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Scale min">
+          <FieldRow label="Scale">
+            <div className="flex items-center gap-2">
               <input
                 className={controlClass}
                 type="number"
+                aria-label="Scale min"
                 value={scale.min}
                 onChange={(e) => setScale({ min: Number(e.target.value) })}
               />
-            </Field>
-            <Field label="Scale max">
+              <span className="text-builder-fg-faint">to</span>
               <input
                 className={controlClass}
                 type="number"
+                aria-label="Scale max"
                 value={scale.max}
                 onChange={(e) => setScale({ max: Number(e.target.value) })}
               />
-            </Field>
-          </div>
+            </div>
+          </FieldRow>
         </>
       )}
 
       {mode === "reference" && (
-        <Field
+        <FieldRow
           label="Reference from"
           hint="evidence reference to the gold answer, e.g. case.expectations.reference_response"
         >
           <input
-            className={controlClass}
+            className={monoControlClass}
             value={def.reference_from ?? ""}
             onChange={(e) => set({ reference_from: e.target.value })}
           />
-        </Field>
+        </FieldRow>
       )}
 
       {mode === "assertion" && (
@@ -129,16 +125,17 @@ export function JudgeEditor({ index }: { index: number }) {
               placeholder="The assistant gives a concrete refund timeline instead of deflecting."
             />
           </Field>
-          <Field label="Expectation">
-            <label className="flex h-9 items-center gap-2 text-sm">
+          <FieldRow label="Expectation">
+            <label className="flex items-center gap-2 py-2 text-sm text-builder-fg-muted">
               <input
                 type="checkbox"
+                className="size-3.5 accent-builder-fg"
                 checked={def.expect ?? true}
                 onChange={(e) => set({ expect: e.target.checked })}
               />
               Assertion should be true
             </label>
-          </Field>
+          </FieldRow>
         </>
       )}
 
@@ -153,25 +150,26 @@ export function JudgeEditor({ index }: { index: number }) {
               placeholder="Rank the responses from best to worst by how well they resolve the issue..."
             />
           </Field>
-          <Field label="Position debiasing">
-            <label className="flex h-9 items-center gap-2 text-sm">
+          <FieldRow label="Position debiasing">
+            <label className="flex items-center gap-2 py-2 text-sm text-builder-fg-muted">
               <input
                 type="checkbox"
+                className="size-3.5 accent-builder-fg"
                 checked={def.position_debiasing ?? false}
                 onChange={(e) => set({ position_debiasing: e.target.checked })}
               />
               Randomize agent order across samples
             </label>
-          </Field>
+          </FieldRow>
         </>
       )}
 
-      <Field
+      <FieldRow
         label="Evidence"
         hint="comma-separated references the judge sees, e.g. final_output, case.payload.order_id"
       >
         <input
-          className={controlClass}
+          className={monoControlClass}
           value={(def.context_from ?? []).join(", ")}
           onChange={(e) =>
             set({
@@ -183,7 +181,7 @@ export function JudgeEditor({ index }: { index: number }) {
           }
           placeholder="final_output"
         />
-      </Field>
+      </FieldRow>
     </div>
   );
 }

@@ -2,10 +2,11 @@
 
 import { Plus, Trash2 } from "lucide-react";
 
-import { Field, controlClass } from "@/components/tools/field";
 import { Button } from "@/components/ui/button";
 import { pieceKeys, setDimensions } from "../lib/draft";
 import type { DimensionDeclaration, DimensionSource, ScoringStrategy } from "../lib/types";
+import { BuilderSelect } from "../ui/builder-select";
+import { controlClass, EditorHeader, Field, FieldRow, monoControlClass } from "../ui/form";
 import { usePackDraft } from "../use-pack-draft";
 
 const STRATEGIES: { value: ScoringStrategy; label: string }[] = [
@@ -48,72 +49,67 @@ export function ScorecardEditor() {
   const strategy = scorecard.strategy ?? "weighted";
 
   return (
-    <div className="max-w-2xl space-y-5">
-      <div>
-        <h2 className="text-base font-semibold">Scoring</h2>
-        <p className="text-sm text-muted-foreground">
-          Wire your validators and judges into scoring dimensions.
-        </p>
-      </div>
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Strategy">
-          <select
+    <div className="space-y-6">
+      <EditorHeader
+        title="Scoring"
+        description="Wire your validators and judges into scoring dimensions."
+      />
+
+      <FieldRow label="Strategy">
+        <BuilderSelect
+          ariaLabel="Strategy"
+          value={strategy}
+          onChange={(v) => setScorecard({ strategy: v as ScoringStrategy })}
+          options={STRATEGIES}
+        />
+      </FieldRow>
+      {strategy !== "binary" && (
+        <FieldRow label="Pass threshold" hint="overall score 0–1 to pass">
+          <input
             className={controlClass}
-            value={strategy}
-            onChange={(e) => setScorecard({ strategy: e.target.value as ScoringStrategy })}
-          >
-            {STRATEGIES.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-        </Field>
-        {strategy !== "binary" && (
-          <Field label="Pass threshold" hint="overall score 0–1 to pass">
-            <input
-              className={controlClass}
-              type="number"
-              step="0.05"
-              min="0"
-              max="1"
-              value={scorecard.pass_threshold ?? ""}
-              onChange={(e) => setScorecard({ pass_threshold: numberOrUndefined(e.target.value) })}
-              placeholder="0.75"
-            />
-          </Field>
-        )}
-      </div>
+            type="number"
+            step="0.05"
+            min="0"
+            max="1"
+            value={scorecard.pass_threshold ?? ""}
+            onChange={(e) => setScorecard({ pass_threshold: numberOrUndefined(e.target.value) })}
+            placeholder="0.75"
+          />
+        </FieldRow>
+      )}
 
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-medium">Dimensions ({dims.length})</span>
+          <span className="text-xs font-medium uppercase tracking-wide text-builder-fg-subtle">
+            Dimensions {dims.length > 0 && <span className="tabular-nums">({dims.length})</span>}
+          </span>
           <Button size="xs" variant="outline" onClick={addDim}>
             <Plus className="size-3.5" /> Add dimension
           </Button>
         </div>
         <div className="space-y-3">
           {dims.map((dim, i) => (
-            <div key={i} className="space-y-3 rounded-lg border border-border p-3">
+            <div key={i} className="space-y-3 rounded-md border border-builder-border bg-builder-surface p-3">
               <div className="flex items-center gap-2">
                 <input
-                  className={controlClass}
+                  className={monoControlClass}
                   value={dim.key}
                   onChange={(e) => setDim(i, { key: e.target.value })}
                   placeholder="correctness"
                 />
-                <select
-                  className={controlClass}
+                <BuilderSelect
+                  ariaLabel="Source"
+                  className="w-44"
                   value={dim.source}
-                  onChange={(e) => setDim(i, { source: e.target.value as DimensionSource })}
+                  onChange={(v) => setDim(i, { source: v as DimensionSource })}
+                  options={SOURCES}
+                />
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  onClick={() => removeDim(i)}
+                  aria-label="Remove dimension"
                 >
-                  {SOURCES.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-                <Button size="icon-sm" variant="ghost" onClick={() => removeDim(i)} aria-label="Remove dimension">
                   <Trash2 className="size-4" />
                 </Button>
               </div>
@@ -121,7 +117,7 @@ export function ScorecardEditor() {
               {dim.source === "validators" ? (
                 <Field label="Validators" hint="which validators feed this dimension">
                   {validatorKeys.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">Add a validator piece first.</p>
+                    <p className="text-xs text-builder-fg-faint">Add a validator piece first.</p>
                   ) : (
                     <div className="flex flex-wrap gap-2">
                       {validatorKeys.map((key) => {
@@ -129,10 +125,11 @@ export function ScorecardEditor() {
                         return (
                           <label
                             key={key}
-                            className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2 py-1 text-xs"
+                            className="flex cursor-pointer items-center gap-1.5 rounded-md border border-builder-border px-2 py-1 font-[family-name:var(--font-mono)] text-xs text-builder-fg-muted transition-colors hover:border-builder-border-strong hover:text-builder-fg"
                           >
                             <input
                               type="checkbox"
+                              className="size-3.5 accent-builder-fg"
                               checked={checked}
                               onChange={(e) =>
                                 setDim(i, {
@@ -152,20 +149,15 @@ export function ScorecardEditor() {
               ) : (
                 <Field label="Judge" hint="which judge feeds this dimension">
                   {judgeKeys.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">Add a judge piece first.</p>
+                    <p className="text-xs text-builder-fg-faint">Add a judge piece first.</p>
                   ) : (
-                    <select
-                      className={controlClass}
+                    <BuilderSelect
+                      ariaLabel="Judge"
+                      placeholder="Select a judge…"
                       value={dim.judge_key ?? ""}
-                      onChange={(e) => setDim(i, { judge_key: e.target.value })}
-                    >
-                      <option value="">Select a judge…</option>
-                      {judgeKeys.map((key) => (
-                        <option key={key} value={key}>
-                          {key}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(v) => setDim(i, { judge_key: v })}
+                      options={judgeKeys.map((key) => ({ value: key, label: key }))}
+                    />
                   )}
                 </Field>
               )}
@@ -194,9 +186,10 @@ export function ScorecardEditor() {
                   />
                 </Field>
                 <Field label="Gate">
-                  <label className="flex h-9 items-center gap-2 text-sm">
+                  <label className="flex items-center gap-2 py-2 text-sm text-builder-fg-muted">
                     <input
                       type="checkbox"
+                      className="size-3.5 accent-builder-fg"
                       checked={dim.gate ?? false}
                       onChange={(e) => setDim(i, { gate: e.target.checked })}
                     />

@@ -72,8 +72,14 @@ function PieceToolbar({ kind, index }: { kind: PieceKind; index: number }) {
   };
 
   return (
-    <div className="mb-4 flex justify-end">
-      <Button size="xs" variant="outline" onClick={save} disabled={saving}>
+    <div className="mb-5 flex justify-end">
+      <Button
+        size="xs"
+        variant="ghost"
+        onClick={save}
+        disabled={saving}
+        className="text-builder-fg-subtle hover:bg-builder-surface hover:text-builder-fg"
+      >
         {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Library className="size-3.5" />}
         Save to library
       </Button>
@@ -99,19 +105,23 @@ function ReferencedPieceView({
     );
 
   return (
-    <div className="max-w-2xl space-y-4">
-      <div className="flex items-center gap-2">
-        <Library className="size-4 text-muted-foreground" />
-        <h2 className="text-base font-semibold">{data?.name ?? "Library piece"}</h2>
+    <div className="space-y-5">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <Library className="size-4 text-builder-fg-subtle" />
+          <h2 className="text-[0.95rem] font-medium tracking-tight text-builder-fg">
+            {data?.name ?? "Library piece"}
+          </h2>
+        </div>
+        <p className="text-sm leading-relaxed text-builder-fg-muted">
+          Referenced from your workspace library. Edit it in the library to update every pack that
+          uses it, or edit a copy to customize it just for this pack.
+        </p>
       </div>
-      <p className="text-sm text-muted-foreground">
-        Referenced from your workspace library. Edit it in the library to update every pack that uses
-        it, or edit a copy to customize it just for this pack.
-      </p>
       {isLoading ? (
-        <Loader2 className="size-5 animate-spin text-muted-foreground" />
+        <Loader2 className="size-5 animate-spin text-builder-fg-subtle" />
       ) : (
-        <pre className="overflow-auto rounded-lg border border-border bg-muted/40 p-3 text-xs">
+        <pre className="overflow-auto rounded-md border border-builder-border bg-builder-panel p-3 font-[family-name:var(--font-mono)] text-xs leading-relaxed text-builder-fg-muted">
           {JSON.stringify(data?.definition ?? {}, null, 2)}
         </pre>
       )}

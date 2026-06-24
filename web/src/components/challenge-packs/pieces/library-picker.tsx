@@ -7,12 +7,12 @@
 import { Loader2, Search, X } from "lucide-react";
 import { useState } from "react";
 
-import { controlClass } from "@/components/tools/field";
 import { useApiListQuery } from "@/lib/api/swr";
 import { cn } from "@/lib/utils";
 import { pieceLibraryPath, piecesPath } from "../lib/api";
 import { PIECE_KIND_META } from "../lib/draft";
 import type { ChallengePiece, PieceKind, PieceRef, StarterPiece } from "../lib/types";
+import { controlClass } from "../ui/form";
 
 export function LibraryPicker({
   workspaceId,
@@ -37,27 +37,29 @@ export function LibraryPicker({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       onClick={onClose}
     >
       <div
-        className="flex max-h-[70vh] w-full max-w-lg flex-col rounded-xl border border-border bg-card shadow-xl"
+        className="flex max-h-[70vh] w-full max-w-lg flex-col rounded-xl border border-builder-border bg-builder-panel shadow-xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
-          <span className="text-sm font-semibold">Add {meta.label.toLowerCase()} from library</span>
+        <div className="flex items-center justify-between border-b border-builder-border px-4 py-3">
+          <span className="text-sm font-medium text-builder-fg">
+            Add {meta.label.toLowerCase()} from library
+          </span>
           <button
             type="button"
             onClick={onClose}
-            className="text-muted-foreground transition-colors hover:text-foreground"
+            className="rounded p-1 text-builder-fg-subtle transition-colors hover:bg-builder-surface hover:text-builder-fg"
             aria-label="Close"
           >
             <X className="size-4" />
           </button>
         </div>
-        <div className="border-b border-border p-3">
+        <div className="border-b border-builder-border p-3">
           <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-builder-fg-subtle" />
             <input
               className={cn(controlClass, "pl-8")}
               placeholder={`Search ${meta.pluralLabel.toLowerCase()}…`}
@@ -70,16 +72,16 @@ export function LibraryPicker({
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {wsLoading || starterLoading ? (
             <div className="flex justify-center p-6">
-              <Loader2 className="size-5 animate-spin text-muted-foreground" />
+              <Loader2 className="size-5 animate-spin text-builder-fg-subtle" />
             </div>
           ) : (
             <>
               <div className="mb-2">
-                <div className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                <div className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-builder-fg-subtle">
                   Your library
                 </div>
                 {workspacePieces.length === 0 ? (
-                  <p className="px-2 py-1 text-xs text-muted-foreground/70">
+                  <p className="px-2 py-1 text-xs text-builder-fg-faint">
                     Nothing saved yet — build a piece and use &ldquo;Save to library&rdquo;.
                   </p>
                 ) : (
@@ -95,7 +97,7 @@ export function LibraryPicker({
               </div>
               {starters.length > 0 && (
                 <div className="mb-2">
-                  <div className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  <div className="px-2 py-1 text-xs font-medium uppercase tracking-wide text-builder-fg-subtle">
                     Starters
                   </div>
                   {starters.map((s) => (
@@ -129,10 +131,10 @@ function PickerRow({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full flex-col items-start rounded-md px-3 py-2 text-left transition-colors hover:bg-muted"
+      className="flex w-full flex-col items-start rounded-md px-3 py-2 text-left transition-colors hover:bg-builder-surface"
     >
-      <span className="text-sm font-medium">{name}</span>
-      {subtitle && <span className="text-xs text-muted-foreground">{subtitle}</span>}
+      <span className="text-sm font-medium text-builder-fg">{name}</span>
+      {subtitle && <span className="text-xs text-builder-fg-subtle">{subtitle}</span>}
     </button>
   );
 }

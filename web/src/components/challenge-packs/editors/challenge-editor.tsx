@@ -1,8 +1,9 @@
 "use client";
 
-import { Field, controlClass } from "@/components/tools/field";
 import { updatePieceRef } from "../lib/draft";
 import type { ChallengeDefinition } from "../lib/types";
+import { BuilderSelect } from "../ui/builder-select";
+import { controlClass, EditorHeader, Field, FieldRow, monoControlClass } from "../ui/form";
 import { usePackDraft } from "../use-pack-draft";
 
 const DIFFICULTIES = ["easy", "medium", "hard", "expert"];
@@ -15,47 +16,41 @@ export function ChallengeEditor({ index }: { index: number }) {
     update((c) => updatePieceRef(c, "challenge", index, { inline: { ...def, ...patch } }));
 
   return (
-    <div className="max-w-2xl space-y-5">
-      <h2 className="text-base font-semibold">Challenge</h2>
-      <Field label="Key" hint="unique within the pack; cases target it by key">
+    <div className="space-y-6">
+      <EditorHeader title="Challenge" description="The task an agent is asked to do." />
+
+      <FieldRow label="Key" hint="unique within the pack; cases target it by key">
         <input
-          className={controlClass}
+          className={monoControlClass}
           value={def.key ?? ""}
           onChange={(e) => set({ key: e.target.value })}
           placeholder="refund-recovery"
         />
-      </Field>
-      <Field label="Title">
+      </FieldRow>
+      <FieldRow label="Title">
         <input
           className={controlClass}
           value={def.title ?? ""}
           onChange={(e) => set({ title: e.target.value })}
           placeholder="Recover a frustrated refund request"
         />
-      </Field>
-      <div className="grid grid-cols-2 gap-4">
-        <Field label="Category">
-          <input
-            className={controlClass}
-            value={def.category ?? ""}
-            onChange={(e) => set({ category: e.target.value })}
-            placeholder="support"
-          />
-        </Field>
-        <Field label="Difficulty">
-          <select
-            className={controlClass}
-            value={def.difficulty ?? "medium"}
-            onChange={(e) => set({ difficulty: e.target.value })}
-          >
-            {DIFFICULTIES.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </Field>
-      </div>
+      </FieldRow>
+      <FieldRow label="Category">
+        <input
+          className={controlClass}
+          value={def.category ?? ""}
+          onChange={(e) => set({ category: e.target.value })}
+          placeholder="support"
+        />
+      </FieldRow>
+      <FieldRow label="Difficulty">
+        <BuilderSelect
+          ariaLabel="Difficulty"
+          value={def.difficulty ?? "medium"}
+          onChange={(v) => set({ difficulty: v })}
+          options={DIFFICULTIES.map((d) => ({ value: d, label: d }))}
+        />
+      </FieldRow>
       <Field
         label="Instructions"
         hint="The prompt the agent sees. Supports {{placeholder}} from case payloads."
