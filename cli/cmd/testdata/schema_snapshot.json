@@ -2324,6 +2324,38 @@
           ]
         },
         {
+          "name": "promote-failures",
+          "path": "agentclash evaltest promote-failures",
+          "short": "Promote failed local eval cases into a draft challenge pack",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "append",
+              "usage": "Append cases to an existing draft pack",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "dry-run",
+              "usage": "Print draft YAML without writing",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "from",
+              "usage": "Local eval JSON report",
+              "type": "string",
+              "default": "agentclash-results/results.json"
+            },
+            {
+              "name": "to",
+              "usage": "Draft challenge-pack output path",
+              "type": "string",
+              "default": ".agentclash/challenge-packs/local-regressions.yaml"
+            }
+          ]
+        },
+        {
           "name": "run",
           "path": "agentclash evaltest run",
           "short": "Run local eval tests and emit JSON/JUnit reports",
