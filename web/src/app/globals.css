@@ -40,6 +40,29 @@
   --sidebar-ring: oklch(0.708 0 0);
 }
 
+/*
+ * Challenge-pack builder — quiet-utilitarian warm palette.
+ * The design system (docs/frontend/design/design-system.md) is warm and editorial,
+ * but the app's shadcn tokens are cold neutral grays. Rather than re-tint the whole
+ * app, the builder gets its own contained, reusable warm token set, consumed only
+ * through `builder-*` utilities (text-builder-fg, bg-builder-surface, …). The
+ * workspace is always dark, so these are defined once (no light variant needed).
+ * Accent is reserved for warnings/errors only — everything else is near-monochrome warm.
+ */
+:root {
+  --builder-fg: oklch(0.94 0.008 80); /* warm off-white — primary text */
+  --builder-fg-muted: oklch(0.94 0.008 80 / 0.58); /* descriptions, body */
+  --builder-fg-subtle: oklch(0.94 0.008 80 / 0.34); /* labels, nav */
+  --builder-fg-faint: oklch(0.94 0.008 80 / 0.16); /* section headers, dividers */
+  --builder-surface: oklch(0.94 0.01 80 / 0.035); /* control / panel background */
+  --builder-surface-hover: oklch(0.94 0.01 80 / 0.06);
+  --builder-panel: oklch(0.205 0.006 80); /* opaque warm surface — popovers, drawers */
+  --builder-border: oklch(0.94 0.01 80 / 0.1); /* hairline */
+  --builder-border-strong: oklch(0.94 0.01 80 / 0.2); /* focus / active edge */
+  --builder-warn: #d97757; /* terracotta — errors, warnings (sparingly) */
+  --builder-warn-soft: rgba(217, 119, 87, 0.12);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -708,6 +731,17 @@ body {
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-builder-fg: var(--builder-fg);
+  --color-builder-fg-muted: var(--builder-fg-muted);
+  --color-builder-fg-subtle: var(--builder-fg-subtle);
+  --color-builder-fg-faint: var(--builder-fg-faint);
+  --color-builder-surface: var(--builder-surface);
+  --color-builder-surface-hover: var(--builder-surface-hover);
+  --color-builder-panel: var(--builder-panel);
+  --color-builder-border: var(--builder-border);
+  --color-builder-border-strong: var(--builder-border-strong);
+  --color-builder-warn: var(--builder-warn);
+  --color-builder-warn-soft: var(--builder-warn-soft);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);

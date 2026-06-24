@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 
-import { Field, controlClass, monoControlClass } from "@/components/tools/field";
 import { updatePieceRef } from "../lib/draft";
 import type { ValidatorDeclaration, ValidatorType } from "../lib/types";
+import { BuilderSelect } from "../ui/builder-select";
+import { controlClass, EditorHeader, Field, FieldRow, monoControlClass } from "../ui/form";
 import { usePackDraft } from "../use-pack-draft";
 import {
   type ConfigField,
@@ -15,6 +16,14 @@ import {
 } from "./validator-types";
 
 const EVIDENCE_TARGETS = ["final_output", "transcript.full", "transcript.from_mismatch"];
+
+const TYPE_GROUPS = VALIDATOR_GROUPS.map((group) => ({
+  label: group,
+  options: VALIDATOR_TYPES.filter((t) => t.group === group).map((t) => ({
+    value: t.value,
+    label: t.label,
+  })),
+}));
 
 export function ValidatorEditor({ index }: { index: number }) {
   const { state, update } = usePackDraft();
@@ -39,70 +48,56 @@ export function ValidatorEditor({ index }: { index: number }) {
   const filePath = (def.target ?? "").startsWith("file:") ? (def.target ?? "").slice(5) : "";
 
   return (
-    <div className="max-w-2xl space-y-5">
-      <h2 className="text-base font-semibold">Validator</h2>
-      <p className="text-sm text-muted-foreground">
-        A deterministic check. Wire it into a scorecard dimension to make it count.
-      </p>
+    <div className="space-y-6">
+      <EditorHeader
+        title="Validator"
+        description="A deterministic check. Wire it into a scorecard dimension to make it count."
+      />
 
-      <Field label="Key" hint="unique; referenced by scorecard dimensions">
+      <FieldRow label="Key" hint="unique; referenced by scorecard dimensions">
         <input
-          className={controlClass}
+          className={monoControlClass}
           value={def.key ?? ""}
           onChange={(e) => set({ key: e.target.value })}
           placeholder="mentions_refund"
         />
-      </Field>
+      </FieldRow>
 
-      <Field label="Check">
-        <select
-          className={controlClass}
+      <FieldRow label="Check">
+        <BuilderSelect
+          ariaLabel="Check"
           value={def.type ?? "contains"}
-          onChange={(e) => changeType(e.target.value as ValidatorType)}
-        >
-          {VALIDATOR_GROUPS.map((group) => (
-            <optgroup key={group} label={group}>
-              {VALIDATOR_TYPES.filter((t) => t.group === group).map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
-      </Field>
+          onChange={(v) => changeType(v as ValidatorType)}
+          groups={TYPE_GROUPS}
+        />
+      </FieldRow>
 
       {meta.forcesToolCalls ? (
-        <Field label="Target" hint="tool-call validators inspect the agent's tool calls">
-          <input className={controlClass} value="tool_calls" disabled />
-        </Field>
+        <FieldRow label="Target" hint="tool-call validators inspect the agent's tool calls">
+          <input className={monoControlClass} value="tool_calls" disabled />
+        </FieldRow>
       ) : meta.isFile ? (
-        <Field label="File path" hint="sandbox path to check">
+        <FieldRow label="File path" hint="sandbox path to check">
           <input
             className={monoControlClass}
             value={filePath}
             onChange={(e) => set({ target: `file:${e.target.value}` })}
             placeholder="/workspace/out.json"
           />
-        </Field>
+        </FieldRow>
       ) : (
-        <Field label="Target" hint="what gets checked">
-          <select
-            className={controlClass}
+        <FieldRow label="Target" hint="what gets checked">
+          <BuilderSelect
+            ariaLabel="Target"
             value={def.target ?? "final_output"}
-            onChange={(e) => set({ target: e.target.value })}
-          >
-            {EVIDENCE_TARGETS.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </Field>
+            onChange={(v) => set({ target: v })}
+            options={EVIDENCE_TARGETS.map((t) => ({ value: t, label: t }))}
+          />
+        </FieldRow>
       )}
 
       {meta.needsExpected && (
-        <Field
+        <FieldRow
           label="Expected"
           hint={'a literal (prefix "literal:") or an evidence reference like case.expectations.answer'}
         >
@@ -112,7 +107,7 @@ export function ValidatorEditor({ index }: { index: number }) {
             onChange={(e) => set({ expected_from: e.target.value })}
             placeholder="literal:refund"
           />
-        </Field>
+        </FieldRow>
       )}
 
       {meta.config?.map((field) => (
@@ -138,16 +133,22 @@ function ConfigFieldInput({
 }) {
   if (field.type === "boolean") {
     return (
-      <Field label={field.label} hint={field.hint}>
-        <label className="flex h-9 items-center gap-2 text-sm">
-          <input type="checkbox" checked={Boolean(value)} onChange={(e) => onChange(e.target.checked)} /> Enabled
+      <FieldRow label={field.label} hint={field.hint}>
+        <label className="flex items-center gap-2 py-2 text-sm text-builder-fg-muted">
+          <input
+            type="checkbox"
+            className="size-3.5 accent-builder-fg"
+            checked={Boolean(value)}
+            onChange={(e) => onChange(e.target.checked)}
+          />
+          Enabled
         </label>
-      </Field>
+      </FieldRow>
     );
   }
   if (field.type === "number") {
     return (
-      <Field label={field.label} hint={field.hint}>
+      <FieldRow label={field.label} hint={field.hint}>
         <input
           className={controlClass}
           type="number"
@@ -156,21 +157,21 @@ function ConfigFieldInput({
           onChange={(e) => onChange(e.target.value === "" ? undefined : Number(e.target.value))}
           placeholder={field.placeholder}
         />
-      </Field>
+      </FieldRow>
     );
   }
   if (field.type === "json") {
     return <JsonConfigField field={field} value={value} onChange={onChange} />;
   }
   return (
-    <Field label={field.label} hint={field.hint}>
+    <FieldRow label={field.label} hint={field.hint}>
       <input
         className={controlClass}
         value={typeof value === "string" ? value : ""}
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
       />
-    </Field>
+    </FieldRow>
   );
 }
 
