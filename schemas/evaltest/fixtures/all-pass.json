@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "report_id": "rpt-all-pass-001",
+  "generated_at": "2026-06-24T12:00:00Z",
+  "runner": {
+    "name": "agentclash-evals",
+    "version": "0.1.0",
+    "language": "python"
+  },
+  "summary": {
+    "total": 2,
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "errored": 0,
+    "metric_failures": 0,
+    "duration_ms": 145.5,
+    "total_cost_usd": 0.002
+  },
+  "cases": [
+    {
+      "case": {
+        "case_id": "test_refund_agent",
+        "name": "test_refund_agent",
+        "file": "tests/test_refund.py",
+        "line": 12,
+        "input": "Customer was double charged. Resolve it."
+      },
+      "status": "passed",
+      "agent_result": {
+        "input": "Customer was double charged. Resolve it.",
+        "output": "I issued a refund for order #12345.",
+        "messages": [
+          {"role": "user", "content": "Customer was double charged. Resolve it."},
+          {"role": "assistant", "content": "I issued a refund for order #12345."}
+        ],
+        "tool_calls": [
+          {"name": "lookup_order", "arguments": {"order_id": "12345"}},
+          {"name": "issue_refund", "arguments": {"order_id": "12345", "amount_usd": 49.99}}
+        ],
+        "metadata": {
+          "model": "gpt-4.1-mini",
+          "latency_ms": 1200,
+          "cost_usd": 0.001
+        }
+      },
+      "metrics": [
+        {
+          "key": "contains_refund",
+          "name": "Contains",
+          "passed": true,
+          "reason": "output contains 'refund'",
+          "evidence": {"matched": "refund"}
+        },
+        {
+          "key": "tool_called",
+          "name": "ToolCalled",
+          "passed": true,
+          "reason": "expected tools were called",
+          "evidence": {"tools": ["lookup_order", "issue_refund"]}
+        }
+      ],
+      "duration_ms": 72.3,
+      "cost_usd": 0.001
+    },
+    {
+      "case": {
+        "case_id": "test_greeting",
+        "name": "test_greeting",
+        "file": "tests/test_refund.py",
+        "line": 28,
+        "input": "hello"
+      },
+      "status": "passed",
+      "agent_result": {
+        "input": "hello",
+        "output": "Hello! How can I help you today?",
+        "messages": [
+          {"role": "user", "content": "hello"},
+          {"role": "assistant", "content": "Hello! How can I help you today?"}
+        ],
+        "metadata": {"latency_ms": 300, "cost_usd": 0.001}
+      },
+      "metrics": [
+        {
+          "key": "contains_hello",
+          "name": "Contains",
+          "passed": true,
+          "reason": "output contains 'Hello'",
+          "evidence": {"matched": "Hello"}
+        }
+      ],
+      "duration_ms": 73.2,
+      "cost_usd": 0.001
+    }
+  ],
+  "exit_code": 0,
+  "duration_ms": 145.5,
+  "total_cost_usd": 0.002
+}

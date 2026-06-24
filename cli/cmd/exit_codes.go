@@ -57,4 +57,11 @@ var documentedExitCodes = []ExitCode{
 	{Code: ciRunExitAPI, Name: "ci_run_api_error", Description: "ci run: an API error occurred.", Commands: []string{"ci run"}},
 	{Code: ciRunExitTimeout, Name: "ci_run_timeout", Description: "ci run: timed out waiting for a candidate run.", Commands: []string{"ci run"}},
 	{Code: ciRunExitRunFailed, Name: "ci_run_run_failed", Description: "ci run: a candidate run finished in a failed state.", Commands: []string{"ci run"}},
+
+	// `evaltest run` — local pre-deploy eval runner.
+	{Code: evaltestExitPass, Name: "success", Description: "evaltest run: all eval cases passed.", Commands: []string{"evaltest run"}},
+	{Code: evaltestExitAssertionFail, Name: "assertion_failed", Description: "evaltest run: one or more metric assertions failed.", Commands: []string{"evaltest run"}},
+	{Code: evaltestExitConfigError, Name: "config_error", Description: "evaltest run: invalid eval config or test authoring error.", Commands: []string{"evaltest run"}},
+	{Code: evaltestExitProviderError, Name: "provider_error", Description: "evaltest run: judge/model provider or runtime error.", Commands: []string{"evaltest run"}},
+	{Code: evaltestExitInternalError, Name: "internal_error", Description: "evaltest run: internal SDK/runner error.", Commands: []string{"evaltest run"}},
 }
