@@ -37,7 +37,7 @@ func init() {
 	datasetCreateCmd.Flags().String("description", "", "Dataset description")
 	datasetCreateCmd.Flags().String("input-schema", "", "Input JSON Schema")
 	datasetCreateCmd.Flags().Bool("enforce-schema", false, "Reject examples that do not match the input schema")
-	datasetCreateCmd.Flags().String("default-challenge-pack-version-id", "", "Default challenge pack version ID")
+	datasetCreateCmd.Flags().String("default-eval-pack-version-id", "", "Default eval pack version ID")
 
 	datasetExampleAddCmd.Flags().String("from-file", "", "JSON file with dataset example payload")
 	datasetExampleAddCmd.Flags().String("external-id", "", "Stable external ID for idempotent upsert")
@@ -65,7 +65,7 @@ func init() {
 	datasetExportCmd.Flags().String("format", "jsonl", "Export format: openai, braintrust, langsmith, phoenix, jsonl, or csv")
 	datasetExportCmd.Flags().String("version", "", "Dataset version ID to export")
 	datasetEvalCmd.Flags().String("version", "", "Dataset version ID to run")
-	datasetEvalCmd.Flags().String("pack", "", "Challenge pack version ID")
+	datasetEvalCmd.Flags().String("pack", "", "Eval pack version ID")
 	datasetEvalCmd.Flags().String("challenge", "", "Challenge key to bind examples to")
 	datasetEvalCmd.Flags().StringSlice("deployment", nil, "Agent deployment ID (repeatable)")
 	datasetEvalCmd.Flags().String("name", "", "Optional run name")
@@ -132,7 +132,7 @@ var datasetCreateCmd = &cobra.Command{
 			value, _ := cmd.Flags().GetBool("enforce-schema")
 			body["input_schema_enforced"] = value
 		}
-		setFlagIfChanged(cmd, body, "default-challenge-pack-version-id", "default_challenge_pack_version_id")
+		setFlagIfChanged(cmd, body, "default-eval-pack-version-id", "default_eval_pack_version_id")
 
 		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/datasets", body)
 		if err != nil {
@@ -505,7 +505,7 @@ func datasetExampleBody(cmd *cobra.Command) (map[string]any, error) {
 func datasetEvalBody(cmd *cobra.Command) (map[string]any, error) {
 	body := map[string]any{}
 	setRequiredFlag(cmd, body, "version", "version_id")
-	setRequiredFlag(cmd, body, "pack", "challenge_pack_version_id")
+	setRequiredFlag(cmd, body, "pack", "eval_pack_version_id")
 	setRequiredFlag(cmd, body, "challenge", "challenge_id")
 	setFlagIfChanged(cmd, body, "name", "name")
 	if deployments, _ := cmd.Flags().GetStringSlice("deployment"); len(compactDatasetFlagValues(deployments)) > 0 {
@@ -533,7 +533,7 @@ func setRequiredFlag(cmd *cobra.Command, body map[string]any, flagName, key stri
 
 func missingDatasetEvalFields(body map[string]any) []string {
 	var missing []string
-	for _, key := range []string{"version_id", "challenge_pack_version_id", "challenge_id", "agent_deployment_ids"} {
+	for _, key := range []string{"version_id", "eval_pack_version_id", "challenge_id", "agent_deployment_ids"} {
 		if _, ok := body[key]; !ok {
 			missing = append(missing, key)
 		}

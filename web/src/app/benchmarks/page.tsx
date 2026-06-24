@@ -9,7 +9,7 @@ import { benchmarkRssAlternate, ogImageUrl } from "@/lib/seo";
 
 const PAGE_TITLE = "AI Agent Benchmarks Hub | Reproducible Evals | AgentClash";
 const PAGE_DESCRIPTION =
-  "Public AI agent benchmarks hub: frozen challenge packs, same-task eval runs, replay evidence, scorecards, and monthly reports. Run the same benchmark on your agents.";
+  "Public AI agent benchmarks hub: frozen eval packs, same-task eval runs, replay evidence, scorecards, and monthly reports. Run the same benchmark on your agents.";
 const SOCIAL_IMAGE = ogImageUrl({
   title: "AI Agent Benchmarks",
   subtitle: "Frozen packs, same-task eval runs, replay evidence",

@@ -19,7 +19,7 @@ fi
 export API_BASE_URL="${API_BASE_URL:-http://localhost:8080}"
 export WORKSPACE_ID="${WORKSPACE_ID:-22222222-2222-2222-2222-222222222222}"
 export USER_ID="${USER_ID:-33333333-3333-3333-3333-333333333333}"
-export CHALLENGE_PACK_VERSION_ID="${CHALLENGE_PACK_VERSION_ID:-55555555-5555-5555-5555-555555555555}"
+export EVAL_PACK_VERSION_ID="${EVAL_PACK_VERSION_ID:-55555555-5555-5555-5555-555555555555}"
 export CHALLENGE_INPUT_SET_ID="${CHALLENGE_INPUT_SET_ID:-abababab-abab-abab-abab-abababababab}"
 export AGENT_DEPLOYMENT_ID="${AGENT_DEPLOYMENT_ID:-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee}"
 export SCORECARD_TIMEOUT_SECONDS="${SCORECARD_TIMEOUT_SECONDS:-240}"
@@ -49,7 +49,7 @@ create_response="$(curl -fsS \
   -H "X-Agentclash-Workspace-Memberships: ${WORKSPACE_ID}:workspace_admin" \
   -d '{
     "workspace_id": "'"${WORKSPACE_ID}"'",
-    "challenge_pack_version_id": "'"${CHALLENGE_PACK_VERSION_ID}"'",
+    "eval_pack_version_id": "'"${EVAL_PACK_VERSION_ID}"'",
     "challenge_input_set_id": "'"${CHALLENGE_INPUT_SET_ID}"'",
     "agent_deployment_ids": ["'"${AGENT_DEPLOYMENT_ID}"'"]
   }')"

@@ -79,8 +79,8 @@ const agentStatusVariant: Record<
 };
 
 export function PublicShareRenderer({ resource }: { resource: SharedResource }) {
-  if (resource.type === "challenge_pack_version") {
-    return <PublicChallengePack resource={resource} />;
+  if (resource.type === "eval_pack_version") {
+    return <PublicEvalPack resource={resource} />;
   }
   if (resource.type === "run_scorecard") {
     return <PublicRun resource={resource} />;
@@ -100,7 +100,7 @@ export function PublicShareRenderer({ resource }: { resource: SharedResource }) 
   );
 }
 
-function PublicChallengePack({ resource }: { resource: SharedResource }) {
+function PublicEvalPack({ resource }: { resource: SharedResource }) {
   const pack = asRecord(resource.pack);
   const version = asRecord(resource.version);
   const yaml = useMemo(() => {
@@ -118,9 +118,9 @@ function PublicChallengePack({ resource }: { resource: SharedResource }) {
   return (
     <section className="rounded-lg border border-border bg-card overflow-hidden">
       <div className="border-b border-border px-4 py-3">
-        <h2 className="text-sm font-semibold">Challenge pack YAML</h2>
+        <h2 className="text-sm font-semibold">Eval pack YAML</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          {String(pack.name ?? "Challenge pack")} v
+          {String(pack.name ?? "Eval pack")} v
           {String(version.version_number ?? "")}
         </p>
       </div>

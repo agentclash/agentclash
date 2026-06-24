@@ -13,7 +13,7 @@ An agent eval program is how platform teams make that evidence repeatable across
 
 Before you buy tools, align leadership on what a release decision contains:
 
-- frozen workload (challenge pack version + input set)
+- frozen workload (eval pack version + input set)
 - candidate and baseline agent builds
 - scorecard with policy dimensions
 - replay evidence for material divergences
@@ -34,7 +34,7 @@ Not every agent deserves a full benchmark on day one. Prioritize workloads where
 
 For each, document: owner, data class, retry policy, and current "proof" (usually demos or ad hoc evals).
 
-## Phase 2: Encode workloads as challenge packs
+## Phase 2: Encode workloads as eval packs
 
 Turn the top one or two workflows into versioned packs:
 
@@ -45,7 +45,7 @@ Turn the top one or two workflows into versioned packs:
 
 When production misses, promote cases within a week. That is how eval coverage compounds in regulated settings.
 
-Product context: [AI agent regression testing](/platform/agent-regression-testing). Authoring: [write a challenge pack](/docs/guides/write-a-challenge-pack).
+Product context: [AI agent regression testing](/platform/agent-regression-testing). Authoring: [write an eval pack](/docs/guides/write-an-eval-pack).
 
 ## Phase 3: Establish baselines and compare discipline
 

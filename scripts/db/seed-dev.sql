@@ -33,14 +33,14 @@ INSERT INTO workspace_memberships (organization_id, workspace_id, user_id, role)
 VALUES ('33333333-3333-3333-3333-333333333333', '22222222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'workspace_admin')
 ON CONFLICT (workspace_id, user_id) DO NOTHING;
 
--- ─── Challenge Pack + Version ───
-INSERT INTO challenge_packs (id, slug, name, family, description, lifecycle_status)
+-- ─── Eval Pack + Version ───
+INSERT INTO eval_packs (id, slug, name, family, description, lifecycle_status)
 VALUES ('44444444-4444-4444-4444-444444444444', 'fix-auth-server', 'Fix Auth Server', 'code-repair', 'A broken Go auth server with timestamp parsing and Bearer prefix bugs', 'active')
 ON CONFLICT (slug) DO NOTHING;
 
-INSERT INTO challenge_pack_versions (id, challenge_pack_id, version_number, lifecycle_status, manifest_checksum, manifest, published_at)
+INSERT INTO eval_pack_versions (id, eval_pack_id, version_number, lifecycle_status, manifest_checksum, manifest, published_at)
 VALUES ('55555555-5555-5555-5555-555555555555', '44444444-4444-4444-4444-444444444444', 1, 'runnable', 'dev-seed-checksum', '{"challenges": 2, "description": "v1 — two auth bugs"}'::jsonb, now())
-ON CONFLICT (challenge_pack_id, version_number) DO NOTHING;
+ON CONFLICT (eval_pack_id, version_number) DO NOTHING;
 
 -- ─── Provider Infrastructure (needed by agent_deployments FK chain) ───
 INSERT INTO provider_accounts (id, organization_id, provider_key, name, credential_reference)

@@ -7,9 +7,9 @@ dateModified: 2026-06-01
 This path is for people changing the CLI or trying the product without booting the whole stack locally.
 
 <Callout type="note">
-  The hosted quickstart assumes your workspace already has challenge packs and
+  The hosted quickstart assumes your workspace already has eval packs and
   deployments. If it does not, stop after `link` and then author a pack with
-  `challenge-pack init`; you have still verified auth, connectivity, and
+  `eval-pack init`; you have still verified auth, connectivity, and
   workspace selection.
 </Callout>
 
@@ -51,7 +51,7 @@ agentclash doctor
 agentclash eval start --help
 ```
 
-If the workspace is already seeded with challenge packs and agent deployments, create and follow a run:
+If the workspace is already seeded with eval packs and agent deployments, create and follow a run:
 
 ```bash
 agentclash eval start --follow
@@ -60,9 +60,9 @@ agentclash eval start --follow
 If the workspace is empty, scaffold a starter pack first:
 
 ```bash
-agentclash challenge-pack init support-eval.yaml
-agentclash challenge-pack validate support-eval.yaml
-agentclash challenge-pack publish support-eval.yaml
+agentclash eval-pack init support-eval.yaml
+agentclash eval-pack validate support-eval.yaml
+agentclash eval-pack publish support-eval.yaml
 agentclash eval start --follow
 agentclash baseline set
 agentclash eval scorecard
@@ -76,7 +76,7 @@ You should now have:
 - a default workspace linked locally
 - a working connection to the hosted API
 - either a created run or enough context to see what the workspace is missing
-- a clear next step: publish a challenge pack, start an eval, or save a baseline
+- a clear next step: publish a eval pack, start an eval, or save a baseline
 
 ## See also
 
@@ -84,4 +84,4 @@ You should now have:
 - [Runs and Evals](/docs/concepts/runs-and-evals)
 - [CLI Reference](/docs/reference/cli)
 - [Datasets overview](/docs/guides/datasets-overview)
-- [Multi-turn packs](/docs/challenge-packs/multi-turn)
+- [Multi-turn packs](/docs/eval-packs/multi-turn)

@@ -99,7 +99,7 @@ const longSkillPath = path.join(longSkillDir, "SKILL.md");
 writeFileSync(
   longSkillPath,
   `---
-name: agentclash-challenge-pack-yaml-author-with-extra-long-name
+name: agentclash-eval-pack-yaml-author-with-extra-long-name
 description: Use when testing long harness names.
 metadata:
   agentclash.role: testing

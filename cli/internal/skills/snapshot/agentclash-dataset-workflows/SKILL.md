@@ -10,7 +10,7 @@ metadata:
 # AgentClash Dataset Workflows
 
 ## Purpose
-End-to-end dataset operations in a workspace: versioned example banks, eval runs against challenge packs, CI gating, synthetic generation, production trace import, and promotion into regression suites.
+End-to-end dataset operations in a workspace: versioned example banks, eval runs against eval packs, CI gating, synthetic generation, production trace import, and promotion into regression suites.
 
 ## Use When
 - Building or curating labeled examples for prompt or agent evals.
@@ -19,13 +19,13 @@ End-to-end dataset operations in a workspace: versioned example banks, eval runs
 - Syncing a dataset version into a linked regression suite.
 
 ## Do Not Use When
-- The user only needs a one-off challenge-pack run — use `agentclash-eval-runner`.
+- The user only needs a one-off eval-pack run — use `agentclash-eval-runner`.
 - Prompt matrix experiments without a dataset artifact — use `agentclash-prompt-eval-playground`.
 - Harness coding tasks — use `agentclash-agent-harness-setup`.
 
 ## Inputs Needed
 - Workspace ID and dataset ID (create datasets via API/UI if none exist).
-- For eval/gate: dataset version ID, challenge pack version ID, challenge key, deployment IDs.
+- For eval/gate: dataset version ID, eval pack version ID, challenge key, deployment IDs.
 - For gate: baseline ID and candidate run ID (or `--eval` to start eval inline).
 - For generate: `--count`, `--provider-account`, `--model`.
 

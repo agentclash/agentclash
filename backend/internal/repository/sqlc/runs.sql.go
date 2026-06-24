@@ -16,7 +16,7 @@ const countRunsByWorkspaceID = `-- name: CountRunsByWorkspaceID :one
 SELECT count(*)
 FROM runs
 WHERE workspace_id = $1
-  AND source_type = 'challenge_pack'
+  AND source_type = 'eval_pack'
 `
 
 type CountRunsByWorkspaceIDParams struct {
@@ -34,7 +34,7 @@ const createRun = `-- name: CreateRun :one
 INSERT INTO runs (
     organization_id,
     workspace_id,
-    challenge_pack_version_id,
+    eval_pack_version_id,
     challenge_input_set_id,
     official_pack_mode,
     created_by_user_id,
@@ -74,37 +74,37 @@ INSERT INTO runs (
     $19,
     $20
 )
-RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap, ci_metadata, source_type
+RETURNING id, organization_id, workspace_id, eval_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap, ci_metadata, source_type
 `
 
 type CreateRunParams struct {
-	OrganizationID         uuid.UUID
-	WorkspaceID            uuid.UUID
-	ChallengePackVersionID *uuid.UUID
-	ChallengeInputSetID    *uuid.UUID
-	OfficialPackMode       string
-	CreatedByUserID        *uuid.UUID
-	Name                   string
-	Status                 string
-	ExecutionMode          string
-	TemporalWorkflowID     *string
-	TemporalRunID          *string
-	ExecutionPlan          []byte
-	CiMetadata             []byte
-	QueuedAt               pgtype.Timestamptz
-	StartedAt              pgtype.Timestamptz
-	FinishedAt             pgtype.Timestamptz
-	CancelledAt            pgtype.Timestamptz
-	FailedAt               pgtype.Timestamptz
-	RaceContext            bool
-	RaceContextMinStepGap  *int32
+	OrganizationID        uuid.UUID
+	WorkspaceID           uuid.UUID
+	EvalPackVersionID     *uuid.UUID
+	ChallengeInputSetID   *uuid.UUID
+	OfficialPackMode      string
+	CreatedByUserID       *uuid.UUID
+	Name                  string
+	Status                string
+	ExecutionMode         string
+	TemporalWorkflowID    *string
+	TemporalRunID         *string
+	ExecutionPlan         []byte
+	CiMetadata            []byte
+	QueuedAt              pgtype.Timestamptz
+	StartedAt             pgtype.Timestamptz
+	FinishedAt            pgtype.Timestamptz
+	CancelledAt           pgtype.Timestamptz
+	FailedAt              pgtype.Timestamptz
+	RaceContext           bool
+	RaceContextMinStepGap *int32
 }
 
 func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, error) {
 	row := q.db.QueryRow(ctx, createRun,
 		arg.OrganizationID,
 		arg.WorkspaceID,
-		arg.ChallengePackVersionID,
+		arg.EvalPackVersionID,
 		arg.ChallengeInputSetID,
 		arg.OfficialPackMode,
 		arg.CreatedByUserID,
@@ -128,7 +128,7 @@ func (q *Queries) CreateRun(ctx context.Context, arg CreateRunParams) (Run, erro
 		&i.ID,
 		&i.OrganizationID,
 		&i.WorkspaceID,
-		&i.ChallengePackVersionID,
+		&i.EvalPackVersionID,
 		&i.ChallengeInputSetID,
 		&i.CreatedByUserID,
 		&i.Name,
@@ -201,7 +201,7 @@ func (q *Queries) CreateRunCaseSelection(ctx context.Context, arg CreateRunCaseS
 }
 
 const getRunByID = `-- name: GetRunByID :one
-SELECT id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap, ci_metadata, source_type
+SELECT id, organization_id, workspace_id, eval_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap, ci_metadata, source_type
 FROM runs
 WHERE id = $1
 LIMIT 1
@@ -218,7 +218,7 @@ func (q *Queries) GetRunByID(ctx context.Context, arg GetRunByIDParams) (Run, er
 		&i.ID,
 		&i.OrganizationID,
 		&i.WorkspaceID,
-		&i.ChallengePackVersionID,
+		&i.EvalPackVersionID,
 		&i.ChallengeInputSetID,
 		&i.CreatedByUserID,
 		&i.Name,
@@ -294,17 +294,17 @@ const listRecentComparableScoredRunsBeforeRunID = `-- name: ListRecentComparable
 WITH anchor AS (
     SELECT
         runs.workspace_id,
-        runs.challenge_pack_version_id,
+        runs.eval_pack_version_id,
         runs.created_at,
         runs.id
     FROM runs
     WHERE runs.id = $2
 )
-SELECT r.id, r.organization_id, r.workspace_id, r.challenge_pack_version_id, r.challenge_input_set_id, r.created_by_user_id, r.name, r.status, r.execution_mode, r.temporal_workflow_id, r.temporal_run_id, r.execution_plan, r.queued_at, r.started_at, r.finished_at, r.cancelled_at, r.failed_at, r.created_at, r.updated_at, r.official_pack_mode, r.eval_session_id, r.race_context, r.race_context_min_step_gap, r.ci_metadata, r.source_type
+SELECT r.id, r.organization_id, r.workspace_id, r.eval_pack_version_id, r.challenge_input_set_id, r.created_by_user_id, r.name, r.status, r.execution_mode, r.temporal_workflow_id, r.temporal_run_id, r.execution_plan, r.queued_at, r.started_at, r.finished_at, r.cancelled_at, r.failed_at, r.created_at, r.updated_at, r.official_pack_mode, r.eval_session_id, r.race_context, r.race_context_min_step_gap, r.ci_metadata, r.source_type
 FROM runs AS r
 JOIN anchor AS a
   ON r.workspace_id = a.workspace_id
- AND r.challenge_pack_version_id = a.challenge_pack_version_id
+ AND r.eval_pack_version_id = a.eval_pack_version_id
 WHERE r.id <> a.id
   AND r.status = 'completed'
   AND (r.created_at, r.id) < (a.created_at, a.id)
@@ -335,7 +335,7 @@ func (q *Queries) ListRecentComparableScoredRunsBeforeRunID(ctx context.Context,
 			&i.ID,
 			&i.OrganizationID,
 			&i.WorkspaceID,
-			&i.ChallengePackVersionID,
+			&i.EvalPackVersionID,
 			&i.ChallengeInputSetID,
 			&i.CreatedByUserID,
 			&i.Name,
@@ -537,10 +537,10 @@ func (q *Queries) ListRunStatusHistoryByRunID(ctx context.Context, arg ListRunSt
 }
 
 const listRunsByWorkspaceID = `-- name: ListRunsByWorkspaceID :many
-SELECT id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap, ci_metadata, source_type
+SELECT id, organization_id, workspace_id, eval_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap, ci_metadata, source_type
 FROM runs
 WHERE workspace_id = $1
-  AND source_type = 'challenge_pack'
+  AND source_type = 'eval_pack'
 ORDER BY created_at DESC
 LIMIT $3 OFFSET $2
 `
@@ -564,7 +564,7 @@ func (q *Queries) ListRunsByWorkspaceID(ctx context.Context, arg ListRunsByWorks
 			&i.ID,
 			&i.OrganizationID,
 			&i.WorkspaceID,
-			&i.ChallengePackVersionID,
+			&i.EvalPackVersionID,
 			&i.ChallengeInputSetID,
 			&i.CreatedByUserID,
 			&i.Name,
@@ -605,7 +605,7 @@ WHERE id = $3
   AND temporal_workflow_id IS NULL
   AND temporal_run_id IS NULL
   AND status NOT IN ('completed', 'failed', 'cancelled')
-RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap, ci_metadata, source_type
+RETURNING id, organization_id, workspace_id, eval_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap, ci_metadata, source_type
 `
 
 type SetRunTemporalIDsParams struct {
@@ -621,7 +621,7 @@ func (q *Queries) SetRunTemporalIDs(ctx context.Context, arg SetRunTemporalIDsPa
 		&i.ID,
 		&i.OrganizationID,
 		&i.WorkspaceID,
-		&i.ChallengePackVersionID,
+		&i.EvalPackVersionID,
 		&i.ChallengeInputSetID,
 		&i.CreatedByUserID,
 		&i.Name,
@@ -672,7 +672,7 @@ SET status = $1,
     END
 WHERE id = $2
   AND status = $3
-RETURNING id, organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap, ci_metadata, source_type
+RETURNING id, organization_id, workspace_id, eval_pack_version_id, challenge_input_set_id, created_by_user_id, name, status, execution_mode, temporal_workflow_id, temporal_run_id, execution_plan, queued_at, started_at, finished_at, cancelled_at, failed_at, created_at, updated_at, official_pack_mode, eval_session_id, race_context, race_context_min_step_gap, ci_metadata, source_type
 `
 
 type UpdateRunStatusParams struct {
@@ -688,7 +688,7 @@ func (q *Queries) UpdateRunStatus(ctx context.Context, arg UpdateRunStatusParams
 		&i.ID,
 		&i.OrganizationID,
 		&i.WorkspaceID,
-		&i.ChallengePackVersionID,
+		&i.EvalPackVersionID,
 		&i.ChallengeInputSetID,
 		&i.CreatedByUserID,
 		&i.Name,

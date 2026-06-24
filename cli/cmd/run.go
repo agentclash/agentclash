@@ -33,10 +33,10 @@ func init() {
 	runSeriesCmd.AddCommand(runSeriesCreateCmd)
 	runSeriesCmd.AddCommand(runSeriesReportCmd)
 
-	runCreateCmd.Flags().String("challenge-pack-version", "", "Challenge pack version ID (optional in a TTY; prompted when omitted)")
+	runCreateCmd.Flags().String("eval-pack-version", "", "Eval pack version ID (optional in a TTY; prompted when omitted)")
 	runCreateCmd.Flags().StringSlice("deployments", nil, "Agent deployment IDs (optional in a TTY; prompted when omitted)")
-	runCreateCmd.Flags().String("deployment-lineup", "", "Challenge pack deployment lineup to use when --deployments is omitted (default: default)")
-	runCreateCmd.Flags().StringSlice("deployment-lineups", nil, "Challenge pack deployment lineups to cross with --seeds for a race series")
+	runCreateCmd.Flags().String("deployment-lineup", "", "Eval pack deployment lineup to use when --deployments is omitted (default: default)")
+	runCreateCmd.Flags().StringSlice("deployment-lineups", nil, "Eval pack deployment lineups to cross with --seeds for a race series")
 	runCreateCmd.Flags().String("name", "", "Run name (optional)")
 	runCreateCmd.Flags().String("input-set", "", "Challenge input set ID (optional)")
 	runCreateCmd.Flags().Bool("follow", false, "Follow run events after creation")
@@ -69,9 +69,9 @@ func init() {
 	runPromoteFailureCmd.Flags().String("failure-summary", "", "Failure summary")
 	runPromoteFailureCmd.Flags().String("severity", "", "Case severity: info, warning, or blocking")
 
-	runSeriesCreateCmd.Flags().String("challenge-pack-version", "", "Challenge pack version ID")
+	runSeriesCreateCmd.Flags().String("eval-pack-version", "", "Eval pack version ID")
 	runSeriesCreateCmd.Flags().String("input-set", "", "Challenge input set ID (optional)")
-	runSeriesCreateCmd.Flags().StringSlice("deployment-lineups", nil, "Challenge pack deployment lineups to cross with --seeds")
+	runSeriesCreateCmd.Flags().StringSlice("deployment-lineups", nil, "Eval pack deployment lineups to cross with --seeds")
 	runSeriesCreateCmd.Flags().Int("seeds", 0, "Number of seeds to cross with each deployment lineup (1-100)")
 	runSeriesCreateCmd.Flags().String("name", "", "Series name (optional)")
 	runSeriesCreateCmd.Flags().Int("max-iter", 0, "Override max iterations for each child run (1-1000). 0 uses the pack/runtime default.")
@@ -101,7 +101,7 @@ var runSeriesCreateCmd = &cobra.Command{
 		if err := validateSeriesSeedCount(request.Seeds); err != nil {
 			return err
 		}
-		lineups, err := resolveRunCreateDeploymentLineups(cmd, rc, wsID, request.ChallengePackVersionID, request.DeploymentLineups)
+		lineups, err := resolveRunCreateDeploymentLineups(cmd, rc, wsID, request.EvalPackVersionID, request.DeploymentLineups)
 		if err != nil {
 			return err
 		}
@@ -388,9 +388,9 @@ var runCreateCmd = &cobra.Command{
 
 For the guided workflow-first path, prefer 'agentclash eval start'.
 
-In a normal terminal session, omitting --challenge-pack-version and/or
+In a normal terminal session, omitting --eval-pack-version and/or
 --deployments launches an interactive picker so you can scroll through
-available challenge packs, versions, input sets, and deployments and press
+available eval packs, versions, input sets, and deployments and press
 Enter to select them.
 
 For CI and other non-interactive use, keep passing explicit IDs via flags.`,
@@ -411,7 +411,7 @@ For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 			if err := validateSeriesSeedCount(request.Seeds); err != nil {
 				return err
 			}
-			lineups, err := resolveRunCreateDeploymentLineups(cmd, rc, wsID, request.ChallengePackVersionID, request.DeploymentLineups)
+			lineups, err := resolveRunCreateDeploymentLineups(cmd, rc, wsID, request.EvalPackVersionID, request.DeploymentLineups)
 			if err != nil {
 				return err
 			}
@@ -431,7 +431,7 @@ For CI and other non-interactive use, keep passing explicit IDs via flags.`,
 		if err != nil {
 			return err
 		}
-		request.ChallengePackVersionID = selections.challengePackVersionID
+		request.EvalPackVersionID = selections.evalPackVersionID
 		request.ChallengeInputSetID = selections.challengeInputSetID
 		request.DeploymentIDs = selections.deploymentIDs
 		if request.Mode == "" {

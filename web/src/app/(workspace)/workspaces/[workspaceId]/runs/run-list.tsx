@@ -124,7 +124,7 @@ export function RunList({
       <EmptyState
         icon={<Play className="size-10" />}
         title="No runs yet"
-        description="Create a run to benchmark your agent deployments against challenge packs."
+        description="Create a run to benchmark your agent deployments against eval packs."
         action={
           onCreateRun
             ? { label: "Create your first run", onClick: onCreateRun }

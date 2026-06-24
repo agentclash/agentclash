@@ -5,7 +5,7 @@ import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import { listRunFailures } from "@/lib/api/failure-reviews";
 import type {
-  ChallengePack,
+  EvalPack,
   ListRunFailuresResponse,
   Run,
   RunAgent,
@@ -28,22 +28,22 @@ export default async function RunFailuresPage({
   let run: Run;
   let agents: RunAgent[];
   let initialPage: ListRunFailuresResponse;
-  let sourceChallengePack: ChallengePack | null = null;
+  let sourceEvalPack: EvalPack | null = null;
   try {
     const [runRes, agentsRes, firstPage, packsRes] = await Promise.all([
       api.get<Run>(`/v1/runs/${runId}`),
       api.get<{ items: RunAgent[] }>(`/v1/runs/${runId}/agents`),
       listRunFailures(api, workspaceId, runId, { limit: DEFAULT_LIMIT }),
-      api.get<{ items: ChallengePack[] }>(
-        `/v1/workspaces/${workspaceId}/challenge-packs`,
+      api.get<{ items: EvalPack[] }>(
+        `/v1/workspaces/${workspaceId}/eval-packs`,
       ),
     ]);
     run = runRes;
     agents = agentsRes.items;
     initialPage = firstPage;
-    sourceChallengePack =
+    sourceEvalPack =
       packsRes.items.find((pack) =>
-        pack.versions.some((version) => version.id === runRes.challenge_pack_version_id),
+        pack.versions.some((version) => version.id === runRes.eval_pack_version_id),
       ) ?? null;
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
@@ -79,8 +79,8 @@ export default async function RunFailuresPage({
         agents={agents}
         initialPage={initialPage}
         initialLimit={DEFAULT_LIMIT}
-        sourceChallengePackId={sourceChallengePack?.id}
-        sourceChallengePackName={sourceChallengePack?.name ?? null}
+        sourceEvalPackId={sourceEvalPack?.id}
+        sourceEvalPackName={sourceEvalPack?.name ?? null}
       />
     </div>
   );

@@ -137,7 +137,7 @@ function buildMdx({ title, model, shareUrl, results }) {
     `author: ${yamlString("AgentClash")}`,
     `featuredModel: ${yamlString(model)}`,
     `verdict: ${yamlString("TODO: one-line verdict — who won and the key trade-off.")}`,
-    `challengePack: ${yamlString("TODO: challenge pack name")}`,
+    `evalPack: ${yamlString("TODO: eval pack name")}`,
     "sample: false",
     ...(shareUrl ? [`runShareUrl: ${yamlString(shareUrl)}`] : []),
     "tasks:",

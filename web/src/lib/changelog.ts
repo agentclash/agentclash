@@ -217,7 +217,7 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
     label: "May 15 – May 24, 2026",
     headline: "Security packs, multi-turn eval, and replay polish",
     summary:
-      "Security-family challenge packs, stress-run CLI, and vault boundary harnesses established AgentClash as a security eval surface. Multi-turn evaluation with human takeover and case templating extended the engine beyond single-shot runs.",
+      "Security-family eval packs, stress-run CLI, and vault boundary harnesses established AgentClash as a security eval surface. Multi-turn evaluation with human takeover and case templating extended the engine beyond single-shot runs.",
     themes: [
       "Security eval",
       "Multi-turn eval",
@@ -227,11 +227,11 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
     entries: [
       {
         category: "security",
-        text: "SecurityPolicy schema and SecurityScore dimension for security-family challenge packs.",
+        text: "SecurityPolicy schema and SecurityScore dimension for security-family eval packs.",
       },
       {
         category: "security",
-        text: "Canonical secret-hygiene and prompt-injection challenge packs shipped.",
+        text: "Canonical secret-hygiene and prompt-injection eval packs shipped.",
       },
       {
         category: "security",
@@ -251,7 +251,7 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
       },
       {
         category: "added",
-        text: "Case template renderer and bundle validation for code-execution challenge packs.",
+        text: "Case template renderer and bundle validation for code-execution eval packs.",
       },
       {
         category: "added",
@@ -353,7 +353,7 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
     entries: [
       {
         category: "added",
-        text: "25 portable Agent Skills — hub, quickstart, compare-and-triage, eval runner, challenge-pack authoring, harness setup, multi-turn operator, dataset workflows, CI release gate, security evaluation, and workspace admin.",
+        text: "25 portable Agent Skills — hub, quickstart, compare-and-triage, eval runner, eval-pack authoring, harness setup, multi-turn operator, dataset workflows, CI release gate, security evaluation, and workspace admin.",
         href: "/docs/guides/use-with-ai-tools",
       },
       {

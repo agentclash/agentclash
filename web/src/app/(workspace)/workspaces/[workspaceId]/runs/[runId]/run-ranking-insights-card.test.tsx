@@ -58,7 +58,7 @@ function renderCard() {
         run: {
           id: "run-1",
           workspace_id: "ws-1",
-          challenge_pack_version_id: "cpv-1",
+          eval_pack_version_id: "cpv-1",
           official_pack_mode: "full",
           name: "Comparison Run",
           status: "completed",

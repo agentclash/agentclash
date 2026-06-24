@@ -58,7 +58,7 @@ The Go backend already serves a minimal HTML viewer at `GET /v1/compare/viewer?b
 | Page | Route | Backend API | Status |
 |---|---|---|---|
 | Agent deployments | `/deployments` | Not yet built | Not built |
-| Challenge packs | `/packs` | Not yet built | Not built |
+| Eval packs | `/packs` | Not yet built | Not built |
 | Workspace settings | `/settings` | Not yet built | Not built |
 
 ---
@@ -84,4 +84,4 @@ These are needed but don't exist yet:
 |---|---|---|
 | `GET /v1/runs` | List runs | Dashboard home |
 | `GET /v1/deployments` | List deployments | Create run form |
-| `GET /v1/challenge-packs` | List packs | Create run form |
+| `GET /v1/eval-packs` | List packs | Create run form |

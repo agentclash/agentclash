@@ -66,7 +66,7 @@ const primaryPages = [
   {
     title: "Features",
     href: "/features",
-    description: "Scorecards, replay, and challenge packs for agent evaluation.",
+    description: "Scorecards, replay, and eval packs for agent evaluation.",
   },
   {
     title: "Industries",
@@ -76,7 +76,7 @@ const primaryPages = [
   {
     title: "Glossary",
     href: "/glossary",
-    description: "Definitions for agent evaluation, challenge packs, and release gates.",
+    description: "Definitions for agent evaluation, eval packs, and release gates.",
   },
   {
     title: "Docs",

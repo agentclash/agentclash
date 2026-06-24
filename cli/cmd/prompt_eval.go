@@ -1340,7 +1340,7 @@ func promptEvalEvaluationSpec(configName string, group promptEvalTestGroup) map[
 		})
 	}
 	return map[string]any{
-		"name":           slugifyChallengePackName(configName) + "-" + group.Signature,
+		"name":           slugifyEvalPackName(configName) + "-" + group.Signature,
 		"version_number": 1,
 		"judge_mode":     "deterministic",
 		"validators":     validators,
@@ -1607,7 +1607,7 @@ func promptfooImportName(path, override, description string) string {
 	if name == "" || name == "promptfooconfig" {
 		return "imported-promptfoo"
 	}
-	return slugifyChallengePackName(name)
+	return slugifyEvalPackName(name)
 }
 
 func promptfooStringList(raw any) []string {
@@ -1650,7 +1650,7 @@ func promptfooTestKey(index int, description string) string {
 	if base == "" {
 		base = fmt.Sprintf("test-%d", index+1)
 	}
-	return slugifyChallengePackName(base)
+	return slugifyEvalPackName(base)
 }
 
 func promptfooValidateRegex(pattern string) error {
@@ -2142,7 +2142,7 @@ func defaultPromptEvalName(targetPath string) string {
 	if name == "" || name == "prompt-eval" {
 		return "starter-prompt-eval"
 	}
-	return slugifyChallengePackName(name)
+	return slugifyEvalPackName(name)
 }
 
 func floatPtrPromptEval(value float64) *float64 {

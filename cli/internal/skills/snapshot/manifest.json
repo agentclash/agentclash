@@ -1,83 +1,35 @@
 {
-  "snapshot_version": "5674fc82b113",
+  "snapshot_version": "620398e968d0",
   "skills": [
     {
       "name": "agentclash-agent-build-author",
       "role": "agent-builds",
       "requires_cli": true,
-      "sha256": "13d6ffb4888419635066da3647bf9328e33ff5cc55e87d9ce647df74177409da"
+      "sha256": "e74a61ddb1d9e9e3ff089737b3bdc8000b2655e66739df89ed6e36edffe57353"
     },
     {
       "name": "agentclash-agent-deployment-setup",
       "role": "agent-deployments",
       "requires_cli": true,
-      "sha256": "76bc7df69767c2a176c5e31f0e1d01532c0b8aa565b55473e50a7960a3e59ff9"
+      "sha256": "01ab70a7642e7439b8580620aed69d6080380c68ccd9e137b24b0c5b90e58860"
     },
     {
       "name": "agentclash-agent-harness-setup",
       "role": "harness",
       "requires_cli": true,
-      "sha256": "f5524ad01df7397c0df95607733bb2d7935076ed198e6d157f513ec175f23816"
-    },
-    {
-      "name": "agentclash-challenge-pack-artifacts",
-      "role": "challenge-pack-artifacts",
-      "requires_cli": true,
-      "sha256": "fbc906407601ec7d19564f872fdbc74df4fea7a88354cf16376afece0e1be899"
-    },
-    {
-      "name": "agentclash-challenge-pack-input-sets",
-      "role": "challenge-pack-inputs",
-      "requires_cli": true,
-      "sha256": "4fd3a8b814ef324326cd559f030672f8af4a1de7976032e1821dbfc7d6ae7b01"
-    },
-    {
-      "name": "agentclash-challenge-pack-llm-judges",
-      "role": "challenge-pack-judging",
-      "requires_cli": true,
-      "sha256": "b9d45c8e083cec4f77e6d0b82f933880a3aa80c0e7186dc3896b375c8380c626"
-    },
-    {
-      "name": "agentclash-challenge-pack-planner",
-      "role": "challenge-pack-planning",
-      "requires_cli": false,
-      "sha256": "e5f148d10a1e1776897fa8a90328a42738aefd035aa751590c84ffd1e2048590"
-    },
-    {
-      "name": "agentclash-challenge-pack-scoring-validators",
-      "role": "challenge-pack-scoring",
-      "requires_cli": true,
-      "sha256": "78c30a03ac3957168410cb1e039f97712bfdf45bf58d14aa00e888919a9a0bb3"
-    },
-    {
-      "name": "agentclash-challenge-pack-tools-sandbox",
-      "role": "challenge-pack-tools",
-      "requires_cli": true,
-      "sha256": "447a88ffa68e9f3469ffdfa283f4a5390b8aea3608aef75879435bb3af7f199a"
-    },
-    {
-      "name": "agentclash-challenge-pack-validation-publish",
-      "role": "challenge-pack-publication",
-      "requires_cli": true,
-      "sha256": "69e7f311566b535678635619a0d1e030f25a967eea64015adda931a40edf2be3"
-    },
-    {
-      "name": "agentclash-challenge-pack-yaml-author",
-      "role": "challenge-pack-authoring",
-      "requires_cli": true,
-      "sha256": "3b62cd8f9ec2a02ea49fbdbddb38c37d9fc331622dddcd6db3ef6cb444112d28"
+      "sha256": "c09cb25d28bf4f8647d101423187c3296f6cbfd383aaf1d4564fd8b629efe8e0"
     },
     {
       "name": "agentclash-ci-release-gate",
       "role": "ci",
       "requires_cli": true,
-      "sha256": "905978a29d85f601759f421064a45db6073a1015727aa552e99791bb14fd70d6"
+      "sha256": "a1158dccd9cbbe672bb9eda55326c5b33ec296f113135ee95212e57d8e264a69"
     },
     {
       "name": "agentclash-cli-setup",
       "role": "setup",
       "requires_cli": true,
-      "sha256": "09eab5585229d8bd69abee68a86d521598a287572e1c826f87059b43f6cea2db"
+      "sha256": "6068199424954722b1af51dd7cf349ecaa4e4939f0b9931d0f8d521be01e4d19"
     },
     {
       "name": "agentclash-compare-and-triage",
@@ -89,61 +41,109 @@
       "name": "agentclash-dataset-workflows",
       "role": "dataset",
       "requires_cli": true,
-      "sha256": "3a26c97b748657f6ff2983dcd0bf4de0b127acf4fc60279b479f2944754a3491"
+      "sha256": "5501a378ef72470f651945e93e9506e3bb6a48c7450429a02c5f62c1fde9e149"
+    },
+    {
+      "name": "agentclash-eval-pack-artifacts",
+      "role": "eval-pack-artifacts",
+      "requires_cli": true,
+      "sha256": "d277c0ef2385a0eb223a1bfe8c5b421291aa215afe3d54b0e397873743902827"
+    },
+    {
+      "name": "agentclash-eval-pack-input-sets",
+      "role": "eval-pack-inputs",
+      "requires_cli": true,
+      "sha256": "81dd8aac4d7691befe2a5c2acf28f6112a700ee7fa52ec4156e4a04254e99519"
+    },
+    {
+      "name": "agentclash-eval-pack-llm-judges",
+      "role": "eval-pack-judging",
+      "requires_cli": true,
+      "sha256": "caba8b8e4a8b5d6306487f7df891c843968bbbc5b483e14b6a65e7f8849ee405"
+    },
+    {
+      "name": "agentclash-eval-pack-planner",
+      "role": "eval-pack-planning",
+      "requires_cli": false,
+      "sha256": "9fc927d2d0444c6e6102cc388b3824859c1b590bae4b7a4226402a841e826049"
+    },
+    {
+      "name": "agentclash-eval-pack-scoring-validators",
+      "role": "eval-pack-scoring",
+      "requires_cli": true,
+      "sha256": "c64915e5d12285fc46501f86f9e92c5179ed4aff5a02248e30744d576e23ee0a"
+    },
+    {
+      "name": "agentclash-eval-pack-tools-sandbox",
+      "role": "eval-pack-tools",
+      "requires_cli": true,
+      "sha256": "a9f82bc039307d74ce2edf0a8927372e6b05bb9d03a702698859f672a83c6414"
+    },
+    {
+      "name": "agentclash-eval-pack-validation-publish",
+      "role": "eval-pack-publication",
+      "requires_cli": true,
+      "sha256": "a2c4632cb71d6fade1f930d10efbdbf33fa2c1637a3747d0539dc99f9cd372ce"
+    },
+    {
+      "name": "agentclash-eval-pack-yaml-author",
+      "role": "eval-pack-authoring",
+      "requires_cli": true,
+      "sha256": "8ce1def08df288077268326fcaf390074286880bd2aca1ecbe5eca81824dcf2e"
     },
     {
       "name": "agentclash-eval-runner",
       "role": "running",
       "requires_cli": true,
-      "sha256": "77867733082836e249a3c45fa3648035eb59d1449a1f797b8ebf18d231be2acb"
+      "sha256": "e340265bb86c73dd15b1576a8ddd38bb4c31f3e878a9c04571376ee4be1779bb"
     },
     {
       "name": "agentclash-hub",
       "role": "hub",
       "requires_cli": false,
-      "sha256": "90813adc0753b190a2a5614a4dfefa39670f643de04a1f8f4c5a25fc2de4c36d"
+      "sha256": "5f13ef3348397e67074f43471b1dc5ea776d54263b55508a0e28eb2b5c52f3f6"
     },
     {
       "name": "agentclash-multi-turn-operator",
       "role": "multi-turn",
       "requires_cli": true,
-      "sha256": "f693d8bc81940b23b0ed2a730fa6ef2d20675cf7150501260ffb602c117f7e5c"
+      "sha256": "c845c2333d285c1146e0696bb02b9b6b77062e96179a4efe5b1eb44f367fb0eb"
     },
     {
       "name": "agentclash-prompt-eval-playground",
       "role": "prompt-eval",
       "requires_cli": true,
-      "sha256": "8e56f23102f1bf343859abbdbae2de0a9153fd36c3204eb287b95eb474c6857f"
+      "sha256": "062725eb838e4a73e6b2d96adba2958bd2d7ab582e691e00b58e93b1c109268a"
     },
     {
       "name": "agentclash-quickstart",
       "role": "onboarding",
       "requires_cli": true,
-      "sha256": "45f0c3552b09611c42cd0ae73a63f93c873020a8e3f8560c3c124a498d3e0331"
+      "sha256": "328bbffe45c7160ed7cb3e2ef331f91217aa21adeee6e438708bdbcdb74c8680"
     },
     {
       "name": "agentclash-regression-flywheel",
       "role": "regression",
       "requires_cli": true,
-      "sha256": "d9ba7b1db3e5a86ba787ae2d6b49695cf0457c4ac8a205ed3bd91bf7a46e5951"
+      "sha256": "908bc6b36384324550f3d648a7c191e2ba96ff31991317b458c740945aeb4941"
     },
     {
       "name": "agentclash-runtime-resources-setup",
       "role": "runtime-resources",
       "requires_cli": true,
-      "sha256": "8c91b5193053f1242dedec9e065c340f9a3761416a743ca5e1ce5da25ff367ef"
+      "sha256": "2241904115105a4f8e3569a7780c15b11d86fb9d0ca0f914ad7359e1ee46bdc5"
     },
     {
       "name": "agentclash-scorecard-reader",
       "role": "reviewing",
       "requires_cli": true,
-      "sha256": "24d6695d95ca6f604b787bef9859c4851e54896e6ff4dd4148f25073dfdcab1d"
+      "sha256": "7d85cfd0d22986afadc88bc7e2b71cb0f7674a4838064fd21aa8066cceeeb3bd"
     },
     {
       "name": "agentclash-security-evaluation",
       "role": "security",
       "requires_cli": true,
-      "sha256": "f97be5393b3bb298f25de78303f8057db30c123f62652f407415da8cf62e7e06"
+      "sha256": "66d7307c6651f3e24d70767627950e02bc115760b9e56b2000cd20d11e15026b"
     },
     {
       "name": "agentclash-workspace-admin",

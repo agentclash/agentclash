@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/evalpack"
 	"github.com/google/uuid"
 )
 
@@ -33,14 +33,14 @@ func (r *Repository) UpsertMultiTurnRunAgentFlagsFromExecution(ctx context.Conte
 		return nil
 	}
 	firstCase := executionContext.ChallengeInputSet.Cases[0]
-	spec := challengepack.CloneUserSimulatorSpec(firstCase.UserSimulator)
+	spec := evalpack.CloneUserSimulatorSpec(firstCase.UserSimulator)
 	if spec == nil {
 		return nil
 	}
 
 	calibrationCandidate := false
 	if spec.Calibration != nil && spec.Calibration.Enabled {
-		calibrationCandidate = challengepack.ShouldSampleCalibration(executionContext.RunAgent.ID, spec.Calibration.SampleRate)
+		calibrationCandidate = evalpack.ShouldSampleCalibration(executionContext.RunAgent.ID, spec.Calibration.SampleRate)
 	}
 
 	return r.UpsertMultiTurnRunAgentFlags(ctx, UpsertMultiTurnRunAgentFlagsParams{
@@ -49,7 +49,7 @@ func (r *Repository) UpsertMultiTurnRunAgentFlagsFromExecution(ctx context.Conte
 		RunID:                executionContext.Run.ID,
 		CaseKey:              firstCase.CaseKey,
 		CalibrationCandidate: calibrationCandidate,
-		ArenaEligible:        challengepack.ArenaEligibleFromSpec(spec),
+		ArenaEligible:        evalpack.ArenaEligibleFromSpec(spec),
 	})
 }
 
@@ -92,7 +92,7 @@ ORDER BY f.case_key ASC, ra.lane_index ASC
 	}
 	defer rows.Close()
 
-	eligible := []challengepack.ArenaEligibleAgent{}
+	eligible := []evalpack.ArenaEligibleAgent{}
 	for rows.Next() {
 		var agentID uuid.UUID
 		var caseKey string
@@ -100,7 +100,7 @@ ORDER BY f.case_key ASC, ra.lane_index ASC
 		if err := rows.Scan(&agentID, &caseKey, &laneIndex); err != nil {
 			return 0, err
 		}
-		eligible = append(eligible, challengepack.ArenaEligibleAgent{
+		eligible = append(eligible, evalpack.ArenaEligibleAgent{
 			RunAgentID: agentID,
 			CaseKey:    caseKey,
 			LaneIndex:  laneIndex,
@@ -111,7 +111,7 @@ ORDER BY f.case_key ASC, ra.lane_index ASC
 	}
 
 	created := 0
-	for _, pair := range challengepack.PairArenaAgents(eligible) {
+	for _, pair := range evalpack.PairArenaAgents(eligible) {
 		tag, err := r.db.Exec(ctx, `
 INSERT INTO workspace_arena_tasks (workspace_id, case_key, left_run_agent_id, right_run_agent_id, status)
 VALUES ($1, $2, $3, $4, 'pending')
@@ -125,7 +125,7 @@ ON CONFLICT DO NOTHING
 	return created, nil
 }
 
-func arenaCaseKeyForPair(agents []challengepack.ArenaEligibleAgent, runAgentID uuid.UUID) string {
+func arenaCaseKeyForPair(agents []evalpack.ArenaEligibleAgent, runAgentID uuid.UUID) string {
 	for _, agent := range agents {
 		if agent.RunAgentID == runAgentID {
 			return agent.CaseKey

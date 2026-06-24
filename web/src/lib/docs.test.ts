@@ -27,14 +27,14 @@ const skillSlugs = [
   "agentclash-scorecard-reader",
   "agentclash-security-evaluation",
   "agentclash-workspace-admin",
-  "challenge-pack-skills/agentclash-challenge-pack-artifacts",
-  "challenge-pack-skills/agentclash-challenge-pack-input-sets",
-  "challenge-pack-skills/agentclash-challenge-pack-llm-judges",
-  "challenge-pack-skills/agentclash-challenge-pack-planner",
-  "challenge-pack-skills/agentclash-challenge-pack-scoring-validators",
-  "challenge-pack-skills/agentclash-challenge-pack-tools-sandbox",
-  "challenge-pack-skills/agentclash-challenge-pack-validation-publish",
-  "challenge-pack-skills/agentclash-challenge-pack-yaml-author",
+  "eval-pack-skills/agentclash-eval-pack-artifacts",
+  "eval-pack-skills/agentclash-eval-pack-input-sets",
+  "eval-pack-skills/agentclash-eval-pack-llm-judges",
+  "eval-pack-skills/agentclash-eval-pack-planner",
+  "eval-pack-skills/agentclash-eval-pack-scoring-validators",
+  "eval-pack-skills/agentclash-eval-pack-tools-sandbox",
+  "eval-pack-skills/agentclash-eval-pack-validation-publish",
+  "eval-pack-skills/agentclash-eval-pack-yaml-author",
 ];
 
 describe("agent skill docs", () => {
@@ -46,18 +46,18 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash-cli-setup");
     expect(doc?.content).toContain("agentclash-hub");
     expect(doc?.content).toContain("agentclash-quickstart");
-    expect(doc?.content).toContain("Challenge Pack Skills");
+    expect(doc?.content).toContain("Eval Pack Skills");
     expect(doc?.content).toContain("name: agentclash-skill-catalog");
     expect(doc?.content).toContain("## Generated Docs Contract");
   });
 
   it("generates category pages", () => {
-    const doc = getDocBySlug(["agent-skills", "challenge-pack-skills"]);
+    const doc = getDocBySlug(["agent-skills", "eval-pack-skills"]);
 
-    expect(doc?.title).toBe("Challenge Pack Skills");
-    expect(doc?.content).toContain("agentclash-challenge-pack-yaml-author");
+    expect(doc?.title).toBe("Eval Pack Skills");
+    expect(doc?.content).toContain("agentclash-eval-pack-yaml-author");
     expect(doc?.content).toContain(
-      "web/content/agent-skills/challenge-pack-skills/<skill>/SKILL.md",
+      "web/content/agent-skills/eval-pack-skills/<skill>/SKILL.md",
     );
   });
 
@@ -152,7 +152,7 @@ describe("agent skill docs", () => {
     expect(doc?.title).toBe("Quickstart Skill");
     expect(doc?.content).toContain("agentclash quickstart");
     expect(doc?.content).toContain("next_command");
-    expect(doc?.content).toContain("challenge_packs");
+    expect(doc?.content).toContain("eval_packs");
   });
 
   it("generates the compare and triage skill with gate commands", () => {
@@ -222,10 +222,10 @@ describe("agent skill docs", () => {
     expect(doc?.title).toBe("Regression Flywheel Skill");
     expect(doc?.content).toContain("agentclash run failures <RUN_ID> --json");
     expect(doc?.content).toContain("agentclash regression-suite create");
-    expect(doc?.content).toContain("--source-challenge-pack-id <CHALLENGE_PACK_ID>");
+    expect(doc?.content).toContain("--source-eval-pack-id <EVAL_PACK_ID>");
     expect(doc?.content).toContain("agentclash run promote-failure <RUN_ID> <CHALLENGE_IDENTITY_ID>");
     expect(doc?.content).toContain("not `failure_fingerprint` or `failure_cluster_key`");
-    expect(doc?.content).toContain("\"source_challenge_pack_id\"");
+    expect(doc?.content).toContain("\"source_eval_pack_id\"");
     expect(doc?.content).toContain("\"promotion_mode\": \"full_executable\"");
     expect(doc?.content).toContain("\"judge_threshold_overrides\"");
     expect(doc?.content).toContain("regression-suite case update <CASE_ID>");
@@ -253,7 +253,7 @@ describe("agent skill docs", () => {
     );
     expect(doc?.content).toContain("candidate.build.agent_build_id");
     expect(doc?.content).toContain("candidate.deployment.runtime_profile_id");
-    expect(doc?.content).toContain("evaluation.challenge_pack_version_id");
+    expect(doc?.content).toContain("evaluation.eval_pack_version_id");
     expect(doc?.content).toContain("baseline.run_id");
     expect(doc?.content).toContain("gate.fail_on");
     expect(doc?.content).toContain("gate.policy_file");
@@ -278,11 +278,11 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash-regression-flywheel");
   });
 
-  it("generates nested challenge pack and agent build skill pages", () => {
-    const challengePackDoc = getDocBySlug([
+  it("generates nested eval pack and agent build skill pages", () => {
+    const evalPackDoc = getDocBySlug([
       "agent-skills",
-      "challenge-pack-skills",
-      "agentclash-challenge-pack-yaml-author",
+      "eval-pack-skills",
+      "agentclash-eval-pack-yaml-author",
     ]);
     const deploymentDoc = getDocBySlug([
       "agent-skills",
@@ -290,8 +290,8 @@ describe("agent skill docs", () => {
       "agentclash-agent-deployment-setup",
     ]);
 
-    expect(challengePackDoc?.content).toContain(
-      "name: agentclash-challenge-pack-yaml-author",
+    expect(evalPackDoc?.content).toContain(
+      "name: agentclash-eval-pack-yaml-author",
     );
     expect(deploymentDoc?.content).toContain(
       "name: agentclash-agent-deployment-setup",
@@ -349,14 +349,14 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("active deployments with snapshots");
   });
 
-  it("generates the challenge pack planner skill with source-backed details", () => {
+  it("generates the eval pack planner skill with source-backed details", () => {
     const doc = getDocBySlug([
       "agent-skills",
-      "challenge-pack-skills",
-      "agentclash-challenge-pack-planner",
+      "eval-pack-skills",
+      "agentclash-eval-pack-planner",
     ]);
 
-    expect(doc?.title).toBe("Challenge Pack Planner Skill");
+    expect(doc?.title).toBe("Eval Pack Planner Skill");
     expect(doc?.content).toContain(
       "`pack`, `version`, optional top-level `tools`, `challenges`, and `input_sets`",
     );
@@ -371,23 +371,23 @@ describe("agent skill docs", () => {
       "Source: validators | metric | reliability | latency | cost | behavioral | llm_judge",
     );
     expect(doc?.content).toContain(
-      "Next skill: <agentclash-challenge-pack-yaml-author | other>",
+      "Next skill: <agentclash-eval-pack-yaml-author | other>",
     );
   });
 
-  it("generates the challenge pack yaml author skill with source-backed details", () => {
+  it("generates the eval pack yaml author skill with source-backed details", () => {
     const doc = getDocBySlug([
       "agent-skills",
-      "challenge-pack-skills",
-      "agentclash-challenge-pack-yaml-author",
+      "eval-pack-skills",
+      "agentclash-eval-pack-yaml-author",
     ]);
 
-    expect(doc?.title).toBe("Challenge Pack YAML Author Skill");
+    expect(doc?.title).toBe("Eval Pack YAML Author Skill");
     expect(doc?.content).toContain(
-      "agentclash challenge-pack init support-eval.yaml --template prompt_eval",
+      "agentclash eval-pack init support-eval.yaml --template prompt_eval",
     );
     expect(doc?.content).toContain(
-      "agentclash challenge-pack validate support-eval.yaml --json",
+      "agentclash eval-pack validate support-eval.yaml --json",
     );
     expect(doc?.content).toContain("`pack`, `version`, `challenges`, `input_sets`");
     expect(doc?.content).toContain("case_key");
@@ -403,15 +403,15 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("judge_mode: hybrid");
   });
 
-  it("generates the challenge pack input sets skill with source-backed details", () => {
+  it("generates the eval pack input sets skill with source-backed details", () => {
     const doc = getDocBySlug([
       "agent-skills",
-      "challenge-pack-skills",
-      "agentclash-challenge-pack-input-sets",
+      "eval-pack-skills",
+      "agentclash-eval-pack-input-sets",
     ]);
 
-    expect(doc?.title).toBe("Challenge Pack Input Sets Skill");
-    expect(doc?.content).toContain("agentclash challenge-pack validate path/to/pack.yaml --json");
+    expect(doc?.title).toBe("Eval Pack Input Sets Skill");
+    expect(doc?.content).toContain("agentclash eval-pack validate path/to/pack.yaml --json");
     expect(doc?.content).toContain("input_sets:");
     expect(doc?.content).toContain("cases:");
     expect(doc?.content).toContain("challenge_key: refund-question");
@@ -425,15 +425,15 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("`--scope suite_only` is for regression suite/case selection");
   });
 
-  it("generates the challenge pack artifacts skill with source-backed details", () => {
+  it("generates the eval pack artifacts skill with source-backed details", () => {
     const doc = getDocBySlug([
       "agent-skills",
-      "challenge-pack-skills",
-      "agentclash-challenge-pack-artifacts",
+      "eval-pack-skills",
+      "agentclash-eval-pack-artifacts",
     ]);
 
-    expect(doc?.title).toBe("Challenge Pack Artifacts Skill");
-    expect(doc?.content).toContain("agentclash challenge-pack validate path/to/pack.yaml --json");
+    expect(doc?.title).toBe("Eval Pack Artifacts Skill");
+    expect(doc?.content).toContain("agentclash eval-pack validate path/to/pack.yaml --json");
     expect(doc?.content).toContain("version.assets");
     expect(doc?.content).toContain("artifact_refs");
     expect(doc?.content).toContain("artifacts");
@@ -451,15 +451,15 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("It does not have a `--run` filter today");
   });
 
-  it("generates the challenge pack scoring validators skill with source-backed details", () => {
+  it("generates the eval pack scoring validators skill with source-backed details", () => {
     const doc = getDocBySlug([
       "agent-skills",
-      "challenge-pack-skills",
-      "agentclash-challenge-pack-scoring-validators",
+      "eval-pack-skills",
+      "agentclash-eval-pack-scoring-validators",
     ]);
 
-    expect(doc?.title).toBe("Challenge Pack Scoring Validators Skill");
-    expect(doc?.content).toContain("agentclash challenge-pack validate path/to/pack.yaml --json");
+    expect(doc?.title).toBe("Eval Pack Scoring Validators Skill");
+    expect(doc?.content).toContain("agentclash eval-pack validate path/to/pack.yaml --json");
     expect(doc?.content).toContain("version.evaluation_spec.validators");
     expect(doc?.content).toContain("exact_match");
     expect(doc?.content).toContain("contains");
@@ -479,15 +479,15 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("Unknown validator type such as `has_json`");
   });
 
-  it("generates the challenge pack llm judges skill with source-backed details", () => {
+  it("generates the eval pack llm judges skill with source-backed details", () => {
     const doc = getDocBySlug([
       "agent-skills",
-      "challenge-pack-skills",
-      "agentclash-challenge-pack-llm-judges",
+      "eval-pack-skills",
+      "agentclash-eval-pack-llm-judges",
     ]);
 
-    expect(doc?.title).toBe("Challenge Pack LLM Judges Skill");
-    expect(doc?.content).toContain("agentclash challenge-pack validate path/to/pack.yaml --json");
+    expect(doc?.title).toBe("Eval Pack LLM Judges Skill");
+    expect(doc?.content).toContain("agentclash eval-pack validate path/to/pack.yaml --json");
     expect(doc?.content).toContain("llm_judges");
     expect(doc?.content).toContain("judge_mode: hybrid");
     expect(doc?.content).toContain("rubric");
@@ -509,43 +509,43 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("Validation rejects `${secrets.*}` references");
   });
 
-  it("generates the challenge pack validation publish skill with source-backed details", () => {
+  it("generates the eval pack validation publish skill with source-backed details", () => {
     const doc = getDocBySlug([
       "agent-skills",
-      "challenge-pack-skills",
-      "agentclash-challenge-pack-validation-publish",
+      "eval-pack-skills",
+      "agentclash-eval-pack-validation-publish",
     ]);
 
-    expect(doc?.title).toBe("Challenge Pack Validation Publish Skill");
-    expect(doc?.content).toContain("agentclash challenge-pack validate path/to/pack.yaml --json");
-    expect(doc?.content).toContain("agentclash challenge-pack publish path/to/pack.yaml --json");
-    expect(doc?.content).toContain("POST /v1/workspaces/<workspace-id>/challenge-packs/validate");
-    expect(doc?.content).toContain("POST /v1/workspaces/<workspace-id>/challenge-packs");
+    expect(doc?.title).toBe("Eval Pack Validation Publish Skill");
+    expect(doc?.content).toContain("agentclash eval-pack validate path/to/pack.yaml --json");
+    expect(doc?.content).toContain("agentclash eval-pack publish path/to/pack.yaml --json");
+    expect(doc?.content).toContain("POST /v1/workspaces/<workspace-id>/eval-packs/validate");
+    expect(doc?.content).toContain("POST /v1/workspaces/<workspace-id>/eval-packs");
     expect(doc?.content).toContain("\"valid\": true");
     expect(doc?.content).toContain("\"field\": \"version.evaluation_spec.validators[0].type\"");
     expect(doc?.content).toContain("HTTP 400");
-    expect(doc?.content).toContain("challenge_pack_id");
-    expect(doc?.content).toContain("challenge_pack_version_id");
+    expect(doc?.content).toContain("eval_pack_id");
+    expect(doc?.content).toContain("eval_pack_version_id");
     expect(doc?.content).toContain("evaluation_spec_id");
     expect(doc?.content).toContain("input_set_ids");
     expect(doc?.content).toContain("bundle_artifact_id");
-    expect(doc?.content).toContain("challenge_pack_version_exists");
-    expect(doc?.content).toContain("challenge_pack_metadata_conflict");
+    expect(doc?.content).toContain("eval_pack_version_exists");
+    expect(doc?.content).toContain("eval_pack_metadata_conflict");
     expect(doc?.content).toContain("The API request body is capped at 1 MiB");
     expect(doc?.content).toContain("`publish` does not upload local files referenced by `path`");
     expect(doc?.content).toContain("agentclash eval start");
     expect(doc?.content).toContain("agentclash run create");
   });
 
-  it("generates the challenge pack tools sandbox skill with source-backed details", () => {
+  it("generates the eval pack tools sandbox skill with source-backed details", () => {
     const doc = getDocBySlug([
       "agent-skills",
-      "challenge-pack-skills",
-      "agentclash-challenge-pack-tools-sandbox",
+      "eval-pack-skills",
+      "agentclash-eval-pack-tools-sandbox",
     ]);
 
-    expect(doc?.title).toBe("Challenge Pack Tools Sandbox Skill");
-    expect(doc?.content).toContain("agentclash challenge-pack validate path/to/pack.yaml --json");
+    expect(doc?.title).toBe("Eval Pack Tools Sandbox Skill");
+    expect(doc?.content).toContain("agentclash eval-pack validate path/to/pack.yaml --json");
     expect(doc?.content).toContain("tools:");
     expect(doc?.content).toContain("custom:");
     expect(doc?.content).toContain("implementation:");
@@ -555,7 +555,7 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("`browser`, `build`, `data`, `file`, and `network`");
     expect(doc?.content).toContain("Do not use `shell`");
     expect(doc?.content).toContain("`${secrets.INVENTORY_API_KEY}`");
-    expect(doc?.content).toContain("`prompt_eval` packs cannot use challenge-pack tools or sandbox settings");
+    expect(doc?.content).toContain("`prompt_eval` packs cannot use eval-pack tools or sandbox settings");
     expect(doc?.content).toContain("network_allowlist");
     expect(doc?.content).toContain("additional_packages");
     expect(doc?.content).toContain("sandbox_template_id");
@@ -566,7 +566,7 @@ describe("agent skill docs", () => {
     const paths = getAllDocMarkdownPaths();
 
     expect(paths).toContain("/docs-md/agent-skills");
-    expect(paths).toContain("/docs-md/agent-skills/challenge-pack-skills");
+    expect(paths).toContain("/docs-md/agent-skills/eval-pack-skills");
     expect(paths).toContain("/docs-md/agent-skills/agent-build-skills");
     for (const slug of skillSlugs) {
       expect(paths).toContain(`/docs-md/agent-skills/${slug}`);
@@ -613,7 +613,7 @@ describe("agent skill docs", () => {
       "https://example.test/docs-md/agent-skills/agentclash-compare-and-triage",
     );
     expect(index).toContain(
-      "https://example.test/docs-md/agent-skills/challenge-pack-skills/agentclash-challenge-pack-yaml-author",
+      "https://example.test/docs-md/agent-skills/eval-pack-skills/agentclash-eval-pack-yaml-author",
     );
   });
 
@@ -636,7 +636,7 @@ describe("agent skill docs", () => {
     expect(evaluation?.title).toBe("AI Agent Evaluation Platform");
     expect(evaluation?.searchText).toContain("platform/agent-evaluation");
     expect(evaluation?.searchText).toContain("ai agent evaluation");
-    expect(evaluation?.searchText).toContain("challenge packs");
+    expect(evaluation?.searchText).toContain("eval packs");
     expect(evaluation?.searchText).toContain("ci regression gates");
     expect(regression?.title).toBe("AI Agent Regression Testing");
     expect(regression?.searchText).toContain("platform/agent-regression-testing");
@@ -648,7 +648,7 @@ describe("agent skill docs", () => {
   it("resolves revamp doc pages from navigation", () => {
     for (const href of [
       "/docs/guides/datasets-overview",
-      "/docs/challenge-packs/multi-turn",
+      "/docs/eval-packs/multi-turn",
       "/docs/guides/security-evaluation",
     ]) {
       const doc = getDocBySlug(href.replace("/docs/", "").split("/"));
@@ -684,7 +684,7 @@ describe("agent skill docs", () => {
       "https://example.test/docs-md/guides/datasets-overview",
     );
     expect(bundle).toContain(
-      "https://example.test/docs-md/challenge-packs/multi-turn",
+      "https://example.test/docs-md/eval-packs/multi-turn",
     );
     expect(bundle).toContain(
       "https://example.test/docs-md/guides/security-evaluation",
@@ -693,7 +693,7 @@ describe("agent skill docs", () => {
     expect(bundle).toContain("name: agentclash-skill-catalog");
     expect(bundle).toContain("## Generated Docs Contract");
     expect(bundle).toContain("# CLI Setup Skill");
-    expect(bundle).toContain("# Challenge Pack YAML Author Skill");
+    expect(bundle).toContain("# Eval Pack YAML Author Skill");
     expect(bundle).toContain("name: agentclash-cli-setup");
     expect(bundle).toContain("Commands unexpectedly hit `http://localhost:8080`");
     expect(bundle).toContain("name: agentclash-runtime-resources-setup");

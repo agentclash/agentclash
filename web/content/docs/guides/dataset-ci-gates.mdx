@@ -30,7 +30,7 @@ Promote the pinned dataset version into `workspace_regression_cases` while prese
 ```bash
 agentclash dataset sync-regression-suite <datasetId> \
   --version <dataset-version-id> \
-  --pack <challenge-pack-version-id> \
+  --pack <eval-pack-version-id> \
   --challenge support \
   --suite-name "Support dataset regression"
 ```
@@ -55,7 +55,7 @@ agentclash dataset test <datasetId> \
   --baseline <baseline-id> \
   --eval \
   --version <dataset-version-id> \
-  --pack <challenge-pack-version-id> \
+  --pack <eval-pack-version-id> \
   --challenge support \
   --deployment <deployment-id>
 ```

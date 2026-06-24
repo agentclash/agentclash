@@ -16,7 +16,7 @@ sql:
       - "db/queries/llm_judge_results.sql"
       - "db/queries/run_comparisons.sql"
       - "db/queries/agent_deployments.sql"
-      - "db/queries/challenge_packs.sql"
+      - "db/queries/eval_packs.sql"
       - "db/queries/agent_builds.sql"
       - "db/queries/playgrounds.sql"
       - "db/queries/regression_suites.sql"
@@ -29,7 +29,7 @@ sql:
       - "db/queries/vibe_eval.sql"
       - "db/queries/agent_tryouts.sql"
       - "db/queries/challenge_pieces.sql"
-      - "db/queries/challenge_pack_drafts.sql"
+      - "db/queries/eval_pack_drafts.sql"
     gen:
       go:
         package: "sqlc"

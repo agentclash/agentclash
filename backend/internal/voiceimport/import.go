@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/evalpack"
 	"github.com/agentclash/agentclash/backend/internal/multimodaltrace"
 	"github.com/agentclash/agentclash/backend/internal/voiceartifacts"
 	"github.com/google/uuid"
@@ -105,7 +105,7 @@ type ReviewerLabel struct {
 }
 
 type PromotionTarget struct {
-	ChallengePackSlug string `json:"challenge_pack_slug"`
+	EvalPackSlug string `json:"eval_pack_slug"`
 	InputSetKey       string `json:"input_set_key"`
 	ChallengeKey      string `json:"challenge_key"`
 	CaseKey           string `json:"case_key"`
@@ -270,16 +270,16 @@ func (f Fixture) toArtifactManifestUnchecked() voiceartifacts.Manifest {
 	return manifest
 }
 
-func (f Fixture) PromoteToChallengeCase() (challengepack.CaseDefinition, error) {
+func (f Fixture) PromoteToChallengeCase() (evalpack.CaseDefinition, error) {
 	if err := f.Validate(); err != nil {
-		return challengepack.CaseDefinition{}, err
+		return evalpack.CaseDefinition{}, err
 	}
 	if f.Redaction.Status != RedactionStatusApprovedForRegression {
-		return challengepack.CaseDefinition{}, fmt.Errorf("%w: status %q", ErrPromotionNotApproved, f.Redaction.Status)
+		return evalpack.CaseDefinition{}, fmt.Errorf("%w: status %q", ErrPromotionNotApproved, f.Redaction.Status)
 	}
 	trace, err := f.toTraceUnchecked()
 	if err != nil {
-		return challengepack.CaseDefinition{}, err
+		return evalpack.CaseDefinition{}, err
 	}
 	manifest := f.toArtifactManifestUnchecked()
 	labels := append([]ReviewerLabel(nil), f.ReviewerLabels...)
@@ -290,7 +290,7 @@ func (f Fixture) PromoteToChallengeCase() (challengepack.CaseDefinition, error) 
 		return labels[i].Key < labels[j].Key
 	})
 
-	return challengepack.CaseDefinition{
+	return evalpack.CaseDefinition{
 		ChallengeKey: strings.TrimSpace(f.PromotionTarget.ChallengeKey),
 		CaseKey:      strings.TrimSpace(f.PromotionTarget.CaseKey),
 		ItemKey:      strings.TrimSpace(f.PromotionTarget.CaseKey),
@@ -301,15 +301,15 @@ func (f Fixture) PromoteToChallengeCase() (challengepack.CaseDefinition, error) 
 			"voice_session_id":    strings.TrimSpace(f.VoiceSessionID),
 			"redaction_status":    string(f.Redaction.Status),
 			"failure_category":    strings.TrimSpace(f.FailureCategory),
-			"promotion_pack_slug": strings.TrimSpace(f.PromotionTarget.ChallengePackSlug),
+			"promotion_pack_slug": strings.TrimSpace(f.PromotionTarget.EvalPackSlug),
 			"promotion_input_set": strings.TrimSpace(f.PromotionTarget.InputSetKey),
 			"reviewer_labels":     labels,
 		},
-		Inputs: []challengepack.CaseInput{
+		Inputs: []evalpack.CaseInput{
 			{Key: "multimodal_trace", Kind: "multimodal_trace", Value: trace},
 			{Key: "voice_artifact_manifest", Kind: "voice_artifact_manifest", Value: manifest},
 		},
-		Expectations: []challengepack.CaseExpectation{
+		Expectations: []evalpack.CaseExpectation{
 			{Key: "expected_outcome", Kind: "exact", Value: strings.TrimSpace(f.ExpectedOutcome)},
 			{Key: "failure_category", Kind: "classification", Value: strings.TrimSpace(f.FailureCategory)},
 		},
@@ -493,8 +493,8 @@ func (l ReviewerLabel) Validate() error {
 }
 
 func (t PromotionTarget) Validate() error {
-	if strings.TrimSpace(t.ChallengePackSlug) == "" {
-		return errors.New("promotion_target.challenge_pack_slug is required")
+	if strings.TrimSpace(t.EvalPackSlug) == "" {
+		return errors.New("promotion_target.eval_pack_slug is required")
 	}
 	if strings.TrimSpace(t.InputSetKey) == "" {
 		return errors.New("promotion_target.input_set_key is required")
@@ -526,10 +526,10 @@ func audioKindForSpeaker(speaker string) multimodaltrace.SegmentKind {
 	return multimodaltrace.SegmentKindAudioInput
 }
 
-func challengeArtifactRefs(artifacts []voiceartifacts.ArtifactRef) []challengepack.ArtifactRef {
-	refs := make([]challengepack.ArtifactRef, 0, len(artifacts))
+func challengeArtifactRefs(artifacts []voiceartifacts.ArtifactRef) []evalpack.ArtifactRef {
+	refs := make([]evalpack.ArtifactRef, 0, len(artifacts))
 	for _, artifact := range artifacts {
-		refs = append(refs, challengepack.ArtifactRef{Key: artifact.Key})
+		refs = append(refs, evalpack.ArtifactRef{Key: artifact.Key})
 	}
 	sort.SliceStable(refs, func(i, j int) bool {
 		return refs[i].Key < refs[j].Key

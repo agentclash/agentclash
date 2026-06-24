@@ -56,9 +56,9 @@ const PUBLIC_PRODUCT_PAGES: PublicProductPage[] = [
     title: "AI Agent Evaluation Platform",
     href: "/platform/agent-evaluation",
     description:
-      "Public page for real-task AI agent evaluation, replay evidence, scorecards, challenge packs, and CI regression gates.",
+      "Public page for real-task AI agent evaluation, replay evidence, scorecards, eval packs, and CI regression gates.",
     searchKeywords:
-      "AI agent evaluation agent evals real task agent benchmark coding agent evaluation LLM agent evaluation sandboxed agent workloads replay evidence scorecards challenge packs CI regression gates",
+      "AI agent evaluation agent evals real task agent benchmark coding agent evaluation LLM agent evaluation sandboxed agent workloads replay evidence scorecards eval packs CI regression gates",
   },
   {
     title: "AI Agent Regression Testing",
@@ -66,7 +66,7 @@ const PUBLIC_PRODUCT_PAGES: PublicProductPage[] = [
     description:
       "Public page for baseline-versus-candidate agent regression testing, pull request gates, and release evidence.",
     searchKeywords:
-      "AI agent regression testing agent evaluation CI gates pull request gates release gates baseline candidate comparisons replay evidence scorecards challenge packs agent eval regression suite",
+      "AI agent regression testing agent evaluation CI gates pull request gates release gates baseline candidate comparisons replay evidence scorecards eval packs agent eval regression suite",
   },
   {
     title: "AgentClash vs prompt-eval tools",
@@ -227,11 +227,11 @@ export const DOCS_NAV: DocNavSection[] = [
         href: "/docs/concepts/agents-and-deployments",
       },
       {
-        title: "Challenge Packs and Inputs",
+        title: "Eval Packs and Inputs",
         description:
           "Understand how tasks, input sets, and scoring context are grouped into repeatable workloads.",
-        slug: ["concepts", "challenge-packs-and-inputs"],
-        href: "/docs/concepts/challenge-packs-and-inputs",
+        slug: ["concepts", "eval-packs-and-inputs"],
+        href: "/docs/concepts/eval-packs-and-inputs",
       },
       {
         title: "Replay and Scorecards",
@@ -271,72 +271,72 @@ export const DOCS_NAV: DocNavSection[] = [
     ],
   },
   {
-    title: "Challenge packs",
+    title: "Eval packs",
     description:
       "YAML reference grounded in backend/parser/scoring/enforcement paths—meant for pack authors publishing real workloads.",
     items: [
       {
         title: "Reference overview",
         description:
-          "Map of every challenge-pack documentation page and where each topic is enforced in Go.",
-        slug: ["challenge-packs"],
-        href: "/docs/challenge-packs",
+          "Map of every eval-pack documentation page and where each topic is enforced in Go.",
+        slug: ["eval-packs"],
+        href: "/docs/eval-packs",
       },
       {
         title: "Bundle YAML reference",
         description:
           "Top-level bundle keys, manifests, constraints for prompt_eval versus native.",
-        slug: ["challenge-packs", "bundle-yaml-reference"],
-        href: "/docs/challenge-packs/bundle-yaml-reference",
+        slug: ["eval-packs", "bundle-yaml-reference"],
+        href: "/docs/eval-packs/bundle-yaml-reference",
       },
       {
         title: "Evaluation spec",
         description:
           "Validators, targets, metric collectors, scorecard dimensions, strategies, post-execution captures.",
-        slug: ["challenge-packs", "evaluation-spec-reference"],
-        href: "/docs/challenge-packs/evaluation-spec-reference",
+        slug: ["eval-packs", "evaluation-spec-reference"],
+        href: "/docs/eval-packs/evaluation-spec-reference",
       },
       {
         title: "LLM judges",
         description:
           "Rubric, assertion, n_wise, and reference modes plus consensus keys and budgets.",
-        slug: ["challenge-packs", "llm-judges"],
-        href: "/docs/challenge-packs/llm-judges",
+        slug: ["eval-packs", "llm-judges"],
+        href: "/docs/eval-packs/llm-judges",
       },
       {
         title: "Tools, primitives & policy",
         description:
           "allowed_tool_kinds, built-in primitives, composed tools to http_request mocks and cycles.",
-        slug: ["challenge-packs", "tools-primitives-and-policy"],
-        href: "/docs/challenge-packs/tools-primitives-and-policy",
+        slug: ["eval-packs", "tools-primitives-and-policy"],
+        href: "/docs/eval-packs/tools-primitives-and-policy",
       },
       {
         title: "Sandbox & E2B",
         description:
           "Pack sandbox block, outbound network CIDR lists, sandbox provider env, no-op modes.",
-        slug: ["challenge-packs", "sandbox-and-e2b"],
-        href: "/docs/challenge-packs/sandbox-and-e2b",
+        slug: ["eval-packs", "sandbox-and-e2b"],
+        href: "/docs/eval-packs/sandbox-and-e2b",
       },
       {
         title: "Input sets & cases",
         description:
           "Case inputs expectations artifacts legacy payloads and how payloads are persisted.",
-        slug: ["challenge-packs", "input-sets-and-cases"],
-        href: "/docs/challenge-packs/input-sets-and-cases",
+        slug: ["eval-packs", "input-sets-and-cases"],
+        href: "/docs/eval-packs/input-sets-and-cases",
       },
       {
         title: "Multi-turn packs",
         description:
           "Scripted, LLM, and human user-simulator phases with operator APIs and calibration reviews.",
-        slug: ["challenge-packs", "multi-turn"],
-        href: "/docs/challenge-packs/multi-turn",
+        slug: ["eval-packs", "multi-turn"],
+        href: "/docs/eval-packs/multi-turn",
       },
       {
         title: "Eval workflows & gates",
         description:
           "CLI eval start baseline scorecard compare gates and regression scope flags grounded in Cobra.",
-        slug: ["challenge-packs", "eval-workflows-and-gates"],
-        href: "/docs/challenge-packs/eval-workflows-and-gates",
+        slug: ["eval-packs", "eval-workflows-and-gates"],
+        href: "/docs/eval-packs/eval-workflows-and-gates",
       },
     ],
   },
@@ -346,11 +346,11 @@ export const DOCS_NAV: DocNavSection[] = [
       "Task-oriented walkthroughs for authoring packs, setting up deployments, reading results, and using the docs with AI tools.",
     items: [
       {
-        title: "Write a Challenge Pack",
+        title: "Write an Eval Pack",
         description:
           "Author a bundle YAML file, validate it, publish it, and understand the IDs AgentClash returns.",
-        slug: ["guides", "write-a-challenge-pack"],
-        href: "/docs/guides/write-a-challenge-pack",
+        slug: ["guides", "write-an-eval-pack"],
+        href: "/docs/guides/write-an-eval-pack",
       },
       {
         title: "Configure Runtime Resources",
@@ -437,11 +437,11 @@ export const DOCS_NAV: DocNavSection[] = [
         href: "/docs/agent-skills/agentclash-quickstart",
       },
       {
-        title: "Challenge Pack Skills",
+        title: "Eval Pack Skills",
         description:
           "Focused skills for planning, YAML authoring, input sets, scoring, judges, tools, artifacts, and publication.",
-        slug: ["agent-skills", "challenge-pack-skills"],
-        href: "/docs/agent-skills/challenge-pack-skills",
+        slug: ["agent-skills", "eval-pack-skills"],
+        href: "/docs/agent-skills/eval-pack-skills",
       },
       {
         title: "Agent Build Skills",
@@ -530,7 +530,7 @@ export const DOCS_NAV: DocNavSection[] = [
       {
         title: "Security Evaluation Skill",
         description:
-          "Run client-side security stress harnesses against security challenge packs.",
+          "Run client-side security stress harnesses against security eval packs.",
         slug: ["agent-skills", "agentclash-security-evaluation"],
         href: "/docs/agent-skills/agentclash-security-evaluation",
       },
@@ -586,7 +586,7 @@ export const DOCS_NAV: DocNavSection[] = [
       {
         title: "Data Model",
         description:
-          "The core entities behind workspaces, deployments, challenge packs, runs, and evidence.",
+          "The core entities behind workspaces, deployments, eval packs, runs, and evidence.",
         slug: ["architecture", "data-model"],
         href: "/docs/architecture/data-model",
       },
@@ -641,10 +641,10 @@ const AGENT_SKILL_CATEGORIES: Record<
   string,
   { title: string; description: string }
 > = {
-  "challenge-pack-skills": {
-    title: "Challenge Pack Skills",
+  "eval-pack-skills": {
+    title: "Eval Pack Skills",
     description:
-      "Focused skills for planning, authoring, scoring, judging, tooling, artifacts, validation, and publishing challenge packs.",
+      "Focused skills for planning, authoring, scoring, judging, tooling, artifacts, validation, and publishing eval packs.",
   },
   "agent-build-skills": {
     title: "Agent Build Skills",
@@ -1742,7 +1742,7 @@ export function buildLlmsIndex(origin = DOCS_ORIGIN) {
   const lines = [
     "# AgentClash",
     "",
-    "> AgentClash runs agents against repeatable challenge packs, captures replay evidence, and shows where a run won, failed, or drifted.",
+    "> AgentClash runs agents against repeatable eval packs, captures replay evidence, and shows where a run won, failed, or drifted.",
     "",
     "Use this index when you want the shortest machine-readable map of the public docs and selected product pages. Fetch `/llms-full.txt` for the bundled corpus, or use the `/docs-md/...` links below for page-level markdown exports.",
     "",

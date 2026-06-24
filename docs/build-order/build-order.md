@@ -36,8 +36,8 @@ Define the backend nouns first:
 
 - `Organization`
 - `Workspace`
-- `ChallengePack`
-- `ChallengePackVersion`
+- `EvalPack`
+- `EvalPackVersion`
 - `AgentBuild`
 - `AgentDeployment`
 - `Run`
@@ -71,7 +71,7 @@ Create the minimum durable schema around those objects.
 Start with:
 
 - tenancy tables
-- challenge-pack tables
+- eval-pack tables
 - agent-build and deployment tables
 - run and run-agent tables
 - replay index tables
@@ -192,7 +192,7 @@ Output of this step:
 Do not build broad UI first. Build one full path:
 
 1. choose workspace
-2. choose challenge pack
+2. choose eval pack
 3. choose agent deployment
 4. start run
 5. watch run
@@ -261,7 +261,7 @@ If the team wants one exact first slice, it should be:
 
 1. create workspace
 2. register one hosted external agent
-3. start one run on one official challenge pack
+3. start one run on one official eval pack
 4. execute through Temporal and worker
 5. persist run state
 6. generate replay summary

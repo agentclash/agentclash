@@ -13,8 +13,8 @@ import { ApiError } from "@/lib/api/errors";
 import { waitForRunCompletion } from "@/lib/datasets/wait-for-run";
 import type {
   AgentDeployment,
-  ChallengePack,
-  ChallengePackVersion,
+  EvalPack,
+  EvalPackVersion,
   CreateRunResponse,
   DatasetVersion,
   Run,
@@ -51,8 +51,8 @@ export function StartEvalDialog({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [packs, setPacks] = useState<ChallengePack[]>([]);
-  const [packVersions, setPackVersions] = useState<ChallengePackVersion[]>([]);
+  const [packs, setPacks] = useState<EvalPack[]>([]);
+  const [packVersions, setPackVersions] = useState<EvalPackVersion[]>([]);
   const [deployments, setDeployments] = useState<AgentDeployment[]>([]);
   const [versionId, setVersionId] = useState("");
   const [packId, setPackId] = useState("");
@@ -73,8 +73,8 @@ export function StartEvalDialog({
       const token = await getAccessToken();
       const api = createApiClient(token);
       const [packsRes, deploymentsRes] = await Promise.all([
-        api.get<{ items: ChallengePack[] }>(
-          `/v1/workspaces/${workspaceId}/challenge-packs`,
+        api.get<{ items: EvalPack[] }>(
+          `/v1/workspaces/${workspaceId}/eval-packs`,
         ),
         api.get<{ items: AgentDeployment[] }>(
           `/v1/workspaces/${workspaceId}/agent-deployments`,
@@ -124,7 +124,7 @@ export function StartEvalDialog({
 
   async function handleStart() {
     if (!versionId || !packVersionId || deploymentIds.length === 0) {
-      toast.error("Select a version, challenge pack version, and deployments");
+      toast.error("Select a version, eval pack version, and deployments");
       return;
     }
     if (!challengeKey.trim()) {
@@ -157,7 +157,7 @@ export function StartEvalDialog({
       const api = createApiClient(token);
       const result = await startDatasetEval(api, workspaceId, datasetId, {
         version_id: versionId,
-        challenge_pack_version_id: packVersionId,
+        eval_pack_version_id: packVersionId,
         challenge_key: challengeKey.trim(),
         agent_deployment_ids: deploymentIds,
         name: runName.trim() || undefined,
@@ -201,7 +201,7 @@ export function StartEvalDialog({
         <DialogHeader>
           <DialogTitle>Run dataset eval</DialogTitle>
           <DialogDescription>
-            Queue a race over a pinned dataset version and challenge pack.
+            Queue a race over a pinned dataset version and eval pack.
           </DialogDescription>
         </DialogHeader>
         {activeRun && submitting ? (
@@ -233,7 +233,7 @@ export function StartEvalDialog({
               }
             />
             <SelectField
-              label="Challenge pack"
+              label="Eval pack"
               value={packId}
               onChange={setPackId}
               options={packs.map((pack) => ({

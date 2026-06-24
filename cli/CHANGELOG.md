@@ -227,8 +227,8 @@
 
 * add agent build version templates ([5b77d84](https://github.com/agentclash/agentclash/commit/5b77d84d8d4d530b31eef8f3e5611a3f7757fb0e))
 * add agent build version templates ([636e239](https://github.com/agentclash/agentclash/commit/636e239ab7457668b91a85ae2f4c87e313a5ac82))
-* add challenge pack deployment lineups ([5eb2fc6](https://github.com/agentclash/agentclash/commit/5eb2fc6d985a7ca688e9e2fc4504dd43ea95eecd))
-* add challenge pack deployment lineups ([bac868d](https://github.com/agentclash/agentclash/commit/bac868d1a61e02ce74d0ed2b61092cd0b5aaf90a))
+* add eval pack deployment lineups ([5eb2fc6](https://github.com/agentclash/agentclash/commit/5eb2fc6d985a7ca688e9e2fc4504dd43ea95eecd))
+* add eval pack deployment lineups ([bac868d](https://github.com/agentclash/agentclash/commit/bac868d1a61e02ce74d0ed2b61092cd0b5aaf90a))
 * add cost per correct scorecard metric ([054942c](https://github.com/agentclash/agentclash/commit/054942c721d61109b20f267526d6ce7d58d567d3))
 * add cost-per-correct scorecard metric ([748482f](https://github.com/agentclash/agentclash/commit/748482f6ec73a6cb64464ffd3a74e18a9b713212))
 * add model alias create flags ([83b35ca](https://github.com/agentclash/agentclash/commit/83b35caa9f5bea504607a61a66b1b8ac1b74eb7b))

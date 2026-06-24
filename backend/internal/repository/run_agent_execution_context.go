@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/evalpack"
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
 	"github.com/google/uuid"
@@ -19,14 +19,14 @@ type RunAgentExecutionContext struct {
 	Run                  domain.Run
 	RunAgent             domain.RunAgent
 	RunAgents            []domain.RunAgent
-	ChallengePackVersion ChallengePackVersionExecutionContext
+	EvalPackVersion EvalPackVersionExecutionContext
 	ChallengeInputSet    *ChallengeInputSetExecutionContext
 	Deployment           AgentDeploymentExecutionContext
 }
 
-type ChallengePackVersionExecutionContext struct {
+type EvalPackVersionExecutionContext struct {
 	ID               uuid.UUID
-	ChallengePackID  uuid.UUID
+	EvalPackID  uuid.UUID
 	VersionNumber    int32
 	ManifestChecksum string
 	Manifest         json.RawMessage
@@ -46,7 +46,7 @@ type ChallengeDefinitionExecutionContext struct {
 
 type ChallengeInputSetExecutionContext struct {
 	ID                     uuid.UUID
-	ChallengePackVersionID uuid.UUID
+	EvalPackVersionID uuid.UUID
 	InputKey               string
 	Name                   string
 	Description            *string
@@ -63,11 +63,11 @@ type ChallengeCaseExecutionContext struct {
 	CaseKey             string                          `json:"case_key"`
 	ItemKey             string                          `json:"item_key"`
 	Payload             json.RawMessage                 `json:"payload,omitempty"`
-	Inputs              []challengepack.CaseInput       `json:"inputs,omitempty"`
-	Expectations        []challengepack.CaseExpectation `json:"expectations,omitempty"`
-	UserSimulator       *challengepack.UserSimulatorSpec `json:"user_simulator,omitempty"`
-	Artifacts           []challengepack.ArtifactRef     `json:"artifacts,omitempty"`
-	Assets              []challengepack.AssetReference  `json:"assets,omitempty"`
+	Inputs              []evalpack.CaseInput       `json:"inputs,omitempty"`
+	Expectations        []evalpack.CaseExpectation `json:"expectations,omitempty"`
+	UserSimulator       *evalpack.UserSimulatorSpec `json:"user_simulator,omitempty"`
+	Artifacts           []evalpack.ArtifactRef     `json:"artifacts,omitempty"`
+	Assets              []evalpack.AssetReference  `json:"assets,omitempty"`
 }
 
 type ChallengeInputItemExecutionContext struct {
@@ -240,14 +240,14 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			Reason:     "hosted deployment snapshot is missing endpoint_url",
 		}
 	}
-	challengeDefinitionsJSON, err := decodeExecutionContextJSON("challenge_pack_challenges", row.ChallengePackChallenges)
+	challengeDefinitionsJSON, err := decodeExecutionContextJSON("eval_pack_challenges", row.EvalPackChallenges)
 	if err != nil {
 		return RunAgentExecutionContext{}, err
 	}
 
 	var challengeDefinitions []ChallengeDefinitionExecutionContext
 	if err := json.Unmarshal(challengeDefinitionsJSON, &challengeDefinitions); err != nil {
-		return RunAgentExecutionContext{}, fmt.Errorf("decode challenge pack challenges: %w", err)
+		return RunAgentExecutionContext{}, fmt.Errorf("decode eval pack challenges: %w", err)
 	}
 
 	challengeInputItemsJSON, err := decodeExecutionContextJSON("challenge_input_set_items", row.ChallengeInputSetItems)
@@ -277,7 +277,7 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			ID:                     row.RunID,
 			OrganizationID:         row.RunOrganizationID,
 			WorkspaceID:            row.RunWorkspaceID,
-			ChallengePackVersionID: derefUUID(row.RunChallengePackVersionID),
+			EvalPackVersionID: derefUUID(row.RunEvalPackVersionID),
 			ChallengeInputSetID:    cloneUUIDPtr(row.RunChallengeInputSetID),
 			OfficialPackMode:       officialPackMode,
 			CreatedByUserID:        cloneUUIDPtr(row.RunCreatedByUserID),
@@ -314,12 +314,12 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 			CreatedAt:                 runAgentCreatedAt,
 			UpdatedAt:                 runAgentUpdatedAt,
 		},
-		ChallengePackVersion: ChallengePackVersionExecutionContext{
-			ID:               row.ChallengePackVersionID,
-			ChallengePackID:  row.ChallengePackID,
-			VersionNumber:    row.ChallengePackVersionNumber,
-			ManifestChecksum: row.ChallengePackManifestChecksum,
-			Manifest:         cloneJSON(row.ChallengePackManifest),
+		EvalPackVersion: EvalPackVersionExecutionContext{
+			ID:               row.EvalPackVersionID,
+			EvalPackID:  row.EvalPackID,
+			VersionNumber:    row.EvalPackVersionNumber,
+			ManifestChecksum: row.EvalPackManifestChecksum,
+			Manifest:         cloneJSON(row.EvalPackManifest),
 			Challenges:       challengeDefinitions,
 		},
 		Deployment: AgentDeploymentExecutionContext{
@@ -352,7 +352,7 @@ func mapRunAgentExecutionContext(row repositorysqlc.GetRunAgentExecutionContextB
 		// Safe because challenge_input_sets.input_key/name/input_checksum are NOT NULL in the schema.
 		executionContext.ChallengeInputSet = &ChallengeInputSetExecutionContext{
 			ID:                     *row.ChallengeInputSetID,
-			ChallengePackVersionID: *row.ChallengeInputSetChallengePackVersionID,
+			EvalPackVersionID: *row.ChallengeInputSetEvalPackVersionID,
 			InputKey:               *row.ChallengeInputSetInputKey,
 			Name:                   *row.ChallengeInputSetName,
 			Description:            cloneStringPtr(row.ChallengeInputSetDescription),
@@ -403,23 +403,23 @@ func decodeChallengeCases(items []ChallengeInputItemExecutionContext) ([]Challen
 			CaseKey:             caseKey,
 			ItemKey:             item.ItemKey,
 			Payload:             payload,
-			Inputs:              append([]challengepack.CaseInput(nil), caseDoc.Inputs...),
-			Expectations:        append([]challengepack.CaseExpectation(nil), caseDoc.Expectations...),
-			UserSimulator:       challengepack.CloneUserSimulatorSpec(caseDoc.UserSimulator),
-			Artifacts:           append([]challengepack.ArtifactRef(nil), caseDoc.Artifacts...),
-			Assets:              append([]challengepack.AssetReference(nil), caseDoc.Assets...),
+			Inputs:              append([]evalpack.CaseInput(nil), caseDoc.Inputs...),
+			Expectations:        append([]evalpack.CaseExpectation(nil), caseDoc.Expectations...),
+			UserSimulator:       evalpack.CloneUserSimulatorSpec(caseDoc.UserSimulator),
+			Artifacts:           append([]evalpack.ArtifactRef(nil), caseDoc.Artifacts...),
+			Assets:              append([]evalpack.AssetReference(nil), caseDoc.Assets...),
 		})
 	}
 	return cases, nil
 }
 
-func decodeStoredCaseDocument(payload json.RawMessage) (challengepack.StoredCaseDocument, error) {
+func decodeStoredCaseDocument(payload json.RawMessage) (evalpack.StoredCaseDocument, error) {
 	trimmed := bytesTrimSpace(payload)
 	if len(trimmed) == 0 {
-		return challengepack.StoredCaseDocument{}, nil
+		return evalpack.StoredCaseDocument{}, nil
 	}
 
-	var envelope challengepack.StoredCaseDocument
+	var envelope evalpack.StoredCaseDocument
 	if err := json.Unmarshal(trimmed, &envelope); err == nil && envelope.SchemaVersion != 0 {
 		if envelope.Payload == nil {
 			envelope.Payload = map[string]any{}
@@ -429,9 +429,9 @@ func decodeStoredCaseDocument(payload json.RawMessage) (challengepack.StoredCase
 
 	var legacyPayload map[string]any
 	if err := json.Unmarshal(trimmed, &legacyPayload); err != nil {
-		return challengepack.StoredCaseDocument{}, err
+		return evalpack.StoredCaseDocument{}, err
 	}
-	return challengepack.StoredCaseDocument{Payload: legacyPayload}, nil
+	return evalpack.StoredCaseDocument{Payload: legacyPayload}, nil
 }
 
 func bytesTrimSpace(payload json.RawMessage) []byte {

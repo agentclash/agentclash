@@ -108,7 +108,7 @@ func runWorkspaceSecretsRequest(t *testing.T, service WorkspaceSecretsService, r
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubChallengePackReadService{},
+		stubEvalPackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,

@@ -362,7 +362,7 @@ func TestGetAgentBuildRequiresWorkspaceMembership(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubChallengePackReadService{},
+		stubEvalPackReadService{},
 		testAgentBuildService{
 			builds: map[uuid.UUID]repository.AgentBuild{
 				buildID: {
@@ -416,7 +416,7 @@ func TestGetAgentBuildVersionRequiresWorkspaceMembership(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubChallengePackReadService{},
+		stubEvalPackReadService{},
 		testAgentBuildService{
 			builds: map[uuid.UUID]repository.AgentBuild{
 				buildID: {
@@ -477,7 +477,7 @@ func TestGetAgentBuildVersionReturnsToolAndKnowledgeBindings(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubChallengePackReadService{},
+		stubEvalPackReadService{},
 		testAgentBuildService{
 			builds: map[uuid.UUID]repository.AgentBuild{
 				buildID: {

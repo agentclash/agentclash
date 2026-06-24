@@ -19,7 +19,7 @@ selectors and a bookmarked baseline so day-to-day evaluation does not require
 juggling raw run IDs. The resource commands above remain the canonical
 ID-centric path for CI and automation.
 
-A run is not just one model token stream. It is the container for a scored evaluation attempt inside a workspace, including the challenge pack version, selected agent deployments, lifecycle timestamps, and ranking output.
+A run is not just one model token stream. It is the container for a scored evaluation attempt inside a workspace, including the eval pack version, selected agent deployments, lifecycle timestamps, and ranking output.
 
 The word **eval** is broader. People use it to mean “the experiment I am trying to run” or “the graded set of results I care about.” That is reasonable, but if you are reading the code or the CLI, you should anchor on this:
 
@@ -37,5 +37,5 @@ Use **run** when you are talking about a real resource ID. Use **eval** when you
 - [Hosted Quickstart](/docs/getting-started/quickstart)
 - [CLI Reference](/docs/reference/cli)
 - [Datasets overview](/docs/guides/datasets-overview)
-- [Multi-turn packs](/docs/challenge-packs/multi-turn)
+- [Multi-turn packs](/docs/eval-packs/multi-turn)
 - [Security evaluation](/docs/guides/security-evaluation)

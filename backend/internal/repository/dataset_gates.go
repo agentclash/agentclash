@@ -24,7 +24,7 @@ type DatasetBaseline struct {
 	DatasetID                uuid.UUID       `json:"dataset_id"`
 	DatasetVersionID         uuid.UUID       `json:"dataset_version_id"`
 	DatasetVersionInputSetID *uuid.UUID      `json:"dataset_version_input_set_id,omitempty"`
-	ChallengePackVersionID   uuid.UUID       `json:"challenge_pack_version_id"`
+	EvalPackVersionID   uuid.UUID       `json:"eval_pack_version_id"`
 	ChallengeKey             string          `json:"challenge_key"`
 	AgentDeploymentID        *uuid.UUID      `json:"agent_deployment_id,omitempty"`
 	RunID                    uuid.UUID       `json:"run_id"`
@@ -95,7 +95,7 @@ func (r *Repository) CreateDatasetBaseline(ctx context.Context, params CreateDat
 		DatasetID:                params.DatasetID,
 		DatasetVersionID:         evalRun.DatasetVersionID,
 		DatasetVersionInputSetID: &evalRun.DatasetVersionInputSetID,
-		ChallengePackVersionID:   inputSet.ChallengePackVersionID,
+		EvalPackVersionID:   inputSet.EvalPackVersionID,
 		ChallengeKey:             inputSet.ChallengeKey,
 		AgentDeploymentID:        params.AgentDeploymentID,
 		RunID:                    params.RunID,
@@ -192,7 +192,7 @@ func mapDatasetBaseline(row repositorysqlc.DatasetBaseline) DatasetBaseline {
 		ID:                     row.ID,
 		DatasetID:              row.DatasetID,
 		DatasetVersionID:       row.DatasetVersionID,
-		ChallengePackVersionID: row.ChallengePackVersionID,
+		EvalPackVersionID: row.EvalPackVersionID,
 		ChallengeKey:           row.ChallengeKey,
 		RunID:                  row.RunID,
 		Metrics:                append(json.RawMessage(nil), row.Metrics...),

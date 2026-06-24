@@ -10,7 +10,7 @@ import { useApiMutator } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
 import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import type {
-  ChallengePack,
+  EvalPack,
   CreateRegressionSuiteInput,
   RegressionSeverity,
   RegressionSuite,
@@ -38,13 +38,13 @@ const SEVERITY_OPTIONS: RegressionSeverity[] = ["info", "warning", "blocking"];
 
 interface CreateSuiteDialogProps {
   workspaceId: string;
-  packs: ChallengePack[];
+  packs: EvalPack[];
   initialOpen?: boolean;
   initialPackId?: string;
   offset?: number;
 }
 
-function hasRunnableVersion(pack: ChallengePack): boolean {
+function hasRunnableVersion(pack: EvalPack): boolean {
   return pack.versions.some((v) => v.lifecycle_status === "runnable");
 }
 
@@ -90,7 +90,7 @@ export function CreateSuiteDialog({
       return;
     }
     if (!packId) {
-      toast.error("Select a challenge pack");
+      toast.error("Select a eval pack");
       return;
     }
 
@@ -99,7 +99,7 @@ export function CreateSuiteDialog({
       const token = await getAccessToken();
       const api = createApiClient(token);
       const body: CreateRegressionSuiteInput = {
-        source_challenge_pack_id: packId,
+        source_eval_pack_id: packId,
         name: trimmedName,
         description: description.trim() || undefined,
         default_gate_severity: severity,
@@ -141,7 +141,7 @@ export function CreateSuiteDialog({
       >
         {noEligible ? (
           <span
-            title="Publish an active challenge pack before creating a regression suite."
+            title="Publish an active eval pack before creating a regression suite."
           >
             {trigger}
           </span>
@@ -153,7 +153,7 @@ export function CreateSuiteDialog({
             <DialogTitle>New Regression Suite</DialogTitle>
             <DialogDescription>
               Suites hold a curated set of cases promoted from failures against
-              a specific challenge pack.
+              a specific eval pack.
             </DialogDescription>
           </DialogHeader>
 
@@ -186,7 +186,7 @@ export function CreateSuiteDialog({
 
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground">
-                Source Challenge Pack
+                Source Eval Pack
               </label>
               <Select
                 value={packId}

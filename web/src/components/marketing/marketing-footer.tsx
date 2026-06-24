@@ -15,14 +15,14 @@ const COLUMNS: Array<{
       { href: "/docs", label: "Docs" },
       { href: "/docs/getting-started/quickstart", label: "Quickstart" },
       { href: "/docs/getting-started/self-host", label: "Self-host" },
-      { href: "/docs/challenge-packs", label: "Challenge packs" },
+      { href: "/docs/eval-packs", label: "Eval packs" },
       { href: "/docs/guides/ci-cd-agent-gates", label: "CI/CD gates" },
     ],
   },
   {
     heading: "Guides",
     links: [
-      { href: "/docs/guides/write-a-challenge-pack", label: "Write a challenge pack" },
+      { href: "/docs/guides/write-an-eval-pack", label: "Write an eval pack" },
       { href: "/docs/guides/configure-runtime-resources", label: "Configure resources" },
       { href: "/docs/guides/interpret-results", label: "Interpret results" },
       { href: "/docs/guides/ci-cd-workload-recipes", label: "CI/CD recipes" },

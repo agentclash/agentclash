@@ -10,7 +10,7 @@ set -euo pipefail
 
 WORKSPACE_ID="${WORKSPACE_ID:-22222222-2222-2222-2222-222222222222}"
 USER_ID="${USER_ID:-33333333-3333-3333-3333-333333333333}"
-CHALLENGE_PACK_VERSION_ID="${CHALLENGE_PACK_VERSION_ID:-55555555-5555-5555-5555-555555555555}"
+EVAL_PACK_VERSION_ID="${EVAL_PACK_VERSION_ID:-55555555-5555-5555-5555-555555555555}"
 AGENT_DEPLOYMENT_ID="${AGENT_DEPLOYMENT_ID:-eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee}"
 CHALLENGE_INPUT_SET_ID="${CHALLENGE_INPUT_SET_ID:-abababab-abab-abab-abab-abababababab}"
 API_BASE_URL="${API_BASE_URL:-http://localhost:8080}"
@@ -27,7 +27,7 @@ curl \
   -H "X-Agentclash-Workspace-Memberships: ${WORKSPACE_ID}:workspace_admin" \
   -d '{
     "workspace_id": "'"${WORKSPACE_ID}"'",
-    "challenge_pack_version_id": "'"${CHALLENGE_PACK_VERSION_ID}"'",
+    "eval_pack_version_id": "'"${EVAL_PACK_VERSION_ID}"'",
     "challenge_input_set_id": "'"${CHALLENGE_INPUT_SET_ID}"'",
     "agent_deployment_ids": ["'"${AGENT_DEPLOYMENT_ID}"'"]
   }'

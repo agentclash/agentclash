@@ -53,7 +53,7 @@ func TestComposedHttpRequest_SecretIsolation_ThroughNativeExecutor(t *testing.T)
 
 	ec := nativeExecutionContext()
 	ec.Run.WorkspaceID = workspaceID
-	ec.ChallengePackVersion.Manifest = []byte(`{
+	ec.EvalPackVersion.Manifest = []byte(`{
 		"tool_policy": {"allowed_tool_kinds": ["network"], "allow_network": true},
 		"tools": {"custom": [{
 			"name": "call_api",
@@ -295,7 +295,7 @@ func TestNativeExecutor_RejectsSecretReferencesInEnvVars(t *testing.T) {
 	workspaceID := uuid.New()
 	ec := nativeExecutionContext()
 	ec.Run.WorkspaceID = workspaceID
-	ec.ChallengePackVersion.Manifest = []byte(`{
+	ec.EvalPackVersion.Manifest = []byte(`{
 		"sandbox": {"env_vars": {"DB_URL": "${secrets.DB_URL}"}}
 	}`)
 
@@ -328,7 +328,7 @@ func TestNativeExecutor_SecretsLookupErrorFailsRun(t *testing.T) {
 	workspaceID := uuid.New()
 	ec := nativeExecutionContext()
 	ec.Run.WorkspaceID = workspaceID
-	ec.ChallengePackVersion.Manifest = []byte(`{
+	ec.EvalPackVersion.Manifest = []byte(`{
 		"sandbox": {"env_vars": {"K": "literal"}}
 	}`)
 

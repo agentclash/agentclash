@@ -89,7 +89,7 @@ export default async function BenchmarkReportPage({ params }: Props) {
         <header className="mt-6">
           <p className="font-[family-name:var(--font-mono)] text-2xs text-white/40">
             {report.date} &middot; {report.featuredModel}
-            {report.challengePack ? ` · ${report.challengePack}` : ""}
+            {report.evalPack ? ` · ${report.evalPack}` : ""}
           </p>
           <h1 className="mt-3 font-[family-name:var(--font-display)] text-3xl tracking-[-0.02em] leading-[1.15] sm:text-4xl">
             {report.title}

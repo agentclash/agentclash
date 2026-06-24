@@ -92,7 +92,7 @@ function renderClient(options?: { workflowRunURL?: string }) {
         initialRun: {
           id: "run-1",
           workspace_id: "ws-1",
-          challenge_pack_version_id: "cpv-1",
+          eval_pack_version_id: "cpv-1",
           official_pack_mode: "full",
           name: "Live Arena Run",
           status: "running",

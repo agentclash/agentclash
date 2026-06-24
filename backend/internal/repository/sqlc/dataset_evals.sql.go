@@ -42,7 +42,7 @@ func (q *Queries) CountDatasetEvalResults(ctx context.Context, arg CountDatasetE
 
 const createDatasetEvalChallengeInputSet = `-- name: CreateDatasetEvalChallengeInputSet :one
 INSERT INTO challenge_input_sets (
-    challenge_pack_version_id,
+    eval_pack_version_id,
     input_key,
     name,
     description,
@@ -56,24 +56,24 @@ INSERT INTO challenge_input_sets (
     $5,
     now()
 )
-ON CONFLICT (challenge_pack_version_id, input_key) DO UPDATE
+ON CONFLICT (eval_pack_version_id, input_key) DO UPDATE
 SET name = EXCLUDED.name,
     description = EXCLUDED.description,
     input_checksum = EXCLUDED.input_checksum
-RETURNING id, challenge_pack_version_id, input_key, name, description, input_checksum, generated_at, created_at, updated_at, archived_at
+RETURNING id, eval_pack_version_id, input_key, name, description, input_checksum, generated_at, created_at, updated_at, archived_at
 `
 
 type CreateDatasetEvalChallengeInputSetParams struct {
-	ChallengePackVersionID uuid.UUID
-	InputKey               string
-	Name                   string
-	Description            *string
-	InputChecksum          string
+	EvalPackVersionID uuid.UUID
+	InputKey          string
+	Name              string
+	Description       *string
+	InputChecksum     string
 }
 
 func (q *Queries) CreateDatasetEvalChallengeInputSet(ctx context.Context, arg CreateDatasetEvalChallengeInputSetParams) (ChallengeInputSet, error) {
 	row := q.db.QueryRow(ctx, createDatasetEvalChallengeInputSet,
-		arg.ChallengePackVersionID,
+		arg.EvalPackVersionID,
 		arg.InputKey,
 		arg.Name,
 		arg.Description,
@@ -82,7 +82,7 @@ func (q *Queries) CreateDatasetEvalChallengeInputSet(ctx context.Context, arg Cr
 	var i ChallengeInputSet
 	err := row.Scan(
 		&i.ID,
-		&i.ChallengePackVersionID,
+		&i.EvalPackVersionID,
 		&i.InputKey,
 		&i.Name,
 		&i.Description,
@@ -99,7 +99,7 @@ const createDatasetVersionInputSet = `-- name: CreateDatasetVersionInputSet :one
 INSERT INTO dataset_version_input_sets (
     dataset_id,
     dataset_version_id,
-    challenge_pack_version_id,
+    eval_pack_version_id,
     challenge_identity_id,
     challenge_key,
     challenge_input_set_id,
@@ -117,31 +117,31 @@ INSERT INTO dataset_version_input_sets (
     $8,
     $9
 )
-ON CONFLICT (dataset_version_id, challenge_pack_version_id, challenge_key) DO UPDATE
+ON CONFLICT (dataset_version_id, eval_pack_version_id, challenge_key) DO UPDATE
 SET challenge_input_set_id = EXCLUDED.challenge_input_set_id,
     input_key = EXCLUDED.input_key,
     input_checksum = EXCLUDED.input_checksum,
     mapping = EXCLUDED.mapping
-RETURNING id, dataset_id, dataset_version_id, challenge_pack_version_id, challenge_identity_id, challenge_key, challenge_input_set_id, input_key, input_checksum, mapping, created_at, updated_at
+RETURNING id, dataset_id, dataset_version_id, eval_pack_version_id, challenge_identity_id, challenge_key, challenge_input_set_id, input_key, input_checksum, mapping, created_at, updated_at
 `
 
 type CreateDatasetVersionInputSetParams struct {
-	DatasetID              uuid.UUID
-	DatasetVersionID       uuid.UUID
-	ChallengePackVersionID uuid.UUID
-	ChallengeIdentityID    uuid.UUID
-	ChallengeKey           string
-	ChallengeInputSetID    uuid.UUID
-	InputKey               string
-	InputChecksum          string
-	Mapping                []byte
+	DatasetID           uuid.UUID
+	DatasetVersionID    uuid.UUID
+	EvalPackVersionID   uuid.UUID
+	ChallengeIdentityID uuid.UUID
+	ChallengeKey        string
+	ChallengeInputSetID uuid.UUID
+	InputKey            string
+	InputChecksum       string
+	Mapping             []byte
 }
 
 func (q *Queries) CreateDatasetVersionInputSet(ctx context.Context, arg CreateDatasetVersionInputSetParams) (DatasetVersionInputSet, error) {
 	row := q.db.QueryRow(ctx, createDatasetVersionInputSet,
 		arg.DatasetID,
 		arg.DatasetVersionID,
-		arg.ChallengePackVersionID,
+		arg.EvalPackVersionID,
 		arg.ChallengeIdentityID,
 		arg.ChallengeKey,
 		arg.ChallengeInputSetID,
@@ -154,7 +154,7 @@ func (q *Queries) CreateDatasetVersionInputSet(ctx context.Context, arg CreateDa
 		&i.ID,
 		&i.DatasetID,
 		&i.DatasetVersionID,
-		&i.ChallengePackVersionID,
+		&i.EvalPackVersionID,
 		&i.ChallengeIdentityID,
 		&i.ChallengeKey,
 		&i.ChallengeInputSetID,
@@ -169,51 +169,51 @@ func (q *Queries) CreateDatasetVersionInputSet(ctx context.Context, arg CreateDa
 
 const getChallengeIdentityForDatasetEval = `-- name: GetChallengeIdentityForDatasetEval :one
 SELECT ci.id
-FROM challenge_pack_version_challenges cpvc
+FROM eval_pack_version_challenges cpvc
 JOIN challenge_identities ci
   ON ci.id = cpvc.challenge_identity_id
- AND ci.challenge_pack_id = cpvc.challenge_pack_id
-WHERE cpvc.challenge_pack_version_id = $1
+ AND ci.eval_pack_id = cpvc.eval_pack_id
+WHERE cpvc.eval_pack_version_id = $1
   AND ci.challenge_key = $2
   AND ci.archived_at IS NULL
 LIMIT 1
 `
 
 type GetChallengeIdentityForDatasetEvalParams struct {
-	ChallengePackVersionID uuid.UUID
-	ChallengeKey           string
+	EvalPackVersionID uuid.UUID
+	ChallengeKey      string
 }
 
 func (q *Queries) GetChallengeIdentityForDatasetEval(ctx context.Context, arg GetChallengeIdentityForDatasetEvalParams) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getChallengeIdentityForDatasetEval, arg.ChallengePackVersionID, arg.ChallengeKey)
+	row := q.db.QueryRow(ctx, getChallengeIdentityForDatasetEval, arg.EvalPackVersionID, arg.ChallengeKey)
 	var id uuid.UUID
 	err := row.Scan(&id)
 	return id, err
 }
 
 const getDatasetVersionInputSetByBinding = `-- name: GetDatasetVersionInputSetByBinding :one
-SELECT id, dataset_id, dataset_version_id, challenge_pack_version_id, challenge_identity_id, challenge_key, challenge_input_set_id, input_key, input_checksum, mapping, created_at, updated_at
+SELECT id, dataset_id, dataset_version_id, eval_pack_version_id, challenge_identity_id, challenge_key, challenge_input_set_id, input_key, input_checksum, mapping, created_at, updated_at
 FROM dataset_version_input_sets
 WHERE dataset_version_id = $1
-  AND challenge_pack_version_id = $2
+  AND eval_pack_version_id = $2
   AND challenge_key = $3
 LIMIT 1
 `
 
 type GetDatasetVersionInputSetByBindingParams struct {
-	DatasetVersionID       uuid.UUID
-	ChallengePackVersionID uuid.UUID
-	ChallengeKey           string
+	DatasetVersionID  uuid.UUID
+	EvalPackVersionID uuid.UUID
+	ChallengeKey      string
 }
 
 func (q *Queries) GetDatasetVersionInputSetByBinding(ctx context.Context, arg GetDatasetVersionInputSetByBindingParams) (DatasetVersionInputSet, error) {
-	row := q.db.QueryRow(ctx, getDatasetVersionInputSetByBinding, arg.DatasetVersionID, arg.ChallengePackVersionID, arg.ChallengeKey)
+	row := q.db.QueryRow(ctx, getDatasetVersionInputSetByBinding, arg.DatasetVersionID, arg.EvalPackVersionID, arg.ChallengeKey)
 	var i DatasetVersionInputSet
 	err := row.Scan(
 		&i.ID,
 		&i.DatasetID,
 		&i.DatasetVersionID,
-		&i.ChallengePackVersionID,
+		&i.EvalPackVersionID,
 		&i.ChallengeIdentityID,
 		&i.ChallengeKey,
 		&i.ChallengeInputSetID,
@@ -390,7 +390,7 @@ func (q *Queries) RecordDatasetEvalRun(ctx context.Context, arg RecordDatasetEva
 const upsertDatasetChallengeInputItem = `-- name: UpsertDatasetChallengeInputItem :one
 INSERT INTO challenge_input_items (
     challenge_input_set_id,
-    challenge_pack_version_id,
+    eval_pack_version_id,
     challenge_identity_id,
     item_key,
     payload
@@ -403,21 +403,21 @@ INSERT INTO challenge_input_items (
 )
 ON CONFLICT (challenge_input_set_id, challenge_identity_id, item_key) DO UPDATE
 SET payload = EXCLUDED.payload
-RETURNING id, challenge_input_set_id, challenge_pack_version_id, challenge_identity_id, item_key, payload, created_at
+RETURNING id, challenge_input_set_id, eval_pack_version_id, challenge_identity_id, item_key, payload, created_at
 `
 
 type UpsertDatasetChallengeInputItemParams struct {
-	ChallengeInputSetID    uuid.UUID
-	ChallengePackVersionID uuid.UUID
-	ChallengeIdentityID    uuid.UUID
-	ItemKey                string
-	Payload                []byte
+	ChallengeInputSetID uuid.UUID
+	EvalPackVersionID   uuid.UUID
+	ChallengeIdentityID uuid.UUID
+	ItemKey             string
+	Payload             []byte
 }
 
 func (q *Queries) UpsertDatasetChallengeInputItem(ctx context.Context, arg UpsertDatasetChallengeInputItemParams) (ChallengeInputItem, error) {
 	row := q.db.QueryRow(ctx, upsertDatasetChallengeInputItem,
 		arg.ChallengeInputSetID,
-		arg.ChallengePackVersionID,
+		arg.EvalPackVersionID,
 		arg.ChallengeIdentityID,
 		arg.ItemKey,
 		arg.Payload,
@@ -426,7 +426,7 @@ func (q *Queries) UpsertDatasetChallengeInputItem(ctx context.Context, arg Upser
 	err := row.Scan(
 		&i.ID,
 		&i.ChallengeInputSetID,
-		&i.ChallengePackVersionID,
+		&i.EvalPackVersionID,
 		&i.ChallengeIdentityID,
 		&i.ItemKey,
 		&i.Payload,

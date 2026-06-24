@@ -50,13 +50,13 @@ export const navSections: NavSection[] = [
     title: "Benchmarks",
     items: [
       {
-        label: "Challenge Packs",
-        href: (id) => `/workspaces/${id}/challenge-packs`,
+        label: "Eval Packs",
+        href: (id) => `/workspaces/${id}/eval-packs`,
         icon: PackageOpen,
       },
       {
         label: "Pack Library",
-        href: (id) => `/workspaces/${id}/challenge-packs/library`,
+        href: (id) => `/workspaces/${id}/eval-packs/library`,
         icon: LibraryBig,
       },
       {

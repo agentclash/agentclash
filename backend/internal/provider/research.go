@@ -8,7 +8,7 @@ import (
 )
 
 // ResearchRequest describes a single OpenAI Responses API / deep-research call.
-// AgentClash uses this for challenge packs with execution_mode: responses.
+// AgentClash uses this for eval packs with execution_mode: responses.
 type ResearchRequest struct {
 	ProviderKey         string
 	ProviderAccountID   string

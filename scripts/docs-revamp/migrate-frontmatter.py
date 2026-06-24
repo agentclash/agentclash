@@ -13,13 +13,13 @@ DATE = "2026-06-01"
 SKIP = {
     "index.mdx",
     "guides/datasets-overview.mdx",
-    "challenge-packs/multi-turn.mdx",
+    "eval-packs/multi-turn.mdx",
     "guides/security-evaluation.mdx",
 }
 
 CROSS_LINKS = {
     "datasets": "- [Datasets overview](/docs/guides/datasets-overview)",
-    "multi_turn": "- [Multi-turn packs](/docs/challenge-packs/multi-turn)",
+    "multi_turn": "- [Multi-turn packs](/docs/eval-packs/multi-turn)",
     "security": "- [Security evaluation](/docs/guides/security-evaluation)",
 }
 
@@ -27,7 +27,7 @@ PREFIX_LINKS: list[tuple[str, list[str]]] = [
     ("getting-started/", ["datasets", "multi_turn"]),
     ("concepts/", ["datasets", "multi_turn", "security"]),
     ("guides/", ["datasets", "multi_turn", "security"]),
-    ("challenge-packs/", ["multi_turn", "security"]),
+    ("eval-packs/", ["multi_turn", "security"]),
     ("architecture/", ["datasets", "security"]),
     ("contributing/", ["datasets"]),
     ("reference/", ["datasets", "security"]),

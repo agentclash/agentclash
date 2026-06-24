@@ -819,14 +819,14 @@ func TestPromptEvalResultsCommandWrapsBackendErrorExit(t *testing.T) {
 	}
 }
 
-func TestChallengePackPromptEvalTemplateMentionsPromptEvalInit(t *testing.T) {
+func TestEvalPackPromptEvalTemplateMentionsPromptEvalInit(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "pack.yaml")
 	stderr := captureStderr(t)
-	err := executeCommandWithQuiet(t, []string{"challenge-pack", "init", target, "--template", "prompt_eval"}, "http://unused", false)
+	err := executeCommandWithQuiet(t, []string{"eval-pack", "init", target, "--template", "prompt_eval"}, "http://unused", false)
 	errOut := stderr.finish()
 	if err != nil {
-		t.Fatalf("challenge-pack init error: %v", err)
+		t.Fatalf("eval-pack init error: %v", err)
 	}
 	if !strings.Contains(errOut, "prompt-eval init") {
 		t.Fatalf("stderr missing prompt-eval init pointer:\n%s", errOut)

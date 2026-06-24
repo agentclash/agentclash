@@ -1,11 +1,11 @@
 ---
 title: "Coding agent benchmark — June 2026"
 date: "2026-06-11"
-description: "Our first measured public benchmark: four GPT generations on a real coding task with frozen challenge packs, full trajectory scoring, and replay evidence. Methodology, scoreboard, and reproduction steps."
+description: "Our first measured public benchmark: four GPT generations on a real coding task with frozen eval packs, full trajectory scoring, and replay evidence. Methodology, scoreboard, and reproduction steps."
 author: "AgentClash"
 ---
 
-This is the first monthly coding-agent benchmark we publish on [/benchmarks](/benchmarks): a head-to-head race on a frozen challenge pack, scored on the full trajectory, with numbers you can reproduce.
+This is the first monthly coding-agent benchmark we publish on [/benchmarks](/benchmarks): a head-to-head race on a frozen eval pack, scored on the full trajectory, with numbers you can reproduce.
 
 **Headline:** GPT-5.4 solved an integer expression evaluator in two model calls and about 8K tokens. GPT-5 and GPT-5.5 also passed. GPT-4.1 burned its full ten-iteration budget and never submitted a valid solution.
 
@@ -13,7 +13,7 @@ Read the [full scoreboard and narrative](/benchmarks/gpt-generations-expression-
 
 ## Why this task
 
-Public leaderboards often hide setup drift. We picked one workload from the repo's public fixtures: [Expression Evaluator Arena](https://github.com/agentclash/agentclash/blob/main/examples/challenge-packs/expr-eval-arena.yaml). It is a real agentic coding slice, not trivia.
+Public leaderboards often hide setup drift. We picked one workload from the repo's public fixtures: [Expression Evaluator Arena](https://github.com/agentclash/agentclash/blob/main/examples/eval-packs/expr-eval-arena.yaml). It is a real agentic coding slice, not trivia.
 
 The trap is deliberate: lazy implementations reach for Python's `//` or `eval`, pass basic tiers, then fail when division must **truncate toward zero** on negative operands (`-7/2 == -3`, not `-4`). Correctness is graded across three hidden test tiers so partial credit produces a ranking spread instead of an all-pass tie.
 
@@ -32,13 +32,13 @@ Every passing model was "correct" on the hidden tests. The separation showed up 
 
 Use this block when you cite the report or rerun the race internally.
 
-### Frozen challenge pack
+### Frozen eval pack
 
 | Field | Value |
 | ----- | ----- |
 | Pack | Expression Evaluator Arena (`expr-eval-arena`) |
 | Version | v1 (`evaluation_spec`: `expr-eval-arena-v1`) |
-| Fixture path | `examples/challenge-packs/expr-eval-arena.yaml` on `main` |
+| Fixture path | `examples/eval-packs/expr-eval-arena.yaml` on `main` |
 | Execution mode | Native sandbox, shell + file tools, network off |
 | Iteration budget | 10 model turns; 240s wall clock; 40K token cap per run |
 
@@ -103,7 +103,7 @@ Full monthly checklist, ownership, and syndication steps live in the repo runboo
 
 - **n=1 per model** on a **single task**. LLM judges add per-run variance.
 - Not a general model ranking. It is a worked example of a reproducible public benchmark format.
-- Promote meaningful failures back into challenge-pack coverage so the next month's report gates on real regressions.
+- Promote meaningful failures back into eval-pack coverage so the next month's report gates on real regressions.
 
 ## What we do next month
 

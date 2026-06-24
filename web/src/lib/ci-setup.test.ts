@@ -14,7 +14,7 @@ const completeConfig: CISetupConfig = {
   runtimeProfileId: "runtime-1",
   providerAccountId: "provider-1",
   model: "model-1",
-  challengePackVersionId: "pack-version-1",
+  evalPackVersionId: "pack-version-1",
   inputSetId: "input-set-1",
   regressionSuiteIds: ["suite-1"],
   regressionCaseIds: ["case-1"],
@@ -42,7 +42,7 @@ candidate:
     provider_account_id: "provider-1"
     model: "model-1"
 evaluation:
-  challenge_pack_version_id: "pack-version-1"
+  eval_pack_version_id: "pack-version-1"
   input_set_id: "input-set-1"
   regression_suites:
     - "suite-1"
@@ -164,7 +164,7 @@ describe("ciSetupReadiness", () => {
       blockers: [
         "Select an agent build for candidate versions.",
         "Select a runtime profile for CI deployments.",
-        "Select a runnable challenge pack version.",
+        "Select a runnable eval pack version.",
         "Add at least one watched path glob.",
         "Select a locked baseline run.",
       ],

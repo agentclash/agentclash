@@ -2,7 +2,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AgentDeployment, ChallengePack } from "@/lib/api/types";
+import type { AgentDeployment, EvalPack } from "@/lib/api/types";
 import { useWorkspaceReadiness } from "./workspace-readiness";
 
 // Controllable per-endpoint SWR state.
@@ -10,7 +10,7 @@ const { state } = vi.hoisted(() => ({
   state: {
     providers: [] as unknown[],
     deployments: [] as Partial<AgentDeployment>[],
-    packs: [] as Partial<ChallengePack>[],
+    packs: [] as Partial<EvalPack>[],
     runsTotal: 0,
     loading: false,
   },
@@ -25,7 +25,7 @@ vi.mock("@/lib/api/swr", async (importOriginal) => {
         ? state.providers
         : path.endsWith("/agent-deployments")
           ? state.deployments
-          : path.endsWith("/challenge-packs")
+          : path.endsWith("/eval-packs")
             ? state.packs
             : [];
       return {
@@ -96,9 +96,9 @@ afterEach(() => {
   act(() => root.unmount());
 });
 
-const runnablePack: Partial<ChallengePack> = {
+const runnablePack: Partial<EvalPack> = {
   id: "p1",
-  versions: [{ lifecycle_status: "runnable" } as ChallengePack["versions"][number]],
+  versions: [{ lifecycle_status: "runnable" } as EvalPack["versions"][number]],
 };
 const activeDeployment: Partial<AgentDeployment> = { id: "d1", status: "active" };
 
@@ -130,7 +130,7 @@ describe("useWorkspaceReadiness", () => {
     state.deployments = [activeDeployment];
     state.packs = [{ id: "p1", versions: [] }];
     const r = render();
-    expect(r.nextStep).toBe("challenge_pack");
+    expect(r.nextStep).toBe("eval_pack");
     expect(r.ready).toBe(false);
   });
 

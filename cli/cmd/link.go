@@ -60,7 +60,7 @@ stores your selected workspace and organization in ~/.config/agentclash/config.y
 			rc.Output.PrintDetail("Role", workspace.Role)
 		}
 		fmt.Fprintln(rc.Output.Writer())
-		fmt.Fprintln(rc.Output.Writer(), "Next: agentclash challenge-pack init support-eval.yaml")
+		fmt.Fprintln(rc.Output.Writer(), "Next: agentclash eval-pack init support-eval.yaml")
 		return nil
 	},
 }

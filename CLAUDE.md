@@ -46,7 +46,7 @@ go run . workspace list
 go run . workspace use <workspace-id>
 go run . run list
 go run . run create --help
-# When the workspace already has challenge packs and deployments:
+# When the workspace already has eval packs and deployments:
 go run . run create --follow
 ```
 
@@ -153,9 +153,9 @@ Production uses WorkOS AuthKit. Local dev uses `AUTH_MODE=dev` which reads `X-De
 - Migrations: goose format (`-- +goose Up` / `-- +goose Down`) in `backend/db/migrations/`
 - All dependencies are constructor-injected; no global state
 - Optional services default to noop implementations (see `newRouter()` in routes.go)
-- Tool visibility per run is determined by the challenge pack's tool policy, not the LLM provider
+- Tool visibility per run is determined by the eval pack's tool policy, not the LLM provider
 - Hosted external agents integrate via Temporal workflow signals (API callback → signal → workflow resumes)
-- Multi-turn packs use `execution_mode: multi_turn` with a per-case `user_simulator` manifest (scripted / LLM / human phases). See `docs/challenge-packs/multi-turn.md` and reference pack `examples/challenge-packs/multi-turn-refund-recovery.yaml`. Human turns use `agentclash run turn submit|status`; calibration reviews score 1–5; arena tasks are created post-run for eligible agent pairs.
+- Multi-turn packs use `execution_mode: multi_turn` with a per-case `user_simulator` manifest (scripted / LLM / human phases). See `docs/eval-packs/multi-turn.md` and reference pack `examples/eval-packs/multi-turn-refund-recovery.yaml`. Human turns use `agentclash run turn submit|status`; calibration reviews score 1–5; arena tasks are created post-run for eligible agent pairs.
 
 ## OpenAPI Specification
 

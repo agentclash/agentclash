@@ -32,8 +32,8 @@ export OPENAI_MODEL="${OPENAI_MODEL:-gpt-4.1-mini}"
 ORG_ID="11111111-1111-1111-1111-111111111111"
 WORKSPACE_ID="22222222-2222-2222-2222-222222222222"
 USER_ID="33333333-3333-3333-3333-333333333333"
-CHALLENGE_PACK_ID="44444444-4444-4444-4444-444444444444"
-CHALLENGE_PACK_VERSION_ID="55555555-5555-5555-5555-555555555555"
+EVAL_PACK_ID="44444444-4444-4444-4444-444444444444"
+EVAL_PACK_VERSION_ID="55555555-5555-5555-5555-555555555555"
 CHALLENGE_IDENTITY_ID="66666666-6666-6666-6666-666666666666"
 CHALLENGE_VERSION_ID="77777777-7777-7777-7777-777777777777"
 CHALLENGE_INPUT_SET_ID="abababab-abab-abab-abab-abababababab"
@@ -48,7 +48,7 @@ AGENT_DEPLOYMENT_SNAPSHOT_ID="ffffffff-ffff-ffff-ffff-ffffffffffff"
 echo "==> Seeding local curl fixture into ${DATABASE_URL}"
 
 psql "${DATABASE_URL}" <<SQL
-TRUNCATE TABLE challenge_packs, organizations, users RESTART IDENTITY CASCADE;
+TRUNCATE TABLE eval_packs, organizations, users RESTART IDENTITY CASCADE;
 
 INSERT INTO organizations (id, name, slug)
 VALUES ('${ORG_ID}', 'Local Smoke Org', 'local-smoke-org');
@@ -59,20 +59,20 @@ VALUES ('${WORKSPACE_ID}', '${ORG_ID}', 'Local Smoke Workspace', 'local-smoke-wo
 INSERT INTO users (id, workos_user_id, email, display_name)
 VALUES ('${USER_ID}', 'workos-local-smoke-user', 'local-smoke@example.com', 'Local Smoke User');
 
-INSERT INTO challenge_packs (id, slug, name, family)
-VALUES ('${CHALLENGE_PACK_ID}', 'local-smoke-pack', 'Local Smoke Pack', 'reasoning');
+INSERT INTO eval_packs (id, slug, name, family)
+VALUES ('${EVAL_PACK_ID}', 'local-smoke-pack', 'Local Smoke Pack', 'reasoning');
 
-INSERT INTO challenge_pack_versions (
+INSERT INTO eval_pack_versions (
   id,
-  challenge_pack_id,
+  eval_pack_id,
   version_number,
   lifecycle_status,
   manifest_checksum,
   manifest
 )
 VALUES (
-  '${CHALLENGE_PACK_VERSION_ID}',
-  '${CHALLENGE_PACK_ID}',
+  '${EVAL_PACK_VERSION_ID}',
+  '${EVAL_PACK_ID}',
   1,
   'runnable',
   'local-smoke-manifest',
@@ -170,7 +170,7 @@ VALUES (
 
 INSERT INTO challenge_identities (
   id,
-  challenge_pack_id,
+  eval_pack_id,
   challenge_key,
   name,
   category,
@@ -179,7 +179,7 @@ INSERT INTO challenge_identities (
 )
 VALUES (
   '${CHALLENGE_IDENTITY_ID}',
-  '${CHALLENGE_PACK_ID}',
+  '${EVAL_PACK_ID}',
   'local-smoke-challenge',
   'Local Smoke Challenge',
   'support',
@@ -187,10 +187,10 @@ VALUES (
   'Local smoke test challenge'
 );
 
-INSERT INTO challenge_pack_version_challenges (
+INSERT INTO eval_pack_version_challenges (
   id,
-  challenge_pack_version_id,
-  challenge_pack_id,
+  eval_pack_version_id,
+  eval_pack_id,
   challenge_identity_id,
   execution_order,
   title_snapshot,
@@ -200,8 +200,8 @@ INSERT INTO challenge_pack_version_challenges (
 )
 VALUES (
   '${CHALLENGE_VERSION_ID}',
-  '${CHALLENGE_PACK_VERSION_ID}',
-  '${CHALLENGE_PACK_ID}',
+  '${EVAL_PACK_VERSION_ID}',
+  '${EVAL_PACK_ID}',
   '${CHALLENGE_IDENTITY_ID}',
   0,
   'Local Smoke Challenge',
@@ -212,14 +212,14 @@ VALUES (
 
 INSERT INTO challenge_input_sets (
   id,
-  challenge_pack_version_id,
+  eval_pack_version_id,
   input_key,
   name,
   input_checksum
 )
 VALUES (
   '${CHALLENGE_INPUT_SET_ID}',
-  '${CHALLENGE_PACK_VERSION_ID}',
+  '${EVAL_PACK_VERSION_ID}',
   'local-phase1-inputs',
   'Local Phase 1 Inputs',
   'local-phase1-input-checksum'
@@ -228,7 +228,7 @@ VALUES (
 INSERT INTO challenge_input_items (
   id,
   challenge_input_set_id,
-  challenge_pack_version_id,
+  eval_pack_version_id,
   challenge_identity_id,
   item_key,
   payload
@@ -236,7 +236,7 @@ INSERT INTO challenge_input_items (
 VALUES (
   '${CHALLENGE_INPUT_ITEM_ID}',
   '${CHALLENGE_INPUT_SET_ID}',
-  '${CHALLENGE_PACK_VERSION_ID}',
+  '${EVAL_PACK_VERSION_ID}',
   '${CHALLENGE_IDENTITY_ID}',
   'prompt.json',
   '{"content":"Investigate incident KAPPA-4821. The incident points to cache invalidation issues causing stale payload replay. Output strict JSON with code, risk_level, and summary."}'::jsonb
@@ -384,7 +384,7 @@ Seed complete.
 Use these values for curl:
   WORKSPACE_ID=${WORKSPACE_ID}
   USER_ID=${USER_ID}
-  CHALLENGE_PACK_VERSION_ID=${CHALLENGE_PACK_VERSION_ID}
+  EVAL_PACK_VERSION_ID=${EVAL_PACK_VERSION_ID}
   CHALLENGE_INPUT_SET_ID=${CHALLENGE_INPUT_SET_ID}
   AGENT_BUILD_VERSION_ID=${AGENT_BUILD_VERSION_ID}
   AGENT_DEPLOYMENT_ID=${AGENT_DEPLOYMENT_ID}

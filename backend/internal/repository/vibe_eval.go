@@ -39,8 +39,8 @@ type VibeEvalDraft struct {
 	Content                         json.RawMessage
 	ValidationState                 string
 	ValidationErrors                json.RawMessage
-	PublishedChallengePackID        *uuid.UUID
-	PublishedChallengePackVersionID *uuid.UUID
+	PublishedEvalPackID        *uuid.UUID
+	PublishedEvalPackVersionID *uuid.UUID
 	CreatedByUserID                 uuid.UUID
 	UpdatedByUserID                 uuid.UUID
 	CreatedAt                       time.Time
@@ -233,8 +233,8 @@ func mapVibeEvalDraft(row repositorysqlc.VibeEvalDraft) (VibeEvalDraft, error) {
 		Content:                         cloneRawMessage(row.Content),
 		ValidationState:                 row.ValidationState,
 		ValidationErrors:                cloneRawMessage(row.ValidationErrors),
-		PublishedChallengePackID:        row.PublishedChallengePackID,
-		PublishedChallengePackVersionID: row.PublishedChallengePackVersionID,
+		PublishedEvalPackID:        row.PublishedEvalPackID,
+		PublishedEvalPackVersionID: row.PublishedEvalPackVersionID,
 		CreatedByUserID:                 row.CreatedByUserID,
 		UpdatedByUserID:                 row.UpdatedByUserID,
 		CreatedAt:                       createdAt,

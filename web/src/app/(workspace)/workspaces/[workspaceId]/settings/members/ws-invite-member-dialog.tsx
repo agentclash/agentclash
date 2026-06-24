@@ -28,7 +28,7 @@ const ROLE_OPTIONS: { value: WorkspaceRole; label: string }[] = [
 
 const ROLE_DESCRIPTIONS: Record<WorkspaceRole, string> = {
   workspace_admin: "Full control — manage members, infrastructure, and secrets.",
-  workspace_member: "Can create agents, runs, and challenge packs.",
+  workspace_member: "Can create agents, runs, and eval packs.",
   workspace_viewer: "Read-only access to workspace data.",
 };
 

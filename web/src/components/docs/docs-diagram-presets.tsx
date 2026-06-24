@@ -133,7 +133,7 @@ export function DiagramWorkspaceDataModel() {
         <div className="flex w-full flex-wrap items-center justify-center gap-6 md:justify-between md:gap-16">
           <Pill>Deployment</Pill>
           <span className="text-xs uppercase tracking-[0.2em] text-zinc-600">and</span>
-          <Pill>Challenge pack</Pill>
+          <Pill>Eval pack</Pill>
         </div>
         <ArrowD />
         <Pill className="ring-[1px] ring-white/20">Run</Pill>
@@ -177,7 +177,7 @@ export function DiagramAgentsToRun() {
         </div>
         <p className="text-center text-xs leading-relaxed text-white/35">
           Ready build versions and runtime configuration rows converge on the same Deployment—the
-          object runs once your challenge pack binds through run submission.
+          object runs once your eval pack binds through run submission.
         </p>
       </div>
     </DiagramFrame>
@@ -192,7 +192,7 @@ export function DiagramArtifactFlow() {
         <div className="flex w-full flex-col gap-10 md:flex-row md:justify-center md:gap-24">
           <div className="flex flex-col items-center gap-3 md:flex-1">
             <ArrowD />
-            <Pill>Challenge pack assets</Pill>
+            <Pill>Eval pack assets</Pill>
             <ArrowD />
             <Pill>Scoring evidence</Pill>
           </div>
@@ -270,7 +270,7 @@ export function DiagramEvidenceClosingLoop() {
                 <Pill>Comparison decisions</Pill>
               </div>
               <ArrowD />
-              <RowArrowRow pills={["Future challenge-pack improvements"]} />
+              <RowArrowRow pills={["Future eval-pack improvements"]} />
             </div>
             <p className="mt-6 text-xs leading-relaxed text-white/35">
               Review and comparison tighten the authored packs you ship next, turning observed drifts into explicit benchmark updates.
@@ -318,7 +318,7 @@ export function DiagramCodebaseTourShortcuts() {
   );
 }
 
-export function DiagramChallengePackBundleShape() {
+export function DiagramEvalPackBundleShape() {
   return (
     <DiagramFrame caption="Pack versioning ties policy, sandbox, scoring, and cases into runs">
       <div className="mx-auto grid max-w-5xl gap-16">

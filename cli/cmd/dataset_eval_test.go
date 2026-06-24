@@ -21,7 +21,7 @@ func TestDatasetEvalBodyEncodesRequiredFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("datasetEvalBody() error = %v", err)
 	}
-	if body["version_id"] != "version-1" || body["challenge_pack_version_id"] != "pack-version-1" || body["challenge_id"] != "support" {
+	if body["version_id"] != "version-1" || body["eval_pack_version_id"] != "pack-version-1" || body["challenge_id"] != "support" {
 		t.Fatalf("body has wrong identifiers: %#v", body)
 	}
 	deployments, ok := body["agent_deployment_ids"].([]string)

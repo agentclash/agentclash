@@ -31,8 +31,8 @@ export DATABASE_URL="${DATABASE_URL:-postgres://agentclash:agentclash@localhost:
 ORG_ID="11111111-1111-1111-1111-111111111111"
 WORKSPACE_ID="22222222-2222-2222-2222-222222222222"
 USER_ID="33333333-3333-3333-3333-333333333333"
-CHALLENGE_PACK_ID="53535353-4444-4444-4444-444444444444"
-CHALLENGE_PACK_VERSION_ID="53535353-5555-5555-5555-555555555555"
+EVAL_PACK_ID="53535353-4444-4444-4444-444444444444"
+EVAL_PACK_VERSION_ID="53535353-5555-5555-5555-555555555555"
 CHALLENGE_IDENTITY_ID="53535353-6666-6666-6666-666666666666"
 CHALLENGE_VERSION_ID="53535353-7777-7777-7777-777777777777"
 CHALLENGE_INPUT_SET_ID="53535353-abab-abab-abab-abababababab"
@@ -85,7 +85,7 @@ INPUT_PAYLOAD="$(jq -nc \
 echo "==> Seeding SWE-bench-inspired coding fixture into ${DATABASE_URL}"
 
 psql "${DATABASE_URL}" <<SQL
-TRUNCATE TABLE challenge_packs, organizations, users RESTART IDENTITY CASCADE;
+TRUNCATE TABLE eval_packs, organizations, users RESTART IDENTITY CASCADE;
 
 INSERT INTO organizations (id, name, slug)
 VALUES ('${ORG_ID}', 'Local Coding Benchmark Org', 'local-coding-benchmark-org');
@@ -96,20 +96,20 @@ VALUES ('${WORKSPACE_ID}', '${ORG_ID}', 'Local Coding Benchmark Workspace', 'loc
 INSERT INTO users (id, workos_user_id, email, display_name)
 VALUES ('${USER_ID}', 'workos-local-coding-user', 'local-coding@example.com', 'Local Coding User');
 
-INSERT INTO challenge_packs (id, slug, name, family)
-VALUES ('${CHALLENGE_PACK_ID}', 'swebench-mini-pack', 'SWE-bench Mini Pack', 'coding');
+INSERT INTO eval_packs (id, slug, name, family)
+VALUES ('${EVAL_PACK_ID}', 'swebench-mini-pack', 'SWE-bench Mini Pack', 'coding');
 
-INSERT INTO challenge_pack_versions (
+INSERT INTO eval_pack_versions (
   id,
-  challenge_pack_id,
+  eval_pack_id,
   version_number,
   lifecycle_status,
   manifest_checksum,
   manifest
 )
 VALUES (
-  '${CHALLENGE_PACK_VERSION_ID}',
-  '${CHALLENGE_PACK_ID}',
+  '${EVAL_PACK_VERSION_ID}',
+  '${EVAL_PACK_ID}',
   1,
   'runnable',
   'swebench-mini-manifest-v1',
@@ -244,7 +244,7 @@ VALUES (
 
 INSERT INTO challenge_identities (
   id,
-  challenge_pack_id,
+  eval_pack_id,
   challenge_key,
   name,
   category,
@@ -253,7 +253,7 @@ INSERT INTO challenge_identities (
 )
 VALUES (
   '${CHALLENGE_IDENTITY_ID}',
-  '${CHALLENGE_PACK_ID}',
+  '${EVAL_PACK_ID}',
   'patch-correctness-single-file',
   'Fix add() arithmetic regression',
   'coding',
@@ -261,10 +261,10 @@ VALUES (
   'Inspect a staged workspace fixture, identify the one-line arithmetic regression, and submit the corrected file content as strict JSON.'
 );
 
-INSERT INTO challenge_pack_version_challenges (
+INSERT INTO eval_pack_version_challenges (
   id,
-  challenge_pack_version_id,
-  challenge_pack_id,
+  eval_pack_version_id,
+  eval_pack_id,
   challenge_identity_id,
   execution_order,
   title_snapshot,
@@ -274,8 +274,8 @@ INSERT INTO challenge_pack_version_challenges (
 )
 VALUES (
   '${CHALLENGE_VERSION_ID}',
-  '${CHALLENGE_PACK_VERSION_ID}',
-  '${CHALLENGE_PACK_ID}',
+  '${EVAL_PACK_VERSION_ID}',
+  '${EVAL_PACK_ID}',
   '${CHALLENGE_IDENTITY_ID}',
   0,
   'Fix add() arithmetic regression',
@@ -290,14 +290,14 @@ VALUES (
 
 INSERT INTO challenge_input_sets (
   id,
-  challenge_pack_version_id,
+  eval_pack_version_id,
   input_key,
   name,
   input_checksum
 )
 VALUES (
   '${CHALLENGE_INPUT_SET_ID}',
-  '${CHALLENGE_PACK_VERSION_ID}',
+  '${EVAL_PACK_VERSION_ID}',
   'swebench-mini-inputs',
   'SWE-bench Mini Inputs',
   'swebench-mini-input-checksum'
@@ -306,7 +306,7 @@ VALUES (
 INSERT INTO challenge_input_items (
   id,
   challenge_input_set_id,
-  challenge_pack_version_id,
+  eval_pack_version_id,
   challenge_identity_id,
   item_key,
   payload
@@ -314,7 +314,7 @@ INSERT INTO challenge_input_items (
 VALUES (
   '${CHALLENGE_INPUT_ITEM_ID}',
   '${CHALLENGE_INPUT_SET_ID}',
-  '${CHALLENGE_PACK_VERSION_ID}',
+  '${EVAL_PACK_VERSION_ID}',
   '${CHALLENGE_IDENTITY_ID}',
   'task.json',
   '${INPUT_PAYLOAD}'::jsonb
@@ -464,7 +464,7 @@ Seed complete.
 Use these values for curl:
   WORKSPACE_ID=${WORKSPACE_ID}
   USER_ID=${USER_ID}
-  CHALLENGE_PACK_VERSION_ID=${CHALLENGE_PACK_VERSION_ID}
+  EVAL_PACK_VERSION_ID=${EVAL_PACK_VERSION_ID}
   CHALLENGE_INPUT_SET_ID=${CHALLENGE_INPUT_SET_ID}
   AGENT_DEPLOYMENT_IDS=${AGENT_DEPLOYMENT_GPT54_ID},${AGENT_DEPLOYMENT_GPT54N_ID},${AGENT_DEPLOYMENT_GPT41_ID},${AGENT_DEPLOYMENT_GPT41M_ID},${AGENT_DEPLOYMENT_GPT4OM_ID}
 

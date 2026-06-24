@@ -11,8 +11,8 @@ func init() {
 	evalCmd.AddCommand(evalStartCmd)
 	evalCmd.AddCommand(evalScorecardCmd)
 
-	evalStartCmd.Flags().String("pack", "", "Challenge pack ID, slug, or exact name")
-	evalStartCmd.Flags().String("pack-version", "", "Challenge pack version ID or version number")
+	evalStartCmd.Flags().String("pack", "", "Eval pack ID, slug, or exact name")
+	evalStartCmd.Flags().String("pack-version", "", "Eval pack version ID or version number")
 	evalStartCmd.Flags().String("input-set", "", "Challenge input set ID, key, or exact name")
 	evalStartCmd.Flags().StringSlice("deployment", nil, "Deployment ID or exact name (repeatable)")
 	evalStartCmd.Flags().String("name", "", "Run name (optional)")
@@ -37,7 +37,7 @@ var evalStartCmd = &cobra.Command{
 	Short: "Start an eval using names, defaults, and guided selection",
 	Long: `Start an evaluation run using the current workspace defaults.
 
-This command wraps 'agentclash run create' but resolves challenge packs,
+This command wraps 'agentclash run create' but resolves eval packs,
 versions, input sets, and deployments using names, slugs, and interactive
 selection when possible.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -50,7 +50,7 @@ selection when possible.`,
 		deploymentSelectors, _ := cmd.Flags().GetStringSlice("deployment")
 		suiteSelectors, _ := cmd.Flags().GetStringSlice("suite")
 
-		resolvedPack, err := resolveChallengePackForEval(cmd, rc, workspaceID, packSelector, versionSelector, inputSetSelector)
+		resolvedPack, err := resolveEvalPackForEval(cmd, rc, workspaceID, packSelector, versionSelector, inputSetSelector)
 		if err != nil {
 			return err
 		}
@@ -60,7 +60,7 @@ selection when possible.`,
 		}
 
 		request, err := runCreateRequestFromFlags(cmd, runCreateRequest{
-			ChallengePackVersionID: resolvedPack.VersionID,
+			EvalPackVersionID: resolvedPack.VersionID,
 			ChallengeInputSetID:    resolvedPack.ChallengeInputSetID,
 			DeploymentIDs:          deploymentIDs,
 		})

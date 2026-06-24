@@ -6,7 +6,7 @@
 - Hero states: AgentClash is the platform; our team gets you to a first governed benchmark in 2 weeks.
 - Four fixed offerings are listed with explicit duration, deliverable, and qualification criteria:
   1. **Eval Discovery** (1 week): audit agents, 5 failure modes, pack roadmap
-  2. **Challenge Pack Build** (2–4 weeks): 3–10 custom packs from real workflows
+  2. **Eval Pack Build** (2–4 weeks): 3–10 custom packs from real workflows
   3. **Benchmark & Gate Setup** (2 weeks): baseline run, CI gate, exec scorecard template
   4. **Managed Eval Retainer** (monthly): release benchmarks + reliability report
 - Guardrails section: every engagement produces customer-owned packs, baseline evidence, gate policy, or CI handoff in the customer workspace.

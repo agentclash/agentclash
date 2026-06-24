@@ -25,9 +25,9 @@ Promotion is asynchronous and user-initiated. `prompt-eval run --follow` must re
 | Failed assertion row | Regression case candidate | A behavior that should be preserved and rechecked later. |
 | Playground experiment | Evidence run | Source run containing actual output, provider model ID, provider account, and timestamps. |
 | Regression suite | Regression asset container | Durable home for promoted prompt-eval failures. |
-| Challenge-pack case | Future executable representation | A promoted failure can later be compiled into challenge-pack-like coverage, but prompt eval should not pretend it already is one. |
+| Eval-pack case | Future executable representation | A promoted failure can later be compiled into eval-pack-like coverage, but prompt eval should not pretend it already is one. |
 
-Prompt eval failures are not native challenge-pack failures. They are playground failures with prompt/test/assertion provenance. Promotion should store that provenance explicitly instead of squeezing it into challenge-pack fields that imply a different runner.
+Prompt eval failures are not native eval-pack failures. They are playground failures with prompt/test/assertion provenance. Promotion should store that provenance explicitly instead of squeezing it into eval-pack fields that imply a different runner.
 
 ## Ownership
 
@@ -160,6 +160,6 @@ This avoids a bad loop where one failing prompt eval immediately mutates future 
 ## Non-Goals
 
 - No automatic promotion from `prompt-eval run --follow`.
-- No challenge-pack conversion in the runner path.
+- No eval-pack conversion in the runner path.
 - No requirement that prompt eval failures become executable agent challenges in V1.
 - No mutation of shared playground resources during promotion beyond reading source evidence.

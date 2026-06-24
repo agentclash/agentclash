@@ -32,7 +32,7 @@ pass@k and pass^k answer questions 2 and 3 when paired with replay. Question 1 s
 | "Must not fail twice in a row" | pass^k | Block release on any strict failure |
 | "Expensive failures are unacceptable" | pass^k + cost-per-success | Block on cost regression |
 
-Document the promise in the challenge pack README so evaluators do not argue about the metric after the run.
+Document the promise in the eval pack README so evaluators do not argue about the metric after the run.
 
 ## How to run both without gaming
 
@@ -55,7 +55,7 @@ That transition is a maturity signal, not a moral judgment. Early exploration sh
 
 ## Enterprise checklist before you gate
 
-- [ ] Workload encoded as a versioned challenge pack
+- [ ] Workload encoded as a versioned eval pack
 - [ ] Baseline agent frozen with explicit model and harness IDs
 - [ ] k chosen to match real retry policy (not "whatever fits the slide")
 - [ ] Replay retention policy agreed with security

@@ -19,7 +19,7 @@ type Props = {
 
 export function ResearchAudienceCTA({
   headline = "Evaluating agents for your team?",
-  body = "Book a 30-minute eval architecture review. We'll map your workflows to challenge packs, release gates, and a pilot plan.",
+  body = "Book a 30-minute eval architecture review. We'll map your workflows to eval packs, release gates, and a pilot plan.",
   demoLabel = DEFAULT_DEMO_LABEL,
   secondaryHref = DEFAULT_SECONDARY_HREF,
   secondaryLabel = DEFAULT_SECONDARY_LABEL,
@@ -54,7 +54,7 @@ export function BenchmarkRunCTA({ className }: { className?: string }) {
   return (
     <ResearchAudienceCTA
       headline="Run this benchmark on your agents"
-      body="We'll set up the same challenge pack on your workloads, baseline your current agent, and deliver a scorecard your team can gate on."
+      body="We'll set up the same eval pack on your workloads, baseline your current agent, and deliver a scorecard your team can gate on."
       className={className}
     />
   );

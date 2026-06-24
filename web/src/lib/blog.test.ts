@@ -26,7 +26,7 @@ describe("blog content", () => {
       "[AI agent regression testing](/platform/agent-regression-testing)",
     );
     expect(post?.content).toContain(
-      "[writing a challenge pack](/docs/guides/write-a-challenge-pack)",
+      "[writing an eval pack](/docs/guides/write-an-eval-pack)",
     );
     expect(post?.content).toContain(
       "[CI/CD agent gates](/docs/guides/ci-cd-agent-gates)",

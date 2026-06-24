@@ -37,7 +37,7 @@ const buyerQuestions = [
   {
     num: "01",
     title: "Which agent should we trust?",
-    body: "Compare baseline, candidate, and vendor agents inside one frozen challenge pack, not disconnected eval jobs.",
+    body: "Compare baseline, candidate, and vendor agents inside one frozen eval pack, not disconnected eval jobs.",
   },
   {
     num: "02",
@@ -65,7 +65,7 @@ const workflow = [
   {
     num: "01",
     title: "Freeze the benchmark",
-    text: "Version challenge packs and inputs so every run compares against the same approved workload.",
+    text: "Version eval packs and inputs so every run compares against the same approved workload.",
   },
   {
     num: "02",
@@ -86,7 +86,7 @@ const workflow = [
 
 const rolloutIncludes = [
   "Dedicated workspace on the Team tier",
-  "Challenge packs and replay retention",
+  "Eval packs and replay retention",
   "CI integration and audit logs",
   "Architecture review with our team",
 ];
@@ -110,7 +110,7 @@ const faqItems = [
   {
     question: "How is the Team plan different from a services engagement?",
     answer:
-      "Team is product access: your workspace, challenge packs, and gates. Optional hands-on eval sprints (pack build, benchmark setup) are fixed-scope paid services. Ask us about a 2-week eval sprint intro.",
+      "Team is product access: your workspace, eval packs, and gates. Optional hands-on eval sprints (pack build, benchmark setup) are fixed-scope paid services. Ask us about a 2-week eval sprint intro.",
   },
 ];
 
@@ -153,7 +153,7 @@ const crossLinks = [
   {
     href: "/glossary",
     label: "Glossary",
-    description: "Agent evaluation, challenge packs, and release gate definitions.",
+    description: "Agent evaluation, eval packs, and release gate definitions.",
   },
 ];
 

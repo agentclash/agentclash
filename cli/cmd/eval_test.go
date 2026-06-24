@@ -15,7 +15,7 @@ func TestEvalStartResolvesSelectorsAndCreatesRun(t *testing.T) {
 
 	var gotBody map[string]any
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/eval-packs": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{
 					"id":   "pack-1",
@@ -28,7 +28,7 @@ func TestEvalStartResolvesSelectorsAndCreatesRun(t *testing.T) {
 				},
 			},
 		}),
-		"GET /v1/workspaces/ws-1/challenge-pack-versions/ver-2/input-sets": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/eval-pack-versions/ver-2/input-sets": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{"id": "input-1", "input_key": "default", "name": "Default Inputs"},
 			},
@@ -40,7 +40,7 @@ func TestEvalStartResolvesSelectorsAndCreatesRun(t *testing.T) {
 		}),
 		"GET /v1/workspaces/ws-1/regression-suites": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
-				{"id": "suite-1", "workspace_id": "ws-1", "source_challenge_pack_id": "pack-1", "name": "Smoke", "status": "active"},
+				{"id": "suite-1", "workspace_id": "ws-1", "source_eval_pack_id": "pack-1", "name": "Smoke", "status": "active"},
 			},
 		}),
 		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {
@@ -63,8 +63,8 @@ func TestEvalStartResolvesSelectorsAndCreatesRun(t *testing.T) {
 		t.Fatalf("eval start error: %v", err)
 	}
 
-	if gotBody["challenge_pack_version_id"] != "ver-2" {
-		t.Fatalf("challenge_pack_version_id = %v, want ver-2", gotBody["challenge_pack_version_id"])
+	if gotBody["eval_pack_version_id"] != "ver-2" {
+		t.Fatalf("eval_pack_version_id = %v, want ver-2", gotBody["eval_pack_version_id"])
 	}
 	if gotBody["challenge_input_set_id"] != "input-1" {
 		t.Fatalf("challenge_input_set_id = %v, want input-1", gotBody["challenge_input_set_id"])
@@ -82,7 +82,7 @@ func TestEvalStartKeepsResolvedInputSetSelector(t *testing.T) {
 
 	var gotBody map[string]any
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/eval-packs": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{
 					"id":   "pack-1",
@@ -94,7 +94,7 @@ func TestEvalStartKeepsResolvedInputSetSelector(t *testing.T) {
 				},
 			},
 		}),
-		"GET /v1/workspaces/ws-1/challenge-pack-versions/ver-1/input-sets": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/eval-pack-versions/ver-1/input-sets": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{"id": "input-1", "input_key": "default", "name": "Default Inputs"},
 			},
@@ -324,7 +324,7 @@ func TestEvalInputSetSelectorErrorsOnEmptyList(t *testing.T) {
 	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
 
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/eval-packs": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{
 					"id":   "pack-1",
@@ -336,7 +336,7 @@ func TestEvalInputSetSelectorErrorsOnEmptyList(t *testing.T) {
 				},
 			},
 		}),
-		"GET /v1/workspaces/ws-1/challenge-pack-versions/ver-1/input-sets": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/eval-pack-versions/ver-1/input-sets": jsonHandler(200, map[string]any{
 			"items": []map[string]any{},
 		}),
 		"GET /v1/workspaces/ws-1/agent-deployments": jsonHandler(200, map[string]any{

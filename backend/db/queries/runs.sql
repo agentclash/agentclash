@@ -2,7 +2,7 @@
 INSERT INTO runs (
     organization_id,
     workspace_id,
-    challenge_pack_version_id,
+    eval_pack_version_id,
     challenge_input_set_id,
     official_pack_mode,
     created_by_user_id,
@@ -23,7 +23,7 @@ INSERT INTO runs (
 ) VALUES (
     @organization_id,
     @workspace_id,
-    @challenge_pack_version_id,
+    @eval_pack_version_id,
     sqlc.narg('challenge_input_set_id'),
     @official_pack_mode,
     sqlc.narg('created_by_user_id'),
@@ -186,7 +186,7 @@ ORDER BY changed_at ASC, id ASC;
 SELECT *
 FROM runs
 WHERE workspace_id = @workspace_id
-  AND source_type = 'challenge_pack'
+  AND source_type = 'eval_pack'
 ORDER BY created_at DESC
 LIMIT @result_limit OFFSET @result_offset;
 
@@ -194,7 +194,7 @@ LIMIT @result_limit OFFSET @result_offset;
 WITH anchor AS (
     SELECT
         runs.workspace_id,
-        runs.challenge_pack_version_id,
+        runs.eval_pack_version_id,
         runs.created_at,
         runs.id
     FROM runs
@@ -204,7 +204,7 @@ SELECT r.*
 FROM runs AS r
 JOIN anchor AS a
   ON r.workspace_id = a.workspace_id
- AND r.challenge_pack_version_id = a.challenge_pack_version_id
+ AND r.eval_pack_version_id = a.eval_pack_version_id
 WHERE r.id <> a.id
   AND r.status = 'completed'
   AND (r.created_at, r.id) < (a.created_at, a.id)
@@ -220,4 +220,4 @@ LIMIT @result_limit;
 SELECT count(*)
 FROM runs
 WHERE workspace_id = @workspace_id
-  AND source_type = 'challenge_pack';
+  AND source_type = 'eval_pack';

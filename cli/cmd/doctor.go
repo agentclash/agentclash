@@ -15,7 +15,7 @@ import (
 
 func init() {
 	rootCmd.AddCommand(doctorCmd)
-	doctorCmd.Flags().String("pack", "", "Challenge pack YAML file to check for run readiness")
+	doctorCmd.Flags().String("pack", "", "Eval pack YAML file to check for run readiness")
 }
 
 type doctorCheck struct {
@@ -89,7 +89,7 @@ var doctorCmd = &cobra.Command{
 	Short: "Check auth, workspace, and eval readiness",
 	Long: `Inspect the current CLI setup and report whether the happy path is ready:
 
-auth login -> link -> challenge-pack init/publish -> eval start -> baseline set -> eval scorecard
+auth login -> link -> eval-pack init/publish -> eval start -> baseline set -> eval scorecard
 
 Exits non-zero (code 1) when any check reports 'warn' or 'fail', so this
 command can be used as a CI gate: 'agentclash doctor && agentclash eval start --json'.
@@ -164,9 +164,9 @@ be set after the first eval run completes.`,
 				NextStep: "Run `agentclash link`.",
 			})
 			appendCheck(doctorCheck{
-				Name:     "challenge_packs",
+				Name:     "eval_packs",
 				Status:   "warn",
-				Detail:   "Challenge-pack visibility check skipped until a workspace is linked.",
+				Detail:   "Eval-pack visibility check skipped until a workspace is linked.",
 				NextStep: "Run `agentclash link`.",
 			})
 			appendCheck(doctorCheck{
@@ -194,9 +194,9 @@ be set after the first eval run completes.`,
 				NextStep: "Run `agentclash link` to relink the workspace.",
 			})
 			appendCheck(doctorCheck{
-				Name:     "challenge_packs",
+				Name:     "eval_packs",
 				Status:   "warn",
-				Detail:   "Challenge-pack visibility check skipped until workspace is relinked.",
+				Detail:   "Eval-pack visibility check skipped until workspace is relinked.",
 				NextStep: "Run `agentclash link` to relink the workspace.",
 			})
 			appendCheck(doctorCheck{
@@ -221,9 +221,9 @@ be set after the first eval run completes.`,
 				NextStep: "Run `agentclash link` to pick an accessible workspace.",
 			})
 			appendCheck(doctorCheck{
-				Name:     "challenge_packs",
+				Name:     "eval_packs",
 				Status:   "warn",
-				Detail:   "Challenge-pack visibility check skipped until workspace is relinked.",
+				Detail:   "Eval-pack visibility check skipped until workspace is relinked.",
 				NextStep: "Run `agentclash link` to pick an accessible workspace.",
 			})
 			appendCheck(doctorCheck{
@@ -256,26 +256,26 @@ be set after the first eval run completes.`,
 			},
 		})
 
-		packs, packErr := listChallengePacksForWorkflow(cmd, rc, workspaceID)
+		packs, packErr := listEvalPacksForWorkflow(cmd, rc, workspaceID)
 		if packErr != nil {
 			appendCheck(doctorCheck{
-				Name:     "challenge_packs",
+				Name:     "eval_packs",
 				Status:   "warn",
-				Detail:   fmt.Sprintf("Could not list challenge packs: %v", packErr),
+				Detail:   fmt.Sprintf("Could not list eval packs: %v", packErr),
 				NextStep: "Check workspace access or API connectivity.",
 			})
 		} else if len(packs) == 0 {
 			appendCheck(doctorCheck{
-				Name:     "challenge_packs",
+				Name:     "eval_packs",
 				Status:   "warn",
-				Detail:   "No challenge packs are published in this workspace.",
-				NextStep: "Run `agentclash challenge-pack init`, `validate`, and `publish`.",
+				Detail:   "No eval packs are published in this workspace.",
+				NextStep: "Run `agentclash eval-pack init`, `validate`, and `publish`.",
 			})
 		} else {
 			appendCheck(doctorCheck{
-				Name:   "challenge_packs",
+				Name:   "eval_packs",
 				Status: "ok",
-				Detail: fmt.Sprintf("%d challenge pack(s) visible.", len(packs)),
+				Detail: fmt.Sprintf("%d eval pack(s) visible.", len(packs)),
 				Metadata: map[string]any{
 					"count": len(packs),
 				},
@@ -348,7 +348,7 @@ func appendDoctorPackChecks(cmd *cobra.Command, rc *RunContext, packPath, worksp
 			Name:     "pack_manifest",
 			Status:   "fail",
 			Detail:   fmt.Sprintf("Could not read %s: %v", packPath, err),
-			NextStep: "Pass a readable challenge-pack YAML file to `agentclash doctor --pack`.",
+			NextStep: "Pass a readable eval-pack YAML file to `agentclash doctor --pack`.",
 			Metadata: map[string]any{"path": packPath},
 		})
 		return
@@ -359,8 +359,8 @@ func appendDoctorPackChecks(cmd *cobra.Command, rc *RunContext, packPath, worksp
 		appendCheck(doctorCheck{
 			Name:     "pack_manifest",
 			Status:   "fail",
-			Detail:   fmt.Sprintf("Challenge-pack YAML is invalid: %v", err),
-			NextStep: "Fix the challenge-pack YAML, then rerun `agentclash doctor --pack`.",
+			Detail:   fmt.Sprintf("Eval-pack YAML is invalid: %v", err),
+			NextStep: "Fix the eval-pack YAML, then rerun `agentclash doctor --pack`.",
 			Metadata: map[string]any{"path": packPath},
 		})
 		return
@@ -370,8 +370,8 @@ func appendDoctorPackChecks(cmd *cobra.Command, rc *RunContext, packPath, worksp
 		appendCheck(doctorCheck{
 			Name:     "pack_manifest",
 			Status:   "fail",
-			Detail:   "Challenge-pack manifest is missing required fields: " + strings.Join(issues, ", ") + ".",
-			NextStep: "Run `agentclash challenge-pack validate " + packPath + "` for full schema validation.",
+			Detail:   "Eval-pack manifest is missing required fields: " + strings.Join(issues, ", ") + ".",
+			NextStep: "Run `agentclash eval-pack validate " + packPath + "` for full schema validation.",
 			Metadata: map[string]any{"path": packPath, "missing": issues},
 		})
 		return

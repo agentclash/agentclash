@@ -14,7 +14,7 @@
           "title": "Workload Definition",
           "items": [
             "Name the business workflow, user persona, risk level, and owner.",
-            "Convert real incidents, support tickets, or repo tasks into a versioned challenge pack.",
+            "Convert real incidents, support tickets, or repo tasks into a versioned eval pack.",
             "Separate must-pass cases from exploratory cases before the first run."
           ]
         },
@@ -39,7 +39,7 @@
           "items": [
             "Block on correctness regression, policy violation, unsafe tool use, or hard cost and latency ceilings.",
             "Warn on unstable exploratory metrics while the benchmark matures.",
-            "Promote every production failure into the challenge pack within one sprint."
+            "Promote every production failure into the eval pack within one sprint."
           ]
         }
       ]
@@ -58,7 +58,7 @@
           "items": [
             "Baseline run ID and refresh rule.",
             "Candidate deployment, model alias, tool policy, and sandbox image.",
-            "Challenge pack version and owner."
+            "Eval pack version and owner."
           ]
         },
         {
@@ -142,7 +142,7 @@
         {
           "title": "Evaluation Method",
           "items": [
-            "Can we run the agent on our own challenge pack and private data?",
+            "Can we run the agent on our own eval pack and private data?",
             "Can we compare it against our current baseline under identical tools?",
             "Can we repeat the same run after model, prompt, or harness changes?"
           ]
@@ -177,7 +177,7 @@
       "slug": "30-day-agent-eval-rollout-plan",
       "title": "30-Day Agent Eval Rollout Plan",
       "kicker": "Adoption plan for first release gate",
-      "description": "A practical rollout calendar for going from ad hoc agent testing to a baseline, challenge pack, and first CI gate.",
+      "description": "A practical rollout calendar for going from ad hoc agent testing to a baseline, eval pack, and first CI gate.",
       "audience": "Engineering managers and platform leads",
       "readTime": "14 min",
       "file": "/resources/30-day-agent-eval-rollout-plan.pdf",
@@ -193,7 +193,7 @@
         {
           "title": "Week 2: Freeze The Pack",
           "items": [
-            "Turn examples into a versioned challenge pack with expected outputs and scorers.",
+            "Turn examples into a versioned eval pack with expected outputs and scorers.",
             "Record the current production baseline.",
             "Agree on correctness, cost, latency, and evidence expectations."
           ]

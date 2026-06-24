@@ -15,12 +15,12 @@ Prepare the workspace infrastructure chain that lets AgentClash turn a ready age
 ## Use When
 - A deployment cannot run because provider accounts, provider model IDs, workspace secrets, runtime profiles, or workspace tools are missing.
 - A user has a ready agent build/version but does not yet have the runtime resources needed to deploy it.
-- A challenge pack or deployment references a secret, tool, provider model, provider account, or runtime profile that is unavailable in the selected workspace.
+- A eval pack or deployment references a secret, tool, provider model, provider account, or runtime profile that is unavailable in the selected workspace.
 - A coding agent needs a checklist before moving from CLI setup to agent build/deployment setup.
 
 ## Do Not Use When
 - The CLI is not authenticated or no workspace is selected; use `agentclash-cli-setup` first.
-- The user is authoring challenge pack YAML fields; use challenge-pack skills after workspace resources are clear.
+- The user is authoring eval pack YAML fields; use eval-pack skills after workspace resources are clear.
 - The user is creating the agent build itself; use `agentclash-agent-build-author`.
 - The user already has resource IDs and only needs to create/select a deployment; use `agentclash-agent-deployment-setup`.
 
@@ -174,7 +174,7 @@ agentclash secret delete <SECRET_KEY>
 - Model listing fails: run `agentclash infra provider-account test <PROVIDER_ACCOUNT_ID> --model <MODEL_ID>` to distinguish credential/connectivity failures, and verify the provider account is active.
 - Deployment setup later fails because no runtime profile exists: create or select a runtime profile and pass its ID into deployment setup.
 - Runs fail because network, shell, timeout, or tool-call limits are too strict: review `profile_config`, `max_iterations`, `max_tool_calls`, `step_timeout_seconds`, and `run_timeout_seconds`.
-- Workspace tools are confused with pack-defined tools: workspace tools are `agentclash infra tool ...` resources; pack-defined tools live inside challenge pack YAML.
+- Workspace tools are confused with pack-defined tools: workspace tools are `agentclash infra tool ...` resources; pack-defined tools live inside eval pack YAML.
 
 ## Safety Notes
 - Never print, paste, request, receive, or commit raw provider keys. Prefer stdin for `secret set`; if the value is not already in the user's shell, ask the user to run the command themselves.
@@ -200,7 +200,7 @@ Notes: <credential, limit, sandbox, or tool caveats>
 - `agentclash-cli-setup`
 - `agentclash-agent-build-author`
 - `agentclash-agent-deployment-setup`
-- `agentclash-challenge-pack-tools-sandbox`
+- `agentclash-eval-pack-tools-sandbox`
 
 ## Related Docs
 - `/docs-md/guides/configure-runtime-resources`

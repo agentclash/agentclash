@@ -128,7 +128,7 @@ exit 1
                   deployment:
                     runtime_profile_id: runtime-1
                 evaluation:
-                  challenge_pack_version_id: pack-1
+                  eval_pack_version_id: pack-1
                 baseline:
                   run_id: run-1
                 gate:

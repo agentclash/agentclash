@@ -116,7 +116,7 @@ func buildTaskPromptPayload(executionContext repository.RunAgentExecutionContext
 		RunID                string                                           `json:"run_id"`
 		RunAgentID           string                                           `json:"run_agent_id"`
 		RunName              string                                           `json:"run_name,omitempty"`
-		ChallengePackVersion json.RawMessage                                  `json:"challenge_pack_version"`
+		EvalPackVersion json.RawMessage                                  `json:"eval_pack_version"`
 		Challenges           []repository.ChallengeDefinitionExecutionContext `json:"challenges,omitempty"`
 		ChallengeInputSet    *repository.ChallengeInputSetExecutionContext    `json:"challenge_input_set,omitempty"`
 		AgentSpec            json.RawMessage                                  `json:"agent_spec,omitempty"`
@@ -128,8 +128,8 @@ func buildTaskPromptPayload(executionContext repository.RunAgentExecutionContext
 		RunID:                executionContext.Run.ID.String(),
 		RunAgentID:           executionContext.RunAgent.ID.String(),
 		RunName:              executionContext.Run.Name,
-		ChallengePackVersion: sanitizeManifestForAgent(executionContext.ChallengePackVersion.Manifest),
-		Challenges:           cloneChallengeDefinitions(filterChallengesForInputSet(executionContext.ChallengePackVersion.Challenges, executionContext.ChallengeInputSet)),
+		EvalPackVersion: sanitizeManifestForAgent(executionContext.EvalPackVersion.Manifest),
+		Challenges:           cloneChallengeDefinitions(filterChallengesForInputSet(executionContext.EvalPackVersion.Challenges, executionContext.ChallengeInputSet)),
 		ChallengeInputSet:    cloneChallengeInputSet(executionContext.ChallengeInputSet),
 		AgentSpec:            cloneJSON(executionContext.Deployment.AgentBuildVersion.AgentSpec),
 		DeploymentConfig:     cloneJSON(executionContext.Deployment.SnapshotConfig),
@@ -145,7 +145,7 @@ func buildProviderMetadata(executionContext repository.RunAgentExecutionContext)
 	payload, err := json.Marshal(map[string]string{
 		"run_id":                    executionContext.Run.ID.String(),
 		"run_agent_id":              executionContext.RunAgent.ID.String(),
-		"challenge_pack_version_id": executionContext.ChallengePackVersion.ID.String(),
+		"eval_pack_version_id": executionContext.EvalPackVersion.ID.String(),
 		"agent_build_version_id":    executionContext.Deployment.AgentBuildVersion.ID.String(),
 	})
 	if err != nil {
@@ -318,7 +318,7 @@ func (e NativeExecutor) executeToolCalls(
 }
 
 // sanitizeManifestForAgent strips evaluation_spec and input_sets from the
-// challenge pack manifest before it reaches the agent. These sections contain
+// eval pack manifest before it reaches the agent. These sections contain
 // ground truth (expected answers in expectations, test commands in validators)
 // that must never leak to the agent. Scoring reads from the database, not
 // from the agent-visible manifest.

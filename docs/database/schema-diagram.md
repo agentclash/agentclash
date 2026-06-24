@@ -14,7 +14,7 @@ flowchart LR
     W[Workspace]
     AB[Agent Build]
     AD[Agent Deployment]
-    CP[Challenge Pack Version]
+    CP[Eval Pack Version]
     R[Run]
     RA[Run Agent]
     EV[Run Events]
@@ -70,19 +70,19 @@ This part answers “what exactly is being tested?”
 
 ```mermaid
 erDiagram
-    CHALLENGE_PACKS ||--o{ CHALLENGE_PACK_VERSIONS : has
-    CHALLENGE_PACKS ||--o{ CHALLENGE_IDENTITIES : defines
-    CHALLENGE_PACK_VERSIONS ||--o{ CHALLENGE_PACK_VERSION_CHALLENGES : includes
-    CHALLENGE_IDENTITIES ||--o{ CHALLENGE_PACK_VERSION_CHALLENGES : appears_in
-    CHALLENGE_PACK_VERSIONS ||--o{ CHALLENGE_INPUT_SETS : has
+    EVAL_PACKS ||--o{ EVAL_PACK_VERSIONS : has
+    EVAL_PACKS ||--o{ CHALLENGE_IDENTITIES : defines
+    EVAL_PACK_VERSIONS ||--o{ EVAL_PACK_VERSION_CHALLENGES : includes
+    CHALLENGE_IDENTITIES ||--o{ EVAL_PACK_VERSION_CHALLENGES : appears_in
+    EVAL_PACK_VERSIONS ||--o{ CHALLENGE_INPUT_SETS : has
     CHALLENGE_INPUT_SETS ||--o{ CHALLENGE_INPUT_ITEMS : contains
     CHALLENGE_IDENTITIES ||--o{ CHALLENGE_INPUT_ITEMS : targets
 ```
 
 Mental model:
 
-- `Challenge Pack` is the long-lived benchmark family
-- `Challenge Pack Version` freezes a runnable benchmark
+- `Eval Pack` is the long-lived benchmark family
+- `Eval Pack Version` freezes a runnable benchmark
 - `Challenge Identity` is the stable identity of one challenge across versions
 - `Challenge Input Set` freezes the input corpus used by a run
 

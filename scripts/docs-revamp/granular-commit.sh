@@ -64,7 +64,7 @@ commit_if_changed "feat(web): add mobile docs navigation drawer" web/src/compone
 
 echo "=== Phase 3: new pages ==="
 commit_if_changed "docs(guides): add datasets overview" web/content/docs/guides/datasets-overview.mdx
-commit_if_changed "docs(challenge-packs): add multi-turn reference" web/content/docs/challenge-packs/multi-turn.mdx
+commit_if_changed "docs(eval-packs): add multi-turn reference" web/content/docs/eval-packs/multi-turn.mdx
 commit_if_changed "docs(guides): add security evaluation guide" web/content/docs/guides/security-evaluation.mdx
 commit_if_changed "docs(nav): register new doc pages in sidebar" web/src/lib/docs.ts
 commit_if_changed "docs(home): refresh index for datasets multi-turn security" web/content/docs/index.mdx
@@ -84,7 +84,7 @@ link_keys_for() {
     concepts/*) echo "datasets multi_turn security" ;;
     guides/dataset-ci-gates.mdx|guides/ci-cd-workload-recipes.mdx) echo "datasets security" ;;
     guides/*) echo "datasets multi_turn security" ;;
-    challenge-packs/*) echo "multi_turn security" ;;
+    eval-packs/*) echo "multi_turn security" ;;
     architecture/*) echo "datasets security" ;;
     contributing/*) echo "datasets" ;;
     reference/*) echo "datasets security" ;;
@@ -95,7 +95,7 @@ link_keys_for() {
 for file in "${MDX_FILES[@]}"; do
   rel="${file#web/content/docs/}"
   case "$rel" in
-    guides/datasets-overview.mdx|challenge-packs/multi-turn.mdx|guides/security-evaluation.mdx|index.mdx)
+    guides/datasets-overview.mdx|eval-packs/multi-turn.mdx|guides/security-evaluation.mdx|index.mdx)
       continue
       ;;
   esac

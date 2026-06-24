@@ -25,9 +25,9 @@ func registerProtectedRoutes(
 	agentDeploymentReadService AgentDeploymentReadService,
 	agentHarnessService AgentHarnessService,
 	githubIntegrationService GitHubIntegrationService,
-	challengePackReadService ChallengePackReadService,
-	challengePackAuthoringService ChallengePackAuthoringService,
-	challengePackBuilderService ChallengePackBuilderService,
+	evalPackReadService EvalPackReadService,
+	evalPackAuthoringService EvalPackAuthoringService,
+	evalPackBuilderService EvalPackBuilderService,
 	agentBuildService AgentBuildService,
 	userService UserService,
 	orgService OrganizationService,
@@ -225,42 +225,42 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/github/ci-setup-pull-request", createCISetupPullRequestHandler(logger, githubIntegrationService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Get("/workspaces/{workspaceID}/challenge-packs", listChallengePacksHandler(logger, challengePackReadService))
+		Get("/workspaces/{workspaceID}/eval-packs", listEvalPacksHandler(logger, evalPackReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Get("/workspaces/{workspaceID}/challenge-pack-versions/{versionID}/input-sets", listChallengeInputSetsHandler(logger, challengePackReadService))
+		Get("/workspaces/{workspaceID}/eval-pack-versions/{versionID}/input-sets", listChallengeInputSetsHandler(logger, evalPackReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Post("/workspaces/{workspaceID}/challenge-packs", publishChallengePackHandler(logger, challengePackAuthoringService, authorizer, entitlementGate))
+		Post("/workspaces/{workspaceID}/eval-packs", publishEvalPackHandler(logger, evalPackAuthoringService, authorizer, entitlementGate))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Post("/workspaces/{workspaceID}/challenge-packs/validate", validateChallengePackHandler(logger, challengePackAuthoringService))
+		Post("/workspaces/{workspaceID}/eval-packs/validate", validateEvalPackHandler(logger, evalPackAuthoringService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Post("/workspaces/{workspaceID}/challenge-pack-catalog/{slug}/instantiate", instantiateChallengePackCatalogHandler(logger, challengePackAuthoringService, authorizer))
+		Post("/workspaces/{workspaceID}/eval-pack-catalog/{slug}/instantiate", instantiateEvalPackCatalogHandler(logger, evalPackAuthoringService, authorizer))
 	router.Get("/challenge-piece-library", challengePieceLibraryHandler(logger))
-	router.Get("/challenge-pack-catalog", challengePackCatalogListHandler(logger))
-	router.Get("/challenge-pack-catalog/{slug}", challengePackCatalogDetailHandler(logger))
+	router.Get("/eval-pack-catalog", evalPackCatalogListHandler(logger))
+	router.Get("/eval-pack-catalog/{slug}", evalPackCatalogDetailHandler(logger))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Get("/workspaces/{workspaceID}/challenge-pieces", listChallengePiecesHandler(logger, challengePackBuilderService))
+		Get("/workspaces/{workspaceID}/challenge-pieces", listChallengePiecesHandler(logger, evalPackBuilderService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Post("/workspaces/{workspaceID}/challenge-pieces", createChallengePieceHandler(logger, challengePackBuilderService))
+		Post("/workspaces/{workspaceID}/challenge-pieces", createChallengePieceHandler(logger, evalPackBuilderService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Get("/workspaces/{workspaceID}/challenge-pieces/{pieceID}", getChallengePieceHandler(logger, challengePackBuilderService))
+		Get("/workspaces/{workspaceID}/challenge-pieces/{pieceID}", getChallengePieceHandler(logger, evalPackBuilderService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Patch("/workspaces/{workspaceID}/challenge-pieces/{pieceID}", patchChallengePieceHandler(logger, challengePackBuilderService))
+		Patch("/workspaces/{workspaceID}/challenge-pieces/{pieceID}", patchChallengePieceHandler(logger, evalPackBuilderService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Delete("/workspaces/{workspaceID}/challenge-pieces/{pieceID}", deleteChallengePieceHandler(logger, challengePackBuilderService))
+		Delete("/workspaces/{workspaceID}/challenge-pieces/{pieceID}", deleteChallengePieceHandler(logger, evalPackBuilderService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Get("/workspaces/{workspaceID}/challenge-pack-drafts", listChallengePackDraftsHandler(logger, challengePackBuilderService))
+		Get("/workspaces/{workspaceID}/eval-pack-drafts", listEvalPackDraftsHandler(logger, evalPackBuilderService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Post("/workspaces/{workspaceID}/challenge-pack-drafts", createChallengePackDraftHandler(logger, challengePackBuilderService))
+		Post("/workspaces/{workspaceID}/eval-pack-drafts", createEvalPackDraftHandler(logger, evalPackBuilderService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Get("/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}", getChallengePackDraftHandler(logger, challengePackBuilderService))
+		Get("/workspaces/{workspaceID}/eval-pack-drafts/{draftID}", getEvalPackDraftHandler(logger, evalPackBuilderService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Patch("/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}", patchChallengePackDraftHandler(logger, challengePackBuilderService))
+		Patch("/workspaces/{workspaceID}/eval-pack-drafts/{draftID}", patchEvalPackDraftHandler(logger, evalPackBuilderService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Delete("/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}", deleteChallengePackDraftHandler(logger, challengePackBuilderService))
+		Delete("/workspaces/{workspaceID}/eval-pack-drafts/{draftID}", deleteEvalPackDraftHandler(logger, evalPackBuilderService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Post("/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}/compile", compileChallengePackDraftHandler(logger, challengePackBuilderService))
+		Post("/workspaces/{workspaceID}/eval-pack-drafts/{draftID}/compile", compileEvalPackDraftHandler(logger, evalPackBuilderService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Post("/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}/publish", publishChallengePackDraftHandler(logger, challengePackBuilderService, entitlementGate))
+		Post("/workspaces/{workspaceID}/eval-pack-drafts/{draftID}/publish", publishEvalPackDraftHandler(logger, evalPackBuilderService, entitlementGate))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/vibe-eval/conversations", createVibeEvalConversationHandler(logger, vibeEvalService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).

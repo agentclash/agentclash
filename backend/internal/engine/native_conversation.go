@@ -106,7 +106,7 @@ func (e NativeExecutor) BeginConversation(ctx context.Context, executionContext 
 
 	registry, err := buildToolRegistry(
 		sandboxRequest.ToolPolicy,
-		executionContext.ChallengePackVersion.Manifest,
+		executionContext.EvalPackVersion.Manifest,
 		executionContext.Deployment.SnapshotConfig,
 		workspaceSecrets,
 	)

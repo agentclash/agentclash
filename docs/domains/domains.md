@@ -25,7 +25,7 @@ These are the product nouns that should survive future rewrites:
 
 - `Organization`
 - `Workspace`
-- `Challenge Pack`
+- `Eval Pack`
 - `Agent Build`
 - `Agent Deployment`
 - `Run`
@@ -65,8 +65,8 @@ This domain is the root of the private product.
 
 Owns:
 
-- `Challenge Pack`
-- `Challenge Pack Version`
+- `Eval Pack`
+- `Eval Pack Version`
 - `Challenge`
 - `Challenge Identity`
 - `Challenge Input Set`
@@ -74,7 +74,7 @@ Owns:
 Responsibilities:
 
 - benchmark catalog and metadata
-- immutable challenge-pack versioning
+- immutable eval-pack versioning
 - packaging of tasks and task inputs
 - separately addressable challenge identities within a pack version
 - challenge family and category definitions
@@ -91,7 +91,7 @@ This is a core product domain, not just test data.
 
 Important decision:
 
-- a `Challenge Pack Version` is not just one sealed blob
+- a `Eval Pack Version` is not just one sealed blob
 - each `Challenge` inside the pack must have its own addressable identity
 
 Reason:
@@ -197,8 +197,8 @@ Canonical meaning:
 
 - a `Run` is an experiment envelope
 - a `Run` can contain one or many `RunAgent` entries
-- each `RunAgent` is one participating agent/deployment attempt against the selected challenge pack version
-- all `RunAgent` entries inside a single `Run` should share the same challenge-pack version and challenge input set
+- each `RunAgent` is one participating agent/deployment attempt against the selected eval pack version
+- all `RunAgent` entries inside a single `Run` should share the same eval-pack version and challenge input set
 
 This supports both:
 
@@ -378,7 +378,7 @@ Interpretation:
 
 - AgentClash evaluates `Agent Builds` and `Agent Deployments`, not just raw models
 - `Agent Build` and `Agent Deployment` stay separate
-- `Challenge Pack` is a core product domain
+- `Eval Pack` is a core product domain
 - `Tool` is a first-class reusable object
 - `Knowledge Source` is a first-class reusable object
 - providers live in a separate domain from agents

@@ -435,7 +435,7 @@ func createCIRun(cmd *cobra.Command, rc *RunContext, workspaceID string, manifes
 		return nil, err
 	}
 	request := runCreateRequest{
-		ChallengePackVersionID: manifest.Evaluation.ChallengePackVersionID,
+		EvalPackVersionID: manifest.Evaluation.EvalPackVersionID,
 		ChallengeInputSetID:    manifest.Evaluation.InputSetID,
 		DeploymentIDs:          []string{deploymentID},
 		OfficialPackMode:       "full",

@@ -188,7 +188,7 @@ type RunAgentInput struct {
 	RunAgentID           uuid.UUID
 	RunAgentLabel        string
 	DeploymentType       string
-	ChallengePackStatus  string
+	EvalPackStatus  string
 	HasChallengeInputSet bool
 	ToolPolicy           json.RawMessage
 	Cases                []CaseContext
@@ -675,7 +675,7 @@ func finalizeGroup(group *itemGroup, input RunAgentInput, scorecard scorecardDoc
 
 	promotable := input.RunStatus == domain.RunStatusCompleted && group.ChallengeID != nil && evidenceTier != EvidenceTierNone
 	promotionModes := make([]PromotionMode, 0, 2)
-	if promotable && input.HasChallengeInputSet && (evidenceTier == EvidenceTierNativeStructured || evidenceTier == EvidenceTierHostedStructured) && input.ChallengePackStatus == "runnable" {
+	if promotable && input.HasChallengeInputSet && (evidenceTier == EvidenceTierNativeStructured || evidenceTier == EvidenceTierHostedStructured) && input.EvalPackStatus == "runnable" {
 		promotionModes = append(promotionModes, PromotionModeFullExecutable)
 	}
 	if promotable && input.HasChallengeInputSet && finalOutputRef != nil {

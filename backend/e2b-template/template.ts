@@ -92,7 +92,7 @@ export const template = Template()
       'PyPDF2 pdfplumber requests httpx csvkit uv',
   )
 
-  // Browser agent runtime. Browser-enabled challenge packs use Browser Use
+  // Browser agent runtime. Browser-enabled eval packs use Browser Use
   // cloud browsers, so the sandbox only needs the harness and CDP client.
   .runCmd(
     'uv tool install git+https://github.com/browser-use/browser-harness.git@361c90e0a7663c408e79fe932b3d8001718cda7d ' +

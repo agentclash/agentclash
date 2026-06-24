@@ -36,7 +36,7 @@ Do not read those options as "AgentClash is certified for every UAE sector." Rea
 
 Whether the buyer is in financial services, telecom, healthcare, or government-adjacent operations, the release packet shape is similar:
 
-1. **Frozen workload:** challenge pack version, input set, tool policy
+1. **Frozen workload:** eval pack version, input set, tool policy
 2. **Named builds:** baseline and candidate agent deployments
 3. **Replay evidence:** trajectory proof for cases that drove the decision
 4. **Scorecard deltas:** correctness, cost, latency, policy dimensions
@@ -50,7 +50,7 @@ For customer-facing agents, encode real ticket flows in [support agent evaluatio
 
 - [ ] Residency decision documented separately from agent release decision
 - [ ] BYOK and log retention policy attached to the eval workspace
-- [ ] Challenge pack version frozen for the approval period
+- [ ] Eval pack version frozen for the approval period
 - [ ] Baseline run ID pinned in CI manifest when gates apply
 - [ ] Evidence tier labeled for hosted vs native agents (`native_structured`, `hosted_structured`, `hosted_black_box`)
 - [ ] Gate summary translated for non-engineering stakeholders (Arabic executive summary optional; replay remains source of truth)

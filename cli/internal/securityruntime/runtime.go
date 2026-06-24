@@ -4,7 +4,7 @@
 //
 // This is the *runtime-enforcement* eval companion to the prompt-level
 // infisical-boundary / hashicorp-vault-boundary packs in
-// examples/challenge-packs/. Those packs measured: does telling the
+// examples/eval-packs/. Those packs measured: does telling the
 // model "these are vault values" change leak behavior? Answer: barely.
 //
 // This runtime eval measures the next question: when the model

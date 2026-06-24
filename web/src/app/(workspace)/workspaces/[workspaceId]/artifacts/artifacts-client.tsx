@@ -57,7 +57,7 @@ export function ArtifactsClient({ workspaceId }: { workspaceId: string }) {
         <EmptyState
           icon={<FileArchive className="size-10" />}
           title="No artifacts"
-          description="Upload files to use as context in challenge packs or attach to runs."
+          description="Upload files to use as context in eval packs or attach to runs."
         />
       ) : (
         <div className="rounded-lg border border-border">

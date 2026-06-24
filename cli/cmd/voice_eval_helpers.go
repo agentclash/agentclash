@@ -101,7 +101,7 @@ func runModeSummary(run map[string]any) string {
 	}
 }
 
-func latestChallengePackVersionMap(pack map[string]any) map[string]any {
+func latestEvalPackVersionMap(pack map[string]any) map[string]any {
 	versions := mapSlice(pack, "versions")
 	if len(versions) == 0 {
 		return nil
@@ -119,8 +119,8 @@ func latestChallengePackVersionMap(pack map[string]any) map[string]any {
 	return latest
 }
 
-func challengePackMapModalitySummary(pack map[string]any) string {
-	version := latestChallengePackVersionMap(pack)
+func evalPackMapModalitySummary(pack map[string]any) string {
+	version := latestEvalPackVersionMap(pack)
 	if version == nil {
 		return "-"
 	}
@@ -154,7 +154,7 @@ func versionNumber(value any) float64 {
 	}
 }
 
-func challengePackHasVoiceVersion(pack challengePackSummary) bool {
+func evalPackHasVoiceVersion(pack evalPackSummary) bool {
 	for _, version := range pack.Versions {
 		if normalizeVoiceValue(version.Modality) == voiceEvalModality {
 			return true
@@ -163,7 +163,7 @@ func challengePackHasVoiceVersion(pack challengePackSummary) bool {
 	return false
 }
 
-func challengePackTransportSummary(pack challengePackSummary) string {
+func evalPackTransportSummary(pack evalPackSummary) string {
 	seen := map[string]bool{}
 	var transports []string
 	for _, version := range pack.Versions {
@@ -182,22 +182,22 @@ func challengePackTransportSummary(pack challengePackSummary) string {
 	return strings.Join(transports, ", ")
 }
 
-func challengePackPickerLabel(pack challengePackSummary) string {
-	if challengePackHasVoiceVersion(pack) {
+func evalPackPickerLabel(pack evalPackSummary) string {
+	if evalPackHasVoiceVersion(pack) {
 		return strings.TrimSpace(pack.Name) + " (voice)"
 	}
 	return pack.Name
 }
 
-func challengePackPickerDescription(pack challengePackSummary) string {
+func evalPackPickerDescription(pack evalPackSummary) string {
 	description := fmt.Sprintf("%d runnable version(s) • %s", len(pack.Versions), pack.ID)
-	if transports := challengePackTransportSummary(pack); transports != "" {
+	if transports := evalPackTransportSummary(pack); transports != "" {
 		description += " • " + transports
 	}
 	return description
 }
 
-func challengePackVersionPickerLabel(version challengePackVersionBrief) string {
+func evalPackVersionPickerLabel(version evalPackVersionBrief) string {
 	label := fmt.Sprintf("v%d", version.VersionNumber)
 	if normalizeVoiceValue(version.Modality) == voiceEvalModality {
 		label += " (voice)"
@@ -205,7 +205,7 @@ func challengePackVersionPickerLabel(version challengePackVersionBrief) string {
 	return label
 }
 
-func challengePackVersionPickerDescription(version challengePackVersionBrief) string {
+func evalPackVersionPickerDescription(version evalPackVersionBrief) string {
 	description := fmt.Sprintf("status: %s • %s", version.LifecycleStatus, version.ID)
 	if len(version.InterfaceTransports) > 0 {
 		description += " • " + strings.Join(version.InterfaceTransports, ", ")
@@ -213,7 +213,7 @@ func challengePackVersionPickerDescription(version challengePackVersionBrief) st
 	return description
 }
 
-func versionSupportsTextSimBrief(version challengePackVersionBrief) bool {
+func versionSupportsTextSimBrief(version evalPackVersionBrief) bool {
 	if normalizeVoiceValue(version.Modality) != voiceEvalModality {
 		return false
 	}
@@ -225,7 +225,7 @@ func versionSupportsTextSimBrief(version challengePackVersionBrief) bool {
 	return false
 }
 
-func suggestedRunModeForVersion(version challengePackVersionBrief) string {
+func suggestedRunModeForVersion(version evalPackVersionBrief) string {
 	if versionSupportsTextSimBrief(version) {
 		return runCreateModeTextSim
 	}

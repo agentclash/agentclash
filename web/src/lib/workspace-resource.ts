@@ -14,8 +14,8 @@ export const workspaceResourceKeys = {
     apiQueryKey(`/v1/workspaces/${workspaceId}/agent-harnesses`),
   agentHarnessExecutions: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/agent-harness-executions`),
-  challengePacks: (workspaceId: string): ApiQueryKey =>
-    apiQueryKey(`/v1/workspaces/${workspaceId}/challenge-packs`),
+  evalPacks: (workspaceId: string): ApiQueryKey =>
+    apiQueryKey(`/v1/workspaces/${workspaceId}/eval-packs`),
   runs: (workspaceId: string, offset = 0): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/runs`, {
       limit: RUN_PAGE_SIZE,
@@ -95,14 +95,14 @@ export const workspaceMutationKeys = {
   },
   createRunDialog(workspaceId: string): ApiQueryKey[] {
     return [
-      workspaceResourceKeys.challengePacks(workspaceId),
+      workspaceResourceKeys.evalPacks(workspaceId),
       workspaceResourceKeys.deployments(workspaceId),
       workspaceResourceKeys.regressionSuites(workspaceId, 0),
     ];
   },
   createEvalSessionDialog(workspaceId: string): ApiQueryKey[] {
     return [
-      workspaceResourceKeys.challengePacks(workspaceId),
+      workspaceResourceKeys.evalPacks(workspaceId),
       workspaceResourceKeys.deployments(workspaceId),
     ];
   },

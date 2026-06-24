@@ -15,7 +15,7 @@ labels: enhancement
 <!-- Other approaches you thought about. -->
 
 **Area**
-<!-- backend / CLI / web / challenge packs / docs -->
+<!-- backend / CLI / web / eval packs / docs -->
 
 **Additional context**
 <!-- Anything else: examples, links, mockups. -->

@@ -110,7 +110,7 @@ func (e ResponsesExecutor) Execute(ctx context.Context, executionContext reposit
 		return Result{}, NewFailure(StopReasonSandboxError, fmt.Sprintf("load workspace secrets: %v", err), err)
 	}
 
-	if manifestUsesE2BSandbox(executionContext.ChallengePackVersion.Manifest) {
+	if manifestUsesE2BSandbox(executionContext.EvalPackVersion.Manifest) {
 		if e.sandboxProvider == nil {
 			return Result{}, NewFailure(StopReasonSandboxError, sandbox.ErrProviderNotConfigured.Error(), sandbox.ErrProviderNotConfigured)
 		}

@@ -3,12 +3,12 @@ package engine
 import (
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/evalpack"
 	"github.com/agentclash/agentclash/backend/internal/scoring"
 )
 
 func TestEvaluateTurnExpects_Contains(t *testing.T) {
-	expects := []challengepack.CaseExpectation{
+	expects := []evalpack.CaseExpectation{
 		{Key: "mentions_refund", Kind: string(scoring.ValidatorTypeContains), Value: "refund"},
 	}
 	if !evaluateTurnExpects("sorry, I cannot help", expects) {
@@ -20,10 +20,10 @@ func TestEvaluateTurnExpects_Contains(t *testing.T) {
 }
 
 func TestShouldRunPhase_OnAssistantMismatch(t *testing.T) {
-	phase := challengepack.UserSimulatorPhase{
+	phase := evalpack.UserSimulatorPhase{
 		ID:      "pushback",
-		Actor:   challengepack.UserSimulatorActorScripted,
-		Trigger: challengepack.UserSimulatorTriggerOnAssistantMismatch,
+		Actor:   evalpack.UserSimulatorActorScripted,
+		Trigger: evalpack.UserSimulatorTriggerOnAssistantMismatch,
 	}
 	if shouldRunPhase(phase, false) {
 		t.Fatal("expected phase to stay inactive without prior mismatch")

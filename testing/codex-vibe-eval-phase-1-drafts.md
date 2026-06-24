@@ -5,7 +5,7 @@
 - Users can create and list Vibe Eval conversations scoped to a workspace.
 - Users can fetch a conversation they can access, including its active draft id.
 - Users can create, list, fetch, and update Vibe Eval drafts scoped to a conversation.
-- Draft kinds are restricted to `eval_plan`, `challenge_pack`, `input_cases`, `scoring`, and `runtime`.
+- Draft kinds are restricted to `eval_plan`, `eval_pack`, `input_cases`, `scoring`, and `runtime`.
 - Draft validation state is restricted to `unknown`, `valid`, and `invalid`; validation errors are stored as JSON arrays.
 - Draft updates can change content and validation fields, but cannot publish packs, create runs, create provider secrets, or spend credit.
 - Workspace viewers can read conversations/drafts, but only workspace members/admins can create or update them.

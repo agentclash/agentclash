@@ -12,7 +12,7 @@ Docs site matches changelog editorial typography (sans + mono, white/opacity pal
 - Mobile docs navigation drawer works below `lg` breakpoint.
 - Three new doc pages exist and appear in sidebar nav:
   - `/docs/guides/datasets-overview`
-  - `/docs/challenge-packs/multi-turn`
+  - `/docs/eval-packs/multi-turn`
   - `/docs/guides/security-evaluation`
 - All 38 existing MDX pages carry `dateModified` frontmatter and cross-link to new surfaces where relevant.
 
@@ -29,8 +29,8 @@ Docs site matches changelog editorial typography (sans + mono, white/opacity pal
 
 ## Smoke Tests
 
-- `/docs/challenge-packs/bundle-yaml-reference` — pipe table under `version` renders with header row and borders.
-- `/docs/challenge-packs/multi-turn` — operator API table renders.
+- `/docs/eval-packs/bundle-yaml-reference` — pipe table under `version` renders with header row and borders.
+- `/docs/eval-packs/multi-turn` — operator API table renders.
 - `/docs/guides/security-evaluation` — stress harness code block highlights.
 
 ## E2E Tests
@@ -45,7 +45,7 @@ pnpm exec vitest run src/app/docs src/lib/docs.test.ts
 pnpm lint
 pnpm build
 pnpm dev
-# Browser: /docs/challenge-packs/bundle-yaml-reference (table)
+# Browser: /docs/eval-packs/bundle-yaml-reference (table)
 # Browser: /docs (home cards + FAQ)
 # Browser: resize to mobile width — menu opens sidebar drawer
 curl -sS http://localhost:3000/docs-md/guides/datasets-overview | head

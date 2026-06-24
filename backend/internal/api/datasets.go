@@ -90,7 +90,7 @@ type CreateDatasetInput struct {
 	Description                   string
 	InputSchema                   json.RawMessage
 	InputSchemaEnforced           bool
-	DefaultChallengePackVersionID *uuid.UUID
+	DefaultEvalPackVersionID *uuid.UUID
 }
 
 type ListDatasetsInput struct {
@@ -119,7 +119,7 @@ type PatchDatasetInput struct {
 	Description                   *string
 	InputSchema                   json.RawMessage
 	InputSchemaEnforced           *bool
-	DefaultChallengePackVersionID *uuid.UUID
+	DefaultEvalPackVersionID *uuid.UUID
 }
 
 type UpsertDatasetExampleInput struct {
@@ -229,7 +229,7 @@ type StartDatasetEvalInput struct {
 	WorkspaceID            uuid.UUID
 	DatasetID              uuid.UUID
 	VersionID              uuid.UUID
-	ChallengePackVersionID uuid.UUID
+	EvalPackVersionID uuid.UUID
 	ChallengeID            string
 	Mapping                json.RawMessage
 	AgentDeploymentIDs     []uuid.UUID
@@ -256,7 +256,7 @@ func (m *DatasetManager) CreateDataset(ctx context.Context, caller Caller, input
 	return m.repo.CreateDataset(ctx, repository.CreateDatasetParams{
 		WorkspaceID: input.WorkspaceID, Slug: input.Slug, Name: input.Name, Description: input.Description,
 		InputSchema: input.InputSchema, InputSchemaEnforced: input.InputSchemaEnforced,
-		DefaultChallengePackVersionID: input.DefaultChallengePackVersionID, CreatedBy: caller.UserID,
+		DefaultEvalPackVersionID: input.DefaultEvalPackVersionID, CreatedBy: caller.UserID,
 	})
 }
 
@@ -301,7 +301,7 @@ func (m *DatasetManager) PatchDataset(ctx context.Context, caller Caller, input 
 	}
 	return m.repo.PatchDataset(ctx, repository.PatchDatasetParams{
 		ID: input.DatasetID, Slug: input.Slug, Name: input.Name, Description: input.Description, InputSchema: input.InputSchema,
-		InputSchemaEnforced: input.InputSchemaEnforced, DefaultChallengePackVersionID: input.DefaultChallengePackVersionID,
+		InputSchemaEnforced: input.InputSchemaEnforced, DefaultEvalPackVersionID: input.DefaultEvalPackVersionID,
 	})
 }
 
@@ -436,7 +436,7 @@ func (m *DatasetManager) StartDatasetEval(ctx context.Context, caller Caller, in
 	materialized, err := m.repo.MaterializeDatasetVersionInputSet(ctx, repository.MaterializeDatasetVersionInputSetParams{
 		DatasetID:              input.DatasetID,
 		DatasetVersionID:       input.VersionID,
-		ChallengePackVersionID: input.ChallengePackVersionID,
+		EvalPackVersionID: input.EvalPackVersionID,
 		ChallengeKey:           input.ChallengeID,
 		Mapping:                input.Mapping,
 	})
@@ -445,7 +445,7 @@ func (m *DatasetManager) StartDatasetEval(ctx context.Context, caller Caller, in
 	}
 	runResult, err := m.runCreationService.CreateRun(ctx, caller, CreateRunInput{
 		WorkspaceID:            input.WorkspaceID,
-		ChallengePackVersionID: input.ChallengePackVersionID,
+		EvalPackVersionID: input.EvalPackVersionID,
 		ChallengeInputSetID:    &materialized.ChallengeInputSetID,
 		OfficialPackMode:       domain.OfficialPackModeFull,
 		Name:                   input.Name,
@@ -640,7 +640,7 @@ func createDatasetHandler(logger *slog.Logger, service DatasetService) http.Hand
 			Description                   string          `json:"description"`
 			InputSchema                   json.RawMessage `json:"input_schema"`
 			InputSchemaEnforced           bool            `json:"input_schema_enforced"`
-			DefaultChallengePackVersionID *uuid.UUID      `json:"default_challenge_pack_version_id"`
+			DefaultEvalPackVersionID *uuid.UUID      `json:"default_eval_pack_version_id"`
 		}
 		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
@@ -652,7 +652,7 @@ func createDatasetHandler(logger *slog.Logger, service DatasetService) http.Hand
 		}
 		dataset, err := service.CreateDataset(r.Context(), caller, CreateDatasetInput{
 			WorkspaceID: workspaceID, Slug: req.Slug, Name: req.Name, Description: req.Description, InputSchema: req.InputSchema,
-			InputSchemaEnforced: req.InputSchemaEnforced, DefaultChallengePackVersionID: req.DefaultChallengePackVersionID,
+			InputSchemaEnforced: req.InputSchemaEnforced, DefaultEvalPackVersionID: req.DefaultEvalPackVersionID,
 		})
 		if err != nil {
 			handleDatasetError(w, logger, err)
@@ -708,7 +708,7 @@ func patchDatasetHandler(logger *slog.Logger, service DatasetService) http.Handl
 			Description                   *string         `json:"description"`
 			InputSchema                   json.RawMessage `json:"input_schema"`
 			InputSchemaEnforced           *bool           `json:"input_schema_enforced"`
-			DefaultChallengePackVersionID *uuid.UUID      `json:"default_challenge_pack_version_id"`
+			DefaultEvalPackVersionID *uuid.UUID      `json:"default_eval_pack_version_id"`
 		}
 		if err := decodeJSON(r, &req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
@@ -716,7 +716,7 @@ func patchDatasetHandler(logger *slog.Logger, service DatasetService) http.Handl
 		}
 		dataset, err := service.PatchDataset(r.Context(), caller, PatchDatasetInput{
 			WorkspaceID: workspaceID, DatasetID: datasetID, Slug: req.Slug, Name: req.Name, Description: req.Description,
-			InputSchema: req.InputSchema, InputSchemaEnforced: req.InputSchemaEnforced, DefaultChallengePackVersionID: req.DefaultChallengePackVersionID,
+			InputSchema: req.InputSchema, InputSchemaEnforced: req.InputSchemaEnforced, DefaultEvalPackVersionID: req.DefaultEvalPackVersionID,
 		})
 		if err != nil {
 			handleDatasetError(w, logger, err)
@@ -892,7 +892,7 @@ func startDatasetEvalHandler(logger *slog.Logger, service DatasetService) http.H
 		}
 		var req struct {
 			VersionID              uuid.UUID       `json:"version_id"`
-			ChallengePackVersionID uuid.UUID       `json:"challenge_pack_version_id"`
+			EvalPackVersionID uuid.UUID       `json:"eval_pack_version_id"`
 			ChallengeID            string          `json:"challenge_id"`
 			ChallengeKey           string          `json:"challenge_key"`
 			Mapping                json.RawMessage `json:"mapping"`
@@ -904,12 +904,12 @@ func startDatasetEvalHandler(logger *slog.Logger, service DatasetService) http.H
 			return
 		}
 		challengeID := firstNonEmpty(req.ChallengeID, req.ChallengeKey)
-		if req.VersionID == uuid.Nil || req.ChallengePackVersionID == uuid.Nil || strings.TrimSpace(challengeID) == "" || len(req.AgentDeploymentIDs) == 0 {
-			writeError(w, http.StatusBadRequest, "validation_error", "version_id, challenge_pack_version_id, challenge_id, and agent_deployment_ids are required")
+		if req.VersionID == uuid.Nil || req.EvalPackVersionID == uuid.Nil || strings.TrimSpace(challengeID) == "" || len(req.AgentDeploymentIDs) == 0 {
+			writeError(w, http.StatusBadRequest, "validation_error", "version_id, eval_pack_version_id, challenge_id, and agent_deployment_ids are required")
 			return
 		}
 		result, err := service.StartDatasetEval(r.Context(), caller, StartDatasetEvalInput{
-			WorkspaceID: workspaceID, DatasetID: datasetID, VersionID: req.VersionID, ChallengePackVersionID: req.ChallengePackVersionID,
+			WorkspaceID: workspaceID, DatasetID: datasetID, VersionID: req.VersionID, EvalPackVersionID: req.EvalPackVersionID,
 			ChallengeID: challengeID, Mapping: req.Mapping, AgentDeploymentIDs: req.AgentDeploymentIDs, Name: req.Name,
 		})
 		if err != nil {
@@ -1222,7 +1222,7 @@ func handleDatasetError(w http.ResponseWriter, logger *slog.Logger, err error) {
 		writeError(w, http.StatusConflict, "slug_conflict", "dataset slug already exists in this workspace")
 	case errors.Is(err, ErrInvalidDatasetImportMode):
 		writeError(w, http.StatusBadRequest, "validation_error", "mode must be add or replace")
-	case errors.Is(err, repository.ErrChallengePackVersionNotFound), errors.Is(err, repository.ErrChallengeInputSetNotFound), errors.Is(err, repository.ErrInvalidDatasetEvalInput):
+	case errors.Is(err, repository.ErrEvalPackVersionNotFound), errors.Is(err, repository.ErrChallengeInputSetNotFound), errors.Is(err, repository.ErrInvalidDatasetEvalInput):
 		writeError(w, http.StatusBadRequest, "validation_error", err.Error())
 	case errors.As(err, &runValidationErr):
 		writeError(w, http.StatusBadRequest, runValidationErr.Code, runValidationErr.Message)

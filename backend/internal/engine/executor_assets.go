@@ -6,26 +6,26 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/evalpack"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
 )
 
 type sandboxAssetLocation struct {
 	Field string
-	Asset challengepack.AssetReference
+	Asset evalpack.AssetReference
 }
 
 func stageArtifactBackedAssets(ctx context.Context, loader AssetLoader, session sandbox.Session, executionContext repository.RunAgentExecutionContext) error {
 	assets, err := collectSandboxAssetLocations(executionContext)
 	if err != nil {
-		return NewFailure(StopReasonSandboxError, "decode challenge pack asset references", err)
+		return NewFailure(StopReasonSandboxError, "decode eval pack asset references", err)
 	}
 	if len(assets) == 0 {
 		return nil
 	}
 	if loader == nil {
-		return NewFailure(StopReasonSandboxError, "artifact-backed challenge pack assets require an artifact loader", nil)
+		return NewFailure(StopReasonSandboxError, "artifact-backed eval pack assets require an artifact loader", nil)
 	}
 
 	workspaceID := executionContext.Run.WorkspaceID
@@ -39,10 +39,10 @@ func stageArtifactBackedAssets(ctx context.Context, loader AssetLoader, session 
 
 		content, err := loader.LoadAsset(ctx, workspaceID, *item.Asset.ArtifactID)
 		if err != nil {
-			return NewFailure(StopReasonSandboxError, fmt.Sprintf("load challenge pack asset %s", item.Field), err)
+			return NewFailure(StopReasonSandboxError, fmt.Sprintf("load eval pack asset %s", item.Field), err)
 		}
 		if err := session.UploadFile(ctx, item.Asset.Path, content.Content); err != nil {
-			return NewFailure(StopReasonSandboxError, fmt.Sprintf("upload challenge pack asset %s", item.Field), err)
+			return NewFailure(StopReasonSandboxError, fmt.Sprintf("upload eval pack asset %s", item.Field), err)
 		}
 	}
 	return nil
@@ -51,7 +51,7 @@ func stageArtifactBackedAssets(ctx context.Context, loader AssetLoader, session 
 func collectSandboxAssetLocations(executionContext repository.RunAgentExecutionContext) ([]sandboxAssetLocation, error) {
 	locations := make([]sandboxAssetLocation, 0)
 
-	manifestLocations, err := collectManifestAssetLocations(executionContext.ChallengePackVersion.Manifest)
+	manifestLocations, err := collectManifestAssetLocations(executionContext.EvalPackVersion.Manifest)
 	if err != nil {
 		return nil, err
 	}
@@ -80,11 +80,11 @@ func collectManifestAssetLocations(manifest json.RawMessage) ([]sandboxAssetLoca
 	}
 
 	type versionBlock struct {
-		Assets []challengepack.AssetReference `json:"assets"`
+		Assets []evalpack.AssetReference `json:"assets"`
 	}
 	type challengeBlock struct {
 		Key    string                         `json:"key"`
-		Assets []challengepack.AssetReference `json:"assets"`
+		Assets []evalpack.AssetReference `json:"assets"`
 	}
 	type manifestShape struct {
 		Version    versionBlock     `json:"version"`

@@ -30,7 +30,7 @@ type RunRepository interface {
 	LoadWorkspaceSecrets(ctx context.Context, workspaceID uuid.UUID) (map[string]string, error)
 	CreateEvaluationSpec(ctx context.Context, params repository.CreateEvaluationSpecParams) (repository.EvaluationSpecRecord, error)
 	CreateStandaloneEvaluationSpec(ctx context.Context, params repository.CreateStandaloneEvaluationSpecParams) (repository.EvaluationSpecRecord, error)
-	GetEvaluationSpecByChallengePackVersionAndVersion(ctx context.Context, challengePackVersionID uuid.UUID, name string, versionNumber int32) (repository.EvaluationSpecRecord, error)
+	GetEvaluationSpecByEvalPackVersionAndVersion(ctx context.Context, evalPackVersionID uuid.UUID, name string, versionNumber int32) (repository.EvaluationSpecRecord, error)
 	ListRunEventsByRunAgentID(ctx context.Context, runAgentID uuid.UUID) ([]repository.RunEvent, error)
 	RecordRunEvent(ctx context.Context, params repository.RecordRunEventParams) (repository.RunEvent, error)
 	StoreRunAgentEvaluationResults(ctx context.Context, evaluation scoring.RunAgentEvaluation) error

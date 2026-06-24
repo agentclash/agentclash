@@ -231,7 +231,7 @@ func validVibeEvalPhase(phase string) bool {
 
 func validVibeEvalDraftKind(kind string) bool {
 	switch strings.TrimSpace(kind) {
-	case "eval_plan", "challenge_pack", "input_cases", "scoring", "runtime":
+	case "eval_plan", "eval_pack", "input_cases", "scoring", "runtime":
 		return true
 	default:
 		return false
@@ -308,8 +308,8 @@ type vibeEvalDraftResponse struct {
 	Content                         json.RawMessage `json:"content"`
 	ValidationState                 string          `json:"validation_state"`
 	ValidationErrors                json.RawMessage `json:"validation_errors"`
-	PublishedChallengePackID        *uuid.UUID      `json:"published_challenge_pack_id,omitempty"`
-	PublishedChallengePackVersionID *uuid.UUID      `json:"published_challenge_pack_version_id,omitempty"`
+	PublishedEvalPackID        *uuid.UUID      `json:"published_eval_pack_id,omitempty"`
+	PublishedEvalPackVersionID *uuid.UUID      `json:"published_eval_pack_version_id,omitempty"`
 	CreatedByUserID                 uuid.UUID       `json:"created_by_user_id"`
 	UpdatedByUserID                 uuid.UUID       `json:"updated_by_user_id"`
 	CreatedAt                       string          `json:"created_at"`
@@ -566,8 +566,8 @@ func mapVibeEvalDraftResponse(item repository.VibeEvalDraft) vibeEvalDraftRespon
 		Content:                         item.Content,
 		ValidationState:                 item.ValidationState,
 		ValidationErrors:                item.ValidationErrors,
-		PublishedChallengePackID:        item.PublishedChallengePackID,
-		PublishedChallengePackVersionID: item.PublishedChallengePackVersionID,
+		PublishedEvalPackID:        item.PublishedEvalPackID,
+		PublishedEvalPackVersionID: item.PublishedEvalPackVersionID,
 		CreatedByUserID:                 item.CreatedByUserID,
 		UpdatedByUserID:                 item.UpdatedByUserID,
 		CreatedAt:                       item.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),

@@ -1,4 +1,4 @@
-// Package securitystress runs a security challenge pack N times against
+// Package securitystress runs a security eval pack N times against
 // an LLM provider directly (no AgentClash backend, no sandbox) and
 // aggregates the leak rate. Useful for fast iteration on the canonical
 // packs before integrating with the full run pipeline.
@@ -23,7 +23,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// --- Schema replica (subset of backend/internal/challengepack) ---
+// --- Schema replica (subset of backend/internal/evalpack) ---
 
 type Pack struct {
 	Pack    PackMeta `yaml:"pack"`

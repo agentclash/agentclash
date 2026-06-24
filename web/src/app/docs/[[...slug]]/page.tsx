@@ -23,12 +23,12 @@ const DOCS_HOME_FAQ = [
   {
     question: "Where should I start with AgentClash?",
     answer:
-      "Start with the quickstart, then write a challenge pack for one real agent workload and run it locally or against a hosted workspace.",
+      "Start with the quickstart, then write an eval pack for one real agent workload and run it locally or against a hosted workspace.",
   },
   {
     question: "Can AgentClash docs help with CI agent gates?",
     answer:
-      "Yes. The docs cover challenge packs, scorecards, baseline comparisons, and CI/CD gates for catching AI agent regressions before release.",
+      "Yes. The docs cover eval packs, scorecards, baseline comparisons, and CI/CD gates for catching AI agent regressions before release.",
   },
   {
     question: "Are the docs available for coding agents?",

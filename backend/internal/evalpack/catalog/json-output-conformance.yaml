@@ -1,0 +1,155 @@
+###############################################################################
+# Eval Pack: JSON Output Conformance
+#
+# A structured-output regression anchor. The agent must classify a support
+# ticket into a STRICT JSON schema (closed enums, typed fields, no extra keys)
+# and ground the values in the ticket. Scoring is fully deterministic: a strict
+# JSON-schema validator (additionalProperties:false + enums) plus json_path
+# checks on the grounded fields. prompt_eval — cheap, fast, reproducible.
+#
+# This is the pack to run on every model upgrade to catch silent regressions in
+# structured-output conformance.
+#
+# Swap points (make it yours): replace the schema with your own contract, swap
+# the ticket in the instructions, and point the json_path_match validators at
+# the correct values for your input.
+###############################################################################
+
+pack:
+  slug: json-output-conformance
+  name: JSON Output Conformance
+  family: agents
+  description: >-
+    Measures whether an agent emits schema-valid JSON under a strict contract
+    (closed enums, typed fields, no extra keys) with values grounded in the
+    input. Deterministic, single-call — the ideal model-migration regression
+    anchor.
+
+version:
+  number: 1
+  execution_mode: prompt_eval
+
+  evaluation_spec:
+    name: json-output-conformance-v1
+    version_number: 1
+    judge_mode: deterministic
+
+    validators:
+      # Strict shape: closed enums, typed fields, and NO additional properties.
+      - key: valid_strict_schema
+        type: json_schema
+        target: final_output
+        expected_from: "literal:{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"category\",\"priority\",\"sentiment\",\"requires_human\",\"summary\",\"tags\"],\"properties\":{\"category\":{\"type\":\"string\",\"enum\":[\"billing\",\"account\",\"outage\",\"feature_request\",\"other\"]},\"priority\":{\"type\":\"string\",\"enum\":[\"low\",\"medium\",\"high\",\"urgent\"]},\"sentiment\":{\"type\":\"string\",\"enum\":[\"positive\",\"neutral\",\"negative\"]},\"requires_human\":{\"type\":\"boolean\"},\"summary\":{\"type\":\"string\",\"minLength\":10,\"maxLength\":200},\"tags\":{\"type\":\"array\",\"minItems\":1,\"items\":{\"type\":\"string\"}}}}"
+
+      # Grounded values for this unambiguous ticket.
+      - key: category_is_outage
+        type: json_path_match
+        target: final_output
+        expected_from: "literal:{\"path\":\"$.category\",\"comparator\":\"equals\",\"value\":\"outage\"}"
+
+      - key: priority_is_urgent
+        type: json_path_match
+        target: final_output
+        expected_from: "literal:{\"path\":\"$.priority\",\"comparator\":\"equals\",\"value\":\"urgent\"}"
+
+      - key: sentiment_is_negative
+        type: json_path_match
+        target: final_output
+        expected_from: "literal:{\"path\":\"$.sentiment\",\"comparator\":\"equals\",\"value\":\"negative\"}"
+
+      - key: requires_human_true
+        type: json_path_match
+        target: final_output
+        expected_from: "literal:{\"path\":\"$.requires_human\",\"comparator\":\"equals\",\"value\":true}"
+
+      - key: has_at_least_one_tag
+        type: json_path_match
+        target: final_output
+        expected_from: "literal:{\"path\":\"$.tags[0]\",\"comparator\":\"exists\"}"
+
+    metrics:
+      - key: completed
+        type: boolean
+        collector: run_completed_successfully
+      - key: total_latency_ms
+        type: numeric
+        collector: run_total_latency_ms
+        unit: ms
+      - key: total_tokens
+        type: numeric
+        collector: run_total_tokens
+
+    runtime_limits:
+      max_duration_ms: 120000
+      max_total_tokens: 10000
+
+    scorecard:
+      strategy: weighted
+      pass_threshold: 0.7
+      dimensions:
+        - key: correctness
+          source: validators
+          validators:
+            - valid_strict_schema
+            - category_is_outage
+            - priority_is_urgent
+            - sentiment_is_negative
+            - requires_human_true
+            - has_at_least_one_tag
+          gate: true
+          pass_threshold: 0.8
+          weight: 0.8
+        - key: reliability
+          source: reliability
+          weight: 0.1
+        - key: latency
+          source: latency
+          better_direction: lower
+          normalization:
+            target: 5000
+            max: 60000
+          weight: 0.05
+        - key: cost
+          source: cost
+          better_direction: lower
+          normalization:
+            target: 0.004
+            max: 0.08
+          weight: 0.05
+
+challenges:
+  - key: ticket-classification
+    title: Classify a support ticket into strict JSON
+    category: structured-output
+    difficulty: easy
+    instructions: |
+      Classify the following support ticket. Output ONLY a single JSON object —
+      no prose, no code fences, no extra keys.
+
+      --- TICKET ---
+      URGENT: our production checkout API has been returning 500 errors for the
+      last 20 minutes and no customers can complete a purchase. We are losing
+      revenue every minute. Please escalate to your on-call engineer now.
+      --- END TICKET ---
+
+      Return JSON matching this contract EXACTLY (no additional properties):
+
+          {
+            "category": one of ["billing","account","outage","feature_request","other"],
+            "priority": one of ["low","medium","high","urgent"],
+            "sentiment": one of ["positive","neutral","negative"],
+            "requires_human": <boolean>,
+            "summary": "<10-200 char summary of the issue>",
+            "tags": ["<one or more short tags>"]
+          }
+
+      Choose the single best enum value for each field based on the ticket.
+
+input_sets:
+  - key: default
+    name: Default Input Set
+    cases:
+      - challenge_key: ticket-classification
+        case_key: checkout-outage
+        payload:
+          channel: email

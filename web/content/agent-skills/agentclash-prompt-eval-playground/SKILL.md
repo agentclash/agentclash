@@ -13,13 +13,13 @@ metadata:
 Local-first prompt evaluation workflows: scaffold `.agentclash/prompt-eval.yaml`, validate locally or remotely, compile configs into playground experiments, fetch results, import Promptfoo subsets, and manage playground CRUD from the CLI.
 
 ## Use When
-- Comparing prompt variants or model aliases on fixed test cases before a full challenge-pack run.
+- Comparing prompt variants or model aliases on fixed test cases before a full eval-pack run.
 - CI needs `prompt-eval validate --ci --remote` or `prompt-eval run --ci --follow`.
 - Migrating a Promptfoo config into AgentClash format.
 - Inspecting or rerunning playground experiments linked to prompt eval runs.
 
 ## Do Not Use When
-- The eval is a full agent deployment on a challenge pack — use `agentclash-eval-runner`.
+- The eval is a full agent deployment on a eval pack — use `agentclash-eval-runner`.
 - The workflow is dataset versioning and baseline gates — use `agentclash-dataset-workflows`.
 - The user needs harness repo tasks — use `agentclash-agent-harness-setup`.
 
