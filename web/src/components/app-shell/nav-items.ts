@@ -1,8 +1,6 @@
 import {
   Bot,
   Rocket,
-  Sparkles,
-  PackageCheck,
   PackageOpen,
   Play,
   FlaskConical,
@@ -37,11 +35,6 @@ export const navSections: NavSection[] = [
     title: "Agents",
     items: [
       {
-        label: "Agent Tryouts",
-        href: (id) => `/workspaces/${id}/agent-tryouts`,
-        icon: Sparkles,
-      },
-      {
         label: "Builds",
         href: (id) => `/workspaces/${id}/builds`,
         icon: Bot,
@@ -50,11 +43,6 @@ export const navSections: NavSection[] = [
         label: "Deployments",
         href: (id) => `/workspaces/${id}/deployments`,
         icon: Rocket,
-      },
-      {
-        label: "Agent Harnesses",
-        href: (id) => `/workspaces/${id}/agent-harnesses`,
-        icon: PackageCheck,
       },
     ],
   },
