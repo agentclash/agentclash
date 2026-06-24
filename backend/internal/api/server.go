@@ -42,9 +42,9 @@ type routerOptions struct {
 	agentDeploymentReadService AgentDeploymentReadService
 	agentHarnessService        AgentHarnessService
 	githubIntegrationService   GitHubIntegrationService
-	challengePackReadService   ChallengePackReadService
-	challengePackAuthoringSvc  ChallengePackAuthoringService
-	challengePackBuilderSvc    ChallengePackBuilderService
+	evalPackReadService   EvalPackReadService
+	evalPackAuthoringSvc  EvalPackAuthoringService
+	evalPackBuilderSvc    EvalPackBuilderService
 	agentBuildService          AgentBuildService
 	userService                UserService
 	orgService                 OrganizationService
@@ -82,9 +82,9 @@ func NewServer(
 	agentDeploymentReadService AgentDeploymentReadService,
 	agentHarnessService AgentHarnessService,
 	githubIntegrationService GitHubIntegrationService,
-	challengePackReadService ChallengePackReadService,
-	challengePackAuthoringService ChallengePackAuthoringService,
-	challengePackBuilderService ChallengePackBuilderService,
+	evalPackReadService EvalPackReadService,
+	evalPackAuthoringService EvalPackAuthoringService,
+	evalPackBuilderService EvalPackBuilderService,
 	agentBuildService AgentBuildService,
 	userService UserService,
 	orgService OrganizationService,
@@ -123,9 +123,9 @@ func NewServer(
 		agentDeploymentReadService: agentDeploymentReadService,
 		agentHarnessService:        agentHarnessService,
 		githubIntegrationService:   githubIntegrationService,
-		challengePackReadService:   challengePackReadService,
-		challengePackAuthoringSvc:  challengePackAuthoringService,
-		challengePackBuilderSvc:    challengePackBuilderService,
+		evalPackReadService:   evalPackReadService,
+		evalPackAuthoringSvc:  evalPackAuthoringService,
+		evalPackBuilderSvc:    evalPackBuilderService,
 		agentBuildService:          agentBuildService,
 		userService:                userService,
 		orgService:                 orgService,
@@ -204,10 +204,10 @@ func newRouter(
 	hostedRunIngestionService HostedRunIngestionService,
 	compareReadService CompareReadService,
 	agentDeploymentReadService AgentDeploymentReadService,
-	challengePackReadService ChallengePackReadService,
+	evalPackReadService EvalPackReadService,
 	agentBuildService AgentBuildService,
 	releaseGateService ReleaseGateService,
-	challengePackAuthoringServiceArg ChallengePackAuthoringService,
+	evalPackAuthoringServiceArg EvalPackAuthoringService,
 	userServiceArg UserService,
 	orgServiceArg OrganizationService,
 	wsServiceArg WorkspaceService,
@@ -236,8 +236,8 @@ func newRouter(
 		releaseGateService:         releaseGateService,
 		hostedRunIngestionService:  hostedRunIngestionService,
 		agentDeploymentReadService: agentDeploymentReadService,
-		challengePackReadService:   challengePackReadService,
-		challengePackAuthoringSvc:  challengePackAuthoringServiceArg,
+		evalPackReadService:   evalPackReadService,
+		evalPackAuthoringSvc:  evalPackAuthoringServiceArg,
 		agentBuildService:          agentBuildService,
 		userService:                userServiceArg,
 		orgService:                 orgServiceArg,
@@ -272,13 +272,13 @@ func buildRouter(opts routerOptions) http.Handler {
 	agentDeploymentReadService := opts.agentDeploymentReadService
 	agentHarnessService := opts.agentHarnessService
 	githubIntegrationService := opts.githubIntegrationService
-	challengePackReadService := opts.challengePackReadService
+	evalPackReadService := opts.evalPackReadService
 	agentBuildService := opts.agentBuildService
 	releaseGateService := opts.releaseGateService
 	regressionService := opts.regressionService
 	datasetService := opts.datasetService
-	challengePackAuthoringService := opts.challengePackAuthoringSvc
-	challengePackBuilderService := opts.challengePackBuilderSvc
+	evalPackAuthoringService := opts.evalPackAuthoringSvc
+	evalPackBuilderService := opts.evalPackBuilderSvc
 	userService := opts.userService
 	orgService := opts.orgService
 	wsService := opts.workspaceService
@@ -317,11 +317,11 @@ func buildRouter(opts routerOptions) http.Handler {
 	if artifactService == nil {
 		artifactService = noopArtifactService{}
 	}
-	if challengePackAuthoringService == nil {
-		challengePackAuthoringService = noopChallengePackAuthoringService{}
+	if evalPackAuthoringService == nil {
+		evalPackAuthoringService = noopEvalPackAuthoringService{}
 	}
-	if challengePackBuilderService == nil {
-		challengePackBuilderService = noopChallengePackBuilderService{}
+	if evalPackBuilderService == nil {
+		evalPackBuilderService = noopEvalPackBuilderService{}
 	}
 	if agentHarnessService == nil {
 		agentHarnessService = noopAgentHarnessService{}
@@ -408,7 +408,7 @@ func buildRouter(opts routerOptions) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(authenticateRequest(logger, authenticator))
 			r.Use(trackUsage(logger, opts.posthogClient))
-			registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, challengePackBuilderService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, agentTryoutService, billingService, multiTurnService, vibeEvalService)
+			registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, evalPackReadService, evalPackAuthoringService, evalPackBuilderService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, agentTryoutService, billingService, multiTurnService, vibeEvalService)
 		})
 	})
 
@@ -643,16 +643,16 @@ func (noopArtifactService) GetArtifactContent(_ context.Context, _ uuid.UUID, _ 
 	return GetArtifactContentResult{}, errors.New("artifact service is not configured")
 }
 
-type noopChallengePackAuthoringService struct{}
+type noopEvalPackAuthoringService struct{}
 
-func (noopChallengePackAuthoringService) ValidateBundle(_ context.Context, _ uuid.UUID, _ []byte) (ValidateChallengePackResponse, error) {
-	return ValidateChallengePackResponse{}, errors.New("challenge pack authoring service is not configured")
+func (noopEvalPackAuthoringService) ValidateBundle(_ context.Context, _ uuid.UUID, _ []byte) (ValidateEvalPackResponse, error) {
+	return ValidateEvalPackResponse{}, errors.New("eval pack authoring service is not configured")
 }
 
-func (noopChallengePackAuthoringService) PublishBundle(_ context.Context, _ uuid.UUID, _ []byte) (PublishChallengePackResponse, error) {
-	return PublishChallengePackResponse{}, errors.New("challenge pack authoring service is not configured")
+func (noopEvalPackAuthoringService) PublishBundle(_ context.Context, _ uuid.UUID, _ []byte) (PublishEvalPackResponse, error) {
+	return PublishEvalPackResponse{}, errors.New("eval pack authoring service is not configured")
 }
 
-func (noopChallengePackAuthoringService) InstantiateCatalogPack(_ context.Context, _ uuid.UUID, _ string) (InstantiateCatalogPackResponse, error) {
-	return InstantiateCatalogPackResponse{}, errors.New("challenge pack authoring service is not configured")
+func (noopEvalPackAuthoringService) InstantiateCatalogPack(_ context.Context, _ uuid.UUID, _ string) (InstantiateCatalogPackResponse, error) {
+	return InstantiateCatalogPackResponse{}, errors.New("eval pack authoring service is not configured")
 }

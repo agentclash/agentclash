@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/evalpack"
 )
 
 const (
@@ -68,14 +68,14 @@ func resolveRunVoiceMode(mode string, manifest json.RawMessage) (*runVoiceMode, 
 	}
 	if len(manifest) > 0 {
 		if err := json.Unmarshal(manifest, &document); err != nil {
-			return nil, fmt.Errorf("decode challenge pack manifest voice metadata: %w", err)
+			return nil, fmt.Errorf("decode eval pack manifest voice metadata: %w", err)
 		}
 	}
 
-	if strings.TrimSpace(document.Modality) != challengepack.ModalityVoice {
+	if strings.TrimSpace(document.Modality) != evalpack.ModalityVoice {
 		return nil, RunCreationValidationError{
 			Code:    "incompatible_mode",
-			Message: fmt.Sprintf("mode %s requires a voice challenge pack", runModeTextSim),
+			Message: fmt.Sprintf("mode %s requires a voice eval pack", runModeTextSim),
 		}
 	}
 	if !containsTrimmedString(document.InterfaceSpec.Transports, runVoiceTransportTextSim) {
@@ -87,7 +87,7 @@ func resolveRunVoiceMode(mode string, manifest json.RawMessage) (*runVoiceMode, 
 
 	return &runVoiceMode{
 		Mode:      mode,
-		Modality:  challengepack.ModalityVoice,
+		Modality:  evalpack.ModalityVoice,
 		Transport: runVoiceTransportTextSim,
 	}, nil
 }

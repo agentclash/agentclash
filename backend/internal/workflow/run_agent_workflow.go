@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/evalpack"
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/engine"
 	"github.com/agentclash/agentclash/backend/internal/hostedruns"
@@ -62,15 +62,15 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 		return runHostedRunAgent(ctx, input, executionContext)
 	}
 
-	if executionModeFromManifest(executionContext.ChallengePackVersion.Manifest) == challengepack.ExecutionModePromptEval {
+	if executionModeFromManifest(executionContext.EvalPackVersion.Manifest) == evalpack.ExecutionModePromptEval {
 		return runPromptEvalRunAgent(ctx, input, executionContext)
 	}
 
-	if executionModeFromManifest(executionContext.ChallengePackVersion.Manifest) == challengepack.ExecutionModeResponses {
+	if executionModeFromManifest(executionContext.EvalPackVersion.Manifest) == evalpack.ExecutionModeResponses {
 		return runResponsesRunAgent(ctx, input, executionContext)
 	}
 
-	if executionModeFromManifest(executionContext.ChallengePackVersion.Manifest) == challengepack.ExecutionModeMultiTurn {
+	if executionModeFromManifest(executionContext.EvalPackVersion.Manifest) == evalpack.ExecutionModeMultiTurn {
 		return runMultiTurnRunAgent(ctx, input, executionContext)
 	}
 

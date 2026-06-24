@@ -14,7 +14,7 @@ func init() {
 	datasetTestCmd.Flags().String("run", "", "Candidate run ID (required unless --eval is set)")
 	datasetTestCmd.Flags().Bool("eval", false, "Start a dataset eval before gating")
 	datasetTestCmd.Flags().String("version", "", "Dataset version ID for eval")
-	datasetTestCmd.Flags().String("pack", "", "Challenge pack version ID for eval")
+	datasetTestCmd.Flags().String("pack", "", "Eval pack version ID for eval")
 	datasetTestCmd.Flags().String("challenge", "", "Challenge key for eval")
 	datasetTestCmd.Flags().StringSlice("deployment", nil, "Agent deployment ID (repeatable)")
 	datasetTestCmd.Flags().Float64("min-pass-rate", 0, "Minimum pass rate required to pass the gate")

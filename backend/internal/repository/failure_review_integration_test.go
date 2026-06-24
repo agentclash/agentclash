@@ -25,7 +25,7 @@ func TestRepositoryListRunFailureReviewItemsBuildsPerCaseItems(t *testing.T) {
 		t.Fatalf("update run returned error: %v", err)
 	}
 
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "failure-review", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "failure-review", 1)
 	insertFailureReviewScorecard(t, ctx, db, fixture.primaryRunAgentID, evaluationSpecID, map[string]any{
 		"dimensions": map[string]any{
 			"correctness": map[string]any{"state": "available", "score": 0.2},
@@ -105,9 +105,9 @@ func TestRepositoryListRunFailureReviewItemsBuildsPerCaseItems(t *testing.T) {
 	}
 
 	if _, err := db.Exec(ctx, `
-		UPDATE challenge_pack_versions SET lifecycle_status = 'archived', archived_at = now() WHERE id = $1
-	`, fixture.challengePackVersionID); err != nil {
-		t.Fatalf("update challenge pack version returned error: %v", err)
+		UPDATE eval_pack_versions SET lifecycle_status = 'archived', archived_at = now() WHERE id = $1
+	`, fixture.evalPackVersionID); err != nil {
+		t.Fatalf("update eval pack version returned error: %v", err)
 	}
 
 	archivedItems, err := repo.ListRunFailureReviewItems(ctx, fixture.runID, &fixture.primaryRunAgentID)

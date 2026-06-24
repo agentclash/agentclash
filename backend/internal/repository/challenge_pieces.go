@@ -15,7 +15,7 @@ import (
 )
 
 // Challenge piece kinds enumerate the reusable authoring "pieces" the visual
-// pack builder composes into a challenge pack. The typed shape of each piece
+// pack builder composes into a eval pack. The typed shape of each piece
 // lives in its definition JSON, discriminated by kind.
 const (
 	ChallengePieceKindValidator = "validator"

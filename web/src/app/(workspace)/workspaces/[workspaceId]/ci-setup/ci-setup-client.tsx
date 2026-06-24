@@ -38,7 +38,7 @@ import type {
   AgentDeployment,
   CIProfile,
   ChallengeInputSetSummary,
-  ChallengePack,
+  EvalPack,
   CISetupFileConflict,
   CreateCISetupPullRequestRequest,
   CreateCISetupPullRequestResponse,
@@ -141,8 +141,8 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
   const deployments = useApiListQuery<AgentDeployment>(
     `/v1/workspaces/${workspaceId}/agent-deployments`,
   );
-  const packs = useApiListQuery<ChallengePack>(
-    `/v1/workspaces/${workspaceId}/challenge-packs`,
+  const packs = useApiListQuery<EvalPack>(
+    `/v1/workspaces/${workspaceId}/eval-packs`,
   );
   const runtimeProfiles = useApiListQuery<RuntimeProfile>(
     `/v1/workspaces/${workspaceId}/runtime-profiles`,
@@ -185,11 +185,11 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     () => (providerAccounts.data?.items ?? []).filter((item) => item.status === "active"),
     [providerAccounts.data?.items],
   );
-  const challengePacks = useMemo(
+  const evalPacks = useMemo(
     () => packs.data?.items ?? [],
     [packs.data?.items],
   );
-  const selectedPack = challengePacks.find((pack) => pack.id === selectedPackId);
+  const selectedPack = evalPacks.find((pack) => pack.id === selectedPackId);
   const runnableVersions = useMemo(
     () =>
       (selectedPack?.versions ?? []).filter(
@@ -202,7 +202,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
       (regressionSuites.data?.items ?? []).filter(
         (suite) =>
           suite.status === "active" &&
-          (!selectedPackId || suite.source_challenge_pack_id === selectedPackId),
+          (!selectedPackId || suite.source_eval_pack_id === selectedPackId),
       ),
     [regressionSuites.data?.items, selectedPackId],
   );
@@ -274,10 +274,10 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
 
   useEffect(() => {
     if (!packs.data) return;
-    if (!challengePacks.some((pack) => pack.id === selectedPackId)) {
-      setSelectedPackId(challengePacks[0]?.id ?? "");
+    if (!evalPacks.some((pack) => pack.id === selectedPackId)) {
+      setSelectedPackId(evalPacks[0]?.id ?? "");
     }
-  }, [challengePacks, packs.data, selectedPackId]);
+  }, [evalPacks, packs.data, selectedPackId]);
 
   useEffect(() => {
     if (!selectedPack) return;
@@ -353,7 +353,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
         const token = await getAccessToken();
         const api = createApiClient(token ?? undefined);
         const response = await api.get<{ items: ChallengeInputSetSummary[] }>(
-          `/v1/workspaces/${workspaceId}/challenge-pack-versions/${selectedVersionId}/input-sets`,
+          `/v1/workspaces/${workspaceId}/eval-pack-versions/${selectedVersionId}/input-sets`,
         );
         if (cancelled) return;
         setInputSets(response.items);
@@ -424,7 +424,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     deploymentName,
     providerAccountId: providerAccountId || undefined,
     model: model || undefined,
-    challengePackVersionId: selectedVersionId,
+    evalPackVersionId: selectedVersionId,
     inputSetId: inputSetId || undefined,
     regressionSuiteIds: selectedRegressionSuiteIds,
     regressionCaseIds: [],
@@ -960,7 +960,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
             meta={selectedVersionId ? "Runnable pack selected" : "Needs pack"}
           >
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Challenge pack">
+              <Field label="Eval pack">
                 <select
                   value={selectedPackId}
                   onChange={(event) => {
@@ -971,8 +971,8 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
                   }}
                   className={selectClass}
                 >
-                  <option value="">Select challenge pack</option>
-                  {challengePacks.map((pack) => (
+                  <option value="">Select eval pack</option>
+                  {evalPacks.map((pack) => (
                     <option key={pack.id} value={pack.id}>
                       {pack.name}
                     </option>
@@ -1535,7 +1535,7 @@ function ResourceLinks({ workspaceId }: { workspaceId: string }) {
   const links = [
     ["Builds", `/workspaces/${workspaceId}/builds`],
     ["Runtime profiles", `/workspaces/${workspaceId}/runtime-profiles`],
-    ["Challenge packs", `/workspaces/${workspaceId}/challenge-packs`],
+    ["Eval packs", `/workspaces/${workspaceId}/eval-packs`],
     ["Runs", `/workspaces/${workspaceId}/runs`],
     ["Regression suites", `/workspaces/${workspaceId}/regression-suites`],
     ["Provider accounts", `/workspaces/${workspaceId}/provider-accounts`],

@@ -8,7 +8,7 @@ Enterprise buyers get a dedicated `/enterprise` landing page (not docs/pricing a
 
 - **Hero:** Governed agent release gates — prove which agent is safe to ship
 - **Buyer questions:** trust, cost, failure evidence, compliance defense (from `docs/product/enterprise-user-pov.md`)
-- **Product proof:** replay, scorecards, challenge packs, CI gates, Enterprise tier features (SSO, audit logs, SLA)
+- **Product proof:** replay, scorecards, eval packs, CI gates, Enterprise tier features (SSO, audit logs, SLA)
 - **Offer:** 45-day Team pilot (no credit card); optional 2-week eval sprint intro via mailto until #986 `/services`
 - **CTA:** Cal.com eval architecture review + `mailto:hello@agentclash.dev`
 - **FAQ:** self-host vs hosted, BYOK, UAE/data residency note

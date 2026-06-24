@@ -91,7 +91,7 @@ describe("benchmark rss feed", () => {
     author: "AgentClash",
     featuredModel: "Claude Opus 4.8",
     verdict: "Opus won.",
-    challengePack: "",
+    evalPack: "",
     runShareUrl: "",
     tasks: [],
     results: [],

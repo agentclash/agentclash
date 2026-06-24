@@ -364,7 +364,7 @@ func (m *RunReadManager) ListRunEventStream(ctx context.Context, caller Caller, 
 type getRunResponse struct {
 	ID                     uuid.UUID                      `json:"id"`
 	WorkspaceID            uuid.UUID                      `json:"workspace_id"`
-	ChallengePackVersionID uuid.UUID                      `json:"challenge_pack_version_id"`
+	EvalPackVersionID uuid.UUID                      `json:"eval_pack_version_id"`
 	ChallengeInputSetID    *uuid.UUID                     `json:"challenge_input_set_id,omitempty"`
 	OfficialPackMode       string                         `json:"official_pack_mode"`
 	Name                   string                         `json:"name"`
@@ -587,7 +587,7 @@ func buildGetRunResponse(run domain.Run, regressionCoverage *RunRegressionCovera
 	response := getRunResponse{
 		ID:                     run.ID,
 		WorkspaceID:            run.WorkspaceID,
-		ChallengePackVersionID: run.ChallengePackVersionID,
+		EvalPackVersionID: run.EvalPackVersionID,
 		ChallengeInputSetID:    run.ChallengeInputSetID,
 		OfficialPackMode:       string(run.OfficialPackMode),
 		Name:                   run.Name,

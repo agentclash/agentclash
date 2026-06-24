@@ -62,7 +62,7 @@ CREATE TABLE arena_submissions (
     arena_id uuid NOT NULL REFERENCES arenas (id) ON DELETE CASCADE,
     public_agent_profile_id uuid NOT NULL REFERENCES public_agent_profiles (id) ON DELETE CASCADE,
     source_publication_id uuid REFERENCES publications (id) ON DELETE SET NULL,
-    challenge_pack_version_id uuid NOT NULL REFERENCES challenge_pack_versions (id) ON DELETE CASCADE,
+    eval_pack_version_id uuid NOT NULL REFERENCES eval_pack_versions (id) ON DELETE CASCADE,
     submission_status text NOT NULL DEFAULT 'pending_review' CHECK (submission_status IN ('pending_review', 'accepted', 'rejected', 'queued', 'published')),
     submitted_by_user_id uuid REFERENCES users (id) ON DELETE SET NULL,
     review_notes text,
@@ -75,7 +75,7 @@ CREATE TABLE public_run_snapshots (
     publication_id uuid NOT NULL UNIQUE REFERENCES publications (id) ON DELETE CASCADE,
     arena_submission_id uuid REFERENCES arena_submissions (id) ON DELETE SET NULL,
     public_agent_profile_id uuid NOT NULL REFERENCES public_agent_profiles (id) ON DELETE CASCADE,
-    challenge_pack_version_id uuid NOT NULL REFERENCES challenge_pack_versions (id) ON DELETE CASCADE,
+    eval_pack_version_id uuid NOT NULL REFERENCES eval_pack_versions (id) ON DELETE CASCADE,
     challenge_identity_id uuid REFERENCES challenge_identities (id) ON DELETE SET NULL,
     replay_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
     summary jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -89,7 +89,7 @@ CREATE TABLE leaderboard_entries (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     arena_id uuid NOT NULL REFERENCES arenas (id) ON DELETE CASCADE,
     public_run_snapshot_id uuid NOT NULL REFERENCES public_run_snapshots (id) ON DELETE CASCADE,
-    challenge_pack_version_id uuid NOT NULL REFERENCES challenge_pack_versions (id) ON DELETE CASCADE,
+    eval_pack_version_id uuid NOT NULL REFERENCES eval_pack_versions (id) ON DELETE CASCADE,
     challenge_identity_id uuid REFERENCES challenge_identities (id) ON DELETE SET NULL,
     ranking_scope text NOT NULL CHECK (ranking_scope IN ('pack', 'challenge')),
     rank integer NOT NULL CHECK (rank > 0),
@@ -106,19 +106,19 @@ CREATE INDEX public_run_snapshots_profile_id_idx ON public_run_snapshots (public
 CREATE INDEX leaderboard_entries_arena_rank_idx ON leaderboard_entries (arena_id, ranking_scope, rank);
 
 CREATE UNIQUE INDEX leaderboard_entries_pack_snapshot_uq
-ON leaderboard_entries (arena_id, challenge_pack_version_id, public_run_snapshot_id)
+ON leaderboard_entries (arena_id, eval_pack_version_id, public_run_snapshot_id)
 WHERE ranking_scope = 'pack';
 
 CREATE UNIQUE INDEX leaderboard_entries_pack_rank_uq
-ON leaderboard_entries (arena_id, challenge_pack_version_id, rank)
+ON leaderboard_entries (arena_id, eval_pack_version_id, rank)
 WHERE ranking_scope = 'pack';
 
 CREATE UNIQUE INDEX leaderboard_entries_challenge_snapshot_uq
-ON leaderboard_entries (arena_id, challenge_pack_version_id, challenge_identity_id, public_run_snapshot_id)
+ON leaderboard_entries (arena_id, eval_pack_version_id, challenge_identity_id, public_run_snapshot_id)
 WHERE ranking_scope = 'challenge';
 
 CREATE UNIQUE INDEX leaderboard_entries_challenge_rank_uq
-ON leaderboard_entries (arena_id, challenge_pack_version_id, challenge_identity_id, rank)
+ON leaderboard_entries (arena_id, eval_pack_version_id, challenge_identity_id, rank)
 WHERE ranking_scope = 'challenge';
 
 CREATE TRIGGER arenas_set_updated_at

@@ -10,9 +10,9 @@ const sharedDocsLinks = [
     href: "/docs/getting-started/quickstart",
   },
   {
-    title: "Write a challenge pack",
+    title: "Write an eval pack",
     text: "Turn a real task into a repeatable agent evaluation.",
-    href: "/docs/guides/write-a-challenge-pack",
+    href: "/docs/guides/write-an-eval-pack",
   },
   {
     title: "CI/CD agent gates",
@@ -77,7 +77,7 @@ function page(
     workflow: [
       {
         title: "Package the task",
-        text: "Describe the workload as a challenge pack with inputs, tools, scoring rules, and artifacts.",
+        text: "Describe the workload as a eval pack with inputs, tools, scoring rules, and artifacts.",
       },
       {
         title: "Run the agents",
@@ -104,7 +104,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "OSS users/founders",
     pageTitle: "Open Source AI Agent Evaluation Platform - AgentClash",
     metaDescription:
-      "AgentClash is an open-source AI agent evaluation platform for real-task evals, replay evidence, scorecards, challenge packs, and CI regression gates.",
+      "AgentClash is an open-source AI agent evaluation platform for real-task evals, replay evidence, scorecards, eval packs, and CI regression gates.",
     socialImageAlt: "AgentClash open source AI agent evaluation social preview.",
     eyebrow: "Open source",
     h1: "Open source AI agent evaluation for real tasks",
@@ -116,7 +116,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "From first eval to team-wide gate",
     docsSectionTitle: "Start with the repo",
     docsSectionDescription:
-      "Clone AgentClash, boot the local stack, and wire the same challenge packs into hosted runs or pull request gates.",
+      "Clone AgentClash, boot the local stack, and wire the same eval packs into hosted runs or pull request gates.",
     faqSectionTitle: "Questions OSS teams ask before adopting",
     applicationSubCategory: "Open source AI agent evaluation platform",
     breadcrumbs: [
@@ -125,7 +125,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-open-source-ai-agent-evaluation-schema",
     searchKeywords:
-      "open source AI agent evaluation OSS agent eval platform self-hosted agent evaluation MIT agent benchmark replay scorecards challenge packs",
+      "open source AI agent evaluation OSS agent eval platform self-hosted agent evaluation MIT agent benchmark replay scorecards eval packs",
     sitemapTitle: "Open source AI agent evaluation",
     sitemapDescription:
       "MIT-licensed, self-hostable AI agent evaluation with replay, scorecards, and CI gates.",
@@ -138,7 +138,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Can we run evals entirely on our own infrastructure?",
         answer:
-          "Yes. AgentClash supports local stacks, self-hosted deployments, and sandbox providers you control. Challenge packs and scorecards work the same whether the run is local or hosted.",
+          "Yes. AgentClash supports local stacks, self-hosted deployments, and sandbox providers you control. Eval packs and scorecards work the same whether the run is local or hosted.",
       },
       {
         question: "How does open source help with agent regression testing?",
@@ -162,7 +162,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "Dev shorthand",
     pageTitle: "Agent Evals for Real Tasks, Replay, and CI Gates - AgentClash",
     metaDescription:
-      "Run agent evals on real tasks with the same tools, full replay evidence, scorecards, challenge packs, and regression gates. Not just final-answer checks.",
+      "Run agent evals on real tasks with the same tools, full replay evidence, scorecards, eval packs, and regression gates. Not just final-answer checks.",
     socialImageAlt: "AgentClash agent evals social preview.",
     eyebrow: "Agent evals",
     h1: "Agent evals that cover the whole trajectory",
@@ -174,7 +174,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "From one eval to a reusable gate",
     docsSectionTitle: "Run your first agent eval",
     docsSectionDescription:
-      "Use challenge packs for repeatable workloads, then promote failures into regression cases your team can run in CI.",
+      "Use eval packs for repeatable workloads, then promote failures into regression cases your team can run in CI.",
     faqSectionTitle: "Agent eval FAQ",
     applicationSubCategory: "Agent evaluation software",
     breadcrumbs: [
@@ -183,7 +183,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-agent-evals-schema",
     searchKeywords:
-      "agent evals agent evaluation eval harness real task agent benchmark replay scorecards challenge packs CI gates",
+      "agent evals agent evaluation eval harness real task agent benchmark replay scorecards eval packs CI gates",
     sitemapTitle: "Agent evals",
     sitemapDescription:
       "Real-task agent evals with replay evidence, scorecards, and CI regression gates.",
@@ -224,7 +224,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "A practical LLM agent eval workflow",
     docsSectionTitle: "Bring your workload into AgentClash",
     docsSectionDescription:
-      "Start with one real failure, encode it as a challenge pack, then scale to model comparisons and CI gates.",
+      "Start with one real failure, encode it as a eval pack, then scale to model comparisons and CI gates.",
     faqSectionTitle: "LLM agent evaluation FAQ",
     applicationSubCategory: "LLM agent evaluation platform",
     breadcrumbs: [
@@ -233,7 +233,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-llm-agent-evaluation-schema",
     searchKeywords:
-      "LLM agent evaluation language model agent eval tool-using agents sandboxed workloads replay scorecards challenge packs",
+      "LLM agent evaluation language model agent eval tool-using agents sandboxed workloads replay scorecards eval packs",
     sitemapTitle: "LLM agent evaluation",
     sitemapDescription:
       "Evaluate tool-using LLM agents on real tasks with replay and scorecards.",
@@ -246,7 +246,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Can we compare multiple LLM agents fairly?",
         answer:
-          "Yes. AgentClash runs candidates on the same challenge pack with the same tool policy, time budget, and sandbox resources.",
+          "Yes. AgentClash runs candidates on the same eval pack with the same tool policy, time budget, and sandbox resources.",
       },
       {
         question: "Does AgentClash work with hosted model providers?",
@@ -262,7 +262,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "Devs comparing tools",
     pageTitle: "Agent Evaluation Framework for Real Tasks - AgentClash",
     metaDescription:
-      "Compare agent evaluation frameworks on what matters: sandboxed execution, replay evidence, scorecards, challenge packs, and CI regression gates.",
+      "Compare agent evaluation frameworks on what matters: sandboxed execution, replay evidence, scorecards, eval packs, and CI regression gates.",
     socialImageAlt: "AgentClash agent evaluation framework social preview.",
     eyebrow: "Framework",
     h1: "An agent evaluation framework built for production tasks",
@@ -283,7 +283,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-agent-evaluation-framework-schema",
     searchKeywords:
-      "agent evaluation framework compare agent eval tools agent testing framework replay scorecards challenge packs CI gates",
+      "agent evaluation framework compare agent eval tools agent testing framework replay scorecards eval packs CI gates",
     sitemapTitle: "Agent evaluation framework",
     sitemapDescription:
       "Framework for real-task agent evaluation with replay, scorecards, and CI gates.",
@@ -301,7 +301,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Does the framework support custom scoring?",
         answer:
-          "Yes. Challenge packs carry scoring rules, validators, and judge configuration so teams can encode domain-specific pass conditions.",
+          "Yes. Eval packs carry scoring rules, validators, and judge configuration so teams can encode domain-specific pass conditions.",
       },
     ],
     relatedLinks: [...sharedDocsLinks],
@@ -313,19 +313,19 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "Simpler language",
     pageTitle: "AI Agent Testing with Replay and Release Gates - AgentClash",
     metaDescription:
-      "Test AI agents on real tasks with sandboxed execution, replay evidence, scorecards, challenge packs, and CI gates that block regressions.",
+      "Test AI agents on real tasks with sandboxed execution, replay evidence, scorecards, eval packs, and CI gates that block regressions.",
     socialImageAlt: "AgentClash AI agent testing social preview.",
     eyebrow: "Agent testing",
     h1: "AI agent testing that looks like release engineering",
     heroDescription:
-      "AI agent testing should feel closer to software testing than prompt tweaking. AgentClash turns real failures into repeatable challenge packs, compares candidates to baselines, and keeps the evidence reviewers need.",
+      "AI agent testing should feel closer to software testing than prompt tweaking. AgentClash turns real failures into repeatable eval packs, compares candidates to baselines, and keeps the evidence reviewers need.",
     proofSectionTitle: "What production-grade agent testing covers",
     proofSectionDescription:
       "Testing agents means checking behavior across the whole run — not approving a single polished answer from a cherry-picked prompt.",
     workflowSectionTitle: "Test loop",
     docsSectionTitle: "Start testing with docs",
     docsSectionDescription:
-      "Write a challenge pack, run an eval, inspect replay, then wire the same workload into CI.",
+      "Write an eval pack, run an eval, inspect replay, then wire the same workload into CI.",
     faqSectionTitle: "AI agent testing FAQ",
     applicationSubCategory: "AI agent testing software",
     breadcrumbs: [
@@ -334,7 +334,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-ai-agent-testing-schema",
     searchKeywords:
-      "AI agent testing test AI agents agent QA replay scorecards challenge packs regression testing CI gates",
+      "AI agent testing test AI agents agent QA replay scorecards eval packs regression testing CI gates",
     sitemapTitle: "AI agent testing",
     sitemapDescription:
       "Test AI agents on real tasks with replay evidence and CI regression gates.",
@@ -352,7 +352,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "How do we keep tests from getting stale?",
         answer:
-          "Promote escaped production failures into challenge packs and regression suites so the same mistake stays covered after the next model swap.",
+          "Promote escaped production failures into eval packs and regression suites so the same mistake stays covered after the next model swap.",
       },
     ],
   }),
@@ -363,7 +363,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "Technical buyer",
     pageTitle: "Agent Trajectory Evaluation and Replay Evidence - AgentClash",
     metaDescription:
-      "Evaluate agent trajectories with replay trails, tool-call evidence, scorecards, challenge packs, and CI gates for baseline versus candidate decisions.",
+      "Evaluate agent trajectories with replay trails, tool-call evidence, scorecards, eval packs, and CI gates for baseline versus candidate decisions.",
     socialImageAlt: "AgentClash agent trajectory evaluation social preview.",
     eyebrow: "Trajectories",
     h1: "Agent trajectory evaluation with reviewable evidence",
@@ -375,7 +375,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "Trajectory eval workflow",
     docsSectionTitle: "Inspect runs with docs",
     docsSectionDescription:
-      "Use replay and scorecards to debug trajectory regressions, then encode the workload as a challenge pack for CI.",
+      "Use replay and scorecards to debug trajectory regressions, then encode the workload as a eval pack for CI.",
     faqSectionTitle: "Trajectory evaluation FAQ",
     applicationSubCategory: "Agent trajectory evaluation software",
     breadcrumbs: [
@@ -384,7 +384,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-agent-trajectory-evaluation-schema",
     searchKeywords:
-      "agent trajectory evaluation trajectory scoring tool call replay agent trace evaluation scorecards challenge packs",
+      "agent trajectory evaluation trajectory scoring tool call replay agent trace evaluation scorecards eval packs",
     sitemapTitle: "Agent trajectory evaluation",
     sitemapDescription:
       "Score full agent trajectories with replay evidence and release gates.",
@@ -421,7 +421,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "Release engineering",
     pageTitle: "CI/CD Agent Evaluation and Regression Gates - AgentClash",
     metaDescription:
-      "Wire agent evaluation into CI/CD with baseline comparisons, challenge packs, replay evidence, scorecards, and pull request gates.",
+      "Wire agent evaluation into CI/CD with baseline comparisons, eval packs, replay evidence, scorecards, and pull request gates.",
     socialImageAlt: "AgentClash CI/CD agent evaluation social preview.",
     eyebrow: "CI/CD",
     h1: "CI/CD agent evaluation for pull request gates",
@@ -433,7 +433,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "CI gate workflow",
     docsSectionTitle: "Wire gates with docs",
     docsSectionDescription:
-      "Start with the CI/CD agent gates guide, then promote real failures into challenge packs your pipeline can rerun on every change.",
+      "Start with the CI/CD agent gates guide, then promote real failures into eval packs your pipeline can rerun on every change.",
     faqSectionTitle: "CI/CD agent evaluation FAQ",
     applicationSubCategory: "CI/CD agent evaluation software",
     breadcrumbs: [
@@ -442,7 +442,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-ci-cd-agent-evaluation-schema",
     searchKeywords:
-      "CI/CD agent evaluation agent eval CI pull request gates release gates baseline candidate regression testing challenge packs",
+      "CI/CD agent evaluation agent eval CI pull request gates release gates baseline candidate regression testing eval packs",
     sitemapTitle: "CI/CD agent evaluation",
     sitemapDescription:
       "Run agent evaluation in CI/CD with scorecard gates and replay evidence.",
@@ -450,7 +450,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "How do agent eval gates fit into CI/CD?",
         answer:
-          "A challenge pack runs on every candidate change, AgentClash compares the scorecard to a baseline, and the pipeline fails when configured thresholds regress.",
+          "A eval pack runs on every candidate change, AgentClash compares the scorecard to a baseline, and the pipeline fails when configured thresholds regress.",
       },
       {
         question: "What happens when a gate fails?",
@@ -491,7 +491,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "Benchmark workflow",
     docsSectionTitle: "Build a benchmark you can reuse",
     docsSectionDescription:
-      "Encode workloads as challenge packs so benchmark runs become regression gates instead of one-off demos.",
+      "Encode workloads as eval packs so benchmark runs become regression gates instead of one-off demos.",
     faqSectionTitle: "AI agent benchmark FAQ",
     applicationSubCategory: "AI agent benchmark software",
     breadcrumbs: [
@@ -500,7 +500,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-ai-agent-benchmark-schema",
     searchKeywords:
-      "AI agent benchmark agent benchmark real task benchmark coding agent benchmark replay scorecards challenge packs",
+      "AI agent benchmark agent benchmark real task benchmark coding agent benchmark replay scorecards eval packs",
     sitemapTitle: "AI agent benchmark",
     sitemapDescription:
       "Benchmark AI agents on real tasks with replay and scorecards.",
@@ -513,12 +513,12 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Can we benchmark multiple agents on the same task?",
         answer:
-          "Yes. AgentClash runs candidates on the same challenge pack with the same sandbox policy and produces comparable scorecards.",
+          "Yes. AgentClash runs candidates on the same eval pack with the same sandbox policy and produces comparable scorecards.",
       },
       {
         question: "Can a benchmark become a regression test?",
         answer:
-          "Yes. The same challenge pack can power ad-hoc benchmarks and CI gates once your team trusts the scoring rules.",
+          "Yes. The same eval pack can power ad-hoc benchmarks and CI gates once your team trusts the scoring rules.",
       },
     ],
   }),
@@ -541,7 +541,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "Reliability workflow",
     docsSectionTitle: "Turn reliability into gates",
     docsSectionDescription:
-      "Use challenge packs and regression suites to keep reliability benchmarks current as models and tools change.",
+      "Use eval packs and regression suites to keep reliability benchmarks current as models and tools change.",
     faqSectionTitle: "Agent reliability FAQ",
     applicationSubCategory: "Agent reliability benchmark software",
     breadcrumbs: [
@@ -550,7 +550,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-agent-reliability-benchmark-schema",
     searchKeywords:
-      "agent reliability benchmark reliability eval pass rate regression testing replay scorecards challenge packs",
+      "agent reliability benchmark reliability eval pass rate regression testing replay scorecards eval packs",
     sitemapTitle: "Agent reliability benchmark",
     sitemapDescription:
       "Benchmark agent reliability on real tasks with regression gates.",
@@ -563,7 +563,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "How does AgentClash handle flaky agent behavior?",
         answer:
-          "Teams can rerun workloads, inspect replay differences, and encode pass@k-style reliability policies in challenge packs and release gates.",
+          "Teams can rerun workloads, inspect replay differences, and encode pass@k-style reliability policies in eval packs and release gates.",
       },
       {
         question: "Can reliability benchmarks block release?",
@@ -587,7 +587,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "Use-case page",
     pageTitle: "Coding Agent Evaluation on Real Repos - AgentClash",
     metaDescription:
-      "Evaluate coding agents on real repositories with sandboxed execution, replay evidence, scorecards, challenge packs, and CI regression gates.",
+      "Evaluate coding agents on real repositories with sandboxed execution, replay evidence, scorecards, eval packs, and CI regression gates.",
     socialImageAlt: "AgentClash coding agent evaluation social preview.",
     eyebrow: "Use case",
     h1: "Evaluate coding agents on real repositories",
@@ -599,7 +599,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "Coding eval workflow",
     docsSectionTitle: "Start with a real bug",
     docsSectionDescription:
-      "Promote a failed coding-agent run into a challenge pack, then eval model and harness changes before they reach users.",
+      "Promote a failed coding-agent run into a eval pack, then eval model and harness changes before they reach users.",
     faqSectionTitle: "Coding agent evaluation FAQ",
     applicationSubCategory: "Coding agent evaluation software",
     breadcrumbs: [
@@ -609,7 +609,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-coding-agent-evaluation-schema",
     searchKeywords:
-      "coding agent evaluation evaluate coding agents software engineering agents repo eval replay scorecards challenge packs",
+      "coding agent evaluation evaluate coding agents software engineering agents repo eval replay scorecards eval packs",
     sitemapTitle: "Coding agent evaluation",
     sitemapDescription:
       "Evaluate coding agents on real repositories with replay and CI gates.",
@@ -617,7 +617,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Can AgentClash evaluate agents that edit code?",
         answer:
-          "Yes. Challenge packs can run agents in sandboxes with repository fixtures, test commands, and artifact checks for patches and logs.",
+          "Yes. Eval packs can run agents in sandboxes with repository fixtures, test commands, and artifact checks for patches and logs.",
       },
       {
         question: "How do teams compare coding agents fairly?",
@@ -627,7 +627,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Can coding agent evals run in CI?",
         answer:
-          "Yes. Wire challenge packs into pull request gates so model, prompt, or tool changes cannot merge when correctness regresses.",
+          "Yes. Wire eval packs into pull request gates so model, prompt, or tool changes cannot merge when correctness regresses.",
       },
     ],
   }),
@@ -638,7 +638,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "Use-case page",
     pageTitle: "Research Agent Evaluation with Evidence Quality - AgentClash",
     metaDescription:
-      "Evaluate research agents on real investigation tasks with replay evidence, artifact checks, scorecards, challenge packs, and regression gates.",
+      "Evaluate research agents on real investigation tasks with replay evidence, artifact checks, scorecards, eval packs, and regression gates.",
     socialImageAlt: "AgentClash research agent evaluation social preview.",
     eyebrow: "Use case",
     h1: "Evaluate research agents with evidence quality",
@@ -650,7 +650,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "Research eval workflow",
     docsSectionTitle: "Encode investigations as packs",
     docsSectionDescription:
-      "Turn recurring research workflows into challenge packs so every model or prompt change reruns the same investigation fairly.",
+      "Turn recurring research workflows into eval packs so every model or prompt change reruns the same investigation fairly.",
     faqSectionTitle: "Research agent evaluation FAQ",
     applicationSubCategory: "Research agent evaluation software",
     breadcrumbs: [
@@ -660,7 +660,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-research-agent-evaluation-schema",
     searchKeywords:
-      "research agent evaluation evaluate research agents investigation agents evidence quality replay scorecards challenge packs",
+      "research agent evaluation evaluate research agents investigation agents evidence quality replay scorecards eval packs",
     sitemapTitle: "Research agent evaluation",
     sitemapDescription:
       "Evaluate research agents on investigation tasks with replay and scorecards.",
@@ -673,7 +673,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Can evals include web or file tools?",
         answer:
-          "Yes. Challenge packs define which tools agents may use and which artifacts must be produced for a pass.",
+          "Yes. Eval packs define which tools agents may use and which artifacts must be produced for a pass.",
       },
       {
         question: "How do teams debug a failed research run?",
@@ -689,7 +689,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "Use-case page",
     pageTitle: "Customer Support Agent Evaluation - AgentClash",
     metaDescription:
-      "Evaluate customer support agents on real resolution workflows with replay evidence, scorecards, challenge packs, and CI regression gates.",
+      "Evaluate customer support agents on real resolution workflows with replay evidence, scorecards, eval packs, and CI regression gates.",
     socialImageAlt: "AgentClash support agent evaluation social preview.",
     eyebrow: "Use case",
     h1: "Evaluate customer support agents on real resolutions",
@@ -701,7 +701,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "Support eval workflow",
     docsSectionTitle: "Start with escaped tickets",
     docsSectionDescription:
-      "Promote real support failures into challenge packs and regression suites so the same mistake cannot return after a model update.",
+      "Promote real support failures into eval packs and regression suites so the same mistake cannot return after a model update.",
     faqSectionTitle: "Support agent evaluation FAQ",
     applicationSubCategory: "Customer support agent evaluation software",
     breadcrumbs: [
@@ -711,7 +711,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-support-agent-evaluation-schema",
     searchKeywords:
-      "customer support agent evaluation support agent eval ticket resolution replay scorecards challenge packs regression testing",
+      "customer support agent evaluation support agent eval ticket resolution replay scorecards eval packs regression testing",
     sitemapTitle: "Support agent evaluation",
     sitemapDescription:
       "Evaluate support agents on resolution workflows with replay and gates.",
@@ -719,12 +719,12 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Can AgentClash evaluate multi-turn support flows?",
         answer:
-          "Yes. Multi-turn challenge packs support scripted, simulated, and human phases for realistic support conversations.",
+          "Yes. Multi-turn eval packs support scripted, simulated, and human phases for realistic support conversations.",
       },
       {
         question: "How do teams measure policy adherence?",
         answer:
-          "Challenge packs encode required actions, forbidden tool use, and validator checks so scorecards reflect policy—not just friendly language.",
+          "Eval packs encode required actions, forbidden tool use, and validator checks so scorecards reflect policy—not just friendly language.",
       },
       {
         question: "Can support evals gate releases?",
@@ -740,7 +740,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "Industry vertical",
     pageTitle: "Banking Agent Evaluation with Replay Evidence - AgentClash",
     metaDescription:
-      "Evaluate banking and financial services agents on real workflows with replay evidence, scorecards, challenge packs, and release gates your risk team can review.",
+      "Evaluate banking and financial services agents on real workflows with replay evidence, scorecards, eval packs, and release gates your risk team can review.",
     socialImageAlt: "AgentClash banking agent evaluation social preview.",
     eyebrow: "Industry",
     h1: "Agent evaluation for banking and financial services",
@@ -752,7 +752,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "Banking eval workflow",
     docsSectionTitle: "Encode regulated workflows as packs",
     docsSectionDescription:
-      "Turn escaped incidents and approval flows into challenge packs, then gate releases when scorecards regress.",
+      "Turn escaped incidents and approval flows into eval packs, then gate releases when scorecards regress.",
     faqSectionTitle: "Banking agent evaluation FAQ",
     applicationSubCategory: "Banking agent evaluation software",
     breadcrumbs: [
@@ -762,7 +762,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-industries-banking-schema",
     searchKeywords:
-      "banking agent evaluation financial services agent eval regulated agent testing replay scorecards release gates challenge packs",
+      "banking agent evaluation financial services agent eval regulated agent testing replay scorecards release gates eval packs",
     sitemapTitle: "Banking agent evaluation",
     sitemapDescription:
       "Evaluate financial services agents with replay evidence and release gates.",
@@ -775,7 +775,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Can we evaluate agents that call internal banking APIs?",
         answer:
-          "Yes. Challenge packs run agents in sandboxes with your fixtures, tool policy, and validators so candidates face the same constraints.",
+          "Yes. Eval packs run agents in sandboxes with your fixtures, tool policy, and validators so candidates face the same constraints.",
       },
       {
         question: "How do teams gate model changes in banking?",
@@ -821,7 +821,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "Insurance eval workflow",
     docsSectionTitle: "Start with escaped claims",
     docsSectionDescription:
-      "Promote real claim or policy failures into challenge packs so the same mistake cannot return after a prompt or model update.",
+      "Promote real claim or policy failures into eval packs so the same mistake cannot return after a prompt or model update.",
     faqSectionTitle: "Insurance agent evaluation FAQ",
     applicationSubCategory: "Insurance agent evaluation software",
     breadcrumbs: [
@@ -831,7 +831,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-industries-insurance-schema",
     searchKeywords:
-      "insurance agent evaluation support agent compliance eval claims workflow replay scorecards challenge packs release gates",
+      "insurance agent evaluation support agent compliance eval claims workflow replay scorecards eval packs release gates",
     sitemapTitle: "Insurance agent evaluation",
     sitemapDescription:
       "Evaluate insurance support agents with policy checks and replay.",
@@ -839,12 +839,12 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Can AgentClash evaluate multi-turn claims conversations?",
         answer:
-          "Yes. Multi-turn challenge packs support scripted, simulated, and human phases for realistic insurance support flows.",
+          "Yes. Multi-turn eval packs support scripted, simulated, and human phases for realistic insurance support flows.",
       },
       {
         question: "How do teams measure policy adherence?",
         answer:
-          "Challenge packs encode required actions, forbidden tool use, and validator checks so scorecards reflect policy, not just friendly language.",
+          "Eval packs encode required actions, forbidden tool use, and validator checks so scorecards reflect policy, not just friendly language.",
       },
       {
         question: "Does AgentClash replace compliance sign-off?",
@@ -864,9 +864,9 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
         href: "/use-cases/support-agent-evaluation",
       },
       {
-        title: "Challenge pack glossary",
+        title: "Eval pack glossary",
         text: "How packs encode insurance workflows.",
-        href: "/glossary/challenge-pack",
+        href: "/glossary/eval-pack",
       },
       ...sharedDocsLinks,
     ],
@@ -890,7 +890,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "Government eval workflow",
     docsSectionTitle: "Build audit-ready packs",
     docsSectionDescription:
-      "Encode citizen service workflows as challenge packs with validators and replay links your program office can review.",
+      "Encode citizen service workflows as eval packs with validators and replay links your program office can review.",
     faqSectionTitle: "Government agent evaluation FAQ",
     applicationSubCategory: "Government agent evaluation software",
     breadcrumbs: [
@@ -900,7 +900,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-industries-government-schema",
     searchKeywords:
-      "government agent evaluation public sector agent eval audit trail evidence bundle replay scorecards release gates challenge packs",
+      "government agent evaluation public sector agent eval audit trail evidence bundle replay scorecards release gates eval packs",
     sitemapTitle: "Government agent evaluation",
     sitemapDescription:
       "Evaluate public-sector agents with replay and evidence bundles.",
@@ -918,7 +918,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "How do teams compare vendors or model routes fairly?",
         answer:
-          "Run every candidate on the same frozen challenge pack with identical tools and budgets, then compare scorecards and replay side by side.",
+          "Run every candidate on the same frozen eval pack with identical tools and budgets, then compare scorecards and replay side by side.",
       },
     ],
     relatedLinks: [
@@ -959,7 +959,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "Typical eval workflow",
     docsSectionTitle: "Go deeper",
     docsSectionDescription:
-      "Read the platform overview, then author a challenge pack for your first repeatable eval.",
+      "Read the platform overview, then author a eval pack for your first repeatable eval.",
     faqSectionTitle: "Agent evaluation FAQ",
     applicationSubCategory: "Agent evaluation glossary",
     breadcrumbs: [
@@ -987,7 +987,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Where should teams start?",
         answer:
-          "Promote one escaped failure into a challenge pack, establish a baseline run, then compare the next candidate in CI or a benchmark eval.",
+          "Promote one escaped failure into a eval pack, establish a baseline run, then compare the next candidate in CI or a benchmark eval.",
       },
     ],
     relatedLinks: [
@@ -1010,41 +1010,41 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
   }),
   page({
-    path: "/glossary/challenge-pack",
+    path: "/glossary/eval-pack",
     tier: "B",
-    keyword: "challenge pack definition",
+    keyword: "eval pack definition",
     intent: "Glossary",
-    pageTitle: "What Is a Challenge Pack? - AgentClash Glossary",
+    pageTitle: "What Is a Eval Pack? - AgentClash Glossary",
     metaDescription:
-      "A challenge pack is a versioned YAML bundle that defines an agent evaluation task: inputs, tools, sandbox, scoring rules, and pass conditions.",
-    socialImageAlt: "AgentClash challenge pack glossary social preview.",
+      "A eval pack is a versioned YAML bundle that defines an agent evaluation task: inputs, tools, sandbox, scoring rules, and pass conditions.",
+    socialImageAlt: "AgentClash eval pack glossary social preview.",
     eyebrow: "Glossary",
-    h1: "What is a challenge pack?",
+    h1: "What is a eval pack?",
     heroDescription:
-      "Challenge packs are AgentClash's unit of repeatable agent evaluation. Encode the task once so every model, prompt, or harness change reruns the same workload with the same constraints.",
+      "Eval packs are AgentClash's unit of repeatable agent evaluation. Encode the task once so every model, prompt, or harness change reruns the same workload with the same constraints.",
     proofSectionTitle: "What packs contain",
     proofSectionDescription:
       "Inputs, tool policy, sandbox resources, validators, judges, artifacts, and pass conditions that together define a fair eval or regression test.",
     workflowSectionTitle: "From pack to gate",
     docsSectionTitle: "Authoring resources",
     docsSectionDescription:
-      "Use the challenge pack docs and authoring guide to publish your first pack.",
-    faqSectionTitle: "Challenge pack FAQ",
-    applicationSubCategory: "Challenge pack glossary",
+      "Use the eval pack docs and authoring guide to publish your first pack.",
+    faqSectionTitle: "Eval pack FAQ",
+    applicationSubCategory: "Eval pack glossary",
     breadcrumbs: [
       { name: "Home", url: "/" },
       { name: "Glossary", url: "/glossary" },
-      { name: "Challenge pack", url: "/glossary/challenge-pack" },
+      { name: "Eval pack", url: "/glossary/eval-pack" },
     ],
-    schemaId: "agentclash-glossary-challenge-pack-schema",
+    schemaId: "agentclash-glossary-eval-pack-schema",
     searchKeywords:
-      "challenge pack definition agent evaluation YAML pack scoring rules sandbox tools validators",
-    sitemapTitle: "Challenge pack (glossary)",
+      "eval pack definition agent evaluation YAML pack scoring rules sandbox tools validators",
+    sitemapTitle: "Eval pack (glossary)",
     sitemapDescription:
-      "Definition of AgentClash challenge packs.",
+      "Definition of AgentClash eval packs.",
     faqItems: [
       {
-        question: "How is a challenge pack versioned?",
+        question: "How is a eval pack versioned?",
         answer:
           "Packs are versioned YAML bundles in your workspace. Pin a version for benchmarks and CI so comparisons stay reproducible.",
       },
@@ -1056,19 +1056,19 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Where are examples?",
         answer:
-          "See example packs in the repository and the challenge pack reference docs for field-by-field authoring.",
+          "See example packs in the repository and the eval pack reference docs for field-by-field authoring.",
       },
     ],
     relatedLinks: [
       {
-        title: "Challenge packs feature",
+        title: "Eval packs feature",
         text: "Feature overview for pack-based eval.",
-        href: "/features/challenge-packs",
+        href: "/features/eval-packs",
       },
       {
-        title: "Challenge pack docs",
+        title: "Eval pack docs",
         text: "Reference hub for pack authors.",
-        href: "/docs/challenge-packs",
+        href: "/docs/eval-packs",
       },
       {
         title: "Benchmarks hub",
@@ -1085,7 +1085,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     intent: "Glossary",
     pageTitle: "What Is a Release Gate? - AgentClash Glossary",
     metaDescription:
-      "A release gate compares a candidate agent run to a baseline on a challenge pack and blocks promotion when scorecards or validators regress.",
+      "A release gate compares a candidate agent run to a baseline on a eval pack and blocks promotion when scorecards or validators regress.",
     socialImageAlt: "AgentClash release gate glossary social preview.",
     eyebrow: "Glossary",
     h1: "What is a release gate?",
@@ -1137,7 +1137,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         title: "Eval workflows and gates",
         text: "Docs on baselines and manifests.",
-        href: "/docs/challenge-packs/eval-workflows-and-gates",
+        href: "/docs/eval-packs/eval-workflows-and-gates",
       },
       {
         title: "Enterprise pilot",
@@ -1184,7 +1184,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "What appears on an AgentClash scorecard?",
         answer:
-          "Correctness signals, validator evidence, cost, latency, tool usage summaries, and dimension scores your challenge pack defines.",
+          "Correctness signals, validator evidence, cost, latency, tool usage summaries, and dimension scores your eval pack defines.",
       },
       {
         question: "Can scorecards compare two runs?",
@@ -1225,7 +1225,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     workflowSectionTitle: "Replay workflow",
     docsSectionTitle: "Debug with docs",
     docsSectionDescription:
-      "Pair replay with interpret-results guidance and challenge packs so every debugged failure becomes a reusable test.",
+      "Pair replay with interpret-results guidance and eval packs so every debugged failure becomes a reusable test.",
     faqSectionTitle: "Agent replay FAQ",
     applicationSubCategory: "Agent replay software",
     breadcrumbs: [
@@ -1235,7 +1235,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-agent-replay-schema",
     searchKeywords:
-      "agent replay replay evidence tool call timeline agent trace debugging scorecards challenge packs",
+      "agent replay replay evidence tool call timeline agent trace debugging scorecards eval packs",
     sitemapTitle: "Agent replay",
     sitemapDescription:
       "Replay tool calls, artifacts, and evidence for agent debugging.",
@@ -1266,65 +1266,65 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
   }),
   page({
-    path: "/features/challenge-packs",
+    path: "/features/eval-packs",
     tier: "B",
-    keyword: "challenge packs agent evaluation",
+    keyword: "eval packs agent evaluation",
     intent: "Your unique term",
-    pageTitle: "Challenge Packs for Agent Evaluation - AgentClash",
+    pageTitle: "Eval Packs for Agent Evaluation - AgentClash",
     metaDescription:
-      "Challenge packs turn real agent tasks into repeatable evaluations with tools, scoring rules, artifacts, and CI-ready regression gates.",
-    socialImageAlt: "AgentClash challenge packs social preview.",
+      "Eval packs turn real agent tasks into repeatable evaluations with tools, scoring rules, artifacts, and CI-ready regression gates.",
+    socialImageAlt: "AgentClash eval packs social preview.",
     eyebrow: "Feature",
-    h1: "Challenge packs for repeatable agent evaluation",
+    h1: "Eval packs for repeatable agent evaluation",
     heroDescription:
-      "Challenge packs are AgentClash's unit of agent evaluation: a real task, tool policy, scoring rules, and artifacts encoded once so every model or harness change reruns the same workload.",
-    proofSectionTitle: "What challenge packs encode",
+      "Eval packs are AgentClash's unit of agent evaluation: a real task, tool policy, scoring rules, and artifacts encoded once so every model or harness change reruns the same workload.",
+    proofSectionTitle: "What eval packs encode",
     proofSectionDescription:
       "Inputs, sandbox resources, allowed tools, validators, judges, and pass conditions — everything needed for a fair, repeatable agent eval.",
     workflowSectionTitle: "Pack lifecycle",
     docsSectionTitle: "Author packs with docs",
     docsSectionDescription:
-      "Read the challenge pack docs and authoring guide, then promote escaped failures into packs your whole team can run.",
-    faqSectionTitle: "Challenge packs FAQ",
-    applicationSubCategory: "Challenge pack agent evaluation software",
+      "Read the eval pack docs and authoring guide, then promote escaped failures into packs your whole team can run.",
+    faqSectionTitle: "Eval packs FAQ",
+    applicationSubCategory: "Eval pack agent evaluation software",
     breadcrumbs: [
       { name: "Home", url: "/" },
       { name: "Features", url: "/features" },
-      { name: "Challenge packs", url: "/features/challenge-packs" },
+      { name: "Eval packs", url: "/features/eval-packs" },
     ],
-    schemaId: "agentclash-challenge-packs-schema",
+    schemaId: "agentclash-eval-packs-schema",
     searchKeywords:
-      "challenge packs agent evaluation repeatable agent tasks scoring rules validators CI regression packs",
-    sitemapTitle: "Challenge packs",
+      "eval packs agent evaluation repeatable agent tasks scoring rules validators CI regression packs",
+    sitemapTitle: "Eval packs",
     sitemapDescription:
       "Repeatable agent evaluation workloads with scoring and CI gates.",
     faqItems: [
       {
-        question: "What is a challenge pack?",
+        question: "What is a eval pack?",
         answer:
-          "A challenge pack is a versioned agent evaluation workload with inputs, tool policy, scoring rules, and expected artifacts.",
+          "A eval pack is a versioned agent evaluation workload with inputs, tool policy, scoring rules, and expected artifacts.",
       },
       {
-        question: "Can challenge packs run locally and in CI?",
+        question: "Can eval packs run locally and in CI?",
         answer:
           "Yes. The same pack can power exploratory evals, hosted runs, and pull request gates.",
       },
       {
-        question: "How do teams create challenge packs?",
+        question: "How do teams create eval packs?",
         answer:
           "Start from a real failure or release risk, encode it as YAML, and iterate with replay evidence until the scoring rules match what reviewers expect.",
       },
     ],
     relatedLinks: [
       {
-        title: "Challenge packs docs",
+        title: "Eval packs docs",
         text: "Overview of pack structure, scoring, and execution modes.",
-        href: "/docs/challenge-packs",
+        href: "/docs/eval-packs",
       },
       {
-        title: "Write a challenge pack",
+        title: "Write an eval pack",
         text: "Step-by-step authoring guide for your first pack.",
-        href: "/docs/guides/write-a-challenge-pack",
+        href: "/docs/guides/write-an-eval-pack",
       },
       ...sharedDocsLinks.slice(0, 2),
     ],

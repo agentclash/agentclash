@@ -70,7 +70,7 @@ CREATE TABLE run_agent_replays (
 
 CREATE TABLE evaluation_specs (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-    challenge_pack_version_id uuid REFERENCES challenge_pack_versions (id) ON DELETE CASCADE,
+    eval_pack_version_id uuid REFERENCES eval_pack_versions (id) ON DELETE CASCADE,
     name text NOT NULL,
     version_number integer NOT NULL CHECK (version_number > 0),
     judge_mode text NOT NULL CHECK (judge_mode IN ('deterministic', 'llm_judge', 'hybrid')),

@@ -1,6 +1,6 @@
 ---
 title: Security evaluation
-description: Stress-run security challenge packs, score planted-secret leaks and adversarial acceptance, and gate releases with agentclash security commands.
+description: Stress-run security eval packs, score planted-secret leaks and adversarial acceptance, and gate releases with agentclash security commands.
 dateModified: 2026-06-01
 ---
 
@@ -21,12 +21,12 @@ Two harness modes:
 - **No-guard** (`--no-system-guard`): drops refusal coaching — measures baseline alignment without explicit policy copy.
 
 ```bash
-agentclash security stress-run examples/challenge-packs/secret-hygiene-env.yaml \
+agentclash security stress-run examples/eval-packs/secret-hygiene-env.yaml \
   --provider openai \
   --model gpt-4o-mini \
   --iterations 5
 
-agentclash security stress-run examples/challenge-packs/secret-hygiene-env.yaml \
+agentclash security stress-run examples/eval-packs/secret-hygiene-env.yaml \
   --provider openai \
   --model gpt-4o-mini \
   --iterations 5 \
@@ -54,7 +54,7 @@ The command is OpenAI-only (no `--provider` flag), and `--canary-token` is requi
 
 ```bash
 agentclash security agent-vault-stress \
-  --from-pack examples/challenge-packs/infisical-boundary.yaml \
+  --from-pack examples/eval-packs/infisical-boundary.yaml \
   --model gpt-4o-mini \
   --iterations 3 \
   --proxy-url "https://$AGENT_VAULT_TOKEN:eval@127.0.0.1:14322" \
@@ -72,5 +72,5 @@ See [Agent Vault runtime](https://github.com/agentclash/agentclash/blob/main/doc
 ## See also
 
 - [Tools, network, and secrets](/docs/concepts/tools-network-and-secrets) — how secrets resolve in packs
-- [Sandbox & E2B](/docs/challenge-packs/sandbox-and-e2b) — network allowlists and sandbox boundaries
+- [Sandbox & E2B](/docs/eval-packs/sandbox-and-e2b) — network allowlists and sandbox boundaries
 - [CI/CD agent gates](/docs/guides/ci-cd-agent-gates) — wire security posture into release gates

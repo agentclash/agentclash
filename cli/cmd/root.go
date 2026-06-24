@@ -108,13 +108,13 @@ var rootCmd = &cobra.Command{
 	Long: `AgentClash CLI is the command-line interface for the AgentClash platform.
 
 Manage organizations, workspaces, agent builds, deployments, evaluation runs,
-challenge packs, playgrounds, and infrastructure — all from your terminal.
+eval packs, playgrounds, and infrastructure — all from your terminal.
 
 Get started:
   agentclash auth login                   Log in to your account
   agentclash link                         Choose and save your default workspace
   agentclash quickstart                   Check readiness and show the next command
-  agentclash challenge-pack init <file>   Scaffold a challenge pack
+  agentclash eval-pack init <file>   Scaffold a eval pack
   agentclash eval start --follow          Create and follow an evaluation run
   agentclash baseline set                 Bookmark a baseline run
   agentclash eval scorecard               Show scorecards and regression verdicts`,

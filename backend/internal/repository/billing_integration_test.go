@@ -417,7 +417,7 @@ func billingTestRunParams(fixture testFixture, name string, gate *repository.Run
 	return repository.CreateQueuedRunParams{
 		OrganizationID:         fixture.organizationID,
 		WorkspaceID:            fixture.workspaceID,
-		ChallengePackVersionID: fixture.challengePackVersionID,
+		EvalPackVersionID: fixture.evalPackVersionID,
 		ChallengeInputSetID:    &fixture.challengeInputSetID,
 		OfficialPackMode:       domain.OfficialPackModeFull,
 		CreatedByUserID:        &fixture.userID,

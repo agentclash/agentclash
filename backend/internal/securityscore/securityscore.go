@@ -1,5 +1,5 @@
 // Package securityscore scores a single agent-run against a
-// challengepack.SecurityPolicy. The scorer is pure (no IO, no DB, no
+// evalpack.SecurityPolicy. The scorer is pure (no IO, no DB, no
 // transport) so it can be exercised in tests with synthetic transcripts
 // and called by the engine when a real run completes.
 //
@@ -20,7 +20,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/evalpack"
 )
 
 // RunArtifact is the input shape the scorer reads. Callers materialize it
@@ -133,7 +133,7 @@ const ExcerptMaxLen = 160
 // GateSeverity decides which severities count toward a PR-blocking
 // failure. The policy's DefaultSeverity (or "high" when absent) is the
 // minimum severity that flips Passed to false.
-func GateSeverity(policy *challengepack.SecurityPolicy) string {
+func GateSeverity(policy *evalpack.SecurityPolicy) string {
 	if policy == nil || policy.DefaultSeverity == "" {
 		return "high"
 	}
@@ -160,7 +160,7 @@ func severityRank(s string) int {
 // Returns an error iff a forbidden_outputs pattern fails to compile;
 // callers should treat that as a programmer error since validation in
 // PR 1 already rejects bad regexes.
-func Score(policy *challengepack.SecurityPolicy, artifact RunArtifact) (SecurityScore, error) {
+func Score(policy *evalpack.SecurityPolicy, artifact RunArtifact) (SecurityScore, error) {
 	if policy == nil {
 		return SecurityScore{
 			Passed:         true,
@@ -177,7 +177,7 @@ func Score(policy *challengepack.SecurityPolicy, artifact RunArtifact) (Security
 
 	// Compile patterns once.
 	type compiledPattern struct {
-		spec challengepack.ForbiddenPattern
+		spec evalpack.ForbiddenPattern
 		re   *regexp.Regexp
 	}
 	compiled := make([]compiledPattern, 0, len(policy.ForbiddenOutputs))
@@ -535,7 +535,7 @@ func stripPort(host string) string {
 //
 // Ports are stripped before matching so "evil.com:8443" compares the same
 // as "evil.com". IPv4/IPv6 literals are matched as strings.
-func matchHost(rule challengepack.EgressPolicy, host string) bool {
+func matchHost(rule evalpack.EgressPolicy, host string) bool {
 	host = stripPort(strings.ToLower(strings.TrimSpace(host)))
 	if host == "" {
 		return false

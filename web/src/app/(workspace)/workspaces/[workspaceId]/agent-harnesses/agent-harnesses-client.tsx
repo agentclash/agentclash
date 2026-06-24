@@ -177,7 +177,7 @@ export function AgentHarnessesClient({
         <EmptyState
           icon={<PackageCheck className="size-10" />}
           title="No agent harnesses yet"
-          description="Create a coding harness to evaluate long-running autonomous work without writing a challenge pack."
+          description="Create a coding harness to evaluate long-running autonomous work without writing an eval pack."
         />
       ) : (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem]">

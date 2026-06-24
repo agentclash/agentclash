@@ -3,7 +3,7 @@
 import { useApiListQuery, usePaginatedApiQuery } from "@/lib/api/swr";
 import type {
   AgentDeployment,
-  ChallengePack,
+  EvalPack,
   ProviderAccount,
   Run,
 } from "@/lib/api/types";
@@ -15,14 +15,14 @@ import type {
  * app already uses.
  *
  * The ordered chain a brand-new workspace must complete before it can run an
- * eval: connect a provider -> deploy an agent -> add a challenge pack -> run.
+ * eval: connect a provider -> deploy an agent -> add a eval pack -> run.
  * (Agent builds are folded into the deploy step: a build is only meaningful as
  * an input to a deployment, so surfacing it separately is friction, not signal.)
  */
 export type ReadinessStepKey =
   | "provider"
   | "deployment"
-  | "challenge_pack"
+  | "eval_pack"
   | "first_run";
 
 export interface ReadinessStep {
@@ -36,7 +36,7 @@ export interface ReadinessStep {
 
 export interface WorkspaceReadiness {
   steps: ReadinessStep[];
-  /** True once a run can be created (provider + deployment + challenge pack). */
+  /** True once a run can be created (provider + deployment + eval pack). */
   ready: boolean;
   /** True once every step — including the first run — is complete. */
   allComplete: boolean;
@@ -46,7 +46,7 @@ export interface WorkspaceReadiness {
   error: boolean;
 }
 
-function hasRunnableVersion(pack: ChallengePack): boolean {
+function hasRunnableVersion(pack: EvalPack): boolean {
   return (pack.versions ?? []).some((v) => v.lifecycle_status === "runnable");
 }
 
@@ -57,8 +57,8 @@ export function useWorkspaceReadiness(workspaceId: string): WorkspaceReadiness {
   const deployments = useApiListQuery<AgentDeployment>(
     `/v1/workspaces/${workspaceId}/agent-deployments`,
   );
-  const packs = useApiListQuery<ChallengePack>(
-    `/v1/workspaces/${workspaceId}/challenge-packs`,
+  const packs = useApiListQuery<EvalPack>(
+    `/v1/workspaces/${workspaceId}/eval-packs`,
   );
   // Only need to know whether *any* run exists.
   const runs = usePaginatedApiQuery<Run>(`/v1/workspaces/${workspaceId}/runs`, {
@@ -95,18 +95,18 @@ export function useWorkspaceReadiness(workspaceId: string): WorkspaceReadiness {
       done: hasDeployment,
     },
     {
-      key: "challenge_pack",
-      label: "Add a challenge pack",
+      key: "eval_pack",
+      label: "Add a eval pack",
       description:
-        "Publish a challenge pack with a runnable version to benchmark against.",
-      href: `/workspaces/${workspaceId}/challenge-packs`,
-      cta: "Add challenge pack",
+        "Publish a eval pack with a runnable version to benchmark against.",
+      href: `/workspaces/${workspaceId}/eval-packs`,
+      cta: "Add eval pack",
       done: hasRunnablePack,
     },
     {
       key: "first_run",
       label: "Run your first eval",
-      description: "Race your deployments against a challenge pack.",
+      description: "Race your deployments against a eval pack.",
       href: `/workspaces/${workspaceId}/runs`,
       cta: "Create run",
       done: hasRun,

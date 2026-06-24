@@ -1,15 +1,15 @@
 -- +goose Up
 -- challenge_pieces is the reusable, workspace-scoped library of authoring
--- "pieces" that the visual pack builder composes into a challenge pack.
+-- "pieces" that the visual pack builder composes into a eval pack.
 -- It is polymorphic: a piece's typed shape lives in `definition` (a
 -- scoring.ValidatorDeclaration, scoring.LLMJudgeDeclaration, a
--- challengepack.ChallengeDefinition, or an input-set {name, cases[]}),
+-- evalpack.ChallengeDefinition, or an input-set {name, cases[]}),
 -- discriminated by `kind`. Multi-turn user simulators are not a separate
 -- kind; they ride inside input_set cases (CaseDefinition.user_simulator).
 --
 -- Pieces are mutable. They are resolved and SNAPSHOTTED into the immutable
--- challenge_pack_versions.manifest at publish time (see
--- challengepack.ComposeBundle + repository.PublishChallengePackBundle), so
+-- eval_pack_versions.manifest at publish time (see
+-- evalpack.ComposeBundle + repository.PublishEvalPackBundle), so
 -- editing a piece never mutates an already-published pack version. This
 -- mirrors the workspace_regression_cases snapshot model (00023).
 CREATE TABLE challenge_pieces (

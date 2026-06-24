@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { describe, expect, it, vi } from "vitest";
 
 import type {
-  ChallengePack,
+  EvalPack,
   RegressionCase,
   RegressionSuite,
 } from "@/lib/api/types";
@@ -50,7 +50,7 @@ vi.mock("./cases/[caseId]/edit-case-dialog", () => ({
 const suite: RegressionSuite = {
   id: "suite-1",
   workspace_id: "ws-1",
-  source_challenge_pack_id: "pack-1",
+  source_eval_pack_id: "pack-1",
   name: "Critical regressions",
   description: "",
   status: "active",
@@ -62,7 +62,7 @@ const suite: RegressionSuite = {
   updated_at: "2026-04-22T12:00:00Z",
 };
 
-const sourcePack: ChallengePack = {
+const sourcePack: EvalPack = {
   id: "pack-1",
   name: "Support Tickets",
   description: "",
@@ -84,7 +84,7 @@ function makeCase(overrides: Partial<RegressionCase> = {}): RegressionCase {
     promotion_mode: "full_executable",
     source_run_id: "run-1",
     source_run_agent_id: "agent-1",
-    source_challenge_pack_version_id: "version-1",
+    source_eval_pack_version_id: "version-1",
     source_challenge_identity_id: "identity-1",
     source_challenge_key: "ticket-1",
     source_case_key: "case-a",

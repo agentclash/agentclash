@@ -7,7 +7,7 @@ INSERT INTO datasets (
     description,
     input_schema,
     input_schema_enforced,
-    default_challenge_pack_version_id,
+    default_eval_pack_version_id,
     created_by
 )
 SELECT
@@ -18,7 +18,7 @@ SELECT
     @description,
     sqlc.narg('input_schema'),
     @input_schema_enforced,
-    sqlc.narg('default_challenge_pack_version_id'),
+    sqlc.narg('default_eval_pack_version_id'),
     @created_by
 FROM workspaces w
 WHERE w.id = @workspace_id
@@ -26,7 +26,7 @@ RETURNING *;
 
 -- name: GetDatasetByID :one
 SELECT
-    d.id, d.organization_id, d.workspace_id, d.slug, d.name, d.description, d.input_schema, d.input_schema_enforced, d.default_challenge_pack_version_id, d.created_by, d.created_at, d.updated_at, d.archived_at,
+    d.id, d.organization_id, d.workspace_id, d.slug, d.name, d.description, d.input_schema, d.input_schema_enforced, d.default_eval_pack_version_id, d.created_by, d.created_at, d.updated_at, d.archived_at,
     count(DISTINCT e.id) FILTER (WHERE e.status = 'active')::bigint AS active_example_count,
     count(DISTINCT v.id)::bigint AS version_count
 FROM datasets d
@@ -70,7 +70,7 @@ SET slug = COALESCE(sqlc.narg('slug'), slug),
     description = COALESCE(sqlc.narg('description'), description),
     input_schema = COALESCE(sqlc.narg('input_schema'), input_schema),
     input_schema_enforced = COALESCE(sqlc.narg('input_schema_enforced'), input_schema_enforced),
-    default_challenge_pack_version_id = COALESCE(sqlc.narg('default_challenge_pack_version_id'), default_challenge_pack_version_id)
+    default_eval_pack_version_id = COALESCE(sqlc.narg('default_eval_pack_version_id'), default_eval_pack_version_id)
 WHERE id = @id
   AND archived_at IS NULL
 RETURNING *;

@@ -196,10 +196,10 @@ func TestTrackUsageDeviceFlowEmitsNoEvents(t *testing.T) {
 		replayReadService:          stubReplayReadService{},
 		hostedRunIngestionService:  stubHostedRunIngestionService{},
 		agentDeploymentReadService: stubAgentDeploymentReadService{},
-		challengePackReadService:   stubChallengePackReadService{},
+		evalPackReadService:   stubEvalPackReadService{},
 		agentBuildService:          stubAgentBuildService{},
 		releaseGateService:         noopReleaseGateService{},
-		challengePackAuthoringSvc:  stubChallengePackAuthoringService{},
+		evalPackAuthoringSvc:  stubEvalPackAuthoringService{},
 		cliAuthServices:            []CLIAuthService{stubCLIAuthService{}},
 	})
 

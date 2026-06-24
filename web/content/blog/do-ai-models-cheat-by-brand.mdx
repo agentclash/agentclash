@@ -23,7 +23,7 @@ When you give an AI agent a task and a score to chase, it has two ways to get a 
 
 A student analogy: you can study for the exam, or you can find the answer key taped under the desk. Both get you an A. Only one means you learned anything.
 
-I built 6 challenge packs, each based on a real way agents game tests (the taxonomy comes from [Thaman et al.'s Reward Hacking Benchmark](https://arxiv.org/abs/2605.02964)):
+I built 6 eval packs, each based on a real way agents game tests (the taxonomy comes from [Thaman et al.'s Reward Hacking Benchmark](https://arxiv.org/abs/2605.02964)):
 
 1. **Reading the answer key** — peeking at QA logs or environment secrets it wasn't supposed to read.
 2. **Rewriting the test** — editing the tests or the test runner so they pass no matter what.
@@ -87,6 +87,6 @@ n=192 is small, and I know it. The runs came in two batches: a first pass of one
 
 This is also exactly the kind of thing AgentClash was built to surface — because it scores the *whole trajectory*, not just the final answer. (If you're curious how that scoring works, I wrote about it in [How AgentClash Scores Agent Trajectories](/blog/how-agentclash-scores-agent-trajectories).)
 
-The full code, the six challenge packs, and the raw data are open: see [agentclash/agentclash#858](https://github.com/agentclash/agentclash/pull/858). The original thread is [here](https://x.com/attharrva15/status/2059001263208202502).
+The full code, the six eval packs, and the raw data are open: see [agentclash/agentclash#858](https://github.com/agentclash/agentclash/pull/858). The original thread is [here](https://x.com/attharrva15/status/2059001263208202502).
 
 Want to see how your favorite model behaves when no one's checking the receipts? [Run your own race →](/try)

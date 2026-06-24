@@ -4,7 +4,7 @@ CREATE TABLE public_share_links (
     key text NOT NULL UNIQUE,
     organization_id uuid NOT NULL REFERENCES organizations (id) ON DELETE CASCADE,
     workspace_id uuid NOT NULL,
-    resource_type text NOT NULL CHECK (resource_type IN ('challenge_pack_version', 'run_scorecard', 'run_agent_scorecard', 'run_agent_replay')),
+    resource_type text NOT NULL CHECK (resource_type IN ('eval_pack_version', 'run_scorecard', 'run_agent_scorecard', 'run_agent_replay')),
     resource_id uuid NOT NULL,
     created_by_user_id uuid REFERENCES users (id) ON DELETE SET NULL,
     is_active boolean NOT NULL DEFAULT true,

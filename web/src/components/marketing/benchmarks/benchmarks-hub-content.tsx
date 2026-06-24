@@ -92,7 +92,7 @@ export function BenchmarksHubContent({ published }: Props) {
         Head-to-head AI agent benchmarks you can reproduce
       </h1>
       <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/50 sm:text-base">
-        Public eval runs on frozen challenge packs: same tools, same constraints,
+        Public eval runs on frozen eval packs: same tools, same constraints,
         full trajectory scoring, and replay evidence. Not a vibes leaderboard.
         Run the same benchmark on your agents when you are ready to gate releases.
       </p>
@@ -110,7 +110,7 @@ export function BenchmarksHubContent({ published }: Props) {
           </p>
           <p className="mt-2 font-[family-name:var(--font-mono)] text-2xs text-white/35">
             {latest.date}
-            {latest.challengePack ? ` · ${latest.challengePack}` : ""}
+            {latest.evalPack ? ` · ${latest.evalPack}` : ""}
             {latest.featuredModel ? ` · ${latest.featuredModel}` : ""}
           </p>
 
@@ -254,7 +254,7 @@ export function BenchmarksHubContent({ published }: Props) {
       </section>
 
       <section className="mt-14" aria-labelledby="packs-heading">
-        <SectionEyebrow>Challenge packs</SectionEyebrow>
+        <SectionEyebrow>Eval packs</SectionEyebrow>
         <SectionTitle>
           <span id="packs-heading">Reproduce the workload</span>
         </SectionTitle>

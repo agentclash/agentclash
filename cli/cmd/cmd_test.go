@@ -142,7 +142,7 @@ func TestRootHelpHighlightsWorkflowCommands(t *testing.T) {
 	out := stdout.finish()
 	for _, snippet := range []string{
 		"agentclash link",
-		"agentclash challenge-pack init",
+		"agentclash eval-pack init",
 		"agentclash eval start --follow",
 		"agentclash baseline set",
 		"agentclash eval scorecard",
@@ -453,22 +453,22 @@ func TestDeploymentListCallsCorrectEndpoint(t *testing.T) {
 	}
 }
 
-func TestChallengePackListCallsCorrectEndpoint(t *testing.T) {
+func TestEvalPackListCallsCorrectEndpoint(t *testing.T) {
 	var called bool
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/workspaces/ws-1/challenge-packs": captureHandler(t, &called, 200, map[string]any{
+		"GET /v1/workspaces/ws-1/eval-packs": captureHandler(t, &called, 200, map[string]any{
 			"items": []map[string]any{{"id": "cp-1", "name": "Pack 1"}},
 		}),
 	})
 	defer srv.Close()
 
 	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
-	err := executeCommand(t, []string{"challenge-pack", "list", "-w", "ws-1"}, srv.URL)
+	err := executeCommand(t, []string{"eval-pack", "list", "-w", "ws-1"}, srv.URL)
 	if err != nil {
-		t.Fatalf("challenge-pack list error: %v", err)
+		t.Fatalf("eval-pack list error: %v", err)
 	}
 	if !called {
-		t.Fatal("GET /v1/workspaces/ws-1/challenge-packs was not called")
+		t.Fatal("GET /v1/workspaces/ws-1/eval-packs was not called")
 	}
 }
 

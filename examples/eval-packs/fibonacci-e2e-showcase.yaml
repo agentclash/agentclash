@@ -1,0 +1,309 @@
+###############################################################################
+# Eval Pack: Fibonacci E2E Showcase
+#
+# A deliberately straightforward coding task whose evaluation spec exercises
+# every scorecard surface we ship today, so you can eyeball each piece in the
+# UI without chasing edge cases. Use this pack to sanity-check:
+#
+#   - Validator evidence rendering: text_compare, regex_match, json_schema,
+#     json_path_match, and the custom fallback (via code_execution).
+#   - Validator `source` pointer + "View in replay →" deep link:
+#       * final_output validators → source kind `final_output`, points at the
+#         dedicated system.output.finalized event (not the run.completed
+#         wrapper, per the fix in PR #310).
+#       * file:* validators → source kind `tool_call`, points at the
+#         grader.verification.file_captured event for that key.
+#       * code_execution validators → source kind `tool_call`, points at the
+#         grader.verification.code_executed event, with field_path set to
+#         validator.Target (e.g. `file:solution`).
+#       * case.* / challenge_input validators → no source (no replay link).
+#   - LLM-as-judge: both assertion-mode and reference-mode judges.
+#   - Metrics: aggregate collectors (tokens, latency, run completion).
+#   - Dimensions: mix of validator-backed, LLM-judge-backed, and behavioral.
+#
+# The agent task itself is "write a Python fibonacci function" — simple enough
+# that any capable model will pass, so failing validators always indicate a
+# real scorecard issue, not an agent issue.
+###############################################################################
+
+pack:
+  slug: fibonacci-e2e-showcase
+  name: Fibonacci E2E Showcase
+  family: coding
+
+version:
+  number: 1
+  execution_mode: native
+  sandbox:
+    network_access: false
+
+  tool_policy:
+    allow_shell: true
+    allowed_tool_kinds:
+      - file
+
+  evaluation_spec:
+    name: fibonacci-e2e-showcase-v1
+    version_number: 1
+    judge_mode: hybrid
+
+    # --------------------------------------------------------------------
+    # Post-execution captures — these emit grader.verification.* events that
+    # become the deep-link targets for file:* and code_execution validators.
+    # --------------------------------------------------------------------
+    post_execution_checks:
+      - key: solution
+        type: file_capture
+        path: /workspace/solution.py
+
+    # --------------------------------------------------------------------
+    # Validators — one per evidence shape, one per source kind, one per
+    # "no source" case. Keep the set small enough to eyeball but wide
+    # enough to cover every inspector-sheet branch.
+    # --------------------------------------------------------------------
+    validators:
+      # === final_output validators ==========================================
+      # On prompt_eval runs the source kind is `final_output` (the dedicated
+      # finalized event); on native runs it's `model_call` (the last
+      # model.call.completed — the real producer). The scorecard should never
+      # point at the system.run.completed wrapper.
+
+      # Evidence: regex_match with case-insensitive flag — "Fibonacci" or
+      # "fibonacci" anywhere in the final output both pass.
+      - key: final_output_mentions_fibonacci
+        type: regex_match
+        target: final_output
+        expected_from: "literal:(?i)fibonacci"
+
+      # Evidence: regex_match (matches inspector's highlighted-segment render)
+      - key: final_output_complexity_has_big_o
+        type: regex_match
+        target: final_output
+        expected_from: "literal:O\\([0-9a-zA-Z ^]+\\)"
+
+      # Evidence: json_schema — validates the structured summary shape.
+      - key: final_output_schema
+        type: json_schema
+        target: final_output
+        expected_from: "literal:{\"type\":\"object\",\"required\":[\"approach\",\"complexity\",\"sample_values\",\"explanation\"],\"properties\":{\"approach\":{\"type\":\"string\",\"enum\":[\"iterative\",\"recursive\",\"memoized\"]},\"complexity\":{\"type\":\"object\",\"required\":[\"time\",\"space\"],\"properties\":{\"time\":{\"type\":\"string\"},\"space\":{\"type\":\"string\"}}},\"sample_values\":{\"type\":\"array\",\"minItems\":3,\"items\":{\"type\":\"object\",\"required\":[\"n\",\"fib\"],\"properties\":{\"n\":{\"type\":\"integer\"},\"fib\":{\"type\":\"integer\"}}}},\"explanation\":{\"type\":\"string\",\"minLength\":40}}}"
+
+      # Evidence: json_path_match (existence comparator)
+      - key: final_output_has_approach
+        type: json_path_match
+        target: final_output
+        expected_from: "literal:{\"path\":\"$.approach\",\"comparator\":\"exists\"}"
+
+      # Evidence: json_path_match (equality comparator) — also verifies fib(10)
+      - key: final_output_fib_10_correct
+        type: json_path_match
+        target: final_output
+        expected_from: "literal:{\"path\":\"$.sample_values[2].fib\",\"comparator\":\"equals\",\"value\":55}"
+
+      # === file: validators — source.kind = tool_call =======================
+
+      # Evidence: text_compare (file contents vs literal needle)
+      - key: solution_defines_function
+        type: file_content_match
+        target: file:solution
+        expected_from: "literal:def fibonacci"
+        config:
+          mode: contains
+
+      # Evidence: regex_match on captured file — exercises the source pointer
+      # for a file validator in addition to another regex evidence block.
+      - key: solution_returns_an_int
+        type: regex_match
+        target: file:solution
+        expected_from: "literal:return\\s+\\w+"
+
+      # === code_execution — source.kind = tool_call, evidence = custom ======
+
+      # Runs the agent's captured file against a smoke test. The code
+      # execution event carries stdout/stderr/exit_code into raw_output,
+      # which the inspector surfaces as the "custom" evidence shape.
+      - key: tests_pass
+        type: code_execution
+        target: file:solution
+        config:
+          test_command: "python3 -c \"import sys; sys.path.insert(0,'/workspace'); from solution import fibonacci; assert fibonacci(0)==0; assert fibonacci(1)==1; assert fibonacci(10)==55; print('OK')\""
+          scoring: all_or_nothing
+
+      # === case.* validator — source is nil, no replay link =================
+
+      # Reads the expected approach list from case expectations. This validator
+      # targets case evidence, so the scorecard should NOT render a "View in
+      # replay →" link for it — it has no originating run event.
+      - key: approach_is_allowed
+        type: contains
+        target: "case.expectations.allowed_approaches"
+        expected_from: "case.payload.submitted_approach_hint"
+
+    # --------------------------------------------------------------------
+    # Metrics — all aggregate, all intentionally leave `source` nil (we
+    # dropped MetricResult.Source in the fix-up pass because no collector
+    # populates it).
+    # --------------------------------------------------------------------
+    metrics:
+      - key: completed
+        type: boolean
+        collector: run_completed_successfully
+      - key: total_latency_ms
+        type: numeric
+        collector: run_total_latency_ms
+        unit: ms
+      - key: total_tokens
+        type: numeric
+        collector: run_total_tokens
+
+    # --------------------------------------------------------------------
+    # LLM judges — one assertion-mode, one reference-mode, so the judge
+    # inspector shows both shapes.
+    # --------------------------------------------------------------------
+    llm_judges:
+      - key: code_quality
+        mode: reference
+        model: claude-sonnet-4-6
+        samples: 2
+        context_from:
+          - final_output
+          - case.expectations.reference_solution
+        reference_from: case.expectations.reference_solution
+        rubric: |
+          Score the submitted solution from 1 to 5 against the reference.
+          Reward clean, idiomatic Python with correct edge cases for n=0 and
+          n=1. Penalize unbounded recursion without memoization, shadowed
+          builtins, or missing type hints on the public function signature.
+
+      - key: explanation_clarity
+        mode: assertion
+        model: claude-haiku-4-5-20251001
+        samples: 3
+        context_from:
+          - final_output
+        assertion: |
+          The `explanation` field in the final output describes the chosen
+          approach in plain language, names the time/space complexity, and
+          justifies the complexity — not just restates it. One-sentence
+          descriptions that just say "it uses a loop" should fail.
+
+    runtime_limits:
+      max_duration_ms: 180000
+      max_total_tokens: 24000
+
+    # --------------------------------------------------------------------
+    # Scorecard — mix dimensions across validator / llm_judge / behavioral
+    # so the dimensions deck shows variety. `correctness` gates the run.
+    # --------------------------------------------------------------------
+    scorecard:
+      strategy: hybrid
+      judge_limits:
+        max_samples_per_judge: 3
+        max_tokens: 8000
+      dimensions:
+        - key: correctness
+          source: validators
+          validators:
+            - final_output_schema
+            - final_output_has_approach
+            - final_output_fib_10_correct
+            - solution_defines_function
+            - solution_returns_an_int
+            - tests_pass
+          better_direction: higher
+          gate: true
+          pass_threshold: 1.0
+          weight: 0.5
+
+        - key: output_contract
+          source: validators
+          validators:
+            - final_output_mentions_fibonacci
+            - final_output_complexity_has_big_o
+            - approach_is_allowed
+          better_direction: higher
+          weight: 0.1
+
+        - key: code_quality
+          source: llm_judge
+          judge_key: code_quality
+          better_direction: higher
+          weight: 0.25
+
+        - key: explanation_clarity
+          source: llm_judge
+          judge_key: explanation_clarity
+          better_direction: higher
+          weight: 0.15
+
+      pass_threshold: 0.7
+
+# --------------------------------------------------------------------
+# The challenge — one case, deliberately solvable, with an ambiguous
+# "submitted_approach_hint" that flows into the case.* validator above.
+# --------------------------------------------------------------------
+challenges:
+  - key: fibonacci-function
+    title: Implement a fibonacci function in Python
+    category: coding
+    difficulty: easy
+    instructions: |
+      Write a Python module at `/workspace/solution.py` that exports a
+      `fibonacci(n)` function returning the n-th Fibonacci number (with
+      fib(0) = 0 and fib(1) = 1). Any correct algorithm is fine, but prefer
+      iterative or memoized over naive recursive.
+
+      After writing the file, emit a single final JSON answer that matches
+      this shape exactly (no surrounding prose, no code fences):
+
+          {
+            "approach": "iterative" | "recursive" | "memoized",
+            "complexity": { "time": "O(n)", "space": "O(1)" },
+            "sample_values": [
+              { "n": 0, "fib": 0 },
+              { "n": 1, "fib": 1 },
+              { "n": 10, "fib": 55 }
+            ],
+            "explanation": "Plain-language description of the approach, the time/space complexity, and why that complexity holds. At least a few sentences."
+          }
+
+      The `explanation` must actually justify the complexity, not just
+      restate it. The `sample_values` list must include at least n=0, n=1,
+      and n=10 with correct fibonacci numbers.
+
+input_sets:
+  - key: default
+    name: Default Input Set
+    cases:
+      - challenge_key: fibonacci-function
+        case_key: iterative-preferred
+        payload:
+          submitted_approach_hint: "iterative"
+        expectations:
+          - key: allowed_approaches
+            kind: text
+            value: "iterative, memoized, recursive"
+          - key: reference_solution
+            kind: text
+            value: |
+              Reference implementation (iterative, O(n) time, O(1) space):
+
+                  def fibonacci(n: int) -> int:
+                      if n < 0:
+                          raise ValueError("n must be non-negative")
+                      a, b = 0, 1
+                      for _ in range(n):
+                          a, b = b, a + b
+                      return a
+
+              The final-output JSON should look like:
+
+                  {
+                    "approach": "iterative",
+                    "complexity": {"time": "O(n)", "space": "O(1)"},
+                    "sample_values": [
+                      {"n": 0, "fib": 0},
+                      {"n": 1, "fib": 1},
+                      {"n": 10, "fib": 55}
+                    ],
+                    "explanation": "Walks two running values up to n, so each step is O(1) and the total is O(n). We only hold two integers at any time, so space is O(1)."
+                  }

@@ -324,7 +324,7 @@ func evaluateSingleNWiseJudge(
 				Metadata: mustMarshalJSON(map[string]any{
 					"run_id":             executionContext.Run.ID,
 					"run_agent_id":       executionContext.RunAgent.ID,
-					"evaluation_spec_id": executionContext.ChallengePackVersion.ID,
+					"evaluation_spec_id": executionContext.EvalPackVersion.ID,
 					"judge_key":          judge.Key,
 					"judge_mode":         judge.Mode,
 					"judge_model":        model,
@@ -426,13 +426,13 @@ func buildNWiseCandidates(
 		if err != nil {
 			return nil, "", fmt.Errorf("list n_wise run-agent events %s: %w", runAgent.ID, err)
 		}
-		challengeInputs, err := mapChallengeInputs(agentExecutionContext.ChallengePackVersion.Manifest, agentExecutionContext.ChallengeInputSet)
+		challengeInputs, err := mapChallengeInputs(agentExecutionContext.EvalPackVersion.Manifest, agentExecutionContext.ChallengeInputSet)
 		if err != nil {
 			return nil, "", fmt.Errorf("map n_wise challenge inputs for %s: %w", runAgent.ID, err)
 		}
 		contextValues, reason, err := resolveJudgeContextValues(scoring.EvaluationInput{
 			RunAgentID:       runAgent.ID,
-			EvaluationSpecID: executionContext.ChallengePackVersion.ID,
+			EvaluationSpecID: executionContext.EvalPackVersion.ID,
 			ChallengeInputs:  challengeInputs,
 			Events:           mapRunEvents(events),
 		}, judge)

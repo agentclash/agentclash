@@ -17,17 +17,17 @@ func (stubHostedRunIngestionService) IngestEvent(_ context.Context, _ uuid.UUID,
 
 type stubAgentBuildService struct{}
 
-type stubChallengePackAuthoringService struct{}
+type stubEvalPackAuthoringService struct{}
 
-func (stubChallengePackAuthoringService) ValidateBundle(_ context.Context, _ uuid.UUID, _ []byte) (ValidateChallengePackResponse, error) {
-	return ValidateChallengePackResponse{}, errors.New("not implemented")
+func (stubEvalPackAuthoringService) ValidateBundle(_ context.Context, _ uuid.UUID, _ []byte) (ValidateEvalPackResponse, error) {
+	return ValidateEvalPackResponse{}, errors.New("not implemented")
 }
 
-func (stubChallengePackAuthoringService) PublishBundle(_ context.Context, _ uuid.UUID, _ []byte) (PublishChallengePackResponse, error) {
-	return PublishChallengePackResponse{}, errors.New("not implemented")
+func (stubEvalPackAuthoringService) PublishBundle(_ context.Context, _ uuid.UUID, _ []byte) (PublishEvalPackResponse, error) {
+	return PublishEvalPackResponse{}, errors.New("not implemented")
 }
 
-func (stubChallengePackAuthoringService) InstantiateCatalogPack(_ context.Context, _ uuid.UUID, _ string) (InstantiateCatalogPackResponse, error) {
+func (stubEvalPackAuthoringService) InstantiateCatalogPack(_ context.Context, _ uuid.UUID, _ string) (InstantiateCatalogPackResponse, error) {
 	return InstantiateCatalogPackResponse{}, errors.New("not implemented")
 }
 

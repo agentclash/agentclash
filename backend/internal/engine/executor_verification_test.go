@@ -325,7 +325,7 @@ func TestCollectPostExecutionVerification_IncludesCodeExecution(t *testing.T) {
 	}
 
 	executionContext := repository.RunAgentExecutionContext{
-		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+		EvalPackVersion: repository.EvalPackVersionExecutionContext{
 			Manifest: []byte(`{
 				"evaluation_spec": {
 					"name": "code-exec",

@@ -1,7 +1,7 @@
 ---
 title: "AI Agent Evaluation Needs Regression Testing, Not Just Benchmarks"
 date: "2026-05-07"
-description: "A practical guide to AI agent evaluation with real-task workloads, replay evidence, scorecards, challenge packs, and CI regression gates."
+description: "A practical guide to AI agent evaluation with real-task workloads, replay evidence, scorecards, eval packs, and CI regression gates."
 author: "Atharva"
 ---
 
@@ -40,9 +40,9 @@ For agents, the path matters.
 
 Two agents can produce the same final answer while behaving very differently. One might use the right tool, verify its work, attach the required artifact, and stay inside budget. Another might hallucinate a file, skip the failing test, and still land near the correct prose answer. A final-answer-only benchmark treats those runs as similar. A real agent eval should not.
 
-## Turn failures into challenge packs
+## Turn failures into eval packs
 
-The repeatable unit in AgentClash is a challenge pack: a workload definition with cases, inputs, tools, scoring rules, and artifacts. Challenge packs make agent evaluation operational because they turn a vague question into something runnable:
+The repeatable unit in AgentClash is a eval pack: a workload definition with cases, inputs, tools, scoring rules, and artifacts. Eval packs make agent evaluation operational because they turn a vague question into something runnable:
 
 - What task should the agent perform?
 - What inputs and fixtures should it see?
@@ -52,7 +52,7 @@ The repeatable unit in AgentClash is a challenge pack: a workload definition wit
 
 When an agent fails in production or in a release test, the failure should become a reusable case. That is how the eval suite compounds. Instead of debugging the same mistake every few weeks, you promote it into coverage and make the next candidate prove it did not regress.
 
-The docs for [writing a challenge pack](/docs/guides/write-a-challenge-pack) are the right starting point if you want to turn a real workflow into a durable eval.
+The docs for [writing an eval pack](/docs/guides/write-an-eval-pack) are the right starting point if you want to turn a real workflow into a durable eval.
 
 ## Add regression gates to CI
 
@@ -91,7 +91,7 @@ The goal is not to collect more numbers. The goal is to shorten the path from "t
 
 The loop should look like this:
 
-1. Capture a real task as a challenge pack.
+1. Capture a real task as a eval pack.
 2. Run candidate and baseline agents under the same constraints.
 3. Inspect replay evidence and scorecards.
 4. Promote important failures into regression cases.

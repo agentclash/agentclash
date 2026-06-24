@@ -193,7 +193,7 @@ func TestRunCreateGuidedSelectionPostsResolvedIDs(t *testing.T) {
 
 	var gotBody map[string]any
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/eval-packs": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{
 					"id":   "pack-1",
@@ -212,7 +212,7 @@ func TestRunCreateGuidedSelectionPostsResolvedIDs(t *testing.T) {
 				},
 			},
 		}),
-		"GET /v1/workspaces/ws-1/challenge-pack-versions/cpv-2/input-sets": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/eval-pack-versions/cpv-2/input-sets": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{"id": "input-1", "name": "Small", "input_key": "small"},
 				{"id": "input-2", "name": "Large", "input_key": "large"},
@@ -241,8 +241,8 @@ func TestRunCreateGuidedSelectionPostsResolvedIDs(t *testing.T) {
 		t.Fatalf("run create error: %v", err)
 	}
 
-	if gotBody["challenge_pack_version_id"] != "cpv-2" {
-		t.Fatalf("challenge_pack_version_id = %v, want cpv-2", gotBody["challenge_pack_version_id"])
+	if gotBody["eval_pack_version_id"] != "cpv-2" {
+		t.Fatalf("eval_pack_version_id = %v, want cpv-2", gotBody["eval_pack_version_id"])
 	}
 	if gotBody["challenge_input_set_id"] != "input-2" {
 		t.Fatalf("challenge_input_set_id = %v, want input-2", gotBody["challenge_input_set_id"])
@@ -272,19 +272,19 @@ func TestRunCreateNonInteractiveRequiresExplicitFlags(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected non-interactive validation error")
 	}
-	if got := err.Error(); got != "challenge pack version and deployment selection required in non-interactive mode; pass --challenge-pack-version and --deployments or --deployment-lineup or rerun `agentclash run create` in a TTY for guided selection" {
+	if got := err.Error(); got != "eval pack version and deployment selection required in non-interactive mode; pass --eval-pack-version and --deployments or --deployment-lineup or rerun `agentclash run create` in a TTY for guided selection" {
 		t.Fatalf("error = %q", got)
 	}
 }
 
-func TestRunCreateNonInteractiveUsesChallengePackDefaultDeploymentLineup(t *testing.T) {
+func TestRunCreateNonInteractiveUsesEvalPackDefaultDeploymentLineup(t *testing.T) {
 	oldInteractive := isInteractiveTerminal
 	isInteractiveTerminal = func(*RunContext) bool { return false }
 	t.Cleanup(func() { isInteractiveTerminal = oldInteractive })
 
 	var gotBody map[string]any
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/eval-packs": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{
 					"id":   "pack-1",
@@ -328,7 +328,7 @@ func TestRunCreateNonInteractiveUsesChallengePackDefaultDeploymentLineup(t *test
 	if err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--challenge-pack-version", "cpv-defaults",
+		"--eval-pack-version", "cpv-defaults",
 		"--input-set", "input-default",
 	}, srv.URL); err != nil {
 		t.Fatalf("run create error: %v", err)
@@ -350,7 +350,7 @@ func TestRunCreateUsesNamedDeploymentLineup(t *testing.T) {
 
 	var gotBody map[string]any
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/eval-packs": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{
 					"id":   "pack-1",
@@ -392,7 +392,7 @@ func TestRunCreateUsesNamedDeploymentLineup(t *testing.T) {
 	if err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--challenge-pack-version", "cpv-defaults",
+		"--eval-pack-version", "cpv-defaults",
 		"--input-set", "input-default",
 		"--deployment-lineup", "smoke",
 	}, srv.URL); err != nil {
@@ -416,16 +416,16 @@ func TestRunCreateInteractiveExplicitVersionLooksUpDefaultsOnce(t *testing.T) {
 		newInteractivePicker = oldPickerFactory
 	})
 
-	challengePacksCalls := 0
+	evalPacksCalls := 0
 	var gotBody map[string]any
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/workspaces/ws-1/challenge-pack-versions/cpv-explicit/input-sets": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/eval-pack-versions/cpv-explicit/input-sets": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{"id": "input-1", "name": "Small", "input_key": "small"},
 			},
 		}),
-		"GET /v1/workspaces/ws-1/challenge-packs": func(w http.ResponseWriter, r *http.Request) {
-			challengePacksCalls++
+		"GET /v1/workspaces/ws-1/eval-packs": func(w http.ResponseWriter, r *http.Request) {
+			evalPacksCalls++
 			jsonHandler(200, map[string]any{
 				"items": []map[string]any{
 					{
@@ -458,13 +458,13 @@ func TestRunCreateInteractiveExplicitVersionLooksUpDefaultsOnce(t *testing.T) {
 	if err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--challenge-pack-version", "cpv-explicit",
+		"--eval-pack-version", "cpv-explicit",
 	}, srv.URL); err != nil {
 		t.Fatalf("run create error: %v", err)
 	}
 
-	if challengePacksCalls != 1 {
-		t.Fatalf("challenge-packs calls = %d, want 1", challengePacksCalls)
+	if evalPacksCalls != 1 {
+		t.Fatalf("eval-packs calls = %d, want 1", evalPacksCalls)
 	}
 	deploymentIDs := gotBody["agent_deployment_ids"].([]any)
 	if len(deploymentIDs) != 1 || deploymentIDs[0] != "dep-only" {
@@ -477,7 +477,7 @@ func TestRunCreateRejectsDeploymentLineupWithExplicitDeployments(t *testing.T) {
 	err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--challenge-pack-version", "cpv-explicit",
+		"--eval-pack-version", "cpv-explicit",
 		"--input-set", "input-explicit",
 		"--deployments", "dep-a",
 		"--deployment-lineup", "smoke",
@@ -522,15 +522,15 @@ func TestRunCreateExplicitFlagsBypassGuidedPrompts(t *testing.T) {
 	if err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--challenge-pack-version", "cpv-explicit",
+		"--eval-pack-version", "cpv-explicit",
 		"--input-set", "input-explicit",
 		"--deployments", "dep-a,dep-b",
 	}, srv.URL); err != nil {
 		t.Fatalf("run create error: %v", err)
 	}
 
-	if gotBody["challenge_pack_version_id"] != "cpv-explicit" {
-		t.Fatalf("challenge_pack_version_id = %v, want cpv-explicit", gotBody["challenge_pack_version_id"])
+	if gotBody["eval_pack_version_id"] != "cpv-explicit" {
+		t.Fatalf("eval_pack_version_id = %v, want cpv-explicit", gotBody["eval_pack_version_id"])
 	}
 	if gotBody["challenge_input_set_id"] != "input-explicit" {
 		t.Fatalf("challenge_input_set_id = %v, want input-explicit", gotBody["challenge_input_set_id"])
@@ -566,7 +566,7 @@ func TestRunCreateRaceContextFlagsPropagate(t *testing.T) {
 	if err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--challenge-pack-version", "cpv-explicit",
+		"--eval-pack-version", "cpv-explicit",
 		"--input-set", "input-explicit",
 		"--deployments", "dep-a,dep-b",
 		"--race-context",
@@ -610,7 +610,7 @@ func TestRunCreateRaceContextCadenceOutOfRangeFailsLocally(t *testing.T) {
 	err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--challenge-pack-version", "cpv-explicit",
+		"--eval-pack-version", "cpv-explicit",
 		"--input-set", "input-explicit",
 		"--deployments", "dep-a,dep-b",
 		"--race-context",
@@ -627,12 +627,12 @@ func TestRunCreateRaceContextCadenceOutOfRangeFailsLocally(t *testing.T) {
 	}
 }
 
-// TestRunCreateInputSetPickerFiresWhenChallengePackVersionIsExplicit pins the
+// TestRunCreateInputSetPickerFiresWhenEvalPackVersionIsExplicit pins the
 // behavior we restored after PR #414's review: passing
-// --challenge-pack-version without --input-set in a TTY must still launch the
+// --eval-pack-version without --input-set in a TTY must still launch the
 // interactive input-set picker. Silently submitting without an input set was
 // a regression on the prior CLI surface.
-func TestRunCreateInputSetPickerFiresWhenChallengePackVersionIsExplicit(t *testing.T) {
+func TestRunCreateInputSetPickerFiresWhenEvalPackVersionIsExplicit(t *testing.T) {
 	picker := &fakePicker{
 		// Only the input-set picker should be called: cpv is explicit, only
 		// one deployment exists so selectManyOrAuto auto-resolves it.
@@ -649,7 +649,7 @@ func TestRunCreateInputSetPickerFiresWhenChallengePackVersionIsExplicit(t *testi
 
 	var gotBody map[string]any
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/workspaces/ws-1/challenge-pack-versions/cpv-explicit/input-sets": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/eval-pack-versions/cpv-explicit/input-sets": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{"id": "input-1", "name": "Small", "input_key": "small"},
 				{"id": "input-2", "name": "Large", "input_key": "large"},
@@ -670,7 +670,7 @@ func TestRunCreateInputSetPickerFiresWhenChallengePackVersionIsExplicit(t *testi
 	if err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--challenge-pack-version", "cpv-explicit",
+		"--eval-pack-version", "cpv-explicit",
 		"--deployments", "dep-a",
 	}, srv.URL); err != nil {
 		t.Fatalf("run create error: %v", err)
@@ -713,7 +713,7 @@ func TestRunCreateWithoutRaceContextFlagsOmitsFields(t *testing.T) {
 	if err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--challenge-pack-version", "cpv-explicit",
+		"--eval-pack-version", "cpv-explicit",
 		"--input-set", "input-explicit",
 		"--deployments", "dep-a",
 	}, srv.URL); err != nil {

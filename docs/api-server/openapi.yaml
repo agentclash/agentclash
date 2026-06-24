@@ -45,8 +45,8 @@ tags:
     description: File upload, download, and content delivery
   - name: Billing
     description: Billing plans, entitlements, checkout, and Dodo webhook handling
-  - name: ChallengePacks
-    description: Challenge pack management and authoring
+  - name: EvalPacks
+    description: Eval pack management and authoring
   - name: AgentBuilds
     description: Agent build and version lifecycle
   - name: AgentDeployments
@@ -2472,7 +2472,7 @@ paths:
       summary: Create a new run
       description: >
         Creates a new evaluation run pitting agent deployments against a
-        challenge pack version. Starts a Temporal workflow on success.
+        eval pack version. Starts a Temporal workflow on success.
       security:
         - bearerJWT: []
       requestBody:
@@ -4571,34 +4571,34 @@ paths:
           $ref: "#/components/responses/NotFoundError"
 
   # ---------------------------------------------------------------------------
-  # Challenge Packs
+  # Eval Packs
   # ---------------------------------------------------------------------------
-  /v1/workspaces/{workspaceID}/challenge-packs:
+  /v1/workspaces/{workspaceID}/eval-packs:
     get:
-      operationId: listChallengePacks
-      tags: [ChallengePacks]
-      summary: List challenge packs
+      operationId: listEvalPacks
+      tags: [EvalPacks]
+      summary: List eval packs
       security:
         - bearerJWT: []
       parameters:
         - $ref: "#/components/parameters/WorkspaceID"
       responses:
         "200":
-          description: Challenge packs with versions
+          description: Eval packs with versions
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListChallengePacksResponse"
+                $ref: "#/components/schemas/ListEvalPacksResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
     post:
-      operationId: publishChallengePack
-      tags: [ChallengePacks]
-      summary: Publish a challenge pack
+      operationId: publishEvalPack
+      tags: [EvalPacks]
+      summary: Publish a eval pack
       description: >
-        Validates and publishes a challenge pack bundle. The request body is raw
+        Validates and publishes a eval pack bundle. The request body is raw
         YAML (max 1 MiB).
       security:
         - bearerJWT: []
@@ -4613,11 +4613,11 @@ paths:
               format: binary
       responses:
         "201":
-          description: Challenge pack published
+          description: Eval pack published
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PublishChallengePackResponse"
+                $ref: "#/components/schemas/PublishEvalPackResponse"
         "400":
           description: Validation errors
           content:
@@ -4629,19 +4629,19 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenError"
         "409":
-          description: Challenge pack version or metadata conflict
+          description: Eval pack version or metadata conflict
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
-  /v1/workspaces/{workspaceID}/challenge-packs/validate:
+  /v1/workspaces/{workspaceID}/eval-packs/validate:
     post:
-      operationId: validateChallengePack
-      tags: [ChallengePacks]
-      summary: Validate a challenge pack bundle
+      operationId: validateEvalPack
+      tags: [EvalPacks]
+      summary: Validate a eval pack bundle
       description: >
-        Validates a challenge pack YAML bundle without publishing it. Returns
+        Validates a eval pack YAML bundle without publishing it. Returns
         200 if valid, 400 with error details if invalid.
       security:
         - bearerJWT: []
@@ -4672,11 +4672,11 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenError"
 
-  /v1/workspaces/{workspaceID}/challenge-pack-versions/{versionID}/input-sets:
+  /v1/workspaces/{workspaceID}/eval-pack-versions/{versionID}/input-sets:
     get:
       operationId: listChallengeInputSets
-      tags: [ChallengePacks]
-      summary: List published input sets for a challenge-pack version
+      tags: [EvalPacks]
+      summary: List published input sets for a eval-pack version
       security:
         - bearerJWT: []
       parameters:
@@ -4704,12 +4704,12 @@ paths:
           $ref: "#/components/responses/NotFoundError"
 
   # ---------------------------------------------------------------------------
-  # Challenge Pack Builder (reusable pieces + drafts)
+  # Eval Pack Builder (reusable pieces + drafts)
   # ---------------------------------------------------------------------------
   /v1/challenge-piece-library:
     get:
       operationId: listChallengePieceLibrary
-      tags: [ChallengePacks]
+      tags: [EvalPacks]
       summary: List built-in starter pieces
       description: A global, read-only catalog of starter pieces the builder can clone into a pack. Not workspace-scoped.
       security:
@@ -4736,13 +4736,13 @@ paths:
                       $ref: "#/components/schemas/StarterPiece"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
-  /v1/challenge-pack-catalog:
+  /v1/eval-pack-catalog:
     get:
-      operationId: listChallengePackCatalog
-      tags: [ChallengePacks]
-      summary: List the curated challenge-pack library
+      operationId: listEvalPackCatalog
+      tags: [EvalPacks]
+      summary: List the curated eval-pack library
       description: >
-        A global, read-only catalog of ready-to-run challenge packs ("templates")
+        A global, read-only catalog of ready-to-run eval packs ("templates")
         users can clone into a workspace. Not workspace-scoped. The raw YAML body
         is omitted from list items; fetch the detail endpoint for it.
       security:
@@ -4771,13 +4771,13 @@ paths:
                   items:
                     type: array
                     items:
-                      $ref: "#/components/schemas/ChallengePackCatalogSummary"
+                      $ref: "#/components/schemas/EvalPackCatalogSummary"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
-  /v1/challenge-pack-catalog/{slug}:
+  /v1/eval-pack-catalog/{slug}:
     get:
-      operationId: getChallengePackCatalogEntry
-      tags: [ChallengePacks]
+      operationId: getEvalPackCatalogEntry
+      tags: [EvalPacks]
       summary: Get a catalog entry including its runnable YAML
       security:
         - bearerJWT: []
@@ -4793,15 +4793,15 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ChallengePackCatalogEntry"
+                $ref: "#/components/schemas/EvalPackCatalogEntry"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "404":
           $ref: "#/components/responses/NotFoundError"
-  /v1/workspaces/{workspaceID}/challenge-pack-catalog/{slug}/instantiate:
+  /v1/workspaces/{workspaceID}/eval-pack-catalog/{slug}/instantiate:
     post:
-      operationId: instantiateChallengePackCatalog
-      tags: [ChallengePacks]
+      operationId: instantiateEvalPackCatalog
+      tags: [EvalPacks]
       summary: Clone a catalog pack into the workspace
       description: >
         Clones a curated library pack into the caller's workspace as a runnable,
@@ -4824,13 +4824,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/InstantiateChallengePackCatalogResponse"
+                $ref: "#/components/schemas/InstantiateEvalPackCatalogResponse"
         "201":
           description: Catalog pack cloned into the workspace
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/InstantiateChallengePackCatalogResponse"
+                $ref: "#/components/schemas/InstantiateEvalPackCatalogResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -4846,7 +4846,7 @@ paths:
   /v1/workspaces/{workspaceID}/challenge-pieces:
     get:
       operationId: listChallengePieces
-      tags: [ChallengePacks]
+      tags: [EvalPacks]
       summary: List reusable challenge pieces
       security:
         - bearerJWT: []
@@ -4877,7 +4877,7 @@ paths:
           $ref: "#/components/responses/ForbiddenError"
     post:
       operationId: createChallengePiece
-      tags: [ChallengePacks]
+      tags: [EvalPacks]
       summary: Create a reusable challenge piece
       security:
         - bearerJWT: []
@@ -4914,7 +4914,7 @@ paths:
   /v1/workspaces/{workspaceID}/challenge-pieces/{pieceID}:
     get:
       operationId: getChallengePiece
-      tags: [ChallengePacks]
+      tags: [EvalPacks]
       summary: Get a reusable challenge piece
       security:
         - bearerJWT: []
@@ -4938,7 +4938,7 @@ paths:
           $ref: "#/components/responses/NotFoundError"
     patch:
       operationId: patchChallengePiece
-      tags: [ChallengePacks]
+      tags: [EvalPacks]
       summary: Patch a reusable challenge piece
       security:
         - bearerJWT: []
@@ -4976,7 +4976,7 @@ paths:
           $ref: "#/components/responses/UnsupportedMediaType"
     delete:
       operationId: deleteChallengePiece
-      tags: [ChallengePacks]
+      tags: [EvalPacks]
       summary: Delete a reusable challenge piece
       security:
         - bearerJWT: []
@@ -4993,30 +4993,30 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
-  /v1/workspaces/{workspaceID}/challenge-pack-drafts:
+  /v1/workspaces/{workspaceID}/eval-pack-drafts:
     get:
-      operationId: listChallengePackDrafts
-      tags: [ChallengePacks]
-      summary: List challenge pack drafts
+      operationId: listEvalPackDrafts
+      tags: [EvalPacks]
+      summary: List eval pack drafts
       security:
         - bearerJWT: []
       parameters:
         - $ref: "#/components/parameters/WorkspaceID"
       responses:
         "200":
-          description: Challenge pack drafts
+          description: Eval pack drafts
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ListChallengePackDraftsResponse"
+                $ref: "#/components/schemas/ListEvalPackDraftsResponse"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
           $ref: "#/components/responses/ForbiddenError"
     post:
-      operationId: createChallengePackDraft
-      tags: [ChallengePacks]
-      summary: Create a challenge pack draft
+      operationId: createEvalPackDraft
+      tags: [EvalPacks]
+      summary: Create a eval pack draft
       security:
         - bearerJWT: []
       parameters:
@@ -5026,14 +5026,14 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateChallengePackDraftRequest"
+              $ref: "#/components/schemas/CreateEvalPackDraftRequest"
       responses:
         "201":
-          description: Challenge pack draft created
+          description: Eval pack draft created
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ChallengePackDraft"
+                $ref: "#/components/schemas/EvalPackDraft"
         "400":
           description: Validation errors
           content:
@@ -5047,23 +5047,23 @@ paths:
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
 
-  /v1/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}:
+  /v1/workspaces/{workspaceID}/eval-pack-drafts/{draftID}:
     get:
-      operationId: getChallengePackDraft
-      tags: [ChallengePacks]
-      summary: Get a challenge pack draft
+      operationId: getEvalPackDraft
+      tags: [EvalPacks]
+      summary: Get a eval pack draft
       security:
         - bearerJWT: []
       parameters:
         - $ref: "#/components/parameters/WorkspaceID"
-        - $ref: "#/components/parameters/ChallengePackDraftID"
+        - $ref: "#/components/parameters/EvalPackDraftID"
       responses:
         "200":
-          description: Challenge pack draft
+          description: Eval pack draft
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ChallengePackDraft"
+                $ref: "#/components/schemas/EvalPackDraft"
         "400":
           $ref: "#/components/responses/ValidationError"
         "401":
@@ -5073,27 +5073,27 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
     patch:
-      operationId: patchChallengePackDraft
-      tags: [ChallengePacks]
-      summary: Patch a challenge pack draft
+      operationId: patchEvalPackDraft
+      tags: [EvalPacks]
+      summary: Patch a eval pack draft
       security:
         - bearerJWT: []
       parameters:
         - $ref: "#/components/parameters/WorkspaceID"
-        - $ref: "#/components/parameters/ChallengePackDraftID"
+        - $ref: "#/components/parameters/EvalPackDraftID"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/PatchChallengePackDraftRequest"
+              $ref: "#/components/schemas/PatchEvalPackDraftRequest"
       responses:
         "200":
-          description: Challenge pack draft updated
+          description: Eval pack draft updated
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ChallengePackDraft"
+                $ref: "#/components/schemas/EvalPackDraft"
         "400":
           description: Validation errors
           content:
@@ -5109,17 +5109,17 @@ paths:
         "415":
           $ref: "#/components/responses/UnsupportedMediaType"
     delete:
-      operationId: deleteChallengePackDraft
-      tags: [ChallengePacks]
-      summary: Delete a challenge pack draft
+      operationId: deleteEvalPackDraft
+      tags: [EvalPacks]
+      summary: Delete a eval pack draft
       security:
         - bearerJWT: []
       parameters:
         - $ref: "#/components/parameters/WorkspaceID"
-        - $ref: "#/components/parameters/ChallengePackDraftID"
+        - $ref: "#/components/parameters/EvalPackDraftID"
       responses:
         "204":
-          description: Challenge pack draft deleted
+          description: Eval pack draft deleted
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -5127,11 +5127,11 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
-  /v1/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}/compile:
+  /v1/workspaces/{workspaceID}/eval-pack-drafts/{draftID}/compile:
     post:
-      operationId: compileChallengePackDraft
-      tags: [ChallengePacks]
-      summary: Compile a challenge pack draft
+      operationId: compileEvalPackDraft
+      tags: [EvalPacks]
+      summary: Compile a eval pack draft
       description: >
         Resolves the draft's referenced pieces and validates the composed
         bundle without publishing it. Returns a readable spec card, the
@@ -5141,7 +5141,7 @@ paths:
         - bearerJWT: []
       parameters:
         - $ref: "#/components/parameters/WorkspaceID"
-        - $ref: "#/components/parameters/ChallengePackDraftID"
+        - $ref: "#/components/parameters/EvalPackDraftID"
       responses:
         "200":
           description: Draft compiled
@@ -5156,27 +5156,27 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
 
-  /v1/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}/publish:
+  /v1/workspaces/{workspaceID}/eval-pack-drafts/{draftID}/publish:
     post:
-      operationId: publishChallengePackDraft
-      tags: [ChallengePacks]
-      summary: Publish a challenge pack draft
+      operationId: publishEvalPackDraft
+      tags: [EvalPacks]
+      summary: Publish a eval pack draft
       description: >
         Composes the draft into a runnable bundle, then validates and publishes
         it through the same path as the raw-YAML publish endpoint, snapshotting
-        an immutable challenge pack version.
+        an immutable eval pack version.
       security:
         - bearerJWT: []
       parameters:
         - $ref: "#/components/parameters/WorkspaceID"
-        - $ref: "#/components/parameters/ChallengePackDraftID"
+        - $ref: "#/components/parameters/EvalPackDraftID"
       responses:
         "201":
-          description: Challenge pack published
+          description: Eval pack published
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/PublishChallengePackResponse"
+                $ref: "#/components/schemas/PublishEvalPackResponse"
         "400":
           description: Validation errors
           content:
@@ -5190,7 +5190,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFoundError"
         "409":
-          description: Challenge pack version or metadata conflict
+          description: Eval pack version or metadata conflict
           content:
             application/json:
               schema:
@@ -6741,7 +6741,7 @@ components:
       schema:
         type: string
         format: uuid
-    ChallengePackDraftID:
+    EvalPackDraftID:
       name: draftID
       in: path
       required: true
@@ -6914,7 +6914,7 @@ components:
           type: object
           additionalProperties: true
         input_schema_enforced: { type: boolean }
-        default_challenge_pack_version_id: { type: string, format: uuid }
+        default_eval_pack_version_id: { type: string, format: uuid }
         active_example_count: { type: integer }
         version_count: { type: integer }
         created_by: { type: string, format: uuid }
@@ -6975,7 +6975,7 @@ components:
           type: object
           additionalProperties: true
         input_schema_enforced: { type: boolean }
-        default_challenge_pack_version_id: { type: string, format: uuid }
+        default_eval_pack_version_id: { type: string, format: uuid }
 
     PatchDatasetInput:
       type: object
@@ -6987,7 +6987,7 @@ components:
           type: object
           additionalProperties: true
         input_schema_enforced: { type: boolean }
-        default_challenge_pack_version_id: { type: string, format: uuid }
+        default_eval_pack_version_id: { type: string, format: uuid }
 
     UpsertDatasetExampleInput:
       type: object
@@ -7117,10 +7117,10 @@ components:
 
     StartDatasetEvalInput:
       type: object
-      required: [version_id, challenge_pack_version_id, agent_deployment_ids]
+      required: [version_id, eval_pack_version_id, agent_deployment_ids]
       properties:
         version_id: { type: string, format: uuid }
-        challenge_pack_version_id: { type: string, format: uuid }
+        eval_pack_version_id: { type: string, format: uuid }
         challenge_id:
           type: string
           description: Challenge key to bind dataset examples to.
@@ -7138,12 +7138,12 @@ components:
 
     DatasetVersionInputSet:
       type: object
-      required: [id, dataset_id, dataset_version_id, challenge_pack_version_id, challenge_identity_id, challenge_key, challenge_input_set_id, input_key, input_checksum, mapping, created_at, updated_at]
+      required: [id, dataset_id, dataset_version_id, eval_pack_version_id, challenge_identity_id, challenge_key, challenge_input_set_id, input_key, input_checksum, mapping, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         dataset_id: { type: string, format: uuid }
         dataset_version_id: { type: string, format: uuid }
-        challenge_pack_version_id: { type: string, format: uuid }
+        eval_pack_version_id: { type: string, format: uuid }
         challenge_identity_id: { type: string, format: uuid }
         challenge_key: { type: string }
         challenge_input_set_id: { type: string, format: uuid }
@@ -7200,13 +7200,13 @@ components:
     DatasetBaseline:
       type: object
       required:
-        [id, dataset_id, dataset_version_id, challenge_pack_version_id, challenge_key, run_id, metrics, example_outcomes, created_by, created_at]
+        [id, dataset_id, dataset_version_id, eval_pack_version_id, challenge_key, run_id, metrics, example_outcomes, created_by, created_at]
       properties:
         id: { type: string, format: uuid }
         dataset_id: { type: string, format: uuid }
         dataset_version_id: { type: string, format: uuid }
         dataset_version_input_set_id: { type: string, format: uuid }
-        challenge_pack_version_id: { type: string, format: uuid }
+        eval_pack_version_id: { type: string, format: uuid }
         challenge_key: { type: string }
         agent_deployment_id: { type: string, format: uuid }
         run_id: { type: string, format: uuid }
@@ -7247,10 +7247,10 @@ components:
 
     SyncDatasetRegressionSuiteInput:
       type: object
-      required: [version_id, challenge_pack_version_id, challenge_key]
+      required: [version_id, eval_pack_version_id, challenge_key]
       properties:
         version_id: { type: string, format: uuid }
-        challenge_pack_version_id: { type: string, format: uuid }
+        eval_pack_version_id: { type: string, format: uuid }
         challenge_key: { type: string }
         regression_suite_id: { type: string, format: uuid }
         suite_name: { type: string }
@@ -9820,19 +9820,19 @@ components:
 
     CreateRunRequest:
       type: object
-      required: [workspace_id, challenge_pack_version_id, agent_deployment_ids]
+      required: [workspace_id, eval_pack_version_id, agent_deployment_ids]
       properties:
         workspace_id:
           type: string
           format: uuid
-        challenge_pack_version_id:
+        eval_pack_version_id:
           type: string
           format: uuid
         challenge_input_set_id:
           type: string
           format: uuid
           description: >
-            Optional. If omitted and the challenge pack has exactly one input
+            Optional. If omitted and the eval pack has exactly one input
             set, it is auto-selected. If omitted and the pack has multiple
             input sets, the request is rejected with code
             missing_challenge_input_set_id.
@@ -9890,7 +9890,7 @@ components:
           maximum: 1000
           description: >
             Optional. Overrides the max native-agent iteration budget for this
-            run. If omitted, AgentClash uses the challenge pack
+            run. If omitted, AgentClash uses the eval pack
             `evaluation_spec.runtime_limits.max_iterations` default when
             present, otherwise the selected runtime profile default.
         ci_metadata:
@@ -9900,19 +9900,19 @@ components:
 
     CreateEvalSessionRequest:
       type: object
-      required: [workspace_id, challenge_pack_version_id, eval_session]
+      required: [workspace_id, eval_pack_version_id, eval_session]
       properties:
         workspace_id:
           type: string
           format: uuid
-        challenge_pack_version_id:
+        eval_pack_version_id:
           type: string
           format: uuid
         challenge_input_set_id:
           type: string
           format: uuid
           description: >
-            Optional. If omitted and the challenge pack has exactly one input
+            Optional. If omitted and the eval pack has exactly one input
             set, it is auto-selected. If omitted and the pack has multiple
             input sets, the request is rejected with code
             missing_challenge_input_set_id.
@@ -10007,7 +10007,7 @@ components:
         deployment_lineup:
           type: string
           minLength: 1
-          description: Optional challenge-pack lineup name used for this child run.
+          description: Optional eval-pack lineup name used for this child run.
         seed:
           type: integer
           minimum: 1
@@ -10570,7 +10570,7 @@ components:
     EvalSessionChildRun:
       type: object
       required:
-        [id, workspace_id, challenge_pack_version_id, official_pack_mode, name, status, execution_mode, created_at, updated_at, links]
+        [id, workspace_id, eval_pack_version_id, official_pack_mode, name, status, execution_mode, created_at, updated_at, links]
       properties:
         id:
           type: string
@@ -10578,7 +10578,7 @@ components:
         workspace_id:
           type: string
           format: uuid
-        challenge_pack_version_id:
+        eval_pack_version_id:
           type: string
           format: uuid
         challenge_input_set_id:
@@ -10632,7 +10632,7 @@ components:
 
     CreateRunResponse:
       type: object
-      required: [id, workspace_id, challenge_pack_version_id, official_pack_mode, status, execution_mode, race_context, created_at, links]
+      required: [id, workspace_id, eval_pack_version_id, official_pack_mode, status, execution_mode, race_context, created_at, links]
       properties:
         id:
           type: string
@@ -10640,7 +10640,7 @@ components:
         workspace_id:
           type: string
           format: uuid
-        challenge_pack_version_id:
+        eval_pack_version_id:
           type: string
           format: uuid
         challenge_input_set_id:
@@ -10712,7 +10712,7 @@ components:
 
     RunDetail:
       type: object
-      required: [id, workspace_id, challenge_pack_version_id, official_pack_mode, name, status, execution_mode, race_context, created_at, updated_at, links]
+      required: [id, workspace_id, eval_pack_version_id, official_pack_mode, name, status, execution_mode, race_context, created_at, updated_at, links]
       properties:
         id:
           type: string
@@ -10720,7 +10720,7 @@ components:
         workspace_id:
           type: string
           format: uuid
-        challenge_pack_version_id:
+        eval_pack_version_id:
           type: string
           format: uuid
         challenge_input_set_id:
@@ -11275,7 +11275,7 @@ components:
         [
           id,
           workspace_id,
-          source_challenge_pack_id,
+          source_eval_pack_id,
           name,
           description,
           status,
@@ -11293,7 +11293,7 @@ components:
         workspace_id:
           type: string
           format: uuid
-        source_challenge_pack_id:
+        source_eval_pack_id:
           type: string
           format: uuid
         name:
@@ -11331,7 +11331,7 @@ components:
           status,
           severity,
           promotion_mode,
-          source_challenge_pack_version_id,
+          source_eval_pack_version_id,
           source_challenge_identity_id,
           source_case_key,
           evidence_tier,
@@ -11375,7 +11375,7 @@ components:
         source_replay_id:
           type: string
           format: uuid
-        source_challenge_pack_version_id:
+        source_eval_pack_version_id:
           type: string
           format: uuid
         source_challenge_input_set_id:
@@ -11541,9 +11541,9 @@ components:
 
     CreateRegressionSuiteInput:
       type: object
-      required: [source_challenge_pack_id, name]
+      required: [source_eval_pack_id, name]
       properties:
-        source_challenge_pack_id:
+        source_eval_pack_id:
           type: string
           format: uuid
         name:
@@ -11582,14 +11582,14 @@ components:
     CaptureProductionFailureInput:
       type: object
       required:
-        - source_challenge_pack_version_id
+        - source_eval_pack_version_id
         - source_challenge_identity_id
         - source_case_key
         - title
         - failure_summary
         - payload_snapshot
       properties:
-        source_challenge_pack_version_id:
+        source_eval_pack_version_id:
           type: string
           format: uuid
         source_challenge_input_set_id:
@@ -13011,9 +13011,9 @@ components:
           type: string
           format: date-time
 
-    # --- Challenge Packs ---
+    # --- Eval Packs ---
 
-    ChallengePack:
+    EvalPack:
       type: object
       required: [id, name, slug, versions, created_at, updated_at]
       properties:
@@ -13029,7 +13029,7 @@ components:
         versions:
           type: array
           items:
-            $ref: "#/components/schemas/ChallengePackVersion"
+            $ref: "#/components/schemas/EvalPackVersion"
         created_at:
           type: string
           format: date-time
@@ -13037,14 +13037,14 @@ components:
           type: string
           format: date-time
 
-    ChallengePackVersion:
+    EvalPackVersion:
       type: object
-      required: [id, challenge_pack_id, version_number, lifecycle_status, created_at, updated_at]
+      required: [id, eval_pack_id, version_number, lifecycle_status, created_at, updated_at]
       properties:
         id:
           type: string
           format: uuid
-        challenge_pack_id:
+        eval_pack_id:
           type: string
           format: uuid
         version_number:
@@ -13054,7 +13054,7 @@ components:
           type: string
         deployment_defaults:
           type: object
-          description: Default deployment aliases and lineups declared by the challenge pack version.
+          description: Default deployment aliases and lineups declared by the eval pack version.
           properties:
             aliases:
               type: object
@@ -13073,23 +13073,23 @@ components:
           type: string
           format: date-time
 
-    ListChallengePacksResponse:
+    ListEvalPacksResponse:
       type: object
       required: [items]
       properties:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/ChallengePack"
+            $ref: "#/components/schemas/EvalPack"
 
     ChallengeInputSetSummary:
       type: object
-      required: [id, challenge_pack_version_id, input_key, name]
+      required: [id, eval_pack_version_id, input_key, name]
       properties:
         id:
           type: string
           format: uuid
-        challenge_pack_version_id:
+        eval_pack_version_id:
           type: string
           format: uuid
         input_key:
@@ -13106,14 +13106,14 @@ components:
           items:
             $ref: "#/components/schemas/ChallengeInputSetSummary"
 
-    PublishChallengePackResponse:
+    PublishEvalPackResponse:
       type: object
-      required: [challenge_pack_id, challenge_pack_version_id, evaluation_spec_id, input_set_ids]
+      required: [eval_pack_id, eval_pack_version_id, evaluation_spec_id, input_set_ids]
       properties:
-        challenge_pack_id:
+        eval_pack_id:
           type: string
           format: uuid
-        challenge_pack_version_id:
+        eval_pack_version_id:
           type: string
           format: uuid
         evaluation_spec_id:
@@ -13128,7 +13128,7 @@ components:
           type: string
           format: uuid
 
-    ChallengePackCatalogSummary:
+    EvalPackCatalogSummary:
       type: object
       required: [slug, name, family, execution_mode, spec_card]
       properties:
@@ -13160,24 +13160,24 @@ components:
         spec_card:
           $ref: "#/components/schemas/SpecCard"
 
-    ChallengePackCatalogEntry:
+    EvalPackCatalogEntry:
       allOf:
-        - $ref: "#/components/schemas/ChallengePackCatalogSummary"
+        - $ref: "#/components/schemas/EvalPackCatalogSummary"
         - type: object
           required: [yaml]
           properties:
             yaml:
               type: string
-              description: The raw, runnable challenge-pack bundle YAML.
+              description: The raw, runnable eval-pack bundle YAML.
 
-    InstantiateChallengePackCatalogResponse:
+    InstantiateEvalPackCatalogResponse:
       type: object
-      required: [challenge_pack_id, challenge_pack_version_id, slug, already_existed, runnable]
+      required: [eval_pack_id, eval_pack_version_id, slug, already_existed, runnable]
       properties:
-        challenge_pack_id:
+        eval_pack_id:
           type: string
           format: uuid
-        challenge_pack_version_id:
+        eval_pack_version_id:
           type: string
           format: uuid
         evaluation_spec_id:
@@ -13196,7 +13196,7 @@ components:
         runnable:
           type: boolean
 
-    # --- Challenge Pack Builder ---
+    # --- Eval Pack Builder ---
 
     ChallengePiece:
       type: object
@@ -13310,7 +13310,7 @@ components:
           additionalProperties: true
           description: Free-form piece definition; its shape depends on the piece's kind.
 
-    ChallengePackDraft:
+    EvalPackDraft:
       type: object
       required:
         [
@@ -13334,10 +13334,10 @@ components:
           type: string
         execution_mode:
           type: string
-        challenge_pack_id:
+        eval_pack_id:
           type: ["string", "null"]
           format: uuid
-          description: Set when the draft is linked to an existing challenge pack.
+          description: Set when the draft is linked to an existing eval pack.
         composition:
           type: object
           additionalProperties: true
@@ -13351,7 +13351,7 @@ components:
         last_published_version_id:
           type: ["string", "null"]
           format: uuid
-          description: Set after the draft has been published to a challenge pack version.
+          description: Set after the draft has been published to a eval pack version.
         created_at:
           type: string
           format: date-time
@@ -13359,22 +13359,22 @@ components:
           type: string
           format: date-time
 
-    ListChallengePackDraftsResponse:
+    ListEvalPackDraftsResponse:
       type: object
       required: [items]
       properties:
         items:
           type: array
           items:
-            $ref: "#/components/schemas/ChallengePackDraft"
+            $ref: "#/components/schemas/EvalPackDraft"
 
-    CreateChallengePackDraftRequest:
+    CreateEvalPackDraftRequest:
       type: object
       properties:
         name:
           type: string
           description: >
-            Display name. Required when from_challenge_pack_version_id is
+            Display name. Required when from_eval_pack_version_id is
             omitted; optional when it is set - the server defaults it to the
             source pack's name.
         execution_mode:
@@ -13384,15 +13384,15 @@ components:
             - prompt_eval
             - responses
             - multi_turn
-        challenge_pack_id:
+        eval_pack_id:
           type: string
           format: uuid
-          description: Optionally link the draft to an existing challenge pack.
+          description: Optionally link the draft to an existing eval pack.
         composition:
           type: object
           additionalProperties: true
           description: Free-form draft composition referencing reusable pieces.
-        from_challenge_pack_version_id:
+        from_eval_pack_version_id:
           type: string
           format: uuid
           description: >
@@ -13400,7 +13400,7 @@ components:
             version (edit-in-builder). Mutually exclusive with `composition`.
             execution_mode and name default from the source pack.
 
-    PatchChallengePackDraftRequest:
+    PatchEvalPackDraftRequest:
       type: object
       properties:
         name:
@@ -13431,7 +13431,7 @@ components:
           $ref: "#/components/schemas/SpecCard"
         yaml:
           type: string
-          description: The equivalent challenge pack bundle rendered as YAML.
+          description: The equivalent eval pack bundle rendered as YAML.
 
     SpecCard:
       type: object
@@ -13959,7 +13959,7 @@ components:
       properties:
         draft_kind:
           type: string
-          enum: [eval_plan, challenge_pack, input_cases, scoring, runtime]
+          enum: [eval_plan, eval_pack, input_cases, scoring, runtime]
         content:
           type: object
           additionalProperties: true
@@ -14006,7 +14006,7 @@ components:
           format: uuid
         draft_kind:
           type: string
-          enum: [eval_plan, challenge_pack, input_cases, scoring, runtime]
+          enum: [eval_plan, eval_pack, input_cases, scoring, runtime]
         content:
           type: object
           additionalProperties: true
@@ -14018,10 +14018,10 @@ components:
           items:
             type: object
             additionalProperties: true
-        published_challenge_pack_id:
+        published_eval_pack_id:
           type: string
           format: uuid
-        published_challenge_pack_version_id:
+        published_eval_pack_version_id:
           type: string
           format: uuid
         created_by_user_id:

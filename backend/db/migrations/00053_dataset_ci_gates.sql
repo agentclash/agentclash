@@ -4,7 +4,7 @@ CREATE TABLE dataset_baselines (
     dataset_id uuid NOT NULL REFERENCES datasets (id) ON DELETE CASCADE,
     dataset_version_id uuid NOT NULL REFERENCES dataset_versions (id) ON DELETE CASCADE,
     dataset_version_input_set_id uuid REFERENCES dataset_version_input_sets (id) ON DELETE SET NULL,
-    challenge_pack_version_id uuid NOT NULL REFERENCES challenge_pack_versions (id) ON DELETE RESTRICT,
+    eval_pack_version_id uuid NOT NULL REFERENCES eval_pack_versions (id) ON DELETE RESTRICT,
     challenge_key text NOT NULL,
     agent_deployment_id uuid,
     run_id uuid NOT NULL REFERENCES runs (id) ON DELETE RESTRICT,

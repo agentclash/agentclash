@@ -19,7 +19,7 @@ That ordered event history is the [replay](/docs/concepts/replay-and-scorecards)
 
 ## Four vantages on the same trajectory
 
-A single grader has a single blind spot. So AgentClash scores each trajectory from four different vantages, defined per challenge pack in the [evaluation spec](/docs/challenge-packs/evaluation-spec-reference):
+A single grader has a single blind spot. So AgentClash scores each trajectory from four different vantages, defined per eval pack in the [evaluation spec](/docs/eval-packs/evaluation-spec-reference):
 
 **Deterministic checks.** When objective evidence can prove the behavior, prove it. Validators assert over exact text, JSON shape, file and directory contents, and code execution results. Did the agent write the file it was supposed to? Does the JSON match the contract? These are not opinions — they pass or fail, and the evidence is attached.
 
@@ -27,7 +27,7 @@ A single grader has a single blind spot. So AgentClash scores each trajectory fr
 
 **Behavioral signals.** The trajectory itself: tool-choice efficiency, recovery after an error, and whether the agent stayed inside the scope of the task. This is the vantage final-answer grading can't see at all.
 
-**LLM judges.** Reserved for what genuinely needs subjective or rubric-based assessment — quality, helpfulness, adherence to a rubric. AgentClash leans on deterministic and numeric evidence first and reaches for [LLM judges](/docs/challenge-packs/llm-judges) only where they earn their keep, so the verdict doesn't rest on one model's taste.
+**LLM judges.** Reserved for what genuinely needs subjective or rubric-based assessment — quality, helpfulness, adherence to a rubric. AgentClash leans on deterministic and numeric evidence first and reaches for [LLM judges](/docs/eval-packs/llm-judges) only where they earn their keep, so the verdict doesn't rest on one model's taste.
 
 ## From four vantages to one verdict
 

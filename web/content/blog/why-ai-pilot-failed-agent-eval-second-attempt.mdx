@@ -15,7 +15,7 @@ Second attempts win when they replace enthusiasm with a **repeatable benchmark l
 
 The pilot used generic public tasks while production needs your repo layout, tools, approvals, and failure recovery. Scores looked fine. Shipped behavior did not.
 
-**Fix:** Encode one shippable workflow in a [challenge pack](/docs/guides/write-a-challenge-pack) with validators tied to tests or artifacts, not final-string matching.
+**Fix:** Encode one shippable workflow in a [eval pack](/docs/guides/write-an-eval-pack) with validators tied to tests or artifacts, not final-string matching.
 
 ### 2. No baseline
 
@@ -40,7 +40,7 @@ The pilot ended with a recommendation deck. Production kept shipping agent chang
 Use the enterprise buyer loop as your pilot template:
 
 1. **Monday problem:** name the release decision (for example, coding agent RC vs production baseline).
-2. **Freeze once:** challenge pack version, input set, tool policy, gate thresholds.
+2. **Freeze once:** eval pack version, input set, tool policy, gate thresholds.
 3. **Race fairly:** baseline, candidate, and any vendors under the same sandbox contract.
 4. **Watch live:** routing fallbacks, tool efficiency, cost drift, sandbox failures.
 5. **Decide with replay:** open divergences, attach scorecard, export evidence bundle.

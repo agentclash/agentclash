@@ -23,7 +23,7 @@ import (
 type RegressionRepository interface {
 	CreateRegressionSuite(ctx context.Context, params repository.CreateRegressionSuiteParams) (repository.RegressionSuite, error)
 	GetRegressionSuiteByID(ctx context.Context, id uuid.UUID) (repository.RegressionSuite, error)
-	ListVisibleChallengePacks(ctx context.Context, workspaceID uuid.UUID) ([]repository.ChallengePackSummary, error)
+	ListVisibleEvalPacks(ctx context.Context, workspaceID uuid.UUID) ([]repository.EvalPackSummary, error)
 	WorkspacePublicPacksEnabled(ctx context.Context, workspaceID uuid.UUID) (bool, error)
 	ListRegressionSuitesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, limit, offset int32) ([]repository.RegressionSuite, error)
 	CountRegressionSuitesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (int64, error)
@@ -34,9 +34,9 @@ type RegressionRepository interface {
 	ListRegressionCasesByWorkspaceID(ctx context.Context, params repository.ListRegressionCasesByWorkspaceIDParams) ([]repository.RegressionCase, error)
 	CountRegressionCasesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID, status *domain.RegressionCaseStatus) (int64, error)
 	PatchRegressionCase(ctx context.Context, params repository.PatchRegressionCaseParams) (repository.RegressionCase, error)
-	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
+	GetRunnableEvalPackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableEvalPackVersion, error)
 	GetChallengeInputSetByID(ctx context.Context, id uuid.UUID) (repository.ChallengeInputSet, error)
-	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error)
+	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, evalPackVersionID uuid.UUID) ([]uuid.UUID, error)
 	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
 	ListRunFailureReviewItems(ctx context.Context, runID uuid.UUID, agentID *uuid.UUID) ([]failurereview.Item, error)
 	GetRunAgentExecutionContextByID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentExecutionContext, error)
@@ -59,7 +59,7 @@ type RegressionService interface {
 
 type CreateRegressionSuiteInput struct {
 	WorkspaceID           uuid.UUID
-	SourceChallengePackID uuid.UUID
+	SourceEvalPackID uuid.UUID
 	Name                  string
 	Description           string
 	DefaultGateSeverity   domain.RegressionSeverity
@@ -117,7 +117,7 @@ type PromoteFailureInput struct {
 type CaptureProductionFailureInput struct {
 	WorkspaceID                  uuid.UUID
 	SuiteID                      uuid.UUID
-	SourceChallengePackVersionID uuid.UUID
+	SourceEvalPackVersionID uuid.UUID
 	SourceChallengeInputSetID    *uuid.UUID
 	SourceChallengeIdentityID    uuid.UUID
 	SourceCaseKey                string
@@ -162,7 +162,7 @@ type RegressionManager struct {
 	repo       RegressionRepository
 }
 
-var ErrChallengePackNotFound = errors.New("challenge pack not found")
+var ErrEvalPackNotFound = errors.New("eval pack not found")
 
 var (
 	ErrFailureReviewItemNotFound       = errors.New("failure review item not found")
@@ -171,8 +171,8 @@ var (
 	ErrFailurePromotionModeUnavailable = errors.New("promotion mode unavailable for failure review item")
 	ErrRegressionSuiteArchived         = errors.New("regression suite is archived")
 	ErrRegressionSuitePackMismatch     = errors.New("regression suite source pack does not match failure source pack")
-	ErrRegressionChallengeMismatch     = errors.New("challenge identity does not belong to challenge pack version")
-	ErrRegressionInputSetMismatch      = errors.New("challenge input set does not belong to challenge pack version")
+	ErrRegressionChallengeMismatch     = errors.New("challenge identity does not belong to eval pack version")
+	ErrRegressionInputSetMismatch      = errors.New("challenge input set does not belong to eval pack version")
 )
 
 func NewRegressionManager(authorizer WorkspaceAuthorizer, repo RegressionRepository) *RegressionManager {
@@ -183,24 +183,24 @@ func (m *RegressionManager) CreateRegressionSuite(ctx context.Context, caller Ca
 	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, input.WorkspaceID, ActionManageRegressions); err != nil {
 		return repository.RegressionSuite{}, err
 	}
-	packs, err := m.repo.ListVisibleChallengePacks(ctx, input.WorkspaceID)
+	packs, err := m.repo.ListVisibleEvalPacks(ctx, input.WorkspaceID)
 	if err != nil {
-		return repository.RegressionSuite{}, fmt.Errorf("list visible challenge packs: %w", err)
+		return repository.RegressionSuite{}, fmt.Errorf("list visible eval packs: %w", err)
 	}
 	foundPack := false
 	for _, pack := range packs {
-		if pack.ID == input.SourceChallengePackID {
+		if pack.ID == input.SourceEvalPackID {
 			foundPack = true
 			break
 		}
 	}
 	if !foundPack {
-		return repository.RegressionSuite{}, ErrChallengePackNotFound
+		return repository.RegressionSuite{}, ErrEvalPackNotFound
 	}
 
 	return m.repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
 		WorkspaceID:           input.WorkspaceID,
-		SourceChallengePackID: input.SourceChallengePackID,
+		SourceEvalPackID: input.SourceEvalPackID,
 		Name:                  strings.TrimSpace(input.Name),
 		Description:           input.Description,
 		Status:                domain.RegressionSuiteStatusActive,
@@ -372,7 +372,7 @@ func (m *RegressionManager) PromoteFailure(ctx context.Context, caller Caller, i
 	if err != nil {
 		return PromoteFailureResult{}, err
 	}
-	if suite.SourceChallengePackID != executionContext.ChallengePackVersion.ChallengePackID {
+	if suite.SourceEvalPackID != executionContext.EvalPackVersion.EvalPackID {
 		return PromoteFailureResult{}, ErrRegressionSuitePackMismatch
 	}
 	scorecard, err := m.repo.GetRunAgentScorecardByRunAgentID(ctx, item.RunAgentID)
@@ -453,12 +453,12 @@ func (m *RegressionManager) CaptureProductionFailure(ctx context.Context, caller
 		return repository.RegressionCase{}, ErrRegressionSuiteArchived
 	}
 
-	version, err := m.repo.GetRunnableChallengePackVersionByID(ctx, input.SourceChallengePackVersionID)
+	version, err := m.repo.GetRunnableEvalPackVersionByID(ctx, input.SourceEvalPackVersionID)
 	if err != nil {
 		return repository.RegressionCase{}, err
 	}
 	if version.WorkspaceID != nil && *version.WorkspaceID != input.WorkspaceID {
-		return repository.RegressionCase{}, repository.ErrChallengePackVersionNotFound
+		return repository.RegressionCase{}, repository.ErrEvalPackVersionNotFound
 	}
 	if version.WorkspaceID == nil {
 		publicPacks, accessErr := m.repo.WorkspacePublicPacksEnabled(ctx, input.WorkspaceID)
@@ -466,10 +466,10 @@ func (m *RegressionManager) CaptureProductionFailure(ctx context.Context, caller
 			return repository.RegressionCase{}, accessErr
 		}
 		if !publicPacks {
-			return repository.RegressionCase{}, repository.ErrChallengePackVersionNotFound
+			return repository.RegressionCase{}, repository.ErrEvalPackVersionNotFound
 		}
 	}
-	if version.ChallengePackID != suite.SourceChallengePackID {
+	if version.EvalPackID != suite.SourceEvalPackID {
 		return repository.RegressionCase{}, ErrRegressionSuitePackMismatch
 	}
 	if input.SourceChallengeInputSetID != nil {
@@ -477,11 +477,11 @@ func (m *RegressionManager) CaptureProductionFailure(ctx context.Context, caller
 		if err != nil {
 			return repository.RegressionCase{}, err
 		}
-		if inputSet.ChallengePackVersionID != input.SourceChallengePackVersionID {
+		if inputSet.EvalPackVersionID != input.SourceEvalPackVersionID {
 			return repository.RegressionCase{}, ErrRegressionInputSetMismatch
 		}
 	}
-	if err := m.ensureChallengeIdentityInVersion(ctx, input.SourceChallengePackVersionID, input.SourceChallengeIdentityID); err != nil {
+	if err := m.ensureChallengeIdentityInVersion(ctx, input.SourceEvalPackVersionID, input.SourceChallengeIdentityID); err != nil {
 		return repository.RegressionCase{}, err
 	}
 
@@ -521,7 +521,7 @@ func (m *RegressionManager) CaptureProductionFailure(ctx context.Context, caller
 		SourceRunID:                  nil,
 		SourceRunAgentID:             nil,
 		SourceReplayID:               nil,
-		SourceChallengePackVersionID: input.SourceChallengePackVersionID,
+		SourceEvalPackVersionID: input.SourceEvalPackVersionID,
 		SourceChallengeInputSetID:    cloneUUIDPtr(input.SourceChallengeInputSetID),
 		SourceChallengeIdentityID:    input.SourceChallengeIdentityID,
 		SourceCaseKey:                strings.TrimSpace(input.SourceCaseKey),
@@ -659,7 +659,7 @@ func productionFailureMetadata(input CaptureProductionFailureInput, failureClass
 
 	metadata["origin"] = "production_failure"
 	metadata["source"] = source
-	metadata["source_challenge_pack_version_id"] = input.SourceChallengePackVersionID.String()
+	metadata["source_eval_pack_version_id"] = input.SourceEvalPackVersionID.String()
 	metadata["source_challenge_identity_id"] = input.SourceChallengeIdentityID.String()
 	metadata["source_case_key"] = sourceCaseKey
 	metadata["source_failure_fingerprint"] = productionFailureFingerprint(input, failureClass)
@@ -690,7 +690,7 @@ func productionFailureFingerprint(input CaptureProductionFailureInput, failureCl
 		incidentID = strings.TrimSpace(input.FailureSummary)
 	}
 	hash := sha256.Sum256([]byte(strings.Join([]string{
-		input.SourceChallengePackVersionID.String(),
+		input.SourceEvalPackVersionID.String(),
 		input.SourceChallengeIdentityID.String(),
 		strings.TrimSpace(input.SourceCaseKey),
 		productionFailureSource(input.Source),
@@ -702,7 +702,7 @@ func productionFailureFingerprint(input CaptureProductionFailureInput, failureCl
 
 func productionFailureClusterKey(input CaptureProductionFailureInput, failureClass string) string {
 	hash := sha256.Sum256([]byte(strings.Join([]string{
-		input.SourceChallengePackVersionID.String(),
+		input.SourceEvalPackVersionID.String(),
 		input.SourceChallengeIdentityID.String(),
 		failureClass,
 	}, "\x00")))
@@ -728,7 +728,7 @@ func optionalStringPtr(value string) *string {
 type regressionSuiteResponse struct {
 	ID                    uuid.UUID                    `json:"id"`
 	WorkspaceID           uuid.UUID                    `json:"workspace_id"`
-	SourceChallengePackID uuid.UUID                    `json:"source_challenge_pack_id"`
+	SourceEvalPackID uuid.UUID                    `json:"source_eval_pack_id"`
 	Name                  string                       `json:"name"`
 	Description           string                       `json:"description"`
 	Status                domain.RegressionSuiteStatus `json:"status"`
@@ -765,7 +765,7 @@ type regressionCaseResponse struct {
 	SourceRunID                  *uuid.UUID                       `json:"source_run_id,omitempty"`
 	SourceRunAgentID             *uuid.UUID                       `json:"source_run_agent_id,omitempty"`
 	SourceReplayID               *uuid.UUID                       `json:"source_replay_id,omitempty"`
-	SourceChallengePackVersionID uuid.UUID                        `json:"source_challenge_pack_version_id"`
+	SourceEvalPackVersionID uuid.UUID                        `json:"source_eval_pack_version_id"`
 	SourceChallengeInputSetID    *uuid.UUID                       `json:"source_challenge_input_set_id,omitempty"`
 	SourceChallengeIdentityID    uuid.UUID                        `json:"source_challenge_identity_id"`
 	SourceChallengeKey           *string                          `json:"source_challenge_key,omitempty"`
@@ -838,7 +838,7 @@ func createRegressionSuiteHandler(logger *slog.Logger, service RegressionService
 		}
 
 		var req struct {
-			SourceChallengePackID uuid.UUID `json:"source_challenge_pack_id"`
+			SourceEvalPackID uuid.UUID `json:"source_eval_pack_id"`
 			Name                  string    `json:"name"`
 			Description           string    `json:"description"`
 			DefaultGateSeverity   *string   `json:"default_gate_severity,omitempty"`
@@ -851,8 +851,8 @@ func createRegressionSuiteHandler(logger *slog.Logger, service RegressionService
 			writeError(w, http.StatusBadRequest, "validation_error", "name is required")
 			return
 		}
-		if req.SourceChallengePackID == uuid.Nil {
-			writeError(w, http.StatusBadRequest, "validation_error", "source_challenge_pack_id is required")
+		if req.SourceEvalPackID == uuid.Nil {
+			writeError(w, http.StatusBadRequest, "validation_error", "source_eval_pack_id is required")
 			return
 		}
 
@@ -868,7 +868,7 @@ func createRegressionSuiteHandler(logger *slog.Logger, service RegressionService
 
 		suite, err := service.CreateRegressionSuite(r.Context(), caller, CreateRegressionSuiteInput{
 			WorkspaceID:           workspaceID,
-			SourceChallengePackID: req.SourceChallengePackID,
+			SourceEvalPackID: req.SourceEvalPackID,
 			Name:                  req.Name,
 			Description:           req.Description,
 			DefaultGateSeverity:   defaultGateSeverity,
@@ -1170,7 +1170,7 @@ func captureProductionFailureHandler(logger *slog.Logger, service RegressionServ
 		}
 
 		var req struct {
-			SourceChallengePackVersionID uuid.UUID       `json:"source_challenge_pack_version_id"`
+			SourceEvalPackVersionID uuid.UUID       `json:"source_eval_pack_version_id"`
 			SourceChallengeInputSetID    *uuid.UUID      `json:"source_challenge_input_set_id,omitempty"`
 			SourceChallengeIdentityID    uuid.UUID       `json:"source_challenge_identity_id"`
 			SourceCaseKey                string          `json:"source_case_key"`
@@ -1194,8 +1194,8 @@ func captureProductionFailureHandler(logger *slog.Logger, service RegressionServ
 			writeError(w, http.StatusBadRequest, "invalid_request", "request body must be valid JSON")
 			return
 		}
-		if req.SourceChallengePackVersionID == uuid.Nil {
-			writeError(w, http.StatusBadRequest, "validation_error", "source_challenge_pack_version_id is required")
+		if req.SourceEvalPackVersionID == uuid.Nil {
+			writeError(w, http.StatusBadRequest, "validation_error", "source_eval_pack_version_id is required")
 			return
 		}
 		if req.SourceChallengeIdentityID == uuid.Nil {
@@ -1274,7 +1274,7 @@ func captureProductionFailureHandler(logger *slog.Logger, service RegressionServ
 		regressionCase, err := service.CaptureProductionFailure(r.Context(), caller, CaptureProductionFailureInput{
 			WorkspaceID:                  workspaceID,
 			SuiteID:                      suiteID,
-			SourceChallengePackVersionID: req.SourceChallengePackVersionID,
+			SourceEvalPackVersionID: req.SourceEvalPackVersionID,
 			SourceChallengeInputSetID:    cloneUUIDPtr(req.SourceChallengeInputSetID),
 			SourceChallengeIdentityID:    req.SourceChallengeIdentityID,
 			SourceCaseKey:                req.SourceCaseKey,
@@ -1396,7 +1396,7 @@ func buildRegressionSuiteResponse(suite repository.RegressionSuite) regressionSu
 	return regressionSuiteResponse{
 		ID:                    suite.ID,
 		WorkspaceID:           suite.WorkspaceID,
-		SourceChallengePackID: suite.SourceChallengePackID,
+		SourceEvalPackID: suite.SourceEvalPackID,
 		Name:                  suite.Name,
 		Description:           suite.Description,
 		Status:                suite.Status,
@@ -1439,7 +1439,7 @@ func buildRegressionCaseResponse(regressionCase repository.RegressionCase) regre
 		SourceRunID:                  regressionCase.SourceRunID,
 		SourceRunAgentID:             regressionCase.SourceRunAgentID,
 		SourceReplayID:               regressionCase.SourceReplayID,
-		SourceChallengePackVersionID: regressionCase.SourceChallengePackVersionID,
+		SourceEvalPackVersionID: regressionCase.SourceEvalPackVersionID,
 		SourceChallengeInputSetID:    regressionCase.SourceChallengeInputSetID,
 		SourceChallengeIdentityID:    regressionCase.SourceChallengeIdentityID,
 		SourceChallengeKey:           provenance.SourceChallengeKey,
@@ -1599,14 +1599,14 @@ func handleRegressionError(w http.ResponseWriter, logger *slog.Logger, err error
 		writeError(w, http.StatusNotFound, "regression_case_not_found", "regression case not found")
 	case errors.Is(err, repository.ErrRunNotFound):
 		writeError(w, http.StatusNotFound, "run_not_found", "run not found")
-	case errors.Is(err, repository.ErrChallengePackVersionNotFound):
-		writeError(w, http.StatusNotFound, "challenge_pack_version_not_found", "challenge pack version not found")
+	case errors.Is(err, repository.ErrEvalPackVersionNotFound):
+		writeError(w, http.StatusNotFound, "eval_pack_version_not_found", "eval pack version not found")
 	case errors.Is(err, repository.ErrChallengeInputSetNotFound):
 		writeError(w, http.StatusNotFound, "challenge_input_set_not_found", "challenge input set not found")
 	case errors.Is(err, ErrFailureReviewItemNotFound):
 		writeError(w, http.StatusNotFound, "failure_review_item_not_found", "failure review item not found")
-	case errors.Is(err, ErrChallengePackNotFound):
-		writeError(w, http.StatusNotFound, "challenge_pack_not_found", "challenge pack not found")
+	case errors.Is(err, ErrEvalPackNotFound):
+		writeError(w, http.StatusNotFound, "eval_pack_not_found", "eval pack not found")
 	case errors.Is(err, repository.ErrRegressionSuiteNameConflict):
 		writeError(w, http.StatusConflict, "regression_suite_name_conflict", "an active regression suite with this name already exists in the workspace")
 	case errors.Is(err, repository.ErrInvalidTransition):
@@ -1622,9 +1622,9 @@ func handleRegressionError(w http.ResponseWriter, logger *slog.Logger, err error
 	case errors.Is(err, ErrRegressionSuitePackMismatch):
 		writeError(w, http.StatusBadRequest, "regression_suite_pack_mismatch", "regression suite source pack must match the failure source pack")
 	case errors.Is(err, ErrRegressionChallengeMismatch):
-		writeError(w, http.StatusBadRequest, "challenge_identity_mismatch", "challenge identity must belong to the challenge pack version")
+		writeError(w, http.StatusBadRequest, "challenge_identity_mismatch", "challenge identity must belong to the eval pack version")
 	case errors.Is(err, ErrRegressionInputSetMismatch):
-		writeError(w, http.StatusBadRequest, "challenge_input_set_mismatch", "challenge input set must belong to the challenge pack version")
+		writeError(w, http.StatusBadRequest, "challenge_input_set_mismatch", "challenge input set must belong to the eval pack version")
 	case errors.Is(err, domain.ErrInvalidPromotionOverrides):
 		writeError(w, http.StatusBadRequest, "invalid_promotion_overrides", err.Error())
 	case errors.Is(err, repository.ErrTransitionConflict):

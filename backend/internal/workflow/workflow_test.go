@@ -791,7 +791,7 @@ func TestRunWorkflowScoringFailureDoesNotFailRun(t *testing.T) {
 		fixtureRunAgent(runID, runAgentID, 0),
 	)
 	executionContext := nativeExecutionContext(runID, runAgentID)
-	executionContext.ChallengePackVersion.Manifest = []byte(`{}`)
+	executionContext.EvalPackVersion.Manifest = []byte(`{}`)
 	repo.setExecutionContext(runAgentID, executionContext)
 
 	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{
@@ -1610,7 +1610,7 @@ func (r *fakeRunRepository) GetRunAgentExecutionContextByID(_ context.Context, i
 	executionContext := repository.RunAgentExecutionContext{
 		Run:      cloneRun(r.run),
 		RunAgent: cloneRunAgent(runAgent),
-		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+		EvalPackVersion: repository.EvalPackVersionExecutionContext{
 			ID:       uuid.New(),
 			Manifest: fixtureEvaluationManifest(),
 		},
@@ -1676,14 +1676,14 @@ func (r *fakeRunRepository) CreateEvaluationSpec(_ context.Context, params repos
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	key := evaluationSpecKey(params.ChallengePackVersionID, params.Name, params.VersionNumber)
+	key := evaluationSpecKey(params.EvalPackVersionID, params.Name, params.VersionNumber)
 	if existing, ok := r.evaluationSpecs[key]; ok {
 		return existing, fmt.Errorf("create evaluation spec: duplicate key")
 	}
 
 	record := repository.EvaluationSpecRecord{
 		ID:                     uuid.New(),
-		ChallengePackVersionID: params.ChallengePackVersionID,
+		EvalPackVersionID: params.EvalPackVersionID,
 		Name:                   params.Name,
 		VersionNumber:          params.VersionNumber,
 		JudgeMode:              params.JudgeMode,
@@ -1719,11 +1719,11 @@ func (r *fakeRunRepository) CreateStandaloneEvaluationSpec(_ context.Context, pa
 	return record, nil
 }
 
-func (r *fakeRunRepository) GetEvaluationSpecByChallengePackVersionAndVersion(_ context.Context, challengePackVersionID uuid.UUID, name string, versionNumber int32) (repository.EvaluationSpecRecord, error) {
+func (r *fakeRunRepository) GetEvaluationSpecByEvalPackVersionAndVersion(_ context.Context, evalPackVersionID uuid.UUID, name string, versionNumber int32) (repository.EvaluationSpecRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	key := evaluationSpecKey(challengePackVersionID, name, versionNumber)
+	key := evaluationSpecKey(evalPackVersionID, name, versionNumber)
 	if record, ok := r.evaluationSpecs[key]; ok {
 		return record, nil
 	}
@@ -1915,8 +1915,8 @@ func (r *fakeRunRepository) RecordAgentHarnessExecutionEvent(_ context.Context, 
 	return event, nil
 }
 
-func evaluationSpecKey(challengePackVersionID uuid.UUID, name string, versionNumber int32) string {
-	return fmt.Sprintf("%s/%s/%d", challengePackVersionID, name, versionNumber)
+func evaluationSpecKey(evalPackVersionID uuid.UUID, name string, versionNumber int32) string {
+	return fmt.Sprintf("%s/%s/%d", evalPackVersionID, name, versionNumber)
 }
 
 func runAgentTransitionKey(runAgentID uuid.UUID, toStatus domain.RunAgentStatus) string {
@@ -2266,7 +2266,7 @@ func hostedExecutionContext(runID uuid.UUID, runAgentID uuid.UUID) repository.Ru
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
-		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+		EvalPackVersion: repository.EvalPackVersionExecutionContext{
 			ID:       uuid.New(),
 			Manifest: fixtureEvaluationManifest(),
 		},
@@ -2296,7 +2296,7 @@ func nativeExecutionContext(runID uuid.UUID, runAgentID uuid.UUID) repository.Ru
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
-		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+		EvalPackVersion: repository.EvalPackVersionExecutionContext{
 			ID:       uuid.New(),
 			Manifest: fixtureEvaluationManifest(),
 		},

@@ -8,7 +8,7 @@ import "strings"
 // dataset-generation cost estimates.
 //
 // IMPORTANT: this map is NOT the source of truth for run scoring. The scoring
-// engine (scoring/engine_pricing.go) reads pricing from each challenge pack's
+// engine (scoring/engine_pricing.go) reads pricing from each eval pack's
 // EvaluationSpec.Pricing.Models. Stale entries here only affect picker display
 // and best-effort dataset cost estimates, never a graded result.
 //
@@ -75,7 +75,7 @@ func normalizeModelID(modelID string) string {
 //
 // This is a best-effort, picker-display / cost-estimate source only. It is NOT
 // the source of truth for scoring (scoring/engine_pricing.go reads pricing from
-// the challenge pack's EvaluationSpec).
+// the eval pack's EvaluationSpec).
 func StaticModelPrice(providerKey, modelID string) (in, out float64, ok bool) {
 	entries, found := staticModelPricing[strings.ToLower(strings.TrimSpace(providerKey))]
 	if !found {

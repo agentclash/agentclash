@@ -1,0 +1,164 @@
+###############################################################################
+# Eval Pack: SWE Bug Fix
+#
+# A SWE-bench-style coding eval. The agent is given a small module with a real
+# bug (merge_intervals fails to merge intervals that only touch) and must write
+# a corrected version. Scoring is execution-based and deterministic: hidden
+# tests run the agent's file in a sandbox, including the touching-interval case
+# that the buggy version gets wrong.
+#
+# Swap points (make it yours): replace the buggy module in the instructions and
+# the hidden tests in the code_execution test_command with your own repo +
+# failing test.
+###############################################################################
+
+pack:
+  slug: swe-bug-fix
+  name: SWE Bug Fix
+  family: coding
+  description: >-
+    Fix a real bug in a small module; graded by hidden tests run in a sandbox
+    (SWE-bench-style). Fully deterministic — the failing case is the one the
+    buggy version gets wrong.
+
+version:
+  number: 1
+  execution_mode: native
+  sandbox:
+    network_access: false
+  tool_policy:
+    allow_shell: true
+    allowed_tool_kinds:
+      - file
+
+  evaluation_spec:
+    name: swe-bug-fix-v1
+    version_number: 1
+    judge_mode: deterministic
+
+    post_execution_checks:
+      - key: solution
+        type: file_capture
+        path: /workspace/solution.py
+
+    validators:
+      - key: defines_function
+        type: file_content_match
+        target: file:solution
+        expected_from: "literal:def merge_intervals"
+        config:
+          mode: contains
+
+      - key: tests_pass
+        type: code_execution
+        target: file:solution
+        config:
+          scoring: all_or_nothing
+          test_command: |
+            python3 - <<'PY'
+            import sys
+            sys.path.insert(0, '/workspace')
+            from solution import merge_intervals
+            assert merge_intervals([[1, 3], [2, 6], [8, 10], [15, 18]]) == [[1, 6], [8, 10], [15, 18]]
+            assert merge_intervals([[1, 2], [2, 3]]) == [[1, 3]]
+            assert merge_intervals([[1, 4], [4, 5]]) == [[1, 5]]
+            assert merge_intervals([[1, 4], [0, 4]]) == [[0, 4]]
+            assert merge_intervals([]) == []
+            assert merge_intervals([[5, 7]]) == [[5, 7]]
+            print('OK')
+            PY
+
+    metrics:
+      - key: completed
+        type: boolean
+        collector: run_completed_successfully
+      - key: total_latency_ms
+        type: numeric
+        collector: run_total_latency_ms
+        unit: ms
+      - key: total_tokens
+        type: numeric
+        collector: run_total_tokens
+
+    runtime_limits:
+      max_duration_ms: 240000
+      max_total_tokens: 24000
+
+    scorecard:
+      strategy: weighted
+      pass_threshold: 0.7
+      dimensions:
+        - key: correctness
+          source: validators
+          validators:
+            - tests_pass
+          gate: true
+          pass_threshold: 1.0
+          weight: 0.65
+        - key: output_contract
+          source: validators
+          validators:
+            - defines_function
+          weight: 0.05
+        - key: reliability
+          source: reliability
+          weight: 0.1
+        - key: latency
+          source: latency
+          better_direction: lower
+          normalization:
+            target: 15000
+            max: 180000
+          weight: 0.1
+        - key: cost
+          source: cost
+          better_direction: lower
+          normalization:
+            target: 0.02
+            max: 0.3
+          weight: 0.1
+
+challenges:
+  - key: merge-intervals-bug
+    title: Fix the interval-merging bug
+    category: coding
+    difficulty: medium
+    instructions: |
+      The following Python module has a bug: `merge_intervals` does NOT merge
+      intervals that only touch (e.g. [1,2] and [2,3] should merge into [1,3],
+      but it returns them separately). It also assumes the input is already
+      sorted.
+
+      Buggy module:
+
+          def merge_intervals(intervals):
+              if not intervals:
+                  return []
+              intervals = list(intervals)
+              merged = [intervals[0]]
+              for start, end in intervals[1:]:
+                  last = merged[-1]
+                  if start > last[1]:          # bug: should be start > last[1] only
+                      merged.append([start, end])
+                  else:
+                      last[1] = max(last[1], end)
+              return merged
+
+      Write a CORRECTED module to `/workspace/solution.py` that exports
+      `merge_intervals(intervals: list[list[int]]) -> list[list[int]]`:
+
+        - Merge intervals that overlap OR merely touch (share an endpoint).
+        - Sort the input by start first (do not assume it is pre-sorted).
+        - Return a list of `[start, end]` lists (not tuples), sorted by start.
+        - `merge_intervals([])` returns `[]`.
+
+      After writing the file, reply with a one-line summary of the fix.
+
+input_sets:
+  - key: default
+    name: Default Input Set
+    cases:
+      - challenge_key: merge-intervals-bug
+        case_key: touching-intervals
+        payload:
+          language: python

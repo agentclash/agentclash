@@ -13,14 +13,14 @@ import (
 func init() {
 	evaltestCmd.AddCommand(evaltestPromoteFailuresCmd)
 	evaltestPromoteFailuresCmd.Flags().String("from", "agentclash-results/results.json", "Local eval JSON report")
-	evaltestPromoteFailuresCmd.Flags().String("to", ".agentclash/challenge-packs/local-regressions.yaml", "Draft challenge-pack output path")
+	evaltestPromoteFailuresCmd.Flags().String("to", ".agentclash/eval-packs/local-regressions.yaml", "Draft eval-pack output path")
 	evaltestPromoteFailuresCmd.Flags().Bool("dry-run", false, "Print draft YAML without writing")
 	evaltestPromoteFailuresCmd.Flags().Bool("append", false, "Append cases to an existing draft pack")
 }
 
 var evaltestPromoteFailuresCmd = &cobra.Command{
 	Use:   "promote-failures",
-	Short: "Promote failed local eval cases into a draft challenge pack",
+	Short: "Promote failed local eval cases into a draft eval pack",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fromPath, _ := cmd.Flags().GetString("from")
 		toPath, _ := cmd.Flags().GetString("to")
@@ -39,7 +39,7 @@ var evaltestPromoteFailuresCmd = &cobra.Command{
 			return nil
 		}
 
-		draft, err := buildPromotedChallengePack(report, failures, toPath, appendMode)
+		draft, err := buildPromotedEvalPack(report, failures, toPath, appendMode)
 		if err != nil {
 			evaltestExit(evaltestExitInternalError)
 			return err
@@ -63,7 +63,7 @@ var evaltestPromoteFailuresCmd = &cobra.Command{
 			evaltestExit(evaltestExitInternalError)
 			return err
 		}
-		fmt.Fprintf(os.Stdout, "Wrote draft challenge pack with %d failure(s) to %s\n", len(failures), toPath)
+		fmt.Fprintf(os.Stdout, "Wrote draft eval pack with %d failure(s) to %s\n", len(failures), toPath)
 		return nil
 	},
 }
@@ -95,7 +95,7 @@ func evaltestFailureRows(report map[string]any) []map[string]any {
 	return rows
 }
 
-func buildPromotedChallengePack(report map[string]any, failures []map[string]any, targetPath string, appendMode bool) (map[string]any, error) {
+func buildPromotedEvalPack(report map[string]any, failures []map[string]any, targetPath string, appendMode bool) (map[string]any, error) {
 	slug := "local-regressions"
 	if appendMode {
 		if existing, err := readExistingPromotedPack(targetPath); err == nil {
@@ -116,7 +116,7 @@ func buildPromotedChallengePack(report map[string]any, failures []map[string]any
 			input = mapString(failure, "input")
 		}
 		reason := evaltestFailureReason(failure)
-		challengeKey := slugifyChallengePackName(caseID)
+		challengeKey := slugifyEvalPackName(caseID)
 		challenges = append(challenges, map[string]any{
 			"key":          challengeKey,
 			"title":        mapString(caseObj, "name"),
@@ -195,7 +195,7 @@ func readExistingPromotedPack(path string) (map[string]any, error) {
 }
 
 func mergePromotedPack(existing map[string]any, failures []map[string]any) map[string]any {
-	newDraft, _ := buildPromotedChallengePack(map[string]any{}, failures, "", false)
+	newDraft, _ := buildPromotedEvalPack(map[string]any{}, failures, "", false)
 	newCases := extractInputSetCases(newDraft)
 	newChallenges := extractChallenges(newDraft)
 

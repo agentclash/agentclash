@@ -16,7 +16,7 @@ import (
 
 func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	deploymentID := uuid.New()
 	snapshotID := uuid.New()
 	runID := uuid.New()
@@ -37,7 +37,7 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		deployments: []repository.RunnableDeployment{
 			{
 				ID:                        deploymentID,
@@ -51,7 +51,7 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 			Run: domain.Run{
 				ID:                     runID,
 				WorkspaceID:            workspaceID,
-				ChallengePackVersionID: challengePackVersionID,
+				EvalPackVersionID: evalPackVersionID,
 				Status:                 domain.RunStatusQueued,
 				ExecutionMode:          "single_agent",
 				CreatedAt:              time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC),
@@ -66,7 +66,7 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 
 	result, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 		CIMetadata:             ciMetadata,
 	})
@@ -105,7 +105,7 @@ func TestRunCreationManagerCreatesQueuedRunAndStartsWorkflow(t *testing.T) {
 
 func TestRunCreationManagerAddsMaxIterationsToExecutionPlan(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	deploymentID := uuid.New()
 	snapshotID := uuid.New()
 	runID := uuid.New()
@@ -118,7 +118,7 @@ func TestRunCreationManagerAddsMaxIterationsToExecutionPlan(t *testing.T) {
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		deployments: []repository.RunnableDeployment{
 			{
 				ID:                        deploymentID,
@@ -132,7 +132,7 @@ func TestRunCreationManagerAddsMaxIterationsToExecutionPlan(t *testing.T) {
 			Run: domain.Run{
 				ID:                     runID,
 				WorkspaceID:            workspaceID,
-				ChallengePackVersionID: challengePackVersionID,
+				EvalPackVersionID: evalPackVersionID,
 				Status:                 domain.RunStatusQueued,
 				ExecutionMode:          "single_agent",
 			},
@@ -142,7 +142,7 @@ func TestRunCreationManagerAddsMaxIterationsToExecutionPlan(t *testing.T) {
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 		MaxIterations:          &maxIterations,
 	})
@@ -157,7 +157,7 @@ func TestRunCreationManagerAddsMaxIterationsToExecutionPlan(t *testing.T) {
 
 func TestRunCreationManagerAcceptsTextSimForVoicePack(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	deploymentID := uuid.New()
 	caller := Caller{
 		UserID: uuid.New(),
@@ -166,8 +166,8 @@ func TestRunCreationManagerAcceptsTextSimForVoicePack(t *testing.T) {
 		},
 	}
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID:       challengePackVersionID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID:       evalPackVersionID,
 			Manifest: json.RawMessage(`{"modality":"voice","interface_spec":{"transports":["text_sim","sip"]}}`),
 		},
 		deployments: []repository.RunnableDeployment{
@@ -185,7 +185,7 @@ func TestRunCreationManagerAcceptsTextSimForVoicePack(t *testing.T) {
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 		Mode:                   "text-sim",
 	})
@@ -214,7 +214,7 @@ func TestRunCreationManagerRejectsFutureVoiceMode(t *testing.T) {
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: uuid.New(),
+		EvalPackVersionID: uuid.New(),
 		AgentDeploymentIDs:     []uuid.UUID{uuid.New()},
 		Mode:                   "live-call",
 	})
@@ -232,10 +232,10 @@ func TestRunCreationManagerRejectsFutureVoiceMode(t *testing.T) {
 
 func TestRunCreationManagerRejectsTextSimForNonVoicePack(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID:       challengePackVersionID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID:       evalPackVersionID,
 			Manifest: json.RawMessage(`{"pack":{"slug":"text-pack"}}`),
 		},
 	}
@@ -248,7 +248,7 @@ func TestRunCreationManagerRejectsTextSimForNonVoicePack(t *testing.T) {
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{uuid.New()},
 		Mode:                   "text-sim",
 	})
@@ -256,7 +256,7 @@ func TestRunCreationManagerRejectsTextSimForNonVoicePack(t *testing.T) {
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("error = %v, want RunCreationValidationError", err)
 	}
-	if validationErr.Code != "incompatible_mode" || !strings.Contains(validationErr.Message, "requires a voice challenge pack") {
+	if validationErr.Code != "incompatible_mode" || !strings.Contains(validationErr.Message, "requires a voice eval pack") {
 		t.Fatalf("validation error = %+v, want non-voice incompatibility", validationErr)
 	}
 	if repo.createParams != nil {
@@ -266,10 +266,10 @@ func TestRunCreationManagerRejectsTextSimForNonVoicePack(t *testing.T) {
 
 func TestRunCreationManagerRejectsTextSimWithoutTransport(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID:       challengePackVersionID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID:       evalPackVersionID,
 			Manifest: json.RawMessage(`{"modality":"voice","interface_spec":{"transports":["sip"]}}`),
 		},
 	}
@@ -282,7 +282,7 @@ func TestRunCreationManagerRejectsTextSimWithoutTransport(t *testing.T) {
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{uuid.New()},
 		Mode:                   "text-sim",
 	})
@@ -298,9 +298,9 @@ func TestRunCreationManagerRejectsTextSimWithoutTransport(t *testing.T) {
 	}
 }
 
-func TestRunCreationManagerUsesChallengePackMaxIterationsDefault(t *testing.T) {
+func TestRunCreationManagerUsesEvalPackMaxIterationsDefault(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	deploymentID := uuid.New()
 	caller := Caller{
 		UserID: uuid.New(),
@@ -310,8 +310,8 @@ func TestRunCreationManagerUsesChallengePackMaxIterationsDefault(t *testing.T) {
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID:       challengePackVersionID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID:       evalPackVersionID,
 			Manifest: json.RawMessage(`{"runtime_limits":{"max_iterations":4}}`),
 		},
 		deployments: []repository.RunnableDeployment{
@@ -329,7 +329,7 @@ func TestRunCreationManagerUsesChallengePackMaxIterationsDefault(t *testing.T) {
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 	})
 	if err != nil {
@@ -343,7 +343,7 @@ func TestRunCreationManagerUsesChallengePackMaxIterationsDefault(t *testing.T) {
 
 func TestRunCreationManagerPrefersEvaluationSpecMaxIterationsDefault(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	deploymentID := uuid.New()
 	caller := Caller{
 		UserID: uuid.New(),
@@ -353,8 +353,8 @@ func TestRunCreationManagerPrefersEvaluationSpecMaxIterationsDefault(t *testing.
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID: challengePackVersionID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID: evalPackVersionID,
 			Manifest: json.RawMessage(`{
 				"runtime_limits":{"max_iterations":4},
 				"evaluation_spec":{"runtime_limits":{"max_iterations":6}}
@@ -375,7 +375,7 @@ func TestRunCreationManagerPrefersEvaluationSpecMaxIterationsDefault(t *testing.
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 	})
 	if err != nil {
@@ -387,9 +387,9 @@ func TestRunCreationManagerPrefersEvaluationSpecMaxIterationsDefault(t *testing.
 	}
 }
 
-func TestRunCreationManagerExplicitMaxIterationsWinsOverChallengePackDefault(t *testing.T) {
+func TestRunCreationManagerExplicitMaxIterationsWinsOverEvalPackDefault(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	deploymentID := uuid.New()
 	explicitMaxIterations := int32(7)
 	caller := Caller{
@@ -400,8 +400,8 @@ func TestRunCreationManagerExplicitMaxIterationsWinsOverChallengePackDefault(t *
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID:       challengePackVersionID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID:       evalPackVersionID,
 			Manifest: json.RawMessage(`{"evaluation_spec":{"runtime_limits":{"max_iterations":4}}}`),
 		},
 		deployments: []repository.RunnableDeployment{
@@ -419,7 +419,7 @@ func TestRunCreationManagerExplicitMaxIterationsWinsOverChallengePackDefault(t *
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 		MaxIterations:          &explicitMaxIterations,
 	})
@@ -434,7 +434,7 @@ func TestRunCreationManagerExplicitMaxIterationsWinsOverChallengePackDefault(t *
 
 func TestRunCreationManagerUsesEvaluationSpecMaxIterationsDefault(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	deploymentID := uuid.New()
 	caller := Caller{
 		UserID: uuid.New(),
@@ -444,8 +444,8 @@ func TestRunCreationManagerUsesEvaluationSpecMaxIterationsDefault(t *testing.T) 
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID:       challengePackVersionID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID:       evalPackVersionID,
 			Manifest: json.RawMessage(`{"evaluation_spec":{"runtime_limits":{"max_iterations":5}}}`),
 		},
 		deployments: []repository.RunnableDeployment{
@@ -463,7 +463,7 @@ func TestRunCreationManagerUsesEvaluationSpecMaxIterationsDefault(t *testing.T) 
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 	})
 	if err != nil {
@@ -477,7 +477,7 @@ func TestRunCreationManagerUsesEvaluationSpecMaxIterationsDefault(t *testing.T) 
 
 func TestRunCreationManagerRejectsEntitlementGateBeforeQueue(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	deploymentIDs := []uuid.UUID{uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()}
 	caller := Caller{
 		UserID: uuid.New(),
@@ -498,7 +498,7 @@ func TestRunCreationManagerRejectsEntitlementGateBeforeQueue(t *testing.T) {
 		})
 	}
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		deployments:          deployments,
 	}
 	entitlements := billing.MaterializeEntitlements(billing.MustPlan(billing.PlanFree), billing.PeriodMonthly, 1, "active")
@@ -509,7 +509,7 @@ func TestRunCreationManagerRejectsEntitlementGateBeforeQueue(t *testing.T) {
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     deploymentIDs,
 	})
 	if err == nil {
@@ -529,7 +529,7 @@ func TestRunCreationManagerRejectsEntitlementGateBeforeQueue(t *testing.T) {
 
 func TestRunCreationManagerReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	deploymentID := uuid.New()
 	runID := uuid.New()
 	caller := Caller{
@@ -540,7 +540,7 @@ func TestRunCreationManagerReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) 
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		deployments: []repository.RunnableDeployment{
 			{
 				ID:                        deploymentID,
@@ -554,7 +554,7 @@ func TestRunCreationManagerReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) 
 			Run: domain.Run{
 				ID:                     runID,
 				WorkspaceID:            workspaceID,
-				ChallengePackVersionID: challengePackVersionID,
+				EvalPackVersionID: evalPackVersionID,
 				Status:                 domain.RunStatusQueued,
 				ExecutionMode:          "single_agent",
 				CreatedAt:              time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC),
@@ -566,7 +566,7 @@ func TestRunCreationManagerReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) 
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 	})
 	if err == nil {
@@ -584,7 +584,7 @@ func TestRunCreationManagerReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) 
 
 func TestRunCreationManagerRejectsDuplicateDeployments(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	deploymentID := uuid.New()
 	caller := Caller{
 		UserID: uuid.New(),
@@ -597,7 +597,7 @@ func TestRunCreationManagerRejectsDuplicateDeployments(t *testing.T) {
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID, deploymentID},
 	})
 	if err == nil {
@@ -624,7 +624,7 @@ func TestRunCreationManagerRejectsEmptyDeployments(t *testing.T) {
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: uuid.New(),
+		EvalPackVersionID: uuid.New(),
 		AgentDeploymentIDs:     nil,
 	})
 	if err == nil {
@@ -651,7 +651,7 @@ func TestRunCreationManagerRejectsRaceContextWithSingleAgent(t *testing.T) {
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: uuid.New(),
+		EvalPackVersionID: uuid.New(),
 		AgentDeploymentIDs:     []uuid.UUID{uuid.New()},
 		RaceContext:            true,
 	})
@@ -668,11 +668,11 @@ func TestRunCreationManagerRejectsRaceContextWithSingleAgent(t *testing.T) {
 	}
 }
 
-func TestRunCreationManagerRejectsChallengePackVersionNotFound(t *testing.T) {
+func TestRunCreationManagerRejectsEvalPackVersionNotFound(t *testing.T) {
 	workspaceID := uuid.New()
 	deploymentID := uuid.New()
 	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{
-		challengePackVersionErr: repository.ErrChallengePackVersionNotFound,
+		evalPackVersionErr: repository.ErrEvalPackVersionNotFound,
 	}, &fakeRunWorkflowStarter{}, nil)
 
 	_, err := manager.CreateRun(context.Background(), Caller{
@@ -682,7 +682,7 @@ func TestRunCreationManagerRejectsChallengePackVersionNotFound(t *testing.T) {
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: uuid.New(),
+		EvalPackVersionID: uuid.New(),
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 	})
 	if err == nil {
@@ -693,16 +693,16 @@ func TestRunCreationManagerRejectsChallengePackVersionNotFound(t *testing.T) {
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("error = %v, want RunCreationValidationError", err)
 	}
-	if validationErr.Code != "invalid_challenge_pack_version_id" {
-		t.Fatalf("validation code = %q, want invalid_challenge_pack_version_id", validationErr.Code)
+	if validationErr.Code != "invalid_eval_pack_version_id" {
+		t.Fatalf("validation code = %q, want invalid_eval_pack_version_id", validationErr.Code)
 	}
 }
 
-func TestRunCreationManagerRejectsGlobalChallengePackWhenPublicPacksDisabled(t *testing.T) {
+func TestRunCreationManagerRejectsGlobalEvalPackWhenPublicPacksDisabled(t *testing.T) {
 	workspaceID := uuid.New()
 	deploymentID := uuid.New()
 	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
+		evalPackVersion: repository.RunnableEvalPackVersion{
 			ID:          uuid.New(),
 			WorkspaceID: nil,
 		},
@@ -716,7 +716,7 @@ func TestRunCreationManagerRejectsGlobalChallengePackWhenPublicPacksDisabled(t *
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: uuid.New(),
+		EvalPackVersionID: uuid.New(),
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 	})
 	if err == nil {
@@ -727,14 +727,14 @@ func TestRunCreationManagerRejectsGlobalChallengePackWhenPublicPacksDisabled(t *
 	if !errors.As(err, &validationErr) {
 		t.Fatalf("error = %v, want RunCreationValidationError", err)
 	}
-	if validationErr.Code != "invalid_challenge_pack_version_id" {
-		t.Fatalf("validation code = %q, want invalid_challenge_pack_version_id", validationErr.Code)
+	if validationErr.Code != "invalid_eval_pack_version_id" {
+		t.Fatalf("validation code = %q, want invalid_eval_pack_version_id", validationErr.Code)
 	}
 }
 
 func TestRunCreationManagerCreateEvalSessionCreatesQueuedRuns(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	challengeInputSetID := uuid.New()
 	deploymentID := uuid.New()
 	sessionID := uuid.New()
@@ -748,9 +748,9 @@ func TestRunCreationManagerCreateEvalSessionCreatesQueuedRuns(t *testing.T) {
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		challengeInputSets: []repository.ChallengeInputSetSummary{
-			{ID: challengeInputSetID, ChallengePackVersionID: challengePackVersionID},
+			{ID: challengeInputSetID, EvalPackVersionID: evalPackVersionID},
 		},
 		challengeIdentityIDs: []uuid.UUID{uuid.New(), uuid.New()},
 		deployments: []repository.RunnableDeployment{
@@ -782,7 +782,7 @@ func TestRunCreationManagerCreateEvalSessionCreatesQueuedRuns(t *testing.T) {
 
 	result, err := manager.CreateEvalSession(context.Background(), caller, CreateEvalSessionInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		Participants: []EvalSessionParticipantInput{
 			{AgentDeploymentID: &deploymentID, Label: "Primary"},
 		},
@@ -831,7 +831,7 @@ func TestRunCreationManagerCreateEvalSessionCreatesQueuedRuns(t *testing.T) {
 
 func TestRunCreationManagerCreateEvalSessionPersistsSeedFanout(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	challengeInputSetID := uuid.New()
 	deploymentID := uuid.New()
 	sessionID := uuid.New()
@@ -846,9 +846,9 @@ func TestRunCreationManagerCreateEvalSessionPersistsSeedFanout(t *testing.T) {
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		challengeInputSets: []repository.ChallengeInputSetSummary{
-			{ID: challengeInputSetID, ChallengePackVersionID: challengePackVersionID},
+			{ID: challengeInputSetID, EvalPackVersionID: evalPackVersionID},
 		},
 		challengeIdentityIDs: []uuid.UUID{uuid.New()},
 		deployments: []repository.RunnableDeployment{
@@ -872,7 +872,7 @@ func TestRunCreationManagerCreateEvalSessionPersistsSeedFanout(t *testing.T) {
 
 	result, err := manager.CreateEvalSession(context.Background(), caller, CreateEvalSessionInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		Participants: []EvalSessionParticipantInput{
 			{AgentDeploymentID: &deploymentID, Label: "Primary"},
 		},
@@ -926,7 +926,7 @@ func TestRunCreationManagerCreateEvalSessionPersistsSeedFanout(t *testing.T) {
 
 func TestRunCreationManagerCreateEvalSessionExpandsRunMatrix(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	challengeInputSetID := uuid.New()
 	defaultDeploymentID := uuid.New()
 	smokeDeploymentID := uuid.New()
@@ -942,9 +942,9 @@ func TestRunCreationManagerCreateEvalSessionExpandsRunMatrix(t *testing.T) {
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		challengeInputSets: []repository.ChallengeInputSetSummary{
-			{ID: challengeInputSetID, ChallengePackVersionID: challengePackVersionID},
+			{ID: challengeInputSetID, EvalPackVersionID: evalPackVersionID},
 		},
 		challengeIdentityIDs: []uuid.UUID{uuid.New()},
 		deployments: []repository.RunnableDeployment{
@@ -975,7 +975,7 @@ func TestRunCreationManagerCreateEvalSessionExpandsRunMatrix(t *testing.T) {
 
 	result, err := manager.CreateEvalSession(context.Background(), caller, CreateEvalSessionInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		ExecutionMode:          "single_agent",
 		Name:                   "Lineup race",
 		MaxIterations:          &maxIterations,
@@ -1066,7 +1066,7 @@ func TestRunCreationManagerCreateEvalSessionExpandsRunMatrix(t *testing.T) {
 
 func TestRunCreationManagerCreateEvalSessionStartsEvalSessionWorkflow(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	challengeInputSetID := uuid.New()
 	deploymentID := uuid.New()
 	sessionID := uuid.New()
@@ -1078,9 +1078,9 @@ func TestRunCreationManagerCreateEvalSessionStartsEvalSessionWorkflow(t *testing
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		challengeInputSets: []repository.ChallengeInputSetSummary{
-			{ID: challengeInputSetID, ChallengePackVersionID: challengePackVersionID},
+			{ID: challengeInputSetID, EvalPackVersionID: evalPackVersionID},
 		},
 		challengeIdentityIDs: []uuid.UUID{uuid.New()},
 		deployments: []repository.RunnableDeployment{
@@ -1110,7 +1110,7 @@ func TestRunCreationManagerCreateEvalSessionStartsEvalSessionWorkflow(t *testing
 
 	_, err := manager.CreateEvalSession(context.Background(), caller, CreateEvalSessionInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		Participants: []EvalSessionParticipantInput{
 			{AgentDeploymentID: &deploymentID, Label: "Primary"},
 		},
@@ -1139,7 +1139,7 @@ func TestRunCreationManagerCreateEvalSessionStartsEvalSessionWorkflow(t *testing
 
 func TestRunCreationManagerCreateEvalSessionPersistsAggregationReliabilityWeight(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	challengeInputSetID := uuid.New()
 	deploymentID := uuid.New()
 	sessionID := uuid.New()
@@ -1151,9 +1151,9 @@ func TestRunCreationManagerCreateEvalSessionPersistsAggregationReliabilityWeight
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		challengeInputSets: []repository.ChallengeInputSetSummary{
-			{ID: challengeInputSetID, ChallengePackVersionID: challengePackVersionID},
+			{ID: challengeInputSetID, EvalPackVersionID: evalPackVersionID},
 		},
 		challengeIdentityIDs: []uuid.UUID{uuid.New()},
 		deployments: []repository.RunnableDeployment{
@@ -1183,7 +1183,7 @@ func TestRunCreationManagerCreateEvalSessionPersistsAggregationReliabilityWeight
 
 	_, err := manager.CreateEvalSession(context.Background(), caller, CreateEvalSessionInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		Participants: []EvalSessionParticipantInput{
 			{AgentDeploymentID: &deploymentID, Label: "Primary"},
 		},
@@ -1213,10 +1213,10 @@ func TestRunCreationManagerCreateEvalSessionPersistsAggregationReliabilityWeight
 
 func TestRunCreationManagerCreateEvalSessionRejectsUnresolvedDeployment(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	missingDeploymentID := uuid.New()
 	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		challengeInputSets:   nil,
 	}, &fakeRunWorkflowStarter{}, nil)
 
@@ -1227,7 +1227,7 @@ func TestRunCreationManagerCreateEvalSessionRejectsUnresolvedDeployment(t *testi
 		},
 	}, CreateEvalSessionInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		Participants: []EvalSessionParticipantInput{
 			{AgentDeploymentID: &missingDeploymentID, Label: "Primary"},
 		},
@@ -1261,7 +1261,7 @@ func TestRunCreationManagerCreateEvalSessionRejectsUnresolvedDeployment(t *testi
 
 func TestRunCreationManagerRejectsChallengeInputSetFromAnotherPackVersion(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	challengeInputSetID := uuid.New()
 	deploymentID := uuid.New()
 	caller := Caller{
@@ -1272,10 +1272,10 @@ func TestRunCreationManagerRejectsChallengeInputSetFromAnotherPackVersion(t *tes
 	}
 
 	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		challengeInputSet: repository.ChallengeInputSet{
 			ID:                     challengeInputSetID,
-			ChallengePackVersionID: uuid.New(),
+			EvalPackVersionID: uuid.New(),
 		},
 		deployments: []repository.RunnableDeployment{
 			{
@@ -1290,7 +1290,7 @@ func TestRunCreationManagerRejectsChallengeInputSetFromAnotherPackVersion(t *tes
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		ChallengeInputSetID:    &challengeInputSetID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 	})
@@ -1309,11 +1309,11 @@ func TestRunCreationManagerRejectsChallengeInputSetFromAnotherPackVersion(t *tes
 
 func TestRunCreationManagerRejectsMissingChallengeInputSet(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	challengeInputSetID := uuid.New()
 	deploymentID := uuid.New()
 	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		challengeInputSetErr: repository.ErrChallengeInputSetNotFound,
 		deployments: []repository.RunnableDeployment{
 			{
@@ -1333,7 +1333,7 @@ func TestRunCreationManagerRejectsMissingChallengeInputSet(t *testing.T) {
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		ChallengeInputSetID:    &challengeInputSetID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 	})
@@ -1352,10 +1352,10 @@ func TestRunCreationManagerRejectsMissingChallengeInputSet(t *testing.T) {
 
 func TestRunCreationManagerRejectsDeploymentOutsideWorkspace(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	deploymentID := uuid.New()
 	manager := NewRunCreationManager(NewCallerWorkspaceAuthorizer(), &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		deployments:          nil,
 	}, &fakeRunWorkflowStarter{}, nil)
 
@@ -1366,7 +1366,7 @@ func TestRunCreationManagerRejectsDeploymentOutsideWorkspace(t *testing.T) {
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 	})
 	if err == nil {
@@ -1391,7 +1391,7 @@ func TestRunCreationManagerRejectsForbiddenWorkspaceAccess(t *testing.T) {
 		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: uuid.New(),
+		EvalPackVersionID: uuid.New(),
 		AgentDeploymentIDs:     []uuid.UUID{uuid.New()},
 	})
 	if err == nil {
@@ -1404,7 +1404,7 @@ func TestRunCreationManagerRejectsForbiddenWorkspaceAccess(t *testing.T) {
 
 func TestRunCreationManagerAutoSelectsSingleInputSet(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	inputSetID := uuid.New()
 	deploymentID := uuid.New()
 	snapshotID := uuid.New()
@@ -1417,9 +1417,9 @@ func TestRunCreationManagerAutoSelectsSingleInputSet(t *testing.T) {
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		challengeInputSets: []repository.ChallengeInputSetSummary{
-			{ID: inputSetID, ChallengePackVersionID: challengePackVersionID, InputKey: "default", Name: "Default"},
+			{ID: inputSetID, EvalPackVersionID: evalPackVersionID, InputKey: "default", Name: "Default"},
 		},
 		deployments: []repository.RunnableDeployment{
 			{
@@ -1434,7 +1434,7 @@ func TestRunCreationManagerAutoSelectsSingleInputSet(t *testing.T) {
 			Run: domain.Run{
 				ID:                     runID,
 				WorkspaceID:            workspaceID,
-				ChallengePackVersionID: challengePackVersionID,
+				EvalPackVersionID: evalPackVersionID,
 				ChallengeInputSetID:    &inputSetID,
 				Status:                 domain.RunStatusQueued,
 				ExecutionMode:          "single_agent",
@@ -1447,7 +1447,7 @@ func TestRunCreationManagerAutoSelectsSingleInputSet(t *testing.T) {
 	// Create a run WITHOUT specifying challenge_input_set_id.
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 	})
 	if err != nil {
@@ -1467,7 +1467,7 @@ func TestRunCreationManagerAutoSelectsSingleInputSet(t *testing.T) {
 
 func TestRunCreationManagerRejectsAmbiguousInputSets(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	deploymentID := uuid.New()
 	caller := Caller{
 		UserID: uuid.New(),
@@ -1477,10 +1477,10 @@ func TestRunCreationManagerRejectsAmbiguousInputSets(t *testing.T) {
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		challengeInputSets: []repository.ChallengeInputSetSummary{
-			{ID: uuid.New(), ChallengePackVersionID: challengePackVersionID, InputKey: "default", Name: "Default"},
-			{ID: uuid.New(), ChallengePackVersionID: challengePackVersionID, InputKey: "extended", Name: "Extended"},
+			{ID: uuid.New(), EvalPackVersionID: evalPackVersionID, InputKey: "default", Name: "Default"},
+			{ID: uuid.New(), EvalPackVersionID: evalPackVersionID, InputKey: "extended", Name: "Extended"},
 		},
 		deployments: []repository.RunnableDeployment{
 			{
@@ -1496,7 +1496,7 @@ func TestRunCreationManagerRejectsAmbiguousInputSets(t *testing.T) {
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 	})
 	if err == nil {
@@ -1514,7 +1514,7 @@ func TestRunCreationManagerRejectsAmbiguousInputSets(t *testing.T) {
 
 func TestRunCreationManagerProceedsWithoutInputSetsWhenNoneExist(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackVersionID := uuid.New()
 	deploymentID := uuid.New()
 	runID := uuid.New()
 	caller := Caller{
@@ -1525,7 +1525,7 @@ func TestRunCreationManagerProceedsWithoutInputSetsWhenNoneExist(t *testing.T) {
 	}
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{ID: challengePackVersionID},
+		evalPackVersion: repository.RunnableEvalPackVersion{ID: evalPackVersionID},
 		challengeInputSets:   nil, // no input sets
 		deployments: []repository.RunnableDeployment{
 			{
@@ -1540,7 +1540,7 @@ func TestRunCreationManagerProceedsWithoutInputSetsWhenNoneExist(t *testing.T) {
 			Run: domain.Run{
 				ID:                     runID,
 				WorkspaceID:            workspaceID,
-				ChallengePackVersionID: challengePackVersionID,
+				EvalPackVersionID: evalPackVersionID,
 				Status:                 domain.RunStatusQueued,
 				ExecutionMode:          "single_agent",
 			},
@@ -1550,7 +1550,7 @@ func TestRunCreationManagerProceedsWithoutInputSetsWhenNoneExist(t *testing.T) {
 
 	_, err := manager.CreateRun(context.Background(), caller, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 	})
 	if err != nil {
@@ -1567,8 +1567,8 @@ func TestRunCreationManagerProceedsWithoutInputSetsWhenNoneExist(t *testing.T) {
 
 func TestRunCreationManagerResolvesRegressionSelectionsWithOfficialPackMode(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
-	challengePackID := uuid.New()
+	evalPackVersionID := uuid.New()
+	evalPackID := uuid.New()
 	deploymentID := uuid.New()
 	runID := uuid.New()
 	suiteID := uuid.New()
@@ -1579,9 +1579,9 @@ func TestRunCreationManagerResolvesRegressionSelectionsWithOfficialPackMode(t *t
 	challengeC := uuid.New()
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID:              challengePackVersionID,
-			ChallengePackID: challengePackID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID:              evalPackVersionID,
+			EvalPackID: evalPackID,
 		},
 		challengeIdentityIDs: []uuid.UUID{challengeA, challengeC},
 		deployments: []repository.RunnableDeployment{
@@ -1597,7 +1597,7 @@ func TestRunCreationManagerResolvesRegressionSelectionsWithOfficialPackMode(t *t
 			suiteID: {
 				ID:                    suiteID,
 				WorkspaceID:           workspaceID,
-				SourceChallengePackID: challengePackID,
+				SourceEvalPackID: evalPackID,
 				Status:                domain.RegressionSuiteStatusActive,
 			},
 		},
@@ -1629,7 +1629,7 @@ func TestRunCreationManagerResolvesRegressionSelectionsWithOfficialPackMode(t *t
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		OfficialPackMode:       domain.OfficialPackModeFull,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 		RegressionSuiteIDs:     []uuid.UUID{suiteID},
@@ -1698,7 +1698,7 @@ func TestRunCreationManagerRejectsSuiteOnlyWithoutRegressionSelection(t *testing
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: uuid.New(),
+		EvalPackVersionID: uuid.New(),
 		OfficialPackMode:       domain.OfficialPackModeSuiteOnly,
 		AgentDeploymentIDs:     []uuid.UUID{uuid.New()},
 	})
@@ -1717,16 +1717,16 @@ func TestRunCreationManagerRejectsSuiteOnlyWithoutRegressionSelection(t *testing
 
 func TestRunCreationManagerRejectsRegressionCaseOutsideWorkspace(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
-	challengePackID := uuid.New()
+	evalPackVersionID := uuid.New()
+	evalPackID := uuid.New()
 	deploymentID := uuid.New()
 	regressionCaseID := uuid.New()
 	suiteID := uuid.New()
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID:              challengePackVersionID,
-			ChallengePackID: challengePackID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID:              evalPackVersionID,
+			EvalPackID: evalPackID,
 		},
 		deployments: []repository.RunnableDeployment{
 			{
@@ -1741,7 +1741,7 @@ func TestRunCreationManagerRejectsRegressionCaseOutsideWorkspace(t *testing.T) {
 			suiteID: {
 				ID:                    suiteID,
 				WorkspaceID:           uuid.New(),
-				SourceChallengePackID: challengePackID,
+				SourceEvalPackID: evalPackID,
 				Status:                domain.RegressionSuiteStatusActive,
 			},
 		},
@@ -1764,7 +1764,7 @@ func TestRunCreationManagerRejectsRegressionCaseOutsideWorkspace(t *testing.T) {
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 		RegressionCaseIDs:      []uuid.UUID{regressionCaseID},
 	})
@@ -1783,15 +1783,15 @@ func TestRunCreationManagerRejectsRegressionCaseOutsideWorkspace(t *testing.T) {
 
 func TestRunCreationManagerRejectsRegressionSuiteFromDifferentPack(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
-	challengePackID := uuid.New()
+	evalPackVersionID := uuid.New()
+	evalPackID := uuid.New()
 	deploymentID := uuid.New()
 	suiteID := uuid.New()
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID:              challengePackVersionID,
-			ChallengePackID: challengePackID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID:              evalPackVersionID,
+			EvalPackID: evalPackID,
 		},
 		deployments: []repository.RunnableDeployment{
 			{
@@ -1806,7 +1806,7 @@ func TestRunCreationManagerRejectsRegressionSuiteFromDifferentPack(t *testing.T)
 			suiteID: {
 				ID:                    suiteID,
 				WorkspaceID:           workspaceID,
-				SourceChallengePackID: uuid.New(),
+				SourceEvalPackID: uuid.New(),
 				Status:                domain.RegressionSuiteStatusActive,
 			},
 		},
@@ -1820,7 +1820,7 @@ func TestRunCreationManagerRejectsRegressionSuiteFromDifferentPack(t *testing.T)
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 		RegressionSuiteIDs:     []uuid.UUID{suiteID},
 	})
@@ -1839,15 +1839,15 @@ func TestRunCreationManagerRejectsRegressionSuiteFromDifferentPack(t *testing.T)
 
 func TestRunCreationManagerRejectsInactiveRegressionSuite(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
-	challengePackID := uuid.New()
+	evalPackVersionID := uuid.New()
+	evalPackID := uuid.New()
 	deploymentID := uuid.New()
 	suiteID := uuid.New()
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID:              challengePackVersionID,
-			ChallengePackID: challengePackID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID:              evalPackVersionID,
+			EvalPackID: evalPackID,
 		},
 		deployments: []repository.RunnableDeployment{
 			{
@@ -1862,7 +1862,7 @@ func TestRunCreationManagerRejectsInactiveRegressionSuite(t *testing.T) {
 			suiteID: {
 				ID:                    suiteID,
 				WorkspaceID:           workspaceID,
-				SourceChallengePackID: challengePackID,
+				SourceEvalPackID: evalPackID,
 				Status:                domain.RegressionSuiteStatusArchived,
 			},
 		},
@@ -1876,7 +1876,7 @@ func TestRunCreationManagerRejectsInactiveRegressionSuite(t *testing.T) {
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 		RegressionSuiteIDs:     []uuid.UUID{suiteID},
 	})
@@ -1895,16 +1895,16 @@ func TestRunCreationManagerRejectsInactiveRegressionSuite(t *testing.T) {
 
 func TestRunCreationManagerRejectsInactiveRegressionCase(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
-	challengePackID := uuid.New()
+	evalPackVersionID := uuid.New()
+	evalPackID := uuid.New()
 	deploymentID := uuid.New()
 	regressionCaseID := uuid.New()
 	suiteID := uuid.New()
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID:              challengePackVersionID,
-			ChallengePackID: challengePackID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID:              evalPackVersionID,
+			EvalPackID: evalPackID,
 		},
 		deployments: []repository.RunnableDeployment{
 			{
@@ -1919,7 +1919,7 @@ func TestRunCreationManagerRejectsInactiveRegressionCase(t *testing.T) {
 			suiteID: {
 				ID:                    suiteID,
 				WorkspaceID:           workspaceID,
-				SourceChallengePackID: challengePackID,
+				SourceEvalPackID: evalPackID,
 				Status:                domain.RegressionSuiteStatusActive,
 			},
 		},
@@ -1942,7 +1942,7 @@ func TestRunCreationManagerRejectsInactiveRegressionCase(t *testing.T) {
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 		RegressionCaseIDs:      []uuid.UUID{regressionCaseID},
 	})
@@ -1961,8 +1961,8 @@ func TestRunCreationManagerRejectsInactiveRegressionCase(t *testing.T) {
 
 func TestRunCreationManagerSkipsInactiveSuiteCasesWhenExpandingSelections(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
-	challengePackID := uuid.New()
+	evalPackVersionID := uuid.New()
+	evalPackID := uuid.New()
 	deploymentID := uuid.New()
 	runID := uuid.New()
 	suiteID := uuid.New()
@@ -1972,9 +1972,9 @@ func TestRunCreationManagerSkipsInactiveSuiteCasesWhenExpandingSelections(t *tes
 	activeChallengeID := uuid.New()
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID:              challengePackVersionID,
-			ChallengePackID: challengePackID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID:              evalPackVersionID,
+			EvalPackID: evalPackID,
 		},
 		deployments: []repository.RunnableDeployment{
 			{
@@ -1989,7 +1989,7 @@ func TestRunCreationManagerSkipsInactiveSuiteCasesWhenExpandingSelections(t *tes
 			suiteID: {
 				ID:                    suiteID,
 				WorkspaceID:           workspaceID,
-				SourceChallengePackID: challengePackID,
+				SourceEvalPackID: evalPackID,
 				Status:                domain.RegressionSuiteStatusActive,
 			},
 		},
@@ -2037,7 +2037,7 @@ func TestRunCreationManagerSkipsInactiveSuiteCasesWhenExpandingSelections(t *tes
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		OfficialPackMode:       domain.OfficialPackModeSuiteOnly,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 		RegressionSuiteIDs:     []uuid.UUID{suiteID},
@@ -2059,16 +2059,16 @@ func TestRunCreationManagerSkipsInactiveSuiteCasesWhenExpandingSelections(t *tes
 
 func TestRunCreationManagerRejectsProposedRegressionCaseUnlessValidationEnabled(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
-	challengePackID := uuid.New()
+	evalPackVersionID := uuid.New()
+	evalPackID := uuid.New()
 	deploymentID := uuid.New()
 	regressionCaseID := uuid.New()
 	suiteID := uuid.New()
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID:              challengePackVersionID,
-			ChallengePackID: challengePackID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID:              evalPackVersionID,
+			EvalPackID: evalPackID,
 		},
 		deployments: []repository.RunnableDeployment{
 			{
@@ -2083,7 +2083,7 @@ func TestRunCreationManagerRejectsProposedRegressionCaseUnlessValidationEnabled(
 			suiteID: {
 				ID:                    suiteID,
 				WorkspaceID:           workspaceID,
-				SourceChallengePackID: challengePackID,
+				SourceEvalPackID: evalPackID,
 				Status:                domain.RegressionSuiteStatusActive,
 			},
 		},
@@ -2106,7 +2106,7 @@ func TestRunCreationManagerRejectsProposedRegressionCaseUnlessValidationEnabled(
 		},
 	}, CreateRunInput{
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: challengePackVersionID,
+		EvalPackVersionID: evalPackVersionID,
 		AgentDeploymentIDs:     []uuid.UUID{deploymentID},
 		RegressionCaseIDs:      []uuid.UUID{regressionCaseID},
 	})
@@ -2124,8 +2124,8 @@ func TestRunCreationManagerRejectsProposedRegressionCaseUnlessValidationEnabled(
 
 func TestRunCreationManagerIncludesProposedRegressionCasesForValidationRuns(t *testing.T) {
 	workspaceID := uuid.New()
-	challengePackVersionID := uuid.New()
-	challengePackID := uuid.New()
+	evalPackVersionID := uuid.New()
+	evalPackID := uuid.New()
 	deploymentID := uuid.New()
 	runID := uuid.New()
 	suiteID := uuid.New()
@@ -2134,9 +2134,9 @@ func TestRunCreationManagerIncludesProposedRegressionCasesForValidationRuns(t *t
 	mutedCaseID := uuid.New()
 
 	repo := &fakeRunCreationRepository{
-		challengePackVersion: repository.RunnableChallengePackVersion{
-			ID:              challengePackVersionID,
-			ChallengePackID: challengePackID,
+		evalPackVersion: repository.RunnableEvalPackVersion{
+			ID:              evalPackVersionID,
+			EvalPackID: evalPackID,
 		},
 		deployments: []repository.RunnableDeployment{
 			{
@@ -2151,7 +2151,7 @@ func TestRunCreationManagerIncludesProposedRegressionCasesForValidationRuns(t *t
 			suiteID: {
 				ID:                    suiteID,
 				WorkspaceID:           workspaceID,
-				SourceChallengePackID: challengePackID,
+				SourceEvalPackID: evalPackID,
 				Status:                domain.RegressionSuiteStatusActive,
 			},
 		},
@@ -2201,7 +2201,7 @@ func TestRunCreationManagerIncludesProposedRegressionCasesForValidationRuns(t *t
 		},
 	}, CreateRunInput{
 		WorkspaceID:                workspaceID,
-		ChallengePackVersionID:     challengePackVersionID,
+		EvalPackVersionID:     evalPackVersionID,
 		OfficialPackMode:           domain.OfficialPackModeSuiteOnly,
 		AgentDeploymentIDs:         []uuid.UUID{deploymentID},
 		RegressionSuiteIDs:         []uuid.UUID{suiteID},
@@ -2227,8 +2227,8 @@ func TestRunCreationManagerIncludesProposedRegressionCasesForValidationRuns(t *t
 }
 
 type fakeRunCreationRepository struct {
-	challengePackVersion            repository.RunnableChallengePackVersion
-	challengePackVersionErr         error
+	evalPackVersion            repository.RunnableEvalPackVersion
+	evalPackVersionErr         error
 	publicPacksDisabled             bool
 	challengeInputSet               repository.ChallengeInputSet
 	challengeInputSetErr            error
@@ -2296,8 +2296,8 @@ func executionPlanTestVoiceMetadata(t *testing.T, payload json.RawMessage) (stri
 	return plan.Mode, plan.Modality, plan.Voice
 }
 
-func (f *fakeRunCreationRepository) GetRunnableChallengePackVersionByID(_ context.Context, _ uuid.UUID) (repository.RunnableChallengePackVersion, error) {
-	return f.challengePackVersion, f.challengePackVersionErr
+func (f *fakeRunCreationRepository) GetRunnableEvalPackVersionByID(_ context.Context, _ uuid.UUID) (repository.RunnableEvalPackVersion, error) {
+	return f.evalPackVersion, f.evalPackVersionErr
 }
 
 func (f *fakeRunCreationRepository) WorkspacePublicPacksEnabled(context.Context, uuid.UUID) (bool, error) {

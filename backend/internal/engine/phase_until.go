@@ -3,7 +3,7 @@ package engine
 import (
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/evalpack"
 )
 
 type untilEvalContext struct {
@@ -48,17 +48,17 @@ func untilConditionMet(condition string, ctx untilEvalContext) bool {
 	}
 }
 
-func shouldRunPhase(phase challengepack.UserSimulatorPhase, lastMismatch bool) bool {
+func shouldRunPhase(phase evalpack.UserSimulatorPhase, lastMismatch bool) bool {
 	trigger := strings.TrimSpace(phase.Trigger)
 	if trigger == "" {
-		trigger = challengepack.UserSimulatorTriggerAlways
+		trigger = evalpack.UserSimulatorTriggerAlways
 	}
 	switch trigger {
-	case challengepack.UserSimulatorTriggerNever:
+	case evalpack.UserSimulatorTriggerNever:
 		return false
-	case challengepack.UserSimulatorTriggerOnAssistantMismatch:
+	case evalpack.UserSimulatorTriggerOnAssistantMismatch:
 		return lastMismatch
-	case challengepack.UserSimulatorTriggerManual:
+	case evalpack.UserSimulatorTriggerManual:
 		return true
 	default:
 		return true

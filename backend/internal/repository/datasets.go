@@ -26,7 +26,7 @@ type Dataset struct {
 	Description                   string          `json:"description"`
 	InputSchema                   json.RawMessage `json:"input_schema,omitempty"`
 	InputSchemaEnforced           bool            `json:"input_schema_enforced"`
-	DefaultChallengePackVersionID *uuid.UUID      `json:"default_challenge_pack_version_id,omitempty"`
+	DefaultEvalPackVersionID *uuid.UUID      `json:"default_eval_pack_version_id,omitempty"`
 	ActiveExampleCount            int             `json:"active_example_count"`
 	VersionCount                  int             `json:"version_count"`
 	CreatedBy                     uuid.UUID       `json:"created_by"`
@@ -72,7 +72,7 @@ type CreateDatasetParams struct {
 	Description                   string
 	InputSchema                   json.RawMessage
 	InputSchemaEnforced           bool
-	DefaultChallengePackVersionID *uuid.UUID
+	DefaultEvalPackVersionID *uuid.UUID
 	CreatedBy                     uuid.UUID
 }
 
@@ -83,7 +83,7 @@ type PatchDatasetParams struct {
 	Description                   *string
 	InputSchema                   json.RawMessage
 	InputSchemaEnforced           *bool
-	DefaultChallengePackVersionID *uuid.UUID
+	DefaultEvalPackVersionID *uuid.UUID
 }
 
 type UpsertDatasetExampleParams struct {
@@ -140,7 +140,7 @@ func (r *Repository) CreateDataset(ctx context.Context, params CreateDatasetPara
 		Description:                   params.Description,
 		InputSchema:                   nullableJSON(params.InputSchema),
 		InputSchemaEnforced:           params.InputSchemaEnforced,
-		DefaultChallengePackVersionID: params.DefaultChallengePackVersionID,
+		DefaultEvalPackVersionID: params.DefaultEvalPackVersionID,
 		CreatedBy:                     params.CreatedBy,
 	})
 	if err != nil {
@@ -200,7 +200,7 @@ func (r *Repository) PatchDataset(ctx context.Context, params PatchDatasetParams
 		Description:                   params.Description,
 		InputSchema:                   nullableJSON(params.InputSchema),
 		InputSchemaEnforced:           params.InputSchemaEnforced,
-		DefaultChallengePackVersionID: params.DefaultChallengePackVersionID,
+		DefaultEvalPackVersionID: params.DefaultEvalPackVersionID,
 	})
 	if err != nil {
 		if isDatasetSlugConflict(err) {
@@ -510,7 +510,7 @@ func mapDataset(row repositorysqlc.Dataset) (Dataset, error) {
 	return Dataset{
 		ID: row.ID, OrganizationID: row.OrganizationID, WorkspaceID: row.WorkspaceID, Slug: row.Slug, Name: row.Name,
 		Description: row.Description, InputSchema: cloneBytes(row.InputSchema), InputSchemaEnforced: row.InputSchemaEnforced,
-		DefaultChallengePackVersionID: row.DefaultChallengePackVersionID, CreatedBy: row.CreatedBy, CreatedAt: createdAt,
+		DefaultEvalPackVersionID: row.DefaultEvalPackVersionID, CreatedBy: row.CreatedBy, CreatedAt: createdAt,
 		UpdatedAt: updatedAt, ArchivedAt: optionalTime(row.ArchivedAt),
 	}, nil
 }
@@ -519,7 +519,7 @@ func mapDatasetListRow(row repositorysqlc.ListDatasetsByWorkspaceIDRow) (Dataset
 	return mapDatasetDetailRow(repositorysqlc.GetDatasetByIDRow{
 		ID: row.ID, OrganizationID: row.OrganizationID, WorkspaceID: row.WorkspaceID, Slug: row.Slug, Name: row.Name,
 		Description: row.Description, InputSchema: row.InputSchema, InputSchemaEnforced: row.InputSchemaEnforced,
-		DefaultChallengePackVersionID: row.DefaultChallengePackVersionID, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt,
+		DefaultEvalPackVersionID: row.DefaultEvalPackVersionID, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt, ArchivedAt: row.ArchivedAt, ActiveExampleCount: row.ActiveExampleCount, VersionCount: row.VersionCount,
 	})
 }
@@ -528,7 +528,7 @@ func mapDatasetDetailRow(row repositorysqlc.GetDatasetByIDRow) (Dataset, error) 
 	dataset, err := mapDataset(repositorysqlc.Dataset{
 		ID: row.ID, OrganizationID: row.OrganizationID, WorkspaceID: row.WorkspaceID, Slug: row.Slug, Name: row.Name,
 		Description: row.Description, InputSchema: row.InputSchema, InputSchemaEnforced: row.InputSchemaEnforced,
-		DefaultChallengePackVersionID: row.DefaultChallengePackVersionID, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt,
+		DefaultEvalPackVersionID: row.DefaultEvalPackVersionID, CreatedBy: row.CreatedBy, CreatedAt: row.CreatedAt,
 		UpdatedAt: row.UpdatedAt, ArchivedAt: row.ArchivedAt,
 	})
 	if err != nil {

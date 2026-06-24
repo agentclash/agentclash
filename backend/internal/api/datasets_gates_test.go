@@ -195,7 +195,7 @@ func TestSyncDatasetRegressionSuiteRequiresManageRegressions(t *testing.T) {
 		WorkspaceID:            workspaceID,
 		DatasetID:              datasetID,
 		VersionID:              uuid.New(),
-		ChallengePackVersionID: uuid.New(),
+		EvalPackVersionID: uuid.New(),
 		ChallengeKey:           "case-1",
 	})
 	if !errors.Is(err, ErrForbidden) {

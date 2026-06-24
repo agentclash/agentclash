@@ -8,7 +8,7 @@ CREATE TABLE datasets (
     description text NOT NULL DEFAULT '',
     input_schema jsonb,
     input_schema_enforced boolean NOT NULL DEFAULT false,
-    default_challenge_pack_version_id uuid REFERENCES challenge_pack_versions (id) ON DELETE SET NULL,
+    default_eval_pack_version_id uuid REFERENCES eval_pack_versions (id) ON DELETE SET NULL,
     created_by uuid NOT NULL REFERENCES users (id),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),

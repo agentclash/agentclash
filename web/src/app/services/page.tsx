@@ -14,7 +14,7 @@ import { ogImageUrl } from "@/lib/seo";
 const PAGE_PATH = "/services";
 const PAGE_TITLE = "Agent Evaluation Services — Fixed Offerings | AgentClash";
 const PAGE_DESCRIPTION =
-  "Fixed-scope eval services that end in customer-owned challenge packs, baselines, and CI gates. First governed benchmark in 2 weeks on the AgentClash platform.";
+  "Fixed-scope eval services that end in customer-owned eval packs, baselines, and CI gates. First governed benchmark in 2 weeks on the AgentClash platform.";
 const SOCIAL_IMAGE = ogImageUrl({
   title: "Agent Evaluation Services",
   subtitle: "Platform adoption, not generic consulting",
@@ -27,16 +27,16 @@ const offerings = [
     name: "Eval Discovery",
     duration: "1 week",
     deliverable:
-      "Audit your agents, document 5 concrete failure modes, and deliver a prioritized challenge pack roadmap.",
+      "Audit your agents, document 5 concrete failure modes, and deliver a prioritized eval pack roadmap.",
     fit: "You have agents in production but no frozen benchmark yet.",
     emailSubject: "AgentClash%20Eval%20Discovery",
   },
   {
-    id: "challenge-pack-build",
-    name: "Challenge Pack Build",
+    id: "eval-pack-build",
+    name: "Eval Pack Build",
     duration: "2 to 4 weeks",
     deliverable:
-      "Ship 3–10 custom challenge packs from your real workflows, scored and versioned in your workspace.",
+      "Ship 3–10 custom eval packs from your real workflows, scored and versioned in your workspace.",
     fit: "You know what to test and need packs built from live tasks and tools.",
     emailSubject: "AgentClash%20Challenge%20Pack%20Build",
   },
@@ -95,7 +95,7 @@ const crossLinks = [
   {
     href: "/docs",
     label: "Documentation",
-    description: "Challenge packs, CI gates, and self-host guides.",
+    description: "Eval packs, CI gates, and self-host guides.",
   },
 ];
 
@@ -106,7 +106,7 @@ const faqItems = [
       "Team is product access in your workspace. Services are fixed-scope paid engagements where our team builds packs, baselines, or gates with you. Many teams start on Free or Team and add a 2-week Benchmark & Gate Setup sprint.",
   },
   {
-    question: "Do we keep the challenge packs after the engagement?",
+    question: "Do we keep the eval packs after the engagement?",
     answer:
       "Yes. All packs, baselines, scorecards, and gate configs live in your workspace. You can extend them without us.",
   },
@@ -186,7 +186,7 @@ export default function ServicesPage() {
           </h1>
           <p className="mt-8 max-w-[58ch] text-lg leading-8 text-white/60">
             AgentClash is the platform. Our team gets you from live agents to
-            frozen challenge packs, baseline evidence, and CI gates in your
+            frozen eval packs, baseline evidence, and CI gates in your
             workspace. Fixed offerings, not open-ended consulting.
           </p>
           <p className="mt-4 max-w-[58ch] text-sm leading-6 text-white/45">

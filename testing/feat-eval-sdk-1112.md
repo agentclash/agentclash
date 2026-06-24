@@ -3,7 +3,7 @@
 ## Functional Behavior
 
 - `agentclash evaltest promote-failures --from ... --to ...`
-- Writes draft challenge-pack YAML from failed cases
+- Writes draft eval-pack YAML from failed cases
 - Supports `--dry-run` and `--append`
 
 ## Unit Tests

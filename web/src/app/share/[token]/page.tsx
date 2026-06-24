@@ -77,10 +77,10 @@ async function loadPublicShare(token: string): Promise<PublicShareResponse> {
 
 function publicTitle(share: PublicShareResponse) {
   const resource = share.resource;
-  if (resource.type === "challenge_pack_version") {
+  if (resource.type === "eval_pack_version") {
     const pack = resource.pack as { name?: string } | undefined;
     const version = resource.version as { version_number?: number } | undefined;
-    return `${pack?.name ?? "Challenge pack"} v${version?.version_number ?? ""}`.trim();
+    return `${pack?.name ?? "Eval pack"} v${version?.version_number ?? ""}`.trim();
   }
   if (resource.type === "run_scorecard") {
     const run = resource.run as { name?: string } | undefined;

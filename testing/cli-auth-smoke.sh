@@ -228,9 +228,9 @@ else
 fi
 
 if [[ -n "${AGENTCLASH_WORKSPACE:-$config_workspace_id}" ]]; then
-  expect_success "challenge-pack list" "${BASE[@]}" challenge-pack list || true
+  expect_success "eval-pack list" "${BASE[@]}" eval-pack list || true
 else
-  ok "challenge-pack list skipped because no AGENTCLASH_WORKSPACE/default_workspace is set"
+  ok "eval-pack list skipped because no AGENTCLASH_WORKSPACE/default_workspace is set"
 fi
 
 expect_success "infra model-catalog list" "${BASE[@]}" infra model-catalog list || true

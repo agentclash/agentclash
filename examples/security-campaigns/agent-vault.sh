@@ -2,7 +2,7 @@
 # Agent Vault adversarial-prompt campaign.
 #
 # Iterates every adversarial_prompts[] entry in
-# examples/challenge-packs/infisical-agent-vault.yaml against a running
+# examples/eval-packs/infisical-agent-vault.yaml against a running
 # Infisical Agent Vault, and prints a leak-rate markdown table plus
 # per-attack JSON reports.
 #
@@ -19,7 +19,7 @@
 
 set -euo pipefail
 
-PACK=${PACK:-examples/challenge-packs/infisical-agent-vault.yaml}
+PACK=${PACK:-examples/eval-packs/infisical-agent-vault.yaml}
 MODEL=${MODEL:-gpt-4o-mini}
 ITERATIONS=${ITERATIONS:-10}
 PROXY_URL=${PROXY_URL:-${AGENT_VAULT_PROXY_URL:-}}

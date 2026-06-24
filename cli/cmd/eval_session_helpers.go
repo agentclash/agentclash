@@ -25,8 +25,8 @@ const (
 // errors loudly when those are combined with --repetitions >= 2 rather than
 // silently dropping them.
 func buildEvalSessionBody(workspaceID string, request runCreateRequest, repetitions int) (map[string]any, error) {
-	if request.ChallengePackVersionID == "" {
-		return nil, fmt.Errorf("challenge pack version is required")
+	if request.EvalPackVersionID == "" {
+		return nil, fmt.Errorf("eval pack version is required")
 	}
 	if len(request.DeploymentIDs) == 0 {
 		return nil, fmt.Errorf("at least one deployment is required")
@@ -69,7 +69,7 @@ func buildEvalSessionBody(workspaceID string, request runCreateRequest, repetiti
 
 	body := map[string]any{
 		"workspace_id":              workspaceID,
-		"challenge_pack_version_id": request.ChallengePackVersionID,
+		"eval_pack_version_id": request.EvalPackVersionID,
 		"participants":              participants,
 		"execution_mode":            executionMode,
 		"eval_session": map[string]any{

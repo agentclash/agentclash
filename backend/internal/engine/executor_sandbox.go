@@ -37,7 +37,7 @@ func prepareRunSandbox(ctx context.Context, sandboxProvider sandbox.Provider, as
 	if err := stageArtifactBackedAssets(ctx, assetLoader, session, executionContext); err != nil {
 		return nil, cleanupSandboxOnError(session, err)
 	}
-	if err := applyPlantedSecretsToSession(ctx, session, executionContext.ChallengePackVersion.Manifest); err != nil {
+	if err := applyPlantedSecretsToSession(ctx, session, executionContext.EvalPackVersion.Manifest); err != nil {
 		return nil, cleanupSandboxOnError(session, err)
 	}
 	return session, nil
@@ -74,7 +74,7 @@ func cleanupSandboxOnError(session sandbox.Session, originalErr error) error {
 
 func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) (sandbox.CreateRequest, error) {
 	policy := sandbox.ToolPolicy{
-		AllowedToolKinds: allowedToolKinds(executionContext.ChallengePackVersion.Manifest),
+		AllowedToolKinds: allowedToolKinds(executionContext.EvalPackVersion.Manifest),
 		AllowShell:       false,
 		AllowNetwork:     false,
 		MaxToolCalls:     executionContext.Deployment.RuntimeProfile.MaxToolCalls,
@@ -86,7 +86,7 @@ func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) 
 		MaxWorkspaceBytes: 0,
 	}
 
-	applyChallengeSandboxPolicy(&policy, &filesystem, executionContext.ChallengePackVersion.Manifest)
+	applyChallengeSandboxPolicy(&policy, &filesystem, executionContext.EvalPackVersion.Manifest)
 	applyRuntimeSandboxPolicy(&policy, &filesystem, executionContext.Deployment.RuntimeProfile.ProfileConfig)
 
 	request := sandbox.CreateRequest{
@@ -98,7 +98,7 @@ func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) 
 		Labels:     sandboxLabels(executionContext),
 	}
 
-	if err := applySandboxConfig(&request, executionContext.ChallengePackVersion.Manifest); err != nil {
+	if err := applySandboxConfig(&request, executionContext.EvalPackVersion.Manifest); err != nil {
 		return sandbox.CreateRequest{}, err
 	}
 
@@ -106,7 +106,7 @@ func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) 
 	// applySandboxConfig so manifest sandbox.env_vars win on collision
 	// (a pack author who renames HTTPS_PROXY etc. in the manifest
 	// keeps their override).
-	applyPlantedSecretsToRequest(&request, executionContext.ChallengePackVersion.Manifest)
+	applyPlantedSecretsToRequest(&request, executionContext.EvalPackVersion.Manifest)
 
 	return request, nil
 }
@@ -137,7 +137,7 @@ func sandboxLabels(executionContext repository.RunAgentExecutionContext) map[str
 	return map[string]string{
 		"run_id":                    executionContext.Run.ID.String(),
 		"run_agent_id":              executionContext.RunAgent.ID.String(),
-		"challenge_pack_version_id": executionContext.ChallengePackVersion.ID.String(),
+		"eval_pack_version_id": executionContext.EvalPackVersion.ID.String(),
 		"agent_build_version_id":    executionContext.Deployment.AgentBuildVersion.ID.String(),
 	}
 }

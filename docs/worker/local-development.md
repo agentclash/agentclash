@@ -60,7 +60,7 @@ For local development, the intended setup is:
 Native sandbox staging in this issue is intentionally narrow. The worker uploads only the execution inputs that already exist in the frozen context today:
 
 - `/workspace/agentclash/run-context.json`
-- `/workspace/agentclash/challenge-pack-manifest.json`
+- `/workspace/agentclash/eval-pack-manifest.json`
 - `/workspace/agentclash/challenges.json`
 - `/workspace/agentclash/challenge-input-set.json` when present
 

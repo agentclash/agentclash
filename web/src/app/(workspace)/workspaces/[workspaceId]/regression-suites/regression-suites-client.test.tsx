@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
-  ChallengePack,
+  EvalPack,
   RegressionCase,
   RegressionSuite,
 } from "@/lib/api/types";
@@ -50,7 +50,7 @@ const {
       | undefined,
   },
   mockPacksResponse: {
-    current: undefined as { items: ChallengePack[] } | undefined,
+    current: undefined as { items: EvalPack[] } | undefined,
   },
   toast: Object.assign(vi.fn(), {
     success: vi.fn(),
@@ -92,7 +92,7 @@ vi.mock("@/lib/api/swr", async (importOriginal) => {
   return {
     ...actual,
     useApiListQuery: (path: string) => {
-      if (path.includes("challenge-packs")) {
+      if (path.includes("eval-packs")) {
         return {
           data: mockPacksResponse.current ?? { items: [pack] },
           error: undefined,
@@ -195,7 +195,7 @@ vi.mock("./create-suite-dialog", () => ({
 const suite: RegressionSuite = {
   id: "suite-1",
   workspace_id: "ws-1",
-  source_challenge_pack_id: "pack-1",
+  source_eval_pack_id: "pack-1",
   name: "Critical regressions",
   description: "",
   status: "active",
@@ -207,7 +207,7 @@ const suite: RegressionSuite = {
   updated_at: "2026-05-01T12:00:00Z",
 };
 
-const pack: ChallengePack = {
+const pack: EvalPack = {
   id: "pack-1",
   name: "Support Tickets",
   description: "",
@@ -227,7 +227,7 @@ const proposedCase: RegressionCase = {
   status: "proposed",
   severity: "blocking",
   promotion_mode: "output_only",
-  source_challenge_pack_version_id: "version-1",
+  source_eval_pack_version_id: "version-1",
   source_challenge_identity_id: "identity-1",
   source_case_key: "ticket-1",
   evidence_tier: "native_structured",

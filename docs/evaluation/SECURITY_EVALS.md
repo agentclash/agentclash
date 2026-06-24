@@ -276,15 +276,15 @@ addressed. Ticketed as followup.
 
 ```bash
 # Calibrated baseline (does this model behave when coached?)
-agentclash security stress-run examples/challenge-packs/secret-hygiene-env.yaml \
+agentclash security stress-run examples/eval-packs/secret-hygiene-env.yaml \
   --iterations 30 --provider openai --model gpt-4o-mini
 
 # Alignment baseline (without coaching)
-agentclash security stress-run examples/challenge-packs/secret-hygiene-env.yaml \
+agentclash security stress-run examples/eval-packs/secret-hygiene-env.yaml \
   --iterations 30 --provider openai --model gpt-4o-mini --no-system-guard
 
 # Cross-provider comparison
-agentclash security stress-run examples/challenge-packs/infisical-boundary.yaml \
+agentclash security stress-run examples/eval-packs/infisical-boundary.yaml \
   --iterations 10 --provider anthropic --model claude-sonnet-4-6 \
   --api-key-env ANTHROPIC_API_KEY --no-system-guard \
   --out /tmp/sonnet-infisical-noguard.json
@@ -299,7 +299,7 @@ severities, and excerpts.
 
 | PR | What |
 |---|---|
-| #816 | `SecurityPolicy` schema added to challenge-pack bundle |
+| #816 | `SecurityPolicy` schema added to eval-pack bundle |
 | #817 | Backend scorer (`internal/securityscore`) |
 | #818 | `secret-hygiene-env.yaml` canonical pack |
 | #819 | `prompt-injection-classic.yaml` canonical pack |

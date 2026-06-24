@@ -187,8 +187,8 @@ interface FailuresClientProps {
   agents: RunAgent[];
   initialPage: ListRunFailuresResponse;
   initialLimit: number;
-  sourceChallengePackId?: string;
-  sourceChallengePackName?: string | null;
+  sourceEvalPackId?: string;
+  sourceEvalPackName?: string | null;
 }
 
 export function FailuresClient(props: FailuresClientProps) {
@@ -205,8 +205,8 @@ function FailuresClientInner({
   agents,
   initialPage,
   initialLimit,
-  sourceChallengePackId,
-  sourceChallengePackName,
+  sourceEvalPackId,
+  sourceEvalPackName,
 }: FailuresClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -408,7 +408,7 @@ function FailuresClientInner({
               runId={runId}
               onSelect={setSelected}
               onPromote={setPromoting}
-              sourceChallengePackId={sourceChallengePackId}
+              sourceEvalPackId={sourceEvalPackId}
             />
           ))}
 
@@ -436,8 +436,8 @@ function FailuresClientInner({
         workspaceId={workspaceId}
         runId={runId}
         item={promoting}
-        sourceChallengePackId={sourceChallengePackId}
-        sourceChallengePackName={sourceChallengePackName}
+        sourceEvalPackId={sourceEvalPackId}
+        sourceEvalPackName={sourceEvalPackName}
         onClose={() => setPromoting(null)}
       />
     </div>
@@ -727,7 +727,7 @@ interface ChallengeGroupProps {
   runId: string;
   onSelect: (item: FailureReviewItem) => void;
   onPromote: (item: FailureReviewItem) => void;
-  sourceChallengePackId?: string;
+  sourceEvalPackId?: string;
 }
 
 function ChallengeGroup({
@@ -739,7 +739,7 @@ function ChallengeGroup({
   runId,
   onSelect,
   onPromote,
-  sourceChallengePackId,
+  sourceEvalPackId,
 }: ChallengeGroupProps) {
   const [open, setOpen] = useState(defaultOpen);
   const blockingCount = items.filter((i) => i.severity === "blocking").length;
@@ -778,7 +778,7 @@ function ChallengeGroup({
               runId={runId}
               onSelect={onSelect}
               onPromote={onPromote}
-              sourceChallengePackId={sourceChallengePackId}
+              sourceEvalPackId={sourceEvalPackId}
             />
           ))}
         </ul>
@@ -794,7 +794,7 @@ function FailureRow({
   runId,
   onSelect,
   onPromote,
-  sourceChallengePackId,
+  sourceEvalPackId,
 }: {
   item: FailureReviewItem;
   agentLabel: string;
@@ -802,14 +802,14 @@ function FailureRow({
   runId: string;
   onSelect: (item: FailureReviewItem) => void;
   onPromote: (item: FailureReviewItem) => void;
-  sourceChallengePackId?: string;
+  sourceEvalPackId?: string;
 }) {
   const firstReplayStep = item.replay_step_refs[0]?.sequence_number;
   const replayHref = firstReplayStep
     ? `/workspaces/${workspaceId}/runs/${runId}/agents/${item.run_agent_id}/replay?step=${firstReplayStep}`
     : undefined;
   const canPromote = item.promotable && Boolean(item.challenge_identity_id);
-  const promoteDisabled = !sourceChallengePackId || !item.challenge_identity_id;
+  const promoteDisabled = !sourceEvalPackId || !item.challenge_identity_id;
 
   return (
     <li className="px-4 py-3 hover:bg-muted/30 transition-colors">

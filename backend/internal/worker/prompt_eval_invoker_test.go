@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/evalpack"
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/engine"
 	"github.com/agentclash/agentclash/backend/internal/provider"
@@ -50,7 +50,7 @@ func promptEvalInvokerExecutionContext() repository.RunAgentExecutionContext {
 	return repository.RunAgentExecutionContext{
 		Run:      domain.Run{ID: runID},
 		RunAgent: domain.RunAgent{ID: runAgentID, RunID: runID, Status: domain.RunAgentStatusQueued, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()},
-		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+		EvalPackVersion: repository.EvalPackVersionExecutionContext{
 			ID:       uuid.New(),
 			Manifest: []byte(`{"version":{"execution_mode":"prompt_eval"}}`),
 			Challenges: []repository.ChallengeDefinitionExecutionContext{
@@ -71,7 +71,7 @@ func promptEvalInvokerExecutionContext() repository.RunAgentExecutionContext {
 					ID:           uuid.New(),
 					ChallengeKey: "translate",
 					CaseKey:      "hello",
-					Inputs: []challengepack.CaseInput{
+					Inputs: []evalpack.CaseInput{
 						{Key: "text", Kind: "text", Value: "hello"},
 					},
 				},

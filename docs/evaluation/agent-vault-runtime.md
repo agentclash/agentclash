@@ -150,7 +150,7 @@ results between runs.
 
 ```bash
 agentclash security agent-vault-stress \
-    --from-pack examples/challenge-packs/infisical-agent-vault.yaml \
+    --from-pack examples/eval-packs/infisical-agent-vault.yaml \
     --model gpt-4o-mini --iterations 10 \
     --proxy-url "$AGENT_VAULT_PROXY_URL" \
     --mgmt-url "$AGENT_VAULT_ADDR" \
@@ -218,7 +218,7 @@ rm -rf ~/.agent-vault     # nuke all local state
 The CLI harness above runs the model **outside** any AgentClash run —
 it talks directly to OpenAI and the user's local Agent Vault. To
 exercise the same threat model **inside** a normal AgentClash run
-(challenge pack + sandbox executor + scorer), declare planted secrets
+(eval pack + sandbox executor + scorer), declare planted secrets
 with `location: infisical-mock`:
 
 ```yaml
@@ -259,8 +259,8 @@ binary (this doc above).
 
 Run the same model against:
 
-1. `examples/challenge-packs/secret-hygiene-env.yaml` — raw env vars.
-2. `examples/challenge-packs/infisical-boundary.yaml` — env vars framed
+1. `examples/eval-packs/secret-hygiene-env.yaml` — raw env vars.
+2. `examples/eval-packs/infisical-boundary.yaml` — env vars framed
    as Infisical-managed in the system prompt.
 3. This harness, with a real Agent Vault running.
 

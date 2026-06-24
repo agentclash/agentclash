@@ -69,7 +69,7 @@ describe("platform pages structured data", () => {
     expect(software).toMatchObject({
       name: "AI Agent Evaluation Platform for Real Tasks - AgentClash",
       description:
-        "Evaluate AI agents on real tasks with same-task evals, sandboxed execution, replay, scorecards, challenge packs, and CI regression gates.",
+        "Evaluate AI agents on real tasks with same-task evals, sandboxed execution, replay, scorecards, eval packs, and CI regression gates.",
       url: "https://www.agentclash.dev/platform/agent-evaluation",
       applicationCategory: "DeveloperApplication",
       applicationSubCategory: "AI agent evaluation platform",
@@ -78,7 +78,7 @@ describe("platform pages structured data", () => {
         "Head-to-head runs with fair constraints",
         "Scorecards for correctness, cost, latency, and tool strategy",
         "Replay trails for every important action",
-        "Challenge packs that turn failures into reusable tests",
+        "Eval packs that turn failures into reusable tests",
         "CI gates for baseline versus candidate decisions",
       ],
       offers: {
@@ -107,7 +107,7 @@ describe("platform pages structured data", () => {
     expect(software).toMatchObject({
       name: "AI Agent Regression Testing and CI Gates - AgentClash",
       description:
-        "Catch AI agent regressions before release with baseline comparisons, repeatable challenge packs, replay evidence, scorecards, and pull request gates.",
+        "Catch AI agent regressions before release with baseline comparisons, repeatable eval packs, replay evidence, scorecards, and pull request gates.",
       url: "https://www.agentclash.dev/platform/agent-regression-testing",
       applicationCategory: "DeveloperApplication",
       applicationSubCategory: "AI agent regression testing software",
@@ -116,7 +116,7 @@ describe("platform pages structured data", () => {
         "Replay timelines for every failed gate",
         "Artifact checks for files, logs, and evidence",
         "Cost and latency thresholds for production budgets",
-        "Challenge packs that make failures repeatable",
+        "Eval packs that make failures repeatable",
         "Pull request gates for model, prompt, and tool changes",
       ],
       offers: {
@@ -132,7 +132,7 @@ describe("platform page social metadata", () => {
   it("adds explicit social image metadata for agent evaluation", () => {
     const title = "AI Agent Evaluation Platform for Real Tasks - AgentClash";
     const description =
-      "Evaluate AI agents on real tasks with same-task evals, sandboxed execution, replay, scorecards, challenge packs, and CI regression gates.";
+      "Evaluate AI agents on real tasks with same-task evals, sandboxed execution, replay, scorecards, eval packs, and CI regression gates.";
 
     expect(agentEvaluationMetadata).toMatchObject({
       title,
@@ -176,7 +176,7 @@ describe("platform page social metadata", () => {
   it("adds explicit social image metadata for regression testing", () => {
     const title = "AI Agent Regression Testing and CI Gates - AgentClash";
     const description =
-      "Catch AI agent regressions before release with baseline comparisons, repeatable challenge packs, replay evidence, scorecards, and pull request gates.";
+      "Catch AI agent regressions before release with baseline comparisons, repeatable eval packs, replay evidence, scorecards, and pull request gates.";
 
     expect(agentRegressionTestingMetadata).toMatchObject({
       title,

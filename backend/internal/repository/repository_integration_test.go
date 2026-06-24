@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/evalpack"
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
@@ -99,43 +99,43 @@ func TestRepositoryCreateToolRestoresArchivedSlug(t *testing.T) {
 	}
 }
 
-func TestRepositoryListVisibleChallengePacksRespectsPublicPacksOptIn(t *testing.T) {
+func TestRepositoryListVisibleEvalPacksRespectsPublicPacksOptIn(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
 	if _, err := db.Exec(ctx, `
-		INSERT INTO challenge_packs (id, workspace_id, slug, name, family)
+		INSERT INTO eval_packs (id, workspace_id, slug, name, family)
 		VALUES ($1, $2, $3, $4, $5)
 	`, uuid.New(), fixture.workspaceID, "workspace-only", "Workspace Only", "support"); err != nil {
-		t.Fatalf("insert workspace challenge pack returned error: %v", err)
+		t.Fatalf("insert workspace eval pack returned error: %v", err)
 	}
 
-	packs, err := repo.ListVisibleChallengePacks(ctx, fixture.workspaceID)
+	packs, err := repo.ListVisibleEvalPacks(ctx, fixture.workspaceID)
 	if err != nil {
-		t.Fatalf("ListVisibleChallengePacks returned error: %v", err)
+		t.Fatalf("ListVisibleEvalPacks returned error: %v", err)
 	}
-	if challengePackSlugs(packs)["benchmark-pack"] {
-		t.Fatalf("global pack was visible before public_packs opt-in: %#v", challengePackSlugs(packs))
+	if evalPackSlugs(packs)["benchmark-pack"] {
+		t.Fatalf("global pack was visible before public_packs opt-in: %#v", evalPackSlugs(packs))
 	}
-	if !challengePackSlugs(packs)["workspace-only"] {
-		t.Fatalf("workspace pack was not visible: %#v", challengePackSlugs(packs))
+	if !evalPackSlugs(packs)["workspace-only"] {
+		t.Fatalf("workspace pack was not visible: %#v", evalPackSlugs(packs))
 	}
 
 	if _, err := db.Exec(ctx, `UPDATE workspaces SET public_packs = true WHERE id = $1`, fixture.workspaceID); err != nil {
 		t.Fatalf("enable public packs returned error: %v", err)
 	}
-	packs, err = repo.ListVisibleChallengePacks(ctx, fixture.workspaceID)
+	packs, err = repo.ListVisibleEvalPacks(ctx, fixture.workspaceID)
 	if err != nil {
-		t.Fatalf("ListVisibleChallengePacks after opt-in returned error: %v", err)
+		t.Fatalf("ListVisibleEvalPacks after opt-in returned error: %v", err)
 	}
-	if !challengePackSlugs(packs)["benchmark-pack"] {
-		t.Fatalf("global pack was not visible after public_packs opt-in: %#v", challengePackSlugs(packs))
+	if !evalPackSlugs(packs)["benchmark-pack"] {
+		t.Fatalf("global pack was not visible after public_packs opt-in: %#v", evalPackSlugs(packs))
 	}
 }
 
-func challengePackSlugs(packs []repository.ChallengePackSummary) map[string]bool {
+func evalPackSlugs(packs []repository.EvalPackSummary) map[string]bool {
 	slugs := make(map[string]bool, len(packs))
 	for _, pack := range packs {
 		slugs[pack.Slug] = true
@@ -148,7 +148,7 @@ func TestRepositoryListRecentComparableScoredRunsBeforeRunID(t *testing.T) {
 	db := openTestDB(t)
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "cluster-trend", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "cluster-trend", 1)
 	baseTime := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
 
 	anchor, _ := createTestRun(t, ctx, repo, fixture, 1, "cluster-trend-anchor")
@@ -204,7 +204,7 @@ func TestRepositoryListRunRegressionCoverageCasesByRunID(t *testing.T) {
 		INSERT INTO workspace_regression_suites (
 			id,
 			workspace_id,
-			source_challenge_pack_id,
+			source_eval_pack_id,
 			name,
 			description,
 			status,
@@ -222,17 +222,17 @@ func TestRepositoryListRunRegressionCoverageCasesByRunID(t *testing.T) {
 			'derived_only',
 			'warning',
 			$3
-		FROM challenge_pack_versions cpv
-		JOIN challenge_packs cp ON cp.id = cpv.challenge_pack_id
+		FROM eval_pack_versions cpv
+		JOIN eval_packs cp ON cp.id = cpv.eval_pack_id
 		WHERE cpv.id = $4
-	`, firstSuiteID, fixture.workspaceID, fixture.userID, fixture.challengePackVersionID); err != nil {
+	`, firstSuiteID, fixture.workspaceID, fixture.userID, fixture.evalPackVersionID); err != nil {
 		t.Fatalf("insert first regression suite returned error: %v", err)
 	}
 	if _, err := db.Exec(ctx, `
 		INSERT INTO workspace_regression_suites (
 			id,
 			workspace_id,
-			source_challenge_pack_id,
+			source_eval_pack_id,
 			name,
 			description,
 			status,
@@ -250,10 +250,10 @@ func TestRepositoryListRunRegressionCoverageCasesByRunID(t *testing.T) {
 			'derived_only',
 			'warning',
 			$3
-		FROM challenge_pack_versions cpv
-		JOIN challenge_packs cp ON cp.id = cpv.challenge_pack_id
+		FROM eval_pack_versions cpv
+		JOIN eval_packs cp ON cp.id = cpv.eval_pack_id
 		WHERE cpv.id = $4
-	`, secondSuiteID, fixture.workspaceID, fixture.userID, fixture.challengePackVersionID); err != nil {
+	`, secondSuiteID, fixture.workspaceID, fixture.userID, fixture.evalPackVersionID); err != nil {
 		t.Fatalf("insert second regression suite returned error: %v", err)
 	}
 
@@ -268,7 +268,7 @@ func TestRepositoryListRunRegressionCoverageCasesByRunID(t *testing.T) {
 			promotion_mode,
 			source_run_id,
 			source_run_agent_id,
-			source_challenge_pack_version_id,
+			source_eval_pack_version_id,
 			source_challenge_input_set_id,
 			source_challenge_identity_id,
 			source_case_key,
@@ -283,7 +283,7 @@ func TestRepositoryListRunRegressionCoverageCasesByRunID(t *testing.T) {
 		VALUES
 			($1, $2, 'Regression A', '', 'active', 'warning', 'full_executable', $3, $4, $5, $6, $7, 'case-a', 'prompt.txt', 'native_structured', 'incorrect_final_output', '', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb),
 			($8, $9, 'Regression B', '', 'active', 'warning', 'full_executable', $3, $4, $5, $6, $10, 'case-b', 'prompt.txt', 'native_structured', 'incorrect_final_output', '', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb)
-	`, firstCaseID, firstSuiteID, fixture.runID, fixture.primaryRunAgentID, fixture.challengePackVersionID, fixture.challengeInputSetID, fixture.firstChallengeIdentityID, secondCaseID, secondSuiteID, secondChallengeIdentityID); err != nil {
+	`, firstCaseID, firstSuiteID, fixture.runID, fixture.primaryRunAgentID, fixture.evalPackVersionID, fixture.challengeInputSetID, fixture.firstChallengeIdentityID, secondCaseID, secondSuiteID, secondChallengeIdentityID); err != nil {
 		t.Fatalf("insert regression cases returned error: %v", err)
 	}
 
@@ -304,7 +304,7 @@ func TestRepositoryListRunRegressionCoverageCasesByRunID(t *testing.T) {
 	}
 
 	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
-		ChallengePackVersionID: fixture.challengePackVersionID,
+		EvalPackVersionID: fixture.evalPackVersionID,
 		Name:                   "regression-coverage-spec",
 		VersionNumber:          1,
 		JudgeMode:              "deterministic",
@@ -389,7 +389,7 @@ func TestRepositoryListRunRegressionCoverageCasesByRunIDReturnsPendingWithoutSco
 		INSERT INTO workspace_regression_suites (
 			id,
 			workspace_id,
-			source_challenge_pack_id,
+			source_eval_pack_id,
 			name,
 			description,
 			status,
@@ -407,10 +407,10 @@ func TestRepositoryListRunRegressionCoverageCasesByRunIDReturnsPendingWithoutSco
 			'derived_only',
 			'warning',
 			$3
-		FROM challenge_pack_versions cpv
-		JOIN challenge_packs cp ON cp.id = cpv.challenge_pack_id
+		FROM eval_pack_versions cpv
+		JOIN eval_packs cp ON cp.id = cpv.eval_pack_id
 		WHERE cpv.id = $4
-	`, suiteID, fixture.workspaceID, fixture.userID, fixture.challengePackVersionID); err != nil {
+	`, suiteID, fixture.workspaceID, fixture.userID, fixture.evalPackVersionID); err != nil {
 		t.Fatalf("insert regression suite returned error: %v", err)
 	}
 
@@ -425,7 +425,7 @@ func TestRepositoryListRunRegressionCoverageCasesByRunIDReturnsPendingWithoutSco
 			promotion_mode,
 			source_run_id,
 			source_run_agent_id,
-			source_challenge_pack_version_id,
+			source_eval_pack_version_id,
 			source_challenge_input_set_id,
 			source_challenge_identity_id,
 			source_case_key,
@@ -459,7 +459,7 @@ func TestRepositoryListRunRegressionCoverageCasesByRunIDReturnsPendingWithoutSco
 			'{}'::jsonb,
 			'{}'::jsonb
 		)
-	`, regressionCaseID, suiteID, fixture.runID, fixture.primaryRunAgentID, fixture.challengePackVersionID, fixture.challengeInputSetID, fixture.firstChallengeIdentityID); err != nil {
+	`, regressionCaseID, suiteID, fixture.runID, fixture.primaryRunAgentID, fixture.evalPackVersionID, fixture.challengeInputSetID, fixture.firstChallengeIdentityID); err != nil {
 		t.Fatalf("insert regression case returned error: %v", err)
 	}
 
@@ -512,7 +512,7 @@ func TestRepositoryListRunRegressionCoverageCasesByRunIDFansOutOutcomeToOverlapp
 			INSERT INTO workspace_regression_suites (
 				id,
 				workspace_id,
-				source_challenge_pack_id,
+				source_eval_pack_id,
 				name,
 				description,
 				status,
@@ -530,10 +530,10 @@ func TestRepositoryListRunRegressionCoverageCasesByRunIDFansOutOutcomeToOverlapp
 				'derived_only',
 				'warning',
 				$4
-			FROM challenge_pack_versions cpv
-			JOIN challenge_packs cp ON cp.id = cpv.challenge_pack_id
+			FROM eval_pack_versions cpv
+			JOIN eval_packs cp ON cp.id = cpv.eval_pack_id
 			WHERE cpv.id = $5
-		`, suiteSeed.id, fixture.workspaceID, suiteSeed.name, fixture.userID, fixture.challengePackVersionID); err != nil {
+		`, suiteSeed.id, fixture.workspaceID, suiteSeed.name, fixture.userID, fixture.evalPackVersionID); err != nil {
 			t.Fatalf("insert regression suite %s returned error: %v", suiteSeed.name, err)
 		}
 	}
@@ -549,7 +549,7 @@ func TestRepositoryListRunRegressionCoverageCasesByRunIDFansOutOutcomeToOverlapp
 			promotion_mode,
 			source_run_id,
 			source_run_agent_id,
-			source_challenge_pack_version_id,
+			source_eval_pack_version_id,
 			source_challenge_input_set_id,
 			source_challenge_identity_id,
 			source_case_key,
@@ -564,7 +564,7 @@ func TestRepositoryListRunRegressionCoverageCasesByRunIDFansOutOutcomeToOverlapp
 		VALUES
 			($1, $2, 'Regression A', '', 'active', 'warning', 'full_executable', $3, $4, $5, $6, $7, 'case-a', 'prompt.txt', 'native_structured', 'incorrect_final_output', '', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb),
 			($8, $9, 'Regression B', '', 'active', 'warning', 'full_executable', $3, $4, $5, $6, $7, 'case-a', 'prompt.txt', 'native_structured', 'incorrect_final_output', '', '{}'::jsonb, '{}'::jsonb, '{}'::jsonb)
-	`, firstCaseID, firstSuiteID, fixture.runID, fixture.primaryRunAgentID, fixture.challengePackVersionID, fixture.challengeInputSetID, fixture.firstChallengeIdentityID, secondCaseID, secondSuiteID); err != nil {
+	`, firstCaseID, firstSuiteID, fixture.runID, fixture.primaryRunAgentID, fixture.evalPackVersionID, fixture.challengeInputSetID, fixture.firstChallengeIdentityID, secondCaseID, secondSuiteID); err != nil {
 		t.Fatalf("insert overlapping regression cases returned error: %v", err)
 	}
 
@@ -585,7 +585,7 @@ func TestRepositoryListRunRegressionCoverageCasesByRunIDFansOutOutcomeToOverlapp
 	}
 
 	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
-		ChallengePackVersionID: fixture.challengePackVersionID,
+		EvalPackVersionID: fixture.evalPackVersionID,
 		Name:                   "overlapping-regression-coverage-spec",
 		VersionNumber:          1,
 		JudgeMode:              "deterministic",
@@ -749,23 +749,23 @@ func TestRepositoryBackfillUserProfileOnlyFillsMissingFields(t *testing.T) {
 	}
 }
 
-func TestRepositoryPublishChallengePackBundle(t *testing.T) {
+func TestRepositoryPublishEvalPackBundle(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	published, err := repo.PublishChallengePackBundle(ctx, repository.PublishChallengePackBundleParams{
+	published, err := repo.PublishEvalPackBundle(ctx, repository.PublishEvalPackBundleParams{
 		OrganizationID: fixture.organizationID,
 		WorkspaceID:    fixture.workspaceID,
-		Bundle: challengepack.Bundle{
-			Pack: challengepack.PackMetadata{
+		Bundle: evalpack.Bundle{
+			Pack: evalpack.PackMetadata{
 				Slug:        "customer-support-pack",
 				Name:        "Customer Support Pack",
 				Family:      "support",
 				Description: stringPtr("Workspace-scoped support benchmark"),
 			},
-			Version: challengepack.VersionMetadata{
+			Version: evalpack.VersionMetadata{
 				Number: 1,
 				ToolPolicy: map[string]any{
 					"allowed_tool_kinds": []string{"file"},
@@ -781,11 +781,11 @@ func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 						Dimensions: []scoring.DimensionDeclaration{{Key: "correctness"}},
 					},
 				},
-				Assets: []challengepack.AssetReference{
+				Assets: []evalpack.AssetReference{
 					{Key: "workspace-archive", Path: "assets/workspace.zip"},
 				},
 			},
-			Challenges: []challengepack.ChallengeDefinition{
+			Challenges: []evalpack.ChallengeDefinition{
 				{
 					Key:          "ticket-1",
 					Title:        "Ticket One",
@@ -794,18 +794,18 @@ func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 					Instructions: "Handle the customer issue",
 				},
 			},
-			InputSets: []challengepack.InputSetDefinition{
+			InputSets: []evalpack.InputSetDefinition{
 				{
 					Key:  "default",
 					Name: "Default",
-					Cases: []challengepack.CaseDefinition{
+					Cases: []evalpack.CaseDefinition{
 						{
 							ChallengeKey: "ticket-1",
 							CaseKey:      "prompt.txt",
-							Inputs: []challengepack.CaseInput{
+							Inputs: []evalpack.CaseInput{
 								{Key: "prompt", Kind: "text", Value: "Customer needs help"},
 							},
-							Expectations: []challengepack.CaseExpectation{
+							Expectations: []evalpack.CaseExpectation{
 								{Key: "answer", Kind: "text", Source: "input:prompt"},
 							},
 						},
@@ -814,19 +814,19 @@ func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 			},
 		},
 		BundleArtifact: &repository.CreateArtifactParams{
-			ArtifactType:    "challenge_pack_bundle",
+			ArtifactType:    "eval_pack_bundle",
 			StorageBucket:   "bundle-bucket",
-			StorageKey:      "challenge-pack-bundles/customer-support-pack/v1.yaml",
+			StorageKey:      "eval-pack-bundles/customer-support-pack/v1.yaml",
 			ContentType:     stringPtr("application/yaml"),
 			SizeBytes:       int64Ptr(128),
 			ChecksumSHA256:  stringPtr("bundle-checksum"),
 			Visibility:      "private",
 			RetentionStatus: "active",
-			Metadata:        []byte(`{"filename":"customer-support-pack-v1.yaml","artifact_role":"challenge_pack_bundle"}`),
+			Metadata:        []byte(`{"filename":"customer-support-pack-v1.yaml","artifact_role":"eval_pack_bundle"}`),
 		},
 	})
 	if err != nil {
-		t.Fatalf("PublishChallengePackBundle returned error: %v", err)
+		t.Fatalf("PublishEvalPackBundle returned error: %v", err)
 	}
 	if published.BundleArtifactID == nil {
 		t.Fatal("bundle artifact id is nil")
@@ -836,11 +836,11 @@ func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 	var manifest json.RawMessage
 	if err := db.QueryRow(ctx, `
 		SELECT cp.workspace_id, cpv.manifest
-		FROM challenge_packs cp
-		JOIN challenge_pack_versions cpv ON cpv.challenge_pack_id = cp.id
+		FROM eval_packs cp
+		JOIN eval_pack_versions cpv ON cpv.eval_pack_id = cp.id
 		WHERE cp.id = $1 AND cpv.id = $2
-	`, published.ChallengePackID, published.ChallengePackVersionID).Scan(&workspaceID, &manifest); err != nil {
-		t.Fatalf("load published challenge pack returned error: %v", err)
+	`, published.EvalPackID, published.EvalPackVersionID).Scan(&workspaceID, &manifest); err != nil {
+		t.Fatalf("load published eval pack returned error: %v", err)
 	}
 	if workspaceID == nil || *workspaceID != fixture.workspaceID {
 		t.Fatalf("workspace_id = %v, want %s", workspaceID, fixture.workspaceID)
@@ -866,9 +866,9 @@ func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 		t.Fatalf("cases = %#v, want one case", firstInputSet["cases"])
 	}
 
-	runnableVersion, err := repo.GetRunnableChallengePackVersionByID(ctx, published.ChallengePackVersionID)
+	runnableVersion, err := repo.GetRunnableEvalPackVersionByID(ctx, published.EvalPackVersionID)
 	if err != nil {
-		t.Fatalf("GetRunnableChallengePackVersionByID returned error: %v", err)
+		t.Fatalf("GetRunnableEvalPackVersionByID returned error: %v", err)
 	}
 	if runnableVersion.WorkspaceID == nil || *runnableVersion.WorkspaceID != fixture.workspaceID {
 		t.Fatalf("runnable workspace_id = %v, want %s", runnableVersion.WorkspaceID, fixture.workspaceID)
@@ -878,74 +878,74 @@ func TestRepositoryPublishChallengePackBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetArtifactByID returned error: %v", err)
 	}
-	if bundleArtifact.ArtifactType != "challenge_pack_bundle" {
-		t.Fatalf("artifact_type = %q, want challenge_pack_bundle", bundleArtifact.ArtifactType)
+	if bundleArtifact.ArtifactType != "eval_pack_bundle" {
+		t.Fatalf("artifact_type = %q, want eval_pack_bundle", bundleArtifact.ArtifactType)
 	}
 	var metadata map[string]any
 	if err := json.Unmarshal(bundleArtifact.Metadata, &metadata); err != nil {
 		t.Fatalf("unmarshal bundle artifact metadata: %v", err)
 	}
-	if metadata["challenge_pack_version_id"] != published.ChallengePackVersionID.String() {
-		t.Fatalf("metadata challenge_pack_version_id = %#v, want %s", metadata["challenge_pack_version_id"], published.ChallengePackVersionID)
+	if metadata["eval_pack_version_id"] != published.EvalPackVersionID.String() {
+		t.Fatalf("metadata eval_pack_version_id = %#v, want %s", metadata["eval_pack_version_id"], published.EvalPackVersionID)
 	}
-	if metadata["challenge_pack_slug"] != "customer-support-pack" {
-		t.Fatalf("metadata challenge_pack_slug = %#v, want customer-support-pack", metadata["challenge_pack_slug"])
+	if metadata["eval_pack_slug"] != "customer-support-pack" {
+		t.Fatalf("metadata eval_pack_slug = %#v, want customer-support-pack", metadata["eval_pack_slug"])
 	}
 }
 
-func TestRepositoryPublishChallengePackBundleAllowsSharedEvaluationSpecNamesAcrossPacks(t *testing.T) {
+func TestRepositoryPublishEvalPackBundleAllowsSharedEvaluationSpecNamesAcrossPacks(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	first, err := repo.PublishChallengePackBundle(ctx, repository.PublishChallengePackBundleParams{
+	first, err := repo.PublishEvalPackBundle(ctx, repository.PublishEvalPackBundleParams{
 		OrganizationID: fixture.organizationID,
 		WorkspaceID:    fixture.workspaceID,
-		Bundle:         publishableChallengePackBundle("shared-spec-pack-a", "Shared Spec Pack A", "shared-eval-spec"),
+		Bundle:         publishableEvalPackBundle("shared-spec-pack-a", "Shared Spec Pack A", "shared-eval-spec"),
 	})
 	if err != nil {
-		t.Fatalf("first PublishChallengePackBundle returned error: %v", err)
+		t.Fatalf("first PublishEvalPackBundle returned error: %v", err)
 	}
 
-	second, err := repo.PublishChallengePackBundle(ctx, repository.PublishChallengePackBundleParams{
+	second, err := repo.PublishEvalPackBundle(ctx, repository.PublishEvalPackBundleParams{
 		OrganizationID: fixture.organizationID,
 		WorkspaceID:    fixture.workspaceID,
-		Bundle:         publishableChallengePackBundle("shared-spec-pack-b", "Shared Spec Pack B", "shared-eval-spec"),
+		Bundle:         publishableEvalPackBundle("shared-spec-pack-b", "Shared Spec Pack B", "shared-eval-spec"),
 	})
 	if err != nil {
-		t.Fatalf("second PublishChallengePackBundle returned error: %v", err)
+		t.Fatalf("second PublishEvalPackBundle returned error: %v", err)
 	}
 
 	if first.EvaluationSpecID == second.EvaluationSpecID {
-		t.Fatal("evaluation spec ids matched across distinct challenge pack versions")
+		t.Fatal("evaluation spec ids matched across distinct eval pack versions")
 	}
 
-	secondSpec, err := repo.GetEvaluationSpecByChallengePackVersionAndVersion(ctx, second.ChallengePackVersionID, "shared-eval-spec", 1)
+	secondSpec, err := repo.GetEvaluationSpecByEvalPackVersionAndVersion(ctx, second.EvalPackVersionID, "shared-eval-spec", 1)
 	if err != nil {
-		t.Fatalf("GetEvaluationSpecByChallengePackVersionAndVersion returned error: %v", err)
+		t.Fatalf("GetEvaluationSpecByEvalPackVersionAndVersion returned error: %v", err)
 	}
 	if secondSpec.ID != second.EvaluationSpecID {
 		t.Fatalf("second spec id = %s, want %s", secondSpec.ID, second.EvaluationSpecID)
 	}
 }
 
-func TestRepositoryPublishChallengePackBundleRejectsDuplicateVersion(t *testing.T) {
+func TestRepositoryPublishEvalPackBundleRejectsDuplicateVersion(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	params := repository.PublishChallengePackBundleParams{
+	params := repository.PublishEvalPackBundleParams{
 		OrganizationID: fixture.organizationID,
 		WorkspaceID:    fixture.workspaceID,
-		Bundle: challengepack.Bundle{
-			Pack: challengepack.PackMetadata{
+		Bundle: evalpack.Bundle{
+			Pack: evalpack.PackMetadata{
 				Slug:   "customer-support-pack",
 				Name:   "Customer Support Pack",
 				Family: "support",
 			},
-			Version: challengepack.VersionMetadata{
+			Version: evalpack.VersionMetadata{
 				Number: 1,
 				EvaluationSpec: scoring.EvaluationSpec{
 					Name:          "support-pack-v1",
@@ -959,28 +959,28 @@ func TestRepositoryPublishChallengePackBundleRejectsDuplicateVersion(t *testing.
 					},
 				},
 			},
-			Challenges: []challengepack.ChallengeDefinition{
+			Challenges: []evalpack.ChallengeDefinition{
 				{Key: "ticket-1", Title: "Ticket One", Category: "support", Difficulty: "easy"},
 			},
 		},
 	}
 
-	if _, err := repo.PublishChallengePackBundle(ctx, params); err != nil {
-		t.Fatalf("first PublishChallengePackBundle returned error: %v", err)
+	if _, err := repo.PublishEvalPackBundle(ctx, params); err != nil {
+		t.Fatalf("first PublishEvalPackBundle returned error: %v", err)
 	}
-	if _, err := repo.PublishChallengePackBundle(ctx, params); !errors.Is(err, repository.ErrChallengePackVersionExists) {
-		t.Fatalf("second PublishChallengePackBundle error = %v, want ErrChallengePackVersionExists", err)
+	if _, err := repo.PublishEvalPackBundle(ctx, params); !errors.Is(err, repository.ErrEvalPackVersionExists) {
+		t.Fatalf("second PublishEvalPackBundle error = %v, want ErrEvalPackVersionExists", err)
 	}
 }
 
-func publishableChallengePackBundle(slug string, name string, evaluationSpecName string) challengepack.Bundle {
-	return challengepack.Bundle{
-		Pack: challengepack.PackMetadata{
+func publishableEvalPackBundle(slug string, name string, evaluationSpecName string) evalpack.Bundle {
+	return evalpack.Bundle{
+		Pack: evalpack.PackMetadata{
 			Slug:   slug,
 			Name:   name,
 			Family: "support",
 		},
-		Version: challengepack.VersionMetadata{
+		Version: evalpack.VersionMetadata{
 			Number: 1,
 			EvaluationSpec: scoring.EvaluationSpec{
 				Name:          evaluationSpecName,
@@ -994,14 +994,14 @@ func publishableChallengePackBundle(slug string, name string, evaluationSpecName
 				},
 			},
 		},
-		Challenges: []challengepack.ChallengeDefinition{
+		Challenges: []evalpack.ChallengeDefinition{
 			{Key: "ticket-1", Title: "Ticket One", Category: "support", Difficulty: "easy"},
 		},
-		InputSets: []challengepack.InputSetDefinition{
+		InputSets: []evalpack.InputSetDefinition{
 			{
 				Key:  "default",
 				Name: "Default",
-				Cases: []challengepack.CaseDefinition{
+				Cases: []evalpack.CaseDefinition{
 					{
 						ChallengeKey: "ticket-1",
 						CaseKey:      "case-1",
@@ -1086,20 +1086,20 @@ func TestRepositoryGetRunAgentExecutionContextByIDNative(t *testing.T) {
 	if executionContext.Run.ID != fixture.runID {
 		t.Fatalf("run id = %s, want %s", executionContext.Run.ID, fixture.runID)
 	}
-	if executionContext.ChallengePackVersion.ID != fixture.challengePackVersionID {
-		t.Fatalf("challenge pack version id = %s, want %s", executionContext.ChallengePackVersion.ID, fixture.challengePackVersionID)
+	if executionContext.EvalPackVersion.ID != fixture.evalPackVersionID {
+		t.Fatalf("eval pack version id = %s, want %s", executionContext.EvalPackVersion.ID, fixture.evalPackVersionID)
 	}
-	if len(executionContext.ChallengePackVersion.Challenges) != 2 {
-		t.Fatalf("challenge count = %d, want 2", len(executionContext.ChallengePackVersion.Challenges))
+	if len(executionContext.EvalPackVersion.Challenges) != 2 {
+		t.Fatalf("challenge count = %d, want 2", len(executionContext.EvalPackVersion.Challenges))
 	}
-	if executionContext.ChallengePackVersion.Challenges[0].ChallengeKey != "first-ticket" {
-		t.Fatalf("first challenge key = %q, want first-ticket", executionContext.ChallengePackVersion.Challenges[0].ChallengeKey)
+	if executionContext.EvalPackVersion.Challenges[0].ChallengeKey != "first-ticket" {
+		t.Fatalf("first challenge key = %q, want first-ticket", executionContext.EvalPackVersion.Challenges[0].ChallengeKey)
 	}
-	if executionContext.ChallengePackVersion.Challenges[1].Title != "Ticket Two" {
-		t.Fatalf("second challenge title = %q, want Ticket Two", executionContext.ChallengePackVersion.Challenges[1].Title)
+	if executionContext.EvalPackVersion.Challenges[1].Title != "Ticket Two" {
+		t.Fatalf("second challenge title = %q, want Ticket Two", executionContext.EvalPackVersion.Challenges[1].Title)
 	}
-	if !jsonEqual(executionContext.ChallengePackVersion.Challenges[0].Definition, []byte(`{"instructions":"Solve the first ticket"}`)) {
-		t.Fatalf("first challenge definition = %s, want first ticket definition", executionContext.ChallengePackVersion.Challenges[0].Definition)
+	if !jsonEqual(executionContext.EvalPackVersion.Challenges[0].Definition, []byte(`{"instructions":"Solve the first ticket"}`)) {
+		t.Fatalf("first challenge definition = %s, want first ticket definition", executionContext.EvalPackVersion.Challenges[0].Definition)
 	}
 	if executionContext.ChallengeInputSet == nil || executionContext.ChallengeInputSet.ID != fixture.challengeInputSetID {
 		t.Fatalf("challenge input set = %#v, want id %s", executionContext.ChallengeInputSet, fixture.challengeInputSetID)
@@ -1585,7 +1585,7 @@ func TestRepositoryCreateQueuedRunWritesRunRunAgentsAndInitialHistory(t *testing
 	result, err := repo.CreateQueuedRun(ctx, repository.CreateQueuedRunParams{
 		OrganizationID:         fixture.organizationID,
 		WorkspaceID:            fixture.workspaceID,
-		ChallengePackVersionID: fixture.challengePackVersionID,
+		EvalPackVersionID: fixture.evalPackVersionID,
 		CreatedByUserID:        &fixture.userID,
 		Name:                   "Created From API",
 		ExecutionMode:          "single_agent",
@@ -2196,9 +2196,9 @@ func TestRepositoryGetRunAgentScorecardByRunAgentID(t *testing.T) {
 	scorecardID := uuid.New()
 	if _, err := db.Exec(ctx, `
 		INSERT INTO evaluation_specs (
-			id, challenge_pack_version_id, name, version_number, judge_mode, definition
+			id, eval_pack_version_id, name, version_number, judge_mode, definition
 		) VALUES ($1, $2, $3, $4, $5, $6)
-	`, evaluationSpecID, fixture.challengePackVersionID, "Core Eval", 1, "deterministic", []byte(`{}`)); err != nil {
+	`, evaluationSpecID, fixture.evalPackVersionID, "Core Eval", 1, "deterministic", []byte(`{}`)); err != nil {
 		t.Fatalf("insert evaluation spec returned error: %v", err)
 	}
 	if _, err := db.Exec(ctx, `
@@ -2234,9 +2234,9 @@ func TestRepositoryGetRunAgentScorecardByRunAgentIDPreservesNullScores(t *testin
 	scorecardID := uuid.New()
 	if _, err := db.Exec(ctx, `
 		INSERT INTO evaluation_specs (
-			id, challenge_pack_version_id, name, version_number, judge_mode, definition
+			id, eval_pack_version_id, name, version_number, judge_mode, definition
 		) VALUES ($1, $2, $3, $4, $5, $6)
-	`, evaluationSpecID, fixture.challengePackVersionID, "Partial Eval", 1, "deterministic", []byte(`{}`)); err != nil {
+	`, evaluationSpecID, fixture.evalPackVersionID, "Partial Eval", 1, "deterministic", []byte(`{}`)); err != nil {
 		t.Fatalf("insert evaluation spec returned error: %v", err)
 	}
 	if _, err := db.Exec(ctx, `
@@ -2280,7 +2280,7 @@ func TestRepositoryBuildRunScorecardPersistsWinnerAndSummary(t *testing.T) {
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "run-scorecard", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "run-scorecard", 1)
 	insertRunAgentScorecardRecord(t, ctx, db, fixture.primaryRunAgentID, evaluationSpecID, scorecardFixture{
 		Correctness: float64Ptr(0.84),
 		Reliability: float64Ptr(0.72),
@@ -2340,7 +2340,7 @@ func TestRepositoryCreateEvaluationSpecAndReadItBack(t *testing.T) {
 	repo := repository.New(db)
 
 	created, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
-		ChallengePackVersionID: fixture.challengePackVersionID,
+		EvalPackVersionID: fixture.evalPackVersionID,
 		Name:                   "coding-fix-v0",
 		VersionNumber:          1,
 		JudgeMode:              "deterministic",
@@ -2352,8 +2352,8 @@ func TestRepositoryCreateEvaluationSpecAndReadItBack(t *testing.T) {
 	if created.Name != "coding-fix-v0" {
 		t.Fatalf("created.Name = %q, want coding-fix-v0", created.Name)
 	}
-	if created.ChallengePackVersionID != fixture.challengePackVersionID {
-		t.Fatalf("created.ChallengePackVersionID = %s, want %s", created.ChallengePackVersionID, fixture.challengePackVersionID)
+	if created.EvalPackVersionID != fixture.evalPackVersionID {
+		t.Fatalf("created.EvalPackVersionID = %s, want %s", created.EvalPackVersionID, fixture.evalPackVersionID)
 	}
 
 	byID, err := repo.GetEvaluationSpecByID(ctx, created.ID)
@@ -2364,9 +2364,9 @@ func TestRepositoryCreateEvaluationSpecAndReadItBack(t *testing.T) {
 		t.Fatalf("byID.ID = %s, want %s", byID.ID, created.ID)
 	}
 
-	byVersion, err := repo.GetEvaluationSpecByChallengePackVersionAndVersion(ctx, fixture.challengePackVersionID, "coding-fix-v0", 1)
+	byVersion, err := repo.GetEvaluationSpecByEvalPackVersionAndVersion(ctx, fixture.evalPackVersionID, "coding-fix-v0", 1)
 	if err != nil {
-		t.Fatalf("GetEvaluationSpecByChallengePackVersionAndVersion returned error: %v", err)
+		t.Fatalf("GetEvaluationSpecByEvalPackVersionAndVersion returned error: %v", err)
 	}
 	if byVersion.ID != created.ID {
 		t.Fatalf("byVersion.ID = %s, want %s", byVersion.ID, created.ID)
@@ -2380,7 +2380,7 @@ func TestRepositoryCreateEvaluationSpecRejectsDuplicateNameAndVersion(t *testing
 	repo := repository.New(db)
 
 	params := repository.CreateEvaluationSpecParams{
-		ChallengePackVersionID: fixture.challengePackVersionID,
+		EvalPackVersionID: fixture.evalPackVersionID,
 		Name:                   "duplicate-spec",
 		VersionNumber:          1,
 		JudgeMode:              "deterministic",
@@ -2402,7 +2402,7 @@ func TestRepositoryCreateEvaluationSpecRejectsInvalidDefinition(t *testing.T) {
 	repo := repository.New(db)
 
 	_, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
-		ChallengePackVersionID: fixture.challengePackVersionID,
+		EvalPackVersionID: fixture.evalPackVersionID,
 		Name:                   "invalid-spec",
 		VersionNumber:          1,
 		JudgeMode:              "deterministic",
@@ -2420,7 +2420,7 @@ func TestRepositoryStoreRunAgentEvaluationResultsUpsertsJudgeAndMetricRows(t *te
 	repo := repository.New(db)
 
 	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
-		ChallengePackVersionID: fixture.challengePackVersionID,
+		EvalPackVersionID: fixture.evalPackVersionID,
 		Name:                   "store-results-spec",
 		VersionNumber:          1,
 		JudgeMode:              "deterministic",
@@ -2590,7 +2590,7 @@ func TestRepositoryEvaluateRunAgentUsesCanonicalEventsAndPersistsResults(t *test
 	}
 
 	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
-		ChallengePackVersionID: fixture.challengePackVersionID,
+		EvalPackVersionID: fixture.evalPackVersionID,
 		Name:                   "evaluate-run-agent-spec",
 		VersionNumber:          1,
 		JudgeMode:              "deterministic",
@@ -2682,7 +2682,7 @@ func TestRepositoryEvaluateRunAgentReturnsPartialWhenChallengeInputIsAmbiguous(t
 	repo := repository.New(db)
 
 	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
-		ChallengePackVersionID: fixture.challengePackVersionID,
+		EvalPackVersionID: fixture.evalPackVersionID,
 		Name:                   "ambiguous-challenge-input-spec",
 		VersionNumber:          1,
 		JudgeMode:              "deterministic",
@@ -2766,7 +2766,7 @@ func TestRepositoryEvaluateRunAgentPersistsStructuredJSONValidatorEvidence(t *te
 	repo := repository.New(db)
 
 	specRecord, err := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
-		ChallengePackVersionID: fixture.challengePackVersionID,
+		EvalPackVersionID: fixture.evalPackVersionID,
 		Name:                   "json-validator-spec",
 		VersionNumber:          1,
 		JudgeMode:              "deterministic",
@@ -3084,7 +3084,7 @@ func TestRepositoryBuildRunComparisonComparableSingleParticipantRuns(t *testing.
 
 	baselineRun, baselineRunAgents := createTestRun(t, ctx, repo, fixture, 1, "baseline")
 	candidateRun, candidateRunAgents := createTestRun(t, ctx, repo, fixture, 1, "candidate")
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "compare-spec", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "compare-spec", 1)
 
 	insertRunAgentScorecardRecord(t, ctx, db, baselineRunAgents[0].ID, evaluationSpecID, scorecardFixture{
 		Correctness: float64Ptr(0.72),
@@ -3201,7 +3201,7 @@ func TestRepositoryBuildRunComparisonExplicitParticipantSelectionForMultiAgentRu
 	repo := repository.New(db)
 
 	candidateRun, candidateRunAgents := createTestRun(t, ctx, repo, fixture, 2, "candidate")
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "compare-explicit", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "compare-explicit", 1)
 
 	insertRunAgentScorecardRecord(t, ctx, db, fixture.primaryRunAgentID, evaluationSpecID, scorecardFixture{
 		Correctness: float64Ptr(0.71),
@@ -3264,7 +3264,7 @@ func TestRepositoryBuildRunComparisonExplicitParticipantSelectionWithinSameRun(t
 	repo := repository.New(db)
 
 	run, runAgents := createTestRun(t, ctx, repo, fixture, 3, "same-run")
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "compare-same-run", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "compare-same-run", 1)
 
 	insertRunAgentScorecardRecord(t, ctx, db, runAgents[0].ID, evaluationSpecID, scorecardFixture{
 		Correctness: float64Ptr(0.71),
@@ -3378,8 +3378,8 @@ func TestRepositoryBuildRunComparisonEvaluationSpecMismatch(t *testing.T) {
 
 	baselineRun, baselineRunAgents := createTestRun(t, ctx, repo, fixture, 1, "baseline")
 	candidateRun, candidateRunAgents := createTestRun(t, ctx, repo, fixture, 1, "candidate")
-	baselineSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "baseline-spec", 1)
-	candidateSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "candidate-spec", 1)
+	baselineSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "baseline-spec", 1)
+	candidateSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "candidate-spec", 1)
 
 	insertRunAgentScorecardRecord(t, ctx, db, baselineRunAgents[0].ID, baselineSpecID, scorecardFixture{Correctness: float64Ptr(0.80)})
 	insertRunAgentScorecardRecord(t, ctx, db, candidateRunAgents[0].ID, candidateSpecID, scorecardFixture{Correctness: float64Ptr(0.81)})
@@ -3405,7 +3405,7 @@ func TestRepositoryBuildRunComparisonMissingReplayDoesNotBlock(t *testing.T) {
 
 	baselineRun, baselineRunAgents := createTestRun(t, ctx, repo, fixture, 1, "baseline")
 	candidateRun, candidateRunAgents := createTestRun(t, ctx, repo, fixture, 1, "candidate")
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "replay-optional", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "replay-optional", 1)
 
 	insertRunAgentScorecardRecord(t, ctx, db, baselineRunAgents[0].ID, evaluationSpecID, scorecardFixture{Correctness: float64Ptr(0.66)})
 	insertRunAgentScorecardRecord(t, ctx, db, candidateRunAgents[0].ID, evaluationSpecID, scorecardFixture{Correctness: float64Ptr(0.68)})
@@ -3449,7 +3449,7 @@ func TestRepositoryBuildRunComparisonMissingScorecard(t *testing.T) {
 
 	baselineRun, baselineRunAgents := createTestRun(t, ctx, repo, fixture, 1, "baseline")
 	candidateRun, _ := createTestRun(t, ctx, repo, fixture, 1, "candidate")
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "missing-scorecard", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "missing-scorecard", 1)
 
 	insertRunAgentScorecardRecord(t, ctx, db, baselineRunAgents[0].ID, evaluationSpecID, scorecardFixture{Correctness: float64Ptr(0.91)})
 
@@ -3588,7 +3588,7 @@ func createComparableRunComparison(
 
 	baselineRun, baselineRunAgents := createTestRun(t, ctx, repo, fixture, 1, "baseline")
 	candidateRun, candidateRunAgents := createTestRun(t, ctx, repo, fixture, 1, "candidate")
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "release-gate-spec", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "release-gate-spec", 1)
 
 	insertRunAgentScorecardRecord(t, ctx, db, baselineRunAgents[0].ID, evaluationSpecID, scorecardFixture{
 		Correctness: float64Ptr(0.72),
@@ -3648,7 +3648,7 @@ type testFixture struct {
 	organizationID            uuid.UUID
 	workspaceID               uuid.UUID
 	userID                    uuid.UUID
-	challengePackVersionID    uuid.UUID
+	evalPackVersionID    uuid.UUID
 	challengeInputSetID       uuid.UUID
 	runtimeProfileID          uuid.UUID
 	agentBuildID              uuid.UUID
@@ -3698,15 +3698,15 @@ func openTestDB(t *testing.T) *pgxpool.Pool {
 func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixture {
 	t.Helper()
 
-	if _, err := db.Exec(ctx, "TRUNCATE TABLE eval_sessions, challenge_packs, organizations, users RESTART IDENTITY CASCADE"); err != nil {
+	if _, err := db.Exec(ctx, "TRUNCATE TABLE eval_sessions, eval_packs, organizations, users RESTART IDENTITY CASCADE"); err != nil {
 		t.Fatalf("reset fixture data returned error: %v", err)
 	}
 
 	organizationID := uuid.New()
 	workspaceID := uuid.New()
 	userID := uuid.New()
-	challengePackID := uuid.New()
-	challengePackVersionID := uuid.New()
+	evalPackID := uuid.New()
+	evalPackVersionID := uuid.New()
 	challengeInputSetID := uuid.New()
 	firstChallengeIdentityID := uuid.New()
 	secondChallengeIdentityID := uuid.New()
@@ -3743,30 +3743,30 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 	}
 
 	if _, err := db.Exec(ctx, `
-		INSERT INTO challenge_packs (id, slug, name, family)
+		INSERT INTO eval_packs (id, slug, name, family)
 		VALUES ($1, $2, $3, $4)
-	`, challengePackID, "benchmark-pack", "Benchmark Pack", "reasoning"); err != nil {
-		t.Fatalf("insert challenge pack returned error: %v", err)
+	`, evalPackID, "benchmark-pack", "Benchmark Pack", "reasoning"); err != nil {
+		t.Fatalf("insert eval pack returned error: %v", err)
 	}
 
 	if _, err := db.Exec(ctx, `
-		INSERT INTO challenge_pack_versions (
+		INSERT INTO eval_pack_versions (
 			id,
-			challenge_pack_id,
+			eval_pack_id,
 			version_number,
 			lifecycle_status,
 			manifest_checksum,
 			manifest
 		)
 		VALUES ($1, $2, $3, $4, $5, $6)
-	`, challengePackVersionID, challengePackID, 1, "runnable", "manifest-checksum", []byte(`{"tool_policy":{"allowed_tool_kinds":["file"]}}`)); err != nil {
-		t.Fatalf("insert challenge pack version returned error: %v", err)
+	`, evalPackVersionID, evalPackID, 1, "runnable", "manifest-checksum", []byte(`{"tool_policy":{"allowed_tool_kinds":["file"]}}`)); err != nil {
+		t.Fatalf("insert eval pack version returned error: %v", err)
 	}
 
 	if _, err := db.Exec(ctx, `
 		INSERT INTO challenge_identities (
 			id,
-			challenge_pack_id,
+			eval_pack_id,
 			challenge_key,
 			name,
 			category,
@@ -3776,15 +3776,15 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 		VALUES
 			($1, $2, $3, $4, $5, $6, $7),
 			($8, $2, $9, $10, $11, $12, $13)
-	`, firstChallengeIdentityID, challengePackID, "first-ticket", "First Ticket", "support", "easy", "Handle the first ticket", secondChallengeIdentityID, "second-ticket", "Second Ticket", "support", "medium", "Handle the second ticket"); err != nil {
+	`, firstChallengeIdentityID, evalPackID, "first-ticket", "First Ticket", "support", "easy", "Handle the first ticket", secondChallengeIdentityID, "second-ticket", "Second Ticket", "support", "medium", "Handle the second ticket"); err != nil {
 		t.Fatalf("insert challenge identities returned error: %v", err)
 	}
 
 	if _, err := db.Exec(ctx, `
-		INSERT INTO challenge_pack_version_challenges (
+		INSERT INTO eval_pack_version_challenges (
 			id,
-			challenge_pack_version_id,
-			challenge_pack_id,
+			eval_pack_version_id,
+			eval_pack_id,
 			challenge_identity_id,
 			execution_order,
 			title_snapshot,
@@ -3795,20 +3795,20 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 		VALUES
 			($1, $2, $3, $4, $5, $6, $7, $8, $9),
 			($10, $2, $3, $11, $12, $13, $14, $15, $16)
-	`, firstChallengeVersionID, challengePackVersionID, challengePackID, firstChallengeIdentityID, 0, "Ticket One", "support", "easy", []byte(`{"instructions":"Solve the first ticket"}`), secondChallengeVersionID, secondChallengeIdentityID, 1, "Ticket Two", "support", "medium", []byte(`{"instructions":"Solve the second ticket"}`)); err != nil {
-		t.Fatalf("insert challenge pack version challenges returned error: %v", err)
+	`, firstChallengeVersionID, evalPackVersionID, evalPackID, firstChallengeIdentityID, 0, "Ticket One", "support", "easy", []byte(`{"instructions":"Solve the first ticket"}`), secondChallengeVersionID, secondChallengeIdentityID, 1, "Ticket Two", "support", "medium", []byte(`{"instructions":"Solve the second ticket"}`)); err != nil {
+		t.Fatalf("insert eval pack version challenges returned error: %v", err)
 	}
 
 	if _, err := db.Exec(ctx, `
 		INSERT INTO challenge_input_sets (
 			id,
-			challenge_pack_version_id,
+			eval_pack_version_id,
 			input_key,
 			name,
 			input_checksum
 		)
 		VALUES ($1, $2, $3, $4, $5)
-	`, challengeInputSetID, challengePackVersionID, "default-inputs", "Default Inputs", "input-checksum"); err != nil {
+	`, challengeInputSetID, evalPackVersionID, "default-inputs", "Default Inputs", "input-checksum"); err != nil {
 		t.Fatalf("insert challenge input set returned error: %v", err)
 	}
 
@@ -3816,7 +3816,7 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 		INSERT INTO challenge_input_items (
 			id,
 			challenge_input_set_id,
-			challenge_pack_version_id,
+			eval_pack_version_id,
 			challenge_identity_id,
 			item_key,
 			payload
@@ -3824,7 +3824,7 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 		VALUES
 			($1, $2, $3, $4, $5, $6),
 			($7, $2, $3, $8, $9, $10)
-	`, firstChallengeInputItemID, challengeInputSetID, challengePackVersionID, firstChallengeIdentityID, "prompt.txt", []byte(`{"content":"Customer one is blocked"}`), secondChallengeInputItemID, secondChallengeIdentityID, "prompt.txt", []byte(`{"content":"Customer two needs follow-up"}`)); err != nil {
+	`, firstChallengeInputItemID, challengeInputSetID, evalPackVersionID, firstChallengeIdentityID, "prompt.txt", []byte(`{"content":"Customer one is blocked"}`), secondChallengeInputItemID, secondChallengeIdentityID, "prompt.txt", []byte(`{"content":"Customer two needs follow-up"}`)); err != nil {
 		t.Fatalf("insert challenge input items returned error: %v", err)
 	}
 
@@ -3932,7 +3932,7 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 	runRow, err := queries.CreateRun(ctx, repositorysqlc.CreateRunParams{
 		OrganizationID:         organizationID,
 		WorkspaceID:            workspaceID,
-		ChallengePackVersionID: &challengePackVersionID,
+		EvalPackVersionID: &evalPackVersionID,
 		ChallengeInputSetID:    &challengeInputSetID,
 		OfficialPackMode:       string(domain.OfficialPackModeFull),
 		CreatedByUserID:        &userID,
@@ -3981,7 +3981,7 @@ func seedFixture(t *testing.T, ctx context.Context, db *pgxpool.Pool) testFixtur
 		organizationID:            organizationID,
 		workspaceID:               workspaceID,
 		userID:                    userID,
-		challengePackVersionID:    challengePackVersionID,
+		evalPackVersionID:    evalPackVersionID,
 		challengeInputSetID:       challengeInputSetID,
 		runtimeProfileID:          runtimeProfileID,
 		agentBuildID:              agentBuildID,
@@ -4142,7 +4142,7 @@ func createTestRun(
 	result, err := repo.CreateQueuedRun(ctx, repository.CreateQueuedRunParams{
 		OrganizationID:         fixture.organizationID,
 		WorkspaceID:            fixture.workspaceID,
-		ChallengePackVersionID: fixture.challengePackVersionID,
+		EvalPackVersionID: fixture.evalPackVersionID,
 		ChallengeInputSetID:    &fixture.challengeInputSetID,
 		CreatedByUserID:        &fixture.userID,
 		Name:                   fmt.Sprintf("%s-%d", name, time.Now().UnixNano()),
@@ -4224,7 +4224,7 @@ func insertEvaluationSpecRecord(
 	t *testing.T,
 	ctx context.Context,
 	db *pgxpool.Pool,
-	challengePackVersionID uuid.UUID,
+	evalPackVersionID uuid.UUID,
 	name string,
 	version int32,
 ) uuid.UUID {
@@ -4234,14 +4234,14 @@ func insertEvaluationSpecRecord(
 	if _, err := db.Exec(ctx, `
 		INSERT INTO evaluation_specs (
 			id,
-			challenge_pack_version_id,
+			eval_pack_version_id,
 			name,
 			version_number,
 			judge_mode,
 			definition
 		)
 		VALUES ($1, $2, $3, $4, $5, $6)
-	`, evaluationSpecID, challengePackVersionID, name, version, "deterministic", []byte(`{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"runtime_limits":{"max_duration_ms":60000,"max_cost_usd":10},"scorecard":{"dimensions":["correctness","reliability","latency","cost"],"normalization":{"latency":{"target_ms":1000},"cost":{"target_usd":1}}}}`)); err != nil {
+	`, evaluationSpecID, evalPackVersionID, name, version, "deterministic", []byte(`{"name":"spec","version_number":1,"judge_mode":"deterministic","validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],"runtime_limits":{"max_duration_ms":60000,"max_cost_usd":10},"scorecard":{"dimensions":["correctness","reliability","latency","cost"],"normalization":{"latency":{"target_ms":1000},"cost":{"target_usd":1}}}}`)); err != nil {
 		t.Fatalf("insert evaluation spec returned error: %v", err)
 	}
 	return evaluationSpecID

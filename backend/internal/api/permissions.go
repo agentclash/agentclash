@@ -27,7 +27,7 @@ const (
 	ActionManageDatasets              Action = "manage_datasets"
 	ActionManageVibeEvalDrafts        Action = "manage_vibe_eval_drafts"
 	ActionSelectIntegrationRepository Action = "select_integration_repository"
-	ActionPublishChallengePack        Action = "publish_challenge_pack"
+	ActionPublishEvalPack        Action = "publish_eval_pack"
 	ActionUploadArtifact              Action = "upload_artifact"
 
 	// Admin-level actions — allowed for workspace_admin only.
@@ -64,7 +64,7 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionManageDatasets:              true,
 		ActionManageVibeEvalDrafts:        true,
 		ActionSelectIntegrationRepository: true,
-		ActionPublishChallengePack:        true,
+		ActionPublishEvalPack:        true,
 		ActionUploadArtifact:              true,
 		ActionManageInfrastructure:        true,
 		ActionManageIntegrations:          true,
@@ -84,7 +84,7 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionManageDatasets:              true,
 		ActionManageVibeEvalDrafts:        true,
 		ActionSelectIntegrationRepository: true,
-		ActionPublishChallengePack:        true,
+		ActionPublishEvalPack:        true,
 		ActionUploadArtifact:              true,
 	},
 	RoleWorkspaceViewer: {

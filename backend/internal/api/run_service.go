@@ -15,11 +15,11 @@ import (
 )
 
 type RunCreationRepository interface {
-	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
+	GetRunnableEvalPackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableEvalPackVersion, error)
 	WorkspacePublicPacksEnabled(ctx context.Context, workspaceID uuid.UUID) (bool, error)
 	GetChallengeInputSetByID(ctx context.Context, id uuid.UUID) (repository.ChallengeInputSet, error)
-	ListChallengeInputSetsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]repository.ChallengeInputSetSummary, error)
-	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error)
+	ListChallengeInputSetsByVersionID(ctx context.Context, evalPackVersionID uuid.UUID) ([]repository.ChallengeInputSetSummary, error)
+	ListChallengeIdentityIDsByPackVersionID(ctx context.Context, evalPackVersionID uuid.UUID) ([]uuid.UUID, error)
 	ListRunnableDeploymentsWithLatestSnapshot(ctx context.Context, workspaceID uuid.UUID, deploymentIDs []uuid.UUID) ([]repository.RunnableDeployment, error)
 	ListRunnableDeploymentsByBuildVersionID(ctx context.Context, workspaceID uuid.UUID, buildVersionIDs []uuid.UUID) ([]repository.BuildVersionRunnableDeployment, error)
 	GetRegressionSuiteByID(ctx context.Context, id uuid.UUID) (repository.RegressionSuite, error)
@@ -137,38 +137,38 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		seenDeploymentIDs[deploymentID] = struct{}{}
 	}
 
-	challengePackVersion, err := m.repo.GetRunnableChallengePackVersionByID(ctx, input.ChallengePackVersionID)
+	evalPackVersion, err := m.repo.GetRunnableEvalPackVersionByID(ctx, input.EvalPackVersionID)
 	if err != nil {
-		if err == repository.ErrChallengePackVersionNotFound {
+		if err == repository.ErrEvalPackVersionNotFound {
 			return CreateRunResult{}, RunCreationValidationError{
-				Code:    "invalid_challenge_pack_version_id",
-				Message: "challenge_pack_version_id must reference a runnable challenge pack version",
+				Code:    "invalid_eval_pack_version_id",
+				Message: "eval_pack_version_id must reference a runnable eval pack version",
 			}
 		}
-		return CreateRunResult{}, fmt.Errorf("load runnable challenge pack version: %w", err)
+		return CreateRunResult{}, fmt.Errorf("load runnable eval pack version: %w", err)
 	}
-	if challengePackVersion.WorkspaceID != nil && *challengePackVersion.WorkspaceID != input.WorkspaceID {
+	if evalPackVersion.WorkspaceID != nil && *evalPackVersion.WorkspaceID != input.WorkspaceID {
 		return CreateRunResult{}, RunCreationValidationError{
-			Code:    "invalid_challenge_pack_version_id",
-			Message: "challenge_pack_version_id must be visible to the selected workspace",
+			Code:    "invalid_eval_pack_version_id",
+			Message: "eval_pack_version_id must be visible to the selected workspace",
 		}
 	}
-	if challengePackVersion.WorkspaceID == nil {
+	if evalPackVersion.WorkspaceID == nil {
 		publicPacks, accessErr := m.repo.WorkspacePublicPacksEnabled(ctx, input.WorkspaceID)
 		if accessErr != nil {
 			return CreateRunResult{}, fmt.Errorf("load workspace public pack access: %w", accessErr)
 		}
 		if !publicPacks {
 			return CreateRunResult{}, RunCreationValidationError{
-				Code:    "invalid_challenge_pack_version_id",
-				Message: "challenge_pack_version_id must be visible to the selected workspace",
+				Code:    "invalid_eval_pack_version_id",
+				Message: "eval_pack_version_id must be visible to the selected workspace",
 			}
 		}
 	}
 	if input.MaxIterations == nil {
-		input.MaxIterations = challengePackDefaultMaxIterations(challengePackVersion.Manifest)
+		input.MaxIterations = evalPackDefaultMaxIterations(evalPackVersion.Manifest)
 	}
-	voiceMode, err := resolveRunVoiceMode(input.Mode, challengePackVersion.Manifest)
+	voiceMode, err := resolveRunVoiceMode(input.Mode, evalPackVersion.Manifest)
 	if err != nil {
 		return CreateRunResult{}, err
 	}
@@ -184,14 +184,14 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 			}
 			return CreateRunResult{}, fmt.Errorf("load challenge input set: %w", err)
 		}
-		if challengeInputSet.ChallengePackVersionID != input.ChallengePackVersionID {
+		if challengeInputSet.EvalPackVersionID != input.EvalPackVersionID {
 			return CreateRunResult{}, RunCreationValidationError{
 				Code:    "invalid_challenge_input_set_id",
-				Message: "challenge_input_set_id must belong to the selected challenge pack version",
+				Message: "challenge_input_set_id must belong to the selected eval pack version",
 			}
 		}
 	} else {
-		inputSets, err := m.repo.ListChallengeInputSetsByVersionID(ctx, input.ChallengePackVersionID)
+		inputSets, err := m.repo.ListChallengeInputSetsByVersionID(ctx, input.EvalPackVersionID)
 		if err != nil {
 			return CreateRunResult{}, fmt.Errorf("list challenge input sets: %w", err)
 		}
@@ -203,7 +203,7 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		default:
 			return CreateRunResult{}, RunCreationValidationError{
 				Code:    "missing_challenge_input_set_id",
-				Message: "challenge pack has multiple input sets; challenge_input_set_id is required",
+				Message: "eval pack has multiple input sets; challenge_input_set_id is required",
 			}
 		}
 	}
@@ -292,7 +292,7 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 		return CreateRunResult{}, fmt.Errorf("build execution plan: %w", err)
 	}
 
-	caseSelections, err := m.resolveRunCaseSelections(ctx, challengePackVersion, input)
+	caseSelections, err := m.resolveRunCaseSelections(ctx, evalPackVersion, input)
 	if err != nil {
 		return CreateRunResult{}, err
 	}
@@ -308,7 +308,7 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 	result, err := m.repo.CreateQueuedRun(ctx, repository.CreateQueuedRunParams{
 		OrganizationID:         organizationID,
 		WorkspaceID:            input.WorkspaceID,
-		ChallengePackVersionID: input.ChallengePackVersionID,
+		EvalPackVersionID: input.EvalPackVersionID,
 		ChallengeInputSetID:    input.ChallengeInputSetID,
 		OfficialPackMode:       input.OfficialPackMode,
 		CreatedByUserID:        &caller.UserID,
@@ -339,7 +339,7 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 
 func (m *RunCreationManager) resolveRunCaseSelections(
 	ctx context.Context,
-	challengePackVersion repository.RunnableChallengePackVersion,
+	evalPackVersion repository.RunnableEvalPackVersion,
 	input CreateRunInput,
 ) ([]repository.CreateQueuedRunCaseSelectionParams, error) {
 	selections := make([]repository.CreateQueuedRunCaseSelectionParams, 0)
@@ -367,10 +367,10 @@ func (m *RunCreationManager) resolveRunCaseSelections(
 				Message: "regression_suite_ids must reference suites in the selected workspace",
 			}
 		}
-		if suite.SourceChallengePackID != challengePackVersion.ChallengePackID {
+		if suite.SourceEvalPackID != evalPackVersion.EvalPackID {
 			return repository.RegressionSuite{}, RunCreationValidationError{
 				Code:    "invalid_regression_suite_ids",
-				Message: "regression suites must belong to the selected challenge pack",
+				Message: "regression suites must belong to the selected eval pack",
 			}
 		}
 		if suite.Status != domain.RegressionSuiteStatusActive {
@@ -465,7 +465,7 @@ func (m *RunCreationManager) resolveRunCaseSelections(
 	}
 
 	if input.OfficialPackMode == domain.OfficialPackModeFull {
-		challengeIdentityIDs, err := m.repo.ListChallengeIdentityIDsByPackVersionID(ctx, input.ChallengePackVersionID)
+		challengeIdentityIDs, err := m.repo.ListChallengeIdentityIDsByPackVersionID(ctx, input.EvalPackVersionID)
 		if err != nil {
 			return nil, fmt.Errorf("list official challenge identities: %w", err)
 		}
@@ -501,7 +501,7 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 
 	type executionPlan struct {
 		WorkspaceID            uuid.UUID                   `json:"workspace_id"`
-		ChallengePackVersionID uuid.UUID                   `json:"challenge_pack_version_id"`
+		EvalPackVersionID uuid.UUID                   `json:"eval_pack_version_id"`
 		ChallengeInputSetID    *uuid.UUID                  `json:"challenge_input_set_id,omitempty"`
 		OfficialPackMode       domain.OfficialPackMode     `json:"official_pack_mode"`
 		Mode                   string                      `json:"mode,omitempty"`
@@ -525,7 +525,7 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 
 	plan := executionPlan{
 		WorkspaceID:            input.WorkspaceID,
-		ChallengePackVersionID: input.ChallengePackVersionID,
+		EvalPackVersionID: input.EvalPackVersionID,
 		ChallengeInputSetID:    input.ChallengeInputSetID,
 		OfficialPackMode:       input.OfficialPackMode,
 		Participants:           participants,
@@ -558,7 +558,7 @@ func buildExecutionPlan(input CreateRunInput, runAgents []repository.CreateQueue
 	return payload, nil
 }
 
-func challengePackDefaultMaxIterations(manifest json.RawMessage) *int32 {
+func evalPackDefaultMaxIterations(manifest json.RawMessage) *int32 {
 	var document struct {
 		RuntimeLimits struct {
 			MaxIterations *int32 `json:"max_iterations"`

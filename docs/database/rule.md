@@ -111,7 +111,7 @@ AgentClash is an evaluation system. Historical reproducibility matters more than
 
 That means the schema should intentionally preserve frozen references to:
 
-- challenge-pack versions
+- eval-pack versions
 - challenge identities
 - deployment snapshots
 - runtime profiles
@@ -134,7 +134,7 @@ Examples:
 
 - `organizations`
 - `agent_build_versions`
-- `challenge_pack_versions`
+- `eval_pack_versions`
 - `run_agents`
 - `public_run_snapshots`
 
@@ -228,16 +228,16 @@ This domain is a core product pillar, not a side table collection.
 
 Tables in this area will likely include:
 
-- `challenge_packs`
-- `challenge_pack_versions`
+- `eval_packs`
+- `eval_pack_versions`
 - `challenges`
 - `challenge_input_sets`
 - `challenge_version_links` or an equivalent join structure
 
 Rules:
 
-- `Challenge Pack` is the long-lived product identity
-- `Challenge Pack Version` is immutable once it becomes runnable
+- `Eval Pack` is the long-lived product identity
+- `Eval Pack Version` is immutable once it becomes runnable
 - each `Challenge` inside a pack must have its own addressable identity
 - challenge identity must survive across pack versions
 - run records must point to the exact pack version and selected input set used
@@ -335,11 +335,11 @@ Rules:
 - a `Run` is an experiment envelope
 - a `Run` may contain one or many `RunAgent` entries
 - `RunAgent` is the primary unit of execution for a participating build/deployment
-- all `RunAgent` entries inside one `Run` must share the same challenge-pack version and challenge input set
+- all `RunAgent` entries inside one `Run` must share the same eval-pack version and challenge input set
 
 Recommended invariants:
 
-- `runs.challenge_pack_version_id` is required
+- `runs.eval_pack_version_id` is required
 - `runs.challenge_input_set_id` is required when the run targets a frozen input set
 - `run_agents.run_id` is required
 - `run_agents.agent_deployment_snapshot_id` is required for reproducibility
@@ -462,7 +462,7 @@ Use separate version tables when the product needs historical reproducibility.
 
 Good candidates:
 
-- challenge packs
+- eval packs
 - build definitions
 - evaluation specs
 - deployment snapshots

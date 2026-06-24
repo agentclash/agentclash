@@ -41,7 +41,7 @@
 }
 
 /*
- * Challenge-pack builder — quiet-utilitarian warm palette.
+ * Eval-pack builder — quiet-utilitarian warm palette.
  * The design system (docs/frontend/design/design-system.md) is warm and editorial,
  * but the app's shadcn tokens are cold neutral grays. Rather than re-tint the whole
  * app, the builder gets its own contained, reusable warm token set, consumed only

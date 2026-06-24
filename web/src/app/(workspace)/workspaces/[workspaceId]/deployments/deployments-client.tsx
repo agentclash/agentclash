@@ -47,7 +47,7 @@ export function DeploymentsClient({ workspaceId }: { workspaceId: string }) {
         <EmptyState
           icon={<Rocket className="size-10" />}
           title="No deployments yet"
-          description="Deploy an agent build version to make it runnable against challenge packs."
+          description="Deploy an agent build version to make it runnable against eval packs."
         />
       ) : (
         <div className="rounded-lg border border-border">

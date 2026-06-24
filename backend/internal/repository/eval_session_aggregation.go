@@ -632,8 +632,8 @@ func (r *Repository) loadEvalSessionParticipantTaskOutcomes(
 }
 
 func buildEvalSessionChallengeMetadata(executionContext RunAgentExecutionContext) map[uuid.UUID]ChallengeDefinitionExecutionContext {
-	metadata := make(map[uuid.UUID]ChallengeDefinitionExecutionContext, len(executionContext.ChallengePackVersion.Challenges))
-	for _, challenge := range executionContext.ChallengePackVersion.Challenges {
+	metadata := make(map[uuid.UUID]ChallengeDefinitionExecutionContext, len(executionContext.EvalPackVersion.Challenges))
+	for _, challenge := range executionContext.EvalPackVersion.Challenges {
 		metadata[challenge.ChallengeIdentityID] = challenge
 	}
 	return metadata

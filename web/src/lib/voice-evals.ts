@@ -1,4 +1,4 @@
-import type { ChallengePack, ChallengePackVersion, Run } from "@/lib/api/types";
+import type { EvalPack, EvalPackVersion, Run } from "@/lib/api/types";
 
 export const VOICE_MODALITY = "voice";
 export const VOICE_MODE_TEXT_SIM = "text-sim";
@@ -8,12 +8,12 @@ export function normalizedVoiceValue(value?: string): string {
   return value?.trim().toLowerCase() ?? "";
 }
 
-export function isVoiceVersion(version?: ChallengePackVersion | null): boolean {
+export function isVoiceVersion(version?: EvalPackVersion | null): boolean {
   return normalizedVoiceValue(version?.modality) === VOICE_MODALITY;
 }
 
 export function versionSupportsTextSim(
-  version?: ChallengePackVersion | null,
+  version?: EvalPackVersion | null,
 ): boolean {
   if (!isVoiceVersion(version)) return false;
   return (version?.interface_transports ?? []).some(
@@ -22,16 +22,16 @@ export function versionSupportsTextSim(
   );
 }
 
-export function latestChallengePackVersion(
-  pack: ChallengePack,
-): ChallengePackVersion | null {
+export function latestEvalPackVersion(
+  pack: EvalPack,
+): EvalPackVersion | null {
   if (pack.versions.length === 0) return null;
   return pack.versions.reduce((left, right) =>
     left.version_number > right.version_number ? left : right,
   );
 }
 
-export function hasVoiceVersion(pack: ChallengePack): boolean {
+export function hasVoiceVersion(pack: EvalPack): boolean {
   return pack.versions.some(isVoiceVersion);
 }
 

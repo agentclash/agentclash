@@ -21,7 +21,7 @@ export const WEB_EVENTS = {
   WORKSPACE_CREATED: "web.workspace.created",
   /** User added a provider API key (OpenAI, Anthropic, etc). */
   PROVIDER_ACCOUNT_ADDED: "web.provider_account.added",
-  /** User created or uploaded a challenge pack. */
+  /** User created or uploaded a eval pack. */
   PACK_UPLOADED: "web.pack.uploaded",
   /** User created a run through the web UI. */
   RUN_CREATED: "web.run.created",

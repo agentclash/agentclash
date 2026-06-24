@@ -9,7 +9,7 @@ import { Loader2, Plus } from "lucide-react";
 import { createDataset } from "@/lib/api/datasets";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
-import type { ChallengePack, ChallengePackVersion } from "@/lib/api/types";
+import type { EvalPack, EvalPackVersion } from "@/lib/api/types";
 import { useApiMutator } from "@/lib/api/swr";
 import { workspaceResourceKeys } from "@/lib/workspace-resource";
 import { Button } from "@/components/ui/button";
@@ -40,9 +40,9 @@ export function CreateDatasetDialog({ workspaceId }: { workspaceId: string }) {
   const [schemaEnforced, setSchemaEnforced] = useState(false);
   const [inputSchemaJson, setInputSchemaJson] = useState("");
   const [schemaError, setSchemaError] = useState<string>();
-  const [packs, setPacks] = useState<ChallengePack[]>([]);
+  const [packs, setPacks] = useState<EvalPack[]>([]);
   const [packId, setPackId] = useState("");
-  const [packVersions, setPackVersions] = useState<ChallengePackVersion[]>([]);
+  const [packVersions, setPackVersions] = useState<EvalPackVersion[]>([]);
   const [packVersionId, setPackVersionId] = useState("");
 
   const loadPacks = useCallback(async () => {
@@ -50,13 +50,13 @@ export function CreateDatasetDialog({ workspaceId }: { workspaceId: string }) {
     try {
       const token = await getAccessToken();
       const api = createApiClient(token);
-      const res = await api.get<{ items: ChallengePack[] }>(
-        `/v1/workspaces/${workspaceId}/challenge-packs`,
+      const res = await api.get<{ items: EvalPack[] }>(
+        `/v1/workspaces/${workspaceId}/eval-packs`,
       );
       setPacks(res.items);
     } catch (err) {
       toast.error(
-        err instanceof ApiError ? err.message : "Failed to load challenge packs",
+        err instanceof ApiError ? err.message : "Failed to load eval packs",
       );
     } finally {
       setLoading(false);
@@ -122,7 +122,7 @@ export function CreateDatasetDialog({ workspaceId }: { workspaceId: string }) {
         description: description.trim() || undefined,
         input_schema,
         input_schema_enforced: schemaEnforced,
-        default_challenge_pack_version_id: packVersionId || undefined,
+        default_eval_pack_version_id: packVersionId || undefined,
       });
       toast.success("Dataset created");
       setOpen(false);
@@ -188,7 +188,7 @@ export function CreateDatasetDialog({ workspaceId }: { workspaceId: string }) {
               />
               <div>
                 <label className="mb-1.5 block text-sm font-medium">
-                  Default challenge pack{" "}
+                  Default eval pack{" "}
                   <span className="font-normal text-muted-foreground">
                     (optional)
                   </span>

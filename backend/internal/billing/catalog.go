@@ -22,7 +22,7 @@ const (
 	EntitlementStatusExpired  = "expired"
 	EntitlementStatusInactive = "inactive"
 
-	FeaturePrivateChallengePacks = "private_challenge_packs"
+	FeaturePrivateEvalPacks = "private_eval_packs"
 )
 
 var (
@@ -143,7 +143,7 @@ func CatalogWithDodoProductIDs(productIDs DodoProductIDs) []Plan {
 				"byok_llm":                   true,
 				"byok_e2b":                   true,
 				"hosted_sandbox_credit":      true,
-				FeaturePrivateChallengePacks: true,
+				FeaturePrivateEvalPacks: true,
 				"ci_integration":             true,
 				"email_support":              true,
 			},
@@ -167,7 +167,7 @@ func CatalogWithDodoProductIDs(productIDs DodoProductIDs) []Plan {
 				"byok_llm":                   true,
 				"byok_e2b":                   true,
 				"hosted_sandbox_credit":      true,
-				FeaturePrivateChallengePacks: true,
+				FeaturePrivateEvalPacks: true,
 				"ci_integration":             true,
 				"audit_log":                  true,
 				"slack_notifications":        true,
@@ -193,7 +193,7 @@ func CatalogWithDodoProductIDs(productIDs DodoProductIDs) []Plan {
 				"byok_llm":                   true,
 				"byok_e2b":                   true,
 				"hosted_sandbox_credit":      true,
-				FeaturePrivateChallengePacks: true,
+				FeaturePrivateEvalPacks: true,
 				"ci_integration":             true,
 				"audit_log":                  true,
 				"slack_notifications":        true,

@@ -20,7 +20,7 @@ func TestUpsertLLMJudgeResult_InsertsAndReadsBack(t *testing.T) {
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "llm-judge-insert", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "llm-judge-insert", 1)
 
 	score := 0.85
 	variance := 0.0017
@@ -106,7 +106,7 @@ func TestUpsertLLMJudgeResult_OverwritesOnConflict(t *testing.T) {
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "llm-judge-conflict", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "llm-judge-conflict", 1)
 
 	firstScore := 0.75
 	firstParams := repository.UpsertLLMJudgeResultParams{
@@ -180,7 +180,7 @@ func TestUpsertLLMJudgeResult_HandlesNullableFields(t *testing.T) {
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "llm-judge-nullable", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "llm-judge-nullable", 1)
 
 	params := repository.UpsertLLMJudgeResultParams{
 		RunAgentID:       fixture.primaryRunAgentID,
@@ -222,7 +222,7 @@ func TestListLLMJudgeResults_OrdersByJudgeKey(t *testing.T) {
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "llm-judge-ordering", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "llm-judge-ordering", 1)
 
 	keys := []string{"zulu", "alpha", "mike"}
 	for _, key := range keys {
@@ -267,7 +267,7 @@ func TestListLLMJudgeResults_EmptyWhenNoRows(t *testing.T) {
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "llm-judge-empty", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "llm-judge-empty", 1)
 
 	listed, err := repo.ListLLMJudgeResultsByRunAgentAndEvaluationSpec(ctx, fixture.primaryRunAgentID, evaluationSpecID)
 	if err != nil {

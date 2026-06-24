@@ -10,7 +10,7 @@ metadata:
 # AgentClash Quickstart
 
 ## Purpose
-Run `agentclash quickstart` to verify auth, workspace, challenge packs, deployments, and baseline bookmark state, then report the CLI's suggested next command for eval or comparison workflows.
+Run `agentclash quickstart` to verify auth, workspace, eval packs, deployments, and baseline bookmark state, then report the CLI's suggested next command for eval or comparison workflows.
 
 ## Use When
 - A user asks "am I ready to run an eval?" or "what should I run next?"
@@ -20,7 +20,7 @@ Run `agentclash quickstart` to verify auth, workspace, challenge packs, deployme
 ## Do Not Use When
 - CLI is not installed or auth failed — use `agentclash-cli-setup` first.
 - The user needs deep doctor diagnostics — use `agentclash doctor`.
-- The task is to create packs, deployments, or runs — use the eval-runner or challenge-pack skills after quickstart passes.
+- The task is to create packs, deployments, or runs — use the eval-runner or eval-pack skills after quickstart passes.
 
 ## Inputs Needed
 - API URL (default hosted production).
@@ -37,7 +37,7 @@ agentclash workspace use <WORKSPACE_ID>
 ## Procedure
 1. Confirm auth with `agentclash auth status`.
 2. Run `agentclash quickstart` (human) or `agentclash quickstart --json` (automation).
-3. Read each check: `auth`, `workspace`, `challenge_packs`, `deployments`, `baseline`.
+3. Read each check: `auth`, `workspace`, `eval_packs`, `deployments`, `baseline`.
 4. Execute `next_command` from the result when checks are blocking; treat `info` baseline as advisory.
 5. When ready and baseline exists, quickstart suggests `agentclash eval start --follow` or comparison flows.
 
@@ -53,7 +53,7 @@ Check names and statuses in structured output:
 | --- | --- | --- | --- |
 | `auth` | Token valid | Login required | — |
 | `workspace` | Workspace resolved | Set workspace | — |
-| `challenge_packs` | ≥1 pack visible | Init/publish pack | — |
+| `eval_packs` | ≥1 pack visible | Init/publish pack | — |
 | `deployments` | ≥1 deployment | Create deployment | — |
 | `baseline` | Bookmark set | — | No baseline yet |
 
@@ -79,7 +79,7 @@ JSON output prints the full envelope for scripting.
 ## Failure Modes
 - `401` / auth errors → `agentclash auth login --device`.
 - No workspace → `agentclash link` or `agentclash workspace use <id>`.
-- Zero challenge packs → `agentclash challenge-pack init` then publish skills.
+- Zero eval packs → `agentclash eval-pack init` then publish skills.
 - Zero deployments → `agentclash deployment create --from-file deployment.json`.
 - API unreachable → verify `AGENTCLASH_API_URL` and network.
 
@@ -93,7 +93,7 @@ Quickstart ready: <yes/no>
 Checks:
 - auth: <status> — <detail>
 - workspace: <status> — <detail>
-- challenge_packs: <status> — <detail>
+- eval_packs: <status> — <detail>
 - deployments: <status> — <detail>
 - baseline: <status> — <detail>
 Next command: <command or none>

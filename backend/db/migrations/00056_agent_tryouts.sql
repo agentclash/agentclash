@@ -5,7 +5,7 @@ DROP CONSTRAINT public_share_links_resource_type_check;
 
 ALTER TABLE public_share_links
 ADD CONSTRAINT public_share_links_resource_type_check
-CHECK (resource_type IN ('challenge_pack_version', 'run_scorecard', 'run_agent_scorecard', 'run_agent_replay', 'agent_tryout'));
+CHECK (resource_type IN ('eval_pack_version', 'run_scorecard', 'run_agent_scorecard', 'run_agent_replay', 'agent_tryout'));
 
 CREATE TABLE agent_tryouts (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -77,4 +77,4 @@ DROP CONSTRAINT public_share_links_resource_type_check;
 
 ALTER TABLE public_share_links
 ADD CONSTRAINT public_share_links_resource_type_check
-CHECK (resource_type IN ('challenge_pack_version', 'run_scorecard', 'run_agent_scorecard', 'run_agent_replay'));
+CHECK (resource_type IN ('eval_pack_version', 'run_scorecard', 'run_agent_scorecard', 'run_agent_replay'));

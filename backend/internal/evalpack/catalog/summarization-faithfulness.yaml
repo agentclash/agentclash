@@ -1,0 +1,142 @@
+###############################################################################
+# Eval Pack: Summarization Faithfulness
+#
+# A horizontal content eval. The agent summarizes a source article. Scoring
+# combines a deterministic ROUGE-L overlap floor against a reference summary
+# with LLM judges for faithfulness (no fabricated facts beyond the source) and
+# conciseness. prompt_eval — cheap and reproducible.
+#
+# Swap points (make it yours): replace the source article + reference summary
+# in the instructions and case.expectations.
+###############################################################################
+
+pack:
+  slug: summarization-faithfulness
+  name: Summarization Faithfulness
+  family: content
+  description: >-
+    Summarize a source article without fabricating. Scored by a ROUGE-L overlap
+    floor against a reference plus faithfulness (no invented facts) and
+    conciseness judges.
+
+version:
+  number: 1
+  execution_mode: prompt_eval
+
+  evaluation_spec:
+    name: summarization-faithfulness-v1
+    version_number: 1
+    judge_mode: hybrid
+
+    validators:
+      - key: overlap_with_reference
+        type: rouge_score
+        target: final_output
+        expected_from: "case.expectations.reference"
+        config:
+          variant: rouge-l
+          threshold: 0.2
+
+    llm_judges:
+      - key: faithfulness
+        mode: assertion
+        model: claude-haiku-4-5-20251001
+        samples: 3
+        context_from:
+          - final_output
+          - case.expectations.source
+        assertion: |
+          The summary contains no facts, names, numbers, or claims that are
+          absent from — or that contradict — the source article in the context.
+          It does not add outside information.
+      - key: conciseness
+        mode: assertion
+        model: claude-haiku-4-5-20251001
+        samples: 3
+        context_from:
+          - final_output
+        assertion: |
+          The summary is concise (roughly 2-4 sentences) and free of padding,
+          repetition, or filler, while still covering the article's main points.
+
+    runtime_limits:
+      max_duration_ms: 120000
+      max_total_tokens: 12000
+
+    scorecard:
+      strategy: weighted
+      pass_threshold: 0.7
+      dimensions:
+        - key: faithfulness
+          source: llm_judge
+          judge_key: faithfulness
+          gate: true
+          pass_threshold: 0.5
+          weight: 0.45
+        - key: overlap
+          source: validators
+          validators:
+            - overlap_with_reference
+          weight: 0.25
+        - key: conciseness
+          source: llm_judge
+          judge_key: conciseness
+          weight: 0.2
+        - key: reliability
+          source: reliability
+          weight: 0.05
+        - key: cost
+          source: cost
+          better_direction: lower
+          normalization:
+            target: 0.005
+            max: 0.1
+          weight: 0.05
+
+challenges:
+  - key: article-summary
+    title: Summarize an article faithfully
+    category: summarization
+    difficulty: easy
+    instructions: |
+      Summarize the article below in 2-4 sentences. Capture the main points and
+      do NOT add any facts, names, or numbers that are not in the article.
+      Output only the summary text — no preamble, no bullet list.
+
+      --- ARTICLE ---
+      Harbor City Transit opened its new East Line on Monday after three years of
+      construction. The line adds eleven stations and is expected to carry about
+      40,000 riders per day, cutting the cross-town commute from 50 minutes to
+      under 20. Fares remain at $2.75, unchanged since 2019. The city funded the
+      $1.2 billion project with a mix of federal grants and a 2021 bond measure.
+      Officials said a planned West Line extension is still awaiting funding.
+      --- END ARTICLE ---
+
+input_sets:
+  - key: default
+    name: Default Input Set
+    cases:
+      - challenge_key: article-summary
+        case_key: east-line
+        payload:
+          domain: news
+        expectations:
+          - key: source
+            kind: text
+            value: |
+              Harbor City Transit opened its new East Line on Monday after three
+              years of construction. The line adds eleven stations and is
+              expected to carry about 40,000 riders per day, cutting the
+              cross-town commute from 50 minutes to under 20. Fares remain at
+              $2.75, unchanged since 2019. The city funded the $1.2 billion
+              project with a mix of federal grants and a 2021 bond measure.
+              Officials said a planned West Line extension is still awaiting
+              funding.
+          - key: reference
+            kind: text
+            value: |
+              Harbor City Transit opened its new East Line, adding eleven
+              stations and cutting the cross-town commute from 50 minutes to
+              under 20 for an expected 40,000 daily riders. The $1.2 billion line
+              was funded by federal grants and a 2021 bond measure, with fares
+              unchanged at $2.75 and a West Line extension still awaiting funding.

@@ -16,11 +16,11 @@ Turn completed or inspectable AgentClash run evidence into an engineering readou
 - A user asks why an AgentClash run passed, failed, regressed, drifted, or picked a winner.
 - You have a run ID and need to inspect rankings, run agents, scorecards, replay steps, failure-review items, or artifacts.
 - A reviewer needs evidence-first findings instead of raw JSON dumps.
-- A follow-up skill needs a grounded summary before promoting regressions or changing a challenge pack.
+- A follow-up skill needs a grounded summary before promoting regressions or changing a eval pack.
 
 ## Do Not Use When
 - The user needs to start a new eval run; use `agentclash-eval-runner`.
-- The user needs to author, validate, or publish the challenge pack first; use the challenge-pack skills.
+- The user needs to author, validate, or publish the eval pack first; use the eval-pack skills.
 - The user is ready to promote failures into regression suites; use `agentclash-regression-flywheel` after this skill identifies the useful failures.
 
 ## Inputs Needed
@@ -459,7 +459,7 @@ Follow-up commands:
 - agentclash run failures <RUN_ID> --json
 - agentclash run scorecard <RUN_AGENT_ID> --json
 - agentclash replay get <RUN_AGENT_ID> --limit 50 --json
-Next skill: <agentclash-regression-flywheel | challenge-pack skill | none>
+Next skill: <agentclash-regression-flywheel | eval-pack skill | none>
 ```
 
 ## Related Skills

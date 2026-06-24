@@ -22,18 +22,18 @@ Turn understood AgentClash failures into durable regression coverage, then verif
 ## Do Not Use When
 - The run has not produced failure evidence yet; use `agentclash-eval-runner` to run or follow it.
 - The user only needs to interpret a scorecard, replay, artifact, or ranking; use `agentclash-scorecard-reader` first.
-- The challenge pack itself needs authoring, validation, or publishing; use the challenge-pack skills.
+- The eval pack itself needs authoring, validation, or publishing; use the eval-pack skills.
 - The task is to configure release gates or CI promotion policy; use `agentclash-ci-release-gate`.
 
 ## Inputs Needed
 - Workspace ID or configured workspace context.
 - Run ID containing failure-review items.
-- Source challenge pack ID for the target regression suite.
+- Source eval pack ID for the target regression suite.
 - Target suite ID, or the suite name/details needed to create one.
 - Failure selector: `challenge_identity_id` from `run failures --json`, plus `run_agent_id` when more than one agent failed the same challenge.
 - Promotion mode from the failure item's `promotion_mode_available`: `full_executable` or `output_only`.
 - Case title, optional failure summary, optional severity, and any validator overrides.
-- Deployment and challenge pack version IDs/selectors for a suite-only verification run.
+- Deployment and eval pack version IDs/selectors for a suite-only verification run.
 
 ## Environment
 Use hosted production by default unless the user intentionally targets local or self-hosted infrastructure:
@@ -49,7 +49,7 @@ All commands in this skill require workspace context. Workspace resolution follo
 ## Procedure
 1. Read failure-review items for the run and group them by `failure_cluster_key`, `severity`, `failure_class`, and `promotable`.
 2. Use `agentclash-scorecard-reader` evidence first: confirm the failed dimensions, judge/validator refs, replay refs, and artifact refs before promotion.
-3. Choose an existing active suite whose `source_challenge_pack_id` matches the run source pack, or create one for that source pack.
+3. Choose an existing active suite whose `source_eval_pack_id` matches the run source pack, or create one for that source pack.
 4. Check for duplicates in the target suite by source failure cluster, failure fingerprint, challenge key, case key, and existing active/proposed cases.
 5. Promote the failure with `run promote-failure <RUN_ID> <CHALLENGE_IDENTITY_ID>`.
 6. Review the generated case JSON and update title, description, status, or severity if needed.
@@ -147,7 +147,7 @@ Create a suite:
 
 ```bash
 agentclash regression-suite create \
-  --source-challenge-pack-id <CHALLENGE_PACK_ID> \
+  --source-eval-pack-id <EVAL_PACK_ID> \
   --name "Checkout regressions" \
   --description "Failures promoted from checkout evals" \
   --default-gate-severity warning \
@@ -158,7 +158,7 @@ Equivalent `--from-file` payload:
 
 ```json
 {
-  "source_challenge_pack_id": "<CHALLENGE_PACK_ID>",
+  "source_eval_pack_id": "<EVAL_PACK_ID>",
   "name": "Checkout regressions",
   "description": "Failures promoted from checkout evals",
   "default_gate_severity": "warning"
@@ -167,7 +167,7 @@ Equivalent `--from-file` payload:
 
 Exact suite create rules:
 
-- `source_challenge_pack_id` is required and must identify a challenge pack visible to the workspace.
+- `source_eval_pack_id` is required and must identify a eval pack visible to the workspace.
 - `name` is required.
 - `default_gate_severity` is optional and defaults to `warning`.
 - Allowed severities are `info`, `warning`, and `blocking`.
@@ -208,7 +208,7 @@ Suite JSON includes:
 {
   "id": "<SUITE_ID>",
   "workspace_id": "<WORKSPACE_ID>",
-  "source_challenge_pack_id": "<CHALLENGE_PACK_ID>",
+  "source_eval_pack_id": "<EVAL_PACK_ID>",
   "name": "Checkout regressions",
   "description": "Current production blockers",
   "status": "active",
@@ -283,7 +283,7 @@ Exact promotion rules:
 - `validator_overrides` may contain only `judge_threshold_overrides` and `assertion_toggles`.
 - `metadata` must be a JSON object or null.
 - If you want `source_challenge_key`, `source_failure_fingerprint`, or `source_failure_cluster_key` on the case response for duplicate checks, include those exact keys in `metadata`.
-- The target suite must be active and must have the same `source_challenge_pack_id` as the run source pack.
+- The target suite must be active and must have the same `source_eval_pack_id` as the run source pack.
 - The failure item must be promotable. Items without a challenge input set or with insufficient reproduction context may have no available promotion modes.
 
 `run promote-failure --json` prints the regression case object directly. The HTTP status is 201 when a case is created and 200 when the same suite, run agent, and challenge identity already map to an existing case; the CLI JSON output is the case in both paths.
@@ -339,7 +339,7 @@ Case JSON includes:
   "source_run_id": "<RUN_ID>",
   "source_run_agent_id": "<RUN_AGENT_ID>",
   "source_replay_id": "<REPLAY_ID>",
-  "source_challenge_pack_version_id": "<CHALLENGE_PACK_VERSION_ID>",
+  "source_eval_pack_version_id": "<EVAL_PACK_VERSION_ID>",
   "source_challenge_input_set_id": "<INPUT_SET_ID>",
   "source_challenge_identity_id": "<CHALLENGE_IDENTITY_ID>",
   "source_challenge_key": "<challenge_key>",
@@ -409,7 +409,7 @@ Use `run create` when automation already has IDs:
 
 ```bash
 agentclash run create \
-  --challenge-pack-version <CHALLENGE_PACK_VERSION_ID> \
+  --eval-pack-version <EVAL_PACK_VERSION_ID> \
   --deployments <AGENT_DEPLOYMENT_ID> \
   --scope suite_only \
   --suite <SUITE_ID> \
@@ -466,11 +466,11 @@ agentclash run ranking <VERIFICATION_RUN_ID> --json
 
 ## Failure Modes
 - Missing workspace: run `agentclash link`, `agentclash workspace use <id>`, pass `--workspace`, or set `AGENTCLASH_WORKSPACE`.
-- `source_challenge_pack_id is required`: create the suite with the source challenge pack ID, not a challenge pack version ID.
-- `challenge_pack_not_found`: the source challenge pack is not visible to the workspace.
+- `source_eval_pack_id is required`: create the suite with the source eval pack ID, not a eval pack version ID.
+- `eval_pack_not_found`: the source eval pack is not visible to the workspace.
 - `regression_suite_name_conflict`: rename the suite or reuse the existing active suite.
 - `regression_suite_archived`: reactivate the suite or pick an active one.
-- `regression_suite_pack_mismatch`: choose a suite whose `source_challenge_pack_id` matches the run source pack.
+- `regression_suite_pack_mismatch`: choose a suite whose `source_eval_pack_id` matches the run source pack.
 - `failure_review_item_not_found`: use the `challenge_identity_id` from `run failures --json`, not the fingerprint or cluster key.
 - `failure_review_item_ambiguous`: pass `--run-agent <RUN_AGENT_ID>`.
 - `failure_not_promotable`: do not promote; collect better evidence or run with a challenge input set.

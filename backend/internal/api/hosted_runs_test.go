@@ -290,7 +290,7 @@ func TestIngestHostedRunEventHandlerReturnsInternalErrorForRepositoryFailure(t *
 		),
 		nil,
 		stubAgentDeploymentReadService{},
-		stubChallengePackReadService{},
+		stubEvalPackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,

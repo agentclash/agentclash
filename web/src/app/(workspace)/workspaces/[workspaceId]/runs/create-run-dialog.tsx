@@ -18,9 +18,9 @@ import {
 } from "@/lib/voice-evals";
 import type {
   AgentDeployment,
-  ChallengePack,
+  EvalPack,
   ChallengeInputSetSummary,
-  ChallengePackVersion,
+  EvalPackVersion,
   CreateRunRequest,
   CreateRunResponse,
   ListRegressionCasesResponse,
@@ -112,9 +112,9 @@ export function CreateRunDialog({
   const [raceContext, setRaceContext] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const [packs, setPacks] = useState<ChallengePack[]>([]);
+  const [packs, setPacks] = useState<EvalPack[]>([]);
   const [runnableVersions, setRunnableVersions] = useState<
-    ChallengePackVersion[]
+    EvalPackVersion[]
   >([]);
   const [inputSets, setInputSets] = useState<ChallengeInputSetSummary[]>([]);
   const [deployments, setDeployments] = useState<AgentDeployment[]>([]);
@@ -140,8 +140,8 @@ export function CreateRunDialog({
       const token = await getAccessToken();
       const api = createApiClient(token);
       const [packsRes, deploymentsRes] = await Promise.all([
-        api.get<{ items: ChallengePack[] }>(
-          `/v1/workspaces/${workspaceId}/challenge-packs`,
+        api.get<{ items: EvalPack[] }>(
+          `/v1/workspaces/${workspaceId}/eval-packs`,
         ),
         api.get<{ items: AgentDeployment[] }>(
           `/v1/workspaces/${workspaceId}/agent-deployments`,
@@ -251,7 +251,7 @@ export function CreateRunDialog({
         const token = await getAccessToken();
         const api = createApiClient(token);
         const response = await api.get<{ items: ChallengeInputSetSummary[] }>(
-          `/v1/workspaces/${workspaceId}/challenge-pack-versions/${selectedVersionId}/input-sets`,
+          `/v1/workspaces/${workspaceId}/eval-pack-versions/${selectedVersionId}/input-sets`,
         );
 
         if (cancelled) return;
@@ -286,7 +286,7 @@ export function CreateRunDialog({
     }
 
     const eligibleSuites = regressionSuites.filter(
-      (suite) => suite.source_challenge_pack_id === selectedPackId,
+      (suite) => suite.source_eval_pack_id === selectedPackId,
     );
     const missingSuiteIds = eligibleSuites
       .map((suite) => suite.id)
@@ -385,7 +385,7 @@ export function CreateRunDialog({
       const api = createApiClient(token);
       const request: CreateRunRequest = {
         workspace_id: workspaceId,
-        challenge_pack_version_id: selectedVersionId,
+        eval_pack_version_id: selectedVersionId,
         challenge_input_set_id: inputSetId.trim() || undefined,
         name: name.trim() || undefined,
         agent_deployment_ids: selectedDeploymentIds,
@@ -460,7 +460,7 @@ export function CreateRunDialog({
     !loadingInputSets &&
     (!requiresInputSetSelection || Boolean(inputSetId));
   const eligibleRegressionSuites = regressionSuites.filter(
-    (suite) => suite.source_challenge_pack_id === selectedPackId,
+    (suite) => suite.source_eval_pack_id === selectedPackId,
   );
   const regressionSelectionCount =
     selectedRegressionSuiteIds.length + selectedRegressionCaseIds.length;
@@ -480,7 +480,7 @@ export function CreateRunDialog({
         <DialogHeader>
           <DialogTitle>New Run</DialogTitle>
           <DialogDescription>
-            Run agent deployments against a challenge pack.
+            Run agent deployments against a eval pack.
           </DialogDescription>
         </DialogHeader>
 
@@ -488,7 +488,7 @@ export function CreateRunDialog({
           {loading && (
             <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" />
-              Loading challenge packs and deployments…
+              Loading eval packs and deployments…
             </div>
           )}
 
@@ -509,20 +509,20 @@ export function CreateRunDialog({
             />
           </div>
 
-          {/* Challenge Pack */}
+          {/* Eval Pack */}
           <div>
             <label className="mb-1.5 block text-sm font-medium">
-              Challenge Pack
+              Eval Pack
             </label>
             <select
-              aria-label="Challenge Pack"
+              aria-label="Eval Pack"
               value={selectedPackId}
               onChange={(e) => handlePackChange(e.target.value)}
               disabled={loading}
               className={selectClass}
             >
               <option value="">
-                {loading ? "Loading..." : "Select a challenge pack"}
+                {loading ? "Loading..." : "Select a eval pack"}
               </option>
               {packs.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -533,12 +533,12 @@ export function CreateRunDialog({
             </select>
             {!loading && packs.length === 0 && (
               <p className="mt-1.5 text-sm text-muted-foreground">
-                No challenge packs yet.{" "}
+                No eval packs yet.{" "}
                 <InlineSetupLink
-                  href={`/workspaces/${workspaceId}/challenge-packs`}
+                  href={`/workspaces/${workspaceId}/eval-packs`}
                   onNavigate={() => setOpen(false)}
                 >
-                  Add a challenge pack
+                  Add a eval pack
                 </InlineSetupLink>
               </p>
             )}
@@ -553,7 +553,7 @@ export function CreateRunDialog({
               </span>
             </label>
             <select
-              aria-label="Challenge Pack Version"
+              aria-label="Eval Pack Version"
               value={selectedVersionId}
               onChange={(e) => handleVersionChange(e.target.value)}
               disabled={!selectedPackId}
@@ -574,7 +574,7 @@ export function CreateRunDialog({
               <p className="mt-1.5 text-sm text-muted-foreground">
                 This pack has no runnable version yet.{" "}
                 <InlineSetupLink
-                  href={`/workspaces/${workspaceId}/challenge-packs/${selectedPackId}`}
+                  href={`/workspaces/${workspaceId}/eval-packs/${selectedPackId}`}
                   onNavigate={() => setOpen(false)}
                 >
                   Publish a runnable version
@@ -680,7 +680,7 @@ export function CreateRunDialog({
 
             {!selectedPackId ? (
               <p className="text-sm text-muted-foreground">
-                Select a challenge pack to load matching regression suites.
+                Select a eval pack to load matching regression suites.
               </p>
             ) : loadingRegression ? (
               <p className="text-sm text-muted-foreground">
@@ -690,7 +690,7 @@ export function CreateRunDialog({
               <p className="text-sm text-destructive">{regressionLoadError}</p>
             ) : eligibleRegressionSuites.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                No active regression suites are linked to this challenge pack yet.
+                No active regression suites are linked to this eval pack yet.
               </p>
             ) : (
               <div className="space-y-3">
@@ -876,7 +876,7 @@ export function CreateRunDialog({
                 {selectedDeploymentIds.length} agent
                 {selectedDeploymentIds.length !== 1 ? "s" : ""}
               </span>{" "}
-              against the selected challenge pack in{" "}
+              against the selected eval pack in{" "}
               <span className="text-foreground font-medium">
                 {executionMode === "comparison"
                   ? "comparison"

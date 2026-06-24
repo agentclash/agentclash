@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/backend/internal/evalpack"
 	"github.com/agentclash/agentclash/backend/internal/multimodaltrace"
 	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/voicedeployment"
@@ -29,7 +29,7 @@ const (
 )
 
 type Input struct {
-	Bundle     challengepack.Bundle
+	Bundle     evalpack.Bundle
 	Script     voicesim.Script
 	Deployment voicedeployment.Deployment
 }
@@ -192,8 +192,8 @@ func validateInput(input Input) error {
 	if input.Deployment == nil {
 		return fmt.Errorf("%w: deployment is required", ErrInvalidInput)
 	}
-	if input.Bundle.Modality != challengepack.ModalityVoice {
-		return fmt.Errorf("%w: bundle.modality must be %q", ErrInvalidInput, challengepack.ModalityVoice)
+	if input.Bundle.Modality != evalpack.ModalityVoice {
+		return fmt.Errorf("%w: bundle.modality must be %q", ErrInvalidInput, evalpack.ModalityVoice)
 	}
 	if input.Bundle.InterfaceSpec == nil {
 		return fmt.Errorf("%w: bundle.interface_spec is required", ErrInvalidInput)

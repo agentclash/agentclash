@@ -108,7 +108,7 @@ PLAYGROUND_TEST_CASE_ID=""
 BUILD_ID=""
 BUILD_VERSION_ID=""
 DEPLOYMENT_ID=""
-CHALLENGE_PACK_VERSION_ID=""
+EVAL_PACK_VERSION_ID=""
 ARTIFACT_ID=""
 RUN_ID=""
 PLAYGROUND_EXPERIMENT_A_ID=""
@@ -319,7 +319,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-write_challenge_pack() {
+write_eval_pack() {
   local path="$1"
   local pack_slug="$2"
   local spec_name="$3"
@@ -506,7 +506,7 @@ resource_suite() {
   expect_success "build list" "${WS_BASE[@]}" build list || true
   expect_success "deployment list" "${WS_BASE[@]}" deployment list || true
   expect_success "run list" "${WS_BASE[@]}" run list || true
-  expect_success "challenge-pack list" "${WS_BASE[@]}" challenge-pack list || true
+  expect_success "eval-pack list" "${WS_BASE[@]}" eval-pack list || true
   expect_success "playground list" "${WS_BASE[@]}" playground list || true
   expect_success "secret list" "${WS_BASE[@]}" secret list || true
 
@@ -532,13 +532,13 @@ resource_suite() {
     skip "artifact download skipped because upload did not return an id"
   fi
 
-  say "Challenge Packs"
-  write_challenge_pack "$WORKDIR/challenge-pack.yaml" "$prefix-pack" "codex-e2e-$suffix"
-  expect_success "validate challenge pack" "${WS_BASE[@]}" challenge-pack validate "$WORKDIR/challenge-pack.yaml" || true
-  expect_json "publish challenge pack" '.challenge_pack_version_id' \
-    "${WS_JSON[@]}" challenge-pack publish "$WORKDIR/challenge-pack.yaml" || true
-  CHALLENGE_PACK_VERSION_ID="$(jq -r '.challenge_pack_version_id // empty' "$LAST_OUT" 2>/dev/null || true)"
-  expect_success "challenge-pack list after publish" "${WS_BASE[@]}" challenge-pack list || true
+  say "Eval Packs"
+  write_eval_pack "$WORKDIR/eval-pack.yaml" "$prefix-pack" "codex-e2e-$suffix"
+  expect_success "validate eval pack" "${WS_BASE[@]}" eval-pack validate "$WORKDIR/eval-pack.yaml" || true
+  expect_json "publish eval pack" '.eval_pack_version_id' \
+    "${WS_JSON[@]}" eval-pack publish "$WORKDIR/eval-pack.yaml" || true
+  EVAL_PACK_VERSION_ID="$(jq -r '.eval_pack_version_id // empty' "$LAST_OUT" 2>/dev/null || true)"
+  expect_success "eval-pack list after publish" "${WS_BASE[@]}" eval-pack list || true
 
   say "Builds and Deployments"
   expect_json "create build" '.id' \
@@ -661,9 +661,9 @@ resource_suite() {
   fi
 
   say "Runs"
-  if [[ "$RUN_EVALS" -eq 1 && -n "$CHALLENGE_PACK_VERSION_ID" && -n "$DEPLOYMENT_ID" ]]; then
+  if [[ "$RUN_EVALS" -eq 1 && -n "$EVAL_PACK_VERSION_ID" && -n "$DEPLOYMENT_ID" ]]; then
     expect_json "create evaluation run" '.id' \
-      "${WS_JSON[@]}" run create --challenge-pack-version "$CHALLENGE_PACK_VERSION_ID" --deployments "$DEPLOYMENT_ID" --name "Codex E2E Run $suffix" || true
+      "${WS_JSON[@]}" run create --eval-pack-version "$EVAL_PACK_VERSION_ID" --deployments "$DEPLOYMENT_ID" --name "Codex E2E Run $suffix" || true
     RUN_ID="$(jq -r '.id // empty' "$LAST_OUT" 2>/dev/null || true)"
     if [[ -n "$RUN_ID" ]]; then
       expect_success "get run" "${WS_BASE[@]}" run get "$RUN_ID" || true
@@ -701,7 +701,7 @@ expect_contains "root help mentions link" "agentclash link" "${BASE[@]}" --help 
 expect_contains "eval help lists start" "start" "${BASE[@]}" eval --help || true
 expect_contains "baseline help lists set" "set" "${BASE[@]}" baseline --help || true
 expect_contains "doctor help describes readiness checks" "Check auth, workspace, and eval readiness" "${BASE[@]}" doctor --help || true
-expect_contains "challenge-pack init help works" "Scaffold a minimal challenge pack YAML bundle" "${BASE[@]}" challenge-pack init --help || true
+expect_contains "eval-pack init help works" "Scaffold a minimal eval pack YAML bundle" "${BASE[@]}" eval-pack init --help || true
 
 say "Config and Auth"
 printf 'api: %s\n' "$API_URL"
@@ -728,7 +728,7 @@ fi
 
 if [[ -n "${AGENTCLASH_WORKSPACE:-$configured_workspace}" ]]; then
   for cmd in \
-    "challenge-pack list" \
+    "eval-pack list" \
     "build list" \
     "deployment list" \
     "run list" \
@@ -756,7 +756,7 @@ expect_failure_with_output \
 expect_failure_with_output \
   "missing workspace fails visibly" \
   env XDG_CONFIG_HOME="$tmpdir/empty-xdg" HOME="$RUN_HOME" \
-  "$BIN" --no-color --api-url "$API_URL" challenge-pack list || true
+  "$BIN" --no-color --api-url "$API_URL" eval-pack list || true
 
 if [[ "$CREATE_RESOURCES" -eq 1 ]]; then
   resource_suite || true

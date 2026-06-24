@@ -47,15 +47,15 @@ describe("SEO landing pages", () => {
   });
 
   it("locks canonical metadata for a feature page", () => {
-    const config = getSeoPageByPath("/features/challenge-packs");
+    const config = getSeoPageByPath("/features/eval-packs");
     expect(config).toBeDefined();
 
     expect(createSeoPageMetadata(config!)).toMatchObject({
       alternates: {
-        canonical: "/features/challenge-packs",
+        canonical: "/features/eval-packs",
       },
       openGraph: {
-        url: "/features/challenge-packs",
+        url: "/features/eval-packs",
       },
     });
   });
