@@ -2304,6 +2304,54 @@
       ]
     },
     {
+      "name": "evaltest",
+      "path": "agentclash evaltest",
+      "short": "Run local pre-deploy agent eval tests",
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "init",
+          "path": "agentclash evaltest init",
+          "short": "Scaffold local evaltest config and example test",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "force",
+              "usage": "Overwrite existing evaltest files",
+              "type": "bool",
+              "default": "false"
+            }
+          ]
+        },
+        {
+          "name": "run",
+          "path": "agentclash evaltest run",
+          "short": "Run local eval tests and emit JSON/JUnit reports",
+          "runnable": true,
+          "flags": [
+            {
+              "name": "config",
+              "usage": "Evaltest config path",
+              "type": "string",
+              "default": ".agentclash/evaltest.yaml"
+            },
+            {
+              "name": "format",
+              "usage": "Output format: json, junit, or both",
+              "type": "string",
+              "default": "json"
+            },
+            {
+              "name": "out",
+              "usage": "Output directory for reports",
+              "type": "string",
+              "default": "agentclash-results"
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "infra",
       "path": "agentclash infra",
       "short": "Manage infrastructure resources",
