@@ -486,8 +486,8 @@ func comparisonReasonMessage(code string) string {
 		return "baseline participant could not be resolved"
 	case "candidate_run_agent_unresolved":
 		return "candidate participant could not be resolved"
-	case "eval_pack_version_mismatch":
-		return "runs use different eval pack versions"
+	case "challenge_pack_version_mismatch":
+		return "runs use different challenge pack versions"
 	case "challenge_input_set_mismatch":
 		return "runs use different challenge input sets"
 	case "evaluation_spec_mismatch":

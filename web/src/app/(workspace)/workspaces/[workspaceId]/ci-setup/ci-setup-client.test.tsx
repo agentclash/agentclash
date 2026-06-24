@@ -124,7 +124,7 @@ beforeEach(() => {
           items: [
             {
               id: "input-set-1",
-              eval_pack_version_id: "pack-version-1",
+              challenge_pack_version_id: "pack-version-1",
               input_key: "default",
               name: "Default",
             },
@@ -187,7 +187,7 @@ beforeEach(() => {
       {
         id: "baseline-run-1",
         workspace_id: "ws-1",
-        eval_pack_version_id: "pack-version-1",
+        challenge_pack_version_id: "pack-version-1",
         name: "Production baseline",
         status: "completed",
         execution_mode: "single_agent",
@@ -222,7 +222,7 @@ describe("CISetupClient", () => {
     expect(text).toContain("AgentClash GitHub Actions gate");
     expect(text).toContain('agent_build_id: "build-1"');
     expect(text).toContain('runtime_profile_id: "runtime-1"');
-    expect(text).toContain('eval_pack_version_id: "pack-version-1"');
+    expect(text).toContain('challenge_pack_version_id: "pack-version-1"');
     expect(text).toContain('run_id: "baseline-run-1"');
     expect(text).toContain(
       "uses: agentclash/agentclash/.github/actions/agentclash-ci@main",
@@ -444,7 +444,7 @@ function listResponse(path: string) {
       },
     ];
   }
-  if (path.includes("/eval-packs")) {
+  if (path.includes("/challenge-packs")) {
     return [
       {
         id: "pack-1",
@@ -453,7 +453,7 @@ function listResponse(path: string) {
         versions: [
           {
             id: "pack-version-1",
-            eval_pack_id: "pack-1",
+            challenge_pack_id: "pack-1",
             version_number: 1,
             lifecycle_status: "runnable",
             created_at: "2026-05-05T00:00:00Z",
@@ -485,7 +485,7 @@ function listResponse(path: string) {
       {
         id: "suite-1",
         workspace_id: "ws-1",
-        source_eval_pack_id: "pack-1",
+        source_challenge_pack_id: "pack-1",
         name: "Refund regressions",
         description: "",
         status: "active",

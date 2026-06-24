@@ -3,7 +3,7 @@ set -euo pipefail
 
 WORKSPACE_ID="${WORKSPACE_ID:-22222222-2222-2222-2222-222222222222}"
 USER_ID="${USER_ID:-33333333-3333-3333-3333-333333333333}"
-EVAL_PACK_VERSION_ID="${EVAL_PACK_VERSION_ID:-53535353-5555-5555-5555-555555555555}"
+CHALLENGE_PACK_VERSION_ID="${CHALLENGE_PACK_VERSION_ID:-53535353-5555-5555-5555-555555555555}"
 CHALLENGE_INPUT_SET_ID="${CHALLENGE_INPUT_SET_ID:-53535353-abab-abab-abab-abababababab}"
 API_BASE_URL="${API_BASE_URL:-http://localhost:8080}"
 
@@ -23,12 +23,12 @@ echo
 echo "==> Creating SWE-bench mini run"
 jq -nc \
   --arg workspace_id "${WORKSPACE_ID}" \
-  --arg eval_pack_version_id "${EVAL_PACK_VERSION_ID}" \
+  --arg challenge_pack_version_id "${CHALLENGE_PACK_VERSION_ID}" \
   --arg challenge_input_set_id "${CHALLENGE_INPUT_SET_ID}" \
   --argjson agent_deployment_ids "${deployment_ids_json}" \
   '{
     workspace_id: $workspace_id,
-    eval_pack_version_id: $eval_pack_version_id,
+    challenge_pack_version_id: $challenge_pack_version_id,
     challenge_input_set_id: $challenge_input_set_id,
     agent_deployment_ids: $agent_deployment_ids
   }' | curl \

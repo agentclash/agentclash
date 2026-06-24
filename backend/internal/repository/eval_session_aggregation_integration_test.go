@@ -65,7 +65,7 @@ func TestRepositoryAggregateEvalSessionPersistsAndUpsertsSingleRow(t *testing.T)
 		t.Fatalf("AttachRunToEvalSession returned error: %v", err)
 	}
 
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "eval-session-aggregate", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "eval-session-aggregate", 1)
 	insertRunScorecardRecord(t, ctx, db, fixture.runID, evaluationSpecID, map[string]any{
 		"schema_version":       "2026-04-14",
 		"run_id":               fixture.runID,
@@ -185,7 +185,7 @@ func TestRepositoryAggregateEvalSessionPersistsComparisonSemantics(t *testing.T)
 		t.Fatalf("CreateEvalSession returned error: %v", err)
 	}
 
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "eval-session-comparison", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "eval-session-comparison", 1)
 	secondChallengeIdentityID := lookupChallengeIdentityID(t, ctx, db, "second-ticket")
 
 	for i := 0; i < 3; i++ {

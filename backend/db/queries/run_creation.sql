@@ -1,6 +1,6 @@
--- name: GetRunnableEvalPackVersionByID :one
+-- name: GetRunnableChallengePackVersionByID :one
 SELECT *
-FROM eval_pack_versions
+FROM challenge_pack_versions
 WHERE id = @id
   AND lifecycle_status = 'runnable'
   AND archived_at IS NULL
@@ -14,16 +14,16 @@ WHERE id = @id
 LIMIT 1;
 
 -- name: ListChallengeInputSetsByVersionID :many
-SELECT id, eval_pack_version_id, input_key, name
+SELECT id, challenge_pack_version_id, input_key, name
 FROM challenge_input_sets
-WHERE eval_pack_version_id = @eval_pack_version_id
+WHERE challenge_pack_version_id = @challenge_pack_version_id
   AND archived_at IS NULL
 ORDER BY created_at ASC;
 
 -- name: ListChallengeIdentityIDsByPackVersionID :many
 SELECT challenge_identity_id
-FROM eval_pack_version_challenges
-WHERE eval_pack_version_id = @eval_pack_version_id
+FROM challenge_pack_version_challenges
+WHERE challenge_pack_version_id = @challenge_pack_version_id
 ORDER BY execution_order ASC, id ASC;
 
 -- name: ListRunnableDeploymentsWithLatestSnapshot :many

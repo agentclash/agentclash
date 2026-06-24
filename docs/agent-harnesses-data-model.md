@@ -1,6 +1,6 @@
 # Agent Harness Execution Data Model
 
-Agent Harnesses should evaluate coding agents without asking users to author eval packs. Internally, they still need to reuse AgentClash's mature evaluation primitives: run events, artifacts, replays, evaluation specs, deterministic validators, LLM judges, metric results, scorecards, eval sessions, comparisons, release gates, rankings, and failure review.
+Agent Harnesses should evaluate coding agents without asking users to author challenge packs. Internally, they still need to reuse AgentClash's mature evaluation primitives: run events, artifacts, replays, evaluation specs, deterministic validators, LLM judges, metric results, scorecards, eval sessions, comparisons, release gates, rankings, and failure review.
 
 ## Decision
 
@@ -8,7 +8,7 @@ Use `agent_harness_executions` as the product-facing task object and bridge each
 
 The harness execution remains the stable UI/API object for chat-style task launches, live activity, retries, cancellations, repository setup, and provider-specific execution state. The linked `run_agent` becomes the canonical evaluation subject for everything the existing scoring stack already knows how to do.
 
-Harness runs are first-class canonical runs, not user-visible eval packs. A harness run uses `runs.source_type = 'agent_harness'` with no `eval_pack_version_id` or input set. Its single linked lane uses `run_agents.source_type = 'agent_harness'` with no agent deployment or deployment snapshot. Existing eval-pack runs keep the default `eval_pack` / `agent_deployment` shape.
+Harness runs are first-class canonical runs, not user-visible challenge packs. A harness run uses `runs.source_type = 'agent_harness'` with no `challenge_pack_version_id` or input set. Its single linked lane uses `run_agents.source_type = 'agent_harness'` with no agent deployment or deployment snapshot. Existing challenge-pack runs keep the default `challenge_pack` / `agent_deployment` shape.
 
 ## Bridge Fields
 
@@ -44,7 +44,7 @@ Use the existing primitives instead of adding harness-specific copies:
 
 ## Legacy Run Lists
 
-Harness canonical runs should not appear in existing eval-pack run lists. The run-list read model filters to `runs.source_type = 'eval_pack'`; harness UI follows `agent_harness_executions` and then bridge IDs for replay/scoring artifacts.
+Harness canonical runs should not appear in existing challenge-pack run lists. The run-list read model filters to `runs.source_type = 'challenge_pack'`; harness UI follows `agent_harness_executions` and then bridge IDs for replay/scoring artifacts.
 
 ## Authorization
 

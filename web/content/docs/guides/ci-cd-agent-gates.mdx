@@ -41,7 +41,7 @@ candidate:
     provider_account_id: 00000000-0000-0000-0000-000000000003
     model: gpt-5.5
 evaluation:
-  eval_pack_version_id: 00000000-0000-0000-0000-000000000005
+  challenge_pack_version_id: 00000000-0000-0000-0000-000000000005
   input_set_id: 00000000-0000-0000-0000-000000000006
   # For deterministic voice eval packs, set: mode: text-sim
   regression_suites:
@@ -58,14 +58,14 @@ regressions:
 
 The IDs in the generated file are placeholders. Replace them with workspace resources before using the manifest for a real gate.
 
-Local validation is always offline. Add `--remote` when you want the CLI to call the AgentClash API and verify that the manifest's agent build, runtime profile, provider account, eval pack version, input set, regression suites or cases, and baseline are visible from the selected workspace. Because this makes real authenticated API calls, set `AGENTCLASH_API_URL`, `AGENTCLASH_TOKEN`, and `AGENTCLASH_WORKSPACE` in CI and expect normal API latency, rate limits, and token scoping rules. JSON output includes a `remote.checks[]` entry per referenced field, so CI can report whether a failure came from the local manifest contract or from an API/resource check.
+Local validation is always offline. Add `--remote` when you want the CLI to call the AgentClash API and verify that the manifest's agent build, runtime profile, provider account, challenge pack version, input set, regression suites or cases, and baseline are visible from the selected workspace. Because this makes real authenticated API calls, set `AGENTCLASH_API_URL`, `AGENTCLASH_TOKEN`, and `AGENTCLASH_WORKSPACE` in CI and expect normal API latency, rate limits, and token scoping rules. JSON output includes a `remote.checks[]` entry per referenced field, so CI can report whether a failure came from the local manifest contract or from an API/resource check.
 
 ## What each section means
 
 - `trigger` says which repository paths and optional labels should cause the workflow to run.
 - `candidate.build` names the existing AgentClash build and the source-backed build-version spec to test.
 - `candidate.deployment` names the runtime resources used for the candidate deployment.
-- `evaluation` names the workload: eval pack version, optional input set, and optional regression suites or cases. For voice packs, set the optional `evaluation.mode: text-sim` to request a deterministic text-simulated voice eval (`text-sim` is the only mode supported today; `audio-sim`, `live-call`, and `replay-import` are reserved for future use).
+- `evaluation` names the workload: challenge pack version, optional input set, and optional regression suites or cases. For voice packs, set the optional `evaluation.mode: text-sim` to request a deterministic text-simulated voice eval (`text-sim` is the only mode supported today; `audio-sim`, `live-call`, and `replay-import` are reserved for future use).
 - `baseline` names the locked reference run or deployment, plus explicit refresh and staleness rules.
 - `gate` names the release-gate failure threshold.
 - `regressions` controls whether failed cases should only be reported, proposed for promotion, or eventually auto-promoted on main.
@@ -74,7 +74,7 @@ The important distinction is:
 
 ```text
 agent build/deployment = thing under test
-eval pack/regression suite = workload used to test it
+challenge pack/regression suite = workload used to test it
 release gate = decision policy
 ```
 
@@ -197,7 +197,7 @@ The action installs the published `agentclash` npm package by default, runs `ci 
 
 `agentclash ci run` exits nonzero when the gate verdict should block CI, when the candidate run times out, or when the manifest/API setup is invalid. In GitHub Actions, it automatically attaches repository, pull request, branch, default branch, commit, workflow, event, and workflow-run URL metadata to the AgentClash run. It also appends a reviewer-friendly Markdown section when the `$GITHUB_STEP_SUMMARY` environment variable is set, while the bundled action turns the same run evidence into the PR comment. Pass `--summary-file <path>` for another Markdown destination, or `--github-step-summary=false` to disable the automatic GitHub summary.
 
-`--artifact-dir` writes stable JSON files intended for `actions/upload-artifact`: `result.json` for the final CLI envelope, `run.json` for run creation/completion payloads, `scorecard.json` for candidate scorecard evidence, `comparison.json` for baseline/candidate comparison evidence, and `gate.json` for the release-gate verdict and policy metadata. The summary and artifacts include the eval pack version, baseline, candidate, policy, verdict, top evidence lines, regression candidate promotion outcomes, and AgentClash links when the API returns them. Use `--ci-repository`, `--ci-pull-request`, `--ci-branch`, `--ci-default-branch`, `--ci-commit`, and the other `--ci-*` flags when running from another CI system or a custom wrapper.
+`--artifact-dir` writes stable JSON files intended for `actions/upload-artifact`: `result.json` for the final CLI envelope, `run.json` for run creation/completion payloads, `scorecard.json` for candidate scorecard evidence, `comparison.json` for baseline/candidate comparison evidence, and `gate.json` for the release-gate verdict and policy metadata. The summary and artifacts include the challenge pack version, baseline, candidate, policy, verdict, top evidence lines, regression candidate promotion outcomes, and AgentClash links when the API returns them. Use `--ci-repository`, `--ci-pull-request`, `--ci-branch`, `--ci-default-branch`, `--ci-commit`, and the other `--ci-*` flags when running from another CI system or a custom wrapper.
 
 ## Regression promotion policy
 
@@ -239,9 +239,9 @@ All modes preserve the original gate exit code. Promotion errors are reported in
 ## See also
 
 - [Agents and Deployments](/docs/concepts/agents-and-deployments)
-- [Eval Packs and Inputs](/docs/concepts/eval-packs-and-inputs)
-- [Eval Workflows and Gates](/docs/eval-packs/eval-workflows-and-gates)
+- [Challenge Packs and Inputs](/docs/concepts/challenge-packs-and-inputs)
+- [Eval Workflows and Gates](/docs/challenge-packs/eval-workflows-and-gates)
 - [CI/CD Workload Recipes](/docs/guides/ci-cd-workload-recipes)
 - [Datasets overview](/docs/guides/datasets-overview)
-- [Multi-turn packs](/docs/eval-packs/multi-turn)
+- [Multi-turn packs](/docs/challenge-packs/multi-turn)
 - [Security evaluation](/docs/guides/security-evaluation)

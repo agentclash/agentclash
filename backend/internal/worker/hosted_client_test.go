@@ -20,7 +20,7 @@ import (
 func TestHostedRunClientStartPostsStandardContract(t *testing.T) {
 	runID := uuid.New()
 	runAgentID := uuid.New()
-	evalPackVersionID := uuid.New()
+	challengePackVersionID := uuid.New()
 
 	var captured hostedruns.StartRequest
 	client := NewHostedRunClient(&http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
@@ -36,7 +36,7 @@ func TestHostedRunClientStartPostsStandardContract(t *testing.T) {
 		return jsonResponse(`{"accepted":true,"external_run_id":"ext-123"}`), nil
 	})}, "http://agentclash.local", "test-secret")
 	result, err := client.Start(context.Background(), workflowpkg.HostedRunStartInput{
-		ExecutionContext: hostedExecutionContextFixture(runID, runAgentID, evalPackVersionID, "https://remote.example"),
+		ExecutionContext: hostedExecutionContextFixture(runID, runAgentID, challengePackVersionID, "https://remote.example"),
 		TraceLevel:       hostedruns.TraceLevelBlackBox,
 		TaskPayload:      []byte(`{"task":"payload"}`),
 		DeadlineAt:       time.Date(2026, 3, 14, 10, 0, 0, 0, time.UTC),
@@ -50,8 +50,8 @@ func TestHostedRunClientStartPostsStandardContract(t *testing.T) {
 	if captured.RunID != runID || captured.RunAgentID != runAgentID {
 		t.Fatalf("captured run ids = %s/%s, want %s/%s", captured.RunID, captured.RunAgentID, runID, runAgentID)
 	}
-	if captured.EvalPackVersionID != evalPackVersionID {
-		t.Fatalf("eval_pack_version_id = %s, want %s", captured.EvalPackVersionID, evalPackVersionID)
+	if captured.ChallengePackVersionID != challengePackVersionID {
+		t.Fatalf("challenge_pack_version_id = %s, want %s", captured.ChallengePackVersionID, challengePackVersionID)
 	}
 	if captured.TraceLevel != hostedruns.TraceLevelBlackBox {
 		t.Fatalf("trace_level = %q, want black_box", captured.TraceLevel)
@@ -109,11 +109,11 @@ func jsonResponse(body string) *http.Response {
 	}
 }
 
-func hostedExecutionContextFixture(runID uuid.UUID, runAgentID uuid.UUID, evalPackVersionID uuid.UUID, endpointURL string) repository.RunAgentExecutionContext {
+func hostedExecutionContextFixture(runID uuid.UUID, runAgentID uuid.UUID, challengePackVersionID uuid.UUID, endpointURL string) repository.RunAgentExecutionContext {
 	return repository.RunAgentExecutionContext{
 		Run: domain.Run{
 			ID:                     runID,
-			EvalPackVersionID: evalPackVersionID,
+			ChallengePackVersionID: challengePackVersionID,
 		},
 		RunAgent: domain.RunAgent{
 			ID: runAgentID,

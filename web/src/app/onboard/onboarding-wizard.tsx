@@ -134,7 +134,7 @@ export function OnboardingWizard() {
               Create your first workspace
             </h1>
             <p className="mb-8 text-sm text-muted-foreground">
-              Workspaces hold your runs, builds, and eval packs.
+              Workspaces hold your runs, builds, and challenge packs.
             </p>
 
             <label className="mb-2 block text-sm font-medium">

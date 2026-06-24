@@ -21,7 +21,7 @@ Wire an AgentClash candidate build/deployment into a repo-tracked CI manifest, c
 ## Do Not Use When
 - The agent build spec does not exist yet; use `agentclash-agent-build-author`.
 - Runtime profiles, provider accounts, model aliases, or workspace tools are not configured; use `agentclash-runtime-resources-setup`.
-- The eval pack or input set is not validated and published; use the eval-pack skills first.
+- The challenge pack or input set is not validated and published; use the challenge-pack skills first.
 - The task is only to read scorecards or failure evidence from an existing run; use `agentclash-scorecard-reader` or `agentclash-regression-flywheel`.
 
 ## Environment
@@ -64,7 +64,7 @@ candidate:
     provider_account_id: 00000000-0000-0000-0000-000000000003
     model: gpt-5.5
 evaluation:
-  eval_pack_version_id: 00000000-0000-0000-0000-000000000005
+  challenge_pack_version_id: 00000000-0000-0000-0000-000000000005
   input_set_id: 00000000-0000-0000-0000-000000000006
   regression_suites:
     - 00000000-0000-0000-0000-000000000007
@@ -87,7 +87,7 @@ Exact fields the current CLI parses:
 - `candidate.deployment.name`: optional deployment name; if blank, `ci run` generates `agentclash-ci-<unix>`.
 - `candidate.deployment.runtime_profile_id`: required.
 - `candidate.deployment.provider_account_id` and `candidate.deployment.model`: optional individually, but required together when `ci run` creates the candidate deployment. Remote validation checks that the provider account exists.
-- `evaluation.eval_pack_version_id`: required.
+- `evaluation.challenge_pack_version_id`: required.
 - `evaluation.input_set_id`, `evaluation.regression_suites`, and `evaluation.regression_cases`: optional; blank regression entries are invalid.
 - `baseline.run_id`: locked baseline run, preferred for PR gates.
 - `baseline.run_agent_id`: optional but only valid with `baseline.run_id`.
@@ -138,7 +138,7 @@ Structured `validate` output includes:
 }
 ```
 
-Remote validation checks the agent build, runtime profile, provider account, model alias, eval pack version, input set, regression suites, regression cases, and baseline compatibility. API failures that cannot be reduced to a field problem appear as `remote API error: ...`.
+Remote validation checks the agent build, runtime profile, provider account, model alias, challenge pack version, input set, regression suites, regression cases, and baseline compatibility. API failures that cannot be reduced to a field problem appear as `remote API error: ...`.
 
 ## Should Run
 Use this before spending hosted evaluation budget:
@@ -181,7 +181,7 @@ Resolve and print the exact baseline before running the gate:
 agentclash ci baseline --manifest .agentclash/ci.yaml --json
 ```
 
-For `baseline.run_id`, strategy is `locked_run` and source is `baseline.run_id`. The run must be in the selected workspace, completed, compatible with `evaluation.eval_pack_version_id` and optional `evaluation.input_set_id`, and within `baseline.max_age_days` when set. `baseline.run_agent_id` is resolved against that run when present.
+For `baseline.run_id`, strategy is `locked_run` and source is `baseline.run_id`. The run must be in the selected workspace, completed, compatible with `evaluation.challenge_pack_version_id` and optional `evaluation.input_set_id`, and within `baseline.max_age_days` when set. `baseline.run_agent_id` is resolved against that run when present.
 
 For `baseline.deployment_id`, strategy is `deployment_latest_completed` and source is `baseline.deployment_id`. The CLI selects the newest completed compatible run whose participant used that deployment and warns that deployment baselines move over time. Prefer `baseline.run_id` for PRs.
 
@@ -268,7 +268,7 @@ Reports are enabled only when `--summary-file`, `GITHUB_STEP_SUMMARY` with `--gi
 - `agentclash-artifacts/gate.json` with kind `agentclash.ci.gate`.
 - `agentclash-artifacts/result.json` with kind `agentclash.ci.result`.
 
-Each artifact is wrapped in an envelope with `schema_version: "2026-05-04"`, `kind`, `generated_at`, `manifest_path`, `workspace_id`, `eval_pack_version_id`, `candidate`, `baseline`, optional gate policy identity fields, and `payload`.
+Each artifact is wrapped in an envelope with `schema_version: "2026-05-04"`, `kind`, `generated_at`, `manifest_path`, `workspace_id`, `challenge_pack_version_id`, `candidate`, `baseline`, optional gate policy identity fields, and `payload`.
 
 ## Regression Promotion
 `regressions.promote_failures` runs only when the gate verdict is `fail`. Modes:
@@ -325,7 +325,7 @@ The action exports `AGENTCLASH_TOKEN`, `AGENTCLASH_WORKSPACE`, and `AGENTCLASH_A
 - Missing token or API access: confirm `AGENTCLASH_TOKEN` and hosted API URL.
 - Missing workspace: set `AGENTCLASH_WORKSPACE`, pass `--workspace`, or configure workspace locally.
 - Local validation fails: fix YAML fields before remote calls; unknown YAML fields fail because the decoder uses known fields.
-- Remote validation fails: check workspace visibility for build, runtime profile, provider account, model alias, eval pack version, input set, regression suites/cases, and baseline.
+- Remote validation fails: check workspace visibility for build, runtime profile, provider account, model alias, challenge pack version, input set, regression suites/cases, and baseline.
 - `should-run` skips unexpectedly: inspect `trigger.paths`, `trigger.labels`, checkout depth, base/head refs, and explicitly passed `changed-files`.
 - Candidate spec fails: `candidate.build.spec_file` must be readable JSON at a relative path inside the repo.
 - Candidate run is slow: tune `--timeout` and `--poll-interval`.
@@ -350,7 +350,7 @@ Next command: <exact agentclash command or GitHub Actions fix>
 - `agentclash-runtime-resources-setup`: create runtime profiles, provider accounts, model aliases, secrets, and tools.
 - `agentclash-agent-build-author`: create the candidate build spec and ready build version.
 - `agentclash-agent-deployment-setup`: understand deployment resources used by the CI manifest.
-- `agentclash-eval-pack-validation-publish`: publish the eval pack version and optional input sets.
+- `agentclash-challenge-pack-validation-publish`: publish the challenge pack version and optional input sets.
 - `agentclash-eval-runner`: run ad hoc evals before formal CI gates.
 - `agentclash-scorecard-reader`: inspect scorecard, comparison, replay, and failure evidence.
 - `agentclash-compare-and-triage`: baseline bookmarks, `compare latest --gate`, and replay triage.
@@ -361,4 +361,4 @@ Next command: <exact agentclash command or GitHub Actions fix>
 ## Related Docs
 - `/docs-md/guides/ci-cd-agent-gates`
 - `/docs-md/guides/ci-cd-workload-recipes`
-- `/docs-md/eval-packs/eval-workflows-and-gates`
+- `/docs-md/challenge-packs/eval-workflows-and-gates`

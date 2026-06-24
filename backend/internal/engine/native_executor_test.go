@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -101,8 +101,8 @@ func TestNativeExecutorHappyPathWritesFileThenSubmits(t *testing.T) {
 	if _, ok := files["/workspace/agentclash/run-context.json"]; !ok {
 		t.Fatalf("expected run-context.json to be staged")
 	}
-	if _, ok := files["/workspace/agentclash/eval-pack-manifest.json"]; !ok {
-		t.Fatalf("expected eval-pack-manifest.json to be staged")
+	if _, ok := files["/workspace/agentclash/challenge-pack-manifest.json"]; !ok {
+		t.Fatalf("expected challenge-pack-manifest.json to be staged")
 	}
 	if _, ok := files["/workspace/agentclash/challenges.json"]; !ok {
 		t.Fatalf("expected challenges.json to be staged")
@@ -401,7 +401,7 @@ func TestNativeExecutorHidesPackDeniedToolFromProviderAndExecution(t *testing.T)
 	}
 
 	executionContext := nativeExecutionContext()
-	executionContext.EvalPackVersion.Manifest = []byte(`{
+	executionContext.ChallengePackVersion.Manifest = []byte(`{
 		"challenge":"fixture",
 		"tool_policy":{"allowed_tool_kinds":["file"],"allow_shell":true},
 		"tools":{"denied":["exec"]}
@@ -895,9 +895,9 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
-		EvalPackVersion: repository.EvalPackVersionExecutionContext{
+		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
 			ID:               uuid.New(),
-			EvalPackID:  uuid.New(),
+			ChallengePackID:  uuid.New(),
 			VersionNumber:    1,
 			ManifestChecksum: "manifest",
 			Manifest:         []byte(`{"challenge":"fixture","tool_policy":{"allowed_tool_kinds":["file"]}}`),
@@ -916,7 +916,7 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 		},
 		ChallengeInputSet: &repository.ChallengeInputSetExecutionContext{
 			ID:                     uuid.New(),
-			EvalPackVersionID: uuid.New(),
+			ChallengePackVersionID: uuid.New(),
 			InputKey:               "default",
 			Name:                   "Default Inputs",
 			InputChecksum:          "checksum",
@@ -980,7 +980,7 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 func TestExtractWorkspaceFixtureFilesRejectsMalformedWorkspaceInput(t *testing.T) {
 	_, err := extractWorkspaceFixtureFiles(repository.ChallengeCaseExecutionContext{
 		CaseKey: "broken-case",
-		Inputs: []evalpack.CaseInput{
+		Inputs: []challengepack.CaseInput{
 			{
 				Key:   "workspace",
 				Kind:  "workspace",

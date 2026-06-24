@@ -34,7 +34,7 @@ scoring. To drive it from a coding agent in *your* project:
 
 4. Humans do one-time setup on the **web** (sign in, add provider API keys /
    BYOK, deployments) at https://agentclash.dev. The CLI is the
-   iterate-on-eval-packs loop; there are no built-in packs — you author
+   iterate-on-challenge-packs loop; there are no built-in packs — you author
    your own.
 
 Verify any time with `agentclash integration <agent> doctor` and
@@ -65,7 +65,7 @@ go run . workspace list
 go run . workspace use <workspace-id>
 go run . run list
 go run . run create --help
-# When the workspace already has eval packs and deployments:
+# When the workspace already has challenge packs and deployments:
 go run . run create --follow
 
 # Multi-turn human takeover (while a run agent awaits operator input):

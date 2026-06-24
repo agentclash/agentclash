@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
 )
@@ -26,14 +26,14 @@ func TestMapChallengeInputs_PreservesCanonicalCaseContext(t *testing.T) {
 				CaseKey:             "case-1",
 				ItemKey:             "legacy-item",
 				Payload:             []byte(`{"prompt":"fix it"}`),
-				Inputs: []evalpack.CaseInput{
+				Inputs: []challengepack.CaseInput{
 					{Key: "prompt", Kind: "text", Value: "fix it"},
 					{Key: "fixture", Kind: "workspace", ArtifactKey: "workspace"},
 				},
-				Expectations: []evalpack.CaseExpectation{
+				Expectations: []challengepack.CaseExpectation{
 					{Key: "answer", Kind: "text", Source: "input:prompt"},
 				},
-				Artifacts: []evalpack.ArtifactRef{
+				Artifacts: []challengepack.ArtifactRef{
 					{Key: "workspace"},
 				},
 			},

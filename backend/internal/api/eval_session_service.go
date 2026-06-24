@@ -60,7 +60,7 @@ type CreateEvalSessionConfigInput struct {
 
 type CreateEvalSessionInput struct {
 	WorkspaceID            uuid.UUID
-	EvalPackVersionID uuid.UUID
+	ChallengePackVersionID uuid.UUID
 	ChallengeInputSetID    *uuid.UUID
 	Participants           []EvalSessionParticipantInput
 	ExecutionMode          string
@@ -128,36 +128,36 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		}
 	}
 
-	evalPackVersion, err := m.repo.GetRunnableEvalPackVersionByID(ctx, input.EvalPackVersionID)
+	challengePackVersion, err := m.repo.GetRunnableChallengePackVersionByID(ctx, input.ChallengePackVersionID)
 	if err != nil {
-		if err == repository.ErrEvalPackVersionNotFound {
+		if err == repository.ErrChallengePackVersionNotFound {
 			return CreateEvalSessionResult{}, RunCreationValidationError{
-				Code:    "invalid_eval_pack_version_id",
-				Message: "eval_pack_version_id must reference a runnable eval pack version",
+				Code:    "invalid_challenge_pack_version_id",
+				Message: "challenge_pack_version_id must reference a runnable challenge pack version",
 			}
 		}
-		return CreateEvalSessionResult{}, fmt.Errorf("load runnable eval pack version: %w", err)
+		return CreateEvalSessionResult{}, fmt.Errorf("load runnable challenge pack version: %w", err)
 	}
-	if evalPackVersion.WorkspaceID != nil && *evalPackVersion.WorkspaceID != input.WorkspaceID {
+	if challengePackVersion.WorkspaceID != nil && *challengePackVersion.WorkspaceID != input.WorkspaceID {
 		return CreateEvalSessionResult{}, RunCreationValidationError{
-			Code:    "invalid_eval_pack_version_id",
-			Message: "eval_pack_version_id must be visible to the selected workspace",
+			Code:    "invalid_challenge_pack_version_id",
+			Message: "challenge_pack_version_id must be visible to the selected workspace",
 		}
 	}
-	if evalPackVersion.WorkspaceID == nil {
+	if challengePackVersion.WorkspaceID == nil {
 		publicPacks, accessErr := m.repo.WorkspacePublicPacksEnabled(ctx, input.WorkspaceID)
 		if accessErr != nil {
 			return CreateEvalSessionResult{}, fmt.Errorf("load workspace public pack access: %w", accessErr)
 		}
 		if !publicPacks {
 			return CreateEvalSessionResult{}, RunCreationValidationError{
-				Code:    "invalid_eval_pack_version_id",
-				Message: "eval_pack_version_id must be visible to the selected workspace",
+				Code:    "invalid_challenge_pack_version_id",
+				Message: "challenge_pack_version_id must be visible to the selected workspace",
 			}
 		}
 	}
 	if input.MaxIterations == nil {
-		input.MaxIterations = evalPackDefaultMaxIterations(evalPackVersion.Manifest)
+		input.MaxIterations = challengePackDefaultMaxIterations(challengePackVersion.Manifest)
 	}
 
 	if input.ChallengeInputSetID != nil {
@@ -171,14 +171,14 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 			}
 			return CreateEvalSessionResult{}, fmt.Errorf("load challenge input set: %w", err)
 		}
-		if challengeInputSet.EvalPackVersionID != input.EvalPackVersionID {
+		if challengeInputSet.ChallengePackVersionID != input.ChallengePackVersionID {
 			return CreateEvalSessionResult{}, RunCreationValidationError{
 				Code:    "invalid_challenge_input_set_id",
-				Message: "challenge_input_set_id must belong to the selected eval pack version",
+				Message: "challenge_input_set_id must belong to the selected challenge pack version",
 			}
 		}
 	} else {
-		inputSets, err := m.repo.ListChallengeInputSetsByVersionID(ctx, input.EvalPackVersionID)
+		inputSets, err := m.repo.ListChallengeInputSetsByVersionID(ctx, input.ChallengePackVersionID)
 		if err != nil {
 			return CreateEvalSessionResult{}, fmt.Errorf("list challenge input sets: %w", err)
 		}
@@ -189,7 +189,7 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		default:
 			return CreateEvalSessionResult{}, RunCreationValidationError{
 				Code:    "missing_challenge_input_set_id",
-				Message: "eval pack has multiple input sets; challenge_input_set_id is required",
+				Message: "challenge pack has multiple input sets; challenge_input_set_id is required",
 			}
 		}
 	}
@@ -430,7 +430,7 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		maxParticipantCount = len(baseRunAgents)
 	}
 
-	challengeIdentityIDs, err := m.repo.ListChallengeIdentityIDsByPackVersionID(ctx, input.EvalPackVersionID)
+	challengeIdentityIDs, err := m.repo.ListChallengeIdentityIDsByPackVersionID(ctx, input.ChallengePackVersionID)
 	if err != nil {
 		return CreateEvalSessionResult{}, fmt.Errorf("list official challenge identities: %w", err)
 	}
@@ -457,7 +457,7 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		}
 		runInput := CreateRunInput{
 			WorkspaceID:            input.WorkspaceID,
-			EvalPackVersionID: input.EvalPackVersionID,
+			ChallengePackVersionID: input.ChallengePackVersionID,
 			ChallengeInputSetID:    input.ChallengeInputSetID,
 			OfficialPackMode:       domain.OfficialPackModeFull,
 			MaxIterations:          input.MaxIterations,
@@ -472,7 +472,7 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		childRuns = append(childRuns, repository.CreateQueuedRunParams{
 			OrganizationID:         organizationID,
 			WorkspaceID:            input.WorkspaceID,
-			EvalPackVersionID: input.EvalPackVersionID,
+			ChallengePackVersionID: input.ChallengePackVersionID,
 			ChallengeInputSetID:    input.ChallengeInputSetID,
 			OfficialPackMode:       domain.OfficialPackModeFull,
 			CreatedByUserID:        &caller.UserID,

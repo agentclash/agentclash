@@ -1,4 +1,4 @@
-# Browser Agent Eval Packs
+# Browser Agent Challenge Packs
 
 Browser-capable packs evaluate agents that can use a real browser, not just HTTP
 fetches. AgentClash uses the same native run loop and scoring pipeline as other

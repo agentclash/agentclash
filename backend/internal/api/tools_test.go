@@ -217,7 +217,7 @@ func newToolRouter(t *testing.T, svc stubInfraService) http.Handler {
 		nil, 0,
 		stubRunCreationService{}, stubRunReadService{}, stubReplayReadService{},
 		stubHostedRunIngestionService{}, nil,
-		stubAgentDeploymentReadService{}, stubEvalPackReadService{},
+		stubAgentDeploymentReadService{}, stubChallengePackReadService{},
 		stubAgentBuildService{}, noopReleaseGateService{},
 		nil, nil, nil, nil, nil, nil, nil,
 		svc,

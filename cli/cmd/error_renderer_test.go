@@ -234,7 +234,7 @@ func TestRenderErrorUserConfigTableDoesNotRender(t *testing.T) {
 }
 
 func TestRenderErrorJSONClassifiesMissingFile(t *testing.T) {
-	err := executeCommand(t, []string{"eval-pack", "validate", "missing.yaml", "-w", "ws-1", "--json"}, "http://unused")
+	err := executeCommand(t, []string{"challenge-pack", "validate", "missing.yaml", "-w", "ws-1", "--json"}, "http://unused")
 	if err == nil {
 		t.Fatal("expected missing file error")
 	}
@@ -258,7 +258,7 @@ func TestRenderErrorJSONClassifiesLocalValidation(t *testing.T) {
 	err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--eval-pack-version", "cpv-1",
+		"--challenge-pack-version", "cpv-1",
 		"--deployments", "dep-1",
 		"--scope", "bogus",
 		"--json",

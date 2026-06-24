@@ -62,7 +62,7 @@ Request body:
 ```json
 {
   "workspace_id": "uuid",
-  "eval_pack_version_id": "uuid",
+  "challenge_pack_version_id": "uuid",
   "challenge_input_set_id": "uuid-or-null",
   "name": "optional human label",
   "agent_deployment_ids": ["uuid"]
@@ -75,7 +75,7 @@ Success response:
 {
   "id": "uuid",
   "workspace_id": "uuid",
-  "eval_pack_version_id": "uuid",
+  "challenge_pack_version_id": "uuid",
   "challenge_input_set_id": "uuid-or-null",
   "status": "queued",
   "execution_mode": "single_agent | comparison",
@@ -104,7 +104,7 @@ Success response fields:
 
 - `id`
 - `workspace_id`
-- `eval_pack_version_id`
+- `challenge_pack_version_id`
 - `challenge_input_set_id`
 - `name`
 - `status`
@@ -283,7 +283,7 @@ To exercise the run-create path locally, start the local database first and poin
 
 ```bash
 WORKSPACE_ID=11111111-1111-1111-1111-111111111111
-EVAL_PACK_VERSION_ID=33333333-3333-3333-3333-333333333333
+CHALLENGE_PACK_VERSION_ID=33333333-3333-3333-3333-333333333333
 DEPLOYMENT_ID=44444444-4444-4444-4444-444444444444
 USER_ID=22222222-2222-2222-2222-222222222222
 
@@ -294,7 +294,7 @@ curl \
   -H "X-Agentclash-Workspace-Memberships: ${WORKSPACE_ID}:workspace_admin" \
   -d '{
     "workspace_id": "'"${WORKSPACE_ID}"'",
-    "eval_pack_version_id": "'"${EVAL_PACK_VERSION_ID}"'",
+    "challenge_pack_version_id": "'"${CHALLENGE_PACK_VERSION_ID}"'",
     "agent_deployment_ids": ["'"${DEPLOYMENT_ID}"'"]
   }'
 ```

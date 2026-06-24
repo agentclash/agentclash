@@ -73,9 +73,9 @@ npx @agentclash/try-cli publish
 [![Try on AgentClash](https://www.agentclash.dev/api/try/badge/mycool.svg)](https://www.agentclash.dev/try/mycool)
 ```
 
-## Eval packs & `terminal` tool kind
+## Challenge packs & `terminal` tool kind
 
-A eval pack's `tool_policy.allowed_tool_kinds` is a list of **tool kinds** — the valid values are `browser`, `build`, `data`, `file`, `network`, and `terminal`. The `terminal` kind marks packs that expect interactive terminal / Try CLI surfaces. Shell execution is a separate **primitive**, not a tool kind: it is gated by the `tool_policy.allow_shell` flag, so putting `exec` in `allowed_tool_kinds` fails validation.
+A challenge pack's `tool_policy.allowed_tool_kinds` is a list of **tool kinds** — the valid values are `browser`, `build`, `data`, `file`, `network`, and `terminal`. The `terminal` kind marks packs that expect interactive terminal / Try CLI surfaces. Shell execution is a separate **primitive**, not a tool kind: it is gated by the `tool_policy.allow_shell` flag, so putting `exec` in `allowed_tool_kinds` fails validation.
 
 Use shell (`allow_shell: true`) inside the sandbox to validate CLI behavior in eval runs; use **Try CLI** for human-facing README demos.
 
@@ -98,9 +98,9 @@ try-cli/demos                 →  Curated demos (AI agents + dev tools)
 
 ## See also
 
-- [Sandbox & E2B](../eval-packs/sandbox-and-e2b)
-- [Tools, primitives & policy](../eval-packs/tools-primitives-and-policy)
+- [Sandbox & E2B](../challenge-packs/sandbox-and-e2b)
+- [Tools, primitives & policy](../challenge-packs/tools-primitives-and-policy)
 - Repo: `try-cli/` and `services/try-cli/`
 - [Datasets overview](/docs/guides/datasets-overview)
-- [Multi-turn packs](/docs/eval-packs/multi-turn)
+- [Multi-turn packs](/docs/challenge-packs/multi-turn)
 - [Security evaluation](/docs/guides/security-evaluation)

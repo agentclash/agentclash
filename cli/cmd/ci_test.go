@@ -143,7 +143,7 @@ candidate:
   deployment:
     runtime_profile_id: runtime-1
 evaluation:
-  eval_pack_version_id: pack-version-1
+  challenge_pack_version_id: pack-version-1
 baseline:
   run_id: run-1
 gate:
@@ -165,7 +165,7 @@ candidate:
   deployment:
     runtime_profile_id: runtime-1
 evaluation:
-  eval_pack_version_id: pack-version-1
+  challenge_pack_version_id: pack-version-1
 baseline:
   run_id: run-1
 gate:
@@ -186,7 +186,7 @@ candidate:
     agent_build_id: build-1
     spec_file: .agentclash/agent.json
 evaluation:
-  eval_pack_version_id: pack-version-1
+  challenge_pack_version_id: pack-version-1
 baseline:
   run_id: run-1
 gate:
@@ -197,7 +197,7 @@ regressions:
 			want: "candidate.deployment.runtime_profile_id",
 		},
 		{
-			name: "missing eval pack version",
+			name: "missing challenge pack version",
 			manifest: `version: 1
 trigger:
   paths:
@@ -216,7 +216,7 @@ gate:
 regressions:
   promote_failures: proposed
 `,
-			want: "evaluation.eval_pack_version_id",
+			want: "evaluation.challenge_pack_version_id",
 		},
 		{
 			name: "unsupported evaluation mode",
@@ -231,7 +231,7 @@ candidate:
   deployment:
     runtime_profile_id: runtime-1
 evaluation:
-  eval_pack_version_id: pack-version-1
+  challenge_pack_version_id: pack-version-1
   mode: live-call
 baseline:
   run_id: run-1
@@ -255,7 +255,7 @@ candidate:
   deployment:
     runtime_profile_id: runtime-1
 evaluation:
-  eval_pack_version_id: pack-version-1
+  challenge_pack_version_id: pack-version-1
 baseline: {}
 gate:
   fail_on: regression
@@ -277,7 +277,7 @@ candidate:
   deployment:
     runtime_profile_id: runtime-1
 evaluation:
-  eval_pack_version_id: pack-version-1
+  challenge_pack_version_id: pack-version-1
 baseline:
   run_id: run-1
   deployment_id: dep-1
@@ -301,7 +301,7 @@ candidate:
   deployment:
     runtime_profile_id: runtime-1
 evaluation:
-  eval_pack_version_id: pack-version-1
+  challenge_pack_version_id: pack-version-1
 baseline:
   deployment_id: dep-1
   run_agent_id: agent-1
@@ -325,7 +325,7 @@ candidate:
   deployment:
     runtime_profile_id: runtime-1
 evaluation:
-  eval_pack_version_id: pack-version-1
+  challenge_pack_version_id: pack-version-1
 baseline:
   run_id: run-1
   refresh: surprise
@@ -349,7 +349,7 @@ candidate:
   deployment:
     runtime_profile_id: runtime-1
 evaluation:
-  eval_pack_version_id: pack-version-1
+  challenge_pack_version_id: pack-version-1
 baseline:
   run_id: run-1
   max_age_days: -1
@@ -373,7 +373,7 @@ candidate:
   deployment:
     runtime_profile_id: runtime-1
 evaluation:
-  eval_pack_version_id: pack-version-1
+  challenge_pack_version_id: pack-version-1
 baseline:
   run_id: run-1
 gate:
@@ -396,7 +396,7 @@ candidate:
   deployment:
     runtime_profile_id: runtime-1
 evaluation:
-  eval_pack_version_id: pack-version-1
+  challenge_pack_version_id: pack-version-1
 baseline:
   run_id: run-1
 gate:
@@ -424,7 +424,7 @@ candidate:
   deployment:
     runtime_profile_id: runtime-1
 evaluation:
-  eval_pack_version_id: pack-version-1
+  challenge_pack_version_id: pack-version-1
   regression_sweets:
     - suite-1
 baseline:
@@ -449,7 +449,7 @@ candidate:
   deployment:
     runtime_profile_id: runtime-1
 evaluation:
-  eval_pack_version_id: pack-version-1
+  challenge_pack_version_id: pack-version-1
   regression_suites:
     - suite-1
     - "   "
@@ -475,7 +475,7 @@ candidate:
   deployment:
     runtime_profile_id: runtime-1
 evaluation:
-  eval_pack_version_id: pack-version-1
+  challenge_pack_version_id: pack-version-1
   regression_cases:
     - ""
 baseline:
@@ -527,7 +527,7 @@ func TestCIValidateRemoteSuccess(t *testing.T) {
 		"candidate.build.agent_build_id",
 		"candidate.deployment.runtime_profile_id",
 		"candidate.deployment.provider_account_id",
-		"evaluation.eval_pack_version_id",
+		"evaluation.challenge_pack_version_id",
 		"evaluation.input_set_id",
 		"evaluation.regression_suites",
 		"baseline.run_id",
@@ -592,7 +592,7 @@ func TestCIValidateRemoteWrongWorkspaceRunReportsField(t *testing.T) {
 			"id":                        "00000000-0000-0000-0000-000000000008",
 			"workspace_id":              "ws-other",
 			"status":                    "completed",
-			"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+			"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 			"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 			"created_at":                "2026-05-01T00:00:00Z",
 		}),
@@ -682,7 +682,7 @@ func TestCIValidateRemoteRegressionCasesStayScopedToExplicitSuites(t *testing.T)
 			"items": []map[string]any{{
 				"id":                       "suite-other",
 				"workspace_id":             "ws-1",
-				"source_eval_pack_id": "pack-1",
+				"source_challenge_pack_id": "pack-1",
 				"name":                     "Other suite",
 				"status":                   "active",
 			}},
@@ -693,7 +693,7 @@ func TestCIValidateRemoteRegressionCasesStayScopedToExplicitSuites(t *testing.T)
 				"suite_id":                         "suite-other",
 				"workspace_id":                     "ws-1",
 				"status":                           "active",
-				"source_eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+				"source_challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 				"source_challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 			}},
 		}),
@@ -1199,7 +1199,7 @@ func TestCIBaselineResolvesFixedRun(t *testing.T) {
 			"workspace_id":              "ws-1",
 			"name":                      "Locked mainline",
 			"status":                    "completed",
-			"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+			"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 			"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 			"created_at":                "2026-05-01T00:00:00Z",
 		}),
@@ -1234,7 +1234,7 @@ func TestCIBaselineResolvesFixedRunAgent(t *testing.T) {
 			"id":                        "run-base",
 			"workspace_id":              "ws-1",
 			"status":                    "completed",
-			"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+			"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 			"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 			"created_at":                "2026-05-01T00:00:00Z",
 		}),
@@ -1273,7 +1273,7 @@ func TestCIBaselineResolvesDeploymentBaseline(t *testing.T) {
 					"id":                        "run-old",
 					"workspace_id":              "ws-1",
 					"status":                    "completed",
-					"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 					"created_at":                "2026-05-01T00:00:00Z",
 				},
@@ -1281,7 +1281,7 @@ func TestCIBaselineResolvesDeploymentBaseline(t *testing.T) {
 					"id":                        "run-new",
 					"workspace_id":              "ws-1",
 					"status":                    "completed",
-					"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 					"created_at":                "2026-05-03T00:00:00Z",
 				},
@@ -1324,7 +1324,7 @@ func TestCIBaselineResolvesDeploymentBaselineByFinishedAt(t *testing.T) {
 					"id":                        "run-created-newer",
 					"workspace_id":              "ws-1",
 					"status":                    "completed",
-					"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 					"created_at":                "2026-05-04T00:00:00Z",
 					"finished_at":               "2026-05-04T00:10:00Z",
@@ -1333,7 +1333,7 @@ func TestCIBaselineResolvesDeploymentBaselineByFinishedAt(t *testing.T) {
 					"id":                        "run-finished-newer",
 					"workspace_id":              "ws-1",
 					"status":                    "completed",
-					"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 					"created_at":                "2026-05-03T00:00:00Z",
 					"finished_at":               "2026-05-04T00:20:00Z",
@@ -1384,7 +1384,7 @@ func TestCIBaselineResolvesDeploymentBaselineAcrossPages(t *testing.T) {
 						"id":                        "run-incompatible",
 						"workspace_id":              "ws-1",
 						"status":                    "completed",
-						"eval_pack_version_id": "other-pack-version",
+						"challenge_pack_version_id": "other-pack-version",
 						"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 						"created_at":                "2026-05-03T00:00:00Z",
 					}
@@ -1396,7 +1396,7 @@ func TestCIBaselineResolvesDeploymentBaselineAcrossPages(t *testing.T) {
 						"id":                        "run-new",
 						"workspace_id":              "ws-1",
 						"status":                    "completed",
-						"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+						"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 						"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 						"created_at":                "2026-05-04T00:00:00Z",
 					}},
@@ -1445,7 +1445,7 @@ func TestCIBaselineRejectsStaleRun(t *testing.T) {
 			"id":                        "run-old",
 			"workspace_id":              "ws-1",
 			"status":                    "completed",
-			"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+			"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 			"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 			"created_at":                "2000-01-01T00:00:00Z",
 		}),
@@ -1493,7 +1493,7 @@ func TestCIBaselineRejectsStaleDeploymentCandidate(t *testing.T) {
 				"id":                        "run-old",
 				"workspace_id":              "ws-1",
 				"status":                    "completed",
-				"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+				"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 				"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 				"created_at":                "2000-01-01T00:00:00Z",
 			}},
@@ -1521,7 +1521,7 @@ func TestCIBaselineRejectsNonCompletedDeploymentAgent(t *testing.T) {
 				"id":                        "run-1",
 				"workspace_id":              "ws-1",
 				"status":                    "completed",
-				"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+				"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 				"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 				"created_at":                "2026-05-03T00:00:00Z",
 			}},
@@ -1558,7 +1558,7 @@ func TestCIBaselineReportsNewestDeploymentRejections(t *testing.T) {
 					"id":                        "run-missing-agent",
 					"workspace_id":              "ws-1",
 					"status":                    "completed",
-					"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 					"created_at":                "2026-05-04T00:00:00Z",
 				},
@@ -1566,7 +1566,7 @@ func TestCIBaselineReportsNewestDeploymentRejections(t *testing.T) {
 					"id":                        "run-empty-agent-status",
 					"workspace_id":              "ws-1",
 					"status":                    "completed",
-					"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+					"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 					"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 					"created_at":                "2026-05-03T00:00:00Z",
 				},
@@ -1619,7 +1619,7 @@ func TestCIBaselineRejectsMissingDeploymentMatch(t *testing.T) {
 				"id":                        "run-1",
 				"workspace_id":              "ws-1",
 				"status":                    "completed",
-				"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+				"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 				"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 				"created_at":                "2026-05-03T00:00:00Z",
 			}},
@@ -1762,7 +1762,7 @@ func remoteCIValidateRoutes(t *testing.T, overrides map[string]http.HandlerFunc)
 				"name":         "CI provider",
 			}},
 		}),
-		"GET /v1/workspaces/ws-1/eval-packs": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
 			"items": []map[string]any{{
 				"id":   "pack-1",
 				"name": "CI pack",
@@ -1773,7 +1773,7 @@ func remoteCIValidateRoutes(t *testing.T, overrides map[string]http.HandlerFunc)
 				}},
 			}},
 		}),
-		"GET /v1/workspaces/ws-1/eval-pack-versions/00000000-0000-0000-0000-000000000005/input-sets": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/challenge-pack-versions/00000000-0000-0000-0000-000000000005/input-sets": jsonHandler(200, map[string]any{
 			"items": []map[string]any{{
 				"id":        "00000000-0000-0000-0000-000000000006",
 				"input_key": "default",
@@ -1784,7 +1784,7 @@ func remoteCIValidateRoutes(t *testing.T, overrides map[string]http.HandlerFunc)
 			"items": []map[string]any{{
 				"id":                       "00000000-0000-0000-0000-000000000007",
 				"workspace_id":             "ws-1",
-				"source_eval_pack_id": "pack-1",
+				"source_challenge_pack_id": "pack-1",
 				"name":                     "Critical regressions",
 				"status":                   "active",
 			}},
@@ -1793,7 +1793,7 @@ func remoteCIValidateRoutes(t *testing.T, overrides map[string]http.HandlerFunc)
 			"id":                        "00000000-0000-0000-0000-000000000008",
 			"workspace_id":              "ws-1",
 			"status":                    "completed",
-			"eval_pack_version_id": "00000000-0000-0000-0000-000000000005",
+			"challenge_pack_version_id": "00000000-0000-0000-0000-000000000005",
 			"challenge_input_set_id":    "00000000-0000-0000-0000-000000000006",
 			"created_at":                "2026-05-01T00:00:00Z",
 		}),

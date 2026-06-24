@@ -111,14 +111,14 @@ func TestRegressionSuiteCreateAndUpdatePayloads(t *testing.T) {
 	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
 	if err := executeCommand(t, []string{
 		"regression-suite", "create", "-w", "ws-123",
-		"--source-eval-pack-id", "pack-1",
+		"--source-challenge-pack-id", "pack-1",
 		"--name", "New Suite",
 		"--description", "desc",
 		"--default-gate-severity", "blocking",
 	}, srv.URL); err != nil {
 		t.Fatalf("create error: %v", err)
 	}
-	if createBody["source_eval_pack_id"] != "pack-1" || createBody["default_gate_severity"] != "blocking" {
+	if createBody["source_challenge_pack_id"] != "pack-1" || createBody["default_gate_severity"] != "blocking" {
 		t.Fatalf("unexpected create body: %#v", createBody)
 	}
 
@@ -180,7 +180,7 @@ func TestRegressionCaseCaptureProductionPayload(t *testing.T) {
 	if err := executeCommand(t, []string{
 		"regression-suite", "case", "capture-production", "suite-1", "-w", "ws-123",
 		"--from-file", payloadPath,
-		"--source-eval-pack-version-id", "version-1",
+		"--source-challenge-pack-version-id", "version-1",
 		"--source-challenge-identity-id", "identity-1",
 		"--source-case-key", "prod-incident-123",
 		"--title", "Production incident",
@@ -191,7 +191,7 @@ func TestRegressionCaseCaptureProductionPayload(t *testing.T) {
 	}, srv.URL); err != nil {
 		t.Fatalf("capture production error: %v", err)
 	}
-	if gotBody["source_eval_pack_version_id"] != "version-1" || gotBody["incident_id"] != "INC-123" || gotBody["observed_at"] != "2026-05-05T00:00:00Z" {
+	if gotBody["source_challenge_pack_version_id"] != "version-1" || gotBody["incident_id"] != "INC-123" || gotBody["observed_at"] != "2026-05-05T00:00:00Z" {
 		t.Fatalf("unexpected body: %#v", gotBody)
 	}
 	if _, ok := gotBody["payload_snapshot"].(map[string]any); !ok {

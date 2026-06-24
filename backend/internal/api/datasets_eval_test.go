@@ -22,16 +22,16 @@ func TestDatasetManagerStartDatasetEvalMaterializesAndCreatesRun(t *testing.T) {
 		dataset: repository.Dataset{ID: datasetID, WorkspaceID: workspaceID, Name: "Golden", CreatedAt: time.Now(), UpdatedAt: time.Now()},
 		version: repository.DatasetVersion{ID: versionID, DatasetID: datasetID, VersionNumber: 1, CreatedAt: time.Now()},
 		materialized: repository.DatasetVersionInputSet{
-			ID: versionID, DatasetID: datasetID, DatasetVersionID: versionID, EvalPackVersionID: packVersionID,
+			ID: versionID, DatasetID: datasetID, DatasetVersionID: versionID, ChallengePackVersionID: packVersionID,
 			ChallengeInputSetID: inputSetID, ChallengeKey: "support", CreatedAt: time.Now(), UpdatedAt: time.Now(),
 		},
 	}
-	runCreator := &datasetEvalFakeRunCreator{run: domain.Run{ID: runID, WorkspaceID: workspaceID, EvalPackVersionID: packVersionID, ChallengeInputSetID: &inputSetID, Status: domain.RunStatusQueued}}
+	runCreator := &datasetEvalFakeRunCreator{run: domain.Run{ID: runID, WorkspaceID: workspaceID, ChallengePackVersionID: packVersionID, ChallengeInputSetID: &inputSetID, Status: domain.RunStatusQueued}}
 	manager := NewDatasetManager(datasetEvalAllowAuthorizer{}, repo).WithRunCreationService(runCreator)
 
 	deploymentID := uuid.New()
 	result, err := manager.StartDatasetEval(context.Background(), caller, StartDatasetEvalInput{
-		WorkspaceID: workspaceID, DatasetID: datasetID, VersionID: versionID, EvalPackVersionID: packVersionID,
+		WorkspaceID: workspaceID, DatasetID: datasetID, VersionID: versionID, ChallengePackVersionID: packVersionID,
 		ChallengeID: "support", AgentDeploymentIDs: []uuid.UUID{deploymentID}, Name: "Dataset eval",
 	})
 	if err != nil {
@@ -69,7 +69,7 @@ func TestDatasetManagerStartDatasetEvalRejectsVersionFromOtherDataset(t *testing
 	manager := NewDatasetManager(datasetEvalAllowAuthorizer{}, repo).WithRunCreationService(&datasetEvalFakeRunCreator{})
 
 	_, err := manager.StartDatasetEval(context.Background(), datasetEvalCaller(workspaceID), StartDatasetEvalInput{
-		WorkspaceID: workspaceID, DatasetID: datasetID, VersionID: repo.version.ID, EvalPackVersionID: uuid.New(),
+		WorkspaceID: workspaceID, DatasetID: datasetID, VersionID: repo.version.ID, ChallengePackVersionID: uuid.New(),
 		ChallengeID: "support", AgentDeploymentIDs: []uuid.UUID{uuid.New()},
 	})
 	if err == nil {
@@ -119,7 +119,7 @@ type datasetEvalFakeRunCreator struct {
 func (f *datasetEvalFakeRunCreator) CreateRun(_ context.Context, _ Caller, input CreateRunInput) (CreateRunResult, error) {
 	f.input = input
 	if f.run.ID == uuid.Nil {
-		f.run = domain.Run{ID: uuid.New(), WorkspaceID: input.WorkspaceID, EvalPackVersionID: input.EvalPackVersionID, ChallengeInputSetID: input.ChallengeInputSetID, Status: domain.RunStatusQueued}
+		f.run = domain.Run{ID: uuid.New(), WorkspaceID: input.WorkspaceID, ChallengePackVersionID: input.ChallengePackVersionID, ChallengeInputSetID: input.ChallengeInputSetID, Status: domain.RunStatusQueued}
 	}
 	return CreateRunResult{Run: f.run}, nil
 }

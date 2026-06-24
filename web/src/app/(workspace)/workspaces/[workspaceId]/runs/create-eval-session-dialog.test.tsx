@@ -256,7 +256,7 @@ function buildApiMock(
   });
 
   const get = vi.fn(async (url: string) => {
-    if (url === "/v1/workspaces/ws-1/eval-packs") {
+    if (url === "/v1/workspaces/ws-1/challenge-packs") {
       return {
         items: [
           {
@@ -290,7 +290,7 @@ function buildApiMock(
     }
 
     if (
-      url === "/v1/workspaces/ws-1/eval-pack-versions/version-1/input-sets"
+      url === "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets"
     ) {
       return {
         items: [],
@@ -332,7 +332,7 @@ describe("CreateEvalSessionDialog", () => {
       clickElement(findButton("New Eval Session"));
       await flushPromises();
 
-      changeSelect(findSelectForLabel("Eval Pack"), "pack-1");
+      changeSelect(findSelectForLabel("Challenge Pack"), "pack-1");
       await flushPromises();
 
       clickElement(findCheckboxByLabel("Primary Agent"));
@@ -347,7 +347,7 @@ describe("CreateEvalSessionDialog", () => {
       const [, request] = api.postWithMeta.mock.calls[0];
       expect(request).toMatchObject({
         workspace_id: "ws-1",
-        eval_pack_version_id: "version-1",
+        challenge_pack_version_id: "version-1",
         execution_mode: "single_agent",
         participants: [
           {
@@ -394,7 +394,7 @@ describe("CreateEvalSessionDialog", () => {
       });
       expect(mockMutateMany).toHaveBeenCalledTimes(1);
 
-      changeSelect(findSelectForLabel("Eval Pack"), "pack-1");
+      changeSelect(findSelectForLabel("Challenge Pack"), "pack-1");
       await flushPromises();
 
       clickElement(findCheckboxByLabel("Primary Agent"));
@@ -417,7 +417,7 @@ describe("CreateEvalSessionDialog", () => {
       clickElement(findButton("New Eval Session"));
       await flushPromises();
 
-      changeSelect(findSelectForLabel("Eval Pack"), "pack-1");
+      changeSelect(findSelectForLabel("Challenge Pack"), "pack-1");
       await flushPromises();
 
       clickElement(findCheckboxByLabel("Primary Agent"));
@@ -455,7 +455,7 @@ describe("CreateEvalSessionDialog", () => {
       clickElement(findButton("New Eval Session"));
       await flushPromises();
 
-      changeSelect(findSelectForLabel("Eval Pack"), "pack-1");
+      changeSelect(findSelectForLabel("Challenge Pack"), "pack-1");
       await flushPromises();
 
       clickElement(findCheckboxByLabel("Primary Agent"));
@@ -486,7 +486,7 @@ describe("CreateEvalSessionDialog", () => {
       clickElement(findButton("New Eval Session"));
       await flushPromises();
 
-      changeSelect(findSelectForLabel("Eval Pack"), "pack-1");
+      changeSelect(findSelectForLabel("Challenge Pack"), "pack-1");
       await flushPromises();
 
       clickElement(findCheckboxByLabel("Primary Agent"));
@@ -537,7 +537,7 @@ describe("CreateEvalSessionDialog", () => {
       clickElement(findButton("New Eval Session"));
       await flushPromises();
 
-      changeSelect(findSelectForLabel("Eval Pack"), "pack-1");
+      changeSelect(findSelectForLabel("Challenge Pack"), "pack-1");
       await flushPromises();
 
       expect(findCheckboxByLabel("Primary Agent").disabled).toBe(false);
@@ -587,7 +587,7 @@ describe("CreateEvalSessionDialog", () => {
       clickElement(findButton("New Eval Session"));
       await flushPromises();
 
-      changeSelect(findSelectForLabel("Eval Pack"), "pack-1");
+      changeSelect(findSelectForLabel("Challenge Pack"), "pack-1");
       await flushPromises();
 
       clickElement(findCheckboxByLabel("Primary Agent"));

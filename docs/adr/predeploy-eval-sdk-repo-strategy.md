@@ -13,7 +13,7 @@ AgentClash needs a low-friction pre-deploy evaluation layer for agents and LLM a
 - run in CI/CD with stable exit codes, JSON, and JUnit output;
 - be driven from a CLI;
 - be authored by coding agents;
-- promote failures into eval packs, regression suites, and hosted scorecards.
+- promote failures into challenge packs, regression suites, and hosted scorecards.
 
 DeepEval-style adoption proves demand for Python-first, pytest-style eval libraries. AgentClash's opportunity is a smaller, safer, local-first SDK with a direct path into sandboxed agent evaluation, replay, and scorecards — not a DeepEval clone.
 
@@ -31,13 +31,13 @@ Package boundaries, release cadence, and API surface will stabilize here first. 
 
 | Factor | Monorepo now | Separate repo now |
 |--------|--------------|-------------------|
-| Eval-pack promotion | Same schemas, validators, and examples | Cross-repo contract drift risk |
+| Challenge-pack promotion | Same schemas, validators, and examples | Cross-repo contract drift risk |
 | CLI glue (`agentclash evaltest`) | Already in `cli/` | Duplicate release pipeline |
-| Docs and examples | Co-located with eval packs | Fragmented onboarding |
+| Docs and examples | Co-located with challenge packs | Fragmented onboarding |
 | Early API churn | Cheap to refactor across packages | Expensive sync overhead |
 | CI contract validation | Single workflow | Requires dedicated sync job from day one |
 
-**Blocker check:** No blocker was found that requires a separate repo for v0. Tight coupling to eval-pack YAML, regression suite shapes, and CLI exit-code registry favors monorepo-first.
+**Blocker check:** No blocker was found that requires a separate repo for v0. Tight coupling to challenge-pack YAML, regression suite shapes, and CLI exit-code registry favors monorepo-first.
 
 ### Future split trigger
 
@@ -119,7 +119,7 @@ Core package has **zero** hard dependencies on OpenAI, LangChain, pytest, or hos
   - test discovery and orchestration;
   - JSON/JUnit/SARIF report emission;
   - stable exit codes (see #1106);
-  - eval-pack promotion (`evaltest promote-failures`);
+  - challenge-pack promotion (`evaltest promote-failures`);
   - GitHub Action integration (docs + example workflow).
 
 Go remains the control plane for CI orchestration; Python/TS SDKs are the authoring surface.
@@ -139,7 +139,7 @@ Go remains the control plane for CI orchestration; Python/TS SDKs are the author
 | Opt-in pytest plugin | `sdk/python/agentclash_eval/pytest` |
 | `agentclash evaltest init/run/promote-failures` | `cli/cmd/evaltest` |
 | Local examples and CI docs | `examples/evaltest`, `docs/evaltest` |
-| Failure → eval-pack YAML promotion | `cli/cmd/evaltest` + existing pack validation |
+| Failure → challenge-pack YAML promotion | `cli/cmd/evaltest` + existing pack validation |
 
 ### Out of scope — remains in hosted AgentClash
 
@@ -200,7 +200,7 @@ These apply to every SDK and CLI surface in v0:
 
 ### Cross-language parity
 
-- Field names use `snake_case` in JSON reports (matches existing AgentClash conventions in eval packs and prompt-eval schemas).
+- Field names use `snake_case` in JSON reports (matches existing AgentClash conventions in challenge packs and prompt-eval schemas).
 - `schema_version` is an integer; consumers reject unknown versions with exit code 2.
 - Metric results, tool calls, and retrieval context shapes are defined once in JSON Schema and mirrored as typed structs in Python (dataclasses/Pydantic) and TypeScript (Zod or equivalent).
 
@@ -210,7 +210,7 @@ If/when the SDK moves to `agentclash/agentclash-evals`:
 
 1. Schemas are copied or submodule-linked; this repo imports released schema versions as a dev dependency.
 2. A weekly CI job in **both** repos validates fixture parity.
-3. Eval-pack promotion logic stays in this repo's CLI; the SDK repo ships only report generation.
+3. Challenge-pack promotion logic stays in this repo's CLI; the SDK repo ships only report generation.
 4. Release Please manages independent semver for SDK packages.
 
 ---
@@ -281,7 +281,7 @@ All adapters map framework traces into a common shape (full schema in #1106):
 ### Positive
 
 - Single PR can land schema + SDK + CLI + docs + examples atomically.
-- Eval-pack promotion reuses existing validation in `cli/cmd/eval_pack.go`.
+- Challenge-pack promotion reuses existing validation in `cli/cmd/challenge_pack.go`.
 - Agents authoring evals can reference one repo for skills and examples.
 
 ### Negative / trade-offs
@@ -300,5 +300,5 @@ All adapters map framework traces into a common shape (full schema in #1106):
 
 - Epic: [#1104](https://github.com/agentclash/agentclash/issues/1104)
 - Existing prompt-eval schema: `docs/schemas/prompt-eval-result.schema.json`
-- Eval pack v0 contract: `docs/evaluation/eval-pack-v0.md`
+- Challenge pack v0 contract: `docs/evaluation/challenge-pack-v0.md`
 - CLI exit code registry: `cli/cmd/exit_codes.go`

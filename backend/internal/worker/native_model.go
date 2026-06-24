@@ -47,7 +47,7 @@ func (i NativeModelInvoker) WithSecretsLookup(lookup engine.SecretsLookup) Nativ
 }
 
 // WithAssetLoader returns an invoker that lets native executors materialize
-// artifact-backed eval-pack assets into the sandbox before execution.
+// artifact-backed challenge-pack assets into the sandbox before execution.
 func (i NativeModelInvoker) WithAssetLoader(loader engine.AssetLoader) NativeModelInvoker {
 	i.assetLoader = loader
 	return i

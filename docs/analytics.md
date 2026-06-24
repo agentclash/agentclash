@@ -57,7 +57,7 @@ tracking.
   fires from the standalone create-workspace dialog, so the onboarding funnel
   counts both paths.
 - `web.provider_account.added`, `web.run.created`.
-- `web.pack.uploaded` — eval-pack publish dialog (`publish-pack-dialog.tsx`).
+- `web.pack.uploaded` — challenge-pack publish dialog (`publish-pack-dialog.tsx`).
 - `web.regression.case_promoted` — run-failure → regression case promotion
   (`promote-failure-dialog.tsx`).
 

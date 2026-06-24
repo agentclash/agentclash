@@ -758,7 +758,7 @@ func TestEvaluateReleaseGateEndpointReturnsJSONPayload(t *testing.T) {
 		stubHostedRunIngestionService{},
 		stubCompareReadService{},
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		&fakeReleaseGateService{
 			evaluateResult: EvaluateReleaseGateResult{
@@ -837,7 +837,7 @@ func TestListReleaseGatesEndpointReturnsJSONPayload(t *testing.T) {
 		stubHostedRunIngestionService{},
 		stubCompareReadService{},
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		&fakeReleaseGateService{
 			listResult: ListReleaseGatesResult{

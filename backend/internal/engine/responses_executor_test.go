@@ -25,7 +25,7 @@ func TestResponsesExecutorSingleResearchCall(t *testing.T) {
 	executor := NewResponsesExecutor(client, observer)
 
 	ctx := promptEvalExecutionContext()
-	ctx.EvalPackVersion.Manifest = []byte(`{"version":{"execution_mode":"responses"}}`)
+	ctx.ChallengePackVersion.Manifest = []byte(`{"version":{"execution_mode":"responses"}}`)
 
 	result, err := executor.Execute(context.Background(), ctx)
 	if err != nil {
@@ -80,7 +80,7 @@ func TestResponsesExecutorProvisionsSandboxWhenConfigured(t *testing.T) {
 	executor := NewResponsesExecutor(client, &recordingObserver{}).WithSandboxProvider(fakeSandbox)
 
 	ctx := promptEvalExecutionContext()
-	ctx.EvalPackVersion.Manifest = []byte(`{"version":{"execution_mode":"responses"},"sandbox":{"network_access":true}}`)
+	ctx.ChallengePackVersion.Manifest = []byte(`{"version":{"execution_mode":"responses"},"sandbox":{"network_access":true}}`)
 
 	if _, err := executor.Execute(context.Background(), ctx); err != nil {
 		t.Fatalf("Execute returned error: %v", err)
@@ -107,7 +107,7 @@ func TestResponsesExecutorSkipsSandboxWithoutManifestConfig(t *testing.T) {
 	executor := NewResponsesExecutor(client, &recordingObserver{}).WithSandboxProvider(fakeSandbox)
 
 	ctx := promptEvalExecutionContext()
-	ctx.EvalPackVersion.Manifest = []byte(`{"version":{"execution_mode":"responses"}}`)
+	ctx.ChallengePackVersion.Manifest = []byte(`{"version":{"execution_mode":"responses"}}`)
 
 	if _, err := executor.Execute(context.Background(), ctx); err != nil {
 		t.Fatalf("Execute returned error: %v", err)

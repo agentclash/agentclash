@@ -10,9 +10,9 @@ Prerequisites:
 
 - You have a run or eval to inspect.
 - You understand the basic difference between a run and an eval.
-- You know which eval pack or workload the result came from.
+- You know which challenge pack or workload the result came from.
 
-Throughout this guide, "workload" means the eval pack plus the specific input set or case the run was judged against, and "scenario" means a single case within that workload.
+Throughout this guide, "workload" means the challenge pack plus the specific input set or case the run was judged against, and "scenario" means a single case within that workload.
 
 ## Start with the top-line state
 
@@ -20,7 +20,7 @@ Before you read the full timeline, answer three simple questions:
 
 1. Did the run finish in a `completed`, `failed`, or `cancelled` state? (There is no separate "timed out" state — a timeout surfaces as `failed`.)
 2. Which deployment produced the result?
-3. Which eval pack or input set was this run judged against?
+3. Which challenge pack or input set was this run judged against?
 
 If you skip this step, you will mix together infrastructure problems, workload problems, and actual agent regressions.
 
@@ -35,7 +35,7 @@ The scorecard or summary view is the fastest way to orient yourself. Use it to i
 
 <Callout type="info">
   A score change is only actionable when the underlying workload is comparable.
-  Always confirm you are looking at the same deployment class and eval pack.
+  Always confirm you are looking at the same deployment class and challenge pack.
 </Callout>
 
 ## Use the replay timeline to explain the result
@@ -82,7 +82,7 @@ When a run reveals a real gap:
 
 1. capture the replay and artifacts that make the issue obvious
 2. tie the failure back to the scenario or input that exposed it
-3. promote it into a repeatable eval-pack case when the product surface supports it
+3. promote it into a repeatable challenge-pack case when the product surface supports it
 4. rerun after the fix so the score change is evidence-backed, not anecdotal
 
 That is the core loop behind serious evaluation work.
@@ -117,5 +117,5 @@ Do not force a ranking conclusion. Clean the workload, rerun under the same cond
 - [Evidence Loop](../architecture/evidence-loop)
 - [First Eval](../getting-started/first-eval)
 - [Datasets overview](/docs/guides/datasets-overview)
-- [Multi-turn packs](/docs/eval-packs/multi-turn)
+- [Multi-turn packs](/docs/challenge-packs/multi-turn)
 - [Security evaluation](/docs/guides/security-evaluation)

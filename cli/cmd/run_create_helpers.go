@@ -21,7 +21,7 @@ const (
 )
 
 type runCreateRequest struct {
-	EvalPackVersionID     string
+	ChallengePackVersionID     string
 	ChallengeInputSetID        string
 	DeploymentIDs              []string
 	DeploymentLineups          []string
@@ -47,10 +47,10 @@ type runCreateDeploymentLineup struct {
 func runCreateRequestFromFlags(cmd *cobra.Command, base runCreateRequest) (runCreateRequest, error) {
 	request := base
 
-	if cmd.Flags().Lookup("eval-pack-version") != nil {
-		evalPackVersionID, _ := cmd.Flags().GetString("eval-pack-version")
-		if trimmed := strings.TrimSpace(evalPackVersionID); trimmed != "" {
-			request.EvalPackVersionID = trimmed
+	if cmd.Flags().Lookup("challenge-pack-version") != nil {
+		challengePackVersionID, _ := cmd.Flags().GetString("challenge-pack-version")
+		if trimmed := strings.TrimSpace(challengePackVersionID); trimmed != "" {
+			request.ChallengePackVersionID = trimmed
 		}
 	}
 
@@ -144,8 +144,8 @@ func normalizeVoiceEvalMode(raw, field string) (string, error) {
 }
 
 func buildRunCreateBody(workspaceID string, request runCreateRequest) (map[string]any, error) {
-	if request.EvalPackVersionID == "" {
-		return nil, fmt.Errorf("eval pack version is required")
+	if request.ChallengePackVersionID == "" {
+		return nil, fmt.Errorf("challenge pack version is required")
 	}
 	if len(request.DeploymentIDs) == 0 {
 		return nil, fmt.Errorf("at least one deployment is required")
@@ -165,7 +165,7 @@ func buildRunCreateBody(workspaceID string, request runCreateRequest) (map[strin
 
 	body := map[string]any{
 		"workspace_id":              workspaceID,
-		"eval_pack_version_id": request.EvalPackVersionID,
+		"challenge_pack_version_id": request.ChallengePackVersionID,
 		"agent_deployment_ids":      request.DeploymentIDs,
 		"official_pack_mode":        request.OfficialPackMode,
 	}
@@ -240,8 +240,8 @@ func buildSeededEvalSessionBody(workspaceID string, request runCreateRequest) (m
 }
 
 func buildSeriesEvalSessionBody(workspaceID string, request runCreateRequest) (map[string]any, error) {
-	if request.EvalPackVersionID == "" {
-		return nil, fmt.Errorf("eval pack version is required")
+	if request.ChallengePackVersionID == "" {
+		return nil, fmt.Errorf("challenge pack version is required")
 	}
 	if err := validateSeriesSeedCount(request.Seeds); err != nil {
 		return nil, err
@@ -279,7 +279,7 @@ func buildSeriesEvalSessionBody(workspaceID string, request runCreateRequest) (m
 
 	body := map[string]any{
 		"workspace_id":              workspaceID,
-		"eval_pack_version_id": request.EvalPackVersionID,
+		"challenge_pack_version_id": request.ChallengePackVersionID,
 		"execution_mode":            executionMode,
 		"eval_session": map[string]any{
 			"repetitions": repetitions,

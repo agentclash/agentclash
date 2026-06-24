@@ -22,7 +22,7 @@ Turn a ready AgentClash build version plus runtime/provider/model resources into
 - The CLI is not authenticated or no workspace is selected; use `agentclash-cli-setup` first.
 - Provider accounts, provider model IDs, runtime profiles, workspace secrets, or workspace tools are missing; use `agentclash-runtime-resources-setup` first.
 - The build version is still a draft or has validation errors; use `agentclash-agent-build-author` first.
-- The user is authoring eval pack YAML or choosing input sets; use eval-pack skills.
+- The user is authoring challenge pack YAML or choosing input sets; use challenge-pack skills.
 
 ## Inputs Needed
 - Workspace ID and confirmation that `agentclash doctor` can reach it.
@@ -32,7 +32,7 @@ Turn a ready AgentClash build version plus runtime/provider/model resources into
 - `provider_account_id`.
 - A provider model ID such as `gpt-4.1`.
 - Optional `deployment_config` JSON object.
-- Eval pack or run requirements that affect runtime profile, tool, network, shell, or model compatibility.
+- Challenge pack or run requirements that affect runtime profile, tool, network, shell, or model compatibility.
 
 ## Environment
 Use hosted production by default:
@@ -102,7 +102,7 @@ agentclash deploy list
 agentclash deploy create --from-file deployment.json
 
 agentclash run create \
-  --eval-pack-version <EVAL_PACK_VERSION_ID> \
+  --challenge-pack-version <CHALLENGE_PACK_VERSION_ID> \
   --deployments <DEPLOYMENT_ID>
 ```
 
@@ -115,7 +115,7 @@ agentclash run create \
 ## Run Compatibility Checks
 - The deployment should be active in `agentclash deployment list --json`.
 - The deployment should point to the intended ready build version via `current_build_version_id`.
-- Runtime profile settings should satisfy the eval pack: shell, network, timeout, max iterations, and max tool calls.
+- Runtime profile settings should satisfy the challenge pack: shell, network, timeout, max iterations, and max tool calls.
 - Provider account and model should match the build's `model_spec` expectations.
 - Run creation requires at least one deployment. Non-interactive runs use `--deployments`; TTY runs can prompt from active deployments.
 - Backend run creation requires deployment IDs to reference active deployments with snapshots in the selected workspace.
@@ -148,7 +148,7 @@ Provider account: <provider_account_id>
 Model: <provider model ID>
 Run compatibility: <ready | blocked>
 Next skill: agentclash-eval-runner
-Notes: <runtime/model/provider/eval-pack caveats>
+Notes: <runtime/model/provider/challenge-pack caveats>
 ```
 
 ## Related Skills

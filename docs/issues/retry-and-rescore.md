@@ -2,7 +2,7 @@
 
 ## Problem
 
-Today, if a run fails for any reason — provider 503, E2B lease expired, worker crash, judge LLM throttled — the only way forward is to manually create a brand-new run, re-picking the eval pack version, agent roster, judge models, budgets, and spend policy. There is no "try again" button, no retry endpoint, no way to distinguish "the model couldn't do this task" from "our infrastructure dropped the request."
+Today, if a run fails for any reason — provider 503, E2B lease expired, worker crash, judge LLM throttled — the only way forward is to manually create a brand-new run, re-picking the challenge pack version, agent roster, judge models, budgets, and spend policy. There is no "try again" button, no retry endpoint, no way to distinguish "the model couldn't do this task" from "our infrastructure dropped the request."
 
 This conflates two very different concepts:
 
@@ -11,7 +11,7 @@ This conflates two very different concepts:
 
 The immutable model is correct for reproducibility (a scorecard published as *the* result of attempt 1 should never silently mutate into the result of attempt 3). But forcing the user to reconstruct the entire configuration to work around someone else's outage is not an immutability trade-off — it's a missing feature.
 
-Orthogonally: during pack authoring, users want to **re-score** an existing run against a tweaked evaluation spec without re-executing the agent. The scoring engine already supports this (`scoring.EvaluateRunAgent` is pure over persisted events), but `run_agent_evaluation.go:26` hard-asserts that the spec's pinned `eval_pack_version_id` matches the run's, refusing to score under any newer version. That assertion is right for the *canonical* scorecard and wrong for a *preview*.
+Orthogonally: during pack authoring, users want to **re-score** an existing run against a tweaked evaluation spec without re-executing the agent. The scoring engine already supports this (`scoring.EvaluateRunAgent` is pure over persisted events), but `run_agent_evaluation.go:26` hard-asserts that the spec's pinned `challenge_pack_version_id` matches the run's, refusing to score under any newer version. That assertion is right for the *canonical* scorecard and wrong for a *preview*.
 
 ## Proposed shape
 

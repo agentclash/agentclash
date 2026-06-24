@@ -21,11 +21,11 @@ func TestRepositoryRegressionSuiteCRUD(t *testing.T) {
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	sourceEvalPackID := lookupEvalPackID(t, ctx, db, fixture.evalPackVersionID)
+	sourceChallengePackID := lookupChallengePackID(t, ctx, db, fixture.challengePackVersionID)
 
 	created, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
 		WorkspaceID:           fixture.workspaceID,
-		SourceEvalPackID: sourceEvalPackID,
+		SourceChallengePackID: sourceChallengePackID,
 		Name:                  "Critical regressions",
 		Description:           "Seed suite for CRUD coverage",
 		Status:                domain.RegressionSuiteStatusActive,
@@ -79,14 +79,14 @@ func TestRepositoryRegressionSuiteListBatchesCaseCounts(t *testing.T) {
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	sourceEvalPackID := lookupEvalPackID(t, ctx, db, fixture.evalPackVersionID)
+	sourceChallengePackID := lookupChallengePackID(t, ctx, db, fixture.challengePackVersionID)
 	secondChallengeIdentityID := lookupChallengeIdentityID(t, ctx, db, "second-ticket")
 
 	createSuite := func(name string) repository.RegressionSuite {
 		t.Helper()
 		suite, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
 			WorkspaceID:           fixture.workspaceID,
-			SourceEvalPackID: sourceEvalPackID,
+			SourceChallengePackID: sourceChallengePackID,
 			Name:                  name,
 			Description:           "Seed suite for batched count coverage",
 			Status:                domain.RegressionSuiteStatusActive,
@@ -111,7 +111,7 @@ func TestRepositoryRegressionSuiteListBatchesCaseCounts(t *testing.T) {
 			PromotionMode:                domain.RegressionPromotionModeOutputOnly,
 			SourceRunID:                  &fixture.runID,
 			SourceRunAgentID:             &fixture.primaryRunAgentID,
-			SourceEvalPackVersionID: fixture.evalPackVersionID,
+			SourceChallengePackVersionID: fixture.challengePackVersionID,
 			SourceChallengeInputSetID:    &fixture.challengeInputSetID,
 			SourceChallengeIdentityID:    challengeIdentityID,
 			SourceCaseKey:                key,
@@ -161,10 +161,10 @@ func TestRepositoryRegressionCaseAndPromotionCRUD(t *testing.T) {
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	sourceEvalPackID := lookupEvalPackID(t, ctx, db, fixture.evalPackVersionID)
+	sourceChallengePackID := lookupChallengePackID(t, ctx, db, fixture.challengePackVersionID)
 	suite, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
 		WorkspaceID:           fixture.workspaceID,
-		SourceEvalPackID: sourceEvalPackID,
+		SourceChallengePackID: sourceChallengePackID,
 		Name:                  "Critical regressions",
 		Description:           "Seed suite for case coverage",
 		Status:                domain.RegressionSuiteStatusActive,
@@ -185,7 +185,7 @@ func TestRepositoryRegressionCaseAndPromotionCRUD(t *testing.T) {
 		PromotionMode:                domain.RegressionPromotionModeFullExecutable,
 		SourceRunID:                  &fixture.runID,
 		SourceRunAgentID:             &fixture.primaryRunAgentID,
-		SourceEvalPackVersionID: fixture.evalPackVersionID,
+		SourceChallengePackVersionID: fixture.challengePackVersionID,
 		SourceChallengeInputSetID:    &fixture.challengeInputSetID,
 		SourceChallengeIdentityID:    fixture.firstChallengeIdentityID,
 		SourceCaseKey:                "case-1",
@@ -290,10 +290,10 @@ func TestRepositoryRegressionCaseValidationStats(t *testing.T) {
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	sourceEvalPackID := lookupEvalPackID(t, ctx, db, fixture.evalPackVersionID)
+	sourceChallengePackID := lookupChallengePackID(t, ctx, db, fixture.challengePackVersionID)
 	suite, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
 		WorkspaceID:           fixture.workspaceID,
-		SourceEvalPackID: sourceEvalPackID,
+		SourceChallengePackID: sourceChallengePackID,
 		Name:                  "Validation regressions",
 		Description:           "Seed suite for validation stats",
 		Status:                domain.RegressionSuiteStatusActive,
@@ -311,7 +311,7 @@ func TestRepositoryRegressionCaseValidationStats(t *testing.T) {
 		Status:                       domain.RegressionCaseStatusActive,
 		Severity:                     domain.RegressionSeverityBlocking,
 		PromotionMode:                domain.RegressionPromotionModeFullExecutable,
-		SourceEvalPackVersionID: fixture.evalPackVersionID,
+		SourceChallengePackVersionID: fixture.challengePackVersionID,
 		SourceChallengeInputSetID:    &fixture.challengeInputSetID,
 		SourceChallengeIdentityID:    fixture.firstChallengeIdentityID,
 		SourceCaseKey:                "case-a",
@@ -326,7 +326,7 @@ func TestRepositoryRegressionCaseValidationStats(t *testing.T) {
 		t.Fatalf("CreateRegressionCase returned error: %v", err)
 	}
 
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "regression-validation", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "regression-validation", 1)
 	baseTime := time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC)
 	for index, verdict := range []string{"fail", "fail", "pass", "fail", "pass"} {
 		insertRegressionValidationRun(t, ctx, db, repo, fixture, evaluationSpecID, regressionCase.ID, fixture.firstChallengeIdentityID, verdict, baseTime.Add(time.Duration(index)*time.Minute))
@@ -354,10 +354,10 @@ func TestRepositoryPatchRegressionSuiteRejectsInvalidTransition(t *testing.T) {
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	sourceEvalPackID := lookupEvalPackID(t, ctx, db, fixture.evalPackVersionID)
+	sourceChallengePackID := lookupChallengePackID(t, ctx, db, fixture.challengePackVersionID)
 	suite, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
 		WorkspaceID:           fixture.workspaceID,
-		SourceEvalPackID: sourceEvalPackID,
+		SourceChallengePackID: sourceChallengePackID,
 		Name:                  "Critical regressions",
 		Description:           "Seed suite for invalid transition coverage",
 		Status:                domain.RegressionSuiteStatusActive,
@@ -388,10 +388,10 @@ func TestRepositoryRegressionSuiteNameCanBeReusedAfterArchive(t *testing.T) {
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	sourceEvalPackID := lookupEvalPackID(t, ctx, db, fixture.evalPackVersionID)
+	sourceChallengePackID := lookupChallengePackID(t, ctx, db, fixture.challengePackVersionID)
 	original, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
 		WorkspaceID:           fixture.workspaceID,
-		SourceEvalPackID: sourceEvalPackID,
+		SourceChallengePackID: sourceChallengePackID,
 		Name:                  "Critical regressions",
 		Description:           "Original suite",
 		Status:                domain.RegressionSuiteStatusActive,
@@ -413,7 +413,7 @@ func TestRepositoryRegressionSuiteNameCanBeReusedAfterArchive(t *testing.T) {
 
 	recreated, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
 		WorkspaceID:           fixture.workspaceID,
-		SourceEvalPackID: sourceEvalPackID,
+		SourceChallengePackID: sourceChallengePackID,
 		Name:                  "Critical regressions",
 		Description:           "Replacement active suite",
 		Status:                domain.RegressionSuiteStatusActive,
@@ -435,10 +435,10 @@ func TestRepositoryPatchRegressionCaseRejectsInvalidTransition(t *testing.T) {
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	sourceEvalPackID := lookupEvalPackID(t, ctx, db, fixture.evalPackVersionID)
+	sourceChallengePackID := lookupChallengePackID(t, ctx, db, fixture.challengePackVersionID)
 	suite, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
 		WorkspaceID:           fixture.workspaceID,
-		SourceEvalPackID: sourceEvalPackID,
+		SourceChallengePackID: sourceChallengePackID,
 		Name:                  "Critical regressions",
 		Description:           "Seed suite for invalid case transition coverage",
 		Status:                domain.RegressionSuiteStatusActive,
@@ -459,7 +459,7 @@ func TestRepositoryPatchRegressionCaseRejectsInvalidTransition(t *testing.T) {
 		PromotionMode:                domain.RegressionPromotionModeFullExecutable,
 		SourceRunID:                  &fixture.runID,
 		SourceRunAgentID:             &fixture.primaryRunAgentID,
-		SourceEvalPackVersionID: fixture.evalPackVersionID,
+		SourceChallengePackVersionID: fixture.challengePackVersionID,
 		SourceChallengeInputSetID:    &fixture.challengeInputSetID,
 		SourceChallengeIdentityID:    fixture.firstChallengeIdentityID,
 		SourceCaseKey:                "case-1",
@@ -498,10 +498,10 @@ func TestRepositoryPromoteFailureFreezesContextAndIsIdempotent(t *testing.T) {
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	sourceEvalPackID := lookupEvalPackID(t, ctx, db, fixture.evalPackVersionID)
+	sourceChallengePackID := lookupChallengePackID(t, ctx, db, fixture.challengePackVersionID)
 	suite, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
 		WorkspaceID:           fixture.workspaceID,
-		SourceEvalPackID: sourceEvalPackID,
+		SourceChallengePackID: sourceChallengePackID,
 		Name:                  "Critical regressions",
 		Description:           "Seed suite for promotion coverage",
 		Status:                domain.RegressionSuiteStatusActive,
@@ -513,7 +513,7 @@ func TestRepositoryPromoteFailureFreezesContextAndIsIdempotent(t *testing.T) {
 		t.Fatalf("CreateRegressionSuite returned error: %v", err)
 	}
 
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "promote-failure", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "promote-failure", 1)
 	insertFailureReviewScorecard(t, ctx, db, fixture.primaryRunAgentID, evaluationSpecID, map[string]any{
 		"dimensions": map[string]any{
 			"correctness": map[string]any{"state": "available", "score": 0.2},
@@ -608,10 +608,10 @@ func TestRepositoryPromoteFailureConcurrentRequestsStayIdempotent(t *testing.T) 
 	fixture := seedFixture(t, ctx, db)
 	repo := repository.New(db)
 
-	sourceEvalPackID := lookupEvalPackID(t, ctx, db, fixture.evalPackVersionID)
+	sourceChallengePackID := lookupChallengePackID(t, ctx, db, fixture.challengePackVersionID)
 	suite, err := repo.CreateRegressionSuite(ctx, repository.CreateRegressionSuiteParams{
 		WorkspaceID:           fixture.workspaceID,
-		SourceEvalPackID: sourceEvalPackID,
+		SourceChallengePackID: sourceChallengePackID,
 		Name:                  "Concurrent regressions",
 		Description:           "Seed suite for duplicate promotion coverage",
 		Status:                domain.RegressionSuiteStatusActive,
@@ -623,7 +623,7 @@ func TestRepositoryPromoteFailureConcurrentRequestsStayIdempotent(t *testing.T) 
 		t.Fatalf("CreateRegressionSuite returned error: %v", err)
 	}
 
-	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.evalPackVersionID, "promote-failure-concurrent", 1)
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "promote-failure-concurrent", 1)
 	insertFailureReviewScorecard(t, ctx, db, fixture.primaryRunAgentID, evaluationSpecID, map[string]any{
 		"dimensions": map[string]any{
 			"correctness": map[string]any{"state": "available", "score": 0.2},
@@ -800,18 +800,18 @@ func assertValidationStats(
 	}
 }
 
-func lookupEvalPackID(t *testing.T, ctx context.Context, db testQuerier, evalPackVersionID uuid.UUID) uuid.UUID {
+func lookupChallengePackID(t *testing.T, ctx context.Context, db testQuerier, challengePackVersionID uuid.UUID) uuid.UUID {
 	t.Helper()
 
-	var evalPackID uuid.UUID
+	var challengePackID uuid.UUID
 	if err := db.QueryRow(ctx, `
-		SELECT eval_pack_id
-		FROM eval_pack_versions
+		SELECT challenge_pack_id
+		FROM challenge_pack_versions
 		WHERE id = $1
-	`, evalPackVersionID).Scan(&evalPackID); err != nil {
-		t.Fatalf("lookup eval_pack_id returned error: %v", err)
+	`, challengePackVersionID).Scan(&challengePackID); err != nil {
+		t.Fatalf("lookup challenge_pack_id returned error: %v", err)
 	}
-	return evalPackID
+	return challengePackID
 }
 
 type testQuerier interface {

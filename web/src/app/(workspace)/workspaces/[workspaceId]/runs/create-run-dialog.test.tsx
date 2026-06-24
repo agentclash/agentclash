@@ -252,7 +252,7 @@ interface BuildApiMockOptions {
     string,
     Array<{
       id: string;
-      eval_pack_version_id: string;
+      challenge_pack_version_id: string;
       input_key: string;
       name: string;
     }>
@@ -272,7 +272,7 @@ function buildApiMock(options: BuildApiMockOptions = {}) {
   };
   const post = vi.fn().mockResolvedValue({ id: "run-1" });
   const get = vi.fn(async (url: string) => {
-    if (url === "/v1/workspaces/ws-1/eval-packs") {
+    if (url === "/v1/workspaces/ws-1/challenge-packs") {
       return {
         items: [
           {
@@ -283,7 +283,7 @@ function buildApiMock(options: BuildApiMockOptions = {}) {
         ],
       };
     }
-    if (url.startsWith("/v1/workspaces/ws-1/eval-pack-versions/")) {
+    if (url.startsWith("/v1/workspaces/ws-1/challenge-pack-versions/")) {
       const parts = url.split("/");
       const versionId = parts[5];
       return {
@@ -310,7 +310,7 @@ function buildApiMock(options: BuildApiMockOptions = {}) {
             status: "active",
             severity: "blocking",
             promotion_mode: "full_executable",
-            source_eval_pack_version_id: "version-1",
+            source_challenge_pack_version_id: "version-1",
             source_challenge_identity_id: "challenge-1",
             source_case_key: "case-a",
             evidence_tier: "native_structured",
@@ -331,7 +331,7 @@ function buildApiMock(options: BuildApiMockOptions = {}) {
             status: "proposed",
             severity: "warning",
             promotion_mode: "full_executable",
-            source_eval_pack_version_id: "version-1",
+            source_challenge_pack_version_id: "version-1",
             source_challenge_identity_id: "challenge-2",
             source_case_key: "case-b",
             evidence_tier: "native_structured",
@@ -355,7 +355,7 @@ function buildApiMock(options: BuildApiMockOptions = {}) {
           {
             id: "suite-1",
             workspace_id: "ws-1",
-            source_eval_pack_id: "pack-1",
+            source_challenge_pack_id: "pack-1",
             name: "Regression Suite",
             description: "Focused failures",
             status: "active",
@@ -410,15 +410,15 @@ describe("CreateRunDialog", () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-packs",
+          "/v1/workspaces/ws-1/challenge-packs",
         );
       });
 
       const packSelect = document.querySelector(
-        'select[aria-label="Eval Pack"]',
+        'select[aria-label="Challenge Pack"]',
       );
       if (!(packSelect instanceof HTMLSelectElement)) {
-        throw new Error("Eval Pack select not found");
+        throw new Error("Challenge Pack select not found");
       }
       changeSelect(packSelect, "pack-1");
 
@@ -429,7 +429,7 @@ describe("CreateRunDialog", () => {
       });
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-pack-versions/version-1/input-sets",
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
         );
       });
 
@@ -451,7 +451,7 @@ describe("CreateRunDialog", () => {
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith("/v1/runs", {
           workspace_id: "ws-1",
-          eval_pack_version_id: "version-1",
+          challenge_pack_version_id: "version-1",
           challenge_input_set_id: undefined,
           name: undefined,
           agent_deployment_ids: ["deploy-1"],
@@ -467,7 +467,7 @@ describe("CreateRunDialog", () => {
     }
   });
 
-  it("submits text-sim mode when a voice eval pack version is selected", async () => {
+  it("submits text-sim mode when a voice challenge pack version is selected", async () => {
     const api = buildApiMock({
       versions: [
         {
@@ -490,21 +490,21 @@ describe("CreateRunDialog", () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-packs",
+          "/v1/workspaces/ws-1/challenge-packs",
         );
       });
 
       const packSelect = document.querySelector(
-        'select[aria-label="Eval Pack"]',
+        'select[aria-label="Challenge Pack"]',
       );
       if (!(packSelect instanceof HTMLSelectElement)) {
-        throw new Error("Eval Pack select not found");
+        throw new Error("Challenge Pack select not found");
       }
       changeSelect(packSelect, "pack-1");
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-pack-versions/version-voice/input-sets",
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-voice/input-sets",
         );
       });
 
@@ -524,7 +524,7 @@ describe("CreateRunDialog", () => {
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith("/v1/runs", {
           workspace_id: "ws-1",
-          eval_pack_version_id: "version-voice",
+          challenge_pack_version_id: "version-voice",
           challenge_input_set_id: undefined,
           name: undefined,
           agent_deployment_ids: ["deploy-1"],
@@ -550,15 +550,15 @@ describe("CreateRunDialog", () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-packs",
+          "/v1/workspaces/ws-1/challenge-packs",
         );
       });
 
       const packSelect = document.querySelector(
-        'select[aria-label="Eval Pack"]',
+        'select[aria-label="Challenge Pack"]',
       );
       if (!(packSelect instanceof HTMLSelectElement)) {
-        throw new Error("Eval Pack select not found");
+        throw new Error("Challenge Pack select not found");
       }
       changeSelect(packSelect, "pack-1");
 
@@ -569,7 +569,7 @@ describe("CreateRunDialog", () => {
       });
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-pack-versions/version-1/input-sets",
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
         );
       });
 
@@ -587,7 +587,7 @@ describe("CreateRunDialog", () => {
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith("/v1/runs", {
           workspace_id: "ws-1",
-          eval_pack_version_id: "version-1",
+          challenge_pack_version_id: "version-1",
           challenge_input_set_id: undefined,
           name: undefined,
           agent_deployment_ids: ["deploy-1"],
@@ -613,15 +613,15 @@ describe("CreateRunDialog", () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-packs",
+          "/v1/workspaces/ws-1/challenge-packs",
         );
       });
 
       const packSelect = document.querySelector(
-        'select[aria-label="Eval Pack"]',
+        'select[aria-label="Challenge Pack"]',
       );
       if (!(packSelect instanceof HTMLSelectElement)) {
-        throw new Error("Eval Pack select not found");
+        throw new Error("Challenge Pack select not found");
       }
       changeSelect(packSelect, "pack-1");
 
@@ -632,7 +632,7 @@ describe("CreateRunDialog", () => {
       });
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-pack-versions/version-1/input-sets",
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
         );
       });
 
@@ -653,7 +653,7 @@ describe("CreateRunDialog", () => {
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith("/v1/runs", {
           workspace_id: "ws-1",
-          eval_pack_version_id: "version-1",
+          challenge_pack_version_id: "version-1",
           challenge_input_set_id: undefined,
           name: undefined,
           agent_deployment_ids: ["deploy-1"],
@@ -678,15 +678,15 @@ describe("CreateRunDialog", () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-packs",
+          "/v1/workspaces/ws-1/challenge-packs",
         );
       });
 
       const packSelect = document.querySelector(
-        'select[aria-label="Eval Pack"]',
+        'select[aria-label="Challenge Pack"]',
       );
       if (!(packSelect instanceof HTMLSelectElement)) {
-        throw new Error("Eval Pack select not found");
+        throw new Error("Challenge Pack select not found");
       }
       changeSelect(packSelect, "pack-1");
 
@@ -697,7 +697,7 @@ describe("CreateRunDialog", () => {
       });
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-pack-versions/version-1/input-sets",
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
         );
       });
 
@@ -718,7 +718,7 @@ describe("CreateRunDialog", () => {
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith("/v1/runs", {
           workspace_id: "ws-1",
-          eval_pack_version_id: "version-1",
+          challenge_pack_version_id: "version-1",
           challenge_input_set_id: undefined,
           name: undefined,
           agent_deployment_ids: ["deploy-1"],
@@ -774,21 +774,21 @@ describe("CreateRunDialog", () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-packs",
+          "/v1/workspaces/ws-1/challenge-packs",
         );
       });
 
       const packSelect = document.querySelector(
-        'select[aria-label="Eval Pack"]',
+        'select[aria-label="Challenge Pack"]',
       );
       if (!(packSelect instanceof HTMLSelectElement)) {
-        throw new Error("Eval Pack select not found");
+        throw new Error("Challenge Pack select not found");
       }
       changeSelect(packSelect, "pack-1");
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-pack-versions/version-1/input-sets",
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
         );
       });
 
@@ -824,21 +824,21 @@ describe("CreateRunDialog", () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-packs",
+          "/v1/workspaces/ws-1/challenge-packs",
         );
       });
 
       const packSelect = document.querySelector(
-        'select[aria-label="Eval Pack"]',
+        'select[aria-label="Challenge Pack"]',
       );
       if (!(packSelect instanceof HTMLSelectElement)) {
-        throw new Error("Eval Pack select not found");
+        throw new Error("Challenge Pack select not found");
       }
       changeSelect(packSelect, "pack-1");
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-pack-versions/version-1/input-sets",
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
         );
       });
 
@@ -867,15 +867,15 @@ describe("CreateRunDialog", () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-packs",
+          "/v1/workspaces/ws-1/challenge-packs",
         );
       });
 
       const packSelect = document.querySelector(
-        'select[aria-label="Eval Pack"]',
+        'select[aria-label="Challenge Pack"]',
       );
       if (!(packSelect instanceof HTMLSelectElement)) {
-        throw new Error("Eval Pack select not found");
+        throw new Error("Challenge Pack select not found");
       }
       changeSelect(packSelect, "pack-1");
 
@@ -914,7 +914,7 @@ describe("CreateRunDialog", () => {
         "version-1": [
           {
             id: "input-1",
-            eval_pack_version_id: "version-1",
+            challenge_pack_version_id: "version-1",
             input_key: "support_ticket_triage",
             name: "Support Ticket Triage",
           },
@@ -929,21 +929,21 @@ describe("CreateRunDialog", () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-packs",
+          "/v1/workspaces/ws-1/challenge-packs",
         );
       });
 
       const packSelect = document.querySelector(
-        'select[aria-label="Eval Pack"]',
+        'select[aria-label="Challenge Pack"]',
       );
       if (!(packSelect instanceof HTMLSelectElement)) {
-        throw new Error("Eval Pack select not found");
+        throw new Error("Challenge Pack select not found");
       }
       changeSelect(packSelect, "pack-1");
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-pack-versions/version-1/input-sets",
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
         );
       });
 
@@ -962,7 +962,7 @@ describe("CreateRunDialog", () => {
       await waitFor(() => {
         expect(api.post).toHaveBeenCalledWith("/v1/runs", {
           workspace_id: "ws-1",
-          eval_pack_version_id: "version-1",
+          challenge_pack_version_id: "version-1",
           challenge_input_set_id: "input-1",
           name: undefined,
           agent_deployment_ids: ["deploy-1"],
@@ -983,13 +983,13 @@ describe("CreateRunDialog", () => {
         "version-1": [
           {
             id: "input-1",
-            eval_pack_version_id: "version-1",
+            challenge_pack_version_id: "version-1",
             input_key: "support_ticket_triage",
             name: "Support Ticket Triage",
           },
           {
             id: "input-2",
-            eval_pack_version_id: "version-1",
+            challenge_pack_version_id: "version-1",
             input_key: "incident_summary",
             name: "Incident Summary",
           },
@@ -1004,21 +1004,21 @@ describe("CreateRunDialog", () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-packs",
+          "/v1/workspaces/ws-1/challenge-packs",
         );
       });
 
       const packSelect = document.querySelector(
-        'select[aria-label="Eval Pack"]',
+        'select[aria-label="Challenge Pack"]',
       );
       if (!(packSelect instanceof HTMLSelectElement)) {
-        throw new Error("Eval Pack select not found");
+        throw new Error("Challenge Pack select not found");
       }
       changeSelect(packSelect, "pack-1");
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-pack-versions/version-1/input-sets",
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
         );
       });
 
@@ -1061,13 +1061,13 @@ describe("CreateRunDialog", () => {
         "version-1": [
           {
             id: "input-1",
-            eval_pack_version_id: "version-1",
+            challenge_pack_version_id: "version-1",
             input_key: "support_ticket_triage",
             name: "Support Ticket Triage",
           },
           {
             id: "input-2",
-            eval_pack_version_id: "version-1",
+            challenge_pack_version_id: "version-1",
             input_key: "incident_summary",
             name: "Incident Summary",
           },
@@ -1075,7 +1075,7 @@ describe("CreateRunDialog", () => {
         "version-2": [
           {
             id: "input-3",
-            eval_pack_version_id: "version-2",
+            challenge_pack_version_id: "version-2",
             input_key: "invoice_total_extraction",
             name: "Invoice Total Extraction",
           },
@@ -1090,29 +1090,29 @@ describe("CreateRunDialog", () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-packs",
+          "/v1/workspaces/ws-1/challenge-packs",
         );
       });
 
       const packSelect = document.querySelector(
-        'select[aria-label="Eval Pack"]',
+        'select[aria-label="Challenge Pack"]',
       );
       if (!(packSelect instanceof HTMLSelectElement)) {
-        throw new Error("Eval Pack select not found");
+        throw new Error("Challenge Pack select not found");
       }
       changeSelect(packSelect, "pack-1");
 
       const versionSelect = document.querySelector(
-        'select[aria-label="Eval Pack Version"]',
+        'select[aria-label="Challenge Pack Version"]',
       );
       if (!(versionSelect instanceof HTMLSelectElement)) {
-        throw new Error("Eval Pack Version select not found");
+        throw new Error("Challenge Pack Version select not found");
       }
       changeSelect(versionSelect, "version-1");
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-pack-versions/version-1/input-sets",
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-1/input-sets",
         );
       });
 
@@ -1129,7 +1129,7 @@ describe("CreateRunDialog", () => {
 
       await waitFor(() => {
         expect(api.get).toHaveBeenCalledWith(
-          "/v1/workspaces/ws-1/eval-pack-versions/version-2/input-sets",
+          "/v1/workspaces/ws-1/challenge-pack-versions/version-2/input-sets",
         );
       });
 

@@ -572,22 +572,22 @@ export interface ProviderConnectionModel {
   pricing_source: ProviderConnectionModelPricingSource;
 }
 
-// --- Eval Packs ---
+// --- Challenge Packs ---
 
-/** GET /v1/workspaces/{id}/eval-packs list item */
-export interface EvalPack {
+/** GET /v1/workspaces/{id}/challenge-packs list item */
+export interface ChallengePack {
   id: string;
   name: string;
   slug: string;
   description?: string;
-  versions: EvalPackVersion[];
+  versions: ChallengePackVersion[];
   created_at: string;
   updated_at: string;
 }
 
-export interface EvalPackVersion {
+export interface ChallengePackVersion {
   id: string;
-  eval_pack_id: string;
+  challenge_pack_id: string;
   version_number: number;
   lifecycle_status: string; // "draft" | "runnable" | "deprecated" | "archived"
   deployment_defaults?: unknown;
@@ -599,7 +599,7 @@ export interface EvalPackVersion {
 
 export interface ChallengeInputSetSummary {
   id: string;
-  eval_pack_version_id: string;
+  challenge_pack_version_id: string;
   input_key: string;
   name: string;
 }
@@ -607,7 +607,7 @@ export interface ChallengeInputSetSummary {
 // --- Public Shares ---
 
 export type PublicShareResourceType =
-  | "eval_pack_version"
+  | "challenge_pack_version"
   | "run_scorecard"
   | "run_agent_scorecard"
   | "run_agent_replay";
@@ -638,16 +638,16 @@ export interface PublicShareResponse {
   };
 }
 
-/** POST /v1/workspaces/{id}/eval-packs/validate response */
-export interface ValidateEvalPackResponse {
+/** POST /v1/workspaces/{id}/challenge-packs/validate response */
+export interface ValidateChallengePackResponse {
   valid: boolean;
   errors: ValidationError[];
 }
 
-/** POST /v1/workspaces/{id}/eval-packs response (201) */
-export interface PublishEvalPackResponse {
-  eval_pack_id: string;
-  eval_pack_version_id: string;
+/** POST /v1/workspaces/{id}/challenge-packs response (201) */
+export interface PublishChallengePackResponse {
+  challenge_pack_id: string;
+  challenge_pack_version_id: string;
   evaluation_spec_id: string;
   input_set_ids: string[];
   bundle_artifact_id?: string;
@@ -659,7 +659,7 @@ export interface PublishEvalPackResponse {
 export interface Run {
   id: string;
   workspace_id: string;
-  eval_pack_version_id: string;
+  challenge_pack_version_id: string;
   challenge_input_set_id?: string;
   official_pack_mode: OfficialPackMode;
   name: string;
@@ -742,7 +742,7 @@ export type OfficialPackMode = "full" | "suite_only";
 /** POST /v1/runs request */
 export interface CreateRunRequest {
   workspace_id: string;
-  eval_pack_version_id: string;
+  challenge_pack_version_id: string;
   challenge_input_set_id?: string;
   name?: string;
   mode?: string;
@@ -760,7 +760,7 @@ export interface CreateRunRequest {
 export interface CreateRunResponse {
   id: string;
   workspace_id: string;
-  eval_pack_version_id: string;
+  challenge_pack_version_id: string;
   challenge_input_set_id?: string;
   official_pack_mode: OfficialPackMode;
   status: RunStatus;
@@ -848,7 +848,7 @@ export interface CreateEvalSessionConfig {
 
 export interface CreateEvalSessionRequest {
   workspace_id: string;
-  eval_pack_version_id: string;
+  challenge_pack_version_id: string;
   challenge_input_set_id?: string;
   participants: EvalSessionParticipantInput[];
   execution_mode?: "single_agent" | "comparison";
@@ -890,7 +890,7 @@ export interface EvalSessionRunSummary {
 export interface EvalSessionChildRun {
   id: string;
   workspace_id: string;
-  eval_pack_version_id: string;
+  challenge_pack_version_id: string;
   challenge_input_set_id?: string;
   eval_session_id?: string;
   official_pack_mode: OfficialPackMode;
@@ -1985,7 +1985,7 @@ export interface RegressionCaseValidation {
 export interface RegressionSuite {
   id: string;
   workspace_id: string;
-  source_eval_pack_id: string;
+  source_challenge_pack_id: string;
   name: string;
   description: string;
   status: RegressionSuiteStatus;
@@ -2011,7 +2011,7 @@ export interface RegressionCase {
   source_run_id?: string;
   source_run_agent_id?: string;
   source_replay_id?: string;
-  source_eval_pack_version_id: string;
+  source_challenge_pack_version_id: string;
   source_challenge_input_set_id?: string;
   source_challenge_identity_id: string;
   source_challenge_key?: string;
@@ -2034,7 +2034,7 @@ export interface RegressionCase {
 
 /** POST /v1/workspaces/{ws}/regression-suites request */
 export interface CreateRegressionSuiteInput {
-  source_eval_pack_id: string;
+  source_challenge_pack_id: string;
   name: string;
   description?: string;
   default_gate_severity?: RegressionSeverity;
@@ -2088,7 +2088,7 @@ export interface Dataset {
   description: string;
   input_schema?: Record<string, unknown>;
   input_schema_enforced: boolean;
-  default_eval_pack_version_id?: string;
+  default_challenge_pack_version_id?: string;
   active_example_count: number;
   version_count: number;
   created_by: string;
@@ -2132,7 +2132,7 @@ export interface DatasetBaseline {
   dataset_id: string;
   dataset_version_id: string;
   dataset_version_input_set_id?: string;
-  eval_pack_version_id: string;
+  challenge_pack_version_id: string;
   challenge_key: string;
   agent_deployment_id?: string;
   run_id: string;
@@ -2190,7 +2190,7 @@ export interface CreateDatasetInput {
   description?: string;
   input_schema?: Record<string, unknown>;
   input_schema_enforced?: boolean;
-  default_eval_pack_version_id?: string;
+  default_challenge_pack_version_id?: string;
 }
 
 export interface PatchDatasetInput {
@@ -2199,7 +2199,7 @@ export interface PatchDatasetInput {
   description?: string;
   input_schema?: Record<string, unknown>;
   input_schema_enforced?: boolean;
-  default_eval_pack_version_id?: string;
+  default_challenge_pack_version_id?: string;
 }
 
 export interface UpsertDatasetExampleInput {
@@ -2265,7 +2265,7 @@ export interface DatasetImportResponse {
 
 export interface StartDatasetEvalInput {
   version_id: string;
-  eval_pack_version_id: string;
+  challenge_pack_version_id: string;
   challenge_id?: string;
   challenge_key?: string;
   mapping?: Record<string, unknown>;
@@ -2277,7 +2277,7 @@ export interface DatasetVersionInputSet {
   id: string;
   dataset_id: string;
   dataset_version_id: string;
-  eval_pack_version_id: string;
+  challenge_pack_version_id: string;
   challenge_identity_id: string;
   challenge_key: string;
   challenge_input_set_id: string;
@@ -2319,7 +2319,7 @@ export interface CreateDatasetBaselineInput {
 
 export interface SyncDatasetRegressionSuiteInput {
   version_id: string;
-  eval_pack_version_id: string;
+  challenge_pack_version_id: string;
   challenge_key: string;
   regression_suite_id?: string;
   suite_name?: string;

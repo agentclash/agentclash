@@ -685,7 +685,7 @@ func buildHostedTaskPayload(executionContext repository.RunAgentExecutionContext
 	type taskPayload struct {
 		RunID                uuid.UUID          `json:"run_id"`
 		RunAgentID           uuid.UUID          `json:"run_agent_id"`
-		EvalPackVersion json.RawMessage    `json:"eval_pack_version"`
+		ChallengePackVersion json.RawMessage    `json:"challenge_pack_version"`
 		ChallengeInputSet    *challengeInputSet `json:"challenge_input_set,omitempty"`
 		DeploymentConfig     json.RawMessage    `json:"deployment_config"`
 	}
@@ -704,7 +704,7 @@ func buildHostedTaskPayload(executionContext repository.RunAgentExecutionContext
 	payload, err := json.Marshal(taskPayload{
 		RunID:                executionContext.Run.ID,
 		RunAgentID:           executionContext.RunAgent.ID,
-		EvalPackVersion: executionContext.EvalPackVersion.Manifest,
+		ChallengePackVersion: executionContext.ChallengePackVersion.Manifest,
 		ChallengeInputSet:    inputSet,
 		DeploymentConfig:     executionContext.Deployment.SnapshotConfig,
 	})

@@ -14,13 +14,13 @@ import (
 )
 
 // extractPostExecutionChecks loads post-execution check declarations from the
-// eval pack manifest's evaluation spec. Returns nil when the manifest
+// challenge pack manifest's evaluation spec. Returns nil when the manifest
 // cannot be parsed or contains no checks.
 func extractPostExecutionChecks(executionContext repository.RunAgentExecutionContext) []scoring.PostExecutionCheck {
-	if len(executionContext.EvalPackVersion.Manifest) == 0 {
+	if len(executionContext.ChallengePackVersion.Manifest) == 0 {
 		return nil
 	}
-	spec, err := scoring.LoadEvaluationSpec(executionContext.EvalPackVersion.Manifest)
+	spec, err := scoring.LoadEvaluationSpec(executionContext.ChallengePackVersion.Manifest)
 	if err != nil {
 		return nil
 	}
@@ -50,10 +50,10 @@ func collectPostExecutionVerification(
 }
 
 func extractCodeExecutionChecks(executionContext repository.RunAgentExecutionContext) []codeExecutionCheck {
-	if len(executionContext.EvalPackVersion.Manifest) == 0 {
+	if len(executionContext.ChallengePackVersion.Manifest) == 0 {
 		return nil
 	}
-	spec, err := scoring.LoadEvaluationSpec(executionContext.EvalPackVersion.Manifest)
+	spec, err := scoring.LoadEvaluationSpec(executionContext.ChallengePackVersion.Manifest)
 	if err != nil {
 		return nil
 	}
@@ -246,7 +246,7 @@ func executeCodeExecutionCheck(
 	}
 
 	execResult, err := session.Exec(ctx, sandbox.ExecRequest{
-		// Intentionally run through the sandbox shell so eval-pack authors
+		// Intentionally run through the sandbox shell so challenge-pack authors
 		// can supply normal test commands (pipelines, env var expansion, `cd`,
 		// etc.). This is safe here because the command executes inside the same
 		// isolated ephemeral sandbox as the generated code under evaluation.

@@ -30,7 +30,7 @@ func (q *Queries) CountDatasetBaselinesByDatasetID(ctx context.Context, arg Coun
 }
 
 const getDatasetBaselineByID = `-- name: GetDatasetBaselineByID :one
-SELECT id, dataset_id, dataset_version_id, dataset_version_input_set_id, eval_pack_version_id, challenge_key, agent_deployment_id, run_id, pass_rate, metrics, example_outcomes, label, created_by_user_id, created_at
+SELECT id, dataset_id, dataset_version_id, dataset_version_input_set_id, challenge_pack_version_id, challenge_key, agent_deployment_id, run_id, pass_rate, metrics, example_outcomes, label, created_by_user_id, created_at
 FROM dataset_baselines
 WHERE id = $1
 `
@@ -47,7 +47,7 @@ func (q *Queries) GetDatasetBaselineByID(ctx context.Context, arg GetDatasetBase
 		&i.DatasetID,
 		&i.DatasetVersionID,
 		&i.DatasetVersionInputSetID,
-		&i.EvalPackVersionID,
+		&i.ChallengePackVersionID,
 		&i.ChallengeKey,
 		&i.AgentDeploymentID,
 		&i.RunID,
@@ -109,7 +109,7 @@ func (q *Queries) GetDatasetRegressionSuiteLinkByDatasetID(ctx context.Context, 
 }
 
 const getDatasetVersionInputSetByID = `-- name: GetDatasetVersionInputSetByID :one
-SELECT id, dataset_id, dataset_version_id, eval_pack_version_id, challenge_identity_id, challenge_key, challenge_input_set_id, input_key, input_checksum, mapping, created_at, updated_at
+SELECT id, dataset_id, dataset_version_id, challenge_pack_version_id, challenge_identity_id, challenge_key, challenge_input_set_id, input_key, input_checksum, mapping, created_at, updated_at
 FROM dataset_version_input_sets
 WHERE id = $1
 `
@@ -125,7 +125,7 @@ func (q *Queries) GetDatasetVersionInputSetByID(ctx context.Context, arg GetData
 		&i.ID,
 		&i.DatasetID,
 		&i.DatasetVersionID,
-		&i.EvalPackVersionID,
+		&i.ChallengePackVersionID,
 		&i.ChallengeIdentityID,
 		&i.ChallengeKey,
 		&i.ChallengeInputSetID,
@@ -143,7 +143,7 @@ INSERT INTO dataset_baselines (
     dataset_id,
     dataset_version_id,
     dataset_version_input_set_id,
-    eval_pack_version_id,
+    challenge_pack_version_id,
     challenge_key,
     agent_deployment_id,
     run_id,
@@ -166,14 +166,14 @@ INSERT INTO dataset_baselines (
     $11,
     $12
 )
-RETURNING id, dataset_id, dataset_version_id, dataset_version_input_set_id, eval_pack_version_id, challenge_key, agent_deployment_id, run_id, pass_rate, metrics, example_outcomes, label, created_by_user_id, created_at
+RETURNING id, dataset_id, dataset_version_id, dataset_version_input_set_id, challenge_pack_version_id, challenge_key, agent_deployment_id, run_id, pass_rate, metrics, example_outcomes, label, created_by_user_id, created_at
 `
 
 type InsertDatasetBaselineParams struct {
 	DatasetID                uuid.UUID
 	DatasetVersionID         uuid.UUID
 	DatasetVersionInputSetID *uuid.UUID
-	EvalPackVersionID        uuid.UUID
+	ChallengePackVersionID   uuid.UUID
 	ChallengeKey             string
 	AgentDeploymentID        *uuid.UUID
 	RunID                    uuid.UUID
@@ -189,7 +189,7 @@ func (q *Queries) InsertDatasetBaseline(ctx context.Context, arg InsertDatasetBa
 		arg.DatasetID,
 		arg.DatasetVersionID,
 		arg.DatasetVersionInputSetID,
-		arg.EvalPackVersionID,
+		arg.ChallengePackVersionID,
 		arg.ChallengeKey,
 		arg.AgentDeploymentID,
 		arg.RunID,
@@ -205,7 +205,7 @@ func (q *Queries) InsertDatasetBaseline(ctx context.Context, arg InsertDatasetBa
 		&i.DatasetID,
 		&i.DatasetVersionID,
 		&i.DatasetVersionInputSetID,
-		&i.EvalPackVersionID,
+		&i.ChallengePackVersionID,
 		&i.ChallengeKey,
 		&i.AgentDeploymentID,
 		&i.RunID,
@@ -220,7 +220,7 @@ func (q *Queries) InsertDatasetBaseline(ctx context.Context, arg InsertDatasetBa
 }
 
 const listDatasetBaselinesByDatasetID = `-- name: ListDatasetBaselinesByDatasetID :many
-SELECT id, dataset_id, dataset_version_id, dataset_version_input_set_id, eval_pack_version_id, challenge_key, agent_deployment_id, run_id, pass_rate, metrics, example_outcomes, label, created_by_user_id, created_at
+SELECT id, dataset_id, dataset_version_id, dataset_version_input_set_id, challenge_pack_version_id, challenge_key, agent_deployment_id, run_id, pass_rate, metrics, example_outcomes, label, created_by_user_id, created_at
 FROM dataset_baselines
 WHERE dataset_id = $1
 ORDER BY created_at DESC
@@ -247,7 +247,7 @@ func (q *Queries) ListDatasetBaselinesByDatasetID(ctx context.Context, arg ListD
 			&i.DatasetID,
 			&i.DatasetVersionID,
 			&i.DatasetVersionInputSetID,
-			&i.EvalPackVersionID,
+			&i.ChallengePackVersionID,
 			&i.ChallengeKey,
 			&i.AgentDeploymentID,
 			&i.RunID,

@@ -43,14 +43,14 @@ type linkedWorkspaceChoice struct {
 	OrgRole string
 }
 
-type evalPackWorkflowSummary struct {
+type challengePackWorkflowSummary struct {
 	ID       string                             `json:"id"`
 	Name     string                             `json:"name"`
 	Slug     string                             `json:"slug"`
-	Versions []evalPackWorkflowVersionInfo `json:"versions"`
+	Versions []challengePackWorkflowVersionInfo `json:"versions"`
 }
 
-type evalPackWorkflowVersionInfo struct {
+type challengePackWorkflowVersionInfo struct {
 	ID              string `json:"id"`
 	VersionNumber   int    `json:"version_number"`
 	LifecycleStatus string `json:"lifecycle_status"`
@@ -66,7 +66,7 @@ type deploymentWorkflowSummary struct {
 type regressionSuiteSummary struct {
 	ID                    string `json:"id"`
 	WorkspaceID           string `json:"workspace_id"`
-	SourceEvalPackID string `json:"source_eval_pack_id"`
+	SourceChallengePackID string `json:"source_challenge_pack_id"`
 	Name                  string `json:"name"`
 	Status                string `json:"status"`
 	CaseCount             int    `json:"case_count"`
@@ -77,7 +77,7 @@ type runWorkflowSummary struct {
 	WorkspaceID            string `json:"workspace_id"`
 	Name                   string `json:"name"`
 	Status                 string `json:"status"`
-	EvalPackVersionID string `json:"eval_pack_version_id"`
+	ChallengePackVersionID string `json:"challenge_pack_version_id"`
 	ChallengeInputSetID    string `json:"challenge_input_set_id"`
 	OfficialPackMode       string `json:"official_pack_mode"`
 	CreatedAt              string `json:"created_at"`
@@ -92,7 +92,7 @@ type runAgentWorkflowSummary struct {
 	AgentDeploymentID string `json:"agent_deployment_id"`
 }
 
-type resolvedEvalPack struct {
+type resolvedChallengePack struct {
 	PackID              string
 	PackName            string
 	PackSlug            string
@@ -206,8 +206,8 @@ func matchWorkspaceChoice(selector string, choices []linkedWorkspaceChoice) (lin
 	}
 }
 
-func listEvalPacksForWorkflow(cmd *cobra.Command, rc *RunContext, workspaceID string) ([]evalPackWorkflowSummary, error) {
-	resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+workspaceID+"/eval-packs", nil)
+func listChallengePacksForWorkflow(cmd *cobra.Command, rc *RunContext, workspaceID string) ([]challengePackWorkflowSummary, error) {
+	resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+workspaceID+"/challenge-packs", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +216,7 @@ func listEvalPacksForWorkflow(cmd *cobra.Command, rc *RunContext, workspaceID st
 	}
 
 	var result struct {
-		Items []evalPackWorkflowSummary `json:"items"`
+		Items []challengePackWorkflowSummary `json:"items"`
 	}
 	if err := resp.DecodeJSON(&result); err != nil {
 		return nil, err
@@ -224,29 +224,29 @@ func listEvalPacksForWorkflow(cmd *cobra.Command, rc *RunContext, workspaceID st
 	return result.Items, nil
 }
 
-func resolveEvalPackForEval(cmd *cobra.Command, rc *RunContext, workspaceID, packSelector, versionSelector, inputSetSelector string) (resolvedEvalPack, error) {
-	packs, err := listEvalPacksForWorkflow(cmd, rc, workspaceID)
+func resolveChallengePackForEval(cmd *cobra.Command, rc *RunContext, workspaceID, packSelector, versionSelector, inputSetSelector string) (resolvedChallengePack, error) {
+	packs, err := listChallengePacksForWorkflow(cmd, rc, workspaceID)
 	if err != nil {
-		return resolvedEvalPack{}, err
+		return resolvedChallengePack{}, err
 	}
 	if len(packs) == 0 {
-		return resolvedEvalPack{}, fmt.Errorf("no eval packs found in workspace %s", workspaceID)
+		return resolvedChallengePack{}, fmt.Errorf("no challenge packs found in workspace %s", workspaceID)
 	}
 
-	pack, err := selectEvalPack(cmd, rc, packs, packSelector, versionSelector)
+	pack, err := selectChallengePack(cmd, rc, packs, packSelector, versionSelector)
 	if err != nil {
-		return resolvedEvalPack{}, err
+		return resolvedChallengePack{}, err
 	}
-	version, err := selectEvalPackVersion(pack, versionSelector)
+	version, err := selectChallengePackVersion(pack, versionSelector)
 	if err != nil {
-		return resolvedEvalPack{}, err
+		return resolvedChallengePack{}, err
 	}
 	inputSetID, err := resolveChallengeInputSetID(cmd, rc, workspaceID, version.ID, inputSetSelector)
 	if err != nil {
-		return resolvedEvalPack{}, err
+		return resolvedChallengePack{}, err
 	}
 
-	return resolvedEvalPack{
+	return resolvedChallengePack{
 		PackID:              pack.ID,
 		PackName:            pack.Name,
 		PackSlug:            pack.Slug,
@@ -256,13 +256,13 @@ func resolveEvalPackForEval(cmd *cobra.Command, rc *RunContext, workspaceID, pac
 	}, nil
 }
 
-func selectEvalPack(cmd *cobra.Command, rc *RunContext, packs []evalPackWorkflowSummary, packSelector, versionSelector string) (evalPackWorkflowSummary, error) {
+func selectChallengePack(cmd *cobra.Command, rc *RunContext, packs []challengePackWorkflowSummary, packSelector, versionSelector string) (challengePackWorkflowSummary, error) {
 	if packSelector != "" {
-		return matchEvalPack(packSelector, packs)
+		return matchChallengePack(packSelector, packs)
 	}
 
 	if versionSelector != "" {
-		var matches []evalPackWorkflowSummary
+		var matches []challengePackWorkflowSummary
 		for _, pack := range packs {
 			for _, version := range pack.Versions {
 				if selectorMatches(versionSelector, version.ID) {
@@ -273,11 +273,11 @@ func selectEvalPack(cmd *cobra.Command, rc *RunContext, packs []evalPackWorkflow
 		}
 		switch len(matches) {
 		case 0:
-			return evalPackWorkflowSummary{}, fmt.Errorf("no eval pack version matched %q", versionSelector)
+			return challengePackWorkflowSummary{}, fmt.Errorf("no challenge pack version matched %q", versionSelector)
 		case 1:
 			return matches[0], nil
 		default:
-			return evalPackWorkflowSummary{}, fmt.Errorf("eval pack version selector %q matched multiple packs; pass --pack as well", versionSelector)
+			return challengePackWorkflowSummary{}, fmt.Errorf("challenge pack version selector %q matched multiple packs; pass --pack as well", versionSelector)
 		}
 	}
 
@@ -285,7 +285,7 @@ func selectEvalPack(cmd *cobra.Command, rc *RunContext, packs []evalPackWorkflow
 		return packs[0], nil
 	}
 	if !isInteractiveTerminal(rc) {
-		return evalPackWorkflowSummary{}, fmt.Errorf("multiple eval packs available; pass --pack, --pack-version, or rerun `agentclash eval start` in a TTY")
+		return challengePackWorkflowSummary{}, fmt.Errorf("multiple challenge packs available; pass --pack, --pack-version, or rerun `agentclash eval start` in a TTY")
 	}
 
 	options := make([]pickerOption, 0, len(packs))
@@ -296,15 +296,15 @@ func selectEvalPack(cmd *cobra.Command, rc *RunContext, packs []evalPackWorkflow
 			Value:       pack.ID,
 		})
 	}
-	selected, err := selectOneOrAuto(newInteractivePicker(), "Choose a eval pack", options)
+	selected, err := selectOneOrAuto(newInteractivePicker(), "Choose a challenge pack", options)
 	if err != nil {
-		return evalPackWorkflowSummary{}, err
+		return challengePackWorkflowSummary{}, err
 	}
-	return matchEvalPack(selected.Value, packs)
+	return matchChallengePack(selected.Value, packs)
 }
 
-func matchEvalPack(selector string, packs []evalPackWorkflowSummary) (evalPackWorkflowSummary, error) {
-	var matches []evalPackWorkflowSummary
+func matchChallengePack(selector string, packs []challengePackWorkflowSummary) (challengePackWorkflowSummary, error) {
+	var matches []challengePackWorkflowSummary
 	for _, pack := range packs {
 		if selectorMatches(selector, pack.ID, pack.Slug, pack.Name) {
 			matches = append(matches, pack)
@@ -312,20 +312,20 @@ func matchEvalPack(selector string, packs []evalPackWorkflowSummary) (evalPackWo
 	}
 	switch len(matches) {
 	case 0:
-		return evalPackWorkflowSummary{}, fmt.Errorf("no eval pack matched %q", selector)
+		return challengePackWorkflowSummary{}, fmt.Errorf("no challenge pack matched %q", selector)
 	case 1:
 		return matches[0], nil
 	default:
-		return evalPackWorkflowSummary{}, fmt.Errorf("eval pack selector %q matched multiple packs; use the pack id or slug", selector)
+		return challengePackWorkflowSummary{}, fmt.Errorf("challenge pack selector %q matched multiple packs; use the pack id or slug", selector)
 	}
 }
 
-func selectEvalPackVersion(pack evalPackWorkflowSummary, versionSelector string) (evalPackWorkflowVersionInfo, error) {
+func selectChallengePackVersion(pack challengePackWorkflowSummary, versionSelector string) (challengePackWorkflowVersionInfo, error) {
 	if len(pack.Versions) == 0 {
-		return evalPackWorkflowVersionInfo{}, fmt.Errorf("eval pack %s has no versions", pack.Name)
+		return challengePackWorkflowVersionInfo{}, fmt.Errorf("challenge pack %s has no versions", pack.Name)
 	}
 
-	versions := append([]evalPackWorkflowVersionInfo(nil), pack.Versions...)
+	versions := append([]challengePackWorkflowVersionInfo(nil), pack.Versions...)
 	sort.SliceStable(versions, func(i, j int) bool {
 		return versions[i].VersionNumber > versions[j].VersionNumber
 	})
@@ -337,7 +337,7 @@ func selectEvalPackVersion(pack evalPackWorkflowSummary, versionSelector string)
 	trimmed := strings.TrimSpace(strings.TrimPrefix(strings.ToLower(versionSelector), "v"))
 	versionNumber, versionNumberErr := strconv.Atoi(trimmed)
 
-	var matches []evalPackWorkflowVersionInfo
+	var matches []challengePackWorkflowVersionInfo
 	for _, version := range versions {
 		if selectorMatches(versionSelector, version.ID) {
 			matches = append(matches, version)
@@ -349,16 +349,16 @@ func selectEvalPackVersion(pack evalPackWorkflowSummary, versionSelector string)
 	}
 	switch len(matches) {
 	case 0:
-		return evalPackWorkflowVersionInfo{}, fmt.Errorf("no eval pack version matched %q for pack %s", versionSelector, pack.Name)
+		return challengePackWorkflowVersionInfo{}, fmt.Errorf("no challenge pack version matched %q for pack %s", versionSelector, pack.Name)
 	case 1:
 		return matches[0], nil
 	default:
-		return evalPackWorkflowVersionInfo{}, fmt.Errorf("eval pack version selector %q matched multiple versions", versionSelector)
+		return challengePackWorkflowVersionInfo{}, fmt.Errorf("challenge pack version selector %q matched multiple versions", versionSelector)
 	}
 }
 
-func resolveChallengeInputSetID(cmd *cobra.Command, rc *RunContext, workspaceID, evalPackVersionID, selector string) (string, error) {
-	inputSets, err := listChallengeInputSets(cmd, rc, workspaceID, evalPackVersionID)
+func resolveChallengeInputSetID(cmd *cobra.Command, rc *RunContext, workspaceID, challengePackVersionID, selector string) (string, error) {
+	inputSets, err := listChallengeInputSets(cmd, rc, workspaceID, challengePackVersionID)
 	if err != nil {
 		return "", err
 	}
@@ -393,7 +393,7 @@ func resolveChallengeInputSetID(cmd *cobra.Command, rc *RunContext, workspaceID,
 		return inputSets[0].ID, nil
 	}
 	if !isInteractiveTerminal(rc) {
-		return "", fmt.Errorf("eval pack has multiple input sets; pass --input-set or rerun `agentclash eval start` in a TTY")
+		return "", fmt.Errorf("challenge pack has multiple input sets; pass --input-set or rerun `agentclash eval start` in a TTY")
 	}
 
 	options := make([]pickerOption, 0, len(inputSets))
@@ -553,7 +553,7 @@ func resolveRegressionSuiteIDs(cmd *cobra.Command, rc *RunContext, workspaceID, 
 func matchRegressionSuite(selector, packID string, suites []regressionSuiteSummary) (regressionSuiteSummary, error) {
 	var matches []regressionSuiteSummary
 	for _, suite := range suites {
-		if packID != "" && suite.SourceEvalPackID != "" && suite.SourceEvalPackID != packID {
+		if packID != "" && suite.SourceChallengePackID != "" && suite.SourceChallengePackID != packID {
 			continue
 		}
 		if selectorMatches(selector, suite.ID, suite.Name) {
@@ -563,7 +563,7 @@ func matchRegressionSuite(selector, packID string, suites []regressionSuiteSumma
 	switch len(matches) {
 	case 0:
 		if packID != "" {
-			return regressionSuiteSummary{}, fmt.Errorf("no regression suite matched %q for the selected eval pack", selector)
+			return regressionSuiteSummary{}, fmt.Errorf("no regression suite matched %q for the selected challenge pack", selector)
 		}
 		return regressionSuiteSummary{}, fmt.Errorf("no regression suite matched %q", selector)
 	case 1:

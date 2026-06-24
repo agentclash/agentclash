@@ -7,7 +7,7 @@ AgentClash. It is not the AgentClash source repo.
 ## What AgentClash is
 
 AgentClash is a race engine: it pits AI models/agents against each other on real
-tasks with live scoring. You define a **eval pack** (the eval workload), run
+tasks with live scoring. You define a **challenge pack** (the eval workload), run
 **agents** (model + runtime + tools) against it, and read a **scorecard**. There
 are **no built-in packs** — every workspace authors its own.
 
@@ -65,7 +65,7 @@ agentclash integration <agent> doctor     # report installed / missing / drifted
 Once installed, **load `agentclash-hub` first** — it is the entrypoint and
 carries the full workflow map, skill dependency order, hosted defaults, and
 product UI links. Other notable skills: `agentclash-cli-setup`,
-`agentclash-eval-pack-yaml-author`, `agentclash-eval-runner`,
+`agentclash-challenge-pack-yaml-author`, `agentclash-eval-runner`,
 `agentclash-scorecard-reader`, `agentclash-compare-and-triage`,
 `agentclash-regression-flywheel`, `agentclash-ci-release-gate`.
 
@@ -77,7 +77,7 @@ product UI links. Other notable skills: `agentclash-cli-setup`,
 3. runtime-resources-setup           → provider, model alias, runtime profile, secrets
 4. agent-build-author                → build spec + ready build version
 5. agent-deployment-setup            → deployment ID for runs
-6. eval-pack skills             → plan, write YAML, validate, publish a pack
+6. challenge-pack skills             → plan, write YAML, validate, publish a pack
 7. agentclash-eval-runner            → eval start / run create / --follow / sessions
 8. agentclash-scorecard-reader       → rankings, scorecards, replay, artifacts
 9. agentclash-compare-and-triage     → baseline, compare latest/gate, replay triage
@@ -99,7 +99,7 @@ product UI links. Other notable skills: `agentclash-cli-setup`,
 
 - Trying to add provider keys or create deployments from the CLI — those are
   one-time **web** actions at https://agentclash.dev.
-- Running evals before a pack is published (`eval-pack ... validate` then
+- Running evals before a pack is published (`challenge-pack ... validate` then
   `publish`) or before a deployment exists.
 - Leaving `AGENTCLASH_API_URL` unset on a source build (it defaults to
   `http://localhost:8080`) and hitting an empty/wrong backend.

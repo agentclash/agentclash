@@ -170,7 +170,7 @@ export default function Landing2() {
               {[
                 {
                   title: "Define your benchmark",
-                  desc: "A eval pack with tasks, validators, and expected outputs. Versioned and immutable — the same version produces the same scores forever.",
+                  desc: "A challenge pack with tasks, validators, and expected outputs. Versioned and immutable — the same version produces the same scores forever.",
                 },
                 {
                   title: "Race your agents",

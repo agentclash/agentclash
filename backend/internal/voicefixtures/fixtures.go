@@ -25,7 +25,7 @@ const (
 var supportBillingFS embed.FS
 
 type SupportBillingFixture struct {
-	EvalPackYAML       []byte
+	ChallengePackYAML       []byte
 	ScriptedUserTurnsJSON   []byte
 	ExpectedToolCallJSON    []byte
 	ExpectedToolResultJSON  []byte
@@ -225,7 +225,7 @@ func LoadSupportBillingFixture() (SupportBillingFixture, error) {
 
 	var fixture SupportBillingFixture
 	var err error
-	if fixture.EvalPackYAML, err = read("eval_pack.yaml"); err != nil {
+	if fixture.ChallengePackYAML, err = read("challenge_pack.yaml"); err != nil {
 		return SupportBillingFixture{}, err
 	}
 	if fixture.ScriptedUserTurnsJSON, err = read("scripted_user_turns.json"); err != nil {

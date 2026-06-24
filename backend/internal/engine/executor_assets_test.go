@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
@@ -22,7 +22,7 @@ func TestStageArtifactBackedAssetsUploadsManifestAndInputCaseAssets(t *testing.T
 
 	executionContext := repository.RunAgentExecutionContext{
 		Run: domain.Run{WorkspaceID: workspaceID},
-		EvalPackVersion: repository.EvalPackVersionExecutionContext{
+		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
 			Manifest: []byte(fmt.Sprintf(`{
 				"version": {
 					"assets": [
@@ -43,7 +43,7 @@ func TestStageArtifactBackedAssetsUploadsManifestAndInputCaseAssets(t *testing.T
 			Cases: []repository.ChallengeCaseExecutionContext{
 				{
 					CaseKey: "forecast-case",
-					Assets: []evalpack.AssetReference{
+					Assets: []challengepack.AssetReference{
 						{Key: "case-data", Path: "/workspace/cases/input.json", ArtifactID: &caseAssetID},
 					},
 				},
@@ -74,7 +74,7 @@ func TestStageArtifactBackedAssetsUploadsManifestAndInputCaseAssets(t *testing.T
 
 func TestStageArtifactBackedAssetsSkipsInlineAssetsWithoutLoader(t *testing.T) {
 	executionContext := repository.RunAgentExecutionContext{
-		EvalPackVersion: repository.EvalPackVersionExecutionContext{
+		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
 			Manifest: []byte(`{
 				"version": {"assets": [{"key": "inline", "path": "/workspace/assets/inline.txt"}]},
 				"challenges": [{"key": "forecast", "assets": [{"key": "guide", "path": "/workspace/assets/guide.md"}]}]
@@ -84,7 +84,7 @@ func TestStageArtifactBackedAssetsSkipsInlineAssetsWithoutLoader(t *testing.T) {
 			Cases: []repository.ChallengeCaseExecutionContext{
 				{
 					CaseKey: "forecast-case",
-					Assets: []evalpack.AssetReference{
+					Assets: []challengepack.AssetReference{
 						{Key: "case-inline", Path: "/workspace/cases/inline.json"},
 					},
 				},
@@ -104,7 +104,7 @@ func TestStageArtifactBackedAssetsSkipsInlineAssetsWithoutLoader(t *testing.T) {
 func TestStageArtifactBackedAssetsFailsClosedWithoutLoader(t *testing.T) {
 	assetID := uuid.New()
 	executionContext := repository.RunAgentExecutionContext{
-		EvalPackVersion: repository.EvalPackVersionExecutionContext{
+		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
 			Manifest: []byte(fmt.Sprintf(`{
 				"version": {
 					"assets": [

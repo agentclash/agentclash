@@ -20,7 +20,7 @@ type SyncDatasetRegressionSuiteInput struct {
 	WorkspaceID            uuid.UUID
 	DatasetID              uuid.UUID
 	VersionID              uuid.UUID
-	EvalPackVersionID uuid.UUID
+	ChallengePackVersionID uuid.UUID
 	ChallengeKey           string
 	RegressionSuiteID      *uuid.UUID
 	SuiteName              *string
@@ -52,7 +52,7 @@ func (m *DatasetManager) SyncDatasetRegressionSuite(ctx context.Context, caller 
 		DatasetID:              input.DatasetID,
 		WorkspaceID:            input.WorkspaceID,
 		VersionID:              input.VersionID,
-		EvalPackVersionID: input.EvalPackVersionID,
+		ChallengePackVersionID: input.ChallengePackVersionID,
 		ChallengeKey:           input.ChallengeKey,
 		RegressionSuiteID:      input.RegressionSuiteID,
 		SuiteName:              input.SuiteName,
@@ -86,7 +86,7 @@ func syncDatasetRegressionSuiteHandler(logger *slog.Logger, service DatasetServi
 		}
 		var body struct {
 			VersionID              uuid.UUID  `json:"version_id"`
-			EvalPackVersionID uuid.UUID  `json:"eval_pack_version_id"`
+			ChallengePackVersionID uuid.UUID  `json:"challenge_pack_version_id"`
 			ChallengeKey           string     `json:"challenge_key"`
 			RegressionSuiteID      *uuid.UUID `json:"regression_suite_id,omitempty"`
 			SuiteName              *string    `json:"suite_name,omitempty"`
@@ -95,15 +95,15 @@ func syncDatasetRegressionSuiteHandler(logger *slog.Logger, service DatasetServi
 			writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
 			return
 		}
-		if body.VersionID == uuid.Nil || body.EvalPackVersionID == uuid.Nil || body.ChallengeKey == "" {
-			writeError(w, http.StatusBadRequest, "invalid_request", "version_id, eval_pack_version_id, and challenge_key are required")
+		if body.VersionID == uuid.Nil || body.ChallengePackVersionID == uuid.Nil || body.ChallengeKey == "" {
+			writeError(w, http.StatusBadRequest, "invalid_request", "version_id, challenge_pack_version_id, and challenge_key are required")
 			return
 		}
 		result, err := service.SyncDatasetRegressionSuite(r.Context(), caller, SyncDatasetRegressionSuiteInput{
 			WorkspaceID:            workspaceID,
 			DatasetID:              datasetID,
 			VersionID:              body.VersionID,
-			EvalPackVersionID: body.EvalPackVersionID,
+			ChallengePackVersionID: body.ChallengePackVersionID,
 			ChallengeKey:           body.ChallengeKey,
 			RegressionSuiteID:      body.RegressionSuiteID,
 			SuiteName:              body.SuiteName,
@@ -121,7 +121,7 @@ func handleDatasetRegressionSyncError(w http.ResponseWriter, logger *slog.Logger
 	case errors.Is(err, repository.ErrDatasetRegressionSuiteLinkNotFound):
 		writeError(w, http.StatusNotFound, "dataset_regression_suite_link_not_found", "dataset is not linked to a regression suite")
 	case errors.Is(err, repository.ErrRegressionSuitePackMismatch):
-		writeError(w, http.StatusBadRequest, "regression_suite_pack_mismatch", "regression suite must belong to the same eval pack")
+		writeError(w, http.StatusBadRequest, "regression_suite_pack_mismatch", "regression suite must belong to the same challenge pack")
 	case errors.Is(err, repository.ErrRegressionSuiteNameConflict):
 		writeError(w, http.StatusConflict, "regression_suite_name_conflict", "an active regression suite with this name already exists in the workspace")
 	default:

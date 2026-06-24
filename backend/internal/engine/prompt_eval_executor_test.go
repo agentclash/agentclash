@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -114,7 +114,7 @@ func TestPromptEvalExecutorUsesFirstCaseWhenInputSetHasMany(t *testing.T) {
 		ID:           uuid.New(),
 		ChallengeKey: "translate-greeting",
 		CaseKey:      "german-hello",
-		Inputs: []evalpack.CaseInput{
+		Inputs: []challengepack.CaseInput{
 			{Key: "text", Kind: "text", Value: "ignored text"},
 			{Key: "language", Kind: "text", Value: "German"},
 		},
@@ -140,7 +140,7 @@ func TestPromptEvalExecutorUsesFirstCaseWhenInputSetHasMany(t *testing.T) {
 
 func TestPromptEvalExecutorPassesThroughUnresolvedTokens(t *testing.T) {
 	ctx := promptEvalExecutionContext()
-	ctx.EvalPackVersion.Challenges[0].Definition = []byte(`{"instructions":"Use {{text}} and respect {{missing_var}}."}`)
+	ctx.ChallengePackVersion.Challenges[0].Definition = []byte(`{"instructions":"Use {{text}} and respect {{missing_var}}."}`)
 
 	client := &provider.FakeClient{Response: provider.Response{OutputText: "ok"}}
 	if _, err := NewPromptEvalExecutor(client, &recordingObserver{}).Execute(context.Background(), ctx); err != nil {
@@ -161,7 +161,7 @@ func TestPromptEvalExecutorPassesThroughUnresolvedTokens(t *testing.T) {
 
 func TestPromptEvalExecutorRejectsMissingInstructions(t *testing.T) {
 	ctx := promptEvalExecutionContext()
-	ctx.EvalPackVersion.Challenges[0].Definition = []byte(`{}`)
+	ctx.ChallengePackVersion.Challenges[0].Definition = []byte(`{}`)
 
 	client := &provider.FakeClient{Response: provider.Response{OutputText: "ignored"}}
 	_, err := NewPromptEvalExecutor(client, &recordingObserver{}).Execute(context.Background(), ctx)
@@ -242,7 +242,7 @@ func promptEvalExecutionContext() repository.RunAgentExecutionContext {
 	return repository.RunAgentExecutionContext{
 		Run:      domain.Run{ID: runID},
 		RunAgent: domain.RunAgent{ID: runAgentID, RunID: runID, Status: domain.RunAgentStatusQueued, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()},
-		EvalPackVersion: repository.EvalPackVersionExecutionContext{
+		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
 			ID:       uuid.New(),
 			Manifest: []byte(`{"version":{"execution_mode":"prompt_eval"}}`),
 			Challenges: []repository.ChallengeDefinitionExecutionContext{
@@ -263,7 +263,7 @@ func promptEvalExecutionContext() repository.RunAgentExecutionContext {
 					ID:           uuid.New(),
 					ChallengeKey: "translate-greeting",
 					CaseKey:      "french-hello",
-					Inputs: []evalpack.CaseInput{
+					Inputs: []challengepack.CaseInput{
 						{Key: "text", Kind: "text", Value: "hello world"},
 						{Key: "language", Kind: "text", Value: "French"},
 					},

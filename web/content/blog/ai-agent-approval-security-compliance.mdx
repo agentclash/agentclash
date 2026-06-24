@@ -23,11 +23,11 @@ Observability dashboards answer parts of question 4. Prompt evals answer parts o
 
 ## Bring a benchmark decision, not a trace export
 
-The enterprise pattern that works is a **governed benchmark decision**: frozen eval pack version, pinned baseline, named candidate, explicit gate policy, and a pass or fail verdict with replay attached.
+The enterprise pattern that works is a **governed benchmark decision**: frozen challenge pack version, pinned baseline, named candidate, explicit gate policy, and a pass or fail verdict with replay attached.
 
 Picture a platform lead preparing a coding agent release. They do not send security a LangSmith project link and hope for the best. They attach:
 
-- the eval pack version and input set approved for the quarter
+- the challenge pack version and input set approved for the quarter
 - baseline and candidate deployment IDs
 - scorecard deltas (correctness, cost, latency, evidence tier)
 - replay links for the cases that drove the verdict
@@ -55,7 +55,7 @@ Industry surveys consistently show a gap between documented AI policy and produc
 ## Approval checklist (copy into your review ticket)
 
 - [ ] Named candidate build and deployment (not "latest prod")
-- [ ] Frozen eval pack version and input set
+- [ ] Frozen challenge pack version and input set
 - [ ] Baseline run ID with max age policy documented
 - [ ] Gate policy written in scorecard dimensions, not prose
 - [ ] Replay retained per security retention rules
@@ -83,7 +83,7 @@ Yes, with explicit evidence tier labeling. `hosted_black_box` runs can inform pr
 
 ### What if we have no baseline yet?
 
-Run an exploratory benchmark, record the green run as baseline, then pin `baseline.run_id` in the manifest. Until that exists, `agentclash ci validate` flags a missing baseline selector. Separately, `agentclash doctor` treats a missing eval baseline bookmark as informational only ([eval workflows and gates](/docs/eval-packs/eval-workflows-and-gates)).
+Run an exploratory benchmark, record the green run as baseline, then pin `baseline.run_id` in the manifest. Until that exists, `agentclash ci validate` flags a missing baseline selector. Separately, `agentclash doctor` treats a missing eval baseline bookmark as informational only ([eval workflows and gates](/docs/challenge-packs/eval-workflows-and-gates)).
 
 ## Next step
 

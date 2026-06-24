@@ -4,7 +4,7 @@ description: Generate pinned dataset evals, record baselines, sync regression su
 dateModified: 2026-06-01
 ---
 
-Dataset evals run a **pinned version** of labeled examples through a eval pack and deployment, then compare candidate runs against recorded baselines. They complement ad-hoc eval runs when you need reproducible regression signal tied to curated examples.
+Dataset evals run a **pinned version** of labeled examples through a challenge pack and deployment, then compare candidate runs against recorded baselines. They complement ad-hoc eval runs when you need reproducible regression signal tied to curated examples.
 
 ## Lifecycle
 
@@ -22,7 +22,7 @@ export AGENTCLASH_WORKSPACE="<workspace-id>"
 # Start an eval against a pinned version
 agentclash dataset eval <datasetId> \
   --version <dataset-version-id> \
-  --pack <eval-pack-version-id> \
+  --pack <challenge-pack-version-id> \
   --challenge support \
   --deployment <deployment-id>
 ```
@@ -46,7 +46,7 @@ Syncing a pinned dataset version into a regression suite copies each example's p
 ```bash
 agentclash dataset sync-regression-suite <datasetId> \
   --version <dataset-version-id> \
-  --pack <eval-pack-version-id> \
+  --pack <challenge-pack-version-id> \
   --challenge support \
   --suite-name "Support dataset regression"
 ```
@@ -58,7 +58,7 @@ Re-running sync is idempotent: cases that already exist for an example are skipp
 `agentclash dataset test` supports human text, JSON gate payloads, and JUnit XML for CI parsers. Use `--max-regressions 0` to fail on any newly failing example versus the baseline.
 
 <Callout type="info">
-  Dataset gates are complementary to [CI/CD agent gates](/docs/guides/ci-cd-agent-gates) and [eval workflows](/docs/eval-packs/eval-workflows-and-gates). Use datasets when examples are curated and pinned; use eval scorecards when you are comparing agent revisions on a live pack.
+  Dataset gates are complementary to [CI/CD agent gates](/docs/guides/ci-cd-agent-gates) and [eval workflows](/docs/challenge-packs/eval-workflows-and-gates). Use datasets when examples are curated and pinned; use eval scorecards when you are comparing agent revisions on a live pack.
 </Callout>
 
 ## See also

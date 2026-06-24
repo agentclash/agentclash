@@ -21,7 +21,7 @@ Configure an AgentClash CLI session that can reach the intended backend, authent
 
 ## Do Not Use When
 - The CLI is already configured and the task is to run an eval or inspect a scorecard.
-- The user needs to author eval pack YAML; use `agentclash-eval-pack-yaml-author` after setup passes.
+- The user needs to author challenge pack YAML; use `agentclash-challenge-pack-yaml-author` after setup passes.
 - The user is making a release decision or CI gate from completed runs; use `agentclash-ci-release-gate`.
 - The task requires changing AgentClash CLI source code rather than using the CLI.
 
@@ -98,7 +98,7 @@ Project-local config lives in `.agentclash.yaml` and is discovered by walking up
 4. Check the authenticated identity with `agentclash auth status`.
 5. Select a workspace with `agentclash link` for the guided flow, or `agentclash workspace use <workspace-id>` when the ID is already known. Both commands write saved user config.
 6. If this repository should carry its own workspace binding, run `agentclash init --workspace-id <workspace-id> --org-id <organization-id>` from the project root.
-7. Run `agentclash doctor` to verify install, auth, workspace, eval-pack visibility, deployment visibility, and baseline readiness.
+7. Run `agentclash doctor` to verify install, auth, workspace, challenge-pack visibility, deployment visibility, and baseline readiness.
 8. Report the effective backend, auth state, workspace, doctor result, and the next command the user should run.
 
 ## Commands
@@ -184,7 +184,7 @@ agentclash schema --json
 - `organization ID required`: pass `--org <organization-id>` or set a default organization through `agentclash link`, `agentclash workspace use`, or config.
 - `no workspace specified`: run `agentclash link`, pass `--workspace <workspace-id>`, set `AGENTCLASH_WORKSPACE`, or create project config with `agentclash init`.
 - `Workspace <id> is not accessible`: the saved or env workspace does not belong to the current token/backend. Run `agentclash link` or update `AGENTCLASH_WORKSPACE`.
-- `doctor` reports no eval packs: setup is valid, but the workspace needs `agentclash eval-pack init`, `validate`, and `publish` before evals are useful.
+- `doctor` reports no challenge packs: setup is valid, but the workspace needs `agentclash challenge-pack init`, `validate`, and `publish` before evals are useful.
 - `doctor` reports no deployments: setup is valid, but an agent deployment must be created before starting evals.
 - `doctor` reports no baseline: this is advisory on a fresh workspace; set one after the first completed eval with `agentclash baseline set`.
 

@@ -40,7 +40,7 @@ func (c HostedRunClient) Start(ctx context.Context, input workflowpkg.HostedRunS
 	requestBody := hostedruns.StartRequest{
 		RunID:                  input.ExecutionContext.Run.ID,
 		RunAgentID:             input.ExecutionContext.RunAgent.ID,
-		EvalPackVersionID: input.ExecutionContext.Run.EvalPackVersionID,
+		ChallengePackVersionID: input.ExecutionContext.Run.ChallengePackVersionID,
 		TaskPayload:            input.TaskPayload,
 		TraceLevel:             input.TraceLevel,
 		CallbackURL:            fmt.Sprintf("%s/v1/integrations/hosted-runs/%s/events", c.callbackBaseURL, input.ExecutionContext.Run.ID),

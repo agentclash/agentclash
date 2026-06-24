@@ -8,7 +8,7 @@ description: "A head-to-head race."
 author: "AgentClash"
 featuredModel: "Claude Opus 4.8"
 verdict: "Opus 4.8 won 4 of 5."
-evalPack: "Real-World Agentic Tasks v1"
+challengePack: "Real-World Agentic Tasks v1"
 sample: true
 runShareUrl: "https://www.agentclash.dev/share/abc"
 tasks:

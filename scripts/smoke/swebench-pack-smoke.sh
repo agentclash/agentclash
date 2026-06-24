@@ -19,7 +19,7 @@ fi
 export API_BASE_URL="${API_BASE_URL:-http://localhost:8080}"
 export WORKSPACE_ID="${WORKSPACE_ID:-22222222-2222-2222-2222-222222222222}"
 export USER_ID="${USER_ID:-33333333-3333-3333-3333-333333333333}"
-export EVAL_PACK_VERSION_ID="${EVAL_PACK_VERSION_ID:-53535353-5555-5555-5555-555555555555}"
+export CHALLENGE_PACK_VERSION_ID="${CHALLENGE_PACK_VERSION_ID:-53535353-5555-5555-5555-555555555555}"
 export CHALLENGE_INPUT_SET_ID="${CHALLENGE_INPUT_SET_ID:-53535353-abab-abab-abab-abababababab}"
 export AGENT_DEPLOYMENT_IDS="${AGENT_DEPLOYMENT_IDS:-53535353-e001-e001-e001-e001e001e001,53535353-e002-e002-e002-e002e002e002,53535353-e003-e003-e003-e003e003e003,53535353-e004-e004-e004-e004e004e004,53535353-e005-e005-e005-e005e005e005}"
 export RUN_TIMEOUT_SECONDS="${RUN_TIMEOUT_SECONDS:-420}"
@@ -57,12 +57,12 @@ deployment_ids_json="$(json_array_from_csv "${AGENT_DEPLOYMENT_IDS}")"
 echo "==> Creating run"
 create_response="$(jq -nc \
   --arg workspace_id "${WORKSPACE_ID}" \
-  --arg eval_pack_version_id "${EVAL_PACK_VERSION_ID}" \
+  --arg challenge_pack_version_id "${CHALLENGE_PACK_VERSION_ID}" \
   --arg challenge_input_set_id "${CHALLENGE_INPUT_SET_ID}" \
   --argjson agent_deployment_ids "${deployment_ids_json}" \
   '{
     workspace_id: $workspace_id,
-    eval_pack_version_id: $eval_pack_version_id,
+    challenge_pack_version_id: $challenge_pack_version_id,
     challenge_input_set_id: $challenge_input_set_id,
     agent_deployment_ids: $agent_deployment_ids
   }' | curl -fsS \

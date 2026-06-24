@@ -110,21 +110,21 @@ func (r *Repository) GetRunAnalyticsMetadata(ctx context.Context, runID uuid.UUI
 	return meta, nil
 }
 
-type RunnableEvalPackVersion struct {
+type RunnableChallengePackVersion struct {
 	ID              uuid.UUID
-	EvalPackID uuid.UUID
+	ChallengePackID uuid.UUID
 	WorkspaceID     *uuid.UUID
 	Manifest        json.RawMessage
 }
 
 type ChallengeInputSet struct {
 	ID                     uuid.UUID
-	EvalPackVersionID uuid.UUID
+	ChallengePackVersionID uuid.UUID
 }
 
 type ChallengeInputSetSummary struct {
 	ID                     uuid.UUID
-	EvalPackVersionID uuid.UUID
+	ChallengePackVersionID uuid.UUID
 	InputKey               string
 	Name                   string
 }
@@ -188,7 +188,7 @@ type CreateQueuedRunAgentParams struct {
 type CreateQueuedRunParams struct {
 	OrganizationID         uuid.UUID
 	WorkspaceID            uuid.UUID
-	EvalPackVersionID uuid.UUID
+	ChallengePackVersionID uuid.UUID
 	ChallengeInputSetID    *uuid.UUID
 	OfficialPackMode       domain.OfficialPackMode
 	CreatedByUserID        *uuid.UUID
@@ -242,7 +242,7 @@ type RunAgentScorecard struct {
 
 type EvaluationSpecRecord struct {
 	ID                     uuid.UUID
-	EvalPackVersionID uuid.UUID
+	ChallengePackVersionID uuid.UUID
 	Name                   string
 	VersionNumber          int32
 	JudgeMode              string
@@ -325,7 +325,7 @@ type MetricResultRecord struct {
 }
 
 type CreateEvaluationSpecParams struct {
-	EvalPackVersionID uuid.UUID
+	ChallengePackVersionID uuid.UUID
 	Name                   string
 	VersionNumber          int32
 	JudgeMode              string
@@ -383,11 +383,11 @@ func (r *Repository) GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, 
 	return run, nil
 }
 
-func (r *Repository) GetRunnableEvalPackVersionByID(ctx context.Context, id uuid.UUID) (RunnableEvalPackVersion, error) {
+func (r *Repository) GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (RunnableChallengePackVersion, error) {
 	row := r.db.QueryRow(ctx, `
-		SELECT cpv.id, cpv.eval_pack_id, cp.workspace_id, cpv.manifest
-		FROM eval_pack_versions cpv
-		JOIN eval_packs cp ON cp.id = cpv.eval_pack_id
+		SELECT cpv.id, cpv.challenge_pack_id, cp.workspace_id, cpv.manifest
+		FROM challenge_pack_versions cpv
+		JOIN challenge_packs cp ON cp.id = cpv.challenge_pack_id
 		WHERE cpv.id = $1
 		  AND cpv.lifecycle_status = 'runnable'
 		  AND cpv.archived_at IS NULL
@@ -395,12 +395,12 @@ func (r *Repository) GetRunnableEvalPackVersionByID(ctx context.Context, id uuid
 		LIMIT 1
 	`, id)
 
-	var version RunnableEvalPackVersion
-	if err := row.Scan(&version.ID, &version.EvalPackID, &version.WorkspaceID, &version.Manifest); err != nil {
+	var version RunnableChallengePackVersion
+	if err := row.Scan(&version.ID, &version.ChallengePackID, &version.WorkspaceID, &version.Manifest); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return RunnableEvalPackVersion{}, ErrEvalPackVersionNotFound
+			return RunnableChallengePackVersion{}, ErrChallengePackVersionNotFound
 		}
-		return RunnableEvalPackVersion{}, fmt.Errorf("get runnable eval pack version by id: %w", err)
+		return RunnableChallengePackVersion{}, fmt.Errorf("get runnable challenge pack version by id: %w", err)
 	}
 
 	return version, nil
@@ -417,13 +417,13 @@ func (r *Repository) GetChallengeInputSetByID(ctx context.Context, id uuid.UUID)
 
 	return ChallengeInputSet{
 		ID:                     row.ID,
-		EvalPackVersionID: row.EvalPackVersionID,
+		ChallengePackVersionID: row.ChallengePackVersionID,
 	}, nil
 }
 
-func (r *Repository) ListChallengeInputSetsByVersionID(ctx context.Context, evalPackVersionID uuid.UUID) ([]ChallengeInputSetSummary, error) {
+func (r *Repository) ListChallengeInputSetsByVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]ChallengeInputSetSummary, error) {
 	rows, err := r.queries.ListChallengeInputSetsByVersionID(ctx, repositorysqlc.ListChallengeInputSetsByVersionIDParams{
-		EvalPackVersionID: evalPackVersionID,
+		ChallengePackVersionID: challengePackVersionID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list challenge input sets by version id: %w", err)
@@ -433,7 +433,7 @@ func (r *Repository) ListChallengeInputSetsByVersionID(ctx context.Context, eval
 	for _, row := range rows {
 		results = append(results, ChallengeInputSetSummary{
 			ID:                     row.ID,
-			EvalPackVersionID: row.EvalPackVersionID,
+			ChallengePackVersionID: row.ChallengePackVersionID,
 			InputKey:               row.InputKey,
 			Name:                   row.Name,
 		})
@@ -441,9 +441,9 @@ func (r *Repository) ListChallengeInputSetsByVersionID(ctx context.Context, eval
 	return results, nil
 }
 
-func (r *Repository) ListChallengeIdentityIDsByPackVersionID(ctx context.Context, evalPackVersionID uuid.UUID) ([]uuid.UUID, error) {
+func (r *Repository) ListChallengeIdentityIDsByPackVersionID(ctx context.Context, challengePackVersionID uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := r.queries.ListChallengeIdentityIDsByPackVersionID(ctx, repositorysqlc.ListChallengeIdentityIDsByPackVersionIDParams{
-		EvalPackVersionID: evalPackVersionID,
+		ChallengePackVersionID: challengePackVersionID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("list challenge identities by pack version id: %w", err)
@@ -678,7 +678,7 @@ func createQueuedRunWithQueries(
 	runRow, err := queries.CreateRun(ctx, repositorysqlc.CreateRunParams{
 		OrganizationID:         params.OrganizationID,
 		WorkspaceID:            params.WorkspaceID,
-		EvalPackVersionID: cloneUUIDPtr(&params.EvalPackVersionID),
+		ChallengePackVersionID: cloneUUIDPtr(&params.ChallengePackVersionID),
 		ChallengeInputSetID:    cloneUUIDPtr(params.ChallengeInputSetID),
 		OfficialPackMode:       string(params.OfficialPackMode),
 		CreatedByUserID:        cloneUUIDPtr(params.CreatedByUserID),
@@ -837,7 +837,7 @@ func (r *Repository) CreateEvaluationSpec(ctx context.Context, params CreateEval
 	}
 
 	row, err := r.queries.CreateEvaluationSpec(ctx, repositorysqlc.CreateEvaluationSpecParams{
-		EvalPackVersionID: &params.EvalPackVersionID,
+		ChallengePackVersionID: &params.ChallengePackVersionID,
 		Name:                   params.Name,
 		VersionNumber:          params.VersionNumber,
 		JudgeMode:              params.JudgeMode,
@@ -868,7 +868,7 @@ func (r *Repository) CreateStandaloneEvaluationSpec(ctx context.Context, params 
 		return EvaluationSpecRecord{}, getErr
 	}
 	row, err := r.queries.CreateEvaluationSpec(ctx, repositorysqlc.CreateEvaluationSpecParams{
-		EvalPackVersionID: nil,
+		ChallengePackVersionID: nil,
 		Name:                   params.Name,
 		VersionNumber:          params.VersionNumber,
 		JudgeMode:              params.JudgeMode,
@@ -890,13 +890,13 @@ func (r *Repository) CreateStandaloneEvaluationSpec(ctx context.Context, params 
 func (r *Repository) getStandaloneEvaluationSpecByNameAndVersion(ctx context.Context, name string, versionNumber int32) (EvaluationSpecRecord, error) {
 	var row repositorysqlc.EvaluationSpec
 	err := r.db.QueryRow(ctx, `
-SELECT id, eval_pack_version_id, name, version_number, judge_mode, definition, created_at, updated_at
+SELECT id, challenge_pack_version_id, name, version_number, judge_mode, definition, created_at, updated_at
 FROM evaluation_specs
-WHERE eval_pack_version_id IS NULL
+WHERE challenge_pack_version_id IS NULL
   AND name = $1
   AND version_number = $2
 LIMIT 1
-`, name, versionNumber).Scan(&row.ID, &row.EvalPackVersionID, &row.Name, &row.VersionNumber, &row.JudgeMode, &row.Definition, &row.CreatedAt, &row.UpdatedAt)
+`, name, versionNumber).Scan(&row.ID, &row.ChallengePackVersionID, &row.Name, &row.VersionNumber, &row.JudgeMode, &row.Definition, &row.CreatedAt, &row.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return EvaluationSpecRecord{}, ErrEvaluationSpecNotFound
@@ -923,14 +923,14 @@ func (r *Repository) GetEvaluationSpecByID(ctx context.Context, id uuid.UUID) (E
 	return record, nil
 }
 
-func (r *Repository) GetEvaluationSpecByEvalPackVersionAndVersion(
+func (r *Repository) GetEvaluationSpecByChallengePackVersionAndVersion(
 	ctx context.Context,
-	evalPackVersionID uuid.UUID,
+	challengePackVersionID uuid.UUID,
 	name string,
 	versionNumber int32,
 ) (EvaluationSpecRecord, error) {
-	row, err := r.queries.GetEvaluationSpecByEvalPackVersionAndVersion(ctx, repositorysqlc.GetEvaluationSpecByEvalPackVersionAndVersionParams{
-		EvalPackVersionID: &evalPackVersionID,
+	row, err := r.queries.GetEvaluationSpecByChallengePackVersionAndVersion(ctx, repositorysqlc.GetEvaluationSpecByChallengePackVersionAndVersionParams{
+		ChallengePackVersionID: &challengePackVersionID,
 		Name:                   name,
 		VersionNumber:          versionNumber,
 	})
@@ -938,7 +938,7 @@ func (r *Repository) GetEvaluationSpecByEvalPackVersionAndVersion(
 		if errors.Is(err, pgx.ErrNoRows) {
 			return EvaluationSpecRecord{}, ErrEvaluationSpecNotFound
 		}
-		return EvaluationSpecRecord{}, fmt.Errorf("get evaluation spec by eval pack version and version: %w", err)
+		return EvaluationSpecRecord{}, fmt.Errorf("get evaluation spec by challenge pack version and version: %w", err)
 	}
 
 	record, err := mapEvaluationSpecRecord(row)
@@ -2254,7 +2254,7 @@ func mapRun(row repositorysqlc.Run) (domain.Run, error) {
 		ID:                     row.ID,
 		OrganizationID:         row.OrganizationID,
 		WorkspaceID:            row.WorkspaceID,
-		EvalPackVersionID: derefUUID(row.EvalPackVersionID),
+		ChallengePackVersionID: derefUUID(row.ChallengePackVersionID),
 		ChallengeInputSetID:    cloneUUIDPtr(row.ChallengeInputSetID),
 		EvalSessionID:          cloneUUIDPtr(row.EvalSessionID),
 		OfficialPackMode:       officialPackMode,
@@ -2497,13 +2497,13 @@ func mapEvaluationSpecRecord(row repositorysqlc.EvaluationSpec) (EvaluationSpecR
 	if err != nil {
 		return EvaluationSpecRecord{}, err
 	}
-	evalPackVersionID := uuid.Nil
-	if row.EvalPackVersionID != nil {
-		evalPackVersionID = *row.EvalPackVersionID
+	challengePackVersionID := uuid.Nil
+	if row.ChallengePackVersionID != nil {
+		challengePackVersionID = *row.ChallengePackVersionID
 	}
 	return EvaluationSpecRecord{
 		ID:                     row.ID,
-		EvalPackVersionID: evalPackVersionID,
+		ChallengePackVersionID: challengePackVersionID,
 		Name:                   row.Name,
 		VersionNumber:          row.VersionNumber,
 		JudgeMode:              row.JudgeMode,
@@ -2587,7 +2587,7 @@ func normalizeEvaluationSpecDefinition(definition json.RawMessage) (json.RawMess
 	var spec scoring.EvaluationSpec
 	// Strict decode rejects typos at spec-write time (CreateEvaluationSpec)
 	// instead of persisting them and quietly running with defaults. Mirrors
-	// scoring.LoadEvaluationSpec and evalpack.ParseBundle so every
+	// scoring.LoadEvaluationSpec and challengepack.ParseBundle so every
 	// user-authored entry point shares the same contract.
 	if err := scoring.StrictDecodeEvaluationSpec(definition, &spec); err != nil {
 		return nil, fmt.Errorf("decode evaluation spec definition: %w", err)
@@ -2964,7 +2964,7 @@ func (r *Repository) CountActiveAgentDeploymentsByWorkspaceID(ctx context.Contex
 	return total, nil
 }
 
-type EvalPackSummary struct {
+type ChallengePackSummary struct {
 	ID          uuid.UUID
 	Name        string
 	Slug        string
@@ -2973,9 +2973,9 @@ type EvalPackSummary struct {
 	UpdatedAt   time.Time
 }
 
-type EvalPackVersionSummary struct {
+type ChallengePackVersionSummary struct {
 	ID                  uuid.UUID
-	EvalPackID     uuid.UUID
+	ChallengePackID     uuid.UUID
 	VersionNumber       int32
 	LifecycleStatus     string
 	DeploymentDefaults  json.RawMessage
@@ -2985,24 +2985,24 @@ type EvalPackVersionSummary struct {
 	UpdatedAt           time.Time
 }
 
-func (r *Repository) ListEvalPacks(ctx context.Context) ([]EvalPackSummary, error) {
-	rows, err := r.queries.ListEvalPacks(ctx)
+func (r *Repository) ListChallengePacks(ctx context.Context) ([]ChallengePackSummary, error) {
+	rows, err := r.queries.ListChallengePacks(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("list eval packs: %w", err)
+		return nil, fmt.Errorf("list challenge packs: %w", err)
 	}
 
-	packs := make([]EvalPackSummary, 0, len(rows))
+	packs := make([]ChallengePackSummary, 0, len(rows))
 	for _, row := range rows {
-		createdAt, err := requiredTime("eval_packs.created_at", row.CreatedAt)
+		createdAt, err := requiredTime("challenge_packs.created_at", row.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
-		updatedAt, err := requiredTime("eval_packs.updated_at", row.UpdatedAt)
+		updatedAt, err := requiredTime("challenge_packs.updated_at", row.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
 
-		packs = append(packs, EvalPackSummary{
+		packs = append(packs, ChallengePackSummary{
 			ID:          row.ID,
 			Name:        row.Name,
 			Description: cloneStringPtr(row.Description),
@@ -3014,33 +3014,33 @@ func (r *Repository) ListEvalPacks(ctx context.Context) ([]EvalPackSummary, erro
 	return packs, nil
 }
 
-func (r *Repository) ListRunnableChallengePVersionsByPackID(ctx context.Context, evalPackID uuid.UUID) ([]EvalPackVersionSummary, error) {
+func (r *Repository) ListRunnableChallengePVersionsByPackID(ctx context.Context, challengePackID uuid.UUID) ([]ChallengePackVersionSummary, error) {
 	rows, err := r.queries.ListRunnableChallengePVersionsByPackID(ctx, repositorysqlc.ListRunnableChallengePVersionsByPackIDParams{
-		EvalPackID: evalPackID,
+		ChallengePackID: challengePackID,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("list runnable eval pack versions by pack id: %w", err)
+		return nil, fmt.Errorf("list runnable challenge pack versions by pack id: %w", err)
 	}
 
-	versions := make([]EvalPackVersionSummary, 0, len(rows))
+	versions := make([]ChallengePackVersionSummary, 0, len(rows))
 	for _, row := range rows {
-		createdAt, err := requiredTime("eval_pack_versions.created_at", row.CreatedAt)
+		createdAt, err := requiredTime("challenge_pack_versions.created_at", row.CreatedAt)
 		if err != nil {
 			return nil, err
 		}
-		updatedAt, err := requiredTime("eval_pack_versions.updated_at", row.UpdatedAt)
+		updatedAt, err := requiredTime("challenge_pack_versions.updated_at", row.UpdatedAt)
 		if err != nil {
 			return nil, err
 		}
 
-		metadata, err := evalPackVersionMetadata(row.Manifest)
+		metadata, err := challengePackVersionMetadata(row.Manifest)
 		if err != nil {
-			return nil, fmt.Errorf("extract metadata for eval pack version %s: %w", row.ID, err)
+			return nil, fmt.Errorf("extract metadata for challenge pack version %s: %w", row.ID, err)
 		}
 
-		versions = append(versions, EvalPackVersionSummary{
+		versions = append(versions, ChallengePackVersionSummary{
 			ID:                  row.ID,
-			EvalPackID:     row.EvalPackID,
+			ChallengePackID:     row.ChallengePackID,
 			VersionNumber:       row.VersionNumber,
 			LifecycleStatus:     row.LifecycleStatus,
 			DeploymentDefaults:  metadata.DeploymentDefaults,
@@ -3054,23 +3054,23 @@ func (r *Repository) ListRunnableChallengePVersionsByPackID(ctx context.Context,
 	return versions, nil
 }
 
-type evalPackVersionMetadataResult struct {
+type challengePackVersionMetadataResult struct {
 	DeploymentDefaults  json.RawMessage
 	Modality            string
 	InterfaceTransports []string
 }
 
-func evalPackDeploymentDefaults(manifest json.RawMessage) (json.RawMessage, error) {
-	metadata, err := evalPackVersionMetadata(manifest)
+func challengePackDeploymentDefaults(manifest json.RawMessage) (json.RawMessage, error) {
+	metadata, err := challengePackVersionMetadata(manifest)
 	if err != nil {
 		return nil, err
 	}
 	return metadata.DeploymentDefaults, nil
 }
 
-func evalPackVersionMetadata(manifest json.RawMessage) (evalPackVersionMetadataResult, error) {
+func challengePackVersionMetadata(manifest json.RawMessage) (challengePackVersionMetadataResult, error) {
 	if len(manifest) == 0 {
-		return evalPackVersionMetadataResult{}, nil
+		return challengePackVersionMetadataResult{}, nil
 	}
 
 	var decoded struct {
@@ -3083,9 +3083,9 @@ func evalPackVersionMetadata(manifest json.RawMessage) (evalPackVersionMetadataR
 		} `json:"version"`
 	}
 	if err := json.Unmarshal(manifest, &decoded); err != nil {
-		return evalPackVersionMetadataResult{}, fmt.Errorf("decode eval pack manifest: %w", err)
+		return challengePackVersionMetadataResult{}, fmt.Errorf("decode challenge pack manifest: %w", err)
 	}
-	result := evalPackVersionMetadataResult{
+	result := challengePackVersionMetadataResult{
 		Modality: strings.TrimSpace(decoded.Modality),
 	}
 	for _, transport := range decoded.InterfaceSpec.Transports {

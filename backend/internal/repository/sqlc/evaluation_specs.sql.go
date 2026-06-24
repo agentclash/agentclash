@@ -13,7 +13,7 @@ import (
 
 const createEvaluationSpec = `-- name: CreateEvaluationSpec :one
 INSERT INTO evaluation_specs (
-    eval_pack_version_id,
+    challenge_pack_version_id,
     name,
     version_number,
     judge_mode,
@@ -25,20 +25,20 @@ INSERT INTO evaluation_specs (
     $4,
     $5
 )
-RETURNING id, eval_pack_version_id, name, version_number, judge_mode, definition, created_at, updated_at
+RETURNING id, challenge_pack_version_id, name, version_number, judge_mode, definition, created_at, updated_at
 `
 
 type CreateEvaluationSpecParams struct {
-	EvalPackVersionID *uuid.UUID
-	Name              string
-	VersionNumber     int32
-	JudgeMode         string
-	Definition        []byte
+	ChallengePackVersionID *uuid.UUID
+	Name                   string
+	VersionNumber          int32
+	JudgeMode              string
+	Definition             []byte
 }
 
 func (q *Queries) CreateEvaluationSpec(ctx context.Context, arg CreateEvaluationSpecParams) (EvaluationSpec, error) {
 	row := q.db.QueryRow(ctx, createEvaluationSpec,
-		arg.EvalPackVersionID,
+		arg.ChallengePackVersionID,
 		arg.Name,
 		arg.VersionNumber,
 		arg.JudgeMode,
@@ -47,7 +47,7 @@ func (q *Queries) CreateEvaluationSpec(ctx context.Context, arg CreateEvaluation
 	var i EvaluationSpec
 	err := row.Scan(
 		&i.ID,
-		&i.EvalPackVersionID,
+		&i.ChallengePackVersionID,
 		&i.Name,
 		&i.VersionNumber,
 		&i.JudgeMode,
@@ -58,27 +58,27 @@ func (q *Queries) CreateEvaluationSpec(ctx context.Context, arg CreateEvaluation
 	return i, err
 }
 
-const getEvaluationSpecByEvalPackVersionAndVersion = `-- name: GetEvaluationSpecByEvalPackVersionAndVersion :one
-SELECT id, eval_pack_version_id, name, version_number, judge_mode, definition, created_at, updated_at
+const getEvaluationSpecByChallengePackVersionAndVersion = `-- name: GetEvaluationSpecByChallengePackVersionAndVersion :one
+SELECT id, challenge_pack_version_id, name, version_number, judge_mode, definition, created_at, updated_at
 FROM evaluation_specs
-WHERE eval_pack_version_id = $1
+WHERE challenge_pack_version_id = $1
   AND name = $2
   AND version_number = $3
 LIMIT 1
 `
 
-type GetEvaluationSpecByEvalPackVersionAndVersionParams struct {
-	EvalPackVersionID *uuid.UUID
-	Name              string
-	VersionNumber     int32
+type GetEvaluationSpecByChallengePackVersionAndVersionParams struct {
+	ChallengePackVersionID *uuid.UUID
+	Name                   string
+	VersionNumber          int32
 }
 
-func (q *Queries) GetEvaluationSpecByEvalPackVersionAndVersion(ctx context.Context, arg GetEvaluationSpecByEvalPackVersionAndVersionParams) (EvaluationSpec, error) {
-	row := q.db.QueryRow(ctx, getEvaluationSpecByEvalPackVersionAndVersion, arg.EvalPackVersionID, arg.Name, arg.VersionNumber)
+func (q *Queries) GetEvaluationSpecByChallengePackVersionAndVersion(ctx context.Context, arg GetEvaluationSpecByChallengePackVersionAndVersionParams) (EvaluationSpec, error) {
+	row := q.db.QueryRow(ctx, getEvaluationSpecByChallengePackVersionAndVersion, arg.ChallengePackVersionID, arg.Name, arg.VersionNumber)
 	var i EvaluationSpec
 	err := row.Scan(
 		&i.ID,
-		&i.EvalPackVersionID,
+		&i.ChallengePackVersionID,
 		&i.Name,
 		&i.VersionNumber,
 		&i.JudgeMode,
@@ -90,7 +90,7 @@ func (q *Queries) GetEvaluationSpecByEvalPackVersionAndVersion(ctx context.Conte
 }
 
 const getEvaluationSpecByID = `-- name: GetEvaluationSpecByID :one
-SELECT id, eval_pack_version_id, name, version_number, judge_mode, definition, created_at, updated_at
+SELECT id, challenge_pack_version_id, name, version_number, judge_mode, definition, created_at, updated_at
 FROM evaluation_specs
 WHERE id = $1
 LIMIT 1
@@ -105,7 +105,7 @@ func (q *Queries) GetEvaluationSpecByID(ctx context.Context, arg GetEvaluationSp
 	var i EvaluationSpec
 	err := row.Scan(
 		&i.ID,
-		&i.EvalPackVersionID,
+		&i.ChallengePackVersionID,
 		&i.Name,
 		&i.VersionNumber,
 		&i.JudgeMode,

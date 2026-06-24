@@ -1,0 +1,284 @@
+###############################################################################
+# Challenge Pack: Expression Evaluator Arena
+#
+# A genuinely differentiating coding task: implement an integer expression
+# evaluator with operator precedence, parentheses, and unary minus, where
+# division must TRUNCATE TOWARD ZERO (not Python's floor //). Careless
+# implementations that reach for `//` or `eval` pass the basic and unary tiers
+# but fail the division tier on negative operands (e.g. -7/2 == -3, not -4).
+#
+# Correctness is graded across three code_execution tiers (basic, unary,
+# division) and gated leniently (gate: true, pass_threshold: 0.5), so a model
+# that handles the basics still passes the gate while partial credit produces a
+# real ranking spread instead of an all-pass tie. Companion to the
+# fibonacci-e2e-showcase pack, which is deliberately saturated.
+###############################################################################
+
+pack:
+  slug: expr-eval-arena
+  name: Expression Evaluator Arena
+  family: coding
+
+version:
+  number: 1
+  execution_mode: native
+  sandbox:
+    network_access: false
+
+  tool_policy:
+    allow_shell: true
+    allowed_tool_kinds:
+      - file
+
+  evaluation_spec:
+    name: expr-eval-arena-v1
+    version_number: 1
+    judge_mode: hybrid
+
+    post_execution_checks:
+      - key: solution
+        type: file_capture
+        path: /workspace/solution.py
+
+    validators:
+      # === final_output contract ===========================================
+      - key: final_output_mentions_precedence
+        type: regex_match
+        target: final_output
+        expected_from: "literal:(?i)precedence"
+
+      - key: final_output_schema
+        type: json_schema
+        target: final_output
+        expected_from: "literal:{\"type\":\"object\",\"required\":[\"approach\",\"division_semantics\",\"sample_evaluations\",\"explanation\"],\"properties\":{\"approach\":{\"type\":\"string\"},\"division_semantics\":{\"type\":\"string\"},\"sample_evaluations\":{\"type\":\"array\",\"minItems\":3,\"items\":{\"type\":\"object\",\"required\":[\"expr\",\"value\"],\"properties\":{\"expr\":{\"type\":\"string\"},\"value\":{\"type\":\"integer\"}}}},\"explanation\":{\"type\":\"string\",\"minLength\":40}}}"
+
+      - key: final_output_division_semantics
+        type: json_path_match
+        target: final_output
+        expected_from: "literal:{\"path\":\"$.division_semantics\",\"comparator\":\"equals\",\"value\":\"truncate-toward-zero\"}"
+
+      # === file validator — source.kind = tool_call ========================
+      - key: solution_defines_function
+        type: file_content_match
+        target: file:solution
+        expected_from: "literal:def evaluate"
+        config:
+          mode: contains
+
+      # === code_execution tiers — the differentiators ======================
+      - key: tests_basic
+        type: code_execution
+        target: file:solution
+        config:
+          test_command: "python3 -c \"import sys; sys.path.insert(0,'/workspace'); from solution import evaluate; assert evaluate('2+3')==5; assert evaluate('2*3+4')==10; assert evaluate('10-2-3')==5; assert evaluate('2+3*4')==14; assert evaluate('(2+3)*4')==20; assert evaluate('2*(3+(4-1))')==12; assert evaluate(' 12 + 34 ')==46; print('OK')\""
+          scoring: all_or_nothing
+
+      - key: tests_unary
+        type: code_execution
+        target: file:solution
+        config:
+          test_command: "python3 -c \"import sys; sys.path.insert(0,'/workspace'); from solution import evaluate; assert evaluate('-5+3')==-2; assert evaluate('3 + -2')==1; assert evaluate('-(3+4)')==-7; assert evaluate('2--3')==5; print('OK')\""
+          scoring: all_or_nothing
+
+      - key: tests_division
+        type: code_execution
+        target: file:solution
+        config:
+          test_command: "python3 -c \"import sys; sys.path.insert(0,'/workspace'); from solution import evaluate; assert evaluate('7/2')==3; assert evaluate('-7/2')==-3; assert evaluate('7/-2')==-3; assert evaluate('-8/-2')==4; print('OK')\""
+          scoring: all_or_nothing
+
+    metrics:
+      - key: completed
+        type: boolean
+        collector: run_completed_successfully
+      - key: total_latency_ms
+        type: numeric
+        collector: run_total_latency_ms
+        unit: ms
+      - key: total_tokens
+        type: numeric
+        collector: run_total_tokens
+
+    llm_judges:
+      - key: code_quality
+        mode: reference
+        model: claude-sonnet-4-6
+        samples: 2
+        context_from:
+          - final_output
+          - case.expectations.reference_solution
+        reference_from: case.expectations.reference_solution
+        rubric: |
+          Score the submitted expression evaluator from 1 to 5 against the
+          reference. Reward a clean recursive-descent or shunting-yard parser
+          with correct operator precedence, parentheses, unary minus, and
+          division that truncates toward zero. Penalize use of `eval`, floor
+          division `//` (wrong on negative operands), missing unary-minus
+          handling, or unsafe parsing.
+
+      - key: explanation_clarity
+        mode: assertion
+        model: claude-haiku-4-5-20251001
+        samples: 3
+        context_from:
+          - final_output
+        assertion: |
+          The `explanation` field describes the parsing approach in plain
+          language, names how operator precedence and parentheses are handled,
+          and explains the division-toward-zero rule — not just restates it.
+          One-sentence descriptions that just say "it parses the string"
+          should fail.
+
+    runtime_limits:
+      max_duration_ms: 240000
+      max_total_tokens: 40000
+
+    scorecard:
+      strategy: hybrid
+      judge_limits:
+        max_samples_per_judge: 3
+        max_tokens: 8000
+      dimensions:
+        - key: correctness
+          source: validators
+          validators:
+            - solution_defines_function
+            - tests_basic
+            - tests_unary
+            - tests_division
+          better_direction: higher
+          gate: true
+          pass_threshold: 0.5
+          weight: 0.6
+
+        - key: output_contract
+          source: validators
+          validators:
+            - final_output_mentions_precedence
+            - final_output_schema
+            - final_output_division_semantics
+          better_direction: higher
+          weight: 0.15
+
+        - key: code_quality
+          source: llm_judge
+          judge_key: code_quality
+          better_direction: higher
+          weight: 0.15
+
+        - key: explanation_clarity
+          source: llm_judge
+          judge_key: explanation_clarity
+          better_direction: higher
+          weight: 0.1
+
+      pass_threshold: 0.5
+
+challenges:
+  - key: expr-eval
+    title: Implement an integer expression evaluator in Python
+    category: coding
+    difficulty: medium
+    instructions: |
+      Write a Python module at `/workspace/solution.py` that exports a function
+      `evaluate(expr: str) -> int` which evaluates an arithmetic expression
+      over integers and returns the integer result.
+
+      Requirements (read carefully — the edge cases matter):
+
+        - Operators: `+`, `-`, `*`, `/`, with standard precedence (`*` and `/`
+          bind tighter than `+` and `-`) and left-to-right associativity.
+        - Parentheses `(` `)` group sub-expressions and may be nested.
+        - Unary minus is supported, including before parentheses and after
+          another operator. Examples: `-5+3 == -2`, `3 + -2 == 1`,
+          `-(3+4) == -7`, `2--3 == 5`.
+        - Division `/` is INTEGER division that TRUNCATES TOWARD ZERO (NOT
+          Python's floor `//`). So `7/2 == 3`, `-7/2 == -3`, `7/-2 == -3`,
+          `-8/-2 == 4`. Do not use `eval`.
+        - Division by zero must raise `ValueError`.
+        - Whitespace is insignificant and multi-digit integers are supported:
+          `" 12 + 34 " == 46`.
+
+      After writing the file, emit a single final JSON answer matching this
+      shape EXACTLY (no surrounding prose, no code fences):
+
+          {
+            "approach": "recursive-descent" | "shunting-yard" | "other",
+            "division_semantics": "truncate-toward-zero",
+            "sample_evaluations": [
+              { "expr": "2+3*4", "value": 14 },
+              { "expr": "-7/2", "value": -3 },
+              { "expr": "2--3", "value": 5 }
+            ],
+            "explanation": "Plain-language description of how you parse, how operator precedence and parentheses are handled, and why division truncates toward zero. At least a few sentences."
+          }
+
+      The `sample_evaluations` list must include at least three entries with
+      correct integer results.
+
+input_sets:
+  - key: default
+    name: Default Input Set
+    cases:
+      - challenge_key: expr-eval
+        case_key: default
+        expectations:
+          - key: allowed_approaches
+            kind: text
+            value: "recursive-descent, shunting-yard, other"
+          - key: reference_solution
+            kind: text
+            value: |
+              Reference implementation (recursive descent, truncate-toward-zero
+              division, raises ValueError on divide-by-zero):
+
+                  def _trunc_div(a: int, b: int) -> int:
+                      if b == 0:
+                          raise ValueError("division by zero")
+                      q = abs(a) // abs(b)
+                      return -q if (a < 0) != (b < 0) else q
+
+                  def evaluate(expr: str) -> int:
+                      s = expr.replace(" ", "")
+                      pos = 0
+                      def peek():
+                          return s[pos] if pos < len(s) else ""
+                      def number():
+                          nonlocal pos
+                          start = pos
+                          while pos < len(s) and s[pos].isdigit():
+                              pos += 1
+                          return int(s[start:pos])
+                      def factor():
+                          nonlocal pos
+                          if peek() == "-":
+                              pos += 1
+                              return -factor()
+                          if peek() == "(":
+                              pos += 1
+                              v = expr_()
+                              if peek() == ")":
+                                  pos += 1
+                              return v
+                          return number()
+                      def term():
+                          nonlocal pos
+                          v = factor()
+                          while peek() in ("*", "/"):
+                              op = s[pos]; pos += 1
+                              r = factor()
+                              v = v * r if op == "*" else _trunc_div(v, r)
+                          return v
+                      def expr_():
+                          nonlocal pos
+                          v = term()
+                          while peek() in ("+", "-"):
+                              op = s[pos]; pos += 1
+                              r = term()
+                              v = v + r if op == "+" else v - r
+                          return v
+                      return expr_()
+
+              Precedence is encoded by the expr_ -> term -> factor call chain;
+              division truncates toward zero via _trunc_div, which differs from
+              Python's floor // on negative operands.

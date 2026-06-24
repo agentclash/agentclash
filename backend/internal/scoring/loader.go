@@ -13,7 +13,7 @@ type manifestEnvelope struct {
 
 // StrictDecodeEvaluationSpec decodes an evaluation spec with strict
 // unknown-field handling but WITHOUT running ValidateEvaluationSpec.
-// Callers that need decode-only behaviour (e.g. the eval-pack
+// Callers that need decode-only behaviour (e.g. the challenge-pack
 // bundle loader, which runs validation later with more context) go
 // through this helper so typos in user-authored JSON still fail loudly.
 func StrictDecodeEvaluationSpec(raw json.RawMessage, dst *EvaluationSpec) error {
@@ -65,7 +65,7 @@ func LoadEvaluationSpec(manifest json.RawMessage) (EvaluationSpec, error) {
 	// decoding is applied only to the inner evaluation_spec below.
 	var envelope manifestEnvelope
 	if err := json.Unmarshal(manifest, &envelope); err != nil {
-		return EvaluationSpec{}, fmt.Errorf("decode eval-pack manifest: %w", err)
+		return EvaluationSpec{}, fmt.Errorf("decode challenge-pack manifest: %w", err)
 	}
 	if len(bytes.TrimSpace(envelope.EvaluationSpec)) == 0 {
 		return EvaluationSpec{}, ValidationErrors{{Field: "evaluation_spec", Message: "is required"}}

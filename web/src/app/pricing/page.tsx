@@ -42,7 +42,7 @@ const faqItems = [
   {
     question: "Can I self-host AgentClash instead of paying?",
     answer:
-      "Yes. The engine is MIT-licensed and open source. You can run the full stack on your own infrastructure at no license cost; the paid hosted tiers exist to skip the ops and add more runs, private eval packs, CI integration, SSO, and audit logs.",
+      "Yes. The engine is MIT-licensed and open source. You can run the full stack on your own infrastructure at no license cost; the paid hosted tiers exist to skip the ops and add more runs, private challenge packs, CI integration, SSO, and audit logs.",
   },
 ];
 

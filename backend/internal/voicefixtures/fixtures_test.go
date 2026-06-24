@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 )
 
 var updateGoldens = flag.Bool("update", false, "update generated golden fixture files")
@@ -17,8 +17,8 @@ func TestSupportBillingScenarioGoldensAreDeterministic(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadSupportBillingFixture returned error: %v", err)
 	}
-	if _, err := evalpack.ParseYAML(fixture.EvalPackYAML); err != nil {
-		t.Fatalf("eval pack fixture failed validation: %v", err)
+	if _, err := challengepack.ParseYAML(fixture.ChallengePackYAML); err != nil {
+		t.Fatalf("challenge pack fixture failed validation: %v", err)
 	}
 
 	first, err := RunSupportBillingScenario()

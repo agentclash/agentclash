@@ -9,7 +9,7 @@ import (
 func init() {
 	datasetCmd.AddCommand(datasetSyncRegressionSuiteCmd)
 	datasetSyncRegressionSuiteCmd.Flags().String("version", "", "Dataset version ID to sync")
-	datasetSyncRegressionSuiteCmd.Flags().String("pack", "", "Eval pack version ID")
+	datasetSyncRegressionSuiteCmd.Flags().String("pack", "", "Challenge pack version ID")
 	datasetSyncRegressionSuiteCmd.Flags().String("challenge", "", "Challenge key")
 	datasetSyncRegressionSuiteCmd.Flags().String("suite", "", "Existing regression suite ID (optional)")
 	datasetSyncRegressionSuiteCmd.Flags().String("suite-name", "", "Name for a newly created regression suite")
@@ -43,7 +43,7 @@ var datasetSyncRegressionSuiteCmd = &cobra.Command{
 
 		body := map[string]any{
 			"version_id":                versionID,
-			"eval_pack_version_id": packID,
+			"challenge_pack_version_id": packID,
 			"challenge_key":             challengeKey,
 		}
 		if cmd.Flags().Changed("suite") {

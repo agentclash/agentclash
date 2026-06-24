@@ -19,7 +19,7 @@ import (
 type RegressionSuite struct {
 	ID                    uuid.UUID
 	WorkspaceID           uuid.UUID
-	SourceEvalPackID uuid.UUID
+	SourceChallengePackID uuid.UUID
 	Name                  string
 	Description           string
 	Status                domain.RegressionSuiteStatus
@@ -44,7 +44,7 @@ type RegressionCase struct {
 	SourceRunID                  *uuid.UUID
 	SourceRunAgentID             *uuid.UUID
 	SourceReplayID               *uuid.UUID
-	SourceEvalPackVersionID uuid.UUID
+	SourceChallengePackVersionID uuid.UUID
 	SourceChallengeInputSetID    *uuid.UUID
 	SourceChallengeIdentityID    uuid.UUID
 	SourceCaseKey                string
@@ -88,7 +88,7 @@ const regressionPromotionUniquenessIndex = "workspace_regression_cases_suite_run
 
 type CreateRegressionSuiteParams struct {
 	WorkspaceID           uuid.UUID
-	SourceEvalPackID uuid.UUID
+	SourceChallengePackID uuid.UUID
 	Name                  string
 	Description           string
 	Status                domain.RegressionSuiteStatus
@@ -115,7 +115,7 @@ type CreateRegressionCaseParams struct {
 	SourceRunID                  *uuid.UUID
 	SourceRunAgentID             *uuid.UUID
 	SourceReplayID               *uuid.UUID
-	SourceEvalPackVersionID uuid.UUID
+	SourceChallengePackVersionID uuid.UUID
 	SourceChallengeInputSetID    *uuid.UUID
 	SourceChallengeIdentityID    uuid.UUID
 	SourceCaseKey                string
@@ -191,7 +191,7 @@ func (r *Repository) CreateRegressionSuite(ctx context.Context, params CreateReg
 
 	row, err := r.queries.CreateRegressionSuite(ctx, repositorysqlc.CreateRegressionSuiteParams{
 		WorkspaceID:           params.WorkspaceID,
-		SourceEvalPackID: params.SourceEvalPackID,
+		SourceChallengePackID: params.SourceChallengePackID,
 		Name:                  strings.TrimSpace(params.Name),
 		Description:           params.Description,
 		Status:                string(params.Status),
@@ -223,7 +223,7 @@ func (r *Repository) createRegressionSuiteWithQueries(ctx context.Context, queri
 
 	row, err := queries.CreateRegressionSuite(ctx, repositorysqlc.CreateRegressionSuiteParams{
 		WorkspaceID:           params.WorkspaceID,
-		SourceEvalPackID: params.SourceEvalPackID,
+		SourceChallengePackID: params.SourceChallengePackID,
 		Name:                  strings.TrimSpace(params.Name),
 		Description:           params.Description,
 		Status:                string(params.Status),
@@ -424,7 +424,7 @@ func (r *Repository) CreateRegressionCase(ctx context.Context, params CreateRegr
 		SourceRunID:                  cloneUUIDPtr(params.SourceRunID),
 		SourceRunAgentID:             cloneUUIDPtr(params.SourceRunAgentID),
 		SourceReplayID:               cloneUUIDPtr(params.SourceReplayID),
-		SourceEvalPackVersionID: params.SourceEvalPackVersionID,
+		SourceChallengePackVersionID: params.SourceChallengePackVersionID,
 		SourceChallengeInputSetID:    cloneUUIDPtr(params.SourceChallengeInputSetID),
 		SourceChallengeIdentityID:    params.SourceChallengeIdentityID,
 		SourceCaseKey:                params.SourceCaseKey,
@@ -738,7 +738,7 @@ func (r *Repository) PromoteFailure(ctx context.Context, params PromoteFailurePa
 		SourceRunID:                  &params.RunID,
 		SourceRunAgentID:             &params.RunAgentID,
 		SourceReplayID:               replayID,
-		SourceEvalPackVersionID: executionContext.EvalPackVersion.ID,
+		SourceChallengePackVersionID: executionContext.ChallengePackVersion.ID,
 		SourceChallengeInputSetID:    challengeInputSetID(executionContext.ChallengeInputSet),
 		SourceChallengeIdentityID:    params.ChallengeIdentityID,
 		SourceCaseKey:                params.SourceCaseKey,
@@ -807,7 +807,7 @@ func (r *Repository) createRegressionCaseWithQueries(ctx context.Context, querie
 		SourceRunID:                  cloneUUIDPtr(params.SourceRunID),
 		SourceRunAgentID:             cloneUUIDPtr(params.SourceRunAgentID),
 		SourceReplayID:               cloneUUIDPtr(params.SourceReplayID),
-		SourceEvalPackVersionID: params.SourceEvalPackVersionID,
+		SourceChallengePackVersionID: params.SourceChallengePackVersionID,
 		SourceChallengeInputSetID:    cloneUUIDPtr(params.SourceChallengeInputSetID),
 		SourceChallengeIdentityID:    params.SourceChallengeIdentityID,
 		SourceCaseKey:                params.SourceCaseKey,
@@ -1005,7 +1005,7 @@ func mapRegressionSuite(row repositorysqlc.WorkspaceRegressionSuite) (Regression
 	return RegressionSuite{
 		ID:                    row.ID,
 		WorkspaceID:           row.WorkspaceID,
-		SourceEvalPackID: row.SourceEvalPackID,
+		SourceChallengePackID: row.SourceChallengePackID,
 		Name:                  row.Name,
 		Description:           row.Description,
 		Status:                status,
@@ -1053,7 +1053,7 @@ func mapRegressionCase(row regressionCaseFields) (RegressionCase, error) {
 		SourceRunID:                  cloneUUIDPtr(row.sourceRunID),
 		SourceRunAgentID:             cloneUUIDPtr(row.sourceRunAgentID),
 		SourceReplayID:               cloneUUIDPtr(row.sourceReplayID),
-		SourceEvalPackVersionID: row.sourceEvalPackVersionID,
+		SourceChallengePackVersionID: row.sourceChallengePackVersionID,
 		SourceChallengeInputSetID:    cloneUUIDPtr(row.sourceChallengeInputSetID),
 		SourceChallengeIdentityID:    row.sourceChallengeIdentityID,
 		SourceCaseKey:                row.sourceCaseKey,
@@ -1117,7 +1117,7 @@ func mapRegressionCaseFromTableRowPartial(row repositorysqlc.WorkspaceRegression
 		sourceRunID:                  row.SourceRunID,
 		sourceRunAgentID:             row.SourceRunAgentID,
 		sourceReplayID:               row.SourceReplayID,
-		sourceEvalPackVersionID: row.SourceEvalPackVersionID,
+		sourceChallengePackVersionID: row.SourceChallengePackVersionID,
 		sourceChallengeInputSetID:    row.SourceChallengeInputSetID,
 		sourceChallengeIdentityID:    row.SourceChallengeIdentityID,
 		sourceCaseKey:                row.SourceCaseKey,
@@ -1148,7 +1148,7 @@ func mapRegressionCaseFromJoinedRow(row repositorysqlc.GetRegressionCaseByIDRow)
 		sourceRunID:                  row.SourceRunID,
 		sourceRunAgentID:             row.SourceRunAgentID,
 		sourceReplayID:               row.SourceReplayID,
-		sourceEvalPackVersionID: row.SourceEvalPackVersionID,
+		sourceChallengePackVersionID: row.SourceChallengePackVersionID,
 		sourceChallengeInputSetID:    row.SourceChallengeInputSetID,
 		sourceChallengeIdentityID:    row.SourceChallengeIdentityID,
 		sourceCaseKey:                row.SourceCaseKey,
@@ -1179,7 +1179,7 @@ func mapRegressionCaseFromListRow(row repositorysqlc.ListRegressionCasesBySuiteI
 		sourceRunID:                  row.SourceRunID,
 		sourceRunAgentID:             row.SourceRunAgentID,
 		sourceReplayID:               row.SourceReplayID,
-		sourceEvalPackVersionID: row.SourceEvalPackVersionID,
+		sourceChallengePackVersionID: row.SourceChallengePackVersionID,
 		sourceChallengeInputSetID:    row.SourceChallengeInputSetID,
 		sourceChallengeIdentityID:    row.SourceChallengeIdentityID,
 		sourceCaseKey:                row.SourceCaseKey,
@@ -1210,7 +1210,7 @@ func mapRegressionCaseFromWorkspaceListRow(row repositorysqlc.ListRegressionCase
 		sourceRunID:                  row.SourceRunID,
 		sourceRunAgentID:             row.SourceRunAgentID,
 		sourceReplayID:               row.SourceReplayID,
-		sourceEvalPackVersionID: row.SourceEvalPackVersionID,
+		sourceChallengePackVersionID: row.SourceChallengePackVersionID,
 		sourceChallengeInputSetID:    row.SourceChallengeInputSetID,
 		sourceChallengeIdentityID:    row.SourceChallengeIdentityID,
 		sourceCaseKey:                row.SourceCaseKey,
@@ -1259,7 +1259,7 @@ type regressionCaseFields struct {
 	sourceRunID                  *uuid.UUID
 	sourceRunAgentID             *uuid.UUID
 	sourceReplayID               *uuid.UUID
-	sourceEvalPackVersionID uuid.UUID
+	sourceChallengePackVersionID uuid.UUID
 	sourceChallengeInputSetID    *uuid.UUID
 	sourceChallengeIdentityID    uuid.UUID
 	sourceCaseKey                string

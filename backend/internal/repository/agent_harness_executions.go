@@ -202,7 +202,7 @@ WHERE workspace_id = $1
 		row := tx.QueryRow(ctx, `
 WITH canonical_run AS (
     INSERT INTO runs (
-        organization_id, workspace_id, eval_pack_version_id, challenge_input_set_id,
+        organization_id, workspace_id, challenge_pack_version_id, challenge_input_set_id,
         source_type, created_by_user_id, name, status, execution_mode, execution_plan
     ) VALUES (
         $1, $2, NULL, NULL,

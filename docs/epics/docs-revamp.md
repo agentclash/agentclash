@@ -34,7 +34,7 @@ Track per-section completion in `web/content/docs/`:
 | --- | --- | --- |
 | Getting started | 3 | Complete |
 | Concepts | 8 | Complete |
-| Eval packs | 7 | Complete |
+| Challenge packs | 7 | Complete |
 | Guides | 8 | Complete |
 | Architecture | 6 | Complete |
 | Reference | 2 | Complete |
@@ -52,7 +52,7 @@ Migration checklist per page:
 ### Phase 3 — New docs coverage
 
 - [x] Datasets overview (generation, CI gates, regression suites)
-- [x] Multi-turn eval packs (human takeover, calibration)
+- [x] Multi-turn challenge packs (human takeover, calibration)
 - [x] Security evaluation harnesses
 
 ### Phase 4 — Agent exports
@@ -76,4 +76,4 @@ pnpm lint
 pnpm build
 ```
 
-Manual: open `/docs/eval-packs/bundle-yaml-reference` and confirm the `version` field table renders with borders and header row.
+Manual: open `/docs/challenge-packs/bundle-yaml-reference` and confirm the `version` field table renders with borders and header row.

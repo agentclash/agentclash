@@ -6,20 +6,20 @@ dateModified: 2026-06-01
 
 AgentClash CI should answer one question for a pull request: did this agent revision remain good enough against the workload that matters?
 
-The agent is the thing under test. In a manifest, that means the candidate build, deployment, runtime resources, provider model, provider account, tools, schemas, policies, prompts, and workflow code. The eval pack or regression suite is the workload used to test it. The release gate is the decision policy that turns the run into pass, warn, or fail.
+The agent is the thing under test. In a manifest, that means the candidate build, deployment, runtime resources, provider model, provider account, tools, schemas, policies, prompts, and workflow code. The challenge pack or regression suite is the workload used to test it. The release gate is the decision policy that turns the run into pass, warn, or fail.
 
 Use this page after you have read the [CI/CD Agent Gates](/docs/guides/ci-cd-agent-gates) manifest guide. It focuses on what teams should actually evaluate when their agents are more complex than a single prompt.
 
 ## Broad Packs And Regression Suites
 
-Use a broad eval pack when you need confidence that the agent still performs its main job across representative scenarios. Broad packs should cover normal work, edge cases, tool use, policy boundaries, and output quality.
+Use a broad challenge pack when you need confidence that the agent still performs its main job across representative scenarios. Broad packs should cover normal work, edge cases, tool use, policy boundaries, and output quality.
 
 Use a narrow regression suite when you need to lock failures that have already happened. Regression suites should be small, high-signal, and cheap enough to run often. They are strongest when they include failure evidence, a stable expected behavior, and a clear reason the case matters.
 
 Most CI setups need both:
 
-- Pull requests run a smoke eval pack plus critical regressions.
-- Nightly or mainline workflows run the full eval pack plus larger regression suites.
+- Pull requests run a smoke challenge pack plus critical regressions.
+- Nightly or mainline workflows run the full challenge pack plus larger regression suites.
 - Expensive long-horizon tasks run on labels, scheduled workflows, or release branches.
 
 When `regressions.promote_failures: proposed` is enabled, failing gates can add reviewable candidates to the suites listed in `evaluation.regression_suites`. Treat those proposals as a queue, not as automatic truth: accept cases that represent durable agent risk, reject noisy or duplicate failures, and keep the suite small enough that engineers still trust the gate.
@@ -32,7 +32,7 @@ Coding agents change when prompts, repository skills, tool policy, provider mode
 | --- | --- |
 | Watched paths | `.agentclash/agent.json`, `.agentclash/ci.yaml`, `prompts/**`, `tools/**`, `skills/**`, `evals/coding/**`, sandbox templates, patch validators, model config |
 | Candidate resources | Candidate agent build spec, deployment, runtime profile with shell access, provider account, provider model ID, repository fixture artifact, tool policy |
-| Workload type | Small deterministic coding tasks in a eval pack, plus regression cases for previously broken diffs |
+| Workload type | Small deterministic coding tasks in a challenge pack, plus regression cases for previously broken diffs |
 | Baseline strategy | Lock a known-good mainline run for the same repo fixture and update it only after a green mainline run |
 | Gate policy | Fail on correctness regression, invalid patch, missing tests, unsafe command use, timeout, or material score drop; warn on latency/cost drift |
 
@@ -53,7 +53,7 @@ Research agents change when retrieval settings, browsing tools, citation prompts
 | --- | --- |
 | Watched paths | `prompts/research/**`, `retrieval/**`, `tools/search/**`, `schemas/research-output.json`, source allowlists, model config |
 | Candidate resources | Candidate deployment, retrieval profile, browser/search tool policy, provider account, provider model ID, output schema |
-| Workload type | Eval pack with time-bounded research questions and expected evidence properties; regression suite for past hallucinations or citation failures |
+| Workload type | Challenge pack with time-bounded research questions and expected evidence properties; regression suite for past hallucinations or citation failures |
 | Baseline strategy | Compare against a stable deployment run on the same source snapshot or same controlled source corpus |
 | Gate policy | Fail on unsupported claims, missing citations, fabricated citations, ignored contradictions, schema violations, or unsafe source use |
 
@@ -74,7 +74,7 @@ Support and ops agents change when escalation rules, tool bindings, PII policy, 
 | --- | --- |
 | Watched paths | `prompts/support/**`, `policies/**`, `tools/crm/**`, `tools/ticketing/**`, `schemas/ticket*.json`, escalation rules, model config |
 | Candidate resources | Candidate deployment, mocked CRM/ticketing tools, secret references, runtime profile without broad network, output schema |
-| Workload type | Eval pack with mocked tool calls, structured outputs, escalation scenarios, and safety/PII cases |
+| Workload type | Challenge pack with mocked tool calls, structured outputs, escalation scenarios, and safety/PII cases |
 | Baseline strategy | Lock the current production deployment or last accepted mainline run for the same tool mock version |
 | Gate policy | Fail on wrong tool arguments, unauthorized action, missed escalation, PII leak, schema violation, or unsafe automation; warn on tone/style deltas |
 
@@ -95,7 +95,7 @@ Long-horizon agents are expensive and nondeterministic enough that one run is ra
 | --- | --- |
 | Watched paths | Agent orchestration code, planning prompts, tool policy, memory/retrieval config, runtime limits, provider model settings, environment templates |
 | Candidate resources | Candidate deployment, runtime profile with explicit timeout/tool-call limits, provider model ID, workload artifacts, optional regression suites |
-| Workload type | Smoke eval pack for PRs; full eval pack plus high-severity regressions for main; repeated long tasks for scheduled runs |
+| Workload type | Smoke challenge pack for PRs; full challenge pack plus high-severity regressions for main; repeated long tasks for scheduled runs |
 | Baseline strategy | Lock a baseline deployment or run series, not a single lucky pass; refresh after a successful mainline batch |
 | Gate policy | Fail PR smoke on deterministic blockers; use pass-rate, repeated-run, or confidence thresholds for longer suites; warn when evidence is insufficient |
 
@@ -112,7 +112,7 @@ Start smaller than the final eval strategy:
 
 1. Pick one agent deployment that matters.
 2. Lock one baseline run from a known-good mainline revision.
-3. Choose a smoke eval pack with 3 to 10 high-signal cases.
+3. Choose a smoke challenge pack with 3 to 10 high-signal cases.
 4. Add only the top production or staging regressions.
 5. Fail on clear correctness or policy regressions; warn on cost and latency until the gate earns trust.
 
@@ -151,7 +151,7 @@ candidate:
     provider_account_id: 00000000-0000-0000-0000-000000000003
     model: gpt-5.5
 evaluation:
-  eval_pack_version_id: 00000000-0000-0000-0000-000000000005
+  challenge_pack_version_id: 00000000-0000-0000-0000-000000000005
   input_set_id: 00000000-0000-0000-0000-000000000006
   regression_suites:
     - 00000000-0000-0000-0000-000000000007
@@ -170,9 +170,9 @@ The exact IDs should come from your AgentClash workspace. The process should be 
 ## See also
 
 - [CI/CD Agent Gates](/docs/guides/ci-cd-agent-gates)
-- [Write an Eval Pack](/docs/guides/write-an-eval-pack)
-- [Eval Pack Documentation](/docs/eval-packs)
-- [Eval Workflows and Gates](/docs/eval-packs/eval-workflows-and-gates)
+- [Write a Challenge Pack](/docs/guides/write-a-challenge-pack)
+- [Challenge Pack Documentation](/docs/challenge-packs)
+- [Eval Workflows and Gates](/docs/challenge-packs/eval-workflows-and-gates)
 - [Agents and Deployments](/docs/concepts/agents-and-deployments)
 - [Datasets overview](/docs/guides/datasets-overview)
 - [Security evaluation](/docs/guides/security-evaluation)

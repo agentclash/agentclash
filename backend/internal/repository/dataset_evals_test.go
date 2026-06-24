@@ -64,7 +64,7 @@ func TestDatasetEvalInputChecksumChangesWithVersion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildDatasetMaterializedExamples() error = %v", err)
 	}
-	params := MaterializeDatasetVersionInputSetParams{DatasetVersionID: uuid.New(), EvalPackVersionID: uuid.New(), ChallengeKey: "support"}
+	params := MaterializeDatasetVersionInputSetParams{DatasetVersionID: uuid.New(), ChallengePackVersionID: uuid.New(), ChallengeKey: "support"}
 
 	v1 := DatasetVersion{ManifestChecksum: "one"}
 	v2 := DatasetVersion{ManifestChecksum: "two"}

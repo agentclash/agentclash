@@ -35,7 +35,7 @@ export type BenchmarkReport = {
   author: string;
   featuredModel: string;
   verdict: string;
-  evalPack: string;
+  challengePack: string;
   // True when the scoreboard holds representative/illustrative data rather than
   // numbers from a real race. Drives the disclaimer banner on the report page.
   sample: boolean;
@@ -212,7 +212,7 @@ export function parseBenchmarkReport(
     author,
     featuredModel,
     verdict,
-    evalPack: optionalText(data.evalPack),
+    challengePack: optionalText(data.challengePack),
     sample: data.sample === true,
     runShareUrl: optionalText(data.runShareUrl),
     tasks: parseTasks(data.tasks),

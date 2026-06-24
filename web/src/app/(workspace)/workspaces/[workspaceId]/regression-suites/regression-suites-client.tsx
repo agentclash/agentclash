@@ -11,7 +11,7 @@ import { createApiClient } from "@/lib/api/client";
 import { useApiListQuery, useApiMutator, usePaginatedApiQuery } from "@/lib/api/swr";
 import { ApiError } from "@/lib/api/errors";
 import type {
-  EvalPack,
+  ChallengePack,
   PatchRegressionCaseInput,
   PatchRegressionSuiteInput,
   RegressionCase,
@@ -144,8 +144,8 @@ function RegressionSuitesInner({
     data: packsResponse,
     error: packsError,
     isLoading: packsLoading,
-  } = useApiListQuery<EvalPack>(
-    `/v1/workspaces/${workspaceId}/eval-packs`,
+  } = useApiListQuery<ChallengePack>(
+    `/v1/workspaces/${workspaceId}/challenge-packs`,
   );
   const suites = suitesPage?.items ?? [];
   const total = suitesPage?.total ?? 0;
@@ -310,7 +310,7 @@ function RegressionSuitesInner({
         <div className="flex items-start gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
           <ShieldAlert className="mt-0.5 size-4 shrink-0" />
           <span>
-            Publish an active eval pack before creating regression
+            Publish an active challenge pack before creating regression
             suites. Cases are always anchored to a pack.
           </span>
         </div>
@@ -495,7 +495,7 @@ function RegressionSuitesInner({
                   </TableRow>
                 ) : (
                   visible.map((suite) => {
-                    const pack = packsById.get(suite.source_eval_pack_id);
+                    const pack = packsById.get(suite.source_challenge_pack_id);
                     const isArchived = suite.status === "archived";
                     const disabled = pending === suite.id;
                     return (
@@ -516,13 +516,13 @@ function RegressionSuitesInner({
                         <TableCell className="text-sm text-muted-foreground">
                           {pack ? (
                             <Link
-                              href={`/workspaces/${workspaceId}/eval-packs/${pack.id}`}
+                              href={`/workspaces/${workspaceId}/challenge-packs/${pack.id}`}
                               className="hover:text-foreground hover:underline underline-offset-4"
                             >
                               {pack.name}
                             </Link>
                           ) : (
-                            <span title={suite.source_eval_pack_id}>
+                            <span title={suite.source_challenge_pack_id}>
                               {"\u2014"}
                             </span>
                           )}

@@ -166,7 +166,7 @@ func smokeExecutionContext(providerKey, credRef, model, instructions string) rep
 	return repository.RunAgentExecutionContext{
 		Run:      domain.Run{ID: runID},
 		RunAgent: domain.RunAgent{ID: runAgentID, RunID: runID, Status: domain.RunAgentStatusQueued, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()},
-		EvalPackVersion: repository.EvalPackVersionExecutionContext{
+		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
 			ID:       uuid.New(),
 			Manifest: []byte(`{"version":{"execution_mode":"prompt_eval"}}`),
 			Challenges: []repository.ChallengeDefinitionExecutionContext{

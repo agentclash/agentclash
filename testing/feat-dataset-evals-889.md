@@ -2,7 +2,7 @@
 
 ## Functional Behavior
 
-- A workspace can start a dataset eval from a pinned `dataset_version_id`, a `eval_pack_version_id`, a `challenge_id`, and one or more `agent_deployment_ids`.
+- A workspace can start a dataset eval from a pinned `dataset_version_id`, a `challenge_pack_version_id`, a `challenge_id`, and one or more `agent_deployment_ids`.
 - The dataset version is immutable input: materialization reads `dataset_version_examples`, not mutable current examples.
 - Materialization creates or reuses a `challenge_input_set` plus `challenge_input_items` whose case IDs are stable for the same dataset version, pack version, challenge, and mapping.
 - Each materialized input item can be traced back to its `dataset_example_id`.
@@ -48,7 +48,7 @@
    curl -sS -X POST "$AGENTCLASH_API_URL/v1/workspaces/$WORKSPACE_ID/datasets/$DATASET_ID/evals" \
      -H "Authorization: Bearer $AGENTCLASH_TOKEN" \
      -H "Content-Type: application/json" \
-     -d '{"version_id":"'$VERSION_ID'","eval_pack_version_id":"'$PACK_VERSION_ID'","challenge_id":"'$CHALLENGE_ID'","agent_deployment_ids":["'$DEPLOYMENT_ID'"]}'
+     -d '{"version_id":"'$VERSION_ID'","challenge_pack_version_id":"'$PACK_VERSION_ID'","challenge_id":"'$CHALLENGE_ID'","agent_deployment_ids":["'$DEPLOYMENT_ID'"]}'
    ```
    Expected: response contains a normal run identifier and the materialized input set identifier.
 3. Re-run the same request.

@@ -18,7 +18,7 @@ func (r *Repository) ListRunFailureReviewItems(ctx context.Context, runID uuid.U
 	}
 
 	items := make([]failurereview.Item, 0)
-	evalPackStatusByVersion := make(map[uuid.UUID]string)
+	challengePackStatusByVersion := make(map[uuid.UUID]string)
 	// TODO(#330): batch the per-run-agent reads in this method once we have either
 	// consolidated read queries or a materialized failure review read model.
 	for _, runAgent := range runAgents {
@@ -55,9 +55,9 @@ func (r *Repository) ListRunFailureReviewItems(ctx context.Context, runID uuid.U
 		if err != nil {
 			return nil, fmt.Errorf("list run events %s: %w", runAgent.ID, err)
 		}
-		evalPackStatus, err := evalPackLifecycleStatus(ctx, r, executionContext.Run.EvalPackVersionID, evalPackStatusByVersion)
+		challengePackStatus, err := challengePackLifecycleStatus(ctx, r, executionContext.Run.ChallengePackVersionID, challengePackStatusByVersion)
 		if err != nil {
-			return nil, fmt.Errorf("load eval pack lifecycle %s: %w", executionContext.Run.EvalPackVersionID, err)
+			return nil, fmt.Errorf("load challenge pack lifecycle %s: %w", executionContext.Run.ChallengePackVersionID, err)
 		}
 
 		runAgentItems, err := failurereview.BuildRunAgentItems(failurereview.RunAgentInput{
@@ -66,9 +66,9 @@ func (r *Repository) ListRunFailureReviewItems(ctx context.Context, runID uuid.U
 			RunAgentID:           runAgent.ID,
 			RunAgentLabel:        runAgent.Label,
 			DeploymentType:       executionContext.Deployment.DeploymentType,
-			EvalPackStatus:  evalPackStatus,
+			ChallengePackStatus:  challengePackStatus,
 			HasChallengeInputSet: executionContext.ChallengeInputSet != nil,
-			ToolPolicy:           executionContext.EvalPackVersion.Manifest,
+			ToolPolicy:           executionContext.ChallengePackVersion.Manifest,
 			Cases:                mapFailureReviewCases(executionContext.ChallengeInputSet),
 			Scorecard:            scorecard.Scorecard,
 			JudgeResults:         mapFailureReviewJudgeResults(judgeResults),
@@ -192,18 +192,18 @@ func reasonFromRawOutput(payload []byte) string {
 	return decoded.Error
 }
 
-func evalPackLifecycleStatus(ctx context.Context, repo *Repository, evalPackVersionID uuid.UUID, cache map[uuid.UUID]string) (string, error) {
-	if evalPackVersionID == uuid.Nil {
+func challengePackLifecycleStatus(ctx context.Context, repo *Repository, challengePackVersionID uuid.UUID, cache map[uuid.UUID]string) (string, error) {
+	if challengePackVersionID == uuid.Nil {
 		return "unknown", nil
 	}
-	if cached, ok := cache[evalPackVersionID]; ok {
+	if cached, ok := cache[challengePackVersionID]; ok {
 		return cached, nil
 	}
-	if _, err := repo.GetRunnableEvalPackVersionByID(ctx, evalPackVersionID); err == nil {
-		cache[evalPackVersionID] = "runnable"
+	if _, err := repo.GetRunnableChallengePackVersionByID(ctx, challengePackVersionID); err == nil {
+		cache[challengePackVersionID] = "runnable"
 		return "runnable", nil
-	} else if errors.Is(err, ErrEvalPackVersionNotFound) {
-		cache[evalPackVersionID] = "archived"
+	} else if errors.Is(err, ErrChallengePackVersionNotFound) {
+		cache[challengePackVersionID] = "archived"
 		return "archived", nil
 	} else {
 		return "", err

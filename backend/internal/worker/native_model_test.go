@@ -85,7 +85,7 @@ func nativeModelExecutionContext() repository.RunAgentExecutionContext {
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
-		EvalPackVersion: repository.EvalPackVersionExecutionContext{
+		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
 			ID:       uuid.New(),
 			Manifest: []byte(`{"challenge":"fixture","tool_policy":{"allowed_tool_kinds":["file"]}}`),
 		},

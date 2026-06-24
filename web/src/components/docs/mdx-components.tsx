@@ -9,7 +9,7 @@ import { CopyableCodeBlock } from "@/components/docs/copyable-code-block";
 import {
   DiagramAgentsToRun,
   DiagramArtifactFlow,
-  DiagramEvalPackBundleShape,
+  DiagramChallengePackBundleShape,
   DiagramCodebaseTourShortcuts,
   DiagramEvidenceClosingLoop,
   DiagramFrontendRouteSplit,
@@ -81,7 +81,7 @@ export const docsMDXComponents = {
   Callout,
   DiagramAgentsToRun,
   DiagramArtifactFlow,
-  DiagramEvalPackBundleShape,
+  DiagramChallengePackBundleShape,
   DiagramCodebaseTourShortcuts,
   DiagramEvidenceClosingLoop,
   DiagramFrontendRouteSplit,

@@ -8,7 +8,7 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/google/uuid"
@@ -194,8 +194,8 @@ func buildPromptEvalMessages(executionContext repository.RunAgentExecutionContex
 	}
 
 	vars := caseTemplateContextForExecution(executionContext)
-	rendered := evalpack.RenderCaseTemplateLenient(instructions, vars)
-	if leftovers := evalpack.FindUnresolvedCaseTemplateLiterals(rendered); len(leftovers) > 0 {
+	rendered := challengepack.RenderCaseTemplateLenient(instructions, vars)
+	if leftovers := challengepack.FindUnresolvedCaseTemplateLiterals(rendered); len(leftovers) > 0 {
 		slog.Default().Warn(
 			"prompt_eval executor rendered prompt with unresolved template tokens",
 			"run_agent_id", executionContext.RunAgent.ID.String(),
@@ -212,19 +212,19 @@ func buildPromptEvalMessages(executionContext repository.RunAgentExecutionContex
 }
 
 func selectPromptEvalChallenge(executionContext repository.RunAgentExecutionContext) (repository.ChallengeDefinitionExecutionContext, error) {
-	if len(executionContext.EvalPackVersion.Challenges) == 0 {
+	if len(executionContext.ChallengePackVersion.Challenges) == 0 {
 		return repository.ChallengeDefinitionExecutionContext{}, errors.New("prompt_eval run is missing challenge definitions")
 	}
 	if executionContext.ChallengeInputSet == nil || len(executionContext.ChallengeInputSet.Cases) == 0 {
-		return executionContext.EvalPackVersion.Challenges[0], nil
+		return executionContext.ChallengePackVersion.Challenges[0], nil
 	}
 	firstCaseKey := executionContext.ChallengeInputSet.Cases[0].ChallengeKey
-	for _, challenge := range executionContext.EvalPackVersion.Challenges {
+	for _, challenge := range executionContext.ChallengePackVersion.Challenges {
 		if challenge.ChallengeKey == firstCaseKey {
 			return challenge, nil
 		}
 	}
-	return executionContext.EvalPackVersion.Challenges[0], nil
+	return executionContext.ChallengePackVersion.Challenges[0], nil
 }
 
 func extractChallengeInstructions(definition json.RawMessage) (string, error) {
@@ -241,9 +241,9 @@ func extractChallengeInstructions(definition json.RawMessage) (string, error) {
 }
 
 func RenderPromptTemplate(template string, vars map[string]string) string {
-	ctx := evalpack.CaseTemplateContext{}
+	ctx := challengepack.CaseTemplateContext{}
 	for key, value := range vars {
 		ctx[key] = value
 	}
-	return evalpack.RenderCaseTemplateLenient(template, ctx)
+	return challengepack.RenderCaseTemplateLenient(template, ctx)
 }

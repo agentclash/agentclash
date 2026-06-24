@@ -19,7 +19,7 @@ func init() {
 	regressionCaseCmd.AddCommand(regressionCaseCaptureProductionCmd)
 
 	regressionSuiteCreateCmd.Flags().String("from-file", "", "JSON file with regression suite create payload")
-	regressionSuiteCreateCmd.Flags().String("source-eval-pack-id", "", "Source eval pack ID")
+	regressionSuiteCreateCmd.Flags().String("source-challenge-pack-id", "", "Source challenge pack ID")
 	regressionSuiteCreateCmd.Flags().String("name", "", "Suite name")
 	regressionSuiteCreateCmd.Flags().String("description", "", "Suite description")
 	regressionSuiteCreateCmd.Flags().String("default-gate-severity", "", "Default gate severity: info, warning, or blocking")
@@ -37,7 +37,7 @@ func init() {
 	regressionCaseUpdateCmd.Flags().String("severity", "", "Case severity: info, warning, or blocking")
 
 	regressionCaseCaptureProductionCmd.Flags().String("from-file", "", "JSON file with production failure capture payload")
-	regressionCaseCaptureProductionCmd.Flags().String("source-eval-pack-version-id", "", "Source eval pack version ID")
+	regressionCaseCaptureProductionCmd.Flags().String("source-challenge-pack-version-id", "", "Source challenge pack version ID")
 	regressionCaseCaptureProductionCmd.Flags().String("source-challenge-input-set-id", "", "Source challenge input set ID")
 	regressionCaseCaptureProductionCmd.Flags().String("source-challenge-identity-id", "", "Source challenge identity ID")
 	regressionCaseCaptureProductionCmd.Flags().String("source-case-key", "", "Source production case or incident key")
@@ -128,7 +128,7 @@ var regressionSuiteCreateCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		setFlagIfChanged(cmd, body, "source-eval-pack-id", "source_eval_pack_id")
+		setFlagIfChanged(cmd, body, "source-challenge-pack-id", "source_challenge_pack_id")
 		setFlagIfChanged(cmd, body, "name", "name")
 		setFlagIfChanged(cmd, body, "description", "description")
 		setFlagIfChanged(cmd, body, "default-gate-severity", "default_gate_severity")
@@ -270,7 +270,7 @@ var regressionCaseCaptureProductionCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		setFlagIfChanged(cmd, body, "source-eval-pack-version-id", "source_eval_pack_version_id")
+		setFlagIfChanged(cmd, body, "source-challenge-pack-version-id", "source_challenge_pack_version_id")
 		setFlagIfChanged(cmd, body, "source-challenge-input-set-id", "source_challenge_input_set_id")
 		setFlagIfChanged(cmd, body, "source-challenge-identity-id", "source_challenge_identity_id")
 		setFlagIfChanged(cmd, body, "source-case-key", "source_case_key")
@@ -342,7 +342,7 @@ func renderRegressionSuiteDetail(rc *RunContext, suite map[string]any) {
 	rc.Output.PrintDetail("ID", str(suite["id"]))
 	rc.Output.PrintDetail("Name", str(suite["name"]))
 	rc.Output.PrintDetail("Status", output.StatusColor(str(suite["status"])))
-	rc.Output.PrintDetail("Source Eval Pack", str(suite["source_eval_pack_id"]))
+	rc.Output.PrintDetail("Source Challenge Pack", str(suite["source_challenge_pack_id"]))
 	rc.Output.PrintDetail("Default Gate Severity", str(suite["default_gate_severity"]))
 	rc.Output.PrintDetail("Cases", str(suite["case_count"]))
 	rc.Output.PrintDetail("Created", str(suite["created_at"]))

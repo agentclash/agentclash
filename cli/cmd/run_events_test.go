@@ -302,7 +302,7 @@ func TestRunCreateFollowJSONStreamsCreatedRunAndEvents(t *testing.T) {
 	if err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--eval-pack-version", "cpv-1",
+		"--challenge-pack-version", "cpv-1",
 		"--deployments", "dep-1",
 		"--follow",
 		"--json",
@@ -353,7 +353,7 @@ func TestRunCreateJSONWithoutFollowStillPrintsSingleRunObject(t *testing.T) {
 	if err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--eval-pack-version", "cpv-1",
+		"--challenge-pack-version", "cpv-1",
 		"--deployments", "dep-1",
 		"--json",
 	}, srv.URL); err != nil {
@@ -393,7 +393,7 @@ func TestRunCreateFollowYAMLStreamsCreatedRunAndEvents(t *testing.T) {
 	if err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--eval-pack-version", "cpv-1",
+		"--challenge-pack-version", "cpv-1",
 		"--deployments", "dep-1",
 		"--follow",
 		"--output", "yaml",
@@ -429,7 +429,7 @@ func TestEvalStartFollowJSONStreamsCreatedRunAndEvents(t *testing.T) {
 		"\n"
 
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/workspaces/ws-1/eval-packs": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{
 					"id":   "pack-1",
@@ -441,7 +441,7 @@ func TestEvalStartFollowJSONStreamsCreatedRunAndEvents(t *testing.T) {
 				},
 			},
 		}),
-		"GET /v1/workspaces/ws-1/eval-pack-versions/ver-1/input-sets": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/challenge-pack-versions/ver-1/input-sets": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{"id": "input-1", "input_key": "default", "name": "Default Inputs"},
 			},

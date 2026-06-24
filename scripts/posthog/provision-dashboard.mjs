@@ -212,7 +212,7 @@ const INSIGHTS = [
     [
       { event: "cli.command.invoked", command: "auth.login", label: "auth login" },
       { event: "cli.command.invoked", command: "workspace.use", label: "workspace use" },
-      { event: "cli.command.invoked", command: "eval-pack.publish", label: "pack publish" },
+      { event: "cli.command.invoked", command: "challenge-pack.publish", label: "pack publish" },
       { event: "cli.command.invoked", command: "deployment.create", label: "deployment create" },
       { event: "cli.command.invoked", command: "run.create", label: "run create" },
     ],

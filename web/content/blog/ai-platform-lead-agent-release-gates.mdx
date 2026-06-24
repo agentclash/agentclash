@@ -23,7 +23,7 @@ A gate must name the **full agent system under test**, the **workload**, the **b
 
 ```text
 agent build/deployment = thing under test
-eval pack/regression suite = workload
+challenge pack/regression suite = workload
 release gate = decision policy
 ```
 
@@ -36,7 +36,7 @@ That separation is how [CI/CD agent gates](/docs/guides/ci-cd-agent-gates) are d
 Select for this release train:
 
 - workspace and owners
-- eval pack version (frozen)
+- challenge pack version (frozen)
 - input set approved for the period
 - production baseline deployment
 - release candidate deployment
@@ -106,11 +106,11 @@ Block on correctness regression, policy violations, and hard cost or latency cei
 
 ### How do we gate vendor agents we do not control?
 
-Run them in the same eval pack with explicit evidence tier limits. Use compare for procurement; use native replay for production gates when policy requires full trajectory evidence.
+Run them in the same challenge pack with explicit evidence tier limits. Use compare for procurement; use native replay for production gates when policy requires full trajectory evidence.
 
 ### What is the fastest path to a first gate?
 
-Freeze one real task as a eval pack, record a baseline run, init the CI manifest, and gate a single agent repo. The [enterprise rollout](/enterprise) starts on Free, then upgrades the same workspace when this loop becomes release governance.
+Freeze one real task as a challenge pack, record a baseline run, init the CI manifest, and gate a single agent repo. The [enterprise rollout](/enterprise) starts on Free, then upgrades the same workspace when this loop becomes release governance.
 
 ## Next step
 

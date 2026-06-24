@@ -23,12 +23,12 @@ func (r *Repository) EvaluateRunAgent(ctx context.Context, params EvaluateRunAge
 	if err != nil {
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("load evaluation spec: %w", err)
 	}
-	if evaluationSpec.EvalPackVersionID != executionContext.EvalPackVersion.ID {
+	if evaluationSpec.ChallengePackVersionID != executionContext.ChallengePackVersion.ID {
 		return scoring.RunAgentEvaluation{}, fmt.Errorf(
-			"evaluation spec %s belongs to eval pack version %s, not run-agent eval pack version %s",
+			"evaluation spec %s belongs to challenge pack version %s, not run-agent challenge pack version %s",
 			evaluationSpec.ID,
-			evaluationSpec.EvalPackVersionID,
-			executionContext.EvalPackVersion.ID,
+			evaluationSpec.ChallengePackVersionID,
+			executionContext.ChallengePackVersion.ID,
 		)
 	}
 
@@ -73,7 +73,7 @@ func mapEvaluationInput(evaluationSpecID uuid.UUID, executionContext RunAgentExe
 		})
 	}
 
-	challengeInputs, err := BuildScoringEvidenceInputs(executionContext.EvalPackVersion.Manifest, executionContext.ChallengeInputSet)
+	challengeInputs, err := BuildScoringEvidenceInputs(executionContext.ChallengePackVersion.Manifest, executionContext.ChallengeInputSet)
 	if err != nil {
 		return scoring.EvaluationInput{}, err
 	}

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/racecontext"
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -151,7 +151,7 @@ type AssetContent struct {
 	ContentType string
 }
 
-// AssetLoader resolves artifact-backed eval-pack assets before the
+// AssetLoader resolves artifact-backed challenge-pack assets before the
 // native sandbox starts executing. *worker.ArtifactAssetLoader is the
 // production implementation; tests can substitute an in-memory fake.
 type AssetLoader interface {
@@ -201,7 +201,7 @@ func (e NativeExecutor) WithSecretsLookup(lookup SecretsLookup) NativeExecutor {
 	return e
 }
 
-// WithAssetLoader attaches artifact storage for eval-pack assets declared
+// WithAssetLoader attaches artifact storage for challenge-pack assets declared
 // with artifact_id. Executors without a loader fail closed when such assets are
 // present, because otherwise the pack would start without its promised data.
 func (e NativeExecutor) WithAssetLoader(loader AssetLoader) NativeExecutor {
@@ -307,7 +307,7 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 
 	registry, err := buildToolRegistry(
 		sandboxRequest.ToolPolicy,
-		executionContext.EvalPackVersion.Manifest,
+		executionContext.ChallengePackVersion.Manifest,
 		executionContext.Deployment.SnapshotConfig,
 		workspaceSecrets,
 	)
@@ -351,7 +351,7 @@ func (e NativeExecutor) runAgentLoop(
 	metadata json.RawMessage,
 	state *loopState,
 ) (Result, error) {
-	preserveSubmitToolMessage := executionModeFromManifest(executionContext.EvalPackVersion.Manifest) == evalpack.ExecutionModeMultiTurn
+	preserveSubmitToolMessage := executionModeFromManifest(executionContext.ChallengePackVersion.Manifest) == challengepack.ExecutionModeMultiTurn
 	for {
 		if loopErr := runCtx.Err(); loopErr != nil {
 			if errors.Is(loopErr, context.Canceled) {

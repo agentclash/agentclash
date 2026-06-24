@@ -361,7 +361,7 @@ func TestAgentTryoutPromoteRejectsUnsupportedTarget(t *testing.T) {
 	source := seedWorkspaceTryout(repo, orgID, workspaceID, "tiny-bugfix")
 	manager := NewAgentTryoutManager(NewCallerWorkspaceAuthorizer(), repo)
 
-	if _, err := manager.PromoteTryoutToEval(ctx, callerWithWorkspace(workspaceID), PromoteAgentTryoutInput{SourceTryoutID: source.ID, Target: "eval_pack"}); !errors.Is(err, ErrAgentTryoutPromotionTargetUnsupported) {
+	if _, err := manager.PromoteTryoutToEval(ctx, callerWithWorkspace(workspaceID), PromoteAgentTryoutInput{SourceTryoutID: source.ID, Target: "challenge_pack"}); !errors.Is(err, ErrAgentTryoutPromotionTargetUnsupported) {
 		t.Fatalf("error = %v, want ErrAgentTryoutPromotionTargetUnsupported", err)
 	}
 }

@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type {
-  EvalPack,
+  ChallengePack,
   ListRegressionCasesResponse,
   RegressionSuite,
 } from "@/lib/api/types";
@@ -36,14 +36,14 @@ export default async function SuiteDetailPage({
     api.get<ListRegressionCasesResponse>(
       `/v1/workspaces/${workspaceId}/regression-suites/${suiteId}/cases`,
     ),
-    api.get<{ items: EvalPack[] }>(
-      `/v1/workspaces/${workspaceId}/eval-packs`,
+    api.get<{ items: ChallengePack[] }>(
+      `/v1/workspaces/${workspaceId}/challenge-packs`,
     ),
   ]);
 
   const sourcePack =
     packsResponse.items.find(
-      (p) => p.id === suite.source_eval_pack_id,
+      (p) => p.id === suite.source_challenge_pack_id,
     ) ?? null;
 
   return (

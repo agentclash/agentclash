@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/scoring"
 )
 
@@ -56,7 +56,7 @@ func buildScoringEvidenceInput(item ChallengeCaseExecutionContext, manifestAsset
 func manifestEvidenceAssets(manifest json.RawMessage) (map[string]scoring.EvidenceArtifact, error) {
 	var decoded struct {
 		Version struct {
-			Assets []evalpack.AssetReference `json:"assets"`
+			Assets []challengepack.AssetReference `json:"assets"`
 		} `json:"version"`
 	}
 	if len(strings.TrimSpace(string(manifest))) == 0 {
@@ -117,7 +117,7 @@ func caseEvidenceArtifacts(item ChallengeCaseExecutionContext, manifestAssets ma
 	return artifacts
 }
 
-func caseEvidenceValues(inputs []evalpack.CaseInput) (map[string]scoring.EvidenceValue, error) {
+func caseEvidenceValues(inputs []challengepack.CaseInput) (map[string]scoring.EvidenceValue, error) {
 	values := make(map[string]scoring.EvidenceValue, len(inputs))
 	for _, input := range inputs {
 		encoded, err := marshalEvidenceValue(input.Value)
@@ -134,7 +134,7 @@ func caseEvidenceValues(inputs []evalpack.CaseInput) (map[string]scoring.Evidenc
 	return values, nil
 }
 
-func caseExpectationValues(expectations []evalpack.CaseExpectation) (map[string]scoring.EvidenceValue, error) {
+func caseExpectationValues(expectations []challengepack.CaseExpectation) (map[string]scoring.EvidenceValue, error) {
 	values := make(map[string]scoring.EvidenceValue, len(expectations))
 	for _, expectation := range expectations {
 		encoded, err := marshalEvidenceValue(expectation.Value)

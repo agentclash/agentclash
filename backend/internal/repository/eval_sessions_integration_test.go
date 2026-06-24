@@ -577,7 +577,7 @@ func TestRepositoryCreateEvalSessionWithQueuedRunsCreatesAttachedChildren(t *tes
 			{
 				OrganizationID:         fixture.organizationID,
 				WorkspaceID:            fixture.workspaceID,
-				EvalPackVersionID: fixture.evalPackVersionID,
+				ChallengePackVersionID: fixture.challengePackVersionID,
 				ChallengeInputSetID:    &fixture.challengeInputSetID,
 				OfficialPackMode:       domain.OfficialPackModeFull,
 				CreatedByUserID:        &fixture.userID,
@@ -603,7 +603,7 @@ func TestRepositoryCreateEvalSessionWithQueuedRunsCreatesAttachedChildren(t *tes
 			{
 				OrganizationID:         fixture.organizationID,
 				WorkspaceID:            fixture.workspaceID,
-				EvalPackVersionID: fixture.evalPackVersionID,
+				ChallengePackVersionID: fixture.challengePackVersionID,
 				ChallengeInputSetID:    &fixture.challengeInputSetID,
 				OfficialPackMode:       domain.OfficialPackModeFull,
 				CreatedByUserID:        &fixture.userID,
@@ -674,7 +674,7 @@ func TestRepositoryCreateEvalSessionWithQueuedRunsRollsBackOnInvalidChildRun(t *
 			{
 				OrganizationID:         fixture.organizationID,
 				WorkspaceID:            fixture.workspaceID,
-				EvalPackVersionID: fixture.evalPackVersionID,
+				ChallengePackVersionID: fixture.challengePackVersionID,
 				ChallengeInputSetID:    &fixture.challengeInputSetID,
 				OfficialPackMode:       domain.OfficialPackModeFull,
 				CreatedByUserID:        &fixture.userID,
@@ -693,7 +693,7 @@ func TestRepositoryCreateEvalSessionWithQueuedRunsRollsBackOnInvalidChildRun(t *
 			{
 				OrganizationID:         fixture.organizationID,
 				WorkspaceID:            fixture.workspaceID,
-				EvalPackVersionID: fixture.evalPackVersionID,
+				ChallengePackVersionID: fixture.challengePackVersionID,
 				ChallengeInputSetID:    &fixture.challengeInputSetID,
 				OfficialPackMode:       domain.OfficialPackModeFull,
 				CreatedByUserID:        &fixture.userID,

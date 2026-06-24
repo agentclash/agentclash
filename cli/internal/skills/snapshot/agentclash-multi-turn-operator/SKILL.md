@@ -1,6 +1,6 @@
 ---
 name: agentclash-multi-turn-operator
-description: Use when a multi_turn eval pack run agent is awaiting human input and you need to check turn status or submit an operator message with agentclash run turn.
+description: Use when a multi_turn challenge pack run agent is awaiting human input and you need to check turn status or submit an operator message with agentclash run turn.
 metadata:
   agentclash.role: multi-turn
   agentclash.version: "1"
@@ -10,7 +10,7 @@ metadata:
 # AgentClash Multi-Turn Operator
 
 ## Purpose
-Operate human takeover phases in multi-turn eval packs: detect when a run agent awaits operator input and submit the next user message so the eval can continue.
+Operate human takeover phases in multi-turn challenge packs: detect when a run agent awaits operator input and submit the next user message so the eval can continue.
 
 ## Use When
 - A multi_turn pack includes a `human` phase in its user simulator manifest.
@@ -20,7 +20,7 @@ Operate human takeover phases in multi-turn eval packs: detect when a run agent 
 ## Do Not Use When
 - The pack is single-turn or fully scripted/LLM-simulated — no human turns exist.
 - The run has not started — use `agentclash-eval-runner` first.
-- The task is authoring multi-turn pack YAML — see `/docs-md/eval-packs/multi-turn` and eval-pack skills.
+- The task is authoring multi-turn pack YAML — see `/docs-md/challenge-packs/multi-turn` and challenge-pack skills.
 
 ## Inputs Needed
 - Workspace ID and run ID.
@@ -93,9 +93,9 @@ Next: agentclash run events <run_id>
 - `agentclash-hub`
 - `agentclash-eval-runner`
 - `agentclash-scorecard-reader`
-- `agentclash-eval-pack-planner`
+- `agentclash-challenge-pack-planner`
 
 ## Related Docs
-- `/docs-md/eval-packs/multi-turn`
+- `/docs-md/challenge-packs/multi-turn`
 - `/docs-md/getting-started/first-eval`
 - `/docs-md/reference/cli`

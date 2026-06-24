@@ -1,10 +1,10 @@
 -- name: GetChallengeIdentityForDatasetEval :one
 SELECT ci.id
-FROM eval_pack_version_challenges cpvc
+FROM challenge_pack_version_challenges cpvc
 JOIN challenge_identities ci
   ON ci.id = cpvc.challenge_identity_id
- AND ci.eval_pack_id = cpvc.eval_pack_id
-WHERE cpvc.eval_pack_version_id = @eval_pack_version_id
+ AND ci.challenge_pack_id = cpvc.challenge_pack_id
+WHERE cpvc.challenge_pack_version_id = @challenge_pack_version_id
   AND ci.challenge_key = @challenge_key
   AND ci.archived_at IS NULL
 LIMIT 1;
@@ -13,27 +13,27 @@ LIMIT 1;
 SELECT *
 FROM dataset_version_input_sets
 WHERE dataset_version_id = @dataset_version_id
-  AND eval_pack_version_id = @eval_pack_version_id
+  AND challenge_pack_version_id = @challenge_pack_version_id
   AND challenge_key = @challenge_key
 LIMIT 1;
 
 -- name: CreateDatasetEvalChallengeInputSet :one
 INSERT INTO challenge_input_sets (
-    eval_pack_version_id,
+    challenge_pack_version_id,
     input_key,
     name,
     description,
     input_checksum,
     generated_at
 ) VALUES (
-    @eval_pack_version_id,
+    @challenge_pack_version_id,
     @input_key,
     @name,
     @description,
     @input_checksum,
     now()
 )
-ON CONFLICT (eval_pack_version_id, input_key) DO UPDATE
+ON CONFLICT (challenge_pack_version_id, input_key) DO UPDATE
 SET name = EXCLUDED.name,
     description = EXCLUDED.description,
     input_checksum = EXCLUDED.input_checksum
@@ -43,7 +43,7 @@ RETURNING *;
 INSERT INTO dataset_version_input_sets (
     dataset_id,
     dataset_version_id,
-    eval_pack_version_id,
+    challenge_pack_version_id,
     challenge_identity_id,
     challenge_key,
     challenge_input_set_id,
@@ -53,7 +53,7 @@ INSERT INTO dataset_version_input_sets (
 ) VALUES (
     @dataset_id,
     @dataset_version_id,
-    @eval_pack_version_id,
+    @challenge_pack_version_id,
     @challenge_identity_id,
     @challenge_key,
     @challenge_input_set_id,
@@ -61,7 +61,7 @@ INSERT INTO dataset_version_input_sets (
     @input_checksum,
     @mapping
 )
-ON CONFLICT (dataset_version_id, eval_pack_version_id, challenge_key) DO UPDATE
+ON CONFLICT (dataset_version_id, challenge_pack_version_id, challenge_key) DO UPDATE
 SET challenge_input_set_id = EXCLUDED.challenge_input_set_id,
     input_key = EXCLUDED.input_key,
     input_checksum = EXCLUDED.input_checksum,
@@ -71,13 +71,13 @@ RETURNING *;
 -- name: UpsertDatasetChallengeInputItem :one
 INSERT INTO challenge_input_items (
     challenge_input_set_id,
-    eval_pack_version_id,
+    challenge_pack_version_id,
     challenge_identity_id,
     item_key,
     payload
 ) VALUES (
     @challenge_input_set_id,
-    @eval_pack_version_id,
+    @challenge_pack_version_id,
     @challenge_identity_id,
     @item_key,
     @payload

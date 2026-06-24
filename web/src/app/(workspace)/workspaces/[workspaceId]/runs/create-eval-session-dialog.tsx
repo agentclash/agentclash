@@ -14,8 +14,8 @@ import { workspaceMutationKeys, workspaceResourceKeys } from "@/lib/workspace-re
 import type {
   AgentDeployment,
   ChallengeInputSetSummary,
-  EvalPack,
-  EvalPackVersion,
+  ChallengePack,
+  ChallengePackVersion,
   CreateEvalSessionRequest,
   CreateEvalSessionResponse,
   EvalSessionValidationDetail,
@@ -94,8 +94,8 @@ export function CreateEvalSessionDialog({
   const [loading, setLoading] = useState(false);
   const [loadingInputSets, setLoadingInputSets] = useState(false);
 
-  const [packs, setPacks] = useState<EvalPack[]>([]);
-  const [runnableVersions, setRunnableVersions] = useState<EvalPackVersion[]>(
+  const [packs, setPacks] = useState<ChallengePack[]>([]);
+  const [runnableVersions, setRunnableVersions] = useState<ChallengePackVersion[]>(
     [],
   );
   const [inputSets, setInputSets] = useState<ChallengeInputSetSummary[]>([]);
@@ -111,8 +111,8 @@ export function CreateEvalSessionDialog({
       const token = await getAccessToken();
       const api = createApiClient(token);
       const [packsResponse, deploymentsResponse] = await Promise.all([
-        api.get<{ items: EvalPack[] }>(
-          `/v1/workspaces/${workspaceId}/eval-packs`,
+        api.get<{ items: ChallengePack[] }>(
+          `/v1/workspaces/${workspaceId}/challenge-packs`,
         ),
         api.get<{ items: AgentDeployment[] }>(
           `/v1/workspaces/${workspaceId}/agent-deployments`,
@@ -156,7 +156,7 @@ export function CreateEvalSessionDialog({
         const token = await getAccessToken();
         const api = createApiClient(token);
         const response = await api.get<{ items: ChallengeInputSetSummary[] }>(
-          `/v1/workspaces/${workspaceId}/eval-pack-versions/${selectedVersionId}/input-sets`,
+          `/v1/workspaces/${workspaceId}/challenge-pack-versions/${selectedVersionId}/input-sets`,
         );
 
         if (cancelled) return;
@@ -298,7 +298,7 @@ export function CreateEvalSessionDialog({
 
     const request: CreateEvalSessionRequest = {
       workspace_id: workspaceId,
-      eval_pack_version_id: selectedVersionId,
+      challenge_pack_version_id: selectedVersionId,
       challenge_input_set_id: inputSetId.trim() || undefined,
       participants: selectedDeploymentIds.map((deploymentId) => ({
         agent_deployment_id: deploymentId,
@@ -415,14 +415,14 @@ export function CreateEvalSessionDialog({
           </div>
 
           <div>
-            <label className="mb-1.5 block text-sm font-medium">Eval Pack</label>
+            <label className="mb-1.5 block text-sm font-medium">Challenge Pack</label>
             <select
               value={selectedPackId}
               onChange={(event) => handlePackChange(event.target.value)}
               className={selectClass}
               disabled={loading}
             >
-              <option value="">Select a eval pack</option>
+              <option value="">Select a challenge pack</option>
               {packs.map((pack) => (
                 <option key={pack.id} value={pack.id}>
                   {pack.name}

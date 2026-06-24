@@ -30,13 +30,13 @@ func init() {
 var securityCmd = &cobra.Command{
 	Use:   "security",
 	Short: "Security-evals tooling (stress runs, leak rate, policy preview)",
-	Long:  "Run security eval packs directly against an LLM provider and aggregate leak rate without touching the AgentClash backend. Useful for fast iteration on the canonical packs.",
+	Long:  "Run security challenge packs directly against an LLM provider and aggregate leak rate without touching the AgentClash backend. Useful for fast iteration on the canonical packs.",
 }
 
 var securityStressRunCmd = &cobra.Command{
 	Use:   "stress-run <pack-yaml>",
 	Short: "Run a security pack N times against an LLM provider and aggregate the leak rate",
-	Long: `Loads a security eval pack YAML, fires its adversarial prompts at the
+	Long: `Loads a security challenge pack YAML, fires its adversarial prompts at the
 selected LLM provider for N iterations, and prints an aggregate report.
 
 The harness operates entirely client-side — no AgentClash backend, no
@@ -46,7 +46,7 @@ under our attack library?" before committing to full pipeline runs.
 Example:
 
   export OPENAI_API_KEY=sk-...
-  agentclash security stress-run examples/eval-packs/secret-hygiene-env.yaml \
+  agentclash security stress-run examples/challenge-packs/secret-hygiene-env.yaml \
       --iterations 25 --provider openai --model gpt-4o-mini --out report.json
 `,
 	Args: cobra.ExactArgs(1),

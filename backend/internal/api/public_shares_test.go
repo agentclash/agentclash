@@ -13,27 +13,27 @@ import (
 	"github.com/google/uuid"
 )
 
-func TestPublicShareManager_CreateEvalPackShareAuthorizesWorkspace(t *testing.T) {
+func TestPublicShareManager_CreateChallengePackShareAuthorizesWorkspace(t *testing.T) {
 	ctx := context.Background()
 	orgID := uuid.New()
 	workspaceID := uuid.New()
 	versionID := uuid.New()
 	repo := newFakePublicShareRepository(orgID, workspaceID)
-	repo.version = repository.RunnableEvalPackVersion{
+	repo.version = repository.RunnableChallengePackVersion{
 		ID:              versionID,
-		EvalPackID: uuid.New(),
+		ChallengePackID: uuid.New(),
 		WorkspaceID:     &workspaceID,
 	}
 	manager := NewPublicShareManager(NewCallerWorkspaceAuthorizer(), repo, "https://agentclash.dev")
 
 	result, err := manager.CreateShareLink(ctx, callerWithWorkspace(workspaceID), CreateShareLinkInput{
-		ResourceType: repository.PublicShareResourceEvalPackVersion,
+		ResourceType: repository.PublicShareResourceChallengePackVersion,
 		ResourceID:   versionID,
 	})
 	if err != nil {
 		t.Fatalf("CreateShareLink returned error: %v", err)
 	}
-	if result.Share.ResourceType != repository.PublicShareResourceEvalPackVersion {
+	if result.Share.ResourceType != repository.PublicShareResourceChallengePackVersion {
 		t.Fatalf("resource type = %q", result.Share.ResourceType)
 	}
 	if result.Share.WorkspaceID != workspaceID || result.Share.OrganizationID != orgID {
@@ -398,7 +398,7 @@ type fakePublicShareRepository struct {
 	orgID          uuid.UUID
 	workspaceID    uuid.UUID
 	share          repository.PublicShareLink
-	version        repository.RunnableEvalPackVersion
+	version        repository.RunnableChallengePackVersion
 	run            domain.Run
 	runAgent       domain.RunAgent
 	runScorecard   repository.RunScorecard
@@ -464,9 +464,9 @@ func (r *fakePublicShareRepository) GetOrganizationIDByWorkspaceID(_ context.Con
 	return r.orgID, nil
 }
 
-func (r *fakePublicShareRepository) GetRunnableEvalPackVersionByID(_ context.Context, id uuid.UUID) (repository.RunnableEvalPackVersion, error) {
+func (r *fakePublicShareRepository) GetRunnableChallengePackVersionByID(_ context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error) {
 	if r.version.ID != id {
-		return repository.RunnableEvalPackVersion{}, repository.ErrEvalPackVersionNotFound
+		return repository.RunnableChallengePackVersion{}, repository.ErrChallengePackVersionNotFound
 	}
 	return r.version, nil
 }
@@ -524,8 +524,8 @@ func (r *fakePublicShareRepository) GetAgentTryoutByID(_ context.Context, id uui
 	return r.agentTryout, nil
 }
 
-func (r *fakePublicShareRepository) GetPublicEvalPackVersionSnapshot(context.Context, uuid.UUID) (repository.PublicEvalPackVersionSnapshot, error) {
-	return repository.PublicEvalPackVersionSnapshot{
+func (r *fakePublicShareRepository) GetPublicChallengePackVersionSnapshot(context.Context, uuid.UUID) (repository.PublicChallengePackVersionSnapshot, error) {
+	return repository.PublicChallengePackVersionSnapshot{
 		PackID:          uuid.New(),
 		PackSlug:        "pack",
 		PackName:        "Pack",

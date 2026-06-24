@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/multimodaltrace"
 	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/voicedeployment"
@@ -124,7 +124,7 @@ func supportBillingInput(t *testing.T, outcome voicedeployment.Outcome) Input {
 	if err != nil {
 		t.Fatalf("LoadSupportBillingFixture returned error: %v", err)
 	}
-	bundle, err := evalpack.ParseYAML(fixture.EvalPackYAML)
+	bundle, err := challengepack.ParseYAML(fixture.ChallengePackYAML)
 	if err != nil {
 		t.Fatalf("ParseYAML returned error: %v", err)
 	}

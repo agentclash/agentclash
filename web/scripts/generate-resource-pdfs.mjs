@@ -185,7 +185,7 @@ function ResourceDocument({ resource }) {
           View,
           { style: styles.metaBox },
           React.createElement(Text, { style: styles.metaLabel }, "Best next step"),
-          React.createElement(Text, { style: styles.metaValue }, "Turn answers into a eval pack and gate."),
+          React.createElement(Text, { style: styles.metaValue }, "Turn answers into a challenge pack and gate."),
         ),
       ),
       ...resource.sections.map((section) =>
@@ -210,7 +210,7 @@ function ResourceDocument({ resource }) {
         React.createElement(
           Text,
           { style: styles.promptText },
-          "Pick one workflow, freeze it as a eval pack, record a baseline run, compare the candidate under the same tools and budget, then promote critical misses into CI release gates.",
+          "Pick one workflow, freeze it as a challenge pack, record a baseline run, compare the candidate under the same tools and budget, then promote critical misses into CI release gates.",
         ),
       ),
       React.createElement(

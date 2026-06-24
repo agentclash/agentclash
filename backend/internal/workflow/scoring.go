@@ -20,7 +20,7 @@ func (a *Activities) executeRunAgentEvaluation(ctx context.Context, runAgentID u
 		return scoring.RunAgentEvaluation{}, err
 	}
 
-	manifestSpec, err := scoring.LoadEvaluationSpec(executionContext.EvalPackVersion.Manifest)
+	manifestSpec, err := scoring.LoadEvaluationSpec(executionContext.ChallengePackVersion.Manifest)
 	if err != nil {
 		emitErr := recordScoringFailedEvent(ctx, a.repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("load evaluation spec from manifest: %v", err))
 		if emitErr != nil {
@@ -29,7 +29,7 @@ func (a *Activities) executeRunAgentEvaluation(ctx context.Context, runAgentID u
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("load evaluation spec from manifest: %w", err)
 	}
 
-	specRecord, err := ensurePersistedEvaluationSpec(ctx, a.repo, executionContext.EvalPackVersion.ID, manifestSpec)
+	specRecord, err := ensurePersistedEvaluationSpec(ctx, a.repo, executionContext.ChallengePackVersion.ID, manifestSpec)
 	if err != nil {
 		emitErr := recordScoringFailedEvent(ctx, a.repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("load persisted evaluation spec: %v", err))
 		if emitErr != nil {
@@ -56,7 +56,7 @@ func (a *Activities) executeRunAgentEvaluation(ctx context.Context, runAgentID u
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("list run events: %w", err)
 	}
 
-	challengeInputs, err := mapChallengeInputs(executionContext.EvalPackVersion.Manifest, executionContext.ChallengeInputSet)
+	challengeInputs, err := mapChallengeInputs(executionContext.ChallengePackVersion.Manifest, executionContext.ChallengeInputSet)
 	if err != nil {
 		emitErr := recordScoringFailedEvent(ctx, a.repo, executionContext.Run.ID, runAgentID, fmt.Sprintf("map challenge inputs: %v", err))
 		if emitErr != nil {
@@ -136,12 +136,12 @@ func (a *Activities) executeRunAgentEvaluation(ctx context.Context, runAgentID u
 func ensurePersistedEvaluationSpec(
 	ctx context.Context,
 	repo RunRepository,
-	evalPackVersionID uuid.UUID,
+	challengePackVersionID uuid.UUID,
 	manifestSpec scoring.EvaluationSpec,
 ) (repository.EvaluationSpecRecord, error) {
-	specRecord, err := repo.GetEvaluationSpecByEvalPackVersionAndVersion(
+	specRecord, err := repo.GetEvaluationSpecByChallengePackVersionAndVersion(
 		ctx,
-		evalPackVersionID,
+		challengePackVersionID,
 		manifestSpec.Name,
 		manifestSpec.VersionNumber,
 	)
@@ -158,7 +158,7 @@ func ensurePersistedEvaluationSpec(
 	}
 
 	created, createErr := repo.CreateEvaluationSpec(ctx, repository.CreateEvaluationSpecParams{
-		EvalPackVersionID: evalPackVersionID,
+		ChallengePackVersionID: challengePackVersionID,
 		Name:                   manifestSpec.Name,
 		VersionNumber:          manifestSpec.VersionNumber,
 		JudgeMode:              string(manifestSpec.JudgeMode),
@@ -169,9 +169,9 @@ func ensurePersistedEvaluationSpec(
 	}
 
 	// Another concurrent scoring activity may have inserted the same spec first.
-	refetched, refetchErr := repo.GetEvaluationSpecByEvalPackVersionAndVersion(
+	refetched, refetchErr := repo.GetEvaluationSpecByChallengePackVersionAndVersion(
 		ctx,
-		evalPackVersionID,
+		challengePackVersionID,
 		manifestSpec.Name,
 		manifestSpec.VersionNumber,
 	)

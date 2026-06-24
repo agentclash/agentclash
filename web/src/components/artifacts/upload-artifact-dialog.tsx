@@ -200,7 +200,7 @@ export function UploadArtifactDialog({
                 <p className="mt-1 text-xs text-destructive">{typeError}</p>
               )}
               <p className="mt-1 text-xs text-muted-foreground">
-                e.g. log, output, eval_pack_bundle
+                e.g. log, output, challenge_pack_bundle
               </p>
             </div>
 

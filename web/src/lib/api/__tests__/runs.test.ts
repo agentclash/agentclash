@@ -25,7 +25,7 @@ describe("Runs API", () => {
         {
           id: "run-1",
           workspace_id: "ws-1",
-          eval_pack_version_id: "cpv-1",
+          challenge_pack_version_id: "cpv-1",
           name: "Run 2026-04-12T00:00:00Z",
           status: "completed",
           execution_mode: "single_agent",
@@ -39,7 +39,7 @@ describe("Runs API", () => {
         {
           id: "run-2",
           workspace_id: "ws-1",
-          eval_pack_version_id: "cpv-1",
+          challenge_pack_version_id: "cpv-1",
           name: "Comparison Run",
           status: "running",
           execution_mode: "comparison",
@@ -85,7 +85,7 @@ describe("Runs API", () => {
         {
           id: "run-21",
           workspace_id: "ws-1",
-          eval_pack_version_id: "cpv-1",
+          challenge_pack_version_id: "cpv-1",
           name: "Page 2 Run",
           status: "queued",
           execution_mode: "single_agent",
@@ -115,7 +115,7 @@ describe("Runs API", () => {
     const createResponse = {
       id: "run-new",
       workspace_id: "ws-1",
-      eval_pack_version_id: "cpv-1",
+      challenge_pack_version_id: "cpv-1",
       status: "queued",
       execution_mode: "single_agent",
       created_at: "2026-04-12T03:00:00Z",
@@ -132,7 +132,7 @@ describe("Runs API", () => {
     const api = createApiClient("token");
     const result = await api.post("/v1/runs", {
       workspace_id: "ws-1",
-      eval_pack_version_id: "cpv-1",
+      challenge_pack_version_id: "cpv-1",
       agent_deployment_ids: ["dep-1"],
     });
 
@@ -140,7 +140,7 @@ describe("Runs API", () => {
 
     const body = JSON.parse(mockFetch.mock.calls[0][1].body);
     expect(body.workspace_id).toBe("ws-1");
-    expect(body.eval_pack_version_id).toBe("cpv-1");
+    expect(body.challenge_pack_version_id).toBe("cpv-1");
     expect(body.agent_deployment_ids).toEqual(["dep-1"]);
   });
 
@@ -148,7 +148,7 @@ describe("Runs API", () => {
     const createResponse = {
       id: "run-compare",
       workspace_id: "ws-1",
-      eval_pack_version_id: "cpv-1",
+      challenge_pack_version_id: "cpv-1",
       status: "queued",
       execution_mode: "comparison",
       created_at: "2026-04-12T03:00:00Z",
@@ -165,7 +165,7 @@ describe("Runs API", () => {
     const api = createApiClient("token");
     const result = await api.post("/v1/runs", {
       workspace_id: "ws-1",
-      eval_pack_version_id: "cpv-1",
+      challenge_pack_version_id: "cpv-1",
       agent_deployment_ids: ["dep-1", "dep-2", "dep-3"],
       name: "My Comparison",
     });
@@ -195,7 +195,7 @@ describe("Runs API", () => {
     try {
       await api.post("/v1/runs", {
         workspace_id: "ws-1",
-        eval_pack_version_id: "cpv-1",
+        challenge_pack_version_id: "cpv-1",
         agent_deployment_ids: ["dep-1", "dep-1"],
       });
       expect.fail("should have thrown");
@@ -225,7 +225,7 @@ describe("Runs API", () => {
     try {
       await api.post("/v1/runs", {
         workspace_id: "ws-1",
-        eval_pack_version_id: "cpv-1",
+        challenge_pack_version_id: "cpv-1",
         agent_deployment_ids: [],
       });
       expect.fail("should have thrown");
@@ -239,7 +239,7 @@ describe("Runs API", () => {
     const run = {
       id: "run-1",
       workspace_id: "ws-1",
-      eval_pack_version_id: "cpv-1",
+      challenge_pack_version_id: "cpv-1",
       name: "My Run",
       status: "completed",
       execution_mode: "single_agent",

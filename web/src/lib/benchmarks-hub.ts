@@ -2,12 +2,12 @@ export const BENCHMARKS_HUB_FAQ = [
   {
     question: "How is AgentClash different from a static leaderboard?",
     answer:
-      "Leaderboards summarize one-off scores on generic tasks. AgentClash runs same-task evals on frozen eval packs with the same tools, sandbox policy, and iteration budget, then publishes replay evidence and scorecards you can reuse as regression gates.",
+      "Leaderboards summarize one-off scores on generic tasks. AgentClash runs same-task evals on frozen challenge packs with the same tools, sandbox policy, and iteration budget, then publishes replay evidence and scorecards you can reuse as regression gates.",
   },
   {
     question: "What gets frozen in a public benchmark?",
     answer:
-      "The eval pack version, runtime constraints, tool policy, scoring spec, and input cases. Every model in an eval run sees the same workload so differences show up in trajectories, not setup drift.",
+      "The challenge pack version, runtime constraints, tool policy, scoring spec, and input cases. Every model in an eval run sees the same workload so differences show up in trajectories, not setup drift.",
   },
   {
     question: "Can we run the same benchmark on our agents?",
@@ -23,7 +23,7 @@ export const BENCHMARKS_HUB_FAQ = [
 
 export const BENCHMARKS_METHODOLOGY = [
   {
-    title: "Frozen eval pack",
+    title: "Frozen challenge pack",
     text: "Each eval run pins a versioned YAML pack: prompts, tools, sandbox, evaluation spec, and input cases. No moving targets mid-benchmark.",
   },
   {
@@ -95,17 +95,17 @@ export const BENCHMARKS_READING = [
 
 export const BENCHMARKS_PACK_LINKS = [
   {
-    href: "/docs/eval-packs",
-    title: "Eval pack reference",
+    href: "/docs/challenge-packs",
+    title: "Challenge pack reference",
     text: "Author versioned YAML packs with scoring, tools, sandbox policy, and eval workflows.",
   },
   {
-    href: "/docs/eval-packs/eval-workflows-and-gates",
+    href: "/docs/challenge-packs/eval-workflows-and-gates",
     title: "Eval workflows and gates",
     text: "Wire baseline versus candidate comparisons into CI release policy.",
   },
   {
-    href: "https://github.com/agentclash/agentclash/tree/main/examples/eval-packs",
+    href: "https://github.com/agentclash/agentclash/tree/main/examples/challenge-packs",
     title: "Example packs in the repo",
     text: "Start from expression evaluators, refund recovery, incident response, and security stress packs.",
     external: true,
@@ -113,7 +113,7 @@ export const BENCHMARKS_PACK_LINKS = [
 ] as const;
 
 export const BENCHMARKS_MONTHLY_PROCESS = [
-  "Pin a eval pack version, git commit, and runtime constraints in the report appendix.",
+  "Pin a challenge pack version, git commit, and runtime constraints in the report appendix.",
   "Run every candidate on the same pack with identical tools, sandbox, and budgets.",
   "Export ranking JSON (`agentclash run ranking`) and attach replay plus validator evidence.",
   "Publish measured MDX on /benchmarks and a shareable monthly blog summary.",

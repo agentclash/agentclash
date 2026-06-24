@@ -1,0 +1,164 @@
+###############################################################################
+# Challenge Pack: Text-to-SQL Execution Accuracy
+#
+# A Spider-2.0-style data-analysis eval. The agent is given a schema and a
+# natural-language question and must write a single SQL query. Scoring is
+# EXECUTION-BASED and deterministic: a sandboxed harness builds the database
+# in-memory, runs the agent's query, and asserts the exact result set. A safe-
+# SQL guard (folded into the same check) rejects destructive statements.
+#
+# Swap points (make it yours): replace the schema + seed rows in the
+# code_execution harness with your own database, rewrite the challenge question,
+# and update the `expected` result set the harness asserts against.
+###############################################################################
+
+pack:
+  slug: text-to-sql
+  name: Text-to-SQL Execution Accuracy
+  family: analysis
+  description: >-
+    Measures whether an agent can translate a natural-language question into a
+    correct SQL query, graded by EXECUTION (exact result-set match) in a
+    sandbox, with a safe-SQL guard against destructive statements.
+
+version:
+  number: 1
+  execution_mode: native
+  sandbox:
+    network_access: false
+
+  tool_policy:
+    allow_shell: true
+    allowed_tool_kinds:
+      - file
+
+  evaluation_spec:
+    name: text-to-sql-v1
+    version_number: 1
+    judge_mode: deterministic
+
+    post_execution_checks:
+      - key: answer
+        type: file_capture
+        path: /workspace/answer.sql
+
+    validators:
+      # The captured file must be a SELECT/CTE query (not prose, not DDL).
+      - key: writes_select_query
+        type: regex_match
+        target: file:answer
+        expected_from: "literal:(?is)^\\s*(select|with)\\b"
+
+      # Execution accuracy: build the DB, run the agent's query, assert the
+      # exact ordered result set. The harness also rejects destructive SQL, so
+      # this single deterministic check covers correctness AND safety.
+      - key: query_returns_correct_rows
+        type: code_execution
+        target: file:answer
+        config:
+          scoring: all_or_nothing
+          test_command: |
+            python3 - <<'PY'
+            import sqlite3, pathlib, re
+            con = sqlite3.connect(':memory:')
+            cur = con.cursor()
+            cur.execute("CREATE TABLE employees (id INTEGER PRIMARY KEY, name TEXT, department TEXT, salary INTEGER)")
+            cur.execute("INSERT INTO employees VALUES (1,'Alice','Engineering',150000)")
+            cur.execute("INSERT INTO employees VALUES (2,'Bob','Engineering',120000)")
+            cur.execute("INSERT INTO employees VALUES (3,'Carol','Sales',200000)")
+            cur.execute("INSERT INTO employees VALUES (4,'Dan','Sales',90000)")
+            cur.execute("INSERT INTO employees VALUES (5,'Eve','Marketing',100000)")
+            sql = pathlib.Path('/workspace/answer.sql').read_text().strip().rstrip(';').strip()
+            low = sql.lower()
+            assert low.startswith('select') or low.startswith('with'), 'answer.sql must be a single SELECT query'
+            assert not re.search(r'\b(drop|delete|update|insert|alter|create|attach|detach|pragma|replace|truncate|vacuum)\b', low), 'destructive SQL is not allowed'
+            rows = cur.execute(sql).fetchall()
+            expected = [('Carol',), ('Alice',)]
+            assert rows == expected, f'got {rows!r}, expected {expected!r}'
+            print('OK')
+            PY
+
+    metrics:
+      - key: completed
+        type: boolean
+        collector: run_completed_successfully
+      - key: total_latency_ms
+        type: numeric
+        collector: run_total_latency_ms
+        unit: ms
+      - key: total_tokens
+        type: numeric
+        collector: run_total_tokens
+
+    runtime_limits:
+      max_duration_ms: 240000
+      max_total_tokens: 24000
+
+    scorecard:
+      strategy: weighted
+      pass_threshold: 0.7
+      dimensions:
+        - key: correctness
+          source: validators
+          validators:
+            - query_returns_correct_rows
+          gate: true
+          pass_threshold: 1.0
+          weight: 0.65
+        - key: output_contract
+          source: validators
+          validators:
+            - writes_select_query
+          weight: 0.05
+        - key: reliability
+          source: reliability
+          weight: 0.1
+        - key: latency
+          source: latency
+          better_direction: lower
+          normalization:
+            target: 10000
+            max: 120000
+          weight: 0.1
+        - key: cost
+          source: cost
+          better_direction: lower
+          normalization:
+            target: 0.01
+            max: 0.25
+          weight: 0.1
+
+challenges:
+  - key: above-average-earners
+    title: Write SQL to find above-average earners
+    category: data-analysis
+    difficulty: medium
+    instructions: |
+      You are a data analyst with access to a SQLite database that has a single
+      table:
+
+        employees(id INTEGER, name TEXT, department TEXT, salary INTEGER)
+
+      Question:
+        Return the NAMES of all employees who earn strictly more than the
+        company-wide average salary (the average across every employee), ordered
+        by salary descending.
+
+      Requirements:
+        - Write a SINGLE SQL SELECT statement (a CTE with `WITH` is fine).
+        - The query must return exactly ONE column: the employee name.
+        - Do not modify the database — read-only queries only.
+
+      Write your final query — and nothing else — to the file
+      `/workspace/answer.sql`. Then reply with a one-line summary of your
+      approach.
+
+input_sets:
+  - key: default
+    name: Default Input Set
+    cases:
+      - challenge_key: above-average-earners
+        case_key: default
+        payload:
+          dialect: sqlite
+          table: employees

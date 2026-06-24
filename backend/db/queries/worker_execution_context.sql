@@ -19,7 +19,7 @@ SELECT
     r.id AS run_id,
     r.organization_id AS run_organization_id,
     r.workspace_id AS run_workspace_id,
-    r.eval_pack_version_id AS run_eval_pack_version_id,
+    r.challenge_pack_version_id AS run_challenge_pack_version_id,
     r.challenge_input_set_id AS run_challenge_input_set_id,
     r.official_pack_mode AS run_official_pack_mode,
     r.created_by_user_id AS run_created_by_user_id,
@@ -39,15 +39,15 @@ SELECT
     r.created_at AS run_created_at,
     r.updated_at AS run_updated_at,
 
-    cpv.id AS eval_pack_version_id,
-    cpv.eval_pack_id AS eval_pack_id,
-    cpv.version_number AS eval_pack_version_number,
-    cpv.manifest_checksum AS eval_pack_manifest_checksum,
-    cpv.manifest AS eval_pack_manifest,
-    challenge_definitions.challenge_definitions::jsonb AS eval_pack_challenges,
+    cpv.id AS challenge_pack_version_id,
+    cpv.challenge_pack_id AS challenge_pack_id,
+    cpv.version_number AS challenge_pack_version_number,
+    cpv.manifest_checksum AS challenge_pack_manifest_checksum,
+    cpv.manifest AS challenge_pack_manifest,
+    challenge_definitions.challenge_definitions::jsonb AS challenge_pack_challenges,
 
     cis.id AS challenge_input_set_id,
-    cis.eval_pack_version_id AS challenge_input_set_eval_pack_version_id,
+    cis.challenge_pack_version_id AS challenge_input_set_challenge_pack_version_id,
     cis.input_key AS challenge_input_set_input_key,
     cis.name AS challenge_input_set_name,
     cis.description AS challenge_input_set_description,
@@ -89,8 +89,8 @@ JOIN runs AS r
   ON r.id = ra.run_id
  AND r.organization_id = ra.organization_id
  AND r.workspace_id = ra.workspace_id
-JOIN eval_pack_versions AS cpv
-  ON cpv.id = r.eval_pack_version_id
+JOIN challenge_pack_versions AS cpv
+  ON cpv.id = r.challenge_pack_version_id
 LEFT JOIN LATERAL (
   SELECT count(*) AS selection_count
   FROM run_case_selections
@@ -114,11 +114,11 @@ LEFT JOIN LATERAL (
     ),
     '[]'::jsonb
   ) AS challenge_definitions
-  FROM eval_pack_version_challenges AS cpvc
+  FROM challenge_pack_version_challenges AS cpvc
   JOIN challenge_identities AS ci
     ON ci.id = cpvc.challenge_identity_id
-   AND ci.eval_pack_id = cpv.eval_pack_id
-  WHERE cpvc.eval_pack_version_id = cpv.id
+   AND ci.challenge_pack_id = cpv.challenge_pack_id
+  WHERE cpvc.challenge_pack_version_id = cpv.id
     AND (
       run_selection_counts.selection_count = 0 OR
       EXISTS (
@@ -132,7 +132,7 @@ LEFT JOIN LATERAL (
   ON TRUE
 LEFT JOIN challenge_input_sets AS cis
   ON cis.id = r.challenge_input_set_id
- AND cis.eval_pack_version_id = r.eval_pack_version_id
+ AND cis.challenge_pack_version_id = r.challenge_pack_version_id
 LEFT JOIN LATERAL (
   SELECT COALESCE(
     jsonb_agg(
@@ -149,12 +149,12 @@ LEFT JOIN LATERAL (
     '[]'::jsonb
   ) AS challenge_input_items
   FROM challenge_input_items AS cii
-  JOIN eval_pack_version_challenges AS cpvc
-    ON cpvc.eval_pack_version_id = cii.eval_pack_version_id
+  JOIN challenge_pack_version_challenges AS cpvc
+    ON cpvc.challenge_pack_version_id = cii.challenge_pack_version_id
    AND cpvc.challenge_identity_id = cii.challenge_identity_id
   JOIN challenge_identities AS ci
     ON ci.id = cii.challenge_identity_id
-   AND ci.eval_pack_id = cpv.eval_pack_id
+   AND ci.challenge_pack_id = cpv.challenge_pack_id
   LEFT JOIN LATERAL (
     SELECT rcs.regression_case_id
     FROM run_case_selections AS rcs

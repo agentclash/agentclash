@@ -163,26 +163,53 @@ type BillingTrialGrant struct {
 }
 
 type ChallengeInputItem struct {
-	ID                  uuid.UUID
-	ChallengeInputSetID uuid.UUID
-	EvalPackVersionID   uuid.UUID
-	ChallengeIdentityID uuid.UUID
-	ItemKey             string
-	Payload             []byte
-	CreatedAt           pgtype.Timestamptz
+	ID                     uuid.UUID
+	ChallengeInputSetID    uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	ChallengeIdentityID    uuid.UUID
+	ItemKey                string
+	Payload                []byte
+	CreatedAt              pgtype.Timestamptz
 }
 
 type ChallengeInputSet struct {
-	ID                uuid.UUID
-	EvalPackVersionID uuid.UUID
-	InputKey          string
-	Name              string
-	Description       *string
-	InputChecksum     string
-	GeneratedAt       pgtype.Timestamptz
-	CreatedAt         pgtype.Timestamptz
-	UpdatedAt         pgtype.Timestamptz
-	ArchivedAt        pgtype.Timestamptz
+	ID                     uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	InputKey               string
+	Name                   string
+	Description            *string
+	InputChecksum          string
+	GeneratedAt            pgtype.Timestamptz
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	ArchivedAt             pgtype.Timestamptz
+}
+
+type ChallengePackDraft struct {
+	ID                     uuid.UUID
+	WorkspaceID            uuid.UUID
+	Name                   string
+	ExecutionMode          string
+	ChallengePackID        *uuid.UUID
+	Composition            []byte
+	Status                 string
+	LastPublishedVersionID *uuid.UUID
+	CreatedByUserID        *uuid.UUID
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+}
+
+type ChallengePackVersion struct {
+	ID               uuid.UUID
+	ChallengePackID  uuid.UUID
+	VersionNumber    int32
+	LifecycleStatus  string
+	ManifestChecksum string
+	Manifest         []byte
+	PublishedAt      pgtype.Timestamptz
+	CreatedAt        pgtype.Timestamptz
+	UpdatedAt        pgtype.Timestamptz
+	ArchivedAt       pgtype.Timestamptz
 }
 
 type ChallengePiece struct {
@@ -201,19 +228,19 @@ type ChallengePiece struct {
 }
 
 type Dataset struct {
-	ID                       uuid.UUID
-	OrganizationID           uuid.UUID
-	WorkspaceID              uuid.UUID
-	Slug                     string
-	Name                     string
-	Description              string
-	InputSchema              []byte
-	InputSchemaEnforced      bool
-	DefaultEvalPackVersionID *uuid.UUID
-	CreatedBy                uuid.UUID
-	CreatedAt                pgtype.Timestamptz
-	UpdatedAt                pgtype.Timestamptz
-	ArchivedAt               pgtype.Timestamptz
+	ID                            uuid.UUID
+	OrganizationID                uuid.UUID
+	WorkspaceID                   uuid.UUID
+	Slug                          string
+	Name                          string
+	Description                   string
+	InputSchema                   []byte
+	InputSchemaEnforced           bool
+	DefaultChallengePackVersionID *uuid.UUID
+	CreatedBy                     uuid.UUID
+	CreatedAt                     pgtype.Timestamptz
+	UpdatedAt                     pgtype.Timestamptz
+	ArchivedAt                    pgtype.Timestamptz
 }
 
 type DatasetBaseline struct {
@@ -221,7 +248,7 @@ type DatasetBaseline struct {
 	DatasetID                uuid.UUID
 	DatasetVersionID         uuid.UUID
 	DatasetVersionInputSetID *uuid.UUID
-	EvalPackVersionID        uuid.UUID
+	ChallengePackVersionID   uuid.UUID
 	ChallengeKey             string
 	AgentDeploymentID        *uuid.UUID
 	RunID                    uuid.UUID
@@ -372,45 +399,18 @@ type DatasetVersion struct {
 }
 
 type DatasetVersionInputSet struct {
-	ID                  uuid.UUID
-	DatasetID           uuid.UUID
-	DatasetVersionID    uuid.UUID
-	EvalPackVersionID   uuid.UUID
-	ChallengeIdentityID uuid.UUID
-	ChallengeKey        string
-	ChallengeInputSetID uuid.UUID
-	InputKey            string
-	InputChecksum       string
-	Mapping             []byte
-	CreatedAt           pgtype.Timestamptz
-	UpdatedAt           pgtype.Timestamptz
-}
-
-type EvalPackDraft struct {
 	ID                     uuid.UUID
-	WorkspaceID            uuid.UUID
-	Name                   string
-	ExecutionMode          string
-	EvalPackID             *uuid.UUID
-	Composition            []byte
-	Status                 string
-	LastPublishedVersionID *uuid.UUID
-	CreatedByUserID        *uuid.UUID
+	DatasetID              uuid.UUID
+	DatasetVersionID       uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	ChallengeIdentityID    uuid.UUID
+	ChallengeKey           string
+	ChallengeInputSetID    uuid.UUID
+	InputKey               string
+	InputChecksum          string
+	Mapping                []byte
 	CreatedAt              pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
-}
-
-type EvalPackVersion struct {
-	ID               uuid.UUID
-	EvalPackID       uuid.UUID
-	VersionNumber    int32
-	LifecycleStatus  string
-	ManifestChecksum string
-	Manifest         []byte
-	PublishedAt      pgtype.Timestamptz
-	CreatedAt        pgtype.Timestamptz
-	UpdatedAt        pgtype.Timestamptz
-	ArchivedAt       pgtype.Timestamptz
 }
 
 type EvalSession struct {
@@ -441,14 +441,14 @@ type EvalSessionResult struct {
 }
 
 type EvaluationSpec struct {
-	ID                uuid.UUID
-	EvalPackVersionID *uuid.UUID
-	Name              string
-	VersionNumber     int32
-	JudgeMode         string
-	Definition        []byte
-	CreatedAt         pgtype.Timestamptz
-	UpdatedAt         pgtype.Timestamptz
+	ID                     uuid.UUID
+	ChallengePackVersionID *uuid.UUID
+	Name                   string
+	VersionNumber          int32
+	JudgeMode              string
+	Definition             []byte
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
 }
 
 type HostedRunExecution struct {
@@ -562,31 +562,31 @@ type PlaygroundTestCase struct {
 }
 
 type Run struct {
-	ID                    uuid.UUID
-	OrganizationID        uuid.UUID
-	WorkspaceID           uuid.UUID
-	EvalPackVersionID     *uuid.UUID
-	ChallengeInputSetID   *uuid.UUID
-	CreatedByUserID       *uuid.UUID
-	Name                  string
-	Status                string
-	ExecutionMode         string
-	TemporalWorkflowID    *string
-	TemporalRunID         *string
-	ExecutionPlan         []byte
-	QueuedAt              pgtype.Timestamptz
-	StartedAt             pgtype.Timestamptz
-	FinishedAt            pgtype.Timestamptz
-	CancelledAt           pgtype.Timestamptz
-	FailedAt              pgtype.Timestamptz
-	CreatedAt             pgtype.Timestamptz
-	UpdatedAt             pgtype.Timestamptz
-	OfficialPackMode      string
-	EvalSessionID         *uuid.UUID
-	RaceContext           bool
-	RaceContextMinStepGap *int32
-	CiMetadata            []byte
-	SourceType            string
+	ID                     uuid.UUID
+	OrganizationID         uuid.UUID
+	WorkspaceID            uuid.UUID
+	ChallengePackVersionID *uuid.UUID
+	ChallengeInputSetID    *uuid.UUID
+	CreatedByUserID        *uuid.UUID
+	Name                   string
+	Status                 string
+	ExecutionMode          string
+	TemporalWorkflowID     *string
+	TemporalRunID          *string
+	ExecutionPlan          []byte
+	QueuedAt               pgtype.Timestamptz
+	StartedAt              pgtype.Timestamptz
+	FinishedAt             pgtype.Timestamptz
+	CancelledAt            pgtype.Timestamptz
+	FailedAt               pgtype.Timestamptz
+	CreatedAt              pgtype.Timestamptz
+	UpdatedAt              pgtype.Timestamptz
+	OfficialPackMode       string
+	EvalSessionID          *uuid.UUID
+	RaceContext            bool
+	RaceContextMinStepGap  *int32
+	CiMetadata             []byte
+	SourceType             string
 }
 
 type RunAgent struct {
@@ -699,47 +699,47 @@ type VibeEvalConversation struct {
 }
 
 type VibeEvalDraft struct {
-	ID                         uuid.UUID
-	OrganizationID             uuid.UUID
-	WorkspaceID                uuid.UUID
-	ConversationID             uuid.UUID
-	DraftKind                  string
-	Content                    []byte
-	ValidationState            string
-	ValidationErrors           []byte
-	PublishedEvalPackID        *uuid.UUID
-	PublishedEvalPackVersionID *uuid.UUID
-	CreatedByUserID            uuid.UUID
-	UpdatedByUserID            uuid.UUID
-	CreatedAt                  pgtype.Timestamptz
-	UpdatedAt                  pgtype.Timestamptz
+	ID                              uuid.UUID
+	OrganizationID                  uuid.UUID
+	WorkspaceID                     uuid.UUID
+	ConversationID                  uuid.UUID
+	DraftKind                       string
+	Content                         []byte
+	ValidationState                 string
+	ValidationErrors                []byte
+	PublishedChallengePackID        *uuid.UUID
+	PublishedChallengePackVersionID *uuid.UUID
+	CreatedByUserID                 uuid.UUID
+	UpdatedByUserID                 uuid.UUID
+	CreatedAt                       pgtype.Timestamptz
+	UpdatedAt                       pgtype.Timestamptz
 }
 
 type WorkspaceRegressionCase struct {
-	ID                        uuid.UUID
-	SuiteID                   uuid.UUID
-	Title                     string
-	Description               string
-	Status                    string
-	Severity                  string
-	PromotionMode             string
-	SourceRunID               *uuid.UUID
-	SourceRunAgentID          *uuid.UUID
-	SourceReplayID            *uuid.UUID
-	SourceEvalPackVersionID   uuid.UUID
-	SourceChallengeInputSetID *uuid.UUID
-	SourceChallengeIdentityID uuid.UUID
-	SourceCaseKey             string
-	SourceItemKey             *string
-	EvidenceTier              string
-	FailureClass              string
-	FailureSummary            string
-	PayloadSnapshot           []byte
-	ExpectedContract          []byte
-	ValidatorOverrides        []byte
-	Metadata                  []byte
-	CreatedAt                 pgtype.Timestamptz
-	UpdatedAt                 pgtype.Timestamptz
+	ID                           uuid.UUID
+	SuiteID                      uuid.UUID
+	Title                        string
+	Description                  string
+	Status                       string
+	Severity                     string
+	PromotionMode                string
+	SourceRunID                  *uuid.UUID
+	SourceRunAgentID             *uuid.UUID
+	SourceReplayID               *uuid.UUID
+	SourceChallengePackVersionID uuid.UUID
+	SourceChallengeInputSetID    *uuid.UUID
+	SourceChallengeIdentityID    uuid.UUID
+	SourceCaseKey                string
+	SourceItemKey                *string
+	EvidenceTier                 string
+	FailureClass                 string
+	FailureSummary               string
+	PayloadSnapshot              []byte
+	ExpectedContract             []byte
+	ValidatorOverrides           []byte
+	Metadata                     []byte
+	CreatedAt                    pgtype.Timestamptz
+	UpdatedAt                    pgtype.Timestamptz
 }
 
 type WorkspaceRegressionPromotion struct {
@@ -755,15 +755,15 @@ type WorkspaceRegressionPromotion struct {
 }
 
 type WorkspaceRegressionSuite struct {
-	ID                  uuid.UUID
-	WorkspaceID         uuid.UUID
-	SourceEvalPackID    uuid.UUID
-	Name                string
-	Description         string
-	Status              string
-	SourceMode          string
-	DefaultGateSeverity string
-	CreatedByUserID     uuid.UUID
-	CreatedAt           pgtype.Timestamptz
-	UpdatedAt           pgtype.Timestamptz
+	ID                    uuid.UUID
+	WorkspaceID           uuid.UUID
+	SourceChallengePackID uuid.UUID
+	Name                  string
+	Description           string
+	Status                string
+	SourceMode            string
+	DefaultGateSeverity   string
+	CreatedByUserID       uuid.UUID
+	CreatedAt             pgtype.Timestamptz
+	UpdatedAt             pgtype.Timestamptz
 }

@@ -56,7 +56,7 @@ export default function EvalChecklistThankYouPage() {
             </h2>
             <p className="mt-3 max-w-[58ch] text-sm leading-6 text-white/55">
               Book a 30-minute eval architecture review. We will map your
-              workloads to eval packs, baselines, scorecards, and a first
+              workloads to challenge packs, baselines, scorecards, and a first
               release gate.
             </p>
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">

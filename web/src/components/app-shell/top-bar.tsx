@@ -28,7 +28,7 @@ interface TopBarProps {
 const segmentLabels: Record<string, string> = {
   builds: "Builds",
   deployments: "Deployments",
-  "eval-packs": "Eval Packs",
+  "challenge-packs": "Challenge Packs",
   runs: "Runs",
   comparisons: "Comparisons",
   "release-gates": "Release Gates",

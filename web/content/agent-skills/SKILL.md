@@ -18,7 +18,7 @@ Define the folder taxonomy and publishing contract for AgentClash Agent Skills. 
 - A reviewer needs to check whether a skill can be copied into Codex, Claude Code, Cursor, or another coding-agent workflow.
 
 ## Do Not Use When
-- The task is only to run an eval, read a scorecard, configure the CLI, or author a eval pack.
+- The task is only to run an eval, read a scorecard, configure the CLI, or author a challenge pack.
 - The task changes product docs outside the Agent Skills catalog and does not affect skill discovery.
 
 ## Inputs Needed
@@ -34,10 +34,10 @@ The canonical source is always a `SKILL.md` file under `web/content/agent-skills
 web/content/agent-skills/SKILL.md
 web/content/agent-skills/<top-level-skill>/SKILL.md
 web/content/agent-skills/agent-build-skills/<skill>/SKILL.md
-web/content/agent-skills/eval-pack-skills/<skill>/SKILL.md
+web/content/agent-skills/challenge-pack-skills/<skill>/SKILL.md
 ```
 
-Use top-level folders for cross-cutting workflows such as CLI setup, eval running, scorecard reading, regression, and CI gates. Use `agent-build-skills/` for agent build specs, runtime resources, deployments, providers, secrets, and model aliases. Use `eval-pack-skills/` for eval pack planning, YAML authoring, inputs, tools, artifacts, scoring, judges, validation, and publish workflows.
+Use top-level folders for cross-cutting workflows such as CLI setup, eval running, scorecard reading, regression, and CI gates. Use `agent-build-skills/` for agent build specs, runtime resources, deployments, providers, secrets, and model aliases. Use `challenge-pack-skills/` for challenge pack planning, YAML authoring, inputs, tools, artifacts, scoring, judges, validation, and publish workflows.
 
 ## Required Frontmatter
 Every skill must start with YAML frontmatter that the docs generator can parse with `gray-matter`.
@@ -148,14 +148,14 @@ Read related skills in this order so downstream workflows do not redefine upstre
 4. `agentclash-runtime-resources-setup`
 5. `agentclash-agent-build-author`
 6. `agentclash-agent-deployment-setup`
-7. `agentclash-eval-pack-planner`
-8. `agentclash-eval-pack-yaml-author`
-9. `agentclash-eval-pack-input-sets`
-10. `agentclash-eval-pack-tools-sandbox`
-11. `agentclash-eval-pack-artifacts`
-12. `agentclash-eval-pack-scoring-validators`
-13. `agentclash-eval-pack-llm-judges`
-14. `agentclash-eval-pack-validation-publish`
+7. `agentclash-challenge-pack-planner`
+8. `agentclash-challenge-pack-yaml-author`
+9. `agentclash-challenge-pack-input-sets`
+10. `agentclash-challenge-pack-tools-sandbox`
+11. `agentclash-challenge-pack-artifacts`
+12. `agentclash-challenge-pack-scoring-validators`
+13. `agentclash-challenge-pack-llm-judges`
+14. `agentclash-challenge-pack-validation-publish`
 15. `agentclash-eval-runner`
 16. `agentclash-scorecard-reader`
 17. `agentclash-compare-and-triage`
@@ -180,7 +180,7 @@ Read related skills in this order so downstream workflows do not redefine upstre
 ```text
 Skill: <name>
 Path: web/content/agent-skills/<path>/SKILL.md
-Category: <core | agent-build-skills | eval-pack-skills>
+Category: <core | agent-build-skills | challenge-pack-skills>
 Docs: /docs-md/agent-skills/<path>
 Validation: <commands run and result>
 Notes: <source-backed caveats or follow-ups>

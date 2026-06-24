@@ -31,7 +31,7 @@ var (
 type StartRequest struct {
 	RunID                  uuid.UUID       `json:"run_id"`
 	RunAgentID             uuid.UUID       `json:"run_agent_id"`
-	EvalPackVersionID uuid.UUID       `json:"eval_pack_version_id"`
+	ChallengePackVersionID uuid.UUID       `json:"challenge_pack_version_id"`
 	TaskPayload            json.RawMessage `json:"task_payload"`
 	TraceLevel             string          `json:"trace_level"`
 	CallbackURL            string          `json:"callback_url"`
