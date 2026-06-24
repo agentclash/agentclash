@@ -5,13 +5,17 @@ on:
     branches: [main]
     paths:
       - "sdk/python/**"
+      - "sdk/typescript/**"
       - "schemas/evaltest/**"
+      - "cli/**"
       - ".github/workflows/eval-sdk.yml"
   pull_request:
     branches: [main]
     paths:
       - "sdk/python/**"
+      - "sdk/typescript/**"
       - "schemas/evaltest/**"
+      - "cli/**"
       - ".github/workflows/eval-sdk.yml"
 
 defaults:
@@ -34,6 +38,22 @@ jobs:
 
       - name: Install package
         run: pip install -e ".[dev]"
+        working-directory: sdk/python/agentclash_eval
 
       - name: Run tests
         run: pytest -q
+        working-directory: sdk/python/agentclash_eval
+
+  typescript:
+    name: TypeScript SDK Spike Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/typescript/evals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install
+      - run: npm test

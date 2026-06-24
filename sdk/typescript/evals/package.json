@@ -1,0 +1,17 @@
+{
+  "name": "@agentclash/evals",
+  "version": "0.1.0-alpha",
+  "private": true,
+  "description": "TypeScript pre-deploy agent eval SDK (alpha spike)",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  }
+}
