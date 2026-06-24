@@ -21,7 +21,7 @@ from agentclash_eval.models import (
 
 
 def to_report_dict(report: EvalReport) -> dict[str, Any]:
-    return {
+    payload: dict[str, Any] = {
         "schema_version": report.schema_version,
         "report_id": report.report_id,
         "generated_at": report.generated_at,
@@ -33,15 +33,20 @@ def to_report_dict(report: EvalReport) -> dict[str, Any]:
             "skipped": report.summary.skipped,
             "errored": report.summary.errored,
             "metric_failures": report.summary.metric_failures,
-            "duration_ms": report.summary.duration_ms,
-            "total_cost_usd": report.summary.total_cost_usd,
         },
         "cases": [_case_result_to_dict(case) for case in report.cases],
         "failures": [_failure_to_dict(failure) for failure in report.failures],
         "exit_code": report.exit_code,
-        "duration_ms": report.duration_ms,
-        "total_cost_usd": report.total_cost_usd,
     }
+    if report.summary.duration_ms is not None:
+        payload["summary"]["duration_ms"] = report.summary.duration_ms
+    if report.summary.total_cost_usd is not None:
+        payload["summary"]["total_cost_usd"] = report.summary.total_cost_usd
+    if report.duration_ms is not None:
+        payload["duration_ms"] = report.duration_ms
+    if report.total_cost_usd is not None:
+        payload["total_cost_usd"] = report.total_cost_usd
+    return payload
 
 
 def _case_result_to_dict(case: EvalCaseResult) -> dict[str, Any]:
