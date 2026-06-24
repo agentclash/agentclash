@@ -70,8 +70,15 @@ export function PackOutline() {
   };
   const removePiece = (kind: PieceKind, index: number) => {
     update((c) => removePieceRef(c, kind, index));
+    // Keep the current selection pointing at the same piece: only the viewed
+    // piece being removed warrants leaving; a removal at a lower index just
+    // shifts everything after it down by one.
     if (selection.section === "piece" && selection.kind === kind) {
-      select({ section: "overview" });
+      if (selection.index === index) {
+        select({ section: "overview" });
+      } else if (selection.index > index) {
+        select({ section: "piece", kind, index: selection.index - 1 });
+      }
     }
   };
 
@@ -244,7 +251,11 @@ function RailNav({
         <span className="flex-1 truncate">{label}</span>
         {issue && (
           <span
-            className="size-1.5 shrink-0 rounded-full bg-builder-warn group-hover/row:opacity-0"
+            className={cn(
+              "size-1.5 shrink-0 rounded-full bg-builder-warn",
+              // Fades only on removable rows, where the trash icon takes its place.
+              onRemove && "group-hover/row:opacity-0",
+            )}
             aria-label="has issues"
           />
         )}

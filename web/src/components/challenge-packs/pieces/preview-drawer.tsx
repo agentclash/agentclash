@@ -5,10 +5,20 @@
 // Preview / readable / YAML header).
 
 import { X } from "lucide-react";
+import { useEffect } from "react";
 
 import { SpecCard } from "./spec-card";
 
 export function PreviewDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
