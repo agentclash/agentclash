@@ -5025,6 +5025,46 @@
       "commands": [
         "ci run"
       ]
+    },
+    {
+      "code": 0,
+      "name": "success",
+      "description": "evaltest run: all eval cases passed.",
+      "commands": [
+        "evaltest run"
+      ]
+    },
+    {
+      "code": 1,
+      "name": "assertion_failed",
+      "description": "evaltest run: one or more metric assertions failed.",
+      "commands": [
+        "evaltest run"
+      ]
+    },
+    {
+      "code": 2,
+      "name": "config_error",
+      "description": "evaltest run: invalid eval config or test authoring error.",
+      "commands": [
+        "evaltest run"
+      ]
+    },
+    {
+      "code": 3,
+      "name": "provider_error",
+      "description": "evaltest run: judge/model provider or runtime error.",
+      "commands": [
+        "evaltest run"
+      ]
+    },
+    {
+      "code": 4,
+      "name": "internal_error",
+      "description": "evaltest run: internal SDK/runner error.",
+      "commands": [
+        "evaltest run"
+      ]
     }
   ],
   "error_codes": [

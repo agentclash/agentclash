@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "report_id": "rpt-config-error-001",
+  "generated_at": "2026-06-24T12:15:00Z",
+  "runner": {
+    "name": "agentclash-evaltest",
+    "version": "0.1.0",
+    "language": "go"
+  },
+  "summary": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0,
+    "errored": 0,
+    "metric_failures": 0,
+    "duration_ms": 5.0,
+    "total_cost_usd": 0
+  },
+  "cases": [],
+  "failures": [
+    {
+      "case_id": "config",
+      "metric_key": "config",
+      "reason": "eval config missing required field: tests"
+    }
+  ],
+  "exit_code": 2,
+  "duration_ms": 5.0,
+  "total_cost_usd": 0
+}
