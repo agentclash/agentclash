@@ -29,7 +29,7 @@ func TestEvaltestRunWritesJSONAndJUnit(t *testing.T) {
 	}
 	dir := t.TempDir()
 	t.Chdir(dir)
-	t.Setenv("AGENTCLASH_EVAL_SDK_SRC", filepath.Join(repoRoot, "sdk", "python", "agentclash_eval", "src"))
+	t.Setenv("AGENTCLASH_EVAL_SDK_SRC", filepath.Join(repoRoot, "cli", "cmd", "testdata", "evaltest_sdk_src"))
 
 	if err := executeCommand(t, []string{"evaltest", "init"}, "http://unused"); err != nil {
 		t.Fatalf("evaltest init error: %v", err)

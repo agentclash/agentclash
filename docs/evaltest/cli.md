@@ -5,7 +5,18 @@ Run pre-deploy agent evals locally without an AgentClash account.
 ## Quick start
 
 ```bash
+python -m pip install agentclash-evals
 agentclash evaltest init
+agentclash evaltest run --format both --out agentclash-results
+```
+
+The SDK package lives in the dedicated repo:
+https://github.com/agentclash/agentclash-evals
+
+For local SDK development, point the CLI at a source checkout:
+
+```bash
+export AGENTCLASH_EVAL_SDK_SRC=/path/to/agentclash-evals/python/agentclash_eval/src
 agentclash evaltest run --format both --out agentclash-results
 ```
 
