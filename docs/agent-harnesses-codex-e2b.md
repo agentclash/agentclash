@@ -1,7 +1,7 @@
 # Agent Harnesses: Codex on E2B
 
 Agent Harnesses are workspace-scoped coding-agent task definitions. They are not
-eval packs: users describe a task, choose a harness runtime, and attach
+challenge packs: users describe a task, choose a harness runtime, and attach
 evaluation config that can later be scored with AgentClash validators and LLM
 judges.
 
@@ -70,7 +70,7 @@ A follow-up worker can turn a persisted harness into an execution by:
    artifacts.
 6. Feeding artifacts plus `evaluation_config` into the existing scoring layer.
 
-This keeps eval packs optional for coding-harness evaluations while still
+This keeps challenge packs optional for coding-harness evaluations while still
 letting AgentClash reuse validators and LLM judges.
 
 ## Runtime Lessons

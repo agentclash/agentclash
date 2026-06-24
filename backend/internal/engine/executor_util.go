@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 )
@@ -92,8 +92,8 @@ func cloneStringMap(value map[string]string) map[string]string {
 //
 // The execution engine reads Expects from the database directly (via
 // StoredCaseDocument), so stripping them here does not affect scoring.
-func sanitizeUserSimulatorForAgent(spec *evalpack.UserSimulatorSpec) *evalpack.UserSimulatorSpec {
-	cloned := evalpack.CloneUserSimulatorSpec(spec)
+func sanitizeUserSimulatorForAgent(spec *challengepack.UserSimulatorSpec) *challengepack.UserSimulatorSpec {
+	cloned := challengepack.CloneUserSimulatorSpec(spec)
 	if cloned == nil {
 		return nil
 	}
@@ -155,7 +155,7 @@ func cloneChallengeInputSet(inputSet *repository.ChallengeInputSetExecutionConte
 	}
 	cloned := &repository.ChallengeInputSetExecutionContext{
 		ID:                     inputSet.ID,
-		EvalPackVersionID: inputSet.EvalPackVersionID,
+		ChallengePackVersionID: inputSet.ChallengePackVersionID,
 		InputKey:               inputSet.InputKey,
 		Name:                   inputSet.Name,
 		Description:            cloneStringPtr(inputSet.Description),
@@ -171,11 +171,11 @@ func cloneChallengeInputSet(inputSet *repository.ChallengeInputSetExecutionConte
 			CaseKey:             item.CaseKey,
 			ItemKey:             item.ItemKey,
 			Payload:             cloneJSON(item.Payload),
-			Inputs:              append([]evalpack.CaseInput(nil), item.Inputs...),
+			Inputs:              append([]challengepack.CaseInput(nil), item.Inputs...),
 			Expectations:        nil,
 			UserSimulator:       sanitizeUserSimulatorForAgent(item.UserSimulator),
-			Artifacts:           append([]evalpack.ArtifactRef(nil), item.Artifacts...),
-			Assets:              append([]evalpack.AssetReference(nil), item.Assets...),
+			Artifacts:           append([]challengepack.ArtifactRef(nil), item.Artifacts...),
+			Assets:              append([]challengepack.AssetReference(nil), item.Assets...),
 		})
 	}
 	for _, item := range inputSet.Items {

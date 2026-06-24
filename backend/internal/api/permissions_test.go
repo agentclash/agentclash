@@ -38,7 +38,7 @@ func TestRequireWorkspaceRole_AdminAllowedForAllActions(t *testing.T) {
 		ActionCancelRun,
 		ActionManageRegressions,
 		ActionManageVibeEvalDrafts,
-		ActionPublishEvalPack,
+		ActionPublishChallengePack,
 		ActionUploadArtifact,
 		ActionManageInfrastructure,
 		ActionManageSecrets,
@@ -71,7 +71,7 @@ func TestRequireWorkspaceRole_MemberAllowedForBusinessActions(t *testing.T) {
 		ActionCancelRun,
 		ActionManageRegressions,
 		ActionManageVibeEvalDrafts,
-		ActionPublishEvalPack,
+		ActionPublishChallengePack,
 		ActionUploadArtifact,
 	}
 
@@ -140,7 +140,7 @@ func TestRequireWorkspaceRole_ViewerDeniedWrites(t *testing.T) {
 		ActionCancelRun,
 		ActionManageRegressions,
 		ActionManageVibeEvalDrafts,
-		ActionPublishEvalPack,
+		ActionPublishChallengePack,
 		ActionUploadArtifact,
 		ActionManageInfrastructure,
 		ActionManageSecrets,

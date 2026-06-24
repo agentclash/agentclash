@@ -1,9 +1,9 @@
 ###############################################################################
-# Eval Pack: Architect Valid YAML First Pass
+# Challenge Pack: Architect Valid YAML First Pass
 #
 # This pack evaluates the very first Architect capability:
 # can an agent generate a syntactically valid, minimally well-formed
-# AgentClash eval pack YAML bundle?
+# AgentClash challenge pack YAML bundle?
 #
 # The generated target bundle is intentionally constrained:
 # - write one YAML file to /workspace/generated-pack.yaml
@@ -189,7 +189,7 @@ version:
 
           Penalize bundles that look generic, drift away from the brief, invent
           irrelevant complexity, or appear to satisfy only superficial shape
-          checks without being a believable AgentClash eval pack.
+          checks without being a believable AgentClash challenge pack.
 
       - key: authoring_discipline
         mode: assertion
@@ -254,7 +254,7 @@ challenges:
     category: pack_authoring
     difficulty: medium
     instructions: |
-      You are authoring a eval pack for AgentClash.
+      You are authoring a challenge pack for AgentClash.
 
       Your job is to create a SMALL, VALID, SINGLE-CHALLENGE bundle YAML file
       at `/workspace/generated-pack.yaml`.
@@ -272,7 +272,7 @@ challenges:
         - at least one deterministic validator
         - at least one scorecard dimension
       - Use the required slug and family from the case data.
-      - The eval pack should match the workflow brief in the case data.
+      - The challenge pack should match the workflow brief in the case data.
 
       After writing the YAML file, return a single JSON object and nothing else:
 
@@ -291,7 +291,7 @@ input_sets:
         case_key: support-ticket-triage
         payload:
           bundle_brief: |
-            Create a minimal prompt_eval eval pack for triaging inbound
+            Create a minimal prompt_eval challenge pack for triaging inbound
             support tickets into severity buckets. The evaluated agent should
             read a short ticket and output a severity label plus a short reason.
           validity_goal: |
@@ -312,7 +312,7 @@ input_sets:
         case_key: invoice-total-extraction
         payload:
           bundle_brief: |
-            Create a minimal prompt_eval eval pack for extracting total
+            Create a minimal prompt_eval challenge pack for extracting total
             amount, vendor name, and invoice date from a plain-text invoice
             snippet. The evaluated agent should output a structured result.
           validity_goal: |
@@ -333,7 +333,7 @@ input_sets:
         case_key: incident-summary
         payload:
           bundle_brief: |
-            Create a minimal prompt_eval eval pack for summarizing a short
+            Create a minimal prompt_eval challenge pack for summarizing a short
             production incident into severity, likely root cause, and immediate
             next step. The evaluated agent should output a structured summary.
           validity_goal: |

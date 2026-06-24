@@ -10,7 +10,7 @@ metadata:
 # AgentClash Agent Harness Setup
 
 ## Purpose
-Configure and operate Agent Harnesses — workspace-scoped autonomous coding tasks with E2B runners, evaluation config, suite rankings, and failure curation. Agent Harnesses are not eval packs.
+Configure and operate Agent Harnesses — workspace-scoped autonomous coding tasks with E2B runners, evaluation config, suite rankings, and failure curation. Agent Harnesses are not challenge packs.
 
 ## Use When
 - A user wants long-running coding-agent checks against a repository with validators or LLM judges.
@@ -18,7 +18,7 @@ Configure and operate Agent Harnesses — workspace-scoped autonomous coding tas
 - The workflow involves suite task banks, multi-harness suite runs, or promoting failed executions into private tasks.
 
 ## Do Not Use When
-- The workload is a standard eval-pack eval — use `agentclash-eval-runner`.
+- The workload is a standard challenge-pack eval — use `agentclash-eval-runner`.
 - The user only needs deployments or runtime resources — use agent-build skills first.
 - The task is prompt A/B testing without a repo harness — use `agentclash-prompt-eval-playground`.
 

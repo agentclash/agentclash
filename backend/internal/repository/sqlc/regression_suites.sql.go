@@ -115,7 +115,7 @@ INSERT INTO workspace_regression_cases (
     source_run_id,
     source_run_agent_id,
     source_replay_id,
-    source_eval_pack_version_id,
+    source_challenge_pack_version_id,
     source_challenge_input_set_id,
     source_challenge_identity_id,
     source_case_key,
@@ -150,31 +150,31 @@ INSERT INTO workspace_regression_cases (
     $20,
     $21
 )
-RETURNING id, suite_id, title, description, status, severity, promotion_mode, source_run_id, source_run_agent_id, source_replay_id, source_eval_pack_version_id, source_challenge_input_set_id, source_challenge_identity_id, source_case_key, source_item_key, evidence_tier, failure_class, failure_summary, payload_snapshot, expected_contract, validator_overrides, metadata, created_at, updated_at
+RETURNING id, suite_id, title, description, status, severity, promotion_mode, source_run_id, source_run_agent_id, source_replay_id, source_challenge_pack_version_id, source_challenge_input_set_id, source_challenge_identity_id, source_case_key, source_item_key, evidence_tier, failure_class, failure_summary, payload_snapshot, expected_contract, validator_overrides, metadata, created_at, updated_at
 `
 
 type CreateRegressionCaseParams struct {
-	SuiteID                   uuid.UUID
-	Title                     string
-	Description               string
-	Status                    string
-	Severity                  string
-	PromotionMode             string
-	SourceRunID               *uuid.UUID
-	SourceRunAgentID          *uuid.UUID
-	SourceReplayID            *uuid.UUID
-	SourceEvalPackVersionID   uuid.UUID
-	SourceChallengeInputSetID *uuid.UUID
-	SourceChallengeIdentityID uuid.UUID
-	SourceCaseKey             string
-	SourceItemKey             *string
-	EvidenceTier              string
-	FailureClass              string
-	FailureSummary            string
-	PayloadSnapshot           []byte
-	ExpectedContract          []byte
-	ValidatorOverrides        []byte
-	Metadata                  []byte
+	SuiteID                      uuid.UUID
+	Title                        string
+	Description                  string
+	Status                       string
+	Severity                     string
+	PromotionMode                string
+	SourceRunID                  *uuid.UUID
+	SourceRunAgentID             *uuid.UUID
+	SourceReplayID               *uuid.UUID
+	SourceChallengePackVersionID uuid.UUID
+	SourceChallengeInputSetID    *uuid.UUID
+	SourceChallengeIdentityID    uuid.UUID
+	SourceCaseKey                string
+	SourceItemKey                *string
+	EvidenceTier                 string
+	FailureClass                 string
+	FailureSummary               string
+	PayloadSnapshot              []byte
+	ExpectedContract             []byte
+	ValidatorOverrides           []byte
+	Metadata                     []byte
 }
 
 func (q *Queries) CreateRegressionCase(ctx context.Context, arg CreateRegressionCaseParams) (WorkspaceRegressionCase, error) {
@@ -188,7 +188,7 @@ func (q *Queries) CreateRegressionCase(ctx context.Context, arg CreateRegression
 		arg.SourceRunID,
 		arg.SourceRunAgentID,
 		arg.SourceReplayID,
-		arg.SourceEvalPackVersionID,
+		arg.SourceChallengePackVersionID,
 		arg.SourceChallengeInputSetID,
 		arg.SourceChallengeIdentityID,
 		arg.SourceCaseKey,
@@ -213,7 +213,7 @@ func (q *Queries) CreateRegressionCase(ctx context.Context, arg CreateRegression
 		&i.SourceRunID,
 		&i.SourceRunAgentID,
 		&i.SourceReplayID,
-		&i.SourceEvalPackVersionID,
+		&i.SourceChallengePackVersionID,
 		&i.SourceChallengeInputSetID,
 		&i.SourceChallengeIdentityID,
 		&i.SourceCaseKey,
@@ -290,7 +290,7 @@ func (q *Queries) CreateRegressionPromotion(ctx context.Context, arg CreateRegre
 const createRegressionSuite = `-- name: CreateRegressionSuite :one
 INSERT INTO workspace_regression_suites (
     workspace_id,
-    source_eval_pack_id,
+    source_challenge_pack_id,
     name,
     description,
     status,
@@ -310,7 +310,7 @@ INSERT INTO workspace_regression_suites (
 RETURNING
     id,
     workspace_id,
-    source_eval_pack_id,
+    source_challenge_pack_id,
     name,
     description,
     status,
@@ -322,20 +322,20 @@ RETURNING
 `
 
 type CreateRegressionSuiteParams struct {
-	WorkspaceID         uuid.UUID
-	SourceEvalPackID    uuid.UUID
-	Name                string
-	Description         string
-	Status              string
-	SourceMode          string
-	DefaultGateSeverity string
-	CreatedByUserID     uuid.UUID
+	WorkspaceID           uuid.UUID
+	SourceChallengePackID uuid.UUID
+	Name                  string
+	Description           string
+	Status                string
+	SourceMode            string
+	DefaultGateSeverity   string
+	CreatedByUserID       uuid.UUID
 }
 
 func (q *Queries) CreateRegressionSuite(ctx context.Context, arg CreateRegressionSuiteParams) (WorkspaceRegressionSuite, error) {
 	row := q.db.QueryRow(ctx, createRegressionSuite,
 		arg.WorkspaceID,
-		arg.SourceEvalPackID,
+		arg.SourceChallengePackID,
 		arg.Name,
 		arg.Description,
 		arg.Status,
@@ -347,7 +347,7 @@ func (q *Queries) CreateRegressionSuite(ctx context.Context, arg CreateRegressio
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,
-		&i.SourceEvalPackID,
+		&i.SourceChallengePackID,
 		&i.Name,
 		&i.Description,
 		&i.Status,
@@ -403,7 +403,7 @@ SELECT
     c.source_run_id,
     c.source_run_agent_id,
     c.source_replay_id,
-    c.source_eval_pack_version_id,
+    c.source_challenge_pack_version_id,
     c.source_challenge_input_set_id,
     c.source_challenge_identity_id,
     c.source_case_key,
@@ -428,32 +428,32 @@ type GetRegressionCaseByIDParams struct {
 }
 
 type GetRegressionCaseByIDRow struct {
-	ID                        uuid.UUID
-	SuiteID                   uuid.UUID
-	WorkspaceID               uuid.UUID
-	SuiteName                 string
-	Title                     string
-	Description               string
-	Status                    string
-	Severity                  string
-	PromotionMode             string
-	SourceRunID               *uuid.UUID
-	SourceRunAgentID          *uuid.UUID
-	SourceReplayID            *uuid.UUID
-	SourceEvalPackVersionID   uuid.UUID
-	SourceChallengeInputSetID *uuid.UUID
-	SourceChallengeIdentityID uuid.UUID
-	SourceCaseKey             string
-	SourceItemKey             *string
-	EvidenceTier              string
-	FailureClass              string
-	FailureSummary            string
-	PayloadSnapshot           []byte
-	ExpectedContract          []byte
-	ValidatorOverrides        []byte
-	Metadata                  []byte
-	CreatedAt                 pgtype.Timestamptz
-	UpdatedAt                 pgtype.Timestamptz
+	ID                           uuid.UUID
+	SuiteID                      uuid.UUID
+	WorkspaceID                  uuid.UUID
+	SuiteName                    string
+	Title                        string
+	Description                  string
+	Status                       string
+	Severity                     string
+	PromotionMode                string
+	SourceRunID                  *uuid.UUID
+	SourceRunAgentID             *uuid.UUID
+	SourceReplayID               *uuid.UUID
+	SourceChallengePackVersionID uuid.UUID
+	SourceChallengeInputSetID    *uuid.UUID
+	SourceChallengeIdentityID    uuid.UUID
+	SourceCaseKey                string
+	SourceItemKey                *string
+	EvidenceTier                 string
+	FailureClass                 string
+	FailureSummary               string
+	PayloadSnapshot              []byte
+	ExpectedContract             []byte
+	ValidatorOverrides           []byte
+	Metadata                     []byte
+	CreatedAt                    pgtype.Timestamptz
+	UpdatedAt                    pgtype.Timestamptz
 }
 
 func (q *Queries) GetRegressionCaseByID(ctx context.Context, arg GetRegressionCaseByIDParams) (GetRegressionCaseByIDRow, error) {
@@ -472,7 +472,7 @@ func (q *Queries) GetRegressionCaseByID(ctx context.Context, arg GetRegressionCa
 		&i.SourceRunID,
 		&i.SourceRunAgentID,
 		&i.SourceReplayID,
-		&i.SourceEvalPackVersionID,
+		&i.SourceChallengePackVersionID,
 		&i.SourceChallengeInputSetID,
 		&i.SourceChallengeIdentityID,
 		&i.SourceCaseKey,
@@ -598,7 +598,7 @@ func (q *Queries) GetRegressionCaseValidationStatsByCaseID(ctx context.Context, 
 }
 
 const getRegressionSuiteByID = `-- name: GetRegressionSuiteByID :one
-SELECT id, workspace_id, source_eval_pack_id, name, description, status, source_mode, default_gate_severity, created_by_user_id, created_at, updated_at
+SELECT id, workspace_id, source_challenge_pack_id, name, description, status, source_mode, default_gate_severity, created_by_user_id, created_at, updated_at
 FROM workspace_regression_suites
 WHERE id = $1
 LIMIT 1
@@ -614,7 +614,7 @@ func (q *Queries) GetRegressionSuiteByID(ctx context.Context, arg GetRegressionS
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,
-		&i.SourceEvalPackID,
+		&i.SourceChallengePackID,
 		&i.Name,
 		&i.Description,
 		&i.Status,
@@ -884,7 +884,7 @@ SELECT
     c.source_run_id,
     c.source_run_agent_id,
     c.source_replay_id,
-    c.source_eval_pack_version_id,
+    c.source_challenge_pack_version_id,
     c.source_challenge_input_set_id,
     c.source_challenge_identity_id,
     c.source_case_key,
@@ -909,32 +909,32 @@ type ListRegressionCasesBySuiteIDParams struct {
 }
 
 type ListRegressionCasesBySuiteIDRow struct {
-	ID                        uuid.UUID
-	SuiteID                   uuid.UUID
-	WorkspaceID               uuid.UUID
-	SuiteName                 string
-	Title                     string
-	Description               string
-	Status                    string
-	Severity                  string
-	PromotionMode             string
-	SourceRunID               *uuid.UUID
-	SourceRunAgentID          *uuid.UUID
-	SourceReplayID            *uuid.UUID
-	SourceEvalPackVersionID   uuid.UUID
-	SourceChallengeInputSetID *uuid.UUID
-	SourceChallengeIdentityID uuid.UUID
-	SourceCaseKey             string
-	SourceItemKey             *string
-	EvidenceTier              string
-	FailureClass              string
-	FailureSummary            string
-	PayloadSnapshot           []byte
-	ExpectedContract          []byte
-	ValidatorOverrides        []byte
-	Metadata                  []byte
-	CreatedAt                 pgtype.Timestamptz
-	UpdatedAt                 pgtype.Timestamptz
+	ID                           uuid.UUID
+	SuiteID                      uuid.UUID
+	WorkspaceID                  uuid.UUID
+	SuiteName                    string
+	Title                        string
+	Description                  string
+	Status                       string
+	Severity                     string
+	PromotionMode                string
+	SourceRunID                  *uuid.UUID
+	SourceRunAgentID             *uuid.UUID
+	SourceReplayID               *uuid.UUID
+	SourceChallengePackVersionID uuid.UUID
+	SourceChallengeInputSetID    *uuid.UUID
+	SourceChallengeIdentityID    uuid.UUID
+	SourceCaseKey                string
+	SourceItemKey                *string
+	EvidenceTier                 string
+	FailureClass                 string
+	FailureSummary               string
+	PayloadSnapshot              []byte
+	ExpectedContract             []byte
+	ValidatorOverrides           []byte
+	Metadata                     []byte
+	CreatedAt                    pgtype.Timestamptz
+	UpdatedAt                    pgtype.Timestamptz
 }
 
 func (q *Queries) ListRegressionCasesBySuiteID(ctx context.Context, arg ListRegressionCasesBySuiteIDParams) ([]ListRegressionCasesBySuiteIDRow, error) {
@@ -959,7 +959,7 @@ func (q *Queries) ListRegressionCasesBySuiteID(ctx context.Context, arg ListRegr
 			&i.SourceRunID,
 			&i.SourceRunAgentID,
 			&i.SourceReplayID,
-			&i.SourceEvalPackVersionID,
+			&i.SourceChallengePackVersionID,
 			&i.SourceChallengeInputSetID,
 			&i.SourceChallengeIdentityID,
 			&i.SourceCaseKey,
@@ -998,7 +998,7 @@ SELECT
     c.source_run_id,
     c.source_run_agent_id,
     c.source_replay_id,
-    c.source_eval_pack_version_id,
+    c.source_challenge_pack_version_id,
     c.source_challenge_input_set_id,
     c.source_challenge_identity_id,
     c.source_case_key,
@@ -1028,32 +1028,32 @@ type ListRegressionCasesByWorkspaceIDParams struct {
 }
 
 type ListRegressionCasesByWorkspaceIDRow struct {
-	ID                        uuid.UUID
-	SuiteID                   uuid.UUID
-	WorkspaceID               uuid.UUID
-	SuiteName                 string
-	Title                     string
-	Description               string
-	Status                    string
-	Severity                  string
-	PromotionMode             string
-	SourceRunID               *uuid.UUID
-	SourceRunAgentID          *uuid.UUID
-	SourceReplayID            *uuid.UUID
-	SourceEvalPackVersionID   uuid.UUID
-	SourceChallengeInputSetID *uuid.UUID
-	SourceChallengeIdentityID uuid.UUID
-	SourceCaseKey             string
-	SourceItemKey             *string
-	EvidenceTier              string
-	FailureClass              string
-	FailureSummary            string
-	PayloadSnapshot           []byte
-	ExpectedContract          []byte
-	ValidatorOverrides        []byte
-	Metadata                  []byte
-	CreatedAt                 pgtype.Timestamptz
-	UpdatedAt                 pgtype.Timestamptz
+	ID                           uuid.UUID
+	SuiteID                      uuid.UUID
+	WorkspaceID                  uuid.UUID
+	SuiteName                    string
+	Title                        string
+	Description                  string
+	Status                       string
+	Severity                     string
+	PromotionMode                string
+	SourceRunID                  *uuid.UUID
+	SourceRunAgentID             *uuid.UUID
+	SourceReplayID               *uuid.UUID
+	SourceChallengePackVersionID uuid.UUID
+	SourceChallengeInputSetID    *uuid.UUID
+	SourceChallengeIdentityID    uuid.UUID
+	SourceCaseKey                string
+	SourceItemKey                *string
+	EvidenceTier                 string
+	FailureClass                 string
+	FailureSummary               string
+	PayloadSnapshot              []byte
+	ExpectedContract             []byte
+	ValidatorOverrides           []byte
+	Metadata                     []byte
+	CreatedAt                    pgtype.Timestamptz
+	UpdatedAt                    pgtype.Timestamptz
 }
 
 func (q *Queries) ListRegressionCasesByWorkspaceID(ctx context.Context, arg ListRegressionCasesByWorkspaceIDParams) ([]ListRegressionCasesByWorkspaceIDRow, error) {
@@ -1083,7 +1083,7 @@ func (q *Queries) ListRegressionCasesByWorkspaceID(ctx context.Context, arg List
 			&i.SourceRunID,
 			&i.SourceRunAgentID,
 			&i.SourceReplayID,
-			&i.SourceEvalPackVersionID,
+			&i.SourceChallengePackVersionID,
 			&i.SourceChallengeInputSetID,
 			&i.SourceChallengeIdentityID,
 			&i.SourceCaseKey,
@@ -1109,7 +1109,7 @@ func (q *Queries) ListRegressionCasesByWorkspaceID(ctx context.Context, arg List
 }
 
 const listRegressionSuitesByWorkspaceID = `-- name: ListRegressionSuitesByWorkspaceID :many
-SELECT id, workspace_id, source_eval_pack_id, name, description, status, source_mode, default_gate_severity, created_by_user_id, created_at, updated_at
+SELECT id, workspace_id, source_challenge_pack_id, name, description, status, source_mode, default_gate_severity, created_by_user_id, created_at, updated_at
 FROM workspace_regression_suites
 WHERE workspace_id = $1
 ORDER BY created_at DESC, id DESC
@@ -1134,7 +1134,7 @@ func (q *Queries) ListRegressionSuitesByWorkspaceID(ctx context.Context, arg Lis
 		if err := rows.Scan(
 			&i.ID,
 			&i.WorkspaceID,
-			&i.SourceEvalPackID,
+			&i.SourceChallengePackID,
 			&i.Name,
 			&i.Description,
 			&i.Status,
@@ -1163,7 +1163,7 @@ SET title = COALESCE($1, title),
     updated_at = now()
 WHERE id = $5
   AND ($6::text IS NULL OR status = $6::text)
-RETURNING id, suite_id, title, description, status, severity, promotion_mode, source_run_id, source_run_agent_id, source_replay_id, source_eval_pack_version_id, source_challenge_input_set_id, source_challenge_identity_id, source_case_key, source_item_key, evidence_tier, failure_class, failure_summary, payload_snapshot, expected_contract, validator_overrides, metadata, created_at, updated_at
+RETURNING id, suite_id, title, description, status, severity, promotion_mode, source_run_id, source_run_agent_id, source_replay_id, source_challenge_pack_version_id, source_challenge_input_set_id, source_challenge_identity_id, source_case_key, source_item_key, evidence_tier, failure_class, failure_summary, payload_snapshot, expected_contract, validator_overrides, metadata, created_at, updated_at
 `
 
 type PatchRegressionCaseParams struct {
@@ -1196,7 +1196,7 @@ func (q *Queries) PatchRegressionCase(ctx context.Context, arg PatchRegressionCa
 		&i.SourceRunID,
 		&i.SourceRunAgentID,
 		&i.SourceReplayID,
-		&i.SourceEvalPackVersionID,
+		&i.SourceChallengePackVersionID,
 		&i.SourceChallengeInputSetID,
 		&i.SourceChallengeIdentityID,
 		&i.SourceCaseKey,
@@ -1223,7 +1223,7 @@ SET name = COALESCE($1, name),
     updated_at = now()
 WHERE id = $5
   AND ($6::text IS NULL OR status = $6::text)
-RETURNING id, workspace_id, source_eval_pack_id, name, description, status, source_mode, default_gate_severity, created_by_user_id, created_at, updated_at
+RETURNING id, workspace_id, source_challenge_pack_id, name, description, status, source_mode, default_gate_severity, created_by_user_id, created_at, updated_at
 `
 
 type PatchRegressionSuiteParams struct {
@@ -1248,7 +1248,7 @@ func (q *Queries) PatchRegressionSuite(ctx context.Context, arg PatchRegressionS
 	err := row.Scan(
 		&i.ID,
 		&i.WorkspaceID,
-		&i.SourceEvalPackID,
+		&i.SourceChallengePackID,
 		&i.Name,
 		&i.Description,
 		&i.Status,

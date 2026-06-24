@@ -19,16 +19,16 @@ The happy path is now:
 agentclash auth login
 agentclash link
 agentclash quickstart
-agentclash eval-pack init agentclash-pack.yaml
-agentclash eval-pack validate agentclash-pack.yaml
-agentclash eval-pack publish agentclash-pack.yaml
+agentclash challenge-pack init agentclash-pack.yaml
+agentclash challenge-pack validate agentclash-pack.yaml
+agentclash challenge-pack publish agentclash-pack.yaml
 agentclash eval start --follow
 agentclash baseline set
 agentclash eval scorecard
 ```
 
 Existing low-level commands remain available for users who already know the IDs
-they need: `run`, `eval-pack`, `deployment`, `build`, `infra`, `artifact`,
+they need: `run`, `challenge-pack`, `deployment`, `build`, `infra`, `artifact`,
 `regression-suite`, `release-gate`, `secret`, `agent-harness`, `ci`,
 `prompt-eval`, `playground`, and `quota`.
 
@@ -58,7 +58,7 @@ they need: `run`, `eval-pack`, `deployment`, `build`, `infra`, `artifact`,
 
 1. User logs in and chooses a workspace.
 2. User runs `agentclash quickstart`.
-3. The CLI checks auth, API URL, workspace access, eval packs, deployments,
+3. The CLI checks auth, API URL, workspace access, challenge packs, deployments,
    and baseline status.
 4. If prerequisites are missing, quickstart prints the next setup command.
 5. Once ready, quickstart points to `agentclash eval start --follow`.

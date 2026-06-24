@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/google/uuid"
 )
 
@@ -17,7 +17,7 @@ func TestBuildScoringEvidenceInputsReturnsMarshalError(t *testing.T) {
 				ChallengeKey:        "ticket-1",
 				CaseKey:             "case-1",
 				ItemKey:             "case-1",
-				Inputs: []evalpack.CaseInput{
+				Inputs: []challengepack.CaseInput{
 					{
 						Key:   "broken",
 						Kind:  "json",

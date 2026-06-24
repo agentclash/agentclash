@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/multimodaltrace"
 	"github.com/agentclash/agentclash/backend/internal/releasegate"
 	"github.com/agentclash/agentclash/backend/internal/runevents"
@@ -115,13 +115,13 @@ func assertSupportFixtureGoldens(t *testing.T, fixture voicefixtures.SupportBill
 	}
 }
 
-func parseSupportPack(t *testing.T, fixture voicefixtures.SupportBillingFixture) evalpack.Bundle {
+func parseSupportPack(t *testing.T, fixture voicefixtures.SupportBillingFixture) challengepack.Bundle {
 	t.Helper()
-	bundle, err := evalpack.ParseYAML(fixture.EvalPackYAML)
+	bundle, err := challengepack.ParseYAML(fixture.ChallengePackYAML)
 	if err != nil {
 		t.Fatalf("ParseYAML returned error: %v", err)
 	}
-	if bundle.Modality != evalpack.ModalityVoice {
+	if bundle.Modality != challengepack.ModalityVoice {
 		t.Fatalf("bundle modality = %q, want voice", bundle.Modality)
 	}
 	if bundle.InterfaceSpec == nil || !contains(bundle.InterfaceSpec.Transports, "text_sim") {
@@ -139,7 +139,7 @@ func loadSupportManifest(t *testing.T) voiceartifacts.Manifest {
 	return manifest
 }
 
-func runSupportTextSim(t *testing.T, bundle evalpack.Bundle, fixture voicefixtures.SupportBillingFixture, outcome voicedeployment.Outcome) voicetextsim.Result {
+func runSupportTextSim(t *testing.T, bundle challengepack.Bundle, fixture voicefixtures.SupportBillingFixture, outcome voicedeployment.Outcome) voicetextsim.Result {
 	t.Helper()
 	script, err := voicesim.LoadScript("../voicesim/testdata/support_billing_script.json")
 	if err != nil {

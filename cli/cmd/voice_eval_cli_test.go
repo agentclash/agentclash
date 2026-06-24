@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-func TestEvalPackListShowsVoiceMetadata(t *testing.T) {
+func TestChallengePackListShowsVoiceMetadata(t *testing.T) {
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/workspaces/ws-1/eval-packs": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
 			"items": []map[string]any{{
 				"id":               "pack-voice",
 				"name":             "Voice Support",
@@ -29,14 +29,14 @@ func TestEvalPackListShowsVoiceMetadata(t *testing.T) {
 
 	stdout := captureStdout(t)
 	t.Setenv("AGENTCLASH_TOKEN", "test-token")
-	if err := executeCommand(t, []string{"eval-pack", "list", "-w", "ws-1"}, srv.URL); err != nil {
-		t.Fatalf("eval-pack list error: %v", err)
+	if err := executeCommand(t, []string{"challenge-pack", "list", "-w", "ws-1"}, srv.URL); err != nil {
+		t.Fatalf("challenge-pack list error: %v", err)
 	}
 
 	out := stdout.finish()
 	for _, want := range []string{"MODALITY", "Voice Support", "voice / text_sim"} {
 		if !strings.Contains(out, want) {
-			t.Fatalf("eval-pack list missing %q\n---\n%s", want, out)
+			t.Fatalf("challenge-pack list missing %q\n---\n%s", want, out)
 		}
 	}
 }
@@ -107,11 +107,11 @@ func TestRunGetShowsNestedVoiceMetadata(t *testing.T) {
 	}
 }
 
-func TestEvalPackPickerLabelsVoiceVersions(t *testing.T) {
-	pack := evalPackSummary{
+func TestChallengePackPickerLabelsVoiceVersions(t *testing.T) {
+	pack := challengePackSummary{
 		ID:   "pack-voice",
 		Name: "Voice Support",
-		Versions: []evalPackVersionBrief{{
+		Versions: []challengePackVersionBrief{{
 			ID:                  "cpv-voice",
 			VersionNumber:       3,
 			LifecycleStatus:     "runnable",
@@ -120,14 +120,14 @@ func TestEvalPackPickerLabelsVoiceVersions(t *testing.T) {
 		}},
 	}
 
-	if got := evalPackPickerLabel(pack); got != "Voice Support (voice)" {
-		t.Fatalf("evalPackPickerLabel() = %q", got)
+	if got := challengePackPickerLabel(pack); got != "Voice Support (voice)" {
+		t.Fatalf("challengePackPickerLabel() = %q", got)
 	}
-	if got := evalPackPickerDescription(pack); !strings.Contains(got, "text_sim") {
-		t.Fatalf("evalPackPickerDescription() = %q, want transport", got)
+	if got := challengePackPickerDescription(pack); !strings.Contains(got, "text_sim") {
+		t.Fatalf("challengePackPickerDescription() = %q, want transport", got)
 	}
-	if got := evalPackVersionPickerLabel(pack.Versions[0]); got != "v3 (voice)" {
-		t.Fatalf("evalPackVersionPickerLabel() = %q", got)
+	if got := challengePackVersionPickerLabel(pack.Versions[0]); got != "v3 (voice)" {
+		t.Fatalf("challengePackVersionPickerLabel() = %q", got)
 	}
 	if got := suggestedRunModeForVersion(pack.Versions[0]); got != "text-sim" {
 		t.Fatalf("suggestedRunModeForVersion() = %q, want text-sim", got)
@@ -146,7 +146,7 @@ func TestRunCreateGuidedVoiceSelectionAutoPostsTextSimMode(t *testing.T) {
 
 	var gotBody map[string]any
 	srv := fakeAPI(t, map[string]http.HandlerFunc{
-		"GET /v1/workspaces/ws-1/eval-packs": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
 			"items": []map[string]any{{
 				"id":   "pack-voice",
 				"name": "Voice Support",
@@ -159,7 +159,7 @@ func TestRunCreateGuidedVoiceSelectionAutoPostsTextSimMode(t *testing.T) {
 				}},
 			}},
 		}),
-		"GET /v1/workspaces/ws-1/eval-pack-versions/cpv-voice/input-sets": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/challenge-pack-versions/cpv-voice/input-sets": jsonHandler(200, map[string]any{
 			"items": []map[string]any{},
 		}),
 		"POST /v1/runs": func(w http.ResponseWriter, r *http.Request) {

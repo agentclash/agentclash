@@ -31,7 +31,7 @@ type RunCreationService interface {
 
 type createRunRequest struct {
 	WorkspaceID            string   `json:"workspace_id"`
-	EvalPackVersionID string   `json:"eval_pack_version_id"`
+	ChallengePackVersionID string   `json:"challenge_pack_version_id"`
 	ChallengeInputSetID    *string  `json:"challenge_input_set_id,omitempty"`
 	Name                   string   `json:"name,omitempty"`
 	Mode                   string   `json:"mode,omitempty"`
@@ -54,7 +54,7 @@ type createRunRequest struct {
 
 type CreateRunInput struct {
 	WorkspaceID                uuid.UUID
-	EvalPackVersionID     uuid.UUID
+	ChallengePackVersionID     uuid.UUID
 	ChallengeInputSetID        *uuid.UUID
 	OfficialPackMode           domain.OfficialPackMode
 	Name                       string
@@ -80,7 +80,7 @@ type CreateRunResult struct {
 type createRunResponse struct {
 	ID                     uuid.UUID                 `json:"id"`
 	WorkspaceID            uuid.UUID                 `json:"workspace_id"`
-	EvalPackVersionID uuid.UUID                 `json:"eval_pack_version_id"`
+	ChallengePackVersionID uuid.UUID                 `json:"challenge_pack_version_id"`
 	ChallengeInputSetID    *uuid.UUID                `json:"challenge_input_set_id,omitempty"`
 	OfficialPackMode       string                    `json:"official_pack_mode"`
 	Status                 domain.RunStatus          `json:"status"`
@@ -217,7 +217,7 @@ func buildCreateRunResponse(run domain.Run) createRunResponse {
 	return createRunResponse{
 		ID:                     run.ID,
 		WorkspaceID:            run.WorkspaceID,
-		EvalPackVersionID: run.EvalPackVersionID,
+		ChallengePackVersionID: run.ChallengePackVersionID,
 		ChallengeInputSetID:    run.ChallengeInputSetID,
 		OfficialPackMode:       string(run.OfficialPackMode),
 		Status:                 run.Status,
@@ -321,7 +321,7 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 	if err != nil {
 		return CreateRunInput{}, err
 	}
-	evalPackVersionID, err := parseRequiredUUID(body.EvalPackVersionID, "eval_pack_version_id", "invalid_eval_pack_version_id")
+	challengePackVersionID, err := parseRequiredUUID(body.ChallengePackVersionID, "challenge_pack_version_id", "invalid_challenge_pack_version_id")
 	if err != nil {
 		return CreateRunInput{}, err
 	}
@@ -407,7 +407,7 @@ func decodeCreateRunRequest(r *http.Request) (CreateRunInput, error) {
 
 	return CreateRunInput{
 		WorkspaceID:                workspaceID,
-		EvalPackVersionID:     evalPackVersionID,
+		ChallengePackVersionID:     challengePackVersionID,
 		ChallengeInputSetID:        challengeInputSetID,
 		OfficialPackMode:           officialPackMode,
 		Name:                       strings.TrimSpace(body.Name),

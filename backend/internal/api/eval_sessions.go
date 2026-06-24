@@ -19,7 +19,7 @@ import (
 
 type createEvalSessionRequest struct {
 	WorkspaceID            string                         `json:"workspace_id"`
-	EvalPackVersionID string                         `json:"eval_pack_version_id"`
+	ChallengePackVersionID string                         `json:"challenge_pack_version_id"`
 	ChallengeInputSetID    *string                        `json:"challenge_input_set_id,omitempty"`
 	Participants           []createEvalSessionParticipant `json:"participants"`
 	ExecutionMode          string                         `json:"execution_mode"`
@@ -244,7 +244,7 @@ func decodeCreateEvalSessionRequest(_ context.Context, r *http.Request) (CreateE
 	if err != nil {
 		return CreateEvalSessionInput{}, err
 	}
-	evalPackVersionID, err := parseRequiredUUID(body.EvalPackVersionID, "eval_pack_version_id", "invalid_eval_pack_version_id")
+	challengePackVersionID, err := parseRequiredUUID(body.ChallengePackVersionID, "challenge_pack_version_id", "invalid_challenge_pack_version_id")
 	if err != nil {
 		return CreateEvalSessionInput{}, err
 	}
@@ -301,7 +301,7 @@ func decodeCreateEvalSessionRequest(_ context.Context, r *http.Request) (CreateE
 
 	return CreateEvalSessionInput{
 		WorkspaceID:            workspaceID,
-		EvalPackVersionID: evalPackVersionID,
+		ChallengePackVersionID: challengePackVersionID,
 		ChallengeInputSetID:    challengeInputSetID,
 		Participants:           participants,
 		ExecutionMode:          strings.TrimSpace(body.ExecutionMode),

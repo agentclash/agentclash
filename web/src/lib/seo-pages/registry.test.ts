@@ -25,11 +25,11 @@ describe("SEO page registry", () => {
       "/industries/insurance",
       "/industries/government",
       "/glossary/agent-evaluation",
-      "/glossary/eval-pack",
+      "/glossary/challenge-pack",
       "/glossary/release-gate",
       "/features/agent-scorecards",
       "/features/agent-replay",
-      "/features/eval-packs",
+      "/features/challenge-packs",
     ]);
     expect(SEO_PAGE_REGISTRY).toHaveLength(21);
   });
@@ -43,7 +43,7 @@ describe("SEO page registry", () => {
     expect(getSeoPagesByPrefix("/features").map((page) => page.path)).toEqual([
       "/features/agent-scorecards",
       "/features/agent-replay",
-      "/features/eval-packs",
+      "/features/challenge-packs",
     ]);
     expect(getSeoPagesByPrefix("/industries").map((page) => page.path)).toEqual([
       "/industries/banking",
@@ -52,7 +52,7 @@ describe("SEO page registry", () => {
     ]);
     expect(getSeoPagesByPrefix("/glossary").map((page) => page.path)).toEqual([
       "/glossary/agent-evaluation",
-      "/glossary/eval-pack",
+      "/glossary/challenge-pack",
       "/glossary/release-gate",
     ]);
   });

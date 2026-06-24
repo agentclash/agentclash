@@ -144,7 +144,7 @@ func TestBillingManagerGetWorkspaceQuotaSeparatesRaceAndConcurrencyUsage(t *test
 
 func TestBillingGateHTTPStatus(t *testing.T) {
 	entitlements := billingpkg.DefaultEntitlements()
-	featureDecision := billingpkg.CheckFeature(entitlements, billingpkg.FeaturePrivateEvalPacks)
+	featureDecision := billingpkg.CheckFeature(entitlements, billingpkg.FeaturePrivateChallengePacks)
 	if got := billingGateHTTPStatus(featureDecision); got != http.StatusForbidden {
 		t.Fatalf("feature gate status = %d, want %d", got, http.StatusForbidden)
 	}

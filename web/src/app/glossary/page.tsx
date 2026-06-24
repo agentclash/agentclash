@@ -7,7 +7,7 @@ import { getSeoPagesByPrefix } from "@/lib/seo-pages";
 const PAGE_PATH = "/glossary";
 const PAGE_TITLE = "Agent Evaluation Glossary - AgentClash";
 const PAGE_DESCRIPTION =
-  "Definitions for agent evaluation, eval packs, release gates, and other terms teams use when gating AI agents on real tasks.";
+  "Definitions for agent evaluation, challenge packs, release gates, and other terms teams use when gating AI agents on real tasks.";
 
 export const metadata = createSeoCollectionMetadata({
   path: PAGE_PATH,
@@ -23,7 +23,7 @@ export default function GlossaryIndexPage() {
       description={PAGE_DESCRIPTION}
       eyebrow="Glossary"
       h1="Agent evaluation glossary"
-      intro="Plain-language definitions for the concepts behind AgentClash: what agent evaluation means, how eval packs work, and what release gates enforce before you ship."
+      intro="Plain-language definitions for the concepts behind AgentClash: what agent evaluation means, how challenge packs work, and what release gates enforce before you ship."
       pages={getSeoPagesByPrefix(PAGE_PATH)}
       schemaId="agentclash-glossary-index-schema"
     />

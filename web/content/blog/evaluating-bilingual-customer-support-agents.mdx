@@ -22,7 +22,7 @@ Prompt-only evals catch tone. They miss tool misuse, wrong escalation, or an Eng
 
 ## Build separate cases, not translated duplicates
 
-Structure bilingual coverage in a eval pack input set:
+Structure bilingual coverage in a challenge pack input set:
 
 | Lane | What to encode | Example signal |
 | --- | --- | --- |
@@ -31,7 +31,7 @@ Structure bilingual coverage in a eval pack input set:
 | Code-switch | Arabic opener, English product IDs | Ensures the agent handles mixed input |
 | Escalation | Frustrated customer, policy boundary | Multi-turn scripted phases |
 
-Use `execution_mode: multi_turn` when the workflow needs back-and-forth, not a single-shot answer. The reference pack `examples/eval-packs/multi-turn-refund-recovery.yaml` shows scripted user phases and validators on refund language; mirror that pattern with Arabic message fixtures your team approves.
+Use `execution_mode: multi_turn` when the workflow needs back-and-forth, not a single-shot answer. The reference pack `examples/challenge-packs/multi-turn-refund-recovery.yaml` shows scripted user phases and validators on refund language; mirror that pattern with Arabic message fixtures your team approves.
 
 Deterministic checks can gate schema and required actions:
 
@@ -95,7 +95,7 @@ For regional governance framing (residency vs release evidence), see [AI agent g
 
 ### Does AgentClash ship a built-in Arabic benchmark?
 
-No. You author cases in eval packs with your approved fixtures and policies. That keeps eval aligned with your products, refund rules, and tone guidelines.
+No. You author cases in challenge packs with your approved fixtures and policies. That keeps eval aligned with your products, refund rules, and tone guidelines.
 
 ### Can we evaluate hosted vendor support agents with limited observability?
 

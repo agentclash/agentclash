@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
 )
@@ -17,7 +17,7 @@ func marshalSandboxRunContext(executionContext repository.RunAgentExecutionConte
 		"run_id":                 executionContext.Run.ID.String(),
 		"run_agent_id":           executionContext.RunAgent.ID.String(),
 		"agent_spec":             cloneJSON(executionContext.Deployment.AgentBuildVersion.AgentSpec),
-		"eval_pack_version": sanitizeManifestForAgent(executionContext.EvalPackVersion.Manifest),
+		"challenge_pack_version": sanitizeManifestForAgent(executionContext.ChallengePackVersion.Manifest),
 		"challenge_input_set":    cloneChallengeInputSet(executionContext.ChallengeInputSet),
 		"deployment_config":      cloneJSON(executionContext.Deployment.SnapshotConfig),
 		"runtime_profile_config": cloneJSON(executionContext.Deployment.RuntimeProfile.ProfileConfig),
@@ -32,11 +32,11 @@ func stageSandboxInputs(ctx context.Context, session sandbox.Session, executionC
 	if err := session.UploadFile(ctx, "/workspace/agentclash/run-context.json", runContextPayload); err != nil {
 		return NewFailure(StopReasonSandboxError, "upload native sandbox context", err)
 	}
-	if err := session.UploadFile(ctx, "/workspace/agentclash/eval-pack-manifest.json", sanitizeManifestForAgent(executionContext.EvalPackVersion.Manifest)); err != nil {
-		return NewFailure(StopReasonSandboxError, "upload eval pack manifest", err)
+	if err := session.UploadFile(ctx, "/workspace/agentclash/challenge-pack-manifest.json", sanitizeManifestForAgent(executionContext.ChallengePackVersion.Manifest)); err != nil {
+		return NewFailure(StopReasonSandboxError, "upload challenge pack manifest", err)
 	}
 	challengesPayload, err := json.Marshal(cloneChallengeDefinitions(filterChallengesForInputSet(
-		executionContext.EvalPackVersion.Challenges,
+		executionContext.ChallengePackVersion.Challenges,
 		executionContext.ChallengeInputSet,
 	)))
 	if err != nil {
@@ -108,7 +108,7 @@ func extractWorkspaceFixtureFiles(item repository.ChallengeCaseExecutionContext)
 	return files, nil
 }
 
-func decodeWorkspaceInputFiles(item repository.ChallengeCaseExecutionContext, input evalpack.CaseInput) ([]workspaceFixtureFile, error) {
+func decodeWorkspaceInputFiles(item repository.ChallengeCaseExecutionContext, input challengepack.CaseInput) ([]workspaceFixtureFile, error) {
 	value, ok := input.Value.([]any)
 	if !ok {
 		return nil, fmt.Errorf(

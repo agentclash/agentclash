@@ -91,7 +91,7 @@ He starts by creating a governed benchmark decision.
 Inside AgentClash, John selects:
 
 - the workspace for his platform team
-- the eval pack version for enterprise coding tasks
+- the challenge pack version for enterprise coding tasks
 - the input set approved for this quarter
 - the baseline deployment from production
 - the candidate deployment from the release branch
@@ -270,7 +270,7 @@ sequenceDiagram
     participant Scorecard
     participant ReleaseGate
 
-    John->>AgentClash: Choose baseline, candidate, vendors, eval pack, and gate policy
+    John->>AgentClash: Choose baseline, candidate, vendors, challenge pack, and gate policy
     AgentClash->>Worker: Start governed comparison run
     Worker->>Sandbox: Provision frozen environment
     Worker->>AgentClash: Stream events, latency, TTFT, routing, tools, artifacts

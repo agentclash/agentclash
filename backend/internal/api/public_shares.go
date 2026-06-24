@@ -25,7 +25,7 @@ type PublicShareRepository interface {
 	GetPublicShareLinkByID(ctx context.Context, id uuid.UUID) (repository.PublicShareLink, error)
 	GetActivePublicShareLinkByKey(ctx context.Context, key string) (repository.PublicShareLink, error)
 	GetOrganizationIDByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) (uuid.UUID, error)
-	GetRunnableEvalPackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableEvalPackVersion, error)
+	GetRunnableChallengePackVersionByID(ctx context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error)
 	GetRunByID(ctx context.Context, id uuid.UUID) (domain.Run, error)
 	GetRunScorecardByRunID(ctx context.Context, runID uuid.UUID) (repository.RunScorecard, error)
 	GetRunAgentByID(ctx context.Context, id uuid.UUID) (domain.RunAgent, error)
@@ -34,7 +34,7 @@ type PublicShareRepository interface {
 	GetRunAgentReplayByRunAgentID(ctx context.Context, runAgentID uuid.UUID) (repository.RunAgentReplay, error)
 	GetAgentTryoutByID(ctx context.Context, id uuid.UUID) (repository.AgentTryout, error)
 	ListArtifactsByRunID(ctx context.Context, runID uuid.UUID) ([]repository.Artifact, error)
-	GetPublicEvalPackVersionSnapshot(ctx context.Context, versionID uuid.UUID) (repository.PublicEvalPackVersionSnapshot, error)
+	GetPublicChallengePackVersionSnapshot(ctx context.Context, versionID uuid.UUID) (repository.PublicChallengePackVersionSnapshot, error)
 	GetPublicRunScorecardSnapshot(ctx context.Context, runID uuid.UUID) (repository.PublicRunScorecardSnapshot, error)
 	GetPublicRunAgentScorecardSnapshot(ctx context.Context, runAgentID uuid.UUID) (repository.PublicRunAgentScorecardSnapshot, error)
 	GetPublicRunAgentReplaySnapshot(ctx context.Context, runAgentID uuid.UUID) (repository.PublicRunAgentReplaySnapshot, error)
@@ -154,13 +154,13 @@ func (m *PublicShareManager) GetPublicShare(ctx context.Context, token string, b
 
 func (m *PublicShareManager) authorizedResourceScope(ctx context.Context, caller Caller, input CreateShareLinkInput) (uuid.UUID, uuid.UUID, error) {
 	switch input.ResourceType {
-	case repository.PublicShareResourceEvalPackVersion:
-		version, err := m.repo.GetRunnableEvalPackVersionByID(ctx, input.ResourceID)
+	case repository.PublicShareResourceChallengePackVersion:
+		version, err := m.repo.GetRunnableChallengePackVersionByID(ctx, input.ResourceID)
 		if err != nil {
 			return uuid.Nil, uuid.Nil, err
 		}
 		if version.WorkspaceID == nil {
-			return uuid.Nil, uuid.Nil, repository.ErrEvalPackVersionNotFound
+			return uuid.Nil, uuid.Nil, repository.ErrChallengePackVersionNotFound
 		}
 		if err := m.authorizer.AuthorizeWorkspace(ctx, caller, *version.WorkspaceID); err != nil {
 			return uuid.Nil, uuid.Nil, err
@@ -228,12 +228,12 @@ func (m *PublicShareManager) authorizedResourceScope(ctx context.Context, caller
 
 func (m *PublicShareManager) publicResource(ctx context.Context, share repository.PublicShareLink, baseURL string) (any, error) {
 	switch share.ResourceType {
-	case repository.PublicShareResourceEvalPackVersion:
-		snapshot, err := m.repo.GetPublicEvalPackVersionSnapshot(ctx, share.ResourceID)
+	case repository.PublicShareResourceChallengePackVersion:
+		snapshot, err := m.repo.GetPublicChallengePackVersionSnapshot(ctx, share.ResourceID)
 		if err != nil {
 			return nil, err
 		}
-		return mapPublicEvalPackVersion(snapshot), nil
+		return mapPublicChallengePackVersion(snapshot), nil
 	case repository.PublicShareResourceRunScorecard:
 		snapshot, err := m.repo.GetPublicRunScorecardSnapshot(ctx, share.ResourceID)
 		if err != nil {
@@ -412,7 +412,7 @@ func writeShareError(w http.ResponseWriter, logger *slog.Logger, r *http.Request
 	case errors.Is(err, ErrForbidden):
 		writeError(w, http.StatusForbidden, "forbidden", "workspace access denied")
 	case errors.Is(err, repository.ErrPublicShareLinkNotFound),
-		errors.Is(err, repository.ErrEvalPackVersionNotFound),
+		errors.Is(err, repository.ErrChallengePackVersionNotFound),
 		errors.Is(err, repository.ErrRunNotFound),
 		errors.Is(err, repository.ErrRunScorecardNotFound),
 		errors.Is(err, repository.ErrRunAgentNotFound),
@@ -443,7 +443,7 @@ func newShareKey() (string, error) {
 
 func validPublicShareResourceType(resourceType repository.PublicShareResourceType) bool {
 	switch resourceType {
-	case repository.PublicShareResourceEvalPackVersion,
+	case repository.PublicShareResourceChallengePackVersion,
 		repository.PublicShareResourceRunScorecard,
 		repository.PublicShareResourceRunAgentScorecard,
 		repository.PublicShareResourceRunAgentReplay,
@@ -468,18 +468,18 @@ func mapPublicShareLink(share repository.PublicShareLink, shareURL string) publi
 	}
 }
 
-func mapPublicEvalPackVersion(snapshot repository.PublicEvalPackVersionSnapshot) any {
+func mapPublicChallengePackVersion(snapshot repository.PublicChallengePackVersionSnapshot) any {
 	inputSets := make([]challengeInputSetResponse, 0, len(snapshot.InputSets))
 	for _, inputSet := range snapshot.InputSets {
 		inputSets = append(inputSets, challengeInputSetResponse{
 			ID:                     inputSet.ID,
-			EvalPackVersionID: inputSet.EvalPackVersionID,
+			ChallengePackVersionID: inputSet.ChallengePackVersionID,
 			InputKey:               inputSet.InputKey,
 			Name:                   inputSet.Name,
 		})
 	}
 	return map[string]any{
-		"type": "eval_pack_version",
+		"type": "challenge_pack_version",
 		"pack": map[string]any{
 			"id":          snapshot.PackID,
 			"slug":        snapshot.PackSlug,
@@ -540,7 +540,7 @@ func mapPublicRunAgentReplay(snapshot repository.PublicRunAgentReplaySnapshot) a
 func mapPublicRun(run domain.Run) map[string]any {
 	return map[string]any{
 		"id":                        run.ID,
-		"eval_pack_version_id": run.EvalPackVersionID,
+		"challenge_pack_version_id": run.ChallengePackVersionID,
 		"challenge_input_set_id":    run.ChallengeInputSetID,
 		"name":                      run.Name,
 		"status":                    run.Status,

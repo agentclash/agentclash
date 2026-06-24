@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/scoring"
 )
 
 // evaluateTurnExpects returns true when any declared expectation fails (mismatch).
-func evaluateTurnExpects(assistantText string, expects []evalpack.CaseExpectation) bool {
+func evaluateTurnExpects(assistantText string, expects []challengepack.CaseExpectation) bool {
 	if len(expects) == 0 {
 		return false
 	}
@@ -21,7 +21,7 @@ func evaluateTurnExpects(assistantText string, expects []evalpack.CaseExpectatio
 	return false
 }
 
-func turnExpectationMet(assistantText string, expectation evalpack.CaseExpectation) bool {
+func turnExpectationMet(assistantText string, expectation challengepack.CaseExpectation) bool {
 	expected, err := expectedTurnValue(expectation)
 	if err != nil {
 		return false
@@ -36,7 +36,7 @@ func turnExpectationMet(assistantText string, expectation evalpack.CaseExpectati
 	}
 }
 
-func expectedTurnValue(expectation evalpack.CaseExpectation) (string, error) {
+func expectedTurnValue(expectation challengepack.CaseExpectation) (string, error) {
 	if expectation.Value == nil {
 		return "", fmt.Errorf("expectation value is required")
 	}

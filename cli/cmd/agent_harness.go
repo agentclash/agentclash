@@ -89,7 +89,7 @@ var agentHarnessCmd = &cobra.Command{
 	Short:   "Manage coding-agent harnesses",
 	Long: `Manage Agent Harnesses: workspace-scoped coding-agent task definitions.
 
-Agent Harnesses are not eval packs. They store a task prompt, runner/E2B
+Agent Harnesses are not challenge packs. They store a task prompt, runner/E2B
 execution settings, and reusable evaluation config for long-running autonomous
 coding checks.`,
 }

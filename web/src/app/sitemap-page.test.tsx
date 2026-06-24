@@ -82,7 +82,7 @@ describe("HTML sitemap page", () => {
         "/features",
         "/industries",
         "/glossary",
-        "/features/eval-packs",
+        "/features/challenge-packs",
         "/industries/banking",
         "/glossary/release-gate",
         "/docs",

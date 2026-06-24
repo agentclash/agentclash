@@ -130,7 +130,7 @@ var ciValidateCmd = &cobra.Command{
 		}
 		rc.Output.PrintSuccess("AgentClash CI manifest is valid")
 		rc.Output.PrintDetail("Watched Paths", fmt.Sprintf("%d", len(result.Manifest.Trigger.Paths)))
-		rc.Output.PrintDetail("Evaluation", result.Manifest.Evaluation.EvalPackVersionID)
+		rc.Output.PrintDetail("Evaluation", result.Manifest.Evaluation.ChallengePackVersionID)
 		if result.Remote != nil {
 			rc.Output.PrintDetail("Workspace", result.Remote.WorkspaceID)
 			rc.Output.PrintDetail("Remote Checks", fmt.Sprintf("%d", len(result.Remote.Checks)))
@@ -295,7 +295,7 @@ type ciManifestCandidateDeployment struct {
 }
 
 type ciManifestEvaluation struct {
-	EvalPackVersionID string   `yaml:"eval_pack_version_id" json:"eval_pack_version_id"`
+	ChallengePackVersionID string   `yaml:"challenge_pack_version_id" json:"challenge_pack_version_id"`
 	InputSetID             string   `yaml:"input_set_id,omitempty" json:"input_set_id,omitempty"`
 	Mode                   string   `yaml:"mode,omitempty" json:"mode,omitempty"`
 	RegressionSuites       []string `yaml:"regression_suites,omitempty" json:"regression_suites,omitempty"`
@@ -348,7 +348,7 @@ type ciRegressionCaseRemoteSummary struct {
 	SuiteID                      string `json:"suite_id"`
 	WorkspaceID                  string `json:"workspace_id"`
 	Status                       string `json:"status"`
-	SourceEvalPackVersionID string `json:"source_eval_pack_version_id"`
+	SourceChallengePackVersionID string `json:"source_challenge_pack_version_id"`
 	SourceChallengeInputSetID    string `json:"source_challenge_input_set_id"`
 }
 
@@ -390,7 +390,7 @@ type ciBaselineRunResolution struct {
 	DeploymentID           string `json:"deployment_id,omitempty" yaml:"deployment_id,omitempty"`
 	RunName                string `json:"run_name,omitempty" yaml:"run_name,omitempty"`
 	Status                 string `json:"status" yaml:"status"`
-	EvalPackVersionID string `json:"eval_pack_version_id,omitempty" yaml:"eval_pack_version_id,omitempty"`
+	ChallengePackVersionID string `json:"challenge_pack_version_id,omitempty" yaml:"challenge_pack_version_id,omitempty"`
 	InputSetID             string `json:"input_set_id,omitempty" yaml:"input_set_id,omitempty"`
 	CreatedAt              string `json:"created_at,omitempty" yaml:"created_at,omitempty"`
 	FinishedAt             string `json:"finished_at,omitempty" yaml:"finished_at,omitempty"`
@@ -420,7 +420,7 @@ candidate:
     provider_account_id: 00000000-0000-0000-0000-000000000003
     model: gpt-5.5
 evaluation:
-  eval_pack_version_id: 00000000-0000-0000-0000-000000000005
+  challenge_pack_version_id: 00000000-0000-0000-0000-000000000005
   input_set_id: 00000000-0000-0000-0000-000000000006
   # For deterministic voice eval packs, set: mode: text-sim
   regression_suites:
@@ -486,7 +486,7 @@ func validateCIManifestRemote(cmd *cobra.Command, rc *RunContext, workspaceID, m
 		}
 	}
 
-	packID, versionID, err := validateCIManifestRemoteChallengeVersion(cmd, rc, &result, workspaceID, manifest.Evaluation.EvalPackVersionID)
+	packID, versionID, err := validateCIManifestRemoteChallengeVersion(cmd, rc, &result, workspaceID, manifest.Evaluation.ChallengePackVersionID)
 	if err != nil {
 		result.addAPIError(err)
 		return result, err
@@ -558,41 +558,41 @@ func validateCIManifestRemoteListResource(cmd *cobra.Command, rc *RunContext, re
 }
 
 func validateCIManifestRemoteChallengeVersion(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, versionID string) (string, string, error) {
-	packs, err := listEvalPacksForWorkflow(cmd, rc, workspaceID)
+	packs, err := listChallengePacksForWorkflow(cmd, rc, workspaceID)
 	if err != nil {
 		return "", "", err
 	}
 	for _, pack := range packs {
 		for _, version := range pack.Versions {
 			if version.ID == versionID {
-				result.addPass("evaluation.eval_pack_version_id", "eval_pack_version", versionID, "eval pack version exists in the selected workspace")
+				result.addPass("evaluation.challenge_pack_version_id", "challenge_pack_version", versionID, "challenge pack version exists in the selected workspace")
 				return pack.ID, version.ID, nil
 			}
 		}
 	}
-	result.addFailure("evaluation.eval_pack_version_id", "eval_pack_version", versionID, "not_found", fmt.Sprintf("eval pack version %s was not found in workspace %s", versionID, workspaceID))
+	result.addFailure("evaluation.challenge_pack_version_id", "challenge_pack_version", versionID, "not_found", fmt.Sprintf("challenge pack version %s was not found in workspace %s", versionID, workspaceID))
 	return "", "", nil
 }
 
-func validateCIManifestRemoteInputSet(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, evalPackVersionID, inputSetID string) error {
+func validateCIManifestRemoteInputSet(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, challengePackVersionID, inputSetID string) error {
 	if strings.TrimSpace(inputSetID) == "" {
 		return nil
 	}
-	if strings.TrimSpace(evalPackVersionID) == "" {
-		result.addFailure("evaluation.input_set_id", "challenge_input_set", inputSetID, "dependency_failed", "input set cannot be validated because evaluation.eval_pack_version_id did not resolve")
+	if strings.TrimSpace(challengePackVersionID) == "" {
+		result.addFailure("evaluation.input_set_id", "challenge_input_set", inputSetID, "dependency_failed", "input set cannot be validated because evaluation.challenge_pack_version_id did not resolve")
 		return nil
 	}
-	inputSets, err := listChallengeInputSets(cmd, rc, workspaceID, evalPackVersionID)
+	inputSets, err := listChallengeInputSets(cmd, rc, workspaceID, challengePackVersionID)
 	if err != nil {
 		return err
 	}
 	for _, inputSet := range inputSets {
 		if inputSet.ID == inputSetID {
-			result.addPass("evaluation.input_set_id", "challenge_input_set", inputSetID, "input set exists for the selected eval pack version")
+			result.addPass("evaluation.input_set_id", "challenge_input_set", inputSetID, "input set exists for the selected challenge pack version")
 			return nil
 		}
 	}
-	result.addFailure("evaluation.input_set_id", "challenge_input_set", inputSetID, "not_found", fmt.Sprintf("input set %s was not found for eval pack version %s", inputSetID, evalPackVersionID))
+	result.addFailure("evaluation.input_set_id", "challenge_input_set", inputSetID, "not_found", fmt.Sprintf("input set %s was not found for challenge pack version %s", inputSetID, challengePackVersionID))
 	return nil
 }
 
@@ -624,8 +624,8 @@ func validateCIManifestRemoteRegressionSuites(cmd *cobra.Command, rc *RunContext
 			result.addFailure("evaluation.regression_suites", "regression_suite", suiteID, "inactive", fmt.Sprintf("regression suite %s status is %s, want active", suiteID, suite.Status))
 			continue
 		}
-		if packID != "" && suite.SourceEvalPackID != "" && suite.SourceEvalPackID != packID {
-			result.addFailure("evaluation.regression_suites", "regression_suite", suiteID, "incompatible", fmt.Sprintf("regression suite %s belongs to eval pack %s, not %s", suiteID, suite.SourceEvalPackID, packID))
+		if packID != "" && suite.SourceChallengePackID != "" && suite.SourceChallengePackID != packID {
+			result.addFailure("evaluation.regression_suites", "regression_suite", suiteID, "incompatible", fmt.Sprintf("regression suite %s belongs to challenge pack %s, not %s", suiteID, suite.SourceChallengePackID, packID))
 			continue
 		}
 		selected = append(selected, suite.ID)
@@ -634,7 +634,7 @@ func validateCIManifestRemoteRegressionSuites(cmd *cobra.Command, rc *RunContext
 	return suites, selected, nil
 }
 
-func validateCIManifestRemoteRegressionCases(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, evalPackVersionID, inputSetID string, suites []regressionSuiteSummary, selectedSuiteIDs []string, suiteScopeExplicit bool, caseIDs []string) error {
+func validateCIManifestRemoteRegressionCases(cmd *cobra.Command, rc *RunContext, result *ciManifestRemoteValidationResult, workspaceID, challengePackVersionID, inputSetID string, suites []regressionSuiteSummary, selectedSuiteIDs []string, suiteScopeExplicit bool, caseIDs []string) error {
 	if len(caseIDs) == 0 {
 		return nil
 	}
@@ -674,8 +674,8 @@ func validateCIManifestRemoteRegressionCases(cmd *cobra.Command, rc *RunContext,
 			result.addFailure("evaluation.regression_cases", "regression_case", caseID, "inactive", fmt.Sprintf("regression case %s status is %s, want active", caseID, regressionCase.Status))
 			continue
 		}
-		if evalPackVersionID != "" && regressionCase.SourceEvalPackVersionID != "" && regressionCase.SourceEvalPackVersionID != evalPackVersionID {
-			result.addFailure("evaluation.regression_cases", "regression_case", caseID, "incompatible", fmt.Sprintf("regression case %s belongs to eval pack version %s, not %s", caseID, regressionCase.SourceEvalPackVersionID, evalPackVersionID))
+		if challengePackVersionID != "" && regressionCase.SourceChallengePackVersionID != "" && regressionCase.SourceChallengePackVersionID != challengePackVersionID {
+			result.addFailure("evaluation.regression_cases", "regression_case", caseID, "incompatible", fmt.Sprintf("regression case %s belongs to challenge pack version %s, not %s", caseID, regressionCase.SourceChallengePackVersionID, challengePackVersionID))
 			continue
 		}
 		if inputSetID != "" && regressionCase.SourceChallengeInputSetID != "" && regressionCase.SourceChallengeInputSetID != inputSetID {
@@ -883,8 +883,8 @@ func validateCIManifest(manifest ciManifest) []string {
 	if strings.TrimSpace(manifest.Candidate.Deployment.RuntimeProfileID) == "" {
 		errors = append(errors, "candidate.deployment.runtime_profile_id is required")
 	}
-	if strings.TrimSpace(manifest.Evaluation.EvalPackVersionID) == "" {
-		errors = append(errors, "evaluation.eval_pack_version_id is required")
+	if strings.TrimSpace(manifest.Evaluation.ChallengePackVersionID) == "" {
+		errors = append(errors, "evaluation.challenge_pack_version_id is required")
 	}
 	if _, err := normalizeCIManifestEvaluationMode(manifest.Evaluation.Mode); err != nil {
 		errors = append(errors, err.Error())
@@ -1110,8 +1110,8 @@ func validateCIBaselineRun(workspaceID string, manifest ciManifest, run runWorkf
 	if run.Status != "completed" {
 		return fmt.Errorf("baseline run %s status is %s, want completed", run.ID, run.Status)
 	}
-	if run.EvalPackVersionID != "" && manifest.Evaluation.EvalPackVersionID != "" && run.EvalPackVersionID != manifest.Evaluation.EvalPackVersionID {
-		return fmt.Errorf("baseline run %s uses eval pack version %s, not %s", run.ID, run.EvalPackVersionID, manifest.Evaluation.EvalPackVersionID)
+	if run.ChallengePackVersionID != "" && manifest.Evaluation.ChallengePackVersionID != "" && run.ChallengePackVersionID != manifest.Evaluation.ChallengePackVersionID {
+		return fmt.Errorf("baseline run %s uses challenge pack version %s, not %s", run.ID, run.ChallengePackVersionID, manifest.Evaluation.ChallengePackVersionID)
 	}
 	if manifest.Evaluation.InputSetID != "" && run.ChallengeInputSetID != manifest.Evaluation.InputSetID {
 		return fmt.Errorf("baseline run %s uses input set %s, not %s", run.ID, run.ChallengeInputSetID, manifest.Evaluation.InputSetID)
@@ -1175,7 +1175,7 @@ func buildCIBaselineRunResolution(run runWorkflowSummary, runAgentID string, dep
 		DeploymentID:           deploymentID,
 		RunName:                run.Name,
 		Status:                 run.Status,
-		EvalPackVersionID: run.EvalPackVersionID,
+		ChallengePackVersionID: run.ChallengePackVersionID,
 		InputSetID:             run.ChallengeInputSetID,
 		CreatedAt:              run.CreatedAt,
 		FinishedAt:             run.FinishedAt,

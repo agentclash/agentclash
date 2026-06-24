@@ -85,7 +85,7 @@ export const PRICING_TIERS: Tier[] = [
       "Up to 8 models per run",
       "30-day replay retention",
       "Hosted sandbox with included credit",
-      "Private eval packs",
+      "Private challenge packs",
       "CI integration (GitHub Actions, webhooks)",
       "3 concurrent eval runs",
       "Email support, < 1 business day",

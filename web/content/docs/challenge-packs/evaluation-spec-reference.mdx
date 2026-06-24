@@ -1,0 +1,159 @@
+---
+title: Evaluation spec reference
+description: Validators, metrics, behavioral signals, runtime limits, and scorecard semantics from backend/internal/scoring.
+dateModified: 2026-06-01
+---
+
+The `evaluation_spec` block in a challenge pack declares how a run is scored: which validators check the output, which metrics get collected, and how those roll up into a scorecard. It is decoded strictly—unknown keys fail validation rather than being ignored—so every field documented here must match exactly. This page lists only the enums and collectors that are actually implemented, not aspirational placeholders.
+
+(Contributor pointer: the block unmarshals into `scoring.EvaluationSpec` in `backend/internal/scoring/spec.go`.)
+
+For LLM graders see the dedicated guide: [LLM judges](llm-judges).
+
+## Judge mode (`judge_mode`)
+
+Top-level discriminator on how scoring composes deterministic pieces with judges:
+
+| Value | Constant |
+| --- | --- |
+| `deterministic` | `JudgeModeDeterministic` |
+| `llm_judge` | `JudgeModeLLMJudge` |
+| `hybrid` | `JudgeModeHybrid` |
+
+Invalid values fail validation early.
+
+## Validators (`validators[]`)
+
+Each entry is a `ValidatorDeclaration`:
+
+- **`key`** — unique within spec; also forbidden to collide with metrics or judges
+- **`type`** — enumerated `ValidatorType` (snippet below)
+- **`target`** — evidence reference (validators require supported references—see Evidence references section)
+- **`expected_from`** — often required depending on validator type (`RequiresExpectedFrom` in `spec.go`)
+- **`config`** — type-specific strict JSON validated in `validation.go`
+
+### Implemented validator types
+
+From `ValidatorType*` constants:
+
+`exact_match`, `contains`, `regex_match`, `json_schema`, `json_path_match`, `boolean_assert`, `fuzzy_match`, `numeric_match`, `normalized_match`, `token_f1`, `math_equivalence`, `bleu_score`, `rouge_score`, `chrf_score`, `file_content_match`, `file_exists`, `file_json_schema`, `directory_structure`, `code_execution`, `tool_call_assertion`, `postcondition`
+
+File-ish validators gate on sandbox artifacts (see **File validators**: `IsFileValidator()` distinguishes these).
+
+Always check `requires_expected_from`: e.g., `file_exists`, `directory_structure`, `code_execution`, `tool_call_assertion`, and `postcondition` can rely on config/paths without `expected_from`.
+
+`tool_call_assertion` uses `target: tool_calls` and strict config to assert executed tool-call evidence. It supports `tool_name`, `must_call`, `count`, `min_count`, `max_count`, `arguments_contain` JSON fragments, `ordered_tools`, and `order_mode` (`subsequence` or `exact`). Raw tool arguments are not copied into scorecard evidence.
+
+`postcondition` uses `target: file:<post_execution_check_key>` and strict config to assert post-run captured evidence without shelling out through `code_execution`. Supported `condition` values are `exists`, `not_exists`, `contains`, `not_contains`, `regex_match`, `json_path_match`, and `equals`.
+
+## Metrics (`metrics[]`)
+
+`MetricDeclaration` requires:
+
+| Field | Notes |
+| --- | --- |
+| `key` | Unique within spec |
+| `type` | `numeric`, `text`, or `boolean` |
+| `collector` | Implemented switch in `engine_metrics.go` |
+| `unit` | Stored for dashboards/score normalization |
+
+Collectors wired today (verbatim keys):
+
+`run_total_latency_ms`, `run_ttft_ms`, `run_input_tokens`, `run_output_tokens`, `run_total_tokens`, `run_agent_tokens`, `run_race_context_tokens`, `run_model_cost_usd`, `run_completed_successfully`, `run_failure_count`, `run_tool_call_count`, behavioral scores (`behavioral_recovery_score`, … ), `validator_pass_rate`
+
+Two distinct outcomes, not one:
+
+- **Unknown collector** (a `collector` key not in the list above) is rejected outright: the metric resolves to an error state with `collector "…" is not supported`. It is never silent.
+- **Known collector, missing evidence** (e.g. a latency metric when no latency was recorded) resolves to an *unavailable* state with a reason, which is the only "quiet" path.
+
+Copy collector keys verbatim from the implemented switch (contributor pointer: the `switch` in `backend/internal/scoring/engine_metrics.go`) to avoid the first case.
+
+## Behavioral panel (`behavioral`)
+
+Optional `behavioral.signals[]` referencing `behavioral.signal` enums:
+
+- `recovery_behavior`
+- `exploration_efficiency`
+- `error_cascade`
+- `scope_adherence`
+- `confidence_calibration`
+
+Each signal supports `weight`, optional `gate`, `pass_threshold` for hardened evaluation sessions.
+
+## Post-execution sandbox captures (`post_execution_checks`)
+
+Declare file/directory grabs before sandbox teardown (`post_execution.go`):
+
+| `type` | Meaning |
+| --- | --- |
+| `file_capture` | Persist file bytes up to configured max |
+| `directory_listing` | Snapshot structure |
+
+Captured evidence is exposed to graders through `file:<path>` style references downstream—pair with validators that target those artifacts.
+
+Defaults: ~1 MiB per file, aggregate caps enforced per run (`DefaultMaxFileSizeBytes`, `DefaultMaxTotalCaptureBytes`).
+
+## Scorecard (`scorecard`)
+
+`ScorecardDeclaration` holds:
+
+### Dimensions (`dimensions`)
+
+Each dimension may be a plain string shorthand (historical compatibility) **or** an expanded object specifying:
+
+- **`key`** — dimension name (`correctness`, `latency`, `cost`, `behavioral`, custom)
+- **`source`** — dispatcher: `validators`, `metric`, `reliability`, `latency`, `cost`, `behavioral`, `llm_judge`, `human_preference`
+- **`validators[]`**, **`metric`**, **`judge_key`** — depending on `source`
+- **`weight`**, **`normalization`** — linear normalize against target/max envelopes
+- **`gate`**, **`pass_threshold`** — hard fail semantics (see Strategies)
+
+If you use one of the built-in dimension keys—`correctness`, `reliability`, `latency`, `cost`, or `behavioral`—as a plain string, its `source` is auto-filled for you; you don't have to spell it out (contributor pointer: `normalizeEvaluationSpec` in `validation.go`).
+
+### Strategy (`strategy`)
+
+| Strategy | Semantics sketch |
+| --- | --- |
+| `weighted` | Weighted mean; gated dims may still veto pass verdict |
+| `binary` | All dimensions treated as gates; scorecard-level `pass_threshold` is rejected (prevents ambiguity) |
+| `hybrid` | Gates AND aggregate over non-gate dims must clear optional `scorecard.pass_threshold` |
+
+See doc comments on `ScoringStrategy` in `spec.go` for nuanced behavior—especially hybrid vs weighted gate interplay.
+
+### `scorecard.pass_threshold`
+
+Optional inclusive overall score cutoff (documented extensively in struct comment). Forbidden for pure `binary`.
+
+### Judge budgets (`scorecard.judge_limits`)
+
+Caps LLM-as-judge spend per run (`MaxSamplesPerJudge`, `MaxCallsUSD`, `MaxTokens`). Hard-coded ceilings (`JudgeMaxSamplesCeiling`) still clamp pack-authored overrides.
+
+### Legacy normalization (`normalization`)
+
+`latency.target_ms`, `cost.target_usd` migrate into dimension-level normalization automatically for older specs—still accepted.
+
+## Runtime limits (`runtime_limits`)
+
+`max_total_tokens`, `max_cost_usd`, `max_duration_ms`—enforced upstream of sandbox/model loops; surfaced for UI + scoring fallbacks.
+
+## Pricing (`pricing.models[]`)
+
+Pricing rows describing per-million token economics for **`run_model_cost_usd`** normalization. Matches `ProviderKey`/`ProviderModelID` tuples your workspace deployments actually use—misaligned rows produce weak cost dims but do not invalidate the pack.
+
+## Evidence references validators understand
+
+Validated by `isSupportedEvidenceReference`:
+
+- Absolute shortcuts: `final_output`, `run.final_output`, `challenge_input`, `case.payload`
+- Dotted accessors: `case.payload.*`, `case.inputs.*`, `case.expectations.*`, `artifact.*`
+- Sandbox artifacts: prefix `file:` with non-empty remainder
+- Literals: `literal:…`
+
+Prefer explicit paths whenever you refactor input schema—ambiguous references fail validate instead of drifting silently.
+
+## See also
+
+- [LLM judges](llm-judges)
+- [Write a challenge pack](../guides/write-a-challenge-pack)
+- Historical v0 evaluation contract notes live in the monorepo file `docs/evaluation/challenge-pack-v0.md` (developer-oriented, not mirrored on the docs site).
+- [Multi-turn packs](/docs/challenge-packs/multi-turn)
+- [Security evaluation](/docs/guides/security-evaluation)

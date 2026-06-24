@@ -192,8 +192,8 @@ export function CaseDetailClient({
             }
           />
           <ProvenanceRow
-            label="Eval Pack Version"
-            value={c.source_eval_pack_version_id}
+            label="Challenge Pack Version"
+            value={c.source_challenge_pack_version_id}
           />
           <ProvenanceRow
             label="Challenge Identity"

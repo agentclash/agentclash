@@ -8,13 +8,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type evalPackSummary struct {
+type challengePackSummary struct {
 	ID       string                      `json:"id"`
 	Name     string                      `json:"name"`
-	Versions []evalPackVersionBrief `json:"versions"`
+	Versions []challengePackVersionBrief `json:"versions"`
 }
 
-type evalPackVersionBrief struct {
+type challengePackVersionBrief struct {
 	ID                  string              `json:"id"`
 	VersionNumber       int                 `json:"version_number"`
 	LifecycleStatus     string              `json:"lifecycle_status"`
@@ -42,14 +42,14 @@ type deploymentSummary struct {
 }
 
 type runCreateSelections struct {
-	evalPackVersionID string
+	challengePackVersionID string
 	challengeInputSetID    string
 	deploymentIDs          []string
 	mode                   string
 }
 
 func resolveRunCreateSelections(cmd *cobra.Command, rc *RunContext, workspaceID string) (runCreateSelections, error) {
-	cpvID, _ := cmd.Flags().GetString("eval-pack-version")
+	cpvID, _ := cmd.Flags().GetString("challenge-pack-version")
 	deployments, _ := cmd.Flags().GetStringSlice("deployments")
 	lineup, _ := cmd.Flags().GetString("deployment-lineup")
 	lineups, _ := cmd.Flags().GetStringSlice("deployment-lineups")
@@ -62,14 +62,14 @@ func resolveRunCreateSelections(cmd *cobra.Command, rc *RunContext, workspaceID 
 	}
 
 	selections := runCreateSelections{
-		evalPackVersionID: cpvID,
+		challengePackVersionID: cpvID,
 		challengeInputSetID:    inputSetID,
 		deploymentIDs:          deployments,
 	}
 
 	interactive := isInteractiveTerminal(rc)
-	if selections.evalPackVersionID != "" && len(selections.deploymentIDs) == 0 && !interactive {
-		resolved, ok, err := resolveDefaultDeploymentLineup(cmd, rc, workspaceID, selections.evalPackVersionID, lineup)
+	if selections.challengePackVersionID != "" && len(selections.deploymentIDs) == 0 && !interactive {
+		resolved, ok, err := resolveDefaultDeploymentLineup(cmd, rc, workspaceID, selections.challengePackVersionID, lineup)
 		if err != nil {
 			return runCreateSelections{}, err
 		}
@@ -91,22 +91,22 @@ func resolveRunCreateSelections(cmd *cobra.Command, rc *RunContext, workspaceID 
 	}
 
 	picker := newInteractivePicker()
-	if selections.evalPackVersionID == "" {
-		selectedVersion, err := promptForEvalPackVersion(cmd, rc, workspaceID, picker)
+	if selections.challengePackVersionID == "" {
+		selectedVersion, err := promptForChallengePackVersion(cmd, rc, workspaceID, picker)
 		if err != nil {
 			return runCreateSelections{}, err
 		}
-		selections.evalPackVersionID = selectedVersion.ID
+		selections.challengePackVersionID = selectedVersion.ID
 		selections.mode = suggestedRunModeForVersion(selectedVersion)
 	}
 
 	// Always offer the input-set picker when --input-set was omitted in a
-	// TTY, even if --eval-pack-version was passed explicitly. Skipping
+	// TTY, even if --challenge-pack-version was passed explicitly. Skipping
 	// the picker on explicit cpv silently changes the meaning of an existing
 	// flag combination — workflow-first auto-resolution belongs in
 	// `agentclash eval start`, not as a hidden side effect of `run create`.
 	if selections.challengeInputSetID == "" {
-		selectedInputSet, err := maybePromptForChallengeInputSet(cmd, rc, workspaceID, selections.evalPackVersionID, picker)
+		selectedInputSet, err := maybePromptForChallengeInputSet(cmd, rc, workspaceID, selections.challengePackVersionID, picker)
 		if err != nil {
 			return runCreateSelections{}, err
 		}
@@ -114,7 +114,7 @@ func resolveRunCreateSelections(cmd *cobra.Command, rc *RunContext, workspaceID 
 	}
 
 	if len(selections.deploymentIDs) == 0 {
-		resolved, ok, err := resolveDefaultDeploymentLineup(cmd, rc, workspaceID, selections.evalPackVersionID, lineup)
+		resolved, ok, err := resolveDefaultDeploymentLineup(cmd, rc, workspaceID, selections.challengePackVersionID, lineup)
 		if err != nil {
 			return runCreateSelections{}, err
 		}
@@ -134,8 +134,8 @@ func resolveRunCreateSelections(cmd *cobra.Command, rc *RunContext, workspaceID 
 
 func missingRunCreateInputs(selections runCreateSelections) []string {
 	var missing []string
-	if selections.evalPackVersionID == "" {
-		missing = append(missing, "eval pack version")
+	if selections.challengePackVersionID == "" {
+		missing = append(missing, "challenge pack version")
 	}
 	if len(selections.deploymentIDs) == 0 {
 		missing = append(missing, "deployment selection")
@@ -145,8 +145,8 @@ func missingRunCreateInputs(selections runCreateSelections) []string {
 
 func missingRunCreateFlags(selections runCreateSelections) []string {
 	var missing []string
-	if selections.evalPackVersionID == "" {
-		missing = append(missing, "--eval-pack-version")
+	if selections.challengePackVersionID == "" {
+		missing = append(missing, "--challenge-pack-version")
 	}
 	if len(selections.deploymentIDs) == 0 {
 		missing = append(missing, "--deployments or --deployment-lineup")
@@ -154,10 +154,10 @@ func missingRunCreateFlags(selections runCreateSelections) []string {
 	return missing
 }
 
-func promptForEvalPackVersion(cmd *cobra.Command, rc *RunContext, workspaceID string, picker interactivePicker) (evalPackVersionBrief, error) {
-	packs, err := listEvalPacks(cmd, rc, workspaceID)
+func promptForChallengePackVersion(cmd *cobra.Command, rc *RunContext, workspaceID string, picker interactivePicker) (challengePackVersionBrief, error) {
+	packs, err := listChallengePacks(cmd, rc, workspaceID)
 	if err != nil {
-		return evalPackVersionBrief{}, err
+		return challengePackVersionBrief{}, err
 	}
 
 	options := make([]pickerOption, 0, len(packs))
@@ -166,18 +166,18 @@ func promptForEvalPackVersion(cmd *cobra.Command, rc *RunContext, workspaceID st
 			continue
 		}
 		options = append(options, pickerOption{
-			Label:       evalPackPickerLabel(pack),
-			Description: evalPackPickerDescription(pack),
+			Label:       challengePackPickerLabel(pack),
+			Description: challengePackPickerDescription(pack),
 			Value:       pack.ID,
 		})
 	}
 
-	selectedPack, err := selectOneOrAuto(picker, "Choose a eval pack", options)
+	selectedPack, err := selectOneOrAuto(picker, "Choose a challenge pack", options)
 	if err != nil {
-		return evalPackVersionBrief{}, err
+		return challengePackVersionBrief{}, err
 	}
 
-	var versions []evalPackVersionBrief
+	var versions []challengePackVersionBrief
 	for _, pack := range packs {
 		if pack.ID == selectedPack.Value {
 			versions = append(versions, pack.Versions...)
@@ -191,26 +191,26 @@ func promptForEvalPackVersion(cmd *cobra.Command, rc *RunContext, workspaceID st
 	versionOptions := make([]pickerOption, 0, len(versions))
 	for _, version := range versions {
 		versionOptions = append(versionOptions, pickerOption{
-			Label:       evalPackVersionPickerLabel(version),
-			Description: evalPackVersionPickerDescription(version),
+			Label:       challengePackVersionPickerLabel(version),
+			Description: challengePackVersionPickerDescription(version),
 			Value:       version.ID,
 		})
 	}
 
-	selectedVersion, err := selectOneOrAuto(picker, "Choose a eval pack version", versionOptions)
+	selectedVersion, err := selectOneOrAuto(picker, "Choose a challenge pack version", versionOptions)
 	if err != nil {
-		return evalPackVersionBrief{}, err
+		return challengePackVersionBrief{}, err
 	}
 	for _, version := range versions {
 		if version.ID == selectedVersion.Value {
 			return version, nil
 		}
 	}
-	return evalPackVersionBrief{}, fmt.Errorf("selected eval pack version %s was not found", selectedVersion.Value)
+	return challengePackVersionBrief{}, fmt.Errorf("selected challenge pack version %s was not found", selectedVersion.Value)
 }
 
-func maybePromptForChallengeInputSet(cmd *cobra.Command, rc *RunContext, workspaceID, evalPackVersionID string, picker interactivePicker) (string, error) {
-	inputSets, err := listChallengeInputSets(cmd, rc, workspaceID, evalPackVersionID)
+func maybePromptForChallengeInputSet(cmd *cobra.Command, rc *RunContext, workspaceID, challengePackVersionID string, picker interactivePicker) (string, error) {
+	inputSets, err := listChallengeInputSets(cmd, rc, workspaceID, challengePackVersionID)
 	if err != nil {
 		return "", err
 	}
@@ -269,20 +269,20 @@ func promptForDeployments(cmd *cobra.Command, rc *RunContext, workspaceID string
 	return ids, nil
 }
 
-func resolveDefaultDeploymentLineup(cmd *cobra.Command, rc *RunContext, workspaceID, evalPackVersionID, lineup string) ([]string, bool, error) {
-	version, ok, err := findEvalPackVersion(cmd, rc, workspaceID, evalPackVersionID)
+func resolveDefaultDeploymentLineup(cmd *cobra.Command, rc *RunContext, workspaceID, challengePackVersionID, lineup string) ([]string, bool, error) {
+	version, ok, err := findChallengePackVersion(cmd, rc, workspaceID, challengePackVersionID)
 	if err != nil {
 		return nil, false, err
 	}
 	if !ok {
 		if strings.TrimSpace(lineup) != "" {
-			return nil, false, fmt.Errorf("eval pack version %s was not found while resolving deployment lineup", evalPackVersionID)
+			return nil, false, fmt.Errorf("challenge pack version %s was not found while resolving deployment lineup", challengePackVersionID)
 		}
 		return nil, false, nil
 	}
 	if version.DeploymentDefaults == nil {
 		if strings.TrimSpace(lineup) != "" {
-			return nil, false, fmt.Errorf("eval pack version %s does not declare deployment defaults", evalPackVersionID)
+			return nil, false, fmt.Errorf("challenge pack version %s does not declare deployment defaults", challengePackVersionID)
 		}
 		return nil, false, nil
 	}
@@ -298,9 +298,9 @@ func resolveDefaultDeploymentLineup(cmd *cobra.Command, rc *RunContext, workspac
 	return ids, true, nil
 }
 
-func resolveRunCreateDeploymentLineups(cmd *cobra.Command, rc *RunContext, workspaceID, evalPackVersionID string, lineups []string) ([]runCreateDeploymentLineup, error) {
-	if strings.TrimSpace(evalPackVersionID) == "" {
-		return nil, fmt.Errorf("--eval-pack-version is required with --deployment-lineups")
+func resolveRunCreateDeploymentLineups(cmd *cobra.Command, rc *RunContext, workspaceID, challengePackVersionID string, lineups []string) ([]runCreateDeploymentLineup, error) {
+	if strings.TrimSpace(challengePackVersionID) == "" {
+		return nil, fmt.Errorf("--challenge-pack-version is required with --deployment-lineups")
 	}
 	names := compactNonEmptyStrings(lineups)
 	if len(names) == 0 {
@@ -317,7 +317,7 @@ func resolveRunCreateDeploymentLineups(cmd *cobra.Command, rc *RunContext, works
 
 	resolved := make([]runCreateDeploymentLineup, 0, len(names))
 	for _, name := range names {
-		ids, _, err := resolveDefaultDeploymentLineup(cmd, rc, workspaceID, evalPackVersionID, name)
+		ids, _, err := resolveDefaultDeploymentLineup(cmd, rc, workspaceID, challengePackVersionID, name)
 		if err != nil {
 			return nil, err
 		}
@@ -329,19 +329,19 @@ func resolveRunCreateDeploymentLineups(cmd *cobra.Command, rc *RunContext, works
 	return resolved, nil
 }
 
-func findEvalPackVersion(cmd *cobra.Command, rc *RunContext, workspaceID, evalPackVersionID string) (evalPackVersionBrief, bool, error) {
-	packs, err := listEvalPacks(cmd, rc, workspaceID)
+func findChallengePackVersion(cmd *cobra.Command, rc *RunContext, workspaceID, challengePackVersionID string) (challengePackVersionBrief, bool, error) {
+	packs, err := listChallengePacks(cmd, rc, workspaceID)
 	if err != nil {
-		return evalPackVersionBrief{}, false, err
+		return challengePackVersionBrief{}, false, err
 	}
 	for _, pack := range packs {
 		for _, version := range pack.Versions {
-			if version.ID == evalPackVersionID {
+			if version.ID == challengePackVersionID {
 				return version, true, nil
 			}
 		}
 	}
-	return evalPackVersionBrief{}, false, nil
+	return challengePackVersionBrief{}, false, nil
 }
 
 func deploymentSelectorsForLineup(defaults *deploymentDefaults, lineup string) ([]string, error) {
@@ -351,7 +351,7 @@ func deploymentSelectorsForLineup(defaults *deploymentDefaults, lineup string) (
 	}
 	selectors, ok := defaults.Lineups[lineupName]
 	if !ok {
-		return nil, fmt.Errorf("deployment lineup %q is not declared by the eval pack version", lineupName)
+		return nil, fmt.Errorf("deployment lineup %q is not declared by the challenge pack version", lineupName)
 	}
 	if len(selectors) == 0 {
 		return nil, fmt.Errorf("deployment lineup %q does not include any deployment selectors", lineupName)
@@ -434,8 +434,8 @@ func selectManyOrAuto(picker interactivePicker, prompt string, options []pickerO
 	return picker.MultiSelect(prompt, options, min)
 }
 
-func listEvalPacks(cmd *cobra.Command, rc *RunContext, workspaceID string) ([]evalPackSummary, error) {
-	resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+workspaceID+"/eval-packs", nil)
+func listChallengePacks(cmd *cobra.Command, rc *RunContext, workspaceID string) ([]challengePackSummary, error) {
+	resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+workspaceID+"/challenge-packs", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -444,7 +444,7 @@ func listEvalPacks(cmd *cobra.Command, rc *RunContext, workspaceID string) ([]ev
 	}
 
 	var result struct {
-		Items []evalPackSummary `json:"items"`
+		Items []challengePackSummary `json:"items"`
 	}
 	if err := resp.DecodeJSON(&result); err != nil {
 		return nil, err
@@ -452,8 +452,8 @@ func listEvalPacks(cmd *cobra.Command, rc *RunContext, workspaceID string) ([]ev
 	return result.Items, nil
 }
 
-func listChallengeInputSets(cmd *cobra.Command, rc *RunContext, workspaceID, evalPackVersionID string) ([]challengeInputSetSummary, error) {
-	resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+workspaceID+"/eval-pack-versions/"+evalPackVersionID+"/input-sets", nil)
+func listChallengeInputSets(cmd *cobra.Command, rc *RunContext, workspaceID, challengePackVersionID string) ([]challengeInputSetSummary, error) {
+	resp, err := rc.Client.Get(cmd.Context(), "/v1/workspaces/"+workspaceID+"/challenge-pack-versions/"+challengePackVersionID+"/input-sets", nil)
 	if err != nil {
 		return nil, err
 	}

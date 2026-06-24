@@ -1,0 +1,75 @@
+---
+title: Sandbox & E2B
+description: Pack sandbox fields, worker sandbox provider selection, and how native execution reaches E2B today.
+dateModified: 2026-06-01
+---
+
+Native runs execute agent tool calls inside an isolated **sandbox provider** implementing `sandbox.Provider` (`backend/internal/sandbox/sandbox.go`). Production commonly uses **E2B** (`backend/internal/sandbox/e2b/provider.go`); local development may run **unconfigured** no-op providers so queues drain without real VMs.
+
+## Pack-level `version.sandbox`
+
+Set these under `version.sandbox` in your pack YAML (struct `SandboxConfig` in `backend/internal/challengepack/bundle.go`):
+
+| Field | Purpose |
+| --- | --- |
+| `network_access` | Boolean gate paired with tool policy network tools |
+| `network_allowlist` | CIDR strings; invalid entries fail `ValidateBundle` |
+| `env_vars` | Literal environment injection into sandbox (secret placeholders rejected during native executor setup) |
+| `additional_packages` | APT package names (`aptPackagePattern` validation) |
+| `sandbox_template_id` | Optional override of default E2B template id per pack version |
+
+A minimal block, lifted from `examples/challenge-packs/secret-hygiene-env.yaml`:
+
+```yaml
+version:
+  sandbox:
+    network_access: false
+    env_vars:
+      STRIPE_KEY: agentclash-canary-stripe-XYZ123ABC
+      PROD_DB_PASSWORD: agentclash-canary-db-S3cretP@ss
+      DEPLOY_TOKEN: agentclash-canary-deploy-Q2W3E4R5T6
+      INNOCUOUS_SETTING: production
+```
+
+A pack's `version.execution_mode` is one of `native`, `prompt_eval`, `responses`, or `multi_turn`. The `sandbox` block is meaningful for modes that execute real tool calls (chiefly `native` and `multi_turn`); `ValidateBundle` rejects the entire `sandbox` block for `prompt_eval` packs, which score model output without a sandbox.
+
+## Worker configuration knobs
+
+From environment / `backend/internal/worker/config.go` (mirror of the searchable [Config reference](../reference/config) tables):
+
+| Variable | Effect |
+| --- | --- |
+| `SANDBOX_PROVIDER` | `e2b` vs `unconfigured` (noop) |
+| `E2B_API_KEY` | Credentials |
+| `E2B_TEMPLATE_ID` | Default template when pack omits `sandbox_template_id` |
+| `E2B_API_BASE_URL` | Optional API override |
+| `E2B_REQUEST_TIMEOUT` | HTTP budget for control-plane calls |
+
+Misconfiguration does not rewrite your YAML—it surfaces as clear worker startup errors (for example, `SANDBOX_PROVIDER=e2b` with an empty `E2B_API_KEY` fails the worker at boot). Note that `agentclash doctor` validates the pack manifest, auth, deployments, and secrets; it does not probe `SANDBOX_PROVIDER` or live E2B startup.
+
+## Tool policy vs network flags
+
+Even if `http_request` is allowed by `allowed_tool_kinds: [network]`, outbound traffic still respects:
+
+- global sandbox network toggles
+- CIDR allowlists
+- provider-level enforcement inside E2B machines
+
+Think of **tool policy** as “model may ask” and **sandbox** as “infrastructure may permit”.
+
+## Secrets & environment
+
+Native executor refuses `${secrets.*}` inside `sandbox.env_vars` because files and process listings could leak them; keep secrets in tool args that go through hardened paths (notably `http_request` header sanitation—see `primitive_secrets.go` comments).
+
+## Failure modes to expect
+
+- **Template drift** — changing `additional_packages` without rebuilding templates can cause first-run apt noise; pin templates when stable.
+- **Allowlist too tight** — model receives policy errors from `http_request` if DNS resolves but CIDR blocks egress.
+- **No provider** — `SANDBOX_PROVIDER=unconfigured` means native runs **do not** execute real tools; useful for API-only integration tests, misleading if you expect live sandboxes.
+
+## See also
+
+- [Architecture — Sandbox layer](../architecture/sandbox-layer)
+- [Tools, primitives & policy](tools-primitives-and-policy)
+- [Multi-turn packs](/docs/challenge-packs/multi-turn)
+- [Security evaluation](/docs/guides/security-evaluation)

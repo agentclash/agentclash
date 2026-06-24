@@ -9,7 +9,7 @@ import (
 
 func TestBuildEvalSessionBody_HappyPath_SingleDeployment(t *testing.T) {
 	body, err := buildEvalSessionBody("ws-1", runCreateRequest{
-		EvalPackVersionID: "pv-1",
+		ChallengePackVersionID: "pv-1",
 		ChallengeInputSetID:    "is-1",
 		DeploymentIDs:          []string{"dep-1"},
 		Name:                   "boardroom-tier1",
@@ -22,8 +22,8 @@ func TestBuildEvalSessionBody_HappyPath_SingleDeployment(t *testing.T) {
 	if got := body["workspace_id"]; got != "ws-1" {
 		t.Errorf("workspace_id = %v, want ws-1", got)
 	}
-	if got := body["eval_pack_version_id"]; got != "pv-1" {
-		t.Errorf("eval_pack_version_id = %v, want pv-1", got)
+	if got := body["challenge_pack_version_id"]; got != "pv-1" {
+		t.Errorf("challenge_pack_version_id = %v, want pv-1", got)
 	}
 	if got := body["challenge_input_set_id"]; got != "is-1" {
 		t.Errorf("challenge_input_set_id = %v, want is-1", got)
@@ -71,7 +71,7 @@ func TestBuildEvalSessionBody_HappyPath_SingleDeployment(t *testing.T) {
 
 func TestBuildSeededEvalSessionBody(t *testing.T) {
 	body, err := buildSeededEvalSessionBody("ws-1", runCreateRequest{
-		EvalPackVersionID: "pv-1",
+		ChallengePackVersionID: "pv-1",
 		ChallengeInputSetID:    "is-1",
 		DeploymentIDs:          []string{"dep-1"},
 		Name:                   "seeded-boardroom",
@@ -101,7 +101,7 @@ func TestBuildSeededEvalSessionBody(t *testing.T) {
 
 func TestBuildSeriesEvalSessionBodyCrossesLineupsAndSeeds(t *testing.T) {
 	body, err := buildSeriesEvalSessionBody("ws-1", runCreateRequest{
-		EvalPackVersionID: "pv-1",
+		ChallengePackVersionID: "pv-1",
 		ChallengeInputSetID:    "is-1",
 		Name:                   "lineup-series",
 		OfficialPackMode:       "full",
@@ -146,7 +146,7 @@ func TestBuildSeriesEvalSessionBodyCrossesLineupsAndSeeds(t *testing.T) {
 
 func TestBuildSeriesEvalSessionBodyRejectsMatrixOverflow(t *testing.T) {
 	_, err := buildSeriesEvalSessionBody("ws-1", runCreateRequest{
-		EvalPackVersionID: "pv-1",
+		ChallengePackVersionID: "pv-1",
 		OfficialPackMode:       "full",
 		Seeds:                  51,
 		ResolvedDeploymentLineups: []runCreateDeploymentLineup{
@@ -164,7 +164,7 @@ func TestBuildSeriesEvalSessionBodyRejectsMatrixOverflow(t *testing.T) {
 
 func TestBuildEvalSessionBody_MultiDeployment_LabelsAndMode(t *testing.T) {
 	body, err := buildEvalSessionBody("ws-1", runCreateRequest{
-		EvalPackVersionID: "pv-1",
+		ChallengePackVersionID: "pv-1",
 		DeploymentIDs:          []string{"dep-a", "dep-b", "dep-c"},
 	}, 5)
 	if err != nil {
@@ -198,7 +198,7 @@ func TestBuildEvalSessionBody_RangeValidation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := buildEvalSessionBody("ws-1", runCreateRequest{
-				EvalPackVersionID: "pv-1",
+				ChallengePackVersionID: "pv-1",
 				DeploymentIDs:          []string{"dep-1"},
 			}, tc.repetitions)
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
@@ -248,7 +248,7 @@ func TestBuildEvalSessionBody_RejectsUnsupportedFlags(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			req := runCreateRequest{
-				EvalPackVersionID: "pv-1",
+				ChallengePackVersionID: "pv-1",
 				DeploymentIDs:          []string{"dep-1"},
 			}
 			tc.mutate(&req)
@@ -267,7 +267,7 @@ func TestBuildEvalSessionBody_RejectsUnsupportedFlags(t *testing.T) {
 func evalStartFakeRoutes(t *testing.T, captured *map[string]any) map[string]http.HandlerFunc {
 	t.Helper()
 	return map[string]http.HandlerFunc{
-		"GET /v1/workspaces/ws-1/eval-packs": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{
 					"id":   "pack-1",
@@ -279,7 +279,7 @@ func evalStartFakeRoutes(t *testing.T, captured *map[string]any) map[string]http
 				},
 			},
 		}),
-		"GET /v1/workspaces/ws-1/eval-pack-versions/pv-1/input-sets": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/challenge-pack-versions/pv-1/input-sets": jsonHandler(200, map[string]any{
 			"items": []map[string]any{},
 		}),
 		"GET /v1/workspaces/ws-1/agent-deployments": jsonHandler(200, map[string]any{
@@ -334,8 +334,8 @@ func TestEvalStart_Repetitions_RoutesToEvalSessions(t *testing.T) {
 	if _, hit := captured["__hit_runs"]; hit {
 		t.Fatal("POST /v1/runs was called; expected POST /v1/eval-sessions")
 	}
-	if captured["eval_pack_version_id"] != "pv-1" {
-		t.Errorf("eval_pack_version_id = %v, want pv-1", captured["eval_pack_version_id"])
+	if captured["challenge_pack_version_id"] != "pv-1" {
+		t.Errorf("challenge_pack_version_id = %v, want pv-1", captured["challenge_pack_version_id"])
 	}
 	session, ok := captured["eval_session"].(map[string]any)
 	if !ok {
@@ -358,7 +358,7 @@ func TestRunCreateSeedsRoutesToEvalSessions(t *testing.T) {
 	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
 	if err := executeCommand(t, []string{
 		"run", "create", "-w", "ws-1",
-		"--eval-pack-version", "pv-1",
+		"--challenge-pack-version", "pv-1",
 		"--deployments", "dep-1",
 		"--seeds", "3",
 		"--max-iter", "7",
@@ -392,7 +392,7 @@ func TestRunCreateSeedsRoutesToEvalSessions(t *testing.T) {
 func TestRunSeriesCreateRoutesToEvalSessions(t *testing.T) {
 	captured := map[string]any{}
 	routes := evalStartFakeRoutes(t, &captured)
-	routes["GET /v1/workspaces/ws-1/eval-packs"] = jsonHandler(200, map[string]any{
+	routes["GET /v1/workspaces/ws-1/challenge-packs"] = jsonHandler(200, map[string]any{
 		"items": []map[string]any{
 			{
 				"id":   "pack-1",
@@ -426,7 +426,7 @@ func TestRunSeriesCreateRoutesToEvalSessions(t *testing.T) {
 	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
 	if err := executeCommand(t, []string{
 		"run", "series", "create", "-w", "ws-1",
-		"--eval-pack-version", "pv-1",
+		"--challenge-pack-version", "pv-1",
 		"--deployment-lineups", "default,smoke",
 		"--seeds", "2",
 	}, srv.URL); err != nil {
@@ -554,7 +554,7 @@ func TestRunSeriesReportRendersAggregateScoreCostCorrectness(t *testing.T) {
 func TestRunSeriesCreateValidatesSeedsBeforeResolvingLineups(t *testing.T) {
 	requests := 0
 	routes := evalStartFakeRoutes(t, nil)
-	routes["GET /v1/workspaces/ws-1/eval-packs"] = func(w http.ResponseWriter, r *http.Request) {
+	routes["GET /v1/workspaces/ws-1/challenge-packs"] = func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		jsonHandler(200, map[string]any{"items": []map[string]any{}})(w, r)
 	}
@@ -564,7 +564,7 @@ func TestRunSeriesCreateValidatesSeedsBeforeResolvingLineups(t *testing.T) {
 	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
 	err := executeCommand(t, []string{
 		"run", "series", "create", "-w", "ws-1",
-		"--eval-pack-version", "pv-1",
+		"--challenge-pack-version", "pv-1",
 		"--deployment-lineups", "default,smoke",
 	}, srv.URL)
 	if err == nil {
@@ -574,13 +574,13 @@ func TestRunSeriesCreateValidatesSeedsBeforeResolvingLineups(t *testing.T) {
 		t.Fatalf("err = %v, want local seeds validation", err)
 	}
 	if requests != 0 {
-		t.Fatalf("eval pack resolver was called %d times, want local validation first", requests)
+		t.Fatalf("challenge pack resolver was called %d times, want local validation first", requests)
 	}
 }
 
 func TestBuildSeriesEvalSessionBodyQualifiesMultiParticipantLabelsByLineup(t *testing.T) {
 	body, err := buildSeriesEvalSessionBody("ws-1", runCreateRequest{
-		EvalPackVersionID: "pv-1",
+		ChallengePackVersionID: "pv-1",
 		OfficialPackMode:       "full",
 		Seeds:                  1,
 		ResolvedDeploymentLineups: []runCreateDeploymentLineup{
@@ -605,7 +605,7 @@ func TestRunCreateSeedsRejectsFollow(t *testing.T) {
 	t.Setenv("AGENTCLASH_TOKEN", "test-tok")
 	err := executeCommand(t, []string{
 		"run", "create", "-w", "ws-1",
-		"--eval-pack-version", "pv-1",
+		"--challenge-pack-version", "pv-1",
 		"--deployments", "dep-1",
 		"--seeds", "3",
 		"--follow",
@@ -620,7 +620,7 @@ func TestRunCreateSeedsRejectsFollow(t *testing.T) {
 
 func TestBuildSeededEvalSessionBodyRejectsUnsupportedScope(t *testing.T) {
 	_, err := buildSeededEvalSessionBody("ws-1", runCreateRequest{
-		EvalPackVersionID: "pv-1",
+		ChallengePackVersionID: "pv-1",
 		DeploymentIDs:          []string{"dep-1"},
 		OfficialPackMode:       "suite_only",
 		Seeds:                  2,
@@ -642,7 +642,7 @@ func TestBuildSeededEvalSessionBodyRejectsInvalidFlagRanges(t *testing.T) {
 		{
 			name: "negative_max_iter",
 			request: runCreateRequest{
-				EvalPackVersionID: "pv-1",
+				ChallengePackVersionID: "pv-1",
 				DeploymentIDs:          []string{"dep-1"},
 				MaxIterations:          -1,
 				Seeds:                  2,
@@ -652,7 +652,7 @@ func TestBuildSeededEvalSessionBodyRejectsInvalidFlagRanges(t *testing.T) {
 		{
 			name: "negative_race_context_cadence",
 			request: runCreateRequest{
-				EvalPackVersionID: "pv-1",
+				ChallengePackVersionID: "pv-1",
 				DeploymentIDs:          []string{"dep-1"},
 				RaceContextCadence:     -1,
 				Seeds:                  2,

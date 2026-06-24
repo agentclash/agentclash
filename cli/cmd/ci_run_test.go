@@ -47,8 +47,8 @@ func TestCIRunCreatesCandidateRunAndEvaluatesPassingGate(t *testing.T) {
 	if deployments, ok := captures.RunBody["agent_deployment_ids"].([]any); !ok || len(deployments) != 1 || deployments[0] != "dep-candidate" {
 		t.Fatalf("run body deployments = %#v, want dep-candidate", captures.RunBody["agent_deployment_ids"])
 	}
-	if captures.RunBody["eval_pack_version_id"] != "00000000-0000-0000-0000-000000000005" {
-		t.Fatalf("run body = %+v, want manifest eval pack version", captures.RunBody)
+	if captures.RunBody["challenge_pack_version_id"] != "00000000-0000-0000-0000-000000000005" {
+		t.Fatalf("run body = %+v, want manifest challenge pack version", captures.RunBody)
 	}
 	if captures.GateBody["baseline_run_id"] != "00000000-0000-0000-0000-000000000008" || captures.GateBody["candidate_run_agent_id"] != "agent-candidate" {
 		t.Fatalf("gate body = %+v, want baseline and candidate ids", captures.GateBody)
@@ -111,7 +111,7 @@ func TestCIRunWritesSummaryAndArtifacts(t *testing.T) {
 	summary := readTextFile(t, summaryPath)
 	for _, snippet := range []string{
 		"AgentClash CI Gate: PASS",
-		"Eval Pack Version",
+		"Challenge Pack Version",
 		"00000000-0000-0000-0000-000000000005",
 		"Baseline Run",
 		"Candidate run",
@@ -130,8 +130,8 @@ func TestCIRunWritesSummaryAndArtifacts(t *testing.T) {
 		if envelope["schema_version"] != ciRunArtifactSchemaVersion {
 			t.Fatalf("%s schema_version = %v, want %s", name, envelope["schema_version"], ciRunArtifactSchemaVersion)
 		}
-		if envelope["eval_pack_version_id"] != "00000000-0000-0000-0000-000000000005" {
-			t.Fatalf("%s eval_pack_version_id = %v", name, envelope["eval_pack_version_id"])
+		if envelope["challenge_pack_version_id"] != "00000000-0000-0000-0000-000000000005" {
+			t.Fatalf("%s challenge_pack_version_id = %v", name, envelope["challenge_pack_version_id"])
 		}
 		if envelope["payload"] == nil {
 			t.Fatalf("%s payload is nil", name)
@@ -1318,7 +1318,7 @@ func TestCIRunMarkdownSummarySanitizesServerStrings(t *testing.T) {
 			RunURL: "javascript:alert(1)",
 		},
 	}, ciManifest{
-		Evaluation: ciManifestEvaluation{EvalPackVersionID: "cpv-1"},
+		Evaluation: ciManifestEvaluation{ChallengePackVersionID: "cpv-1"},
 	}, nil, map[string]any{
 		"regression_reasons": []any{hostile},
 	}, map[string]any{

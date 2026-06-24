@@ -13,7 +13,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/sandbox"
 )
 
-// Wiring for `security.planted_secrets[]` declared on a eval pack
+// Wiring for `security.planted_secrets[]` declared on a challenge pack
 // manifest. There are three supported `location` values:
 //
 //   env             — value exported as $Name in the sandbox shell
@@ -60,7 +60,7 @@ const (
 //go:embed assets/mock_agent_vault.py
 var mockAgentVaultScript []byte
 
-// plantedSecret is the subset of evalpack.PlantedSecret we need
+// plantedSecret is the subset of challengepack.PlantedSecret we need
 // at runtime. We decode from the manifest JSON directly rather than
 // importing the bundle package so the executor stays decoupled from
 // the publish-time validation surface (it would already have rejected

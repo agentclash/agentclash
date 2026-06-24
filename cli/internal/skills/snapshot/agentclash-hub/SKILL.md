@@ -1,6 +1,6 @@
 ---
 name: agentclash-hub
-description: Use when starting any AgentClash eval, CLI, or eval-pack task. Load this skill first for the full workflow map, skill dependency order, product UI links, hosted defaults, and pointers to every other AgentClash skill.
+description: Use when starting any AgentClash eval, CLI, or challenge-pack task. Load this skill first for the full workflow map, skill dependency order, product UI links, hosted defaults, and pointers to every other AgentClash skill.
 metadata:
   agentclash.role: hub
   agentclash.version: "1"
@@ -65,7 +65,7 @@ When you (a coding agent) drive AgentClash non-interactively, lean on the machin
 3. agentclash-runtime-resources-setup → provider, model alias, runtime profile, secrets
 4. agentclash-agent-build-author     → build spec + ready build version
 5. agentclash-agent-deployment-setup → deployment ID for runs
-6. eval-pack skills             → plan, YAML, validate, publish pack
+6. challenge-pack skills             → plan, YAML, validate, publish pack
 7. agentclash-eval-runner            → eval start / run create / follow / sessions / series
 8. agentclash-scorecard-reader       → rankings, scorecards, replay, artifacts
 9. agentclash-compare-and-triage     → baseline, compare latest/gate, replay triage
@@ -104,14 +104,14 @@ Read skills in this order when multiple apply:
 4. `agentclash-runtime-resources-setup`
 5. `agentclash-agent-build-author`
 6. `agentclash-agent-deployment-setup`
-7. `agentclash-eval-pack-planner`
-8. `agentclash-eval-pack-yaml-author`
-9. `agentclash-eval-pack-input-sets`
-10. `agentclash-eval-pack-tools-sandbox`
-11. `agentclash-eval-pack-artifacts`
-12. `agentclash-eval-pack-scoring-validators`
-13. `agentclash-eval-pack-llm-judges`
-14. `agentclash-eval-pack-validation-publish`
+7. `agentclash-challenge-pack-planner`
+8. `agentclash-challenge-pack-yaml-author`
+9. `agentclash-challenge-pack-input-sets`
+10. `agentclash-challenge-pack-tools-sandbox`
+11. `agentclash-challenge-pack-artifacts`
+12. `agentclash-challenge-pack-scoring-validators`
+13. `agentclash-challenge-pack-llm-judges`
+14. `agentclash-challenge-pack-validation-publish`
 15. `agentclash-eval-runner`
 16. `agentclash-scorecard-reader`
 17. `agentclash-compare-and-triage`
@@ -140,14 +140,14 @@ Each skill folder name matches its `name` in frontmatter. When a skill lists **R
 | `agentclash-runtime-resources-setup` | Provider accounts, models, runtime profiles, secrets |
 | `agentclash-agent-build-author` | Agent build specs and build versions |
 | `agentclash-agent-deployment-setup` | Create/select deployments |
-| `agentclash-eval-pack-planner` | Plan a pack before YAML |
-| `agentclash-eval-pack-yaml-author` | Write pack YAML |
-| `agentclash-eval-pack-input-sets` | Cases and input sets |
-| `agentclash-eval-pack-tools-sandbox` | Tools and sandbox policy |
-| `agentclash-eval-pack-artifacts` | Assets and artifact refs |
-| `agentclash-eval-pack-scoring-validators` | Validators |
-| `agentclash-eval-pack-llm-judges` | LLM judges |
-| `agentclash-eval-pack-validation-publish` | Validate and publish |
+| `agentclash-challenge-pack-planner` | Plan a pack before YAML |
+| `agentclash-challenge-pack-yaml-author` | Write pack YAML |
+| `agentclash-challenge-pack-input-sets` | Cases and input sets |
+| `agentclash-challenge-pack-tools-sandbox` | Tools and sandbox policy |
+| `agentclash-challenge-pack-artifacts` | Assets and artifact refs |
+| `agentclash-challenge-pack-scoring-validators` | Validators |
+| `agentclash-challenge-pack-llm-judges` | LLM judges |
+| `agentclash-challenge-pack-validation-publish` | Validate and publish |
 | `agentclash-eval-runner` | Start and follow evals, sessions, series |
 | `agentclash-scorecard-reader` | Interpret results |
 | `agentclash-compare-and-triage` | Baselines, compare, replay triage |
@@ -160,7 +160,7 @@ Each skill folder name matches its `name` in frontmatter. When a skill lists **R
 | `agentclash-workspace-admin` | Org/workspace CRUD and membership administration |
 | `agentclash-security-evaluation` | Security pack stress-run and vault harnesses |
 
-Nested folders: `agent-build-skills/` and `eval-pack-skills/` mirror the table rows above.
+Nested folders: `agent-build-skills/` and `challenge-pack-skills/` mirror the table rows above.
 
 ## Product UI — Where To Send The User
 
@@ -174,8 +174,8 @@ Base URL: **https://agentclash.dev**
 | First eval walkthrough | https://agentclash.dev/docs/getting-started/first-eval |
 | Agent skills (web catalog) | https://agentclash.dev/docs/agent-skills |
 | CLI reference | https://agentclash.dev/docs/reference/cli |
-| Eval packs guide | https://agentclash.dev/docs/guides/write-an-eval-pack |
-| Multi-turn packs | https://agentclash.dev/docs/eval-packs/multi-turn |
+| Challenge packs guide | https://agentclash.dev/docs/guides/write-a-challenge-pack |
+| Multi-turn packs | https://agentclash.dev/docs/challenge-packs/multi-turn |
 | Interpret results | https://agentclash.dev/docs/guides/interpret-results |
 | CI/CD gates | https://agentclash.dev/docs/guides/ci-cd-agent-gates |
 | Workspace runs (after login) | App dashboard → Runs list |
@@ -190,7 +190,7 @@ Open https://agentclash.dev and navigate to your workspace runs, or search for r
 
 ## AgentClash Concepts (30-Second Model)
 
-- **Eval pack** — versioned eval workload (cases, scoring, tools policy).
+- **Challenge pack** — versioned eval workload (cases, scoring, tools policy).
 - **Input set** — which cases run in a given eval.
 - **Agent build / deployment** — the agent under test (model + runtime + tools).
 - **Run** — one execution of pack × input set × deployments.

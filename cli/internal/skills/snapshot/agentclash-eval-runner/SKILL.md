@@ -10,24 +10,24 @@ metadata:
 # AgentClash Eval Runner
 
 ## Purpose
-Create an AgentClash eval run or eval session against a published eval pack, follow it when useful, inspect evidence after it runs, and report stable commands a reviewer can repeat.
+Create an AgentClash eval run or eval session against a published challenge pack, follow it when useful, inspect evidence after it runs, and report stable commands a reviewer can repeat.
 
 ## Use When
-- A user asks to run one or more agent deployments against a published eval pack.
-- A user wants to choose a eval pack, version, input set, deployment, regression suite, or run scope from the CLI.
+- A user asks to run one or more agent deployments against a published challenge pack.
+- A user wants to choose a challenge pack, version, input set, deployment, regression suite, or run scope from the CLI.
 - A user wants live run events, rankings, failures, agents, or scorecards after a run starts.
 - A CI or local workflow needs exact non-interactive commands.
 
 ## Do Not Use When
-- The eval pack is not authored or published yet; use the eval-pack skills first.
+- The challenge pack is not authored or published yet; use the challenge-pack skills first.
 - The user needs to create deployments or runtime resources; use `agentclash-agent-deployment-setup` or `agentclash-runtime-resources-setup`.
 - The task is only to interpret an already generated scorecard in depth; use `agentclash-scorecard-reader`.
 - The task is a release gate or CI manifest workflow; use `agentclash-ci-release-gate`.
 
 ## Inputs Needed
 - Workspace ID or configured default workspace.
-- Eval pack selector: pack ID, slug, exact name, or eval pack version ID.
-- Eval pack version selector: version ID or version number.
+- Challenge pack selector: pack ID, slug, exact name, or challenge pack version ID.
+- Challenge pack version selector: version ID or version number.
 - Input set selector: input set ID, key, or exact name.
 - Agent deployment selectors: deployment IDs or exact names.
 - Scope: `full` or `suite_only`.
@@ -47,7 +47,7 @@ Before creating a run, verify auth and workspace context:
 ```bash
 agentclash auth status
 agentclash workspace use <WORKSPACE_ID>
-agentclash eval-pack list --json
+agentclash challenge-pack list --json
 agentclash deployment list --json
 ```
 
@@ -68,8 +68,8 @@ agentclash eval start \
 
 Exact `eval start` flags:
 
-- `--pack`: eval pack ID, slug, or exact name.
-- `--pack-version`: eval pack version ID or version number. Use `--pack` when selecting by version number; a version ID can identify the pack by itself.
+- `--pack`: challenge pack ID, slug, or exact name.
+- `--pack-version`: challenge pack version ID or version number. Use `--pack` when selecting by version number; a version ID can identify the pack by itself.
 - `--input-set`: challenge input set ID, key, or exact name.
 - `--deployment`: deployment ID or exact name. Repeat this flag for multiple deployments.
 - `--name`: optional run name.
@@ -100,7 +100,7 @@ Selector behavior:
 
 ```bash
 agentclash run create \
-  --eval-pack-version <EVAL_PACK_VERSION_ID> \
+  --challenge-pack-version <CHALLENGE_PACK_VERSION_ID> \
   --input-set <CHALLENGE_INPUT_SET_ID> \
   --deployments <AGENT_DEPLOYMENT_ID> \
   --name "Smoke eval" \
@@ -110,10 +110,10 @@ agentclash run create \
 Exact `run create` notes:
 
 - The lower-level flag is plural `--deployments`; it expects deployment IDs.
-- `--eval-pack-version` expects a eval pack version ID.
+- `--challenge-pack-version` expects a challenge pack version ID.
 - `--input-set` expects a challenge input set ID.
-- In non-interactive mode, `--eval-pack-version` and `--deployments` are required.
-- In a TTY, missing eval pack version, input set, or deployments can open pickers.
+- In non-interactive mode, `--challenge-pack-version` and `--deployments` are required.
+- In a TTY, missing challenge pack version, input set, or deployments can open pickers.
 - `run create` does not resolve pack slugs, input set keys, or deployment names. Use `eval start` for that.
 - `--scope`, `--suite`, `--case`, `--race-context`, and `--race-context-cadence` behave like `eval start`, but suite and case flags are ID-first.
 
@@ -122,7 +122,7 @@ The run create request body sent by the CLI contains:
 ```json
 {
   "workspace_id": "<WORKSPACE_ID>",
-  "eval_pack_version_id": "<EVAL_PACK_VERSION_ID>",
+  "challenge_pack_version_id": "<CHALLENGE_PACK_VERSION_ID>",
   "challenge_input_set_id": "<CHALLENGE_INPUT_SET_ID>",
   "agent_deployment_ids": ["<AGENT_DEPLOYMENT_ID>"],
   "official_pack_mode": "full",
@@ -140,7 +140,7 @@ Optional fields are omitted when not set. The create-run API requires JSON, caps
 {
   "id": "<RUN_ID>",
   "workspace_id": "<WORKSPACE_ID>",
-  "eval_pack_version_id": "<EVAL_PACK_VERSION_ID>",
+  "challenge_pack_version_id": "<CHALLENGE_PACK_VERSION_ID>",
   "challenge_input_set_id": "<CHALLENGE_INPUT_SET_ID>",
   "official_pack_mode": "full",
   "status": "queued",
@@ -174,7 +174,7 @@ With `run create`, use IDs:
 
 ```bash
 agentclash run create \
-  --eval-pack-version <EVAL_PACK_VERSION_ID> \
+  --challenge-pack-version <CHALLENGE_PACK_VERSION_ID> \
   --deployments <AGENT_DEPLOYMENT_ID> \
   --scope suite_only \
   --suite <REGRESSION_SUITE_ID> \
@@ -232,7 +232,7 @@ Use `eval session follow` after creating a multi-repetition eval when you need a
 
 ```bash
 agentclash run series create \
-  --eval-pack-version <EVAL_PACK_VERSION_ID> \
+  --challenge-pack-version <CHALLENGE_PACK_VERSION_ID> \
   --deployment-lineups <LINEUP_ID> \
   --seeds 3 \
   --name "Series smoke"
@@ -242,7 +242,7 @@ agentclash run series report <EVAL_SESSION_ID>
 
 `run series create` flags:
 
-- `--eval-pack-version` — required pack version ID.
+- `--challenge-pack-version` — required pack version ID.
 - `--input-set` — optional challenge input set ID.
 - `--deployment-lineups` — repeatable lineup IDs crossed with `--seeds`.
 - `--seeds` — integer 1–100 per lineup.
@@ -298,15 +298,15 @@ Read command notes:
 
 ## Common Failure Modes
 - No workspace: run `agentclash link`, `agentclash workspace use <id>`, pass `--workspace`, or set `AGENTCLASH_WORKSPACE`.
-- No eval packs: publish a pack first with `agentclash-eval-pack-validation-publish`.
+- No challenge packs: publish a pack first with `agentclash-challenge-pack-validation-publish`.
 - Multiple packs in non-interactive `eval start`: pass `--pack` or a version ID through `--pack-version`.
 - Version number without pack: pass `--pack` as well, because a bare version number cannot identify a pack.
 - Multiple input sets: pass `--input-set`; `eval start` can use ID/key/exact name, while `run create` expects ID.
 - Multiple deployments: pass one or more `--deployment` flags for `eval start`, or `--deployments` IDs for `run create`.
 - `missing_challenge_input_set_id`: the selected pack version has multiple input sets and no input set ID was submitted.
 - `invalid_agent_deployment_ids`: deployment IDs must be active deployments with snapshots in the selected workspace, with no duplicates.
-- `invalid_eval_pack_version_id`: the version must be runnable and visible to the selected workspace.
-- `invalid_challenge_input_set_id`: the input set must belong to the selected eval pack version.
+- `invalid_challenge_pack_version_id`: the version must be runnable and visible to the selected workspace.
+- `invalid_challenge_input_set_id`: the input set must belong to the selected challenge pack version.
 - `invalid_race_context`: race context requires at least two agents.
 - `--race-context-cadence must be 0 (backend default) or between 1 and 10`: fix the cadence value.
 - `--follow is not supported with --repetitions >= 2`: create the eval session, then use `eval session follow` or stream individual child runs with `run events`.
@@ -327,7 +327,7 @@ Command used:
 Run ID: <id or none>
 Eval session ID: <id or none>
 Child run IDs: <ids if repetitions >= 2>
-Eval pack version: <id>
+Challenge pack version: <id>
 Input set: <id/key/name or none>
 Deployments:
 - <id/name>
@@ -353,7 +353,7 @@ Next action: <recommendation>
 - `agentclash-cli-setup`
 - `agentclash-quickstart`
 - `agentclash-agent-deployment-setup`
-- `agentclash-eval-pack-validation-publish`
+- `agentclash-challenge-pack-validation-publish`
 - `agentclash-scorecard-reader`
 - `agentclash-compare-and-triage`
 - `agentclash-multi-turn-operator`

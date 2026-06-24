@@ -72,7 +72,7 @@ func TestRunCreateUsesRegressionSelectorsAndOfficialPackMode(t *testing.T) {
 	err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--eval-pack-version", "ver-1",
+		"--challenge-pack-version", "ver-1",
 		"--deployments", "dep-1",
 		"--scope", "suite_only",
 		"--suite", "suite-1",
@@ -131,7 +131,7 @@ func TestRunCreateTextSimModePostsMode(t *testing.T) {
 	err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--eval-pack-version", "voice-ver-1",
+		"--challenge-pack-version", "voice-ver-1",
 		"--deployments", "dep-1",
 		"--mode", "text-sim",
 		"--json",
@@ -173,7 +173,7 @@ func TestRunCreateRejectsFutureVoiceModeLocally(t *testing.T) {
 	err := executeCommand(t, []string{
 		"run", "create",
 		"-w", "ws-1",
-		"--eval-pack-version", "voice-ver-1",
+		"--challenge-pack-version", "voice-ver-1",
 		"--deployments", "dep-1",
 		"--mode", "live-call",
 	}, srv.URL)

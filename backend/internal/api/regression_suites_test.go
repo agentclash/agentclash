@@ -74,10 +74,10 @@ func TestRegressionManagerRejectsCrossWorkspaceCasePatch(t *testing.T) {
 	}
 }
 
-func TestRegressionManagerRejectsInvisibleEvalPackOnCreate(t *testing.T) {
+func TestRegressionManagerRejectsInvisibleChallengePackOnCreate(t *testing.T) {
 	workspaceID := uuid.New()
 	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
-		evalPacks: []repository.EvalPackSummary{{ID: uuid.New()}},
+		challengePacks: []repository.ChallengePackSummary{{ID: uuid.New()}},
 	})
 
 	_, err := manager.CreateRegressionSuite(context.Background(), Caller{
@@ -87,12 +87,12 @@ func TestRegressionManagerRejectsInvisibleEvalPackOnCreate(t *testing.T) {
 		},
 	}, CreateRegressionSuiteInput{
 		WorkspaceID:           workspaceID,
-		SourceEvalPackID: uuid.New(),
+		SourceChallengePackID: uuid.New(),
 		Name:                  "Critical regressions",
 		DefaultGateSeverity:   domain.RegressionSeverityWarning,
 	})
-	if !errors.Is(err, ErrEvalPackNotFound) {
-		t.Fatalf("CreateRegressionSuite error = %v, want ErrEvalPackNotFound", err)
+	if !errors.Is(err, ErrChallengePackNotFound) {
+		t.Fatalf("CreateRegressionSuite error = %v, want ErrChallengePackNotFound", err)
 	}
 }
 
@@ -101,7 +101,7 @@ func TestRegressionManagerPromoteFailureDefaultsSeverity(t *testing.T) {
 	runID := uuid.New()
 	suiteID := uuid.New()
 	challengeIdentityID := uuid.New()
-	evalPackID := uuid.New()
+	challengePackID := uuid.New()
 	item := failurereview.Item{
 		RunID:                  runID,
 		RunAgentID:             uuid.New(),
@@ -120,13 +120,13 @@ func TestRegressionManagerPromoteFailureDefaultsSeverity(t *testing.T) {
 		suite: repository.RegressionSuite{
 			ID:                    suiteID,
 			WorkspaceID:           workspaceID,
-			SourceEvalPackID: evalPackID,
+			SourceChallengePackID: challengePackID,
 			Status:                domain.RegressionSuiteStatusActive,
 		},
 		failureItems: []failurereview.Item{item},
 		executionContext: repository.RunAgentExecutionContext{
-			EvalPackVersion: repository.EvalPackVersionExecutionContext{
-				EvalPackID: evalPackID,
+			ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+				ChallengePackID: challengePackID,
 			},
 		},
 		scorecard: repository.RunAgentScorecard{
@@ -207,13 +207,13 @@ func TestRegressionManagerPromoteFailureRejectsPackMismatch(t *testing.T) {
 		suite: repository.RegressionSuite{
 			ID:                    suiteID,
 			WorkspaceID:           workspaceID,
-			SourceEvalPackID: uuid.New(),
+			SourceChallengePackID: uuid.New(),
 			Status:                domain.RegressionSuiteStatusActive,
 		},
 		failureItems: []failurereview.Item{item},
 		executionContext: repository.RunAgentExecutionContext{
-			EvalPackVersion: repository.EvalPackVersionExecutionContext{
-				EvalPackID: uuid.New(),
+			ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+				ChallengePackID: uuid.New(),
 			},
 		},
 	})
@@ -311,14 +311,14 @@ func TestRegressionManagerPromoteFailureRejectsNonPromotableItem(t *testing.T) {
 	runID := uuid.New()
 	suiteID := uuid.New()
 	challengeIdentityID := uuid.New()
-	evalPackID := uuid.New()
+	challengePackID := uuid.New()
 
 	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
 		run: domain.Run{ID: runID, WorkspaceID: workspaceID},
 		suite: repository.RegressionSuite{
 			ID:                    suiteID,
 			WorkspaceID:           workspaceID,
-			SourceEvalPackID: evalPackID,
+			SourceChallengePackID: challengePackID,
 			Status:                domain.RegressionSuiteStatusActive,
 		},
 		failureItems: []failurereview.Item{{
@@ -355,14 +355,14 @@ func TestRegressionManagerPromoteFailureRejectsUnavailableMode(t *testing.T) {
 	runID := uuid.New()
 	suiteID := uuid.New()
 	challengeIdentityID := uuid.New()
-	evalPackID := uuid.New()
+	challengePackID := uuid.New()
 
 	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
 		run: domain.Run{ID: runID, WorkspaceID: workspaceID},
 		suite: repository.RegressionSuite{
 			ID:                    suiteID,
 			WorkspaceID:           workspaceID,
-			SourceEvalPackID: evalPackID,
+			SourceChallengePackID: challengePackID,
 			Status:                domain.RegressionSuiteStatusActive,
 		},
 		failureItems: []failurereview.Item{{
@@ -428,14 +428,14 @@ func TestRegressionManagerPromoteFailureRejectsAmbiguousFailureItem(t *testing.T
 	runID := uuid.New()
 	suiteID := uuid.New()
 	challengeIdentityID := uuid.New()
-	evalPackID := uuid.New()
+	challengePackID := uuid.New()
 
 	manager := NewRegressionManager(NewCallerWorkspaceAuthorizer(), &fakeRegressionRepository{
 		run: domain.Run{ID: runID, WorkspaceID: workspaceID},
 		suite: repository.RegressionSuite{
 			ID:                    suiteID,
 			WorkspaceID:           workspaceID,
-			SourceEvalPackID: evalPackID,
+			SourceChallengePackID: challengePackID,
 			Status:                domain.RegressionSuiteStatusActive,
 		},
 		failureItems: []failurereview.Item{
@@ -469,7 +469,7 @@ func TestRegressionManagerPromoteFailureResolvesDuplicateChallengeIdentityWithRu
 	runID := uuid.New()
 	suiteID := uuid.New()
 	challengeIdentityID := uuid.New()
-	evalPackID := uuid.New()
+	challengePackID := uuid.New()
 	selectedRunAgentID := uuid.New()
 	otherRunAgentID := uuid.New()
 
@@ -478,7 +478,7 @@ func TestRegressionManagerPromoteFailureResolvesDuplicateChallengeIdentityWithRu
 		suite: repository.RegressionSuite{
 			ID:                    suiteID,
 			WorkspaceID:           workspaceID,
-			SourceEvalPackID: evalPackID,
+			SourceChallengePackID: challengePackID,
 			Status:                domain.RegressionSuiteStatusActive,
 		},
 		failureItems: []failurereview.Item{
@@ -503,8 +503,8 @@ func TestRegressionManagerPromoteFailureResolvesDuplicateChallengeIdentityWithRu
 			},
 		},
 		executionContext: repository.RunAgentExecutionContext{
-			EvalPackVersion: repository.EvalPackVersionExecutionContext{
-				EvalPackID: evalPackID,
+			ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+				ChallengePackID: challengePackID,
 			},
 		},
 		scorecard: repository.RunAgentScorecard{
@@ -552,7 +552,7 @@ func TestRegressionManagerPromoteFailureResolvesDuplicateChallengeIdentityWithRu
 func TestRegressionManagerCaptureProductionFailureCreatesProposedCase(t *testing.T) {
 	workspaceID := uuid.New()
 	suiteID := uuid.New()
-	evalPackID := uuid.New()
+	challengePackID := uuid.New()
 	versionID := uuid.New()
 	inputSetID := uuid.New()
 	challengeIdentityID := uuid.New()
@@ -562,17 +562,17 @@ func TestRegressionManagerCaptureProductionFailureCreatesProposedCase(t *testing
 		suite: repository.RegressionSuite{
 			ID:                    suiteID,
 			WorkspaceID:           workspaceID,
-			SourceEvalPackID: evalPackID,
+			SourceChallengePackID: challengePackID,
 			Status:                domain.RegressionSuiteStatusActive,
 		},
-		evalPackVersion: repository.RunnableEvalPackVersion{
+		challengePackVersion: repository.RunnableChallengePackVersion{
 			ID:              versionID,
-			EvalPackID: evalPackID,
+			ChallengePackID: challengePackID,
 			WorkspaceID:     &workspaceID,
 		},
 		challengeInputSet: repository.ChallengeInputSet{
 			ID:                     inputSetID,
-			EvalPackVersionID: versionID,
+			ChallengePackVersionID: versionID,
 		},
 		challengeIdentityIDs: []uuid.UUID{challengeIdentityID},
 		createCaseResult:     repository.RegressionCase{WorkspaceID: workspaceID},
@@ -587,7 +587,7 @@ func TestRegressionManagerCaptureProductionFailureCreatesProposedCase(t *testing
 	}, CaptureProductionFailureInput{
 		WorkspaceID:                  workspaceID,
 		SuiteID:                      suiteID,
-		SourceEvalPackVersionID: versionID,
+		SourceChallengePackVersionID: versionID,
 		SourceChallengeInputSetID:    &inputSetID,
 		SourceChallengeIdentityID:    challengeIdentityID,
 		SourceCaseKey:                "prod-incident-123",
@@ -641,7 +641,7 @@ func TestProductionFailureMetadataDefaultsSourceBeforeFingerprint(t *testing.T) 
 	versionID := uuid.New()
 	challengeIdentityID := uuid.New()
 	baseInput := CaptureProductionFailureInput{
-		SourceEvalPackVersionID: versionID,
+		SourceChallengePackVersionID: versionID,
 		SourceChallengeIdentityID:    challengeIdentityID,
 		SourceCaseKey:                "prod-incident-123",
 		FailureSummary:               "Agent emitted an invalid tool argument in production.",
@@ -675,7 +675,7 @@ func TestProductionFailureMetadataDefaultsSourceBeforeFingerprint(t *testing.T) 
 func TestRegressionManagerCaptureProductionFailureRejectsInvalidSources(t *testing.T) {
 	workspaceID := uuid.New()
 	suiteID := uuid.New()
-	evalPackID := uuid.New()
+	challengePackID := uuid.New()
 	versionID := uuid.New()
 	inputSetID := uuid.New()
 	challengeIdentityID := uuid.New()
@@ -685,17 +685,17 @@ func TestRegressionManagerCaptureProductionFailureRejectsInvalidSources(t *testi
 			suite: repository.RegressionSuite{
 				ID:                    suiteID,
 				WorkspaceID:           workspaceID,
-				SourceEvalPackID: evalPackID,
+				SourceChallengePackID: challengePackID,
 				Status:                domain.RegressionSuiteStatusActive,
 			},
-			evalPackVersion: repository.RunnableEvalPackVersion{
+			challengePackVersion: repository.RunnableChallengePackVersion{
 				ID:              versionID,
-				EvalPackID: evalPackID,
+				ChallengePackID: challengePackID,
 				WorkspaceID:     &workspaceID,
 			},
 			challengeInputSet: repository.ChallengeInputSet{
 				ID:                     inputSetID,
-				EvalPackVersionID: versionID,
+				ChallengePackVersionID: versionID,
 			},
 			challengeIdentityIDs: []uuid.UUID{challengeIdentityID},
 		}
@@ -703,7 +703,7 @@ func TestRegressionManagerCaptureProductionFailureRejectsInvalidSources(t *testi
 	baseInput := CaptureProductionFailureInput{
 		WorkspaceID:                  workspaceID,
 		SuiteID:                      suiteID,
-		SourceEvalPackVersionID: versionID,
+		SourceChallengePackVersionID: versionID,
 		SourceChallengeInputSetID:    &inputSetID,
 		SourceChallengeIdentityID:    challengeIdentityID,
 		SourceCaseKey:                "prod-incident-123",
@@ -727,14 +727,14 @@ func TestRegressionManagerCaptureProductionFailureRejectsInvalidSources(t *testi
 		{
 			name: "pack mismatch",
 			mutate: func(repo *fakeRegressionRepository, _ *CaptureProductionFailureInput) {
-				repo.evalPackVersion.EvalPackID = uuid.New()
+				repo.challengePackVersion.ChallengePackID = uuid.New()
 			},
 			wantErr: ErrRegressionSuitePackMismatch,
 		},
 		{
 			name: "input set mismatch",
 			mutate: func(repo *fakeRegressionRepository, _ *CaptureProductionFailureInput) {
-				repo.challengeInputSet.EvalPackVersionID = uuid.New()
+				repo.challengeInputSet.ChallengePackVersionID = uuid.New()
 			},
 			wantErr: ErrRegressionInputSetMismatch,
 		},
@@ -795,14 +795,14 @@ func TestCaptureProductionFailureEndpointCreatesProposedCase(t *testing.T) {
 		hostedRunIngestionService:  stubHostedRunIngestionService{},
 		compareReadService:         stubCompareReadService{},
 		agentDeploymentReadService: stubAgentDeploymentReadService{},
-		evalPackReadService:   stubEvalPackReadService{},
+		challengePackReadService:   stubChallengePackReadService{},
 		agentBuildService:          stubAgentBuildService{},
 		releaseGateService:         noopReleaseGateService{},
 		regressionService:          service,
 	})
 
 	body := fmt.Sprintf(`{
-		"source_eval_pack_version_id":"%s",
+		"source_challenge_pack_version_id":"%s",
 		"source_challenge_input_set_id":"%s",
 		"source_challenge_identity_id":"%s",
 		"source_case_key":"prod-incident-123",
@@ -829,7 +829,7 @@ func TestCaptureProductionFailureEndpointCreatesProposedCase(t *testing.T) {
 	if service.captureInput == nil {
 		t.Fatal("expected capture input")
 	}
-	if service.captureInput.SuiteID != suiteID || service.captureInput.SourceEvalPackVersionID != versionID {
+	if service.captureInput.SuiteID != suiteID || service.captureInput.SourceChallengePackVersionID != versionID {
 		t.Fatalf("capture input = %+v, want suite/version", service.captureInput)
 	}
 	if service.captureInput.Severity == nil || *service.captureInput.Severity != domain.RegressionSeverityBlocking {
@@ -858,7 +858,7 @@ func TestCaptureProductionFailureEndpointRejectsInvalidClassAndEvidenceTier(t *t
 		hostedRunIngestionService:  stubHostedRunIngestionService{},
 		compareReadService:         stubCompareReadService{},
 		agentDeploymentReadService: stubAgentDeploymentReadService{},
-		evalPackReadService:   stubEvalPackReadService{},
+		challengePackReadService:   stubChallengePackReadService{},
 		agentBuildService:          stubAgentBuildService{},
 		releaseGateService:         noopReleaseGateService{},
 		regressionService:          service,
@@ -871,7 +871,7 @@ func TestCaptureProductionFailureEndpointRejectsInvalidClassAndEvidenceTier(t *t
 		{
 			name: "invalid failure class",
 			body: fmt.Sprintf(`{
-				"source_eval_pack_version_id":"%s",
+				"source_challenge_pack_version_id":"%s",
 				"source_challenge_identity_id":"%s",
 				"source_case_key":"prod-incident-123",
 				"title":"Production tool schema incident",
@@ -883,7 +883,7 @@ func TestCaptureProductionFailureEndpointRejectsInvalidClassAndEvidenceTier(t *t
 		{
 			name: "invalid evidence tier",
 			body: fmt.Sprintf(`{
-				"source_eval_pack_version_id":"%s",
+				"source_challenge_pack_version_id":"%s",
 				"source_challenge_identity_id":"%s",
 				"source_case_key":"prod-incident-123",
 				"title":"Production tool schema incident",
@@ -915,7 +915,7 @@ func TestCaptureProductionFailureEndpointRejectsInvalidClassAndEvidenceTier(t *t
 func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 	workspaceID := uuid.New()
 	userID := uuid.New()
-	sourceEvalPackID := uuid.New()
+	sourceChallengePackID := uuid.New()
 	suiteID := uuid.New()
 	caseID := uuid.New()
 	createdAt := time.Date(2026, 4, 19, 10, 0, 0, 0, time.UTC)
@@ -926,7 +926,7 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 		suite: repository.RegressionSuite{
 			ID:                    suiteID,
 			WorkspaceID:           workspaceID,
-			SourceEvalPackID: sourceEvalPackID,
+			SourceChallengePackID: sourceChallengePackID,
 			Name:                  "Critical regressions",
 			Description:           "Seed suite",
 			Status:                domain.RegressionSuiteStatusActive,
@@ -946,7 +946,7 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 			Status:                       domain.RegressionCaseStatusActive,
 			Severity:                     domain.RegressionSeverityBlocking,
 			PromotionMode:                domain.RegressionPromotionModeFullExecutable,
-			SourceEvalPackVersionID: uuid.New(),
+			SourceChallengePackVersionID: uuid.New(),
 			SourceChallengeIdentityID:    uuid.New(),
 			SourceCaseKey:                "case-1",
 			EvidenceTier:                 "replay",
@@ -990,14 +990,14 @@ func TestRegressionSuiteEndpointsRoundTrip(t *testing.T) {
 		hostedRunIngestionService:  stubHostedRunIngestionService{},
 		compareReadService:         stubCompareReadService{},
 		agentDeploymentReadService: stubAgentDeploymentReadService{},
-		evalPackReadService:   stubEvalPackReadService{},
+		challengePackReadService:   stubChallengePackReadService{},
 		agentBuildService:          stubAgentBuildService{},
 		releaseGateService:         noopReleaseGateService{},
 		regressionService:          service,
 	})
 
 	postReq := httptest.NewRequest(http.MethodPost, "/v1/workspaces/"+workspaceID.String()+"/regression-suites", bytes.NewBufferString(`{
-		"source_eval_pack_id":"`+sourceEvalPackID.String()+`",
+		"source_challenge_pack_id":"`+sourceChallengePackID.String()+`",
 		"name":"Critical regressions",
 		"description":"Seed suite",
 		"default_gate_severity":"warning"
@@ -1326,7 +1326,7 @@ func TestRegressionSuiteEndpointsRejectMalformedPagination(t *testing.T) {
 		hostedRunIngestionService:  stubHostedRunIngestionService{},
 		compareReadService:         stubCompareReadService{},
 		agentDeploymentReadService: stubAgentDeploymentReadService{},
-		evalPackReadService:   stubEvalPackReadService{},
+		challengePackReadService:   stubChallengePackReadService{},
 		agentBuildService:          stubAgentBuildService{},
 		releaseGateService:         noopReleaseGateService{},
 		regressionService:          &fakeRegressionService{},
@@ -1364,7 +1364,7 @@ func TestRegressionSuitePatchReturnsConflictOnTransitionConflict(t *testing.T) {
 		hostedRunIngestionService:  stubHostedRunIngestionService{},
 		compareReadService:         stubCompareReadService{},
 		agentDeploymentReadService: stubAgentDeploymentReadService{},
-		evalPackReadService:   stubEvalPackReadService{},
+		challengePackReadService:   stubChallengePackReadService{},
 		agentBuildService:          stubAgentBuildService{},
 		releaseGateService:         noopReleaseGateService{},
 		regressionService: &fakeRegressionService{
@@ -1388,8 +1388,8 @@ func TestRegressionSuitePatchReturnsConflictOnTransitionConflict(t *testing.T) {
 }
 
 type fakeRegressionRepository struct {
-	evalPacks          []repository.EvalPackSummary
-	evalPacksErr       error
+	challengePacks          []repository.ChallengePackSummary
+	challengePacksErr       error
 	publicPacksDisabled     bool
 	suite                   repository.RegressionSuite
 	suiteErr                error
@@ -1408,8 +1408,8 @@ type fakeRegressionRepository struct {
 	createCaseInput         *repository.CreateRegressionCaseParams
 	patchCaseResult         repository.RegressionCase
 	patchCaseErr            error
-	evalPackVersion    repository.RunnableEvalPackVersion
-	evalPackVersionErr error
+	challengePackVersion    repository.RunnableChallengePackVersion
+	challengePackVersionErr error
 	challengeInputSet       repository.ChallengeInputSet
 	challengeInputSetErr    error
 	challengeIdentityIDs    []uuid.UUID
@@ -1429,8 +1429,8 @@ type fakeRegressionRepository struct {
 	promoteInput            *repository.PromoteFailureParams
 }
 
-func (f *fakeRegressionRepository) ListVisibleEvalPacks(_ context.Context, _ uuid.UUID) ([]repository.EvalPackSummary, error) {
-	return f.evalPacks, f.evalPacksErr
+func (f *fakeRegressionRepository) ListVisibleChallengePacks(_ context.Context, _ uuid.UUID) ([]repository.ChallengePackSummary, error) {
+	return f.challengePacks, f.challengePacksErr
 }
 
 func (f *fakeRegressionRepository) WorkspacePublicPacksEnabled(context.Context, uuid.UUID) (bool, error) {
@@ -1441,7 +1441,7 @@ func (f *fakeRegressionRepository) CreateRegressionSuite(_ context.Context, para
 	return repository.RegressionSuite{
 		ID:                    uuid.New(),
 		WorkspaceID:           params.WorkspaceID,
-		SourceEvalPackID: params.SourceEvalPackID,
+		SourceChallengePackID: params.SourceChallengePackID,
 		Name:                  params.Name,
 		Description:           params.Description,
 		Status:                params.Status,
@@ -1486,7 +1486,7 @@ func (f *fakeRegressionRepository) CreateRegressionCase(_ context.Context, param
 	result.Status = params.Status
 	result.Severity = params.Severity
 	result.PromotionMode = params.PromotionMode
-	result.SourceEvalPackVersionID = params.SourceEvalPackVersionID
+	result.SourceChallengePackVersionID = params.SourceChallengePackVersionID
 	result.SourceChallengeInputSetID = cloneUUIDPtr(params.SourceChallengeInputSetID)
 	result.SourceChallengeIdentityID = params.SourceChallengeIdentityID
 	result.SourceCaseKey = params.SourceCaseKey
@@ -1524,11 +1524,11 @@ func (f *fakeRegressionRepository) PatchRegressionCase(_ context.Context, _ repo
 	return f.patchCaseResult, f.patchCaseErr
 }
 
-func (f *fakeRegressionRepository) GetRunnableEvalPackVersionByID(_ context.Context, _ uuid.UUID) (repository.RunnableEvalPackVersion, error) {
-	if f.evalPackVersionErr != nil {
-		return repository.RunnableEvalPackVersion{}, f.evalPackVersionErr
+func (f *fakeRegressionRepository) GetRunnableChallengePackVersionByID(_ context.Context, _ uuid.UUID) (repository.RunnableChallengePackVersion, error) {
+	if f.challengePackVersionErr != nil {
+		return repository.RunnableChallengePackVersion{}, f.challengePackVersionErr
 	}
-	return f.evalPackVersion, nil
+	return f.challengePackVersion, nil
 }
 
 func (f *fakeRegressionRepository) GetChallengeInputSetByID(_ context.Context, _ uuid.UUID) (repository.ChallengeInputSet, error) {
@@ -1606,7 +1606,7 @@ func (f *fakeRegressionService) CreateRegressionSuite(_ context.Context, _ Calle
 		return repository.RegressionSuite{}, f.createSuiteErr
 	}
 	f.suite.WorkspaceID = input.WorkspaceID
-	f.suite.SourceEvalPackID = input.SourceEvalPackID
+	f.suite.SourceChallengePackID = input.SourceChallengePackID
 	f.suite.Name = input.Name
 	f.suite.Description = input.Description
 	f.suite.DefaultGateSeverity = input.DefaultGateSeverity
@@ -1715,7 +1715,7 @@ func (f *fakeRegressionService) CaptureProductionFailure(_ context.Context, _ Ca
 	if input.PromotionMode != nil {
 		f.regressionCase.PromotionMode = *input.PromotionMode
 	}
-	f.regressionCase.SourceEvalPackVersionID = input.SourceEvalPackVersionID
+	f.regressionCase.SourceChallengePackVersionID = input.SourceChallengePackVersionID
 	f.regressionCase.SourceChallengeInputSetID = cloneUUIDPtr(input.SourceChallengeInputSetID)
 	f.regressionCase.SourceChallengeIdentityID = input.SourceChallengeIdentityID
 	f.regressionCase.SourceCaseKey = input.SourceCaseKey

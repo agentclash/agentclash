@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/runevents"
@@ -158,7 +158,7 @@ func (e MultiTurnExecutor) Execute(ctx context.Context, executionContext reposit
 func (e MultiTurnExecutor) runHybridConversation(
 	ctx context.Context,
 	executionContext repository.RunAgentExecutionContext,
-	spec *evalpack.UserSimulatorSpec,
+	spec *challengepack.UserSimulatorSpec,
 	conversation *NativeConversation,
 	recorder MultiTurnEventRecorder,
 ) (MultiTurnConversationSummary, StopReason, error) {
@@ -184,15 +184,15 @@ func (e MultiTurnExecutor) runHybridConversation(
 		state.seenActors[phase.Actor] = struct{}{}
 
 		switch phase.Actor {
-		case evalpack.UserSimulatorActorScripted:
+		case challengepack.UserSimulatorActorScripted:
 			if err := e.runScriptedPhase(ctx, executionContext, phase, maxTurns, conversation, recorder, &state); err != nil {
 				return MultiTurnConversationSummary{}, "", err
 			}
-		case evalpack.UserSimulatorActorLLM:
+		case challengepack.UserSimulatorActorLLM:
 			if err := e.runLLMPhase(ctx, executionContext, phase, maxTurns, conversation, recorder, &state); err != nil {
 				return MultiTurnConversationSummary{}, "", err
 			}
-		case evalpack.UserSimulatorActorHuman:
+		case challengepack.UserSimulatorActorHuman:
 			if err := e.runHumanPhase(ctx, executionContext, phase, maxTurns, conversation, recorder, &state); err != nil {
 				return MultiTurnConversationSummary{}, "", err
 			}
@@ -222,7 +222,7 @@ type hybridConversationState struct {
 func (e MultiTurnExecutor) runScriptedPhase(
 	ctx context.Context,
 	executionContext repository.RunAgentExecutionContext,
-	phase evalpack.UserSimulatorPhase,
+	phase challengepack.UserSimulatorPhase,
 	maxTurns int,
 	conversation *NativeConversation,
 	recorder MultiTurnEventRecorder,
@@ -237,7 +237,7 @@ func (e MultiTurnExecutor) runScriptedPhase(
 		if err != nil {
 			return err
 		}
-		mismatch, err := e.executeUserTurn(ctx, phase.ID, evalpack.UserSimulatorActorScripted, message, turn.Expects, conversation, recorder, state)
+		mismatch, err := e.executeUserTurn(ctx, phase.ID, challengepack.UserSimulatorActorScripted, message, turn.Expects, conversation, recorder, state)
 		if err != nil {
 			return err
 		}
@@ -249,7 +249,7 @@ func (e MultiTurnExecutor) runScriptedPhase(
 func (e MultiTurnExecutor) runLLMPhase(
 	ctx context.Context,
 	executionContext repository.RunAgentExecutionContext,
-	phase evalpack.UserSimulatorPhase,
+	phase challengepack.UserSimulatorPhase,
 	maxTurns int,
 	conversation *NativeConversation,
 	recorder MultiTurnEventRecorder,
@@ -303,7 +303,7 @@ func (e MultiTurnExecutor) runLLMPhase(
 			return NewFailure(StopReasonObserverError, "record turn.user.simulated event", err)
 		}
 
-		mismatch, err := e.executeUserTurn(ctx, phase.ID, evalpack.UserSimulatorActorLLM, message, nil, conversation, recorder, state)
+		mismatch, err := e.executeUserTurn(ctx, phase.ID, challengepack.UserSimulatorActorLLM, message, nil, conversation, recorder, state)
 		if err != nil {
 			return err
 		}
@@ -326,7 +326,7 @@ func (e MultiTurnExecutor) runLLMPhase(
 func (e MultiTurnExecutor) runHumanPhase(
 	ctx context.Context,
 	executionContext repository.RunAgentExecutionContext,
-	phase evalpack.UserSimulatorPhase,
+	phase challengepack.UserSimulatorPhase,
 	maxTurns int,
 	conversation *NativeConversation,
 	recorder MultiTurnEventRecorder,
@@ -356,8 +356,8 @@ func (e MultiTurnExecutor) runHumanPhase(
 	})
 	if err != nil {
 		if errors.Is(err, ErrHumanTurnTimeout) {
-			switch evalpack.NormalizeHumanOnTimeout(phase.OnTimeout) {
-			case evalpack.UserSimulatorHumanOnTimeoutFail:
+			switch challengepack.NormalizeHumanOnTimeout(phase.OnTimeout) {
+			case challengepack.UserSimulatorHumanOnTimeoutFail:
 				return NewFailure(StopReasonHumanTurnTimeout, "human turn timed out", err)
 			default:
 				state.stopReason = StopReasonHumanTurnTimeout
@@ -368,7 +368,7 @@ func (e MultiTurnExecutor) runHumanPhase(
 	}
 
 	state.humanTurnCount++
-	_, err = e.executeUserTurn(ctx, phase.ID, evalpack.UserSimulatorActorHuman, message, nil, conversation, recorder, state)
+	_, err = e.executeUserTurn(ctx, phase.ID, challengepack.UserSimulatorActorHuman, message, nil, conversation, recorder, state)
 	return err
 }
 
@@ -377,7 +377,7 @@ func (e MultiTurnExecutor) executeUserTurn(
 	phaseID string,
 	actor string,
 	message string,
-	expects []evalpack.CaseExpectation,
+	expects []challengepack.CaseExpectation,
 	conversation *NativeConversation,
 	recorder MultiTurnEventRecorder,
 	state *hybridConversationState,
@@ -410,7 +410,7 @@ func (e MultiTurnExecutor) executeUserTurn(
 	return mismatch, nil
 }
 
-func userSimulatorForExecution(executionContext repository.RunAgentExecutionContext) (*evalpack.UserSimulatorSpec, error) {
+func userSimulatorForExecution(executionContext repository.RunAgentExecutionContext) (*challengepack.UserSimulatorSpec, error) {
 	if executionContext.ChallengeInputSet == nil || len(executionContext.ChallengeInputSet.Cases) == 0 {
 		return nil, provider.NewFailure("", provider.FailureCodeInvalidRequest, "multi_turn execution requires a challenge case", false, nil)
 	}
@@ -418,14 +418,14 @@ func userSimulatorForExecution(executionContext repository.RunAgentExecutionCont
 	if first.UserSimulator == nil {
 		return nil, provider.NewFailure("", provider.FailureCodeInvalidRequest, "multi_turn execution requires user_simulator on the case", false, nil)
 	}
-	return evalpack.CloneUserSimulatorSpec(first.UserSimulator), nil
+	return challengepack.CloneUserSimulatorSpec(first.UserSimulator), nil
 }
 
 func renderScriptedTurnMessage(template string, executionContext repository.RunAgentExecutionContext) (string, error) {
 	ctx := caseTemplateContextForExecution(executionContext)
-	rendered, err := evalpack.RenderCaseTemplate(template, ctx)
+	rendered, err := challengepack.RenderCaseTemplate(template, ctx)
 	if err != nil {
-		rendered = evalpack.RenderCaseTemplateLenient(template, ctx)
+		rendered = challengepack.RenderCaseTemplateLenient(template, ctx)
 	}
 	if strings.TrimSpace(rendered) == "" {
 		return "", provider.NewFailure("", provider.FailureCodeInvalidRequest, "scripted turn message rendered empty", false, fmt.Errorf("empty scripted turn message"))
@@ -475,11 +475,11 @@ func RunAgentIDForHumanTurn(executionContext repository.RunAgentExecutionContext
 // ActorForRecorder maps pack actor strings to run event actors.
 func ActorForRecorder(actor string) string {
 	switch strings.TrimSpace(actor) {
-	case evalpack.UserSimulatorActorScripted:
+	case challengepack.UserSimulatorActorScripted:
 		return runevents.ConversationActorScripted
-	case evalpack.UserSimulatorActorLLM:
+	case challengepack.UserSimulatorActorLLM:
 		return runevents.ConversationActorLLM
-	case evalpack.UserSimulatorActorHuman:
+	case challengepack.UserSimulatorActorHuman:
 		return runevents.ConversationActorHuman
 	default:
 		return strings.TrimSpace(actor)

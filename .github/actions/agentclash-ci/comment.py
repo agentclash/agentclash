@@ -400,7 +400,7 @@ def next_action_lines(result: dict[str, Any]) -> list[str]:
     verdict = str(result.get("gate_verdict") or "").lower()
     if verdict == "fail":
         return [
-            "- If this regression is unexpected, fix the agent, prompt, model, tools, or eval-pack change and push again.",
+            "- If this regression is unexpected, fix the agent, prompt, model, tools, or challenge-pack change and push again.",
             "- If the behavior change is intentional, inspect the AgentClash run/comparison artifacts and promote or accept the regression deliberately.",
             "- Keep the locked baseline unchanged until the new behavior has been reviewed.",
         ]

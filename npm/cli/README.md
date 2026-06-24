@@ -27,7 +27,7 @@ Supported platforms:
 ```bash
 agentclash auth login
 agentclash link
-agentclash eval-pack init support-eval.yaml
+agentclash challenge-pack init support-eval.yaml
 agentclash eval start --help
 ```
 
@@ -43,7 +43,7 @@ go run . auth login --device
 go run . link
 go run . run list
 go run . eval start --help
-# When the workspace already has eval packs and deployments:
+# When the workspace already has challenge packs and deployments:
 go run . eval start --follow
 ```
 

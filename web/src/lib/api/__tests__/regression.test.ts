@@ -60,7 +60,7 @@ describe("Regression API helpers", () => {
       status: "active",
       severity: "blocking",
       promotion_mode: "full_executable",
-      source_eval_pack_version_id: "cpv-1",
+      source_challenge_pack_version_id: "cpv-1",
       source_challenge_identity_id: "challenge-1",
       source_case_key: "case-a",
       evidence_tier: "native_structured",
@@ -120,7 +120,7 @@ describe("Regression API helpers", () => {
       status: "proposed",
       severity: "warning",
       promotion_mode: "output_only",
-      source_eval_pack_version_id: "cpv-1",
+      source_challenge_pack_version_id: "cpv-1",
       source_challenge_identity_id: "challenge-1",
       source_case_key: "prod-incident-123",
       evidence_tier: "hosted_black_box",
@@ -136,7 +136,7 @@ describe("Regression API helpers", () => {
 
     const api = createApiClient("token");
     const result = await captureProductionFailure(api, "ws-1", "suite-1", {
-      source_eval_pack_version_id: "cpv-1",
+      source_challenge_pack_version_id: "cpv-1",
       source_challenge_identity_id: "challenge-1",
       source_case_key: "prod-incident-123",
       title: "Production incident",
@@ -152,7 +152,7 @@ describe("Regression API helpers", () => {
       expect.objectContaining({
         method: "POST",
         body: JSON.stringify({
-          source_eval_pack_version_id: "cpv-1",
+          source_challenge_pack_version_id: "cpv-1",
           source_challenge_identity_id: "challenge-1",
           source_case_key: "prod-incident-123",
           title: "Production incident",

@@ -66,7 +66,7 @@ export function WsGeneralSettings({ workspace: initialWs }: WsGeneralSettingsPro
     try {
       const token = await getAccessToken();
       if (!token) {
-        toast.error("Sign in again to update eval pack access");
+        toast.error("Sign in again to update challenge pack access");
         return;
       }
       const api = createApiClient(token);
@@ -74,13 +74,13 @@ export function WsGeneralSettings({ workspace: initialWs }: WsGeneralSettingsPro
         `/v1/workspaces/${ws.id}/details`,
         { public_packs: publicPacks },
       );
-      toast.success("Eval pack access updated");
+      toast.success("Challenge pack access updated");
       setWs(updated);
     } catch (err) {
       toast.error(
         err instanceof ApiError
           ? err.message
-          : "Failed to update eval pack access",
+          : "Failed to update challenge pack access",
       );
     } finally {
       setSavingPublicPacks(false);
@@ -152,9 +152,9 @@ export function WsGeneralSettings({ workspace: initialWs }: WsGeneralSettingsPro
       <div className="rounded-lg border border-border p-4">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <h3 className="text-sm font-medium">Public Eval Packs</h3>
+            <h3 className="text-sm font-medium">Public Challenge Packs</h3>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Allow this workspace to use the shared eval pack catalog.
+              Allow this workspace to use the shared challenge pack catalog.
             </p>
           </div>
           <label className="flex items-center gap-2 text-sm">

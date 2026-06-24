@@ -47,8 +47,8 @@ interface PromoteFailureDialogProps {
   workspaceId: string;
   runId: string;
   item: FailureReviewItem | null;
-  sourceEvalPackId?: string;
-  sourceEvalPackName?: string | null;
+  sourceChallengePackId?: string;
+  sourceChallengePackName?: string | null;
   onClose: () => void;
 }
 
@@ -64,8 +64,8 @@ export function PromoteFailureDialog({
   workspaceId,
   runId,
   item,
-  sourceEvalPackId,
-  sourceEvalPackName,
+  sourceChallengePackId,
+  sourceChallengePackName,
   onClose,
 }: PromoteFailureDialogProps) {
   const router = useRouter();
@@ -124,9 +124,9 @@ export function PromoteFailureDialog({
     setSuiteLoadError(null);
     setEligibleSuites([]);
 
-    if (!sourceEvalPackId) {
+    if (!sourceChallengePackId) {
       setLoadingSuites(false);
-      setSuiteLoadError("This run's source eval pack could not be resolved.");
+      setSuiteLoadError("This run's source challenge pack could not be resolved.");
       return;
     }
 
@@ -155,7 +155,7 @@ export function PromoteFailureDialog({
         const filtered = suites.filter(
           (suite) =>
             suite.status === "active" &&
-            suite.source_eval_pack_id === sourceEvalPackId,
+            suite.source_challenge_pack_id === sourceChallengePackId,
         );
         setEligibleSuites(filtered);
         setSelectedSuiteId(filtered[0]?.id ?? "");
@@ -176,10 +176,10 @@ export function PromoteFailureDialog({
     return () => {
       cancelled = true;
     };
-  }, [getAccessToken, item, sourceEvalPackId, workspaceId]);
+  }, [getAccessToken, item, sourceChallengePackId, workspaceId]);
 
-  const createSuiteHref = sourceEvalPackId
-    ? `/workspaces/${workspaceId}/regression-suites?create=1&sourcePackId=${sourceEvalPackId}`
+  const createSuiteHref = sourceChallengePackId
+    ? `/workspaces/${workspaceId}/regression-suites?create=1&sourcePackId=${sourceChallengePackId}`
     : `/workspaces/${workspaceId}/regression-suites?create=1`;
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -323,7 +323,7 @@ export function PromoteFailureDialog({
                   <div className="rounded-lg border border-dashed border-border px-3 py-3 text-sm text-muted-foreground">
                     <p>
                       No active regression suites match{" "}
-                      {sourceEvalPackName ?? "this eval pack"}.
+                      {sourceChallengePackName ?? "this challenge pack"}.
                     </p>
                     <Link
                       href={createSuiteHref}

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -20,7 +20,7 @@ import (
 type MaterializeDatasetVersionInputSetParams struct {
 	DatasetID              uuid.UUID
 	DatasetVersionID       uuid.UUID
-	EvalPackVersionID uuid.UUID
+	ChallengePackVersionID uuid.UUID
 	ChallengeKey           string
 	Mapping                json.RawMessage
 }
@@ -29,7 +29,7 @@ type DatasetVersionInputSet struct {
 	ID                     uuid.UUID       `json:"id"`
 	DatasetID              uuid.UUID       `json:"dataset_id"`
 	DatasetVersionID       uuid.UUID       `json:"dataset_version_id"`
-	EvalPackVersionID uuid.UUID       `json:"eval_pack_version_id"`
+	ChallengePackVersionID uuid.UUID       `json:"challenge_pack_version_id"`
 	ChallengeIdentityID    uuid.UUID       `json:"challenge_identity_id"`
 	ChallengeKey           string          `json:"challenge_key"`
 	ChallengeInputSetID    uuid.UUID       `json:"challenge_input_set_id"`
@@ -91,12 +91,12 @@ func (r *Repository) MaterializeDatasetVersionInputSet(ctx context.Context, para
 		return DatasetVersionInputSet{}, fmt.Errorf("%w: challenge key is required", ErrInvalidDatasetEvalInput)
 	}
 	challengeIdentityID, err := r.queries.GetChallengeIdentityForDatasetEval(ctx, repositorysqlc.GetChallengeIdentityForDatasetEvalParams{
-		EvalPackVersionID: params.EvalPackVersionID,
+		ChallengePackVersionID: params.ChallengePackVersionID,
 		ChallengeKey:           challengeKey,
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return DatasetVersionInputSet{}, ErrEvalPackVersionNotFound
+			return DatasetVersionInputSet{}, ErrChallengePackVersionNotFound
 		}
 		return DatasetVersionInputSet{}, fmt.Errorf("get dataset eval challenge identity: %w", err)
 	}
@@ -117,7 +117,7 @@ func (r *Repository) MaterializeDatasetVersionInputSet(ctx context.Context, para
 	q := r.queries.WithTx(tx)
 
 	inputSet, err := q.CreateDatasetEvalChallengeInputSet(ctx, repositorysqlc.CreateDatasetEvalChallengeInputSetParams{
-		EvalPackVersionID: params.EvalPackVersionID,
+		ChallengePackVersionID: params.ChallengePackVersionID,
 		InputKey:               inputKey,
 		Name:                   "Dataset " + version.VersionNumberLabel(),
 		Description:            &description,
@@ -129,7 +129,7 @@ func (r *Repository) MaterializeDatasetVersionInputSet(ctx context.Context, para
 	versionInputSet, err := q.CreateDatasetVersionInputSet(ctx, repositorysqlc.CreateDatasetVersionInputSetParams{
 		DatasetID:              params.DatasetID,
 		DatasetVersionID:       params.DatasetVersionID,
-		EvalPackVersionID: params.EvalPackVersionID,
+		ChallengePackVersionID: params.ChallengePackVersionID,
 		ChallengeIdentityID:    challengeIdentityID,
 		ChallengeKey:           challengeKey,
 		ChallengeInputSetID:    inputSet.ID,
@@ -143,7 +143,7 @@ func (r *Repository) MaterializeDatasetVersionInputSet(ctx context.Context, para
 	for _, item := range materialized {
 		row, err := q.UpsertDatasetChallengeInputItem(ctx, repositorysqlc.UpsertDatasetChallengeInputItemParams{
 			ChallengeInputSetID:    inputSet.ID,
-			EvalPackVersionID: params.EvalPackVersionID,
+			ChallengePackVersionID: params.ChallengePackVersionID,
 			ChallengeIdentityID:    challengeIdentityID,
 			ItemKey:                item.ItemKey,
 			Payload:                item.Payload,
@@ -209,18 +209,18 @@ func datasetExampleCaseDocument(example DatasetExample, itemKey string) (json.Ra
 	expected := decodeRawForCaseDocument(example.Expected)
 	metadata := decodeRawForCaseDocument(example.Metadata)
 	payload := map[string]any{"input": input, "expected": expected, "metadata": metadata}
-	doc := evalpack.StoredCaseDocument{
+	doc := challengepack.StoredCaseDocument{
 		SchemaVersion: 1,
 		CaseKey:       itemKey,
 		Payload:       payload,
-		Inputs: []evalpack.CaseInput{{
+		Inputs: []challengepack.CaseInput{{
 			Key:   "input",
 			Kind:  "json",
 			Value: input,
 		}},
 	}
 	if len(strings.TrimSpace(string(example.Expected))) > 0 && string(example.Expected) != "null" {
-		doc.Expectations = []evalpack.CaseExpectation{{
+		doc.Expectations = []challengepack.CaseExpectation{{
 			Key:    "expected",
 			Kind:   "json",
 			Value:  expected,
@@ -248,7 +248,7 @@ func decodeRawForCaseDocument(raw json.RawMessage) any {
 func datasetEvalInputChecksum(version DatasetVersion, params MaterializeDatasetVersionInputSetParams, items []datasetMaterializedExample) string {
 	hash := sha256.New()
 	hash.Write([]byte(version.ManifestChecksum))
-	hash.Write([]byte(params.EvalPackVersionID.String()))
+	hash.Write([]byte(params.ChallengePackVersionID.String()))
 	hash.Write([]byte(params.ChallengeKey))
 	hash.Write(datasetDefaultJSONObject(params.Mapping))
 	for _, item := range items {
@@ -317,7 +317,7 @@ func mapDatasetVersionInputSet(row repositorysqlc.DatasetVersionInputSet) (Datas
 	}
 	return DatasetVersionInputSet{
 		ID: row.ID, DatasetID: row.DatasetID, DatasetVersionID: row.DatasetVersionID,
-		EvalPackVersionID: row.EvalPackVersionID, ChallengeIdentityID: row.ChallengeIdentityID,
+		ChallengePackVersionID: row.ChallengePackVersionID, ChallengeIdentityID: row.ChallengeIdentityID,
 		ChallengeKey: row.ChallengeKey, ChallengeInputSetID: row.ChallengeInputSetID, InputKey: row.InputKey,
 		InputChecksum: row.InputChecksum, Mapping: cloneBytes(row.Mapping), CreatedAt: createdAt, UpdatedAt: updatedAt,
 	}, nil

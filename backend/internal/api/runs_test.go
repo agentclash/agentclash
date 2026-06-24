@@ -25,7 +25,7 @@ func TestCreateRunEndpointReturnsCreated(t *testing.T) {
 			Run: domain.Run{
 				ID:                     runID,
 				WorkspaceID:            workspaceID,
-				EvalPackVersionID: uuid.New(),
+				ChallengePackVersionID: uuid.New(),
 				Status:                 domain.RunStatusQueued,
 				ExecutionMode:          "single_agent",
 				CreatedAt:              time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC),
@@ -35,7 +35,7 @@ func TestCreateRunEndpointReturnsCreated(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`"]
 	}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -55,7 +55,7 @@ func TestCreateRunEndpointReturnsCreated(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -100,7 +100,7 @@ func TestCreateRunEndpointPropagatesCIMetadata(t *testing.T) {
 			Run: domain.Run{
 				ID:                     runID,
 				WorkspaceID:            workspaceID,
-				EvalPackVersionID: uuid.New(),
+				ChallengePackVersionID: uuid.New(),
 				Status:                 domain.RunStatusQueued,
 				ExecutionMode:          "single_agent",
 				CIMetadata: &domain.RunCIMetadata{
@@ -122,7 +122,7 @@ func TestCreateRunEndpointPropagatesCIMetadata(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`"],
 		"ci_metadata":{
 			"provider":" github_actions ",
@@ -154,7 +154,7 @@ func TestCreateRunEndpointPropagatesCIMetadata(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -198,7 +198,7 @@ func TestCreateRunEndpointPropagatesModeAndReturnsVoiceMetadata(t *testing.T) {
 			Run: domain.Run{
 				ID:                     runID,
 				WorkspaceID:            workspaceID,
-				EvalPackVersionID: uuid.New(),
+				ChallengePackVersionID: uuid.New(),
 				Status:                 domain.RunStatusQueued,
 				ExecutionMode:          "single_agent",
 				ExecutionPlan:          json.RawMessage(`{"mode":"text-sim","modality":"voice","voice":{"mode":"text-sim","modality":"voice","transport":"text_sim"}}`),
@@ -209,7 +209,7 @@ func TestCreateRunEndpointPropagatesModeAndReturnsVoiceMetadata(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`"],
 		"mode":" text-sim "
 	}`))
@@ -230,7 +230,7 @@ func TestCreateRunEndpointPropagatesModeAndReturnsVoiceMetadata(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -269,7 +269,7 @@ func TestCreateRunEndpointRejectsInvalidCIMetadata(t *testing.T) {
 	workspaceID := uuid.New()
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`"],
 		"ci_metadata":{"pull_request_number":0}
 	}`))
@@ -290,7 +290,7 @@ func TestCreateRunEndpointRejectsInvalidCIMetadata(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -318,7 +318,7 @@ func TestCreateRunEndpointRejectsUnsafeCIMetadataURL(t *testing.T) {
 	workspaceID := uuid.New()
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`"],
 		"ci_metadata":{"workflow_run_url":"javascript:alert(1)"}
 	}`))
@@ -339,7 +339,7 @@ func TestCreateRunEndpointRejectsUnsafeCIMetadataURL(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -367,7 +367,7 @@ func TestCreateRunEndpointRejectsOverlongDefaultBranchCIMetadata(t *testing.T) {
 	workspaceID := uuid.New()
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`"],
 		"ci_metadata":{"default_branch":"`+strings.Repeat("a", 513)+`"}
 	}`))
@@ -388,7 +388,7 @@ func TestCreateRunEndpointRejectsOverlongDefaultBranchCIMetadata(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -432,7 +432,7 @@ func TestCreateRunEndpointRejectsInvalidPayload(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -458,7 +458,7 @@ func TestCreateRunEndpointReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) {
 	runID := uuid.New()
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`"]
 	}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -477,7 +477,7 @@ func TestCreateRunEndpointReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) {
 				Run: domain.Run{
 					ID:                     runID,
 					WorkspaceID:            workspaceID,
-					EvalPackVersionID: uuid.New(),
+					ChallengePackVersionID: uuid.New(),
 					Status:                 domain.RunStatusQueued,
 					ExecutionMode:          "single_agent",
 					CreatedAt:              time.Date(2026, 3, 13, 12, 0, 0, 0, time.UTC),
@@ -490,7 +490,7 @@ func TestCreateRunEndpointReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -526,7 +526,7 @@ func TestCreateRunEndpointRejectsNonJSONContentType(t *testing.T) {
 	workspaceID := uuid.New()
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`"]
 	}`))
 	req.Header.Set("Content-Type", "text/plain")
@@ -546,7 +546,7 @@ func TestCreateRunEndpointRejectsNonJSONContentType(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -572,7 +572,7 @@ func TestCreateRunEndpointRejectsOversizedRequestBody(t *testing.T) {
 	oversizedName := bytes.Repeat([]byte("a"), maxCreateRunRequestBytes+1)
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"name":"`+string(oversizedName)+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`"]
 	}`))
@@ -593,7 +593,7 @@ func TestCreateRunEndpointRejectsOversizedRequestBody(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -624,7 +624,7 @@ func TestCreateRunEndpointPropagatesRaceContext(t *testing.T) {
 			Run: domain.Run{
 				ID:                     runID,
 				WorkspaceID:            workspaceID,
-				EvalPackVersionID: uuid.New(),
+				ChallengePackVersionID: uuid.New(),
 				Status:                 domain.RunStatusQueued,
 				ExecutionMode:          "comparison",
 				CreatedAt:              time.Date(2026, 4, 25, 12, 0, 0, 0, time.UTC),
@@ -636,7 +636,7 @@ func TestCreateRunEndpointPropagatesRaceContext(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`","`+uuid.New().String()+`"],
 		"race_context":true,
 		"race_context_min_step_gap":5
@@ -658,7 +658,7 @@ func TestCreateRunEndpointPropagatesRaceContext(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -700,7 +700,7 @@ func TestDecodeCreateRunRequestAcceptsMaxIterations(t *testing.T) {
 	workspaceID := uuid.New()
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`"],
 		"max_iterations":7
 	}`))
@@ -718,7 +718,7 @@ func TestDecodeCreateRunRequestAcceptsMode(t *testing.T) {
 	workspaceID := uuid.New()
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`"],
 		"mode":" TEXT-SIM "
 	}`))
@@ -736,7 +736,7 @@ func TestDecodeCreateRunRequestRejectsInvalidMaxIterations(t *testing.T) {
 	workspaceID := uuid.New()
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`"],
 		"max_iterations":0
 	}`))
@@ -756,7 +756,7 @@ func TestCreateRunEndpointRejectsRaceContextCadenceOutOfRange(t *testing.T) {
 	// 11 is out of range (valid is [1, 10]).
 	req := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"agent_deployment_ids":["`+uuid.New().String()+`","`+uuid.New().String()+`"],
 		"race_context":true,
 		"race_context_min_step_gap":11
@@ -778,7 +778,7 @@ func TestCreateRunEndpointRejectsRaceContextCadenceOutOfRange(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -832,7 +832,7 @@ func TestCreateEvalSessionEndpointReturnsCreated(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"participants":[{"agent_deployment_id":"`+uuid.New().String()+`","label":"Primary"}],
 		"execution_mode":"single_agent",
 		"max_iterations":7,
@@ -861,7 +861,7 @@ func TestCreateEvalSessionEndpointReturnsCreated(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -935,7 +935,7 @@ func TestCreateEvalSessionEndpointAcceptsRunMatrix(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"execution_mode":"single_agent",
 		"eval_session":{
 			"repetitions":2,
@@ -965,7 +965,7 @@ func TestCreateEvalSessionEndpointAcceptsRunMatrix(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -1001,7 +1001,7 @@ func TestCreateEvalSessionEndpointRejectsParticipantsWithRunMatrix(t *testing.T)
 	deploymentID := uuid.New()
 	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"participants":[{"agent_deployment_id":"`+deploymentID.String()+`","label":"Primary"}],
 		"execution_mode":"single_agent",
 		"eval_session":{
@@ -1144,7 +1144,7 @@ func TestCreateEvalSessionEndpointRejectsWeightedMeanWithoutWeights(t *testing.T
 	workspaceID := uuid.New()
 	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"participants":[{"agent_deployment_id":"`+uuid.New().String()+`","label":"Primary"}],
 		"execution_mode":"single_agent",
 		"eval_session":{
@@ -1171,7 +1171,7 @@ func TestCreateEvalSessionEndpointRejectsWeightedMeanWithoutWeights(t *testing.T
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -1224,7 +1224,7 @@ func TestCreateEvalSessionEndpointAcceptsAggregationReliabilityWeight(t *testing
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"participants":[{"agent_deployment_id":"`+uuid.New().String()+`","label":"Primary"}],
 		"execution_mode":"single_agent",
 		"eval_session":{
@@ -1251,7 +1251,7 @@ func TestCreateEvalSessionEndpointAcceptsAggregationReliabilityWeight(t *testing
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -1282,7 +1282,7 @@ func TestCreateEvalSessionEndpointRejectsInvalidAggregationReliabilityWeight(t *
 	workspaceID := uuid.New()
 	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"participants":[{"agent_deployment_id":"`+uuid.New().String()+`","label":"Primary"}],
 		"execution_mode":"single_agent",
 		"eval_session":{
@@ -1309,7 +1309,7 @@ func TestCreateEvalSessionEndpointRejectsInvalidAggregationReliabilityWeight(t *
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -1360,7 +1360,7 @@ func TestCreateEvalSessionEndpointAcceptsNullOptionalObjects(t *testing.T) {
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/eval-sessions", bytes.NewBufferString(`{
 		"workspace_id":"`+workspaceID.String()+`",
-		"eval_pack_version_id":"`+uuid.New().String()+`",
+		"challenge_pack_version_id":"`+uuid.New().String()+`",
 		"participants":[{"agent_deployment_id":"`+uuid.New().String()+`","label":"Primary"}],
 		"execution_mode":"single_agent",
 		"eval_session":{
@@ -1389,7 +1389,7 @@ func TestCreateEvalSessionEndpointAcceptsNullOptionalObjects(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,

@@ -43,7 +43,7 @@ Identical conditions plus identical scoring is what makes the outcome defensible
 
 Public leaderboards answer a different question: which model is generally popular or generally strong on a shared static benchmark that has probably leaked into training data. That's a fine first filter. It is not an answer to "which agent should *I* ship for *this* job."
 
-A head-to-head race on your own [eval pack](/docs/guides/write-an-eval-pack) answers the question you actually have, on the task you actually run, under conditions you actually control. And because the losing trajectories are real, captured runs, you can promote the interesting failures straight into a [regression gate](/platform/agent-regression-testing) so the next candidate has to prove it didn't get worse.
+A head-to-head race on your own [challenge pack](/docs/guides/write-a-challenge-pack) answers the question you actually have, on the task you actually run, under conditions you actually control. And because the losing trajectories are real, captured runs, you can promote the interesting failures straight into a [regression gate](/platform/agent-regression-testing) so the next candidate has to prove it didn't get worse.
 
 Stop comparing runs that never met. Put your models on the same track and let them race.
 

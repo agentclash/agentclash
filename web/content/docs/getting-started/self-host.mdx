@@ -59,7 +59,7 @@ Back in the repo root:
 
 <Callout type="warning">
   `seed-local-run-fixture.sh` is **destructive to your local dev database**. It
-  `TRUNCATE`s the fixture tables (eval packs, organizations, users, model
+  `TRUNCATE`s the fixture tables (challenge packs, organizations, users, model
   catalog entries) before inserting deterministic IDs. Only run it against a
   throwaway local Postgres, never a database with data you care about.
 </Callout>
@@ -98,4 +98,4 @@ Then open `http://localhost:3000`.
 - [Architecture Overview](/docs/architecture/overview)
 - [Contributor Setup](/docs/contributing/setup)
 - [Datasets overview](/docs/guides/datasets-overview)
-- [Multi-turn packs](/docs/eval-packs/multi-turn)
+- [Multi-turn packs](/docs/challenge-packs/multi-turn)

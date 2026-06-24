@@ -35,7 +35,7 @@ export interface PromoteFailureResult {
 }
 
 export interface CaptureProductionFailureInput {
-  source_eval_pack_version_id: string;
+  source_challenge_pack_version_id: string;
   source_challenge_input_set_id?: string;
   source_challenge_identity_id: string;
   source_case_key: string;

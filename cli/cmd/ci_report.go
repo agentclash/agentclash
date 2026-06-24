@@ -33,7 +33,7 @@ type ciRunArtifactEnvelope struct {
 	GeneratedAt           string                  `json:"generated_at"`
 	ManifestPath          string                  `json:"manifest_path"`
 	WorkspaceID           string                  `json:"workspace_id"`
-	EvalPackVersion  string                  `json:"eval_pack_version_id"`
+	ChallengePackVersion  string                  `json:"challenge_pack_version_id"`
 	Candidate             ciRunCandidateResult    `json:"candidate"`
 	Baseline              ciBaselineRunResolution `json:"baseline"`
 	GateVerdict           string                  `json:"gate_verdict,omitempty"`
@@ -119,7 +119,7 @@ func buildCIRunArtifactEnvelope(kind string, generatedAt time.Time, result ciRun
 		GeneratedAt:           generatedAt.Format(time.RFC3339),
 		ManifestPath:          result.ManifestPath,
 		WorkspaceID:           result.WorkspaceID,
-		EvalPackVersion:  manifest.Evaluation.EvalPackVersionID,
+		ChallengePackVersion:  manifest.Evaluation.ChallengePackVersionID,
 		Candidate:             result.Candidate,
 		Baseline:              result.Baseline,
 		GateVerdict:           result.GateVerdict,
@@ -215,7 +215,7 @@ func renderCIRunMarkdownSummary(result ciRunResult, manifest ciManifest, scoreca
 		{"Exit Code", fmt.Sprintf("%d", result.ExitCode)},
 		{"Workspace", result.WorkspaceID},
 		{"Manifest", result.ManifestPath},
-		{"Eval Pack Version", manifest.Evaluation.EvalPackVersionID},
+		{"Challenge Pack Version", manifest.Evaluation.ChallengePackVersionID},
 		{"Baseline Run", result.Baseline.RunID},
 		{"Baseline Agent", result.Baseline.RunAgentID},
 		{"Candidate Run", result.Candidate.RunID},

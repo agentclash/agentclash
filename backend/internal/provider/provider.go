@@ -35,7 +35,7 @@ type ListModelsRequest struct {
 // ModelInfo is one selectable model returned by a provider's live model list.
 // Pricing is for picker display / dataset cost estimation only. It is never
 // consulted by the scoring engine (scoring/engine_pricing.go), which reads
-// pricing from the eval pack's EvaluationSpec.
+// pricing from the challenge pack's EvaluationSpec.
 type ModelInfo struct {
 	ID                string  `json:"id"`
 	DisplayName       string  `json:"display_name"`

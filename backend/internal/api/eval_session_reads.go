@@ -54,7 +54,7 @@ type ListEvalSessionsResult struct {
 type evalSessionChildRunResponse struct {
 	ID                     uuid.UUID        `json:"id"`
 	WorkspaceID            uuid.UUID        `json:"workspace_id"`
-	EvalPackVersionID uuid.UUID        `json:"eval_pack_version_id"`
+	ChallengePackVersionID uuid.UUID        `json:"challenge_pack_version_id"`
 	ChallengeInputSetID    *uuid.UUID       `json:"challenge_input_set_id,omitempty"`
 	EvalSessionID          *uuid.UUID       `json:"eval_session_id,omitempty"`
 	OfficialPackMode       string           `json:"official_pack_mode"`
@@ -408,7 +408,7 @@ func buildEvalSessionChildRunResponse(run domain.Run) evalSessionChildRunRespons
 	return evalSessionChildRunResponse{
 		ID:                     run.ID,
 		WorkspaceID:            run.WorkspaceID,
-		EvalPackVersionID: run.EvalPackVersionID,
+		ChallengePackVersionID: run.ChallengePackVersionID,
 		ChallengeInputSetID:    run.ChallengeInputSetID,
 		EvalSessionID:          run.EvalSessionID,
 		OfficialPackMode:       string(run.OfficialPackMode),

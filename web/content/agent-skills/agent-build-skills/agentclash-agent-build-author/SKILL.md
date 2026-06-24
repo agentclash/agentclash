@@ -22,7 +22,7 @@ Create or update an AgentClash agent build and draft build version so it has a s
 - The CLI is not authenticated or no workspace is selected; use `agentclash-cli-setup` first.
 - Provider accounts, model aliases, runtime profiles, workspace tools, or secrets are missing; use `agentclash-runtime-resources-setup` first.
 - The build version is already ready and the user only needs a deployment; use `agentclash-agent-deployment-setup`.
-- The user is authoring eval pack YAML; use the eval-pack skills.
+- The user is authoring challenge pack YAML; use the challenge-pack skills.
 
 ## Inputs Needed
 - Workspace ID and confirmation that `agentclash doctor` can reach it.

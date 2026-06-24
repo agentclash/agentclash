@@ -102,7 +102,7 @@ func TestArtifactManagerUploadAndSignedDownloadFlow(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,

@@ -161,7 +161,7 @@ type Run struct {
 	ID                     uuid.UUID
 	OrganizationID         uuid.UUID
 	WorkspaceID            uuid.UUID
-	EvalPackVersionID uuid.UUID
+	ChallengePackVersionID uuid.UUID
 	ChallengeInputSetID    *uuid.UUID
 	EvalSessionID          *uuid.UUID
 	OfficialPackMode       OfficialPackMode

@@ -67,7 +67,7 @@ describe("PublicScorecardEmbed", () => {
     expect(canRenderScorecardEmbed({ type: "run_scorecard" })).toBe(true);
     expect(canRenderScorecardEmbed({ type: "run_agent_scorecard" })).toBe(true);
     expect(canRenderScorecardEmbed({ type: "run_agent_replay" })).toBe(false);
-    expect(canRenderScorecardEmbed({ type: "eval_pack_version" })).toBe(false);
+    expect(canRenderScorecardEmbed({ type: "challenge_pack_version" })).toBe(false);
   });
 });
 

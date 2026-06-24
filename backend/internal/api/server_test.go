@@ -68,13 +68,13 @@ func (stubAgentDeploymentReadService) ListAgentDeployments(_ context.Context, _ 
 	return ListAgentDeploymentsResult{}, errors.New("not implemented")
 }
 
-type stubEvalPackReadService struct{}
+type stubChallengePackReadService struct{}
 
-func (stubEvalPackReadService) ListEvalPacks(_ context.Context) (ListEvalPacksResult, error) {
-	return ListEvalPacksResult{}, errors.New("not implemented")
+func (stubChallengePackReadService) ListChallengePacks(_ context.Context) (ListChallengePacksResult, error) {
+	return ListChallengePacksResult{}, errors.New("not implemented")
 }
 
-func (stubEvalPackReadService) ListChallengeInputSets(_ context.Context, _ uuid.UUID) (ListChallengeInputSetsResult, error) {
+func (stubChallengePackReadService) ListChallengeInputSets(_ context.Context, _ uuid.UUID) (ListChallengeInputSetsResult, error) {
 	return ListChallengeInputSetsResult{}, errors.New("not implemented")
 }
 
@@ -108,10 +108,10 @@ func TestHealthzReturnsJSONSuccessPayload(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		stubEvalPackAuthoringService{},
+		stubChallengePackAuthoringService{},
 		nil,
 		nil,
 		nil,
@@ -185,10 +185,10 @@ func TestSessionEndpointRequiresAuthentication(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		stubEvalPackAuthoringService{},
+		stubChallengePackAuthoringService{},
 		nil,
 		nil,
 		nil,
@@ -237,10 +237,10 @@ func TestSessionEndpointReturnsCallerIdentity(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		stubEvalPackAuthoringService{},
+		stubChallengePackAuthoringService{},
 		nil,
 		nil,
 		nil,
@@ -292,10 +292,10 @@ func TestWorkspaceAuthorizationReturnsForbiddenWithoutMembership(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		stubEvalPackAuthoringService{},
+		stubChallengePackAuthoringService{},
 		nil,
 		nil,
 		nil,
@@ -342,7 +342,7 @@ func TestWorkspaceAuthorizationReturnsOKWithMembership(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -393,7 +393,7 @@ func TestWorkspaceAuthorizationRejectsMalformedWorkspaceID(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -444,7 +444,7 @@ func TestReplayViewerEndpointReturnsHTMLShell(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,
@@ -495,7 +495,7 @@ func TestReplayViewerEndpointRejectsInvalidReplayPagination(t *testing.T) {
 		stubHostedRunIngestionService{},
 		nil,
 		stubAgentDeploymentReadService{},
-		stubEvalPackReadService{},
+		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		nil,

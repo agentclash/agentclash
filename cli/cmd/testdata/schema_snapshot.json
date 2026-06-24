@@ -879,6 +879,109 @@
       ]
     },
     {
+      "name": "challenge-pack",
+      "path": "agentclash challenge-pack",
+      "short": "Manage challenge packs",
+      "aliases": [
+        "cp"
+      ],
+      "runnable": false,
+      "subcommands": [
+        {
+          "name": "catalog",
+          "path": "agentclash challenge-pack catalog",
+          "short": "Browse and use the curated challenge-pack library",
+          "runnable": false,
+          "subcommands": [
+            {
+              "name": "list",
+              "path": "agentclash challenge-pack catalog list",
+              "short": "List the curated, ready-to-run challenge packs",
+              "runnable": true
+            },
+            {
+              "name": "use",
+              "path": "agentclash challenge-pack catalog use",
+              "short": "Add a library pack to your workspace and make it runnable",
+              "runnable": true,
+              "args": [
+                {
+                  "name": "slug",
+                  "required": true
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "init",
+          "path": "agentclash challenge-pack init",
+          "short": "Scaffold a minimal challenge pack YAML bundle",
+          "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": true
+            }
+          ],
+          "flags": [
+            {
+              "name": "force",
+              "usage": "Overwrite an existing file",
+              "type": "bool",
+              "default": "false"
+            },
+            {
+              "name": "name",
+              "usage": "Challenge pack display name (defaults from the file name)",
+              "type": "string"
+            },
+            {
+              "name": "slug",
+              "usage": "Challenge pack slug (defaults from the file name)",
+              "type": "string"
+            },
+            {
+              "name": "template",
+              "usage": "Starter template: prompt_eval, responses, or native",
+              "type": "string",
+              "default": "prompt_eval"
+            }
+          ]
+        },
+        {
+          "name": "list",
+          "path": "agentclash challenge-pack list",
+          "short": "List challenge packs",
+          "runnable": true
+        },
+        {
+          "name": "publish",
+          "path": "agentclash challenge-pack publish",
+          "short": "Publish a challenge pack YAML bundle",
+          "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": true
+            }
+          ]
+        },
+        {
+          "name": "validate",
+          "path": "agentclash challenge-pack validate",
+          "short": "Validate a challenge pack YAML bundle",
+          "runnable": true,
+          "args": [
+            {
+              "name": "file",
+              "required": true
+            }
+          ]
+        }
+      ]
+    },
+    {
       "name": "ci",
       "path": "agentclash ci",
       "short": "Manage AgentClash CI manifests",
@@ -1248,8 +1351,8 @@
           "runnable": true,
           "flags": [
             {
-              "name": "default-eval-pack-version-id",
-              "usage": "Default eval pack version ID",
+              "name": "default-challenge-pack-version-id",
+              "usage": "Default challenge pack version ID",
               "type": "string"
             },
             {
@@ -1338,7 +1441,7 @@
             },
             {
               "name": "pack",
-              "usage": "Eval pack version ID",
+              "usage": "Challenge pack version ID",
               "type": "string"
             },
             {
@@ -1756,7 +1859,7 @@
             },
             {
               "name": "pack",
-              "usage": "Eval pack version ID",
+              "usage": "Challenge pack version ID",
               "type": "string"
             },
             {
@@ -1830,7 +1933,7 @@
             },
             {
               "name": "pack",
-              "usage": "Eval pack version ID for eval",
+              "usage": "Challenge pack version ID for eval",
               "type": "string"
             },
             {
@@ -2019,7 +2122,7 @@
       "flags": [
         {
           "name": "pack",
-          "usage": "Eval pack YAML file to check for run readiness",
+          "usage": "Challenge pack YAML file to check for run readiness",
           "type": "string"
         }
       ]
@@ -2154,12 +2257,12 @@
             },
             {
               "name": "pack",
-              "usage": "Eval pack ID, slug, or exact name",
+              "usage": "Challenge pack ID, slug, or exact name",
               "type": "string"
             },
             {
               "name": "pack-version",
-              "usage": "Eval pack version ID or version number",
+              "usage": "Challenge pack version ID or version number",
               "type": "string"
             },
             {
@@ -2201,109 +2304,6 @@
       ]
     },
     {
-      "name": "eval-pack",
-      "path": "agentclash eval-pack",
-      "short": "Manage eval packs",
-      "aliases": [
-        "ep"
-      ],
-      "runnable": false,
-      "subcommands": [
-        {
-          "name": "catalog",
-          "path": "agentclash eval-pack catalog",
-          "short": "Browse and use the curated eval-pack library",
-          "runnable": false,
-          "subcommands": [
-            {
-              "name": "list",
-              "path": "agentclash eval-pack catalog list",
-              "short": "List the curated, ready-to-run eval packs",
-              "runnable": true
-            },
-            {
-              "name": "use",
-              "path": "agentclash eval-pack catalog use",
-              "short": "Add a library pack to your workspace and make it runnable",
-              "runnable": true,
-              "args": [
-                {
-                  "name": "slug",
-                  "required": true
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "name": "init",
-          "path": "agentclash eval-pack init",
-          "short": "Scaffold a minimal eval pack YAML bundle",
-          "runnable": true,
-          "args": [
-            {
-              "name": "file",
-              "required": true
-            }
-          ],
-          "flags": [
-            {
-              "name": "force",
-              "usage": "Overwrite an existing file",
-              "type": "bool",
-              "default": "false"
-            },
-            {
-              "name": "name",
-              "usage": "Eval pack display name (defaults from the file name)",
-              "type": "string"
-            },
-            {
-              "name": "slug",
-              "usage": "Eval pack slug (defaults from the file name)",
-              "type": "string"
-            },
-            {
-              "name": "template",
-              "usage": "Starter template: prompt_eval, responses, or native",
-              "type": "string",
-              "default": "prompt_eval"
-            }
-          ]
-        },
-        {
-          "name": "list",
-          "path": "agentclash eval-pack list",
-          "short": "List eval packs",
-          "runnable": true
-        },
-        {
-          "name": "publish",
-          "path": "agentclash eval-pack publish",
-          "short": "Publish a eval pack YAML bundle",
-          "runnable": true,
-          "args": [
-            {
-              "name": "file",
-              "required": true
-            }
-          ]
-        },
-        {
-          "name": "validate",
-          "path": "agentclash eval-pack validate",
-          "short": "Validate a eval pack YAML bundle",
-          "runnable": true,
-          "args": [
-            {
-              "name": "file",
-              "required": true
-            }
-          ]
-        }
-      ]
-    },
-    {
       "name": "evaltest",
       "path": "agentclash evaltest",
       "short": "Run local pre-deploy agent eval tests",
@@ -2326,7 +2326,7 @@
         {
           "name": "promote-failures",
           "path": "agentclash evaltest promote-failures",
-          "short": "Promote failed local eval cases into a draft eval pack",
+          "short": "Promote failed local eval cases into a draft challenge pack",
           "runnable": true,
           "flags": [
             {
@@ -2349,9 +2349,9 @@
             },
             {
               "name": "to",
-              "usage": "Draft eval-pack output path",
+              "usage": "Draft challenge-pack output path",
               "type": "string",
-              "default": ".agentclash/eval-packs/local-regressions.yaml"
+              "default": ".agentclash/challenge-packs/local-regressions.yaml"
             }
           ]
         },
@@ -3670,8 +3670,8 @@
                   "type": "string"
                 },
                 {
-                  "name": "source-eval-pack-version-id",
-                  "usage": "Source eval pack version ID",
+                  "name": "source-challenge-pack-version-id",
+                  "usage": "Source challenge pack version ID",
                   "type": "string"
                 },
                 {
@@ -3766,8 +3766,8 @@
               "type": "string"
             },
             {
-              "name": "source-eval-pack-id",
-              "usage": "Source eval pack ID",
+              "name": "source-challenge-pack-id",
+              "usage": "Source challenge pack ID",
               "type": "string"
             }
           ]
@@ -3998,13 +3998,18 @@
               "default": "[]"
             },
             {
+              "name": "challenge-pack-version",
+              "usage": "Challenge pack version ID (optional in a TTY; prompted when omitted)",
+              "type": "string"
+            },
+            {
               "name": "deployment-lineup",
-              "usage": "Eval pack deployment lineup to use when --deployments is omitted (default: default)",
+              "usage": "Challenge pack deployment lineup to use when --deployments is omitted (default: default)",
               "type": "string"
             },
             {
               "name": "deployment-lineups",
-              "usage": "Eval pack deployment lineups to cross with --seeds for a race series",
+              "usage": "Challenge pack deployment lineups to cross with --seeds for a race series",
               "type": "stringSlice",
               "default": "[]"
             },
@@ -4013,11 +4018,6 @@
               "usage": "Agent deployment IDs (optional in a TTY; prompted when omitted)",
               "type": "stringSlice",
               "default": "[]"
-            },
-            {
-              "name": "eval-pack-version",
-              "usage": "Eval pack version ID (optional in a TTY; prompted when omitted)",
-              "type": "string"
             },
             {
               "name": "follow",
@@ -4332,15 +4332,15 @@
               "runnable": true,
               "flags": [
                 {
-                  "name": "deployment-lineups",
-                  "usage": "Eval pack deployment lineups to cross with --seeds",
-                  "type": "stringSlice",
-                  "default": "[]"
+                  "name": "challenge-pack-version",
+                  "usage": "Challenge pack version ID",
+                  "type": "string"
                 },
                 {
-                  "name": "eval-pack-version",
-                  "usage": "Eval pack version ID",
-                  "type": "string"
+                  "name": "deployment-lineups",
+                  "usage": "Challenge pack deployment lineups to cross with --seeds",
+                  "type": "stringSlice",
+                  "default": "[]"
                 },
                 {
                   "name": "input-set",
@@ -4964,7 +4964,7 @@
             },
             {
               "name": "public-packs",
-              "usage": "Allow this workspace to use public eval packs",
+              "usage": "Allow this workspace to use public challenge packs",
               "type": "bool",
               "default": "false"
             },

@@ -135,10 +135,10 @@ export function DatasetDetailClient({
               {dataset.input_schema_enforced ? "enforced" : "optional"}
             </Badge>
           </MetaRow>
-          {dataset.default_eval_pack_version_id ? (
+          {dataset.default_challenge_pack_version_id ? (
             <MetaRow label="Default pack version">
               <code className="text-xs font-[family-name:var(--font-mono)]">
-                {dataset.default_eval_pack_version_id.slice(0, 8)}
+                {dataset.default_challenge_pack_version_id.slice(0, 8)}
               </code>
             </MetaRow>
           ) : null}

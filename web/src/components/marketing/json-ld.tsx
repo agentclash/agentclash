@@ -432,7 +432,7 @@ export function benchmarkHubSchema(
       "@type": "CollectionPage",
       name: "AgentClash AI Agent Benchmarks",
       description:
-        "Public AI agent benchmarks hub with frozen eval packs, same-task eval runs, replay evidence, scorecards, and monthly reports.",
+        "Public AI agent benchmarks hub with frozen challenge packs, same-task eval runs, replay evidence, scorecards, and monthly reports.",
       url: pageUrl,
       isPartOf: {
         "@type": "WebSite",

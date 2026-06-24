@@ -21,7 +21,7 @@ import {
 const PAGE_PATH = "/platform/agent-regression-testing";
 const PAGE_TITLE = "AI Agent Regression Testing and CI Gates - AgentClash";
 const PAGE_DESCRIPTION =
-  "Catch AI agent regressions before release with baseline comparisons, repeatable eval packs, replay evidence, scorecards, and pull request gates.";
+  "Catch AI agent regressions before release with baseline comparisons, repeatable challenge packs, replay evidence, scorecards, and pull request gates.";
 const SOCIAL_IMAGE_ALT =
   "AgentClash AI agent regression testing social preview.";
 
@@ -34,7 +34,7 @@ const faqItems = [
   {
     question: "How do AgentClash CI gates work?",
     answer:
-      "AgentClash can run a eval pack in CI, compare candidate and baseline scorecards, then fail a pull request when correctness, cost, latency, or required artifacts cross the threshold you set.",
+      "AgentClash can run a challenge pack in CI, compare candidate and baseline scorecards, then fail a pull request when correctness, cost, latency, or required artifacts cross the threshold you set.",
   },
   {
     question: "Can teams debug a failed agent gate?",
@@ -47,7 +47,7 @@ const workflow = [
   {
     icon: ListChecks,
     title: "Freeze the workload",
-    text: "Turn a real failure or release risk into a eval pack with inputs, tools, artifacts, and scoring rules.",
+    text: "Turn a real failure or release risk into a challenge pack with inputs, tools, artifacts, and scoring rules.",
   },
   {
     icon: GitCompare,
@@ -71,7 +71,7 @@ const gateSignals = [
   "Replay timelines for every failed gate",
   "Artifact checks for files, logs, and evidence",
   "Cost and latency thresholds for production budgets",
-  "Eval packs that make failures repeatable",
+  "Challenge packs that make failures repeatable",
   "Pull request gates for model, prompt, and tool changes",
 ];
 
@@ -396,7 +396,7 @@ export default function AgentRegressionTestingPage() {
                 Wire regression gates into the release loop
               </h2>
               <p className="mt-5 text-sm leading-7 text-white/55 sm:text-base">
-                Start with one eval pack and one release gate. Then add
+                Start with one challenge pack and one release gate. Then add
                 escaped failures as reusable cases instead of rebuilding the
                 entire eval stack every time an agent changes.
               </p>

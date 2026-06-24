@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/evalpack"
+	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/multimodaltrace"
 	"github.com/agentclash/agentclash/backend/internal/voiceartifacts"
 	"github.com/google/uuid"
@@ -134,7 +134,7 @@ func TestImportPreservesOriginalArtifactReferencesAndChecksums(t *testing.T) {
 	}
 }
 
-func assertCaseShape(t *testing.T, got evalpack.CaseDefinition) {
+func assertCaseShape(t *testing.T, got challengepack.CaseDefinition) {
 	t.Helper()
 	if got.ChallengeKey != "voice-support-regression" || got.CaseKey != "prod-call-001" || got.ItemKey != "prod-call-001" {
 		t.Fatalf("case identity = %s/%s/%s, want voice-support-regression/prod-call-001/prod-call-001", got.ChallengeKey, got.CaseKey, got.ItemKey)
@@ -168,13 +168,13 @@ func assertCaseShape(t *testing.T, got evalpack.CaseDefinition) {
 	if manifest.VoiceSessionID != "voice-session-prod-001" {
 		t.Fatalf("manifest voice_session_id = %q, want voice-session-prod-001", manifest.VoiceSessionID)
 	}
-	if !reflect.DeepEqual(got.Expectations, []evalpack.CaseExpectation{
+	if !reflect.DeepEqual(got.Expectations, []challengepack.CaseExpectation{
 		{Key: "expected_outcome", Kind: "exact", Value: "refund_created"},
 		{Key: "failure_category", Kind: "classification", Value: "billing_refund_policy"},
 	}) {
 		t.Fatalf("expectations = %#v, want expected outcome and failure category", got.Expectations)
 	}
-	if !reflect.DeepEqual(got.Artifacts, []evalpack.ArtifactRef{
+	if !reflect.DeepEqual(got.Artifacts, []challengepack.ArtifactRef{
 		{Key: "agent_audio"},
 		{Key: "caller_audio"},
 		{Key: "raw_provider_trace"},
@@ -294,7 +294,7 @@ func validFixture(status RedactionStatus) Fixture {
 		ExpectedOutcome: "refund_created",
 		FailureCategory: "billing_refund_policy",
 		PromotionTarget: PromotionTarget{
-			EvalPackSlug: "voice-support-regressions",
+			ChallengePackSlug: "voice-support-regressions",
 			InputSetKey:       "approved-production-calls",
 			ChallengeKey:      "voice-support-regression",
 			CaseKey:           "prod-call-001",

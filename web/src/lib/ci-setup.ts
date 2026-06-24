@@ -16,7 +16,7 @@ export interface CISetupConfig {
   deploymentName: string;
   providerAccountId?: string;
   model?: string;
-  evalPackVersionId: string;
+  challengePackVersionId: string;
   inputSetId?: string;
   regressionSuiteIds: string[];
   regressionCaseIds: string[];
@@ -55,7 +55,7 @@ export const defaultCISetupConfig: CISetupConfig = {
   agentBuildId: "",
   runtimeProfileId: "",
   deploymentName: "pr-candidate",
-  evalPackVersionId: "",
+  challengePackVersionId: "",
   regressionSuiteIds: [],
   regressionCaseIds: [],
   baselineStrategy: "locked_run",
@@ -79,8 +79,8 @@ export function ciSetupReadiness(config: CISetupConfig): CISetupReadiness {
   requireValue(config.agentBuildId, "Select an agent build for candidate versions.");
   requireValue(config.runtimeProfileId, "Select a runtime profile for CI deployments.");
   requireValue(
-    config.evalPackVersionId,
-    "Select a runnable eval pack version.",
+    config.challengePackVersionId,
+    "Select a runnable challenge pack version.",
   );
 
   if (nonEmpty(config.triggerPaths).length === 0) {
@@ -140,7 +140,7 @@ export function generateAgentClashCIManifest(config: CISetupConfig): string {
 
   lines.push(
     "evaluation:",
-    `  eval_pack_version_id: ${yamlScalar(config.evalPackVersionId)}`,
+    `  challenge_pack_version_id: ${yamlScalar(config.challengePackVersionId)}`,
   );
   if (config.inputSetId?.trim()) {
     lines.push(`  input_set_id: ${yamlScalar(config.inputSetId)}`);

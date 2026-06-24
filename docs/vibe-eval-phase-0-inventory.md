@@ -42,7 +42,7 @@ actions.
 | `ActionManagePlaygrounds` | member+ | Prompt-eval playground experiments, if reused |
 | `ActionManageRegressions` | member+ | Create suites and promote failures |
 | `ActionSelectIntegrationRepository` | member+ | Select GitHub repositories for CI handoff |
-| `ActionPublishEvalPack` | member+ | Publish validated generated packs |
+| `ActionPublishChallengePack` | member+ | Publish validated generated packs |
 | `ActionUploadArtifact` | member+ | Upload user-provided source docs/assets |
 | `ActionManageInfrastructure` | admin only | Runtime profiles, provider accounts, model aliases, tools, knowledge sources, routing/spend policies |
 | `ActionManageIntegrations` | admin only | GitHub installation and CI profile mutation |
@@ -71,16 +71,16 @@ credit-wallet administration.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `draft_eval_plan` | plan | draft | member+ | no | conversation | audit prompt summary and redacted plan | guide-agent allowance |
 | `explain_eval_plan` | plan | read | `ActionReadWorkspace` | no | request | audit only if scorecard/replay evidence included | guide-agent allowance |
-| `generate_eval_pack_draft` | author | draft | member+ | no | conversation | store generated YAML/JSON as draft artifact; redact uploaded source snippets as configured | guide-agent allowance |
-| `edit_eval_pack_draft` | author | draft | member+ | no | conversation | audit diff summary and draft version | guide-agent allowance |
+| `generate_challenge_pack_draft` | author | draft | member+ | no | conversation | store generated YAML/JSON as draft artifact; redact uploaded source snippets as configured | guide-agent allowance |
+| `edit_challenge_pack_draft` | author | draft | member+ | no | conversation | audit diff summary and draft version | guide-agent allowance |
 | `generate_input_cases` | author | draft | member+ | no | conversation | audit generated case count and source artifact ids | guide-agent allowance |
 | `generate_scoring_rubric` | author | draft | member+ | no | conversation | audit rubric dimensions and judge use | guide-agent allowance |
 | `generate_deterministic_validators` | author | draft | member+ | no | conversation | audit validator types and unsafe constructs rejected | guide-agent allowance |
 | `generate_llm_judges` | author | draft | member+ | no | conversation | redact rubric examples when copied from private artifacts | guide-agent allowance |
-| `validate_eval_pack` | validate | draft | future `ActionManageVibeEvalDrafts` before persisted Vibe draft validation is exposed; stateless existing pack validation may use `ActionReadWorkspace` only when it stores no Vibe state | no | conversation | audit validation result and error codes | none unless LLM repair is requested |
-| `publish_eval_pack` | publish | workspace_write | `ActionPublishEvalPack` | yes | workspace | audit payload hash, pack/version ids, validation id | none |
-| `list_eval_packs` | author/validate/run | read | `ActionReadWorkspace` | no | request | metadata only | none |
-| `get_eval_pack` | author/validate/run | read | `ActionReadWorkspace` | no | request | redact private artifact previews unless explicitly requested | none |
+| `validate_challenge_pack` | validate | draft | future `ActionManageVibeEvalDrafts` before persisted Vibe draft validation is exposed; stateless existing pack validation may use `ActionReadWorkspace` only when it stores no Vibe state | no | conversation | audit validation result and error codes | none unless LLM repair is requested |
+| `publish_challenge_pack` | publish | workspace_write | `ActionPublishChallengePack` | yes | workspace | audit payload hash, pack/version ids, validation id | none |
+| `list_challenge_packs` | author/validate/run | read | `ActionReadWorkspace` | no | request | metadata only | none |
+| `get_challenge_pack` | author/validate/run | read | `ActionReadWorkspace` | no | request | redact private artifact previews unless explicitly requested | none |
 | `list_input_sets` | run | read | `ActionReadWorkspace` | no | request | metadata only | none |
 | `list_agent_builds` | runtime | read | `ActionReadWorkspace` | no | request | metadata only | none |
 | `create_agent_build` | runtime | workspace_write | `ActionCreateAgentBuild` | yes | workspace | audit build name/source and payload hash | none |
@@ -128,9 +128,9 @@ credit-wallet administration.
 | Phase | CLI commands | Semantic tool coverage |
 | --- | --- | --- |
 | setup | `auth`, `org`, `workspace`, `link`, `config`, `doctor`, `quickstart`, `quota` | mostly outside Vibe Eval tools except workspace/org reads and setup readiness |
-| author | `eval-pack init`, `prompt-eval init`, `playground create/update/test-case`, `artifact upload` | draft tools, artifact tools, validate tool |
-| validate | `eval-pack validate`, `prompt-eval validate`, `build version validate`, `ci validate` | validation tools; CI validation deferred to Phase 5 |
-| publish | `eval-pack publish`, `build ready`, `deployment create` | confirmation-gated workspace writes |
+| author | `challenge-pack init`, `prompt-eval init`, `playground create/update/test-case`, `artifact upload` | draft tools, artifact tools, validate tool |
+| validate | `challenge-pack validate`, `prompt-eval validate`, `build version validate`, `ci validate` | validation tools; CI validation deferred to Phase 5 |
+| publish | `challenge-pack publish`, `build ready`, `deployment create` | confirmation-gated workspace writes |
 | runtime | `infra`, `secret`, `build`, `deployment`, `model-catalog` | runtime metadata read tools; admin-sensitive writes later |
 | run | `eval start`, `run create`, `prompt-eval run`, `playground experiment`, `agent-harness run`, `security stress-run` | `create_run`/`create_eval_session`; harness/security are deferred unless explicitly scoped |
 | analyze | `run list/get/ranking/agents/events/export/scorecard`, `eval scorecard`, `session`, `replay`, `compare`, `release-gate` | read, insight, compare, and release-gate tools |
@@ -142,7 +142,7 @@ credit-wallet administration.
 | Capability | Existing protected routes | Vibe Eval use |
 | --- | --- | --- |
 | onboarding/org/workspace | `POST /onboarding`, `POST /organizations`, `POST /organizations/{id}/workspaces`, workspace/org update/list routes | credit seeding hooks and first-run workspace setup |
-| eval packs | `GET /workspaces/{workspaceID}/eval-packs`, `GET /workspaces/{workspaceID}/eval-pack-versions/{versionID}/input-sets`, `POST /workspaces/{workspaceID}/eval-packs`, `POST /workspaces/{workspaceID}/eval-packs/validate` | list/get/validate/publish semantic tools |
+| challenge packs | `GET /workspaces/{workspaceID}/challenge-packs`, `GET /workspaces/{workspaceID}/challenge-pack-versions/{versionID}/input-sets`, `POST /workspaces/{workspaceID}/challenge-packs`, `POST /workspaces/{workspaceID}/challenge-packs/validate` | list/get/validate/publish semantic tools |
 | agent builds/deployments | build/version/deployment routes under `/agent-builds`, `/agent-build-versions`, `/workspaces/{workspaceID}/agent-deployments` | runtime setup and deployment tools |
 | infrastructure | runtime profiles, provider accounts, model aliases, tools, knowledge sources, routing policies, spend policies | metadata reads in early phases; admin writes in Phase 5 |
 | runs/eval sessions | `POST /runs`, `GET /runs/{id}`, `POST /eval-sessions`, `GET /eval-sessions`, ranking/events/agents endpoints | run and analyze tools |
@@ -150,7 +150,7 @@ credit-wallet administration.
 | regressions | `/workspaces/{workspaceID}/regression-suites`, regression cases, failure promotion routes | regression suite/case tools |
 | comparisons/gates | `/compare`, `/release-gates`, `/release-gates/evaluate` | compare and release-gate tools |
 | artifacts/share | workspace artifact routes, public artifact content, `POST /share-links`, `DELETE /share-links/{shareID}` | artifact metadata/upload/preview and future public share tools |
-| playgrounds | playground, test-case, experiment routes | optional prompt-eval substrate; not required for Vibe Eval v1 if eval packs are primary |
+| playgrounds | playground, test-case, experiment routes | optional prompt-eval substrate; not required for Vibe Eval v1 if challenge packs are primary |
 | integrations | GitHub installation, repository, CI profile, CI setup PR routes | CI handoff and repository selection |
 | billing/quota | `/billing/plans`, org billing, trial/checkout/portal, workspace entitlements/quota | read-only quota/credit display; new eval credit ledger needed |
 

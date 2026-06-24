@@ -29,7 +29,7 @@ func init() {
 
 	wsUpdateCmd.Flags().String("name", "", "New workspace name")
 	wsUpdateCmd.Flags().String("status", "", "New status (active, archived)")
-	wsUpdateCmd.Flags().Bool("public-packs", false, "Allow this workspace to use public eval packs")
+	wsUpdateCmd.Flags().Bool("public-packs", false, "Allow this workspace to use public challenge packs")
 
 	wsMembersInviteCmd.Flags().String("email", "", "Email address to invite (required)")
 	wsMembersInviteCmd.Flags().String("role", "workspace_member", "Role: workspace_admin, workspace_member, workspace_viewer")

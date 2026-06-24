@@ -55,7 +55,7 @@ func TestBuildRunAgentItemsComputesPromotionEligibilityAndRefs(t *testing.T) {
 		RunStatus:            domain.RunStatusCompleted,
 		RunAgentID:           runAgentID,
 		DeploymentType:       "native",
-		EvalPackStatus:  "runnable",
+		ChallengePackStatus:  "runnable",
 		HasChallengeInputSet: true,
 		Cases: []CaseContext{
 			{
@@ -198,7 +198,7 @@ func TestBuildRunAgentItemsComputesStableFailureIdentity(t *testing.T) {
 			RunStatus:           domain.RunStatusCompleted,
 			RunAgentID:          runAgentID,
 			DeploymentType:      "native",
-			EvalPackStatus: "runnable",
+			ChallengePackStatus: "runnable",
 			Cases: []CaseContext{
 				{
 					ChallengeIdentityID: challengeID,
@@ -512,7 +512,7 @@ func TestBuildRunAgentItemsHandlesHostedBlackBoxEligibility(t *testing.T) {
 		RunStatus:            domain.RunStatusCompleted,
 		RunAgentID:           runAgentID,
 		DeploymentType:       "hosted_external",
-		EvalPackStatus:  "archived",
+		ChallengePackStatus:  "archived",
 		HasChallengeInputSet: true,
 		Cases: []CaseContext{
 			{
@@ -576,7 +576,7 @@ func TestBuildRunAgentItemsSkipsOutputOnlyPromotionWithoutChallengeInputSet(t *t
 		RunStatus:            domain.RunStatusCompleted,
 		RunAgentID:           runAgentID,
 		DeploymentType:       "native",
-		EvalPackStatus:  "runnable",
+		ChallengePackStatus:  "runnable",
 		HasChallengeInputSet: false,
 		Cases: []CaseContext{
 			{
@@ -621,7 +621,7 @@ func TestBuildRunAgentItemsSkipsFullExecutablePromotionWithoutChallengeInputSet(
 		RunStatus:            domain.RunStatusCompleted,
 		RunAgentID:           runAgentID,
 		DeploymentType:       "native",
-		EvalPackStatus:  "runnable",
+		ChallengePackStatus:  "runnable",
 		HasChallengeInputSet: false,
 		Cases: []CaseContext{
 			{
@@ -673,7 +673,7 @@ func TestAssembleFailureReviewItemBuildsRefsAndFailedChecks(t *testing.T) {
 		RunStatus:           domain.RunStatusCompleted,
 		RunAgentID:          runAgentID,
 		DeploymentType:      "native",
-		EvalPackStatus: "runnable",
+		ChallengePackStatus: "runnable",
 		Cases: []CaseContext{
 			{
 				ChallengeIdentityID: challengeID,
@@ -771,7 +771,7 @@ func TestBuildRunAgentItemsIgnoresPassingLLMJudgeReasons(t *testing.T) {
 		RunStatus:           domain.RunStatusCompleted,
 		RunAgentID:          runAgentID,
 		DeploymentType:      "native",
-		EvalPackStatus: "runnable",
+		ChallengePackStatus: "runnable",
 		Cases: []CaseContext{
 			{
 				ChallengeIdentityID: challengeID,

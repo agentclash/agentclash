@@ -127,25 +127,25 @@ func buildQuickstartResult(cmd *cobra.Command, rc *RunContext) map[string]any {
 		})
 	}
 
-	if packs, err := listEvalPacksForWorkflow(cmd, rc, workspaceID); err != nil {
+	if packs, err := listChallengePacksForWorkflow(cmd, rc, workspaceID); err != nil {
 		appendCheck(quickstartCheck{
-			Name:     "eval_packs",
+			Name:     "challenge_packs",
 			Status:   "todo",
-			Detail:   fmt.Sprintf("Could not list eval packs: %v", err),
-			NextStep: "agentclash eval-pack init agentclash-pack.yaml",
+			Detail:   fmt.Sprintf("Could not list challenge packs: %v", err),
+			NextStep: "agentclash challenge-pack init agentclash-pack.yaml",
 		})
 	} else if len(packs) == 0 {
 		appendCheck(quickstartCheck{
-			Name:     "eval_packs",
+			Name:     "challenge_packs",
 			Status:   "todo",
-			Detail:   "No eval packs are published in this workspace.",
-			NextStep: "agentclash eval-pack init agentclash-pack.yaml",
+			Detail:   "No challenge packs are published in this workspace.",
+			NextStep: "agentclash challenge-pack init agentclash-pack.yaml",
 		})
 	} else {
 		appendCheck(quickstartCheck{
-			Name:   "eval_packs",
+			Name:   "challenge_packs",
 			Status: "ok",
-			Detail: fmt.Sprintf("%d eval pack(s) visible.", len(packs)),
+			Detail: fmt.Sprintf("%d challenge pack(s) visible.", len(packs)),
 			Metadata: map[string]any{
 				"count": len(packs),
 			},

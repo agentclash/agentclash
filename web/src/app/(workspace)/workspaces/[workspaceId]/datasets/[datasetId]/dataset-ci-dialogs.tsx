@@ -18,8 +18,8 @@ import { downloadDatasetGateJUnit } from "@/lib/datasets/gate-junit";
 import { waitForRunCompletion } from "@/lib/datasets/wait-for-run";
 import type {
   AgentDeployment,
-  EvalPack,
-  EvalPackVersion,
+  ChallengePack,
+  ChallengePackVersion,
   CreateRunResponse,
   DatasetBaseline,
   DatasetRegressionSuiteLink,
@@ -65,8 +65,8 @@ export function SyncRegressionDialog({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [packs, setPacks] = useState<EvalPack[]>([]);
-  const [packVersions, setPackVersions] = useState<EvalPackVersion[]>([]);
+  const [packs, setPacks] = useState<ChallengePack[]>([]);
+  const [packVersions, setPackVersions] = useState<ChallengePackVersion[]>([]);
   const [versionId, setVersionId] = useState("");
   const [packId, setPackId] = useState("");
   const [packVersionId, setPackVersionId] = useState("");
@@ -80,8 +80,8 @@ export function SyncRegressionDialog({
       try {
         const token = await getAccessToken();
         const api = createApiClient(token);
-        const res = await api.get<{ items: EvalPack[] }>(
-          `/v1/workspaces/${workspaceId}/eval-packs`,
+        const res = await api.get<{ items: ChallengePack[] }>(
+          `/v1/workspaces/${workspaceId}/challenge-packs`,
         );
         setPacks(res.items);
         if (versions.length > 0) {
@@ -89,7 +89,7 @@ export function SyncRegressionDialog({
         }
       } catch (err) {
         toast.error(
-          err instanceof ApiError ? err.message : "Failed to load eval packs",
+          err instanceof ApiError ? err.message : "Failed to load challenge packs",
         );
       } finally {
         setLoading(false);
@@ -124,7 +124,7 @@ export function SyncRegressionDialog({
         datasetId,
         {
           version_id: versionId,
-          eval_pack_version_id: packVersionId,
+          challenge_pack_version_id: packVersionId,
           challenge_key: challengeKey.trim(),
           regression_suite_id: regressionLink?.regression_suite_id,
           suite_name: suiteName.trim() || undefined,
@@ -169,7 +169,7 @@ export function SyncRegressionDialog({
               }))}
             />
             <FieldSelect
-              label="Eval pack"
+              label="Challenge pack"
               value={packId}
               onChange={setPackId}
               options={packs.map((p) => ({ value: p.id, label: p.name }))}
@@ -401,8 +401,8 @@ export function DatasetTestDialog({
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [packs, setPacks] = useState<EvalPack[]>([]);
-  const [packVersions, setPackVersions] = useState<EvalPackVersion[]>([]);
+  const [packs, setPacks] = useState<ChallengePack[]>([]);
+  const [packVersions, setPackVersions] = useState<ChallengePackVersion[]>([]);
   const [deployments, setDeployments] = useState<AgentDeployment[]>([]);
   const [versionId, setVersionId] = useState("");
   const [packId, setPackId] = useState("");
@@ -439,8 +439,8 @@ export function DatasetTestDialog({
         const token = await getAccessToken();
         const api = createApiClient(token);
         const [packsRes, deploymentsRes] = await Promise.all([
-          api.get<{ items: EvalPack[] }>(
-            `/v1/workspaces/${workspaceId}/eval-packs`,
+          api.get<{ items: ChallengePack[] }>(
+            `/v1/workspaces/${workspaceId}/challenge-packs`,
           ),
           api.get<{ items: AgentDeployment[] }>(
             `/v1/workspaces/${workspaceId}/agent-deployments`,
@@ -528,7 +528,7 @@ export function DatasetTestDialog({
         setPhase("eval");
         const evalResult = await startDatasetEval(api, workspaceId, datasetId, {
           version_id: versionId,
-          eval_pack_version_id: packVersionId,
+          challenge_pack_version_id: packVersionId,
           challenge_key: challengeKey.trim(),
           agent_deployment_ids: deploymentIds,
           name: runName.trim() || undefined,
@@ -620,7 +620,7 @@ export function DatasetTestDialog({
                   }))}
                 />
                 <FieldSelect
-                  label="Eval pack"
+                  label="Challenge pack"
                   value={packId}
                   onChange={setPackId}
                   options={packs.map((pack) => ({

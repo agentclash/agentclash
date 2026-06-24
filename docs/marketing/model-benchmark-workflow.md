@@ -18,7 +18,7 @@ Reference implementation: [Coding agent benchmark — June 2026](https://www.age
 
 **Checklist (copy each cycle):**
 
-- [ ] Pin eval pack version **and** git commit SHA in the report appendix
+- [ ] Pin challenge pack version **and** git commit SHA in the report appendix
 - [ ] Race every candidate on the same pack (tools, sandbox, budgets)
 - [ ] Export ranking JSON and attach replay / validator evidence per lane
 - [ ] Set `sample: false` only when numbers are measured
@@ -29,11 +29,11 @@ Reference implementation: [Coding agent benchmark — June 2026](https://www.age
 
 ## Public fixtures to use
 
-Start from versioned packs in `examples/eval-packs/`. The first published report uses:
+Start from versioned packs in `examples/challenge-packs/`. The first published report uses:
 
 | Pack | Path | Why |
 | ---- | ---- | --- |
-| Expression Evaluator Arena v1 | `examples/eval-packs/expr-eval-arena.yaml` | Real coding task with hidden tiers; separates efficiency and contract adherence |
+| Expression Evaluator Arena v1 | `examples/challenge-packs/expr-eval-arena.yaml` | Real coding task with hidden tiers; separates efficiency and contract adherence |
 
 Other packs suitable for future months (rotate or expand field size):
 
@@ -48,7 +48,7 @@ Record in every report:
 
 ## One-time setup
 
-- Workspace on the hosted backend with the chosen eval pack imported
+- Workspace on the hosted backend with the chosen challenge pack imported
 - CLI pointed at production (see repo `CLAUDE.md`, "CLI Against Hosted Backend"):
 
   ```bash

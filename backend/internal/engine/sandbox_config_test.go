@@ -180,7 +180,7 @@ func TestApplySandboxConfig_AcceptsLiteralEnvVars(t *testing.T) {
 
 func TestNativeSandboxRequest_PreservesBrowserToolKind(t *testing.T) {
 	executionContext := nativeExecutionContext()
-	executionContext.EvalPackVersion.Manifest = json.RawMessage(`{
+	executionContext.ChallengePackVersion.Manifest = json.RawMessage(`{
 		"tool_policy": {"allowed_tool_kinds": ["browser"]},
 		"version": {"number": 1}
 	}`)

@@ -128,9 +128,9 @@ func main() {
 		WebhookSecret: cfg.GitHubWebhookSecret,
 		FrontendURL:   cfg.FrontendURL,
 	})
-	evalPackReadManager := api.NewEvalPackReadManager(repo)
-	evalPackAuthoringManager := api.NewEvalPackAuthoringManager(repo, artifactStore)
-	evalPackBuilderManager := api.NewEvalPackBuilderManager(authorizer, repo, evalPackAuthoringManager)
+	challengePackReadManager := api.NewChallengePackReadManager(repo)
+	challengePackAuthoringManager := api.NewChallengePackAuthoringManager(repo, artifactStore)
+	challengePackBuilderManager := api.NewChallengePackBuilderManager(authorizer, repo, challengePackAuthoringManager)
 	publicShareManager := api.NewPublicShareManager(authorizer, repo, cfg.FrontendURL).WithArtifactSigner(artifactManager)
 	agentTryoutManager := api.NewAgentTryoutManager(authorizer, repo).WithArtifactSigner(artifactManager).WithInputAttachmentStore(artifactStore, cfg.ArtifactMaxUploadBytes).WithPublicJudgeModels(cfg.AgentTryoutJudgeModels).WithQuota(api.AgentTryoutQuotaConfig{
 		AnonymousLimit:            cfg.AgentTryoutAnonymousLimit,
@@ -245,9 +245,9 @@ func main() {
 		agentDeploymentReadManager,
 		agentHarnessManager,
 		githubIntegrationManager,
-		evalPackReadManager,
-		evalPackAuthoringManager,
-		evalPackBuilderManager,
+		challengePackReadManager,
+		challengePackAuthoringManager,
+		challengePackBuilderManager,
 		agentBuildManager,
 		userManager,
 		orgManager,

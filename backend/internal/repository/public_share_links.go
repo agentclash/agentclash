@@ -15,7 +15,7 @@ import (
 type PublicShareResourceType string
 
 const (
-	PublicShareResourceEvalPackVersion PublicShareResourceType = "eval_pack_version"
+	PublicShareResourceChallengePackVersion PublicShareResourceType = "challenge_pack_version"
 	PublicShareResourceRunScorecard         PublicShareResourceType = "run_scorecard"
 	PublicShareResourceRunAgentScorecard    PublicShareResourceType = "run_agent_scorecard"
 	PublicShareResourceRunAgentReplay       PublicShareResourceType = "run_agent_replay"
@@ -51,7 +51,7 @@ type CreatePublicShareLinkParams struct {
 	ExpiresAt       *time.Time
 }
 
-type PublicEvalPackVersionSnapshot struct {
+type PublicChallengePackVersionSnapshot struct {
 	PackID          uuid.UUID
 	PackSlug        string
 	PackName        string
@@ -196,7 +196,7 @@ func (r *Repository) ListActivePublicShareLinksByResource(ctx context.Context, r
 	return shares, nil
 }
 
-func (r *Repository) GetPublicEvalPackVersionSnapshot(ctx context.Context, versionID uuid.UUID) (PublicEvalPackVersionSnapshot, error) {
+func (r *Repository) GetPublicChallengePackVersionSnapshot(ctx context.Context, versionID uuid.UUID) (PublicChallengePackVersionSnapshot, error) {
 	row := r.db.QueryRow(ctx, `
 		SELECT
 			cp.id,
@@ -210,15 +210,15 @@ func (r *Repository) GetPublicEvalPackVersionSnapshot(ctx context.Context, versi
 			cpv.manifest,
 			cpv.created_at,
 			cpv.updated_at
-		FROM eval_pack_versions cpv
-		JOIN eval_packs cp ON cp.id = cpv.eval_pack_id
+		FROM challenge_pack_versions cpv
+		JOIN challenge_packs cp ON cp.id = cpv.challenge_pack_id
 		WHERE cpv.id = $1
 		  AND cpv.archived_at IS NULL
 		  AND cp.archived_at IS NULL
 		LIMIT 1
 	`, versionID)
 
-	var snapshot PublicEvalPackVersionSnapshot
+	var snapshot PublicChallengePackVersionSnapshot
 	if err := row.Scan(
 		&snapshot.PackID,
 		&snapshot.PackSlug,
@@ -233,14 +233,14 @@ func (r *Repository) GetPublicEvalPackVersionSnapshot(ctx context.Context, versi
 		&snapshot.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return PublicEvalPackVersionSnapshot{}, ErrEvalPackVersionNotFound
+			return PublicChallengePackVersionSnapshot{}, ErrChallengePackVersionNotFound
 		}
-		return PublicEvalPackVersionSnapshot{}, fmt.Errorf("get public eval pack version snapshot: %w", err)
+		return PublicChallengePackVersionSnapshot{}, fmt.Errorf("get public challenge pack version snapshot: %w", err)
 	}
 
 	inputSets, err := r.ListChallengeInputSetsByVersionID(ctx, versionID)
 	if err != nil {
-		return PublicEvalPackVersionSnapshot{}, err
+		return PublicChallengePackVersionSnapshot{}, err
 	}
 	snapshot.InputSets = inputSets
 	return snapshot, nil

@@ -91,7 +91,7 @@ type runComparisonScorecardValiditySide struct {
 type runComparisonRefs struct {
 	RunID                  uuid.UUID  `json:"run_id"`
 	RunAgentID             *uuid.UUID `json:"run_agent_id,omitempty"`
-	EvalPackVersionID uuid.UUID  `json:"eval_pack_version_id"`
+	ChallengePackVersionID uuid.UUID  `json:"challenge_pack_version_id"`
 	ChallengeInputSetID    *uuid.UUID `json:"challenge_input_set_id,omitempty"`
 	EvaluationSpecID       *uuid.UUID `json:"evaluation_spec_id,omitempty"`
 }
@@ -265,8 +265,8 @@ func (r *Repository) BuildRunComparison(ctx context.Context, params BuildRunComp
 		return r.upsertNonComparableRunComparison(ctx, baselineRun, candidateRun, baselineSelectedID, candidateSelectedID, reasonCode, warnings)
 	}
 
-	if baselineSelected.executionContext.Run.EvalPackVersionID != candidateSelected.executionContext.Run.EvalPackVersionID {
-		return r.upsertNonComparableRunComparison(ctx, baselineRun, candidateRun, &baselineSelected.runAgent.ID, &candidateSelected.runAgent.ID, "eval_pack_version_mismatch", warnings)
+	if baselineSelected.executionContext.Run.ChallengePackVersionID != candidateSelected.executionContext.Run.ChallengePackVersionID {
+		return r.upsertNonComparableRunComparison(ctx, baselineRun, candidateRun, &baselineSelected.runAgent.ID, &candidateSelected.runAgent.ID, "challenge_pack_version_mismatch", warnings)
 	}
 	if !sameOptionalUUID(
 		baselineSelected.executionContext.Run.ChallengeInputSetID,
@@ -485,14 +485,14 @@ func buildComparableRunComparisonSummary(
 		BaselineRefs: runComparisonRefs{
 			RunID:                  baselineRun.ID,
 			RunAgentID:             &baseline.runAgent.ID,
-			EvalPackVersionID: baseline.executionContext.Run.EvalPackVersionID,
+			ChallengePackVersionID: baseline.executionContext.Run.ChallengePackVersionID,
 			ChallengeInputSetID:    cloneUUIDPtr(baseline.executionContext.Run.ChallengeInputSetID),
 			EvaluationSpecID:       &baseline.scorecard.EvaluationSpecID,
 		},
 		CandidateRefs: runComparisonRefs{
 			RunID:                  candidateRun.ID,
 			RunAgentID:             &candidate.runAgent.ID,
-			EvalPackVersionID: candidate.executionContext.Run.EvalPackVersionID,
+			ChallengePackVersionID: candidate.executionContext.Run.ChallengePackVersionID,
 			ChallengeInputSetID:    cloneUUIDPtr(candidate.executionContext.Run.ChallengeInputSetID),
 			EvaluationSpecID:       &candidate.scorecard.EvaluationSpecID,
 		},
@@ -794,7 +794,7 @@ func buildRunComparisonFingerprint(
 		BaselineReplayUpdatedAt     *time.Time `json:"baseline_replay_updated_at,omitempty"`
 		CandidateReplayUpdatedAt    *time.Time `json:"candidate_replay_updated_at,omitempty"`
 		EvaluationSpecID            uuid.UUID  `json:"evaluation_spec_id"`
-		EvalPackVersionID      uuid.UUID  `json:"eval_pack_version_id"`
+		ChallengePackVersionID      uuid.UUID  `json:"challenge_pack_version_id"`
 		BaselineInputChecksum       string     `json:"baseline_input_checksum,omitempty"`
 		CandidateInputChecksum      string     `json:"candidate_input_checksum,omitempty"`
 	}{
@@ -806,7 +806,7 @@ func buildRunComparisonFingerprint(
 		BaselineScorecardUpdatedAt:  baseline.scorecard.UpdatedAt.UTC(),
 		CandidateScorecardUpdatedAt: candidate.scorecard.UpdatedAt.UTC(),
 		EvaluationSpecID:            baseline.scorecard.EvaluationSpecID,
-		EvalPackVersionID:      baseline.executionContext.Run.EvalPackVersionID,
+		ChallengePackVersionID:      baseline.executionContext.Run.ChallengePackVersionID,
 	}
 	if baseline.replay != nil {
 		value := baseline.replay.UpdatedAt.UTC()
@@ -848,13 +848,13 @@ func (r *Repository) upsertNonComparableRunComparison(
 		BaselineRefs: runComparisonRefs{
 			RunID:                  baselineRun.ID,
 			RunAgentID:             cloneUUIDPtr(baselineRunAgentID),
-			EvalPackVersionID: baselineRun.EvalPackVersionID,
+			ChallengePackVersionID: baselineRun.ChallengePackVersionID,
 			ChallengeInputSetID:    cloneUUIDPtr(baselineRun.ChallengeInputSetID),
 		},
 		CandidateRefs: runComparisonRefs{
 			RunID:                  candidateRun.ID,
 			RunAgentID:             cloneUUIDPtr(candidateRunAgentID),
-			EvalPackVersionID: candidateRun.EvalPackVersionID,
+			ChallengePackVersionID: candidateRun.ChallengePackVersionID,
 			ChallengeInputSetID:    cloneUUIDPtr(candidateRun.ChallengeInputSetID),
 		},
 		FailureDivergence: runComparisonFailureDivergence{},

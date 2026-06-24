@@ -68,7 +68,7 @@ const LINKS = {
   benchmarks: {
     href: "/benchmarks",
     label: "Benchmarks",
-    description: "Measured field reports with frozen eval packs.",
+    description: "Measured field reports with frozen challenge packs.",
   },
   passAtKPost: {
     href: "/blog/pass-at-k-vs-pass-power-k",

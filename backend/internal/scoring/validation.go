@@ -38,7 +38,7 @@ func (e ValidationErrors) HasField(field string) bool {
 
 func ValidateEvaluationSpec(spec EvaluationSpec) error {
 	// Normalize a local copy so callers that pass an unnormalized spec
-	// (e.g. evalpack.ValidateBundle) still get backward-compat
+	// (e.g. challengepack.ValidateBundle) still get backward-compat
 	// expansion of legacy string-format dimensions before validation.
 	normalizeEvaluationSpec(&spec)
 

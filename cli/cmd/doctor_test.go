@@ -100,7 +100,7 @@ func TestDoctorReportsHealthyWorkspace(t *testing.T) {
 		"GET /v1/workspaces/ws-1/details": jsonHandler(200, map[string]any{
 			"id": "ws-1", "name": "Alpha", "slug": "alpha",
 		}),
-		"GET /v1/workspaces/ws-1/eval-packs": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{"id": "pack-1", "name": "Support Eval", "slug": "support-eval"},
 			},
@@ -154,7 +154,7 @@ func TestDoctorReadyWithoutBaselineBookmark(t *testing.T) {
 		"GET /v1/workspaces/ws-1/details": jsonHandler(200, map[string]any{
 			"id": "ws-1", "name": "Alpha", "slug": "alpha",
 		}),
-		"GET /v1/workspaces/ws-1/eval-packs": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
 			"items": []map[string]any{
 				{"id": "pack-1", "name": "Support Eval", "slug": "support-eval"},
 			},
@@ -433,7 +433,7 @@ func healthyDoctorWorkspaceAPI(t *testing.T, overrides map[string]http.HandlerFu
 		"GET /v1/workspaces/ws-1/details": jsonHandler(200, map[string]any{
 			"id": "ws-1", "name": "Alpha", "slug": "alpha",
 		}),
-		"GET /v1/workspaces/ws-1/eval-packs": jsonHandler(200, map[string]any{
+		"GET /v1/workspaces/ws-1/challenge-packs": jsonHandler(200, map[string]any{
 			"items": []map[string]any{{"id": "pack-1", "name": "Support Eval", "slug": "support-eval"}},
 		}),
 		"GET /v1/workspaces/ws-1/agent-deployments": jsonHandler(200, map[string]any{

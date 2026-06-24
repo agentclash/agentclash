@@ -33,6 +33,6 @@ export const HOME_FAQ: Array<{ question: string; answer: string }> = [
   {
     question: "How do I get started with AgentClash?",
     answer:
-      "Install the CLI with npm install -g agentclash (or run against the hosted backend), then follow the quickstart to author a eval pack and run your first agent eval.",
+      "Install the CLI with npm install -g agentclash (or run against the hosted backend), then follow the quickstart to author a challenge pack and run your first agent eval.",
   },
 ];

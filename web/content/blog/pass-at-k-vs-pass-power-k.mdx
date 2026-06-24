@@ -48,11 +48,11 @@ Caveat: pass^k can be too harsh early in development. Teams often start with pas
 
 ## How AgentClash fits the workflow
 
-AgentClash is built for workloads where the path matters. Eval packs encode the task, tool policy, validators, and artifacts once. Each run keeps replay evidence and a scorecard so reviewers can see whether a pass was cheap, expensive, lucky, or repeatable.
+AgentClash is built for workloads where the path matters. Challenge packs encode the task, tool policy, validators, and artifacts once. Each run keeps replay evidence and a scorecard so reviewers can see whether a pass was cheap, expensive, lucky, or repeatable.
 
 That makes it easier to use pass@k and pass^k honestly:
 
-1. **Freeze the workload** in a eval pack so every attempt runs under the same constraints.
+1. **Freeze the workload** in a challenge pack so every attempt runs under the same constraints.
 2. **Run k independent attempts** for the candidate and baseline you care about.
 3. **Inspect replay** when attempts disagree — did failures cluster on the same tool call or validator?
 4. **Promote the workload into CI** once you know which reliability metric matches your release bar.

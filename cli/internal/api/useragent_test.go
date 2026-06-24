@@ -108,7 +108,7 @@ func TestNormalizeCommandPath(t *testing.T) {
 		{"agentclash", ""},
 		{"agentclash auth login", "auth.login"},
 		{"", ""},
-		{"agentclash eval-pack publish", "eval-pack.publish"},
+		{"agentclash challenge-pack publish", "challenge-pack.publish"},
 	}
 	for _, c := range cases {
 		got := normalizeCommandPath(c.in)

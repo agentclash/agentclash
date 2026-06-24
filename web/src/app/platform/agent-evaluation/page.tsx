@@ -22,7 +22,7 @@ import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
 const PAGE_PATH = "/platform/agent-evaluation";
 const PAGE_TITLE = "AI Agent Evaluation Platform for Real Tasks - AgentClash";
 const PAGE_DESCRIPTION =
-  "Evaluate AI agents on real tasks with same-task evals, sandboxed execution, replay, scorecards, eval packs, and CI regression gates.";
+  "Evaluate AI agents on real tasks with same-task evals, sandboxed execution, replay, scorecards, challenge packs, and CI regression gates.";
 const SOCIAL_IMAGE_ALT =
   "AgentClash AI agent evaluation platform social preview.";
 
@@ -53,7 +53,7 @@ const workflow = [
   {
     icon: Code2,
     title: "Package the task",
-    text: "Describe the workload as a eval pack with inputs, tools, scoring rules, and artifacts.",
+    text: "Describe the workload as a challenge pack with inputs, tools, scoring rules, and artifacts.",
   },
   {
     icon: Play,
@@ -397,7 +397,7 @@ export default function AgentEvaluationPage() {
                 Bring your first workload into the loop
               </h2>
               <p className="mt-5 text-sm leading-7 text-white/55 sm:text-base">
-                Use eval packs for repeatable tasks, then wire the same
+                Use challenge packs for repeatable tasks, then wire the same
                 workload into local runs, hosted runs, or pull request gates.
               </p>
             </div>
@@ -409,9 +409,9 @@ export default function AgentEvaluationPage() {
                   "/docs/getting-started/quickstart",
                 ],
                 [
-                  "Write an eval pack",
+                  "Write a challenge pack",
                   "Turn a real task into a repeatable agent evaluation.",
-                  "/docs/guides/write-an-eval-pack",
+                  "/docs/guides/write-a-challenge-pack",
                 ],
                 [
                   "CI/CD agent gates",

@@ -4,7 +4,7 @@ mock_agent_vault.py — minimal in-sandbox stand-in for an Infisical Agent
 Vault proxy.
 
 This is NOT a full implementation of Agent Vault. It exists so that
-eval packs with `security.planted_secrets[].location: infisical-mock`
+challenge packs with `security.planted_secrets[].location: infisical-mock`
 have *something* on the wire to point HTTPS_PROXY at, so the agent's
 http_request tool exercises the same code path it would against the
 real binary. The fidelity is intentionally low — what matters for the

@@ -4,7 +4,7 @@
 
 Open-source AI-agent evaluation for real tasks. AgentClash helps teams find where agents break, replay the evidence, score the outcome, and turn failures into regression gates before release.
 
-[Website](https://www.agentclash.dev) | [Docs](https://www.agentclash.dev/docs) | [Quickstart](https://www.agentclash.dev/docs/getting-started/quickstart) | [Eval Packs](https://www.agentclash.dev/docs/eval-packs) | [CI Gates](https://www.agentclash.dev/docs/guides/ci-cd-agent-gates) | [Changelog](https://www.agentclash.dev/changelog)
+[Website](https://www.agentclash.dev) | [Docs](https://www.agentclash.dev/docs) | [Quickstart](https://www.agentclash.dev/docs/getting-started/quickstart) | [Challenge Packs](https://www.agentclash.dev/docs/challenge-packs) | [CI Gates](https://www.agentclash.dev/docs/guides/ci-cd-agent-gates) | [Changelog](https://www.agentclash.dev/changelog)
 
 [![npm version](https://img.shields.io/npm/v/agentclash?logo=npm&color=cb3837)](https://www.npmjs.com/package/agentclash)
 [![npm downloads](https://img.shields.io/npm/dm/agentclash?logo=npm&color=cb3837)](https://www.npmjs.com/package/agentclash)
@@ -20,7 +20,7 @@ AgentClash is built for teams shipping agents, not leaderboard demos. It runs ag
 | Goal | Best first step | Docs |
 | --- | --- | --- |
 | Run an eval | `agentclash eval start --follow` | [Quickstart](https://www.agentclash.dev/docs/getting-started/quickstart) |
-| Author a workload | `agentclash eval-pack init support-eval.yaml` | [Write an eval pack](https://www.agentclash.dev/docs/guides/write-an-eval-pack) |
+| Author a workload | `agentclash challenge-pack init support-eval.yaml` | [Write a challenge pack](https://www.agentclash.dev/docs/guides/write-a-challenge-pack) |
 | Gate CI | `agentclash ci init .agentclash/ci.yaml` | [CI/CD agent gates](https://www.agentclash.dev/docs/guides/ci-cd-agent-gates) |
 | Use from an AI coding tool | `agentclash integration codex install` | [Use with AI tools](https://www.agentclash.dev/docs/guides/use-with-ai-tools) |
 | Hack on the stack | `./scripts/dev/start-local-stack.sh` | [Self-host](https://www.agentclash.dev/docs/getting-started/self-host) |
@@ -40,7 +40,7 @@ agentclash doctor
 
 Released npm binaries default to the hosted API. Keep the `AGENTCLASH_API_URL` export when you want to be explicit or switch between hosted and self-hosted environments.
 
-If the workspace already has eval packs and deployments, start an eval:
+If the workspace already has challenge packs and deployments, start an eval:
 
 ```bash
 agentclash eval start --follow
@@ -50,9 +50,9 @@ agentclash eval scorecard
 If the workspace is empty, scaffold and publish a pack first:
 
 ```bash
-agentclash eval-pack init support-eval.yaml
-agentclash eval-pack validate support-eval.yaml
-agentclash eval-pack publish support-eval.yaml
+agentclash challenge-pack init support-eval.yaml
+agentclash challenge-pack validate support-eval.yaml
+agentclash challenge-pack publish support-eval.yaml
 agentclash eval start --pack support-eval --follow
 ```
 
@@ -66,11 +66,11 @@ agentclash eval scorecard <run-id> --agent <agent-label-or-run-agent-id>
 
 ## What You Can Evaluate
 
-- **Eval packs** package prompts, tools, sandboxes, input sets, validators, judges, expected artifacts, and scoring rules. Start with the [eval pack reference](https://www.agentclash.dev/docs/eval-packs).
+- **Challenge packs** package prompts, tools, sandboxes, input sets, validators, judges, expected artifacts, and scoring rules. Start with the [challenge pack reference](https://www.agentclash.dev/docs/challenge-packs).
 - **Replay and scorecards** preserve the full trajectory: model calls, tool calls, sandbox commands, artifacts, verdicts, latency, cost, and failure evidence. See [interpreting results](https://www.agentclash.dev/docs/guides/interpret-results).
 - **Regression suites** promote escaped failures into permanent checks so the same mistake is tested before future releases.
 - **Datasets** import or curate pinned examples, run real agent evals, record baselines, sync regression suites, and gate CI. See [datasets overview](https://www.agentclash.dev/docs/guides/datasets-overview).
-- **Multi-turn packs** support scripted, LLM-driven, and human user simulators with takeover commands for operator input. See [multi-turn packs](https://www.agentclash.dev/docs/eval-packs/multi-turn).
+- **Multi-turn packs** support scripted, LLM-driven, and human user simulators with takeover commands for operator input. See [multi-turn packs](https://www.agentclash.dev/docs/challenge-packs/multi-turn).
 - **Security evals** test prompt injection, secret hygiene, and sandbox or vault boundaries without copying real secrets into docs. See [security evaluation](https://www.agentclash.dev/docs/guides/security-evaluation).
 - **Agent harnesses** run external coding agents such as Claude Code, Codex, OpenClaw, and Hermes as first-class eval candidates in sandboxes.
 

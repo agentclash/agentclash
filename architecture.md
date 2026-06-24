@@ -57,7 +57,7 @@ Runs are not request-response jobs. They may take minutes, stream events, genera
 
 Every run needs:
 
-- immutable eval pack version
+- immutable challenge pack version
 - stable agent version or deployment config
 - explicit runtime policy
 - persisted scorecard methodology
@@ -97,8 +97,8 @@ Private objects:
 
 - `Organization`
 - `Workspace`
-- `Eval Pack`
-- `Eval Pack Version`
+- `Challenge Pack`
+- `Challenge Pack Version`
 - `Agent Build`
 - `Agent Build Version`
 - `Agent Deployment`
@@ -217,7 +217,7 @@ The control plane owns product state and user-facing coordination:
 - authentication
 - authorization
 - organizations and workspaces
-- eval-pack catalog
+- challenge-pack catalog
 - agent build management
 - deployment registration
 - run creation
@@ -417,7 +417,7 @@ Fields:
 
 ## 9.2 Benchmarks
 
-### `eval_packs`
+### `challenge_packs`
 
 Fields:
 
@@ -428,12 +428,12 @@ Fields:
 - `owner_type`
 - `visibility`
 
-### `eval_pack_versions`
+### `challenge_pack_versions`
 
 Fields:
 
 - `id`
-- `eval_pack_id`
+- `challenge_pack_id`
 - `version`
 - `runtime_policy`
 - `scorecard_definition`
@@ -445,7 +445,7 @@ Fields:
 Fields:
 
 - `id`
-- `eval_pack_version_id`
+- `challenge_pack_version_id`
 - `task_key`
 - `prompt_payload_ref`
 - `validator_config`
@@ -533,7 +533,7 @@ Fields:
 
 - `id`
 - `workspace_id`
-- `eval_pack_version_id`
+- `challenge_pack_version_id`
 - `created_by_user_id`
 - `status`
 - `visibility`
@@ -617,7 +617,7 @@ Fields:
 
 - `id`
 - `public_run_snapshot_id`
-- `eval_pack_version_id`
+- `challenge_pack_version_id`
 - `submission_status`
 - `moderation_status`
 
@@ -626,7 +626,7 @@ Fields:
 Fields:
 
 - `id`
-- `eval_pack_version_id`
+- `challenge_pack_version_id`
 - `scope_type`
 - `scope_key`
 - `public_run_snapshot_id`
@@ -664,7 +664,7 @@ Typical key layout:
 
 ```text
 s3://agentclash-artifacts/
-  eval-packs/{pack_id}/{version}/...
+  challenge-packs/{pack_id}/{version}/...
   runs/{run_id}/{run_agent_id}/events/...
   runs/{run_id}/{run_agent_id}/artifacts/...
   public-snapshots/{snapshot_id}/...
@@ -710,7 +710,7 @@ sequenceDiagram
 
 Technical flow:
 
-1. User selects a workspace, eval pack version, and one or more agent deployments.
+1. User selects a workspace, challenge pack version, and one or more agent deployments.
 2. API server validates authz, plan limits, challenge visibility, and deployment compatibility.
 3. API writes `runs` and `run_agents` in `queued` state.
 4. API starts a Temporal workflow and stores the workflow ID on the run.
@@ -886,9 +886,9 @@ That keeps E2B replaceable if the cost curve eventually forces a self-managed ru
 
 ## 15. Scoring And Evaluation Architecture
 
-Scoring should be eval-pack-driven, not hardcoded globally.
+Scoring should be challenge-pack-driven, not hardcoded globally.
 
-Every eval pack version defines:
+Every challenge pack version defines:
 
 - validator type
 - metric weights
@@ -947,7 +947,7 @@ Use REST in v1.
 ### 17.1 Example API groups
 
 - `/v1/workspaces`
-- `/v1/eval-packs`
+- `/v1/challenge-packs`
 - `/v1/agent-builds`
 - `/v1/agent-deployments`
 - `/v1/runs`
@@ -979,7 +979,7 @@ V1 baseline:
 - tenant-isolated workspace queries
 - sandboxed native execution
 - publication redaction path
-- immutable eval pack versions for auditability
+- immutable challenge pack versions for auditability
 
 Security defaults:
 
@@ -1000,7 +1000,7 @@ Minimum observability stack:
 Key operational dashboards:
 
 - run throughput
-- run failure rate by eval pack
+- run failure rate by challenge pack
 - provider error rate by provider/model
 - sandbox provisioning latency
 - worker concurrency saturation

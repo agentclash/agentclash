@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { History, ListChecks } from "lucide-react";
 
 import type {
-  EvalPack,
+  ChallengePack,
   RegressionCase,
   RegressionCaseStatus,
   RegressionSeverity,
@@ -48,7 +48,7 @@ interface SuiteDetailClientProps {
   workspaceId: string;
   suite: RegressionSuite;
   cases: RegressionCase[];
-  sourcePack: EvalPack | null;
+  sourcePack: ChallengePack | null;
 }
 
 export function SuiteDetailClient({
@@ -68,9 +68,9 @@ export function SuiteDetailClient({
     });
   }, [cases, statusFilter, severityFilter]);
 
-  const packLabel = sourcePack ? sourcePack.name : suite.source_eval_pack_id;
+  const packLabel = sourcePack ? sourcePack.name : suite.source_challenge_pack_id;
   const packHref = sourcePack
-    ? `/workspaces/${workspaceId}/eval-packs/${sourcePack.id}`
+    ? `/workspaces/${workspaceId}/challenge-packs/${sourcePack.id}`
     : null;
 
   return (
@@ -111,7 +111,7 @@ export function SuiteDetailClient({
             ) : (
               <span
                 className="text-muted-foreground"
-                title={suite.source_eval_pack_id}
+                title={suite.source_challenge_pack_id}
               >
                 {packLabel}
               </span>
