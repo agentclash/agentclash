@@ -585,8 +585,10 @@ type LLMJudgeDeclaration struct {
 
 	// Prompt is the cross-agent ranking prompt for n_wise mode.
 	Prompt string `json:"prompt,omitempty"`
-	// PositionDebiasing enables cyclic-shift ordering across samples so no
-	// agent is consistently shown in the same position.
+	// PositionDebiasing enables cyclic rotation across samples, guaranteeing
+	// each candidate appears in every position when samples >= len(candidates).
+	// When false (default), candidates are shuffled per sample — weaker than
+	// rotation but still breaks stable positional bias.
 	PositionDebiasing bool `json:"position_debiasing,omitempty"`
 
 	// ReferenceFrom names an evidence reference that resolves to the
