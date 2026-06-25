@@ -32,15 +32,17 @@ func registerPeerStandingsFlags(cmd *cobra.Command) {
 }
 
 func peerStandingsFromFlags(cmd *cobra.Command) (enabled bool, cadence int) {
-	enabled, _ = cmd.Flags().GetBool(peerStandingsFlagName)
-	if legacy, _ := cmd.Flags().GetBool(legacyRaceContextFlagName); legacy {
+	flags := cmd.Flags()
+	if flags.Changed(peerStandingsFlagName) {
+		enabled, _ = flags.GetBool(peerStandingsFlagName)
+	} else if legacy, _ := flags.GetBool(legacyRaceContextFlagName); legacy {
 		enabled = true
 	}
 
-	cadence, _ = cmd.Flags().GetInt(peerStandingsCadenceFlagName)
-	if cmd.Flags().Changed(legacyRaceContextCadenceName) {
-		legacyCadence, _ := cmd.Flags().GetInt(legacyRaceContextCadenceName)
-		cadence = legacyCadence
+	if flags.Changed(peerStandingsCadenceFlagName) {
+		cadence, _ = flags.GetInt(peerStandingsCadenceFlagName)
+	} else if flags.Changed(legacyRaceContextCadenceName) {
+		cadence, _ = flags.GetInt(legacyRaceContextCadenceName)
 	}
 	return enabled, cadence
 }
@@ -58,8 +60,9 @@ func validatePeerStandingsCadence(cadence int) error {
 
 func peerStandingsFlagsUnsupportedError(context string) error {
 	return fmt.Errorf(
-		"--%s flags are not supported with %s",
+		"--%s / --%s are not supported with %s",
 		peerStandingsFlagName,
+		peerStandingsCadenceFlagName,
 		context,
 	)
 }
