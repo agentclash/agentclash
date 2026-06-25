@@ -1513,14 +1513,13 @@ export default function HomePage({
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>
             <h1 className="font-sans font-semibold tracking-[-0.03em] leading-[0.98] text-[clamp(2.75rem,6vw,5.5rem)] max-w-[18ch]">
-              Catch agent regressions before your users do.
+              Ship AI-native software with confidence.
             </h1>
 
             <p className="mt-8 max-w-[46ch] text-lg sm:text-xl leading-[1.5] text-white/55">
-              Eval, trace, and regression-test your agents on real tasks.
-              Audit behavior across any model and provider, promote failures
-              into permanent tests, and gate releases on scorecards you can
-              replay step by step.
+              The open-source platform for evals, tracing, and production
+              monitoring. Run agents on real tasks, replay every failure,
+              and gate releases on evidence. Any model. Any provider. BYOK.
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
@@ -1584,8 +1583,8 @@ export default function HomePage({
             <p className="mt-10 max-w-[48ch] text-lg leading-[1.6] text-white/55">
               Every think, every tool call, every observation is captured.
               Step back to the moment behavior diverged: the prompt it saw,
-              the tool it called, the state it worked from. No more guessing
-              why an agent passed in staging and broke in prod.
+              the tool it called, the state it worked from. Debug production
+              issues with a full replay, not a log dump.
             </p>
           </div>
           <div>
@@ -1922,11 +1921,11 @@ export default function HomePage({
         <div className="mx-auto max-w-[1440px]">
           <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between md:gap-16">
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4rem)] max-w-[20ch]">
-              Real tasks your agents run on.
+              Built for real-world agent workloads.
             </h2>
             <p className="max-w-[44ch] text-sm leading-[1.6] text-white/50">
-              Five task families AgentClash is built for. Hover any
-              card to read the brief.
+              Coding, research, ops, support, and more. Hover any card to
+              read the brief.
             </p>
           </div>
 
@@ -2110,14 +2109,14 @@ export default function HomePage({
                 <span className="text-white/40">than you think.</span>
               </h2>
               <p className="mt-10 max-w-[48ch] text-lg sm:text-xl leading-[1.5] text-white/55">
-                Scorecards are the visible part. Under the hood sit eight
-                capabilities most builders quietly want but rarely get in one
-                place. Trust us, or better, scroll.
+                One platform for the work teams usually split across five
+                tools. Evals, tracing, regression suites, and CI gates,
+                together. Open source. BYOK on every tier.
               </p>
               <p className="mt-4 max-w-[48ch] text-sm leading-[1.6] text-white/40">
-                Artifacts, RAG scoring, secret-vault key isolation, full
-                tool-call tracing, and CI regression gates. One open-source
-                platform, BYOK on every tier.
+                Artifacts, RAG scoring, secret-vault key isolation, and
+                full tool-call tracing. Everything you need to ship
+                AI-native software, in one place.
               </p>
             </div>
             <div>
@@ -2175,13 +2174,11 @@ export default function HomePage({
             <h2 className="font-sans font-semibold tracking-[-0.03em] leading-[0.98] text-[clamp(2.5rem,5.5vw,5rem)] max-w-[16ch]">
               Stop guessing.
               <br />
-              <span className="text-white/40">Start evaluating.</span>
+              <span className="text-white/40">Start shipping.</span>
             </h2>
             <p className="mt-6 max-w-[44ch] text-base leading-[1.6] text-white/50">
-              Run your first eval free. Trace failures step by step, promote
-              them into regression tests, and keep agent behavior consistent
-              at scale. Open source, BYOK, and a fraction of the cost of
-              closed eval platforms.
+              Open source. BYOK. Run your first eval free and see why teams
+              pick AgentClash to build and ship AI-native software.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap gap-3">
               {user ? (
