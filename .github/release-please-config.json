@@ -6,8 +6,7 @@
     "cli": {
       "release-type": "simple",
       "package-name": "agentclash",
-      "changelog-path": "CHANGELOG.md",
-      "release-as": "1.1.0"
+      "changelog-path": "CHANGELOG.md"
     }
   }
 }
