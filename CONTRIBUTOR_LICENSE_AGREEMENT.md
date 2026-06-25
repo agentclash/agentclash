@@ -16,7 +16,7 @@ are authorized to accept it on their behalf.
   documentation, and other materials.
 - "We", "Us", or "the Stewards" means, until a legal entity is formed to operate
   the Project, the founders Atharva Kanherkar, Ayush Raj Singh Parihar, and
-  Shubham [surname — confirm], jointly. Upon formation of a legal entity that
+  Shubham Bhagat, jointly. Upon formation of a legal entity that
   operates the Project, all rights and obligations of the Stewards under this
   Agreement automatically transfer to that entity, which then is "We/Us".
 - "Contribution" means any source code, documentation, tests, designs, data,
