@@ -1517,9 +1517,9 @@ export default function HomePage({
             </h1>
 
             <p className="mt-8 max-w-[46ch] text-lg sm:text-xl leading-[1.5] text-white/55">
-              The open-source platform for evals, tracing, and production
-              monitoring. Run agents on real tasks, replay every failure,
-              and gate releases on evidence. Any model. Any provider. BYOK.
+              One open-source platform from first eval to production.
+              Test agents on real tasks, replay failures step by step,
+              and gate releases on scorecards you can stand behind.
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
