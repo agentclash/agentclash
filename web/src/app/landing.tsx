@@ -1512,9 +1512,6 @@ export default function HomePage({
       >
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>
-            <p className="mb-6 font-[family-name:var(--font-mono)] text-[11px] uppercase tracking-[0.14em] text-white/40">
-              Open source. MIT. BYOK. No $249 eval wall.
-            </p>
             <h1 className="font-sans font-semibold tracking-[-0.03em] leading-[0.98] text-[clamp(2.75rem,6vw,5.5rem)] max-w-[18ch]">
               Add AI to your app on the cheapest model that actually works.
             </h1>
