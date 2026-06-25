@@ -5,7 +5,7 @@ import matter from "gray-matter";
 
 const CONTENT_DIR = path.join(process.cwd(), "content", "benchmarks");
 
-// A single task in the head-to-head race (e.g. "Fix the auth bug").
+// A single task in a head-to-head comparison (e.g. "Fix the auth bug").
 export type BenchmarkTask = {
   id: string;
   name: string;
@@ -37,7 +37,7 @@ export type BenchmarkReport = {
   verdict: string;
   challengePack: string;
   // True when the scoreboard holds representative/illustrative data rather than
-  // numbers from a real race. Drives the disclaimer banner on the report page.
+  // numbers from a real comparison eval. Drives the disclaimer banner on the report page.
   sample: boolean;
   runShareUrl: string;
   tasks: BenchmarkTask[];

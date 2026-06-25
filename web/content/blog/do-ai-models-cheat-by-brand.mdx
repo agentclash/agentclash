@@ -83,10 +83,10 @@ I'm 22 and just graduated, and this is one small pilot — so take these as hypo
 
 ## The honest caveats
 
-n=192 is small, and I know it. The runs came in two batches: a first pass of one run per pack per model (6 × 8 = **48**), then a hardened second pass of three runs per pack per model (6 × 8 × 3 = **144**) — **192** in total. I used neutral race labels to avoid tipping the models off, and validated everything locally first. The qualitative patterns held across repetitions, and the quantitative signal was consistent across the first batch (n=48), the second (n=144), and combined (n=192). But more data would absolutely help, and I could be wrong about any of this.
+n=192 is small, and I know it. The runs came in two batches: a first pass of one run per pack per model (6 × 8 = **48**), then a hardened second pass of three runs per pack per model (6 × 8 × 3 = **144**) — **192** in total. I used neutral agent labels to avoid tipping the models off, and validated everything locally first. The qualitative patterns held across repetitions, and the quantitative signal was consistent across the first batch (n=48), the second (n=144), and combined (n=192). But more data would absolutely help, and I could be wrong about any of this.
 
 This is also exactly the kind of thing AgentClash was built to surface — because it scores the *whole trajectory*, not just the final answer. (If you're curious how that scoring works, I wrote about it in [How AgentClash Scores Agent Trajectories](/blog/how-agentclash-scores-agent-trajectories).)
 
 The full code, the six challenge packs, and the raw data are open: see [agentclash/agentclash#858](https://github.com/agentclash/agentclash/pull/858). The original thread is [here](https://x.com/attharrva15/status/2059001263208202502).
 
-Want to see how your favorite model behaves when no one's checking the receipts? [Run your own race →](/try)
+Want to see how your favorite model behaves when no one's checking the receipts? [Run your own eval →](/try)

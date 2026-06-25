@@ -105,11 +105,11 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
     startDate: "2026-04-25",
     endDate: "2026-05-04",
     label: "Apr 25 – May 04, 2026",
-    headline: "Race context, CLI distribution, and a redesigned public site",
+    headline: "Peer standings, CLI distribution, and a redesigned public site",
     summary:
-      "Live race standings injected into running agents, the CLI shipped through npm with production defaults, and the marketing site got a full redesign — /why, pricing, docs foundation, and arena-style run views.",
+      "Live peer standings injected into running agents, the CLI shipped through npm with production defaults, and the marketing site got a full redesign — /why, pricing, docs foundation, and broadcast-style run views.",
     themes: [
-      "Race context",
+      "Peer standings",
       "CLI & npm",
       "Public site redesign",
       "Docs foundation",
@@ -117,11 +117,11 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
     entries: [
       {
         category: "added",
-        text: "Live race context — standings injection at step boundaries, newswire formatting, and token split between agents vs race context.",
+        text: "Live peer standings — injection at step boundaries, newswire formatting, and token split between agents vs comparison context.",
       },
       {
         category: "added",
-        text: "CLI `--race-context` flags and UI toggle for race standings during live runs.",
+        text: "CLI `--peer-standings` flags and UI toggle for live comparison standings during runs.",
       },
       {
         category: "added",
@@ -388,7 +388,7 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
       },
       {
         category: "added",
-        text: "/benchmarks hub summarizes the measured GPT generations race with replay-backed scoreboard and methodology appendix.",
+        text: "/benchmarks hub summarizes the measured GPT generations comparison with replay-backed scoreboard and methodology appendix.",
         href: "/benchmarks/gpt-generations-expression-evaluator",
       },
     ],

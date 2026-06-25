@@ -47,7 +47,7 @@ export function ActivationChecklist({
       </div>
       <p className="mb-5 text-sm text-muted-foreground">
         A few one-time steps connect your models and agents. Knock these out and
-        you can race.
+        you can compare.
       </p>
 
       <ol className="space-y-1">

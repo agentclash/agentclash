@@ -87,7 +87,7 @@ describe("rss feed", () => {
 describe("benchmark rss feed", () => {
   const base = {
     date: "2026-06-06",
-    description: "Head-to-head race.",
+    description: "Head-to-head comparison.",
     author: "AgentClash",
     featuredModel: "Claude Opus 4.8",
     verdict: "Opus won.",

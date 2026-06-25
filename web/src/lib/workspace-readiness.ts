@@ -106,7 +106,7 @@ export function useWorkspaceReadiness(workspaceId: string): WorkspaceReadiness {
     {
       key: "first_run",
       label: "Run your first eval",
-      description: "Race your deployments against a challenge pack.",
+      description: "Compare your deployments against a challenge pack.",
       href: `/workspaces/${workspaceId}/runs`,
       cta: "Create run",
       done: hasRun,

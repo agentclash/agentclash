@@ -183,7 +183,7 @@ export function QuickCreateAgentDialog({
           <DialogTitle>New agent</DialogTitle>
           <DialogDescription>
             Name it, tell it what to do, and pick a model. We build, version, and
-            deploy it for you — ready to race.
+            deploy it for you — ready to evaluate.
           </DialogDescription>
         </DialogHeader>
 

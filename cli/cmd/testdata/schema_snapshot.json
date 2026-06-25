@@ -2266,14 +2266,14 @@
               "type": "string"
             },
             {
-              "name": "race-context",
+              "name": "peer-standings",
               "usage": "Enable live peer-standings injection during the run (requires 2+ agents)",
               "type": "bool",
               "default": "false"
             },
             {
-              "name": "race-context-cadence",
-              "usage": "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.",
+              "name": "peer-standings-cadence",
+              "usage": "Override peer-standings cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.",
               "type": "int",
               "default": "0"
             },
@@ -4009,7 +4009,7 @@
             },
             {
               "name": "deployment-lineups",
-              "usage": "Challenge pack deployment lineups to cross with --seeds for a race series",
+              "usage": "Challenge pack deployment lineups to cross with --seeds for an eval series",
               "type": "stringSlice",
               "default": "[]"
             },
@@ -4053,14 +4053,14 @@
               "type": "string"
             },
             {
-              "name": "race-context",
+              "name": "peer-standings",
               "usage": "Enable live peer-standings injection during the run (requires 2+ agents)",
               "type": "bool",
               "default": "false"
             },
             {
-              "name": "race-context-cadence",
-              "usage": "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.",
+              "name": "peer-standings-cadence",
+              "usage": "Override peer-standings cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.",
               "type": "int",
               "default": "0"
             },
@@ -4322,13 +4322,13 @@
         {
           "name": "series",
           "path": "agentclash run series",
-          "short": "Manage durable race series",
+          "short": "Manage durable eval series",
           "runnable": false,
           "subcommands": [
             {
               "name": "create",
               "path": "agentclash run series create",
-              "short": "Create a race series from deployment lineups and seeds",
+              "short": "Create an eval series from deployment lineups and seeds",
               "runnable": true,
               "flags": [
                 {
@@ -4369,7 +4369,7 @@
             {
               "name": "report",
               "path": "agentclash run series report",
-              "short": "Show aggregate score, correctness, and cost for a race series",
+              "short": "Show aggregate score, correctness, and cost for an eval series",
               "runnable": true,
               "args": [
                 {

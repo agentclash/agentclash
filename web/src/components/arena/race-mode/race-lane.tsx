@@ -6,6 +6,7 @@ import { Play, CheckCircle2, Upload } from "lucide-react";
 
 import type { RunAgent, RunAgentStatus } from "@/lib/api/types";
 import type { ArenaLaneState } from "@/hooks/use-agent-arena";
+import { PEER_STANDINGS_INJECTED_HEADLINE } from "@/lib/arena/constants";
 
 const ACTIVE_STATUSES: RunAgentStatus[] = [
   "queued",
@@ -183,10 +184,10 @@ export function RaceLane({
           <div className="rm-stream">{lane.streamingOutput}</div>
         )}
 
-        {lane.ticker.filter(e => e.kind === "system" && e.headline === "Race standings injected").slice(-1).map(e => (
+        {lane.ticker.filter(e => e.kind === "system" && e.headline === PEER_STANDINGS_INJECTED_HEADLINE).slice(-1).map(e => (
           <div key={e.id} className="rm-stream !bg-emerald-500/[0.03] !border-emerald-500/20 !text-emerald-500/70 !max-h-none">
             <div className="text-2xs uppercase tracking-[0.16em] text-emerald-500/50 mb-1.5 font-sans">
-              Latest Race Standings Injected
+              Latest peer standings injected
             </div>
             {e.detail}
           </div>

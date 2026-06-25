@@ -410,21 +410,21 @@ export function RunDetailClient({
               Commentary {showCommentary ? "On" : "Off"}
             </Button>
             <Button
-              variant={arenaMode === "race" ? "default" : "outline"}
+              variant={arenaMode === "broadcast" ? "default" : "outline"}
               size="sm"
-              className={arenaMode === "race" ? "" : "bg-transparent border-white/10 text-white/70 hover:bg-white/5 hover:text-white"}
+              className={arenaMode === "broadcast" ? "" : "bg-transparent border-white/10 text-white/70 hover:bg-white/5 hover:text-white"}
               onClick={() =>
-                setArenaMode(arenaMode === "race" ? "dev" : "race")
+                setArenaMode(arenaMode === "broadcast" ? "dev" : "broadcast")
               }
-              aria-pressed={arenaMode === "race"}
+              aria-pressed={arenaMode === "broadcast"}
               title={
-                arenaMode === "race"
+                arenaMode === "broadcast"
                   ? "Switch to development (classic) view"
-                  : "Switch to race mode — the broadcast view"
+                  : "Switch to broadcast mode — the live comparison view"
               }
             >
               <Flag className="size-3.5 mr-1.5" />
-              {arenaMode === "race" ? "Race Mode" : "Dev Mode"}
+              {arenaMode === "broadcast" ? "Broadcast Mode" : "Dev Mode"}
             </Button>
             <Link
               href={`/workspaces/${workspaceId}/runs/${run.id}/failures`}
@@ -539,7 +539,7 @@ export function RunDetailClient({
       {/* === Agent Lanes === */}
       <div>
         <h2 className="text-2xs leading-none text-white/75 uppercase tracking-[0.22em] font-medium mb-4">Agent Lanes</h2>
-        {arenaMode === "race" ? (
+        {arenaMode === "broadcast" ? (
           <RaceModeArena
             agents={sortedAgents}
             lanes={arenaLanes}

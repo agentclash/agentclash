@@ -48,7 +48,7 @@ const LINKS = {
   agentEvaluationFramework: {
     href: "/agent-evaluation-framework",
     label: "Agent evaluation framework",
-    description: "Framework for real-task races, replay, and scorecards.",
+    description: "Framework for real-task evals, replay, and scorecards.",
   },
   agentTrajectoryEvaluation: {
     href: "/agent-trajectory-evaluation",

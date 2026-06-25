@@ -97,11 +97,9 @@ func runCreateRequestFromFlags(cmd *cobra.Command, base runCreateRequest) (runCr
 	includeProposed, _ := cmd.Flags().GetBool("include-proposed-regressions")
 	request.IncludeProposedRegressions = includeProposed
 
-	raceContext, _ := cmd.Flags().GetBool("race-context")
+	raceContext, raceContextCadence := peerStandingsFromFlags(cmd)
 	request.RaceContext = raceContext
-
-	cadence, _ := cmd.Flags().GetInt("race-context-cadence")
-	request.RaceContextCadence = cadence
+	request.RaceContextCadence = raceContextCadence
 
 	maxIterations, _ := cmd.Flags().GetInt("max-iter")
 	request.MaxIterations = maxIterations
@@ -153,8 +151,8 @@ func buildRunCreateBody(workspaceID string, request runCreateRequest) (map[strin
 	if request.OfficialPackMode == "suite_only" && len(request.RegressionSuiteIDs) == 0 && len(request.RegressionCaseIDs) == 0 {
 		return nil, fmt.Errorf("--scope suite_only requires at least one regression suite or regression case")
 	}
-	if request.RaceContextCadence < 0 || request.RaceContextCadence > 10 {
-		return nil, fmt.Errorf("--race-context-cadence must be 0 (backend default) or between 1 and 10, got %d", request.RaceContextCadence)
+	if err := validatePeerStandingsCadence(request.RaceContextCadence); err != nil {
+		return nil, err
 	}
 	if request.MaxIterations < 0 || request.MaxIterations > maxRunCreateMaxIter {
 		return nil, fmt.Errorf("--max-iter must be 0 (pack/runtime default) or between 1 and %d, got %d", maxRunCreateMaxIter, request.MaxIterations)
@@ -206,8 +204,8 @@ func buildSeededEvalSessionBody(workspaceID string, request runCreateRequest) (m
 	if request.Seeds < 1 || request.Seeds > maxRunCreateSeeds {
 		return nil, fmt.Errorf("--seeds must be between 1 and %d, got %d", maxRunCreateSeeds, request.Seeds)
 	}
-	if request.RaceContextCadence < 0 || request.RaceContextCadence > 10 {
-		return nil, fmt.Errorf("--race-context-cadence must be 0 (backend default) or between 1 and 10, got %d", request.RaceContextCadence)
+	if err := validatePeerStandingsCadence(request.RaceContextCadence); err != nil {
+		return nil, err
 	}
 	if request.MaxIterations < 0 || request.MaxIterations > maxRunCreateMaxIter {
 		return nil, fmt.Errorf("--max-iter must be 0 (pack/runtime default) or between 1 and %d, got %d", maxRunCreateMaxIter, request.MaxIterations)
@@ -216,7 +214,7 @@ func buildSeededEvalSessionBody(workspaceID string, request runCreateRequest) (m
 		return nil, fmt.Errorf("--scope suite_only / --suite / --case are not supported with --seeds")
 	}
 	if request.RaceContext || request.RaceContextCadence > 0 {
-		return nil, fmt.Errorf("--race-context flags are not supported with --seeds")
+		return nil, peerStandingsFlagsUnsupportedError("--seeds")
 	}
 	sessionRequest := request
 	sessionRequest.MaxIterations = 0
@@ -256,8 +254,8 @@ func buildSeriesEvalSessionBody(workspaceID string, request runCreateRequest) (m
 	if repetitions > evalSessionMaxRepetitions {
 		return nil, fmt.Errorf("--deployment-lineups × --seeds must create at most %d child runs, got %d", evalSessionMaxRepetitions, repetitions)
 	}
-	if request.RaceContextCadence < 0 || request.RaceContextCadence > 10 {
-		return nil, fmt.Errorf("--race-context-cadence must be 0 (backend default) or between 1 and 10, got %d", request.RaceContextCadence)
+	if err := validatePeerStandingsCadence(request.RaceContextCadence); err != nil {
+		return nil, err
 	}
 	if request.MaxIterations < 0 || request.MaxIterations > maxRunCreateMaxIter {
 		return nil, fmt.Errorf("--max-iter must be 0 (pack/runtime default) or between 1 and %d, got %d", maxRunCreateMaxIter, request.MaxIterations)
@@ -266,7 +264,7 @@ func buildSeriesEvalSessionBody(workspaceID string, request runCreateRequest) (m
 		return nil, fmt.Errorf("--scope suite_only / --suite / --case are not supported with --deployment-lineups")
 	}
 	if request.RaceContext || request.RaceContextCadence > 0 {
-		return nil, fmt.Errorf("--race-context flags are not supported with --deployment-lineups")
+		return nil, peerStandingsFlagsUnsupportedError("--deployment-lineups")
 	}
 	if request.Mode != "" {
 		return nil, fmt.Errorf("--mode is not supported with --deployment-lineups")

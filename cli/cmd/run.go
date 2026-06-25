@@ -36,7 +36,7 @@ func init() {
 	runCreateCmd.Flags().String("challenge-pack-version", "", "Challenge pack version ID (optional in a TTY; prompted when omitted)")
 	runCreateCmd.Flags().StringSlice("deployments", nil, "Agent deployment IDs (optional in a TTY; prompted when omitted)")
 	runCreateCmd.Flags().String("deployment-lineup", "", "Challenge pack deployment lineup to use when --deployments is omitted (default: default)")
-	runCreateCmd.Flags().StringSlice("deployment-lineups", nil, "Challenge pack deployment lineups to cross with --seeds for a race series")
+	runCreateCmd.Flags().StringSlice("deployment-lineups", nil, "Challenge pack deployment lineups to cross with --seeds for an eval series")
 	runCreateCmd.Flags().String("name", "", "Run name (optional)")
 	runCreateCmd.Flags().String("input-set", "", "Challenge input set ID (optional)")
 	runCreateCmd.Flags().Bool("follow", false, "Follow run events after creation")
@@ -44,8 +44,7 @@ func init() {
 	runCreateCmd.Flags().StringSlice("suite", nil, "Regression suite IDs (repeatable; required with --scope suite_only unless --case is used)")
 	runCreateCmd.Flags().StringSlice("case", nil, "Regression case IDs (repeatable)")
 	runCreateCmd.Flags().Bool("include-proposed-regressions", false, "Include proposed regression cases for validation runs")
-	runCreateCmd.Flags().Bool("race-context", false, "Enable live peer-standings injection during the run (requires 2+ agents)")
-	runCreateCmd.Flags().Int("race-context-cadence", 0, "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.")
+	registerPeerStandingsFlags(runCreateCmd)
 	runCreateCmd.Flags().Int("max-iter", 0, "Override max iterations for this run (1-1000). 0 uses the pack/runtime default.")
 	runCreateCmd.Flags().Int("seeds", 0, "Create a seeded eval session with N child runs, one per seed (1-100). 0 creates a single run.")
 	runCreateCmd.Flags().String("mode", "", "Voice eval mode: text-sim (future: audio-sim, live-call, replay-import)")
@@ -84,12 +83,12 @@ var runCmd = &cobra.Command{
 
 var runSeriesCmd = &cobra.Command{
 	Use:   "series",
-	Short: "Manage durable race series",
+	Short: "Manage durable eval series",
 }
 
 var runSeriesCreateCmd = &cobra.Command{
 	Use:   "create",
-	Short: "Create a race series from deployment lineups and seeds",
+	Short: "Create an eval series from deployment lineups and seeds",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
 		wsID := RequireWorkspace(cmd)
@@ -120,7 +119,7 @@ var runSeriesCreateCmd = &cobra.Command{
 
 var runSeriesReportCmd = &cobra.Command{
 	Use:   "report <eval-session-id>",
-	Short: "Show aggregate score, correctness, and cost for a race series",
+	Short: "Show aggregate score, correctness, and cost for an eval series",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		rc := GetRunContext(cmd)
@@ -230,12 +229,12 @@ func renderRunSeriesReport(rc *RunContext, result map[string]any) {
 	report := mapObject(aggregate, "series_report")
 	rowsRaw := mapSlice(report, "rows")
 	if len(rowsRaw) == 0 {
-		rc.Output.PrintWarning("Aggregate result does not include a race series report.")
+		rc.Output.PrintWarning("Aggregate result does not include an eval series report.")
 		renderEvalSessionEvidenceWarnings(rc, result)
 		return
 	}
 
-	fmt.Fprintf(rc.Output.Writer(), "\n%s\n", output.Bold("Race Series Report"))
+	fmt.Fprintf(rc.Output.Writer(), "\n%s\n", output.Bold("Eval Series Report"))
 	reportUsesComposite := mapString(report, "rank_metric") == "composite_agent_score"
 	cols := []output.Column{
 		{Header: "Rank"},

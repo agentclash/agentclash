@@ -173,7 +173,7 @@ export default function Landing2() {
                   desc: "A challenge pack with tasks, validators, and expected outputs. Versioned and immutable — the same version produces the same scores forever.",
                 },
                 {
-                  title: "Race your agents",
+                  title: "Compare your agents",
                   desc: "Run 2–8 models in parallel. Each gets its own sandbox with real tool execution. Every decision captured as a canonical event.",
                 },
                 {
@@ -207,7 +207,7 @@ export default function Landing2() {
         {/* Product preview — centered comparison table */}
         <section style={{ maxWidth: "640px", margin: "0 auto", padding: "64px 32px" }}>
           <p style={{ fontSize: "11px", fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase", color: "var(--text-4)", marginBottom: "24px", textAlign: "center" }}>
-            What you see after a race
+            What you see after an eval
           </p>
 
           <div style={{
