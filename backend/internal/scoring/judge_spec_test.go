@@ -347,6 +347,14 @@ func TestLoadEvaluationSpec_JudgeRejections(t *testing.T) {
 			needle:    "must be at most 10",
 		},
 		{
+			name: "unknown judge model provider",
+			judgesBlock: `[
+				{"mode": "rubric", "key": "persuasiveness", "rubric": "Rate the output 1-5 on clarity and correctness", "model": "llama-3.1-70b"}
+			]`,
+			scorecard: defaultScorecard,
+			needle:    "must be inferable to a known judge provider",
+		},
+		{
 			name: "multi-model without consensus",
 			judgesBlock: `[
 				{"mode": "rubric", "key": "persuasiveness", "rubric": "Rate the output 1-5 on clarity and correctness", "models": ["claude-sonnet-4-6", "gpt-4o"]}

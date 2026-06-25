@@ -125,8 +125,12 @@ func validateLLMJudges(
 						Field:   fmt.Sprintf("%s.models[%d]", path, j),
 						Message: "must be a non-empty model identifier",
 					})
+					continue
 				}
+				errs = append(errs, validateJudgeModelCredential(fmt.Sprintf("%s.models[%d]", path, j), m)...)
 			}
+		case hasSingleModel:
+			errs = append(errs, validateJudgeModelCredential(path+".model", judge.Model)...)
 		}
 
 		// Rule 5: samples range [0, JudgeMaxSamplesCeiling]. 0 is
@@ -249,6 +253,22 @@ func validateLLMJudges(
 	}
 
 	return judgeKeys, errs
+}
+
+func validateJudgeModelCredential(field, model string) ValidationErrors {
+	if _, ok := ValidateJudgeModelCredential(model); ok {
+		return nil
+	}
+	if InferJudgeProviderKey(model) == "" {
+		return ValidationErrors{{
+			Field: field,
+			Message: "must be inferable to a known judge provider (claude-*, gpt-*, gemini-*, grok-*, o1*, o3*, o4*)",
+		}}
+	}
+	return ValidationErrors{{
+		Field:   field,
+		Message: "maps to a provider with no default credential reference",
+	}}
 }
 
 // validateConsensusForMode enforces that the aggregation strategy matches the

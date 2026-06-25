@@ -498,11 +498,14 @@ function VerdictChip({
 
 function ConfidenceChip({ value }: { value: string }) {
   const v = value.toLowerCase();
-  const tone = v.includes("high")
-    ? "text-emerald-300/85 border-emerald-500/20"
-    : v.includes("low")
-      ? "text-red-300/85 border-red-500/20"
-      : "text-amber-300/85 border-amber-500/20";
+  const tone =
+    v === "single-model" || v === "ungrounded"
+      ? "text-white/45 border-white/10"
+      : v.includes("high")
+        ? "text-emerald-300/85 border-emerald-500/20"
+        : v.includes("low")
+          ? "text-red-300/85 border-red-500/20"
+          : "text-amber-300/85 border-amber-500/20";
   return (
     <span
       className={cn(

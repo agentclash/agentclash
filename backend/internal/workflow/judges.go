@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"math"
+	"math/rand"
 	"sort"
 	"strings"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/scoring"
+	"github.com/google/uuid"
 )
 
 const defaultJudgeTimeout = 60 * time.Second
@@ -217,7 +220,7 @@ func evaluateSingleLLMJudge(
 	if variance, ok := sampleVariance(successfulScores); ok {
 		result.Variance = &variance
 	}
-	if confidence := deriveJudgeConfidence(judge, modelScores, successfulScores, len(warnings) > 0); confidence != "" {
+	if confidence := deriveJudgeConfidence(judge, modelScores, len(warnings) > 0); confidence != "" {
 		result.Confidence = &confidence
 	}
 	result.Payload = mustMarshalJSON(map[string]any{
@@ -313,7 +316,7 @@ func evaluateSingleNWiseJudge(
 
 		perModelScores := make([]float64, 0, judge.Samples)
 		for sampleIdx := 0; sampleIdx < judge.Samples; sampleIdx++ {
-			orderedCandidates := rotateNWiseCandidates(candidates, sampleIdx, judge.PositionDebiasing)
+			orderedCandidates := orderNWiseCandidates(candidates, executionContext.Run.ID, sampleIdx, judge.PositionDebiasing)
 			request := provider.Request{
 				ProviderKey:         providerKey,
 				ProviderAccountID:   providerAccountID,
@@ -385,7 +388,7 @@ func evaluateSingleNWiseJudge(
 	if variance, ok := sampleVariance(successfulScores); ok {
 		result.Variance = &variance
 	}
-	if confidence := deriveJudgeConfidence(judge, modelScores, successfulScores, len(warnings) > 0); confidence != "" {
+	if confidence := deriveJudgeConfidence(judge, modelScores, len(warnings) > 0); confidence != "" {
 		result.Confidence = &confidence
 	}
 	result.Payload = mustMarshalJSON(map[string]any{
@@ -452,16 +455,32 @@ func buildNWiseCandidates(
 	return candidates, "", nil
 }
 
-func rotateNWiseCandidates(candidates []nwiseCandidate, sampleIdx int, enabled bool) []nwiseCandidate {
-	rotated := append([]nwiseCandidate(nil), candidates...)
-	if !enabled || len(rotated) == 0 {
-		return rotated
+func orderNWiseCandidates(candidates []nwiseCandidate, runID uuid.UUID, sampleIdx int, positionDebiasing bool) []nwiseCandidate {
+	ordered := append([]nwiseCandidate(nil), candidates...)
+	if len(ordered) <= 1 {
+		return ordered
 	}
-	shift := sampleIdx % len(rotated)
-	if shift == 0 {
-		return rotated
+	if positionDebiasing {
+		shift := sampleIdx % len(ordered)
+		if shift > 0 {
+			return append(ordered[shift:], ordered[:shift]...)
+		}
+		return ordered
 	}
-	return append(rotated[shift:], rotated[:shift]...)
+
+	seed := nwiseCandidateShuffleSeed(runID, sampleIdx)
+	rng := rand.New(rand.NewSource(seed))
+	rng.Shuffle(len(ordered), func(i, j int) {
+		ordered[i], ordered[j] = ordered[j], ordered[i]
+	})
+	return ordered
+}
+
+func nwiseCandidateShuffleSeed(runID uuid.UUID, sampleIdx int) int64 {
+	hasher := fnv.New64a()
+	_, _ = hasher.Write(runID[:])
+	_, _ = hasher.Write([]byte{byte(sampleIdx), byte(sampleIdx >> 8), byte(sampleIdx >> 16), byte(sampleIdx >> 24)})
+	return int64(hasher.Sum64())
 }
 
 func buildNWiseJudgeMessages(judge scoring.LLMJudgeDeclaration, candidates []nwiseCandidate) []provider.Message {
@@ -593,7 +612,7 @@ func judgeModels(judge scoring.LLMJudgeDeclaration) []string {
 }
 
 func resolveJudgeTarget(model string, executionContext repository.RunAgentExecutionContext) (string, string, string, error) {
-	providerKey := inferJudgeProviderKey(model)
+	providerKey := scoring.InferJudgeProviderKey(model)
 	if providerKey == "" && executionContext.Deployment.ProviderAccount != nil {
 		providerKey = executionContext.Deployment.ProviderAccount.ProviderKey
 	}
@@ -605,7 +624,7 @@ func resolveJudgeTarget(model string, executionContext repository.RunAgentExecut
 		return providerKey, account.ID.String(), account.CredentialReference, nil
 	}
 
-	credentialReference, ok := defaultJudgeCredentialReference(providerKey)
+	credentialReference, ok := scoring.JudgeDefaultCredentialReference(providerKey)
 	if !ok {
 		return providerKey, "", "", fmt.Errorf("no default credential reference configured for judge provider %q", providerKey)
 	}
@@ -613,38 +632,11 @@ func resolveJudgeTarget(model string, executionContext repository.RunAgentExecut
 }
 
 func inferJudgeProviderKey(model string) string {
-	trimmed := strings.ToLower(strings.TrimSpace(model))
-	switch {
-	case strings.HasPrefix(trimmed, "claude-"):
-		return "anthropic"
-	case strings.HasPrefix(trimmed, "gpt-"),
-		strings.HasPrefix(trimmed, "o1"),
-		strings.HasPrefix(trimmed, "o3"),
-		strings.HasPrefix(trimmed, "o4"),
-		strings.HasPrefix(trimmed, "text-embedding"):
-		return "openai"
-	case strings.HasPrefix(trimmed, "gemini-"):
-		return "gemini"
-	case strings.HasPrefix(trimmed, "grok-"):
-		return "xai"
-	default:
-		return ""
-	}
+	return scoring.InferJudgeProviderKey(model)
 }
 
 func defaultJudgeCredentialReference(providerKey string) (string, bool) {
-	switch strings.TrimSpace(providerKey) {
-	case "anthropic":
-		return "env://ANTHROPIC_API_KEY", true
-	case "openai":
-		return "env://OPENAI_API_KEY", true
-	case "gemini":
-		return "env://GEMINI_API_KEY", true
-	case "xai":
-		return "env://XAI_API_KEY", true
-	default:
-		return "", false
-	}
+	return scoring.JudgeDefaultCredentialReference(providerKey)
 }
 
 func judgeTimeout(judge scoring.LLMJudgeDeclaration) time.Duration {
@@ -844,7 +836,7 @@ func aggregateModelScores(judge scoring.LLMJudgeDeclaration, modelScores map[str
 	}
 }
 
-func deriveJudgeConfidence(judge scoring.LLMJudgeDeclaration, modelScores map[string]float64, allScores []float64, hadWarnings bool) string {
+func deriveJudgeConfidence(judge scoring.LLMJudgeDeclaration, modelScores map[string]float64, hadWarnings bool) string {
 	values := make([]float64, 0, len(modelScores))
 	for _, value := range modelScores {
 		values = append(values, value)
@@ -852,10 +844,11 @@ func deriveJudgeConfidence(judge scoring.LLMJudgeDeclaration, modelScores map[st
 	if len(values) == 0 {
 		return ""
 	}
-	spread := max(values) - min(values)
-	if len(values) == 1 && len(allScores) > 1 {
-		spread = max(allScores) - min(allScores)
+	if len(values) == 1 {
+		return "single-model"
 	}
+
+	spread := max(values) - min(values)
 	threshold := 0.25
 	if judge.Consensus != nil && judge.Consensus.MinAgreementThreshold > 0 {
 		threshold = judge.Consensus.MinAgreementThreshold
