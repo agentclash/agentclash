@@ -7,31 +7,27 @@ contribution.
 
 By participating you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md).
 
-## Developer Certificate of Origin (DCO)
+## Contributor License Agreement
 
-AgentClash uses the [Developer Certificate of Origin](DCO.md) (DCO) instead of a
-CLA. Contributions stay under the project's MIT license — inbound equals
-outbound, and AgentClash takes no additional or relicensing rights over your
-work.
+AgentClash uses a [Contributor License Agreement](CONTRIBUTOR_LICENSE_AGREEMENT.md)
+(CLA). By contributing, you agree to it.
 
-Every commit must carry a `Signed-off-by` trailer matching the commit author.
-Add it with the `-s` flag:
+**What it grants — please read.** The CLA gives the project rights **broader than
+the MIT license**: a sublicensable, relicensable copyright license, a patent
+license, and the right to distribute your contributions under the current MIT
+license **or under different terms in the future, including commercial or
+non-open-source terms.** AgentClash is MIT today; the CLA preserves the option to
+change that later. Don't contribute unless you're comfortable with this effect.
 
-```bash
-git commit -s -m "feat: ..."        # sign off as you commit
-git commit -s --amend --no-edit     # add a sign-off to your latest commit
-```
+Until AgentClash forms a legal entity, the grant is held jointly by the founders
+`Atharva-Kanherkar`, `AyushRajSinghParihar`, and `Shubham2582`, and transfers to
+that entity once it exists.
 
-The trailer looks like `Signed-off-by: Your Name <you@example.com>` and certifies
-that you wrote the change, or otherwise have the right to submit it under the MIT
-license, per clauses (a)–(d) of the [DCO](DCO.md). This applies to everyone,
-founders included — there are no exceptions or allowlists. (An automated DCO
-check may be added later; until then, please self-check your sign-offs.)
-
-If your employer or another party may own your work, get the needed authorization
-before contributing. Do not include private keys, proprietary code, customer
-data, or third-party material you do not have the right to contribute under the
-MIT license.
+Confirm your agreement by checking the CLA box in the pull-request template. If
+your employer or another party may own your work, get authorization first. Do not
+include private keys, proprietary code, customer data, or third-party material you
+do not have the right to contribute. The CLA's exact wording is pending review by
+counsel; the terms above apply in the meantime.
 
 ## Repository layout
 
@@ -80,7 +76,7 @@ If you add/modify a backend API route, update `docs/api-server/openapi.yaml`.
    failure path where it applies).
 4. Make sure builds, `vet`/`lint`, type checks, and tests pass for every part you
    touched.
-5. Sign off your commits with `git commit -s` (see the [DCO](DCO.md)).
+5. Confirm you agree to the [CLA](CONTRIBUTOR_LICENSE_AGREEMENT.md) by checking its box in the PR template.
 6. Open the PR against `main` and fill in the template.
 
 ## Reporting bugs & requesting features
@@ -90,5 +86,7 @@ a public issue — see [SECURITY.md](SECURITY.md).
 
 ## License
 
-By contributing, you agree that your contributions are licensed under the
-project's [MIT License](LICENSE).
+The project is currently distributed under the [MIT License](LICENSE). Your
+contributions are accepted under the
+[Contributor License Agreement](CONTRIBUTOR_LICENSE_AGREEMENT.md), which permits
+distribution under MIT today and possibly other terms in the future.
