@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { parseBenchmarkReport } from "./benchmarks";
 
 const VALID = `---
-title: "Race report"
+title: "Comparison report"
 date: "2026-06-06"
-description: "A head-to-head race."
+description: "A head-to-head comparison."
 author: "AgentClash"
 featuredModel: "Claude Opus 4.8"
 verdict: "Opus 4.8 won 4 of 5."
@@ -48,7 +48,7 @@ describe("parseBenchmarkReport", () => {
   it("parses valid frontmatter and body", () => {
     const report = parseBenchmarkReport("race-report", VALID);
     expect(report).not.toBeNull();
-    expect(report?.title).toBe("Race report");
+    expect(report?.title).toBe("Comparison report");
     expect(report?.featuredModel).toBe("Claude Opus 4.8");
     expect(report?.sample).toBe(true);
     expect(report?.runShareUrl).toBe("https://www.agentclash.dev/share/abc");
@@ -91,9 +91,9 @@ describe("parseBenchmarkReport", () => {
 
   it("returns null when the results array is empty", () => {
     const noResults = `---
-title: "Race report"
+title: "Comparison report"
 date: "2026-06-06"
-description: "A head-to-head race."
+description: "A head-to-head comparison."
 author: "AgentClash"
 featuredModel: "Claude Opus 4.8"
 verdict: "Nobody raced."

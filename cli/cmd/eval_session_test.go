@@ -232,12 +232,12 @@ func TestBuildEvalSessionBody_RejectsUnsupportedFlags(t *testing.T) {
 		{
 			name:    "race_context",
 			mutate:  func(r *runCreateRequest) { r.RaceContext = true },
-			wantErr: "race-context",
+			wantErr: "peer-standings",
 		},
 		{
 			name:    "race_context_cadence",
 			mutate:  func(r *runCreateRequest) { r.RaceContextCadence = 5 },
-			wantErr: "race-context",
+			wantErr: "peer-standings",
 		},
 		{
 			name:    "max_iterations",
@@ -526,7 +526,7 @@ func TestRunSeriesReportRendersAggregateScoreCostCorrectness(t *testing.T) {
 	}
 	for _, snippet := range []string{
 		"Eval Session ID",
-		"Race Series Report",
+		"Eval Series Report",
 		"COMPOSITE",
 		"smoke",
 		"default",
@@ -657,7 +657,7 @@ func TestBuildSeededEvalSessionBodyRejectsInvalidFlagRanges(t *testing.T) {
 				RaceContextCadence:     -1,
 				Seeds:                  2,
 			},
-			want: "--race-context-cadence",
+			want: "--peer-standings-cadence",
 		},
 	}
 	for _, tc := range cases {

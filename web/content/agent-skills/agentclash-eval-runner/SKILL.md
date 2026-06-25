@@ -77,8 +77,8 @@ Exact `eval start` flags:
 - `--scope`: `full` or `suite_only`; default is `full`.
 - `--suite`: regression suite ID or exact name. Repeatable.
 - `--case`: regression case IDs. Repeatable.
-- `--race-context`: enable live peer-standings injection during the run.
-- `--race-context-cadence`: 0 for backend default, otherwise 1 through 10.
+- `--peer-standings`: enable live peer-standings injection during the run.
+- `--peer-standings-cadence`: 0 for backend default, otherwise 1 through 10.
 - `--repetitions`: repeat the eval 1 through 100 times; values 2 or greater use `/v1/eval-sessions`.
 
 Selector behavior:
@@ -115,7 +115,7 @@ Exact `run create` notes:
 - In non-interactive mode, `--challenge-pack-version` and `--deployments` are required.
 - In a TTY, missing challenge pack version, input set, or deployments can open pickers.
 - `run create` does not resolve pack slugs, input set keys, or deployment names. Use `eval start` for that.
-- `--scope`, `--suite`, `--case`, `--race-context`, and `--race-context-cadence` behave like `eval start`, but suite and case flags are ID-first.
+- `--scope`, `--suite`, `--case`, `--peer-standings`, and `--peer-standings-cadence` behave like `eval start`, but suite and case flags are ID-first.
 
 The run create request body sent by the CLI contains:
 
@@ -202,7 +202,7 @@ Exact repetition behavior:
 - `--repetitions 1` creates a normal run through `/v1/runs`.
 - `--repetitions >= 2` posts to `/v1/eval-sessions`.
 - `--follow` is not supported with `--repetitions >= 2`; tail individual child runs with `agentclash run events <RUN_ID>`.
-- `--scope suite_only`, `--suite`, `--case`, and race-context flags are not supported with `--repetitions >= 2`.
+- `--scope suite_only`, `--suite`, `--case`, and peer-standings flags are not supported with `--repetitions >= 2`.
 - The eval-session response is `{ "eval_session": {...}, "run_ids": [...] }`.
 
 In human output, the CLI prints eval session ID, status, repetitions, and child run IDs. In structured output, it prints the raw response envelope.
@@ -228,7 +228,7 @@ Behavior:
 Use `eval session follow` after creating a multi-repetition eval when you need aggregated results before reading scorecards or comparisons.
 
 ## Run Series Commands
-`run series` crosses deployment lineups with seeds for race-style series evals:
+`run series` crosses deployment lineups with seeds for multi-run comparison series:
 
 ```bash
 agentclash run series create \
@@ -307,8 +307,8 @@ Read command notes:
 - `invalid_agent_deployment_ids`: deployment IDs must be active deployments with snapshots in the selected workspace, with no duplicates.
 - `invalid_challenge_pack_version_id`: the version must be runnable and visible to the selected workspace.
 - `invalid_challenge_input_set_id`: the input set must belong to the selected challenge pack version.
-- `invalid_race_context`: race context requires at least two agents.
-- `--race-context-cadence must be 0 (backend default) or between 1 and 10`: fix the cadence value.
+- `invalid_race_context`: peer standings require at least two agents.
+- `--peer-standings-cadence must be 0 (backend default) or between 1 and 10`: fix the cadence value.
 - `--follow is not supported with --repetitions >= 2`: create the eval session, then use `eval session follow` or stream individual child runs with `run events`.
 - `--scope suite_only requires at least one --suite or --case`: add a suite or case selection.
 - Scorecard pending or errored: report the state, then collect `run events`, `run agents`, and `run failures`.

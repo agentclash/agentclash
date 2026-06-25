@@ -189,6 +189,7 @@ describe("agent skill docs", () => {
     expect(doc?.content).toContain("agentclash eval scorecard <RUN_ID> --agent");
     expect(doc?.content).toContain("`eval scorecard --json` returns an envelope");
     expect(doc?.content).toContain("missing_challenge_input_set_id");
+    expect(doc?.content).toContain("--peer-standings");
     expect(doc?.content).toContain("invalid_race_context");
   });
 

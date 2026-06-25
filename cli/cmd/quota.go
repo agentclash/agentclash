@@ -40,8 +40,8 @@ var quotaCmd = &cobra.Command{
 		if status := mapString(quota, "status"); status != "" {
 			rc.Output.PrintDetail("Status", output.StatusColor(status))
 		}
-		rc.Output.PrintDetail("Monthly races", quotaCounterLine(mapObject(quota, "monthly_races")))
-		rc.Output.PrintDetail("Concurrent races", quotaCounterLine(mapObject(quota, "concurrent_races")))
+		rc.Output.PrintDetail("Monthly evals", quotaCounterLine(mapObject(quota, "monthly_races")))
+		rc.Output.PrintDetail("Concurrent evals", quotaCounterLine(mapObject(quota, "concurrent_races")))
 		if resetAt := mapString(mapObject(quota, "monthly_races"), "reset_at"); resetAt != "" {
 			rc.Output.PrintDetail("Quota resets", resetAt)
 		}

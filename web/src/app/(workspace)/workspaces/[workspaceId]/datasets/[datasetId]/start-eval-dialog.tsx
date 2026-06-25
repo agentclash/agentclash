@@ -201,7 +201,7 @@ export function StartEvalDialog({
         <DialogHeader>
           <DialogTitle>Run dataset eval</DialogTitle>
           <DialogDescription>
-            Queue a race over a pinned dataset version and challenge pack.
+            Queue an eval over a pinned dataset version and challenge pack.
           </DialogDescription>
         </DialogHeader>
         {activeRun && submitting ? (

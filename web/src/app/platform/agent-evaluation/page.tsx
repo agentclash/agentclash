@@ -57,7 +57,7 @@ const workflow = [
   },
   {
     icon: Play,
-    title: "Race the agents",
+    title: "Run the eval",
     text: "Run every candidate against the same task at the same time with the same constraints.",
   },
   {
@@ -299,7 +299,7 @@ export default function AgentEvaluationPage() {
                 AI agent evaluation platform for real tasks
               </h1>
               <p className="mt-8 max-w-[58ch] text-base leading-8 text-white/62 sm:text-lg">
-                Race agents against the same workload with the same tools and
+                Compare agents against the same workload with the same tools and
                 same constraints. AgentClash captures replay evidence,
                 scorecards, artifacts, and release-gate verdicts so evals turn
                 into decisions instead of dashboard archaeology.

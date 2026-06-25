@@ -38,7 +38,7 @@ export function RaceTrack({
   );
 
   return (
-    <section className="rm-track" aria-label="Race track">
+    <section className="rm-track" aria-label="Comparison track">
       <div className="rm-track__head">
         <h2 className="rm-track__title">Lap progress</h2>
         <div className="rm-track__meta">

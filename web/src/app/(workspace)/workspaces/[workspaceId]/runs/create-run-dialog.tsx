@@ -845,11 +845,11 @@ export function CreateRunDialog({
             )}
           </div>
 
-          {/* Race Context */}
+          {/* Peer standings */}
           <div className="flex items-start gap-3 rounded-lg border border-border p-3">
             <input
               type="checkbox"
-              id="race-context"
+              id="peer-standings"
               checked={raceContext}
               onChange={(e) => setRaceContext(e.target.checked)}
               disabled={selectedDeploymentIds.length < 2}
@@ -857,10 +857,10 @@ export function CreateRunDialog({
             />
             <div className="space-y-1">
               <label
-                htmlFor="race-context"
+                htmlFor="peer-standings"
                 className={`text-sm font-medium ${selectedDeploymentIds.length < 2 ? "opacity-50" : "cursor-pointer"}`}
               >
-                Race context (agents see live peer standings)
+                Peer standings (agents see live comparison updates)
               </label>
               <p className={`text-xs text-muted-foreground ${selectedDeploymentIds.length < 2 ? "opacity-50" : ""}`}>
                 Injects live peer progress updates into the agent&apos;s prompt mid-run. Requires at least 2 agents.

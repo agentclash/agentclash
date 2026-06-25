@@ -6,7 +6,7 @@ AgentClash. It is not the AgentClash source repo.
 
 ## What AgentClash is
 
-AgentClash is a race engine: it pits AI models/agents against each other on real
+AgentClash is an agent evaluation platform: it compares AI models and agents on real
 tasks with live scoring. You define a **challenge pack** (the eval workload), run
 **agents** (model + runtime + tools) against it, and read a **scorecard**. There
 are **no built-in packs** — every workspace authors its own.

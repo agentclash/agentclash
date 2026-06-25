@@ -41,7 +41,7 @@ func buildEvalSessionBody(workspaceID string, request runCreateRequest, repetiti
 		return nil, fmt.Errorf("--scope suite_only / --suite / --case are not supported with --repetitions >= 2")
 	}
 	if request.RaceContext || request.RaceContextCadence > 0 {
-		return nil, fmt.Errorf("--race-context flags are not supported with --repetitions >= 2")
+		return nil, peerStandingsFlagsUnsupportedError("--repetitions >= 2")
 	}
 	if request.Mode != "" {
 		return nil, fmt.Errorf("--mode is not supported with --repetitions >= 2 or --seeds")

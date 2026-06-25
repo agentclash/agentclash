@@ -20,8 +20,7 @@ func init() {
 	evalStartCmd.Flags().String("scope", "full", "Run scope: full or suite_only")
 	evalStartCmd.Flags().StringSlice("suite", nil, "Regression suite ID or exact name (repeatable)")
 	evalStartCmd.Flags().StringSlice("case", nil, "Regression case IDs (repeatable)")
-	evalStartCmd.Flags().Bool("race-context", false, "Enable live peer-standings injection during the run (requires 2+ agents)")
-	evalStartCmd.Flags().Int("race-context-cadence", 0, "Override race-context cadence; minimum steps between standings injections, [1, 10]. 0 uses the backend default.")
+	registerPeerStandingsFlags(evalStartCmd)
 	evalStartCmd.Flags().Int("repetitions", 1, "Repeat the eval N times in a multi-run eval session, [1, 100]. >=2 routes through /v1/eval-sessions and unlocks pass@K + pass^K aggregation.")
 
 	evalScorecardCmd.Flags().String("agent", "", "Run agent ID or label (optional)")

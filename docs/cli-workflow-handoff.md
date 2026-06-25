@@ -39,7 +39,7 @@ they need: `run`, `challenge-pack`, `deployment`, `build`, `infra`, `artifact`,
   `run create`, `run agents`, `run ranking`, `run scorecard`, `run failures`,
   `run compare`, `run replay`, `run transcript`, and `run promote-failure`.
 - Repeated eval creation: `eval start --repetitions N` creates eval sessions.
-- Durable race series: `run series create` and `run series report` expose
+- Durable eval series: `run series create` and `run series report` expose
   lineup/seed aggregate reporting.
 - Prompt evals and quota: `prompt-eval` manages prompt-eval configs and
   playground experiments; `quota` shows workspace usage.
@@ -78,7 +78,7 @@ they need: `run`, `challenge-pack`, `deployment`, `build`, `infra`, `artifact`,
 3. `eval session follow` polls session status until aggregation completes.
 4. `eval session get` shows child runs, run counts, aggregate metrics, pass@K,
    pass^K, winner/leader information, and evidence warnings when available.
-5. For race-series sessions, `agentclash run series report <eval-session-id>`
+5. For eval-series sessions, `agentclash run series report <eval-session-id>`
    remains the focused aggregate report for lineup, seed, correctness, cost, and
    token totals.
 
@@ -121,7 +121,7 @@ they need: `run`, `challenge-pack`, `deployment`, `build`, `infra`, `artifact`,
   - Uses existing eval-session read APIs.
   - Makes repeated eval sessions inspectable from the CLI after
     `eval start --repetitions N`.
-  - Complements the existing `run series report` view for durable race series.
+  - Complements the existing `run series report` view for durable eval series.
 - `agentclash compare latest`
   - Compares the local baseline bookmark against the latest non-baseline run.
   - Supports `--agent`, `--baseline-agent`, `--candidate-agent`, `--gate`, and

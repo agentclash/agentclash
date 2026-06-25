@@ -12,6 +12,7 @@
  */
 
 import type { RunEvent } from "@/hooks/use-run-events";
+import { PEER_STANDINGS_INJECTED_HEADLINE } from "@/lib/arena/constants";
 import type {
   ModelCallCompletedPayload,
   ModelCallStartedPayload,
@@ -230,7 +231,7 @@ export function summarizeEvent(event: RunEvent): TickerEntry | null {
       const p = payload<{ tokens_added?: number; triggered_by?: string; standings_snapshot?: string }>(event);
       return {
         ...base,
-        headline: "Race standings injected",
+        headline: PEER_STANDINGS_INJECTED_HEADLINE,
         detail: p.standings_snapshot || (p.triggered_by ? `Trigger: ${p.triggered_by.replace(/_/g, " ")}` : undefined),
       };
     }

@@ -1,6 +1,6 @@
 # Model Benchmark Workflow (Monthly Public Report Runbook)
 
-Repeatable process for turning an AgentClash race into a **monthly public benchmark**:
+Repeatable process for turning an AgentClash comparison eval into a **monthly public benchmark**:
 a measured report on `/benchmarks/<slug>`, a shareable blog summary, and a changelog
 entry. Run it when major models ship and on a **monthly reliability cadence**.
 
@@ -10,7 +10,7 @@ Reference implementation: [Coding agent benchmark — June 2026](https://www.age
 
 | Role | Responsibility |
 | ---- | ---------------- |
-| **Monthly owner** | Picks the pack, runs the race, exports ranking JSON, drafts MDX + blog |
+| **Monthly owner** | Picks the pack, runs the eval, exports ranking JSON, drafts MDX + blog |
 | **Review approver** | Verifies numbers against replay, checks caveats and sample size honesty |
 | **Distribution** | Posts share URL to X / HN / LinkedIn on publish day; pings benchmarks RSS |
 
@@ -19,7 +19,7 @@ Reference implementation: [Coding agent benchmark — June 2026](https://www.age
 **Checklist (copy each cycle):**
 
 - [ ] Pin challenge pack version **and** git commit SHA in the report appendix
-- [ ] Race every candidate on the same pack (tools, sandbox, budgets)
+- [ ] Evaluate every candidate on the same pack (tools, sandbox, budgets)
 - [ ] Export ranking JSON and attach replay / validator evidence per lane
 - [ ] Set `sample: false` only when numbers are measured
 - [ ] Write narrative + methodology appendix; add monthly blog summary
@@ -44,7 +44,7 @@ Other packs suitable for future months (rotate or expand field size):
 Record in every report:
 
 - `pack.slug`, `evaluation_spec.name`, execution mode, tool policy, runtime limits
-- Git commit SHA of the repo when the race ran
+- Git commit SHA of the repo when the eval ran
 
 ## One-time setup
 
@@ -59,7 +59,7 @@ Record in every report:
 
 ## Per-report steps
 
-### 1. Run the race
+### 1. Run the eval
 
 ```bash
 cd cli
@@ -91,7 +91,7 @@ The scaffold accepts either the full response (`{ state, ranking: {...} }`) or t
 ```bash
 node scripts/benchmarks/scaffold.mjs \
   --ranking ranking.json \
-  --title "We raced <Model> on <task headline>" \
+  --title "We compared <Model> on <task headline>" \
   --model "<Model>" \
   --slug <kebab-slug> \
   --share-url "https://www.agentclash.dev/share/<token>"   # optional
@@ -101,13 +101,13 @@ Writes `web/content/benchmarks/<slug>.mdx` with `sample: false` and a prose skel
 
 ### 4. Public share link (recommended)
 
-Create a public share of the run scorecard and set `runShareUrl` in frontmatter. The report page renders "View the live race scorecard".
+Create a public share of the run scorecard and set `runShareUrl` in frontmatter. The report page renders "View the live comparison scorecard".
 
 ### 5. Edit narrative + methodology appendix
 
 In the MDX body, include:
 
-- How the race worked (lineup, constraints, n per model)
+- How the comparison worked (lineup, constraints, n per model)
 - Task description and why it was chosen
 - What we saw (story behind the scoreboard)
 - Caveats (sample size, provider scope, judge variance)

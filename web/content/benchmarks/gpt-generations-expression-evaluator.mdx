@@ -1,7 +1,7 @@
 ---
 title: "We raced four GPT generations on a real coding task — GPT-5.4 won on efficiency"
 date: "2026-06-07"
-description: "A head-to-head AgentClash race of GPT-4.1, GPT-5, GPT-5.4, and GPT-5.5 on a real agentic coding task — building an integer expression evaluator with truncating division — scored on correctness, reliability, and token efficiency."
+description: "A head-to-head AgentClash comparison of GPT-4.1, GPT-5, GPT-5.4, and GPT-5.5 on a real agentic coding task — building an integer expression evaluator with truncating division — scored on correctness, reliability, and token efficiency."
 author: "AgentClash"
 featuredModel: "GPT-5.4"
 verdict: "GPT-5.4 solved the task in 2 turns and ~8K tokens; GPT-5 and GPT-5.5 also passed, while GPT-4.1 thrashed for its full budget and failed to submit."
@@ -43,7 +43,7 @@ results:
     cost: 0.2
 ---
 
-## How the race worked
+## How the comparison worked
 
 All four models got the **same task, the same sandbox, and the same tools** — a
 shell and a filesystem, a ten-iteration budget, no network. The task is a real
@@ -101,7 +101,7 @@ the leanest run (fewer tokens → higher); we don't assert dollar prices here.
 
 ## Caveats
 
-This is a deliberately small first race: **one task, a single run per model**
+This is a deliberately small first comparison: **one task, a single run per model**
 (n=1), and an OpenAI-only field. The LLM-judge dimensions carry per-run variance,
 and one task can't rank models in general. Read it as a worked example of the
 format and a real, reproducible result — not a verdict on the models. Wider
@@ -112,7 +112,7 @@ backend grows to support them.
 
 A single benchmark number hides the trade-off that actually decides which model
 you ship. On this task every passing model was "correct" — but one solved it in
-two turns and another couldn't solve it at all. Race them on *your* tasks, with
+two turns and another couldn't solve it at all. Compare them on *your* tasks, with
 your tools, and read the whole scoreboard before you pick.
 
 For the shareable monthly summary and full methodology appendix, see [Coding agent benchmark — June 2026](/blog/coding-agent-benchmark-june-2026).
@@ -141,4 +141,4 @@ go run . run ranking <run-id> --json
 
 Monthly checklist and ownership: [`docs/marketing/model-benchmark-workflow.md`](https://github.com/agentclash/agentclash/blob/main/docs/marketing/model-benchmark-workflow.md).
 
-[Run your own race →](/try)
+[Run your own eval →](/try)

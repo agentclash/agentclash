@@ -21,7 +21,7 @@ Each job becomes a [challenge pack](/docs/guides/write-a-challenge-pack) case: i
 
 ## Step 2: Freeze the benchmark
 
-Version the pack before you race candidates. If the task drifts every week, you are comparing runs that never met on the same track.
+Version the pack before you compare candidates. If the task drifts every week, you are comparing runs that never met on the same track.
 
 Freeze:
 
@@ -36,7 +36,7 @@ This is the same discipline public benchmarks use — except the workload is you
 
 Run baseline and candidate agents concurrently on the same pack. Staggered comparisons leak cache warmth, provider weather, and prompt drift into the verdict.
 
-AgentClash races agents on the same task at the same time in isolated sandboxes. See [why we race agents head-to-head](/blog/why-agentclash-races-agents-head-to-head).
+AgentClash compares agents on the same task at the same time in isolated sandboxes. See [why we compare agents head-to-head](/blog/why-agentclash-races-agents-head-to-head).
 
 ## Step 4: Capture replay, not just scores
 
