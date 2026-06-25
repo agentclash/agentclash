@@ -34,7 +34,7 @@ var evaltestInitCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		force, _ := cmd.Flags().GetBool("force")
 		files := map[string]string{
-			".agentclash/evaltest.yaml": evaltestConfigTemplate,
+			".agentclash/evaltest.yaml":    evaltestConfigTemplate,
 			"tests/evaltest/test_smoke.py": evaltestSmokeTestTemplate,
 		}
 		for path, content := range files {
@@ -109,12 +109,15 @@ func validateEvaltestFormat(format string) error {
 }
 
 func runEvaltestPython(outDir string) (map[string]any, int, error) {
-	runnerPath, err := evaltestSDKSourcePath()
+	runnerPath, hasSourcePath, err := evaltestSDKSourcePath()
 	if err != nil {
-		return nil, evaltestExitInternalError, err
+		return nil, evaltestExitConfigError, err
 	}
 	cmd := exec.Command("python3", "-m", "agentclash_eval.runner", "--out", outDir, "--mode", "smoke")
-	cmd.Env = append(os.Environ(), "PYTHONPATH="+runnerPath)
+	cmd.Env = os.Environ()
+	if hasSourcePath {
+		cmd.Env = append(cmd.Env, "PYTHONPATH="+runnerPath)
+	}
 	output, err := cmd.CombinedOutput()
 	if len(output) > 0 {
 		fmt.Fprint(os.Stderr, string(output))
@@ -124,6 +127,9 @@ func runEvaltestPython(outDir string) (map[string]any, int, error) {
 	data, readErr := os.ReadFile(reportPath)
 	if readErr != nil {
 		if err != nil {
+			if strings.Contains(string(output), "No module named agentclash_eval") {
+				return nil, evaltestExitConfigError, fmt.Errorf("agentclash-evals Python package not found; install agentclash-evals or set AGENTCLASH_EVAL_SDK_SRC to the SDK src directory")
+			}
 			return nil, evaltestExitProviderError, fmt.Errorf("eval runner failed: %w", err)
 		}
 		return nil, evaltestExitInternalError, fmt.Errorf("read report: %w", readErr)
@@ -142,38 +148,14 @@ func runEvaltestPython(outDir string) (map[string]any, int, error) {
 	return report, exitCode, nil
 }
 
-func evaltestSDKSourcePath() (string, error) {
+func evaltestSDKSourcePath() (string, bool, error) {
 	if src := strings.TrimSpace(os.Getenv("AGENTCLASH_EVAL_SDK_SRC")); src != "" {
 		if _, err := os.Stat(filepath.Join(src, "agentclash_eval", "runner.py")); err == nil {
-			return src, nil
+			return src, true, nil
 		}
-		return "", fmt.Errorf("AGENTCLASH_EVAL_SDK_SRC is set but runner.py was not found under %s", src)
+		return "", false, fmt.Errorf("AGENTCLASH_EVAL_SDK_SRC is set but runner.py was not found under %s", src)
 	}
-	repoRoot, err := findEvalSDKRoot()
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(repoRoot, "sdk", "python", "agentclash_eval", "src"), nil
-}
-
-func findEvalSDKRoot() (string, error) {
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	dir := cwd
-	for {
-		candidate := filepath.Join(dir, "sdk", "python", "agentclash_eval", "src", "agentclash_eval", "runner.py")
-		if _, err := os.Stat(candidate); err == nil {
-			return dir, nil
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			break
-		}
-		dir = parent
-	}
-	return cwd, nil
+	return "", false, nil
 }
 
 func writeEvaltestJSON(outDir string, report map[string]any) error {
@@ -261,6 +243,8 @@ var evaltestExit = os.Exit
 
 const evaltestConfigTemplate = `# AgentClash local evaltest config
 schema_version: 1
+# Install the local SDK first:
+#   python -m pip install agentclash-evals
 tests_dir: tests/evaltest
 `
 

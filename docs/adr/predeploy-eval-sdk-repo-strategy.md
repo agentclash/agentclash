@@ -19,52 +19,34 @@ DeepEval-style adoption proves demand for Python-first, pytest-style eval librar
 
 ## Decision
 
-**Start inside this monorepo.** Do not create a separate SDK repository for v0.
+**Split the SDK into a dedicated repository now.**
 
-Package boundaries, release cadence, and API surface will stabilize here first. A future split into a dedicated SDK repo remains possible once:
+SDK package code, SDK examples, SDK package CI, and SDK-facing docs live in:
 
-1. the public API has been stable for at least one minor release cycle;
-2. contract-sync automation between repos is proven in CI; and
-3. release ownership (PyPI, npm, GoReleaser) is clearly separated.
+https://github.com/agentclash/agentclash-evals
 
-### Rationale for monorepo-first
+This repo remains the AgentClash platform, hosted eval, challenge-pack, dataset, CLI, and release-gate repo. It keeps the language-neutral `schemas/evaltest` contract and the `agentclash evaltest` bridge commands.
 
-| Factor | Monorepo now | Separate repo now |
-|--------|--------------|-------------------|
-| Challenge-pack promotion | Same schemas, validators, and examples | Cross-repo contract drift risk |
-| CLI glue (`agentclash evaltest`) | Already in `cli/` | Duplicate release pipeline |
-| Docs and examples | Co-located with challenge packs | Fragmented onboarding |
-| Early API churn | Cheap to refactor across packages | Expensive sync overhead |
-| CI contract validation | Single workflow | Requires dedicated sync job from day one |
+### Rationale for split-now
 
-**Blocker check:** No blocker was found that requires a separate repo for v0. Tight coupling to challenge-pack YAML, regression suite shapes, and CLI exit-code registry favors monorepo-first.
+The SDK will grow across Python, TypeScript, package publishing, adapters, examples, and test-runner integrations. Keeping that code in the platform repo makes both surfaces messier. A dedicated SDK repo gives developers a smaller first impression while this repo keeps the platform contract and promotion path.
 
-### Future split trigger
+**Blocker check:** The only real coupling is the eval report schema and challenge-pack promotion. Keep `schemas/evaltest` in this repo as the platform-side contract, and mirror/copy it into the SDK repo until schema publishing automation exists.
 
-Split when **all** of the following hold:
+### Repo split contract
 
-- Python and TypeScript SDKs emit a versioned report schema that has not changed for ≥ 4 weeks.
-- PyPI/npm publish cadence diverges from AgentClash backend/CLI releases.
-- External contributors need SDK-only access without backend credentials.
-
-Proposed future repo name: `agentclash-evals` (GitHub org: `agentclash/agentclash-evals`).
+- SDK repo owns Python/TypeScript packages and package CI.
+- Main repo owns `agentclash evaltest`, exit-code registry, schema fixtures, and promotion into challenge packs.
+- `agentclash evaltest run` invokes an installed `agentclash-evals` Python package by default.
+- Local SDK development can set `AGENTCLASH_EVAL_SDK_SRC=/path/to/agentclash-evals/python/agentclash_eval/src`.
+- Hosted upload remains explicit future work.
 
 ---
 
 ## Package layout (v0)
 
 ```
-agentclash/                          # this monorepo
-├── sdk/
-│   ├── python/
-│   │   └── agentclash_eval/         # PyPI package: agentclash-evals
-│   │       ├── pyproject.toml
-│   │       ├── src/agentclash_eval/
-│   │       └── tests/
-│   └── typescript/
-│       └── evals/                   # npm package: @agentclash/evals (Phase 2)
-│           ├── package.json
-│           └── src/
+agentclash/                          # platform repo
 ├── schemas/
 │   └── evaltest/                    # language-neutral JSON schemas
 │       ├── eval-report.schema.json
@@ -73,19 +55,24 @@ agentclash/                          # this monorepo
 ├── cli/
 │   └── cmd/
 │       └── evaltest.go              # agentclash evaltest ...
-├── examples/
-│   └── evaltest/                    # local eval examples
-│       ├── python/
-│       └── typescript/              # added in Phase 2
 └── docs/
-    └── evaltest/                    # user-facing eval SDK docs
+    └── evaltest/                    # CLI bridge docs
+```
+
+```
+agentclash-evals/                    # SDK repo
+├── python/agentclash_eval/           # PyPI package: agentclash-evals
+├── typescript/evals/                 # npm package: @agentclash/evals
+├── schemas/evaltest/                 # mirrored schema contracts
+├── examples/evaltest/
+└── docs/evaltest/
 ```
 
 ### Python package
 
 - **PyPI name:** `agentclash-evals`
 - **Import path:** `agentclash_eval`
-- **Location:** `sdk/python/agentclash_eval/`
+- **Location:** `agentclash/agentclash-evals`: `python/agentclash_eval/`
 - **Optional extras:**
   - `agentclash-evals[pytest]` — opt-in pytest plugin
   - `agentclash-evals[openai]` — OpenAI/Anthropic result adapters
@@ -97,7 +84,7 @@ Core package has **zero** hard dependencies on OpenAI, LangChain, pytest, or hos
 ### TypeScript package (Phase 2)
 
 - **npm name:** `@agentclash/evals`
-- **Location:** `sdk/typescript/evals/`
+- **Location:** `agentclash/agentclash-evals`: `typescript/evals/`
 - **Subpath exports:**
   - `@agentclash/evals` — core
   - `@agentclash/evals/vitest` — Vitest helpers
@@ -108,7 +95,7 @@ Core package has **zero** hard dependencies on OpenAI, LangChain, pytest, or hos
 ### Shared schemas
 
 - **Location:** `schemas/evaltest/`
-- **Authority:** JSON Schema (draft 2020-12), same convention as `docs/schemas/prompt-eval-result.schema.json`.
+- **Authority:** JSON Schema (draft 2020-12), mirrored into `agentclash/agentclash-evals` until schema package publishing exists.
 - **Versioning:** `schema_version` integer field in every report; breaking changes bump version and retain golden fixtures.
 
 ### CLI glue
@@ -132,13 +119,13 @@ Go remains the control plane for CI orchestration; Python/TS SDKs are the author
 
 | Capability | Owner |
 |------------|-------|
-| `assert_agent` / `evaluate` Python API | `sdk/python/agentclash_eval` |
-| 10 deterministic + judge-backed metrics | `sdk/python/agentclash_eval/metrics` |
-| Plain-function and framework adapters | `sdk/python/agentclash_eval/adapters` |
+| `assert_agent` / `evaluate` Python API | `agentclash/agentclash-evals` |
+| 10 deterministic + judge-backed metrics | `agentclash/agentclash-evals` |
+| Plain-function and framework adapters | `agentclash/agentclash-evals` |
 | Versioned JSON report + JUnit output | `schemas/evaltest`, `cli/cmd/evaltest` |
-| Opt-in pytest plugin | `sdk/python/agentclash_eval/pytest` |
+| Opt-in pytest plugin | `agentclash/agentclash-evals` |
 | `agentclash evaltest init/run/promote-failures` | `cli/cmd/evaltest` |
-| Local examples and CI docs | `examples/evaltest`, `docs/evaltest` |
+| SDK examples and package docs | `agentclash/agentclash-evals` |
 | Failure → challenge-pack YAML promotion | `cli/cmd/evaltest` + existing pack validation |
 
 ### Out of scope — remains in hosted AgentClash
@@ -190,13 +177,13 @@ These apply to every SDK and CLI surface in v0:
 - Python and TypeScript SDKs **must** emit reports validating against these schemas.
 - Golden fixtures in `schemas/evaltest/fixtures/` are the regression oracle.
 
-### CI validation (monorepo)
+### CI validation (split repos)
 
 1. **Schema lint:** JSON Schema files pass `@redocly/cli` or equivalent validation.
 2. **Golden fixture validation:** each fixture in `schemas/evaltest/fixtures/` validates against `eval-report.schema.json`.
-3. **Python round-trip:** SDK unit tests produce reports that match golden fixtures (pass, metric failure, provider error, malformed config, multi-turn).
-4. **CLI round-trip:** `agentclash evaltest run` output validates against the same schema.
-5. **TypeScript parity (Phase 2):** TS SDK reports validate against identical schema.
+3. **SDK repo round-trip:** Python and TypeScript SDK unit tests produce reports that match golden fixtures (pass, metric failure, provider error, malformed config, multi-turn).
+4. **CLI bridge round-trip:** `agentclash evaltest run` output validates against the same schema using an installed SDK package or explicit `AGENTCLASH_EVAL_SDK_SRC`.
+5. **Mirror parity:** the SDK repo schema copy stays byte-for-byte compatible until schema package publishing exists.
 
 ### Cross-language parity
 
@@ -204,9 +191,7 @@ These apply to every SDK and CLI surface in v0:
 - `schema_version` is an integer; consumers reject unknown versions with exit code 2.
 - Metric results, tool calls, and retrieval context shapes are defined once in JSON Schema and mirrored as typed structs in Python (dataclasses/Pydantic) and TypeScript (Zod or equivalent).
 
-### Future split sync (when triggered)
-
-If/when the SDK moves to `agentclash/agentclash-evals`:
+### Split repo sync
 
 1. Schemas are copied or submodule-linked; this repo imports released schema versions as a dev dependency.
 2. A weekly CI job in **both** repos validates fixture parity.
@@ -280,15 +265,15 @@ All adapters map framework traces into a common shape (full schema in #1106):
 
 ### Positive
 
-- Single PR can land schema + SDK + CLI + docs + examples atomically.
+- SDK repo has a focused first impression for developers.
 - Challenge-pack promotion reuses existing validation in `cli/cmd/challenge_pack.go`.
-- Agents authoring evals can reference one repo for skills and examples.
+- Agents authoring evals can work in the SDK repo without backend/platform noise.
 
 ### Negative / trade-offs
 
-- Monorepo CI grows slightly (Python + Go test matrix for evaltest).
-- PyPI/npm publish cadence is coupled to AgentClash releases until split.
-- SDK contributors need clone of full monorepo (mitigated by sparse checkout later).
+- Schema changes require sync discipline across two repos.
+- SDK package releases and platform CLI releases can drift if contracts are not pinned.
+- Cross-repo changes may require paired PRs until schema publishing is automated.
 
 ### Neutral
 
