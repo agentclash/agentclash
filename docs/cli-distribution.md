@@ -137,6 +137,44 @@ Avoid it either way:
 
 - **At release time** — when reviewing the Release Please PR, delete the duplicate lines from the new `## [x.y.z]` block, keeping the non-merge (branch) commit of each pair.
 
+### Reviewing a Release Please PR
+
+Release Please computes the version automatically from conventional-commit types since the last tag (`fix:` → patch, `feat:` → minor, `feat!:`/`BREAKING CHANGE:` → major). Nobody picks the number by hand, so the release PR is the checkpoint where a human confirms it. Before merging one:
+
+- **Verify every `⚠ BREAKING CHANGES` entry is real.** Each line must map to a breaking change that is actually present in `main`. A `feat!:`/`refactor!:` commit that was later **reverted** still sits in history, and Release Please keeps counting it — so a net-zero change can drive a phantom major bump (see below).
+- **Confirm the version matches intent.** If the bump looks wrong (for example, an unintended major), do not merge — fix the version first.
+- **Dedupe merge-commit duplicates** in the new `## [x.y.z]` block (see Changelog hygiene above).
+
+### Forcing a version (phantom bumps from reverted breaking changes)
+
+When a breaking commit (`feat!:` / `refactor!:` / `BREAKING CHANGE:`) is merged and later reverted, the revert removes the change from the tree but not the breaking commit from history. Release Please still sees a breaking change in range and proposes a major bump that nothing in `main` justifies. Two things keep this in check:
+
+- **Revert with a conventional `revert:` commit** that references the original (`git revert` produces the right shape), so Release Please can try to cancel it. This is best-effort — the review checklist above is the backstop.
+- **Override the computed version** for one release with a per-package `release-as` in `.github/release-please-config.json`:
+
+  ```json
+  "cli": {
+    "release-type": "simple",
+    "package-name": "agentclash",
+    "changelog-path": "CHANGELOG.md",
+    "release-as": "1.1.0"
+  }
+  ```
+
+  Merging that config change re-cuts the open release PR at the forced version. `release-as` is **sticky** — remove it again right after the forced release tags, or every future release stays pinned to it. The `⚠ BREAKING CHANGES`/`Code Refactoring` lines for the reverted commit will still render in the changelog, so also scrub those from the release PR by hand.
+
+  Verify the override before merging by pointing a dry run at the branch that carries it:
+
+  ```bash
+  npx --yes release-please@latest release-pr \
+    --repo-url=https://github.com/agentclash/agentclash --target-branch=<your-branch> \
+    --config-file=.github/release-please-config.json \
+    --manifest-file=.github/.release-please-manifest.json \
+    --token="$(gh auth token)" --dry-run
+  ```
+
+  Release Please reads config, manifest, and changelog from the **target branch over the GitHub API**, not from your local files — so the change must be pushed and `--target-branch` must point at the branch that has it.
+
 ## Maintainer Setup
 
 Before advertising package-manager installs as live, make sure these external pieces exist:
