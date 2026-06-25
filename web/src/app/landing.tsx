@@ -15,7 +15,7 @@ import {
   XAI,
 } from "@lobehub/icons";
 import { AuthCtaLink, authCta } from "@/components/marketing/auth-cta-link";
-import { CTAStrip } from "@/components/marketing/cta-strip";
+import { CTAStrip, CLIInstallStrip } from "@/components/marketing/cta-strip";
 import { LuminousGrid } from "@/components/marketing/luminous-grid";
 import { PricingBlock } from "@/components/marketing/pricing-block";
 import { ExpandedCardsBlock } from "@/components/marketing/expanded-cards-block";
@@ -1401,7 +1401,6 @@ export default function HomePage({
   // (server-provided returning-visitor hint cookie). The nav link uses the
   // shared <AuthCtaLink>; the hero/closing CTAs reuse just its href.
   const authHref = authCta(returning).href;
-  const authLabel = authCta(returning).label;
 
   useEffect(() => {
     (async () => {
@@ -1513,16 +1512,14 @@ export default function HomePage({
       >
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>
-            <h1 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(3rem,7vw,7.5rem)] max-w-[16ch]">
-              Find where your agent broke.
-              <br />
-              <span className="text-white/40">Before users do.</span>
+            <h1 className="font-sans font-semibold tracking-[-0.03em] leading-[0.98] text-[clamp(2.75rem,6vw,5.5rem)] max-w-[18ch]">
+              Ship AI-native software with confidence.
             </h1>
 
-            <p className="mt-10 max-w-[46ch] text-lg sm:text-xl leading-[1.5] text-white/55">
-              Run agents on your real tasks. Replay every failure step-by-step,
-              promote regressions automatically, and gate releases on scorecards
-              leadership can audit.
+            <p className="mt-8 max-w-[46ch] text-lg sm:text-xl leading-[1.5] text-white/55">
+              One open-source platform from first eval to production.
+              Test agents on real tasks, replay failures step by step,
+              and gate releases on scorecards you can stand behind.
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">
@@ -1547,19 +1544,28 @@ export default function HomePage({
                 </>
               ) : (
                 <CTAStrip
-                  variant="demo-first"
-                  demoLabel="Book eval workshop"
-                  secondaryHref={authHref}
-                  secondaryLabel={authLabel}
+                  variant="cli-first"
+                  primaryLabel="Start free"
+                  primaryHref={authHref}
+                  secondaryHref="/docs/getting-started/quickstart"
+                  secondaryLabel="Read the quickstart"
                 />
               )}
             </div>
+
+            {!user && (
+              <div className="mt-8">
+                <CLIInstallStrip
+                  learnMoreHref="/docs/getting-started/quickstart"
+                  learnMoreLabel="quickstart"
+                />
+              </div>
+            )}
           </div>
 
           <div className="flex items-center justify-center">
             <div className="flex aspect-square w-full max-w-[260px] md:max-w-[520px] items-center justify-center mx-auto">
               <ClashMark
-                animated
                 className="w-full max-w-[200px] md:max-w-[360px] aspect-square"
               />
             </div>
@@ -1576,9 +1582,9 @@ export default function HomePage({
             </h2>
             <p className="mt-10 max-w-[48ch] text-lg leading-[1.6] text-white/55">
               Every think, every tool call, every observation is captured.
-              Step back to the moment a model went sideways — the prompt
-              it saw, the output it produced, the state it worked from. No
-              more guessing why one model won and another flunked.
+              Step back to the moment behavior diverged: the prompt it saw,
+              the tool it called, the state it worked from. Debug production
+              issues with a full replay, not a log dump.
             </p>
           </div>
           <div>
@@ -1599,7 +1605,7 @@ export default function HomePage({
             <p className="max-w-[42ch] text-base leading-[1.6] text-white/50">
               Normalised tool-calls, normalised errors, same scoring rules.
               First-class adapters for the providers below, plus OpenRouter
-              for the long tail — three hundred more models, no extra code.
+              for the long tail: three hundred more models, no extra code.
             </p>
           </div>
 
@@ -1915,11 +1921,11 @@ export default function HomePage({
         <div className="mx-auto max-w-[1440px]">
           <div className="flex flex-col gap-6 md:flex-row md:items-end md:justify-between md:gap-16">
             <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.03em] leading-[1.02] text-[clamp(2.25rem,5vw,4rem)] max-w-[20ch]">
-              What teams debug here.
+              Built for real-world agent workloads.
             </h2>
             <p className="max-w-[44ch] text-sm leading-[1.6] text-white/50">
-              Five task families AgentClash is built for. Hover any
-              card to read the brief.
+              Coding, research, ops, support, and more. Hover any card to
+              read the brief.
             </p>
           </div>
 
@@ -1948,10 +1954,10 @@ export default function HomePage({
               <span className="text-white/40">We debug agents.</span>
             </h2>
             <p className="max-w-[46ch] text-base leading-[1.6] text-white/50">
-              The tools below are excellent at prompt engineering — scoring
-              text a model produces from a single call. AgentClash is built
-              for the next problem over: evaluating agents that take actions,
-              use tools, and run for minutes at a time in a real sandbox.
+              The tools below are excellent at prompt engineering: scoring text
+              a model produces from a single call. AgentClash is built for the
+              next problem over, evaluating agents that take actions, use tools,
+              and run for minutes at a time in a real sandbox.
             </p>
           </div>
 
@@ -2082,7 +2088,7 @@ export default function HomePage({
               href="/compare"
               className="text-white/65 underline-offset-4 transition-colors hover:text-white hover:underline"
             >
-              See the full comparison — AgentClash vs Braintrust, LangSmith,
+              See the full comparison: AgentClash vs Braintrust, LangSmith,
               Promptfoo, Langfuse, Arize Phoenix &amp; OpenAI Evals →
             </Link>
           </p>
@@ -2103,14 +2109,14 @@ export default function HomePage({
                 <span className="text-white/40">than you think.</span>
               </h2>
               <p className="mt-10 max-w-[48ch] text-lg sm:text-xl leading-[1.5] text-white/55">
-                Failure reports are the visible part. Under the hood sit eight
-                capabilities most teams quietly want from an eval platform
-                but rarely get in one place. Trust us — or better, scroll.
+                One platform for the work teams usually split across five
+                tools. Evals, tracing, regression suites, and CI gates,
+                together. Open source. BYOK on every tier.
               </p>
               <p className="mt-4 max-w-[48ch] text-sm leading-[1.6] text-white/40">
-                Artifacts, RAG scoring, secret-vault key isolation, full
-                tool-call tracing, and CI regression gates — eight evaluation
-                capabilities in one open-source AI agent evaluation platform.
+                Artifacts, RAG scoring, secret-vault key isolation, and
+                full tool-call tracing. Everything you need to ship
+                AI-native software, in one place.
               </p>
             </div>
             <div>
@@ -2161,102 +2167,18 @@ export default function HomePage({
       {/* ── Pricing ─────────────────────────────────────────────── */}
       <PricingBlock />
 
-      {/* ── Special thanks ──────────────────────────────────────── */}
-      <section className="border-t border-white/[0.06] px-8 sm:px-12 py-20 sm:py-24">
-        <div className="mx-auto max-w-[1440px] text-center">
-          <p className="text-xs uppercase tracking-[0.22em] text-white/45">
-            Special thanks
-          </p>
-          <p className="mt-6 mx-auto max-w-[58ch] text-base sm:text-lg leading-[1.6] text-white/70">
-            AgentClash exists because of{" "}
-            <a
-              href="https://www.startupschool.org/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-white/95 underline-offset-4 hover:underline"
-            >
-              Y Combinator Startup School
-            </a>
-            {" "}and the{" "}
-            <a
-              href="https://e2b.dev/startups"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-white/95 underline-offset-4 hover:underline"
-            >
-              E2B Startup Program
-            </a>
-            . If it wasn&apos;t for them, we wouldn&apos;t have been able to
-            do this.
-          </p>
-
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-x-12 gap-y-6">
-            <a
-              href="https://www.startupschool.org/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 text-white/65 hover:text-white transition-colors"
-              aria-label="Y Combinator Startup School"
-            >
-              <svg
-                viewBox="0 0 32 32"
-                className="size-7"
-                aria-hidden
-              >
-                <rect width="32" height="32" rx="3" fill="#FF6600" />
-                <text
-                  x="16"
-                  y="23"
-                  textAnchor="middle"
-                  fontFamily="Georgia, ui-serif, serif"
-                  fontSize="20"
-                  fontWeight="500"
-                  fill="#ffffff"
-                >
-                  Y
-                </text>
-              </svg>
-              <span className="text-sm font-medium">YC Startup School</span>
-            </a>
-            <a
-              href="https://e2b.dev/startups"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-3 text-white/65 hover:text-white transition-colors"
-              aria-label="E2B Startup Program"
-            >
-              <svg
-                viewBox="0 0 26 28"
-                className="size-7"
-                fill="none"
-                aria-hidden
-              >
-                <path
-                  fillRule="evenodd"
-                  clipRule="evenodd"
-                  d="M21.8458 19.3029C21.6671 19.3029 21.5555 19.4963 21.6448 19.6511L23.5141 22.889C23.6175 23.0681 23.4528 23.2828 23.253 23.2293L17.5836 21.7101C17.3359 21.6437 17.0813 21.7907 17.0149 22.0384L15.4958 27.7079C15.4422 27.9077 15.1739 27.943 15.0705 27.7639L13.2008 24.5254C13.1115 24.3707 12.8881 24.3707 12.7987 24.5254L10.929 27.7639C10.8256 27.943 10.5573 27.9077 10.5038 27.7079L8.9846 22.0384C8.91824 21.7907 8.66365 21.6437 8.41597 21.7101L2.74652 23.2293C2.54675 23.2828 2.38199 23.0681 2.4854 22.889L4.35472 19.6511C4.44406 19.4963 4.33238 19.3029 4.15368 19.3029L0.415222 19.3028C0.208406 19.3028 0.104834 19.0528 0.251077 18.9066L4.40145 14.7563C4.58277 14.5749 4.58277 14.281 4.40145 14.0997L0.251079 9.94927C0.104837 9.80302 0.208414 9.55297 0.415232 9.55297L4.15328 9.55302C4.33198 9.55302 4.44368 9.35957 4.35433 9.20481L2.4854 5.96763C2.38199 5.78852 2.54676 5.5738 2.74652 5.62733L8.41597 7.14652C8.66365 7.21288 8.91824 7.0659 8.98461 6.81822L10.5038 1.14869C10.5573 0.948918 10.8256 0.913592 10.929 1.0927L12.7987 4.33116C12.8881 4.48593 13.1114 4.48593 13.2008 4.33116L15.0705 1.0927C15.1739 0.913592 15.4422 0.948917 15.4957 1.14869L17.0149 6.81822C17.0813 7.0659 17.3359 7.21288 17.5835 7.14652L23.253 5.62733C23.4528 5.5738 23.6175 5.78852 23.5141 5.96763L21.6452 9.20481C21.5558 9.35957 21.6675 9.55302 21.8462 9.55302L25.5844 9.55297C25.7912 9.55297 25.8948 9.80302 25.7486 9.94927L21.5982 14.0997C21.4169 14.281 21.4169 14.5749 21.5982 14.7563L25.7486 18.9066C25.8948 19.0528 25.7912 19.3028 25.5844 19.3028L21.8458 19.3029ZM20.419 10.404C20.5869 10.236 20.4241 9.9541 20.1947 10.0156L15.1461 11.3684C14.8984 11.4348 14.6438 11.2878 14.5775 11.0401L13.224 5.98888C13.1625 5.75947 12.837 5.75947 12.7755 5.98888L11.422 11.0401C11.3557 11.2878 11.1011 11.4348 10.8534 11.3684L5.80496 10.0156C5.57555 9.95414 5.41278 10.2361 5.58072 10.404L9.27643 14.0997C9.45774 14.281 9.45774 14.575 9.27643 14.7563L5.57985 18.4528C5.41191 18.6208 5.57467 18.9027 5.80409 18.8412L10.8534 17.4882C11.1011 17.4218 11.3557 17.5688 11.422 17.8165L12.7755 22.8677C12.837 23.0972 13.1625 23.0972 13.224 22.8677L14.5775 17.8165C14.6439 17.5688 14.8984 17.4218 15.1461 17.4882L20.1956 18.8413C20.425 18.9027 20.5878 18.6208 20.4198 18.4529L16.7232 14.7563C16.5419 14.575 16.5419 14.281 16.7232 14.0997L20.419 10.404Z"
-                  fill="currentColor"
-                />
-              </svg>
-              <span className="text-sm font-medium">E2B Startup Program</span>
-            </a>
-          </div>
-        </div>
-      </section>
-
       {/* ── Closing CTA ─────────────────────────────────────────── */}
       <section className="border-t border-white/[0.06] px-8 sm:px-12 py-40 sm:py-56">
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-2 md:gap-20 items-center">
           <div>
-            <h2 className="font-[family-name:var(--font-display)] font-normal tracking-[-0.04em] leading-[0.95] text-[clamp(2.75rem,6vw,6rem)] max-w-[16ch]">
+            <h2 className="font-sans font-semibold tracking-[-0.03em] leading-[0.98] text-[clamp(2.5rem,5.5vw,5rem)] max-w-[16ch]">
               Stop guessing.
               <br />
-              <span className="text-white/40">Start evaluating.</span>
+              <span className="text-white/40">Start shipping.</span>
             </h2>
             <p className="mt-6 max-w-[44ch] text-base leading-[1.6] text-white/50">
-              Book an eval workshop to baseline your agents on real workloads —
-              or run your first eval in the hosted product when your team is
-              ready to self-serve.
+              Open source. BYOK. Run your first eval free and see why teams
+              pick AgentClash to build and ship AI-native software.
             </p>
             <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap gap-3">
               {user ? (
@@ -2269,10 +2191,11 @@ export default function HomePage({
                 </Link>
               ) : (
                 <CTAStrip
-                  variant="demo-first"
-                  demoLabel="Book eval workshop"
-                  secondaryHref={authHref}
-                  secondaryLabel={authLabel}
+                  variant="cli-first"
+                  primaryLabel="Start free"
+                  primaryHref={authHref}
+                  secondaryHref="/docs/getting-started/quickstart"
+                  secondaryLabel="Read the quickstart"
                 />
               )}
               <a
