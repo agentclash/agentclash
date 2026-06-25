@@ -24,12 +24,11 @@
 - [ ] If a backend route changed, `docs/api-server/openapi.yaml` is updated
 - [ ] If DB queries changed, `sqlc generate` was run
 
-## Developer Certificate of Origin
+## Contributor License Agreement
 
-<!-- AgentClash uses a DCO instead of a CLA. See DCO.md. -->
+<!-- See CONTRIBUTOR_LICENSE_AGREEMENT.md. Checking the box below records your agreement to the CLA. -->
 
-- [ ] My commits are signed off (`git commit -s`) per the project DCO (DCO.md)
-- [ ] I have the right to submit these contributions under the project's MIT license
+- [ ] I have read and agree to the project CLA (CONTRIBUTOR_LICENSE_AGREEMENT.md), and I have the right to submit these contributions under it
 
 ## Notes for reviewers
 
