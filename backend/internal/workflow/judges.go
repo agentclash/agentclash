@@ -316,7 +316,7 @@ func evaluateSingleNWiseJudge(
 
 		perModelScores := make([]float64, 0, judge.Samples)
 		for sampleIdx := 0; sampleIdx < judge.Samples; sampleIdx++ {
-			orderedCandidates := orderNWiseCandidates(candidates, executionContext.Run.ID, sampleIdx, judge.PositionDebiasing)
+			orderedCandidates := orderNWiseCandidates(candidates, executionContext.Run.ID, judge.Key, sampleIdx, judge.PositionDebiasing)
 			request := provider.Request{
 				ProviderKey:         providerKey,
 				ProviderAccountID:   providerAccountID,
@@ -455,7 +455,7 @@ func buildNWiseCandidates(
 	return candidates, "", nil
 }
 
-func orderNWiseCandidates(candidates []nwiseCandidate, runID uuid.UUID, sampleIdx int, positionDebiasing bool) []nwiseCandidate {
+func orderNWiseCandidates(candidates []nwiseCandidate, runID uuid.UUID, judgeKey string, sampleIdx int, positionDebiasing bool) []nwiseCandidate {
 	ordered := append([]nwiseCandidate(nil), candidates...)
 	if len(ordered) <= 1 {
 		return ordered
@@ -468,7 +468,7 @@ func orderNWiseCandidates(candidates []nwiseCandidate, runID uuid.UUID, sampleId
 		return ordered
 	}
 
-	seed := nwiseCandidateShuffleSeed(runID, sampleIdx)
+	seed := nwiseCandidateShuffleSeed(runID, judgeKey, sampleIdx)
 	rng := rand.New(rand.NewSource(seed))
 	rng.Shuffle(len(ordered), func(i, j int) {
 		ordered[i], ordered[j] = ordered[j], ordered[i]
@@ -476,9 +476,10 @@ func orderNWiseCandidates(candidates []nwiseCandidate, runID uuid.UUID, sampleId
 	return ordered
 }
 
-func nwiseCandidateShuffleSeed(runID uuid.UUID, sampleIdx int) int64 {
+func nwiseCandidateShuffleSeed(runID uuid.UUID, judgeKey string, sampleIdx int) int64 {
 	hasher := fnv.New64a()
 	_, _ = hasher.Write(runID[:])
+	_, _ = hasher.Write([]byte(judgeKey))
 	_, _ = hasher.Write([]byte{byte(sampleIdx), byte(sampleIdx >> 8), byte(sampleIdx >> 16), byte(sampleIdx >> 24)})
 	return int64(hasher.Sum64())
 }
@@ -613,6 +614,8 @@ func judgeModels(judge scoring.LLMJudgeDeclaration) []string {
 
 func resolveJudgeTarget(model string, executionContext repository.RunAgentExecutionContext) (string, string, string, error) {
 	providerKey := scoring.InferJudgeProviderKey(model)
+	// Pack validation requires inferable models, so this fallback only applies
+	// to unvalidated snapshots (harnesses, legacy packs) at runtime.
 	if providerKey == "" && executionContext.Deployment.ProviderAccount != nil {
 		providerKey = executionContext.Deployment.ProviderAccount.ProviderKey
 	}
@@ -629,14 +632,6 @@ func resolveJudgeTarget(model string, executionContext repository.RunAgentExecut
 		return providerKey, "", "", fmt.Errorf("no default credential reference configured for judge provider %q", providerKey)
 	}
 	return providerKey, "", credentialReference, nil
-}
-
-func inferJudgeProviderKey(model string) string {
-	return scoring.InferJudgeProviderKey(model)
-}
-
-func defaultJudgeCredentialReference(providerKey string) (string, bool) {
-	return scoring.JudgeDefaultCredentialReference(providerKey)
 }
 
 func judgeTimeout(judge scoring.LLMJudgeDeclaration) time.Duration {
@@ -845,6 +840,9 @@ func deriveJudgeConfidence(judge scoring.LLMJudgeDeclaration, modelScores map[st
 		return ""
 	}
 	if len(values) == 1 {
+		if hadWarnings {
+			return "low"
+		}
 		return "single-model"
 	}
 

@@ -499,7 +499,7 @@ function VerdictChip({
 function ConfidenceChip({ value }: { value: string }) {
   const v = value.toLowerCase();
   const tone =
-    v === "single-model" || v === "ungrounded"
+    v === "single-model"
       ? "text-white/45 border-white/10"
       : v.includes("high")
         ? "text-emerald-300/85 border-emerald-500/20"

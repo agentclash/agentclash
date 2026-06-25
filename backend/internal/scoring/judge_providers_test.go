@@ -9,6 +9,8 @@ func TestInferJudgeProviderKeyRecognizesKnownModels(t *testing.T) {
 		"o3-mini":                     "openai",
 		"gemini-2.5-flash":            "gemini",
 		"grok-4-1-fast-reasoning":     "xai",
+		"mistral-large-latest":        "mistral",
+		"openai/gpt-4.1-mini":         "openrouter",
 		"unknown-model":               "",
 	}
 	for model, want := range cases {
@@ -31,6 +33,21 @@ func TestValidateJudgeModelCredentialAcceptsKnownProviders(t *testing.T) {
 func TestValidateJudgeModelCredentialRejectsUnknownModel(t *testing.T) {
 	if _, ok := ValidateJudgeModelCredential("llama-3.1-70b"); ok {
 		t.Fatal("expected unknown judge model to be rejected")
+	}
+}
+
+func TestJudgeDefaultCredentialReferenceSupportsOpenRouterAndMistral(t *testing.T) {
+	for providerKey, want := range map[string]string{
+		"openrouter": "env://OPENROUTER_API_KEY",
+		"mistral":    "env://MISTRAL_API_KEY",
+	} {
+		got, ok := JudgeDefaultCredentialReference(providerKey)
+		if !ok {
+			t.Fatalf("expected credential reference for %q", providerKey)
+		}
+		if got != want {
+			t.Fatalf("provider %q credential = %q, want %q", providerKey, got, want)
+		}
 	}
 }
 

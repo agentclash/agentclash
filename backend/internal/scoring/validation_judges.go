@@ -262,7 +262,7 @@ func validateJudgeModelCredential(field, model string) ValidationErrors {
 	if InferJudgeProviderKey(model) == "" {
 		return ValidationErrors{{
 			Field: field,
-			Message: "must be inferable to a known judge provider (claude-*, gpt-*, gemini-*, grok-*, o1*, o3*, o4*)",
+			Message: "must be inferable to a known judge provider (claude-*, gpt-*, gemini-*, grok-*, mistral-*, openrouter/* slugs)",
 		}}
 	}
 	return ValidationErrors{{

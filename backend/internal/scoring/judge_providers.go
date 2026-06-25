@@ -5,6 +5,10 @@ import "strings"
 // InferJudgeProviderKey maps a judge model identifier to the provider key
 // used for credential resolution. Unknown prefixes return "" so callers can
 // reject the model at config time instead of failing silently at run time.
+//
+// Validation uses this map without deployment context, so models that rely
+// on a deployment provider-account fallback at runtime must still be
+// inferable here to pass pack validation.
 func InferJudgeProviderKey(model string) string {
 	trimmed := strings.ToLower(strings.TrimSpace(model))
 	switch {
@@ -20,6 +24,10 @@ func InferJudgeProviderKey(model string) string {
 		return "gemini"
 	case strings.HasPrefix(trimmed, "grok-"):
 		return "xai"
+	case strings.HasPrefix(trimmed, "mistral-"):
+		return "mistral"
+	case strings.Contains(trimmed, "/"):
+		return "openrouter"
 	default:
 		return ""
 	}
@@ -39,6 +47,10 @@ func JudgeDefaultCredentialReference(providerKey string) (string, bool) {
 		return "env://GEMINI_API_KEY", true
 	case "xai":
 		return "env://XAI_API_KEY", true
+	case "mistral":
+		return "env://MISTRAL_API_KEY", true
+	case "openrouter":
+		return "env://OPENROUTER_API_KEY", true
 	default:
 		return "", false
 	}

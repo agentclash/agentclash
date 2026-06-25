@@ -100,27 +100,6 @@ func TestEvaluateLLMJudges_UsesInferredProviderCredential(t *testing.T) {
 	}
 }
 
-func TestInferJudgeProviderKeyRecognizesGrokModels(t *testing.T) {
-	for _, model := range []string{
-		"grok-4-1-fast-reasoning",
-		"  Grok-4-1-Fast-Reasoning  ",
-	} {
-		if got := inferJudgeProviderKey(model); got != "xai" {
-			t.Fatalf("model %q inferred provider key %q, want xai", model, got)
-		}
-	}
-}
-
-func TestDefaultJudgeCredentialReferenceSupportsXAI(t *testing.T) {
-	got, ok := defaultJudgeCredentialReference("xai")
-	if !ok {
-		t.Fatalf("expected xai credential reference")
-	}
-	if got != "env://XAI_API_KEY" {
-		t.Fatalf("credential reference = %q, want env://XAI_API_KEY", got)
-	}
-}
-
 func TestEvaluateLLMJudges_SupportsNWiseRankingForNormalRuns(t *testing.T) {
 	runID := uuid.New()
 	firstRunAgentID := uuid.New()
@@ -228,6 +207,9 @@ func TestDeriveJudgeConfidenceRequiresMultipleModelsForConsensus(t *testing.T) {
 	if got := deriveJudgeConfidence(judge, single, false); got != "single-model" {
 		t.Fatalf("single-model confidence = %q, want single-model", got)
 	}
+	if got := deriveJudgeConfidence(judge, single, true); got != "low" {
+		t.Fatalf("single-model confidence with warnings = %q, want low", got)
+	}
 
 	multiAgree := map[string]float64{"claude": 0.9, "gpt": 0.9}
 	if got := deriveJudgeConfidence(judge, multiAgree, false); got != "high" {
@@ -247,7 +229,7 @@ func TestOrderNWiseCandidatesShufflesByDefault(t *testing.T) {
 		{RunAgentID: "b", Label: "B"},
 		{RunAgentID: "c", Label: "C"},
 	}
-	ordered := orderNWiseCandidates(candidates, runID, 0, false)
+	ordered := orderNWiseCandidates(candidates, runID, "overall_preference", 0, false)
 	if len(ordered) != len(candidates) {
 		t.Fatalf("candidate count = %d, want %d", len(ordered), len(candidates))
 	}
@@ -267,6 +249,22 @@ func TestOrderNWiseCandidatesShufflesByDefault(t *testing.T) {
 	}
 }
 
+func TestOrderNWiseCandidatesDecorrelatesAcrossJudgeKeys(t *testing.T) {
+	runID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	candidates := []nwiseCandidate{
+		{RunAgentID: "a", Label: "A"},
+		{RunAgentID: "b", Label: "B"},
+		{RunAgentID: "c", Label: "C"},
+	}
+	first := orderNWiseCandidates(candidates, runID, "judge_a", 0, false)
+	second := orderNWiseCandidates(candidates, runID, "judge_b", 0, false)
+	if first[0].RunAgentID == second[0].RunAgentID &&
+		first[1].RunAgentID == second[1].RunAgentID &&
+		first[2].RunAgentID == second[2].RunAgentID {
+		t.Fatal("expected different judge keys to produce different shuffle order")
+	}
+}
+
 func TestOrderNWiseCandidatesRotatesWhenPositionDebiasingEnabled(t *testing.T) {
 	runID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
 	candidates := []nwiseCandidate{
@@ -274,9 +272,28 @@ func TestOrderNWiseCandidatesRotatesWhenPositionDebiasingEnabled(t *testing.T) {
 		{RunAgentID: "b", Label: "B"},
 		{RunAgentID: "c", Label: "C"},
 	}
-	ordered := orderNWiseCandidates(candidates, runID, 1, true)
+	ordered := orderNWiseCandidates(candidates, runID, "overall_preference", 1, true)
 	if ordered[0].RunAgentID != "b" || ordered[1].RunAgentID != "c" || ordered[2].RunAgentID != "a" {
 		t.Fatalf("rotated order = [%s %s %s], want [b c a]", ordered[0].RunAgentID, ordered[1].RunAgentID, ordered[2].RunAgentID)
+	}
+}
+
+func TestOrderNWiseCandidatesRotationCoversEveryPosition(t *testing.T) {
+	runID := uuid.MustParse("11111111-1111-1111-1111-111111111111")
+	candidates := []nwiseCandidate{
+		{RunAgentID: "a", Label: "A"},
+		{RunAgentID: "b", Label: "B"},
+		{RunAgentID: "c", Label: "C"},
+	}
+	firstPositions := make(map[string]int)
+	for sampleIdx := range candidates {
+		ordered := orderNWiseCandidates(candidates, runID, "overall_preference", sampleIdx, true)
+		firstPositions[ordered[0].RunAgentID] = sampleIdx
+	}
+	for _, candidate := range candidates {
+		if _, ok := firstPositions[candidate.RunAgentID]; !ok {
+			t.Fatalf("candidate %q never appeared first during rotation cycle", candidate.RunAgentID)
+		}
 	}
 }
 
