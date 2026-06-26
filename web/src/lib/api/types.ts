@@ -2810,7 +2810,12 @@ export interface CreateAgentTryoutInput {
 export interface RerunAgentTryoutInput {
   /** Optional: vary the model. Omit to keep the source model. */
   selected_model_policy?: AgentTryoutModelPolicy;
-  /** Optional: vary the agent design so the re-run is attributable to the edit. */
+  /**
+   * Must be true for the agent-design fields below to take effect. When false or
+   * omitted, the re-run inherits the source tryout's agent design unchanged.
+   */
+  agent_design_provided?: boolean;
+  /** Applied only when agent_design_provided is true. */
   agent_instructions?: string;
   agent_tool_slugs?: string[];
   agent_name?: string;

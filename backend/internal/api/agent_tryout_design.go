@@ -19,8 +19,8 @@ const (
 	maxAgentInstructionsBytes = 8000
 	// maxAgentToolSlugs caps how many library tools a design may select.
 	maxAgentToolSlugs = 24
-	// maxAgentNameBytes caps the agent display name.
-	maxAgentNameBytes = 120
+	// maxAgentNameRunes caps the agent display name, counted in characters.
+	maxAgentNameRunes = 120
 )
 
 // agentDesignInput is the optional user-authored agent carried on create/rerun.
@@ -45,8 +45,8 @@ func (d agentDesignInput) isEmpty() bool {
 // untouched and preserve existing behavior.
 func normalizeAgentDesign(in agentDesignInput) (agentDesignInput, bool, error) {
 	name := strings.TrimSpace(in.Name)
-	if len(name) > maxAgentNameBytes {
-		name = strings.TrimSpace(string([]rune(name)[:maxAgentNameBytes]))
+	if nameRunes := []rune(name); len(nameRunes) > maxAgentNameRunes {
+		name = strings.TrimSpace(string(nameRunes[:maxAgentNameRunes]))
 	}
 
 	instructions := strings.TrimSpace(in.Instructions)

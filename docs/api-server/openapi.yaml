@@ -14157,6 +14157,7 @@ components:
             agent_design.tool_slugs.
         agent_name:
           type: string
+          maxLength: 120
           description: >-
             Optional display name for the authored agent. Stored under
             agent_design.name.
@@ -14500,6 +14501,7 @@ components:
             true.
         agent_name:
           type: string
+          maxLength: 120
           description: >-
             Override agent display name for the rerun. Only applied when
             agent_design_provided is true.

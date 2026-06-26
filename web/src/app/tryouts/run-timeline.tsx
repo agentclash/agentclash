@@ -119,11 +119,16 @@ export function formatDuration(ms: number | undefined): string | null {
  */
 export function foldTimeline(events: TryoutTimelineEvent[]): TimelineNode[] {
   const nodes: TimelineNode[] = [];
-  const openByKind = new Map<StepKind, number>();
+  // Per-kind queue of indices for nodes still "running" — a queue, not a single
+  // slot, so interleaved/parallel events of the same kind (e.g. concurrent tool
+  // calls) don't strand the earlier node at status "running" forever.
+  const openByKind = new Map<StepKind, number[]>();
 
   const open = (kind: StepKind, node: Omit<TimelineNode, "status">) => {
     nodes.push({ ...node, status: "running" });
-    openByKind.set(kind, nodes.length - 1);
+    const queue = openByKind.get(kind);
+    if (queue) queue.push(nodes.length - 1);
+    else openByKind.set(kind, [nodes.length - 1]);
   };
 
   const close = (
@@ -133,7 +138,21 @@ export function foldTimeline(events: TryoutTimelineEvent[]): TimelineNode[] {
     patch: Partial<TimelineNode>,
     fallbackTitle: string,
   ) => {
-    const index = openByKind.get(kind);
+    // Match the completing event to an open node of the same kind — prefer one
+    // whose detail (e.g. tool name) matches, otherwise close the oldest. Either
+    // way the slot is consumed, so no node is left stranded as "running".
+    const queue = openByKind.get(kind);
+    let index: number | undefined;
+    if (queue && queue.length > 0) {
+      let pick = 0;
+      if (patch.detail) {
+        const matched = queue.findIndex((openIndex) => nodes[openIndex].detail === patch.detail);
+        if (matched >= 0) pick = matched;
+      }
+      index = queue[pick];
+      queue.splice(pick, 1);
+      if (queue.length === 0) openByKind.delete(kind);
+    }
     if (index != null) {
       const node = nodes[index];
       node.status = status;
@@ -143,7 +162,6 @@ export function foldTimeline(events: TryoutTimelineEvent[]): TimelineNode[] {
       if (patch.exitCode != null) node.exitCode = patch.exitCode;
       if (patch.verdict) node.verdict = patch.verdict;
       if (patch.score != null) node.score = patch.score;
-      openByKind.delete(kind);
     } else {
       nodes.push({
         id: patch.id ?? `n${nodes.length}`,
