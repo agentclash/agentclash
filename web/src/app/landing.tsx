@@ -1513,7 +1513,7 @@ export default function HomePage({
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>
             <h1 className="font-sans font-semibold tracking-[-0.03em] leading-[0.98] text-[clamp(2.75rem,6vw,5.5rem)] max-w-[18ch]">
-              Turn agent failures into CI regression tests.
+              Ship AI-native software with confidence.
             </h1>
 
             <p className="mt-8 max-w-[46ch] text-lg sm:text-xl leading-[1.5] text-white/55">
