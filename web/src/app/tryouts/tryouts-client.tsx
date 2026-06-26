@@ -17,7 +17,6 @@ import {
   ChevronDown,
   Download,
   FileText,
-  Gauge,
   ListChecks,
   Loader2,
   Paperclip,
@@ -45,6 +44,7 @@ import type {
   AgentTryoutJudgeStrictness,
   AgentTryoutModelPolicy,
   AgentTryoutTemplate,
+  TryoutCoachingSuggestion,
   TryoutTimelineEvent,
 } from "@/lib/api/types";
 import {
@@ -74,6 +74,11 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+
+import { AgentDesigner, type AgentDraft, type AgentTool } from "./agent-designer";
+import { CoachCard } from "./coach-card";
+import { DeltaCard } from "./delta-card";
+import { RunTimeline } from "./run-timeline";
 
 // Analytics helpers for the public tryouts funnel. Privacy: derive email_domain
 // only — never send raw email or company name to PostHog.
@@ -264,7 +269,18 @@ type RerunPrefill = {
   judgeModel?: string;
   judgeStrictness?: AgentTryoutJudgeStrictness;
   selectedModelKey?: string;
+  agentInstructions?: string;
+  agentToolSlugs?: string[];
+  agentName?: string;
 };
+
+// Turn a tool-library description into a short blurb for the abilities picker.
+function toolBlurb(description?: string): string | undefined {
+  if (!description) return undefined;
+  const first = description.split(/[.\n]/)[0]?.trim();
+  if (!first) return undefined;
+  return first.length > 48 ? `${first.slice(0, 46)}…` : first;
+}
 
 function readRerunPrefill(): RerunPrefill | null {
   if (typeof window === "undefined") return null;
@@ -284,6 +300,95 @@ function writeRerunPrefill(prefill: RerunPrefill) {
   } catch {
     // best-effort
   }
+}
+
+// The user-authored agent (prompt + tools + name) lives under input_snapshot.agent_design.
+function readAgentDesign(input: unknown): {
+  name?: string;
+  instructions?: string;
+  tool_slugs?: string[];
+} {
+  if (!input || typeof input !== "object") return {};
+  const design = (input as { agent_design?: unknown }).agent_design;
+  if (!design || typeof design !== "object") return {};
+  const record = design as Record<string, unknown>;
+  return {
+    name: typeof record.name === "string" ? record.name : undefined,
+    instructions: typeof record.instructions === "string" ? record.instructions : undefined,
+    tool_slugs: Array.isArray(record.tool_slugs)
+      ? record.tool_slugs.filter((slug): slug is string => typeof slug === "string")
+      : undefined,
+  };
+}
+
+// Rebuild the welcome-screen state from a finished tryout so a re-run keeps the
+// same task, bar, model, and agent design — only the edited dimension changes.
+function buildRerunPrefill(tryout: AgentTryout, judge: TryoutJudgeSection): RerunPrefill {
+  const fieldValues: Record<string, string> = {};
+  for (const [key, value] of Object.entries(tryout.input_snapshot ?? {})) {
+    if (key === "eval_setup" || key === "agent_design") continue;
+    if (typeof value === "string") fieldValues[key] = value;
+    else if (typeof value === "number") fieldValues[key] = String(value);
+  }
+  const setup = evalSetupFromInput(tryout.input_snapshot);
+  const design = readAgentDesign(tryout.input_snapshot);
+  return {
+    templateSlug: tryout.template_slug,
+    fieldValues,
+    evalSetup: setup
+      ? {
+          unacceptableMistakes: setup.unacceptable_mistakes,
+          reviewer: setup.human_reviewer,
+          priority: setup.business_priority,
+          style: setup.output_style,
+          monthlyVolume: setup.monthly_volume,
+        }
+      : undefined,
+    selectedModelKey: modelKeyFromPolicy(tryout.selected_model_policy),
+    judgeModel: judge.model,
+    judgeStrictness:
+      judge.strictness === "lenient" || judge.strictness === "harsh"
+        ? judge.strictness
+        : "standard",
+    agentInstructions: design.instructions,
+    agentToolSlugs: design.tool_slugs,
+    agentName: design.name,
+  };
+}
+
+// Carries the previous run's verdict across the re-run handoff so the next
+// session can render the before/after delta once it finishes.
+const COMPARISON_STORAGE_KEY = "agentclash.tryout.comparison";
+
+type TryoutComparison = {
+  beforeVerdict?: TryoutJudgeSection["verdict"];
+  beforeGrade?: number | null;
+  changes?: string[];
+};
+
+function writeComparison(comparison: TryoutComparison) {
+  try {
+    window.sessionStorage.setItem(COMPARISON_STORAGE_KEY, JSON.stringify(comparison));
+  } catch {
+    // best-effort
+  }
+}
+
+function readComparison(): TryoutComparison | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(COMPARISON_STORAGE_KEY);
+    if (!raw) return null;
+    window.sessionStorage.removeItem(COMPARISON_STORAGE_KEY);
+    return JSON.parse(raw) as TryoutComparison;
+  } catch {
+    return null;
+  }
+}
+
+function judgeGrade(judge: TryoutJudgeSection | null | undefined): number | null {
+  if (!judge || judge.score == null) return null;
+  return 1 + judge.score * 4;
 }
 
 function agentLabel(value: string): string {
@@ -342,6 +447,10 @@ export function PublicTryoutsClient() {
     useState<AgentTryoutJudgeStrictness>("standard");
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
   const [evalSetup, setEvalSetup] = useState<EvalSetupValues>(DEFAULT_EVAL_SETUP);
+  const [agentName, setAgentName] = useState("");
+  const [agentInstructions, setAgentInstructions] = useState("");
+  const [agentToolSlugs, setAgentToolSlugs] = useState<string[]>([]);
+  const [toolLibrary, setToolLibrary] = useState<AgentTool[]>([]);
   const prefillRef = useRef<RerunPrefill | null>(null);
 
   // Apply a rerun handoff (same brief, different agent/judge) exactly once.
@@ -358,7 +467,37 @@ export function PublicTryoutsClient() {
     if (prefill.judgeStrictness) setJudgeStrictness(prefill.judgeStrictness);
     if (prefill.selectedModelKey) setSelectedModelKey(prefill.selectedModelKey);
     if (prefill.fieldValues) setFieldValues(prefill.fieldValues);
+    if (prefill.agentInstructions !== undefined) setAgentInstructions(prefill.agentInstructions);
+    if (prefill.agentToolSlugs) setAgentToolSlugs(prefill.agentToolSlugs);
+    if (prefill.agentName !== undefined) setAgentName(prefill.agentName);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Tool library powers the "abilities" picker in the agent designer. Public,
+  // best-effort — if it fails the picker just stays empty.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ items: Array<{ slug: string; name: string; category?: string; description?: string }> }>(
+        "/v1/tool-library",
+      )
+      .then((data) => {
+        if (cancelled) return;
+        setToolLibrary(
+          (data.items ?? []).map((entry) => ({
+            slug: entry.slug,
+            name: entry.name,
+            category: entry.category || "Tools",
+            blurb: toolBlurb(entry.description),
+          })),
+        );
+      })
+      .catch(() => {
+        // best-effort — the abilities picker simply stays empty.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [launching, setLaunching] = useState(false);
@@ -589,6 +728,9 @@ export function PublicTryoutsClient() {
         ...(selectedModel.value ? { selected_harness_kind: selectedModel.value } : {}),
         ...(selectedPolicy ? { selected_model_policy: selectedPolicy } : {}),
         judge: { model: judgeModel, strictness: judgeStrictness },
+        ...(agentInstructions.trim() ? { agent_instructions: agentInstructions.trim() } : {}),
+        ...(agentToolSlugs.length > 0 ? { agent_tool_slugs: agentToolSlugs } : {}),
+        ...(agentName.trim() ? { agent_name: agentName.trim() } : {}),
       };
       let nextTryout: AgentTryout;
       try {
@@ -713,8 +855,6 @@ export function PublicTryoutsClient() {
           templates={templates}
           templateSlug={templateSlug}
           setTemplateSlug={setTemplateSlug}
-          selectedModelKey={selectedModelKey}
-          setSelectedModelKey={setSelectedModelKey}
           judgeModel={judgeModel}
           setJudgeModel={setJudgeModel}
           judgeStrictness={judgeStrictness}
@@ -739,6 +879,19 @@ export function PublicTryoutsClient() {
           fileInputRef={fileInputRef}
           onAttachFiles={handleAttachFiles}
           onRemoveAttachment={removeAttachment}
+          agentDraft={{
+            name: agentName,
+            instructions: agentInstructions,
+            toolSlugs: agentToolSlugs,
+            modelKey: selectedModelKey,
+          }}
+          onAgentDraftChange={(next) => {
+            setAgentName(next.name);
+            setAgentInstructions(next.instructions);
+            setAgentToolSlugs(next.toolSlugs);
+            setSelectedModelKey(next.modelKey);
+          }}
+          tools={toolLibrary}
         />
       )}
     </main>
@@ -750,8 +903,6 @@ function TryoutWelcome({
   templates,
   templateSlug,
   setTemplateSlug,
-  selectedModelKey,
-  setSelectedModelKey,
   judgeModel,
   setJudgeModel,
   judgeStrictness,
@@ -776,13 +927,14 @@ function TryoutWelcome({
   fileInputRef,
   onAttachFiles,
   onRemoveAttachment,
+  agentDraft,
+  onAgentDraftChange,
+  tools,
 }: {
   template: AgentTryoutTemplate | null;
   templates: AgentTryoutTemplate[];
   templateSlug: string;
   setTemplateSlug: (value: string) => void;
-  selectedModelKey: string;
-  setSelectedModelKey: (value: string) => void;
   judgeModel: string;
   setJudgeModel: (value: string) => void;
   judgeStrictness: AgentTryoutJudgeStrictness;
@@ -810,14 +962,16 @@ function TryoutWelcome({
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onAttachFiles: (files: FileList | null) => void;
   onRemoveAttachment: (id: string) => void;
+  agentDraft: AgentDraft;
+  onAgentDraftChange: (next: AgentDraft) => void;
+  tools: AgentTool[];
 }) {
   const [barOpen, setBarOpen] = useState(false);
   // True when the bar dialog was opened by a send attempt: confirming the bar
   // should immediately launch the run instead of dropping back to the page.
   const [launchAfterBar, setLaunchAfterBar] = useState(false);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function attemptLaunch() {
     if (!canRun) return;
     if (!evalReady) {
       setLaunchAfterBar(true);
@@ -826,6 +980,17 @@ function TryoutWelcome({
     }
     onLaunch();
   }
+
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    attemptLaunch();
+  }
+
+  const designerModels = MODEL_OPTIONS.map((option) => ({
+    key: modelOptionKey(option),
+    label: option.label,
+    hint: option.hint,
+  }));
 
   return (
     <div className="relative min-h-0 flex-1 overflow-y-auto">
@@ -907,15 +1072,6 @@ function TryoutWelcome({
                   options={templates.map((t) => ({ value: t.slug, label: t.name }))}
                 />
                 <AnimatedPillSelect
-                  icon={<Gauge className="size-3.5" />}
-                  value={selectedModelKey}
-                  onChange={setSelectedModelKey}
-                  options={MODEL_OPTIONS.map((option) => ({
-                    value: modelOptionKey(option),
-                    label: option.label,
-                  }))}
-                />
-                <AnimatedPillSelect
                   icon={<Scale className="size-3.5" />}
                   value={judgeModel}
                   onChange={setJudgeModel}
@@ -979,6 +1135,18 @@ function TryoutWelcome({
             </div>
           ) : null}
         </form>
+
+        <div className="mt-6">
+          <AgentDesigner
+            value={agentDraft}
+            onChange={onAgentDraftChange}
+            tools={tools}
+            models={designerModels}
+            taskLabel={template?.name}
+            onRun={attemptLaunch}
+            running={launching}
+          />
+        </div>
       </div>
 
       <BarDialog
@@ -1318,31 +1486,7 @@ function TryoutSidebar({
         </div>
       ) : null}
 
-      <div className="mt-5 flex min-h-0 flex-1 flex-col px-1">
-        <p className={cn(MICRO, "mb-3 text-white/35")}>Raw event log</p>
-        <ol className="ml-1 min-h-0 flex-1 space-y-3 overflow-y-auto border-l border-white/10 pl-4">
-          {events.length === 0 ? (
-            <li className="text-xs text-white/40">
-              {tryoutIsActive(tryout.status)
-                ? "Waiting for events…"
-                : "No events recorded."}
-            </li>
-          ) : (
-            events.map((event) => (
-              <li key={event.cursor} className="relative">
-                <span
-                  aria-hidden
-                  className="absolute -left-[19px] top-[5px] size-[5px] rounded-full bg-white/25"
-                />
-                <p className="text-xs leading-5 text-white/60">{event.summary}</p>
-                <time className="mt-0.5 block font-mono text-2xs uppercase tracking-[0.1em] text-white/25">
-                  {new Date(event.occurred_at).toLocaleTimeString()}
-                </time>
-              </li>
-            ))
-          )}
-        </ol>
-      </div>
+      <div className="min-h-0 flex-1" />
 
       <Link
         href={loginHref}
@@ -1376,6 +1520,9 @@ function TryoutChatThread({
   const [ending, setEnding] = useState(false);
   const [followUps, setFollowUps] = useState<{ id: string; text: string; at: number }[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const [comparison] = useState(() => readComparison());
+  const [appliedIds, setAppliedIds] = useState<string[]>([]);
 
   const active = tryoutIsActive(tryout.status);
   const finished = !active;
@@ -1395,54 +1542,62 @@ function TryoutChatThread({
     [tryout.input_snapshot],
   );
 
-  const timeline = useMemo(() => {
-    const items: ChatItem[] = [];
-
+  const userMessages = useMemo(() => {
+    const msgs: { id: string; text: string; at: number }[] = [];
     if (initialUserText) {
-      items.push({
-        kind: "user",
+      msgs.push({
         id: "initial",
         text: initialUserText,
         at: new Date(tryout.created_at).getTime(),
       });
     }
-
     for (const msg of followUps) {
-      items.push({
-        kind: "user",
-        id: msg.id,
-        text: msg.text,
+      msgs.push({ id: msg.id, text: msg.text, at: msg.at });
+    }
+    return msgs;
+  }, [initialUserText, followUps, tryout.created_at]);
+
+  // Interleave user turns with the agent's events on a single timeline, then
+  // group consecutive events into agent segments. Each agent segment renders as
+  // a RunTimeline so the trace reads as "what the agent did", not a flat log.
+  const segments = useMemo(() => {
+    const merged = [
+      ...userMessages.map((msg, index) => ({
         at: msg.at,
-      });
-    }
-
-    for (const event of events) {
-      if (event.type === "started") continue;
-      items.push({
-        kind: "agent",
-        id: `e${event.cursor}`,
-        text: friendlyTraceSummary(event),
+        seq: index - 1_000_000,
+        user: msg as { id: string; text: string; at: number } | undefined,
+        event: undefined as TryoutTimelineEvent | undefined,
+      })),
+      ...events.map((event) => ({
         at: new Date(event.occurred_at).getTime(),
-      });
-    }
+        seq: event.sequence,
+        user: undefined as { id: string; text: string; at: number } | undefined,
+        event: event as TryoutTimelineEvent | undefined,
+      })),
+    ].sort((a, b) => a.at - b.at || a.seq - b.seq);
 
-    return items.sort((a, b) => a.at - b.at);
-  }, [initialUserText, followUps, events, tryout.created_at]);
-
-  const blocks = useMemo(() => {
-    const out: ChatBlock[] = [];
-    for (const item of timeline) {
-      const last = out[out.length - 1];
-      if (item.kind === "user") {
-        out.push({ kind: "user", item });
-      } else if (last?.kind === "steps") {
-        last.items.push(item);
-      } else {
-        out.push({ kind: "steps", id: item.id, items: [item] });
+    const out: TryoutSegment[] = [];
+    for (const entry of merged) {
+      if (entry.user) {
+        out.push({ kind: "user", id: entry.user.id, text: entry.user.text });
+      } else if (entry.event) {
+        const last = out[out.length - 1];
+        if (last?.kind === "agent") {
+          last.events.push(entry.event);
+        } else {
+          out.push({ kind: "agent", id: `seg-${entry.event.cursor}`, events: [entry.event] });
+        }
       }
     }
     return out;
-  }, [timeline]);
+  }, [userMessages, events]);
+
+  const lastAgentIndex = useMemo(() => {
+    for (let i = segments.length - 1; i >= 0; i -= 1) {
+      if (segments[i].kind === "agent") return i;
+    }
+    return -1;
+  }, [segments]);
 
   const lastEvent = events[events.length - 1];
   const judging =
@@ -1455,13 +1610,11 @@ function TryoutChatThread({
         ? null
         : events.length === 0
           ? "Starting"
-          : timeline[timeline.length - 1]?.kind === "agent"
-            ? "Working"
-            : null;
+          : "Working";
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [timeline.length, outputs.length, scorecard, finished]);
+  }, [segments.length, outputs.length, scorecard, finished]);
 
   async function send() {
     const text = draft.trim();
@@ -1501,28 +1654,57 @@ function TryoutChatThread({
     }
   }
 
+  // Apply a coaching fix: carry the edited agent design + the current verdict
+  // into a fresh run via the prefill funnel, so the next session shows the delta.
+  function applyCoaching(suggestion: TryoutCoachingSuggestion) {
+    if (!scorecard?.judge) return;
+    const design = readAgentDesign(tryout.input_snapshot);
+    const instructions =
+      suggestion.kind === "prompt" && suggestion.proposed_instructions
+        ? suggestion.proposed_instructions
+        : design.instructions;
+    const toolSlugs =
+      suggestion.kind === "tool" && suggestion.add_tool_slugs
+        ? Array.from(new Set([...(design.tool_slugs ?? []), ...suggestion.add_tool_slugs]))
+        : design.tool_slugs;
+    writeRerunPrefill({
+      ...buildRerunPrefill(tryout, scorecard.judge),
+      agentInstructions: instructions,
+      agentToolSlugs: toolSlugs,
+    });
+    writeComparison({
+      beforeVerdict: scorecard.judge.verdict,
+      beforeGrade: judgeGrade(scorecard.judge),
+      changes: [suggestion.title],
+    });
+    setAppliedIds((prev) => [...prev, suggestion.id]);
+    router.push("/tryouts");
+  }
+
   return (
     <>
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-6 sm:px-8">
         <div className="mx-auto flex max-w-3xl flex-col gap-5">
-          {blocks.map((block, index) =>
-            block.kind === "user" ? (
+          {segments.map((segment, index) =>
+            segment.kind === "user" ? (
               <UserBubble
-                key={block.item.id}
-                text={block.item.text}
-                animate={index === blocks.length - 1}
+                key={segment.id}
+                text={segment.text}
+                animate={index === segments.length - 1}
               />
             ) : (
-              <TraceBlock
-                key={block.id}
-                items={block.items}
-                thinking={index === blocks.length - 1 ? thinkingLabel : null}
+              <RunTimeline
+                key={segment.id}
+                events={segment.events}
+                active={active && index === lastAgentIndex}
+                thinkingLabel={index === lastAgentIndex ? thinkingLabel : null}
               />
             ),
           )}
 
-          {thinkingLabel && blocks[blocks.length - 1]?.kind !== "steps" ? (
-            <TraceBlock items={[]} thinking={thinkingLabel} />
+          {thinkingLabel &&
+          (segments.length === 0 || segments[segments.length - 1]?.kind === "user") ? (
+            <RunTimeline events={[]} active thinkingLabel={thinkingLabel} />
           ) : null}
 
           {outputs
@@ -1540,6 +1722,34 @@ function TryoutChatThread({
           {scorecard && finished ? (
             <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
               <VerdictCard scorecard={scorecard} />
+            </div>
+          ) : null}
+
+          {finished && comparison && scorecard?.judge ? (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <DeltaCard
+                before={{
+                  label: "Your last agent",
+                  verdict: comparison.beforeVerdict,
+                  grade: comparison.beforeGrade ?? null,
+                }}
+                after={{
+                  label: "This agent",
+                  verdict: scorecard.judge.verdict,
+                  grade: judgeGrade(scorecard.judge),
+                }}
+                changes={comparison.changes}
+              />
+            </div>
+          ) : null}
+
+          {finished && tryout.summary.coaching ? (
+            <div className="animate-in fade-in slide-in-from-bottom-2 duration-500">
+              <CoachCard
+                coaching={tryout.summary.coaching}
+                appliedIds={appliedIds}
+                onApply={applyCoaching}
+              />
             </div>
           ) : null}
 
@@ -1613,16 +1823,9 @@ function TryoutChatThread({
   );
 }
 
-type ChatItem = {
-  kind: "user" | "agent";
-  id: string;
-  text: string;
-  at: number;
-};
-
-type ChatBlock =
-  | { kind: "user"; item: ChatItem }
-  | { kind: "steps"; id: string; items: ChatItem[] };
+type TryoutSegment =
+  | { kind: "user"; id: string; text: string }
+  | { kind: "agent"; id: string; events: TryoutTimelineEvent[] };
 
 function UserBubble({ text, animate }: { text: string; animate?: boolean }) {
   return (
@@ -1640,44 +1843,6 @@ function UserBubble({ text, animate }: { text: string; animate?: boolean }) {
   );
 }
 
-function TraceBlock({
-  items,
-  thinking,
-}: {
-  items: ChatItem[];
-  thinking?: string | null;
-}) {
-  return (
-    <div className="ml-1 border-l border-white/10 py-0.5 pl-5">
-      <div className="flex flex-col gap-2.5">
-        {items.map((item) => (
-          <div
-            key={item.id}
-            className="relative text-sm leading-6 text-white/55 animate-in fade-in duration-300 motion-reduce:animate-none"
-          >
-            <span
-              aria-hidden
-              className="absolute -left-[23px] top-[9.5px] size-[5px] rounded-full bg-white/30"
-            />
-            <span className="whitespace-pre-wrap">{item.text}</span>
-          </div>
-        ))}
-        {thinking ? (
-          <div className="relative flex h-6 items-center animate-in fade-in duration-300 motion-reduce:animate-none">
-            <span
-              aria-hidden
-              className="absolute -left-[24.5px] flex size-2"
-            >
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white/25 motion-reduce:animate-none" />
-              <span className="relative inline-flex size-2 rounded-full bg-white/45" />
-            </span>
-            <span className={cn(MICRO, "text-white/35")}>{thinking}</span>
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
 
 function ArtifactChatCard({ output }: { output: TryoutOutputPreview }) {
   const label = output.relative_path || output.key || "Artifact";
@@ -1748,12 +1913,22 @@ function ArtifactPreviewBody({ output }: { output: TryoutOutputPreview }) {
   }
 
   if (isBinaryArtifact(output)) {
+    const sizeLabel =
+      typeof output.size_bytes === "number"
+        ? `${Math.max(1, Math.round(output.size_bytes / 1024))} KB`
+        : null;
     return (
-      <div className="px-4 py-6 text-sm leading-7 text-white/60">
-        <p>
-          {artifactKindLabel(output)} ready. Download to open it in PowerPoint, Keynote, or
-          Preview.
-        </p>
+      <div className="flex items-center gap-3 bg-black/20 px-4 py-5">
+        <span className="flex size-10 shrink-0 items-center justify-center rounded-md border border-white/12 bg-white/[0.03]">
+          <FileText className="size-5 text-white/55" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm text-white/80">{artifactKindLabel(output)} ready</p>
+          <p className="truncate text-2xs text-white/40">
+            {output.relative_path || "output"}
+            {sizeLabel ? ` · ${sizeLabel}` : ""} · download to open
+          </p>
+        </div>
       </div>
     );
   }
@@ -2096,37 +2271,8 @@ function RerunStrip({
 }) {
   const router = useRouter();
 
-  function basePrefill(): RerunPrefill {
-    const fieldValues: Record<string, string> = {};
-    for (const [key, value] of Object.entries(tryout.input_snapshot ?? {})) {
-      if (key === "eval_setup") continue;
-      if (typeof value === "string") fieldValues[key] = value;
-      else if (typeof value === "number") fieldValues[key] = String(value);
-    }
-    const setup = evalSetupFromInput(tryout.input_snapshot);
-    return {
-      templateSlug: tryout.template_slug,
-      fieldValues,
-      evalSetup: setup
-        ? {
-            unacceptableMistakes: setup.unacceptable_mistakes,
-            reviewer: setup.human_reviewer,
-            priority: setup.business_priority,
-            style: setup.output_style,
-            monthlyVolume: setup.monthly_volume,
-          }
-        : undefined,
-      selectedModelKey: modelKeyFromPolicy(tryout.selected_model_policy),
-      judgeModel: judge.model,
-      judgeStrictness:
-        judge.strictness === "lenient" || judge.strictness === "harsh"
-          ? judge.strictness
-          : "standard",
-    };
-  }
-
   function rerun(overrides: Partial<RerunPrefill>) {
-    writeRerunPrefill({ ...basePrefill(), ...overrides });
+    writeRerunPrefill({ ...buildRerunPrefill(tryout, judge), ...overrides });
     router.push("/tryouts");
   }
 
@@ -2648,30 +2794,6 @@ function priorityRubricChecks(priority: EvalPriority): string[] {
 
 function styleLabel(style: EvalStyle): string {
   return STYLE_OPTIONS.find((option) => option.value === style)?.label ?? "Same every time";
-}
-
-function friendlyTraceSummary(event: TryoutTimelineEvent): string {
-  const summary = event.summary.trim();
-  const lower = summary.toLowerCase();
-  switch (event.type) {
-    case "planning":
-      return "Planned the next step";
-    case "tool_call":
-      return lower.includes("complete") ? "Finished a tool step" : "Used a tool";
-    case "sandbox_command":
-      return lower.includes("soffice") || lower.includes("libreoffice")
-        ? "Exported the deck preview"
-        : "Ran a sandbox command";
-    case "file_written":
-    case "file_activity":
-      return summary.replace(/^wrote file:?/i, "Created").replace(/^file written:?/i, "Created");
-    case "validation":
-      return "Checked the output against validators";
-    case "scoring":
-      return summary.startsWith("Judge") ? summary : "Updated the eval scorecard";
-    default:
-      return summary || "Working";
-  }
 }
 
 const FIELD_LABELS: Record<string, string> = {

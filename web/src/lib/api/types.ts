@@ -2701,7 +2701,32 @@ export interface AgentTryout {
 export interface AgentTryoutSummary {
   code?: string;
   message?: string;
+  coaching?: TryoutCoaching;
   [key: string]: unknown;
+}
+
+/** A user-authored agent design, stashed in input_snapshot.agent_design. */
+export interface TryoutAgentDesign {
+  name?: string;
+  instructions?: string;
+  tool_slugs?: string[];
+}
+
+export type TryoutCoachingKind = "prompt" | "tool" | "model";
+
+export interface TryoutCoachingSuggestion {
+  id: string;
+  title: string;
+  detail: string;
+  kind: TryoutCoachingKind;
+  /** Full revised instructions to apply, for kind === "prompt". */
+  proposed_instructions?: string;
+  /** Tool slugs to add to the agent, for kind === "tool". */
+  add_tool_slugs?: string[];
+}
+
+export interface TryoutCoaching {
+  suggestions: TryoutCoachingSuggestion[];
 }
 
 export type TryoutTimelineEventType =
@@ -2774,10 +2799,21 @@ export interface CreateAgentTryoutInput {
   selected_harness_kind?: AgentHarnessKind;
   selected_model_policy?: AgentTryoutModelPolicy;
   judge?: AgentTryoutJudgeSelection;
+  /** User-authored agent design (the system prompt that drives the run). */
+  agent_instructions?: string;
+  /** Tool-library slugs the agent is allowed to use. */
+  agent_tool_slugs?: string[];
+  /** Cosmetic name for the agent. */
+  agent_name?: string;
 }
 
 export interface RerunAgentTryoutInput {
-  selected_model_policy: AgentTryoutModelPolicy;
+  /** Optional: vary the model. Omit to keep the source model. */
+  selected_model_policy?: AgentTryoutModelPolicy;
+  /** Optional: vary the agent design so the re-run is attributable to the edit. */
+  agent_instructions?: string;
+  agent_tool_slugs?: string[];
+  agent_name?: string;
 }
 
 export interface PromoteAgentTryoutInput {
