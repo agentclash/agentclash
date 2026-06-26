@@ -92,6 +92,7 @@ export function AgentDesigner({
   taskLabel,
   onRun,
   running,
+  bare,
 }: {
   value: AgentDraft;
   onChange: (next: AgentDraft) => void;
@@ -100,6 +101,11 @@ export function AgentDesigner({
   taskLabel?: string;
   onRun?: () => void;
   running?: boolean;
+  /**
+   * Render without an outer card border/background so the designer can sit
+   * inside another container (e.g. the tryout composer) as one unified box.
+   */
+  bare?: boolean;
 }) {
   const grouped = tools.reduce<Record<string, AgentTool[]>>((acc, tool) => {
     (acc[tool.category] ??= []).push(tool);
@@ -115,10 +121,24 @@ export function AgentDesigner({
     onChange({ ...value, toolSlugs: [...next] });
   };
 
+  const padX = bare ? "px-2 sm:px-3" : "px-5 sm:px-6";
+
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.015]">
+    <div
+      className={cn(
+        bare
+          ? "border-t border-white/[0.07]"
+          : "rounded-lg border border-white/10 bg-white/[0.015]",
+      )}
+    >
       {/* Identity header */}
-      <div className="flex items-center gap-3 border-b border-white/[0.07] px-5 py-4 sm:px-6">
+      <div
+        className={cn(
+          "flex items-center gap-3",
+          padX,
+          bare ? "pb-2 pt-3" : "border-b border-white/[0.07] py-4",
+        )}
+      >
         <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.04]">
           <Bot className="size-4 text-white/70" />
         </span>
@@ -135,7 +155,7 @@ export function AgentDesigner({
         </div>
       </div>
 
-      <div className="space-y-6 px-5 py-5 sm:px-6">
+      <div className={cn("space-y-6", padX, bare ? "pb-3 pt-1" : "py-5")}>
         {/* System prompt — the centerpiece */}
         <div>
           <Label hint="read before every run">Instructions</Label>

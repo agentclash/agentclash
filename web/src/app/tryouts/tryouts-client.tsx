@@ -1014,26 +1014,39 @@ function TryoutWelcome({
             submitting={launching}
             rows={2}
             aboveFooter={
-              attachments.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5 px-2 pb-1 sm:px-3">
-                  {attachments.map((attachment) => (
-                    <span
-                      key={attachment.id}
-                      className="inline-flex max-w-full items-center gap-1 rounded-sm border border-white/12 bg-white/[0.03] py-0.5 pl-2 pr-1 font-mono text-2xs text-white/65"
-                    >
-                      <span className="truncate">{attachment.filename}</span>
-                      <button
-                        type="button"
-                        aria-label={`Remove ${attachment.filename}`}
-                        onClick={() => onRemoveAttachment(attachment.id)}
-                        className="rounded-sm p-0.5 text-white/40 transition hover:text-white"
+              <>
+                {/* The agent designer lives inside the composer so the page has
+                    one box with one run button — design the agent, give it the
+                    task, send. */}
+                <AgentDesigner
+                  bare
+                  value={agentDraft}
+                  onChange={onAgentDraftChange}
+                  tools={tools}
+                  models={designerModels}
+                  taskLabel={template?.name}
+                />
+                {attachments.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5 px-2 pb-1 pt-2 sm:px-3">
+                    {attachments.map((attachment) => (
+                      <span
+                        key={attachment.id}
+                        className="inline-flex max-w-full items-center gap-1 rounded-sm border border-white/12 bg-white/[0.03] py-0.5 pl-2 pr-1 font-mono text-2xs text-white/65"
                       >
-                        <X className="size-3" />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              ) : null
+                        <span className="truncate">{attachment.filename}</span>
+                        <button
+                          type="button"
+                          aria-label={`Remove ${attachment.filename}`}
+                          onClick={() => onRemoveAttachment(attachment.id)}
+                          className="rounded-sm p-0.5 text-white/40 transition hover:text-white"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </>
             }
             footerClassName="sm:flex-wrap"
             footer={
@@ -1135,18 +1148,6 @@ function TryoutWelcome({
             </div>
           ) : null}
         </form>
-
-        <div className="mt-6">
-          <AgentDesigner
-            value={agentDraft}
-            onChange={onAgentDraftChange}
-            tools={tools}
-            models={designerModels}
-            taskLabel={template?.name}
-            onRun={attemptLaunch}
-            running={launching}
-          />
-        </div>
       </div>
 
       <BarDialog
