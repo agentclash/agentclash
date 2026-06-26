@@ -146,6 +146,12 @@ export function AgentDesigner({
           <input
             value={value.name}
             onChange={(event) => onChange({ ...value, name: event.target.value })}
+            onKeyDown={(event) => {
+              // This input can sit inside the composer's <form> (bare mode), so
+              // block Enter from triggering the form's implicit submit and
+              // launching a run while the user is just naming their agent.
+              if (event.key === "Enter") event.preventDefault();
+            }}
             placeholder="Name your agent"
             className="w-full bg-transparent text-base font-medium text-white placeholder:text-white/30 focus:outline-none"
           />
