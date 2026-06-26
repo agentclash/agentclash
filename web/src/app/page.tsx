@@ -16,9 +16,49 @@ import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
 import { isReturningVisitor } from "@/lib/auth/returning";
 import HomePage from "./landing";
 
+// Homepage title/meta lead with the category buyers search, not just the
+// brand. Brand-only titles give Google no reason to rank for "ai agent
+// evals", "agent benchmark", "agent workflow testing", "langsmith
+// alternative", etc. Keep the title under ~60 chars so it isn't truncated.
+const HOME_TITLE = "AgentClash - Open-source AI agent evals & benchmarks";
+const HOME_DESCRIPTION =
+  "Build, replay, score, and regression-test AI agents with open-source evals, traces, benchmarks, and CI gates. A LangSmith alternative for agent workflow testing and prompt regression testing.";
+
 export const metadata: Metadata = {
+  title: HOME_TITLE,
+  description: HOME_DESCRIPTION,
   alternates: {
     canonical: "/",
+  },
+  keywords: [
+    "AI agent evals",
+    "agent evaluation",
+    "LLM agent evaluation",
+    "agent benchmark",
+    "agent workflow testing",
+    "prompt regression testing",
+    "agent regression testing",
+    "agent testing CI",
+    "agent drift",
+    "trace replay",
+    "agent observability open source",
+    "evals for AI agents",
+    "LangSmith alternative",
+    "open-source agent evals",
+    "coding agent benchmark",
+  ],
+  openGraph: {
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+    url: "/",
+    type: "website",
+    locale: "en_US",
+    siteName: "AgentClash",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
   },
 };
 
