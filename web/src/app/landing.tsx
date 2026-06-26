@@ -1352,9 +1352,9 @@ const LANDING_FEATURES: Array<{
   },
   {
     label: "Tracing",
-    title: "Tracing like never before.",
+    title: "OpenTelemetry traces become eval evidence.",
     body:
-      "OpenTelemetry-native. Every think, every tool call, every observation, every byte — with span trees, causal chains, per-step cost and latency. Not a transcript dump. A forensic record.",
+      "Import OTel-compatible traces from real agent runs. Preserve span trees, tool calls, observations, per-step cost, and latency so production behavior can become a reviewable test case.",
     glyph: <TracingGlyph />,
   },
   {
@@ -1366,9 +1366,9 @@ const LANDING_FEATURES: Array<{
   },
   {
     label: "Regression suites",
-    title: "Every failure becomes a test.",
+    title: "Every production failure becomes a regression test.",
     body:
-      "When a model flunks, the failing trace freezes into a permanent regression. Every future eval replays it. The suite sharpens itself — each escaped failure becomes a test the next agent cannot skip.",
+      "Promote failed traces, curated dataset rows, or bad support conversations into pinned regression cases. Future model, prompt, RAG, and tool changes have to prove they did not break the same workflow again.",
     glyph: <RegressionGlyph />,
   },
   {
@@ -1380,9 +1380,9 @@ const LANDING_FEATURES: Array<{
   },
   {
     label: "CI/CD",
-    title: "Gate the merge on the eval.",
+    title: "Block PRs when agents regress.",
     body:
-      "Trigger evals from GitHub Actions, a webhook, or the CLI. Fail the build when your agent regresses on the scorecard you care about. Eval moves from a dashboard you visit to a check that blocks bad code.",
+      "Run AI agent regression tests from GitHub Actions, a webhook, or the CLI. Compare candidates against a baseline and fail the build when correctness, cost, latency, or required evidence gets worse.",
     glyph: <CiCdGlyph />,
   },
 ];
@@ -1513,13 +1513,13 @@ export default function HomePage({
         <div className="mx-auto max-w-[1440px] grid gap-16 md:grid-cols-[1.5fr_1fr] md:gap-20 items-center">
           <div>
             <h1 className="font-sans font-semibold tracking-[-0.03em] leading-[0.98] text-[clamp(2.75rem,6vw,5.5rem)] max-w-[18ch]">
-              Ship AI-native software with confidence.
+              Turn agent failures into CI regression tests.
             </h1>
 
             <p className="mt-8 max-w-[46ch] text-lg sm:text-xl leading-[1.5] text-white/55">
-              One open-source platform from first eval to production.
-              Test agents on real tasks, replay failures step by step,
-              and gate releases on scorecards you can stand behind.
+              Import production traces or curated datasets, replay agent
+              behavior step by step, and block releases when prompts, models,
+              RAG, or tools make your agent worse.
             </p>
 
             <div className="mt-10 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3">

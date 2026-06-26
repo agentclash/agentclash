@@ -19,9 +19,9 @@ import {
 } from "@/components/marketing/json-ld";
 
 const PAGE_PATH = "/platform/agent-regression-testing";
-const PAGE_TITLE = "AI Agent Regression Testing and CI Gates - AgentClash";
+const PAGE_TITLE = "AI Agent Regression Testing from Traces to CI Gates - AgentClash";
 const PAGE_DESCRIPTION =
-  "Catch AI agent regressions before release with baseline comparisons, repeatable challenge packs, replay evidence, scorecards, and pull request gates.";
+  "Turn production traces and pinned datasets into AI agent regression tests with baselines, replay evidence, scorecards, and pull request gates.";
 const SOCIAL_IMAGE_ALT =
   "AgentClash AI agent regression testing social preview.";
 
@@ -29,7 +29,12 @@ const faqItems = [
   {
     question: "What is AI agent regression testing?",
     answer:
-      "AI agent regression testing reruns repeatable agent tasks against a candidate agent or model, compares the result to a baseline, and flags behavior that got worse before it ships.",
+      "AI agent regression testing reruns production-inspired tasks against a candidate agent, compares the result to a baseline, and flags behavior that got worse before it ships.",
+  },
+  {
+    question: "Can AgentClash use production traces or datasets?",
+    answer:
+      "Yes. AgentClash supports OTel-compatible trace import and pinned datasets so real failures, golden examples, and curated cases can become repeatable regression coverage.",
   },
   {
     question: "How do AgentClash CI gates work?",
@@ -46,13 +51,13 @@ const faqItems = [
 const workflow = [
   {
     icon: ListChecks,
-    title: "Freeze the workload",
-    text: "Turn a real failure or release risk into a challenge pack with inputs, tools, artifacts, and scoring rules.",
+    title: "Import traces or datasets",
+    text: "Start from OTel-compatible production traces, curated examples, or escaped failures that already matter to the business.",
   },
   {
     icon: GitCompare,
-    title: "Compare candidate to baseline",
-    text: "Run both agents under the same constraints and compare correctness, latency, cost, and evidence.",
+    title: "Compare against a baseline",
+    text: "Run the candidate under the same constraints and compare correctness, latency, cost, and evidence against known-good behavior.",
   },
   {
     icon: ShieldCheck,
@@ -62,17 +67,18 @@ const workflow = [
   {
     icon: TimerReset,
     title: "Promote failures",
-    text: "Convert escaped failures into reusable regression cases so the same mistake stays covered.",
+    text: "Convert failed traces and dataset rows into reusable regression cases so the same mistake stays covered.",
   },
 ];
 
 const gateSignals = [
+  "OTel-compatible trace import",
+  "Pinned datasets and golden examples",
   "Baseline versus candidate scorecards",
   "Replay timelines for every failed gate",
   "Artifact checks for files, logs, and evidence",
   "Cost and latency thresholds for production budgets",
-  "Challenge packs that make failures repeatable",
-  "Pull request gates for model, prompt, and tool changes",
+  "Pull request gates for model, prompt, RAG, and tool changes",
 ];
 
 export const metadata: Metadata = {
@@ -294,13 +300,13 @@ export default function AgentRegressionTestingPage() {
               <p className="mt-10 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-emerald-200/70">
                 Release gates for agents
               </p>
-              <h1 className="mt-5 max-w-[11ch] font-[family-name:var(--font-display)] text-5xl font-normal leading-none tracking-normal text-white sm:text-7xl">
-                AI agent regression testing for CI
+              <h1 className="mt-5 max-w-[13ch] font-sans text-5xl font-semibold leading-none tracking-tight text-white sm:text-7xl">
+                AI agent regression testing from traces to CI
               </h1>
               <p className="mt-8 max-w-[58ch] text-base leading-8 text-white/62 sm:text-lg">
-                Agent changes can pass a demo and still get worse in
-                production. AgentClash reruns real tasks, compares candidates
-                against a baseline, and blocks pull requests when scorecards or
+                Agent changes can pass a demo and still get worse in production.
+                AgentClash turns traces, datasets, and escaped failures into
+                repeatable tests, then blocks pull requests when scorecards or
                 evidence regress.
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
@@ -331,12 +337,12 @@ export default function AgentRegressionTestingPage() {
                 What a gate checks
               </p>
               <h2 className="mt-4 text-3xl font-semibold tracking-normal text-white sm:text-5xl">
-                Regression signals that survive model churn
+                Regression signals from the workflows users actually run
               </h2>
               <p className="mt-5 text-sm leading-7 text-white/55 sm:text-base">
-                Prompts, models, tools, and sandbox images all move. AgentClash
-                makes the workload repeatable so the release decision is based
-                on behavior, not a one-off transcript.
+                Prompts, models, tools, retrieval, and sandbox images all move.
+                AgentClash makes production-inspired workloads repeatable so the
+                release decision is based on behavior, not a one-off transcript.
               </p>
             </div>
             <div className="mt-12 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -363,7 +369,7 @@ export default function AgentRegressionTestingPage() {
                   Workflow
                 </p>
                 <h2 className="mt-4 text-3xl font-semibold tracking-normal text-white sm:text-5xl">
-                  From escaped failure to pull request gate
+                  From production evidence to pull request gate
                 </h2>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -396,9 +402,10 @@ export default function AgentRegressionTestingPage() {
                 Wire regression gates into the release loop
               </h2>
               <p className="mt-5 text-sm leading-7 text-white/55 sm:text-base">
-                Start with one challenge pack and one release gate. Then add
-                escaped failures as reusable cases instead of rebuilding the
-                entire eval stack every time an agent changes.
+                Start with one dataset, trace import, or challenge pack and one
+                release gate. Then add escaped failures as reusable cases
+                instead of rebuilding the entire eval stack every time an agent
+                changes.
               </p>
             </div>
             <div className="grid gap-3">
@@ -407,6 +414,11 @@ export default function AgentRegressionTestingPage() {
                   "CI/CD agent gates",
                   "Fail a pull request when an agent regresses.",
                   "/docs/guides/ci-cd-agent-gates",
+                ],
+                [
+                  "Datasets overview",
+                  "Import examples, record baselines, and sync regression suites.",
+                  "/docs/guides/datasets-overview",
                 ],
                 [
                   "CI/CD workload recipes",

@@ -1,8 +1,8 @@
 export const AGENT_EVALUATION_FEATURES = [
-  "Sandboxed real-tool execution",
-  "Head-to-head runs with fair constraints",
-  "Scorecards for correctness, cost, latency, and tool strategy",
-  "Replay trails for every important action",
-  "Challenge packs that turn failures into reusable tests",
-  "CI gates for baseline versus candidate decisions",
+  "OpenTelemetry-compatible trace import",
+  "Pinned datasets and golden test cases",
+  "Baseline versus candidate regression checks",
+  "Replay trails for tool calls, outputs, and artifacts",
+  "Scorecards for correctness, cost, latency, and evidence",
+  "CI gates for prompt, model, RAG, and tool changes",
 ];

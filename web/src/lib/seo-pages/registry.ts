@@ -5,6 +5,24 @@ const sharedProofPoints = AGENT_EVALUATION_FEATURES;
 
 const sharedDocsLinks = [
   {
+    title: "Datasets overview",
+    text: "Import examples, record baselines, sync regression suites, and gate CI.",
+    href: "/docs/guides/datasets-overview",
+  },
+  {
+    title: "Dataset CI gates",
+    text: "Fail builds when a candidate regresses against a pinned baseline.",
+    href: "/docs/guides/dataset-ci-gates",
+  },
+  {
+    title: "CI/CD agent gates",
+    text: "Block pull requests when agent behavior gets worse.",
+    href: "/docs/guides/ci-cd-agent-gates",
+  },
+] as const;
+
+const quickstartDocsLinks = [
+  {
     title: "Quickstart",
     text: "Validate the CLI and get to your first runnable command.",
     href: "/docs/getting-started/quickstart",
@@ -76,16 +94,16 @@ function page(
     ]),
     workflow: [
       {
-        title: "Package the task",
-        text: "Describe the workload as a challenge pack with inputs, tools, scoring rules, and artifacts.",
+        title: "Import the evidence",
+        text: "Start from OpenTelemetry traces, curated datasets, support transcripts, or a real failure your team already saw.",
       },
       {
-        title: "Run the agents",
-        text: "Run every candidate against the same task with the same constraints.",
+        title: "Pin the baseline",
+        text: "Record the current accepted behavior so every prompt, model, RAG, or tool change has a fair comparison point.",
       },
       {
         title: "Replay the evidence",
-        text: "Inspect tool calls, outputs, artifacts, latency, cost, and judge evidence after the run.",
+        text: "Inspect tool calls, outputs, artifacts, latency, cost, and judge evidence when a candidate gets worse.",
       },
       {
         title: "Gate the release",
@@ -102,17 +120,17 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     tier: "S",
     keyword: "open source AI agent evaluation",
     intent: "OSS users/founders",
-    pageTitle: "Open Source AI Agent Evaluation Platform - AgentClash",
+    pageTitle: "Open Source AI Agent Regression Testing - AgentClash",
     metaDescription:
-      "AgentClash is an open-source AI agent evaluation platform for real-task evals, replay evidence, scorecards, challenge packs, and CI regression gates.",
+      "Open-source AI agent regression testing for production traces, pinned datasets, replay evidence, baselines, and CI gates.",
     socialImageAlt: "AgentClash open source AI agent evaluation social preview.",
     eyebrow: "Open source",
     h1: "Open source AI agent evaluation for real tasks",
     heroDescription:
-      "AgentClash is MIT-licensed and self-hostable. Run same-task agent evals on your workloads, keep replay evidence, and turn failures into reusable regression gates without a black-box vendor loop.",
-    proofSectionTitle: "What open-source eval should include",
+      "AgentClash is MIT-licensed and self-hostable. Import traces or curated datasets, keep replay evidence, and turn failures into reusable CI gates without a black-box vendor loop.",
+    proofSectionTitle: "What open-source regression testing should include",
     proofSectionDescription:
-      "Open source matters when your eval stack needs to run inside your repo, your CI, and your sandbox policy — not just inside someone else's hosted UI.",
+      "Open source matters when your agent test stack needs to run inside your repo, your CI, and your sandbox policy, not just inside someone else's hosted UI.",
     workflowSectionTitle: "From first eval to team-wide gate",
     docsSectionTitle: "Start with the repo",
     docsSectionDescription:
@@ -125,7 +143,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-open-source-ai-agent-evaluation-schema",
     searchKeywords:
-      "open source AI agent evaluation OSS agent eval platform self-hosted agent evaluation MIT agent benchmark replay scorecards challenge packs",
+      "open source AI agent regression testing OSS agent eval platform self-hosted agent evaluation OpenTelemetry traces datasets CI gates",
     sitemapTitle: "Open source AI agent evaluation",
     sitemapDescription:
       "MIT-licensed, self-hostable AI agent evaluation with replay, scorecards, and CI gates.",
@@ -152,7 +170,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
         text: "Boot Postgres, Temporal, API, and worker locally or in your cluster.",
         href: "/docs/getting-started/self-host",
       },
-      ...sharedDocsLinks,
+      ...quickstartDocsLinks,
     ],
   }),
   page({
@@ -160,21 +178,21 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     tier: "S",
     keyword: "agent evals",
     intent: "Dev shorthand",
-    pageTitle: "Agent Evals for Real Tasks, Replay, and CI Gates - AgentClash",
+    pageTitle: "Agent Evals from Traces, Datasets, and CI Gates - AgentClash",
     metaDescription:
-      "Run agent evals on real tasks with the same tools, full replay evidence, scorecards, challenge packs, and regression gates. Not just final-answer checks.",
+      "Run agent evals from production traces and pinned datasets. Compare baselines, replay failures, and block regressions in CI.",
     socialImageAlt: "AgentClash agent evals social preview.",
     eyebrow: "Agent evals",
-    h1: "Agent evals that cover the whole trajectory",
+    h1: "Agent evals that catch production regressions",
     heroDescription:
-      "Agent evals should answer whether an agent can finish the job again under the same tools, budget, and constraints. AgentClash records replay evidence and scorecards so evals become release decisions.",
-    proofSectionTitle: "What good agent evals capture",
+      "Agent evals should answer whether a change made your agent worse. AgentClash imports traces or curated examples, compares candidates to baselines, and turns failures into release gates.",
+    proofSectionTitle: "What useful agent evals capture",
     proofSectionDescription:
-      "If your agent eval only checks the final string, you miss the tool misuse, runaway loops, and artifact gaps that show up in production.",
+      "If your agent eval only checks the final string, you miss the tool misuse, RAG drift, latency spikes, and artifact gaps that show up in production.",
     workflowSectionTitle: "From one eval to a reusable gate",
     docsSectionTitle: "Run your first agent eval",
     docsSectionDescription:
-      "Use challenge packs for repeatable workloads, then promote failures into regression cases your team can run in CI.",
+      "Use datasets and challenge packs for repeatable workloads, then promote failures into regression cases your team can run in CI.",
     faqSectionTitle: "Agent eval FAQ",
     applicationSubCategory: "Agent evaluation software",
     breadcrumbs: [
@@ -183,7 +201,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-agent-evals-schema",
     searchKeywords:
-      "agent evals agent evaluation eval harness real task agent benchmark replay scorecards challenge packs CI gates",
+      "agent evals agent evaluation LLM evals production traces datasets golden test cases replay scorecards CI gates",
     sitemapTitle: "Agent evals",
     sitemapDescription:
       "Real-task agent evals with replay evidence, scorecards, and CI regression gates.",
@@ -191,7 +209,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "What is an agent eval?",
         answer:
-          "An agent eval is a repeatable test that runs an agent on a task, scores the full trajectory, and compares the result to a baseline or competitor.",
+          "An agent eval is a repeatable test that runs an agent on a task, scores the full trajectory, and compares the result to a baseline, dataset, or competitor.",
       },
       {
         question: "How is AgentClash different from prompt evals?",
@@ -201,7 +219,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "Can agent evals run in CI?",
         answer:
-          "Yes. AgentClash can compare candidate and baseline scorecards and fail a pull request when the configured release gate regresses.",
+          "Yes. AgentClash can compare candidate and baseline scorecards, including dataset baselines, and fail a pull request when the configured release gate regresses.",
       },
     ],
   }),
@@ -311,21 +329,21 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     tier: "A",
     keyword: "AI agent testing",
     intent: "Simpler language",
-    pageTitle: "AI Agent Testing with Replay and Release Gates - AgentClash",
+    pageTitle: "AI Agent Testing from Production Traces to CI Gates - AgentClash",
     metaDescription:
-      "Test AI agents on real tasks with sandboxed execution, replay evidence, scorecards, challenge packs, and CI gates that block regressions.",
+      "Test AI agents with production traces, pinned datasets, replay evidence, scorecards, and CI gates that block regressions.",
     socialImageAlt: "AgentClash AI agent testing social preview.",
     eyebrow: "Agent testing",
-    h1: "AI agent testing that looks like release engineering",
+    h1: "AI agent testing that starts from real failures",
     heroDescription:
-      "AI agent testing should feel closer to software testing than prompt tweaking. AgentClash turns real failures into repeatable challenge packs, compares candidates to baselines, and keeps the evidence reviewers need.",
+      "AI agent testing should feel closer to software testing than prompt tweaking. AgentClash turns traces, golden datasets, and escaped failures into repeatable tests with baseline comparisons.",
     proofSectionTitle: "What production-grade agent testing covers",
     proofSectionDescription:
-      "Testing agents means checking behavior across the whole run — not approving a single polished answer from a cherry-picked prompt.",
+      "Testing agents means checking behavior across the whole run, including tool calls, retrieval, cost, latency, and artifacts.",
     workflowSectionTitle: "Test loop",
     docsSectionTitle: "Start testing with docs",
     docsSectionDescription:
-      "Write a challenge pack, run an eval, inspect replay, then wire the same workload into CI.",
+      "Import a trace or dataset, run an eval, inspect replay, then wire the same workload into CI.",
     faqSectionTitle: "AI agent testing FAQ",
     applicationSubCategory: "AI agent testing software",
     breadcrumbs: [
@@ -334,7 +352,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-ai-agent-testing-schema",
     searchKeywords:
-      "AI agent testing test AI agents agent QA replay scorecards challenge packs regression testing CI gates",
+      "AI agent testing test AI agents production traces golden datasets LLM regression testing replay scorecards CI gates",
     sitemapTitle: "AI agent testing",
     sitemapDescription:
       "Test AI agents on real tasks with replay evidence and CI regression gates.",
@@ -352,7 +370,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "How do we keep tests from getting stale?",
         answer:
-          "Promote escaped production failures into challenge packs and regression suites so the same mistake stays covered after the next model swap.",
+          "Promote escaped production failures into datasets, challenge packs, and regression suites so the same mistake stays covered after the next model swap.",
       },
     ],
   }),
@@ -419,21 +437,21 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     tier: "A",
     keyword: "agent evaluation CI/CD",
     intent: "Release engineering",
-    pageTitle: "CI/CD Agent Evaluation and Regression Gates - AgentClash",
+    pageTitle: "CI/CD Agent Regression Testing and Gates - AgentClash",
     metaDescription:
-      "Wire agent evaluation into CI/CD with baseline comparisons, challenge packs, replay evidence, scorecards, and pull request gates.",
+      "Wire AI agent regression testing into CI/CD with dataset baselines, trace replay, scorecards, and pull request gates.",
     socialImageAlt: "AgentClash CI/CD agent evaluation social preview.",
     eyebrow: "CI/CD",
-    h1: "CI/CD agent evaluation for pull request gates",
+    h1: "CI/CD regression gates for AI agents",
     heroDescription:
-      "Model, prompt, and tool changes should not ship on vibes. AgentClash runs repeatable agent workloads in CI, compares candidate scorecards to baselines, and blocks merges when behavior regresses.",
+      "Model, prompt, RAG, and tool changes should not ship on vibes. AgentClash runs repeatable agent workloads in CI, compares candidates to baselines, and blocks merges when behavior regresses.",
     proofSectionTitle: "What CI/CD agent eval needs",
     proofSectionDescription:
-      "Release engineering needs deterministic workloads, stable scoring, and enough evidence to debug a failed gate without reproducing the issue manually.",
+      "Release engineering needs pinned datasets, stable scoring, and enough replay evidence to debug a failed gate without reproducing the issue manually.",
     workflowSectionTitle: "CI gate workflow",
     docsSectionTitle: "Wire gates with docs",
     docsSectionDescription:
-      "Start with the CI/CD agent gates guide, then promote real failures into challenge packs your pipeline can rerun on every change.",
+      "Start with dataset or challenge-pack gates, then promote real failures into cases your pipeline can rerun on every change.",
     faqSectionTitle: "CI/CD agent evaluation FAQ",
     applicationSubCategory: "CI/CD agent evaluation software",
     breadcrumbs: [
@@ -442,7 +460,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     ],
     schemaId: "agentclash-ci-cd-agent-evaluation-schema",
     searchKeywords:
-      "CI/CD agent evaluation agent eval CI pull request gates release gates baseline candidate regression testing challenge packs",
+      "CI/CD agent regression testing agent eval CI pull request gates dataset baselines production traces release gates",
     sitemapTitle: "CI/CD agent evaluation",
     sitemapDescription:
       "Run agent evaluation in CI/CD with scorecard gates and replay evidence.",
@@ -450,7 +468,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "How do agent eval gates fit into CI/CD?",
         answer:
-          "A challenge pack runs on every candidate change, AgentClash compares the scorecard to a baseline, and the pipeline fails when configured thresholds regress.",
+          "A dataset or challenge pack runs on every candidate change, AgentClash compares the scorecard to a baseline, and the pipeline fails when configured thresholds regress.",
       },
       {
         question: "What happens when a gate fails?",
@@ -466,7 +484,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     relatedLinks: [
       {
         title: "Agent regression testing",
-        text: "Product overview for baseline versus candidate agent testing.",
+        text: "Product overview for trace and dataset-driven regression testing.",
         href: "/platform/agent-regression-testing",
       },
       ...sharedDocsLinks,
