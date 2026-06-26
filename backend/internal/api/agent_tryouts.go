@@ -39,6 +39,10 @@ var (
 	ErrAgentTryoutCostCapExceeded           = errors.New("agent tryout cost cap exceeded")
 	ErrAgentTryoutRedactionNotReady         = errors.New("agent tryout redaction not ready")
 
+	// Agent-design validation errors (user-authored prompt + selected tools).
+	errInvalidAgentDesignInstructionsTooLong = fmt.Errorf("%w: agent instructions exceed %d characters", ErrInvalidAgentTryoutInput, maxAgentInstructionsBytes)
+	errInvalidAgentDesignTooManyTools        = fmt.Errorf("%w: select at most %d tools", ErrInvalidAgentTryoutInput, maxAgentToolSlugs)
+
 	// Conversion-flow errors (#947: rerun / compare / promote-to-eval).
 	ErrAgentTryoutSignInRequired             = errors.New("agent tryout sign-in required")
 	ErrAgentTryoutModelPolicyInvalid         = errors.New("agent tryout model policy invalid")
@@ -122,6 +126,14 @@ type CreateAnonymousAgentTryoutInput struct {
 	Judge                *AgentTryoutJudgeSelection
 	AnonymousFingerprint string
 	Now                  time.Time
+
+	// Optional user-authored agent design. When present, the instructions drive
+	// the run as the agent's primary directive, the selected tools are surfaced
+	// as the agent's abilities, and the name labels the design. Absent fields
+	// leave behavior identical to a template-only tryout.
+	AgentInstructions string
+	AgentToolSlugs    []string
+	AgentName         string
 }
 
 // SubmitAgentTryoutTurnInput is a user message in an interactive tryout chat.
@@ -301,8 +313,21 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 	if err != nil {
 		return repository.AgentTryout{}, err
 	}
+	design, designPresent, err := normalizeAgentDesign(agentDesignInput{
+		Name:         input.AgentName,
+		Instructions: input.AgentInstructions,
+		ToolSlugs:    input.AgentToolSlugs,
+	})
+	if err != nil {
+		return repository.AgentTryout{}, err
+	}
+	resolvedInput = mergeAgentDesignIntoInput(resolvedInput, design, designPresent)
 	if int64(len(resolvedInput)) > template.MaxInputBytes {
 		return repository.AgentTryout{}, fmt.Errorf("%w: input exceeds %d bytes", ErrInvalidAgentTryoutInput, template.MaxInputBytes)
+	}
+	toolPolicySnapshot := template.ToolPolicy
+	if designPresent {
+		toolPolicySnapshot = toolPolicyWithAgentToolKinds(toolPolicySnapshot, design.ToolSlugs)
 	}
 	selectedHarness, err := normalizeSelectedHarnessKind(input.SelectedHarnessKind)
 	if err != nil {
@@ -329,7 +354,7 @@ func (m *AgentTryoutManager) CreateAnonymousTryout(ctx context.Context, input Cr
 		Status:                   repository.AgentTryoutStatusQueued,
 		InputSnapshot:            resolvedInput,
 		TemplateSnapshot:         templateSnapshot(template),
-		ToolPolicySnapshot:       template.ToolPolicy,
+		ToolPolicySnapshot:       toolPolicySnapshot,
 		EvaluationSpecSnapshot:   evaluationSpecWithPublicJudge(template.EvaluationSpec, judge, resolvedInput, template.Name),
 		SelectedModelPolicy:      selectedModelPolicy,
 		SelectedHarnessKind:      selectedHarness,
@@ -826,6 +851,7 @@ func agentTryoutTaskPrompt(template AgentTryoutTemplate, input json.RawMessage) 
 		"TASK: " + template.Name + " (" + template.Slug + ")",
 		"GOAL: " + template.Description,
 	}
+	lines = append(lines, agentDesignPromptLines(input)...)
 	if instructions != "" {
 		lines = append(lines, "", "INSTRUCTIONS:", instructions)
 	}
@@ -1098,6 +1124,9 @@ type createAgentTryoutRequest struct {
 	SelectedHarnessKind string                     `json:"selected_harness_kind,omitempty"`
 	SelectedModelPolicy json.RawMessage            `json:"selected_model_policy,omitempty"`
 	Judge               *AgentTryoutJudgeSelection `json:"judge,omitempty"`
+	AgentInstructions   string                     `json:"agent_instructions,omitempty"`
+	AgentToolSlugs      []string                   `json:"agent_tool_slugs,omitempty"`
+	AgentName           string                     `json:"agent_name,omitempty"`
 }
 
 type claimAgentTryoutRequest struct {
@@ -1215,6 +1244,9 @@ func createAnonymousAgentTryoutHandler(logger *slog.Logger, service AgentTryoutS
 			SelectedModelPolicy:  req.SelectedModelPolicy,
 			Judge:                req.Judge,
 			AnonymousFingerprint: anonymousFingerprintFromRequest(r),
+			AgentInstructions:    req.AgentInstructions,
+			AgentToolSlugs:       req.AgentToolSlugs,
+			AgentName:            req.AgentName,
 		})
 		if err != nil {
 			writeAgentTryoutError(w, logger, err)

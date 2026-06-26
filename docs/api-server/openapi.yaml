@@ -14137,6 +14137,30 @@ components:
           description: Optional explicit model policy for the selected harness.
         judge:
           $ref: "#/components/schemas/AgentTryoutJudgeSelection"
+        agent_instructions:
+          type: string
+          maxLength: 8000
+          description: >-
+            Optional user-authored agent system prompt. When present it becomes
+            the agent's primary behavioral directive (the template still
+            supplies task framing, inputs, and expected deliverables). Stored in
+            input_snapshot under agent_design.instructions.
+        agent_tool_slugs:
+          type: array
+          items:
+            type: string
+          maxItems: 24
+          description: >-
+            Optional tool-library slugs the agent is equipped with. Unknown
+            slugs are dropped; the list is capped at 24. Surfaced in the prompt
+            as the agent's abilities and stored under
+            agent_design.tool_slugs.
+        agent_name:
+          type: string
+          maxLength: 120
+          description: >-
+            Optional display name for the authored agent. Stored under
+            agent_design.name.
 
     AgentTryoutJudgeSelection:
       type: object
@@ -14206,6 +14230,14 @@ components:
         summary:
           type: object
           additionalProperties: true
+          description: >-
+            Free-form status/result payload. On a completed tryout it carries
+            outputs and scorecard (with scorecard.judge), and — best-effort —
+            a coaching block matching AgentTryoutCoaching when AI coaching was
+            produced. Coaching is omitted on any failure.
+          properties:
+            coaching:
+              $ref: "#/components/schemas/AgentTryoutCoaching"
         redaction_status:
           type: string
           enum: [pending, passed, failed, not_required]
@@ -14280,6 +14312,14 @@ components:
         summary:
           type: object
           additionalProperties: true
+          description: >-
+            Free-form status/result payload. On a completed tryout it carries
+            outputs and scorecard (with scorecard.judge), and — best-effort —
+            a coaching block matching AgentTryoutCoaching when AI coaching was
+            produced. Coaching is omitted on any failure.
+          properties:
+            coaching:
+              $ref: "#/components/schemas/AgentTryoutCoaching"
         redaction_status:
           type: string
           enum: [pending, passed, failed, not_required]
@@ -14437,6 +14477,78 @@ components:
             The model policy to rerun under. Must set a `mode` or at least one
             explicit `models[]` entry; explicit models must name a known
             provider.
+        agent_design_provided:
+          type: boolean
+          description: >-
+            When true the rerun overrides the source tryout's agent design with
+            the agent_* fields below (after normalization), making the agent
+            design — not just the model — the varied dimension. When false or
+            omitted the rerun inherits the source's agent_design unchanged.
+        agent_instructions:
+          type: string
+          maxLength: 8000
+          description: >-
+            Override agent system prompt for the rerun. Only applied when
+            agent_design_provided is true.
+        agent_tool_slugs:
+          type: array
+          items:
+            type: string
+          maxItems: 24
+          description: >-
+            Override tool-library slugs for the rerun. Unknown slugs are
+            dropped; capped at 24. Only applied when agent_design_provided is
+            true.
+        agent_name:
+          type: string
+          maxLength: 120
+          description: >-
+            Override agent display name for the rerun. Only applied when
+            agent_design_provided is true.
+
+    AgentTryoutCoaching:
+      type: object
+      description: >-
+        Best-effort AI coaching produced after a judge verdict exists. Appears
+        under a completed tryout's summary.coaching. Omitted entirely on any
+        failure (no verdict, provider error, unparsable output).
+      required: [suggestions]
+      properties:
+        suggestions:
+          type: array
+          maxItems: 3
+          items:
+            $ref: "#/components/schemas/AgentTryoutCoachingSuggestion"
+
+    AgentTryoutCoachingSuggestion:
+      type: object
+      description: One specific, applyable improvement to the user's agent.
+      required: [id, title, detail, kind]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        detail:
+          type: string
+        kind:
+          type: string
+          enum: [prompt, tool, model]
+          description: >-
+            Whether the suggestion changes the agent's prompt, its tools, or its
+            model.
+        proposed_instructions:
+          type: string
+          description: >-
+            For kind=prompt, the full revised agent instructions to apply.
+            Absent for other kinds.
+        add_tool_slugs:
+          type: array
+          items:
+            type: string
+          description: >-
+            For kind=tool, library tool slugs to add to the agent. Only slugs
+            recognized by the tool library are returned. Absent for other kinds.
 
     PromoteAgentTryoutRequest:
       type: object

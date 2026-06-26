@@ -98,10 +98,19 @@ func parseTryoutModelPolicy(raw json.RawMessage) (tryoutModelPolicy, error) {
 }
 
 // RerunAgentTryoutInput requests a rerun of an existing workspace tryout with a
-// different model policy.
+// different model policy and, optionally, a different agent design.
 type RerunAgentTryoutInput struct {
 	SourceTryoutID      uuid.UUID
 	SelectedModelPolicy json.RawMessage
+
+	// Optional agent-design override. When AgentDesignProvided is true the rerun
+	// replaces the source's agent_design with these fields (after normalization),
+	// making the agent design — not just the model — the varied dimension. When
+	// false the rerun inherits the source's agent_design unchanged.
+	AgentDesignProvided bool
+	AgentInstructions   string
+	AgentToolSlugs      []string
+	AgentName           string
 }
 
 // RerunWorkspaceTryout creates a new tryout that reuses the source tryout's
@@ -136,6 +145,26 @@ func (m *AgentTryoutManager) RerunWorkspaceTryout(ctx context.Context, caller Ca
 		}
 	}
 
+	// Clone the source input, then optionally override the agent design so the
+	// rerun varies the agent (not just the model). When no override is supplied
+	// the cloned snapshot — including any inherited agent_design — is reused.
+	inputSnapshot := cloneRawJSON(source.InputSnapshot)
+	toolPolicySnapshot := template.ToolPolicy
+	if input.AgentDesignProvided {
+		design, designPresent, designErr := normalizeAgentDesign(agentDesignInput{
+			Name:         input.AgentName,
+			Instructions: input.AgentInstructions,
+			ToolSlugs:    input.AgentToolSlugs,
+		})
+		if designErr != nil {
+			return repository.AgentTryout{}, designErr
+		}
+		inputSnapshot = replaceAgentDesignInInput(inputSnapshot, design, designPresent)
+		if designPresent {
+			toolPolicySnapshot = toolPolicyWithAgentToolKinds(toolPolicySnapshot, design.ToolSlugs)
+		}
+	}
+
 	callerID := caller.UserID
 	parentID := source.ID
 	tryout, err := m.repo.CreateAgentTryout(ctx, repository.CreateAgentTryoutParams{
@@ -143,9 +172,9 @@ func (m *AgentTryoutManager) RerunWorkspaceTryout(ctx context.Context, caller Ca
 		WorkspaceID:            source.WorkspaceID,
 		TemplateSlug:           template.Slug,
 		Status:                 repository.AgentTryoutStatusQueued,
-		InputSnapshot:          cloneRawJSON(source.InputSnapshot),
+		InputSnapshot:          inputSnapshot,
 		TemplateSnapshot:       templateSnapshot(template),
-		ToolPolicySnapshot:     template.ToolPolicy,
+		ToolPolicySnapshot:     toolPolicySnapshot,
 		EvaluationSpecSnapshot: template.EvaluationSpec,
 		SelectedModelPolicy:    input.SelectedModelPolicy,
 		Summary:                json.RawMessage(`{}`),
@@ -375,6 +404,12 @@ func templateExpectedArtifacts(templateSnapshot json.RawMessage) []map[string]an
 
 type rerunAgentTryoutRequest struct {
 	SelectedModelPolicy json.RawMessage `json:"selected_model_policy"`
+	// Agent-design override. agent_design_provided gates whether the rerun
+	// replaces the source's design; when false the source design is inherited.
+	AgentDesignProvided bool     `json:"agent_design_provided,omitempty"`
+	AgentInstructions   string   `json:"agent_instructions,omitempty"`
+	AgentToolSlugs      []string `json:"agent_tool_slugs,omitempty"`
+	AgentName           string   `json:"agent_name,omitempty"`
 }
 
 func rerunAgentTryoutHandler(logger *slog.Logger, service AgentTryoutService) http.HandlerFunc {
@@ -397,6 +432,10 @@ func rerunAgentTryoutHandler(logger *slog.Logger, service AgentTryoutService) ht
 		tryout, err := service.RerunWorkspaceTryout(r.Context(), caller, RerunAgentTryoutInput{
 			SourceTryoutID:      id,
 			SelectedModelPolicy: req.SelectedModelPolicy,
+			AgentDesignProvided: req.AgentDesignProvided,
+			AgentInstructions:   req.AgentInstructions,
+			AgentToolSlugs:      req.AgentToolSlugs,
+			AgentName:           req.AgentName,
 		})
 		if err != nil {
 			writeAgentTryoutError(w, logger, err)

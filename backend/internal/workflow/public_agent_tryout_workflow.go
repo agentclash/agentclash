@@ -78,15 +78,17 @@ func (a *Activities) ExecutePublicAgentTryout(ctx context.Context, input Execute
 
 	latencyMS := time.Since(started).Milliseconds()
 	scorecard := publicTryoutScorecard(tryout.EvaluationSpecSnapshot, outputs, latencyMS)
-	if judgeSection := a.runPublicTryoutJudges(ctx, tryout, outputs); judgeSection != nil {
-		scorecard["judge"] = judgeSection
+	var judgeSection map[string]any
+	if section := a.runPublicTryoutJudges(ctx, tryout, outputs); section != nil {
+		judgeSection = section
+		scorecard["judge"] = section
 	}
 	scoringPayload := map[string]any{
 		"passed": scorecard["passed_validators"],
 		"total":  scorecard["total_validators"],
 		"score":  scorecard["score"],
 	}
-	if judgeSection, ok := scorecard["judge"].(map[string]any); ok {
+	if judgeSection != nil {
 		if verdict, ok := judgeSection["verdict"].(string); ok {
 			scoringPayload["verdict"] = verdict
 		}
@@ -98,11 +100,16 @@ func (a *Activities) ExecutePublicAgentTryout(ctx context.Context, input Execute
 		return wrapActivityError(err)
 	}
 
+	// Best-effort AI coaching: only after a judge verdict exists. Any failure
+	// (no verdict, provider error, unparsable output) omits coaching and never
+	// fails the run.
+	coaching := a.generatePublicTryoutCoaching(ctx, tryout, outputs, judgeSection)
+
 	redaction := repository.AgentTryoutRedactionPassed
 	if _, err := a.publicTryoutRepo.UpdateAgentTryoutStatus(ctx, repository.UpdateAgentTryoutStatusParams{
 		ID:              tryout.ID,
 		Status:          repository.AgentTryoutStatusCompleted,
-		Summary:         publicTryoutCompletedSummary(outputs, scorecard),
+		Summary:         publicTryoutCompletedSummary(outputs, scorecard, coaching),
 		LatencyMS:       int64Ptr(latencyMS),
 		RedactionStatus: &redaction,
 	}); err != nil {
@@ -622,6 +629,7 @@ func renderAgentTryoutTaskPromptLines(name, slug, description string, runtime, i
 		"TASK: " + name + " (" + slug + ")",
 		"GOAL: " + description,
 	}
+	lines = append(lines, agentDesignPromptLines(input)...)
 	if instructions != "" {
 		lines = append(lines, "", "INSTRUCTIONS:", instructions)
 	}
@@ -888,13 +896,17 @@ func publicTryoutRunningSummary(outputs []map[string]any, harnessKind string, se
 	return payload
 }
 
-func publicTryoutCompletedSummary(outputs []map[string]any, scorecard map[string]any) json.RawMessage {
-	payload, _ := json.Marshal(map[string]any{
+func publicTryoutCompletedSummary(outputs []map[string]any, scorecard map[string]any, coaching map[string]any) json.RawMessage {
+	body := map[string]any{
 		"code":      "completed",
 		"message":   "The hosted agent finished this public tryout. Export the trace or sign in to save and rerun it.",
 		"outputs":   outputs,
 		"scorecard": scorecard,
-	})
+	}
+	if coaching != nil {
+		body["coaching"] = coaching
+	}
+	payload, _ := json.Marshal(body)
 	return payload
 }
 
