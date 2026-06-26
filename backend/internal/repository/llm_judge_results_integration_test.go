@@ -213,6 +213,45 @@ func TestUpsertLLMJudgeResult_HandlesNullableFields(t *testing.T) {
 	}
 }
 
+// TestUpsertLLMJudgeResult_AcceptsSingleModelConfidence is a regression test
+// for the stale confidence CHECK constraint. deriveJudgeConfidence emits
+// "single-model" for single-model judges and the scorecard UI renders it, but
+// the original constraint from migration 00021 only allowed high/medium/low,
+// so persisting such a result violated llm_judge_results_confidence_check and
+// failed the whole run. Migration 00064 widens the allowed set; this pins it.
+func TestUpsertLLMJudgeResult_AcceptsSingleModelConfidence(t *testing.T) {
+	ctx := context.Background()
+	db := openTestDB(t)
+	fixture := seedFixture(t, ctx, db)
+	repo := repository.New(db)
+
+	evaluationSpecID := insertEvaluationSpecRecord(t, ctx, db, fixture.challengePackVersionID, "llm-judge-single-model", 1)
+
+	score := 1.0
+	confidence := "single-model"
+
+	params := repository.UpsertLLMJudgeResultParams{
+		RunAgentID:       fixture.primaryRunAgentID,
+		EvaluationSpecID: evaluationSpecID,
+		JudgeKey:         "no_hallucinated_fields",
+		Mode:             "assertion",
+		NormalizedScore:  &score,
+		Payload:          json.RawMessage(`{"mode":"assertion","model_scores":{"claude-haiku-4-5-20251001":1.0}}`),
+		Confidence:       &confidence,
+		Variance:         nil,
+		SampleCount:      3,
+		ModelCount:       1,
+	}
+
+	inserted, err := repo.UpsertLLMJudgeResult(ctx, params)
+	if err != nil {
+		t.Fatalf("UpsertLLMJudgeResult rejected single-model confidence: %v", err)
+	}
+	if inserted.Confidence == nil || *inserted.Confidence != "single-model" {
+		t.Errorf("Confidence = %v, want single-model", inserted.Confidence)
+	}
+}
+
 // TestListLLMJudgeResults_OrdersByJudgeKey pins the deterministic ordering
 // contract so downstream readers (dimension dispatch in Phase 4) can rely
 // on stable iteration without sorting again.
