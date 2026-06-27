@@ -1,0 +1,29 @@
+{
+  "name": "AgentClash",
+  "image": "mcr.microsoft.com/devcontainers/go:1-1.25-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    "ghcr.io/devcontainers/features/node:1": { "version": "22" },
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  },
+  "forwardPorts": [8080, 3000, 7233, 8233, 5432, 6379],
+  "portsAttributes": {
+    "8080": { "label": "API server" },
+    "3000": { "label": "Web" },
+    "7233": { "label": "Temporal gRPC" },
+    "8233": { "label": "Temporal UI" },
+    "5432": { "label": "Postgres" },
+    "6379": { "label": "Redis" }
+  },
+  "postCreateCommand": "corepack enable && sudo apt-get update && sudo apt-get install -y postgresql-client && make setup",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "golang.go",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker"
+      ]
+    }
+  }
+}

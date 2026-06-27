@@ -86,29 +86,40 @@ echo "==> Applying migrations"
 make db-migrate
 
 if ! port_open "127.0.0.1" "7233"; then
-  if ! command -v temporal >/dev/null 2>&1; then
-    echo "Temporal is not reachable on localhost:7233 and the 'temporal' CLI is not installed." >&2
-    echo "Install the Temporal CLI or start your own dev server, then rerun this script." >&2
-    exit 1
+  # Prefer the docker 'temporal' service (no host CLI needed). The first start
+  # may be slow while the image is pulled, so allow a generous wait.
+  echo "==> Starting Temporal dev server (docker container)"
+  if docker compose up -d temporal >/dev/null 2>&1; then
+    for ((i = 1; i <= 60; i++)); do
+      if port_open "127.0.0.1" "7233"; then
+        break
+      fi
+      sleep 1
+    done
   fi
 
-  echo "==> Starting Temporal dev server"
-  nohup temporal server start-dev \
-    --ip 127.0.0.1 \
-    --port 7233 \
-    --namespace "${TEMPORAL_NAMESPACE}" \
-    >"${TEMPORAL_LOG}" 2>&1 &
-  echo $! >"${TEMPORAL_PID_FILE}"
+  # Fall back to the host temporal CLI if the container did not come up.
+  if ! port_open "127.0.0.1" "7233" && command -v temporal >/dev/null 2>&1; then
+    echo "==> Container not ready; falling back to host temporal CLI"
+    nohup temporal server start-dev \
+      --ip 127.0.0.1 \
+      --port 7233 \
+      --namespace "${TEMPORAL_NAMESPACE}" \
+      >"${TEMPORAL_LOG}" 2>&1 &
+    echo $! >"${TEMPORAL_PID_FILE}"
 
-  for ((i = 1; i <= 30; i++)); do
-    if port_open "127.0.0.1" "7233"; then
-      break
-    fi
-    sleep 1
-  done
+    for ((i = 1; i <= 30; i++)); do
+      if port_open "127.0.0.1" "7233"; then
+        break
+      fi
+      sleep 1
+    done
+  fi
 
   if ! port_open "127.0.0.1" "7233"; then
-    echo "Temporal dev server did not become ready. See ${TEMPORAL_LOG}" >&2
+    echo "Temporal did not become ready on localhost:7233." >&2
+    echo "Tried the docker 'temporal' service and the host temporal CLI." >&2
+    echo "Inspect 'docker compose logs temporal', or install the Temporal CLI (brew install temporal)." >&2
     exit 1
   fi
 else
