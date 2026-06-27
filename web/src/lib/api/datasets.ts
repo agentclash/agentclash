@@ -8,6 +8,7 @@ import type {
   DatasetBaseline,
   DatasetExample,
   DatasetGenerationJob,
+  DatasetGenerationRejectionsResult,
   DatasetImportMode,
   DatasetImportResponse,
   DatasetInteropFormat,
@@ -418,6 +419,17 @@ export function getDatasetGenerationJob(
 ): Promise<DatasetGenerationJob> {
   return api.get<DatasetGenerationJob>(
     `${datasetBase(workspaceId, datasetId)}/generations/${jobId}`,
+  );
+}
+
+export function listDatasetGenerationRejections(
+  api: ApiClient,
+  workspaceId: string,
+  datasetId: string,
+  jobId: string,
+): Promise<DatasetGenerationRejectionsResult> {
+  return api.get<DatasetGenerationRejectionsResult>(
+    `${datasetBase(workspaceId, datasetId)}/generations/${jobId}/rejections?limit=20`,
   );
 }
 

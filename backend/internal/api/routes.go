@@ -138,6 +138,7 @@ func registerProtectedRoutes(
 	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/regression-suite/sync", syncDatasetRegressionSuiteHandler(logger, datasetService))
 	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/generate", startDatasetGenerationHandler(logger, datasetService))
 	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/generations/{jobID}", getDatasetGenerationJobHandler(logger, datasetService))
+	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/generations/{jobID}/rejections", listDatasetGenerationRejectionsHandler(logger, datasetService))
 	router.Post("/workspaces/{workspaceID}/datasets/{datasetID}/examples", addDatasetExampleHandler(logger, datasetService))
 	router.Get("/workspaces/{workspaceID}/datasets/{datasetID}/examples", listDatasetExamplesHandler(logger, datasetService))
 	router.Patch("/workspaces/{workspaceID}/datasets/{datasetID}/examples/{exampleID}", patchDatasetExampleHandler(logger, datasetService))

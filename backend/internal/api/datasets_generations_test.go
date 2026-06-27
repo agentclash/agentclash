@@ -28,6 +28,7 @@ type datasetGenerationFakeRepo struct {
 	providerAccount  repository.ProviderAccountRow
 	providerAccounts map[uuid.UUID]repository.ProviderAccountRow
 	job              repository.DatasetGenerationJob
+	rejections       []repository.DatasetGenerationRejection
 }
 
 func (r *datasetGenerationFakeRepo) CreateDatasetGenerationJob(_ context.Context, params repository.CreateDatasetGenerationJobParams) (repository.DatasetGenerationJob, error) {
@@ -61,6 +62,34 @@ func (r *datasetGenerationFakeRepo) GetProviderAccountByID(_ context.Context, id
 		return r.providerAccount, nil
 	}
 	return repository.ProviderAccountRow{}, repository.ErrProviderAccountNotFound
+}
+
+func (r *datasetGenerationFakeRepo) ListDatasetGenerationRejectionsByJobID(_ context.Context, params repository.ListDatasetGenerationRejectionsParams) ([]repository.DatasetGenerationRejection, error) {
+	items := make([]repository.DatasetGenerationRejection, 0)
+	for _, item := range r.rejections {
+		if item.JobID == params.JobID {
+			items = append(items, item)
+		}
+	}
+	start := int(params.Offset)
+	if start > len(items) {
+		return []repository.DatasetGenerationRejection{}, nil
+	}
+	end := start + int(params.Limit)
+	if params.Limit <= 0 || end > len(items) {
+		end = len(items)
+	}
+	return items[start:end], nil
+}
+
+func (r *datasetGenerationFakeRepo) CountDatasetGenerationRejectionsByJobID(_ context.Context, jobID uuid.UUID) (int64, error) {
+	var count int64
+	for _, item := range r.rejections {
+		if item.JobID == jobID {
+			count++
+		}
+	}
+	return count, nil
 }
 
 func TestStartDatasetGenerationRequiresManageDatasets(t *testing.T) {
@@ -320,5 +349,42 @@ func TestStartDatasetGenerationAgenticThresholdRequiresValues(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected missing threshold values error")
+	}
+}
+
+func TestListDatasetGenerationRejectionsReturnsJobHistory(t *testing.T) {
+	wsID := uuid.New()
+	datasetID := uuid.New()
+	jobID := uuid.New()
+	otherJobID := uuid.New()
+	repo := &datasetGenerationFakeRepo{
+		datasetImportFakeRepo: newDatasetImportFakeRepo(wsID, datasetID),
+		job: repository.DatasetGenerationJob{
+			ID:          jobID,
+			WorkspaceID: wsID,
+			DatasetID:   datasetID,
+		},
+		rejections: []repository.DatasetGenerationRejection{
+			{ID: uuid.New(), JobID: jobID, ReasonCode: "solver_error", Metadata: json.RawMessage(`{"role":"weak_solver"}`)},
+			{ID: uuid.New(), JobID: otherJobID, ReasonCode: "parse_error", Metadata: json.RawMessage(`{}`)},
+			{ID: uuid.New(), JobID: jobID, ReasonCode: "quality_rejected", Metadata: json.RawMessage(`{"gap":0.1}`)},
+		},
+	}
+	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo).WithGenerationWorkflowStarter(datasetGenerationFakeStarter{})
+	result, err := manager.ListDatasetGenerationRejections(context.Background(), Caller{UserID: uuid.New()}, ListDatasetGenerationRejectionsInput{
+		WorkspaceID: wsID,
+		DatasetID:   datasetID,
+		JobID:       jobID,
+		Limit:       10,
+		Offset:      0,
+	})
+	if err != nil {
+		t.Fatalf("list rejections: %v", err)
+	}
+	if result.Total != 2 || len(result.Items) != 2 {
+		t.Fatalf("history total/items = %d/%d, want 2/2", result.Total, len(result.Items))
+	}
+	if result.Items[0].ReasonCode != "solver_error" || result.Items[1].ReasonCode != "quality_rejected" {
+		t.Fatalf("items = %+v", result.Items)
 	}
 }

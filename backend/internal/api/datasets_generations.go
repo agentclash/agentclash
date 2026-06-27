@@ -21,6 +21,8 @@ type DatasetGenerationRepository interface {
 	GetDatasetGenerationJobByID(context.Context, uuid.UUID) (repository.DatasetGenerationJob, error)
 	GetProviderAccountByID(context.Context, uuid.UUID) (repository.ProviderAccountRow, error)
 	ListDatasetExamplesByDatasetID(context.Context, repository.ListDatasetExamplesParams) ([]repository.DatasetExample, error)
+	ListDatasetGenerationRejectionsByJobID(context.Context, repository.ListDatasetGenerationRejectionsParams) ([]repository.DatasetGenerationRejection, error)
+	CountDatasetGenerationRejectionsByJobID(context.Context, uuid.UUID) (int64, error)
 }
 
 type DatasetGenerationWorkflowStarter interface {
@@ -73,6 +75,21 @@ type GetDatasetGenerationJobInput struct {
 	WorkspaceID uuid.UUID
 	DatasetID   uuid.UUID
 	JobID       uuid.UUID
+}
+
+type ListDatasetGenerationRejectionsInput struct {
+	WorkspaceID uuid.UUID
+	DatasetID   uuid.UUID
+	JobID       uuid.UUID
+	Limit       int32
+	Offset      int32
+}
+
+type ListDatasetGenerationRejectionsResult struct {
+	Items  []repository.DatasetGenerationRejection `json:"items"`
+	Total  int64                                   `json:"total"`
+	Limit  int32                                   `json:"limit"`
+	Offset int32                                   `json:"offset"`
 }
 
 func (m *DatasetManager) WithGenerationWorkflowStarter(starter DatasetGenerationWorkflowStarter) *DatasetManager {
@@ -248,6 +265,33 @@ func (m *DatasetManager) GetDatasetGenerationJob(ctx context.Context, caller Cal
 	return job, nil
 }
 
+func (m *DatasetManager) ListDatasetGenerationRejections(ctx context.Context, caller Caller, input ListDatasetGenerationRejectionsInput) (ListDatasetGenerationRejectionsResult, error) {
+	if _, err := m.GetDatasetGenerationJob(ctx, caller, GetDatasetGenerationJobInput{
+		WorkspaceID: input.WorkspaceID,
+		DatasetID:   input.DatasetID,
+		JobID:       input.JobID,
+	}); err != nil {
+		return ListDatasetGenerationRejectionsResult{}, err
+	}
+	genRepo, ok := m.repo.(DatasetGenerationRepository)
+	if !ok {
+		return ListDatasetGenerationRejectionsResult{}, errors.New("dataset generation repository not configured")
+	}
+	items, err := genRepo.ListDatasetGenerationRejectionsByJobID(ctx, repository.ListDatasetGenerationRejectionsParams{
+		JobID:  input.JobID,
+		Limit:  input.Limit,
+		Offset: input.Offset,
+	})
+	if err != nil {
+		return ListDatasetGenerationRejectionsResult{}, err
+	}
+	total, err := genRepo.CountDatasetGenerationRejectionsByJobID(ctx, input.JobID)
+	if err != nil {
+		return ListDatasetGenerationRejectionsResult{}, err
+	}
+	return ListDatasetGenerationRejectionsResult{Items: items, Total: total, Limit: input.Limit, Offset: input.Offset}, nil
+}
+
 func startDatasetGenerationHandler(logger *slog.Logger, service DatasetService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		caller, workspaceID, datasetID, ok := datasetPathContext(w, r)
@@ -349,6 +393,36 @@ func getDatasetGenerationJobHandler(logger *slog.Logger, service DatasetService)
 			return
 		}
 		writeJSON(w, http.StatusOK, job)
+	}
+}
+
+func listDatasetGenerationRejectionsHandler(logger *slog.Logger, service DatasetService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		caller, workspaceID, datasetID, ok := datasetPathContext(w, r)
+		if !ok {
+			return
+		}
+		jobID, err := uuid.Parse(chi.URLParam(r, "jobID"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_job_id", "jobID must be a UUID")
+			return
+		}
+		limit, offset, ok := paginationFromRequest(w, r)
+		if !ok {
+			return
+		}
+		result, err := service.ListDatasetGenerationRejections(r.Context(), caller, ListDatasetGenerationRejectionsInput{
+			WorkspaceID: workspaceID,
+			DatasetID:   datasetID,
+			JobID:       jobID,
+			Limit:       limit,
+			Offset:      offset,
+		})
+		if err != nil {
+			handleDatasetGenerationError(w, logger, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, result)
 	}
 }
 

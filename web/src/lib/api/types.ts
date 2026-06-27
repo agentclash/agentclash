@@ -2394,6 +2394,24 @@ export interface DatasetGenerationJob {
   updated_at: string;
 }
 
+export interface DatasetGenerationRejection {
+  id: string;
+  job_id: string;
+  reason_code: string;
+  reason_detail?: string;
+  candidate_input?: unknown;
+  candidate_expected?: unknown;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface DatasetGenerationRejectionsResult {
+  items: DatasetGenerationRejection[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface EvaluateDatasetGateInput {
   baseline_id: string;
   run_id: string;

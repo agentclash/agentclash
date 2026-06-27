@@ -116,6 +116,12 @@ type CreateDatasetGenerationRejectionParams struct {
 	Metadata          json.RawMessage
 }
 
+type ListDatasetGenerationRejectionsParams struct {
+	JobID  uuid.UUID
+	Limit  int32
+	Offset int32
+}
+
 type DatasetGenerationExecutionContext struct {
 	Job                   DatasetGenerationJob
 	Dataset               Dataset
@@ -232,6 +238,34 @@ func (r *Repository) CreateDatasetGenerationRejection(ctx context.Context, param
 		return DatasetGenerationRejection{}, fmt.Errorf("create dataset generation rejection: %w", err)
 	}
 	return mapDatasetGenerationRejection(row)
+}
+
+func (r *Repository) ListDatasetGenerationRejectionsByJobID(ctx context.Context, params ListDatasetGenerationRejectionsParams) ([]DatasetGenerationRejection, error) {
+	rows, err := r.queries.ListDatasetGenerationRejectionsByJobID(ctx, repositorysqlc.ListDatasetGenerationRejectionsByJobIDParams{
+		JobID:        params.JobID,
+		ResultLimit:  params.Limit,
+		ResultOffset: params.Offset,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list dataset generation rejections: %w", err)
+	}
+	items := make([]DatasetGenerationRejection, 0, len(rows))
+	for _, row := range rows {
+		item, mapErr := mapDatasetGenerationRejection(row)
+		if mapErr != nil {
+			return nil, mapErr
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+func (r *Repository) CountDatasetGenerationRejectionsByJobID(ctx context.Context, jobID uuid.UUID) (int64, error) {
+	count, err := r.queries.CountDatasetGenerationRejectionsByJobID(ctx, repositorysqlc.CountDatasetGenerationRejectionsByJobIDParams{JobID: jobID})
+	if err != nil {
+		return 0, fmt.Errorf("count dataset generation rejections: %w", err)
+	}
+	return count, nil
 }
 
 func (r *Repository) GetDatasetGenerationExecutionContextByID(ctx context.Context, jobID uuid.UUID) (DatasetGenerationExecutionContext, error) {

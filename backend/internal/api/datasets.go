@@ -64,6 +64,7 @@ type DatasetService interface {
 	SyncDatasetRegressionSuite(context.Context, Caller, SyncDatasetRegressionSuiteInput) (repository.SyncDatasetRegressionSuiteResult, error)
 	StartDatasetGeneration(context.Context, Caller, StartDatasetGenerationInput) (repository.DatasetGenerationJob, error)
 	GetDatasetGenerationJob(context.Context, Caller, GetDatasetGenerationJobInput) (repository.DatasetGenerationJob, error)
+	ListDatasetGenerationRejections(context.Context, Caller, ListDatasetGenerationRejectionsInput) (ListDatasetGenerationRejectionsResult, error)
 }
 
 type DatasetManager struct {
@@ -1348,4 +1349,7 @@ func (noopDatasetService) StartDatasetGeneration(context.Context, Caller, StartD
 }
 func (noopDatasetService) GetDatasetGenerationJob(context.Context, Caller, GetDatasetGenerationJobInput) (repository.DatasetGenerationJob, error) {
 	return repository.DatasetGenerationJob{}, errors.New("dataset service is not configured")
+}
+func (noopDatasetService) ListDatasetGenerationRejections(context.Context, Caller, ListDatasetGenerationRejectionsInput) (ListDatasetGenerationRejectionsResult, error) {
+	return ListDatasetGenerationRejectionsResult{}, errors.New("dataset service is not configured")
 }

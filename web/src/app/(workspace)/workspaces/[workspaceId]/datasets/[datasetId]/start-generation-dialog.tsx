@@ -8,6 +8,7 @@ import { Loader2, Sparkles } from "lucide-react";
 
 import {
   getDatasetGenerationJob,
+  listDatasetGenerationRejections,
   startDatasetGeneration,
 } from "@/lib/api/datasets";
 import { createApiClient } from "@/lib/api/client";
@@ -17,6 +18,7 @@ import type {
   ChallengePack,
   ChallengePackVersion,
   DatasetGenerationJob,
+  DatasetGenerationRejection,
   ProviderConnectionModel,
   ProviderAccount,
 } from "@/lib/api/types";
@@ -98,6 +100,10 @@ export function StartGenerationDialog({
   const [createVersion, setCreateVersion] = useState(true);
   const [versionLabel, setVersionLabel] = useState("");
   const [job, setJob] = useState<DatasetGenerationJob | null>(null);
+  const [jobRejections, setJobRejections] = useState<
+    DatasetGenerationRejection[]
+  >([]);
+  const [loadingJobRejections, setLoadingJobRejections] = useState(false);
   const [recentJobs, setRecentJobs] = useState<DatasetGenerationJob[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
@@ -220,16 +226,48 @@ export function StartGenerationDialog({
     }
   }, [datasetId, getAccessToken, workspaceId]);
 
+  const loadJobRejections = useCallback(
+    async (jobId: string) => {
+      setLoadingJobRejections(true);
+      try {
+        const token = await getAccessToken();
+        const api = createApiClient(token);
+        const result = await listDatasetGenerationRejections(
+          api,
+          workspaceId,
+          datasetId,
+          jobId,
+        );
+        setJobRejections(result.items);
+      } catch {
+        setJobRejections([]);
+      } finally {
+        setLoadingJobRejections(false);
+      }
+    },
+    [datasetId, getAccessToken, workspaceId],
+  );
+
   useEffect(() => {
     if (open) {
       void loadOptions();
       void loadRecentJobs();
       setJob(null);
+      setJobRejections([]);
     } else {
       stopPolling();
     }
     return stopPolling;
   }, [loadOptions, loadRecentJobs, open, stopPolling]);
+
+  useEffect(() => {
+    const selectedJobId = job?.id;
+    if (!open || !selectedJobId) {
+      setJobRejections([]);
+      return;
+    }
+    void loadJobRejections(selectedJobId);
+  }, [job?.id, loadJobRejections, open]);
 
   function startPolling(jobId: string) {
     stopPolling();
@@ -246,6 +284,7 @@ export function StartGenerationDialog({
         setJob(next);
         if (next.status === "completed" || next.status === "failed") {
           stopPolling();
+          void loadJobRejections(next.id);
           if (next.status === "completed") {
             toast.success(
               `Generated ${next.accepted_count} examples (${next.rejected_count} rejected)`,
@@ -504,6 +543,59 @@ export function StartGenerationDialog({
                 ? ` (${job.rejected_count} rejected)`
                 : ""}
             </p>
+            {generationSummaryStats(job).length > 0 ? (
+              <div className="grid gap-2 sm:grid-cols-3">
+                {generationSummaryStats(job).map((stat) => (
+                  <div
+                    key={stat.label}
+                    className="rounded-md border border-border/70 px-2 py-1.5"
+                  >
+                    <p className="text-[11px] font-medium uppercase text-muted-foreground">
+                      {stat.label}
+                    </p>
+                    <p className="mt-0.5 truncate text-sm">{stat.value}</p>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {job.rejected_count > 0 ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-muted-foreground">
+                  {loadingJobRejections ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : null}
+                  <span>Rejections</span>
+                </div>
+                {jobRejections.length > 0 ? (
+                  <div className="max-h-36 space-y-1 overflow-y-auto">
+                    {jobRejections.slice(0, 5).map((rejection) => (
+                      <div
+                        key={rejection.id}
+                        className="rounded-md border border-border/70 px-2 py-1.5"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium">
+                            {formatReasonCode(rejection.reason_code)}
+                          </span>
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(rejection.created_at).toLocaleTimeString()}
+                          </span>
+                        </div>
+                        {rejection.reason_detail ? (
+                          <p className="mt-1 line-clamp-2 text-muted-foreground">
+                            {rejection.reason_detail}
+                          </p>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : loadingJobRejections ? null : (
+                  <p className="text-muted-foreground">
+                    No rejection records yet.
+                  </p>
+                )}
+              </div>
+            ) : null}
             {(job.status === "queued" || job.status === "running") && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Loader2 className="size-4 animate-spin" />
@@ -537,10 +629,25 @@ export function StartGenerationDialog({
                             startPolling(recentJob.id);
                           }
                         }}
-                        className="flex w-full items-center justify-between rounded-md border border-border/70 px-3 py-2 text-left text-sm hover:bg-muted/30"
+                        className="flex w-full items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-left text-sm hover:bg-muted/30"
                       >
-                        <span>{recentJob.id.slice(0, 8)}</span>
-                        <Badge variant="secondary">{recentJob.status}</Badge>
+                        <span>
+                          <span className="font-medium">
+                            {recentJob.id.slice(0, 8)}
+                          </span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">
+                            {recentJob.accepted_count}/{recentJob.target_count} accepted
+                            {recentJob.rejected_count > 0
+                              ? `, ${recentJob.rejected_count} rejected`
+                              : ""}
+                            {topRejectionReason(recentJob)
+                              ? `, ${topRejectionReason(recentJob)}`
+                              : ""}
+                          </span>
+                        </span>
+                        <Badge variant="secondary" className="shrink-0">
+                          {recentJob.status}
+                        </Badge>
                       </button>
                     ))
                   )}
@@ -1005,4 +1112,60 @@ export function StartGenerationDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function generationSummaryStats(job: DatasetGenerationJob) {
+  const stats: { label: string; value: string }[] = [];
+  const solverMode = summaryString(job, "solver_mode");
+  if (solverMode && solverMode !== "judge_only") {
+    stats.push({ label: "Solver", value: formatReasonCode(solverMode) });
+  }
+  const avgGap = summaryNumber(job, "avg_gap");
+  if (avgGap != null) {
+    stats.push({ label: "Avg gap", value: formatScore(avgGap) });
+  }
+  const avgWeak = summaryNumber(job, "avg_weak_score");
+  if (avgWeak != null) {
+    stats.push({ label: "Weak", value: formatScore(avgWeak) });
+  }
+  const avgStrong = summaryNumber(job, "avg_strong_score");
+  if (avgStrong != null) {
+    stats.push({ label: "Strong", value: formatScore(avgStrong) });
+  }
+  const topReason = topRejectionReason(job);
+  if (topReason) {
+    stats.push({ label: "Top reject", value: topReason });
+  }
+  return stats.slice(0, 6);
+}
+
+function summaryString(job: DatasetGenerationJob, key: string) {
+  const value = job.summary[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+function summaryNumber(job: DatasetGenerationJob, key: string) {
+  const value = job.summary[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function topRejectionReason(job: DatasetGenerationJob) {
+  const reasons = job.summary["rejection_reasons"];
+  if (reasons == null || typeof reasons !== "object" || Array.isArray(reasons)) {
+    return undefined;
+  }
+  let top: { reason: string; count: number } | undefined;
+  for (const [reason, count] of Object.entries(reasons)) {
+    if (typeof count !== "number") continue;
+    if (!top || count > top.count) top = { reason, count };
+  }
+  return top ? `${formatReasonCode(top.reason)} x${top.count}` : undefined;
+}
+
+function formatReasonCode(value: string) {
+  return value.replace(/_/g, " ");
+}
+
+function formatScore(value: number) {
+  return value.toFixed(2);
 }
