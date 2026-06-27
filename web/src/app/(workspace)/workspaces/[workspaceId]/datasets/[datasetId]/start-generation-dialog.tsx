@@ -616,40 +616,41 @@ export function StartGenerationDialog({
                   {loadingHistory ? (
                     <Loader2 className="size-4 animate-spin text-muted-foreground" />
                   ) : (
-                    recentJobs.map((recentJob) => (
-                      <button
-                        key={recentJob.id}
-                        type="button"
-                        onClick={() => {
-                          setJob(recentJob);
-                          if (
-                            recentJob.status === "queued" ||
-                            recentJob.status === "running"
-                          ) {
-                            startPolling(recentJob.id);
-                          }
-                        }}
-                        className="flex w-full items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-left text-sm hover:bg-muted/30"
-                      >
-                        <span>
-                          <span className="font-medium">
-                            {recentJob.id.slice(0, 8)}
+                    recentJobs.map((recentJob) => {
+                      const topReason = topRejectionReason(recentJob);
+                      return (
+                        <button
+                          key={recentJob.id}
+                          type="button"
+                          onClick={() => {
+                            setJob(recentJob);
+                            if (
+                              recentJob.status === "queued" ||
+                              recentJob.status === "running"
+                            ) {
+                              startPolling(recentJob.id);
+                            }
+                          }}
+                          className="flex w-full items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-left text-sm hover:bg-muted/30"
+                        >
+                          <span>
+                            <span className="font-medium">
+                              {recentJob.id.slice(0, 8)}
+                            </span>
+                            <span className="mt-0.5 block text-xs text-muted-foreground">
+                              {recentJob.accepted_count}/{recentJob.target_count} accepted
+                              {recentJob.rejected_count > 0
+                                ? `, ${recentJob.rejected_count} rejected`
+                                : ""}
+                              {topReason ? `, ${topReason}` : ""}
+                            </span>
                           </span>
-                          <span className="mt-0.5 block text-xs text-muted-foreground">
-                            {recentJob.accepted_count}/{recentJob.target_count} accepted
-                            {recentJob.rejected_count > 0
-                              ? `, ${recentJob.rejected_count} rejected`
-                              : ""}
-                            {topRejectionReason(recentJob)
-                              ? `, ${topRejectionReason(recentJob)}`
-                              : ""}
-                          </span>
-                        </span>
-                        <Badge variant="secondary" className="shrink-0">
-                          {recentJob.status}
-                        </Badge>
-                      </button>
-                    ))
+                          <Badge variant="secondary" className="shrink-0">
+                            {recentJob.status}
+                          </Badge>
+                        </button>
+                      );
+                    })
                   )}
                 </div>
               </div>

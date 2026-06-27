@@ -19,6 +19,21 @@ const (
 
 var ErrUnsupportedStrategy = errors.New("unsupported dataset generation strategy")
 
+// ValidationError marks an error as invalid user-supplied generation input. The
+// API layer maps it to an HTTP 400 validation_error response. Using a typed
+// error (rather than substring matching on the message) keeps wrapped database
+// or provider failures from being misreported to callers as bad input.
+type ValidationError struct {
+	Message string
+}
+
+func (e *ValidationError) Error() string { return e.Message }
+
+// NewValidationError builds a ValidationError with a formatted message.
+func NewValidationError(format string, args ...any) error {
+	return &ValidationError{Message: fmt.Sprintf(format, args...)}
+}
+
 type JobConfig struct {
 	ProviderAccountID uuid.UUID `json:"provider_account_id"`
 	// Model is the provider model id to generate with (e.g. "gpt-4.1-mini"),
@@ -85,17 +100,17 @@ func DecodeJobConfig(raw json.RawMessage) (JobConfig, error) {
 
 func DecodeJobConfigForStrategy(raw json.RawMessage, strategy string) (JobConfig, error) {
 	if len(raw) == 0 {
-		return JobConfig{}, errors.New("generation job config is required")
+		return JobConfig{}, NewValidationError("generation job config is required")
 	}
 	var cfg JobConfig
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return JobConfig{}, err
 	}
 	if cfg.ProviderAccountID == uuid.Nil {
-		return JobConfig{}, errors.New("provider_account_id is required")
+		return JobConfig{}, NewValidationError("provider_account_id is required")
 	}
 	if cfg.Model == "" {
-		return JobConfig{}, errors.New("model is required")
+		return JobConfig{}, NewValidationError("model is required")
 	}
 	parsedStrategy, err := ParseStrategy(strategy)
 	if err != nil {
@@ -103,20 +118,20 @@ func DecodeJobConfigForStrategy(raw json.RawMessage, strategy string) (JobConfig
 	}
 	if parsedStrategy == StrategyAgenticSelfInstruct {
 		if cfg.JudgeProviderAccountID == nil || *cfg.JudgeProviderAccountID == uuid.Nil {
-			return JobConfig{}, errors.New("judge_provider_account_id is required for agentic_self_instruct")
+			return JobConfig{}, NewValidationError("judge_provider_account_id is required for agentic_self_instruct")
 		}
 		if cfg.JudgeModel == "" {
-			return JobConfig{}, errors.New("judge_model is required for agentic_self_instruct")
+			return JobConfig{}, NewValidationError("judge_model is required for agentic_self_instruct")
 		}
 		if cfg.MaxRoundsPerExample < 0 || cfg.MaxRoundsPerExample > 15 {
-			return JobConfig{}, errors.New("max_rounds_per_example must be between 0 and 15")
+			return JobConfig{}, NewValidationError("max_rounds_per_example must be between 0 and 15")
 		}
 		if cfg.AcceptanceMode != "" && cfg.AcceptanceMode != AcceptanceModeJudge && cfg.AcceptanceMode != AcceptanceModeThreshold {
-			return JobConfig{}, errors.New("acceptance_mode must be judge or threshold")
+			return JobConfig{}, NewValidationError("acceptance_mode must be judge or threshold")
 		}
 		if cfg.AcceptanceMode == AcceptanceModeThreshold {
 			if cfg.MinGap == nil || cfg.MaxWeakScore == nil || cfg.MinStrongScore == nil {
-				return JobConfig{}, errors.New("min_gap, max_weak_score, and min_strong_score are all required when acceptance_mode is threshold")
+				return JobConfig{}, NewValidationError("min_gap, max_weak_score, and min_strong_score are all required when acceptance_mode is threshold")
 			}
 		}
 		cfg.SolverMode = NormalizeAgenticSolverMode(cfg.SolverMode)
@@ -130,16 +145,16 @@ func DecodeJobConfigForStrategy(raw json.RawMessage, strategy string) (JobConfig
 			}
 		case SolverModeDirectProvider:
 			if cfg.WeakProviderAccountID == nil || *cfg.WeakProviderAccountID == uuid.Nil {
-				return JobConfig{}, errors.New("weak_provider_account_id is required when solver_mode is direct_provider")
+				return JobConfig{}, NewValidationError("weak_provider_account_id is required when solver_mode is direct_provider")
 			}
 			if cfg.WeakModel == "" {
-				return JobConfig{}, errors.New("weak_model is required when solver_mode is direct_provider")
+				return JobConfig{}, NewValidationError("weak_model is required when solver_mode is direct_provider")
 			}
 			if cfg.StrongProviderAccountID == nil || *cfg.StrongProviderAccountID == uuid.Nil {
-				return JobConfig{}, errors.New("strong_provider_account_id is required when solver_mode is direct_provider")
+				return JobConfig{}, NewValidationError("strong_provider_account_id is required when solver_mode is direct_provider")
 			}
 			if cfg.StrongModel == "" {
-				return JobConfig{}, errors.New("strong_model is required when solver_mode is direct_provider")
+				return JobConfig{}, NewValidationError("strong_model is required when solver_mode is direct_provider")
 			}
 			if cfg.WeakRollouts == 0 {
 				cfg.WeakRollouts = 1
@@ -154,28 +169,28 @@ func DecodeJobConfigForStrategy(raw json.RawMessage, strategy string) (JobConfig
 				return JobConfig{}, err
 			}
 		default:
-			return JobConfig{}, errors.New("solver_mode must be judge_only or direct_provider")
+			return JobConfig{}, NewValidationError("solver_mode must be judge_only or direct_provider")
 		}
 		if HasAgenticDeploymentContext(cfg) {
 			if cfg.WeakDeploymentID == nil || *cfg.WeakDeploymentID == uuid.Nil {
-				return JobConfig{}, errors.New("weak_deployment_id is required when deployment context is provided")
+				return JobConfig{}, NewValidationError("weak_deployment_id is required when deployment context is provided")
 			}
 			if cfg.StrongDeploymentID == nil || *cfg.StrongDeploymentID == uuid.Nil {
-				return JobConfig{}, errors.New("strong_deployment_id is required when deployment context is provided")
+				return JobConfig{}, NewValidationError("strong_deployment_id is required when deployment context is provided")
 			}
 			if cfg.ChallengePackVersionID == nil || *cfg.ChallengePackVersionID == uuid.Nil {
-				return JobConfig{}, errors.New("challenge_pack_version_id is required when deployment context is provided")
+				return JobConfig{}, NewValidationError("challenge_pack_version_id is required when deployment context is provided")
 			}
 			if strings.TrimSpace(cfg.ChallengeKey) == "" {
-				return JobConfig{}, errors.New("challenge_key is required when deployment context is provided")
+				return JobConfig{}, NewValidationError("challenge_key is required when deployment context is provided")
 			}
 			if len(cfg.FieldMapping) > 0 {
 				if !json.Valid(cfg.FieldMapping) {
-					return JobConfig{}, errors.New("field_mapping must be valid JSON")
+					return JobConfig{}, NewValidationError("field_mapping must be valid JSON")
 				}
 				var fieldMapping map[string]any
 				if err := json.Unmarshal(cfg.FieldMapping, &fieldMapping); err != nil || fieldMapping == nil {
-					return JobConfig{}, errors.New("field_mapping must be a JSON object")
+					return JobConfig{}, NewValidationError("field_mapping must be a JSON object")
 				}
 			}
 		}
@@ -208,7 +223,7 @@ func validateOptionalRolloutCount(name string, value int) error {
 
 func validateRequiredRolloutCount(name string, value int) error {
 	if value < 1 || value > 5 {
-		return fmt.Errorf("%s must be between 1 and 5", name)
+		return NewValidationError("%s must be between 1 and 5", name)
 	}
 	return nil
 }

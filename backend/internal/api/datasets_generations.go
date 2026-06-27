@@ -23,6 +23,9 @@ type DatasetGenerationRepository interface {
 	ListDatasetExamplesByDatasetID(context.Context, repository.ListDatasetExamplesParams) ([]repository.DatasetExample, error)
 	ListDatasetGenerationRejectionsByJobID(context.Context, repository.ListDatasetGenerationRejectionsParams) ([]repository.DatasetGenerationRejection, error)
 	CountDatasetGenerationRejectionsByJobID(context.Context, uuid.UUID) (int64, error)
+	ListRunnableDeploymentsWithLatestSnapshot(context.Context, uuid.UUID, []uuid.UUID) ([]repository.RunnableDeployment, error)
+	GetRunnableChallengePackVersionByID(context.Context, uuid.UUID) (repository.RunnableChallengePackVersion, error)
+	WorkspacePublicPacksEnabled(context.Context, uuid.UUID) (bool, error)
 }
 
 type DatasetGenerationWorkflowStarter interface {
@@ -117,7 +120,7 @@ func (m *DatasetManager) StartDatasetGeneration(ctx context.Context, caller Call
 		return repository.DatasetGenerationJob{}, err
 	}
 	if input.TargetCount <= 0 || input.TargetCount > 100 {
-		return repository.DatasetGenerationJob{}, errors.New("target_count must be between 1 and 100")
+		return repository.DatasetGenerationJob{}, datasetgeneration.NewValidationError("target_count must be between 1 and 100")
 	}
 	providerAccount, err := genRepo.GetProviderAccountByID(ctx, input.ProviderAccountID)
 	if err != nil {
@@ -127,7 +130,7 @@ func (m *DatasetManager) StartDatasetGeneration(ctx context.Context, caller Call
 		return repository.DatasetGenerationJob{}, ErrForbidden
 	}
 	if strings.TrimSpace(input.Model) == "" {
-		return repository.DatasetGenerationJob{}, errors.New("model is required")
+		return repository.DatasetGenerationJob{}, datasetgeneration.NewValidationError("model is required")
 	}
 	validateProviderAccount := func(accountID uuid.UUID) error {
 		account, accountErr := genRepo.GetProviderAccountByID(ctx, accountID)
@@ -141,16 +144,16 @@ func (m *DatasetManager) StartDatasetGeneration(ctx context.Context, caller Call
 	}
 	if strategy == datasetgeneration.StrategyAgenticSelfInstruct {
 		if input.JudgeProviderAccountID == nil || *input.JudgeProviderAccountID == uuid.Nil {
-			return repository.DatasetGenerationJob{}, errors.New("judge_provider_account_id is required for agentic_self_instruct")
+			return repository.DatasetGenerationJob{}, datasetgeneration.NewValidationError("judge_provider_account_id is required for agentic_self_instruct")
 		}
 		if err := validateProviderAccount(*input.JudgeProviderAccountID); err != nil {
 			return repository.DatasetGenerationJob{}, err
 		}
 		if strings.TrimSpace(input.JudgeModel) == "" {
-			return repository.DatasetGenerationJob{}, errors.New("judge_model is required for agentic_self_instruct")
+			return repository.DatasetGenerationJob{}, datasetgeneration.NewValidationError("judge_model is required for agentic_self_instruct")
 		}
 		if input.MaxRoundsPerExample < 0 || input.MaxRoundsPerExample > 15 {
-			return repository.DatasetGenerationJob{}, errors.New("max_rounds_per_example must be between 0 and 15")
+			return repository.DatasetGenerationJob{}, datasetgeneration.NewValidationError("max_rounds_per_example must be between 0 and 15")
 		}
 		if datasetgeneration.NormalizeAgenticSolverMode(input.SolverMode) == datasetgeneration.SolverModeDirectProvider {
 			if input.WeakProviderAccountID != nil && *input.WeakProviderAccountID != uuid.Nil {
@@ -186,7 +189,7 @@ func (m *DatasetManager) StartDatasetGeneration(ctx context.Context, caller Call
 		seedCount++
 	}
 	if seedCount == 0 {
-		return repository.DatasetGenerationJob{}, errors.New("dataset must have at least one active seed example")
+		return repository.DatasetGenerationJob{}, datasetgeneration.NewValidationError("dataset must have at least one active seed example")
 	}
 
 	rawConfig := datasetgeneration.JobConfig{
@@ -222,6 +225,14 @@ func (m *DatasetManager) StartDatasetGeneration(ctx context.Context, caller Call
 	decodedConfig, err := datasetgeneration.DecodeJobConfigForStrategy(config, strategy)
 	if err != nil {
 		return repository.DatasetGenerationJob{}, err
+	}
+	// Deployment context is persisted and surfaced in metadata regardless of
+	// strategy, so enforce workspace ownership whenever any of it is present —
+	// not only on the agentic path that structurally validates it.
+	if datasetgeneration.HasAgenticDeploymentContext(decodedConfig) {
+		if err := validateAgenticDeploymentContext(ctx, genRepo, input.WorkspaceID, decodedConfig); err != nil {
+			return repository.DatasetGenerationJob{}, err
+		}
 	}
 	config, err = json.Marshal(decodedConfig)
 	if err != nil {
@@ -426,6 +437,62 @@ func listDatasetGenerationRejectionsHandler(logger *slog.Logger, service Dataset
 	}
 }
 
+// validateAgenticDeploymentContext enforces that the optional AgentClash
+// deployment context references resources the caller's workspace actually owns,
+// mirroring the provider-account ownership checks. Deployment IDs and the
+// challenge pack version are stored in the job config and later surfaced in
+// example/job metadata, so unowned UUIDs must be rejected at creation time
+// rather than silently persisted.
+func validateAgenticDeploymentContext(ctx context.Context, repo DatasetGenerationRepository, workspaceID uuid.UUID, cfg datasetgeneration.JobConfig) error {
+	deploymentIDs := make([]uuid.UUID, 0, 2)
+	if cfg.WeakDeploymentID != nil && *cfg.WeakDeploymentID != uuid.Nil {
+		deploymentIDs = append(deploymentIDs, *cfg.WeakDeploymentID)
+	}
+	if cfg.StrongDeploymentID != nil && *cfg.StrongDeploymentID != uuid.Nil {
+		deploymentIDs = append(deploymentIDs, *cfg.StrongDeploymentID)
+	}
+	if len(deploymentIDs) > 0 {
+		deployments, err := repo.ListRunnableDeploymentsWithLatestSnapshot(ctx, workspaceID, deploymentIDs)
+		if err != nil {
+			return err
+		}
+		owned := make(map[uuid.UUID]struct{}, len(deployments))
+		for _, deployment := range deployments {
+			owned[deployment.ID] = struct{}{}
+		}
+		for _, id := range deploymentIDs {
+			if _, ok := owned[id]; !ok {
+				return ErrForbidden
+			}
+		}
+	}
+
+	if cfg.ChallengePackVersionID != nil && *cfg.ChallengePackVersionID != uuid.Nil {
+		version, err := repo.GetRunnableChallengePackVersionByID(ctx, *cfg.ChallengePackVersionID)
+		if err != nil {
+			if errors.Is(err, repository.ErrChallengePackVersionNotFound) {
+				return ErrForbidden
+			}
+			return err
+		}
+		switch {
+		case version.WorkspaceID != nil && *version.WorkspaceID != workspaceID:
+			return ErrForbidden
+		case version.WorkspaceID == nil:
+			// Global (shared) pack — only allowed when the workspace opted into
+			// public packs, matching run creation.
+			publicPacks, err := repo.WorkspacePublicPacksEnabled(ctx, workspaceID)
+			if err != nil {
+				return err
+			}
+			if !publicPacks {
+				return ErrForbidden
+			}
+		}
+	}
+	return nil
+}
+
 func handleDatasetGenerationError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	switch {
 	case errors.Is(err, datasetgeneration.ErrUnsupportedStrategy):
@@ -444,15 +511,6 @@ func handleDatasetGenerationError(w http.ResponseWriter, logger *slog.Logger, er
 }
 
 func isDatasetGenerationValidationError(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := err.Error()
-	if message == "target_count must be between 1 and 100" || message == "dataset must have at least one active seed example" || message == "model is required" {
-		return true
-	}
-	return strings.Contains(message, " is required") ||
-		strings.Contains(message, " must be ") ||
-		strings.Contains(message, "must be between") ||
-		strings.Contains(message, "must be valid JSON")
+	var validationErr *datasetgeneration.ValidationError
+	return errors.As(err, &validationErr)
 }

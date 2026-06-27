@@ -25,10 +25,13 @@ func (denyWorkspaceAccessAuthorizer) AuthorizeWorkspace(context.Context, Caller,
 
 type datasetGenerationFakeRepo struct {
 	*datasetImportFakeRepo
-	providerAccount  repository.ProviderAccountRow
-	providerAccounts map[uuid.UUID]repository.ProviderAccountRow
-	job              repository.DatasetGenerationJob
-	rejections       []repository.DatasetGenerationRejection
+	providerAccount       repository.ProviderAccountRow
+	providerAccounts      map[uuid.UUID]repository.ProviderAccountRow
+	job                   repository.DatasetGenerationJob
+	rejections            []repository.DatasetGenerationRejection
+	deployments           map[uuid.UUID]repository.RunnableDeployment
+	challengePackVersions map[uuid.UUID]repository.RunnableChallengePackVersion
+	publicPacksEnabled    bool
 }
 
 func (r *datasetGenerationFakeRepo) CreateDatasetGenerationJob(_ context.Context, params repository.CreateDatasetGenerationJobParams) (repository.DatasetGenerationJob, error) {
@@ -90,6 +93,29 @@ func (r *datasetGenerationFakeRepo) CountDatasetGenerationRejectionsByJobID(_ co
 		}
 	}
 	return count, nil
+}
+
+func (r *datasetGenerationFakeRepo) ListRunnableDeploymentsWithLatestSnapshot(_ context.Context, workspaceID uuid.UUID, ids []uuid.UUID) ([]repository.RunnableDeployment, error) {
+	out := make([]repository.RunnableDeployment, 0, len(ids))
+	for _, id := range ids {
+		deployment, ok := r.deployments[id]
+		if !ok || deployment.WorkspaceID != workspaceID {
+			continue
+		}
+		out = append(out, deployment)
+	}
+	return out, nil
+}
+
+func (r *datasetGenerationFakeRepo) GetRunnableChallengePackVersionByID(_ context.Context, id uuid.UUID) (repository.RunnableChallengePackVersion, error) {
+	if version, ok := r.challengePackVersions[id]; ok {
+		return version, nil
+	}
+	return repository.RunnableChallengePackVersion{}, repository.ErrChallengePackVersionNotFound
+}
+
+func (r *datasetGenerationFakeRepo) WorkspacePublicPacksEnabled(_ context.Context, _ uuid.UUID) (bool, error) {
+	return r.publicPacksEnabled, nil
 }
 
 func TestStartDatasetGenerationRequiresManageDatasets(t *testing.T) {
@@ -283,6 +309,13 @@ func TestStartDatasetGenerationCreatesDeploymentContextConfig(t *testing.T) {
 	repo := &datasetGenerationFakeRepo{
 		datasetImportFakeRepo: newDatasetImportFakeRepo(wsID, datasetID),
 		providerAccount:       repository.ProviderAccountRow{ID: providerID, WorkspaceID: &wsID, ProviderKey: "openai"},
+		deployments: map[uuid.UUID]repository.RunnableDeployment{
+			weakDeploymentID:   {ID: weakDeploymentID, WorkspaceID: wsID},
+			strongDeploymentID: {ID: strongDeploymentID, WorkspaceID: wsID},
+		},
+		challengePackVersions: map[uuid.UUID]repository.RunnableChallengePackVersion{
+			challengePackVersionID: {ID: challengePackVersionID, WorkspaceID: &wsID},
+		},
 	}
 	repo.examples = []repository.DatasetExample{{
 		ID:        uuid.New(),
@@ -318,6 +351,52 @@ func TestStartDatasetGenerationCreatesDeploymentContextConfig(t *testing.T) {
 	}
 	if _, ok := cfg["field_mapping"].(map[string]any); !ok {
 		t.Fatalf("field_mapping = %#v, want object", cfg["field_mapping"])
+	}
+}
+
+func TestStartDatasetGenerationRejectsForeignDeploymentContext(t *testing.T) {
+	wsID := uuid.New()
+	otherWsID := uuid.New()
+	datasetID := uuid.New()
+	providerID := uuid.New()
+	weakDeploymentID := uuid.New()
+	strongDeploymentID := uuid.New()
+	challengePackVersionID := uuid.New()
+	repo := &datasetGenerationFakeRepo{
+		datasetImportFakeRepo: newDatasetImportFakeRepo(wsID, datasetID),
+		providerAccount:       repository.ProviderAccountRow{ID: providerID, WorkspaceID: &wsID, ProviderKey: "openai"},
+		// Deployments and pack version belong to a different workspace.
+		deployments: map[uuid.UUID]repository.RunnableDeployment{
+			weakDeploymentID:   {ID: weakDeploymentID, WorkspaceID: otherWsID},
+			strongDeploymentID: {ID: strongDeploymentID, WorkspaceID: otherWsID},
+		},
+		challengePackVersions: map[uuid.UUID]repository.RunnableChallengePackVersion{
+			challengePackVersionID: {ID: challengePackVersionID, WorkspaceID: &otherWsID},
+		},
+	}
+	repo.examples = []repository.DatasetExample{{
+		ID:        uuid.New(),
+		DatasetID: datasetID,
+		Input:     json.RawMessage(`{"q":"seed"}`),
+		Status:    domain.DatasetExampleStatusActive,
+	}}
+	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo).WithGenerationWorkflowStarter(datasetGenerationFakeStarter{})
+	_, err := manager.StartDatasetGeneration(context.Background(), Caller{UserID: uuid.New()}, StartDatasetGenerationInput{
+		WorkspaceID:            wsID,
+		DatasetID:              datasetID,
+		Strategy:               "agentic-self-instruct",
+		TargetCount:            2,
+		ProviderAccountID:      providerID,
+		Model:                  "gpt-4.1-mini",
+		JudgeProviderAccountID: &providerID,
+		JudgeModel:             "gpt-4.1",
+		WeakDeploymentID:       &weakDeploymentID,
+		StrongDeploymentID:     &strongDeploymentID,
+		ChallengePackVersionID: &challengePackVersionID,
+		ChallengeKey:           "support-recovery",
+	})
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("expected forbidden for cross-workspace deployment context, got %v", err)
 	}
 }
 
