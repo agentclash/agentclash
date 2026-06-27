@@ -130,6 +130,120 @@ func TestDecodeJobConfigForStrategyRequiresThresholdValues(t *testing.T) {
 	}
 }
 
+func TestDecodeJobConfigForStrategyValidatesDirectProviderSolvers(t *testing.T) {
+	providerID := uuid.New()
+	judgeID := uuid.New()
+	weakID := uuid.New()
+	strongID := uuid.New()
+	raw, _ := json.Marshal(map[string]any{
+		"provider_account_id":        providerID,
+		"model":                      "gpt-4.1-mini",
+		"judge_provider_account_id":  judgeID,
+		"judge_model":                "gpt-4.1",
+		"solver_mode":                "direct_provider",
+		"weak_provider_account_id":   weakID,
+		"weak_model":                 "gpt-4.1-nano",
+		"strong_provider_account_id": strongID,
+		"strong_model":               "gpt-4.1",
+	})
+	cfg, err := generation.DecodeJobConfigForStrategy(raw, generation.StrategyAgenticSelfInstruct)
+	if err != nil {
+		t.Fatalf("decode direct provider config: %v", err)
+	}
+	if cfg.SolverMode != generation.SolverModeDirectProvider {
+		t.Fatalf("solver mode = %q", cfg.SolverMode)
+	}
+	if cfg.WeakRollouts != 1 || cfg.StrongRollouts != 1 {
+		t.Fatalf("default rollouts = %d/%d, want 1/1", cfg.WeakRollouts, cfg.StrongRollouts)
+	}
+
+	raw, _ = json.Marshal(map[string]any{
+		"provider_account_id":       providerID,
+		"model":                     "gpt-4.1-mini",
+		"judge_provider_account_id": judgeID,
+		"judge_model":               "gpt-4.1",
+		"solver_mode":               "direct_provider",
+		"weak_provider_account_id":  weakID,
+		"weak_model":                "gpt-4.1-nano",
+		"strong_model":              "gpt-4.1",
+	})
+	if _, err := generation.DecodeJobConfigForStrategy(raw, generation.StrategyAgenticSelfInstruct); err == nil {
+		t.Fatal("expected missing strong provider error")
+	}
+}
+
+func TestDecodeJobConfigForStrategyValidatesDeploymentContext(t *testing.T) {
+	providerID := uuid.New()
+	judgeID := uuid.New()
+	weakDeploymentID := uuid.New()
+	strongDeploymentID := uuid.New()
+	challengePackVersionID := uuid.New()
+	raw, _ := json.Marshal(map[string]any{
+		"provider_account_id":       providerID,
+		"model":                     "gpt-4.1-mini",
+		"judge_provider_account_id": judgeID,
+		"judge_model":               "gpt-4.1",
+		"weak_deployment_id":        weakDeploymentID,
+		"strong_deployment_id":      strongDeploymentID,
+		"challenge_pack_version_id": challengePackVersionID,
+		"challenge_key":             "support-recovery",
+		"field_mapping":             map[string]string{"input": "prompt"},
+	})
+	cfg, err := generation.DecodeJobConfigForStrategy(raw, generation.StrategyAgenticSelfInstruct)
+	if err != nil {
+		t.Fatalf("decode deployment context: %v", err)
+	}
+	if cfg.WeakDeploymentID == nil || *cfg.WeakDeploymentID != weakDeploymentID {
+		t.Fatalf("weak deployment = %+v", cfg.WeakDeploymentID)
+	}
+
+	raw, _ = json.Marshal(map[string]any{
+		"provider_account_id":       providerID,
+		"model":                     "gpt-4.1-mini",
+		"judge_provider_account_id": judgeID,
+		"judge_model":               "gpt-4.1",
+		"weak_deployment_id":        weakDeploymentID,
+	})
+	if _, err := generation.DecodeJobConfigForStrategy(raw, generation.StrategyAgenticSelfInstruct); err == nil {
+		t.Fatal("expected incomplete deployment context error")
+	}
+}
+
+func TestBuildAgenticSolverPromptOmitsExpectedAnswer(t *testing.T) {
+	prompt := generation.BuildAgenticSolverPrompt("weak_solver", generation.Candidate{
+		Input:    json.RawMessage(`{"prompt":"recover the account"}`),
+		Expected: json.RawMessage(`{"answer":"secret expected answer"}`),
+	})
+	if !containsAll(prompt, "weak_solver", "recover the account") {
+		t.Fatalf("solver prompt missing role/input: %q", prompt)
+	}
+	if contains(prompt, "secret expected answer") || contains(prompt, "expected") {
+		t.Fatalf("solver prompt leaked expected answer: %q", prompt)
+	}
+}
+
+func TestBuildAgenticJudgePromptIncludesSolverAttempts(t *testing.T) {
+	prompt := generation.BuildAgenticJudgePrompt(generation.AgenticJudgeInput{
+		Seeds:     []generation.SeedExample{{Input: json.RawMessage(`{"q":"seed"}`)}},
+		Candidate: generation.Candidate{Input: json.RawMessage(`{"q":"candidate"}`)},
+		WeakAttempts: []generation.AgenticSolverAttempt{{
+			Role:    "weak_solver",
+			Attempt: 1,
+			Model:   "gpt-4.1-nano",
+			Output:  "weak answer",
+		}},
+		StrongAttempts: []generation.AgenticSolverAttempt{{
+			Role:    "strong_solver",
+			Attempt: 1,
+			Model:   "gpt-4.1",
+			Output:  "strong answer",
+		}},
+	})
+	if !containsAll(prompt, "Weak solver attempts", "weak answer", "Strong solver attempts", "strong answer") {
+		t.Fatalf("judge prompt missing solver attempts: %q", prompt)
+	}
+}
+
 func TestParseAgenticJudgeResponse(t *testing.T) {
 	verdict, err := generation.ParseAgenticJudgeResponse(`{
 		"verdict":"accept",

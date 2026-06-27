@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -42,6 +43,88 @@ func TestExecuteSyntheticDatasetGenerationAgenticAcceptsJudgeApprovedCandidate(t
 	}
 	if fixture.repo.progress.TotalInputTokens != 21 || fixture.repo.progress.TotalOutputTokens != 11 {
 		t.Fatalf("usage = %d/%d", fixture.repo.progress.TotalInputTokens, fixture.repo.progress.TotalOutputTokens)
+	}
+}
+
+func TestExecuteSyntheticDatasetGenerationAgenticRunsDirectProviderSolvers(t *testing.T) {
+	fixture := newDatasetGenerationActivityFixture(t, []provider.Response{
+		{OutputText: `{"input":{"q":"candidate"},"expected":{"a":"ok"}}`, Usage: provider.Usage{InputTokens: 10, OutputTokens: 5}},
+		{OutputText: `weak answer`, Usage: provider.Usage{InputTokens: 2, OutputTokens: 3}},
+		{OutputText: `strong answer`, Usage: provider.Usage{InputTokens: 4, OutputTokens: 5}},
+		{OutputText: `{"verdict":"accept","quality_verdict":"high","weak_score":0.3,"strong_score":0.9,"gap":0.6,"capability_tags":["recovery"],"gap_interpretation":"clear separation"}`, Usage: provider.Usage{InputTokens: 11, OutputTokens: 6}},
+	})
+	configureDirectProviderSolvers(&fixture)
+
+	if err := fixture.activities.ExecuteSyntheticDatasetGeneration(context.Background(), ExecuteSyntheticDatasetGenerationInput{JobID: fixture.jobID}); err != nil {
+		t.Fatalf("execute generation: %v", err)
+	}
+	if fixture.client.calls != 4 {
+		t.Fatalf("provider calls = %d, want 4", fixture.client.calls)
+	}
+	models := []string{
+		fixture.client.requests[0].Model,
+		fixture.client.requests[1].Model,
+		fixture.client.requests[2].Model,
+		fixture.client.requests[3].Model,
+	}
+	wantModels := []string{"gpt-4.1-mini", "gpt-4.1-nano", "gpt-4.1", "gpt-4.1-mini"}
+	for i := range wantModels {
+		if models[i] != wantModels[i] {
+			t.Fatalf("call %d model = %q, want %q", i, models[i], wantModels[i])
+		}
+	}
+	if strings.Contains(fixture.client.requests[1].Messages[0].Content, `"a":"ok"`) {
+		t.Fatalf("weak solver prompt leaked expected answer: %q", fixture.client.requests[1].Messages[0].Content)
+	}
+	if !strings.Contains(fixture.client.requests[3].Messages[0].Content, "weak answer") || !strings.Contains(fixture.client.requests[3].Messages[0].Content, "strong answer") {
+		t.Fatalf("judge prompt missing solver outputs: %q", fixture.client.requests[3].Messages[0].Content)
+	}
+	if len(fixture.repo.upserts) != 1 {
+		t.Fatalf("upserts = %d, want 1", len(fixture.repo.upserts))
+	}
+	var metadata map[string]any
+	if err := json.Unmarshal(fixture.repo.upserts[0].Metadata, &metadata); err != nil {
+		t.Fatalf("decode metadata: %v", err)
+	}
+	if metadata["solver_mode"] != datasetgeneration.SolverModeDirectProvider {
+		t.Fatalf("solver_mode = %v", metadata["solver_mode"])
+	}
+	if _, ok := metadata["weak_solver_attempts"].([]any); !ok {
+		t.Fatalf("weak solver attempts missing from metadata: %+v", metadata)
+	}
+	var summary map[string]any
+	if err := json.Unmarshal(fixture.repo.progress.Summary, &summary); err != nil {
+		t.Fatalf("decode summary: %v", err)
+	}
+	if summary["avg_gap"] != 0.6 {
+		t.Fatalf("avg_gap = %v, want 0.6", summary["avg_gap"])
+	}
+}
+
+func TestExecuteSyntheticDatasetGenerationAgenticRecordsSolverFailure(t *testing.T) {
+	fixture := newDatasetGenerationActivityFixture(t, []provider.Response{
+		{OutputText: `{"input":{"q":"candidate"},"expected":{"a":"ok"}}`},
+		{},
+	})
+	configureDirectProviderSolvers(&fixture)
+	fixture.repo.context.Config.MaxRoundsPerExample = 1
+	fixture.client.errors = []error{nil, errors.New("weak model down")}
+
+	if err := fixture.activities.ExecuteSyntheticDatasetGeneration(context.Background(), ExecuteSyntheticDatasetGenerationInput{JobID: fixture.jobID}); err != nil {
+		t.Fatalf("execute generation: %v", err)
+	}
+	if len(fixture.repo.upserts) != 0 {
+		t.Fatalf("upserts = %d, want 0", len(fixture.repo.upserts))
+	}
+	if len(fixture.repo.rejections) == 0 {
+		t.Fatal("expected at least one rejection")
+	}
+	rejection := fixture.repo.rejections[0]
+	if rejection.ReasonCode != datasetgeneration.ReasonSolverError {
+		t.Fatalf("reason = %q", rejection.ReasonCode)
+	}
+	if rejection.ReasonDetail == nil || !strings.Contains(*rejection.ReasonDetail, "weak model down") {
+		t.Fatalf("reason detail = %v", rejection.ReasonDetail)
 	}
 }
 
@@ -99,6 +182,7 @@ func TestExecuteSyntheticDatasetGenerationAgenticRecordsMalformedJudgeOutput(t *
 type datasetGenerationActivityFixture struct {
 	jobID      uuid.UUID
 	repo       *fakeDatasetGenerationWorkflowRepo
+	client     *scriptedDatasetGenerationProvider
 	activities *DatasetGenerationActivities
 }
 
@@ -166,22 +250,56 @@ func newDatasetGenerationActivityFixture(t *testing.T, responses []provider.Resp
 	return datasetGenerationActivityFixture{
 		jobID:      jobID,
 		repo:       repo,
+		client:     client,
 		activities: NewDatasetGenerationActivities(repo, client, nil),
+	}
+}
+
+func configureDirectProviderSolvers(fixture *datasetGenerationActivityFixture) {
+	workspaceID := fixture.repo.context.Job.WorkspaceID
+	weakProviderAccountID := uuid.New()
+	strongProviderAccountID := uuid.New()
+	fixture.repo.context.Config.SolverMode = datasetgeneration.SolverModeDirectProvider
+	fixture.repo.context.Config.WeakProviderAccountID = &weakProviderAccountID
+	fixture.repo.context.Config.WeakModel = "gpt-4.1-nano"
+	fixture.repo.context.Config.WeakRollouts = 1
+	fixture.repo.context.Config.StrongProviderAccountID = &strongProviderAccountID
+	fixture.repo.context.Config.StrongModel = "gpt-4.1"
+	fixture.repo.context.Config.StrongRollouts = 1
+	fixture.repo.context.WeakProviderAccount = &repository.ProviderAccountRow{
+		ID:                  weakProviderAccountID,
+		WorkspaceID:         &workspaceID,
+		ProviderKey:         "openai",
+		CredentialReference: "secret://weak",
+	}
+	fixture.repo.context.StrongProviderAccount = &repository.ProviderAccountRow{
+		ID:                  strongProviderAccountID,
+		WorkspaceID:         &workspaceID,
+		ProviderKey:         "openai",
+		CredentialReference: "secret://strong",
 	}
 }
 
 type scriptedDatasetGenerationProvider struct {
 	responses []provider.Response
+	errors    []error
+	requests  []provider.Request
 	calls     int
 }
 
-func (c *scriptedDatasetGenerationProvider) InvokeModel(context.Context, provider.Request) (provider.Response, error) {
+func (c *scriptedDatasetGenerationProvider) InvokeModel(_ context.Context, request provider.Request) (provider.Response, error) {
+	c.requests = append(c.requests, request)
 	if c.calls >= len(c.responses) {
+		c.calls++
 		return provider.Response{}, nil
 	}
 	response := c.responses[c.calls]
+	var err error
+	if c.calls < len(c.errors) {
+		err = c.errors[c.calls]
+	}
 	c.calls++
-	return response, nil
+	return response, err
 }
 
 type fakeDatasetGenerationWorkflowRepo struct {

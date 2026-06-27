@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -22,6 +23,18 @@ func init() {
 	datasetGenerateCmd.Flags().Float64("min-gap", 0, "Minimum strong-minus-weak score gap for agentic threshold guardrails")
 	datasetGenerateCmd.Flags().Float64("max-weak-score", 0, "Maximum weak score for agentic threshold guardrails")
 	datasetGenerateCmd.Flags().Float64("min-strong-score", 0, "Minimum strong score for agentic threshold guardrails")
+	datasetGenerateCmd.Flags().String("solver-mode", "", "Agentic solver mode (judge_only or direct_provider)")
+	datasetGenerateCmd.Flags().String("weak-provider-account", "", "Weak solver provider account ID for direct provider agentic generation")
+	datasetGenerateCmd.Flags().String("weak-model", "", "Weak solver model ID for direct provider agentic generation")
+	datasetGenerateCmd.Flags().String("strong-provider-account", "", "Strong solver provider account ID for direct provider agentic generation")
+	datasetGenerateCmd.Flags().String("strong-model", "", "Strong solver model ID for direct provider agentic generation")
+	datasetGenerateCmd.Flags().Int("weak-rollouts", 0, "Weak solver rollout count for direct provider agentic generation")
+	datasetGenerateCmd.Flags().Int("strong-rollouts", 0, "Strong solver rollout count for direct provider agentic generation")
+	datasetGenerateCmd.Flags().String("weak-deployment", "", "Weak AgentClash deployment ID to store with generated examples")
+	datasetGenerateCmd.Flags().String("strong-deployment", "", "Strong AgentClash deployment ID to store with generated examples")
+	datasetGenerateCmd.Flags().String("challenge-pack-version", "", "Challenge pack version ID to store with generation deployment context")
+	datasetGenerateCmd.Flags().String("challenge-key", "", "Challenge key to store with generation deployment context")
+	datasetGenerateCmd.Flags().String("field-mapping", "", "JSON object mapping dataset fields to challenge inputs")
 	datasetGenerateCmd.Flags().String("seeds-tag", "", "Only use seed examples with this tag")
 	datasetGenerateCmd.Flags().Bool("create-version", false, "Snapshot a dataset version when generation completes")
 	datasetGenerateCmd.Flags().String("version-label", "", "Optional label for the generated dataset version")
@@ -64,6 +77,18 @@ var datasetGenerateCmd = &cobra.Command{
 		judgeModel, _ := cmd.Flags().GetString("judge-model")
 		maxRoundsPerExample, _ := cmd.Flags().GetInt("max-rounds-per-example")
 		acceptanceMode, _ := cmd.Flags().GetString("acceptance-mode")
+		solverMode, _ := cmd.Flags().GetString("solver-mode")
+		weakProviderAccount, _ := cmd.Flags().GetString("weak-provider-account")
+		weakModel, _ := cmd.Flags().GetString("weak-model")
+		strongProviderAccount, _ := cmd.Flags().GetString("strong-provider-account")
+		strongModel, _ := cmd.Flags().GetString("strong-model")
+		weakRollouts, _ := cmd.Flags().GetInt("weak-rollouts")
+		strongRollouts, _ := cmd.Flags().GetInt("strong-rollouts")
+		weakDeployment, _ := cmd.Flags().GetString("weak-deployment")
+		strongDeployment, _ := cmd.Flags().GetString("strong-deployment")
+		challengePackVersion, _ := cmd.Flags().GetString("challenge-pack-version")
+		challengeKey, _ := cmd.Flags().GetString("challenge-key")
+		fieldMapping, _ := cmd.Flags().GetString("field-mapping")
 
 		body := map[string]any{
 			"strategy":            strategy,
@@ -101,6 +126,49 @@ var datasetGenerateCmd = &cobra.Command{
 		if cmd.Flags().Changed("min-strong-score") {
 			minStrongScore, _ := cmd.Flags().GetFloat64("min-strong-score")
 			body["min_strong_score"] = minStrongScore
+		}
+		if solverMode != "" {
+			body["solver_mode"] = solverMode
+		}
+		if weakProviderAccount != "" {
+			body["weak_provider_account_id"] = weakProviderAccount
+		}
+		if weakModel != "" {
+			body["weak_model"] = weakModel
+		}
+		if strongProviderAccount != "" {
+			body["strong_provider_account_id"] = strongProviderAccount
+		}
+		if strongModel != "" {
+			body["strong_model"] = strongModel
+		}
+		if weakRollouts > 0 {
+			body["weak_rollouts"] = weakRollouts
+		}
+		if strongRollouts > 0 {
+			body["strong_rollouts"] = strongRollouts
+		}
+		if weakDeployment != "" {
+			body["weak_deployment_id"] = weakDeployment
+		}
+		if strongDeployment != "" {
+			body["strong_deployment_id"] = strongDeployment
+		}
+		if challengePackVersion != "" {
+			body["challenge_pack_version_id"] = challengePackVersion
+		}
+		if challengeKey != "" {
+			body["challenge_key"] = challengeKey
+		}
+		if fieldMapping != "" {
+			var mapping map[string]any
+			if err := json.Unmarshal([]byte(fieldMapping), &mapping); err != nil {
+				return fmt.Errorf("--field-mapping must be a JSON object: %w", err)
+			}
+			if mapping == nil {
+				return fmt.Errorf("--field-mapping must be a JSON object")
+			}
+			body["field_mapping"] = mapping
 		}
 
 		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/datasets/"+datasetID+"/generate", body)

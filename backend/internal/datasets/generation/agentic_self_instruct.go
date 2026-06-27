@@ -17,8 +17,18 @@ const (
 )
 
 type AgenticJudgeInput struct {
-	Seeds     []SeedExample
-	Candidate Candidate
+	Seeds          []SeedExample
+	Candidate      Candidate
+	WeakAttempts   []AgenticSolverAttempt
+	StrongAttempts []AgenticSolverAttempt
+}
+
+type AgenticSolverAttempt struct {
+	Role              string `json:"role"`
+	Attempt           int    `json:"attempt"`
+	ProviderAccountID string `json:"provider_account_id,omitempty"`
+	Model             string `json:"model,omitempty"`
+	Output            string `json:"output"`
 }
 
 type AgenticJudgeVerdict struct {
@@ -48,10 +58,14 @@ func BuildAgenticJudgePrompt(input AgenticJudgeInput) string {
 	var b strings.Builder
 	b.WriteString("You are judging a synthetic AgentClash dataset example before it is accepted.\n")
 	b.WriteString("Decide whether the candidate is high-quality, realistic, non-duplicative in spirit, and useful for evaluating an agent.\n")
-	b.WriteString("This phase is judge-only: no weak or strong solver rollouts are available yet. Prefer rejecting vague, trivial, answer-leaking, impossible, or schema-inconsistent examples.\n")
+	if len(input.WeakAttempts) == 0 && len(input.StrongAttempts) == 0 {
+		b.WriteString("No weak or strong solver rollouts are available for this candidate. Prefer rejecting vague, trivial, answer-leaking, impossible, or schema-inconsistent examples.\n")
+	} else {
+		b.WriteString("Weak and strong solver attempts are provided. Reward examples where the strong solver clearly succeeds more often or more completely than the weak solver.\n")
+	}
 	b.WriteString("Respond with ONLY valid JSON in this exact shape:\n")
 	b.WriteString(`{"verdict":"accept|improve|reject","quality_verdict":"high|medium|low","weak_score":0.0,"strong_score":1.0,"gap":0.0,"weak_pattern":"","strong_pattern":"","gap_interpretation":"","rubric_concerns":[],"capability_tags":[],"grpo_suitability":"high|medium|low","suggestion_for_challenger":null}` + "\n")
-	b.WriteString("Use null or omit scores when solver scores are not available. If verdict is improve or reject, include a concrete suggestion_for_challenger.\n\n")
+	b.WriteString("Scores must be between 0 and 1. Use null or omit scores when solver evidence is insufficient. If verdict is improve or reject, include a concrete suggestion_for_challenger.\n\n")
 	b.WriteString("Seed examples:\n")
 	for i, seed := range input.Seeds {
 		b.WriteString(fmt.Sprintf("%d. input: %s\n", i+1, compactJSON(seed.Input)))
@@ -64,6 +78,24 @@ func BuildAgenticJudgePrompt(input AgenticJudgeInput) string {
 	if len(input.Candidate.Expected) > 0 && string(input.Candidate.Expected) != "null" {
 		b.WriteString(fmt.Sprintf("expected: %s\n", compactJSON(input.Candidate.Expected)))
 	}
+	writeSolverAttempts(&b, "Weak solver attempts", input.WeakAttempts)
+	writeSolverAttempts(&b, "Strong solver attempts", input.StrongAttempts)
+	return b.String()
+}
+
+func BuildAgenticSolverPrompt(role string, candidate Candidate) string {
+	role = strings.TrimSpace(role)
+	if role == "" {
+		role = "solver"
+	}
+	var b strings.Builder
+	b.WriteString("You are acting as the ")
+	b.WriteString(role)
+	b.WriteString(" model in an AgentClash synthetic dataset calibration loop.\n")
+	b.WriteString("Solve the candidate task as directly as possible. Return your best final answer only; do not mention that this is a dataset generation review.\n\n")
+	b.WriteString("Candidate input:\n")
+	b.WriteString(compactJSON(candidate.Input))
+	b.WriteString("\n")
 	return b.String()
 }
 
@@ -158,6 +190,42 @@ func AgenticJudgeMetadata(verdict AgenticJudgeVerdict) json.RawMessage {
 		return json.RawMessage(`{}`)
 	}
 	return encoded
+}
+
+func AgenticJudgeMetadataWithSolvers(verdict AgenticJudgeVerdict, weakAttempts, strongAttempts []AgenticSolverAttempt) json.RawMessage {
+	var metadata map[string]any
+	if err := json.Unmarshal(AgenticJudgeMetadata(verdict), &metadata); err != nil {
+		metadata = map[string]any{}
+	}
+	if len(weakAttempts) > 0 {
+		metadata["weak_solver_attempts"] = weakAttempts
+	}
+	if len(strongAttempts) > 0 {
+		metadata["strong_solver_attempts"] = strongAttempts
+	}
+	encoded, err := json.Marshal(metadata)
+	if err != nil {
+		return json.RawMessage(`{}`)
+	}
+	return encoded
+}
+
+func writeSolverAttempts(b *strings.Builder, title string, attempts []AgenticSolverAttempt) {
+	if len(attempts) == 0 {
+		return
+	}
+	b.WriteString("\n")
+	b.WriteString(title)
+	b.WriteString(":\n")
+	for _, attempt := range attempts {
+		b.WriteString(fmt.Sprintf("- attempt %d", attempt.Attempt))
+		if attempt.Model != "" {
+			b.WriteString(fmt.Sprintf(" (%s)", attempt.Model))
+		}
+		b.WriteString(": ")
+		b.WriteString(strings.TrimSpace(attempt.Output))
+		b.WriteString("\n")
+	}
 }
 
 func validateOptionalScore(name string, value *float64) error {

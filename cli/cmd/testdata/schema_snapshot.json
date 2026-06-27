@@ -1634,6 +1634,16 @@
               "type": "string"
             },
             {
+              "name": "challenge-key",
+              "usage": "Challenge key to store with generation deployment context",
+              "type": "string"
+            },
+            {
+              "name": "challenge-pack-version",
+              "usage": "Challenge pack version ID to store with generation deployment context",
+              "type": "string"
+            },
+            {
               "name": "count",
               "usage": "Target number of accepted synthetic examples",
               "type": "int",
@@ -1644,6 +1654,11 @@
               "usage": "Snapshot a dataset version when generation completes",
               "type": "bool",
               "default": "false"
+            },
+            {
+              "name": "field-mapping",
+              "usage": "JSON object mapping dataset fields to challenge inputs",
+              "type": "string"
             },
             {
               "name": "follow",
@@ -1707,10 +1722,36 @@
               "type": "string"
             },
             {
+              "name": "solver-mode",
+              "usage": "Agentic solver mode (judge_only or direct_provider)",
+              "type": "string"
+            },
+            {
               "name": "strategy",
               "usage": "Generation strategy (self-instruct, agentic-self-instruct)",
               "type": "string",
               "default": "self-instruct"
+            },
+            {
+              "name": "strong-deployment",
+              "usage": "Strong AgentClash deployment ID to store with generated examples",
+              "type": "string"
+            },
+            {
+              "name": "strong-model",
+              "usage": "Strong solver model ID for direct provider agentic generation",
+              "type": "string"
+            },
+            {
+              "name": "strong-provider-account",
+              "usage": "Strong solver provider account ID for direct provider agentic generation",
+              "type": "string"
+            },
+            {
+              "name": "strong-rollouts",
+              "usage": "Strong solver rollout count for direct provider agentic generation",
+              "type": "int",
+              "default": "0"
             },
             {
               "name": "timeout",
@@ -1722,6 +1763,27 @@
               "name": "version-label",
               "usage": "Optional label for the generated dataset version",
               "type": "string"
+            },
+            {
+              "name": "weak-deployment",
+              "usage": "Weak AgentClash deployment ID to store with generated examples",
+              "type": "string"
+            },
+            {
+              "name": "weak-model",
+              "usage": "Weak solver model ID for direct provider agentic generation",
+              "type": "string"
+            },
+            {
+              "name": "weak-provider-account",
+              "usage": "Weak solver provider account ID for direct provider agentic generation",
+              "type": "string"
+            },
+            {
+              "name": "weak-rollouts",
+              "usage": "Weak solver rollout count for direct provider agentic generation",
+              "type": "int",
+              "default": "0"
             }
           ]
         },

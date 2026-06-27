@@ -4052,6 +4052,47 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/workspaces/{workspaceID}/datasets/{datasetID}/generations/{jobID}/rejections:
+    get:
+      operationId: listDatasetGenerationRejections
+      tags: [Datasets]
+      summary: List rejection records for a synthetic dataset generation job
+      security:
+        - bearerJWT: []
+      parameters:
+        - $ref: "#/components/parameters/WorkspaceID"
+        - $ref: "#/components/parameters/DatasetID"
+        - name: jobID
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        "200":
+          description: Generation rejection records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DatasetGenerationRejectionsResult"
+        "403":
+          $ref: "#/components/responses/ForbiddenError"
+        "404":
+          $ref: "#/components/responses/NotFoundError"
+
   /v1/workspaces/{workspaceID}/datasets/{datasetID}/gate:
     post:
       operationId: evaluateDatasetGate
@@ -7315,6 +7356,45 @@ components:
           type: number
           minimum: 0
           maximum: 1
+        solver_mode:
+          type: string
+          enum: [judge_only, direct_provider]
+        weak_provider_account_id:
+          type: string
+          format: uuid
+          description: Required when solver_mode is direct_provider.
+        weak_model:
+          type: string
+          description: Required when solver_mode is direct_provider.
+        strong_provider_account_id:
+          type: string
+          format: uuid
+          description: Required when solver_mode is direct_provider.
+        strong_model:
+          type: string
+          description: Required when solver_mode is direct_provider.
+        weak_rollouts:
+          type: integer
+          minimum: 1
+          maximum: 5
+        strong_rollouts:
+          type: integer
+          minimum: 1
+          maximum: 5
+        weak_deployment_id:
+          type: string
+          format: uuid
+        strong_deployment_id:
+          type: string
+          format: uuid
+        challenge_pack_version_id:
+          type: string
+          format: uuid
+        challenge_key:
+          type: string
+        field_mapping:
+          type: object
+          additionalProperties: true
 
     DatasetGenerationJob:
       type: object
@@ -7365,6 +7445,31 @@ components:
         failed_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+
+    DatasetGenerationRejection:
+      type: object
+      required: [id, job_id, reason_code, metadata, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        job_id: { type: string, format: uuid }
+        reason_code: { type: string }
+        reason_detail: { type: string }
+        candidate_input: {}
+        candidate_expected: {}
+        metadata: { type: object, additionalProperties: true }
+        created_at: { type: string, format: date-time }
+
+    DatasetGenerationRejectionsResult:
+      type: object
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DatasetGenerationRejection"
+        total: { type: integer, format: int64 }
+        limit: { type: integer }
+        offset: { type: integer }
 
     EvaluateDatasetGateInput:
       type: object

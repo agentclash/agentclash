@@ -116,14 +116,22 @@ type CreateDatasetGenerationRejectionParams struct {
 	Metadata          json.RawMessage
 }
 
+type ListDatasetGenerationRejectionsParams struct {
+	JobID  uuid.UUID
+	Limit  int32
+	Offset int32
+}
+
 type DatasetGenerationExecutionContext struct {
-	Job                  DatasetGenerationJob
-	Dataset              Dataset
-	Config               datasetgeneration.JobConfig
-	Seeds                []datasetgeneration.SeedExample
-	ExistingInputs       map[string]struct{}
-	ProviderAccount      ProviderAccountRow
-	JudgeProviderAccount *ProviderAccountRow
+	Job                   DatasetGenerationJob
+	Dataset               Dataset
+	Config                datasetgeneration.JobConfig
+	Seeds                 []datasetgeneration.SeedExample
+	ExistingInputs        map[string]struct{}
+	ProviderAccount       ProviderAccountRow
+	JudgeProviderAccount  *ProviderAccountRow
+	WeakProviderAccount   *ProviderAccountRow
+	StrongProviderAccount *ProviderAccountRow
 	// Model is the provider model id to generate with. Pricing is best-effort
 	// from the static fallback map (0 when unknown) and is used only for the
 	// job's cost estimate, never for scoring.
@@ -232,6 +240,34 @@ func (r *Repository) CreateDatasetGenerationRejection(ctx context.Context, param
 	return mapDatasetGenerationRejection(row)
 }
 
+func (r *Repository) ListDatasetGenerationRejectionsByJobID(ctx context.Context, params ListDatasetGenerationRejectionsParams) ([]DatasetGenerationRejection, error) {
+	rows, err := r.queries.ListDatasetGenerationRejectionsByJobID(ctx, repositorysqlc.ListDatasetGenerationRejectionsByJobIDParams{
+		JobID:        params.JobID,
+		ResultLimit:  params.Limit,
+		ResultOffset: params.Offset,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list dataset generation rejections: %w", err)
+	}
+	items := make([]DatasetGenerationRejection, 0, len(rows))
+	for _, row := range rows {
+		item, mapErr := mapDatasetGenerationRejection(row)
+		if mapErr != nil {
+			return nil, mapErr
+		}
+		items = append(items, item)
+	}
+	return items, nil
+}
+
+func (r *Repository) CountDatasetGenerationRejectionsByJobID(ctx context.Context, jobID uuid.UUID) (int64, error) {
+	count, err := r.queries.CountDatasetGenerationRejectionsByJobID(ctx, repositorysqlc.CountDatasetGenerationRejectionsByJobIDParams{JobID: jobID})
+	if err != nil {
+		return 0, fmt.Errorf("count dataset generation rejections: %w", err)
+	}
+	return count, nil
+}
+
 func (r *Repository) GetDatasetGenerationExecutionContextByID(ctx context.Context, jobID uuid.UUID) (DatasetGenerationExecutionContext, error) {
 	job, err := r.GetDatasetGenerationJobByID(ctx, jobID)
 	if err != nil {
@@ -256,6 +292,22 @@ func (r *Repository) GetDatasetGenerationExecutionContextByID(ctx context.Contex
 			return DatasetGenerationExecutionContext{}, accountErr
 		}
 		judgeProviderAccount = &account
+	}
+	var weakProviderAccount *ProviderAccountRow
+	if cfg.WeakProviderAccountID != nil {
+		account, accountErr := r.GetProviderAccountByID(ctx, *cfg.WeakProviderAccountID)
+		if accountErr != nil {
+			return DatasetGenerationExecutionContext{}, accountErr
+		}
+		weakProviderAccount = &account
+	}
+	var strongProviderAccount *ProviderAccountRow
+	if cfg.StrongProviderAccountID != nil {
+		account, accountErr := r.GetProviderAccountByID(ctx, *cfg.StrongProviderAccountID)
+		if accountErr != nil {
+			return DatasetGenerationExecutionContext{}, accountErr
+		}
+		strongProviderAccount = &account
 	}
 	// Pricing is best-effort: the static fallback map yields 0 when the model is
 	// unknown, which only affects the job's cost estimate.
@@ -294,6 +346,8 @@ func (r *Repository) GetDatasetGenerationExecutionContextByID(ctx context.Contex
 		ExistingInputs:             existing,
 		ProviderAccount:            providerAccount,
 		JudgeProviderAccount:       judgeProviderAccount,
+		WeakProviderAccount:        weakProviderAccount,
+		StrongProviderAccount:      strongProviderAccount,
 		Model:                      cfg.Model,
 		InputCostPerMillionTokens:  inputCost,
 		OutputCostPerMillionTokens: outputCost,
