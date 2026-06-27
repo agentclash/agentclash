@@ -57,8 +57,17 @@ export function StartGenerationDialog({
   );
   const [models, setModels] = useState<ProviderConnectionModel[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
+  const [strategy, setStrategy] = useState<
+    "self_instruct" | "agentic_self_instruct"
+  >("self_instruct");
   const [providerAccountId, setProviderAccountId] = useState("");
   const [model, setModel] = useState("");
+  const [judgeProviderAccountId, setJudgeProviderAccountId] = useState("");
+  const [judgeModel, setJudgeModel] = useState("");
+  const [maxRoundsPerExample, setMaxRoundsPerExample] = useState("3");
+  const [acceptanceMode, setAcceptanceMode] = useState<"judge" | "threshold">(
+    "judge",
+  );
   const [targetCount, setTargetCount] = useState("10");
   const [seedsTag, setSeedsTag] = useState("");
   const [createVersion, setCreateVersion] = useState(true);
@@ -211,6 +220,17 @@ export function StartGenerationDialog({
       toast.error("Target count must be between 1 and 100");
       return;
     }
+    if (strategy === "agentic_self_instruct") {
+      const rounds = Number(maxRoundsPerExample);
+      if (!judgeProviderAccountId || !judgeModel.trim()) {
+        toast.error("Select a judge provider account and model");
+        return;
+      }
+      if (!Number.isInteger(rounds) || rounds < 1 || rounds > 15) {
+        toast.error("Max rounds per example must be between 1 and 15");
+        return;
+      }
+    }
 
     setSubmitting(true);
     try {
@@ -221,13 +241,27 @@ export function StartGenerationDialog({
         workspaceId,
         datasetId,
         {
-          strategy: "self_instruct",
+          strategy,
           target_count: count,
           provider_account_id: providerAccountId,
           model: model.trim(),
           seeds_tag: seedsTag.trim() || undefined,
           create_version: createVersion,
           version_label: versionLabel.trim() || undefined,
+          judge_provider_account_id:
+            strategy === "agentic_self_instruct"
+              ? judgeProviderAccountId
+              : undefined,
+          judge_model:
+            strategy === "agentic_self_instruct"
+              ? judgeModel.trim()
+              : undefined,
+          max_rounds_per_example:
+            strategy === "agentic_self_instruct"
+              ? Number(maxRoundsPerExample)
+              : undefined,
+          acceptance_mode:
+            strategy === "agentic_self_instruct" ? acceptanceMode : undefined,
         },
       );
       setJob(queued);
@@ -254,7 +288,7 @@ export function StartGenerationDialog({
         <DialogHeader>
           <DialogTitle>Synthetic generation</DialogTitle>
           <DialogDescription>
-            Self-instruct generation using a provider connection model.
+            Generate examples from seeds, with optional agentic judge filtering.
           </DialogDescription>
         </DialogHeader>
         {job ? (
@@ -324,6 +358,27 @@ export function StartGenerationDialog({
             ) : null}
             <div>
               <label className="mb-1.5 block text-sm font-medium">
+                Generation mode
+              </label>
+              <select
+                value={strategy}
+                onChange={(e) =>
+                  setStrategy(
+                    e.target.value as
+                      | "self_instruct"
+                      | "agentic_self_instruct",
+                  )
+                }
+                className={inputClass}
+              >
+                <option value="self_instruct">Fast Self-Instruct</option>
+                <option value="agentic_self_instruct">
+                  Agentic Self-Instruct
+                </option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-medium">
                 Provider account
               </label>
               <select
@@ -373,6 +428,67 @@ export function StartGenerationDialog({
                 />
               )}
             </div>
+            {strategy === "agentic_self_instruct" ? (
+              <div className="space-y-4 rounded-lg border border-border p-3">
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">
+                    Judge provider account
+                  </label>
+                  <select
+                    value={judgeProviderAccountId}
+                    onChange={(e) => setJudgeProviderAccountId(e.target.value)}
+                    className={inputClass}
+                  >
+                    <option value="">Select account...</option>
+                    {providerAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name} ({a.provider_key})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">
+                    Judge model
+                  </label>
+                  <input
+                    value={judgeModel}
+                    onChange={(e) => setJudgeModel(e.target.value)}
+                    placeholder="e.g. gpt-4.1, claude-sonnet-4-6"
+                    disabled={!judgeProviderAccountId}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">
+                    Max rounds per example
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={15}
+                    value={maxRoundsPerExample}
+                    onChange={(e) => setMaxRoundsPerExample(e.target.value)}
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">
+                    Acceptance mode
+                  </label>
+                  <select
+                    value={acceptanceMode}
+                    onChange={(e) =>
+                      setAcceptanceMode(e.target.value as "judge" | "threshold")
+                    }
+                    className={inputClass}
+                  >
+                    <option value="judge">Judge</option>
+                    <option value="threshold">Threshold</option>
+                  </select>
+                </div>
+              </div>
+            ) : null}
             <div>
               <label className="mb-1.5 block text-sm font-medium">
                 Target count

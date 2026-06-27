@@ -11,10 +11,17 @@ import (
 
 func init() {
 	datasetCmd.AddCommand(datasetGenerateCmd)
-	datasetGenerateCmd.Flags().String("strategy", "self-instruct", "Generation strategy (v1: self-instruct)")
+	datasetGenerateCmd.Flags().String("strategy", "self-instruct", "Generation strategy (self-instruct, agentic-self-instruct)")
 	datasetGenerateCmd.Flags().Int("count", 0, "Target number of accepted synthetic examples")
 	datasetGenerateCmd.Flags().String("provider-account", "", "Provider account ID")
 	datasetGenerateCmd.Flags().String("model", "", "Provider model ID")
+	datasetGenerateCmd.Flags().String("judge-provider-account", "", "Judge provider account ID for agentic generation")
+	datasetGenerateCmd.Flags().String("judge-model", "", "Judge provider model ID for agentic generation")
+	datasetGenerateCmd.Flags().Int("max-rounds-per-example", 0, "Maximum judge/improve rounds per generated example for agentic generation")
+	datasetGenerateCmd.Flags().String("acceptance-mode", "", "Agentic acceptance mode (judge or threshold)")
+	datasetGenerateCmd.Flags().Float64("min-gap", 0, "Minimum strong-minus-weak score gap for agentic threshold guardrails")
+	datasetGenerateCmd.Flags().Float64("max-weak-score", 0, "Maximum weak score for agentic threshold guardrails")
+	datasetGenerateCmd.Flags().Float64("min-strong-score", 0, "Minimum strong score for agentic threshold guardrails")
 	datasetGenerateCmd.Flags().String("seeds-tag", "", "Only use seed examples with this tag")
 	datasetGenerateCmd.Flags().Bool("create-version", false, "Snapshot a dataset version when generation completes")
 	datasetGenerateCmd.Flags().String("version-label", "", "Optional label for the generated dataset version")
@@ -53,6 +60,10 @@ var datasetGenerateCmd = &cobra.Command{
 		createVersion, _ := cmd.Flags().GetBool("create-version")
 		versionLabel, _ := cmd.Flags().GetString("version-label")
 		follow, _ := cmd.Flags().GetBool("follow")
+		judgeProviderAccount, _ := cmd.Flags().GetString("judge-provider-account")
+		judgeModel, _ := cmd.Flags().GetString("judge-model")
+		maxRoundsPerExample, _ := cmd.Flags().GetInt("max-rounds-per-example")
+		acceptanceMode, _ := cmd.Flags().GetString("acceptance-mode")
 
 		body := map[string]any{
 			"strategy":            strategy,
@@ -66,6 +77,30 @@ var datasetGenerateCmd = &cobra.Command{
 		}
 		if versionLabel != "" {
 			body["version_label"] = versionLabel
+		}
+		if judgeProviderAccount != "" {
+			body["judge_provider_account_id"] = judgeProviderAccount
+		}
+		if judgeModel != "" {
+			body["judge_model"] = judgeModel
+		}
+		if maxRoundsPerExample > 0 {
+			body["max_rounds_per_example"] = maxRoundsPerExample
+		}
+		if acceptanceMode != "" {
+			body["acceptance_mode"] = acceptanceMode
+		}
+		if cmd.Flags().Changed("min-gap") {
+			minGap, _ := cmd.Flags().GetFloat64("min-gap")
+			body["min_gap"] = minGap
+		}
+		if cmd.Flags().Changed("max-weak-score") {
+			maxWeakScore, _ := cmd.Flags().GetFloat64("max-weak-score")
+			body["max_weak_score"] = maxWeakScore
+		}
+		if cmd.Flags().Changed("min-strong-score") {
+			minStrongScore, _ := cmd.Flags().GetFloat64("min-strong-score")
+			body["min_strong_score"] = minStrongScore
 		}
 
 		resp, err := rc.Client.Post(cmd.Context(), "/v1/workspaces/"+wsID+"/datasets/"+datasetID+"/generate", body)

@@ -39,15 +39,22 @@ func (e DatasetGenerationWorkflowStartError) Error() string {
 func (e DatasetGenerationWorkflowStartError) Unwrap() error { return e.Cause }
 
 type StartDatasetGenerationInput struct {
-	WorkspaceID       uuid.UUID
-	DatasetID         uuid.UUID
-	Strategy          string
-	TargetCount       int32
-	ProviderAccountID uuid.UUID
-	Model             string
-	SeedsTag          string
-	CreateVersion     bool
-	VersionLabel      string
+	WorkspaceID            uuid.UUID
+	DatasetID              uuid.UUID
+	Strategy               string
+	TargetCount            int32
+	ProviderAccountID      uuid.UUID
+	Model                  string
+	SeedsTag               string
+	CreateVersion          bool
+	VersionLabel           string
+	JudgeProviderAccountID *uuid.UUID
+	JudgeModel             string
+	MaxRoundsPerExample    int
+	AcceptanceMode         string
+	MinGap                 *float64
+	MaxWeakScore           *float64
+	MinStrongScore         *float64
 }
 
 type GetDatasetGenerationJobInput struct {
@@ -93,6 +100,24 @@ func (m *DatasetManager) StartDatasetGeneration(ctx context.Context, caller Call
 	if strings.TrimSpace(input.Model) == "" {
 		return repository.DatasetGenerationJob{}, errors.New("model is required")
 	}
+	if strategy == datasetgeneration.StrategyAgenticSelfInstruct {
+		if input.JudgeProviderAccountID == nil || *input.JudgeProviderAccountID == uuid.Nil {
+			return repository.DatasetGenerationJob{}, errors.New("judge_provider_account_id is required for agentic_self_instruct")
+		}
+		judgeProviderAccount, err := genRepo.GetProviderAccountByID(ctx, *input.JudgeProviderAccountID)
+		if err != nil {
+			return repository.DatasetGenerationJob{}, err
+		}
+		if judgeProviderAccount.WorkspaceID == nil || *judgeProviderAccount.WorkspaceID != input.WorkspaceID {
+			return repository.DatasetGenerationJob{}, ErrForbidden
+		}
+		if strings.TrimSpace(input.JudgeModel) == "" {
+			return repository.DatasetGenerationJob{}, errors.New("judge_model is required for agentic_self_instruct")
+		}
+		if input.MaxRoundsPerExample < 0 || input.MaxRoundsPerExample > 15 {
+			return repository.DatasetGenerationJob{}, errors.New("max_rounds_per_example must be between 0 and 15")
+		}
+	}
 
 	active := domain.DatasetExampleStatusActive
 	examples, err := genRepo.ListDatasetExamplesByDatasetID(ctx, repository.ListDatasetExamplesParams{
@@ -118,13 +143,23 @@ func (m *DatasetManager) StartDatasetGeneration(ctx context.Context, caller Call
 	}
 
 	config, err := json.Marshal(datasetgeneration.JobConfig{
-		ProviderAccountID: input.ProviderAccountID,
-		Model:             strings.TrimSpace(input.Model),
-		SeedsTag:          strings.TrimSpace(input.SeedsTag),
-		CreateVersion:     input.CreateVersion,
-		VersionLabel:      strings.TrimSpace(input.VersionLabel),
+		ProviderAccountID:      input.ProviderAccountID,
+		Model:                  strings.TrimSpace(input.Model),
+		SeedsTag:               strings.TrimSpace(input.SeedsTag),
+		CreateVersion:          input.CreateVersion,
+		VersionLabel:           strings.TrimSpace(input.VersionLabel),
+		JudgeProviderAccountID: input.JudgeProviderAccountID,
+		JudgeModel:             strings.TrimSpace(input.JudgeModel),
+		MaxRoundsPerExample:    input.MaxRoundsPerExample,
+		AcceptanceMode:         strings.TrimSpace(input.AcceptanceMode),
+		MinGap:                 input.MinGap,
+		MaxWeakScore:           input.MaxWeakScore,
+		MinStrongScore:         input.MinStrongScore,
 	})
 	if err != nil {
+		return repository.DatasetGenerationJob{}, err
+	}
+	if _, err := datasetgeneration.DecodeJobConfigForStrategy(config, strategy); err != nil {
 		return repository.DatasetGenerationJob{}, err
 	}
 
@@ -172,13 +207,20 @@ func startDatasetGenerationHandler(logger *slog.Logger, service DatasetService) 
 			return
 		}
 		var body struct {
-			Strategy          string    `json:"strategy"`
-			TargetCount       int32     `json:"target_count"`
-			ProviderAccountID uuid.UUID `json:"provider_account_id"`
-			Model             string    `json:"model"`
-			SeedsTag          string    `json:"seeds_tag,omitempty"`
-			CreateVersion     bool      `json:"create_version,omitempty"`
-			VersionLabel      string    `json:"version_label,omitempty"`
+			Strategy               string     `json:"strategy"`
+			TargetCount            int32      `json:"target_count"`
+			ProviderAccountID      uuid.UUID  `json:"provider_account_id"`
+			Model                  string     `json:"model"`
+			SeedsTag               string     `json:"seeds_tag,omitempty"`
+			CreateVersion          bool       `json:"create_version,omitempty"`
+			VersionLabel           string     `json:"version_label,omitempty"`
+			JudgeProviderAccountID *uuid.UUID `json:"judge_provider_account_id,omitempty"`
+			JudgeModel             string     `json:"judge_model,omitempty"`
+			MaxRoundsPerExample    int        `json:"max_rounds_per_example,omitempty"`
+			AcceptanceMode         string     `json:"acceptance_mode,omitempty"`
+			MinGap                 *float64   `json:"min_gap,omitempty"`
+			MaxWeakScore           *float64   `json:"max_weak_score,omitempty"`
+			MinStrongScore         *float64   `json:"min_strong_score,omitempty"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid_json", err.Error())
@@ -189,15 +231,22 @@ func startDatasetGenerationHandler(logger *slog.Logger, service DatasetService) 
 			return
 		}
 		job, err := service.StartDatasetGeneration(r.Context(), caller, StartDatasetGenerationInput{
-			WorkspaceID:       workspaceID,
-			DatasetID:         datasetID,
-			Strategy:          body.Strategy,
-			TargetCount:       body.TargetCount,
-			ProviderAccountID: body.ProviderAccountID,
-			SeedsTag:          body.SeedsTag,
-			CreateVersion:     body.CreateVersion,
-			VersionLabel:      body.VersionLabel,
-			Model:             body.Model,
+			WorkspaceID:            workspaceID,
+			DatasetID:              datasetID,
+			Strategy:               body.Strategy,
+			TargetCount:            body.TargetCount,
+			ProviderAccountID:      body.ProviderAccountID,
+			SeedsTag:               body.SeedsTag,
+			CreateVersion:          body.CreateVersion,
+			VersionLabel:           body.VersionLabel,
+			Model:                  body.Model,
+			JudgeProviderAccountID: body.JudgeProviderAccountID,
+			JudgeModel:             body.JudgeModel,
+			MaxRoundsPerExample:    body.MaxRoundsPerExample,
+			AcceptanceMode:         body.AcceptanceMode,
+			MinGap:                 body.MinGap,
+			MaxWeakScore:           body.MaxWeakScore,
+			MinStrongScore:         body.MinStrongScore,
 		})
 		if err != nil {
 			handleDatasetGenerationError(w, logger, err)

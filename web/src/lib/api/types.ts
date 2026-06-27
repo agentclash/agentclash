@@ -2334,13 +2334,24 @@ export interface SyncDatasetRegressionSuiteResult {
 }
 
 export interface StartDatasetGenerationInput {
-  strategy: "self_instruct" | "self-instruct";
+  strategy:
+    | "self_instruct"
+    | "self-instruct"
+    | "agentic_self_instruct"
+    | "agentic-self-instruct";
   target_count: number;
   provider_account_id: string;
   model: string;
   seeds_tag?: string;
   create_version?: boolean;
   version_label?: string;
+  judge_provider_account_id?: string;
+  judge_model?: string;
+  max_rounds_per_example?: number;
+  acceptance_mode?: "judge" | "threshold";
+  min_gap?: number;
+  max_weak_score?: number;
+  min_strong_score?: number;
 }
 
 export interface DatasetGenerationJob {
