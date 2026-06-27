@@ -1629,6 +1629,11 @@
           ],
           "flags": [
             {
+              "name": "acceptance-mode",
+              "usage": "Agentic acceptance mode (judge or threshold)",
+              "type": "string"
+            },
+            {
               "name": "count",
               "usage": "Target number of accepted synthetic examples",
               "type": "int",
@@ -1645,6 +1650,40 @@
               "usage": "Poll generation job status until it finishes",
               "type": "bool",
               "default": "false"
+            },
+            {
+              "name": "judge-model",
+              "usage": "Judge provider model ID for agentic generation",
+              "type": "string"
+            },
+            {
+              "name": "judge-provider-account",
+              "usage": "Judge provider account ID for agentic generation",
+              "type": "string"
+            },
+            {
+              "name": "max-rounds-per-example",
+              "usage": "Maximum judge/improve rounds per generated example for agentic generation",
+              "type": "int",
+              "default": "0"
+            },
+            {
+              "name": "max-weak-score",
+              "usage": "Maximum weak score for agentic threshold guardrails",
+              "type": "float64",
+              "default": "0"
+            },
+            {
+              "name": "min-gap",
+              "usage": "Minimum strong-minus-weak score gap for agentic threshold guardrails",
+              "type": "float64",
+              "default": "0"
+            },
+            {
+              "name": "min-strong-score",
+              "usage": "Minimum strong score for agentic threshold guardrails",
+              "type": "float64",
+              "default": "0"
             },
             {
               "name": "model",
@@ -1669,7 +1708,7 @@
             },
             {
               "name": "strategy",
-              "usage": "Generation strategy (v1: self-instruct)",
+              "usage": "Generation strategy (self-instruct, agentic-self-instruct)",
               "type": "string",
               "default": "self-instruct"
             },

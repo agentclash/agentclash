@@ -7273,7 +7273,13 @@ components:
       properties:
         strategy:
           type: string
-          enum: [self_instruct, self-instruct]
+          enum:
+            [
+              self_instruct,
+              self-instruct,
+              agentic_self_instruct,
+              agentic-self-instruct,
+            ]
         target_count:
           type: integer
           minimum: 1
@@ -7283,6 +7289,32 @@ components:
         seeds_tag: { type: string }
         create_version: { type: boolean }
         version_label: { type: string }
+        judge_provider_account_id:
+          type: string
+          format: uuid
+          description: Required for agentic_self_instruct.
+        judge_model:
+          type: string
+          description: Required for agentic_self_instruct.
+        max_rounds_per_example:
+          type: integer
+          minimum: 0
+          maximum: 15
+        acceptance_mode:
+          type: string
+          enum: [judge, threshold]
+        min_gap:
+          type: number
+          minimum: 0
+          maximum: 1
+        max_weak_score:
+          type: number
+          minimum: 0
+          maximum: 1
+        min_strong_score:
+          type: number
+          minimum: 0
+          maximum: 1
 
     DatasetGenerationJob:
       type: object

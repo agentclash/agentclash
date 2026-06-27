@@ -19,7 +19,7 @@ import (
 const (
 	loadDatasetGenerationExecutionContextActivityName = "workflow.load_dataset_generation_execution_context"
 	setDatasetGenerationJobTemporalIDsActivityName    = "workflow.set_dataset_generation_job_temporal_ids"
-	updateDatasetGenerationJobStatusActivityName    = "workflow.update_dataset_generation_job_status"
+	updateDatasetGenerationJobStatusActivityName      = "workflow.update_dataset_generation_job_status"
 	executeSyntheticDatasetGenerationActivityName     = "workflow.execute_synthetic_dataset_generation"
 )
 
@@ -66,6 +66,24 @@ type UpdateDatasetGenerationJobStatusInput struct {
 
 type ExecuteSyntheticDatasetGenerationInput struct {
 	JobID uuid.UUID `json:"job_id"`
+}
+
+type agenticJudgeUsage struct {
+	InputTokens  int64
+	OutputTokens int64
+	CostUSD      float64
+}
+
+type agenticJudgeParseError struct {
+	err error
+}
+
+func (e agenticJudgeParseError) Error() string {
+	return e.err.Error()
+}
+
+func (e agenticJudgeParseError) Unwrap() error {
+	return e.err
 }
 
 func NewDatasetGenerationActivities(repo DatasetGenerationWorkflowRepository, client provider.Client, secretsLookup DatasetGenerationSecretsLookup) *DatasetGenerationActivities {
@@ -130,12 +148,15 @@ func (a *DatasetGenerationActivities) ExecuteSyntheticDatasetGeneration(ctx cont
 	var totalOutputTokens = executionContext.Job.TotalOutputTokens
 	var totalCostUSD = executionContext.Job.TotalCostUSD
 	maxAttempts := int(executionContext.Job.TargetCount) * 5
+	if executionContext.Job.Strategy == datasetgeneration.StrategyAgenticSelfInstruct && executionContext.Config.MaxRoundsPerExample > 0 {
+		maxAttempts = int(executionContext.Job.TargetCount) * executionContext.Config.MaxRoundsPerExample
+	}
 	if maxAttempts < 10 {
 		maxAttempts = 10
 	}
 
 	for attempt := 0; attempt < maxAttempts && acceptedCount < executionContext.Job.TargetCount; attempt++ {
-		activity.RecordHeartbeat(ctx, map[string]any{
+		recordDatasetGenerationHeartbeat(ctx, map[string]any{
 			"attempt":  attempt + 1,
 			"accepted": acceptedCount,
 			"target":   executionContext.Job.TargetCount,
@@ -202,20 +223,77 @@ func (a *DatasetGenerationActivities) ExecuteSyntheticDatasetGeneration(ctx cont
 			continue
 		}
 
+		var judgeVerdict *datasetgeneration.AgenticJudgeVerdict
+		if executionContext.Job.Strategy == datasetgeneration.StrategyAgenticSelfInstruct {
+			verdict, usage, judgeErr := a.judgeAgenticCandidate(ctx, executionContext, seedBatch, candidate)
+			if usage.InputTokens > 0 || usage.OutputTokens > 0 {
+				totalInputTokens += usage.InputTokens
+				totalOutputTokens += usage.OutputTokens
+				totalCostUSD += usage.CostUSD
+			}
+			if judgeErr != nil {
+				rejectedCount++
+				reasonCode := datasetgeneration.ReasonProviderError
+				if _, ok := judgeErr.(agenticJudgeParseError); ok {
+					reasonCode = datasetgeneration.ReasonJudgeParseError
+				}
+				if _, rejectErr := a.recordRejectionWithMetadata(ctx, input.JobID, reasonCode, judgeErr.Error(), candidate.Input, candidate.Expected, mustMarshalJSON(map[string]any{
+					"role": "judge",
+				})); rejectErr != nil {
+					return wrapActivityError(rejectErr)
+				}
+				continue
+			}
+			if verdict == nil {
+				rejectedCount++
+				if _, rejectErr := a.recordRejection(ctx, input.JobID, datasetgeneration.ReasonJudgeParseError, "missing judge verdict", candidate.Input, candidate.Expected); rejectErr != nil {
+					return wrapActivityError(rejectErr)
+				}
+				continue
+			}
+			if !datasetgeneration.ShouldAcceptJudgeVerdict(*verdict, datasetgeneration.AgenticAcceptanceConfig{
+				Mode:           agenticAcceptanceMode(executionContext.Config.AcceptanceMode),
+				MinGap:         executionContext.Config.MinGap,
+				MaxWeakScore:   executionContext.Config.MaxWeakScore,
+				MinStrongScore: executionContext.Config.MinStrongScore,
+			}) {
+				rejectedCount++
+				if _, rejectErr := a.recordRejectionWithMetadata(ctx, input.JobID, datasetgeneration.ReasonQualityRejected, datasetgeneration.AgenticJudgeRejectionDetail(*verdict), candidate.Input, candidate.Expected, datasetgeneration.AgenticJudgeMetadata(*verdict)); rejectErr != nil {
+					return wrapActivityError(rejectErr)
+				}
+				continue
+			}
+			judgeVerdict = verdict
+		}
+
 		externalID := fmt.Sprintf("gen:%s:%s", executionContext.Job.ID, hash)
-		metadata := mustMarshalJSON(map[string]any{
+		exampleMetadata := map[string]any{
 			"generator":           executionContext.Job.Strategy,
 			"generation_job_id":   executionContext.Job.ID,
 			"provider_account_id": executionContext.Config.ProviderAccountID,
 			"provider_model_id":   executionContext.Model,
-		})
+		}
+		tags := []string{"synthetic"}
+		if judgeVerdict != nil {
+			exampleMetadata["judge_provider_account_id"] = executionContext.Config.JudgeProviderAccountID
+			exampleMetadata["judge_model_id"] = executionContext.Config.JudgeModel
+			exampleMetadata["judge_verdict"] = judgeVerdict.Verdict
+			exampleMetadata["judge_quality_verdict"] = judgeVerdict.QualityVerdict
+			exampleMetadata["weak_score"] = judgeVerdict.WeakScore
+			exampleMetadata["strong_score"] = judgeVerdict.StrongScore
+			exampleMetadata["gap"] = judgeVerdict.Gap
+			exampleMetadata["capability_tags"] = judgeVerdict.CapabilityTags
+			exampleMetadata["judge_summary"] = judgeVerdict.GapInterpretation
+			tags = append(tags, "agentic")
+		}
+		metadata := mustMarshalJSON(exampleMetadata)
 		if _, upsertErr := a.repo.UpsertDatasetExample(ctx, repository.UpsertDatasetExampleParams{
 			DatasetID:  executionContext.Dataset.ID,
 			ExternalID: &externalID,
 			Input:      candidate.Input,
 			Expected:   candidate.Expected,
 			Metadata:   metadata,
-			Tags:       []string{"synthetic"},
+			Tags:       tags,
 			Status:     domain.DatasetExampleStatusActive,
 			Source:     domain.DatasetExampleSourceSynthetic,
 			Actor:      executionContext.Job.CreatedBy,
@@ -279,6 +357,10 @@ func (a *DatasetGenerationActivities) ExecuteSyntheticDatasetGeneration(ctx cont
 }
 
 func (a *DatasetGenerationActivities) recordRejection(ctx context.Context, jobID uuid.UUID, reasonCode, detail string, input, expected json.RawMessage) (repository.DatasetGenerationRejection, error) {
+	return a.recordRejectionWithMetadata(ctx, jobID, reasonCode, detail, input, expected, nil)
+}
+
+func (a *DatasetGenerationActivities) recordRejectionWithMetadata(ctx context.Context, jobID uuid.UUID, reasonCode, detail string, input, expected, metadata json.RawMessage) (repository.DatasetGenerationRejection, error) {
 	detailCopy := detail
 	return a.repo.CreateDatasetGenerationRejection(ctx, repository.CreateDatasetGenerationRejectionParams{
 		JobID:             jobID,
@@ -286,7 +368,65 @@ func (a *DatasetGenerationActivities) recordRejection(ctx context.Context, jobID
 		ReasonDetail:      &detailCopy,
 		CandidateInput:    input,
 		CandidateExpected: expected,
+		Metadata:          metadata,
 	})
+}
+
+func (a *DatasetGenerationActivities) judgeAgenticCandidate(ctx context.Context, executionContext repository.DatasetGenerationExecutionContext, seedBatch []datasetgeneration.SeedExample, candidate datasetgeneration.Candidate) (*datasetgeneration.AgenticJudgeVerdict, agenticJudgeUsage, error) {
+	if executionContext.JudgeProviderAccount == nil {
+		return nil, agenticJudgeUsage{}, fmt.Errorf("judge provider account is required")
+	}
+	judgeAccount := *executionContext.JudgeProviderAccount
+	prompt := datasetgeneration.BuildAgenticJudgePrompt(datasetgeneration.AgenticJudgeInput{
+		Seeds:     seedBatch,
+		Candidate: candidate,
+	})
+	response, invokeErr := a.client.InvokeModel(ctx, provider.Request{
+		ProviderKey:         judgeAccount.ProviderKey,
+		ProviderAccountID:   judgeAccount.ID.String(),
+		CredentialReference: judgeAccount.CredentialReference,
+		Model:               executionContext.Config.JudgeModel,
+		TraceMode:           "required",
+		StepTimeout:         120 * time.Second,
+		Messages:            []provider.Message{{Role: "user", Content: prompt}},
+		Metadata: mustMarshalJSON(map[string]any{
+			"dataset_generation_job_id": executionContext.Job.ID,
+			"dataset_id":                executionContext.Dataset.ID,
+			"strategy":                  executionContext.Job.Strategy,
+			"role":                      "judge",
+		}),
+	})
+	if invokeErr != nil {
+		return nil, agenticJudgeUsage{}, invokeErr
+	}
+	inputCost, outputCost, _ := provider.StaticModelPrice(judgeAccount.ProviderKey, executionContext.Config.JudgeModel)
+	usage := agenticJudgeUsage{
+		InputTokens:  response.Usage.InputTokens,
+		OutputTokens: response.Usage.OutputTokens,
+		CostUSD: datasetgeneration.ComputeCostUSD(response.Usage.InputTokens, response.Usage.OutputTokens, datasetgeneration.ModelPricing{
+			InputCostPerMillionTokens:  inputCost,
+			OutputCostPerMillionTokens: outputCost,
+		}),
+	}
+	verdict, parseErr := datasetgeneration.ParseAgenticJudgeResponse(response.OutputText)
+	if parseErr != nil {
+		return nil, usage, agenticJudgeParseError{err: parseErr}
+	}
+	return &verdict, usage, nil
+}
+
+func agenticAcceptanceMode(mode string) string {
+	if strings.TrimSpace(mode) == "" {
+		return datasetgeneration.AcceptanceModeJudge
+	}
+	return strings.TrimSpace(mode)
+}
+
+func recordDatasetGenerationHeartbeat(ctx context.Context, details any) {
+	defer func() {
+		_ = recover()
+	}()
+	activity.RecordHeartbeat(ctx, details)
 }
 
 func pickSeedBatch(seeds []datasetgeneration.SeedExample, rng *rand.Rand, size int) []datasetgeneration.SeedExample {

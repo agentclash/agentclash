@@ -117,12 +117,13 @@ type CreateDatasetGenerationRejectionParams struct {
 }
 
 type DatasetGenerationExecutionContext struct {
-	Job             DatasetGenerationJob
-	Dataset         Dataset
-	Config          datasetgeneration.JobConfig
-	Seeds           []datasetgeneration.SeedExample
-	ExistingInputs  map[string]struct{}
-	ProviderAccount ProviderAccountRow
+	Job                  DatasetGenerationJob
+	Dataset              Dataset
+	Config               datasetgeneration.JobConfig
+	Seeds                []datasetgeneration.SeedExample
+	ExistingInputs       map[string]struct{}
+	ProviderAccount      ProviderAccountRow
+	JudgeProviderAccount *ProviderAccountRow
 	// Model is the provider model id to generate with. Pricing is best-effort
 	// from the static fallback map (0 when unknown) and is used only for the
 	// job's cost estimate, never for scoring.
@@ -240,13 +241,21 @@ func (r *Repository) GetDatasetGenerationExecutionContextByID(ctx context.Contex
 	if err != nil {
 		return DatasetGenerationExecutionContext{}, err
 	}
-	cfg, err := datasetgeneration.DecodeJobConfig(job.Config)
+	cfg, err := datasetgeneration.DecodeJobConfigForStrategy(job.Config, job.Strategy)
 	if err != nil {
 		return DatasetGenerationExecutionContext{}, err
 	}
 	providerAccount, err := r.GetProviderAccountByID(ctx, cfg.ProviderAccountID)
 	if err != nil {
 		return DatasetGenerationExecutionContext{}, err
+	}
+	var judgeProviderAccount *ProviderAccountRow
+	if cfg.JudgeProviderAccountID != nil {
+		account, accountErr := r.GetProviderAccountByID(ctx, *cfg.JudgeProviderAccountID)
+		if accountErr != nil {
+			return DatasetGenerationExecutionContext{}, accountErr
+		}
+		judgeProviderAccount = &account
 	}
 	// Pricing is best-effort: the static fallback map yields 0 when the model is
 	// unknown, which only affects the job's cost estimate.
@@ -284,6 +293,7 @@ func (r *Repository) GetDatasetGenerationExecutionContextByID(ctx context.Contex
 		Seeds:                      seeds,
 		ExistingInputs:             existing,
 		ProviderAccount:            providerAccount,
+		JudgeProviderAccount:       judgeProviderAccount,
 		Model:                      cfg.Model,
 		InputCostPerMillionTokens:  inputCost,
 		OutputCostPerMillionTokens: outputCost,
