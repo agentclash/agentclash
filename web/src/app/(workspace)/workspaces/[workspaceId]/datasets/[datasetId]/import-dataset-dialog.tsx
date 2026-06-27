@@ -41,7 +41,7 @@ const FORMATS: { value: DatasetInteropFormat; label: string }[] = [
 ];
 
 const inputClass =
-  "block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50";
+  "block w-full rounded-lg border border-input bg-transparent [&>option]:bg-popover [&>option]:text-popover-foreground px-3 py-2 text-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50";
 
 interface ImportDatasetDialogProps {
   workspaceId: string;

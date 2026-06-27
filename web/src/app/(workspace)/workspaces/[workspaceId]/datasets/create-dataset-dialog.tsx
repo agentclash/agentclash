@@ -25,7 +25,7 @@ import {
 import { JsonField } from "@/components/ui/json-field";
 
 const inputClass =
-  "block w-full rounded-lg border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50";
+  "block w-full rounded-lg border border-input bg-transparent [&>option]:bg-popover [&>option]:text-popover-foreground px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/50";
 
 export function CreateDatasetDialog({ workspaceId }: { workspaceId: string }) {
   const router = useRouter();
