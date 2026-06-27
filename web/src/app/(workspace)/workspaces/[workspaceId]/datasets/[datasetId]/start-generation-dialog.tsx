@@ -13,6 +13,9 @@ import {
 import { createApiClient } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/errors";
 import type {
+  AgentDeployment,
+  ChallengePack,
+  ChallengePackVersion,
   DatasetGenerationJob,
   ProviderConnectionModel,
   ProviderAccount,
@@ -55,6 +58,9 @@ export function StartGenerationDialog({
   const [providerAccounts, setProviderAccounts] = useState<ProviderAccount[]>(
     [],
   );
+  const [packs, setPacks] = useState<ChallengePack[]>([]);
+  const [packVersions, setPackVersions] = useState<ChallengePackVersion[]>([]);
+  const [deployments, setDeployments] = useState<AgentDeployment[]>([]);
   const [models, setModels] = useState<ProviderConnectionModel[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [strategy, setStrategy] = useState<
@@ -71,6 +77,22 @@ export function StartGenerationDialog({
   const [minGap, setMinGap] = useState("0.2");
   const [maxWeakScore, setMaxWeakScore] = useState("0.65");
   const [minStrongScore, setMinStrongScore] = useState("0.75");
+  const [solverMode, setSolverMode] = useState<"judge_only" | "direct_provider">(
+    "judge_only",
+  );
+  const [weakProviderAccountId, setWeakProviderAccountId] = useState("");
+  const [weakModel, setWeakModel] = useState("");
+  const [strongProviderAccountId, setStrongProviderAccountId] = useState("");
+  const [strongModel, setStrongModel] = useState("");
+  const [weakRollouts, setWeakRollouts] = useState("1");
+  const [strongRollouts, setStrongRollouts] = useState("1");
+  const [weakDeploymentId, setWeakDeploymentId] = useState("");
+  const [strongDeploymentId, setStrongDeploymentId] = useState("");
+  const [packId, setPackId] = useState("");
+  const [packVersionId, setPackVersionId] = useState("");
+  const [challengeKey, setChallengeKey] = useState("");
+  const [fieldMappingJson, setFieldMappingJson] = useState("");
+  const [fieldMappingError, setFieldMappingError] = useState<string>();
   const [targetCount, setTargetCount] = useState("10");
   const [seedsTag, setSeedsTag] = useState("");
   const [createVersion, setCreateVersion] = useState(true);
@@ -91,12 +113,24 @@ export function StartGenerationDialog({
     try {
       const token = await getAccessToken();
       const api = createApiClient(token);
-      const accounts = await api.paginated<ProviderAccount>(
-        `/v1/workspaces/${workspaceId}/provider-accounts`,
-        { limit: 100 },
-      );
+      const [accounts, packsRes, deploymentsRes] = await Promise.all([
+        api.paginated<ProviderAccount>(
+          `/v1/workspaces/${workspaceId}/provider-accounts`,
+          { limit: 100 },
+        ),
+        api.get<{ items: ChallengePack[] }>(
+          `/v1/workspaces/${workspaceId}/challenge-packs`,
+        ),
+        api.get<{ items: AgentDeployment[] }>(
+          `/v1/workspaces/${workspaceId}/agent-deployments`,
+        ),
+      ]);
       setProviderAccounts(
         accounts.items.filter((a) => a.status === "active"),
+      );
+      setPacks(packsRes.items);
+      setDeployments(
+        deploymentsRes.items.filter((item) => item.status === "active"),
       );
     } catch (err) {
       toast.error(
@@ -106,6 +140,20 @@ export function StartGenerationDialog({
       setLoading(false);
     }
   }, [getAccessToken, workspaceId]);
+
+  useEffect(() => {
+    if (!packId) {
+      setPackVersions([]);
+      setPackVersionId("");
+      return;
+    }
+    const pack = packs.find((item) => item.id === packId);
+    const runnable = (pack?.versions ?? []).filter(
+      (item) => item.lifecycle_status === "runnable",
+    );
+    setPackVersions(runnable);
+    setPackVersionId(runnable.length > 0 ? runnable[runnable.length - 1].id : "");
+  }, [packId, packs]);
 
   const loadModels = useCallback(
     async (accountId: string) => {
@@ -248,6 +296,64 @@ export function StartGenerationDialog({
           return;
         }
       }
+      if (solverMode === "direct_provider") {
+        const rolloutValues = [Number(weakRollouts), Number(strongRollouts)];
+        if (
+          !weakProviderAccountId ||
+          !weakModel.trim() ||
+          !strongProviderAccountId ||
+          !strongModel.trim()
+        ) {
+          toast.error("Select weak and strong solver provider accounts and models");
+          return;
+        }
+        if (
+          rolloutValues.some(
+            (value) => !Number.isInteger(value) || value < 1 || value > 5,
+          )
+        ) {
+          toast.error("Solver rollouts must be between 1 and 5");
+          return;
+        }
+      }
+    }
+
+    const hasDeploymentContext =
+      strategy === "agentic_self_instruct" &&
+      (Boolean(weakDeploymentId) ||
+        Boolean(strongDeploymentId) ||
+        Boolean(packVersionId) ||
+        Boolean(challengeKey.trim()) ||
+        Boolean(fieldMappingJson.trim()));
+    let fieldMapping: Record<string, unknown> | undefined;
+    if (hasDeploymentContext) {
+      if (
+        !weakDeploymentId ||
+        !strongDeploymentId ||
+        !packVersionId ||
+        !challengeKey.trim()
+      ) {
+        toast.error("Select weak and strong deployments, pack version, and challenge key");
+        return;
+      }
+      if (fieldMappingJson.trim()) {
+        try {
+          const parsed = JSON.parse(fieldMappingJson) as unknown;
+          if (
+            parsed == null ||
+            typeof parsed !== "object" ||
+            Array.isArray(parsed)
+          ) {
+            setFieldMappingError("Mapping must be a JSON object");
+            return;
+          }
+          fieldMapping = parsed as Record<string, unknown>;
+          setFieldMappingError(undefined);
+        } catch {
+          setFieldMappingError("Invalid JSON");
+          return;
+        }
+      }
     }
 
     setSubmitting(true);
@@ -295,6 +401,58 @@ export function StartGenerationDialog({
             acceptanceMode === "threshold"
               ? Number(minStrongScore)
               : undefined,
+          solver_mode:
+            strategy === "agentic_self_instruct" ? solverMode : undefined,
+          weak_provider_account_id:
+            strategy === "agentic_self_instruct" &&
+            solverMode === "direct_provider"
+              ? weakProviderAccountId
+              : undefined,
+          weak_model:
+            strategy === "agentic_self_instruct" &&
+            solverMode === "direct_provider"
+              ? weakModel.trim()
+              : undefined,
+          strong_provider_account_id:
+            strategy === "agentic_self_instruct" &&
+            solverMode === "direct_provider"
+              ? strongProviderAccountId
+              : undefined,
+          strong_model:
+            strategy === "agentic_self_instruct" &&
+            solverMode === "direct_provider"
+              ? strongModel.trim()
+              : undefined,
+          weak_rollouts:
+            strategy === "agentic_self_instruct" &&
+            solverMode === "direct_provider"
+              ? Number(weakRollouts)
+              : undefined,
+          strong_rollouts:
+            strategy === "agentic_self_instruct" &&
+            solverMode === "direct_provider"
+              ? Number(strongRollouts)
+              : undefined,
+          weak_deployment_id:
+            strategy === "agentic_self_instruct" && hasDeploymentContext
+              ? weakDeploymentId
+              : undefined,
+          strong_deployment_id:
+            strategy === "agentic_self_instruct" && hasDeploymentContext
+              ? strongDeploymentId
+              : undefined,
+          challenge_pack_version_id:
+            strategy === "agentic_self_instruct" && hasDeploymentContext
+              ? packVersionId
+              : undefined,
+          challenge_key:
+            strategy === "agentic_self_instruct" && hasDeploymentContext
+              ? challengeKey.trim()
+              : undefined,
+          field_mapping:
+            strategy === "agentic_self_instruct" && hasDeploymentContext
+              ? fieldMapping
+              : undefined,
         },
       );
       setJob(queued);
@@ -317,7 +475,7 @@ export function StartGenerationDialog({
         <Sparkles data-icon="inline-start" className="size-4" />
         Generate
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Synthetic generation</DialogTitle>
           <DialogDescription>
@@ -358,7 +516,7 @@ export function StartGenerationDialog({
             <Loader2 className="size-6 animate-spin text-muted-foreground" />
           </div>
         ) : (
-          <div className="space-y-4">
+          <div className="max-h-[65vh] space-y-4 overflow-y-auto pr-1">
             {recentJobs.length > 0 ? (
               <div className="rounded-lg border border-border p-3">
                 <p className="text-sm font-medium">Recent jobs</p>
@@ -507,6 +665,119 @@ export function StartGenerationDialog({
                 </div>
                 <div>
                   <label className="mb-1.5 block text-sm font-medium">
+                    Solver mode
+                  </label>
+                  <select
+                    value={solverMode}
+                    onChange={(e) =>
+                      setSolverMode(
+                        e.target.value as "judge_only" | "direct_provider",
+                      )
+                    }
+                    className={inputClass}
+                  >
+                    <option value="judge_only">Judge only</option>
+                    <option value="direct_provider">Direct weak/strong</option>
+                  </select>
+                </div>
+                {solverMode === "direct_provider" ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium">
+                          Weak provider account
+                        </label>
+                        <select
+                          value={weakProviderAccountId}
+                          onChange={(e) =>
+                            setWeakProviderAccountId(e.target.value)
+                          }
+                          className={inputClass}
+                        >
+                          <option value="">Select account...</option>
+                          {providerAccounts.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.name} ({a.provider_key})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium">
+                          Weak model
+                        </label>
+                        <input
+                          value={weakModel}
+                          onChange={(e) => setWeakModel(e.target.value)}
+                          placeholder="e.g. gpt-4.1-nano"
+                          disabled={!weakProviderAccountId}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium">
+                          Weak rollouts
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={5}
+                          value={weakRollouts}
+                          onChange={(e) => setWeakRollouts(e.target.value)}
+                          className={inputClass}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-3">
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium">
+                          Strong provider account
+                        </label>
+                        <select
+                          value={strongProviderAccountId}
+                          onChange={(e) =>
+                            setStrongProviderAccountId(e.target.value)
+                          }
+                          className={inputClass}
+                        >
+                          <option value="">Select account...</option>
+                          {providerAccounts.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {a.name} ({a.provider_key})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium">
+                          Strong model
+                        </label>
+                        <input
+                          value={strongModel}
+                          onChange={(e) => setStrongModel(e.target.value)}
+                          placeholder="e.g. gpt-4.1"
+                          disabled={!strongProviderAccountId}
+                          className={inputClass}
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium">
+                          Strong rollouts
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={5}
+                          value={strongRollouts}
+                          onChange={(e) => setStrongRollouts(e.target.value)}
+                          className={inputClass}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium">
                     Acceptance mode
                   </label>
                   <select
@@ -566,6 +837,111 @@ export function StartGenerationDialog({
                     </div>
                   </div>
                 ) : null}
+                <div className="space-y-3 rounded-md border border-border/70 p-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium">
+                        Weak deployment
+                      </label>
+                      <select
+                        value={weakDeploymentId}
+                        onChange={(e) => setWeakDeploymentId(e.target.value)}
+                        className={inputClass}
+                      >
+                        <option value="">Select deployment...</option>
+                        {deployments.map((deployment) => (
+                          <option key={deployment.id} value={deployment.id}>
+                            {deployment.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium">
+                        Strong deployment
+                      </label>
+                      <select
+                        value={strongDeploymentId}
+                        onChange={(e) => setStrongDeploymentId(e.target.value)}
+                        className={inputClass}
+                      >
+                        <option value="">Select deployment...</option>
+                        {deployments.map((deployment) => (
+                          <option key={deployment.id} value={deployment.id}>
+                            {deployment.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium">
+                        Challenge pack
+                      </label>
+                      <select
+                        value={packId}
+                        onChange={(e) => setPackId(e.target.value)}
+                        className={inputClass}
+                      >
+                        <option value="">Select pack...</option>
+                        {packs.map((pack) => (
+                          <option key={pack.id} value={pack.id}>
+                            {pack.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium">
+                        Pack version
+                      </label>
+                      <select
+                        value={packVersionId}
+                        onChange={(e) => setPackVersionId(e.target.value)}
+                        disabled={!packId}
+                        className={inputClass}
+                      >
+                        <option value="">Select version...</option>
+                        {packVersions.map((version) => (
+                          <option key={version.id} value={version.id}>
+                            v{version.version_number}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium">
+                      Challenge key
+                    </label>
+                    <input
+                      value={challengeKey}
+                      onChange={(e) => setChallengeKey(e.target.value)}
+                      placeholder="e.g. refund-recovery"
+                      className={inputClass}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium">
+                      Field mapping
+                    </label>
+                    <textarea
+                      value={fieldMappingJson}
+                      onChange={(e) => {
+                        setFieldMappingJson(e.target.value);
+                        setFieldMappingError(undefined);
+                      }}
+                      rows={3}
+                      className={inputClass}
+                    />
+                    {fieldMappingError ? (
+                      <p className="mt-1 text-xs text-destructive">
+                        {fieldMappingError}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             ) : null}
             <div>

@@ -7315,6 +7315,45 @@ components:
           type: number
           minimum: 0
           maximum: 1
+        solver_mode:
+          type: string
+          enum: [judge_only, direct_provider]
+        weak_provider_account_id:
+          type: string
+          format: uuid
+          description: Required when solver_mode is direct_provider.
+        weak_model:
+          type: string
+          description: Required when solver_mode is direct_provider.
+        strong_provider_account_id:
+          type: string
+          format: uuid
+          description: Required when solver_mode is direct_provider.
+        strong_model:
+          type: string
+          description: Required when solver_mode is direct_provider.
+        weak_rollouts:
+          type: integer
+          minimum: 1
+          maximum: 5
+        strong_rollouts:
+          type: integer
+          minimum: 1
+          maximum: 5
+        weak_deployment_id:
+          type: string
+          format: uuid
+        strong_deployment_id:
+          type: string
+          format: uuid
+        challenge_pack_version_id:
+          type: string
+          format: uuid
+        challenge_key:
+          type: string
+        field_mapping:
+          type: object
+          additionalProperties: true
 
     DatasetGenerationJob:
       type: object

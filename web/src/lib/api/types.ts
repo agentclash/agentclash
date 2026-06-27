@@ -2352,6 +2352,18 @@ export interface StartDatasetGenerationInput {
   min_gap?: number;
   max_weak_score?: number;
   min_strong_score?: number;
+  solver_mode?: "judge_only" | "direct_provider";
+  weak_provider_account_id?: string;
+  weak_model?: string;
+  strong_provider_account_id?: string;
+  strong_model?: string;
+  weak_rollouts?: number;
+  strong_rollouts?: number;
+  weak_deployment_id?: string;
+  strong_deployment_id?: string;
+  challenge_pack_version_id?: string;
+  challenge_key?: string;
+  field_mapping?: Record<string, unknown>;
 }
 
 export interface DatasetGenerationJob {

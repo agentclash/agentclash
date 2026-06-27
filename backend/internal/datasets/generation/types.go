@@ -169,8 +169,14 @@ func DecodeJobConfigForStrategy(raw json.RawMessage, strategy string) (JobConfig
 			if strings.TrimSpace(cfg.ChallengeKey) == "" {
 				return JobConfig{}, errors.New("challenge_key is required when deployment context is provided")
 			}
-			if len(cfg.FieldMapping) > 0 && !json.Valid(cfg.FieldMapping) {
-				return JobConfig{}, errors.New("field_mapping must be valid JSON")
+			if len(cfg.FieldMapping) > 0 {
+				if !json.Valid(cfg.FieldMapping) {
+					return JobConfig{}, errors.New("field_mapping must be valid JSON")
+				}
+				var fieldMapping map[string]any
+				if err := json.Unmarshal(cfg.FieldMapping, &fieldMapping); err != nil || fieldMapping == nil {
+					return JobConfig{}, errors.New("field_mapping must be a JSON object")
+				}
 			}
 		}
 	}
