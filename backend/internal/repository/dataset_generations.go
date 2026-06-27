@@ -117,13 +117,15 @@ type CreateDatasetGenerationRejectionParams struct {
 }
 
 type DatasetGenerationExecutionContext struct {
-	Job                  DatasetGenerationJob
-	Dataset              Dataset
-	Config               datasetgeneration.JobConfig
-	Seeds                []datasetgeneration.SeedExample
-	ExistingInputs       map[string]struct{}
-	ProviderAccount      ProviderAccountRow
-	JudgeProviderAccount *ProviderAccountRow
+	Job                   DatasetGenerationJob
+	Dataset               Dataset
+	Config                datasetgeneration.JobConfig
+	Seeds                 []datasetgeneration.SeedExample
+	ExistingInputs        map[string]struct{}
+	ProviderAccount       ProviderAccountRow
+	JudgeProviderAccount  *ProviderAccountRow
+	WeakProviderAccount   *ProviderAccountRow
+	StrongProviderAccount *ProviderAccountRow
 	// Model is the provider model id to generate with. Pricing is best-effort
 	// from the static fallback map (0 when unknown) and is used only for the
 	// job's cost estimate, never for scoring.
@@ -257,6 +259,22 @@ func (r *Repository) GetDatasetGenerationExecutionContextByID(ctx context.Contex
 		}
 		judgeProviderAccount = &account
 	}
+	var weakProviderAccount *ProviderAccountRow
+	if cfg.WeakProviderAccountID != nil {
+		account, accountErr := r.GetProviderAccountByID(ctx, *cfg.WeakProviderAccountID)
+		if accountErr != nil {
+			return DatasetGenerationExecutionContext{}, accountErr
+		}
+		weakProviderAccount = &account
+	}
+	var strongProviderAccount *ProviderAccountRow
+	if cfg.StrongProviderAccountID != nil {
+		account, accountErr := r.GetProviderAccountByID(ctx, *cfg.StrongProviderAccountID)
+		if accountErr != nil {
+			return DatasetGenerationExecutionContext{}, accountErr
+		}
+		strongProviderAccount = &account
+	}
 	// Pricing is best-effort: the static fallback map yields 0 when the model is
 	// unknown, which only affects the job's cost estimate.
 	inputCost, outputCost, _ := provider.StaticModelPrice(providerAccount.ProviderKey, cfg.Model)
@@ -294,6 +312,8 @@ func (r *Repository) GetDatasetGenerationExecutionContextByID(ctx context.Contex
 		ExistingInputs:             existing,
 		ProviderAccount:            providerAccount,
 		JudgeProviderAccount:       judgeProviderAccount,
+		WeakProviderAccount:        weakProviderAccount,
+		StrongProviderAccount:      strongProviderAccount,
 		Model:                      cfg.Model,
 		InputCostPerMillionTokens:  inputCost,
 		OutputCostPerMillionTokens: outputCost,
