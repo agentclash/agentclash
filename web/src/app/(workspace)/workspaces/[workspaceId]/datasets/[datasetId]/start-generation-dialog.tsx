@@ -53,7 +53,7 @@ export function StartGenerationDialog({
   const router = useRouter();
   const { getAccessToken } = useAccessToken();
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const modelRequestRef = useRef(0);
+  const modelRequestRef = useRef<Record<string, number>>({});
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -63,8 +63,12 @@ export function StartGenerationDialog({
   const [packs, setPacks] = useState<ChallengePack[]>([]);
   const [packVersions, setPackVersions] = useState<ChallengePackVersion[]>([]);
   const [deployments, setDeployments] = useState<AgentDeployment[]>([]);
-  const [models, setModels] = useState<ProviderConnectionModel[]>([]);
-  const [loadingModels, setLoadingModels] = useState(false);
+  const [modelsByAccount, setModelsByAccount] = useState<
+    Record<string, ProviderConnectionModel[]>
+  >({});
+  const [loadingModelAccounts, setLoadingModelAccounts] = useState<
+    Record<string, boolean>
+  >({});
   const [strategy, setStrategy] = useState<
     "self_instruct" | "agentic_self_instruct"
   >("self_instruct");
@@ -161,23 +165,32 @@ export function StartGenerationDialog({
     setPackVersionId(runnable.length > 0 ? runnable[runnable.length - 1].id : "");
   }, [packId, packs]);
 
-  const loadModels = useCallback(
+  // Models are fetched and cached per provider account so every model field
+  // (generator, judge, weak, strong) gets the same live dropdown — falling back
+  // to free-form entry when a provider exposes no list.
+  const loadModelsForAccount = useCallback(
     async (accountId: string) => {
-      const requestId = ++modelRequestRef.current;
-      setLoadingModels(true);
-      setModels([]);
+      if (!accountId) return;
+      const requestId = (modelRequestRef.current[accountId] ?? 0) + 1;
+      modelRequestRef.current[accountId] = requestId;
+      setLoadingModelAccounts((prev) => ({ ...prev, [accountId]: true }));
       try {
         const token = await getAccessToken();
         const api = createApiClient(token);
         const res = await api.get<{ items: ProviderConnectionModel[] }>(
           `/v1/provider-accounts/${accountId}/models`,
         );
-        if (modelRequestRef.current === requestId) setModels(res.items);
+        if (modelRequestRef.current[accountId] === requestId) {
+          setModelsByAccount((prev) => ({ ...prev, [accountId]: res.items }));
+        }
       } catch {
-        // Live model list is optional — fall back to free-form model entry.
-        if (modelRequestRef.current === requestId) setModels([]);
+        if (modelRequestRef.current[accountId] === requestId) {
+          setModelsByAccount((prev) => ({ ...prev, [accountId]: [] }));
+        }
       } finally {
-        if (modelRequestRef.current === requestId) setLoadingModels(false);
+        if (modelRequestRef.current[accountId] === requestId) {
+          setLoadingModelAccounts((prev) => ({ ...prev, [accountId]: false }));
+        }
       }
     },
     [getAccessToken],
@@ -186,12 +199,25 @@ export function StartGenerationDialog({
   function handleProviderAccountChange(accountId: string) {
     setProviderAccountId(accountId);
     setModel("");
-    setModels([]);
-    if (accountId) void loadModels(accountId);
-    else {
-      modelRequestRef.current += 1;
-      setLoadingModels(false);
-    }
+    if (accountId) void loadModelsForAccount(accountId);
+  }
+
+  function handleJudgeAccountChange(accountId: string) {
+    setJudgeProviderAccountId(accountId);
+    setJudgeModel("");
+    if (accountId) void loadModelsForAccount(accountId);
+  }
+
+  function handleWeakAccountChange(accountId: string) {
+    setWeakProviderAccountId(accountId);
+    setWeakModel("");
+    if (accountId) void loadModelsForAccount(accountId);
+  }
+
+  function handleStrongAccountChange(accountId: string) {
+    setStrongProviderAccountId(accountId);
+    setStrongModel("");
+    if (accountId) void loadModelsForAccount(accountId);
   }
 
   const loadRecentJobs = useCallback(async () => {
@@ -697,35 +723,14 @@ export function StartGenerationDialog({
               <label className="mb-1.5 block text-sm font-medium">
                 Model
               </label>
-              {models.length > 0 ? (
-                <select
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  className={inputClass}
-                  disabled={loadingModels}
-                >
-                  <option value="">Select model...</option>
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.display_name} ({m.id})
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  placeholder={
-                    loadingModels
-                      ? "Loading models..."
-                      : !providerAccountId
-                        ? "Select a provider account first"
-                        : "e.g. gpt-4.1, claude-sonnet-4-6"
-                  }
-                  disabled={loadingModels || !providerAccountId}
-                  className={inputClass}
-                />
-              )}
+              <ModelSelect
+                accountId={providerAccountId}
+                models={modelsByAccount[providerAccountId] ?? []}
+                loading={loadingModelAccounts[providerAccountId] ?? false}
+                value={model}
+                onChange={setModel}
+                placeholder="e.g. gpt-4.1, claude-sonnet-4-6"
+              />
             </div>
             {strategy === "agentic_self_instruct" ? (
               <div className="space-y-4 rounded-lg border border-border p-3">
@@ -735,7 +740,7 @@ export function StartGenerationDialog({
                   </label>
                   <select
                     value={judgeProviderAccountId}
-                    onChange={(e) => setJudgeProviderAccountId(e.target.value)}
+                    onChange={(e) => handleJudgeAccountChange(e.target.value)}
                     className={inputClass}
                   >
                     <option value="">Select account...</option>
@@ -750,12 +755,15 @@ export function StartGenerationDialog({
                   <label className="mb-1.5 block text-sm font-medium">
                     Judge model
                   </label>
-                  <input
+                  <ModelSelect
+                    accountId={judgeProviderAccountId}
+                    models={modelsByAccount[judgeProviderAccountId] ?? []}
+                    loading={
+                      loadingModelAccounts[judgeProviderAccountId] ?? false
+                    }
                     value={judgeModel}
-                    onChange={(e) => setJudgeModel(e.target.value)}
+                    onChange={setJudgeModel}
                     placeholder="e.g. gpt-4.1, claude-sonnet-4-6"
-                    disabled={!judgeProviderAccountId}
-                    className={inputClass}
                   />
                 </div>
                 <div>
@@ -798,7 +806,7 @@ export function StartGenerationDialog({
                         <select
                           value={weakProviderAccountId}
                           onChange={(e) =>
-                            setWeakProviderAccountId(e.target.value)
+                            handleWeakAccountChange(e.target.value)
                           }
                           className={inputClass}
                         >
@@ -814,12 +822,15 @@ export function StartGenerationDialog({
                         <label className="mb-1.5 block text-sm font-medium">
                           Weak model
                         </label>
-                        <input
+                        <ModelSelect
+                          accountId={weakProviderAccountId}
+                          models={modelsByAccount[weakProviderAccountId] ?? []}
+                          loading={
+                            loadingModelAccounts[weakProviderAccountId] ?? false
+                          }
                           value={weakModel}
-                          onChange={(e) => setWeakModel(e.target.value)}
+                          onChange={setWeakModel}
                           placeholder="e.g. gpt-4.1-nano"
-                          disabled={!weakProviderAccountId}
-                          className={inputClass}
                         />
                       </div>
                       <div>
@@ -844,7 +855,7 @@ export function StartGenerationDialog({
                         <select
                           value={strongProviderAccountId}
                           onChange={(e) =>
-                            setStrongProviderAccountId(e.target.value)
+                            handleStrongAccountChange(e.target.value)
                           }
                           className={inputClass}
                         >
@@ -860,12 +871,18 @@ export function StartGenerationDialog({
                         <label className="mb-1.5 block text-sm font-medium">
                           Strong model
                         </label>
-                        <input
+                        <ModelSelect
+                          accountId={strongProviderAccountId}
+                          models={
+                            modelsByAccount[strongProviderAccountId] ?? []
+                          }
+                          loading={
+                            loadingModelAccounts[strongProviderAccountId] ??
+                            false
+                          }
                           value={strongModel}
-                          onChange={(e) => setStrongModel(e.target.value)}
+                          onChange={setStrongModel}
                           placeholder="e.g. gpt-4.1"
-                          disabled={!strongProviderAccountId}
-                          className={inputClass}
                         />
                       </div>
                       <div>
@@ -1112,6 +1129,55 @@ export function StartGenerationDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ModelSelect({
+  accountId,
+  models,
+  loading,
+  value,
+  onChange,
+  placeholder,
+}: {
+  accountId: string;
+  models: ProviderConnectionModel[];
+  loading: boolean;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+}) {
+  if (models.length > 0) {
+    return (
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={inputClass}
+        disabled={loading}
+      >
+        <option value="">Select model...</option>
+        {models.map((m) => (
+          <option key={m.id} value={m.id}>
+            {m.display_name} ({m.id})
+          </option>
+        ))}
+      </select>
+    );
+  }
+  return (
+    <input
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={
+        loading
+          ? "Loading models..."
+          : !accountId
+            ? "Select a provider account first"
+            : placeholder
+      }
+      disabled={loading || !accountId}
+      className={inputClass}
+    />
   );
 }
 
