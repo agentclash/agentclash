@@ -74,6 +74,18 @@ type agenticJudgeUsage struct {
 	CostUSD      float64
 }
 
+type agenticJudgeParseError struct {
+	err error
+}
+
+func (e agenticJudgeParseError) Error() string {
+	return e.err.Error()
+}
+
+func (e agenticJudgeParseError) Unwrap() error {
+	return e.err
+}
+
 func NewDatasetGenerationActivities(repo DatasetGenerationWorkflowRepository, client provider.Client, secretsLookup DatasetGenerationSecretsLookup) *DatasetGenerationActivities {
 	return &DatasetGenerationActivities{repo: repo, client: client, secretsLookup: secretsLookup}
 }
@@ -221,7 +233,11 @@ func (a *DatasetGenerationActivities) ExecuteSyntheticDatasetGeneration(ctx cont
 			}
 			if judgeErr != nil {
 				rejectedCount++
-				if _, rejectErr := a.recordRejectionWithMetadata(ctx, input.JobID, datasetgeneration.ReasonProviderError, judgeErr.Error(), candidate.Input, candidate.Expected, mustMarshalJSON(map[string]any{
+				reasonCode := datasetgeneration.ReasonProviderError
+				if _, ok := judgeErr.(agenticJudgeParseError); ok {
+					reasonCode = datasetgeneration.ReasonJudgeParseError
+				}
+				if _, rejectErr := a.recordRejectionWithMetadata(ctx, input.JobID, reasonCode, judgeErr.Error(), candidate.Input, candidate.Expected, mustMarshalJSON(map[string]any{
 					"role": "judge",
 				})); rejectErr != nil {
 					return wrapActivityError(rejectErr)
@@ -394,7 +410,7 @@ func (a *DatasetGenerationActivities) judgeAgenticCandidate(ctx context.Context,
 	}
 	verdict, parseErr := datasetgeneration.ParseAgenticJudgeResponse(response.OutputText)
 	if parseErr != nil {
-		return nil, usage, nil
+		return nil, usage, agenticJudgeParseError{err: parseErr}
 	}
 	return &verdict, usage, nil
 }

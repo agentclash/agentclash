@@ -181,3 +181,34 @@ func TestStartDatasetGenerationCreatesAgenticJobConfig(t *testing.T) {
 		t.Fatalf("max_rounds_per_example = %v", cfg["max_rounds_per_example"])
 	}
 }
+
+func TestStartDatasetGenerationAgenticThresholdRequiresValues(t *testing.T) {
+	wsID := uuid.New()
+	datasetID := uuid.New()
+	providerID := uuid.New()
+	repo := &datasetGenerationFakeRepo{
+		datasetImportFakeRepo: newDatasetImportFakeRepo(wsID, datasetID),
+		providerAccount:       repository.ProviderAccountRow{ID: providerID, WorkspaceID: &wsID, ProviderKey: "openai"},
+	}
+	repo.examples = []repository.DatasetExample{{
+		ID:        uuid.New(),
+		DatasetID: datasetID,
+		Input:     json.RawMessage(`{"q":"seed"}`),
+		Status:    domain.DatasetExampleStatusActive,
+	}}
+	manager := NewDatasetManager(allowWorkspaceAuthorizer{}, repo).WithGenerationWorkflowStarter(datasetGenerationFakeStarter{})
+	_, err := manager.StartDatasetGeneration(context.Background(), Caller{UserID: uuid.New()}, StartDatasetGenerationInput{
+		WorkspaceID:            wsID,
+		DatasetID:              datasetID,
+		Strategy:               "agentic-self-instruct",
+		TargetCount:            2,
+		ProviderAccountID:      providerID,
+		Model:                  "gpt-4.1",
+		JudgeProviderAccountID: &providerID,
+		JudgeModel:             "gpt-4.1-mini",
+		AcceptanceMode:         "threshold",
+	})
+	if err == nil {
+		t.Fatal("expected missing threshold values error")
+	}
+}

@@ -101,6 +101,35 @@ func TestDecodeJobConfigForStrategyValidatesAgenticJudgeFields(t *testing.T) {
 	}
 }
 
+func TestDecodeJobConfigForStrategyRequiresThresholdValues(t *testing.T) {
+	providerID := uuid.New()
+	judgeID := uuid.New()
+	raw, _ := json.Marshal(map[string]any{
+		"provider_account_id":       providerID,
+		"model":                     "gpt-4.1-mini",
+		"judge_provider_account_id": judgeID,
+		"judge_model":               "gpt-4.1-mini",
+		"acceptance_mode":           "threshold",
+	})
+	if _, err := generation.DecodeJobConfigForStrategy(raw, generation.StrategyAgenticSelfInstruct); err == nil {
+		t.Fatal("expected missing threshold values error")
+	}
+
+	raw, _ = json.Marshal(map[string]any{
+		"provider_account_id":       providerID,
+		"model":                     "gpt-4.1-mini",
+		"judge_provider_account_id": judgeID,
+		"judge_model":               "gpt-4.1-mini",
+		"acceptance_mode":           "threshold",
+		"min_gap":                   0.2,
+		"max_weak_score":            0.65,
+		"min_strong_score":          0.75,
+	})
+	if _, err := generation.DecodeJobConfigForStrategy(raw, generation.StrategyAgenticSelfInstruct); err != nil {
+		t.Fatalf("decode threshold config: %v", err)
+	}
+}
+
 func TestParseAgenticJudgeResponse(t *testing.T) {
 	verdict, err := generation.ParseAgenticJudgeResponse(`{
 		"verdict":"accept",

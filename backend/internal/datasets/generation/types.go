@@ -94,6 +94,11 @@ func DecodeJobConfigForStrategy(raw json.RawMessage, strategy string) (JobConfig
 		if cfg.AcceptanceMode != "" && cfg.AcceptanceMode != AcceptanceModeJudge && cfg.AcceptanceMode != AcceptanceModeThreshold {
 			return JobConfig{}, errors.New("acceptance_mode must be judge or threshold")
 		}
+		if cfg.AcceptanceMode == AcceptanceModeThreshold {
+			if cfg.MinGap == nil || cfg.MaxWeakScore == nil || cfg.MinStrongScore == nil {
+				return JobConfig{}, errors.New("min_gap, max_weak_score, and min_strong_score are all required when acceptance_mode is threshold")
+			}
+		}
 	}
 	return cfg, nil
 }

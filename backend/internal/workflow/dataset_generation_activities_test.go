@@ -91,6 +91,9 @@ func TestExecuteSyntheticDatasetGenerationAgenticRecordsMalformedJudgeOutput(t *
 	if fixture.repo.rejections[0].ReasonCode != datasetgeneration.ReasonJudgeParseError {
 		t.Fatalf("reason = %q", fixture.repo.rejections[0].ReasonCode)
 	}
+	if fixture.repo.rejections[0].ReasonDetail == nil || !strings.Contains(*fixture.repo.rejections[0].ReasonDetail, "decode agentic judge response") {
+		t.Fatalf("reason detail = %v", fixture.repo.rejections[0].ReasonDetail)
+	}
 }
 
 type datasetGenerationActivityFixture struct {

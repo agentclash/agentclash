@@ -68,6 +68,9 @@ export function StartGenerationDialog({
   const [acceptanceMode, setAcceptanceMode] = useState<"judge" | "threshold">(
     "judge",
   );
+  const [minGap, setMinGap] = useState("0.2");
+  const [maxWeakScore, setMaxWeakScore] = useState("0.65");
+  const [minStrongScore, setMinStrongScore] = useState("0.75");
   const [targetCount, setTargetCount] = useState("10");
   const [seedsTag, setSeedsTag] = useState("");
   const [createVersion, setCreateVersion] = useState(true);
@@ -230,6 +233,21 @@ export function StartGenerationDialog({
         toast.error("Max rounds per example must be between 1 and 15");
         return;
       }
+      if (acceptanceMode === "threshold") {
+        const thresholdValues = [
+          Number(minGap),
+          Number(maxWeakScore),
+          Number(minStrongScore),
+        ];
+        if (thresholdValues.some((value) => !Number.isFinite(value))) {
+          toast.error("Threshold values must be valid numbers");
+          return;
+        }
+        if (thresholdValues.some((value) => value < 0 || value > 1)) {
+          toast.error("Threshold values must be between 0 and 1");
+          return;
+        }
+      }
     }
 
     setSubmitting(true);
@@ -262,6 +280,21 @@ export function StartGenerationDialog({
               : undefined,
           acceptance_mode:
             strategy === "agentic_self_instruct" ? acceptanceMode : undefined,
+          min_gap:
+            strategy === "agentic_self_instruct" &&
+            acceptanceMode === "threshold"
+              ? Number(minGap)
+              : undefined,
+          max_weak_score:
+            strategy === "agentic_self_instruct" &&
+            acceptanceMode === "threshold"
+              ? Number(maxWeakScore)
+              : undefined,
+          min_strong_score:
+            strategy === "agentic_self_instruct" &&
+            acceptanceMode === "threshold"
+              ? Number(minStrongScore)
+              : undefined,
         },
       );
       setJob(queued);
@@ -487,6 +520,52 @@ export function StartGenerationDialog({
                     <option value="threshold">Threshold</option>
                   </select>
                 </div>
+                {acceptanceMode === "threshold" ? (
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium">
+                        Min gap
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={minGap}
+                        onChange={(e) => setMinGap(e.target.value)}
+                        className={inputClass}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium">
+                        Max weak
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={maxWeakScore}
+                        onChange={(e) => setMaxWeakScore(e.target.value)}
+                        className={inputClass}
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-sm font-medium">
+                        Min strong
+                      </label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={minStrongScore}
+                        onChange={(e) => setMinStrongScore(e.target.value)}
+                        className={inputClass}
+                      />
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
             <div>
