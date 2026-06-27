@@ -80,9 +80,11 @@ export function StartGenerationDialog({
   const [acceptanceMode, setAcceptanceMode] = useState<"judge" | "threshold">(
     "judge",
   );
+  // Defaults follow Meta's Agentic Self-Instruct accepted-example criteria:
+  // strong solver ≥ 0.65, weak solver < 0.5, strong−weak gap ≥ 0.2.
   const [minGap, setMinGap] = useState("0.2");
-  const [maxWeakScore, setMaxWeakScore] = useState("0.65");
-  const [minStrongScore, setMinStrongScore] = useState("0.75");
+  const [maxWeakScore, setMaxWeakScore] = useState("0.5");
+  const [minStrongScore, setMinStrongScore] = useState("0.65");
   const [solverMode, setSolverMode] = useState<"judge_only" | "direct_provider">(
     "judge_only",
   );
@@ -90,8 +92,8 @@ export function StartGenerationDialog({
   const [weakModel, setWeakModel] = useState("");
   const [strongProviderAccountId, setStrongProviderAccountId] = useState("");
   const [strongModel, setStrongModel] = useState("");
-  const [weakRollouts, setWeakRollouts] = useState("1");
-  const [strongRollouts, setStrongRollouts] = useState("1");
+  const [weakRollouts, setWeakRollouts] = useState("3");
+  const [strongRollouts, setStrongRollouts] = useState("3");
   const [weakDeploymentId, setWeakDeploymentId] = useState("");
   const [strongDeploymentId, setStrongDeploymentId] = useState("");
   const [packId, setPackId] = useState("");
@@ -960,6 +962,10 @@ export function StartGenerationDialog({
                         className={inputClass}
                       />
                     </div>
+                    <p className="text-xs text-muted-foreground sm:col-span-3">
+                      Recommended defaults keep only examples the strong solver
+                      clearly wins: strong ≥ 0.65, weak ≤ 0.5, gap ≥ 0.2.
+                    </p>
                   </div>
                 ) : null}
                 <div className="space-y-3 rounded-md border border-border/70 p-3">
