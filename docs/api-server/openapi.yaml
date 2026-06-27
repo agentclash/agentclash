@@ -4091,11 +4091,7 @@ paths:
         "403":
           $ref: "#/components/responses/ForbiddenError"
         "404":
-          description: Dataset or generation job not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
+          $ref: "#/components/responses/NotFoundError"
 
   /v1/workspaces/{workspaceID}/datasets/{datasetID}/gate:
     post:
