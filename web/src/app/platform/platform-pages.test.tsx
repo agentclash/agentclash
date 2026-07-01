@@ -7,6 +7,9 @@ import AgentEvaluationPage, {
 import AgentRegressionTestingPage, {
   metadata as agentRegressionTestingMetadata,
 } from "./agent-regression-testing/page";
+import DataSmithPage, {
+  metadata as datasmithMetadata,
+} from "./datasmith/page";
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
@@ -126,6 +129,27 @@ describe("platform pages structured data", () => {
       },
     });
   });
+
+  it("emits breadcrumb, FAQ, and SoftwareApplication data for DataSmith", () => {
+    render(<DataSmithPage />);
+
+    const jsonLd = getJsonLd("agentclash-platform-datasmith-schema");
+    const software = jsonLd.find(
+      (item) => item["@type"] === "SoftwareApplication",
+    );
+
+    expect(jsonLd.map((item) => item["@type"])).toEqual([
+      "BreadcrumbList",
+      "FAQPage",
+      "SoftwareApplication",
+    ]);
+    expect(software).toMatchObject({
+      name: "DataSmith Synthetic Data Generation for AI Agents - AgentClash",
+      url: "https://www.agentclash.dev/platform/datasmith",
+      applicationCategory: "DeveloperApplication",
+      applicationSubCategory: "Synthetic data generation software",
+    });
+  });
 });
 
 describe("platform page social metadata", () => {
@@ -218,5 +242,50 @@ describe("platform page social metadata", () => {
     expect(ogAlt).toContain("regression testing");
     expect(twitterAlt).toBe(ogAlt);
     expect(ogAlt).not.toBe(getSocialImageAlt(agentEvaluationMetadata).ogAlt);
+  });
+
+  it("adds explicit social image metadata for DataSmith", () => {
+    const title =
+      "DataSmith Synthetic Data Generation for AI Agents - AgentClash";
+    const description =
+      "Generate high-signal synthetic datasets with weak-vs-strong Agentic Self-Instruct. Open-source Python SDK for SFT and DPO export, plus hosted generation inside AgentClash for eval and regression.";
+
+    expect(datasmithMetadata).toMatchObject({
+      title,
+      description,
+      alternates: {
+        canonical: "/platform/datasmith",
+      },
+      openGraph: {
+        title,
+        description,
+        url: "/platform/datasmith",
+        type: "website",
+        locale: "en_US",
+        siteName: "AgentClash",
+        images: [
+          {
+            url: "/og-image.png",
+            width: 1200,
+            height: 630,
+          },
+        ],
+      },
+      twitter: {
+        card: "summary_large_image",
+        title,
+        description,
+        images: [
+          {
+            url: "/twitter-image.png",
+          },
+        ],
+      },
+    });
+
+    const { ogAlt, twitterAlt } = getSocialImageAlt(datasmithMetadata);
+    expect(ogAlt).toContain("DataSmith");
+    expect(ogAlt).toContain("synthetic data");
+    expect(twitterAlt).toBe(ogAlt);
   });
 });

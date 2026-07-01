@@ -248,6 +248,19 @@ export default function sitemap(): MetadataRoute.Sitemap {
       ],
     },
     {
+      url: `${DOCS_ORIGIN}/platform/datasmith`,
+      lastModified: new Date(),
+      changeFrequency: "monthly",
+      priority: 0.84,
+      images: [
+        ogImage({
+          title: "DataSmith Synthetic Data Generation",
+          subtitle: "Weak-vs-strong Agentic Self-Instruct for AI agents",
+          kind: "Platform",
+        }),
+      ],
+    },
+    {
       url: `${DOCS_ORIGIN}/use-cases`,
       lastModified: new Date(),
       changeFrequency: "monthly",
