@@ -13,6 +13,7 @@ import { metadata as tryoutsMetadata } from "./tryouts/page";
 import { metadata as agentOpportunityMetadata } from "./agent-opportunity/page";
 import { metadata as agentEvaluationMetadata } from "./platform/agent-evaluation/page";
 import { metadata as agentRegressionTestingMetadata } from "./platform/agent-regression-testing/page";
+import { metadata as datasmithMetadata } from "./platform/datasmith/page";
 import { metadata as sitemapMetadata } from "./sitemap/page";
 import { teamMetadata } from "./team/metadata";
 import { whyMetadata } from "./why/metadata";
@@ -74,6 +75,7 @@ describe("public canonical metadata", () => {
       agentRegressionTestingMetadata,
       "/platform/agent-regression-testing",
     );
+    expectCanonical(datasmithMetadata, "/platform/datasmith");
     expectCanonical(whyMetadata, "/why");
     expectCanonical(teamMetadata, "/team");
     expectCanonical(changelogMetadata, "/changelog");

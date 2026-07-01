@@ -381,6 +381,13 @@ export const DOCS_NAV: DocNavSection[] = [
         href: "/docs/guides/datasets-overview",
       },
       {
+        title: "Synthetic dataset generation",
+        description:
+          "Fast Self-Instruct and Agentic Self-Instruct weak-vs-strong generation in workspaces, plus DataSmith export.",
+        slug: ["guides", "synthetic-dataset-generation"],
+        href: "/docs/guides/synthetic-dataset-generation",
+      },
+      {
         title: "Dataset CI Gates",
         description:
           "Record dataset eval baselines, sync examples into regression suites, and gate CI with agentclash dataset test.",

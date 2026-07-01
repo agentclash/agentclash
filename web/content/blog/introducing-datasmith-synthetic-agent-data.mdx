@@ -1,0 +1,102 @@
+---
+title: "Introducing DataSmith: High-Signal Synthetic Data for AI Agents"
+date: "2026-07-01"
+description: "DataSmith is an open-source Python SDK for weak-vs-strong synthetic dataset generation. Use it locally for SFT and DPO export, or inside AgentClash for eval-ready datasets and regression tests."
+author: "Atharva"
+---
+
+Most self-instruct pipelines produce volume, not signal. You get thousands of prompt-completion pairs where the weak model already succeeds or the task is impossible to learn from. That noise shows up later as flat fine-tunes and eval sets that do not match production.
+
+DataSmith fixes the loop. It implements the practical weak-vs-strong Agentic Self-Instruct pattern from [Meta FAIR's Autodata work](https://arxiv.org/abs/2606.25996): a challenger proposes examples, weak and strong solvers attempt them, and a judge accepts only when the gap is useful for training.
+
+## The problem with prompt-only synthetic data
+
+Classic self-instruct assumes you already have seed examples and that bulk generation is good enough. In practice:
+
+- Seeds are thin or off-domain without web grounding.
+- Generated tasks are too easy (weak model passes) or too hard (strong model fails).
+- Rejected examples disappear instead of feeding the next attempt.
+- Export stops at JSONL instead of trainer-ready SFT, DPO, or Hugging Face formats.
+
+DataSmith treats data generation as a **repeatable pipeline**, not a one-shot prompt.
+
+## Two stages: seeds, then generation
+
+**Stage 1: Seed construction**
+
+Start from a domain brief. DataSmith's seed constructor can use web-search signals to bootstrap grounded seed examples. A seed judge filters for specificity and usefulness before anything enters the generation loop.
+
+**Stage 2: Weak-vs-strong generation**
+
+For each seed, a challenger proposes a candidate example. Weak and strong solvers attempt it. A judge scores quality and separation. Accepted rows land in `accepted.jsonl`; rejections keep reason codes, solver attempts, and feedback for the next round.
+
+```bash
+pip install datasmith
+
+datasmith construct-seeds --brief "customer support refund policy" --output seeds.jsonl
+datasmith run --seeds seeds.jsonl --output-dir ./artifacts
+datasmith export --input ./artifacts/accepted.jsonl --format sharegpt --output train.jsonl
+```
+
+The Python import is `asi` for compatibility. The CLI answers to both `datasmith` and `asi`.
+
+## Provider-agnostic by design
+
+DataSmith works with any model that implements a simple `complete()` protocol:
+
+- OpenAI-compatible APIs (OpenAI, Groq, Together, local vLLM)
+- Your own wrapper for Anthropic, Gemini, or internal gateways
+- Deterministic demo models for tests and tutorials
+
+No vendor lock-in. Swap weak and strong solvers per domain without rewriting the loop.
+
+## Turn production traces into training seeds
+
+Real agent runs are often the best seed material. DataSmith ingests OpenTelemetry JSON and flattened span JSONL:
+
+```bash
+datasmith ingest-otel --input traces.jsonl --output seeds.jsonl
+```
+
+That closes the loop between observability and fine-tuning: production failures become curated training examples instead of dashboard noise.
+
+## Export for SFT, DPO, and Hugging Face
+
+Accepted artifacts export to formats trainers actually consume:
+
+- ShareGPT and ChatML for supervised fine-tuning
+- DPO preference pairs when weak and strong outputs diverge
+- Prompt-completion JSONL for simpler pipelines
+- Direct push to Hugging Face Hub with the optional `[hf]` extra
+
+See the [GSM8K + Qwen DPO benchmark writeup](https://github.com/Atharva-Kanherkar/datasmith/blob/main/docs/benchmarks/gsm8k-qwen-dpo.md) for a reproducible end-to-end example.
+
+## DataSmith inside AgentClash
+
+DataSmith is the **local, training-oriented** layer. [AgentClash](https://agentclash.dev) is the **hosted eval and regression** layer.
+
+Inside AgentClash workspaces you can run the same weak-vs-strong loop as **Agentic Self-Instruct** generation on pinned datasets. Accepted synthetic rows become eval examples you can baseline, gate in CI, and promote into regression suites.
+
+| Capability | DataSmith (Python SDK) | AgentClash (hosted) |
+| --- | --- | --- |
+| Web-grounded seed construction | Yes | Seeds from existing examples |
+| Weak-vs-strong judge loop | Yes | Yes (`agentic_self_instruct`) |
+| OTLP trace ingestion | Yes | Trace import to candidates |
+| SFT / DPO / HF export | Yes | Eval and regression formats |
+| CI regression gates | Manual | Built-in dataset gates |
+
+Use DataSmith when you need offline dataset creation for fine-tunes. Use AgentClash when you need replay, scoring, and release gates on the same workloads.
+
+## What DataSmith is not
+
+DataSmith is the practical substrate, not Meta's full meta-optimization stack. It does not run outer-loop prompt evolution or RL training. It gives you the inner loop: ingestion, orchestration, acceptance policies, artifacts, CLI, and tests you can plug into whatever you are building.
+
+MIT licensed. Alpha (`0.1.0`). Feedback and contributions welcome on [GitHub](https://github.com/Atharva-Kanherkar/datasmith).
+
+## Get started
+
+1. **Local SDK:** `pip install datasmith` and follow the [README quickstart](https://github.com/Atharva-Kanherkar/datasmith).
+2. **Hosted generation:** Sign in at [agentclash.dev](https://agentclash.dev), open a dataset, and start **Agentic Self-Instruct** generation from the workspace UI.
+3. **Read the platform overview:** [/platform/datasmith](/platform/datasmith) for the full AgentClash + DataSmith story.
+
+Tell us what domain you want to generate data for first. That feedback shapes the next seed-constructor templates and export presets.

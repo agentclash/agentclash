@@ -393,6 +393,53 @@ export const CHANGELOG_PERIODS: ChangelogPeriod[] = [
       },
     ],
   },
+  {
+    id: "2026-06-22",
+    startDate: "2026-06-22",
+    endDate: "2026-07-01",
+    label: "Jun 22 – Jul 01, 2026",
+    headline: "DataSmith launch: weak-vs-strong synthetic data for agents",
+    summary:
+      "DataSmith ships as an open-source Python SDK for high-signal synthetic dataset generation with web-grounded seed construction, OTLP trace ingestion, and SFT/DPO export. AgentClash adds platform marketing, docs, and SEO surfaces for the hosted Agentic Self-Instruct loop.",
+    themes: [
+      "DataSmith SDK",
+      "Synthetic data generation",
+      "Agentic Self-Instruct",
+      "SEO and discoverability",
+    ],
+    entries: [
+      {
+        category: "added",
+        text: "DataSmith — open-source Python SDK for weak-vs-strong Agentic Self-Instruct synthetic data generation, inspired by Meta FAIR Autodata.",
+        href: "https://github.com/Atharva-Kanherkar/datasmith",
+      },
+      {
+        category: "added",
+        text: "/platform/datasmith landing page for the SDK + hosted generation story with FAQ and JSON-LD product schema.",
+        href: "/platform/datasmith",
+      },
+      {
+        category: "added",
+        text: "Synthetic dataset generation docs guide covering Fast Self-Instruct, Agentic Self-Instruct, CLI, and DataSmith export.",
+        href: "/docs/guides/synthetic-dataset-generation",
+      },
+      {
+        category: "added",
+        text: "Launch blog: Introducing DataSmith with pipeline overview, trace ingestion, and AgentClash integration table.",
+        href: "/blog/introducing-datasmith-synthetic-agent-data",
+      },
+      {
+        category: "added",
+        text: "SEO landing pages for synthetic data generation, Agentic Self-Instruct, trace-to-dataset workflows, and glossary definition.",
+        href: "/synthetic-data-generation-agents",
+      },
+      {
+        category: "improved",
+        text: "Datasets overview and sitemap updated with DataSmith and synthetic generation discovery links.",
+        href: "/docs/guides/datasets-overview",
+      },
+    ],
+  },
 ];
 
 export function getChangelogPeriods(): ChangelogPeriod[] {

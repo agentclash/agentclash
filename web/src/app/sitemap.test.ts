@@ -119,6 +119,12 @@ describe("sitemap", () => {
       priority: 0.82,
     });
     expect(
+      byUrl.get("https://www.agentclash.dev/platform/datasmith"),
+    ).toMatchObject({
+      changeFrequency: "monthly",
+      priority: 0.84,
+    });
+    expect(
       byUrl.get("https://www.agentclash.dev/agent-evals"),
     ).toMatchObject({
       changeFrequency: "monthly",

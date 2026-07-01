@@ -70,6 +70,21 @@ const LINKS = {
     label: "Benchmarks",
     description: "Measured field reports with frozen challenge packs.",
   },
+  datasmith: {
+    href: "/platform/datasmith",
+    label: "DataSmith",
+    description: "Weak-vs-strong synthetic data generation for agents.",
+  },
+  syntheticDataGeneration: {
+    href: "/synthetic-data-generation-agents",
+    label: "Synthetic data generation",
+    description: "High-signal datasets with Agentic Self-Instruct.",
+  },
+  agenticSelfInstruct: {
+    href: "/agentic-self-instruct",
+    label: "Agentic Self-Instruct",
+    description: "Weak-vs-strong synthetic data loop inspired by Autodata.",
+  },
   passAtKPost: {
     href: "/blog/pass-at-k-vs-pass-power-k",
     label: "pass@k vs pass^k",
@@ -172,6 +187,11 @@ const BLOG_RELATED_RESOURCES: Record<string, BlogRelatedResourceLink[]> = {
     LINKS.openSourceEvaluation,
     LINKS.agentEvals,
     LINKS.compare,
+  ],
+  "introducing-datasmith-synthetic-agent-data": [
+    LINKS.datasmith,
+    LINKS.syntheticDataGeneration,
+    LINKS.agenticSelfInstruct,
   ],
 };
 

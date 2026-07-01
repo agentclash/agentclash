@@ -1,0 +1,97 @@
+---
+title: Synthetic dataset generation
+description: Generate high-signal synthetic examples with Self-Instruct or Agentic Self-Instruct weak-vs-strong loops in AgentClash workspaces.
+dateModified: 2026-07-01
+---
+
+AgentClash can expand pinned datasets with synthetic examples generated from existing seeds. Two strategies are available:
+
+- **Fast Self-Instruct** — prompt-only generation for quick volume when you already trust your seeds.
+- **Agentic Self-Instruct** — weak-vs-strong solver rollouts with a judge that accepts only examples in the useful difficulty zone.
+
+The Agentic Self-Instruct loop follows the pattern described in [Meta FAIR Autodata](https://arxiv.org/abs/2606.25996). For offline training export (SFT, DPO, Hugging Face), use the open-source [DataSmith](https://github.com/Atharva-Kanherkar/datasmith) Python SDK.
+
+## When to use each strategy
+
+| Strategy | Best for | Tradeoff |
+| --- | --- | --- |
+| Fast Self-Instruct | Rapid expansion of well-curated seeds | Less quality filtering |
+| Agentic Self-Instruct | Targeted eval and regression datasets | Higher token cost per accepted row |
+
+Start with Agentic Self-Instruct when examples will gate releases or train downstream models. Use Fast Self-Instruct for exploratory coverage.
+
+## Prerequisites
+
+- A workspace dataset with at least one seed example (or import traces first).
+- Provider API keys or BYOK deployments configured in the workspace.
+- For Agentic Self-Instruct: weak and strong solver models (or deployments) selected in the generation dialog.
+
+## Start generation from the web UI
+
+1. Open **Workspaces → Datasets → [your dataset]**.
+2. Click **Synthetic generation**.
+3. Choose **Fast Self-Instruct** or **Agentic Self-Instruct**.
+4. Pin a target dataset version label for accepted rows.
+5. For Agentic Self-Instruct, configure acceptance thresholds (strong pass rate, weak fail rate, minimum score gap).
+6. Start the job and monitor progress. Rejected rows include reason codes for review.
+
+Accepted examples are written with `source=synthetic` and appear in the dataset version you specified.
+
+## Start generation from the CLI
+
+```bash
+export AGENTCLASH_API_URL="https://api.agentclash.dev"
+export AGENTCLASH_TOKEN="<token>"
+export AGENTCLASH_WORKSPACE="<workspace-id>"
+
+agentclash dataset generate <datasetId> \
+  --strategy agentic_self_instruct \
+  --version-label "synthetic-v1" \
+  --max-examples 50
+```
+
+Poll job status:
+
+```bash
+agentclash dataset generate status <datasetId> <jobId>
+```
+
+See `agentclash dataset generate --help` for weak/strong deployment flags and acceptance tuning.
+
+## Agentic Self-Instruct acceptance policy
+
+The judge accepts a candidate when:
+
+- The strong solver meets your configured pass threshold.
+- The weak solver falls below its pass threshold (the example is learnable).
+- The score gap between strong and weak exceeds your minimum gap.
+
+The job summary includes `avg_gap` across accepted rows so you can compare runs over time.
+
+## After generation: eval and gates
+
+Synthetic rows are most valuable when they feed regression coverage:
+
+1. **Run a dataset eval** against a challenge pack — see [Datasets overview](/docs/guides/datasets-overview).
+2. **Record a baseline** from a green eval run.
+3. **Gate CI** with `agentclash dataset test` — see [Dataset CI gates](/docs/guides/dataset-ci-gates).
+4. **Sync into a regression suite** so escaped failures stay covered.
+
+## DataSmith for training export
+
+AgentClash optimizes for eval-ready datasets inside your workspace. When you need ShareGPT, DPO pairs, or Hugging Face Hub export for fine-tuning, use [DataSmith](https://github.com/Atharva-Kanherkar/datasmith):
+
+```bash
+pip install datasmith
+datasmith construct-seeds --brief "your domain" --output seeds.jsonl
+datasmith run --seeds seeds.jsonl --output-dir ./artifacts
+datasmith export --input ./artifacts/accepted.jsonl --format dpo --output pairs.jsonl
+```
+
+DataSmith also ingests OpenTelemetry traces locally. AgentClash trace import targets eval candidates in the hosted product.
+
+## See also
+
+- [Datasets overview](/docs/guides/datasets-overview) — baselines, eval runs, regression sync
+- [DataSmith platform page](/platform/datasmith) — SDK + hosted generation story
+- [Introducing DataSmith blog post](/blog/introducing-datasmith-synthetic-agent-data)

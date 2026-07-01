@@ -1347,6 +1347,356 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       ...sharedDocsLinks.slice(0, 2),
     ],
   }),
+  page({
+    path: "/synthetic-data-generation-agents",
+    tier: "A",
+    keyword: "synthetic data generation AI agents",
+    intent: "High-intent training + eval",
+    pageTitle:
+      "Synthetic Data Generation for AI Agents - AgentClash & DataSmith",
+    metaDescription:
+      "Generate high-signal synthetic datasets for AI agents with weak-vs-strong Agentic Self-Instruct. Open-source DataSmith SDK for SFT and DPO export, plus hosted generation in AgentClash.",
+    socialImageAlt:
+      "AgentClash synthetic data generation for AI agents social preview.",
+    eyebrow: "Synthetic data",
+    h1: "Synthetic data generation for AI agents that teaches, not noise",
+    heroDescription:
+      "Bulk self-instruct produces volume without signal. AgentClash and DataSmith run a weak-vs-strong judge loop that accepts examples only when a strong solver succeeds and a weak solver struggles: the useful difficulty zone for fine-tuning and eval.",
+    proofSectionTitle: "Why weak-vs-strong beats prompt-only generation",
+    proofSectionDescription:
+      "Meta FAIR Autodata showed that agentic self-instruct with solver separation beats standard synthetic pipelines across CS, legal, and math settings. DataSmith implements the practical loop; AgentClash runs it hosted for regression-ready datasets.",
+    workflowSectionTitle: "From seeds to export or CI gates",
+    docsSectionTitle: "Start generating",
+    docsSectionDescription:
+      "Use DataSmith locally for training export, or AgentClash workspaces for eval baselines and CI gates on the same examples.",
+    faqSectionTitle: "Synthetic data generation FAQ",
+    applicationSubCategory: "Synthetic data generation software",
+    breadcrumbs: [
+      { name: "Home", url: "/" },
+      {
+        name: "Synthetic data generation",
+        url: "/synthetic-data-generation-agents",
+      },
+    ],
+    schemaId: "agentclash-synthetic-data-generation-agents-schema",
+    searchKeywords:
+      "synthetic data generation AI agents agentic self instruct weak strong model judge SFT DPO fine tuning dataset generation",
+    sitemapTitle: "Synthetic data generation for agents",
+    sitemapDescription:
+      "Weak-vs-strong synthetic dataset generation for agent fine-tuning and eval.",
+    faqItems: [
+      {
+        question: "What is synthetic data generation for AI agents?",
+        answer:
+          "It is the process of creating labeled training or eval examples for agent workloads using LLM-driven pipelines instead of manual curation alone.",
+      },
+      {
+        question: "How does Agentic Self-Instruct improve data quality?",
+        answer:
+          "A challenger proposes examples, weak and strong solvers attempt them, and a judge accepts rows only when the score gap indicates the example is learnable but not trivial.",
+      },
+      {
+        question: "Should I use DataSmith or AgentClash for generation?",
+        answer:
+          "Use DataSmith for offline SFT, DPO, and Hugging Face export. Use AgentClash when generated examples should feed dataset evals, baselines, and CI regression gates.",
+      },
+    ],
+    relatedLinks: [
+      {
+        title: "DataSmith platform page",
+        text: "SDK + hosted generation overview.",
+        href: "/platform/datasmith",
+      },
+      {
+        title: "Introducing DataSmith",
+        text: "Launch blog with pipeline details.",
+        href: "/blog/introducing-datasmith-synthetic-agent-data",
+      },
+      {
+        title: "Synthetic generation docs",
+        text: "Run Agentic Self-Instruct in AgentClash.",
+        href: "/docs/guides/synthetic-dataset-generation",
+      },
+      ...sharedDocsLinks.slice(0, 2),
+    ],
+  }),
+  page({
+    path: "/agentic-self-instruct",
+    tier: "A",
+    keyword: "agentic self instruct",
+    intent: "Autodata-inspired pattern",
+    pageTitle: "Agentic Self-Instruct for Synthetic Datasets - AgentClash",
+    metaDescription:
+      "Agentic Self-Instruct uses challenger, weak solver, strong solver, and judge roles to generate high-quality synthetic training data. Inspired by Meta FAIR Autodata.",
+    socialImageAlt: "AgentClash Agentic Self-Instruct social preview.",
+    eyebrow: "Agentic Self-Instruct",
+    h1: "Agentic Self-Instruct: weak-vs-strong synthetic data",
+    heroDescription:
+      "Agentic Self-Instruct is a four-role loop for synthetic dataset generation: challenger proposes, weak and strong solvers attempt, judge filters. DataSmith ships it as a Python SDK; AgentClash runs it hosted for eval-ready datasets.",
+    proofSectionTitle: "The four roles",
+    proofSectionDescription:
+      "Challenger generates candidates from seeds. Weak solver represents the model you want to improve. Strong solver represents a reference path. Judge scores quality and separation before acceptance.",
+    workflowSectionTitle: "Research to production",
+    docsSectionTitle: "Implement the loop",
+    docsSectionDescription:
+      "Read the synthetic generation guide, then try DataSmith locally or Agentic Self-Instruct in a workspace dataset.",
+    faqSectionTitle: "Agentic Self-Instruct FAQ",
+    applicationSubCategory: "Agentic Self-Instruct software",
+    breadcrumbs: [
+      { name: "Home", url: "/" },
+      { name: "Agentic Self-Instruct", url: "/agentic-self-instruct" },
+    ],
+    schemaId: "agentclash-agentic-self-instruct-schema",
+    searchKeywords:
+      "agentic self instruct Autodata Meta FAIR weak strong solver judge synthetic training data challenger loop",
+    sitemapTitle: "Agentic Self-Instruct",
+    sitemapDescription:
+      "Weak-vs-strong synthetic data loop inspired by Meta FAIR Autodata.",
+    faqItems: [
+      {
+        question: "What is Agentic Self-Instruct?",
+        answer:
+          "An agentic loop where a challenger generates examples and weak/strong solvers plus a judge determine whether each row is in the useful difficulty zone for training.",
+      },
+      {
+        question: "How is it related to Meta FAIR Autodata?",
+        answer:
+          "Autodata formalized weak-vs-strong agentic self-instruct for synthetic data. DataSmith implements the practical inner loop; it is not an official Meta release.",
+      },
+      {
+        question: "Can I tune acceptance thresholds?",
+        answer:
+          "Yes. Both DataSmith and AgentClash expose strong pass rate, weak fail rate, and minimum score gap controls.",
+      },
+    ],
+    relatedLinks: [
+      {
+        title: "DataSmith GitHub",
+        text: "Open-source Python SDK and CLI.",
+        href: "https://github.com/Atharva-Kanherkar/datasmith",
+      },
+      {
+        title: "Synthetic data generation",
+        text: "Broader SEO hub for agent dataset generation.",
+        href: "/synthetic-data-generation-agents",
+      },
+      {
+        title: "Glossary: Agentic Self-Instruct",
+        text: "Short definition and when to use it.",
+        href: "/glossary/agentic-self-instruct",
+      },
+      ...sharedDocsLinks.slice(0, 1),
+    ],
+  }),
+  page({
+    path: "/trace-to-dataset",
+    tier: "B",
+    keyword: "OpenTelemetry trace to dataset",
+    intent: "Trace ingestion workflow",
+    pageTitle: "Trace to Dataset: Turn Agent Traces into Training Data",
+    metaDescription:
+      "Convert OpenTelemetry agent traces into synthetic dataset seeds with DataSmith OTLP ingestion or AgentClash trace import for eval-ready regression coverage.",
+    socialImageAlt: "AgentClash trace to dataset social preview.",
+    eyebrow: "Trace to dataset",
+    h1: "Turn production agent traces into datasets",
+    heroDescription:
+      "The best seed material often comes from real agent runs. DataSmith ingests OTLP JSON and span JSONL locally for training export. AgentClash imports traces into workspace datasets for eval baselines and CI gates.",
+    proofSectionTitle: "Two paths from traces",
+    proofSectionDescription:
+      "Training teams use DataSmith ingest-otel for SFT and DPO pipelines. Platform teams use AgentClash trace import to promote production failures into regression coverage.",
+    workflowSectionTitle: "Trace ingestion workflow",
+    docsSectionTitle: "Ingest traces",
+    docsSectionDescription:
+      "Start with one exported trace bundle, convert to seeds or candidates, then expand with Agentic Self-Instruct generation.",
+    faqSectionTitle: "Trace to dataset FAQ",
+    applicationSubCategory: "Trace to dataset software",
+    breadcrumbs: [
+      { name: "Home", url: "/" },
+      { name: "Trace to dataset", url: "/trace-to-dataset" },
+    ],
+    schemaId: "agentclash-trace-to-dataset-schema",
+    searchKeywords:
+      "trace to dataset OpenTelemetry training data agent traces synthetic dataset production traces OTLP ingestion LangSmith alternative",
+    sitemapTitle: "Trace to dataset",
+    sitemapDescription:
+      "Convert agent traces into synthetic dataset seeds and eval coverage.",
+    faqItems: [
+      {
+        question: "What trace formats does DataSmith support?",
+        answer:
+          "OTLP JSON exports and flattened span JSONL. See the DataSmith docs/otel.md guide for field expectations.",
+      },
+      {
+        question: "Does AgentClash import the same traces?",
+        answer:
+          "AgentClash supports OTel-compatible trace import into workspace datasets for eval and regression workflows, complementary to DataSmith training export.",
+      },
+      {
+        question: "Should traces become seeds or finished examples?",
+        answer:
+          "Usually seeds. Run Agentic Self-Instruct afterward to expand grounded, judge-filtered examples rather than training on raw spans alone.",
+      },
+    ],
+    relatedLinks: [
+      {
+        title: "DataSmith OTLP docs",
+        text: "Local trace ingestion reference.",
+        href: "https://github.com/Atharva-Kanherkar/datasmith/blob/main/docs/otel.md",
+      },
+      {
+        title: "Synthetic data generation",
+        text: "Expand seeds with weak-vs-strong generation.",
+        href: "/synthetic-data-generation-agents",
+      },
+      {
+        title: "Agent regression testing",
+        text: "Gate releases on trace-derived coverage.",
+        href: "/platform/agent-regression-testing",
+      },
+      ...sharedDocsLinks.slice(0, 2),
+    ],
+  }),
+  page({
+    path: "/features/synthetic-dataset-generation",
+    tier: "B",
+    keyword: "synthetic dataset generation feature",
+    intent: "Feature keyword",
+    pageTitle: "Synthetic Dataset Generation in AgentClash - Feature",
+    metaDescription:
+      "Expand workspace datasets with Fast Self-Instruct or Agentic Self-Instruct generation. Accepted rows feed eval baselines, regression suites, and CI gates.",
+    socialImageAlt:
+      "AgentClash synthetic dataset generation feature social preview.",
+    eyebrow: "Feature",
+    h1: "Synthetic dataset generation inside AgentClash",
+    heroDescription:
+      "Generate eval-ready examples from pinned seeds without leaving your workspace. Choose fast prompt-only expansion or Agentic Self-Instruct with weak-vs-strong judge filtering.",
+    proofSectionTitle: "Generation strategies",
+    proofSectionDescription:
+      "Fast Self-Instruct adds volume quickly. Agentic Self-Instruct runs weak and strong solver rollouts with acceptance policies tuned to the useful difficulty zone.",
+    workflowSectionTitle: "From generation to gates",
+    docsSectionTitle: "Run your first job",
+    docsSectionDescription:
+      "Open a dataset, start synthetic generation, then baseline and gate the accepted rows.",
+    faqSectionTitle: "Synthetic generation FAQ",
+    applicationSubCategory: "Synthetic dataset generation software",
+    breadcrumbs: [
+      { name: "Home", url: "/" },
+      { name: "Features", url: "/features" },
+      {
+        name: "Synthetic dataset generation",
+        url: "/features/synthetic-dataset-generation",
+      },
+    ],
+    schemaId: "agentclash-synthetic-dataset-generation-feature-schema",
+    searchKeywords:
+      "synthetic dataset generation workspace datasets agentic self instruct eval baselines CI gates regression",
+    sitemapTitle: "Synthetic dataset generation",
+    sitemapDescription:
+      "Hosted weak-vs-strong generation for eval-ready datasets.",
+    faqItems: [
+      {
+        question: "Where do I start generation in AgentClash?",
+        answer:
+          "Open Workspaces, Datasets, your dataset, then Synthetic generation in the UI or use agentclash dataset generate from the CLI.",
+      },
+      {
+        question: "What happens to rejected examples?",
+        answer:
+          "Rejected rows are stored with reason codes and solver attempts so you can review why the judge declined them.",
+      },
+      {
+        question: "Can I export for fine-tuning from AgentClash?",
+        answer:
+          "AgentClash optimizes for eval formats. For SFT, DPO, and Hugging Face export, use the DataSmith Python SDK on the same seeds.",
+      },
+    ],
+    relatedLinks: [
+      {
+        title: "Synthetic generation guide",
+        text: "Docs for UI and CLI generation jobs.",
+        href: "/docs/guides/synthetic-dataset-generation",
+      },
+      {
+        title: "DataSmith platform page",
+        text: "Offline SDK for training export.",
+        href: "/platform/datasmith",
+      },
+      ...sharedDocsLinks,
+    ],
+  }),
+  page({
+    path: "/glossary/agentic-self-instruct",
+    tier: "B",
+    keyword: "agentic self instruct definition",
+    intent: "Glossary",
+    pageTitle: "What Is Agentic Self-Instruct? - AgentClash Glossary",
+    metaDescription:
+      "Agentic Self-Instruct is a synthetic data loop where a challenger generates examples and weak/strong solvers plus a judge filter for the useful difficulty zone.",
+    socialImageAlt:
+      "AgentClash Agentic Self-Instruct glossary social preview.",
+    eyebrow: "Glossary",
+    h1: "What is Agentic Self-Instruct?",
+    heroDescription:
+      "Agentic Self-Instruct generates synthetic training examples by proposing tasks, running weak and strong solvers, and accepting rows only when the strong path succeeds and the weak path struggles.",
+    proofSectionTitle: "How it differs from self-instruct",
+    proofSectionDescription:
+      "Classic self-instruct prompts a model for more examples. Agentic Self-Instruct adds solver rollouts and a judge so difficulty is measured, not assumed.",
+    workflowSectionTitle: "Typical roles",
+    docsSectionTitle: "Go deeper",
+    docsSectionDescription:
+      "Read the Agentic Self-Instruct landing page and synthetic generation docs, or install DataSmith for local runs.",
+    faqSectionTitle: "Agentic Self-Instruct FAQ",
+    applicationSubCategory: "Agentic Self-Instruct glossary",
+    breadcrumbs: [
+      { name: "Home", url: "/" },
+      { name: "Glossary", url: "/glossary" },
+      {
+        name: "Agentic Self-Instruct",
+        url: "/glossary/agentic-self-instruct",
+      },
+    ],
+    schemaId: "agentclash-glossary-agentic-self-instruct-schema",
+    searchKeywords:
+      "agentic self instruct definition Autodata weak strong solver judge synthetic data glossary",
+    sitemapTitle: "Agentic Self-Instruct (glossary)",
+    sitemapDescription:
+      "Definition of the weak-vs-strong synthetic data loop.",
+    faqItems: [
+      {
+        question: "Who popularized Agentic Self-Instruct?",
+        answer:
+          "Meta FAIR's Autodata paper formalized weak-vs-strong agentic self-instruct for synthetic data generation and meta-optimization.",
+      },
+      {
+        question: "What is the useful difficulty zone?",
+        answer:
+          "Examples where a strong solver passes and a weak solver fails, indicating the row can teach the weak model something new.",
+      },
+      {
+        question: "Where can I run it?",
+        answer:
+          "DataSmith (pip install datasmith) for local export, or AgentClash workspaces for hosted generation tied to eval gates.",
+      },
+    ],
+    relatedLinks: [
+      {
+        title: "Agentic Self-Instruct hub",
+        text: "SEO landing with workflow and FAQ.",
+        href: "/agentic-self-instruct",
+      },
+      {
+        title: "DataSmith platform",
+        text: "Open-source SDK overview.",
+        href: "/platform/datasmith",
+      },
+      {
+        title: "Glossary index",
+        text: "More AgentClash terms.",
+        href: "/glossary",
+      },
+      ...sharedDocsLinks.slice(0, 1),
+    ],
+  }),
 ];
 
 const SEO_PAGE_BY_PATH = new Map(
