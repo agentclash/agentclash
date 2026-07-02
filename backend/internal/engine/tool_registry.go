@@ -13,22 +13,6 @@ import (
 	"github.com/agentclash/agentclash/runtime/templateutil"
 )
 
-type ToolCategory string
-type ToolFailureOrigin string
-
-const (
-	ToolCategoryPrimitive ToolCategory = "primitive"
-	ToolCategoryComposed  ToolCategory = "composed"
-	ToolCategoryMock      ToolCategory = "mock"
-
-	ToolFailureOriginPolicy     ToolFailureOrigin = "policy"
-	ToolFailureOriginResolution ToolFailureOrigin = "resolution"
-	ToolFailureOriginPrimitive  ToolFailureOrigin = "primitive"
-	ToolFailureOriginDelegation ToolFailureOrigin = "delegation"
-	ToolFailureOriginCycle      ToolFailureOrigin = "cycle"
-	ToolFailureOriginDepth      ToolFailureOrigin = "depth"
-)
-
 const MaxDelegationDepth = 8
 
 type Tool interface {
@@ -46,29 +30,6 @@ type ToolExecutionRequest struct {
 	NetworkAllowlist []string
 	Registry         *Registry
 	DelegationChain  []string
-}
-
-type ToolExecutionResult struct {
-	Content              string
-	IsError              bool
-	Completed            bool
-	FinalOutput          string
-	ResolvedToolName     string
-	ResolvedToolCategory ToolCategory
-	FailureOrigin        ToolFailureOrigin
-	ResolutionChain      []string
-	FailureDepth         int
-}
-
-type ToolExecutionRecord struct {
-	ToolCall             provider.ToolCall
-	Result               provider.ToolResult
-	ToolCategory         ToolCategory
-	ResolvedToolName     string
-	ResolvedToolCategory ToolCategory
-	FailureOrigin        ToolFailureOrigin
-	ResolutionChain      []string
-	FailureDepth         int
 }
 
 type Registry struct {
