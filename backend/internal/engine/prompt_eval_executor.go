@@ -11,6 +11,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/google/uuid"
 )
 
@@ -55,18 +56,10 @@ func (e PromptEvalExecutor) loadWorkspaceSecrets(ctx context.Context, workspaceI
 }
 
 func (e PromptEvalExecutor) Execute(ctx context.Context, executionContext repository.RunAgentExecutionContext) (result Result, err error) {
-	defer func() {
-		if err != nil {
-			if observerErr := e.observer.OnRunFailure(ctx, err); observerErr != nil {
-				err = errors.Join(err, NewFailure(StopReasonObserverError, "record prompt_eval terminal failure event", observerErr))
-			}
-			return
-		}
-		if observerErr := e.observer.OnRunComplete(ctx, result); observerErr != nil {
-			result = Result{}
-			err = NewFailure(StopReasonObserverError, "record prompt_eval terminal completion event", observerErr)
-		}
-	}()
+	defer runner.FinishWithObserver(ctx, e.observer, &result, &err, runner.TerminalObserverMessages{
+		Failure:    "record prompt_eval terminal failure event",
+		Completion: "record prompt_eval terminal completion event",
+	})
 
 	if executionContext.Deployment.ProviderAccount == nil {
 		return Result{}, provider.NewFailure(
@@ -91,12 +84,9 @@ func (e PromptEvalExecutor) Execute(ctx context.Context, executionContext reposi
 	if err != nil {
 		return Result{}, NewFailure(StopReasonSandboxError, fmt.Sprintf("load workspace secrets: %v", err), err)
 	}
-	runCtx := provider.WithWorkspaceSecrets(ctx, workspaceSecrets)
-	cancel := func() {}
-	if timeout := runTimeout(executionContext); timeout > 0 {
-		runCtx, cancel = context.WithTimeout(runCtx, timeout)
-	}
-	defer cancel()
+	runtimeCtx := runner.WithRuntimeTimeout(provider.WithWorkspaceSecrets(ctx, workspaceSecrets), runTimeout(executionContext))
+	runCtx := runtimeCtx.Context
+	defer runtimeCtx.Cancel()
 
 	messages, err := buildPromptEvalMessages(executionContext)
 	if err != nil {

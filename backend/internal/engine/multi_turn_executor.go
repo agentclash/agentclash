@@ -13,6 +13,7 @@ import (
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/runevents"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/google/uuid"
 )
 
@@ -111,18 +112,10 @@ func (e MultiTurnExecutor) WithHumanTurnGate(gate HumanTurnGate) MultiTurnExecut
 
 func (e MultiTurnExecutor) Execute(ctx context.Context, executionContext repository.RunAgentExecutionContext) (result Result, err error) {
 	recorder := multiTurnRecorder(e.observer)
-	defer func() {
-		if err != nil {
-			if observerErr := e.observer.OnRunFailure(ctx, err); observerErr != nil {
-				err = errors.Join(err, NewFailure(StopReasonObserverError, "record multi_turn terminal failure event", observerErr))
-			}
-			return
-		}
-		if observerErr := e.observer.OnRunComplete(ctx, result); observerErr != nil {
-			result = Result{}
-			err = NewFailure(StopReasonObserverError, "record multi_turn terminal completion event", observerErr)
-		}
-	}()
+	defer runner.FinishWithObserver(ctx, e.observer, &result, &err, runner.TerminalObserverMessages{
+		Failure:    "record multi_turn terminal failure event",
+		Completion: "record multi_turn terminal completion event",
+	})
 
 	spec, err := userSimulatorForExecution(executionContext)
 	if err != nil {
