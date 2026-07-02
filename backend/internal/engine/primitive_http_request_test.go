@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/runtime/sandbox"
 )
 
 func TestHTTPRequestTool_RejectsWhenNetworkDisabled(t *testing.T) {
@@ -103,13 +103,13 @@ func TestScrubSensitiveResponseHeaders_CaseInsensitive(t *testing.T) {
 	// must catch every casing.
 	payload := map[string]any{
 		"headers": map[string]any{
-			"AUTHORIZATION":   "Bearer leaked1",
+			"AUTHORIZATION":       "Bearer leaked1",
 			"Proxy-Authorization": "Bearer leaked2",
-			"SET-COOKIE":      "sid=leaked3",
-			"X-Api-Key":       "leaked4",
-			"x-access-token":  "leaked5",
-			"X-CSRF-Token":    "leaked6",
-			"X-Request-Id":    "safe-id",
+			"SET-COOKIE":          "sid=leaked3",
+			"X-Api-Key":           "leaked4",
+			"x-access-token":      "leaked5",
+			"X-CSRF-Token":        "leaked6",
+			"X-Request-Id":        "safe-id",
 		},
 	}
 	scrubSensitiveResponseHeaders(payload)

@@ -7,8 +7,8 @@ import (
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
-	"github.com/agentclash/agentclash/backend/internal/sandbox"
-	"github.com/agentclash/agentclash/backend/internal/scoring"
+	"github.com/agentclash/agentclash/runtime/sandbox"
+	"github.com/agentclash/agentclash/runtime/scoring"
 )
 
 type fakeSandboxSession struct {

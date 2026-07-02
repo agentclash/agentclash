@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/engine"
-	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/simulator"
+	"github.com/agentclash/agentclash/runtime/provider"
 )
 
 // recordingMultiTurnObserver records both base engine.Observer calls and
@@ -159,7 +159,7 @@ func TestBufferedObserver_ForwardsMultiTurnEvents(t *testing.T) {
 // record-turn methods should be no-ops (no panic, no error).
 type nonMultiTurnObserver struct{}
 
-func (nonMultiTurnObserver) OnStepStart(context.Context, int) error            { return nil }
+func (nonMultiTurnObserver) OnStepStart(context.Context, int) error                 { return nil }
 func (nonMultiTurnObserver) OnProviderCall(context.Context, provider.Request) error { return nil }
 func (nonMultiTurnObserver) OnProviderOutput(context.Context, provider.Request, provider.StreamDelta) error {
 	return nil

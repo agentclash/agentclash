@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/multimodaltrace"
 	"github.com/agentclash/agentclash/backend/internal/voiceartifacts"
+	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/google/uuid"
 )
 

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/runtime/sandbox"
 )
 
 // Wiring for `security.planted_secrets[]` declared on a challenge pack

@@ -6,7 +6,7 @@ import (
 	"sync"
 
 	"github.com/agentclash/agentclash/backend/internal/engine"
-	"github.com/agentclash/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/runtime/provider"
 )
 
 // BudgetGuardObserver wraps another observer and performs synchronous budget

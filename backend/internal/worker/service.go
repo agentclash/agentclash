@@ -7,11 +7,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
-	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
+	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/sandbox"
 	temporalsdk "go.temporal.io/sdk/client"
 	sdkworker "go.temporal.io/sdk/worker"
 )

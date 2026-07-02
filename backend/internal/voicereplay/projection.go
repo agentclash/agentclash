@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/voiceartifacts"
+	"github.com/agentclash/agentclash/runtime/runevents"
 )
 
 const SchemaVersionV1 = "2026-05-13"

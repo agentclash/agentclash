@@ -5,9 +5,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/workflow"
+	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
 	temporalsdk "go.temporal.io/sdk/client"
 )

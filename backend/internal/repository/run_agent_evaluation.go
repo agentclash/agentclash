@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/agentclash/agentclash/backend/internal/scoring"
+	"github.com/agentclash/agentclash/runtime/scoring"
 	"github.com/google/uuid"
 )
 

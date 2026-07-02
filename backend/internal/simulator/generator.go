@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
-	"github.com/agentclash/agentclash/backend/internal/runevents"
+	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/runevents"
 )
 
 const defaultSimulatorTimeout = 60 * time.Second
@@ -23,15 +23,15 @@ type TranscriptTurn struct {
 
 // Input drives LLM user message generation.
 type Input struct {
-	Persona          string
-	Transcript       []TranscriptTurn
-	CasePayload      map[string]any
-	PhaseID          string
-	MaxOutputTokens  int32
-	ProviderKey      string
+	Persona           string
+	Transcript        []TranscriptTurn
+	CasePayload       map[string]any
+	PhaseID           string
+	MaxOutputTokens   int32
+	ProviderKey       string
 	ProviderAccountID string
-	CredentialRef    string
-	Model            string
+	CredentialRef     string
+	Model             string
 }
 
 // Metadata describes the simulator provider call.

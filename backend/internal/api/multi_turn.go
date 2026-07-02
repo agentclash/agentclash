@@ -8,8 +8,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
 )
 
@@ -44,17 +44,17 @@ type CalibrationReviewResponse struct {
 }
 
 type ArenaTaskResponse struct {
-	ID                uuid.UUID `json:"id"`
-	CaseKey           string    `json:"case_key"`
-	LeftRunAgentID    uuid.UUID `json:"left_run_agent_id"`
-	RightRunAgentID   uuid.UUID `json:"right_run_agent_id"`
-	Status            string    `json:"status"`
+	ID              uuid.UUID `json:"id"`
+	CaseKey         string    `json:"case_key"`
+	LeftRunAgentID  uuid.UUID `json:"left_run_agent_id"`
+	RightRunAgentID uuid.UUID `json:"right_run_agent_id"`
+	Status          string    `json:"status"`
 }
 
 type ArenaVoteRequest struct {
-	TaskID            uuid.UUID          `json:"task_id"`
-	WinnerRunAgentID  uuid.UUID          `json:"winner_run_agent_id"`
-	RubricScores      map[string]float64 `json:"rubric_scores,omitempty"`
+	TaskID           uuid.UUID          `json:"task_id"`
+	WinnerRunAgentID uuid.UUID          `json:"winner_run_agent_id"`
+	RubricScores     map[string]float64 `json:"rubric_scores,omitempty"`
 }
 
 type submitHumanTurnRequest struct {

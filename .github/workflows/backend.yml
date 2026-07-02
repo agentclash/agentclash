@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - "backend/**"
+      - "runtime/**"
       - ".github/workflows/backend.yml"
   pull_request:
     branches: [main]
     paths:
       - "backend/**"
+      - "runtime/**"
       - ".github/workflows/backend.yml"
 
 defaults:

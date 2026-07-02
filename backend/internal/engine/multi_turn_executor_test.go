@@ -3,8 +3,8 @@ package engine
 import (
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
-	"github.com/agentclash/agentclash/backend/internal/scoring"
+	"github.com/agentclash/agentclash/runtime/challengepack"
+	"github.com/agentclash/agentclash/runtime/scoring"
 )
 
 func TestEvaluateTurnExpects_Contains(t *testing.T) {

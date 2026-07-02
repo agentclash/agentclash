@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
 	enumspb "go.temporal.io/api/enums/v1"
 	sdkworkflow "go.temporal.io/sdk/workflow"

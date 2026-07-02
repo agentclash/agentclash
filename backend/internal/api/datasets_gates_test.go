@@ -6,9 +6,9 @@ import (
 	"errors"
 	"testing"
 
-	datasetgate "github.com/agentclash/agentclash/backend/internal/datasets/gate"
-	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	datasetgate "github.com/agentclash/agentclash/runtime/datasets/gate"
+	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
 )
 
@@ -80,7 +80,7 @@ func TestEvaluateDatasetGateRejectsInputSetMismatch(t *testing.T) {
 		baseline: repository.DatasetBaseline{
 			ID: baselineID, DatasetID: datasetID, DatasetVersionID: versionID,
 			DatasetVersionInputSetID: &baselineInputSetID,
-			ExampleOutcomes: gateTestJSON([]datasetgate.ExampleOutcome{{DatasetExampleID: exampleID, Verdict: &pass}}),
+			ExampleOutcomes:          gateTestJSON([]datasetgate.ExampleOutcome{{DatasetExampleID: exampleID, Verdict: &pass}}),
 		},
 		candidateOutcomes: []datasetgate.ExampleOutcome{{DatasetExampleID: exampleID, Verdict: &pass}},
 		run:               domain.Run{ID: uuid.New(), WorkspaceID: workspaceID, Status: domain.RunStatusCompleted},

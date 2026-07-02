@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
 )
 
@@ -1129,10 +1129,10 @@ func (f *fakeReplayReadRepository) ListLLMJudgeResultsByRunAgentAndEvaluationSpe
 }
 
 type fakeReplayReadService struct {
-	replayResult    GetRunAgentReplayResult
-	replayErr       error
-	scorecardResult GetRunAgentScorecardResult
-	scorecardErr    error
+	replayResult     GetRunAgentReplayResult
+	replayErr        error
+	scorecardResult  GetRunAgentScorecardResult
+	scorecardErr     error
 	transcriptResult GetRunAgentTranscriptResult
 	transcriptErr    error
 }

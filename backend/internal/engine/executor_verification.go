@@ -9,8 +9,8 @@ import (
 	"strings"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
-	"github.com/agentclash/agentclash/backend/internal/sandbox"
-	"github.com/agentclash/agentclash/backend/internal/scoring"
+	"github.com/agentclash/agentclash/runtime/sandbox"
+	"github.com/agentclash/agentclash/runtime/scoring"
 )
 
 // extractPostExecutionChecks loads post-execution check declarations from the

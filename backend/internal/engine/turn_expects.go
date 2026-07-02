@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
-	"github.com/agentclash/agentclash/backend/internal/scoring"
+	"github.com/agentclash/agentclash/runtime/challengepack"
+	"github.com/agentclash/agentclash/runtime/scoring"
 )
 
 // evaluateTurnExpects returns true when any declared expectation fails (mismatch).

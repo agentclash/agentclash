@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/runtime/sandbox"
 )
 
 // recordingSession is a slightly richer fakeSandboxSession that

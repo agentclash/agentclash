@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 )
 

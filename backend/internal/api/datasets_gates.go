@@ -7,9 +7,9 @@ import (
 	"log/slog"
 	"net/http"
 
-	datasetgate "github.com/agentclash/agentclash/backend/internal/datasets/gate"
-	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	datasetgate "github.com/agentclash/agentclash/runtime/datasets/gate"
+	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
 )
 
@@ -54,9 +54,9 @@ type EvaluateDatasetGateInput struct {
 }
 
 type EvaluateDatasetGateResult struct {
-	Baseline repository.DatasetBaseline `json:"baseline"`
-	CandidateRunID uuid.UUID            `json:"candidate_run_id"`
-	Gate       datasetgate.Result       `json:"gate"`
+	Baseline       repository.DatasetBaseline `json:"baseline"`
+	CandidateRunID uuid.UUID                  `json:"candidate_run_id"`
+	Gate           datasetgate.Result         `json:"gate"`
 }
 
 func (m *DatasetManager) CreateDatasetBaseline(ctx context.Context, caller Caller, input CreateDatasetBaselineInput) (repository.DatasetBaseline, error) {

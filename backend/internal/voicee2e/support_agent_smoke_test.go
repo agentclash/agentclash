@@ -7,10 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/multimodaltrace"
 	"github.com/agentclash/agentclash/backend/internal/releasegate"
-	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/voiceartifacts"
 	"github.com/agentclash/agentclash/backend/internal/voicedeployment"
 	"github.com/agentclash/agentclash/backend/internal/voiceeval"
@@ -19,6 +17,8 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/voicescorecard"
 	"github.com/agentclash/agentclash/backend/internal/voicesim"
 	"github.com/agentclash/agentclash/backend/internal/voicetextsim"
+	"github.com/agentclash/agentclash/runtime/challengepack"
+	"github.com/agentclash/agentclash/runtime/runevents"
 )
 
 // Smoke command: go test ./internal/voicee2e -run TestSupportAgentVoiceEvalLoopSmoke -count=1

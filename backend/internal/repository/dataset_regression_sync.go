@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/domain"
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
+	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -37,7 +37,7 @@ type SyncDatasetRegressionSuiteParams struct {
 
 type SyncDatasetRegressionSuiteResult struct {
 	Link          DatasetRegressionSuiteLink `json:"link"`
-	Suite         RegressionSuite          `json:"suite"`
+	Suite         RegressionSuite            `json:"suite"`
 	CreatedCases  int                        `json:"created_cases"`
 	SkippedCases  int                        `json:"skipped_cases"`
 	TotalExamples int                        `json:"total_examples"`

@@ -10,12 +10,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/multimodaltrace"
-	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/voicedeployment"
 	"github.com/agentclash/agentclash/backend/internal/voicefixtures"
 	"github.com/agentclash/agentclash/backend/internal/voicesim"
+	"github.com/agentclash/agentclash/runtime/challengepack"
+	"github.com/agentclash/agentclash/runtime/runevents"
 )
 
 var updateGoldens = flag.Bool("update", false, "update generated text-sim golden files")

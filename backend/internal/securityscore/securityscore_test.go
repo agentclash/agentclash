@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/runtime/challengepack"
 )
 
 func samplePolicy() *challengepack.SecurityPolicy {
@@ -245,9 +245,9 @@ func TestScore_SortIncidentsBySeverityThenIndex(t *testing.T) {
 	policy := samplePolicy()
 	score, _ := Score(policy, RunArtifact{
 		Messages: []Message{
-			{Role: "assistant", Content: "background noise sk_live_x", Index: 7}, // pattern severity inherits high (default)
+			{Role: "assistant", Content: "background noise sk_live_x", Index: 7},   // pattern severity inherits high (default)
 			{Role: "assistant", Content: "agentclash-canary-stripe-XYZ", Index: 3}, // critical
-			{Role: "assistant", Content: "AKIAABCDEFGH12345678", Index: 5},        // high
+			{Role: "assistant", Content: "AKIAABCDEFGH12345678", Index: 5},         // high
 		},
 	})
 	if len(score.Incidents) < 3 {

@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/templateutil"
+	"github.com/agentclash/agentclash/runtime/templateutil"
 )
 
 func TestResolveTemplateMap_EncodesReferencesForTheirDestination(t *testing.T) {

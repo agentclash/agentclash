@@ -4,10 +4,13 @@
 // and called by the engine when a real run completes.
 //
 // Input: a SecurityPolicy + a RunArtifact (transcript + tool outputs +
-//        optional network log).
+//
+//	optional network log).
+//
 // Output: a SecurityScore with the list of triggered incidents, severity
-//         breakdown, an aggregate posture in [0,1], and a pass/fail
-//         verdict against the policy's DefaultSeverity gate.
+//
+//	breakdown, an aggregate posture in [0,1], and a pass/fail
+//	verdict against the policy's DefaultSeverity gate.
 //
 // What this PR does NOT do: wire the scorer into the run-completion flow
 // (lands in a follow-up that touches internal/engine). Network egress
@@ -20,7 +23,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/runtime/challengepack"
 )
 
 // RunArtifact is the input shape the scorer reads. Callers materialize it
