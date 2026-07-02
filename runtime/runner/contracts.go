@@ -42,7 +42,7 @@ func (f Failure) Error() string {
 	if strings.TrimSpace(f.Message) != "" {
 		return f.Message
 	}
-	return fmt.Sprintf("runtime runner stopped: %s", f.StopReason)
+	return fmt.Sprintf("native engine stopped: %s", f.StopReason)
 }
 
 func (f Failure) Unwrap() error {

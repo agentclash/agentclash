@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"context"
 	"errors"
 	"testing"
 )
@@ -23,7 +24,7 @@ func TestFailureUnwrapAndAsFailure(t *testing.T) {
 
 func TestNoopObserverSatisfiesObserver(t *testing.T) {
 	var observer Observer = NoopObserver{}
-	if observer == nil {
-		t.Fatal("NoopObserver must satisfy Observer")
+	if err := observer.OnStepStart(context.Background(), 1); err != nil {
+		t.Fatalf("NoopObserver.OnStepStart: %v", err)
 	}
 }

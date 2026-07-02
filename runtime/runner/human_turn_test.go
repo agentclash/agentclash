@@ -45,6 +45,25 @@ func TestPollHumanTurnGateExpiresOnTimeout(t *testing.T) {
 	}
 }
 
+func TestPollHumanTurnGateReturnsParentCancellation(t *testing.T) {
+	store := &fakeHumanTurnStore{}
+	gate := NewPollHumanTurnGate(store)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := gate.WaitForHumanTurn(ctx, HumanTurnRequest{
+		RunAgentID: uuid.New(),
+		TurnIndex:  1,
+		Timeout:    time.Hour,
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v; want context.Canceled", err)
+	}
+	if store.markedExpired {
+		t.Fatal("parent cancellation must not mark human turn expired")
+	}
+}
+
 type fakeHumanTurnStore struct {
 	message        string
 	markedAwaiting bool
