@@ -9,6 +9,7 @@ import (
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/agentclash/agentclash/runtime/sandbox"
 )
 
@@ -72,11 +73,9 @@ func (e NativeExecutor) BeginConversation(ctx context.Context, executionContext 
 		return nil, nil, err
 	}
 
-	runCtx := provider.WithWorkspaceSecrets(ctx, workspaceSecrets)
-	cancel := func() {}
-	if timeout := runTimeout(executionContext); timeout > 0 {
-		runCtx, cancel = context.WithTimeout(runCtx, timeout)
-	}
+	runtimeCtx := runner.WithRuntimeTimeout(provider.WithWorkspaceSecrets(ctx, workspaceSecrets), runTimeout(executionContext))
+	runCtx := runtimeCtx.Context
+	cancel := runtimeCtx.Cancel
 
 	initialMessages, err := buildInitialMessages(executionContext)
 	if err != nil {
