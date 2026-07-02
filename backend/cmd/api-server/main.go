@@ -12,12 +12,12 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/connection"
 	"github.com/agentclash/agentclash/backend/internal/email"
 	"github.com/agentclash/agentclash/backend/internal/posthog"
-	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/ratelimit"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/backend/internal/temporalutil"
+	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

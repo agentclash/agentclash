@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/domain"
 )
 
 type OrphanRunReaperRepository interface {

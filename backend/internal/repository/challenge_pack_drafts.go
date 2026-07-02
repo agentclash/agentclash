@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
+	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )

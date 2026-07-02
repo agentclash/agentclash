@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/voiceartifacts"
+	"github.com/agentclash/agentclash/runtime/runevents"
 )
 
 func TestBuildSupportBillingReplayGoldenJSON(t *testing.T) {

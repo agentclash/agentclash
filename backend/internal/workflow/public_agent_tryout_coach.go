@@ -7,11 +7,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
-	"github.com/agentclash/agentclash/backend/internal/runevents"
-	"github.com/agentclash/agentclash/backend/internal/scoring"
 	"github.com/agentclash/agentclash/backend/internal/toolspec"
+	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/runevents"
+	"github.com/agentclash/agentclash/runtime/scoring"
 )
 
 // AI coaching for public tryouts. After a judge verdict exists, a small hosted

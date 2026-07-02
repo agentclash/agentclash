@@ -5,8 +5,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/agentclash/agentclash/backend/internal/toolspec"
+	"github.com/agentclash/agentclash/runtime/sandbox"
 )
 
 // TestPrimitiveCatalogMatchesNativePrimitives guards against drift between the

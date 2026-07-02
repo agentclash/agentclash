@@ -6,20 +6,20 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/engine"
-	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/domain"
+	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 	"go.temporal.io/sdk/temporal"
 )
 
 func TestWrapActivityError(t *testing.T) {
 	tests := []struct {
-		name            string
-		err             error
-		wantNil         bool
-		wantType        string
+		name             string
+		err              error
+		wantNil          bool
+		wantType         string
 		wantNonRetryable bool
 		wantPassthrough  bool // error returned as-is, not an ApplicationError
 	}{
@@ -29,87 +29,87 @@ func TestWrapActivityError(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			name:            "ErrRunNotFound",
-			err:             repository.ErrRunNotFound,
-			wantType:        repositoryRunNotFoundErrorType,
+			name:             "ErrRunNotFound",
+			err:              repository.ErrRunNotFound,
+			wantType:         repositoryRunNotFoundErrorType,
 			wantNonRetryable: true,
 		},
 		{
-			name:            "ErrRunAgentNotFound",
-			err:             repository.ErrRunAgentNotFound,
-			wantType:        repositoryRunAgentNotFoundErrorType,
+			name:             "ErrRunAgentNotFound",
+			err:              repository.ErrRunAgentNotFound,
+			wantType:         repositoryRunAgentNotFoundErrorType,
 			wantNonRetryable: true,
 		},
 		{
-			name:            "ErrFrozenExecutionContext",
-			err:             repository.ErrFrozenExecutionContext,
-			wantType:        repositoryFrozenExecutionContextType,
+			name:             "ErrFrozenExecutionContext",
+			err:              repository.ErrFrozenExecutionContext,
+			wantType:         repositoryFrozenExecutionContextType,
 			wantNonRetryable: true,
 		},
 		{
-			name:            "ErrTemporalIDConflict",
-			err:             repository.ErrTemporalIDConflict,
-			wantType:        repositoryTemporalIDConflictType,
+			name:             "ErrTemporalIDConflict",
+			err:              repository.ErrTemporalIDConflict,
+			wantType:         repositoryTemporalIDConflictType,
 			wantNonRetryable: true,
 		},
 		{
-			name:            "ErrInvalidTransition",
-			err:             repository.ErrInvalidTransition,
-			wantType:        repositoryInvalidTransitionType,
+			name:             "ErrInvalidTransition",
+			err:              repository.ErrInvalidTransition,
+			wantType:         repositoryInvalidTransitionType,
 			wantNonRetryable: true,
 		},
 		{
-			name:            "ErrTransitionConflict",
-			err:             repository.ErrTransitionConflict,
-			wantType:        repositoryTransitionConflictType,
+			name:             "ErrTransitionConflict",
+			err:              repository.ErrTransitionConflict,
+			wantType:         repositoryTransitionConflictType,
 			wantNonRetryable: true,
 		},
 		{
-			name:            "engine failure timeout is non-retryable",
-			err:             engine.NewFailure(engine.StopReasonTimeout, "timed out", nil),
-			wantType:        "engine.timeout",
+			name:             "engine failure timeout is non-retryable",
+			err:              engine.NewFailure(engine.StopReasonTimeout, "timed out", nil),
+			wantType:         "engine.timeout",
 			wantNonRetryable: true,
 		},
 		{
-			name:            "engine failure step_limit is non-retryable",
-			err:             engine.NewFailure(engine.StopReasonStepLimit, "steps exceeded", nil),
-			wantType:        "engine.step_limit",
+			name:             "engine failure step_limit is non-retryable",
+			err:              engine.NewFailure(engine.StopReasonStepLimit, "steps exceeded", nil),
+			wantType:         "engine.step_limit",
 			wantNonRetryable: true,
 		},
 		{
-			name:            "engine failure provider_error is non-retryable",
-			err:             engine.NewFailure(engine.StopReasonProviderError, "provider down", nil),
-			wantType:        "engine.provider_error",
+			name:             "engine failure provider_error is non-retryable",
+			err:              engine.NewFailure(engine.StopReasonProviderError, "provider down", nil),
+			wantType:         "engine.provider_error",
 			wantNonRetryable: true,
 		},
 		{
-			name:            "engine failure sandbox_error is retryable",
-			err:             engine.NewFailure(engine.StopReasonSandboxError, "sandbox crashed", nil),
-			wantType:        "engine.sandbox_error",
+			name:             "engine failure sandbox_error is retryable",
+			err:              engine.NewFailure(engine.StopReasonSandboxError, "sandbox crashed", nil),
+			wantType:         "engine.sandbox_error",
 			wantNonRetryable: false,
 		},
 		{
-			name:            "engine failure observer_error is non-retryable",
-			err:             engine.NewFailure(engine.StopReasonObserverError, "observer failed", nil),
-			wantType:        "engine.observer_error",
+			name:             "engine failure observer_error is non-retryable",
+			err:              engine.NewFailure(engine.StopReasonObserverError, "observer failed", nil),
+			wantType:         "engine.observer_error",
 			wantNonRetryable: true,
 		},
 		{
-			name:            "provider failure non-retryable auth",
-			err:             provider.NewFailure("openai", provider.FailureCodeAuth, "bad key", false, nil),
-			wantType:        "provider.auth",
+			name:             "provider failure non-retryable auth",
+			err:              provider.NewFailure("openai", provider.FailureCodeAuth, "bad key", false, nil),
+			wantType:         "provider.auth",
 			wantNonRetryable: true,
 		},
 		{
-			name:            "provider failure retryable rate_limit",
-			err:             provider.NewFailure("openai", provider.FailureCodeRateLimit, "rate limited", true, nil),
-			wantType:        "provider.rate_limit",
+			name:             "provider failure retryable rate_limit",
+			err:              provider.NewFailure("openai", provider.FailureCodeRateLimit, "rate limited", true, nil),
+			wantType:         "provider.rate_limit",
 			wantNonRetryable: false,
 		},
 		{
-			name:            "provider failure non-retryable invalid_request",
-			err:             provider.NewFailure("openai", provider.FailureCodeInvalidRequest, "bad request", false, nil),
-			wantType:        "provider.invalid_request",
+			name:             "provider failure non-retryable invalid_request",
+			err:              provider.NewFailure("openai", provider.FailureCodeInvalidRequest, "bad request", false, nil),
+			wantType:         "provider.invalid_request",
 			wantNonRetryable: true,
 		},
 		{
@@ -118,9 +118,9 @@ func TestWrapActivityError(t *testing.T) {
 			wantPassthrough: true,
 		},
 		{
-			name:            "wrapped repository error still detected",
-			err:             fmt.Errorf("wrap: %w", repository.ErrRunNotFound),
-			wantType:        repositoryRunNotFoundErrorType,
+			name:             "wrapped repository error still detected",
+			err:              fmt.Errorf("wrap: %w", repository.ErrRunNotFound),
+			wantType:         repositoryRunNotFoundErrorType,
 			wantNonRetryable: true,
 		},
 	}

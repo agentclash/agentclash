@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/billing"
-	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
 )
 
@@ -70,7 +70,7 @@ type CreateRunInput struct {
 	SeriesMatrixKey            string
 	SeriesDeploymentLineup     string
 	CIMetadata                 *domain.RunCIMetadata
-	DatasetEvalRun            *repository.RecordDatasetEvalRunParams
+	DatasetEvalRun             *repository.RecordDatasetEvalRunParams
 }
 
 type CreateRunResult struct {

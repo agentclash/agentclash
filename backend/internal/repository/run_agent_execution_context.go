@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
-	"github.com/agentclash/agentclash/backend/internal/domain"
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
+	"github.com/agentclash/agentclash/runtime/challengepack"
+	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -56,18 +56,18 @@ type ChallengeInputSetExecutionContext struct {
 }
 
 type ChallengeCaseExecutionContext struct {
-	ID                  uuid.UUID                       `json:"id"`
-	ChallengeIdentityID uuid.UUID                       `json:"challenge_identity_id"`
-	RegressionCaseID    *uuid.UUID                      `json:"regression_case_id,omitempty"`
-	ChallengeKey        string                          `json:"challenge_key"`
-	CaseKey             string                          `json:"case_key"`
-	ItemKey             string                          `json:"item_key"`
-	Payload             json.RawMessage                 `json:"payload,omitempty"`
-	Inputs              []challengepack.CaseInput       `json:"inputs,omitempty"`
-	Expectations        []challengepack.CaseExpectation `json:"expectations,omitempty"`
+	ID                  uuid.UUID                        `json:"id"`
+	ChallengeIdentityID uuid.UUID                        `json:"challenge_identity_id"`
+	RegressionCaseID    *uuid.UUID                       `json:"regression_case_id,omitempty"`
+	ChallengeKey        string                           `json:"challenge_key"`
+	CaseKey             string                           `json:"case_key"`
+	ItemKey             string                           `json:"item_key"`
+	Payload             json.RawMessage                  `json:"payload,omitempty"`
+	Inputs              []challengepack.CaseInput        `json:"inputs,omitempty"`
+	Expectations        []challengepack.CaseExpectation  `json:"expectations,omitempty"`
 	UserSimulator       *challengepack.UserSimulatorSpec `json:"user_simulator,omitempty"`
-	Artifacts           []challengepack.ArtifactRef     `json:"artifacts,omitempty"`
-	Assets              []challengepack.AssetReference  `json:"assets,omitempty"`
+	Artifacts           []challengepack.ArtifactRef      `json:"artifacts,omitempty"`
+	Assets              []challengepack.AssetReference   `json:"assets,omitempty"`
 }
 
 type ChallengeInputItemExecutionContext struct {

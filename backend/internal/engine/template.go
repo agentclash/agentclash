@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/templateutil"
+	"github.com/agentclash/agentclash/runtime/templateutil"
 )
 
 type templateResolutionOptions struct {

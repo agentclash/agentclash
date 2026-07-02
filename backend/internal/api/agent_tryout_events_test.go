@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
-	"github.com/agentclash/agentclash/backend/internal/runevents"
+	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )

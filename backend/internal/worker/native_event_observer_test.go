@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/engine"
-	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
-	"github.com/agentclash/agentclash/backend/internal/runevents"
-	"github.com/agentclash/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/runevents"
+	"github.com/agentclash/agentclash/runtime/sandbox"
 )
 
 func TestNativeModelInvokerPersistsCanonicalEventsForMultiStepRun(t *testing.T) {

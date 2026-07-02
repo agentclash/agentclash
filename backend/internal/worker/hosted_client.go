@@ -9,8 +9,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/hostedruns"
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
+	"github.com/agentclash/agentclash/runtime/hostedruns"
 )
 
 type HostedRunClient struct {

@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/agentclash/agentclash/backend/internal/connection"
-	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/toolspec"
+	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 )
 

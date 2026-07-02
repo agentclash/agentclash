@@ -3,7 +3,7 @@ package engine
 import (
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/runtime/challengepack"
 )
 
 type untilEvalContext struct {

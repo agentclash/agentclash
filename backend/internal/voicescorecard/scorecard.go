@@ -7,8 +7,8 @@ import (
 	"math"
 
 	"github.com/agentclash/agentclash/backend/internal/multimodaltrace"
-	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/voiceeval"
+	"github.com/agentclash/agentclash/runtime/runevents"
 )
 
 const SchemaVersionV1 = "2026-05-13"

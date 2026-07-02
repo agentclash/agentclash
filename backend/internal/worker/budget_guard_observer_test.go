@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/engine"
-	"github.com/agentclash/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/runtime/provider"
 )
 
 func responseWithUsage(input, output int64) provider.Response {

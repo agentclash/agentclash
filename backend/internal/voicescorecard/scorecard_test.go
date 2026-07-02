@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/multimodaltrace"
-	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/voiceeval"
+	"github.com/agentclash/agentclash/runtime/runevents"
 )
 
 func TestGeneratePerfectScorecardGoldenJSON(t *testing.T) {

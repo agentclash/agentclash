@@ -7,7 +7,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/runtime/challengepack"
 )
 
 var updateGoldens = flag.Bool("update", false, "update generated golden fixture files")

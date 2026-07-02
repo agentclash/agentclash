@@ -3,8 +3,8 @@ package engine
 import (
 	"log/slog"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/challengepack"
 )
 
 func caseTemplateContextForExecution(executionContext repository.RunAgentExecutionContext) challengepack.CaseTemplateContext {

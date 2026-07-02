@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/challengepack"
+	"github.com/agentclash/agentclash/runtime/challengepack"
 )
 
 // challengePieceLibraryHandler serves the in-code starter piece catalog (the

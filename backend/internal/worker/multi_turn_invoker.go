@@ -4,11 +4,11 @@ import (
 	"context"
 
 	"github.com/agentclash/agentclash/backend/internal/engine"
-	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/racecontext"
 	"github.com/agentclash/agentclash/backend/internal/repository"
-	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/agentclash/agentclash/backend/internal/simulator"
+	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/sandbox"
 )
 
 type MultiTurnInvoker struct {

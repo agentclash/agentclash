@@ -8,15 +8,15 @@ import (
 	"syscall"
 
 	"github.com/agentclash/agentclash/backend/internal/posthog"
-	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/repository"
-	"github.com/agentclash/agentclash/backend/internal/sandbox"
 	"github.com/agentclash/agentclash/backend/internal/sandbox/e2b"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/backend/internal/temporalutil"
 	workerapp "github.com/agentclash/agentclash/backend/internal/worker"
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
+	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/sandbox"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 

@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/billing"
-	"github.com/agentclash/agentclash/backend/internal/domain"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
 )
 

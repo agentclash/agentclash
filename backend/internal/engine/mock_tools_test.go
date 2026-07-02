@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/runtime/sandbox"
 )
 
 func TestMockTool_StaticStrategy(t *testing.T) {

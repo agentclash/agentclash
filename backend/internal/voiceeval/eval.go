@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/multimodaltrace"
-	"github.com/agentclash/agentclash/backend/internal/runevents"
+	"github.com/agentclash/agentclash/runtime/runevents"
 )
 
 var ErrInvalidInput = errors.New("invalid voice eval input")

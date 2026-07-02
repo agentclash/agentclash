@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/domain"
-	"github.com/agentclash/agentclash/backend/internal/provider"
 	"github.com/agentclash/agentclash/backend/internal/repository"
-	"github.com/agentclash/agentclash/backend/internal/runevents"
+	"github.com/agentclash/agentclash/runtime/domain"
+	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/google/uuid"
 )
 

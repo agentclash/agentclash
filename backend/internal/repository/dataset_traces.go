@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	datasettraces "github.com/agentclash/agentclash/backend/internal/datasets/traces"
-	"github.com/agentclash/agentclash/backend/internal/domain"
-	"github.com/agentclash/agentclash/backend/internal/runevents"
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
+	datasettraces "github.com/agentclash/agentclash/runtime/datasets/traces"
+	"github.com/agentclash/agentclash/runtime/domain"
+	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -33,23 +33,23 @@ type DatasetTraceImport struct {
 }
 
 type DatasetTraceCandidate struct {
-	ID                 uuid.UUID                   `json:"id"`
-	DatasetID          uuid.UUID                   `json:"dataset_id"`
-	ImportID           uuid.UUID                   `json:"import_id"`
-	SourcePlatform     string                      `json:"source_platform"`
-	SourceTraceID      *string                     `json:"source_trace_id,omitempty"`
-	SourceRunID        *uuid.UUID                  `json:"source_run_id,omitempty"`
-	SourceRunAgentID   *uuid.UUID                  `json:"source_run_agent_id,omitempty"`
-	ExternalID         *string                     `json:"external_id,omitempty"`
-	Input              json.RawMessage             `json:"input"`
-	Output             json.RawMessage             `json:"output,omitempty"`
-	Expected           json.RawMessage             `json:"expected,omitempty"`
-	Metadata           json.RawMessage             `json:"metadata"`
-	Tags               []string                    `json:"tags"`
-	Status             string                      `json:"status"`
-	PromotedExampleID  *uuid.UUID                  `json:"promoted_example_id,omitempty"`
-	CreatedAt          time.Time                   `json:"created_at"`
-	UpdatedAt          time.Time                   `json:"updated_at"`
+	ID                uuid.UUID       `json:"id"`
+	DatasetID         uuid.UUID       `json:"dataset_id"`
+	ImportID          uuid.UUID       `json:"import_id"`
+	SourcePlatform    string          `json:"source_platform"`
+	SourceTraceID     *string         `json:"source_trace_id,omitempty"`
+	SourceRunID       *uuid.UUID      `json:"source_run_id,omitempty"`
+	SourceRunAgentID  *uuid.UUID      `json:"source_run_agent_id,omitempty"`
+	ExternalID        *string         `json:"external_id,omitempty"`
+	Input             json.RawMessage `json:"input"`
+	Output            json.RawMessage `json:"output,omitempty"`
+	Expected          json.RawMessage `json:"expected,omitempty"`
+	Metadata          json.RawMessage `json:"metadata"`
+	Tags              []string        `json:"tags"`
+	Status            string          `json:"status"`
+	PromotedExampleID *uuid.UUID      `json:"promoted_example_id,omitempty"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
 }
 
 type ImportDatasetTracesParams struct {

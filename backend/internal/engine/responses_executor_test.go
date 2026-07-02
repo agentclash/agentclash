@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/provider"
-	"github.com/agentclash/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/sandbox"
 )
 
 func TestResponsesExecutorSingleResearchCall(t *testing.T) {

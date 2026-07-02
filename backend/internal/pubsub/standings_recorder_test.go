@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
-	"github.com/agentclash/agentclash/backend/internal/runevents"
+	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/google/uuid"
 )
 
@@ -52,16 +52,16 @@ func TestStandingsRecorderRoutesEventTypes(t *testing.T) {
 	})
 
 	cases := []struct {
-		name        string
-		eventType   runevents.Type
-		stepIndex   int
-		payload     json.RawMessage
-		wantStore   bool
-		wantState   StandingsState
-		wantStep    int
-		wantTokens  int64
-		wantTool    int
-		wantModel   string
+		name       string
+		eventType  runevents.Type
+		stepIndex  int
+		payload    json.RawMessage
+		wantStore  bool
+		wantState  StandingsState
+		wantStep   int
+		wantTokens int64
+		wantTool   int
+		wantModel  string
 	}{
 		{
 			name:      "run.started → state running",
@@ -298,4 +298,3 @@ func TestDecodeStandingsHashFieldRejectsCorruptFields(t *testing.T) {
 		})
 	}
 }
-

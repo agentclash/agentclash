@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/provider"
+	"github.com/agentclash/agentclash/runtime/provider"
 )
 
 // TestNativeConversationContext_ExposesRunCtxForSimulator guards the contract

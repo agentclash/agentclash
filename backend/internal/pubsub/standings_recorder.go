@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
-	"github.com/agentclash/agentclash/backend/internal/runevents"
 	"github.com/agentclash/agentclash/backend/internal/worker"
+	"github.com/agentclash/agentclash/runtime/runevents"
 )
 
 // StandingsRecorder wraps a worker.RunEventRecorder and mirrors a subset

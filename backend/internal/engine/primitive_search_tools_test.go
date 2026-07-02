@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/sandbox"
+	"github.com/agentclash/agentclash/runtime/sandbox"
 )
 
 func TestSearchFilesTool_ReturnsStructuredMatches(t *testing.T) {
