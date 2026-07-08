@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 
@@ -99,8 +100,10 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 				slog.Default().Error("docker sandbox image pull failed", "image", imageRef, "error", pullErr, "duration", time.Since(startedAt))
 				return nil, pullErr
 			}
+			// Retry after pull; reassigns both id and err.
 			id, err = p.engine.ContainerCreate(ctx, cfg, hostCfg, name)
 		}
+		// err is either the original non-image-missing error, or the post-pull retry error.
 		if err != nil {
 			slog.Default().Error("docker sandbox create failed", "image", imageRef, "error", err, "duration", time.Since(startedAt))
 			return nil, err
@@ -139,11 +142,29 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 }
 
 func (p *Provider) installAdditionalPackages(ctx context.Context, sess *session, request sandbox.CreateRequest) error {
-	installCmd := "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends " + strings.Join(request.AdditionalPackages, " ")
-	// Bypass AllowShell: package install is provider infrastructure, not agent shell.
+	packages, err := validateDebianPackageNames(request.AdditionalPackages)
+	if err != nil {
+		return err
+	}
+
+	// Provider infrastructure: argv form only (no shell) so package names cannot inject.
+	update, err := sess.execInternal(ctx, sandbox.ExecRequest{
+		Command:     []string{"apt-get", "update"},
+		Environment: map[string]string{"DEBIAN_FRONTEND": "noninteractive"},
+		Timeout:     120 * time.Second,
+	})
+	if err != nil {
+		return fmt.Errorf("additional packages apt-get update: %w", err)
+	}
+	if update.ExitCode != 0 {
+		return fmt.Errorf("additional packages apt-get update failed: exit=%d stderr=%s", update.ExitCode, update.Stderr)
+	}
+
+	installCmd := append([]string{"apt-get", "install", "-y", "--no-install-recommends"}, packages...)
 	result, err := sess.execInternal(ctx, sandbox.ExecRequest{
-		Command: []string{"sh", "-c", installCmd},
-		Timeout: 120 * time.Second,
+		Command:     installCmd,
+		Environment: map[string]string{"DEBIAN_FRONTEND": "noninteractive"},
+		Timeout:     120 * time.Second,
 	})
 	if err != nil {
 		return fmt.Errorf("additional packages install: %w", err)
@@ -152,6 +173,27 @@ func (p *Provider) installAdditionalPackages(ctx context.Context, sess *session,
 		return fmt.Errorf("additional packages install failed: exit=%d stderr=%s", result.ExitCode, result.Stderr)
 	}
 	return nil
+}
+
+// debianPackageNamePattern matches Debian package names (see Debian Policy §5.6.1).
+var debianPackageNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9+.\-]*$`)
+
+func validateDebianPackageNames(packages []string) ([]string, error) {
+	if len(packages) == 0 {
+		return nil, nil
+	}
+	out := make([]string, 0, len(packages))
+	for _, raw := range packages {
+		name := strings.TrimSpace(raw)
+		if name == "" {
+			return nil, fmt.Errorf("additional package name is empty")
+		}
+		if !debianPackageNamePattern.MatchString(name) {
+			return nil, fmt.Errorf("invalid additional package name %q", raw)
+		}
+		out = append(out, name)
+	}
+	return out, nil
 }
 
 func containerName(runAgentID uuid.UUID) string {
@@ -180,6 +222,6 @@ func isImageMissing(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "no such image") ||
-		strings.Contains(msg, "not found") && strings.Contains(msg, "image") ||
+		(strings.Contains(msg, "not found") && strings.Contains(msg, "image")) ||
 		strings.Contains(msg, "repository does not exist")
 }

@@ -6,14 +6,13 @@ import (
 )
 
 const (
-	defaultImage              = "python:3.12-slim"
-	defaultWorkingDirectory   = "/workspace"
-	defaultStopTimeout        = 10 * time.Second
-	defaultCreateTimeout      = 2 * time.Minute
-	labelManagedBy            = "agentclash.managed-by"
-	labelManagedByValue       = "runtime-sandbox-docker"
-	labelRunID                = "agentclash.run-id"
-	labelRunAgentID           = "agentclash.run-agent-id"
+	defaultImage            = "python:3.12-slim"
+	defaultWorkingDirectory = "/workspace"
+	defaultStopTimeout      = 10 * time.Second
+	labelManagedBy          = "agentclash.managed-by"
+	labelManagedByValue     = "runtime-sandbox-docker"
+	labelRunID              = "agentclash.run-id"
+	labelRunAgentID         = "agentclash.run-agent-id"
 )
 
 // Config controls Docker sandbox defaults. Empty fields use safe local defaults.

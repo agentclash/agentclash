@@ -211,6 +211,8 @@ func (f *fakeEngine) simulateExec(id string, cfg container.ExecOptions) (stdout,
 		return strings.Join(lines, "\n"), "", 0
 	case "echo":
 		return strings.Join(cfg.Cmd[1:], " ") + "\n", "", 0
+	case "apt-get":
+		return "", "", 0
 	case "sh", "bash":
 		// Support `sh -c 'printf ...'` style used in smoke; keep simple.
 		if len(cfg.Cmd) >= 3 && (cfg.Cmd[1] == "-c" || cfg.Cmd[1] == "-lc") {
