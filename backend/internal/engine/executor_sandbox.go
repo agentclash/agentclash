@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/agentclash/agentclash/runtime/sandbox"
 	"github.com/google/uuid"
 )
@@ -21,11 +21,11 @@ const (
 	sandboxCleanupTimeout          = 15 * time.Second
 )
 
-func (e NativeExecutor) prepareSandbox(ctx context.Context, executionContext repository.RunAgentExecutionContext, request sandbox.CreateRequest) (sandbox.Session, error) {
+func (e NativeExecutor) prepareSandbox(ctx context.Context, executionContext runner.ExecutionContext, request sandbox.CreateRequest) (sandbox.Session, error) {
 	return prepareRunSandbox(ctx, e.sandboxProvider, e.assetLoader, executionContext, request)
 }
 
-func prepareRunSandbox(ctx context.Context, sandboxProvider sandbox.Provider, assetLoader AssetLoader, executionContext repository.RunAgentExecutionContext, request sandbox.CreateRequest) (sandbox.Session, error) {
+func prepareRunSandbox(ctx context.Context, sandboxProvider sandbox.Provider, assetLoader AssetLoader, executionContext runner.ExecutionContext, request sandbox.CreateRequest) (sandbox.Session, error) {
 	session, err := sandboxProvider.Create(ctx, request)
 	if err != nil {
 		return nil, NewFailure(StopReasonSandboxError, "create sandbox", err)
@@ -72,7 +72,7 @@ func cleanupSandboxOnError(session sandbox.Session, originalErr error) error {
 	return originalErr
 }
 
-func nativeSandboxRequest(executionContext repository.RunAgentExecutionContext) (sandbox.CreateRequest, error) {
+func nativeSandboxRequest(executionContext runner.ExecutionContext) (sandbox.CreateRequest, error) {
 	policy := sandbox.ToolPolicy{
 		AllowedToolKinds: allowedToolKinds(executionContext.ChallengePackVersion.Manifest),
 		AllowShell:       false,
@@ -125,7 +125,7 @@ func (e NativeExecutor) loadWorkspaceSecrets(ctx context.Context, workspaceID uu
 	return loaded, nil
 }
 
-func sandboxTTL(executionContext repository.RunAgentExecutionContext) time.Duration {
+func sandboxTTL(executionContext runner.ExecutionContext) time.Duration {
 	timeout := runTimeout(executionContext)
 	if timeout <= 0 {
 		return defaultSandboxTTL
@@ -133,7 +133,7 @@ func sandboxTTL(executionContext repository.RunAgentExecutionContext) time.Durat
 	return timeout + sandboxBootBuffer + sandboxCleanupTimeout
 }
 
-func sandboxLabels(executionContext repository.RunAgentExecutionContext) map[string]string {
+func sandboxLabels(executionContext runner.ExecutionContext) map[string]string {
 	return map[string]string{
 		"run_id":                    executionContext.Run.ID.String(),
 		"run_agent_id":              executionContext.RunAgent.ID.String(),

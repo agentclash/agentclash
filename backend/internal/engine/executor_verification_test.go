@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/agentclash/agentclash/runtime/sandbox"
 	"github.com/agentclash/agentclash/runtime/scoring"
 )
@@ -236,7 +236,7 @@ func TestExecuteCodeExecutionCheck_ParsesPytestCounts(t *testing.T) {
 		},
 	}
 
-	result := executeCodeExecutionCheck(context.Background(), session, repository.RunAgentExecutionContext{}, codeExecutionCheck{
+	result := executeCodeExecutionCheck(context.Background(), session, runner.ExecutionContext{}, codeExecutionCheck{
 		ValidatorKey: "tests_pass",
 		Target:       "file:generated_code",
 		TargetPath:   "/workspace/app.py",
@@ -268,9 +268,9 @@ func TestExecuteCodeExecutionCheck_RendersTestCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("marshal payload: %v", err)
 	}
-	executionContext := repository.RunAgentExecutionContext{
-		ChallengeInputSet: &repository.ChallengeInputSetExecutionContext{
-			Cases: []repository.ChallengeCaseExecutionContext{
+	executionContext := runner.ExecutionContext{
+		ChallengeInputSet: &runner.ChallengeInputSetExecutionContext{
+			Cases: []runner.ChallengeCaseExecutionContext{
 				{Payload: payload},
 			},
 		},
@@ -295,7 +295,7 @@ func TestExecuteCodeExecutionCheck_RendersTestCommand(t *testing.T) {
 func TestExecuteCodeExecutionCheck_Timeout(t *testing.T) {
 	session := &fakeSandboxSession{execErr: context.DeadlineExceeded}
 
-	result := executeCodeExecutionCheck(context.Background(), session, repository.RunAgentExecutionContext{}, codeExecutionCheck{
+	result := executeCodeExecutionCheck(context.Background(), session, runner.ExecutionContext{}, codeExecutionCheck{
 		ValidatorKey: "tests_pass",
 		Target:       "file:generated_code",
 		TargetPath:   "/workspace/app.py",
@@ -324,8 +324,8 @@ func TestCollectPostExecutionVerification_IncludesCodeExecution(t *testing.T) {
 		},
 	}
 
-	executionContext := repository.RunAgentExecutionContext{
-		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+	executionContext := runner.ExecutionContext{
+		ChallengePackVersion: runner.ChallengePackVersionExecutionContext{
 			Manifest: []byte(`{
 				"evaluation_spec": {
 					"name": "code-exec",

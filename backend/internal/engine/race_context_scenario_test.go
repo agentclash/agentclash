@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/racecontext"
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/runevents"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/google/uuid"
 )
 
@@ -46,7 +46,7 @@ func (p *programmableStandingsStore) Close() error { return nil }
 // simulateLoop advances the executor's injection predicate across
 // totalSteps iterations. Between each step the caller can mutate the
 // store snapshot. Returns the captured injections in order.
-func simulateLoop(t *testing.T, executor NativeExecutor, store *programmableStandingsStore, execCtx repository.RunAgentExecutionContext, totalSteps int, perStep func(step int, snapshot *programmableStandingsStore)) []StandingsInjection {
+func simulateLoop(t *testing.T, executor NativeExecutor, store *programmableStandingsStore, execCtx runner.ExecutionContext, totalSteps int, perStep func(step int, snapshot *programmableStandingsStore)) []StandingsInjection {
 	t.Helper()
 	state := &loopState{}
 	var captured []StandingsInjection
@@ -91,7 +91,7 @@ func TestRaceContextScenarioAcrossManySteps(t *testing.T) {
 	obs := &captureObserver{}
 	executor := NewNativeExecutor(nil, nil, obs).WithStandingsStore(store)
 
-	execCtx := repository.RunAgentExecutionContext{}
+	execCtx := runner.ExecutionContext{}
 	execCtx.Run.ID = uuid.New()
 	execCtx.Run.RaceContext = true
 	execCtx.RunAgent.ID = self
@@ -166,7 +166,7 @@ func TestRaceContextScenarioByteIdenticalWhenDisabled(t *testing.T) {
 	obs := &captureObserver{}
 	executor := NewNativeExecutor(nil, nil, obs).WithStandingsStore(store)
 
-	execCtx := repository.RunAgentExecutionContext{}
+	execCtx := runner.ExecutionContext{}
 	execCtx.Run.ID = uuid.New()
 	execCtx.Run.RaceContext = false // ← the switch
 	execCtx.RunAgent.ID = self
@@ -212,7 +212,7 @@ func TestRaceContextScenarioCustomCadencePerRun(t *testing.T) {
 
 	// Custom cadence = 5 steps (wider than the default 3).
 	custom := int32(5)
-	execCtx := repository.RunAgentExecutionContext{}
+	execCtx := runner.ExecutionContext{}
 	execCtx.Run.ID = uuid.New()
 	execCtx.Run.RaceContext = true
 	execCtx.Run.RaceContextMinStepGap = &custom

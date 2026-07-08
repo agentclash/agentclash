@@ -3,11 +3,11 @@ package engine
 import (
 	"log/slog"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
+	"github.com/agentclash/agentclash/runtime/runner"
 )
 
-func caseTemplateContextForExecution(executionContext repository.RunAgentExecutionContext) challengepack.CaseTemplateContext {
+func caseTemplateContextForExecution(executionContext runner.ExecutionContext) challengepack.CaseTemplateContext {
 	if executionContext.ChallengeInputSet == nil || len(executionContext.ChallengeInputSet.Cases) == 0 {
 		return challengepack.CaseTemplateContext{}
 	}
@@ -31,7 +31,7 @@ func caseTemplateContextForExecution(executionContext repository.RunAgentExecuti
 	return ctx
 }
 
-func renderCaseTemplateCommand(template string, executionContext repository.RunAgentExecutionContext) string {
+func renderCaseTemplateCommand(template string, executionContext runner.ExecutionContext) string {
 	ctx := caseTemplateContextForExecution(executionContext)
 	rendered, err := challengepack.RenderCaseTemplate(template, ctx)
 	if err != nil {

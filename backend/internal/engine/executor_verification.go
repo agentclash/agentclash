@@ -8,7 +8,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/agentclash/agentclash/runtime/sandbox"
 	"github.com/agentclash/agentclash/runtime/scoring"
 )
@@ -16,7 +16,7 @@ import (
 // extractPostExecutionChecks loads post-execution check declarations from the
 // challenge pack manifest's evaluation spec. Returns nil when the manifest
 // cannot be parsed or contains no checks.
-func extractPostExecutionChecks(executionContext repository.RunAgentExecutionContext) []scoring.PostExecutionCheck {
+func extractPostExecutionChecks(executionContext runner.ExecutionContext) []scoring.PostExecutionCheck {
 	if len(executionContext.ChallengePackVersion.Manifest) == 0 {
 		return nil
 	}
@@ -37,7 +37,7 @@ type codeExecutionCheck struct {
 func collectPostExecutionVerification(
 	ctx context.Context,
 	session sandbox.Session,
-	executionContext repository.RunAgentExecutionContext,
+	executionContext runner.ExecutionContext,
 ) []PostExecutionVerificationResult {
 	results := []PostExecutionVerificationResult{}
 	if checks := extractCodeExecutionChecks(executionContext); len(checks) > 0 {
@@ -49,7 +49,7 @@ func collectPostExecutionVerification(
 	return results
 }
 
-func extractCodeExecutionChecks(executionContext repository.RunAgentExecutionContext) []codeExecutionCheck {
+func extractCodeExecutionChecks(executionContext runner.ExecutionContext) []codeExecutionCheck {
 	if len(executionContext.ChallengePackVersion.Manifest) == 0 {
 		return nil
 	}
@@ -135,7 +135,7 @@ func executePostExecutionChecks(
 func executeCodeExecutionChecks(
 	ctx context.Context,
 	session sandbox.Session,
-	executionContext repository.RunAgentExecutionContext,
+	executionContext runner.ExecutionContext,
 	checks []codeExecutionCheck,
 ) []PostExecutionVerificationResult {
 	results := make([]PostExecutionVerificationResult, 0, len(checks))
@@ -231,7 +231,7 @@ func executeDirectoryListingCheck(
 func executeCodeExecutionCheck(
 	ctx context.Context,
 	session sandbox.Session,
-	executionContext repository.RunAgentExecutionContext,
+	executionContext runner.ExecutionContext,
 	check codeExecutionCheck,
 ) scoring.CodeExecutionResult {
 	testCommand := renderCaseTemplateCommand(check.Config.TestCommand, executionContext)

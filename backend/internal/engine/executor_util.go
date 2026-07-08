@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/runner"
 )
 
 func cloneMessages(messages []provider.Message) []provider.Message {
@@ -110,9 +110,9 @@ func sanitizeUserSimulatorForAgent(spec *challengepack.UserSimulatorSpec) *chall
 // challenge definitions that are not part of its current run — which would
 // leak the pack's full structure and allow cross-challenge inference.
 func filterChallengesForInputSet(
-	challenges []repository.ChallengeDefinitionExecutionContext,
-	inputSet *repository.ChallengeInputSetExecutionContext,
-) []repository.ChallengeDefinitionExecutionContext {
+	challenges []runner.ChallengeDefinitionExecutionContext,
+	inputSet *runner.ChallengeInputSetExecutionContext,
+) []runner.ChallengeDefinitionExecutionContext {
 	if inputSet == nil {
 		return challenges
 	}
@@ -123,7 +123,7 @@ func filterChallengesForInputSet(
 	for _, item := range inputSet.Items {
 		active[item.ChallengeKey] = struct{}{}
 	}
-	filtered := make([]repository.ChallengeDefinitionExecutionContext, 0, len(active))
+	filtered := make([]runner.ChallengeDefinitionExecutionContext, 0, len(active))
 	for _, ch := range challenges {
 		if _, ok := active[ch.ChallengeKey]; ok {
 			filtered = append(filtered, ch)
@@ -132,10 +132,10 @@ func filterChallengesForInputSet(
 	return filtered
 }
 
-func cloneChallengeDefinitions(challenges []repository.ChallengeDefinitionExecutionContext) []repository.ChallengeDefinitionExecutionContext {
-	cloned := make([]repository.ChallengeDefinitionExecutionContext, 0, len(challenges))
+func cloneChallengeDefinitions(challenges []runner.ChallengeDefinitionExecutionContext) []runner.ChallengeDefinitionExecutionContext {
+	cloned := make([]runner.ChallengeDefinitionExecutionContext, 0, len(challenges))
 	for _, challenge := range challenges {
-		cloned = append(cloned, repository.ChallengeDefinitionExecutionContext{
+		cloned = append(cloned, runner.ChallengeDefinitionExecutionContext{
 			ID:                  challenge.ID,
 			ChallengeIdentityID: challenge.ChallengeIdentityID,
 			ChallengeKey:        challenge.ChallengeKey,
@@ -149,22 +149,22 @@ func cloneChallengeDefinitions(challenges []repository.ChallengeDefinitionExecut
 	return cloned
 }
 
-func cloneChallengeInputSet(inputSet *repository.ChallengeInputSetExecutionContext) *repository.ChallengeInputSetExecutionContext {
+func cloneChallengeInputSet(inputSet *runner.ChallengeInputSetExecutionContext) *runner.ChallengeInputSetExecutionContext {
 	if inputSet == nil {
 		return nil
 	}
-	cloned := &repository.ChallengeInputSetExecutionContext{
+	cloned := &runner.ChallengeInputSetExecutionContext{
 		ID:                     inputSet.ID,
 		ChallengePackVersionID: inputSet.ChallengePackVersionID,
 		InputKey:               inputSet.InputKey,
 		Name:                   inputSet.Name,
 		Description:            cloneStringPtr(inputSet.Description),
 		InputChecksum:          inputSet.InputChecksum,
-		Cases:                  make([]repository.ChallengeCaseExecutionContext, 0, len(inputSet.Cases)),
-		Items:                  make([]repository.ChallengeInputItemExecutionContext, 0, len(inputSet.Items)),
+		Cases:                  make([]runner.ChallengeCaseExecutionContext, 0, len(inputSet.Cases)),
+		Items:                  make([]runner.ChallengeInputItemExecutionContext, 0, len(inputSet.Items)),
 	}
 	for _, item := range inputSet.Cases {
-		cloned.Cases = append(cloned.Cases, repository.ChallengeCaseExecutionContext{
+		cloned.Cases = append(cloned.Cases, runner.ChallengeCaseExecutionContext{
 			ID:                  item.ID,
 			ChallengeIdentityID: item.ChallengeIdentityID,
 			ChallengeKey:        item.ChallengeKey,
@@ -179,7 +179,7 @@ func cloneChallengeInputSet(inputSet *repository.ChallengeInputSetExecutionConte
 		})
 	}
 	for _, item := range inputSet.Items {
-		cloned.Items = append(cloned.Items, repository.ChallengeInputItemExecutionContext{
+		cloned.Items = append(cloned.Items, runner.ChallengeInputItemExecutionContext{
 			ID:                  item.ID,
 			ChallengeIdentityID: item.ChallengeIdentityID,
 			ChallengeKey:        item.ChallengeKey,

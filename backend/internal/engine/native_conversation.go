@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/agentclash/agentclash/runtime/sandbox"
@@ -18,7 +17,7 @@ import (
 type NativeConversation struct {
 	executor         NativeExecutor
 	runCtx           context.Context
-	executionContext repository.RunAgentExecutionContext
+	executionContext runner.ExecutionContext
 	session          sandbox.Session
 	registry         *Registry
 	sandboxRequest   sandbox.CreateRequest
@@ -35,7 +34,7 @@ type TurnResult struct {
 	Usage         provider.Usage
 }
 
-func (e NativeExecutor) BeginConversation(ctx context.Context, executionContext repository.RunAgentExecutionContext) (*NativeConversation, func(), error) {
+func (e NativeExecutor) BeginConversation(ctx context.Context, executionContext runner.ExecutionContext) (*NativeConversation, func(), error) {
 	if executionContext.Deployment.ProviderAccount == nil {
 		return nil, nil, provider.NewFailure(
 			"",

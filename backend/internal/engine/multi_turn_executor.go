@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/simulator"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/provider"
@@ -110,7 +109,7 @@ func (e MultiTurnExecutor) WithHumanTurnGate(gate HumanTurnGate) MultiTurnExecut
 	return e
 }
 
-func (e MultiTurnExecutor) Execute(ctx context.Context, executionContext repository.RunAgentExecutionContext) (result Result, err error) {
+func (e MultiTurnExecutor) Execute(ctx context.Context, executionContext runner.ExecutionContext) (result Result, err error) {
 	recorder := multiTurnRecorder(e.observer)
 	defer runner.FinishWithObserver(ctx, e.observer, &result, &err, runner.TerminalObserverMessages{
 		Failure:    "record multi_turn terminal failure event",
@@ -150,7 +149,7 @@ func (e MultiTurnExecutor) Execute(ctx context.Context, executionContext reposit
 
 func (e MultiTurnExecutor) runHybridConversation(
 	ctx context.Context,
-	executionContext repository.RunAgentExecutionContext,
+	executionContext runner.ExecutionContext,
 	spec *challengepack.UserSimulatorSpec,
 	conversation *NativeConversation,
 	recorder MultiTurnEventRecorder,
@@ -214,7 +213,7 @@ type hybridConversationState struct {
 
 func (e MultiTurnExecutor) runScriptedPhase(
 	ctx context.Context,
-	executionContext repository.RunAgentExecutionContext,
+	executionContext runner.ExecutionContext,
 	phase challengepack.UserSimulatorPhase,
 	maxTurns int,
 	conversation *NativeConversation,
@@ -241,7 +240,7 @@ func (e MultiTurnExecutor) runScriptedPhase(
 
 func (e MultiTurnExecutor) runLLMPhase(
 	ctx context.Context,
-	executionContext repository.RunAgentExecutionContext,
+	executionContext runner.ExecutionContext,
 	phase challengepack.UserSimulatorPhase,
 	maxTurns int,
 	conversation *NativeConversation,
@@ -318,7 +317,7 @@ func (e MultiTurnExecutor) runLLMPhase(
 
 func (e MultiTurnExecutor) runHumanPhase(
 	ctx context.Context,
-	executionContext repository.RunAgentExecutionContext,
+	executionContext runner.ExecutionContext,
 	phase challengepack.UserSimulatorPhase,
 	maxTurns int,
 	conversation *NativeConversation,
@@ -403,7 +402,7 @@ func (e MultiTurnExecutor) executeUserTurn(
 	return mismatch, nil
 }
 
-func userSimulatorForExecution(executionContext repository.RunAgentExecutionContext) (*challengepack.UserSimulatorSpec, error) {
+func userSimulatorForExecution(executionContext runner.ExecutionContext) (*challengepack.UserSimulatorSpec, error) {
 	if executionContext.ChallengeInputSet == nil || len(executionContext.ChallengeInputSet.Cases) == 0 {
 		return nil, provider.NewFailure("", provider.FailureCodeInvalidRequest, "multi_turn execution requires a challenge case", false, nil)
 	}
@@ -414,7 +413,7 @@ func userSimulatorForExecution(executionContext repository.RunAgentExecutionCont
 	return challengepack.CloneUserSimulatorSpec(first.UserSimulator), nil
 }
 
-func renderScriptedTurnMessage(template string, executionContext repository.RunAgentExecutionContext) (string, error) {
+func renderScriptedTurnMessage(template string, executionContext runner.ExecutionContext) (string, error) {
 	ctx := caseTemplateContextForExecution(executionContext)
 	rendered, err := challengepack.RenderCaseTemplate(template, ctx)
 	if err != nil {
@@ -445,7 +444,7 @@ func actorKeys(seen map[string]struct{}) []string {
 	return out
 }
 
-func casePayloadMap(executionContext repository.RunAgentExecutionContext) map[string]any {
+func casePayloadMap(executionContext runner.ExecutionContext) map[string]any {
 	if executionContext.ChallengeInputSet == nil || len(executionContext.ChallengeInputSet.Cases) == 0 {
 		return nil
 	}
@@ -461,7 +460,7 @@ func casePayloadMap(executionContext repository.RunAgentExecutionContext) map[st
 }
 
 // RunAgentIDForHumanTurn returns the run agent id used for human turn gates.
-func RunAgentIDForHumanTurn(executionContext repository.RunAgentExecutionContext) uuid.UUID {
+func RunAgentIDForHumanTurn(executionContext runner.ExecutionContext) uuid.UUID {
 	return executionContext.RunAgent.ID
 }
 

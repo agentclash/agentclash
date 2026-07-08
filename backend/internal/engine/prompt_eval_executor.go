@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/runner"
@@ -55,7 +54,7 @@ func (e PromptEvalExecutor) loadWorkspaceSecrets(ctx context.Context, workspaceI
 	return loaded, nil
 }
 
-func (e PromptEvalExecutor) Execute(ctx context.Context, executionContext repository.RunAgentExecutionContext) (result Result, err error) {
+func (e PromptEvalExecutor) Execute(ctx context.Context, executionContext runner.ExecutionContext) (result Result, err error) {
 	defer runner.FinishWithObserver(ctx, e.observer, &result, &err, runner.TerminalObserverMessages{
 		Failure:    "record prompt_eval terminal failure event",
 		Completion: "record prompt_eval terminal completion event",
@@ -170,7 +169,7 @@ func (e PromptEvalExecutor) Execute(ctx context.Context, executionContext reposi
 //   - system message: policy_spec instructions (if any)
 //   - user message: rendered challenge.instructions with {{var}} substitutions
 //     drawn from the first case in the run agent's input set.
-func buildPromptEvalMessages(executionContext repository.RunAgentExecutionContext) ([]provider.Message, error) {
+func buildPromptEvalMessages(executionContext runner.ExecutionContext) ([]provider.Message, error) {
 	challenge, err := selectPromptEvalChallenge(executionContext)
 	if err != nil {
 		return nil, err
@@ -201,9 +200,9 @@ func buildPromptEvalMessages(executionContext repository.RunAgentExecutionContex
 	return messages, nil
 }
 
-func selectPromptEvalChallenge(executionContext repository.RunAgentExecutionContext) (repository.ChallengeDefinitionExecutionContext, error) {
+func selectPromptEvalChallenge(executionContext runner.ExecutionContext) (runner.ChallengeDefinitionExecutionContext, error) {
 	if len(executionContext.ChallengePackVersion.Challenges) == 0 {
-		return repository.ChallengeDefinitionExecutionContext{}, errors.New("prompt_eval run is missing challenge definitions")
+		return runner.ChallengeDefinitionExecutionContext{}, errors.New("prompt_eval run is missing challenge definitions")
 	}
 	if executionContext.ChallengeInputSet == nil || len(executionContext.ChallengeInputSet.Cases) == 0 {
 		return executionContext.ChallengePackVersion.Challenges[0], nil

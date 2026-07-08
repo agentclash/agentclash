@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/agentclash/agentclash/runtime/sandbox"
 )
 
@@ -25,8 +25,6 @@ const (
 	runTestsToolName    = "run_tests"
 	buildToolName       = "build"
 	execToolName        = "exec"
-
-	maxExecutionPlanMaxIterations = 1000
 )
 
 func toolMessage(result provider.ToolResult) provider.Message {
@@ -73,7 +71,7 @@ func decodeToolArguments(toolName string, arguments json.RawMessage, target inte
 	return nil
 }
 
-func buildInitialMessages(executionContext repository.RunAgentExecutionContext) ([]provider.Message, error) {
+func buildInitialMessages(executionContext runner.ExecutionContext) ([]provider.Message, error) {
 	payload, err := buildTaskPromptPayload(executionContext)
 	if err != nil {
 		return nil, err
@@ -91,7 +89,7 @@ func buildInitialMessages(executionContext repository.RunAgentExecutionContext) 
 	}, nil
 }
 
-func buildSystemPrompt(executionContext repository.RunAgentExecutionContext) string {
+func buildSystemPrompt(executionContext runner.ExecutionContext) string {
 	sections := make([]string, 0, 4)
 
 	if policyInstructions := strings.TrimSpace(extractPolicyInstructions(executionContext.Deployment.AgentBuildVersion.PolicySpec)); policyInstructions != "" {
@@ -111,17 +109,17 @@ func buildSystemPrompt(executionContext repository.RunAgentExecutionContext) str
 	return strings.Join(sections, "\n\n")
 }
 
-func buildTaskPromptPayload(executionContext repository.RunAgentExecutionContext) (string, error) {
+func buildTaskPromptPayload(executionContext runner.ExecutionContext) (string, error) {
 	type taskPayload struct {
-		RunID                string                                           `json:"run_id"`
-		RunAgentID           string                                           `json:"run_agent_id"`
-		RunName              string                                           `json:"run_name,omitempty"`
-		ChallengePackVersion json.RawMessage                                  `json:"challenge_pack_version"`
-		Challenges           []repository.ChallengeDefinitionExecutionContext `json:"challenges,omitempty"`
-		ChallengeInputSet    *repository.ChallengeInputSetExecutionContext    `json:"challenge_input_set,omitempty"`
-		AgentSpec            json.RawMessage                                  `json:"agent_spec,omitempty"`
-		DeploymentConfig     json.RawMessage                                  `json:"deployment_config,omitempty"`
-		RuntimeProfile       json.RawMessage                                  `json:"runtime_profile,omitempty"`
+		RunID                string                                       `json:"run_id"`
+		RunAgentID           string                                       `json:"run_agent_id"`
+		RunName              string                                       `json:"run_name,omitempty"`
+		ChallengePackVersion json.RawMessage                              `json:"challenge_pack_version"`
+		Challenges           []runner.ChallengeDefinitionExecutionContext `json:"challenges,omitempty"`
+		ChallengeInputSet    *runner.ChallengeInputSetExecutionContext    `json:"challenge_input_set,omitempty"`
+		AgentSpec            json.RawMessage                              `json:"agent_spec,omitempty"`
+		DeploymentConfig     json.RawMessage                              `json:"deployment_config,omitempty"`
+		RuntimeProfile       json.RawMessage                              `json:"runtime_profile,omitempty"`
 	}
 
 	payload, err := json.MarshalIndent(taskPayload{
@@ -141,7 +139,7 @@ func buildTaskPromptPayload(executionContext repository.RunAgentExecutionContext
 	return "Benchmark context:\n" + string(payload), nil
 }
 
-func buildProviderMetadata(executionContext repository.RunAgentExecutionContext) (json.RawMessage, error) {
+func buildProviderMetadata(executionContext runner.ExecutionContext) (json.RawMessage, error) {
 	payload, err := json.Marshal(map[string]string{
 		"run_id":                    executionContext.Run.ID.String(),
 		"run_agent_id":              executionContext.RunAgent.ID.String(),
@@ -154,47 +152,20 @@ func buildProviderMetadata(executionContext repository.RunAgentExecutionContext)
 	return payload, nil
 }
 
-func stepTimeout(executionContext repository.RunAgentExecutionContext) time.Duration {
-	if executionContext.Deployment.RuntimeProfile.StepTimeoutSeconds <= 0 {
-		return 0
-	}
-	return time.Duration(executionContext.Deployment.RuntimeProfile.StepTimeoutSeconds) * time.Second
+func stepTimeout(executionContext runner.ExecutionContext) time.Duration {
+	return runner.StepTimeout(executionContext)
 }
 
-func runTimeout(executionContext repository.RunAgentExecutionContext) time.Duration {
-	if executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds <= 0 {
-		return 0
-	}
-	return time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds) * time.Second
+func runTimeout(executionContext runner.ExecutionContext) time.Duration {
+	return runner.RunTimeout(executionContext)
 }
 
-func maxIterationsLimit(executionContext repository.RunAgentExecutionContext) int {
-	if override := executionPlanMaxIterations(executionContext.Run.ExecutionPlan); override != nil {
-		return int(*override)
-	}
-	return int(executionContext.Deployment.RuntimeProfile.MaxIterations)
+func maxIterationsLimit(executionContext runner.ExecutionContext) int {
+	return runner.MaxIterationsLimit(executionContext)
 }
 
 func executionPlanMaxIterations(executionPlan json.RawMessage) *int32 {
-	var document struct {
-		RuntimeLimits struct {
-			MaxIterations *int32 `json:"max_iterations"`
-		} `json:"runtime_limits"`
-	}
-	if len(executionPlan) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(executionPlan, &document); err != nil {
-		return nil
-	}
-	if document.RuntimeLimits.MaxIterations == nil {
-		return nil
-	}
-	value := *document.RuntimeLimits.MaxIterations
-	if value <= 0 || value > maxExecutionPlanMaxIterations {
-		return nil
-	}
-	return &value
+	return runner.ExecutionPlanMaxIterations(executionPlan)
 }
 
 func extractPolicyInstructions(policySpec json.RawMessage) string {

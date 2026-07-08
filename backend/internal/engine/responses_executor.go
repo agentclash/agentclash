@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/agentclash/agentclash/runtime/sandbox"
@@ -64,7 +63,7 @@ func (e ResponsesExecutor) loadWorkspaceSecrets(ctx context.Context, workspaceID
 	return loaded, nil
 }
 
-func (e ResponsesExecutor) Execute(ctx context.Context, executionContext repository.RunAgentExecutionContext) (result Result, err error) {
+func (e ResponsesExecutor) Execute(ctx context.Context, executionContext runner.ExecutionContext) (result Result, err error) {
 	defer runner.FinishWithObserver(ctx, e.observer, &result, &err, runner.TerminalObserverMessages{
 		Failure:    "record responses terminal failure event",
 		Completion: "record responses terminal completion event",
