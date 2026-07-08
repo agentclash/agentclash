@@ -3,7 +3,6 @@ import {
   Rocket,
   PackageOpen,
   Play,
-  FlaskConical,
   ClipboardCheck,
   GitCompare,
   ShieldCheck,
@@ -70,11 +69,6 @@ export const navSections: NavSection[] = [
         icon: Play,
       },
       {
-        label: "Playgrounds",
-        href: (id) => `/workspaces/${id}/playgrounds`,
-        icon: FlaskConical,
-      },
-      {
         label: "Regression Suites",
         href: (id) => `/workspaces/${id}/regression-suites`,
         icon: ClipboardCheck,
@@ -118,11 +112,6 @@ export const navSections: NavSection[] = [
         label: "Tools",
         href: (id) => `/workspaces/${id}/tools`,
         icon: Wrench,
-      },
-      {
-        label: "Knowledge Sources",
-        href: (id) => `/workspaces/${id}/knowledge-sources`,
-        icon: Database,
       },
       {
         label: "Artifacts",
