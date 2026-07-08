@@ -53,3 +53,4 @@ testing/*
 !testing/feat-eval-sdk-1112.md
 !testing/feat-eval-sdk-1113.md
 !testing/feat-eval-sdk-1114.md
+!testing/codex-local-m1-docker-sandbox.md
