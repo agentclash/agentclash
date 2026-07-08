@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/agentclash/agentclash/runtime/sandbox"
 	"github.com/google/uuid"
 )
@@ -879,11 +879,11 @@ func (c *scriptedProviderClient) InvokeModel(ctx context.Context, request provid
 	return step.response, nil
 }
 
-func nativeExecutionContext() repository.RunAgentExecutionContext {
+func nativeExecutionContext() runner.ExecutionContext {
 	runID := uuid.New()
 	runAgentID := uuid.New()
 
-	return repository.RunAgentExecutionContext{
+	return runner.ExecutionContext{
 		Run: domain.Run{
 			ID:   runID,
 			Name: "Native Loop Test",
@@ -895,13 +895,13 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		},
-		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+		ChallengePackVersion: runner.ChallengePackVersionExecutionContext{
 			ID:               uuid.New(),
 			ChallengePackID:  uuid.New(),
 			VersionNumber:    1,
 			ManifestChecksum: "manifest",
 			Manifest:         []byte(`{"challenge":"fixture","tool_policy":{"allowed_tool_kinds":["file"]}}`),
-			Challenges: []repository.ChallengeDefinitionExecutionContext{
+			Challenges: []runner.ChallengeDefinitionExecutionContext{
 				{
 					ID:                  uuid.New(),
 					ChallengeIdentityID: uuid.New(),
@@ -914,13 +914,13 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 				},
 			},
 		},
-		ChallengeInputSet: &repository.ChallengeInputSetExecutionContext{
+		ChallengeInputSet: &runner.ChallengeInputSetExecutionContext{
 			ID:                     uuid.New(),
 			ChallengePackVersionID: uuid.New(),
 			InputKey:               "default",
 			Name:                   "Default Inputs",
 			InputChecksum:          "checksum",
-			Cases: []repository.ChallengeCaseExecutionContext{
+			Cases: []runner.ChallengeCaseExecutionContext{
 				{
 					ID:                  uuid.New(),
 					ChallengeIdentityID: uuid.New(),
@@ -930,7 +930,7 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 					Payload:             []byte(`{"instruction":"fix the workspace","workspace_files":[{"path":"/workspace/project/app.py","content":"def add(a, b):\n    return a - b\n"}]}`),
 				},
 			},
-			Items: []repository.ChallengeInputItemExecutionContext{
+			Items: []runner.ChallengeInputItemExecutionContext{
 				{
 					ID:                  uuid.New(),
 					ChallengeIdentityID: uuid.New(),
@@ -940,7 +940,7 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 				},
 			},
 		},
-		Deployment: repository.AgentDeploymentExecutionContext{
+		Deployment: runner.AgentDeploymentExecutionContext{
 			AgentDeploymentID:         uuid.New(),
 			AgentDeploymentSnapshotID: uuid.New(),
 			AgentBuildID:              uuid.New(),
@@ -948,14 +948,14 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 			DeploymentType:            "native",
 			SnapshotHash:              "snapshot",
 			SnapshotConfig:            []byte(`{"entrypoint":"runner"}`),
-			AgentBuildVersion: repository.AgentBuildVersionExecutionContext{
+			AgentBuildVersion: runner.AgentBuildVersionExecutionContext{
 				ID:           uuid.New(),
 				AgentKind:    "llm_agent",
 				AgentSpec:    []byte(`{"agent_kind":"llm_agent","policy_spec":{"instructions":"Use tools and submit when finished."},"output_schema":{"type":"object","properties":{"answer":{"type":"string"}}}}`),
 				PolicySpec:   []byte(`{"instructions":"Use tools and submit when finished."}`),
 				OutputSchema: []byte(`{"type":"object","properties":{"answer":{"type":"string"}}}`),
 			},
-			RuntimeProfile: repository.RuntimeProfileExecutionContext{
+			RuntimeProfile: runner.RuntimeProfileExecutionContext{
 				ID:                 uuid.New(),
 				Name:               "Native Runtime",
 				Slug:               "native-runtime",
@@ -967,7 +967,7 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 				RunTimeoutSeconds:  5,
 				ProfileConfig:      []byte(`{"sandbox":{"working_directory":"/workspace","readable_roots":["/workspace"],"writable_roots":["/workspace"]}}`),
 			},
-			ProviderAccount: &repository.ProviderAccountExecutionContext{
+			ProviderAccount: &runner.ProviderAccountExecutionContext{
 				ID:                  uuid.New(),
 				ProviderKey:         "openai",
 				CredentialReference: "env://OPENAI_API_KEY",
@@ -978,7 +978,7 @@ func nativeExecutionContext() repository.RunAgentExecutionContext {
 }
 
 func TestExtractWorkspaceFixtureFilesRejectsMalformedWorkspaceInput(t *testing.T) {
-	_, err := extractWorkspaceFixtureFiles(repository.ChallengeCaseExecutionContext{
+	_, err := extractWorkspaceFixtureFiles(runner.ChallengeCaseExecutionContext{
 		CaseKey: "broken-case",
 		Inputs: []challengepack.CaseInput{
 			{

@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/google/uuid"
 )
 
@@ -110,7 +110,7 @@ func TestPromptEvalExecutorProviderFailurePropagates(t *testing.T) {
 func TestPromptEvalExecutorUsesFirstCaseWhenInputSetHasMany(t *testing.T) {
 	ctx := promptEvalExecutionContext()
 	// Add two extra cases to confirm the executor ignores them without erroring.
-	extra := repository.ChallengeCaseExecutionContext{
+	extra := runner.ChallengeCaseExecutionContext{
 		ID:           uuid.New(),
 		ChallengeKey: "translate-greeting",
 		CaseKey:      "german-hello",
@@ -235,17 +235,17 @@ func TestPromptEvalExecutorWithoutSecretsLookupStillWorks(t *testing.T) {
 	}
 }
 
-func promptEvalExecutionContext() repository.RunAgentExecutionContext {
+func promptEvalExecutionContext() runner.ExecutionContext {
 	runID := uuid.New()
 	runAgentID := uuid.New()
 
-	return repository.RunAgentExecutionContext{
+	return runner.ExecutionContext{
 		Run:      domain.Run{ID: runID},
 		RunAgent: domain.RunAgent{ID: runAgentID, RunID: runID, Status: domain.RunAgentStatusQueued, CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()},
-		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+		ChallengePackVersion: runner.ChallengePackVersionExecutionContext{
 			ID:       uuid.New(),
 			Manifest: []byte(`{"version":{"execution_mode":"prompt_eval"}}`),
-			Challenges: []repository.ChallengeDefinitionExecutionContext{
+			Challenges: []runner.ChallengeDefinitionExecutionContext{
 				{
 					ID:           uuid.New(),
 					ChallengeKey: "translate-greeting",
@@ -254,11 +254,11 @@ func promptEvalExecutionContext() repository.RunAgentExecutionContext {
 				},
 			},
 		},
-		ChallengeInputSet: &repository.ChallengeInputSetExecutionContext{
+		ChallengeInputSet: &runner.ChallengeInputSetExecutionContext{
 			ID:       uuid.New(),
 			InputKey: "default",
 			Name:     "Default",
-			Cases: []repository.ChallengeCaseExecutionContext{
+			Cases: []runner.ChallengeCaseExecutionContext{
 				{
 					ID:           uuid.New(),
 					ChallengeKey: "translate-greeting",
@@ -270,23 +270,23 @@ func promptEvalExecutionContext() repository.RunAgentExecutionContext {
 				},
 			},
 		},
-		Deployment: repository.AgentDeploymentExecutionContext{
+		Deployment: runner.AgentDeploymentExecutionContext{
 			DeploymentType: "native",
 			SnapshotConfig: []byte(`{}`),
-			AgentBuildVersion: repository.AgentBuildVersionExecutionContext{
+			AgentBuildVersion: runner.AgentBuildVersionExecutionContext{
 				ID:         uuid.New(),
 				AgentKind:  "llm_agent",
 				AgentSpec:  []byte(`{}`),
 				PolicySpec: []byte(`{"instructions":"You are a precise translator."}`),
 			},
-			RuntimeProfile: repository.RuntimeProfileExecutionContext{
+			RuntimeProfile: runner.RuntimeProfileExecutionContext{
 				ExecutionTarget:    "prompt_eval",
 				TraceMode:          "preferred",
 				StepTimeoutSeconds: 30,
 				RunTimeoutSeconds:  60,
 				ProfileConfig:      []byte(`{}`),
 			},
-			ProviderAccount: &repository.ProviderAccountExecutionContext{
+			ProviderAccount: &runner.ProviderAccountExecutionContext{
 				ID:                  uuid.New(),
 				ProviderKey:         "openai",
 				CredentialReference: "env://OPENAI_API_KEY",

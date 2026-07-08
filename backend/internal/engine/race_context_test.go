@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/racecontext"
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/runevents"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/google/uuid"
 )
 
@@ -167,7 +167,7 @@ func TestMaybeInjectRaceStandingsSkippedWhenDisabled(t *testing.T) {
 			uuid.New(): {State: racecontext.StandingsStateRunning, Step: 2},
 		},
 	})
-	execCtx := repository.RunAgentExecutionContext{}
+	execCtx := runner.ExecutionContext{}
 	execCtx.Run.RaceContext = false
 	state := &loopState{stepCount: 5}
 
@@ -191,7 +191,7 @@ func TestMaybeInjectRaceStandingsSkippedBeforeStep3(t *testing.T) {
 			peer: {RunAgentID: peer, Step: 3, State: racecontext.StandingsStateRunning},
 		},
 	})
-	execCtx := repository.RunAgentExecutionContext{}
+	execCtx := runner.ExecutionContext{}
 	execCtx.Run.ID = uuid.New()
 	execCtx.Run.RaceContext = true
 	execCtx.RunAgent.ID = self
@@ -217,7 +217,7 @@ func TestMaybeInjectRaceStandingsAppendsUserMessageAndEmitsEvent(t *testing.T) {
 	}
 	executor := NewNativeExecutor(nil, nil, obs).WithStandingsStore(store)
 
-	execCtx := repository.RunAgentExecutionContext{}
+	execCtx := runner.ExecutionContext{}
 	execCtx.Run.ID = uuid.New()
 	execCtx.Run.RaceContext = true
 	execCtx.RunAgent.ID = self
@@ -270,7 +270,7 @@ func TestMaybeInjectRaceStandingsCustomMinStepGap(t *testing.T) {
 	executor := NewNativeExecutor(nil, nil, obs).WithStandingsStore(store)
 
 	custom := int32(5)
-	execCtx := repository.RunAgentExecutionContext{}
+	execCtx := runner.ExecutionContext{}
 	execCtx.Run.ID = uuid.New()
 	execCtx.Run.RaceContext = true
 	execCtx.Run.RaceContextMinStepGap = &custom
@@ -294,7 +294,7 @@ func TestMaybeInjectRaceStandingsSwallowsSnapshotError(t *testing.T) {
 	store := &fakeStandingsStore{err: errors.New("redis disconnected")}
 	executor := NewNativeExecutor(nil, nil, obs).WithStandingsStore(store)
 
-	execCtx := repository.RunAgentExecutionContext{}
+	execCtx := runner.ExecutionContext{}
 	execCtx.Run.ID = uuid.New()
 	execCtx.Run.RaceContext = true
 	execCtx.RunAgent.ID = self
@@ -319,7 +319,7 @@ func TestMaybeInjectRaceStandingsTracksPeerStatesEvenWhenNotInjecting(t *testing
 	}
 	executor := NewNativeExecutor(nil, nil, obs).WithStandingsStore(store)
 
-	execCtx := repository.RunAgentExecutionContext{}
+	execCtx := runner.ExecutionContext{}
 	execCtx.Run.ID = uuid.New()
 	execCtx.Run.RaceContext = true
 	execCtx.RunAgent.ID = self
@@ -352,7 +352,7 @@ func TestMaybeInjectRaceStandingsSeedsMissingPeersAsNotStarted(t *testing.T) {
 	}
 	executor := NewNativeExecutor(nil, nil, obs).WithStandingsStore(store)
 
-	execCtx := repository.RunAgentExecutionContext{}
+	execCtx := runner.ExecutionContext{}
 	execCtx.Run.ID = uuid.New()
 	execCtx.Run.RaceContext = true
 	execCtx.RunAgent.ID = self
@@ -382,7 +382,7 @@ func TestSyncRaceContextStepStartUpdatesStoreBeforeSnapshot(t *testing.T) {
 	store := &fakeStandingsStore{}
 	executor := NewNativeExecutor(nil, nil, &captureObserver{}).WithStandingsStore(store)
 
-	execCtx := repository.RunAgentExecutionContext{}
+	execCtx := runner.ExecutionContext{}
 	execCtx.Run.ID = uuid.New()
 	execCtx.Run.RaceContext = true
 	execCtx.RunAgent.ID = self

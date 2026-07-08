@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/domain"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/agentclash/agentclash/runtime/sandbox"
 	"github.com/google/uuid"
 )
@@ -20,9 +20,9 @@ func TestStageArtifactBackedAssetsUploadsManifestAndInputCaseAssets(t *testing.T
 	challengeAssetID := uuid.New()
 	caseAssetID := uuid.New()
 
-	executionContext := repository.RunAgentExecutionContext{
+	executionContext := runner.ExecutionContext{
 		Run: domain.Run{WorkspaceID: workspaceID},
-		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+		ChallengePackVersion: runner.ChallengePackVersionExecutionContext{
 			Manifest: []byte(fmt.Sprintf(`{
 				"version": {
 					"assets": [
@@ -39,8 +39,8 @@ func TestStageArtifactBackedAssetsUploadsManifestAndInputCaseAssets(t *testing.T
 				]
 			}`, versionAssetID, challengeAssetID)),
 		},
-		ChallengeInputSet: &repository.ChallengeInputSetExecutionContext{
-			Cases: []repository.ChallengeCaseExecutionContext{
+		ChallengeInputSet: &runner.ChallengeInputSetExecutionContext{
+			Cases: []runner.ChallengeCaseExecutionContext{
 				{
 					CaseKey: "forecast-case",
 					Assets: []challengepack.AssetReference{
@@ -73,15 +73,15 @@ func TestStageArtifactBackedAssetsUploadsManifestAndInputCaseAssets(t *testing.T
 }
 
 func TestStageArtifactBackedAssetsSkipsInlineAssetsWithoutLoader(t *testing.T) {
-	executionContext := repository.RunAgentExecutionContext{
-		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+	executionContext := runner.ExecutionContext{
+		ChallengePackVersion: runner.ChallengePackVersionExecutionContext{
 			Manifest: []byte(`{
 				"version": {"assets": [{"key": "inline", "path": "/workspace/assets/inline.txt"}]},
 				"challenges": [{"key": "forecast", "assets": [{"key": "guide", "path": "/workspace/assets/guide.md"}]}]
 			}`),
 		},
-		ChallengeInputSet: &repository.ChallengeInputSetExecutionContext{
-			Cases: []repository.ChallengeCaseExecutionContext{
+		ChallengeInputSet: &runner.ChallengeInputSetExecutionContext{
+			Cases: []runner.ChallengeCaseExecutionContext{
 				{
 					CaseKey: "forecast-case",
 					Assets: []challengepack.AssetReference{
@@ -103,8 +103,8 @@ func TestStageArtifactBackedAssetsSkipsInlineAssetsWithoutLoader(t *testing.T) {
 
 func TestStageArtifactBackedAssetsFailsClosedWithoutLoader(t *testing.T) {
 	assetID := uuid.New()
-	executionContext := repository.RunAgentExecutionContext{
-		ChallengePackVersion: repository.ChallengePackVersionExecutionContext{
+	executionContext := runner.ExecutionContext{
+		ChallengePackVersion: runner.ChallengePackVersionExecutionContext{
 			Manifest: []byte(fmt.Sprintf(`{
 				"version": {
 					"assets": [

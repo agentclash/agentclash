@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/agentclash/agentclash/runtime/sandbox"
 )
 
@@ -16,7 +16,7 @@ type sandboxAssetLocation struct {
 	Asset challengepack.AssetReference
 }
 
-func stageArtifactBackedAssets(ctx context.Context, loader AssetLoader, session sandbox.Session, executionContext repository.RunAgentExecutionContext) error {
+func stageArtifactBackedAssets(ctx context.Context, loader AssetLoader, session sandbox.Session, executionContext runner.ExecutionContext) error {
 	assets, err := collectSandboxAssetLocations(executionContext)
 	if err != nil {
 		return NewFailure(StopReasonSandboxError, "decode challenge pack asset references", err)
@@ -48,7 +48,7 @@ func stageArtifactBackedAssets(ctx context.Context, loader AssetLoader, session 
 	return nil
 }
 
-func collectSandboxAssetLocations(executionContext repository.RunAgentExecutionContext) ([]sandboxAssetLocation, error) {
+func collectSandboxAssetLocations(executionContext runner.ExecutionContext) ([]sandboxAssetLocation, error) {
 	locations := make([]sandboxAssetLocation, 0)
 
 	manifestLocations, err := collectManifestAssetLocations(executionContext.ChallengePackVersion.Manifest)

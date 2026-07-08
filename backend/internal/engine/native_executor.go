@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/racecontext"
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/runevents"
@@ -85,7 +84,7 @@ func (e NativeExecutor) WithAssetLoader(loader AssetLoader) NativeExecutor {
 	return e
 }
 
-func (e NativeExecutor) Execute(ctx context.Context, executionContext repository.RunAgentExecutionContext) (result Result, err error) {
+func (e NativeExecutor) Execute(ctx context.Context, executionContext runner.ExecutionContext) (result Result, err error) {
 	defer runner.FinishWithObserver(ctx, e.observer, &result, &err, runner.TerminalObserverMessages{
 		Failure:    "record native terminal failure event",
 		Completion: "record native terminal completion event",
@@ -209,7 +208,7 @@ func (e NativeExecutor) Execute(ctx context.Context, executionContext repository
 
 func (e NativeExecutor) runAgentLoop(
 	runCtx context.Context,
-	executionContext repository.RunAgentExecutionContext,
+	executionContext runner.ExecutionContext,
 	session sandbox.Session,
 	registry *Registry,
 	sandboxRequest sandbox.CreateRequest,
@@ -328,7 +327,7 @@ type loopState struct {
 // Returns nil when injection is not enabled, not due, or the snapshot is
 // empty. Store errors are logged and swallowed — race-context must never
 // break the underlying run.
-func (e NativeExecutor) maybeInjectRaceStandings(ctx context.Context, executionContext repository.RunAgentExecutionContext, state *loopState) error {
+func (e NativeExecutor) maybeInjectRaceStandings(ctx context.Context, executionContext runner.ExecutionContext, state *loopState) error {
 	if !executionContext.Run.RaceContext {
 		return nil
 	}
@@ -399,7 +398,7 @@ func (e NativeExecutor) maybeInjectRaceStandings(ctx context.Context, executionC
 	return e.observer.OnStandingsInjected(ctx, injection)
 }
 
-func (e NativeExecutor) syncRaceContextStepStart(ctx context.Context, executionContext repository.RunAgentExecutionContext, state *loopState) {
+func (e NativeExecutor) syncRaceContextStepStart(ctx context.Context, executionContext runner.ExecutionContext, state *loopState) {
 	if !executionContext.Run.RaceContext || e.standingsStore == nil {
 		return
 	}
@@ -421,7 +420,7 @@ func (e NativeExecutor) syncRaceContextStepStart(ctx context.Context, executionC
 	}
 }
 
-func seedMissingStandingsPeers(snapshot map[uuid.UUID]racecontext.StandingsEntry, executionContext repository.RunAgentExecutionContext) map[uuid.UUID]racecontext.StandingsEntry {
+func seedMissingStandingsPeers(snapshot map[uuid.UUID]racecontext.StandingsEntry, executionContext runner.ExecutionContext) map[uuid.UUID]racecontext.StandingsEntry {
 	if len(executionContext.RunAgents) == 0 {
 		return snapshot
 	}
@@ -447,7 +446,7 @@ func seedMissingStandingsPeers(snapshot map[uuid.UUID]racecontext.StandingsEntry
 	return seeded
 }
 
-func seedCurrentStandingsAgent(snapshot map[uuid.UUID]racecontext.StandingsEntry, executionContext repository.RunAgentExecutionContext, step int) map[uuid.UUID]racecontext.StandingsEntry {
+func seedCurrentStandingsAgent(snapshot map[uuid.UUID]racecontext.StandingsEntry, executionContext runner.ExecutionContext, step int) map[uuid.UUID]racecontext.StandingsEntry {
 	if executionContext.RunAgent.ID == uuid.Nil {
 		return snapshot
 	}
@@ -479,7 +478,7 @@ func hasRaceContextPeer(snapshot map[uuid.UUID]racecontext.StandingsEntry, selfI
 	return false
 }
 
-func raceContextModelLabel(executionContext repository.RunAgentExecutionContext) string {
+func raceContextModelLabel(executionContext runner.ExecutionContext) string {
 	if executionContext.Deployment.ModelID == "" {
 		return ""
 	}

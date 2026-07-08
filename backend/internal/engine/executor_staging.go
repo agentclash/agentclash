@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/challengepack"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/agentclash/agentclash/runtime/sandbox"
 )
 
-func marshalSandboxRunContext(executionContext repository.RunAgentExecutionContext) ([]byte, error) {
+func marshalSandboxRunContext(executionContext runner.ExecutionContext) ([]byte, error) {
 	return json.Marshal(map[string]any{
 		"run_id":                 executionContext.Run.ID.String(),
 		"run_agent_id":           executionContext.RunAgent.ID.String(),
@@ -24,7 +24,7 @@ func marshalSandboxRunContext(executionContext repository.RunAgentExecutionConte
 	})
 }
 
-func stageSandboxInputs(ctx context.Context, session sandbox.Session, executionContext repository.RunAgentExecutionContext) error {
+func stageSandboxInputs(ctx context.Context, session sandbox.Session, executionContext runner.ExecutionContext) error {
 	runContextPayload, err := marshalSandboxRunContext(executionContext)
 	if err != nil {
 		return NewFailure(StopReasonSandboxError, "marshal native sandbox context", err)
@@ -66,7 +66,7 @@ type workspaceFixtureFile struct {
 	Content string `json:"content"`
 }
 
-func stageWorkspaceFixtureFiles(ctx context.Context, session sandbox.Session, cases []repository.ChallengeCaseExecutionContext) error {
+func stageWorkspaceFixtureFiles(ctx context.Context, session sandbox.Session, cases []runner.ChallengeCaseExecutionContext) error {
 	for _, item := range cases {
 		files, err := extractWorkspaceFixtureFiles(item)
 		if err != nil {
@@ -84,7 +84,7 @@ func stageWorkspaceFixtureFiles(ctx context.Context, session sandbox.Session, ca
 	return nil
 }
 
-func extractWorkspaceFixtureFiles(item repository.ChallengeCaseExecutionContext) ([]workspaceFixtureFile, error) {
+func extractWorkspaceFixtureFiles(item runner.ChallengeCaseExecutionContext) ([]workspaceFixtureFile, error) {
 	files := make([]workspaceFixtureFile, 0)
 	if len(bytes.TrimSpace(item.Payload)) > 0 {
 		var decoded struct {
@@ -108,7 +108,7 @@ func extractWorkspaceFixtureFiles(item repository.ChallengeCaseExecutionContext)
 	return files, nil
 }
 
-func decodeWorkspaceInputFiles(item repository.ChallengeCaseExecutionContext, input challengepack.CaseInput) ([]workspaceFixtureFile, error) {
+func decodeWorkspaceInputFiles(item runner.ChallengeCaseExecutionContext, input challengepack.CaseInput) ([]workspaceFixtureFile, error) {
 	value, ok := input.Value.([]any)
 	if !ok {
 		return nil, fmt.Errorf(

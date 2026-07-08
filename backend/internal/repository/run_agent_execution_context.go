@@ -11,128 +11,21 @@ import (
 	repositorysqlc "github.com/agentclash/agentclash/backend/internal/repository/sqlc"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/domain"
+	"github.com/agentclash/agentclash/runtime/runner"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
-type RunAgentExecutionContext struct {
-	Run                  domain.Run
-	RunAgent             domain.RunAgent
-	RunAgents            []domain.RunAgent
-	ChallengePackVersion ChallengePackVersionExecutionContext
-	ChallengeInputSet    *ChallengeInputSetExecutionContext
-	Deployment           AgentDeploymentExecutionContext
-}
-
-type ChallengePackVersionExecutionContext struct {
-	ID               uuid.UUID
-	ChallengePackID  uuid.UUID
-	VersionNumber    int32
-	ManifestChecksum string
-	Manifest         json.RawMessage
-	Challenges       []ChallengeDefinitionExecutionContext
-}
-
-type ChallengeDefinitionExecutionContext struct {
-	ID                  uuid.UUID       `json:"id"`
-	ChallengeIdentityID uuid.UUID       `json:"challenge_identity_id"`
-	ChallengeKey        string          `json:"challenge_key"`
-	ExecutionOrder      int32           `json:"execution_order"`
-	Title               string          `json:"title"`
-	Category            string          `json:"category"`
-	Difficulty          string          `json:"difficulty"`
-	Definition          json.RawMessage `json:"definition"`
-}
-
-type ChallengeInputSetExecutionContext struct {
-	ID                     uuid.UUID
-	ChallengePackVersionID uuid.UUID
-	InputKey               string
-	Name                   string
-	Description            *string
-	InputChecksum          string
-	Cases                  []ChallengeCaseExecutionContext
-	Items                  []ChallengeInputItemExecutionContext
-}
-
-type ChallengeCaseExecutionContext struct {
-	ID                  uuid.UUID                        `json:"id"`
-	ChallengeIdentityID uuid.UUID                        `json:"challenge_identity_id"`
-	RegressionCaseID    *uuid.UUID                       `json:"regression_case_id,omitempty"`
-	ChallengeKey        string                           `json:"challenge_key"`
-	CaseKey             string                           `json:"case_key"`
-	ItemKey             string                           `json:"item_key"`
-	Payload             json.RawMessage                  `json:"payload,omitempty"`
-	Inputs              []challengepack.CaseInput        `json:"inputs,omitempty"`
-	Expectations        []challengepack.CaseExpectation  `json:"expectations,omitempty"`
-	UserSimulator       *challengepack.UserSimulatorSpec `json:"user_simulator,omitempty"`
-	Artifacts           []challengepack.ArtifactRef      `json:"artifacts,omitempty"`
-	Assets              []challengepack.AssetReference   `json:"assets,omitempty"`
-}
-
-type ChallengeInputItemExecutionContext struct {
-	ID                  uuid.UUID       `json:"id"`
-	ChallengeIdentityID uuid.UUID       `json:"challenge_identity_id"`
-	RegressionCaseID    *uuid.UUID      `json:"regression_case_id,omitempty"`
-	ChallengeKey        string          `json:"challenge_key"`
-	ItemKey             string          `json:"item_key"`
-	Payload             json.RawMessage `json:"payload"`
-}
-
-type AgentDeploymentExecutionContext struct {
-	AgentDeploymentID         uuid.UUID
-	AgentDeploymentSnapshotID uuid.UUID
-	AgentBuildID              uuid.UUID
-	AgentBuildVersionID       uuid.UUID
-	DeploymentType            string
-	EndpointURL               *string
-	SnapshotHash              string
-	SnapshotConfig            json.RawMessage
-	AgentBuildVersion         AgentBuildVersionExecutionContext
-	RuntimeProfile            RuntimeProfileExecutionContext
-	ProviderAccount           *ProviderAccountExecutionContext
-	// ModelID is the provider model id chosen for this deployment (e.g.
-	// "claude-sonnet-4-20250514"), sent directly to the provider.
-	ModelID string
-}
-
-type AgentBuildVersionExecutionContext struct {
-	ID              uuid.UUID
-	AgentKind       string
-	AgentSpec       json.RawMessage
-	InterfaceSpec   json.RawMessage
-	PolicySpec      json.RawMessage
-	ReasoningSpec   json.RawMessage
-	MemorySpec      json.RawMessage
-	WorkflowSpec    json.RawMessage
-	GuardrailSpec   json.RawMessage
-	ModelSpec       json.RawMessage
-	OutputSchema    json.RawMessage
-	TraceContract   json.RawMessage
-	PublicationSpec json.RawMessage
-}
-
-type RuntimeProfileExecutionContext struct {
-	ID                 uuid.UUID
-	Name               string
-	Slug               string
-	ExecutionTarget    string
-	TraceMode          string
-	MaxIterations      int32
-	MaxToolCalls       int32
-	StepTimeoutSeconds int32
-	RunTimeoutSeconds  int32
-	ProfileConfig      json.RawMessage
-}
-
-type ProviderAccountExecutionContext struct {
-	ID                  uuid.UUID
-	WorkspaceID         *uuid.UUID
-	ProviderKey         string
-	Name                string
-	CredentialReference string
-	LimitsConfig        json.RawMessage
-}
+type RunAgentExecutionContext = runner.ExecutionContext
+type ChallengePackVersionExecutionContext = runner.ChallengePackVersionExecutionContext
+type ChallengeDefinitionExecutionContext = runner.ChallengeDefinitionExecutionContext
+type ChallengeInputSetExecutionContext = runner.ChallengeInputSetExecutionContext
+type ChallengeCaseExecutionContext = runner.ChallengeCaseExecutionContext
+type ChallengeInputItemExecutionContext = runner.ChallengeInputItemExecutionContext
+type AgentDeploymentExecutionContext = runner.AgentDeploymentExecutionContext
+type AgentBuildVersionExecutionContext = runner.AgentBuildVersionExecutionContext
+type RuntimeProfileExecutionContext = runner.RuntimeProfileExecutionContext
+type ProviderAccountExecutionContext = runner.ProviderAccountExecutionContext
 
 func (r *Repository) GetRunAgentExecutionContextByID(ctx context.Context, runAgentID uuid.UUID) (RunAgentExecutionContext, error) {
 	row, err := r.queries.GetRunAgentExecutionContextByID(ctx, repositorysqlc.GetRunAgentExecutionContextByIDParams{ID: runAgentID})
