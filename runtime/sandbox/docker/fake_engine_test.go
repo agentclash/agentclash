@@ -17,15 +17,26 @@ import (
 type fakeEngine struct {
 	mu sync.Mutex
 
-	pingErr   error
-	pullErr   error
-	createErr error
-	startErr  error
-	stopErr   error
-	removeErr error
+	pingErr    error
+	pullErr    error
+	createErr  error
+	startErr   error
+	stopErr    error
+	removeErr  error
+	inspectErr error
 
 	// createFailOnce fails the first ContainerCreate, then succeeds (image-pull retry path).
 	createFailOnce error
+
+	// inspectLabels backs ContainerInspectLabels, keyed by container name or ID.
+	inspectLabels map[string]map[string]string
+
+	// aptGetExitCode / aptGetStderr script apt-get failures in simulateExec.
+	aptGetExitCode int
+	aptGetStderr   string
+
+	// forceExitCode, when set, overrides the exit code of the next exec.
+	forceExitCode *int
 
 	pulled        []string
 	created       []fakeCreate
@@ -49,9 +60,10 @@ type fakeCreate struct {
 
 func newFakeEngine() *fakeEngine {
 	return &fakeEngine{
-		files:       map[string]map[string][]byte{},
-		execResults: map[string]container.ExecInspect{},
-		execOutputs: map[string]struct{ stdout, stderr string }{},
+		files:         map[string]map[string][]byte{},
+		execResults:   map[string]container.ExecInspect{},
+		execOutputs:   map[string]struct{ stdout, stderr string }{},
+		inspectLabels: map[string]map[string]string{},
 	}
 }
 
@@ -182,6 +194,10 @@ func (f *fakeEngine) ContainerExecCreate(_ context.Context, id string, cfg conta
 	execID := fmt.Sprintf("exec-%d", f.nextExecID)
 
 	stdout, stderr, exitCode := f.simulateExec(id, cfg)
+	if f.forceExitCode != nil {
+		exitCode = *f.forceExitCode
+		f.forceExitCode = nil
+	}
 	f.execResults[execID] = container.ExecInspect{ExecID: execID, ExitCode: exitCode}
 	f.execOutputs[execID] = struct{ stdout, stderr string }{stdout: stdout, stderr: stderr}
 	return execID, nil
@@ -190,6 +206,11 @@ func (f *fakeEngine) ContainerExecCreate(_ context.Context, id string, cfg conta
 func (f *fakeEngine) simulateExec(id string, cfg container.ExecOptions) (stdout, stderr string, exitCode int) {
 	if len(cfg.Cmd) == 0 {
 		return "", "empty command", 1
+	}
+	// Strip the in-container timeout wrapper (`timeout -k 2 <secs> cmd...`)
+	// added by execInternal when ExecRequest.Timeout is set.
+	if cfg.Cmd[0] == "timeout" && len(cfg.Cmd) > 4 {
+		cfg.Cmd = cfg.Cmd[4:]
 	}
 	cmd := cfg.Cmd[0]
 	switch cmd {
@@ -212,7 +233,7 @@ func (f *fakeEngine) simulateExec(id string, cfg container.ExecOptions) (stdout,
 	case "echo":
 		return strings.Join(cfg.Cmd[1:], " ") + "\n", "", 0
 	case "apt-get":
-		return "", "", 0
+		return "", f.aptGetStderr, f.aptGetExitCode
 	case "sh", "bash":
 		// Support `sh -c 'printf ...'` style used in smoke; keep simple.
 		if len(cfg.Cmd) >= 3 && (cfg.Cmd[1] == "-c" || cfg.Cmd[1] == "-lc") {
@@ -241,10 +262,7 @@ func (f *fakeEngine) ContainerExecAttach(_ context.Context, execID string) (exec
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	out := f.execOutputs[execID]
-	// Produce raw multiplexed-ish plain text; demuxDockerOutput uses stdcopy.
-	// For unit tests, feed plain stdout bytes through a simple buffer and bypass
-	// multiplex framing by using a custom demux path: write as raw stream that
-	// stdcopy treats as stdout when framed. Easier: frame with stdcopy header.
+	// Frame stdout/stderr with stdcopy headers so demuxDockerOutput can split them.
 	framed := frameStdcopy(1, []byte(out.stdout))
 	framed = append(framed, frameStdcopy(2, []byte(out.stderr))...)
 	return fakeAttach{r: bytes.NewReader(framed)}, nil
@@ -271,6 +289,19 @@ func (f *fakeEngine) ContainerExecInspect(_ context.Context, execID string) (con
 		return container.ExecInspect{}, fmt.Errorf("unknown exec %s", execID)
 	}
 	return inspect, nil
+}
+
+func (f *fakeEngine) ContainerInspectLabels(_ context.Context, ref string) (map[string]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.inspectErr != nil {
+		return nil, f.inspectErr
+	}
+	labels, ok := f.inspectLabels[ref]
+	if !ok {
+		return nil, fmt.Errorf("no such container: %s", ref)
+	}
+	return labels, nil
 }
 
 func (f *fakeEngine) Close() error { return nil }

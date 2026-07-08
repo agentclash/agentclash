@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"maps"
 	"path"
 	"regexp"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"github.com/agentclash/agentclash/runtime/maputil"
 	"github.com/agentclash/agentclash/runtime/sandbox"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/errdefs"
 	"github.com/google/uuid"
 )
 
@@ -51,6 +53,9 @@ func (p *Provider) Close() error {
 
 func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (sandbox.Session, error) {
 	startedAt := time.Now()
+	if len(request.AdditionalPackages) > 0 && !request.ToolPolicy.AllowNetwork {
+		return nil, fmt.Errorf("additional packages require network access, but the tool policy disables it (apt-get cannot reach mirrors with NetworkMode=none)")
+	}
 	if err := p.engine.Ping(ctx); err != nil {
 		return nil, err
 	}
@@ -67,14 +72,12 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 	workingDir = path.Clean(workingDir)
 
 	env := envSlice(request.EnvVars)
-	labels := map[string]string{
-		labelManagedBy:  labelManagedByValue,
-		labelRunID:      request.RunID.String(),
-		labelRunAgentID: request.RunAgentID.String(),
-	}
-	for key, value := range request.Labels {
-		labels[key] = value
-	}
+	labels := make(map[string]string, len(request.Labels)+3)
+	maps.Copy(labels, request.Labels)
+	// Reserved labels last so caller labels cannot mask managed containers.
+	labels[labelManagedBy] = labelManagedByValue
+	labels[labelRunID] = request.RunID.String()
+	labels[labelRunAgentID] = request.RunAgentID.String()
 
 	hostCfg := container.HostConfig{
 		AutoRemove: false,
@@ -88,12 +91,14 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 		Env:        env,
 		WorkingDir: workingDir,
 		Labels:     labels,
-		Cmd:        []string{"sleep", "infinity"},
+		// Entrypoint (not Cmd) so images with their own ENTRYPOINT don't turn
+		// this into `<entrypoint> sleep infinity` and exit immediately.
+		Entrypoint: []string{"sleep", "infinity"},
 		Tty:        false,
 	}
 
 	name := containerName(request.RunAgentID)
-	id, err := p.engine.ContainerCreate(ctx, cfg, hostCfg, name)
+	id, err := p.createContainer(ctx, cfg, hostCfg, name)
 	if err != nil {
 		if p.config.pullMissing() && isImageMissing(err) {
 			if pullErr := p.engine.ImagePull(ctx, imageRef); pullErr != nil {
@@ -101,7 +106,7 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 				return nil, pullErr
 			}
 			// Retry after pull; reassigns both id and err.
-			id, err = p.engine.ContainerCreate(ctx, cfg, hostCfg, name)
+			id, err = p.createContainer(ctx, cfg, hostCfg, name)
 		}
 		// err is either the original non-image-missing error, or the post-pull retry error.
 		if err != nil {
@@ -111,7 +116,8 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 	}
 
 	if err := p.engine.ContainerStart(ctx, id); err != nil {
-		_ = p.engine.ContainerRemove(ctx, id, true)
+		// Cleanup must survive a canceled request context or the container leaks.
+		_ = p.engine.ContainerRemove(context.WithoutCancel(ctx), id, true)
 		slog.Default().Error("docker sandbox start failed", "container_id", id, "error", err, "duration", time.Since(startedAt))
 		return nil, err
 	}
@@ -123,6 +129,7 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 		workingDirectory:   workingDir,
 		defaultEnvironment: maputil.CloneStringMap(request.EnvVars),
 		stopTimeout:        p.config.stopTimeout(),
+		maxOutputBytes:     p.config.maxExecOutputBytes(),
 	}
 
 	if err := sess.ensureWorkingDirectory(ctx); err != nil {
@@ -141,6 +148,36 @@ func (p *Provider) Create(ctx context.Context, request sandbox.CreateRequest) (s
 	return sess, nil
 }
 
+// createContainer creates the container, recovering from a name conflict with
+// a stale container leaked by a crashed prior attempt (Temporal retries reuse
+// the same RunAgentID, hence the same deterministic name).
+func (p *Provider) createContainer(ctx context.Context, cfg container.Config, hostCfg container.HostConfig, name string) (string, error) {
+	id, err := p.engine.ContainerCreate(ctx, cfg, hostCfg, name)
+	if err == nil || !isNameConflict(err) {
+		return id, err
+	}
+	labels, inspectErr := p.engine.ContainerInspectLabels(ctx, name)
+	if inspectErr != nil || labels[labelManagedBy] != labelManagedByValue {
+		// Not ours (or can't prove it is) — don't remove someone else's container.
+		return "", err
+	}
+	if rmErr := p.engine.ContainerRemove(ctx, name, true); rmErr != nil && !isNotFoundErr(rmErr) {
+		return "", fmt.Errorf("remove stale sandbox container %s: %w", name, rmErr)
+	}
+	slog.Default().Warn("docker sandbox removed stale container from prior attempt", "container_name", name)
+	return p.engine.ContainerCreate(ctx, cfg, hostCfg, name)
+}
+
+func isNameConflict(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errdefs.IsConflict(err) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "is already in use")
+}
+
 func (p *Provider) installAdditionalPackages(ctx context.Context, sess *session, request sandbox.CreateRequest) error {
 	packages, err := validateDebianPackageNames(request.AdditionalPackages)
 	if err != nil {
@@ -151,7 +188,7 @@ func (p *Provider) installAdditionalPackages(ctx context.Context, sess *session,
 	update, err := sess.execInternal(ctx, sandbox.ExecRequest{
 		Command:     []string{"apt-get", "update"},
 		Environment: map[string]string{"DEBIAN_FRONTEND": "noninteractive"},
-		Timeout:     120 * time.Second,
+		Timeout:     packageInstallTimeout,
 	})
 	if err != nil {
 		return fmt.Errorf("additional packages apt-get update: %w", err)
@@ -164,7 +201,7 @@ func (p *Provider) installAdditionalPackages(ctx context.Context, sess *session,
 	result, err := sess.execInternal(ctx, sandbox.ExecRequest{
 		Command:     installCmd,
 		Environment: map[string]string{"DEBIAN_FRONTEND": "noninteractive"},
-		Timeout:     120 * time.Second,
+		Timeout:     packageInstallTimeout,
 	})
 	if err != nil {
 		return fmt.Errorf("additional packages install: %w", err)

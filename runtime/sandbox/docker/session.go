@@ -1,6 +1,7 @@
 package docker
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -15,6 +16,7 @@ import (
 	"github.com/agentclash/agentclash/runtime/sandbox"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/errdefs"
+	"github.com/docker/docker/pkg/stdcopy"
 )
 
 type session struct {
@@ -26,6 +28,7 @@ type session struct {
 	workingDirectory   string
 	defaultEnvironment map[string]string
 	stopTimeout        time.Duration
+	maxOutputBytes     int
 }
 
 func (s *session) ID() string {
@@ -139,11 +142,26 @@ func (s *session) Exec(ctx context.Context, request sandbox.ExecRequest) (sandbo
 	return s.execInternal(ctx, request)
 }
 
+// execTimeoutGrace is added to the client-side backstop deadline so the
+// in-container `timeout` wrapper (which enforces the real limit) gets a
+// chance to kill the process and report exit code 124 before the client
+// gives up on a hung daemon.
+const execTimeoutGrace = 5 * time.Second
+
+// timeoutExitCode is what coreutils/busybox `timeout` exits with when the
+// wrapped command exceeds its deadline.
+const timeoutExitCode = 124
+
 func (s *session) execInternal(ctx context.Context, request sandbox.ExecRequest) (sandbox.ExecResult, error) {
+	command := request.Command
 	execCtx := ctx
 	cancel := func() {}
 	if request.Timeout > 0 {
-		execCtx, cancel = context.WithTimeout(ctx, request.Timeout)
+		// Docker has no exec-kill API and hijacked attach reads ignore context
+		// cancellation, so the deadline is enforced in-container via `timeout`.
+		// The client context is only a backstop for a hung daemon.
+		command = append([]string{"timeout", "-k", "2", strconv.Itoa(ceilSeconds(request.Timeout))}, command...)
+		execCtx, cancel = context.WithTimeout(ctx, request.Timeout+execTimeoutGrace)
 	}
 	defer cancel()
 
@@ -154,7 +172,7 @@ func (s *session) execInternal(ctx context.Context, request sandbox.ExecRequest)
 
 	env := mergeEnvironment(s.defaultEnvironment, request.Environment)
 	execID, err := s.engine.ContainerExecCreate(execCtx, s.id, container.ExecOptions{
-		Cmd:          request.Command,
+		Cmd:          command,
 		Env:          envSlice(env),
 		WorkingDir:   workingDir,
 		AttachStdout: true,
@@ -170,34 +188,117 @@ func (s *session) execInternal(ctx context.Context, request sandbox.ExecRequest)
 	}
 	defer attach.Close()
 
-	stdout, stderr, demuxErr := demuxDockerOutput(attach.Reader())
-	if demuxErr != nil && !errors.Is(demuxErr, context.Canceled) && !errors.Is(demuxErr, context.DeadlineExceeded) {
+	stdoutW := newCappedStreamWriter(s.maxOutputBytes, request.OnStdout)
+	stderrW := newCappedStreamWriter(s.maxOutputBytes, request.OnStderr)
+
+	// The hijacked reader is not interruptible by context; run the copy in a
+	// goroutine and close the attach to unblock it if the backstop fires.
+	demuxDone := make(chan error, 1)
+	go func() {
+		_, copyErr := stdcopy.StdCopy(stdoutW, stderrW, attach.Reader())
+		if errors.Is(copyErr, io.EOF) {
+			copyErr = nil
+		}
+		demuxDone <- copyErr
+	}()
+
+	timedOut := false
+	var demuxErr error
+	select {
+	case demuxErr = <-demuxDone:
+	case <-execCtx.Done():
+		timedOut = true
+		_ = attach.Close() // unblock the reader
+		<-demuxDone        // read error from the closed conn is expected; discard
+	}
+	if demuxErr != nil && !timedOut {
+		var cbErr *callbackError
+		if errors.As(demuxErr, &cbErr) {
+			return sandbox.ExecResult{}, cbErr.err
+		}
 		return sandbox.ExecResult{}, fmt.Errorf("demux exec output: %w", demuxErr)
 	}
 
-	inspect, err := s.engine.ContainerExecInspect(execCtx, execID)
+	result := sandbox.ExecResult{
+		Stdout:   stdoutW.String(),
+		Stderr:   stderrW.String(),
+		Metadata: map[string]string{},
+	}
+	if stdoutW.truncated {
+		result.Metadata["stdout_truncated"] = "true"
+	}
+	if stderrW.truncated {
+		result.Metadata["stderr_truncated"] = "true"
+	}
+	if timedOut {
+		return result, fmt.Errorf("exec timed out after %s: %w", request.Timeout, context.DeadlineExceeded)
+	}
+
+	// Inspect with a fresh context: the caller's context may already be
+	// canceled/expired, and losing the exit code here discards the run output.
+	inspectCtx, inspectCancel := context.WithTimeout(context.WithoutCancel(ctx), 10*time.Second)
+	defer inspectCancel()
+	inspect, err := s.engine.ContainerExecInspect(inspectCtx, execID)
 	if err != nil {
 		return sandbox.ExecResult{}, err
 	}
-
-	result := sandbox.ExecResult{
-		ExitCode: inspect.ExitCode,
-		Stdout:   stdout,
-		Stderr:   stderr,
-		Metadata: map[string]string{},
+	if request.Timeout > 0 && inspect.ExitCode == timeoutExitCode {
+		result.ExitCode = inspect.ExitCode
+		return result, fmt.Errorf("exec timed out after %s: %w", request.Timeout, context.DeadlineExceeded)
 	}
-	if request.OnStdout != nil && stdout != "" {
-		if err := request.OnStdout([]byte(stdout)); err != nil {
-			return sandbox.ExecResult{}, err
-		}
+	if inspect.Running {
+		return sandbox.ExecResult{}, fmt.Errorf("exec %s still running after output stream ended", execID)
 	}
-	if request.OnStderr != nil && stderr != "" {
-		if err := request.OnStderr([]byte(stderr)); err != nil {
-			return sandbox.ExecResult{}, err
-		}
-	}
+	result.ExitCode = inspect.ExitCode
 	return result, nil
 }
+
+func ceilSeconds(d time.Duration) int {
+	seconds := int((d + time.Second - 1) / time.Second)
+	if seconds < 1 {
+		return 1
+	}
+	return seconds
+}
+
+// callbackError distinguishes an OnStdout/OnStderr abort from a transport error.
+type callbackError struct{ err error }
+
+func (e *callbackError) Error() string { return e.err.Error() }
+func (e *callbackError) Unwrap() error { return e.err }
+
+// cappedStreamWriter forwards chunks to the caller's streaming callback as
+// they arrive and retains up to limit bytes for the final ExecResult.
+type cappedStreamWriter struct {
+	buf       bytes.Buffer
+	limit     int
+	truncated bool
+	onChunk   func([]byte) error
+}
+
+func newCappedStreamWriter(limit int, onChunk func([]byte) error) *cappedStreamWriter {
+	return &cappedStreamWriter{limit: limit, onChunk: onChunk}
+}
+
+func (w *cappedStreamWriter) Write(p []byte) (int, error) {
+	if w.onChunk != nil && len(p) > 0 {
+		if err := w.onChunk(p); err != nil {
+			return 0, &callbackError{err: err}
+		}
+	}
+	if remaining := w.limit - w.buf.Len(); remaining > 0 {
+		n := min(len(p), remaining)
+		w.buf.Write(p[:n])
+		if n < len(p) {
+			w.truncated = true
+		}
+	} else if len(p) > 0 {
+		w.truncated = true
+	}
+	return len(p), nil
+}
+
+func (w *cappedStreamWriter) String() string { return w.buf.String() }
 
 func (s *session) Destroy(ctx context.Context) error {
 	s.mu.Lock()
@@ -205,18 +306,33 @@ func (s *session) Destroy(ctx context.Context) error {
 		s.mu.Unlock()
 		return nil
 	}
-	s.closed = true
 	s.mu.Unlock()
 
+	// Cleanup must survive caller cancellation: Destroy typically runs during
+	// workflow teardown, when the request context is already canceled.
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), s.stopTimeout+30*time.Second)
+	defer cancel()
+
 	timeout := s.stopTimeout
-	if err := s.engine.ContainerStop(ctx, s.id, &timeout); err != nil && !isNotFoundErr(err) {
-		_ = s.engine.ContainerRemove(ctx, s.id, true)
+	if err := s.engine.ContainerStop(cleanupCtx, s.id, &timeout); err != nil && !isNotFoundErr(err) {
+		if rmErr := s.engine.ContainerRemove(cleanupCtx, s.id, true); rmErr != nil && !isNotFoundErr(rmErr) {
+			// Session stays open so a retried Destroy attempts cleanup again.
+			return err
+		}
+		s.markClosed()
+		return nil
+	}
+	if err := s.engine.ContainerRemove(cleanupCtx, s.id, true); err != nil && !isNotFoundErr(err) {
 		return err
 	}
-	if err := s.engine.ContainerRemove(ctx, s.id, true); err != nil && !isNotFoundErr(err) {
-		return err
-	}
+	s.markClosed()
 	return nil
+}
+
+func (s *session) markClosed() {
+	s.mu.Lock()
+	s.closed = true
+	s.mu.Unlock()
 }
 
 func (s *session) ensureWorkingDirectory(ctx context.Context) error {

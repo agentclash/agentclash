@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/errdefs"
-	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/docker/docker/pkg/jsonmessage"
 )
 
 // engine is the subset of Docker Engine API used by the provider. Tests inject fakes.
@@ -31,6 +31,7 @@ type engine interface {
 	ContainerExecCreate(ctx context.Context, id string, cfg container.ExecOptions) (string, error)
 	ContainerExecAttach(ctx context.Context, execID string) (execAttach, error)
 	ContainerExecInspect(ctx context.Context, execID string) (container.ExecInspect, error)
+	ContainerInspectLabels(ctx context.Context, ref string) (map[string]string, error)
 	Close() error
 }
 
@@ -71,11 +72,17 @@ func (e *dockerEngine) ImagePull(ctx context.Context, ref string) error {
 		return fmt.Errorf("pull image %q: %w", ref, err)
 	}
 	defer reader.Close()
-	_, err = io.Copy(io.Discard, reader)
-	if err != nil {
-		return fmt.Errorf("consume image pull for %q: %w", ref, err)
+	if err := consumePullStream(reader); err != nil {
+		return fmt.Errorf("pull image %q: %w", ref, err)
 	}
 	return nil
+}
+
+// consumePullStream drains the pull progress stream and surfaces in-stream
+// errors, which the daemon reports as JSON messages inside a 200 response
+// (auth failures, missing manifests, disk full, ...).
+func consumePullStream(r io.Reader) error {
+	return jsonmessage.DisplayJSONMessagesStream(r, io.Discard, 0, false, nil)
 }
 
 func (e *dockerEngine) ContainerCreate(ctx context.Context, cfg container.Config, hostCfg container.HostConfig, name string) (string, error) {
@@ -103,6 +110,10 @@ func (e *dockerEngine) ContainerStop(ctx context.Context, id string, timeout *ti
 	opts := container.StopOptions{}
 	if timeout != nil {
 		seconds := int(timeout.Round(time.Second) / time.Second)
+		if seconds < 1 {
+			// Zero means immediate SIGKILL; keep a minimal grace period.
+			seconds = 1
+		}
 		opts.Timeout = &seconds
 	}
 	if err := e.cli.ContainerStop(ctx, id, opts); err != nil {
@@ -194,6 +205,20 @@ func (e *dockerEngine) ContainerExecInspect(ctx context.Context, execID string) 
 	return inspect, nil
 }
 
+func (e *dockerEngine) ContainerInspectLabels(ctx context.Context, ref string) (map[string]string, error) {
+	inspect, err := e.cli.ContainerInspect(ctx, ref)
+	if err != nil {
+		if isDaemonUnavailable(err) {
+			return nil, wrapDockerUnavailable(err)
+		}
+		return nil, fmt.Errorf("inspect container %s: %w", ref, err)
+	}
+	if inspect.Config == nil {
+		return map[string]string{}, nil
+	}
+	return inspect.Config.Labels, nil
+}
+
 func (e *dockerEngine) Close() error {
 	return e.cli.Close()
 }
@@ -232,13 +257,10 @@ func readTarFile(r io.Reader) ([]byte, error) {
 	if hdr.Typeflag == tar.TypeDir {
 		return nil, fmt.Errorf("path is a directory")
 	}
-	return io.ReadAll(tr)
-}
-
-func demuxDockerOutput(r io.Reader) (stdout, stderr string, err error) {
-	var outBuf, errBuf bytes.Buffer
-	if _, err := stdcopy.StdCopy(&outBuf, &errBuf, r); err != nil && err != io.EOF {
-		return "", "", err
+	// Symlinks come back as zero-byte link entries; reading one silently as
+	// empty content would corrupt whatever consumes the file.
+	if hdr.Typeflag != tar.TypeReg {
+		return nil, fmt.Errorf("path is not a regular file (tar typeflag %d)", hdr.Typeflag)
 	}
-	return outBuf.String(), errBuf.String(), nil
+	return io.ReadAll(tr)
 }

@@ -251,7 +251,7 @@ func TestInstallAdditionalPackagesRejectsInjection(t *testing.T) {
 	_, err := provider.Create(context.Background(), sandbox.CreateRequest{
 		RunID:              uuid.New(),
 		RunAgentID:         uuid.New(),
-		ToolPolicy:         sandbox.ToolPolicy{AllowShell: false},
+		ToolPolicy:         sandbox.ToolPolicy{AllowShell: false, AllowNetwork: true},
 		AdditionalPackages: []string{"curl", "vim; id"},
 	})
 	if err == nil || !strings.Contains(err.Error(), "invalid additional package name") {
@@ -265,7 +265,7 @@ func TestInstallAdditionalPackagesUsesArgv(t *testing.T) {
 	_, err := provider.Create(context.Background(), sandbox.CreateRequest{
 		RunID:              uuid.New(),
 		RunAgentID:         uuid.New(),
-		ToolPolicy:         sandbox.ToolPolicy{AllowShell: false},
+		ToolPolicy:         sandbox.ToolPolicy{AllowShell: false, AllowNetwork: true},
 		AdditionalPackages: []string{"curl", "git"},
 	})
 	if err != nil {
@@ -273,7 +273,7 @@ func TestInstallAdditionalPackagesUsesArgv(t *testing.T) {
 	}
 	foundInstall := false
 	for _, exec := range eng.execCreates {
-		if len(exec.Cmd) >= 1 && exec.Cmd[0] == "apt-get" && containsString(exec.Cmd, "install") {
+		if containsString(exec.Cmd, "apt-get") && containsString(exec.Cmd, "install") {
 			foundInstall = true
 			if containsString(exec.Cmd, "sh") || containsString(exec.Cmd, "-c") {
 				t.Fatalf("install used shell: %#v", exec.Cmd)
