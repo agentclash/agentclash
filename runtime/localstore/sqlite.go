@@ -24,6 +24,7 @@ func OpenSQLite(path string) (*SQLiteStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open sqlite store: %w", err)
 	}
+	db.SetMaxOpenConns(1)
 	store := &SQLiteStore{db: db}
 	if err := store.init(context.Background()); err != nil {
 		_ = db.Close()
@@ -116,13 +117,16 @@ CREATE TABLE IF NOT EXISTS execution_contexts (
 	run_agent_id TEXT PRIMARY KEY,
 	payload BLOB NOT NULL,
 	updated_at TEXT NOT NULL
-);
+);`); err != nil {
+		return fmt.Errorf("initialize sqlite execution_contexts table: %w", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `
 CREATE TABLE IF NOT EXISTS results (
 	run_agent_id TEXT PRIMARY KEY,
 	payload BLOB NOT NULL,
 	updated_at TEXT NOT NULL
 );`); err != nil {
-		return fmt.Errorf("initialize sqlite store: %w", err)
+		return fmt.Errorf("initialize sqlite results table: %w", err)
 	}
 	return nil
 }

@@ -3,6 +3,7 @@ package localstore
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
 	"github.com/agentclash/agentclash/runtime/domain"
@@ -75,5 +76,50 @@ func TestSQLiteStoreMissingRecords(t *testing.T) {
 	}
 	if _, err := store.GetResult(context.Background(), uuid.New()); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("GetResult err = %v; want ErrNotFound", err)
+	}
+}
+
+func TestSQLiteStoreInMemoryConcurrentAccessUsesOneConnection(t *testing.T) {
+	store, err := OpenSQLite(":memory:")
+	if err != nil {
+		t.Fatalf("OpenSQLite: %v", err)
+	}
+	defer store.Close()
+
+	const workers = 20
+	var wg sync.WaitGroup
+	errs := make(chan error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			runID := uuid.New()
+			runAgentID := uuid.New()
+			executionContext := runner.ExecutionContext{
+				Run:      domain.Run{ID: runID, Name: "local"},
+				RunAgent: domain.RunAgent{ID: runAgentID, RunID: runID},
+			}
+			if err := store.SaveExecutionContext(context.Background(), executionContext); err != nil {
+				errs <- err
+				return
+			}
+			if _, err := store.GetExecutionContext(context.Background(), runAgentID); err != nil {
+				errs <- err
+				return
+			}
+			if err := store.SaveResult(context.Background(), runAgentID, runner.Result{StopReason: runner.StopReasonCompleted}); err != nil {
+				errs <- err
+				return
+			}
+			if _, err := store.GetResult(context.Background(), runAgentID); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		t.Fatalf("concurrent access failed: %v", err)
 	}
 }
