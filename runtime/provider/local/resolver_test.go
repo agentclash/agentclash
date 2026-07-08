@@ -30,6 +30,8 @@ func (m mockKeychain) Get(providerKey string) (string, error) {
 func (m mockKeychain) Set(string, string) error { return nil }
 func (m mockKeychain) Delete(string) error      { return nil }
 
+func emptyLookupEnv(string) (string, bool) { return "", false }
+
 func TestChainResolverEnvWins(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "from-env")
 	dir := t.TempDir()
@@ -54,7 +56,6 @@ func TestChainResolverEnvWins(t *testing.T) {
 }
 
 func TestChainResolverConfigAfterEnv(t *testing.T) {
-	_ = os.Unsetenv("OPENAI_API_KEY")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "keys.yaml")
 	if err := SaveProviderKeysTo(path, map[string]string{"openai": "from-config"}); err != nil {
@@ -65,6 +66,7 @@ func TestChainResolverConfigAfterEnv(t *testing.T) {
 		Keychain: mockKeychain{values: map[string]string{
 			"openai": "from-keychain",
 		}},
+		LookupEnv: emptyLookupEnv,
 	})
 
 	got, err := resolver.Resolve(context.Background(), "env://OPENAI_API_KEY")
@@ -77,7 +79,6 @@ func TestChainResolverConfigAfterEnv(t *testing.T) {
 }
 
 func TestChainResolverKeychainAfterConfig(t *testing.T) {
-	_ = os.Unsetenv("ANTHROPIC_API_KEY")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "keys.yaml")
 	if err := SaveProviderKeysTo(path, map[string]string{}); err != nil {
@@ -88,6 +89,7 @@ func TestChainResolverKeychainAfterConfig(t *testing.T) {
 		Keychain: mockKeychain{values: map[string]string{
 			"anthropic": "from-keychain",
 		}},
+		LookupEnv: emptyLookupEnv,
 	})
 
 	got, err := resolver.Resolve(context.Background(), "env://ANTHROPIC_API_KEY")
@@ -145,7 +147,6 @@ func TestChainResolverRejectsWorkspaceSecret(t *testing.T) {
 }
 
 func TestChainResolverMissingKeyActionable(t *testing.T) {
-	_ = os.Unsetenv("XAI_API_KEY")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "keys.yaml")
 	if err := SaveProviderKeysTo(path, map[string]string{}); err != nil {
@@ -154,6 +155,7 @@ func TestChainResolverMissingKeyActionable(t *testing.T) {
 	resolver := NewChainResolver(ChainOptions{
 		ConfigPath: path,
 		Keychain:   mockKeychain{},
+		LookupEnv:  emptyLookupEnv,
 	})
 	_, err := resolver.Resolve(context.Background(), "env://XAI_API_KEY")
 	if err == nil {
@@ -163,19 +165,65 @@ func TestChainResolverMissingKeyActionable(t *testing.T) {
 		t.Fatalf("error = %v, want ErrCredentialUnavailable", err)
 	}
 	msg := err.Error()
-	for _, want := range []string{"XAI_API_KEY", "provider_keys.yaml", "keychain"} {
+	for _, want := range []string{"XAI_API_KEY", path, "keychain"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("error %q missing %q", msg, want)
 		}
 	}
 }
 
+func TestChainResolverMissingKeyUsesOverrideConfigPath(t *testing.T) {
+	custom := filepath.Join(t.TempDir(), "custom-keys.yaml")
+	if err := SaveProviderKeysTo(custom, map[string]string{}); err != nil {
+		t.Fatal(err)
+	}
+	resolver := NewChainResolver(ChainOptions{
+		ConfigPath: custom,
+		Keychain:   mockKeychain{},
+		LookupEnv:  emptyLookupEnv,
+	})
+	_, err := resolver.Resolve(context.Background(), "env://OPENAI_API_KEY")
+	if err == nil {
+		t.Fatal("expected missing-key error")
+	}
+	if !strings.Contains(err.Error(), custom) {
+		t.Fatalf("error %q should mention override path %q", err, custom)
+	}
+	if strings.Contains(err.Error(), ProviderKeysPath()) && !strings.HasPrefix(ProviderKeysPath(), filepath.Dir(custom)) {
+		// Only fail if the default path leaked and is different from custom.
+		if ProviderKeysPath() != custom {
+			t.Fatalf("error %q leaked default ProviderKeysPath %q", err, ProviderKeysPath())
+		}
+	}
+}
+
+func TestChainResolverUnknownYAMLKeyInMissHint(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "keys.yaml")
+	content := "providers:\n  anthropi:\n    api_key: sk-typo\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resolver := NewChainResolver(ChainOptions{
+		ConfigPath: path,
+		Keychain:   mockKeychain{},
+		LookupEnv:  emptyLookupEnv,
+	})
+	_, err := resolver.Resolve(context.Background(), "env://ANTHROPIC_API_KEY")
+	if err == nil {
+		t.Fatal("expected missing-key error")
+	}
+	if !strings.Contains(err.Error(), "anthropi") {
+		t.Fatalf("error %q missing typo hint anthropi", err)
+	}
+}
+
 func TestChainResolverKeychainErrorSurfaced(t *testing.T) {
-	_ = os.Unsetenv("MISTRAL_API_KEY")
 	boom := errors.New("dbus down")
 	resolver := NewChainResolver(ChainOptions{
 		ConfigPath: filepath.Join(t.TempDir(), "missing.yaml"),
 		Keychain:   mockKeychain{err: boom},
+		LookupEnv:  emptyLookupEnv,
 	})
 	_, err := resolver.Resolve(context.Background(), "env://MISTRAL_API_KEY")
 	if !errors.Is(err, boom) {
@@ -184,18 +232,38 @@ func TestChainResolverKeychainErrorSurfaced(t *testing.T) {
 }
 
 func TestChainResolverNilKeychainSkips(t *testing.T) {
-	_ = os.Unsetenv("OPENROUTER_API_KEY")
 	dir := t.TempDir()
 	path := filepath.Join(dir, "keys.yaml")
 	if err := SaveProviderKeysTo(path, map[string]string{"openrouter": "from-config"}); err != nil {
 		t.Fatal(err)
 	}
-	resolver := NewChainResolver(ChainOptions{ConfigPath: path, Keychain: nil})
+	resolver := NewChainResolver(ChainOptions{
+		ConfigPath: path,
+		Keychain:   nil,
+		LookupEnv:  emptyLookupEnv,
+	})
 	got, err := resolver.Resolve(context.Background(), "env://OPENROUTER_API_KEY")
 	if err != nil {
 		t.Fatalf("Resolve: %v", err)
 	}
 	if got != "from-config" {
 		t.Fatalf("got %q, want from-config", got)
+	}
+}
+
+func TestEnvCandidatesUsesSharedSecretExpansion(t *testing.T) {
+	got := envCandidates("secret://openai", "openai", true)
+	wantPrefix := []string{"AGENTCLASH_SECRET_OPENAI", "OPENAI", "OPENAI_API_KEY"}
+	for _, w := range wantPrefix {
+		found := false
+		for _, g := range got {
+			if g == w {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("envCandidates = %v missing %q", got, w)
+		}
 	}
 }

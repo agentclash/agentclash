@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/agentclash/agentclash/runtime/provider"
@@ -63,7 +62,7 @@ func (r *ChainResolver) Resolve(ctx context.Context, credentialReference string)
 		return "", provider.NewFailure(
 			"",
 			provider.FailureCodeCredentialUnavailable,
-			fmt.Sprintf("credential reference is empty; export a provider env var (e.g. OPENAI_API_KEY), set providers.<name>.api_key in %s, or store the key in the OS keychain (service %q)", ProviderKeysPath(), KeychainService),
+			fmt.Sprintf("credential reference is empty; export a provider env var (e.g. OPENAI_API_KEY), set providers.<name>.api_key in %s, or store the key in the OS keychain (service %q)", r.configPath, KeychainService),
 			false,
 			provider.ErrCredentialUnavailable,
 		)
@@ -72,7 +71,7 @@ func (r *ChainResolver) Resolve(ctx context.Context, credentialReference string)
 		return "", provider.NewFailure(
 			"",
 			provider.FailureCodeCredentialUnavailable,
-			fmt.Sprintf("local mode does not support %q; use env:// / secret:// / provider keys from process env, %s, or the OS keychain — hosted workspace secrets are never fetched", ref, ProviderKeysFileName),
+			fmt.Sprintf("local mode does not support %q; use env:// / secret:// / provider keys from process env, %s, or the OS keychain — hosted workspace secrets are never fetched", ref, r.configPath),
 			false,
 			ErrHostedSecretRejected,
 		)
@@ -89,7 +88,7 @@ func (r *ChainResolver) Resolve(ctx context.Context, credentialReference string)
 	}
 
 	if !mapped {
-		return "", missingKeyFailure(ref, providerKey, tried)
+		return "", r.missingKeyFailure(ref, providerKey, tried)
 	}
 
 	tried = append(tried, "config:"+providerKey)
@@ -97,7 +96,7 @@ func (r *ChainResolver) Resolve(ctx context.Context, credentialReference string)
 	if err == nil {
 		return value, nil
 	}
-	if err != nil && !errors.Is(err, ErrConfigMiss) {
+	if !errors.Is(err, ErrConfigMiss) {
 		return "", provider.NewFailure(
 			providerKey,
 			provider.FailureCodeCredentialUnavailable,
@@ -105,6 +104,13 @@ func (r *ChainResolver) Resolve(ctx context.Context, credentialReference string)
 			false,
 			err,
 		)
+	}
+	// Preserve typo hints from FileKeyStore when the miss wraps unrecognized keys.
+	if !errors.Is(err, ErrConfigMiss) || err.Error() != ErrConfigMiss.Error() {
+		// err is ErrConfigMiss or wrap; if wrapped with unrecognized keys, include in tried/hint.
+		if msg := err.Error(); msg != ErrConfigMiss.Error() {
+			tried = append(tried, "config-note:"+msg)
+		}
 	}
 
 	if r.keychain != nil {
@@ -124,7 +130,7 @@ func (r *ChainResolver) Resolve(ctx context.Context, credentialReference string)
 		}
 	}
 
-	return "", missingKeyFailure(ref, providerKey, tried)
+	return "", r.missingKeyFailure(ref, providerKey, tried)
 }
 
 func (r *ChainResolver) lookup(name string) (string, bool) {
@@ -153,15 +159,14 @@ func envCandidates(ref, providerKey string, mapped bool) []string {
 		out = append(out, name)
 	}
 
-	switch {
-	case strings.HasPrefix(ref, "env://"):
-		add(strings.TrimPrefix(ref, "env://"))
-	case strings.HasPrefix(ref, "secret://"):
-		secretName := strings.TrimPrefix(ref, "secret://")
-		normalized := normalizeSecretName(secretName)
-		add("AGENTCLASH_SECRET_" + normalized)
-		add(normalized)
-		add(normalized + "_API_KEY")
+	// Share env:// and secret:// expansion with the hosted EnvCredentialResolver
+	// so candidate forms cannot drift.
+	if strings.HasPrefix(ref, "env://") || strings.HasPrefix(ref, "secret://") {
+		if candidates, err := provider.CandidateEnvVars(ref); err == nil {
+			for _, c := range candidates {
+				add(c)
+			}
+		}
 	}
 
 	if mapped {
@@ -172,19 +177,41 @@ func envCandidates(ref, providerKey string, mapped bool) []string {
 	return out
 }
 
-func missingKeyFailure(ref, providerKey string, tried []string) error {
+func (r *ChainResolver) missingKeyFailure(ref, providerKey string, tried []string) error {
+	configPath := r.configPath
+	if configPath == "" {
+		configPath = ProviderKeysPath()
+	}
 	hint := fmt.Sprintf("export the provider env var, set providers.%s.api_key in %s, or store it in the OS keychain (service %q, account %q)",
-		providerKeyOr(providerKey, "PROVIDER"), ProviderKeysPath(), KeychainService, providerKeyOr(providerKey, "PROVIDER"))
+		providerKeyOr(providerKey, "PROVIDER"), configPath, KeychainService, providerKeyOr(providerKey, "PROVIDER"))
 	if providerKey == "" {
-		hint = fmt.Sprintf("export the matching env var, add an entry under providers in %s, or use a bare provider key / provider:// reference", ProviderKeysPath())
+		hint = fmt.Sprintf("export the matching env var, add an entry under providers in %s, or use a bare provider key / provider:// reference", configPath)
+	}
+	// Surface unrecognized YAML keys that were skipped during load (typo hints).
+	for _, item := range tried {
+		if strings.HasPrefix(item, "config-note:") {
+			hint = hint + "; " + strings.TrimPrefix(item, "config-note:")
+			break
+		}
 	}
 	return provider.NewFailure(
 		providerKey,
 		provider.FailureCodeCredentialUnavailable,
-		fmt.Sprintf("local credential for %q not found (tried %s); %s", ref, strings.Join(tried, ", "), hint),
+		fmt.Sprintf("local credential for %q not found (tried %s); %s", ref, joinTried(tried), hint),
 		false,
 		provider.ErrCredentialUnavailable,
 	)
+}
+
+func joinTried(tried []string) string {
+	filtered := make([]string, 0, len(tried))
+	for _, item := range tried {
+		if strings.HasPrefix(item, "config-note:") {
+			continue
+		}
+		filtered = append(filtered, item)
+	}
+	return strings.Join(filtered, ", ")
 }
 
 func providerKeyOr(providerKey, fallback string) string {
@@ -192,14 +219,4 @@ func providerKeyOr(providerKey, fallback string) string {
 		return fallback
 	}
 	return providerKey
-}
-
-var nonAlnum = regexp.MustCompile(`[^A-Za-z0-9]+`)
-
-func normalizeSecretName(value string) string {
-	trimmed := strings.TrimSpace(value)
-	if trimmed == "" {
-		return ""
-	}
-	return strings.Trim(nonAlnum.ReplaceAllString(strings.ToUpper(trimmed), "_"), "_")
 }

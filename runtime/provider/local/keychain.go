@@ -99,6 +99,10 @@ func (k OSKeychain) Delete(providerKey string) error {
 	return nil
 }
 
+// isKeychainUnavailable treats broad keyring/backend failures as a miss so
+// headless Linux (no D-Bus / Secret Service) can fall through the credential
+// chain instead of hard-failing. A genuinely broken keychain therefore looks
+// identical to "key not stored" — intentional for local-first UX.
 func isKeychainUnavailable(err error) bool {
 	if err == nil {
 		return false

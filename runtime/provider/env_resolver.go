@@ -74,7 +74,7 @@ func (EnvCredentialResolver) Resolve(ctx context.Context, credentialReference st
 		return value, nil
 	}
 
-	candidates, err := candidateEnvVars(credentialReference)
+	candidates, err := CandidateEnvVars(credentialReference)
 	if err != nil {
 		return "", err
 	}
@@ -95,13 +95,19 @@ func (EnvCredentialResolver) Resolve(ctx context.Context, credentialReference st
 	)
 }
 
-func candidateEnvVars(credentialReference string) ([]string, error) {
+// CandidateEnvVars returns the process-environment variable names to try for
+// env:// and secret:// credential references. Local and hosted resolvers share
+// this expansion so secret-candidate forms stay in lockstep.
+//
+// For secret://name the candidates are AGENTCLASH_SECRET_<NORM>, <NORM>, and
+// <NORM>_API_KEY where <NORM> is the uppercased alphanumeric form of name.
+func CandidateEnvVars(credentialReference string) ([]string, error) {
 	switch {
 	case strings.HasPrefix(credentialReference, "env://"):
 		return []string{strings.TrimPrefix(credentialReference, "env://")}, nil
 	case strings.HasPrefix(credentialReference, "secret://"):
 		secretName := strings.TrimPrefix(credentialReference, "secret://")
-		normalized := normalizeSecretName(secretName)
+		normalized := NormalizeSecretName(secretName)
 		return []string{
 			"AGENTCLASH_SECRET_" + normalized,
 			normalized,
@@ -118,12 +124,14 @@ func candidateEnvVars(credentialReference string) ([]string, error) {
 	}
 }
 
-var nonAlnum = regexp.MustCompile(`[^A-Za-z0-9]+`)
-
-func normalizeSecretName(value string) string {
+// NormalizeSecretName uppercases a secret name and replaces non-alphanumeric
+// runs with underscores (used by secret:// env-candidate expansion).
+func NormalizeSecretName(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return ""
 	}
 	return strings.Trim(nonAlnum.ReplaceAllString(strings.ToUpper(trimmed), "_"), "_")
 }
+
+var nonAlnum = regexp.MustCompile(`[^A-Za-z0-9]+`)

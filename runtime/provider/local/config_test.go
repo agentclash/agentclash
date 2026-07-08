@@ -3,6 +3,7 @@ package local
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -67,6 +68,17 @@ func TestSetAndDeleteProviderKey(t *testing.T) {
 		t.Fatalf("openai = %q", keys["openai"])
 	}
 
+	if err := SetProviderKey("openai", "   "); err == nil {
+		t.Fatal("expected error for empty api key")
+	}
+	keys, err = LoadProviderKeys()
+	if err != nil {
+		t.Fatalf("LoadProviderKeys after empty set: %v", err)
+	}
+	if keys["openai"] != "sk-1" {
+		t.Fatalf("empty SetProviderKey mutated key: %#v", keys)
+	}
+
 	if err := DeleteProviderKey("openai"); err != nil {
 		t.Fatalf("DeleteProviderKey: %v", err)
 	}
@@ -85,5 +97,58 @@ func TestProviderKeysPathUsesXDG(t *testing.T) {
 	want := filepath.Join(root, "agentclash", "provider_keys.yaml")
 	if got := ProviderKeysPath(); got != want {
 		t.Fatalf("ProviderKeysPath() = %q, want %q", got, want)
+	}
+}
+
+func TestSaveProviderKeysToTightensExistingPerms(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "provider_keys.yaml")
+	if err := os.WriteFile(path, []byte("providers: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := SaveProviderKeysTo(path, map[string]string{"openai": "sk"}); err != nil {
+		t.Fatalf("SaveProviderKeysTo: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("mode = %o, want 0600 after save", info.Mode().Perm())
+	}
+}
+
+func TestLoadProviderKeysFromReportsUnknownProviders(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "keys.yaml")
+	content := "providers:\n  anthropi:\n    api_key: sk-typo\n  openai:\n    api_key: sk-ok\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	keys, unknown, err := LoadProviderKeysFrom(path)
+	if err != nil {
+		t.Fatalf("LoadProviderKeysFrom: %v", err)
+	}
+	if keys["openai"] != "sk-ok" {
+		t.Fatalf("keys = %#v", keys)
+	}
+	if len(unknown) != 1 || unknown[0] != "anthropi" {
+		t.Fatalf("unknown = %#v, want [anthropi]", unknown)
+	}
+}
+
+func TestFileKeyStoreMissSurfacesUnknownProviders(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "keys.yaml")
+	content := "providers:\n  anthropi:\n    api_key: sk-typo\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := FileKeyStore{Path: path}.Get("anthropic")
+	if err == nil {
+		t.Fatal("expected miss")
+	}
+	if !strings.Contains(err.Error(), "anthropi") {
+		t.Fatalf("error %q missing typo hint", err)
 	}
 }
