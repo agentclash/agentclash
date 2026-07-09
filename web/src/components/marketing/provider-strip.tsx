@@ -10,13 +10,34 @@ import {
 
 type Provider = { name: string; render: (size: number) => ReactNode };
 
+// aria-hidden keeps lobehub's hardcoded SVG <title> out of the accessibility
+// tree so crawlers do not treat "OpenAI" as the page title when metadata is
+// still streaming.
 const PROVIDERS: Provider[] = [
-  { name: "OpenAI", render: (size) => <OpenAI size={size} color="#74AA9C" /> },
-  { name: "Anthropic", render: (size) => <Anthropic size={size} color="#D97757" /> },
-  { name: "Gemini", render: (size) => <Gemini.Color size={size} /> },
-  { name: "xAI", render: (size) => <XAI size={size} color="#FFFFFF" /> },
-  { name: "Mistral", render: (size) => <Mistral.Color size={size} /> },
-  { name: "OpenRouter", render: (size) => <OpenRouter size={size} color="#6566F1" /> },
+  {
+    name: "OpenAI",
+    render: (size) => <OpenAI size={size} color="#74AA9C" aria-hidden />,
+  },
+  {
+    name: "Anthropic",
+    render: (size) => <Anthropic size={size} color="#D97757" aria-hidden />,
+  },
+  {
+    name: "Gemini",
+    render: (size) => <Gemini.Color size={size} aria-hidden />,
+  },
+  {
+    name: "xAI",
+    render: (size) => <XAI size={size} color="#FFFFFF" aria-hidden />,
+  },
+  {
+    name: "Mistral",
+    render: (size) => <Mistral.Color size={size} aria-hidden />,
+  },
+  {
+    name: "OpenRouter",
+    render: (size) => <OpenRouter size={size} color="#6566F1" aria-hidden />,
+  },
 ];
 
 export function ProviderStrip() {

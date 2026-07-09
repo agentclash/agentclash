@@ -8,30 +8,29 @@ import {
 
 describe("SEO page registry", () => {
   it("registers every planned landing page path once", () => {
-    expect(getAllSeoPagePaths()).toEqual([
-      "/open-source-ai-agent-evaluation",
-      "/agent-evals",
-      "/llm-agent-evaluation",
-      "/agent-evaluation-framework",
-      "/ai-agent-testing",
-      "/agent-trajectory-evaluation",
-      "/ci-cd-agent-evaluation",
-      "/ai-agent-benchmark",
-      "/agent-reliability-benchmark",
-      "/use-cases/coding-agent-evaluation",
-      "/use-cases/research-agent-evaluation",
-      "/use-cases/support-agent-evaluation",
-      "/industries/banking",
-      "/industries/insurance",
-      "/industries/government",
-      "/glossary/agent-evaluation",
-      "/glossary/challenge-pack",
-      "/glossary/release-gate",
-      "/features/agent-scorecards",
-      "/features/agent-replay",
-      "/features/challenge-packs",
-    ]);
-    expect(SEO_PAGE_REGISTRY).toHaveLength(21);
+    const paths = getAllSeoPagePaths();
+    expect(new Set(paths).size).toBe(paths.length);
+    expect(paths).toEqual(SEO_PAGE_REGISTRY.map((page) => page.path));
+    expect(SEO_PAGE_REGISTRY.length).toBeGreaterThanOrEqual(26);
+    // Tier-S category landings that must stay registered.
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        "/open-source-ai-agent-evaluation",
+        "/agent-evals",
+        "/llm-agent-evaluation",
+        "/agent-evaluation-framework",
+        "/ai-agent-testing",
+        "/agent-trajectory-evaluation",
+        "/ci-cd-agent-evaluation",
+        "/ai-agent-benchmark",
+        "/agent-reliability-benchmark",
+        "/synthetic-data-generation-agents",
+        "/agentic-self-instruct",
+        "/trace-to-dataset",
+        "/features/synthetic-dataset-generation",
+        "/glossary/agentic-self-instruct",
+      ]),
+    );
   });
 
   it("groups use-case and feature routes by prefix", () => {
@@ -44,6 +43,7 @@ describe("SEO page registry", () => {
       "/features/agent-scorecards",
       "/features/agent-replay",
       "/features/challenge-packs",
+      "/features/synthetic-dataset-generation",
     ]);
     expect(getSeoPagesByPrefix("/industries").map((page) => page.path)).toEqual([
       "/industries/banking",
@@ -54,6 +54,7 @@ describe("SEO page registry", () => {
       "/glossary/agent-evaluation",
       "/glossary/challenge-pack",
       "/glossary/release-gate",
+      "/glossary/agentic-self-instruct",
     ]);
   });
 

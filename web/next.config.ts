@@ -6,6 +6,12 @@ const POSTHOG_INGEST = process.env.POSTHOG_CLOUD_HOST ?? "https://us.i.posthog.c
 const POSTHOG_ASSETS = process.env.POSTHOG_ASSETS_HOST ?? "https://us-assets.i.posthog.com";
 
 const nextConfig: NextConfig = {
+  // Force blocking metadata for every user agent (including Googlebot).
+  // Without this, Next 15 streams <title>/OG tags into <body> on dynamic
+  // pages (homepage, enterprise, blog). Crawlers that race the stream then
+  // fall back to the first SVG <title> in the body (e.g. lobehub "OpenAI"),
+  // which is why site:agentclash.dev was effectively unindexed.
+  htmlLimitedBots: /.*/,
   async redirects() {
     return [
       {
@@ -15,6 +21,12 @@ const nextConfig: NextConfig = {
       },
       {
         source: "/v2/:path*",
+        destination: "/",
+        permanent: true,
+      },
+      {
+        // Orphan draft landing; keep crawl budget on the real homepage.
+        source: "/landing-2",
         destination: "/",
         permanent: true,
       },

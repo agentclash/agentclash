@@ -7,6 +7,11 @@ describe("DEFAULT_MARKETING_NAV", () => {
     expect(compare).toMatchObject({ label: "Compare" });
   });
 
+  it("includes /pricing for conversion discovery", () => {
+    const pricing = DEFAULT_MARKETING_NAV.find((item) => item.href === "/pricing");
+    expect(pricing).toMatchObject({ label: "Pricing" });
+  });
+
   it("keeps /benchmarks as the canonical benchmark hub", () => {
     const benchmarkLinks = DEFAULT_MARKETING_NAV.filter((item) =>
       item.href.includes("benchmark"),

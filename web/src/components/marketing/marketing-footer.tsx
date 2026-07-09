@@ -9,6 +9,7 @@ const COLUMNS: Array<{
     links: [
       { href: "/#features", label: "Features" },
       { href: "/enterprise", label: "Enterprise" },
+      { href: "/pricing", label: "Pricing" },
       { href: "/services", label: "Services" },
       { href: "/platform/agent-evaluation", label: "Agent evaluation" },
       { href: "/compare", label: "Compare tools" },

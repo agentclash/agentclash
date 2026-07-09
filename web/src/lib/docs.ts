@@ -74,7 +74,7 @@ const PUBLIC_PRODUCT_PAGES: PublicProductPage[] = [
     description:
       "Compare AgentClash with Braintrust, LangSmith, Promptfoo, Langfuse, Arize Phoenix, and OpenAI Evals — agent evaluation versus prompt evaluation.",
     searchKeywords:
-      "compare comparison alternative alternatives AgentClash vs Braintrust LangSmith Promptfoo Langfuse Arize Phoenix OpenAI Evals agent evaluation prompt evaluation best AI agent eval tools",
+      "compare comparison alternative alternatives AgentClash vs Braintrust LangSmith Promptfoo Langfuse Arize Phoenix OpenAI Evals Maxim AI MLflow DeepEval Galileo Patronus Ragas agent evaluation prompt evaluation best AI agent eval tools 2026",
   },
   {
     title: "AgentClash Pricing",

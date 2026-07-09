@@ -6,7 +6,11 @@ describe("robots", () => {
     const result = robots();
     const rules = Array.isArray(result.rules) ? result.rules : [result.rules];
 
-    expect(rules[0]).toEqual({ userAgent: "*", allow: "/" });
+    expect(rules[0]).toMatchObject({
+      userAgent: "*",
+      allow: "/",
+      disallow: expect.arrayContaining(["/dashboard", "/workspaces/", "/auth/"]),
+    });
     expect(result.sitemap).toBe("https://www.agentclash.dev/sitemap.xml");
   });
 
@@ -15,16 +19,27 @@ describe("robots", () => {
     const rules = Array.isArray(result.rules) ? result.rules : [result.rules];
 
     for (const userAgent of AI_CRAWLERS) {
-      expect(rules).toContainEqual({ userAgent, allow: "/" });
+      expect(rules).toContainEqual({
+        userAgent,
+        allow: "/",
+        disallow: expect.arrayContaining(["/dashboard"]),
+      });
     }
   });
 
-  it("never disallows any path", () => {
+  it("disallows app-shell routes so they do not dilute crawl budget", () => {
     const result = robots();
     const rules = Array.isArray(result.rules) ? result.rules : [result.rules];
+    const star = rules[0];
 
-    for (const rule of rules) {
-      expect(rule.disallow).toBeUndefined();
-    }
+    expect(star.disallow).toEqual([
+      "/dashboard",
+      "/workspaces/",
+      "/orgs/",
+      "/auth/",
+      "/invites/",
+      "/github/",
+      "/share/",
+    ]);
   });
 });

@@ -25,11 +25,31 @@ export const AI_CRAWLERS = [
   "Amazonbot",
 ] as const;
 
+// App-shell and auth surfaces that should not compete for crawl budget.
+// Public marketing + docs stay fully crawlable.
+export const APP_SHELL_DISALLOW = [
+  "/dashboard",
+  "/workspaces/",
+  "/orgs/",
+  "/auth/",
+  "/invites/",
+  "/github/",
+  "/share/",
+] as const;
+
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
-      { userAgent: "*", allow: "/" },
-      ...AI_CRAWLERS.map((userAgent) => ({ userAgent, allow: "/" })),
+      {
+        userAgent: "*",
+        allow: "/",
+        disallow: [...APP_SHELL_DISALLOW],
+      },
+      ...AI_CRAWLERS.map((userAgent) => ({
+        userAgent,
+        allow: "/",
+        disallow: [...APP_SHELL_DISALLOW],
+      })),
     ],
     sitemap: "https://www.agentclash.dev/sitemap.xml",
   };

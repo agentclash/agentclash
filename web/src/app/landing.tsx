@@ -96,13 +96,34 @@ function ClashMark({
   );
 }
 
+// aria-hidden: lobehub icons hardcode an SVG <title> (e.g. "OpenAI"). When
+// Next streams page metadata into <body>, crawlers that miss the real <title>
+// fall back to the first SVG title and index the homepage as "OpenAI".
 const PROVIDERS: Array<{ name: string; render: (size: number) => React.ReactNode }> = [
-  { name: "OpenAI", render: (size) => <OpenAI size={size} color="#74AA9C" /> },
-  { name: "Anthropic", render: (size) => <Anthropic size={size} color="#D97757" /> },
-  { name: "Gemini", render: (size) => <Gemini.Color size={size} /> },
-  { name: "xAI", render: (size) => <XAI size={size} color="#FFFFFF" /> },
-  { name: "Mistral", render: (size) => <Mistral.Color size={size} /> },
-  { name: "OpenRouter", render: (size) => <OpenRouter size={size} color="#6566F1" /> },
+  {
+    name: "OpenAI",
+    render: (size) => <OpenAI size={size} color="#74AA9C" aria-hidden />,
+  },
+  {
+    name: "Anthropic",
+    render: (size) => <Anthropic size={size} color="#D97757" aria-hidden />,
+  },
+  {
+    name: "Gemini",
+    render: (size) => <Gemini.Color size={size} aria-hidden />,
+  },
+  {
+    name: "xAI",
+    render: (size) => <XAI size={size} color="#FFFFFF" aria-hidden />,
+  },
+  {
+    name: "Mistral",
+    render: (size) => <Mistral.Color size={size} aria-hidden />,
+  },
+  {
+    name: "OpenRouter",
+    render: (size) => <OpenRouter size={size} color="#6566F1" aria-hidden />,
+  },
 ];
 
 function TargetGlyph() {

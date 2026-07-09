@@ -25,6 +25,8 @@ describe("compare competitor pages", () => {
 
     expect(params).toHaveLength(COMPETITORS.length);
     expect(params).toContainEqual({ competitor: "agentclash-vs-langsmith" });
+    expect(params).toContainEqual({ competitor: "agentclash-vs-maxim-ai" });
+    expect(params).toContainEqual({ competitor: "agentclash-vs-mlflow" });
   });
 
   it("locks per-competitor canonical metadata and titles", async () => {

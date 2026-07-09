@@ -1,0 +1,98 @@
+{
+  "site": {
+    "domain": "www.agentclash.dev",
+    "product_summary": "Open-source (MIT) AI agent evaluation platform: sandboxed same-task runs, trajectory replay/scorecards, failure promotion, CI release gates, BYOK.",
+    "stack": "Next.js 15 App Router (web/), Vercel, WorkOS AuthKit, dynamic /og, sitemap.ts, robots.ts, llms.txt"
+  },
+  "strategy": {
+    "working": [],
+    "not_working": [],
+    "current_focus": "Fix crawlability (blocking metadata) then capture long-tail compare + roundup demand where AgentClash is absent from 2026 lists"
+  },
+  "keywords": [
+    {
+      "term": "AI agent evaluation tools 2026",
+      "intent": "informational/comparison",
+      "status": "targeted",
+      "page": "/blog/top-ai-agent-evaluation-tools-2026"
+    },
+    {
+      "term": "AgentClash vs Maxim AI",
+      "intent": "comparison",
+      "status": "targeted",
+      "page": "/compare/agentclash-vs-maxim-ai"
+    },
+    {
+      "term": "AgentClash vs MLflow",
+      "intent": "comparison",
+      "status": "targeted",
+      "page": "/compare/agentclash-vs-mlflow"
+    },
+    {
+      "term": "open source AI agent evaluation",
+      "intent": "informational/transactional",
+      "status": "targeted",
+      "page": "/open-source-ai-agent-evaluation"
+    },
+    {
+      "term": "LangSmith alternative agent evaluation",
+      "intent": "comparison",
+      "status": "targeted",
+      "page": "/compare/agentclash-vs-langsmith"
+    }
+  ],
+  "hypotheses": [
+    {
+      "id": "2026-07-09-1",
+      "change": "htmlLimitedBots: /.*/ in web/next.config.ts so homepage/enterprise/blog emit <title>/canonical in <head>",
+      "expectation": "Live Googlebot fetch of https://www.agentclash.dev/ returns <title> containing AgentClash in <head>; site:www.agentclash.dev starts showing results within 2-4 weeks",
+      "measure_via": "live-url fetch + web-search spot check site:www.agentclash.dev",
+      "earliest_check": "2026-07-16",
+      "status": "open",
+      "outcome_notes": ""
+    },
+    {
+      "id": "2026-07-09-2",
+      "change": "robots.ts disallows /dashboard /workspaces/ /auth/ etc.",
+      "expectation": "App-shell URLs stop appearing in Search Console indexed pages; crawl budget concentrates on marketing/docs",
+      "measure_via": "search-console | live robots.txt fetch",
+      "earliest_check": "2026-07-23",
+      "status": "open",
+      "outcome_notes": ""
+    },
+    {
+      "id": "2026-07-09-3",
+      "change": "New compare pages Maxim AI + MLflow; blog top-ai-agent-evaluation-tools-2026",
+      "expectation": "Pages indexed; appear for 'Maxim AI alternative agent evaluation' / 'top AI agent evaluation tools 2026' long-tail within 4-6 weeks",
+      "measure_via": "web-search spot check + live-url fetch",
+      "earliest_check": "2026-08-06",
+      "status": "open",
+      "outcome_notes": ""
+    },
+    {
+      "id": "2026-07-09-4",
+      "change": "Pricing added to header + footer nav",
+      "expectation": "Increased internal PageRank to /pricing; higher organic CTR to pricing from compare/blog within 4 weeks (unmeasured without analytics baseline)",
+      "measure_via": "analytics",
+      "earliest_check": "2026-08-06",
+      "status": "open",
+      "outcome_notes": "Need PostHog/GSC baseline; currently unmeasured"
+    }
+  ],
+  "runs": [
+    {
+      "date": "2026-07-09",
+      "file": "runs/2026-07-09-audit.md",
+      "pr": "direct-to-main",
+      "shipped": [
+        "blocking metadata via htmlLimitedBots",
+        "robots app-shell disallow",
+        "pricing nav/footer",
+        "Maxim AI + MLflow compare pages",
+        "top tools 2026 blog post",
+        "landing-2 redirect",
+        "registry test refresh"
+      ]
+    }
+  ]
+}

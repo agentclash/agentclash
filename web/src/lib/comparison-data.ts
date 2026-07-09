@@ -193,6 +193,22 @@ const EXTENDED_COMPETITORS: ExtendedCompetitor[] = [
       "Ragas is an excellent open-source evaluation framework for RAG and agentic workflows, with metrics like agent goal accuracy and tool-call accuracy over complete traces. Pick it when retrieval quality and trace-based agent metrics are the focus.",
     verdicts: ["partial", "no", "no", "partial", "partial", "no", "no"],
   },
+  {
+    name: "Maxim AI",
+    tag: "agent simulation & observability",
+    whereItFits:
+      "Maxim AI is a strong end-to-end platform for agent simulation, evaluation, and observability with cross-functional workflows. Choose it when you want a hosted lifecycle suite spanning experimentation through production monitoring.",
+    // Simulation/multi-turn yes-ish, no microVM sandbox race, trajectory
+    // partial, observability-first, composite evaluators, CI partial.
+    verdicts: ["partial", "no", "no", "partial", "partial", "partial", "partial"],
+  },
+  {
+    name: "MLflow",
+    tag: "MLOps & agent eval",
+    whereItFits:
+      "MLflow is an excellent open-source MLOps platform with agent evaluation, tracing, and pluggable scorers (DeepEval, Ragas, Phoenix). Reach for it when experiment tracking and metric plugins inside an existing MLflow stack are the priority.",
+    verdicts: ["partial", "no", "no", "partial", "partial", "partial", "partial"],
+  },
 ];
 
 export const COMPETITORS: Competitor[] = [
