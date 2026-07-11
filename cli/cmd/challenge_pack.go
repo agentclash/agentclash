@@ -140,9 +140,6 @@ var cpInitCmd = &cobra.Command{
 		rc.Output.PrintDetail("Name", name)
 		rc.Output.PrintDetail("Slug", slug)
 		rc.Output.PrintDetail("Template", templateMode)
-		if templateMode == "prompt_eval" {
-			rc.Output.PrintWarning("challenge-pack prompt_eval scaffolds challenge packs; for prompt eval CI configs, use `agentclash prompt-eval init .agentclash/prompt-eval.yaml`.")
-		}
 		if templateMode == "responses" {
 			rc.Output.PrintWarning("responses packs use OpenAI /v1/responses (deep research). Pair with a runtime profile whose execution_target is responses and an OpenAI provider account.")
 		}
