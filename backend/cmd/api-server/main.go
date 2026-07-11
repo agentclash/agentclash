@@ -79,7 +79,6 @@ func main() {
 		os.Exit(1)
 	}
 	artifactManager := api.NewArtifactManager(authorizer, repo, artifactStore, cfg.ArtifactSigningSecret, cfg.ArtifactSignedURLTTL, cfg.ArtifactMaxUploadBytes)
-	playgroundManager := api.NewPlaygroundManager(authorizer, repo, api.NewTemporalPlaygroundWorkflowStarter(temporalClient))
 	budgetChecker := budget.NewChecker(repository.NewBudgetRepositoryAdapter(repo))
 	runCreationManager := api.NewRunCreationManager(
 		authorizer,
@@ -231,7 +230,6 @@ func main() {
 		logger,
 		authenticator,
 		authorizer,
-		playgroundManager,
 		artifactManager,
 		runCreationManager,
 		runReadManager,

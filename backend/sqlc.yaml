@@ -18,7 +18,6 @@ sql:
       - "db/queries/agent_deployments.sql"
       - "db/queries/challenge_packs.sql"
       - "db/queries/agent_builds.sql"
-      - "db/queries/playgrounds.sql"
       - "db/queries/regression_suites.sql"
       - "db/queries/datasets.sql"
       - "db/queries/dataset_evals.sql"

@@ -461,7 +461,6 @@ func TestListChallengeInputSetsHandlerReturnsItems(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -514,7 +513,6 @@ func TestListChallengeInputSetsHandlerReturnsNotFound(t *testing.T) {
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		stubChallengePackAuthoringService{},
-		nil,
 		nil,
 		nil,
 		nil,
@@ -583,7 +581,6 @@ challenges:
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		service,
-		nil,
 		nil,
 		nil,
 		nil,

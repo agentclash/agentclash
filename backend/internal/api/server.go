@@ -28,7 +28,6 @@ type routerOptions struct {
 	logger                     *slog.Logger
 	authenticator              Authenticator
 	authorizer                 WorkspaceAuthorizer
-	playgroundService          PlaygroundService
 	artifactService            ArtifactService
 	artifactMaxUploadBytes     int64
 	runCreationService         RunCreationService
@@ -68,7 +67,6 @@ func NewServer(
 	logger *slog.Logger,
 	authenticator Authenticator,
 	authorizer WorkspaceAuthorizer,
-	playgroundService PlaygroundService,
 	artifactService ArtifactService,
 	runCreationService RunCreationService,
 	runReadService RunReadService,
@@ -107,7 +105,6 @@ func NewServer(
 		logger:                     logger,
 		authenticator:              authenticator,
 		authorizer:                 authorizer,
-		playgroundService:          playgroundService,
 		artifactService:            artifactService,
 		artifactMaxUploadBytes:     cfg.ArtifactMaxUploadBytes,
 		runCreationService:         runCreationService,
@@ -213,7 +210,6 @@ func newRouter(
 	onboardingServiceArg OnboardingService,
 	infraServiceArg InfrastructureService,
 	workspaceSecretsServiceArg WorkspaceSecretsService,
-	playgroundServiceArg PlaygroundService,
 	eventSubscriber pubsub.EventSubscriber,
 	cliAuthServices ...CLIAuthService,
 ) http.Handler {
@@ -223,7 +219,6 @@ func newRouter(
 		logger:                     logger,
 		authenticator:              authenticator,
 		authorizer:                 authorizer,
-		playgroundService:          playgroundServiceArg,
 		artifactService:            artifactService,
 		artifactMaxUploadBytes:     artifactMaxUploadBytes,
 		runCreationService:         runCreationService,
@@ -258,7 +253,6 @@ func buildRouter(opts routerOptions) http.Handler {
 	logger := opts.logger
 	authenticator := opts.authenticator
 	authorizer := opts.authorizer
-	playgroundService := opts.playgroundService
 	artifactService := opts.artifactService
 	artifactMaxUploadBytes := opts.artifactMaxUploadBytes
 	runCreationService := opts.runCreationService
@@ -303,9 +297,6 @@ func buildRouter(opts routerOptions) http.Handler {
 
 	if compareReadService == nil {
 		compareReadService = noopCompareReadService{}
-	}
-	if playgroundService == nil {
-		playgroundService = noopPlaygroundService{}
 	}
 	if releaseGateService == nil {
 		releaseGateService = noopReleaseGateService{}
@@ -401,7 +392,7 @@ func buildRouter(opts routerOptions) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(authenticateRequest(logger, authenticator))
 			r.Use(trackUsage(logger, opts.posthogClient))
-			registerProtectedRoutes(r, logger, authorizer, playgroundService, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, challengePackBuilderService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, agentTryoutService, billingService, multiTurnService)
+			registerProtectedRoutes(r, logger, authorizer, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, challengePackBuilderService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, agentTryoutService, billingService, multiTurnService)
 		})
 	})
 
@@ -496,54 +487,6 @@ type noopCompareReadService struct{}
 
 func (noopCompareReadService) GetRunComparison(_ context.Context, _ Caller, _ GetRunComparisonInput) (GetRunComparisonResult, error) {
 	return GetRunComparisonResult{}, errors.New("compare read service is not configured")
-}
-
-type noopPlaygroundService struct{}
-
-func (noopPlaygroundService) CreatePlayground(_ context.Context, _ Caller, _ CreatePlaygroundInput) (repository.Playground, error) {
-	return repository.Playground{}, errors.New("playground service is not configured")
-}
-func (noopPlaygroundService) ListPlaygrounds(_ context.Context, _ Caller, _ uuid.UUID) ([]repository.Playground, error) {
-	return nil, errors.New("playground service is not configured")
-}
-func (noopPlaygroundService) GetPlayground(_ context.Context, _ Caller, _ uuid.UUID) (repository.Playground, error) {
-	return repository.Playground{}, errors.New("playground service is not configured")
-}
-func (noopPlaygroundService) UpdatePlayground(_ context.Context, _ Caller, _ UpdatePlaygroundInput) (repository.Playground, error) {
-	return repository.Playground{}, errors.New("playground service is not configured")
-}
-func (noopPlaygroundService) DeletePlayground(_ context.Context, _ Caller, _ uuid.UUID) error {
-	return errors.New("playground service is not configured")
-}
-func (noopPlaygroundService) CreatePlaygroundTestCase(_ context.Context, _ Caller, _ CreatePlaygroundTestCaseInput) (repository.PlaygroundTestCase, error) {
-	return repository.PlaygroundTestCase{}, errors.New("playground service is not configured")
-}
-func (noopPlaygroundService) ListPlaygroundTestCases(_ context.Context, _ Caller, _ uuid.UUID) ([]repository.PlaygroundTestCase, error) {
-	return nil, errors.New("playground service is not configured")
-}
-func (noopPlaygroundService) UpdatePlaygroundTestCase(_ context.Context, _ Caller, _ UpdatePlaygroundTestCaseInput) (repository.PlaygroundTestCase, error) {
-	return repository.PlaygroundTestCase{}, errors.New("playground service is not configured")
-}
-func (noopPlaygroundService) DeletePlaygroundTestCase(_ context.Context, _ Caller, _ uuid.UUID) error {
-	return errors.New("playground service is not configured")
-}
-func (noopPlaygroundService) CreatePlaygroundExperiment(_ context.Context, _ Caller, _ CreatePlaygroundExperimentInput) (repository.PlaygroundExperiment, error) {
-	return repository.PlaygroundExperiment{}, errors.New("playground service is not configured")
-}
-func (noopPlaygroundService) BatchCreatePlaygroundExperiments(_ context.Context, _ Caller, _ BatchCreatePlaygroundExperimentsInput) ([]repository.PlaygroundExperiment, error) {
-	return nil, errors.New("playground service is not configured")
-}
-func (noopPlaygroundService) ListPlaygroundExperiments(_ context.Context, _ Caller, _ uuid.UUID) ([]repository.PlaygroundExperiment, error) {
-	return nil, errors.New("playground service is not configured")
-}
-func (noopPlaygroundService) GetPlaygroundExperiment(_ context.Context, _ Caller, _ uuid.UUID) (repository.PlaygroundExperiment, error) {
-	return repository.PlaygroundExperiment{}, errors.New("playground service is not configured")
-}
-func (noopPlaygroundService) ListPlaygroundExperimentResults(_ context.Context, _ Caller, _ uuid.UUID) ([]repository.PlaygroundExperimentResult, error) {
-	return nil, errors.New("playground service is not configured")
-}
-func (noopPlaygroundService) ComparePlaygroundExperiments(_ context.Context, _ Caller, _ uuid.UUID, _ uuid.UUID) (repository.PlaygroundExperimentComparison, error) {
-	return repository.PlaygroundExperimentComparison{}, errors.New("playground service is not configured")
 }
 
 type noopReleaseGateService struct{}

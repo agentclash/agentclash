@@ -27,8 +27,6 @@ export const workspaceResourceKeys = {
       limit: RUN_PAGE_SIZE,
       offset,
     }),
-  playgrounds: (workspaceId: string): ApiQueryKey =>
-    apiQueryKey(`/v1/workspaces/${workspaceId}/playgrounds`),
   regressionSuites: (workspaceId: string, offset = 0): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/regression-suites`, {
       limit: SUITE_PAGE_SIZE,

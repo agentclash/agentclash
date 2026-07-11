@@ -613,3 +613,18 @@ func datasetGenerationRNGSeed(jobID uuid.UUID) int64 {
 	return int64(idBytes[0])<<56 | int64(idBytes[1])<<48 | int64(idBytes[2])<<40 | int64(idBytes[3])<<32 |
 		int64(idBytes[4])<<24 | int64(idBytes[5])<<16 | int64(idBytes[6])<<8 | int64(idBytes[7])
 }
+
+func cloneTimePtr(value *time.Time) *time.Time {
+	if value == nil {
+		return nil
+	}
+	cloned := value.UTC()
+	return &cloned
+}
+
+func cloneRawJSON(value json.RawMessage) json.RawMessage {
+	if value == nil {
+		return nil
+	}
+	return append(json.RawMessage(nil), value...)
+}

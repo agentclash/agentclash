@@ -223,7 +223,6 @@ func newToolRouter(t *testing.T, svc stubInfraService) http.Handler {
 		svc,
 		nil,
 		nil,
-		nil,
 	)
 }
 

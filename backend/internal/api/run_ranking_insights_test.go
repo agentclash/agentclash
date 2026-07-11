@@ -481,7 +481,6 @@ func TestCreateRunRankingInsightsEndpointReturnsInsights(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -536,7 +535,6 @@ func TestCreateRunRankingInsightsEndpointMapsProviderAuthFailureTo400(t *testing
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		nil,
 		nil,
 		nil,
 		nil,
@@ -609,7 +607,6 @@ func TestCreateRunRankingInsightsEndpointMapsProviderRateLimitTo429(t *testing.T
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusTooManyRequests {
@@ -656,7 +653,6 @@ func TestCreateRunRankingInsightsEndpointMapsManagerRateLimitTo429(t *testing.T)
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		nil,
 		nil,
 		nil,
 		nil,

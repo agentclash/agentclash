@@ -133,25 +133,6 @@ func (s TemporalPublicAgentTryoutExecutionWorkflowStarter) StartPublicAgentTryou
 	return AgentHarnessExecutionWorkflowRef{WorkflowID: run.GetID(), RunID: run.GetRunID()}, nil
 }
 
-type TemporalPlaygroundWorkflowStarter struct {
-	client TemporalClient
-}
-
-func NewTemporalPlaygroundWorkflowStarter(client TemporalClient) TemporalPlaygroundWorkflowStarter {
-	return TemporalPlaygroundWorkflowStarter{client: client}
-}
-
-func (s TemporalPlaygroundWorkflowStarter) StartPlaygroundExperimentWorkflow(ctx context.Context, experimentID uuid.UUID) error {
-	workflowID := fmt.Sprintf("%s/%s", workflow.PlaygroundExperimentWorkflowName, experimentID)
-	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
-		ID:        workflowID,
-		TaskQueue: workflow.WorkflowTaskQueue,
-	}, workflow.PlaygroundExperimentWorkflowName, workflow.PlaygroundExperimentWorkflowInput{
-		ExperimentID: experimentID,
-	})
-	return err
-}
-
 type TemporalSyntheticDatasetGenerationWorkflowStarter struct {
 	client TemporalClient
 }

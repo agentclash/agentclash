@@ -90,7 +90,6 @@ func TestCLIAuthRoutesDoNotShadowProtectedAuthRoutes(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 		stubCLIAuthService{},
 	).ServeHTTP(recorder, req)
 
@@ -120,7 +119,6 @@ func TestCLIAuthPublicDeviceRouteIsReachable(t *testing.T) {
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		stubChallengePackAuthoringService{},
-		nil,
 		nil,
 		nil,
 		nil,
@@ -179,7 +177,6 @@ func TestCLIAuthProtectedTokensRouteIsReachable(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 		stubCLIAuthService{},
 	).ServeHTTP(recorder, req)
 
@@ -229,7 +226,6 @@ func TestCLIAuthProtectedApproveRouteIsReachable(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 		stubCLIAuthService{},
 	).ServeHTTP(recorder, req)
 
@@ -260,7 +256,6 @@ func TestCLIAuthProtectedDenyRouteIsReachable(t *testing.T) {
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		stubChallengePackAuthoringService{},
-		nil,
 		nil,
 		nil,
 		nil,

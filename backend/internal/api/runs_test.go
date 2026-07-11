@@ -68,7 +68,6 @@ func TestCreateRunEndpointReturnsCreated(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusCreated {
@@ -167,7 +166,6 @@ func TestCreateRunEndpointPropagatesCIMetadata(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusCreated {
@@ -243,7 +241,6 @@ func TestCreateRunEndpointPropagatesModeAndReturnsVoiceMetadata(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusCreated {
@@ -303,7 +300,6 @@ func TestCreateRunEndpointRejectsInvalidCIMetadata(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -342,7 +338,6 @@ func TestCreateRunEndpointRejectsUnsafeCIMetadataURL(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		nil,
 		nil,
 		nil,
 		nil,
@@ -401,7 +396,6 @@ func TestCreateRunEndpointRejectsOverlongDefaultBranchCIMetadata(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -435,7 +429,6 @@ func TestCreateRunEndpointRejectsInvalidPayload(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		nil,
 		nil,
 		nil,
 		nil,
@@ -503,7 +496,6 @@ func TestCreateRunEndpointReturnsQueuedRunOnWorkflowStartFailure(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadGateway {
@@ -559,7 +551,6 @@ func TestCreateRunEndpointRejectsNonJSONContentType(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusUnsupportedMediaType {
@@ -596,7 +587,6 @@ func TestCreateRunEndpointRejectsOversizedRequestBody(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		nil,
 		nil,
 		nil,
 		nil,
@@ -661,7 +651,6 @@ func TestCreateRunEndpointPropagatesRaceContext(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		nil,
 		nil,
 		nil,
 		nil,
@@ -791,7 +780,6 @@ func TestCreateRunEndpointRejectsRaceContextCadenceOutOfRange(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusBadRequest {
@@ -864,7 +852,6 @@ func TestCreateEvalSessionEndpointReturnsCreated(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		nil,
 		nil,
 		nil,
 		nil,
@@ -968,7 +955,6 @@ func TestCreateEvalSessionEndpointAcceptsRunMatrix(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		nil,
 		nil,
 		nil,
 		nil,
@@ -1184,7 +1170,6 @@ func TestCreateEvalSessionEndpointRejectsWeightedMeanWithoutWeights(t *testing.T
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusUnprocessableEntity {
@@ -1264,7 +1249,6 @@ func TestCreateEvalSessionEndpointAcceptsAggregationReliabilityWeight(t *testing
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusCreated {
@@ -1312,7 +1296,6 @@ func TestCreateEvalSessionEndpointRejectsInvalidAggregationReliabilityWeight(t *
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		nil,
 		nil,
 		nil,
 		nil,
@@ -1392,7 +1375,6 @@ func TestCreateEvalSessionEndpointAcceptsNullOptionalObjects(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		nil,
 		nil,
 		nil,
 		nil,

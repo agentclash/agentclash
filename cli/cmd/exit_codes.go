@@ -5,13 +5,13 @@ package cmd
 // code means without scraping help text.
 //
 // The authoritative int values live next to the commands that use them
-// (compare.go gateExit*, ci_run.go ciRunExit*, prompt_eval.go promptEvalExit*).
+// (compare.go gateExit*, ci_run.go ciRunExit*).
 // This registry references those same consts, and schema_test.go asserts the two
 // stay in lockstep — so the documented contract can never silently drift.
 //
-// Codes are intentionally overloaded across commands (e.g. 3 means "insufficient
-// evidence" for `compare gate` but "gate failed" for `prompt-eval`), so entries
-// are scoped by Commands rather than keyed uniquely by Code.
+// Codes are intentionally overloaded across commands (the same small integer can
+// mean different things for different commands), so entries are scoped by
+// Commands rather than keyed uniquely by Code.
 type ExitCode struct {
 	Code        int      `json:"code" yaml:"code"`
 	Name        string   `json:"name" yaml:"name"`
@@ -46,11 +46,6 @@ var documentedExitCodes = []ExitCode{
 	{Code: gateExitFail, Name: "compare_gate_fail", Description: "compare gate: a regression was detected.", Commands: []string{"compare gate"}},
 	{Code: gateExitWarn, Name: "compare_gate_warn", Description: "compare gate: a warning-level regression was detected.", Commands: []string{"compare gate"}},
 	{Code: gateExitInsufficientEvidence, Name: "compare_gate_insufficient_evidence", Description: "compare gate: not enough evidence to decide.", Commands: []string{"compare gate"}},
-
-	// `prompt-eval`.
-	{Code: promptEvalExitGate, Name: "prompt_eval_gate_failed", Description: "prompt-eval: the evaluation gate failed.", Commands: []string{"prompt-eval"}},
-	{Code: promptEvalExitExecution, Name: "prompt_eval_execution_error", Description: "prompt-eval: an error occurred while executing the evaluation.", Commands: []string{"prompt-eval"}},
-	{Code: promptEvalExitInvalid, Name: "prompt_eval_invalid_input", Description: "prompt-eval: invalid manifest or arguments.", Commands: []string{"prompt-eval"}},
 
 	// `ci run`.
 	{Code: ciRunExitInvalidManifest, Name: "ci_run_invalid_manifest", Description: "ci run: the CI manifest is invalid.", Commands: []string{"ci run"}},

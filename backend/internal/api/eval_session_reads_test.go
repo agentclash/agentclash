@@ -336,7 +336,6 @@ func TestGetEvalSessionEndpointReturnsDetail(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -415,7 +414,6 @@ func TestGetEvalSessionEndpointReturnsStoredAggregateResult(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -481,7 +479,6 @@ func TestGetEvalSessionEndpointNormalizesEmptyEvidenceWarnings(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusOK {
@@ -513,7 +510,6 @@ func TestListEvalSessionsEndpointRequiresWorkspaceID(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		nil,
 		nil,
 		nil,
 		nil,
@@ -572,7 +568,6 @@ func TestListEvalSessionsEndpointReturnsItems(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		nil,
 		nil,
 		nil,
 		nil,
@@ -645,7 +640,6 @@ func TestListEvalSessionsEndpointNormalizesEmptyEvidenceWarnings(t *testing.T) {
 		stubChallengePackReadService{},
 		stubAgentBuildService{},
 		noopReleaseGateService{},
-		nil,
 		nil,
 		nil,
 		nil,

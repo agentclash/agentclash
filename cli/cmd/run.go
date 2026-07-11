@@ -1037,3 +1037,20 @@ func formatDimensionSummary(v any) string {
 		return str(v)
 	}
 }
+
+// loadBodyFromFileOrFlags reads a JSON request body from the --from-file flag
+// when set, returning an empty map otherwise. Shared by the resource commands
+// that accept a JSON body (dataset, infra, regression-suite, run, dataset-trace).
+func loadBodyFromFileOrFlags(cmd *cobra.Command) (map[string]any, error) {
+	body := make(map[string]any)
+	if fromFile, _ := cmd.Flags().GetString("from-file"); fromFile != "" {
+		data, err := os.ReadFile(fromFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading file: %w", err)
+		}
+		if err := json.Unmarshal(data, &body); err != nil {
+			return nil, fmt.Errorf("parsing file: %w", err)
+		}
+	}
+	return body, nil
+}
