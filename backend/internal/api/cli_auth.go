@@ -272,11 +272,6 @@ func newRawCLIToken() (rawToken string, tokenHash string, err error) {
 	return rawToken, hex.EncodeToString(hash[:]), nil
 }
 
-func registerCLIAuthPublicRoutes(router chi.Router, logger *slog.Logger, service CLIAuthService) {
-	router.Post("/device", createDeviceCodeHandler(logger, service))
-	router.Post("/device/token", pollDeviceTokenHandler(logger, service))
-}
-
 func createDeviceCodeHandler(logger *slog.Logger, service CLIAuthService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := requireJSONContentType(r); err != nil {
