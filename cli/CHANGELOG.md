@@ -1,5 +1,51 @@
 # Changelog
 
+## [2.0.0](https://github.com/agentclash/agentclash/compare/v1.0.0...v2.0.0) (2026-07-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* remove playgrounds vertical
+* remove voice-eval vertical (backend, runtime, cli validators)
+* rename challenge pack to eval pack everywhere
+
+### Features
+
+* **challenge-packs:** safety packs + reusable pieces + CLI catalog + docs ([e82743c](https://github.com/agentclash/agentclash/commit/e82743c1ce79f6dae84b16388cf3be62c12b94b2))
+* **cli:** challenge-pack catalog list + use ([3e8e3ff](https://github.com/agentclash/agentclash/commit/3e8e3ff8e0be0130be6e50986c595830f3686b6b))
+* **cli:** evaltest init/run with JSON and JUnit output ([#1110](https://github.com/agentclash/agentclash/issues/1110)) ([c60f8a7](https://github.com/agentclash/agentclash/commit/c60f8a775d7b0588ebd2c8819c5be9e9e5849b29))
+* **cli:** step 1 — evaltest init/run with JSON and JUnit ([#1110](https://github.com/agentclash/agentclash/issues/1110)) ([1735afc](https://github.com/agentclash/agentclash/commit/1735afc10c97b9b26afe891e51882e5b306a87ef))
+* complete runtime m0 foundation ([d537fff](https://github.com/agentclash/agentclash/commit/d537ffff1eff557c793bfe5e4c65cfad5c92ab4a))
+* **datasets:** expose agentic generation loop config ([36439f7](https://github.com/agentclash/agentclash/commit/36439f71d4d366a9e9cb131f2c33649ede210e90))
+* **datasets:** wire agentic generation config ([61239f9](https://github.com/agentclash/agentclash/commit/61239f966ad5a0db994af2bf47a9ebe68331a45f))
+* **eval-sdk:** pytest, promote-failures, adapters, and TS spike ([#1111](https://github.com/agentclash/agentclash/issues/1111)-1114) ([be3ba88](https://github.com/agentclash/agentclash/commit/be3ba88a92e3f70a5333464605711be612e812fa))
+* **eval-sdk:** pytest, promote-failures, adapters, TS spike ([#1111](https://github.com/agentclash/agentclash/issues/1111)-1114) ([373cdf2](https://github.com/agentclash/agentclash/commit/373cdf2fe2a1cf938a3cb21aea698e8930c5d0e7))
+* **evaltest:** local eval data model and report schema ([#1106](https://github.com/agentclash/agentclash/issues/1106)) ([28017ab](https://github.com/agentclash/agentclash/commit/28017ab9c96d9ecc4c522a9177e5b5a18c5eed6a))
+* **evaltest:** step 1 — local eval schemas and exit codes ([#1106](https://github.com/agentclash/agentclash/issues/1106)) ([ca10307](https://github.com/agentclash/agentclash/commit/ca10307683721573bcdab8bf552e14741bb3244a))
+* move billing to freemium pricing ([3abbefd](https://github.com/agentclash/agentclash/commit/3abbefd51ab10f070a7dd1feb3a7dd1a34ef32bc))
+* move billing to freemium pricing ([8383157](https://github.com/agentclash/agentclash/commit/838315751aa8bdcb5c05abf699d6db9afcc160de))
+* **providers:** collapse provider stack into ConnectionService + live model fetch, drop model aliases/catalog ([d66516c](https://github.com/agentclash/agentclash/commit/d66516ccc463de9b81c4e19c4f197febabfff8d5))
+* **providers:** ConnectionService + live model fetch, drop model aliases/catalog ([fabad17](https://github.com/agentclash/agentclash/commit/fabad1739bc98a301dc63398abeb27f7479e0e33))
+
+
+### Bug Fixes
+
+* **challenge-packs:** tighten catalog review issues ([d86f091](https://github.com/agentclash/agentclash/commit/d86f091355a1fbae4f9cf2c9e9a4b9a442b19565))
+* **cli,web:** finish eval-platform vocabulary reposition ([0fb7393](https://github.com/agentclash/agentclash/commit/0fb73932e2e476fd1f90d26e703991107d3235d2))
+* **cli,web:** finish eval-platform vocabulary reposition ([ec33b6e](https://github.com/agentclash/agentclash/commit/ec33b6e2c380744bccf22d803596719bcc53312c))
+* **cli:** address Greptile review and sync skills manifest ([30a3953](https://github.com/agentclash/agentclash/commit/30a3953ab1286452226bf089b1802fa5c0845013))
+* **cli:** drop stale playgrounds reference from root help text ([039a2d6](https://github.com/agentclash/agentclash/commit/039a2d6682d8a3a2d7c401444ac89a8aeaefdac9))
+* **cli:** remove dangling prompt-eval reference from challenge-pack init ([3b2dc8a](https://github.com/agentclash/agentclash/commit/3b2dc8adea7fb5b0d7201cae43a8a563ca2356a3))
+* **eval-sdk:** omit null cost fields from JSON reports ([4c4d31d](https://github.com/agentclash/agentclash/commit/4c4d31d7907fd5cbd52137f5a6b0f11cf0672b9a))
+* **providers:** harden model discovery edge cases ([f0e61ef](https://github.com/agentclash/agentclash/commit/f0e61ef28b3a406e35dc9d571c5d4403f5f9593a))
+
+
+### Code Refactoring
+
+* remove playgrounds vertical ([958696e](https://github.com/agentclash/agentclash/commit/958696eb8e100406143454e01e63a3f6c7ad519e))
+* remove voice-eval vertical (backend, runtime, cli validators) ([48cebd7](https://github.com/agentclash/agentclash/commit/48cebd7cc2baad77f85e4fb402b541170d57ff43))
+* rename challenge pack to eval pack everywhere ([8fac07c](https://github.com/agentclash/agentclash/commit/8fac07c4592cc60b5fba4600d2e1c3f4b79d0c06))
+
 ## [1.0.0](https://github.com/agentclash/agentclash/compare/v0.29.0...v1.0.0) (2026-06-11)
 
 
