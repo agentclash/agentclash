@@ -25,7 +25,6 @@ const (
 	ActionManagePlaygrounds           Action = "manage_playgrounds"
 	ActionManageRegressions           Action = "manage_regressions"
 	ActionManageDatasets              Action = "manage_datasets"
-	ActionManageVibeEvalDrafts        Action = "manage_vibe_eval_drafts"
 	ActionSelectIntegrationRepository Action = "select_integration_repository"
 	ActionPublishChallengePack        Action = "publish_challenge_pack"
 	ActionUploadArtifact              Action = "upload_artifact"
@@ -62,7 +61,6 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionManagePlaygrounds:           true,
 		ActionManageRegressions:           true,
 		ActionManageDatasets:              true,
-		ActionManageVibeEvalDrafts:        true,
 		ActionSelectIntegrationRepository: true,
 		ActionPublishChallengePack:        true,
 		ActionUploadArtifact:              true,
@@ -82,7 +80,6 @@ var permissionMatrix = map[string]map[Action]bool{
 		ActionManagePlaygrounds:           true,
 		ActionManageRegressions:           true,
 		ActionManageDatasets:              true,
-		ActionManageVibeEvalDrafts:        true,
 		ActionSelectIntegrationRepository: true,
 		ActionPublishChallengePack:        true,
 		ActionUploadArtifact:              true,
