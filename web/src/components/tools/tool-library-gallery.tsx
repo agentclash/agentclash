@@ -77,7 +77,7 @@ export function ToolLibraryGallery({ workspaceId }: { workspaceId: string }) {
     return [...map.entries()];
   }, [entries, query]);
 
-  const customHref = `/workspaces/${workspaceId}/tools/new?build=canvas`;
+  const customHref = `/workspaces/${workspaceId}/tools/new?editor=form`;
 
   async function add(slugs: string[], busyKey: string) {
     if (slugs.length === 0) return;
