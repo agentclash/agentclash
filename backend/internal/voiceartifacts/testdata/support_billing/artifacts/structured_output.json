@@ -1,7 +1,0 @@
-{
-  "schema_ref": "voice.support.resolution.v1",
-  "output": {
-    "resolution": "refund_created",
-    "refund_id": "rf_123"
-  }
-}

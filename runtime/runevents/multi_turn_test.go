@@ -223,3 +223,7 @@ func multiTurnEvent(seq int64, eventType Type, runID uuid.UUID, runAgentID uuid.
 func boolPtr(value bool) *bool {
 	return &value
 }
+
+func intPtr(value int) *int {
+	return &value
+}

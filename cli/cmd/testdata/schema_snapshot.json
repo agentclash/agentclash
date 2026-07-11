@@ -596,37 +596,6 @@
               "required": true
             }
           ]
-        },
-        {
-          "name": "validate-voice-manifest",
-          "path": "agentclash artifact validate-voice-manifest",
-          "short": "Validate a voice artifact manifest JSON file against the AgentClash schema",
-          "runnable": true,
-          "args": [
-            {
-              "name": "file",
-              "required": true
-            }
-          ]
-        },
-        {
-          "name": "validate-voice-report",
-          "path": "agentclash artifact validate-voice-report",
-          "short": "Validate a voice report JSON file against an AgentClash schema",
-          "runnable": true,
-          "args": [
-            {
-              "name": "file",
-              "required": true
-            }
-          ],
-          "flags": [
-            {
-              "name": "schema",
-              "usage": "JSON Schema path (required when report type cannot be auto-detected)",
-              "type": "string"
-            }
-          ]
         }
       ]
     },
