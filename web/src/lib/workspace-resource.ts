@@ -48,8 +48,6 @@ export const workspaceResourceKeys = {
     apiQueryKey(`/v1/workspaces/${workspaceId}/provider-accounts`),
   tools: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/tools`),
-  knowledgeSources: (workspaceId: string): ApiQueryKey =>
-    apiQueryKey(`/v1/workspaces/${workspaceId}/knowledge-sources`),
   artifacts: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/artifacts`),
   datasets: (workspaceId: string): ApiQueryKey =>

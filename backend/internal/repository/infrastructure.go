@@ -19,7 +19,6 @@ var (
 	ErrRuntimeProfileNotFound  = errors.New("runtime profile not found")
 	ErrProviderAccountNotFound = errors.New("provider account not found")
 	ErrToolNotFound            = errors.New("tool not found")
-	ErrKnowledgeSourceNotFound = errors.New("knowledge source not found")
 	ErrRoutingPolicyNotFound   = errors.New("routing policy not found")
 	ErrSpendPolicyNotFound     = errors.New("spend policy not found")
 )
@@ -451,105 +450,6 @@ func (r *Repository) ArchiveTool(ctx context.Context, id uuid.UUID) error {
 }
 
 // --------------------------------------------------------------------------
-// Knowledge Sources
-// --------------------------------------------------------------------------
-
-type KnowledgeSourceRow struct {
-	ID               uuid.UUID
-	OrganizationID   uuid.UUID
-	WorkspaceID      *uuid.UUID
-	Name             string
-	Slug             string
-	SourceKind       string
-	ConnectionConfig json.RawMessage
-	LifecycleStatus  string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-}
-
-type CreateKnowledgeSourceParams struct {
-	OrganizationID   uuid.UUID
-	WorkspaceID      uuid.UUID
-	Name             string
-	Slug             string
-	SourceKind       string
-	ConnectionConfig json.RawMessage
-}
-
-func (r *Repository) CreateKnowledgeSource(ctx context.Context, p CreateKnowledgeSourceParams) (KnowledgeSourceRow, error) {
-	var row KnowledgeSourceRow
-	var createdAt, updatedAt pgtype.Timestamptz
-	err := r.db.QueryRow(ctx, `
-		INSERT INTO knowledge_sources (organization_id, workspace_id, name, slug, source_kind, connection_config)
-		VALUES ($1, $2, $3, $4, $5, $6)
-		RETURNING id, organization_id, workspace_id, name, slug, source_kind, connection_config, lifecycle_status, created_at, updated_at
-	`, p.OrganizationID, p.WorkspaceID, p.Name, p.Slug, p.SourceKind, defaultRawJSON(p.ConnectionConfig),
-	).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.Name, &row.Slug, &row.SourceKind,
-		&row.ConnectionConfig, &row.LifecycleStatus, &createdAt, &updatedAt)
-	if err != nil {
-		if isDuplicateSlug(err) {
-			return KnowledgeSourceRow{}, ErrSlugTaken
-		}
-		return KnowledgeSourceRow{}, fmt.Errorf("create knowledge source: %w", err)
-	}
-	row.CreatedAt = createdAt.Time
-	row.UpdatedAt = updatedAt.Time
-	return row, nil
-}
-
-func (r *Repository) GetKnowledgeSourceByID(ctx context.Context, id uuid.UUID) (KnowledgeSourceRow, error) {
-	var row KnowledgeSourceRow
-	var createdAt, updatedAt pgtype.Timestamptz
-	err := r.db.QueryRow(ctx, `
-		SELECT id, organization_id, workspace_id, name, slug, source_kind, connection_config, lifecycle_status, created_at, updated_at
-		FROM knowledge_sources WHERE id = $1 AND archived_at IS NULL
-	`, id).Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.Name, &row.Slug, &row.SourceKind,
-		&row.ConnectionConfig, &row.LifecycleStatus, &createdAt, &updatedAt)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return KnowledgeSourceRow{}, ErrKnowledgeSourceNotFound
-		}
-		return KnowledgeSourceRow{}, fmt.Errorf("get knowledge source: %w", err)
-	}
-	row.CreatedAt = createdAt.Time
-	row.UpdatedAt = updatedAt.Time
-	return row, nil
-}
-
-func (r *Repository) ListKnowledgeSourcesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]KnowledgeSourceRow, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT id, organization_id, workspace_id, name, slug, source_kind, connection_config, lifecycle_status, created_at, updated_at
-		FROM knowledge_sources
-		WHERE workspace_id = $1 AND archived_at IS NULL
-		ORDER BY name
-	`, workspaceID)
-	if err != nil {
-		return nil, fmt.Errorf("list knowledge sources: %w", err)
-	}
-	defer rows.Close()
-
-	var result []KnowledgeSourceRow
-	for rows.Next() {
-		var row KnowledgeSourceRow
-		var createdAt, updatedAt pgtype.Timestamptz
-		if err := rows.Scan(&row.ID, &row.OrganizationID, &row.WorkspaceID, &row.Name, &row.Slug, &row.SourceKind,
-			&row.ConnectionConfig, &row.LifecycleStatus, &createdAt, &updatedAt); err != nil {
-			return nil, fmt.Errorf("scan knowledge source: %w", err)
-		}
-		row.CreatedAt = createdAt.Time
-		row.UpdatedAt = updatedAt.Time
-		result = append(result, row)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate knowledge sources: %w", err)
-	}
-	if result == nil {
-		result = []KnowledgeSourceRow{}
-	}
-	return result, nil
-}
-
-// --------------------------------------------------------------------------
 // Routing Policies
 // --------------------------------------------------------------------------
 
@@ -755,7 +655,6 @@ func isDuplicateSlug(err error) bool {
 func (r RuntimeProfileRow) GetWorkspaceID() *uuid.UUID  { return r.WorkspaceID }
 func (r ProviderAccountRow) GetWorkspaceID() *uuid.UUID { return r.WorkspaceID }
 func (r ToolRow) GetWorkspaceID() *uuid.UUID            { return r.WorkspaceID }
-func (r KnowledgeSourceRow) GetWorkspaceID() *uuid.UUID { return r.WorkspaceID }
 
 func defaultStr(v, fallback string) string {
 	if v == "" {

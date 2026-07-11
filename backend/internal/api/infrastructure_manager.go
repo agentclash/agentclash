@@ -38,11 +38,6 @@ type InfrastructureRepository interface {
 	UpdateTool(ctx context.Context, p repository.UpdateToolParams) (repository.ToolRow, error)
 	ArchiveTool(ctx context.Context, id uuid.UUID) error
 
-	// Knowledge Sources
-	CreateKnowledgeSource(ctx context.Context, p repository.CreateKnowledgeSourceParams) (repository.KnowledgeSourceRow, error)
-	GetKnowledgeSourceByID(ctx context.Context, id uuid.UUID) (repository.KnowledgeSourceRow, error)
-	ListKnowledgeSourcesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.KnowledgeSourceRow, error)
-
 	// Routing Policies
 	CreateRoutingPolicy(ctx context.Context, p repository.CreateRoutingPolicyParams) (repository.RoutingPolicyRow, error)
 	ListRoutingPoliciesByWorkspaceID(ctx context.Context, workspaceID uuid.UUID) ([]repository.RoutingPolicyRow, error)
@@ -389,34 +384,6 @@ func (m *InfrastructureManager) validateToolDefinition(ctx context.Context, work
 		return &ToolDefinitionError{Errors: errs}
 	}
 	return nil
-}
-
-// --------------------------------------------------------------------------
-// Knowledge Sources
-// --------------------------------------------------------------------------
-
-func (m *InfrastructureManager) CreateKnowledgeSource(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateKnowledgeSourceInput) (repository.KnowledgeSourceRow, error) {
-	orgID, err := m.resolveOrgID(ctx, workspaceID)
-	if err != nil {
-		return repository.KnowledgeSourceRow{}, fmt.Errorf("resolve org: %w", err)
-	}
-	slug := generateSlug(input.Name)
-	return m.repo.CreateKnowledgeSource(ctx, repository.CreateKnowledgeSourceParams{
-		OrganizationID:   orgID,
-		WorkspaceID:      workspaceID,
-		Name:             input.Name,
-		Slug:             slug,
-		SourceKind:       input.SourceKind,
-		ConnectionConfig: input.ConnectionConfig,
-	})
-}
-
-func (m *InfrastructureManager) ListKnowledgeSources(ctx context.Context, workspaceID uuid.UUID) ([]repository.KnowledgeSourceRow, error) {
-	return m.repo.ListKnowledgeSourcesByWorkspaceID(ctx, workspaceID)
-}
-
-func (m *InfrastructureManager) GetKnowledgeSource(ctx context.Context, id uuid.UUID) (repository.KnowledgeSourceRow, error) {
-	return m.repo.GetKnowledgeSourceByID(ctx, id)
 }
 
 // --------------------------------------------------------------------------

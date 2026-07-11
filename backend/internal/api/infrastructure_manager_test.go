@@ -191,15 +191,6 @@ func (r *providerAccountTestRepo) UpdateTool(context.Context, repository.UpdateT
 func (r *providerAccountTestRepo) ArchiveTool(context.Context, uuid.UUID) error {
 	return nil
 }
-func (r *providerAccountTestRepo) CreateKnowledgeSource(context.Context, repository.CreateKnowledgeSourceParams) (repository.KnowledgeSourceRow, error) {
-	return repository.KnowledgeSourceRow{}, nil
-}
-func (r *providerAccountTestRepo) GetKnowledgeSourceByID(context.Context, uuid.UUID) (repository.KnowledgeSourceRow, error) {
-	return repository.KnowledgeSourceRow{}, repository.ErrKnowledgeSourceNotFound
-}
-func (r *providerAccountTestRepo) ListKnowledgeSourcesByWorkspaceID(context.Context, uuid.UUID) ([]repository.KnowledgeSourceRow, error) {
-	return nil, nil
-}
 func (r *providerAccountTestRepo) CreateRoutingPolicy(context.Context, repository.CreateRoutingPolicyParams) (repository.RoutingPolicyRow, error) {
 	return repository.RoutingPolicyRow{}, nil
 }

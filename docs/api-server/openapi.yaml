@@ -79,8 +79,6 @@ tags:
     description: LLM provider account credentials
   - name: Tools
     description: Workspace tool definitions
-  - name: KnowledgeSources
-    description: Workspace knowledge source connections
   - name: Policies
     description: Routing and spend policy configuration
 
@@ -2131,86 +2129,6 @@ paths:
       responses:
         "204":
           description: Tool archived
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "403":
-          $ref: "#/components/responses/ForbiddenError"
-        "404":
-          $ref: "#/components/responses/NotFoundError"
-
-  # ---------------------------------------------------------------------------
-  # Knowledge Sources
-  # ---------------------------------------------------------------------------
-  /v1/workspaces/{workspaceID}/knowledge-sources:
-    post:
-      operationId: createKnowledgeSource
-      tags: [KnowledgeSources]
-      summary: Create a knowledge source
-      security:
-        - bearerJWT: []
-      parameters:
-        - $ref: "#/components/parameters/WorkspaceID"
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/CreateKnowledgeSourceRequest"
-      responses:
-        "201":
-          description: Knowledge source created
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnowledgeSourceResponse"
-        "400":
-          $ref: "#/components/responses/ValidationError"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "403":
-          $ref: "#/components/responses/ForbiddenError"
-        "409":
-          $ref: "#/components/responses/ConflictError"
-        "415":
-          $ref: "#/components/responses/UnsupportedMediaType"
-    get:
-      operationId: listKnowledgeSources
-      tags: [KnowledgeSources]
-      summary: List knowledge sources in a workspace
-      security:
-        - bearerJWT: []
-      parameters:
-        - $ref: "#/components/parameters/WorkspaceID"
-      responses:
-        "200":
-          description: List of knowledge sources
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ListKnowledgeSourcesResponse"
-        "401":
-          $ref: "#/components/responses/UnauthorizedError"
-        "403":
-          $ref: "#/components/responses/ForbiddenError"
-
-  /v1/knowledge-sources/{sourceID}:
-    get:
-      operationId: getKnowledgeSource
-      tags: [KnowledgeSources]
-      summary: Get a knowledge source
-      security:
-        - bearerJWT: []
-      parameters:
-        - $ref: "#/components/parameters/SourceID"
-      responses:
-        "200":
-          description: Knowledge source details
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/KnowledgeSourceResponse"
-        "400":
-          $ref: "#/components/responses/ValidationError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "403":
@@ -6302,13 +6220,6 @@ components:
       schema:
         type: string
         format: uuid
-    SourceID:
-      name: sourceID
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
     SecretKey:
       name: secretKey
       in: path
@@ -9192,57 +9103,6 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/LibrarySkip"
-
-    # --- Knowledge Sources ---
-
-    CreateKnowledgeSourceRequest:
-      type: object
-      required: [name, source_kind]
-      properties:
-        name:
-          type: string
-        source_kind:
-          type: string
-        connection_config:
-          type: object
-          additionalProperties: true
-
-    KnowledgeSourceResponse:
-      type: object
-      required: [id, name, slug, source_kind, connection_config, lifecycle_status, created_at, updated_at]
-      properties:
-        id:
-          type: string
-          format: uuid
-        workspace_id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        slug:
-          type: string
-        source_kind:
-          type: string
-        connection_config:
-          type: object
-          additionalProperties: true
-        lifecycle_status:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
-
-    ListKnowledgeSourcesResponse:
-      type: object
-      required: [items]
-      properties:
-        items:
-          type: array
-          items:
-            $ref: "#/components/schemas/KnowledgeSourceResponse"
 
     # --- Routing Policies ---
 

@@ -2460,45 +2460,6 @@
       "runnable": false,
       "subcommands": [
         {
-          "name": "knowledge-source",
-          "path": "agentclash infra knowledge-source",
-          "short": "Manage knowledge-sources",
-          "runnable": false,
-          "subcommands": [
-            {
-              "name": "create",
-              "path": "agentclash infra knowledge-source create",
-              "short": "Create a knowledge-source",
-              "runnable": true,
-              "flags": [
-                {
-                  "name": "from-file",
-                  "usage": "JSON file with resource spec",
-                  "type": "string"
-                }
-              ]
-            },
-            {
-              "name": "get",
-              "path": "agentclash infra knowledge-source get",
-              "short": "Get a knowledge-source",
-              "runnable": true,
-              "args": [
-                {
-                  "name": "id",
-                  "required": true
-                }
-              ]
-            },
-            {
-              "name": "list",
-              "path": "agentclash infra knowledge-source list",
-              "short": "List knowledge-sources",
-              "runnable": true
-            }
-          ]
-        },
-        {
           "name": "provider-account",
           "path": "agentclash infra provider-account",
           "short": "Manage provider-accounts",

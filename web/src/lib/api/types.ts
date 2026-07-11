@@ -536,16 +536,6 @@ export interface WorkspaceTool {
   created_at: string;
 }
 
-/** GET /v1/workspaces/{id}/knowledge-sources list item */
-export interface KnowledgeSource {
-  id: string;
-  name: string;
-  slug: string;
-  source_kind: string;
-  lifecycle_status: string;
-  created_at: string;
-}
-
 /** GET /v1/workspaces/{id}/provider-accounts list item */
 export interface ProviderAccount {
   id: string;

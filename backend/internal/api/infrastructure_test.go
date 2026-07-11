@@ -90,15 +90,6 @@ func (s stubInfraService) DeleteTool(_ context.Context, _ uuid.UUID) error {
 	}
 	return nil
 }
-func (s stubInfraService) CreateKnowledgeSource(_ context.Context, _ Caller, _ uuid.UUID, _ CreateKnowledgeSourceInput) (repository.KnowledgeSourceRow, error) {
-	return repository.KnowledgeSourceRow{}, nil
-}
-func (s stubInfraService) ListKnowledgeSources(_ context.Context, _ uuid.UUID) ([]repository.KnowledgeSourceRow, error) {
-	return nil, nil
-}
-func (s stubInfraService) GetKnowledgeSource(_ context.Context, _ uuid.UUID) (repository.KnowledgeSourceRow, error) {
-	return repository.KnowledgeSourceRow{}, repository.ErrKnowledgeSourceNotFound
-}
 func (s stubInfraService) CreateRoutingPolicy(_ context.Context, _ Caller, _ uuid.UUID, _ CreateRoutingPolicyInput) (repository.RoutingPolicyRow, error) {
 	return repository.RoutingPolicyRow{}, nil
 }

@@ -317,11 +317,6 @@ func registerProtectedRoutes(
 	router.Patch("/tools/{toolID}", updateToolHandler(logger, authorizer, infraService))
 	router.Delete("/tools/{toolID}", infraDeleteHandler(logger, authorizer, "toolID", infraService.GetTool, infraService.DeleteTool, "tool"))
 
-	// Knowledge Sources
-	router.Method("POST", "/workspaces/{workspaceID}/knowledge-sources", wsMiddleware(infraCreateHandler(logger, authorizer, infraService.CreateKnowledgeSource, mapKnowledgeSource)))
-	router.Method("GET", "/workspaces/{workspaceID}/knowledge-sources", wsMiddleware(infraListHandler(logger, infraService.ListKnowledgeSources, mapKnowledgeSource)))
-	router.Get("/knowledge-sources/{sourceID}", infraGetHandler(logger, authorizer, "sourceID", infraService.GetKnowledgeSource, mapKnowledgeSource, "knowledge source"))
-
 	// Routing Policies
 	router.Method("POST", "/workspaces/{workspaceID}/routing-policies", wsMiddleware(infraCreateHandler(logger, authorizer, infraService.CreateRoutingPolicy, mapRoutingPolicy)))
 	router.Method("GET", "/workspaces/{workspaceID}/routing-policies", wsMiddleware(infraListHandler(logger, infraService.ListRoutingPolicies, mapRoutingPolicy)))
