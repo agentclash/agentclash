@@ -59,7 +59,6 @@ func TestListRunFailuresEndpointReturnsNotFoundForWorkspaceMismatch(t *testing.T
 		nil,
 		nil,
 		nil,
-		nil,
 	).ServeHTTP(recorder, req)
 
 	if recorder.Code != http.StatusNotFound {
@@ -391,7 +390,6 @@ func TestListRunFailuresEndpointRejectsMalformedQueryParams(t *testing.T) {
 				nil,
 				nil,
 				nil,
-				nil,
 			).ServeHTTP(recorder, req)
 
 			if recorder.Code != http.StatusBadRequest {
@@ -561,7 +559,6 @@ func performListRunFailuresRequest(t *testing.T, service RunReadService, workspa
 		stubAgentBuildService{},
 		noopReleaseGateService{},
 		stubChallengePackAuthoringService{},
-		nil,
 		nil,
 		nil,
 		nil,

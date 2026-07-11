@@ -47,7 +47,6 @@ func NewTemporalWorker(
 		WithPublicAgentTryoutConfig(cfg.AgentTryoutHosted).
 		WithArtifactStore(artifactStore)
 	workflowpkg.Register(temporalWorker, activities)
-	workflowpkg.RegisterPlayground(temporalWorker, workflowpkg.NewPlaygroundActivities(repo, playgroundClient, repo))
 	workflowpkg.RegisterDatasetGeneration(temporalWorker, workflowpkg.NewDatasetGenerationActivities(repo, playgroundClient, repo))
 
 	return temporalWorker

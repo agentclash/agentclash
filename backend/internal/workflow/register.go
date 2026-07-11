@@ -45,15 +45,6 @@ func Register(registrar Registrar, activities *Activities) {
 	registrar.RegisterActivityWithOptions(activities.ExecutePublicAgentTryout, sdkactivity.RegisterOptions{Name: executePublicAgentTryoutActivityName})
 }
 
-func RegisterPlayground(registrar Registrar, activities *PlaygroundActivities) {
-	registrar.RegisterWorkflowWithOptions(PlaygroundExperimentWorkflow, sdkworkflow.RegisterOptions{Name: PlaygroundExperimentWorkflowName})
-	registrar.RegisterActivityWithOptions(activities.LoadPlaygroundExperimentExecutionContext, sdkactivity.RegisterOptions{Name: loadPlaygroundExperimentExecutionContextActivityName})
-	registrar.RegisterActivityWithOptions(activities.SetPlaygroundExperimentTemporalIDs, sdkactivity.RegisterOptions{Name: setPlaygroundExperimentTemporalIDsActivityName})
-	registrar.RegisterActivityWithOptions(activities.UpdatePlaygroundExperimentStatus, sdkactivity.RegisterOptions{Name: updatePlaygroundExperimentStatusActivityName})
-	registrar.RegisterActivityWithOptions(activities.ExecutePlaygroundTestCase, sdkactivity.RegisterOptions{Name: executePlaygroundTestCaseActivityName})
-	registrar.RegisterActivityWithOptions(activities.FinalizePlaygroundExperiment, sdkactivity.RegisterOptions{Name: finalizePlaygroundExperimentActivityName})
-}
-
 func RegisterDatasetGeneration(registrar Registrar, activities *DatasetGenerationActivities) {
 	registrar.RegisterWorkflowWithOptions(SyntheticDatasetGenerationWorkflow, sdkworkflow.RegisterOptions{Name: SyntheticDatasetGenerationWorkflowName})
 	registrar.RegisterActivityWithOptions(activities.LoadDatasetGenerationExecutionContext, sdkactivity.RegisterOptions{Name: loadDatasetGenerationExecutionContextActivityName})

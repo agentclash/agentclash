@@ -1,9 +1,0 @@
-{
-  "provider": "fake",
-  "events": [
-    {
-      "event_type": "fake.media_frame",
-      "sequence": 1
-    }
-  ]
-}

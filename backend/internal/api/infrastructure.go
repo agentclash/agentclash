@@ -45,11 +45,6 @@ type InfrastructureService interface {
 	UpdateTool(ctx context.Context, caller Caller, id uuid.UUID, input UpdateToolInput) (repository.ToolRow, error)
 	DeleteTool(ctx context.Context, id uuid.UUID) error
 
-	// Knowledge Sources
-	CreateKnowledgeSource(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateKnowledgeSourceInput) (repository.KnowledgeSourceRow, error)
-	ListKnowledgeSources(ctx context.Context, workspaceID uuid.UUID) ([]repository.KnowledgeSourceRow, error)
-	GetKnowledgeSource(ctx context.Context, id uuid.UUID) (repository.KnowledgeSourceRow, error)
-
 	// Routing Policies
 	CreateRoutingPolicy(ctx context.Context, caller Caller, workspaceID uuid.UUID, input CreateRoutingPolicyInput) (repository.RoutingPolicyRow, error)
 	ListRoutingPolicies(ctx context.Context, workspaceID uuid.UUID) ([]repository.RoutingPolicyRow, error)
@@ -193,16 +188,6 @@ type ToolDefinitionError struct {
 
 func (e *ToolDefinitionError) Error() string { return e.Errors.Error() }
 
-type CreateKnowledgeSourceInput struct {
-	Name             string          `json:"name"`
-	SourceKind       string          `json:"source_kind"`
-	ConnectionConfig json.RawMessage `json:"connection_config,omitempty"`
-}
-
-func (i *CreateKnowledgeSourceInput) Validate() error {
-	return requireFields(map[string]string{"name": i.Name, "source_kind": i.SourceKind})
-}
-
 type CreateRoutingPolicyInput struct {
 	Name       string          `json:"name"`
 	PolicyKind string          `json:"policy_kind"`
@@ -293,18 +278,6 @@ type toolResponse struct {
 	LifecycleStatus string          `json:"lifecycle_status"`
 	CreatedAt       time.Time       `json:"created_at"`
 	UpdatedAt       time.Time       `json:"updated_at"`
-}
-
-type knowledgeSourceResponse struct {
-	ID               uuid.UUID       `json:"id"`
-	WorkspaceID      *uuid.UUID      `json:"workspace_id,omitempty"`
-	Name             string          `json:"name"`
-	Slug             string          `json:"slug"`
-	SourceKind       string          `json:"source_kind"`
-	ConnectionConfig json.RawMessage `json:"connection_config"`
-	LifecycleStatus  string          `json:"lifecycle_status"`
-	CreatedAt        time.Time       `json:"created_at"`
-	UpdatedAt        time.Time       `json:"updated_at"`
 }
 
 type routingPolicyResponse struct {
@@ -661,7 +634,6 @@ func isInfraNotFoundErr(err error) bool {
 	return errors.Is(err, repository.ErrRuntimeProfileNotFound) ||
 		errors.Is(err, repository.ErrProviderAccountNotFound) ||
 		errors.Is(err, repository.ErrToolNotFound) ||
-		errors.Is(err, repository.ErrKnowledgeSourceNotFound) ||
 		errors.Is(err, repository.ErrRoutingPolicyNotFound) ||
 		errors.Is(err, repository.ErrSpendPolicyNotFound)
 }
@@ -692,14 +664,6 @@ func mapTool(r repository.ToolRow) toolResponse {
 	return toolResponse{
 		ID: r.ID, WorkspaceID: r.WorkspaceID, Name: r.Name, Slug: r.Slug,
 		ToolKind: r.ToolKind, CapabilityKey: r.CapabilityKey, Definition: r.Definition,
-		LifecycleStatus: r.LifecycleStatus, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
-	}
-}
-
-func mapKnowledgeSource(r repository.KnowledgeSourceRow) knowledgeSourceResponse {
-	return knowledgeSourceResponse{
-		ID: r.ID, WorkspaceID: r.WorkspaceID, Name: r.Name, Slug: r.Slug,
-		SourceKind: r.SourceKind, ConnectionConfig: r.ConnectionConfig,
 		LifecycleStatus: r.LifecycleStatus, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt,
 	}
 }

@@ -10,10 +10,6 @@ export const workspaceResourceKeys = {
     apiQueryKey(`/v1/workspaces/${workspaceId}/agent-builds`),
   deployments: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/agent-deployments`),
-  agentHarnesses: (workspaceId: string): ApiQueryKey =>
-    apiQueryKey(`/v1/workspaces/${workspaceId}/agent-harnesses`),
-  agentHarnessExecutions: (workspaceId: string): ApiQueryKey =>
-    apiQueryKey(`/v1/workspaces/${workspaceId}/agent-harness-executions`),
   challengePacks: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/challenge-packs`),
   runs: (workspaceId: string, offset = 0): ApiQueryKey =>
@@ -27,8 +23,6 @@ export const workspaceResourceKeys = {
       limit: RUN_PAGE_SIZE,
       offset,
     }),
-  playgrounds: (workspaceId: string): ApiQueryKey =>
-    apiQueryKey(`/v1/workspaces/${workspaceId}/playgrounds`),
   regressionSuites: (workspaceId: string, offset = 0): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/regression-suites`, {
       limit: SUITE_PAGE_SIZE,
@@ -50,14 +44,10 @@ export const workspaceResourceKeys = {
     apiQueryKey(`/v1/workspaces/${workspaceId}/provider-accounts`),
   tools: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/tools`),
-  knowledgeSources: (workspaceId: string): ApiQueryKey =>
-    apiQueryKey(`/v1/workspaces/${workspaceId}/knowledge-sources`),
   artifacts: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/artifacts`),
   datasets: (workspaceId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/datasets`),
-  agentTryouts: (workspaceId: string): ApiQueryKey =>
-    apiQueryKey(`/v1/workspaces/${workspaceId}/agent-tryouts`),
   datasetExamples: (workspaceId: string, datasetId: string): ApiQueryKey =>
     apiQueryKey(`/v1/workspaces/${workspaceId}/datasets/${datasetId}/examples`),
   datasetVersions: (workspaceId: string, datasetId: string): ApiQueryKey =>

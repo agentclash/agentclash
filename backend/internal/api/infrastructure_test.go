@@ -90,15 +90,6 @@ func (s stubInfraService) DeleteTool(_ context.Context, _ uuid.UUID) error {
 	}
 	return nil
 }
-func (s stubInfraService) CreateKnowledgeSource(_ context.Context, _ Caller, _ uuid.UUID, _ CreateKnowledgeSourceInput) (repository.KnowledgeSourceRow, error) {
-	return repository.KnowledgeSourceRow{}, nil
-}
-func (s stubInfraService) ListKnowledgeSources(_ context.Context, _ uuid.UUID) ([]repository.KnowledgeSourceRow, error) {
-	return nil, nil
-}
-func (s stubInfraService) GetKnowledgeSource(_ context.Context, _ uuid.UUID) (repository.KnowledgeSourceRow, error) {
-	return repository.KnowledgeSourceRow{}, repository.ErrKnowledgeSourceNotFound
-}
 func (s stubInfraService) CreateRoutingPolicy(_ context.Context, _ Caller, _ uuid.UUID, _ CreateRoutingPolicyInput) (repository.RoutingPolicyRow, error) {
 	return repository.RoutingPolicyRow{}, nil
 }
@@ -134,7 +125,6 @@ func TestGetRuntimeProfileAuthorizesWorkspace(t *testing.T) {
 		stubAgentBuildService{}, noopReleaseGateService{},
 		nil, nil, nil, nil, nil, nil, nil,
 		svc,
-		nil,
 		nil,
 		nil,
 	)
@@ -176,7 +166,6 @@ func TestGetRuntimeProfileAllowsWorkspaceMember(t *testing.T) {
 		svc,
 		nil,
 		nil,
-		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/runtime-profiles/"+profileID.String(), nil)
@@ -207,7 +196,6 @@ func TestCreateRuntimeProfileRequiresAdminRole(t *testing.T) {
 		stubAgentBuildService{}, noopReleaseGateService{},
 		nil, nil, nil, nil, nil, nil, nil,
 		svc,
-		nil,
 		nil,
 		nil,
 	)
@@ -241,7 +229,6 @@ func TestCreateToolsFromLibraryRequiresAdminAndLimitsBody(t *testing.T) {
 		stubAgentBuildService{}, noopReleaseGateService{},
 		nil, nil, nil, nil, nil, nil, nil,
 		svc,
-		nil,
 		nil,
 		nil,
 	)
@@ -307,7 +294,6 @@ func TestProviderAccountTestRequiresAdminRole(t *testing.T) {
 		svc,
 		nil,
 		nil,
-		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/provider-accounts/"+accountID.String()+"/test", strings.NewReader(`{}`))
@@ -356,7 +342,6 @@ func TestProviderAccountTestReturnsResult(t *testing.T) {
 		svc,
 		nil,
 		nil,
-		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/provider-accounts/"+accountID.String()+"/test", strings.NewReader(`{"model":"gpt-4.1-mini"}`))
@@ -391,7 +376,7 @@ func TestListProviderAccountModelsRejectsOtherWorkspace(t *testing.T) {
 		nil, 0, stubRunCreationService{}, stubRunReadService{}, stubReplayReadService{},
 		stubHostedRunIngestionService{}, nil, stubAgentDeploymentReadService{}, stubChallengePackReadService{},
 		stubAgentBuildService{}, noopReleaseGateService{}, nil, nil, nil, nil, nil, nil, nil,
-		svc, nil, nil, nil,
+		svc, nil, nil,
 	)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/provider-accounts/"+accountID.String()+"/models", nil)
@@ -432,7 +417,6 @@ func TestListProviderAccountModelsReturnsItems(t *testing.T) {
 		stubAgentBuildService{}, noopReleaseGateService{},
 		nil, nil, nil, nil, nil, nil, nil,
 		svc,
-		nil,
 		nil,
 		nil,
 	)
@@ -480,7 +464,6 @@ func TestProviderAccountTestHidesGlobalAccounts(t *testing.T) {
 		svc,
 		nil,
 		nil,
-		nil,
 	)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/provider-accounts/"+accountID.String()+"/test", strings.NewReader(`{}`))
@@ -512,7 +495,6 @@ func TestCreateRuntimeProfileValidatesInput(t *testing.T) {
 		stubAgentBuildService{}, noopReleaseGateService{},
 		nil, nil, nil, nil, nil, nil, nil,
 		svc,
-		nil,
 		nil,
 		nil,
 	)

@@ -2725,6 +2725,27 @@ func cloneJSON(value []byte) json.RawMessage {
 	return append(json.RawMessage(nil), value...)
 }
 
+func toPGTimestamp(value *time.Time) pgtype.Timestamptz {
+	if value == nil {
+		return pgtype.Timestamptz{}
+	}
+	return pgtype.Timestamptz{Time: value.UTC(), Valid: true}
+}
+
+func normalizeJSONObject(value json.RawMessage) json.RawMessage {
+	if len(value) == 0 {
+		return json.RawMessage(`{}`)
+	}
+	return cloneJSON(value)
+}
+
+func normalizeJSONArray(value json.RawMessage) json.RawMessage {
+	if len(value) == 0 {
+		return json.RawMessage(`[]`)
+	}
+	return cloneJSON(value)
+}
+
 func normalizeJSON(value json.RawMessage) json.RawMessage {
 	if len(value) == 0 {
 		return json.RawMessage(`{}`)

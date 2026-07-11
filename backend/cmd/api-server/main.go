@@ -79,7 +79,6 @@ func main() {
 		os.Exit(1)
 	}
 	artifactManager := api.NewArtifactManager(authorizer, repo, artifactStore, cfg.ArtifactSigningSecret, cfg.ArtifactSignedURLTTL, cfg.ArtifactMaxUploadBytes)
-	playgroundManager := api.NewPlaygroundManager(authorizer, repo, api.NewTemporalPlaygroundWorkflowStarter(temporalClient))
 	budgetChecker := budget.NewChecker(repository.NewBudgetRepositoryAdapter(repo))
 	runCreationManager := api.NewRunCreationManager(
 		authorizer,
@@ -185,7 +184,6 @@ func main() {
 	onboardingManager := api.NewOnboardingManager(repo)
 	infraManager := api.NewInfrastructureManager(repo).WithConnectionService(connection.NewService(repo, providerRouter))
 	workspaceSecretsManager := api.NewWorkspaceSecretsManager(repo)
-	vibeEvalManager := api.NewVibeEvalManager(authorizer, repo)
 	cliAuthManager := api.NewCLIAuthManager(repo, logger, cfg.FrontendURL)
 	cliTokenAuth := api.NewCLITokenAuthenticator(repo, logger)
 
@@ -232,7 +230,6 @@ func main() {
 		logger,
 		authenticator,
 		authorizer,
-		playgroundManager,
 		artifactManager,
 		runCreationManager,
 		runReadManager,
@@ -262,7 +259,6 @@ func main() {
 		billingManager,
 		eventSubscriber,
 		multiTurnManager,
-		vibeEvalManager,
 		posthogClient,
 		cliAuthManager,
 	)

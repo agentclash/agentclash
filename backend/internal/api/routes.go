@@ -12,7 +12,6 @@ func registerProtectedRoutes(
 	router chi.Router,
 	logger *slog.Logger,
 	authorizer WorkspaceAuthorizer,
-	playgroundService PlaygroundService,
 	artifactService ArtifactService,
 	artifactMaxUploadBytes int64,
 	runCreationService RunCreationService,
@@ -42,7 +41,6 @@ func registerProtectedRoutes(
 	agentTryoutService AgentTryoutService,
 	billingService BillingService,
 	multiTurnService MultiTurnService,
-	vibeEvalService VibeEvalService,
 ) {
 	entitlementGate := entitlementGateFromBillingService(billingService)
 
@@ -157,23 +155,6 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/runs", listRunsHandler(logger, runReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Post("/workspaces/{workspaceID}/playgrounds", createPlaygroundHandler(logger, playgroundService))
-	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Get("/workspaces/{workspaceID}/playgrounds", listPlaygroundsHandler(logger, playgroundService))
-	router.Get("/playgrounds/{id}", getPlaygroundHandler(logger, playgroundService))
-	router.Patch("/playgrounds/{id}", updatePlaygroundHandler(logger, playgroundService))
-	router.Delete("/playgrounds/{id}", deletePlaygroundHandler(logger, playgroundService))
-	router.Post("/playgrounds/{id}/test-cases", createPlaygroundTestCaseHandler(logger, playgroundService))
-	router.Get("/playgrounds/{id}/test-cases", listPlaygroundTestCasesHandler(logger, playgroundService))
-	router.Patch("/playground-test-cases/{id}", updatePlaygroundTestCaseHandler(logger, playgroundService))
-	router.Delete("/playground-test-cases/{id}", deletePlaygroundTestCaseHandler(logger, playgroundService))
-	router.Post("/playgrounds/{id}/experiments", createPlaygroundExperimentHandler(logger, playgroundService))
-	router.Post("/playgrounds/{id}/experiments/batch", batchCreatePlaygroundExperimentsHandler(logger, playgroundService))
-	router.Get("/playgrounds/{id}/experiments", listPlaygroundExperimentsHandler(logger, playgroundService))
-	router.Get("/playground-experiments/{id}", getPlaygroundExperimentHandler(logger, playgroundService))
-	router.Get("/playground-experiments/{id}/results", listPlaygroundExperimentResultsHandler(logger, playgroundService))
-	router.Get("/playground-experiments/compare", comparePlaygroundExperimentsHandler(logger, playgroundService))
-	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/agent-deployments", listAgentDeploymentsHandler(logger, agentDeploymentReadService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/agent-harnesses", createAgentHarnessHandler(logger, agentHarnessService))
@@ -263,20 +244,6 @@ func registerProtectedRoutes(
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/challenge-pack-drafts/{draftID}/publish", publishChallengePackDraftHandler(logger, challengePackBuilderService, entitlementGate))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Post("/workspaces/{workspaceID}/vibe-eval/conversations", createVibeEvalConversationHandler(logger, vibeEvalService))
-	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Get("/workspaces/{workspaceID}/vibe-eval/conversations", listVibeEvalConversationsHandler(logger, vibeEvalService))
-	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Get("/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}", getVibeEvalConversationHandler(logger, vibeEvalService))
-	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Post("/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/drafts", createVibeEvalDraftHandler(logger, vibeEvalService))
-	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Get("/workspaces/{workspaceID}/vibe-eval/conversations/{conversationID}/drafts", listVibeEvalDraftsHandler(logger, vibeEvalService))
-	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Get("/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}", getVibeEvalDraftHandler(logger, vibeEvalService))
-	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
-		Patch("/workspaces/{workspaceID}/vibe-eval/drafts/{draftID}", updateVibeEvalDraftHandler(logger, vibeEvalService))
-	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Get("/workspaces/{workspaceID}/artifacts", listWorkspaceArtifactsHandler(logger, artifactService))
 	router.With(authorizeWorkspaceAccess(logger, authorizer, workspaceIDFromURLParam("workspaceID"))).
 		Post("/workspaces/{workspaceID}/artifacts", uploadArtifactHandler(logger, artifactService, artifactMaxUploadBytes))
@@ -349,11 +316,6 @@ func registerProtectedRoutes(
 	router.Get("/tools/{toolID}", infraGetHandler(logger, authorizer, "toolID", infraService.GetTool, mapTool, "tool"))
 	router.Patch("/tools/{toolID}", updateToolHandler(logger, authorizer, infraService))
 	router.Delete("/tools/{toolID}", infraDeleteHandler(logger, authorizer, "toolID", infraService.GetTool, infraService.DeleteTool, "tool"))
-
-	// Knowledge Sources
-	router.Method("POST", "/workspaces/{workspaceID}/knowledge-sources", wsMiddleware(infraCreateHandler(logger, authorizer, infraService.CreateKnowledgeSource, mapKnowledgeSource)))
-	router.Method("GET", "/workspaces/{workspaceID}/knowledge-sources", wsMiddleware(infraListHandler(logger, infraService.ListKnowledgeSources, mapKnowledgeSource)))
-	router.Get("/knowledge-sources/{sourceID}", infraGetHandler(logger, authorizer, "sourceID", infraService.GetKnowledgeSource, mapKnowledgeSource, "knowledge source"))
 
 	// Routing Policies
 	router.Method("POST", "/workspaces/{workspaceID}/routing-policies", wsMiddleware(infraCreateHandler(logger, authorizer, infraService.CreateRoutingPolicy, mapRoutingPolicy)))

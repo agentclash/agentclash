@@ -50,15 +50,6 @@ var infraResources = []infraResource{
 		},
 	},
 	{
-		Name: "knowledge-source", Plural: "knowledge-sources",
-		ListPath: "/v1/workspaces/%s/knowledge-sources", CreatePath: "/v1/workspaces/%s/knowledge-sources",
-		GetPath: "/v1/knowledge-sources/%s",
-		Columns: []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Kind"}, {Header: "Status"}, {Header: "Created"}},
-		RowMapper: func(item map[string]any) []string {
-			return []string{str(item["id"]), str(item["name"]), str(item["source_kind"]), output.StatusColor(str(item["lifecycle_status"])), str(item["created_at"])}
-		},
-	},
-	{
 		Name: "routing-policy", Plural: "routing-policies",
 		ListPath: "/v1/workspaces/%s/routing-policies", CreatePath: "/v1/workspaces/%s/routing-policies",
 		Columns: []output.Column{{Header: "ID"}, {Header: "Name"}, {Header: "Kind"}, {Header: "Created"}},
@@ -88,7 +79,7 @@ func init() {
 var infraCmd = &cobra.Command{
 	Use:   "infra",
 	Short: "Manage infrastructure resources",
-	Long:  "Manage runtime profiles, provider accounts,\ntools, knowledge sources, routing policies, and spend policies.",
+	Long:  "Manage runtime profiles, provider accounts,\ntools, routing policies, and spend policies.",
 }
 
 func newInfraResourceCmd(res infraResource) *cobra.Command {

@@ -5,18 +5,15 @@ import { WorkspaceListLoading } from "@/components/app-shell/workspace-loading";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AlertTriangle } from "lucide-react";
 import { ToolBuilder } from "@/components/tools/tool-builder";
-import { ToolCanvasBuilder } from "@/components/tools/canvas-builder";
 import { isBuilderToolType, normalizeDefinition } from "@/components/tools/lib/definition";
 import type { ToolRecord } from "@/components/tools/lib/types";
 
 export function ToolEditClient({
   workspaceId,
   toolId,
-  editor,
 }: {
   workspaceId: string;
   toolId: string;
-  editor?: string;
 }) {
   const { data: tool, error, isLoading } = useApiQuery<ToolRecord>(`/v1/tools/${toolId}`);
 
@@ -54,30 +51,15 @@ export function ToolEditClient({
 
   const definition = normalizeDefinition(inferredType, tool.definition);
 
-  if (editor === "form") {
-    return (
-      <ToolBuilder
-        workspaceId={workspaceId}
-        mode="edit"
-        toolType={inferredType}
-        toolId={tool.id}
-        initialName={tool.name}
-        initialSlug={tool.slug}
-        initialDefinition={definition}
-      />
-    );
-  }
-
   return (
-    <ToolCanvasBuilder
+    <ToolBuilder
       workspaceId={workspaceId}
       mode="edit"
-      lockedKind={inferredType}
+      toolType={inferredType}
       toolId={tool.id}
       initialName={tool.name}
       initialSlug={tool.slug}
       initialDefinition={definition}
-      formEditorHref={`/workspaces/${workspaceId}/tools/${tool.id}?editor=form`}
     />
   );
 }
