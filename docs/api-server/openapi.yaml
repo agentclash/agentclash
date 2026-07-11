@@ -3840,7 +3840,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/workspaces/{workspaceID}/datasets/{datasetID}/regression-suite:
     get:
@@ -3866,7 +3866,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/workspaces/{workspaceID}/datasets/{datasetID}/regression-suite/sync:
     post:
@@ -3902,7 +3902,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/workspaces/{workspaceID}/datasets/{datasetID}/generate:
     post:
@@ -3964,7 +3964,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/workspaces/{workspaceID}/datasets/{datasetID}/generations/{jobID}/rejections:
     get:
@@ -4047,7 +4047,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/ErrorResponse"
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   /v1/workspaces/{workspaceID}/datasets/{datasetID}/examples:
     get:
