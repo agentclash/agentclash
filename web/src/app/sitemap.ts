@@ -171,13 +171,6 @@ export default function sitemap(): MetadataRoute.Sitemap {
       images: [DEFAULT_OG],
     },
     {
-      url: `${DOCS_ORIGIN}/sitemap`,
-      lastModified: new Date(),
-      changeFrequency: "weekly",
-      priority: 0.5,
-      images: [DEFAULT_OG],
-    },
-    {
       url: `${DOCS_ORIGIN}/pricing`,
       lastModified: new Date(),
       changeFrequency: "monthly",

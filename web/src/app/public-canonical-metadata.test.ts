@@ -14,7 +14,6 @@ import { metadata as agentOpportunityMetadata } from "./agent-opportunity/page";
 import { metadata as agentEvaluationMetadata } from "./platform/agent-evaluation/page";
 import { metadata as agentRegressionTestingMetadata } from "./platform/agent-regression-testing/page";
 import { metadata as datasmithMetadata } from "./platform/datasmith/page";
-import { metadata as sitemapMetadata } from "./sitemap/page";
 import { teamMetadata } from "./team/metadata";
 import { whyMetadata } from "./why/metadata";
 import { changelogMetadata } from "./changelog/metadata";
@@ -79,7 +78,6 @@ describe("public canonical metadata", () => {
     expectCanonical(whyMetadata, "/why");
     expectCanonical(teamMetadata, "/team");
     expectCanonical(changelogMetadata, "/changelog");
-    expectCanonical(sitemapMetadata, "/sitemap");
   });
 
   it("locks blog post canonical metadata", async () => {
