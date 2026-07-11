@@ -29,8 +29,8 @@ agentclash eval scorecard
 
 Existing low-level commands remain available for users who already know the IDs
 they need: `run`, `challenge-pack`, `deployment`, `build`, `infra`, `artifact`,
-`regression-suite`, `release-gate`, `secret`, `agent-harness`, `ci`,
-`prompt-eval`, `playground`, and `quota`.
+`regression-suite`, `release-gate`, `secret`, `agent-harness`, `ci`, and
+`quota`.
 
 ### Surfaces that already exist
 
@@ -41,8 +41,7 @@ they need: `run`, `challenge-pack`, `deployment`, `build`, `infra`, `artifact`,
 - Repeated eval creation: `eval start --repetitions N` creates eval sessions.
 - Durable eval series: `run series create` and `run series report` expose
   lineup/seed aggregate reporting.
-- Prompt evals and quota: `prompt-eval` manages prompt-eval configs and
-  playground experiments; `quota` shows workspace usage.
+- Quota: `quota` shows workspace usage.
 - CI/CD: `ci init`, `ci validate`, `ci should-run`, `ci baseline`, `ci run`, and
   the GitHub Action under `.github/actions/agentclash-ci`.
 - Agent harnesses: `agent-harness` supports `codex_e2b` and `claude_e2b`
@@ -141,7 +140,6 @@ surfaces that already landed there:
 - `agentclash run replay`
 - `agentclash run transcript`
 - `agentclash run series create|report`
-- `agentclash prompt-eval`
 - `agentclash quota`
 
 The workflow wrappers still unique to this phase are `quickstart`,
