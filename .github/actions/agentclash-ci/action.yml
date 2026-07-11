@@ -7,28 +7,13 @@ branding:
 
 inputs:
   mode:
-    description: Gate mode to run. Use "ci" for manifest-based agent CI or "prompt-eval" for prompt eval configs.
+    description: Gate mode to run. Only "ci" (manifest-based agent CI) is supported.
     required: false
     default: ci
   manifest:
     description: Path to the AgentClash CI manifest.
     required: false
     default: .agentclash/ci.yaml
-  prompt-eval-config:
-    description: Path to the AgentClash prompt eval config used when mode is prompt-eval.
-    required: false
-    default: .agentclash/prompt-eval.yaml
-  prompt-eval-watch-paths:
-    description: Newline-separated shell globs that should trigger prompt-eval mode in addition to the config path.
-    required: false
-    default: |
-      prompts/**
-      agents/**
-      tools/**
-      .agentclash/**
-  prompt-eval-threshold:
-    description: Optional assertion pass-rate threshold override for prompt-eval mode.
-    required: false
   token:
     description: AgentClash API token. Defaults to AGENTCLASH_TOKEN when omitted.
     required: false
@@ -148,9 +133,6 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_MANIFEST: ${{ inputs.manifest }}
-        INPUT_PROMPT_EVAL_CONFIG: ${{ inputs.prompt-eval-config }}
-        INPUT_PROMPT_EVAL_WATCH_PATHS: ${{ inputs.prompt-eval-watch-paths }}
-        INPUT_PROMPT_EVAL_THRESHOLD: ${{ inputs.prompt-eval-threshold }}
         INPUT_TOKEN: ${{ inputs.token }}
         INPUT_WORKSPACE: ${{ inputs.workspace }}
         INPUT_API_URL: ${{ inputs.api-url }}
