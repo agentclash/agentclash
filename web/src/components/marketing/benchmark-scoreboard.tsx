@@ -47,9 +47,24 @@ const COLUMNS: Column[] = [
 export function BenchmarkScoreboard({ results, featuredModel }: Props) {
   if (results.length === 0) return null;
 
+  // A report may omit a metric for every row (e.g. latency was not measured, or
+  // the report deliberately does not assert dollar prices). Rendering those
+  // columns anyway produces a wall of em dashes, so drop any column whose values
+  // are null across the board and let the table narrow to what was measured.
+  const visibleColumns = COLUMNS.filter((col) =>
+    results.some((result) => result[col.key] !== null),
+  );
+
+  // Keep the horizontal-scroll floor proportional to the visible columns so a
+  // narrowed table is not forced to scroll on small screens for absent metrics.
+  const minWidthClass =
+    visibleColumns.length > 4 ? "min-w-[680px]" : "min-w-[520px]";
+
   return (
     <div className="w-full overflow-x-auto rounded-xl border border-white/[0.08] bg-white/[0.02]">
-      <table className="w-full min-w-[680px] border-collapse text-left">
+      <table
+        className={cn("w-full border-collapse text-left", minWidthClass)}
+      >
         <thead>
           <tr className="border-b border-white/[0.08]">
             <th className="px-4 py-3 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/35">
@@ -58,7 +73,7 @@ export function BenchmarkScoreboard({ results, featuredModel }: Props) {
             <th className="px-4 py-3 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/35">
               Model
             </th>
-            {COLUMNS.map((col) => (
+            {visibleColumns.map((col) => (
               <th
                 key={col.key}
                 className="px-4 py-3 text-right font-[family-name:var(--font-mono)] text-2xs uppercase tracking-[0.14em] text-white/35"
@@ -105,7 +120,7 @@ export function BenchmarkScoreboard({ results, featuredModel }: Props) {
                     </span>
                   )}
                 </td>
-                {COLUMNS.map((col) => (
+                {visibleColumns.map((col) => (
                   <td
                     key={col.key}
                     className="px-4 py-3 text-right font-[family-name:var(--font-mono)] text-sm tabular-nums text-white/70"

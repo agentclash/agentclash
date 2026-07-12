@@ -97,10 +97,8 @@ export function BenchmarksHubContent({ published }: Props) {
         Run the same benchmark on your agents when you are ready to gate releases.
       </p>
 
-      <BenchmarkRunCTA className="mt-8" />
-
       {latest ? (
-        <section className="mt-14" aria-labelledby="latest-report-heading">
+        <section className="mt-12" aria-labelledby="latest-report-heading">
           <SectionEyebrow>Latest report</SectionEyebrow>
           <SectionTitle>
             <span id="latest-report-heading">{latest.title}</span>
@@ -205,42 +203,6 @@ export function BenchmarksHubContent({ published }: Props) {
         </div>
       </section>
 
-      {latest && (
-        <section className="mt-14" aria-labelledby="monthly-cadence-heading">
-          <SectionEyebrow>Monthly cadence</SectionEyebrow>
-          <SectionTitle>
-            <span id="monthly-cadence-heading">How reports stay reproducible</span>
-          </SectionTitle>
-          <ol className="mt-6 flex flex-col gap-3">
-            {BENCHMARKS_MONTHLY_PROCESS.map((step, index) => (
-              <li
-                key={step}
-                className="flex gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3"
-              >
-                <span className="font-[family-name:var(--font-mono)] text-2xs text-white/30">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                <span className="text-sm leading-relaxed text-white/55">
-                  {step}
-                </span>
-              </li>
-            ))}
-          </ol>
-          <p className="mt-4 text-xs text-white/35">
-            Owner checklist and scorecard export format:{" "}
-            <a
-              href={BENCHMARKS_RUNBOOK_HREF}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-white/55 underline-offset-2 hover:text-white/75 hover:underline"
-            >
-              monthly benchmark runbook
-            </a>
-            .
-          </p>
-        </section>
-      )}
-
       <section className="mt-14" aria-labelledby="child-benchmarks-heading">
         <SectionEyebrow>Go deeper</SectionEyebrow>
         <SectionTitle>
@@ -285,7 +247,43 @@ export function BenchmarksHubContent({ published }: Props) {
         </ul>
       </section>
 
-      {published.length > 0 && (
+      {latest && (
+        <section className="mt-14" aria-labelledby="monthly-cadence-heading">
+          <SectionEyebrow>Monthly cadence</SectionEyebrow>
+          <SectionTitle>
+            <span id="monthly-cadence-heading">How reports stay reproducible</span>
+          </SectionTitle>
+          <ol className="mt-6 flex flex-col gap-3">
+            {BENCHMARKS_MONTHLY_PROCESS.map((step, index) => (
+              <li
+                key={step}
+                className="flex gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3"
+              >
+                <span className="font-[family-name:var(--font-mono)] text-2xs text-white/30">
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <span className="text-sm leading-relaxed text-white/55">
+                  {step}
+                </span>
+              </li>
+            ))}
+          </ol>
+          <p className="mt-4 text-xs text-white/35">
+            Owner checklist and scorecard export format:{" "}
+            <a
+              href={BENCHMARKS_RUNBOOK_HREF}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white/55 underline-offset-2 hover:text-white/75 hover:underline"
+            >
+              monthly benchmark runbook
+            </a>
+            .
+          </p>
+        </section>
+      )}
+
+      {published.length > 1 && (
         <section className="mt-14" aria-labelledby="all-reports-heading">
           <SectionEyebrow>All reports</SectionEyebrow>
           <SectionTitle>

@@ -35,12 +35,38 @@ describe("BenchmarkScoreboard", () => {
     expect(html).not.toContain(">$0.00</td>");
   });
 
-  it("renders a missing score as an em dash, never NaN", () => {
+  it("renders a missing score as an em dash, never NaN, when the column is partly populated", () => {
+    // One row missing composite, another carrying it: the column survives the
+    // drop-all-null filter, so the gap must render as an em dash, not NaN.
     const html = renderToStaticMarkup(
-      <BenchmarkScoreboard results={[row({ composite: null })]} />,
+      <BenchmarkScoreboard
+        results={[
+          row({ model: "Alpha", composite: null }),
+          row({ model: "Bravo", composite: 0.5 }),
+        ]}
+      />,
     );
     expect(html).not.toContain("NaN");
     expect(html).toContain(EM_DASH);
+  });
+
+  it("drops a column that is null for every row instead of rendering a dash wall", () => {
+    // A report that measured neither latency nor $/correct should not show those
+    // columns at all, rather than a column of em dashes.
+    const html = renderToStaticMarkup(
+      <BenchmarkScoreboard
+        results={[
+          row({ model: "Alpha", latency: null, costPerCorrectUsd: null }),
+          row({ model: "Bravo", latency: null, costPerCorrectUsd: null }),
+        ]}
+      />,
+    );
+    expect(html).not.toContain("Latency");
+    expect(html).not.toContain("$/correct");
+    // Columns with data on at least one row stay.
+    expect(html).toContain("Composite");
+    // No cell should be an em dash once the empty columns are gone.
+    expect(html).not.toContain(EM_DASH);
   });
 
   it("renders the distinct rank each row carries", () => {
