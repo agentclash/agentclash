@@ -8,6 +8,10 @@ services/try-cli/node_modules/
 cli/agentclash
 cli/dist/
 cli/cmd/ci-run-spec-*/
+# Python bytecode from eval-SDK testdata packages exercised during `go test`
+# (keeps the tree clean so GoReleaser's dirty-state check doesn't abort releases)
+__pycache__/
+*.pyc
 # Generated `gh skill` publish bundle (scripts/build-skills-bundle.mjs)
 /dist/
 
