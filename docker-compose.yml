@@ -31,6 +31,28 @@ services:
     volumes:
       - redis-data:/data
 
+  temporal:
+    # Single-container Temporal dev server (SQLite-backed, no external DB needed).
+    # Lets contributors run the full stack WITHOUT installing the host `temporal`
+    # CLI. State is ephemeral by design — restart for a clean namespace.
+    # start-local-stack.sh starts this service and waits for port 7233; it falls
+    # back to the host CLI only if the container does not come up.
+    image: temporalio/temporal:1.7.2
+    container_name: agentclash-temporal
+    restart: unless-stopped
+    command:
+      - server
+      - start-dev
+      - --ip
+      - 0.0.0.0       # bind the gRPC frontend so the host can reach 7233
+      - --ui-ip
+      - 0.0.0.0       # bind the Web UI so the host can reach 8233
+      - --namespace
+      - default
+    ports:
+      - "7233:7233"   # gRPC frontend
+      - "8233:8233"   # Web UI
+
 volumes:
   postgres-data:
   redis-data:

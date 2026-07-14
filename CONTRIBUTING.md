@@ -43,10 +43,100 @@ must build and test from **each** directory.
 
 ## Prerequisites
 
+What you need depends on what you're changing (see the tiers below). The full set is:
+
 - Go 1.25+
-- Node.js 18+ and `pnpm`
-- Docker (for Postgres/Temporal in the full local stack)
-- Temporal CLI (`brew install temporal`) for the full stack
+- Node.js 18+ and `pnpm` (`corepack enable` provides it)
+- Docker (for Postgres, Redis, and Temporal in the full local stack)
+- A `psql` / libpq client — needed for migrations and seeding even though
+  Postgres runs in Docker (`brew install libpq` · `apt install postgresql-client`)
+- Temporal CLI is **optional** — `make start` runs Temporal as a Docker
+  container; the host CLI (`brew install temporal`) is only a fallback.
+
+## Run AgentClash locally
+
+**Most contributions are Tier 0/1 — you probably don't need the backend.** Pick
+the smallest tier that covers your change:
+
+| Tier | You're changing… | You need | Run |
+| --- | --- | --- | --- |
+| **0** | docs, web, marketing, content | Node 18+ & `pnpm` | `cd web && pnpm install && pnpm dev` → http://localhost:3000 |
+| **1** | the CLI | Go 1.25+ | `export AGENTCLASH_API_URL=https://api.agentclash.dev` then `cd cli && go run . --help` |
+| **2** | backend / full stack | Go, Docker, `psql` | `make setup && make start` |
+
+Tier 0 renders the marketing and docs site standalone — no Go, Docker, Temporal,
+or database. (Authenticated app pages need WorkOS keys; see `web/.env.local.example`.)
+Tier 1 runs the CLI against the hosted API, so no local backend is required.
+
+### Full stack (Tier 2)
+
+```bash
+make setup     # installs deps, starts Postgres + Redis, runs migrations
+make start     # boots Postgres, Redis, Temporal, API server, and worker
+make doctor    # confirms the stack is healthy and prints the URLs
+```
+
+`make setup` is idempotent — re-run it any time. Run `make help` to list targets.
+
+**Ports:**
+
+| Service | Port | Source |
+| --- | --- | --- |
+| API server | 8080 | `make api-server` |
+| Web | 3000 | `cd web && pnpm dev` |
+| Temporal gRPC | 7233 | docker `temporal` service (host CLI fallback) |
+| Temporal UI | 8233 | http://localhost:8233 |
+| Postgres | 5432 | `docker compose` service `postgres` |
+| Redis | 6379 | `docker compose` service `redis` |
+
+Run the parts separately if you prefer:
+
+```bash
+make api-server          # API on :8080
+make worker              # Temporal worker
+cd web && pnpm dev       # web on :3000
+```
+
+Seed dev data once Postgres is up:
+
+```bash
+make db-seed                              # base dev rows (needs a psql client)
+scripts/dev/seed-local-run-fixture.sh     # a full run fixture to explore
+```
+
+### Runs with zero API keys
+
+The dev profile in `backend/.env.example` (copied to `backend/.env` by
+`make setup`) boots the API, worker, web, and CLI with **no external API keys**:
+`AUTH_MODE=dev` stubs auth (`X-Dev-User-ID`, no WorkOS), `SANDBOX_PROVIDER=unconfigured`
+uses a noop sandbox, and an ephemeral secrets key is generated at boot.
+
+What's degraded without keys: agent **runs queue but don't execute** until you set
+`E2B_API_KEY` (a sandbox provider) plus a model-provider key; invite emails are
+logged instead of sent. Everything else works for local development.
+
+### Common issues
+
+| Symptom | Fix |
+| --- | --- |
+| `make ...` fails with `/usr/bin/bash: No such file or directory` | Update to latest `main` — the Makefile now uses `/bin/bash`. |
+| Migration / `db-seed` / `db-psql` fails: `psql: command not found` | Install a Postgres client: `brew install libpq` (add it to `PATH`) or `apt install postgresql-client`. |
+| Migration errors after schema changes | `make db-reset` to recreate the database, then `make db-migrate`. |
+| `Temporal not reachable on :7233` | `make start` runs it in Docker; check `docker compose logs temporal`, or `brew install temporal` for the host fallback. |
+| Port 8080 / 3000 already in use | Stop the other process, or change `API_SERVER_BIND_ADDRESS` / the web port. |
+| `pnpm: command not found` | `corepack enable` (or `npm i -g pnpm`). |
+| Wrong Go version | This repo pins **Go 1.25.5** (`.tool-versions`); install a matching toolchain. |
+| Windows | Use **WSL2** — the scripts assume a POSIX shell, `make`, and Docker. |
+| Apple Silicon | Fully supported; the images are multi-arch. |
+
+### After certain changes
+
+- Backend API route added/changed → update `docs/api-server/openapi.yaml`.
+- DB queries changed → `cd backend && sqlc generate`.
+- Agent Skill changed → `make cli-skills-snapshot`.
+
+**Run `make check` before pushing** — it builds, vets/lints, type-checks, and
+tests all three modules.
 
 ## Build & test
 
@@ -83,6 +173,12 @@ If you add/modify a backend API route, update `docs/api-server/openapi.yaml`.
 
 Use the issue templates under **New issue**. For security issues, do **not** open
 a public issue — see [SECURITY.md](SECURITY.md).
+
+## Recognition
+
+We use [all-contributors](https://allcontributors.org) to credit everyone who
+helps — not just code. On any merged issue or PR, a maintainer (or you) can comment
+`@all-contributors please add @user for code, doc` to add someone to the README.
 
 ## License
 
