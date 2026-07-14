@@ -1,0 +1,10 @@
+# Funding links shown on the repo's "Sponsor" button.
+#
+# Left fully commented on purpose: an enabled key pointing at a non-existent
+# account renders a broken Sponsor button. Uncomment and set real targets once
+# GitHub Sponsors / Ko-fi exist (admin step — see docs/maintainers/governance-setup.md §e),
+# then delete the unused keys.
+#
+# TODO(handle): enable funding.
+# github: [AgentClash]
+# custom: ["https://www.agentclash.dev"]

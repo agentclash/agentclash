@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Questions & discussion
+    url: https://github.com/agentclash/agentclash/discussions/categories/q-a
+    about: Ask questions and discuss ideas in GitHub Discussions.
   - name: Documentation
     url: https://www.agentclash.dev/docs
     about: Quickstart, guides, CLI reference, and challenge-pack authoring.
