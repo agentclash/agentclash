@@ -7,12 +7,12 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.10.0
 	github.com/briandowns/spinner v1.23.2
 	github.com/fatih/color v1.19.0
-	github.com/google/jsonschema-go v0.3.0
+	github.com/google/jsonschema-go v0.4.3
 	github.com/itchyny/gojq v0.12.19
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
-	golang.org/x/term v0.42.0
-	golang.org/x/text v0.37.0
+	golang.org/x/term v0.45.0
+	golang.org/x/text v0.40.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -36,7 +36,7 @@ require (
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.21 // indirect
 	github.com/mgutz/ansi v0.0.0-20170206155736-9520e82c474b // indirect
-	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
 )
 
 replace github.com/agentclash/agentclash/runtime => ../runtime
