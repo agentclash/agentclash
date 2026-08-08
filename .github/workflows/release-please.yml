@@ -28,7 +28,7 @@ jobs:
           echo "::error::Set RELEASE_PLEASE_TOKEN to a PAT or GitHub App token. Tags created with GITHUB_TOKEN do not trigger release workflows."
           exit 1
 
-      - uses: googleapis/release-please-action@v4
+      - uses: googleapis/release-please-action@v5
         with:
           token: ${{ env.RELEASE_PLEASE_TOKEN }}
           config-file: .github/release-please-config.json
