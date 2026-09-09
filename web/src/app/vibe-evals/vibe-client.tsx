@@ -24,6 +24,7 @@ import { CreditsDialog } from "@/components/vibe/credits-dialog";
 import { ArtifactPanel, ModelSelect } from "@/components/vibe/artifact-panel";
 import { SafeMarkdown } from "@/components/vibe/safe-markdown";
 import { VibeScorecard } from "@/components/vibe/scorecard";
+import { Requirements } from "@/components/vibe/requirements";
 import { createApiClient } from "@/lib/api/client";
 import type { UserMeResponse } from "@/lib/api/types";
 import {
@@ -40,6 +41,26 @@ import {
   type VibeConfig,
 } from "@/lib/vibe";
 
+// POST /messages faults from api/vibe.go, Service.Prepare and Store.Submit:
+// these exact code/status pairs reject before admission or roll back its transaction.
+// Unknown responses (including generic 503s) cannot prove non-admission.
+const submissionRejections: Partial<Record<number, readonly string[]>> = {
+  400: [
+    "invalid_request", "invalid_message", "invalid_operation",
+    "invalid_import", "import_limit", "unsupported_schema", "invalid_encoding",
+    "free_model_required", "unsupported_model", "evaluator_pinned",
+    "artifact_required", "baseline_required", "comparison_changed",
+    "case_limit", "graph_limit", "budget_limit", "conversation_limit", "workspace_required",
+  ],
+  402: ["insufficient_credits"],
+  403: ["forbidden"],
+  404: ["not_found"],
+  409: ["revision_conflict", "operation_running", "invalid_state"],
+  413: ["request_too_large"],
+  429: ["rate_limit", "capacity_limit", "trial_limit"],
+  503: ["hosted_disabled", "pricing_unavailable", "accounting_unavailable", "trial_capacity_reached"],
+};
+
 const starters = [
   "I have an agent that needs testing",
   "Help me build an agent",
@@ -47,6 +68,9 @@ const starters = [
 ];
 export function VibeClient() {
   const params = useSearchParams();
+  const requestedSessionID = params.get("session");
+  const [loadAttempt, setLoadAttempt] = useState(0);
+  const [loadingSession, setLoadingSession] = useState(!!requestedSessionID);
   const { getAccessToken } = useAccessToken();
   const [session, setSession] = useState<Session | null>(null);
   const [config, setConfig] = useState<VibeConfig | null>(null);
@@ -56,23 +80,47 @@ export function VibeClient() {
   const [error, setError] = useState("");
   const [connection, setConnection] = useState("");
   const [panel, setPanel] = useState(false);
+  const [dirtyArtifactID, setDirtyArtifactID] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState<{ id: string; name: string }[]>(
     [],
   );
   const [workspace, setWorkspace] = useState(params.get("workspace") || "");
-  const [saved, setSaved] = useState<{
-    draft_id: string;
-    workspace_id: string;
-  } | null>(null);
+
   const sending = useRef(false);
-  const messageID = useRef<string | null>(null);
+  const submission = useRef<{
+    sessionID: string;
+    body: string;
+    composer: string | null;
+    composerVersion: number;
+    uncertain: boolean;
+  } | null>(null);
+  const composerEdits = useRef(0);
+  const [uncertain, setUncertain] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const scrollEnd = useRef<HTMLDivElement>(null);
   const active = session?.operations.find((o) => !terminal(o.state));
-  const busy = pending || !!active;
+  const sessionUnavailable = !!requestedSessionID && session?.id !== requestedSessionID;
+  const busy = pending || !!active || uncertain || sessionUnavailable;
   const artifact = session?.document.artifacts.at(-1);
+  const dirtyArtifact = panel && !!artifact && dirtyArtifactID === artifact.id;
+  const savedModels = session?.saved_models;
+  // Canonical identity survives unknown legacy receipts or changed selections;
+  // only the immutable model receipt can confirm that these choices were saved.
+  const savedDraft = artifact?.accepted && !dirtyArtifact &&
+    session?.saved_artifact_id === artifact.id && session.saved_draft_id && session.workspace_id
+    ? { draft_id: session.saved_draft_id, workspace_id: session.workspace_id }
+    : null;
+  const saved = !!savedDraft && savedModels?.assistant === models.assistant &&
+    savedModels.target === models.target && savedModels.evaluator === models.evaluator;
+  const savedModelNotice = savedModels
+    ? "Your current model choices differ from those recorded when this draft was saved."
+    : "Saved model choices are unknown. Your current model choices are not confirmed as saved.";
   const sessionID = session?.id;
+  const attachedWorkspace = session?.workspace_id;
+  useEffect(() => {
+    if (attachedWorkspace) setWorkspace(attachedWorkspace);
+  }, [attachedWorkspace]);
   const token = useCallback(async () => {
     try {
       return await getAccessToken();
@@ -101,6 +149,7 @@ export function VibeClient() {
     const id = params.get("session");
     if (!id) return;
     let alive = true;
+    setLoadingSession(true);
     void (async () => {
       const auth = await token();
       try {
@@ -121,12 +170,14 @@ export function VibeClient() {
         }
       } catch (e) {
         if (alive) setError((e as Error).message);
+      } finally {
+        if (alive) setLoadingSession(false);
       }
     })();
     return () => {
       alive = false;
     };
-  }, [params, token]);
+  }, [params, token, loadAttempt]);
   useEffect(() => {
     if (!sessionID) return;
     const controller = new AbortController();
@@ -175,6 +226,8 @@ export function VibeClient() {
     return v;
   };
   async function ensureSession() {
+    if (requestedSessionID && session?.id !== requestedSessionID)
+      throw new Error("Load this conversation before sending. No new conversation was created.");
     if (session) return session;
     const id = crypto.randomUUID();
     const v = await vibeFetch<Session>("/sessions", await token(), {
@@ -197,18 +250,21 @@ export function VibeClient() {
     text = content,
     baseline?: Operation,
   ) {
-    if (sending.current || busy) return;
+    if (sending.current || busy || submission.current) return;
+    if (kind !== "message" && (dirtyArtifact || !artifact?.accepted)) return;
+    const composerVersion = composerEdits.current;
     sending.current = true;
     setPending(true);
     setError("");
     try {
       const v = await ensureSession();
-      const clientID = messageID.current || crypto.randomUUID();
-      messageID.current = clientID;
-      await vibeFetch(`/sessions/${v.id}/messages`, await token(), {
-        method: "POST",
+      submission.current = {
+        sessionID: v.id,
+        uncertain: false,
+        composer: kind === "message" ? text : null,
+        composerVersion,
         body: JSON.stringify({
-          client_id: clientID,
+          client_id: crypto.randomUUID(),
           revision: v.revision,
           kind,
           content: text,
@@ -218,16 +274,52 @@ export function VibeClient() {
           ...(artifact ? { artifact_id: artifact.id } : {}),
           ...(baseline ? { baseline_id: baseline.id } : {}),
         }),
-      });
-      messageID.current = null;
-      setContent("");
-      await reload(v.id);
+      };
+      await dispatchSubmission();
     } catch (e) {
       setError((e as Error).message);
-      if (e instanceof VibeError) {
-        messageID.current = null;
-        if (e.code === "revision_conflict") await reload();
+    } finally {
+      sending.current = false;
+      setPending(false);
+    }
+  }
+  async function dispatchSubmission() {
+    const request = submission.current;
+    if (!request) return;
+    try {
+      await vibeFetch(`/sessions/${request.sessionID}/messages`, await token(), {
+        method: "POST",
+        body: request.body,
+      });
+    } catch (e) {
+      // Auth/rate/profile checks precede idempotency lookup. A later rejection
+      // cannot disprove an earlier admission: retain every byte until acknowledged.
+      const rejected = !request.uncertain && e instanceof VibeError && e.status !== undefined &&
+        submissionRejections[e.status]?.includes(e.code) === true;
+      if (rejected) submission.current = null;
+      else request.uncertain = true;
+      setUncertain(!rejected);
+      if (e instanceof VibeError && e.code === "revision_conflict") {
+        await reload(request.sessionID).catch(() => undefined);
       }
+      throw e;
+    }
+    submission.current = null;
+    setUncertain(false);
+    if (request.composer !== null && request.composerVersion === composerEdits.current) {
+      setContent((current) => current === request.composer ? "" : current);
+    }
+    await reload(request.sessionID);
+  }
+  async function retrySubmission() {
+    if (sending.current || pending || !submission.current) return;
+    sending.current = true;
+    setPending(true);
+    setError("");
+    try {
+      await dispatchSubmission();
+    } catch (e) {
+      setError((e as Error).message);
     } finally {
       sending.current = false;
       setPending(false);
@@ -300,6 +392,7 @@ export function VibeClient() {
     }
   }
   async function openSave() {
+    setError("");
     setSaveOpen(true);
     const auth = await token();
     if (!auth) return;
@@ -322,6 +415,7 @@ export function VibeClient() {
   async function save() {
     if (!session || !artifact || !workspace) return;
     setPending(true);
+    setError("");
     try {
       const auth = await token();
       await vibeFetch(`/sessions/${session.id}/claim`, auth, {
@@ -330,7 +424,7 @@ export function VibeClient() {
       });
       const latest = await reload();
       if (!latest) return;
-      const result = await vibeFetch<{
+      await vibeFetch<{
         draft_id: string;
         workspace_id: string;
       }>(`/sessions/${session.id}/save`, auth, {
@@ -339,9 +433,9 @@ export function VibeClient() {
           revision: latest.revision,
           artifact_id: artifact.id,
           workspace_id: workspace,
+          models,
         }),
       });
-      setSaved(result);
       await reload();
     } catch (e) {
       setError((e as Error).message);
@@ -404,7 +498,7 @@ export function VibeClient() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setPanel(!panel)}
+                onClick={() => { setDirtyArtifactID(null); setPanel(!panel); }}
               >
                 <PanelRight size={15} /> Your agent
               </Button>
@@ -454,11 +548,19 @@ export function VibeClient() {
                   <SafeMarkdown>{message.content}</SafeMarkdown>
                 </div>
               ))}
+              {!artifact && (
+                <Requirements
+                  requirements={session?.document.requirements || []}
+                  busy={busy}
+                  onRequirement={(requirement_id, status, statement) => edit({ requirement_id, status, statement })}
+                />
+              )}
               {session?.operations.map((operation) => (
                 <div key={operation.id}>
                   {operation.scorecard && operation.scorecard.total > 0 && (
                     <VibeScorecard
                       operation={operation}
+                      eventCursor={session.event_cursor}
                       baseline={session?.operations.find(
                         (o) => o.id === operation.baseline_id,
                       )}
@@ -468,7 +570,7 @@ export function VibeClient() {
                           await token(),
                         )
                       }
-                      busy={busy}
+                      busy={busy || dirtyArtifact || !artifact?.accepted}
                       onImprove={() => {
                         setContent(
                           "Help me improve the accepted agent instructions while keeping the evaluation unchanged. Ask me for any missing policy facts.",
@@ -542,11 +644,11 @@ export function VibeClient() {
                   )}
                 </div>
               )}
-              {saved && (
+              {savedDraft && (
                 <p className="rounded-xl border border-builder-border p-4 text-sm">
-                  Your evaluation is saved.{" "}
+                  {saved ? "Your evaluation is saved." : savedModelNotice}{" "}
                   <Link
-                    href={`/workspaces/${saved.workspace_id}/challenge-packs/builder/${saved.draft_id}`}
+                    href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}
                     className="underline underline-offset-4"
                   >
                     Open it in your workspace
@@ -560,6 +662,15 @@ export function VibeClient() {
           </div>
         </div>
         <div className="mx-auto w-full max-w-3xl shrink-0 px-5 pb-5 pt-3 sm:px-8">
+          {sessionUnavailable && (
+            <div className="mb-3 text-xs text-builder-fg-muted">
+              {loadingSession ? <p role="status">Loading your conversation…</p> : (
+                <Button type="button" variant="outline" size="sm" onClick={() => { setError(""); setLoadAttempt((attempt) => attempt + 1); }}>
+                  Retry loading conversation
+                </Button>
+              )}
+            </div>
+          )}
           {error && (
             <p
               role="alert"
@@ -573,6 +684,14 @@ export function VibeClient() {
               {connection}
             </p>
           )}
+          {uncertain && (
+            <div className="mb-3 text-xs text-builder-fg-muted">
+              <p>The submission acknowledgement was not confirmed. Retry the same submission to recover its saved status. Your next message stays here.</p>
+              <Button type="button" variant="outline" size="sm" disabled={pending} onClick={retrySubmission}>
+                Retry submission
+              </Button>
+            </div>
+          )}
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -585,8 +704,8 @@ export function VibeClient() {
               placeholder="Describe your agent, share an idea, or ask a question…"
               value={content}
               onChange={(e) => {
+                composerEdits.current++;
                 setContent(e.target.value);
-                messageID.current = null;
               }}
               onKeyDown={(e) => {
                 if (
@@ -655,11 +774,12 @@ export function VibeClient() {
           choices={config?.models || []}
           anonymous={session?.anonymous ?? true}
           busy={busy}
-          onClose={() => setPanel(false)}
+          onClose={() => { setDirtyArtifactID(null); setPanel(false); }}
           onAccept={() => edit({ artifact_id: artifact.id })}
           onEdit={(agent_prompt) =>
             edit({ artifact_id: artifact.id, agent_prompt })
           }
+          onDirtyChange={(dirty) => setDirtyArtifactID(dirty ? artifact.id : null)}
           onRequirement={(requirement_id, status, statement) =>
             edit({ requirement_id, status, statement })
           }
@@ -677,6 +797,7 @@ export function VibeClient() {
             in this conversation use your workspace’s AI credits. Your original
             evidence stays here.
           </DialogDescription>
+          {error && <p role="alert" className="text-xs leading-5 text-builder-warn">{error}</p>}
           {workspaces.length ? (
             <>
               <label className="text-sm">
@@ -694,17 +815,9 @@ export function VibeClient() {
                   ))}
                 </select>
               </label>
-              <Button onClick={save} disabled={pending}>
+              <Button onClick={save} disabled={busy || dirtyArtifact || !artifact?.accepted || !!saved}>
                 {saved ? "Saved" : "Save to workspace"}
               </Button>
-              {saved && (
-                <Link
-                  href={`/workspaces/${saved.workspace_id}/challenge-packs/builder/${saved.draft_id}`}
-                  className="text-sm underline"
-                >
-                  Open your evaluation
-                </Link>
-              )}
             </>
           ) : (
             <Link
@@ -713,6 +826,17 @@ export function VibeClient() {
             >
               Sign in to save your work
             </Link>
+          )}
+          {savedDraft && (
+            <>
+              {!saved && <p className="text-xs leading-5 text-builder-fg-muted">{savedModelNotice}</p>}
+              <Link
+                href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}
+                className="text-sm underline"
+              >
+                Open your evaluation
+              </Link>
+            </>
           )}
         </DialogContent>
       </Dialog>

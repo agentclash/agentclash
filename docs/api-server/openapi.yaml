@@ -87,6 +87,81 @@ tags:
     description: Routing and spend policy configuration
 
 paths:
+  /v1/vibe/sessions/{sessionId}/save:
+    post:
+      operationId: saveVibeDraft
+      tags: [AgentBuilds, ChallengePacks]
+      summary: Save an accepted Vibe draft into a canonical workspace build and pack
+      description: >
+        Requires ownership of the conversation and current write access to the
+        destination workspace. No inference, deployment, publication, payment or
+        monitoring is triggered. Saving attaches subsequent conversation operations
+        to workspace credits. The revision must match and no operation or approval
+        may be pending. An optional models object saves the explicitly selected
+        assistant, target and evaluator choices atomically; omitted models preserve
+        the document choices. Explicit models must have current approved profiles.
+        Repeated saves of one artifact and its recorded model choices reuse the
+        canonical draft. Different choices for an already saved artifact return
+        saved_model_conflict instead of silently saving the old model. Older saves
+        without model-choice metadata remain readable and support legacy retries
+        without models; new explicit choices require a new accepted artifact.
+        Subsequent session snapshots include saved_draft_id, saved_artifact_id,
+        and saved_models (absent for historical saves without recorded choices).
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [revision, artifact_id, workspace_id]
+              properties:
+                revision:
+                  type: integer
+                  format: int64
+                  minimum: 0
+                artifact_id:
+                  type: string
+                  format: uuid
+                workspace_id:
+                  type: string
+                  format: uuid
+                models:
+                  type: object
+                  additionalProperties: false
+                  required: [assistant, target, evaluator]
+                  properties:
+                    assistant: { type: string }
+                    target: { type: string }
+                    evaluator: { type: string }
+      responses:
+        '200':
+          description: The exact accepted artifact is saved; no model call ran
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [draft_id, workspace_id]
+                properties:
+                  draft_id: { type: string, format: uuid }
+                  workspace_id: { type: string, format: uuid }
+        '400':
+          description: Invalid request, unaccepted artifact, or unsupported coverage
+        '403':
+          description: Sign-in is required
+        '404':
+          description: Conversation or workspace is unavailable to this caller
+        '409':
+          description: Stale revision, pending operation, or saved model-choice conflict
+        '503':
+          description: Explicit model choices lack current approved profiles
   /public/publications:
     get:
       operationId: listPublications

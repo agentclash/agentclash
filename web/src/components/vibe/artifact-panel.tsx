@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Check, Download, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Artifact, Model, Models, Requirement } from "@/lib/vibe";
+import { Requirements } from "./requirements";
 
 export function ModelSelect({
   label,
@@ -49,6 +50,7 @@ export function ArtifactPanel({
   onClose,
   onAccept,
   onEdit,
+  onDirtyChange,
   onRequirement,
   onModels,
   onCheck,
@@ -64,6 +66,7 @@ export function ArtifactPanel({
   onClose: () => void;
   onAccept: () => void;
   onEdit: (prompt: string) => void;
+  onDirtyChange?: (dirty: boolean) => void;
   onRequirement: (
     id: string,
     status: "accepted" | "rejected" | "superseded",
@@ -76,6 +79,7 @@ export function ArtifactPanel({
 }) {
   const [prompt, setPrompt] = useState(artifact.agent_prompt);
   const [test, setTest] = useState("");
+  const dirty = prompt !== artifact.agent_prompt;
   function download() {
     const url = URL.createObjectURL(
       new Blob(
@@ -133,12 +137,16 @@ export function ArtifactPanel({
           Agent instructions
           <textarea
             value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
+            onChange={(e) => {
+              setPrompt(e.target.value);
+              onDirtyChange?.(e.target.value !== artifact.agent_prompt);
+            }}
             disabled={busy}
             className="mt-2 min-h-56 w-full resize-y rounded-xl border border-builder-border bg-builder-surface p-3 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-builder-border-strong"
           />
         </label>
-        {prompt !== artifact.agent_prompt ? (
+        {dirty && <p className="text-xs text-builder-warn">Save your edits as a new draft, then accept it before trying, checking or keeping this agent.</p>}
+        {dirty ? (
           <Button
             size="sm"
             variant="outline"
@@ -163,85 +171,7 @@ export function ArtifactPanel({
           onChange={(target) => onModels({ ...models, target })}
           disabled={busy}
         />
-        {requirements.filter(
-          (r) => r.status !== "rejected" && r.status !== "superseded",
-        ).length > 0 && (
-          <div>
-            <h3 className="mb-2 text-xs font-medium">Requirements</h3>
-            {requirements
-              .filter(
-                (r) => r.status !== "rejected" && r.status !== "superseded",
-              )
-              .map((requirement) => (
-                <div
-                  key={requirement.id}
-                  className="border-b border-builder-border py-3 text-xs leading-5"
-                >
-                  <p>{requirement.statement}</p>
-                  <p className="mt-1 text-builder-fg-muted">
-                    {requirement.status === "accepted"
-                      ? "Confirmed by you"
-                      : "Proposed · needs your confirmation"}
-                  </p>
-                  {requirement.status === "accepted" && (
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-builder-fg-muted">
-                        Update requirement
-                      </summary>
-                      <form
-                        className="mt-2 space-y-2"
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          const data = new FormData(e.currentTarget);
-                          onRequirement(
-                            requirement.id,
-                            "superseded",
-                            String(data.get("replacement")),
-                          );
-                        }}
-                      >
-                        <textarea
-                          name="replacement"
-                          aria-label="Replacement requirement"
-                          defaultValue={requirement.statement}
-                          maxLength={4096}
-                          required
-                          className="w-full rounded border border-builder-border bg-builder-surface p-2"
-                        />
-                        <Button type="submit" size="sm" disabled={busy}>
-                          Confirm replacement
-                        </Button>
-                      </form>
-                    </details>
-                  )}
-                  {requirement.status === "proposed" && (
-                    <div className="mt-2 flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={busy}
-                        onClick={() =>
-                          onRequirement(requirement.id, "accepted")
-                        }
-                      >
-                        Confirm
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        disabled={busy}
-                        onClick={() =>
-                          onRequirement(requirement.id, "rejected")
-                        }
-                      >
-                        Dismiss
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              ))}
-          </div>
-        )}
+        <Requirements requirements={requirements} busy={busy} onRequirement={onRequirement} />
         <details>
           <summary className="cursor-pointer text-xs text-builder-fg-muted">
             Evaluation details
@@ -285,7 +215,7 @@ export function ArtifactPanel({
             />
             <Button
               size="sm"
-              disabled={busy || !test.trim()}
+              disabled={busy || dirty || !test.trim()}
               onClick={() => onPlay(test)}
             >
               Send to agent
@@ -296,14 +226,14 @@ export function ArtifactPanel({
       <div className="mt-5 flex gap-2 border-t border-builder-border pt-4">
         <Button
           className="flex-1"
-          disabled={busy || !artifact.accepted}
+          disabled={busy || dirty || !artifact.accepted}
           onClick={onCheck}
         >
           Check this agent
         </Button>
         <Button
           variant="outline"
-          disabled={busy || !artifact.accepted}
+          disabled={busy || dirty || !artifact.accepted}
           onClick={onSave}
         >
           Keep it

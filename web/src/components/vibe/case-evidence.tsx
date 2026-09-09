@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, HelpCircle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { CaseResult } from "@/lib/vibe";
@@ -9,37 +9,44 @@ import { SafeMarkdown } from "./safe-markdown";
 export function CaseEvidence({
   summary,
   load,
+  evidenceVersion,
 }: {
   summary: CaseResult;
   load: (key: string) => Promise<CaseResult>;
+  evidenceVersion?: string;
 }) {
-  const [evidence, setEvidence] = useState<CaseResult | null>(
-    summary.input ? summary : null,
-  );
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
-  async function fetchEvidence() {
-    if (loading) return;
-    setLoading(true);
-    setError("");
-    try {
-      setEvidence(await load(summary.case_key));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [open, setOpen] = useState(false);
+  const [refresh, setRefresh] = useState(0);
+  const [settled, setSettled] = useState<{
+    metadata: string;
+    refresh: number;
+    result?: CaseResult;
+    error?: string;
+  } | null>(null);
+  // Bodies are redacted from snapshots. A persisted event can recover output
+  // without changing verdicts, so include its version in the evidence cache key.
+  // Identical SSE snapshots still reuse the cache; closed rows never fetch.
+  const metadata = JSON.stringify([evidenceVersion, summary]);
+  const loader = useRef(load);
+  useEffect(() => { loader.current = load; }, [load]);
+  useEffect(() => {
+    if (!open) return;
+    let current = true;
+    void loader.current(summary.case_key).then((result) => {
+      if (current) setSettled({ metadata, refresh, result });
+    }).catch((e: Error) => {
+      if (current) setSettled({ metadata, refresh, error: e.message });
+    });
+    return () => { current = false; };
+  }, [open, metadata, summary.case_key, refresh]);
+  const current = settled?.metadata === metadata && settled.refresh === refresh ? settled : null;
+  const evidence = current?.result;
+  const error = current?.error;
+  const loading = open && !current;
   return (
     <details
       className="group py-3"
-      onToggle={(e) => {
-        if (
-          e.currentTarget.open &&
-          (!evidence || evidence.verdict !== summary.verdict)
-        )
-          void fetchEvidence();
-      }}
+      onToggle={(e) => setOpen(e.currentTarget.open)}
     >
       <summary className="flex cursor-pointer list-none items-center gap-3 text-sm">
         {summary.verdict === "PASS" ? (
@@ -101,7 +108,7 @@ export function CaseEvidence({
             size="sm"
             variant="ghost"
             disabled={loading}
-            onClick={fetchEvidence}
+            onClick={() => setRefresh((value) => value + 1)}
           >
             Reload saved evidence
           </Button>

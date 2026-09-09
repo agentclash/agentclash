@@ -88,4 +88,4 @@ jobs:
       - name: Typecheck and safe Markdown tests
         run: |
           npx tsc --noEmit --incremental false
-          npx vitest run src/components/vibe/safe-markdown.test.tsx
+          npx vitest run src/app/vibe-evals src/components/vibe

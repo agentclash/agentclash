@@ -357,6 +357,9 @@ func (s *Store) ReconcileCost(ctx context.Context, id uuid.UUID, cost int64, usa
 			if _, err := tx.Exec(ctx, "INSERT INTO vibe_disabled_profiles(model,reason) VALUES($1,'reconciliation exceeded ceiling') ON CONFLICT DO NOTHING", model); err != nil {
 				return err
 			}
+			if _, err := tx.Exec(ctx, "UPDATE vibe_accounts SET disabled=true WHERE id IN (SELECT account_id FROM vibe_reservations WHERE operation_id=$1)", op); err != nil {
+				return err
+			}
 		}
 		if _, err := tx.Exec(ctx, "UPDATE vibe_attempts SET actual_cost=$2,usage=$3,state='RECONCILED',completed_at=now() WHERE id=$1", id, cost, usage); err != nil {
 			return err

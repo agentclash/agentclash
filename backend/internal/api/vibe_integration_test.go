@@ -206,7 +206,7 @@ func TestVibeIntegrationDescriptionToHonestScorecardAndSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	draft, err := svc.Save(ctx, owner, v.ID, v.Revision, a.ID, ws)
+	draft, err := svc.Save(ctx, owner, v.ID, v.Revision, a.ID, ws, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestVibeIntegrationDescriptionToHonestScorecardAndSave(t *testing.T) {
 	if err = db.QueryRow(ctx, "SELECT trial_key FROM vibe_sessions WHERE id=$1", v.ID).Scan(&trialKey); err != nil || trialKey != actor {
 		t.Fatal("trial history reset")
 	}
-	again, err := svc.Save(ctx, owner, v.ID, v.Revision, a.ID, ws)
+	again, err := svc.Save(ctx, owner, v.ID, v.Revision, a.ID, ws, nil)
 	if err != nil || again != draft {
 		t.Fatalf("save idempotency: %v", err)
 	}

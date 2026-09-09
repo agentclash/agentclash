@@ -6,6 +6,7 @@ import { CaseEvidence } from "./case-evidence";
 export function VibeScorecard({
   operation,
   baseline,
+  eventCursor,
   loadEvidence,
   onImprove,
   onRetest,
@@ -13,6 +14,7 @@ export function VibeScorecard({
 }: {
   operation: Operation;
   baseline?: Operation;
+  eventCursor?: number;
   loadEvidence: (key: string) => Promise<CaseResult>;
   onImprove: () => void;
   onRetest: () => void;
@@ -102,6 +104,7 @@ export function VibeScorecard({
           <CaseEvidence
             key={`${result.version}:${result.case_key}`}
             summary={result}
+            evidenceVersion={`${operation.id}:${operation.state}:${eventCursor ?? ""}`}
             load={loadEvidence}
           />
         ))}

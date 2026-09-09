@@ -66,6 +66,8 @@ export type Session = {
   anonymous: boolean;
   workspace_id?: string;
   saved_draft_id?: string;
+  saved_artifact_id?: string;
+  saved_models?: Models;
   document: {
     messages: { id: string; role: string; content: string }[];
     requirements: Requirement[];
@@ -101,6 +103,7 @@ export class VibeError extends Error {
   constructor(
     public code: string,
     message: string,
+    public status?: number,
   ) {
     super(message);
   }
@@ -135,6 +138,7 @@ export async function vibeFetch<T>(
     throw new VibeError(
       result.error?.code || "request_failed",
       result.error?.message || "Could not complete the request.",
+      response.status,
     );
   return result;
 }

@@ -77,7 +77,9 @@ func (r *Runner) converse(ctx context.Context, o Operation, p Plan) error {
 	if len(doc.Artifacts) > 1 {
 		doc.Artifacts = doc.Artifacts[len(doc.Artifacts)-1:]
 	}
-	messages := []provider.Message{{Role: "system", Content: coordinatorPrompt + "\nDraft contract:\n" + r.Service.Compiler.Instructions()}, {Role: "user", Content: string(raw(map[string]any{"conversation_data": doc, "observed_evaluation_data": p.Observations, "current_message": p.Submission.Content}))}}
+	// The newest proposal can be unrelated to the active accepted agent. Keep
+	// that agent explicit in both the first call and the bounded repair context.
+	messages := []provider.Message{{Role: "system", Content: coordinatorPrompt + "\nDraft contract:\n" + r.Service.Compiler.Instructions()}, {Role: "user", Content: string(raw(map[string]any{"conversation_data": doc, "accepted_agent": p.Artifact, "observed_evaluation_data": p.Observations, "current_message": p.Submission.Content}))}}
 	var parsed assistantReply
 	var blueprint json.RawMessage
 	for attempt := 0; attempt <= MaxAuthoringRepairs; attempt++ {
@@ -192,6 +194,16 @@ func (r *Runner) evaluate(ctx context.Context, o Operation, p Plan) error {
 	if err != nil {
 		return err
 	}
+	// Compile also revalidates historical queued plans. Execute its shared
+	// normalized scoring view without changing the accepted bundle/contract.
+	definition, err := json.Marshal(compiled.Bundle.Version.EvaluationSpec)
+	if err != nil {
+		return err
+	}
+	spec, err := scoring.DecodeDefinition(definition)
+	if err != nil {
+		return err
+	}
 	version := p.Artifact.ID.String()
 	// Persist every planned case as UNKNOWN before the first paid call. A worker
 	// crash, cancellation, budget limit or provider outage cannot shrink totals.
@@ -202,20 +214,21 @@ func (r *Runner) evaluate(ctx context.Context, o Operation, p Plan) error {
 	}
 	for _, c := range compiled.Cases {
 		result := CaseResult{CaseKey: c.CaseKey, ExpectedChecks: p.ChecksPerCase, Version: version, Input: raw(c.Payload), Verdict: Unknown, Checks: []CheckResult{}}
-		response, e := r.Gateway.Call(ctx, o, "target:"+c.CaseKey, Target, []provider.Message{{Role: "system", Content: p.Artifact.AgentPrompt}, {Role: "user", Content: string(raw(TargetInput(c, compiled.Bundle.Version.EvaluationSpec)))}}, nil)
+		response, e := r.Gateway.Call(ctx, o, "target:"+c.CaseKey, Target, []provider.Message{{Role: "system", Content: p.Artifact.AgentPrompt}, {Role: "user", Content: string(raw(TargetInput(c, spec)))}}, nil)
 		result.Output = response.OutputText
 		if e != nil {
 			result.Error = issueFrom(e)
 			_ = r.Service.Store.PutResult(context.WithoutCancel(ctx), o.ID, result)
 			return e
 		}
-		spec := compiled.Bundle.Version.EvaluationSpec
 		input := scoring.EvaluationInput{RunAgentID: o.ID, EvaluationSpecID: p.Artifact.ID, ChallengeInputs: []scoring.EvidenceInput{CaseEvidence(c)}, Events: []scoring.Event{{Type: "system.output.finalized", OccurredAt: timestamp(), Payload: raw(map[string]any{"output": response.OutputText})}, {Type: "system.run.completed", OccurredAt: timestamp(), Payload: raw(map[string]any{"final_output": response.OutputText})}}}
 		// Existing deterministic scoring primitives produce the numeric evidence.
 		var eval scoring.RunAgentEvaluation
 		e = nil
 		for _, v := range spec.Validators {
-			if v.Type == scoring.ValidatorTypeFuzzyMatch && (len(response.OutputText) > 2048 || len(raw(c.Payload)) > 2048) {
+			// The compiler bounds each resolved expected operand. At execution,
+			// only the target output is new; unrelated case metadata is not an operand.
+			if v.Type == scoring.ValidatorTypeFuzzyMatch && len(response.OutputText) > 2048 {
 				e = fault("validator_operand_limit", "Fuzzy matching operands exceed the bounded preview limit.")
 				break
 			}

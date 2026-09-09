@@ -245,7 +245,7 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 		return nil
 	})
 }
-func (s *Service) Save(ctx context.Context, actor string, id uuid.UUID, revision int64, artifactID, ws uuid.UUID) (uuid.UUID, error) {
+func (s *Service) Save(ctx context.Context, actor string, id uuid.UUID, revision int64, artifactID, ws uuid.UUID, selected *Models) (uuid.UUID, error) {
 	v, err := s.Store.GetSession(ctx, actor, id)
 	if err != nil {
 		return uuid.Nil, err
@@ -259,9 +259,18 @@ func (s *Service) Save(ctx context.Context, actor string, id uuid.UUID, revision
 	if artifact == nil {
 		return uuid.Nil, fault("artifact_required", "Accept an evaluation draft before saving.")
 	}
-	c, err := s.Compiler.Compile(artifact.Blueprint, v.Document.Models.Evaluator, artifactID, LimitsFor(v.Anonymous))
+	models := v.Document.Models
+	if selected != nil {
+		// Saving does not run a model. Explicit choices must still belong to the
+		// configured catalog, not user-controlled provider/routing overrides.
+		if err := s.Config.ValidateModels(*selected, false); err != nil {
+			return uuid.Nil, err
+		}
+		models = *selected
+	}
+	c, err := s.Compiler.Compile(artifact.Blueprint, models.Evaluator, artifactID, LimitsFor(v.Anonymous))
 	if err != nil {
 		return uuid.Nil, err
 	}
-	return s.Store.SaveDraft(ctx, actor, id, revision, ws, *artifact, c.Composition)
+	return s.Store.SaveDraft(ctx, actor, id, revision, ws, *artifact, c.Composition, models, selected != nil)
 }

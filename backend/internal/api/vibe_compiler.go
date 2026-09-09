@@ -108,6 +108,9 @@ func (VibePackCompiler) Compile(content json.RawMessage, evaluator string, id uu
 		return out, fmt.Errorf("file-backed challenges need the advanced runner")
 	}
 	spec := &b.Version.EvaluationSpec
+	if len(spec.Metrics) > 0 || spec.Behavioral != nil || len(spec.PostExecutionChecks) > 0 {
+		return out, fmt.Errorf("metrics, behavioral signals and post-execution checks require the advanced runner; no coverage was removed")
+	}
 	if len(spec.Validators) == 0 || len(spec.Validators) > l.Checks || len(spec.LLMJudges) > l.Evaluators {
 		return out, fmt.Errorf("evaluation exceeds the validator or evaluator limit")
 	}
@@ -162,24 +165,6 @@ func (VibePackCompiler) Compile(content json.RawMessage, evaluator string, id uu
 					return out, fmt.Errorf("file expectations require an advanced runner")
 				}
 			}
-			if len(vibe.TargetInput(c, *spec)) == 0 {
-				return out, fmt.Errorf("case has no target inputs after withholding expected answers")
-			}
-			// Resolve structured/regex operands through the existing evidence
-			// resolver before execution. A short reference cannot hide a giant
-			// regex or unavailable file-backed expectation.
-			for _, validator := range spec.Validators {
-				if !validator.Type.RequiresExpectedFrom() {
-					continue
-				}
-				value, _, err := scoring.ResolveEvidenceValueForJudge(validator.ExpectedFrom, scoring.EvaluationInput{ChallengeInputs: []scoring.EvidenceInput{vibe.CaseEvidence(c)}})
-				if err != nil || value == nil {
-					return out, fmt.Errorf("validator %s has unavailable expected evidence in case %s", validator.Key, c.CaseKey)
-				}
-				if validator.Type == scoring.ValidatorTypeRegexMatch && len(*value) > 1024 {
-					return out, fmt.Errorf("resolved regex exceeds the 1 KiB preview limit")
-				}
-			}
 			out.Cases = append(out.Cases, c)
 		}
 	}
@@ -197,6 +182,45 @@ func (VibePackCompiler) Compile(content json.RawMessage, evaluator string, id uu
 	}
 	if err = challengepack.ValidateBundle(composed); err != nil {
 		return out, fmt.Errorf("evaluation did not compile without reducing coverage: %w", err)
+	}
+	// ValidateBundle normalizes only a local scoring copy. Use the shared
+	// decoder's normalization for all executable evidence preflight as well
+	// as coverage checks. Keep the original bundle/composition for identity.
+	definition, err := json.Marshal(composed.Version.EvaluationSpec)
+	if err != nil {
+		return out, err
+	}
+	normalized, err := scoring.DecodeDefinition(definition)
+	if err != nil {
+		return out, err
+	}
+	for _, c := range out.Cases {
+		if len(vibe.TargetInput(c, normalized)) == 0 {
+			return out, fmt.Errorf("case %s has no safe target inputs after withholding expected answers; payload paths must resolve without removing the whole input", c.CaseKey)
+		}
+		// Resolve the same declarations the shared scorer will execute, not
+		// raw references that can select a whitespace-suffixed decoy key.
+		for _, validator := range normalized.Validators {
+			if !validator.Type.RequiresExpectedFrom() {
+				continue
+			}
+			value, _, err := scoring.ResolveEvidenceValueForJudge(validator.ExpectedFrom, scoring.EvaluationInput{ChallengeInputs: []scoring.EvidenceInput{vibe.CaseEvidence(c)}})
+			if err != nil || value == nil {
+				return out, fmt.Errorf("validator %s has unavailable expected evidence in case %s", validator.Key, c.CaseKey)
+			}
+			if validator.Type == scoring.ValidatorTypeRegexMatch && len(*value) > 1024 {
+				return out, fmt.Errorf("resolved regex exceeds the 1 KiB preview limit")
+			}
+			if validator.Type == scoring.ValidatorTypeFuzzyMatch && len(*value) > 2048 {
+				return out, fmt.Errorf("resolved fuzzy expected value exceeds the 2048-byte preview limit")
+			}
+		}
+	}
+	// Vibe persists validator/judge verdicts, not advanced dimension results.
+	for _, dimension := range normalized.Scorecard.Dimensions {
+		if dimension.Source != scoring.DimensionSourceValidators && dimension.Source != scoring.DimensionSourceLLMJudge {
+			return out, fmt.Errorf("dimension %s uses unsupported preview source %s; open it in the advanced runner; no coverage was removed", dimension.Key, dimension.Source)
+		}
 	}
 	// Execute the compiled bundle, including inferred judge mode and defaults.
 	// The authoring bundle intentionally leaves these fields for the builder.

@@ -156,6 +156,19 @@ func (s *Store) GetSession(ctx context.Context, actor string, id uuid.UUID) (Ses
 	if err = authorize(ctx, tx, v.Actor, v.WorkspaceID, false); err != nil {
 		return Session{}, err
 	}
+	if v.SavedDraftID != nil {
+		var models []byte
+		if err = tx.QueryRow(ctx, `SELECT s.artifact_id, s.saved_models
+			FROM vibe_saved_artifacts s
+			WHERE s.session_id=$1 AND s.draft_id=$2`, id, *v.SavedDraftID).Scan(&v.SavedArtifactID, &models); err != nil {
+			return Session{}, err
+		}
+		if len(models) > 0 {
+			if err = json.Unmarshal(models, &v.SavedModels); err != nil {
+				return Session{}, err
+			}
+		}
+	}
 	rows, err := tx.Query(ctx, operationSummarySelect+" WHERE session_id=$1 ORDER BY created_at LIMIT 100", id)
 	if err != nil {
 		return v, err
@@ -336,7 +349,7 @@ func (s *Store) Edit(ctx context.Context, actor string, id uuid.UUID, revision i
 			return fault("revision_conflict", "This conversation changed in another tab. Reload to see the latest version.")
 		}
 		var busy bool
-		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state IN ('QUEUED','RUNNING','CANCELLING','FINALIZING'))", id).Scan(&busy); err != nil {
+		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state IN ('AWAITING_APPROVAL','QUEUED','RUNNING','CANCELLING','FINALIZING'))", id).Scan(&busy); err != nil {
 			return err
 		}
 		if busy {
@@ -390,7 +403,7 @@ func (s *Store) Cursor(ctx context.Context, session uuid.UUID) (int64, error) {
 	return id, err
 }
 
-func (s *Store) SaveDraft(ctx context.Context, actor string, id uuid.UUID, revision int64, ws uuid.UUID, artifact Artifact, composition json.RawMessage) (uuid.UUID, error) {
+func (s *Store) SaveDraft(ctx context.Context, actor string, id uuid.UUID, revision int64, ws uuid.UUID, artifact Artifact, composition json.RawMessage, models Models, explicitModels bool) (uuid.UUID, error) {
 	var draftID uuid.UUID
 	err := s.transaction(ctx, func(tx pgx.Tx) error {
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
@@ -416,8 +429,21 @@ func (s *Store) SaveDraft(ctx context.Context, actor string, id uuid.UUID, revis
 		if active {
 			return fault("operation_running", "Finish or stop the current operation before attaching workspace credits.")
 		}
-		err = tx.QueryRow(ctx, "SELECT draft_id FROM vibe_saved_artifacts WHERE session_id=$1 AND artifact_id=$2", id, artifact.ID).Scan(&draftID)
+		var savedModels []byte
+		err = tx.QueryRow(ctx, `SELECT s.draft_id,s.saved_models FROM vibe_saved_artifacts s
+			WHERE s.session_id=$1 AND s.artifact_id=$2`, id, artifact.ID).Scan(&draftID, &savedModels)
 		if err == nil {
+			var previous *Models
+			if len(savedModels) > 0 {
+				if err := json.Unmarshal(savedModels, &previous); err != nil {
+					return err
+				}
+			}
+			// Older saves have no model-choice receipt. Keep legacy retries
+			// without choices working, but never claim new choices were saved.
+			if (previous == nil && explicitModels) || (previous != nil && *previous != models) {
+				return fault("saved_model_conflict", "These instructions are already saved with different or unrecorded model choices. Open the saved draft in your workspace, or edit and accept a new draft before saving new choices.")
+			}
 			return nil
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
@@ -443,15 +469,18 @@ func (s *Store) SaveDraft(ctx context.Context, actor string, id uuid.UUID, revis
 		}
 		versionID := uuid.New()
 		_, err = tx.Exec(ctx, `INSERT INTO agent_build_versions(id,agent_build_id,version_number,policy_spec,model_spec,created_by_user_id)
-          SELECT $1,$2,COALESCE(max(version_number),0)+1,$3,$4,$5 FROM agent_build_versions WHERE agent_build_id=$2`, versionID, buildID, raw(map[string]any{"instructions": artifact.AgentPrompt}), raw(map[string]any{"provider": "openrouter", "model": v.Document.Models.Target, "vibe_source_artifact_id": artifact.ID}), uid)
+          SELECT $1,$2,COALESCE(max(version_number),0)+1,$3,$4,$5 FROM agent_build_versions WHERE agent_build_id=$2`, versionID, buildID, raw(map[string]any{"instructions": artifact.AgentPrompt}), raw(map[string]any{"provider": "openrouter", "model": models.Target, "vibe_source_artifact_id": artifact.ID}), uid)
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, "INSERT INTO vibe_saved_artifacts(session_id,artifact_id,workspace_id,draft_id,build_id,build_version_id) VALUES($1,$2,$3,$4,$5,$6)", id, artifact.ID, ws, draftID, buildID, versionID)
+		// The canonical model_spec is editable. Record the selected roles only
+		// in Vibe's immutable save receipt, in the same transaction as the draft.
+		_, err = tx.Exec(ctx, "INSERT INTO vibe_saved_artifacts(session_id,artifact_id,workspace_id,draft_id,build_id,build_version_id,saved_models) VALUES($1,$2,$3,$4,$5,$6,$7)", id, artifact.ID, ws, draftID, buildID, versionID, raw(models))
 		if err != nil {
 			return err
 		}
-		_, err = tx.Exec(ctx, "UPDATE vibe_sessions SET workspace_id=$2,saved_draft_id=$3,revision=revision+1,updated_at=now() WHERE id=$1", id, ws, draftID)
+		v.Document.Models = models
+		_, err = tx.Exec(ctx, "UPDATE vibe_sessions SET workspace_id=$2,saved_draft_id=$3,document=$4,revision=revision+1,updated_at=now() WHERE id=$1", id, ws, draftID, raw(v.Document))
 		if err != nil {
 			return err
 		}

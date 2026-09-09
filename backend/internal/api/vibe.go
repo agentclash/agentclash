@@ -120,7 +120,7 @@ func vibeError(w http.ResponseWriter, err error) {
 			status = 404
 		case "forbidden":
 			status = 403
-		case "revision_conflict", "idempotency_conflict", "operation_running", "invalid_state":
+		case "revision_conflict", "idempotency_conflict", "operation_running", "invalid_state", "saved_model_conflict":
 			status = 409
 		case "rate_limit", "capacity_limit", "trial_limit":
 			status = 429
@@ -421,15 +421,16 @@ func (h *VibeHandler) save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Revision    int64     `json:"revision"`
-		ArtifactID  uuid.UUID `json:"artifact_id"`
-		WorkspaceID uuid.UUID `json:"workspace_id"`
+		Revision    int64        `json:"revision"`
+		ArtifactID  uuid.UUID    `json:"artifact_id"`
+		WorkspaceID uuid.UUID    `json:"workspace_id"`
+		Models      *vibe.Models `json:"models,omitempty"`
 	}
 	if err = vibeBody(w, r, v.Anonymous, &input); err != nil {
 		vibeError(w, err)
 		return
 	}
-	id, err := h.Service.Save(r.Context(), v.Actor, v.ID, input.Revision, input.ArtifactID, input.WorkspaceID)
+	id, err := h.Service.Save(r.Context(), v.Actor, v.ID, input.Revision, input.ArtifactID, input.WorkspaceID, input.Models)
 	if err != nil {
 		vibeError(w, err)
 		return

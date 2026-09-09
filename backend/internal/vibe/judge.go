@@ -6,6 +6,7 @@ import (
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/scoring"
+	"strconv"
 	"strings"
 )
 
@@ -81,7 +82,14 @@ func ParseJudge(j scoring.LLMJudgeDeclaration, b []byte, l Limits) (CheckResult,
 
 // Expected values are evaluator-only evidence. Never feed the answer key to the
 // target agent. Typed inputs, when supplied, are the complete target envelope.
+// Pass the shared normalized execution spec, not the persisted declarations.
+// Unnormalized references or unresolved payload paths fail closed with nil.
 func TargetInput(c challengepack.CaseDefinition, spec scoring.EvaluationSpec) map[string]any {
+	for _, v := range spec.Validators {
+		if v.ExpectedFrom != strings.TrimSpace(v.ExpectedFrom) {
+			return nil // Raw references can select a decoy instead of the scored key.
+		}
+	}
 	if len(c.Inputs) > 0 {
 		m := map[string]any{}
 		for _, v := range c.Inputs {
@@ -94,20 +102,88 @@ func TargetInput(c challengepack.CaseDefinition, spec scoring.EvaluationSpec) ma
 		m[key] = value
 	}
 	for _, v := range spec.Validators {
+		if v.ExpectedFrom == "case.payload" || v.ExpectedFrom == "challenge_input" {
+			return nil // The entire payload is declared evaluator-only evidence.
+		}
 		if strings.HasPrefix(v.ExpectedFrom, "case.payload.") {
-			path := strings.TrimPrefix(v.ExpectedFrom, "case.payload.")
-			delete(m, strings.Split(path, ".")[0])
+			path := strings.Split(strings.TrimPrefix(v.ExpectedFrom, "case.payload."), ".")
+			// Validate against the original: duplicates or overlapping paths
+			// may already have been withheld in the target copy.
+			if _, ok := withoutPayloadEvidence(c.Payload, path); !ok {
+				return nil
+			}
+			if reduced, ok := withoutPayloadEvidence(m, path); ok {
+				m = reduced.(map[string]any)
+			}
 		}
 	}
 	return m
 }
+
+// Mirror the shared evidence resolver's dotted object keys and numeric array
+// indices, not JSONPath bracket syntax. Copy only traversed containers so the
+// original answer evidence remains intact. Array slots become null, not shifted.
+func withoutPayloadEvidence(value any, path []string) (any, bool) {
+	if len(path) == 0 {
+		return nil, true
+	}
+	if strings.TrimSpace(path[0]) == "" {
+		return nil, false
+	}
+	switch value := value.(type) {
+	case map[string]any:
+		child, exists := value[path[0]]
+		if !exists {
+			return nil, false
+		}
+		reduced, ok := withoutPayloadEvidence(child, path[1:])
+		if !ok {
+			return nil, false
+		}
+		copy := make(map[string]any, len(value))
+		for key, item := range value {
+			copy[key] = item
+		}
+		if len(path) == 1 {
+			delete(copy, path[0])
+		} else {
+			copy[path[0]] = reduced
+		}
+		return copy, true
+	case []any:
+		index, err := strconv.Atoi(path[0])
+		if err != nil || index < 0 || index >= len(value) {
+			return nil, false
+		}
+		reduced, ok := withoutPayloadEvidence(value[index], path[1:])
+		if !ok {
+			return nil, false
+		}
+		copy := append([]any(nil), value...)
+		copy[index] = reduced
+		return copy, true
+	default:
+		return nil, false
+	}
+}
+
 func CaseEvidence(c challengepack.CaseDefinition) scoring.EvidenceInput {
 	e := scoring.EvidenceInput{ChallengeKey: c.ChallengeKey, CaseKey: c.CaseKey, ItemKey: c.CaseKey, Payload: raw(c.Payload), Inputs: map[string]scoring.EvidenceValue{}, Expectations: map[string]scoring.EvidenceValue{}}
 	for _, i := range c.Inputs {
-		e.Inputs[i.Key] = scoring.EvidenceValue{Kind: i.Kind, Value: raw(i.Value)}
+		var value json.RawMessage
+		if i.Value != nil {
+			value = raw(i.Value)
+		}
+		e.Inputs[i.Key] = scoring.EvidenceValue{Kind: i.Kind, Value: value}
 	}
 	for _, i := range c.Expectations {
-		e.Expectations[i.Key] = scoring.EvidenceValue{Kind: i.Kind, Value: raw(i.Value), Source: i.Source}
+		// An absent value must stay absent so the shared resolver can follow
+		// Source. JSON null would shadow it as an explicitly provided value.
+		var value json.RawMessage
+		if i.Value != nil {
+			value = raw(i.Value)
+		}
+		e.Expectations[i.Key] = scoring.EvidenceValue{Kind: i.Kind, Value: value, Source: i.Source}
 	}
 	return e
 }
