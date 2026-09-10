@@ -1,7 +1,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { defaultModels, type Session } from "@/lib/vibe";
+import { defaultModels, VibeError, type Session } from "@/lib/vibe";
 import { VibeClient } from "./vibe-client";
 
 const harness = vi.hoisted(() => ({
@@ -308,6 +308,67 @@ it("keeps the composer editable after a definite intake rejection", async () => 
   expect(button("Send message").disabled).toBe(false);
   expect(button("Import an evaluation").disabled).toBe(false);
   expect(posts()).toHaveLength(1);
+});
+
+it("verifies a new session cookie before changing the URL, streaming or sending the brief", async () => {
+  harness.params = new URLSearchParams();
+  harness.watch.mockClear();
+  const replace = vi.spyOn(window.history, "replaceState");
+  respond = async (path, options) => {
+    if (path === "/config") return json({ defaults: defaultModels, models: [] });
+    if (path === "/sessions" && options.method === "POST") return json(session, 201);
+    return json({ error: { code: "forbidden", message: "Start a new conversation to create a private trial." } }, 403);
+  };
+  await render();
+  const brief = "Build a text receptionist for a bike repair shop.";
+  await type(brief);
+  await click("Send message");
+  expect(container.textContent).toContain("The browser could not keep its private session");
+  expect(composer().value).toBe(brief);
+  expect(posts()).toHaveLength(0);
+  expect(harness.watch).not.toHaveBeenCalled();
+  expect(replace).not.toHaveBeenCalled();
+  expect(button("Send message").disabled).toBe(false);
+  expect(container.textContent).not.toContain("Reconnecting to saved progress");
+});
+
+it("stops forbidden event retries and lets an empty inaccessible session keep its unsent brief", async () => {
+  harness.watch.mockReset().mockRejectedValue(new VibeError("forbidden", "Missing cookie", 403));
+  const timers = vi.spyOn(globalThis, "setTimeout");
+  vi.spyOn(window.history, "replaceState").mockImplementation((_state, _unused, url) => {
+    harness.params = new URL(String(url), "http://localhost").searchParams;
+  });
+  await render();
+  await type("Keep this bike repair receptionist brief");
+  expect(container.textContent).toContain("This browser can’t access the saved session");
+  expect(container.textContent).not.toContain("Reconnecting to saved progress");
+  expect(timers.mock.calls.filter(([, delay]) => delay === 2000)).toHaveLength(0);
+  expect(harness.watch).toHaveBeenCalledTimes(1);
+  expect(button("Send message").disabled).toBe(true);
+  await click("Keep message in a new conversation");
+  expect(composer().value).toBe("Keep this bike repair receptionist brief");
+  expect(harness.params.has("session")).toBe(false);
+  expect(container.textContent).not.toContain("This browser can’t access the saved session");
+  expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
+  expect(button("Send message").disabled).toBe(false);
+});
+
+it("keeps an inaccessible accepted draft available while offering an explicit connection retry", async () => {
+  acceptedDraft();
+  harness.watch.mockReset().mockRejectedValue(new VibeError("not_found", "Conversation unavailable", 404));
+  await render();
+  expect(container.querySelector('aside[aria-label="Agent draft"]')).not.toBeNull();
+  expect(button("Retry connection").disabled).toBe(false);
+  expect(container.textContent).not.toContain("Keep message in a new conversation");
+  expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
+  harness.watch.mockImplementation((_id, _token, signal: AbortSignal, onSnapshot) => {
+    onSnapshot(structuredClone(session));
+    return new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve()));
+  });
+  await click("Retry connection");
+  expect(container.textContent).not.toContain("This browser can’t access the saved session");
+  expect(container.querySelector('aside[aria-label="Agent draft"]')).not.toBeNull();
+  expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
 });
 
 it("separates late-loading preview rules without marking the draft dirty and preserves them on edit", async () => {

@@ -201,15 +201,34 @@ export class VibeError extends Error {
     super(message);
   }
 }
-function baseURL() {
-  return (
-    process.env.NEXT_PUBLIC_API_URL ||
-    (typeof window !== "undefined" &&
-    (window.location.hostname === "agentclash.dev" ||
-      window.location.hostname.endsWith(".agentclash.dev"))
+export function resolveVibeBaseURL(
+  configured: string | undefined,
+  hostname?: string,
+) {
+  const base = (
+    configured ||
+    (hostname === "agentclash.dev" || hostname?.endsWith(".agentclash.dev")
       ? "https://api.agentclash.dev"
       : "http://localhost:8080")
   ).replace(/\/$/, "");
+  // SameSite=Strict trial cookies require the UI and API to use the same
+  // loopback hostname. localhost and 127.0.0.1 are different browser sites.
+  const loopback = (host?: string): host is "localhost" | "127.0.0.1" =>
+    host === "localhost" || host === "127.0.0.1";
+  if (loopback(hostname)) {
+    const url = new URL(base);
+    if (loopback(url.hostname)) {
+      url.hostname = hostname;
+      return url.toString().replace(/\/$/, "");
+    }
+  }
+  return base;
+}
+function baseURL() {
+  return resolveVibeBaseURL(
+    process.env.NEXT_PUBLIC_API_URL,
+    typeof window !== "undefined" ? window.location.hostname : undefined,
+  );
 }
 export async function vibeFetch<T>(
   path: string,
@@ -252,7 +271,15 @@ export async function watchVibe(
     signal,
     cache: "no-store",
   });
-  if (!response.ok || !response.body)
+  if (!response.ok) {
+    const result = await response.json().catch(() => null);
+    throw new VibeError(
+      result?.error?.code || "request_failed",
+      result?.error?.message || "Connection interrupted.",
+      response.status,
+    );
+  }
+  if (!response.body)
     throw new Error("Connection interrupted. Reconnecting to saved progress…");
   const reader = response.body.getReader();
   const decoder = new TextDecoder();

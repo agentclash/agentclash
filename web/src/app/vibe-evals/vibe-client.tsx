@@ -79,6 +79,11 @@ const submissionRejections: Partial<Record<number, readonly string[]>> = {
     "trial_capacity_reached",
   ],
 };
+const sessionAccessLost =
+  "This browser can’t access the saved session. Your unsent message is still here.";
+function isSessionAccessError(error: unknown) {
+  return error instanceof VibeError && [401, 403, 404].includes(error.status || 0);
+}
 
 const starters = [
   {
@@ -152,7 +157,12 @@ export function VibeClient() {
   const active = session?.operations.find((o) => !terminal(o.state));
   const sessionUnavailable =
     !!requestedSessionID && session?.id !== requestedSessionID;
-  const busy = pending || !!active || uncertain || sessionUnavailable;
+  const busy =
+    pending ||
+    !!active ||
+    uncertain ||
+    sessionUnavailable ||
+    connection === sessionAccessLost;
   const starter = starters.find((choice) => choice.mode === journeyChoice);
   const intake = !session?.document.messages.length ? starter : undefined;
   const journey = session?.document.journey;
@@ -212,7 +222,7 @@ export function VibeClient() {
     return () => {
       alive = false;
     };
-  }, [params]);
+  }, [params, loadAttempt]);
   useEffect(() => {
     const id = params.get("session");
     if (!id) return;
@@ -237,7 +247,12 @@ export function VibeClient() {
           setModels(v.document.models);
         }
       } catch (e) {
-        if (alive) setError((e as Error).message);
+        if (alive) {
+          if (isSessionAccessError(e)) {
+            setError("");
+            setConnection(sessionAccessLost);
+          } else setError((e as Error).message);
+        }
       } finally {
         if (alive) setLoadingSession(false);
       }
@@ -263,9 +278,14 @@ export function VibeClient() {
           );
           setConnection("");
         });
-      } catch {
-        if (!controller.signal.aborted)
+      } catch (e) {
+        if (!controller.signal.aborted) {
+          if (isSessionAccessError(e)) {
+            setConnection(sessionAccessLost);
+            return;
+          }
           setConnection("Reconnecting to saved progress…");
+        }
       }
       if (!controller.signal.aborted) timer = setTimeout(connect, 2000);
     };
@@ -274,7 +294,7 @@ export function VibeClient() {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [sessionID, token]);
+  }, [sessionID, token, loadAttempt]);
   useEffect(() => {
     scrollEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [session?.document.messages.length, active?.state]);
@@ -300,13 +320,26 @@ export function VibeClient() {
       );
     if (session) return session;
     const id = crypto.randomUUID();
-    const v = await vibeFetch<Session>("/sessions", await token(), {
+    const auth = await token();
+    await vibeFetch<Session>("/sessions", auth, {
       method: "POST",
       body: JSON.stringify({
         id,
         ...(workspace ? { workspace_id: workspace } : {}),
       }),
     });
+    // Verify the browser kept the private cookie before adopting the URL or
+    // sending a message. A 201 alone does not prove subsequent ownership.
+    let v: Session;
+    try {
+      v = await vibeFetch<Session>(`/sessions/${id}`, auth);
+    } catch (e) {
+      if (isSessionAccessError(e))
+        throw new Error(
+          "The browser could not keep its private session. Your message has not been sent and is still here. Check that cookies are allowed, then try again.",
+        );
+      throw e;
+    }
     setSession(v);
     window.history.replaceState(
       null,
@@ -877,7 +910,7 @@ export function VibeClient() {
           </div>
         </div>
         <div className="mx-auto w-full max-w-3xl shrink-0 px-5 pb-5 pt-3 sm:px-8">
-          {sessionUnavailable && (
+          {sessionUnavailable && connection !== sessionAccessLost && (
             <div className="mb-3 text-xs text-builder-fg-muted">
               {loadingSession ? (
                 <p role="status">Loading your conversation…</p>
@@ -908,6 +941,48 @@ export function VibeClient() {
             <p role="status" className="mb-2 text-xs text-builder-fg-muted">
               {connection}
             </p>
+          )}
+          {connection === sessionAccessLost && (
+            <div className="mb-3 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending || uncertain}
+                onClick={() => {
+                  setError("");
+                  setConnection("");
+                  setLoadAttempt((attempt) => attempt + 1);
+                }}
+              >
+                Retry connection
+              </Button>
+              {(!session ||
+                (!session.document.messages.length &&
+                  !session.document.artifacts.length &&
+                  !session.document.requirements.length &&
+                  !session.operations.length)) && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={pending || uncertain}
+                  onClick={() => {
+                    setSession(null);
+                    setError("");
+                    setConnection("");
+                    window.history.replaceState(
+                      null,
+                      "",
+                      `/vibe-evals${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`,
+                    );
+                    document.getElementById("vibe-message")?.focus();
+                  }}
+                >
+                  Keep message in a new conversation
+                </Button>
+              )}
+            </div>
           )}
           {uncertain && (
             <div className="mb-3 text-xs text-builder-fg-muted">
