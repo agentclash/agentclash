@@ -40,7 +40,7 @@ func TestIntegrationReconcileAttemptOverrunFreezesBackingAccounts(t *testing.T) 
 			if err = s.Generation(ctx, a.ID, "gen-"+a.ID.String()); err != nil {
 				t.Fatal(err)
 			}
-			if err = s.EndAttempt(ctx, a, "", json.RawMessage(`{}`), nil, &Fault{"worker_interrupted", "Output and cost were not recovered."}); err != nil {
+			if err = s.EndAttempt(ctx, a, "", json.RawMessage(`{}`), nil, &Fault{Code: "worker_interrupted", Message: "Output and cost were not recovered."}); err != nil {
 				t.Fatal(err)
 			}
 			if stopped {

@@ -37,7 +37,7 @@ func TestVibeTemporalPreservesDomainFaults(t *testing.T) {
 		t.Run(code, func(t *testing.T) {
 			var suite testsuite.WorkflowTestSuite
 			env := suite.NewTestWorkflowEnvironment()
-			want := &Fault{code, "A safe, specific explanation."}
+			want := &Fault{Code: code, Message: "A safe, specific explanation."}
 			calls, finalized := 0, 0
 			env.RegisterActivityWithOptions(func(context.Context, string) error {
 				calls++

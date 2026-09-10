@@ -85,10 +85,13 @@ func DefaultModels() Models {
 }
 
 type Message struct {
-	ID        uuid.UUID `json:"id"`
-	Role      string    `json:"role"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          uuid.UUID  `json:"id"`
+	Role        string     `json:"role"`
+	Content     string     `json:"content"`
+	CreatedAt   time.Time  `json:"created_at"`
+	Origin      string     `json:"origin,omitempty"`
+	OperationID *uuid.UUID `json:"operation_id,omitempty"`
+	ArtifactID  *uuid.UUID `json:"artifact_id,omitempty"`
 }
 type Requirement struct {
 	ProposedBy        string     `json:"proposed_by,omitempty"`
@@ -100,18 +103,24 @@ type Requirement struct {
 	AcceptedBy        string     `json:"accepted_by,omitempty"`
 	AcceptedAt        *time.Time `json:"accepted_at,omitempty"`
 	SupersedesID      *uuid.UUID `json:"supersedes_id,omitempty"`
+	Change            string     `json:"change,omitempty"`
 }
 type Artifact struct {
-	ID              uuid.UUID       `json:"id"`
-	Title           string          `json:"title"`
-	AgentPrompt     string          `json:"agent_prompt"`
-	Blueprint       json.RawMessage `json:"blueprint"`
-	SourceMessageID uuid.UUID       `json:"source_message_id"`
-	ParentID        *uuid.UUID      `json:"parent_id,omitempty"`
-	Accepted        bool            `json:"accepted"`
-	CreatedAt       time.Time       `json:"created_at"`
+	CriteriaRequirementIDs []string        `json:"criteria_requirement_ids,omitempty"`
+	Kind                   string          `json:"kind,omitempty"`
+	TestPlan               *TestPlan       `json:"test_plan,omitempty"`
+	Proposal               *DraftProposal  `json:"proposal,omitempty"`
+	ID                     uuid.UUID       `json:"id"`
+	Title                  string          `json:"title"`
+	AgentPrompt            string          `json:"agent_prompt"`
+	Blueprint              json.RawMessage `json:"blueprint"`
+	SourceMessageID        uuid.UUID       `json:"source_message_id"`
+	ParentID               *uuid.UUID      `json:"parent_id,omitempty"`
+	Accepted               bool            `json:"accepted"`
+	CreatedAt              time.Time       `json:"created_at"`
 }
 type Document struct {
+	Journey          Journey       `json:"journey,omitempty"`
 	AttachmentCount  int           `json:"attachment_count"`
 	Messages         []Message     `json:"messages"`
 	Requirements     []Requirement `json:"requirements"`

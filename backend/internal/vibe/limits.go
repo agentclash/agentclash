@@ -74,12 +74,13 @@ func (l Limits) OperationTimeout() time.Duration {
 }
 
 type Fault struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    string             `json:"code"`
+	Message string             `json:"message"`
+	Context *ContextDiagnostic `json:"context,omitempty"`
 }
 
 func (e *Fault) Error() string         { return e.Message }
-func fault(code, message string) error { return &Fault{code, message} }
+func fault(code, message string) error { return &Fault{Code: code, Message: message} }
 
 func GraphCalls(cases, versions, repetitions, evaluators, samples, helpers, retries int, l Limits) (int, error) {
 	if cases < 1 || cases > l.Cases || versions < 1 || versions > l.Versions || repetitions != 1 || evaluators < 0 || evaluators > l.Evaluators || samples != 1 || helpers < 0 || helpers > l.Helpers || retries < 0 || retries > l.Retries {

@@ -134,7 +134,11 @@ func vibeError(w http.ResponseWriter, err error) {
 	if errors.As(err, &size) {
 		code, message, status = "request_too_large", "Request exceeds its byte limit.", 413
 	}
-	vibeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
+	issue := map[string]any{"code": code, "message": message}
+	if f != nil && f.Context != nil {
+		issue["context"] = f.Context
+	}
+	vibeJSON(w, status, map[string]any{"error": issue})
 }
 func (h *VibeHandler) cookieName() string {
 	if h.Secure {
@@ -232,7 +236,7 @@ func (h *VibeHandler) config(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
-	vibeJSON(w, 200, map[string]any{"enabled": h.Service.Config.Enabled, "free_only": h.Service.Config.FreeOnly, "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": vibe.LimitsFor(true), "signed_in_limits": vibe.LimitsFor(false), "trial_budget_nano_usd": vibe.TrialBudget})
+	vibeJSON(w, 200, map[string]any{"capabilities": vibe.Capabilities(), "enabled": h.Service.Config.Enabled, "free_only": h.Service.Config.FreeOnly, "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": vibe.LimitsFor(true), "signed_in_limits": vibe.LimitsFor(false), "trial_budget_nano_usd": vibe.TrialBudget})
 }
 func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 	var input struct {
@@ -341,6 +345,11 @@ func (h *VibeHandler) edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
+		PreviewConsent *bool `json:"preview_consent,omitempty"`
+		Evaluation     *struct {
+			Examples        []string `json:"examples"`
+			SuccessCriteria string   `json:"success_criteria"`
+		} `json:"evaluation,omitempty"`
 		Revision      int64      `json:"revision"`
 		ArtifactID    *uuid.UUID `json:"artifact_id,omitempty"`
 		AgentPrompt   *string    `json:"agent_prompt,omitempty"`
@@ -353,18 +362,51 @@ func (h *VibeHandler) edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	err = h.Service.Store.Edit(r.Context(), v.Actor, v.ID, input.Revision, func(s *vibe.Session) error {
+		if input.PreviewConsent != nil {
+			s.Document.Journey.PreviewConsent = *input.PreviewConsent
+			return nil
+		}
 		if input.ArtifactID != nil {
 			for i := range s.Document.Artifacts {
 				a := &s.Document.Artifacts[i]
 				if a.ID == *input.ArtifactID {
+					if a.IsTestPlan() {
+						return &vibe.Fault{Code: "artifact_required", Message: "This is a test plan. Export it or explicitly choose a prompt preview; it is not a runnable agent."}
+					}
+					if input.Evaluation != nil {
+						if e := vibe.ValidatePreviewCriteria(input.Evaluation.SuccessCriteria); e != nil {
+							return &vibe.Fault{Code: "invalid_request", Message: e.Error()}
+						}
+						if !canEditVibeEvaluation(a.Blueprint, vibe.LimitsFor(s.Anonymous)) {
+							return &vibe.Fault{Code: "invalid_request", Message: "This imported evaluation has additional coverage. Edit it in the advanced builder; no tests were removed."}
+						}
+						proposal := vibe.DraftProposal{Title: a.Title, AgentPrompt: a.AgentPrompt, Examples: input.Evaluation.Examples, SuccessCriteria: vibe.PreviewCriteria(input.Evaluation.SuccessCriteria)}
+						blueprint, e := h.Service.Compiler.Draft(proposal, vibe.LimitsFor(s.Anonymous))
+						if e != nil {
+							return &vibe.Fault{Code: "invalid_request", Message: e.Error()}
+						}
+						copy := *a
+						copy.ID = uuid.New()
+						copy.ParentID = &a.ID
+						copy.Accepted = false
+						copy.CreatedAt = time.Now().UTC()
+						copy.Blueprint = blueprint
+						copy.Proposal = &proposal
+						copy.CriteriaRequirementIDs = nil // Edited criteria need a fresh provenance review.
+						if _, e = h.Service.Compiler.Compile(blueprint, s.Document.Models.Evaluator, copy.ID, vibe.LimitsFor(s.Anonymous)); e != nil {
+							return &vibe.Fault{Code: "invalid_request", Message: e.Error()}
+						}
+						s.Document.Artifacts = append(s.Document.Artifacts, copy)
+						return nil
+					}
 					if input.AgentPrompt != nil {
-						if len(*input.AgentPrompt) == 0 || len(*input.AgentPrompt) > vibe.LimitsFor(s.Anonymous).MessageBytes {
+						if strings.TrimSpace(*input.AgentPrompt) == "" || len(vibe.PreviewPrompt(*input.AgentPrompt)) > vibe.LimitsFor(s.Anonymous).MessageBytes {
 							return &vibe.Fault{Code: "invalid_request", Message: "Agent instructions exceed their size limit."}
 						}
 						copy := *a
 						copy.ID = uuid.New()
 						copy.ParentID = &a.ID
-						copy.AgentPrompt = *input.AgentPrompt
+						copy.AgentPrompt = vibe.PreviewPrompt(*input.AgentPrompt)
 						copy.Accepted = false
 						copy.CreatedAt = time.Now().UTC()
 						s.Document.Artifacts = append(s.Document.Artifacts, copy)

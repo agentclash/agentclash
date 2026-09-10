@@ -87,6 +87,128 @@ tags:
     description: Routing and spend policy configuration
 
 paths:
+  /v1/vibe/config:
+    get:
+      operationId: getVibeConfig
+      summary: Read verified model choices, limits and supported preview capabilities
+      responses:
+        '200':
+          description: Server-owned capability facts; availability is not a live-agent connection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  enabled: { type: boolean }
+                  free_only: { type: boolean }
+                  defaults: { $ref: '#/components/schemas/VibeModels' }
+                  models: { type: array, items: { type: object } }
+                  anonymous_limits: { type: object, additionalProperties: { type: integer } }
+                  signed_in_limits: { type: object, additionalProperties: { type: integer } }
+                  trial_budget_nano_usd: { type: integer, format: int64 }
+                  capabilities:
+                    type: array
+                    items: { $ref: '#/components/schemas/VibeCapability' }
+  /v1/vibe/sessions/{sessionId}:
+    parameters:
+      - name: sessionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getVibeSession
+      summary: Read an owned persisted conversation and operation summaries
+      responses:
+        '200':
+          description: Legacy sessions omit journey, artifact kind and message origin
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VibeSession' }
+    patch:
+      operationId: editVibeSession
+      summary: Review a draft, revise generated tests or decide a requirement proposal
+      description: >-
+        Ownership and current revision are required. Edits are blocked while an operation
+        or approval is pending. Only explicit user edits can grant preview_consent or
+        confirm requirements. A proposed replacement leaves its confirmed predecessor
+        effective until confirmation; a rejected change leaves it intact. Editing tests
+        creates a new unaccepted artifact. Only losslessly generated preview evaluations
+        are editable here; imported additional coverage requires the advanced builder.
+        Test plans cannot be accepted as executable agents. This request makes no model call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [revision]
+              properties:
+                revision: { type: integer, format: int64, minimum: 0 }
+                artifact_id: { type: string, format: uuid }
+                agent_prompt: { type: string }
+                evaluation:
+                  type: object
+                  additionalProperties: false
+                  required: [examples, success_criteria]
+                  properties:
+                    examples: { type: array, minItems: 1, maxItems: 3, items: { type: string } }
+                    success_criteria: { type: string, minLength: 1 }
+                preview_consent: { type: boolean }
+                requirement_id: { type: string, format: uuid }
+                status: { type: string, enum: [accepted, rejected, superseded] }
+                statement: { type: string }
+      responses:
+        '200':
+          description: Updated conversation; acceptance is explicit and revisions remain immutable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VibeSession' }
+        '400': { description: Invalid edit, non-executable plan, or unsupported evaluation coverage }
+        '409': { description: Stale revision or pending operation/approval }
+  /v1/vibe/sessions/{sessionId}/messages:
+    post:
+      operationId: submitVibeOperation
+      summary: Submit an idempotent design, trial or evaluation operation
+      description: >-
+        The server persists the original request identity and authoring contract version.
+        Test plans are non-executable. A context_limit failure preserves the conversation
+        and exposes bounded section-size diagnostics. No provider attempt is created for
+        a context rejected before dispatch. Unknown outcomes must not be automatically replayed.
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [client_id, revision, kind, content, models]
+              properties:
+                client_id: { type: string, format: uuid }
+                revision: { type: integer, format: int64 }
+                kind: { type: string, enum: [message, build, playground, check, retest] }
+                content: { type: string }
+                journey_mode:
+                  type: string
+                  enum: [idea, existing, exploring]
+                  description: Optional explicit user journey choice for a design message. Persisted with the submission before authoring; never grants preview consent or live execution.
+                models: { $ref: '#/components/schemas/VibeModels' }
+                artifact_id: { type: string, format: uuid }
+                baseline_id: { type: string, format: uuid }
+      responses:
+        '202':
+          description: Persisted operation; check its state through session snapshots or events
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VibeOperation' }
+        '400': { description: Invalid request, unusable artifact or evaluation }
+        '409': { description: Revision, identity or execution-state conflict }
+        '429': { description: Trial, rate or capacity limit }
   /v1/vibe/sessions/{sessionId}/save:
     post:
       operationId: saveVibeDraft
@@ -7006,6 +7128,147 @@ components:
   # Schemas
   # ---------------------------------------------------------------------------
   schemas:
+    VibeModels:
+      type: object
+      required: [assistant, target, evaluator]
+      properties:
+        assistant: { type: string }
+        target: { type: string }
+        evaluator: { type: string }
+    VibeCapability:
+      type: object
+      required: [id, label, available, description]
+      properties:
+        id: { type: string }
+        label: { type: string }
+        available: { type: boolean }
+        description: { type: string }
+        url: { type: string, description: Reviewed documentation URL or local docs path }
+        example: { type: string, description: Server-owned reviewed example; never executed by Vibe }
+        next_steps: { type: array, items: { type: string }, description: Available local handoff actions }
+    VibeJourney:
+      type: object
+      properties:
+        mode: { type: string, enum: [exploring, idea, existing] }
+        stack: { type: string, description: User-reported context, not verified deployment evidence }
+        evidence: { type: string }
+        preview_consent: { type: boolean, description: Set only by an explicit user edit }
+    VibeRequirement:
+      type: object
+      required: [id, statement, status, source_message_id]
+      properties:
+        id: { type: string, format: uuid }
+        statement: { type: string }
+        status: { type: string, enum: [proposed, accepted, rejected, superseded] }
+        source_message_id: { type: string, format: uuid }
+        proposal_message_id: { type: string, format: uuid }
+        supersedes_id: { type: string, format: uuid }
+        change: { type: string, enum: [add, replace, remove] }
+        proposed_by: { type: string }
+        accepted_by: { type: string }
+        accepted_at: { type: string, format: date-time }
+    VibeTestPlan:
+      type: object
+      required: [title, objective, scenarios, evidence_needed, next_steps, local_test_code]
+      properties:
+        title: { type: string }
+        objective: { type: string }
+        scenarios:
+          type: array
+          minItems: 1
+          maxItems: 3
+          items:
+            type: object
+            required: [input, expected]
+            properties:
+              input: { type: string }
+              expected: { type: string }
+        evidence_needed: { type: array, maxItems: 5, items: { type: string } }
+        next_steps: { type: array, maxItems: 5, items: { type: string } }
+        local_test_code: { type: string, description: Illustrative code only; never executed by Vibe }
+    VibeArtifact:
+      type: object
+      required: [id, title, accepted, source_message_id]
+      properties:
+        criteria_requirement_ids:
+          type: array
+          maxItems: 5
+          items: { type: string, format: uuid }
+          description: Proposed source links to persisted requirements. Confirmation status remains on the referenced requirement; unlinked criteria are proposals. Editing criteria clears these links.
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [agent_draft, test_plan], default: agent_draft }
+        title: { type: string }
+        agent_prompt: { type: string }
+        blueprint: { description: Complete immutable evaluation contract; null for test plans }
+        test_plan: { $ref: '#/components/schemas/VibeTestPlan' }
+        proposal:
+          type: object
+          description: Optional generated draft representation. The compiled blueprint is authoritative; accepted-agent improvements omit unapplied test proposals.
+          properties:
+            title: { type: string }
+            agent_prompt: { type: string }
+            examples: { type: array, items: { type: string } }
+            success_criteria: { type: string }
+        accepted: { type: boolean }
+        parent_id: { type: string, format: uuid }
+        source_message_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+    VibeOperation:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string }
+        state: { type: string }
+        billing: { type: string }
+        models: { $ref: '#/components/schemas/VibeModels' }
+        baseline_id: { type: string, format: uuid }
+        max_cost_nano_usd: { type: integer, format: int64 }
+        actual_cost_nano_usd: { type: integer, format: int64, nullable: true }
+        model_calls: { type: integer }
+        results: { type: array, items: { type: object } }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+            context:
+              type: object
+              properties:
+                upper_bound: { type: integer }
+                limit: { type: integer }
+                largest_section: { type: string }
+                sections: { type: object, additionalProperties: { type: integer } }
+    VibeSession:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        revision: { type: integer, format: int64 }
+        event_cursor: { type: integer, format: int64 }
+        anonymous: { type: boolean }
+        workspace_id: { type: string, format: uuid }
+        saved_draft_id: { type: string, format: uuid }
+        saved_artifact_id: { type: string, format: uuid }
+        saved_models: { $ref: '#/components/schemas/VibeModels' }
+        document:
+          type: object
+          properties:
+            journey: { $ref: '#/components/schemas/VibeJourney' }
+            models: { $ref: '#/components/schemas/VibeModels' }
+            active_artifact_id: { type: string, format: uuid }
+            artifacts: { type: array, items: { $ref: '#/components/schemas/VibeArtifact' } }
+            requirements: { type: array, items: { $ref: '#/components/schemas/VibeRequirement' } }
+            messages:
+              type: array
+              items:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  role: { type: string }
+                  content: { type: string }
+                  origin: { type: string, description: playground identifies customer trials; absent means legacy design conversation }
+                  operation_id: { type: string, format: uuid }
+                  artifact_id: { type: string, format: uuid }
+        operations: { type: array, items: { $ref: '#/components/schemas/VibeOperation' } }
     PublicPublication:
       type: object
       required: [id, resource_type, created_at, updated_at, canonical_path]

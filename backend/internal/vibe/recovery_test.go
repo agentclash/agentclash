@@ -33,7 +33,7 @@ func TestIntegrationCrashKeepsJournaledEvidenceWithoutReexecution(t *testing.T) 
 	}
 	// Simulate provider success followed by worker death before cost/final result
 	// persistence. The database-only finalizer must recover evidence, not retry.
-	if err = s.Finish(ctx, o.ID, &Fault{"worker_interrupted", "Worker crashed."}); err != nil {
+	if err = s.Finish(ctx, o.ID, &Fault{Code: "worker_interrupted", Message: "Worker crashed."}); err != nil {
 		t.Fatal(err)
 	}
 	v, err = s.GetSession(ctx, v.Actor, v.ID)

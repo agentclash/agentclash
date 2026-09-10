@@ -318,7 +318,7 @@ func updateDocument(ctx context.Context, tx pgx.Tx, v Session) error {
 	// serialized JSONB cap includes whitespace added by PostgreSQL.
 	artifactBytes := 0
 	for _, a := range v.Document.Artifacts {
-		artifactBytes += len(a.Blueprint) + len(a.AgentPrompt)
+		artifactBytes += len(raw(a))
 	}
 	if artifactBytes > LimitsFor(v.Anonymous).StoredBytes {
 		return fault("conversation_limit", "This conversation has reached its artifact storage limit. Export or save it before starting another.")

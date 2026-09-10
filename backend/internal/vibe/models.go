@@ -180,7 +180,7 @@ func CountContext(req provider.Request, p ModelProfile, l Limits) (ContextCount,
 	}
 	n := ContextCount{UpperBound: len(b) + p.FramingAllowance}
 	if n.UpperBound > l.ContextTokens || req.MaxOutputTokens <= 0 || req.MaxOutputTokens > l.OutputTokens || n.UpperBound+req.MaxOutputTokens > p.Context {
-		return n, fault("context_limit", "The complete model context is too large. Narrow the input or start a new conversation.")
+		return n, contextFault(req, n, p, l)
 	}
 	if p.Free {
 		// These tokenizers are not o200k. Report only the conservative byte bound;

@@ -316,7 +316,7 @@ test("describe, review, independently select agent, check, inspect unknowns and 
   await expect(
     page.getByRole("combobox", { name: "Assistant model" }),
   ).toHaveValue(models.assistant);
-  await page.getByRole("button", { name: "Check this agent" }).click();
+  await page.getByRole("button", { name: "Run evaluation" }).click();
   await expect(
     page.getByRole("article", { name: "Evaluation scorecard" }),
   ).toContainText("1 of 3 cases evaluated");
@@ -367,7 +367,7 @@ async function createAcceptedDraft(page: Page) {
     .click({ clickCount: 2 });
   await page.getByRole("button", { name: "Accept this draft" }).click();
   await page
-    .getByRole("button", { name: "Check this agent", exact: true })
+    .getByRole("button", { name: "Run evaluation", exact: true })
     .click();
 }
 
@@ -440,13 +440,13 @@ test("dirty accepted instructions cannot spend a check before save-as-draft and 
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await page.getByRole("button", { name: "Accept this draft" }).click();
   await page.getByRole("textbox", { name: "Agent instructions", exact: true }).fill("Edited policy: escalate all exceptions.");
-  await expect(page.getByRole("button", { name: "Check this agent" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Run evaluation" })).toBeDisabled();
   await expect(page.getByRole("button", { name: "Keep it" })).toBeDisabled();
   expect(mock.checkCount()).toBe(0);
   await page.getByRole("button", { name: "Save as a new draft" }).click();
-  await expect(page.getByRole("button", { name: "Check this agent" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Run evaluation" })).toBeDisabled();
   await page.getByRole("button", { name: "Accept this draft" }).click();
-  await page.getByRole("button", { name: "Check this agent" }).click();
+  await page.getByRole("button", { name: "Run evaluation" }).click();
   await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toBeVisible();
   expect(mock.checkCount()).toBe(1);
   expect(mock.snapshot().document.artifacts).toHaveLength(2);

@@ -244,7 +244,13 @@ func (s *Store) PutResult(ctx context.Context, id uuid.UUID, c CaseResult) error
 		return event(ctx, tx, session, &id, "case.updated")
 	})
 }
-func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string, artifact *Artifact, requirements []Requirement) error {
+
+type AuthoringCompletion struct {
+	Journey *JourneyProposal
+	Changes []RequirementChange
+}
+
+func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string, artifact *Artifact, requirements []Requirement, completion ...AuthoringCompletion) error {
 	return s.transaction(ctx, func(tx pgx.Tx) error {
 		o, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1 FOR UPDATE", id))
 		if err != nil {
@@ -261,17 +267,42 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 			return err
 		}
 		replyID := uuid.New()
-		v.Document.Messages = append(v.Document.Messages, Message{replyID, "assistant", reply, timestamp()})
+		var plan Plan
+		if err = json.Unmarshal(o.Input, &plan); err != nil {
+			return err
+		}
+		artifactID := plan.Submission.ArtifactID
+		if artifact != nil {
+			artifactID = &artifact.ID
+		}
+		v.Document.Messages = append(v.Document.Messages, Message{ID: replyID, Role: "assistant", Content: reply, CreatedAt: timestamp(), Origin: o.Kind, OperationID: &id, ArtifactID: artifactID})
 		if artifact != nil {
 			v.Document.Artifacts = append(v.Document.Artifacts, *artifact)
 		}
-		for i := range requirements {
-			requirements[i].Status = "proposed"
-			requirements[i].ProposedBy = "assistant"
-			requirements[i].ProposalMessageID = &replyID
-			requirements[i].AcceptedBy, requirements[i].AcceptedAt, requirements[i].SupersedesID = "", nil, nil
+		changes := []RequirementChange{}
+
+		if len(completion) > 0 {
+			c := completion[0]
+			changes = append(changes, c.Changes...)
+			if c.Journey != nil {
+				j := &v.Document.Journey
+				if j.Mode != "existing" {
+					j.Mode = c.Journey.Mode
+				}
+				if c.Journey.Stack != "" {
+					j.Stack = c.Journey.Stack
+				}
+				if c.Journey.Evidence != "" {
+					j.Evidence = c.Journey.Evidence
+				}
+			}
 		}
-		v.Document.Requirements = append(v.Document.Requirements, requirements...)
+		for _, q := range requirements {
+			changes = append(changes, RequirementChange{Action: "add", Statement: q.Statement})
+		}
+		if err = ReconcileRequirements(&v.Document, changes, plan.Submission.ClientID, replyID); err != nil {
+			return err
+		}
 		if err = updateDocument(ctx, tx, v); err != nil {
 			return err
 		}
@@ -390,22 +421,22 @@ func issueFrom(err error) *Fault {
 		// allowlisted categories; this never changes accounting or retry policy.
 		switch failure.Code {
 		case provider.FailureCodeRateLimit:
-			return &Fault{"provider_rate_limit", "The selected model's provider is rate limiting requests. This attempt will not be repeated automatically."}
+			return &Fault{Code: "provider_rate_limit", Message: "The selected model's provider is rate limiting requests. This attempt will not be repeated automatically."}
 		case provider.FailureCodeAuth, provider.FailureCodeCredentialUnavailable:
-			return &Fault{"provider_auth", "The provider could not authorize this model request. Check its server-side credential configuration."}
+			return &Fault{Code: "provider_auth", Message: "The provider could not authorize this model request. Check its server-side credential configuration."}
 		case provider.FailureCodeInvalidRequest, provider.FailureCodeUnsupportedCapability, provider.FailureCodeUnsupportedProvider:
-			return &Fault{"provider_request_rejected", "The selected provider rejected this request or its required settings. No fallback model was called."}
+			return &Fault{Code: "provider_request_rejected", Message: "The selected provider rejected this request or its required settings. No fallback model was called."}
 		case provider.FailureCodeTimeout:
-			return &Fault{"provider_timeout", "The selected model did not respond within its time limit. Its outcome remains uncertain; it will not be repeated automatically."}
+			return &Fault{Code: "provider_timeout", Message: "The selected model did not respond within its time limit. Its outcome remains uncertain; it will not be repeated automatically."}
 		case provider.FailureCodeUnavailable:
-			return &Fault{"provider_unavailable", "The selected model's provider is unavailable. No fallback model was called."}
+			return &Fault{Code: "provider_unavailable", Message: "The selected model's provider is unavailable. No fallback model was called."}
 		case provider.FailureCodeMalformedResponse:
-			return &Fault{"provider_response_invalid", "The provider returned a response that could not be read. Saved evidence and uncertain accounting are preserved."}
+			return &Fault{Code: "provider_response_invalid", Message: "The provider returned a response that could not be read. Saved evidence and uncertain accounting are preserved."}
 		default:
-			return &Fault{"provider_error", "The selected provider failed to complete this request. Saved evidence and uncertain accounting are preserved."}
+			return &Fault{Code: "provider_error", Message: "The selected provider failed to complete this request. Saved evidence and uncertain accounting are preserved."}
 		}
 	}
-	return &Fault{"execution_error", "The operation could not finish. Saved evidence is available; uncertain costs remain held."}
+	return &Fault{Code: "execution_error", Message: "The operation could not finish. Saved evidence is available; uncertain costs remain held."}
 }
 
 func (s *Store) AwaitingReconciliation(ctx context.Context) (map[uuid.UUID]string, error) {

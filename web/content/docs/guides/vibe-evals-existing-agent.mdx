@@ -1,0 +1,58 @@
+---
+title: Test an existing agent from Vibe Evals
+description: Choose a text preview, review example runs, or take a concrete test plan into your own Python environment.
+---
+
+Vibe Evals can help design tests and run a small text preview. Your existing application is not connected to that preview. Sharing an endpoint address describes your setup; it does not connect or invoke it.
+
+## Choose the evidence you need
+
+| Your question | Available here | Requires your environment |
+| --- | --- | --- |
+| Does a prompt reason correctly about supplied sources? | Text preview with supplied facts | Your retrieval or discovery pipeline |
+| Does my existing workflow handle corrections and tool failures? | Review pasted runs and export a test plan | Your invocation, state and tool-result capture |
+| Does my receptionist handle interruptions and transfers? | Text corrections and explicitly mocked scenarios | Audio, STT/TTS, telephony, actual transfers and call timing |
+
+A test plan contains scenarios and expected behavior. It has no score because it has not run. A prompt surrogate is a separate text agent and does not establish that your application works.
+
+## Python: invoke your agent, then evaluate its output
+
+The Python SDK is `agentclash-evals`, imported as `agentclash_eval`. See the [SDK source installation and quick start](https://github.com/agentclash/agentclash-evals/tree/main/python/agentclash_eval) and the [pytest guide](https://github.com/agentclash/agentclash-evals/blob/main/docs/evaltest/pytest.md).
+
+Use your normal test runner. Configure your application invocation locally; the SDK assertion consumes the resulting output. This example deliberately fails until the invocation is connected:
+
+```python
+from agentclash_eval import assert_agent
+from agentclash_eval.metrics import Contains
+
+def invoke_agent(prompt: str) -> str:
+    # Replace with your function/workflow or authenticated HTTP client.
+    # Configure connect/read/overall timeouts in that client.
+    # Raise on timeout or unavailable output; never return a fake success.
+    raise NotImplementedError("Connect your own agent invocation")
+
+def test_agent_uses_corrected_name():
+    # Illustrative scenario. Confirm this rule matches your application.
+    output = invoke_agent("My name is Jon. Correction: my name is John.")
+    assert_agent(output, metrics=[Contains("John")])
+```
+
+```bash
+pytest tests/
+```
+
+`Contains` checks text presence only. It does not prove a tool received the corrected name. To test tool arguments, capture them from your real workflow and assert their exact values using ordinary Python assertions. A mock tests the mocked path; label its results accordingly.
+
+## Input, output and configuration
+
+- Map each case's request to your actual invocation. No universal HTTP endpoint or request schema is provided by Vibe Evals.
+- For a basic SDK assertion, supply the returned text. For structured evidence, use the SDK's `AgentEvalResult` and the [agent-result contract](https://github.com/agentclash/agentclash/blob/main/schemas/evaltest/agent-result.schema.json): `input`, `output`, ordered `messages`, observed `tool_calls`, `retrieval_context`, and available `metadata`.
+- Keep credentials in your application's environment or secret store. Do not paste them into Vibe Evals. The local SDK itself does not require an AgentClash login.
+- Configure authentication, connect/read timeouts and an overall invocation deadline in your adapter. Use the timeout appropriate to your stack; an unset timeout is not an integration contract. Do not automatically retry actions after an uncertain outcome.
+- Record missing outputs, timeouts and unobserved actions as unavailable evidence. Never fill those gaps with passing mock results.
+
+The current `agentclash evaltest run` bridge invokes built-in smoke cases. Use pytest with your actual tests for this workflow; smoke results are not evidence about your agent. Hosted report import and live Vibe connections are separate capabilities.
+
+## Trying an idea here
+
+Use **Design** to revise instructions and tests. Review and accept a safe draft, then use **Try a customer message** for one text response. **Run evaluation** executes the proposed cases and saves their evidence. Neither action performs bookings, notifications or transfers. Unknown business policies remain unknown.

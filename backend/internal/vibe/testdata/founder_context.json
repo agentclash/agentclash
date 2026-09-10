@@ -1,0 +1,688 @@
+[
+  {
+    "name": "p1",
+    "plan": {
+      "free": true,
+      "calls": 2,
+      "document": {
+        "models": {
+          "target": "dots-studio/dots-3-note-preview:free",
+          "assistant": "dots-studio/dots-3-note-preview:free",
+          "evaluator": "dots-studio/dots-3-note-preview:free"
+        },
+        "messages": [
+          {
+            "id": "b505e298-dfde-5cc8-b6a7-812b65bebd65",
+            "role": "user",
+            "content": "I have an idea, not an agent yet. Sales teams spend hours researching prospects and still contact companies that don’t need what they’re selling. Could we build something that spots real signs a company needs a product, rather than just making another lead list? I’m not sure where to start."
+          },
+          {
+            "id": "6daf10ba-a823-5402-b7a0-98b4f25306eb",
+            "role": "assistant",
+            "content": "Here's a starting framework: focus on 'buying signals' — public events that show a company is actively evaluating solutions or experiencing pain. Think job postings for new roles that imply tooling gaps, RFPs, case studies about problems you solve, or leadership hires that signal strategic shifts. I've drafted a prompt that asks for ranked, evidence-backed signals with confidence ratings. You can refine the product category and signal types as you learn more.\n\nAssumptions to review:\n\n- The product is a B2B sales intelligence tool that detects buying signals rather than generating generic lead lists.\n- The agent will be evaluated on its ability to identify concrete, non-obvious indicators of purchase intent."
+          },
+          {
+            "id": "f89cd0ba-d57c-5e98-afbb-03ae8a8a338b",
+            "role": "user",
+            "content": "I don’t have an existing agent to paste in. Is this something that can actually find companies, or just instructions for a chat? I also don’t already know which companies to look at—that’s the part I want help with. What’s the smallest version we could actually try?"
+          },
+          {
+            "id": "c5d4e7c5-05f4-58f6-a672-860aa2c68a26",
+            "role": "assistant",
+            "content": "This is a text-based analyst — you describe a company, and it returns ranked buying signals with evidence. It doesn't scrape the web itself, but you can feed it news, job posts, or RFPs you find. The smallest version: give it a company summary, and it outputs 3-5 signals with confidence ratings. Want me to refine the prompt for a specific product category?\n\nAssumptions to review:\n\n- The agent will work as a text-based analyst that processes company descriptions and returns ranked buying signals.\n- The target product category will be defined per request (e.g., fleet maintenance software, inventory management)."
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "38d43c4d-b52a-504f-856f-9491075e8701",
+            "title": "Sales Signal Detector",
+            "accepted": false,
+            "blueprint": {
+              "name": "Sales Signal Detector",
+              "slug": "agent-check",
+              "cases": [
+                {
+                  "key": "case-1",
+                  "payload": {
+                    "question": "A mid-size logistics company posted a job for a 'VP of Fleet Maintenance' and published a case study about rising vehicle downtime costs."
+                  }
+                },
+                {
+                  "key": "case-2",
+                  "payload": {
+                    "question": "A retail chain announced a warehouse expansion in Ohio and issued an RFP for inventory management software."
+                  }
+                },
+                {
+                  "key": "case-3",
+                  "payload": {
+                    "question": "A SaaS startup hired a Head of Customer Success and published a blog post about reducing churn through better onboarding."
+                  }
+                }
+              ],
+              "judges": [
+                {
+                  "key": "behavior",
+                  "mode": "assertion",
+                  "rubric": "",
+                  "assertion": "Each signal must reference a specific, verifiable event or publication. At least two signals must be rated High confidence. Generic or vague signals must not appear."
+                }
+              ],
+              "difficulty": "easy",
+              "dimensions": [
+                {
+                  "key": "output_present",
+                  "source": "validators",
+                  "validators": [
+                    "has_answer"
+                  ]
+                },
+                {
+                  "key": "behavior_correctness",
+                  "source": "llm_judge",
+                  "judge_key": "behavior"
+                }
+              ],
+              "validators": [
+                {
+                  "key": "has_answer",
+                  "type": "regex_match",
+                  "target": "final_output",
+                  "expected_from": "literal:.+"
+                }
+              ],
+              "description": "Text preview of the proposed agent instructions.",
+              "instructions": "You are a B2B buying-signal analyst. Given a company description, identify 3-5 concrete, publicly observable events that suggest active need or evaluation for a product category. Rank them by confidence (High/Medium/Low) and cite the specific evidence. Exclude generic statements like 'company is growing' or 'posted a job'."
+            },
+            "agent_prompt": "You are a B2B buying-signal analyst. Given a company description, identify 3-5 concrete, publicly observable events that suggest active need or evaluation for a product category. Rank them by confidence (High/Medium/Low) and cite the specific evidence. Exclude generic statements like 'company is growing' or 'posted a job'.",
+            "source_message_id": "f89cd0ba-d57c-5e98-afbb-03ae8a8a338b"
+          }
+        ],
+        "requirements": [
+          {
+            "id": "52f64874-14f5-572e-abdb-b8040954cab2",
+            "status": "proposed",
+            "statement": "The agent must distinguish between passive company activity and active buying signals.",
+            "source_message_id": "b505e298-dfde-5cc8-b6a7-812b65bebd65"
+          },
+          {
+            "id": "a3a6474c-8db6-5780-8d3f-6712facdabff",
+            "status": "proposed",
+            "statement": "Signals must be tied to publicly observable events (job posts, RFPs, case studies, press releases, etc.).",
+            "source_message_id": "b505e298-dfde-5cc8-b6a7-812b65bebd65"
+          },
+          {
+            "id": "8d7b405b-dea9-5365-8bfe-e87c0c6307bd",
+            "status": "proposed",
+            "statement": "Each signal must include a confidence rating and a brief rationale.",
+            "source_message_id": "b505e298-dfde-5cc8-b6a7-812b65bebd65"
+          },
+          {
+            "id": "c6060f0e-f89d-5445-8f11-d6a2a6b96445",
+            "status": "proposed",
+            "statement": "Assumption: The product is a B2B sales intelligence tool that detects buying signals rather than generating generic lead lists.",
+            "source_message_id": "b505e298-dfde-5cc8-b6a7-812b65bebd65"
+          },
+          {
+            "id": "967aa26b-3592-5ebb-b8fe-e41e20f6cfd2",
+            "status": "proposed",
+            "statement": "Assumption: The agent will be evaluated on its ability to identify concrete, non-obvious indicators of purchase intent.",
+            "source_message_id": "b505e298-dfde-5cc8-b6a7-812b65bebd65"
+          },
+          {
+            "id": "3d896e1e-f2fa-5672-b029-808ffcdfe4c1",
+            "status": "proposed",
+            "statement": "The agent must distinguish between passive company activity and active buying signals.",
+            "source_message_id": "f89cd0ba-d57c-5e98-afbb-03ae8a8a338b"
+          },
+          {
+            "id": "cee53b43-00f3-5e09-b759-c6bc1cd3208a",
+            "status": "proposed",
+            "statement": "Signals must be tied to publicly observable events (job posts, RFPs, case studies, press releases, etc.).",
+            "source_message_id": "f89cd0ba-d57c-5e98-afbb-03ae8a8a338b"
+          },
+          {
+            "id": "eb507071-d840-5735-b080-058a2a94f6b6",
+            "status": "proposed",
+            "statement": "Each signal must include a confidence rating and a brief rationale.",
+            "source_message_id": "f89cd0ba-d57c-5e98-afbb-03ae8a8a338b"
+          },
+          {
+            "id": "ffd1e98f-3c73-5ec8-ba5b-d5bf4e658c15",
+            "status": "proposed",
+            "statement": "Assumption: The agent will work as a text-based analyst that processes company descriptions and returns ranked buying signals.",
+            "source_message_id": "f89cd0ba-d57c-5e98-afbb-03ae8a8a338b"
+          },
+          {
+            "id": "a485216a-70e0-52cd-9d9e-31f13ab86104",
+            "status": "proposed",
+            "statement": "Assumption: The target product category will be defined per request (e.g., fleet maintenance software, inventory management).",
+            "source_message_id": "f89cd0ba-d57c-5e98-afbb-03ae8a8a338b"
+          }
+        ],
+        "attachment_count": 0
+      },
+      "anonymous": true,
+      "case_keys": null,
+      "submission": {
+        "kind": "message",
+        "models": {
+          "target": "dots-studio/dots-3-note-preview:free",
+          "assistant": "dots-studio/dots-3-note-preview:free",
+          "evaluator": "dots-studio/dots-3-note-preview:free"
+        },
+        "content": "Let’s tentatively try customer support software vendors selling to small online shops. I’m not settled on that market. I could collect a few examples by hand to start, but I don’t know what to collect or how to try this draft. Can you show me a tiny first test with a made-up shop?",
+        "revision": 4,
+        "client_id": "6a59da66-ff0f-5938-851c-6d35dc7004a4",
+        "artifact_id": "38d43c4d-b52a-504f-856f-9491075e8701"
+      },
+      "checks_per_case": 0,
+      "max_cost_nano_usd": 0,
+      "authoring_version": 2
+    }
+  },
+  {
+    "name": "p2",
+    "plan": {
+      "free": true,
+      "calls": 2,
+      "document": {
+        "models": {
+          "target": "dots-studio/dots-3-note-preview:free",
+          "assistant": "dots-studio/dots-3-note-preview:free",
+          "evaluator": "dots-studio/dots-3-note-preview:free"
+        },
+        "messages": [
+          {
+            "id": "5224033d-907f-5027-b9ae-13cc4dc61d43",
+            "role": "user",
+            "content": "I already have a prospect-research agent that finds potential buyers from niche web evidence. It sometimes ranks companies that are not a good fit, or reads a weak signal as buying intent. I want to test changes before shipping them. Where do I start?"
+          },
+          {
+            "id": "4761a3ab-55c2-5bd3-8bc0-0bee5cd4872d",
+            "role": "assistant",
+            "content": "Start by capturing 10-20 known-good and known-bad prospects your current agent gets wrong, then add two guardrails: a minimum-evidence threshold and a requirement that every rationale cites a specific signal. I've drafted a revised prompt with those changes.\n\nAssumptions to review:\n\n- The agent currently returns a ranked list of companies with a short rationale for each.\n- The user can supply a set of known-good and known-bad prospects to validate against."
+          },
+          {
+            "id": "85c4c9a3-219d-50b2-a9b1-0ceb17fd1c83",
+            "role": "user",
+            "content": "I want to test my existing agent, not replace it with this prompt. Mine runs behind a Python/FastAPI endpoint with LangGraph, web search and several LLM calls. It takes a product/ICP description and returns ranked companies, buying-signal rationale and source URLs as JSON. Does \"Check this agent\" run that system, or just the prompt in this panel? How would I connect the existing agent?"
+          },
+          {
+            "id": "babd86d5-67f0-57a9-989c-16bf7fb33762",
+            "role": "assistant",
+            "content": "\"Check this agent\" evaluates the prompt in this panel, not your live FastAPI/LangGraph system. To test your actual agent, you would need to either (1) copy your current agent_prompt into this panel and run tests against it, or (2) use the API/SDK to point the evaluator at your endpoint. Would you like to paste your current agent instructions here so we can set up a test suite against them?"
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "c0708591-a33d-59cc-a402-46101524488c",
+            "title": "Prospect Research Agent with Confidence Guardrails",
+            "accepted": false,
+            "blueprint": {
+              "name": "Prospect Research Agent with Confidence Guardrails",
+              "slug": "agent-check",
+              "cases": [
+                {
+                  "key": "case-1",
+                  "payload": {
+                    "question": "Find SaaS companies with 50-200 employees that recently raised Series B funding."
+                  }
+                },
+                {
+                  "key": "case-2",
+                  "payload": {
+                    "question": "Identify manufacturing firms that posted job listings for 'automation engineer' in the last 30 days."
+                  }
+                }
+              ],
+              "judges": [
+                {
+                  "key": "behavior",
+                  "mode": "assertion",
+                  "rubric": "",
+                  "assertion": "The agent returns only companies with verifiable evidence, assigns low confidence to weak signals, and never presents speculation as confirmed buying intent."
+                }
+              ],
+              "difficulty": "easy",
+              "dimensions": [
+                {
+                  "key": "output_present",
+                  "source": "validators",
+                  "validators": [
+                    "has_answer"
+                  ]
+                },
+                {
+                  "key": "behavior_correctness",
+                  "source": "llm_judge",
+                  "judge_key": "behavior"
+                }
+              ],
+              "validators": [
+                {
+                  "key": "has_answer",
+                  "type": "regex_match",
+                  "target": "final_output",
+                  "expected_from": "literal:.+"
+                }
+              ],
+              "description": "Text preview of the proposed agent instructions.",
+              "instructions": "You are a prospect-research agent. Given a target market description, return a ranked list of potential buyers. For each prospect, provide: company name, evidence URL, a confidence score (1-5), and a one-sentence rationale tied to the specific signal observed. Rank by likelihood of fit first, then signal strength. If evidence is weak or ambiguous, mark confidence 1-2 and say so explicitly. Never invent signals; quote or paraphrase the source text."
+            },
+            "agent_prompt": "You are a prospect-research agent. Given a target market description, return a ranked list of potential buyers. For each prospect, provide: company name, evidence URL, a confidence score (1-5), and a one-sentence rationale tied to the specific signal observed. Rank by likelihood of fit first, then signal strength. If evidence is weak or ambiguous, mark confidence 1-2 and say so explicitly. Never invent signals; quote or paraphrase the source text.",
+            "source_message_id": "5224033d-907f-5027-b9ae-13cc4dc61d43"
+          }
+        ],
+        "requirements": [
+          {
+            "id": "94cd81e2-1873-5789-90bc-8d0da3398b4a",
+            "status": "proposed",
+            "statement": "Add a minimum-evidence threshold: prospects with confidence 1-2 must include the exact quote or URL that supports the claim.",
+            "source_message_id": "5224033d-907f-5027-b9ae-13cc4dc61d43"
+          },
+          {
+            "id": "224d2fd4-49dc-530f-bfed-75e9361afe10",
+            "status": "proposed",
+            "statement": "Require the rationale to cite the specific signal (e.g., 'hired VP of Sales' or 'launched AI feature') rather than generic descriptors like 'seems like a good fit'.",
+            "source_message_id": "5224033d-907f-5027-b9ae-13cc4dc61d43"
+          },
+          {
+            "id": "c22ef0f1-d171-5b88-8277-6e320bf863a4",
+            "status": "proposed",
+            "statement": "Assumption: The agent currently returns a ranked list of companies with a short rationale for each.",
+            "source_message_id": "5224033d-907f-5027-b9ae-13cc4dc61d43"
+          },
+          {
+            "id": "f6ae48c6-b1ee-52eb-8ca6-5fe4a4cc71a2",
+            "status": "proposed",
+            "statement": "Assumption: The user can supply a set of known-good and known-bad prospects to validate against.",
+            "source_message_id": "5224033d-907f-5027-b9ae-13cc4dc61d43"
+          }
+        ],
+        "attachment_count": 0
+      },
+      "anonymous": true,
+      "case_keys": null,
+      "submission": {
+        "kind": "message",
+        "models": {
+          "target": "dots-studio/dots-3-note-preview:free",
+          "assistant": "dots-studio/dots-3-note-preview:free",
+          "evaluator": "dots-studio/dots-3-note-preview:free"
+        },
+        "content": "Testing just agent_prompt would miss my web-search and orchestration failures. Where is the API/SDK setup for connecting my endpoint, and what input/output format does it require? I do not have an endpoint or credentials to share in this session; I just need the documented integration path, not another agent prompt.",
+        "revision": 4,
+        "client_id": "f0012116-ae16-587c-8afb-88c76896d0f1",
+        "artifact_id": "c0708591-a33d-59cc-a402-46101524488c"
+      },
+      "checks_per_case": 0,
+      "max_cost_nano_usd": 0,
+      "authoring_version": 2
+    }
+  },
+  {
+    "name": "p3",
+    "plan": {
+      "free": true,
+      "calls": 2,
+      "document": {
+        "models": {
+          "target": "dots-studio/dots-3-note-preview:free",
+          "assistant": "dots-studio/dots-3-note-preview:free",
+          "evaluator": "dots-studio/dots-3-note-preview:free"
+        },
+        "messages": [
+          {
+            "id": "dbdca00f-745f-5e57-9456-a19682d6d699",
+            "role": "user",
+            "content": "I keep hearing about small businesses missing calls after hours. I have an idea for an AI receptionist that answers the usual questions, helps people get an appointment, and gets a person involved when needed. I haven’t built anything yet. What would be a sensible first version, and can I try something here before connecting it to a real phone?"
+          },
+          {
+            "id": "09cacd5c-b4b6-5acb-bd55-6454b6f4a361",
+            "role": "assistant",
+            "content": "A sensible first version is a text-chat receptionist that handles FAQs, books appointments, and escalates to a human. You can test it right here in chat before wiring it to a phone. I've drafted the instructions and a few test cases below.\n\nAssumptions to review:\n\n- The first version will run as a text chat agent (not a live phone call) so you can test it here without any telephony setup.\n- The agent will be scoped to three tasks: answering FAQs, booking appointments, and escalating to a human when needed."
+          },
+          {
+            "id": "7b432f02-401c-5754-91b5-57410c5f5e78",
+            "role": "user",
+            "content": "Text chat sounds like a good start. But the draft says to confirm a booking and escalate to a human. I don’t have a calendar connected or anyone to transfer to yet, so would it just be pretending? I also don’t know the business hours or policies yet. Can we make the first version safe to try without claiming it has actually booked anything or reached a person?"
+          },
+          {
+            "id": "639dbeb6-c80c-5fb2-9540-528250337926",
+            "role": "assistant",
+            "content": "Updated the draft to avoid pretending bookings are confirmed or humans are reached. It now says it will note the request and confirm later, and it escalates when facts are missing. You can test it right here in chat.\n\nAssumptions to review:\n\n- The first version will be a text chat agent tested here, not connected to a real phone or calendar.\n- The agent will only acknowledge bookings and escalations without claiming they actually happened."
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "f4604bfa-b320-5203-9855-a2175113afd6",
+            "title": "AI Receptionist — Text Chat First Version",
+            "accepted": false,
+            "blueprint": {
+              "name": "AI Receptionist — Text Chat First Version",
+              "slug": "agent-check",
+              "cases": [
+                {
+                  "key": "case-1",
+                  "payload": {
+                    "question": "Hi, what are your hours?"
+                  }
+                },
+                {
+                  "key": "case-2",
+                  "payload": {
+                    "question": "I'd like to book a haircut for Tuesday at 2pm."
+                  }
+                },
+                {
+                  "key": "case-3",
+                  "payload": {
+                    "question": "Can I speak to a manager about my bill?"
+                  }
+                }
+              ],
+              "judges": [
+                {
+                  "key": "behavior",
+                  "mode": "assertion",
+                  "rubric": "",
+                  "assertion": "The agent answers FAQs accurately using only provided facts, collects booking details without claiming confirmation, and escalates to a human when the request is outside its scope or the customer asks for a live person."
+                }
+              ],
+              "difficulty": "easy",
+              "dimensions": [
+                {
+                  "key": "output_present",
+                  "source": "validators",
+                  "validators": [
+                    "has_answer"
+                  ]
+                },
+                {
+                  "key": "behavior_correctness",
+                  "source": "llm_judge",
+                  "judge_key": "behavior"
+                }
+              ],
+              "validators": [
+                {
+                  "key": "has_answer",
+                  "type": "regex_match",
+                  "target": "final_output",
+                  "expected_from": "literal:.+"
+                }
+              ],
+              "description": "Text preview of the proposed agent instructions.",
+              "instructions": "You are an AI receptionist for a small business. Your job is to handle three things: (1) Answer common questions about the business, hours, services, and policies using only the facts provided in this conversation. If you do not know the answer, say so and offer to escalate. (2) Help customers book an appointment by collecting their name, preferred date/time, and reason for the visit; then tell them you have noted their request and will confirm it later. (3) Escalate to a human immediately if the customer asks for something you cannot answer, expresses frustration, or needs a live person. Always be warm, concise, and professional. Never invent details the business has not confirmed."
+            },
+            "agent_prompt": "You are an AI receptionist for a small business. Your job is to handle three things: (1) Answer common questions about the business, hours, services, and policies using only the facts provided in this conversation. If you do not know the answer, say so and offer to escalate. (2) Help customers book an appointment by collecting their name, preferred date/time, and reason for the visit; then tell them you have noted their request and will confirm it later. (3) Escalate to a human immediately if the customer asks for something you cannot answer, expresses frustration, or needs a live person. Always be warm, concise, and professional. Never invent details the business has not confirmed.",
+            "source_message_id": "7b432f02-401c-5754-91b5-57410c5f5e78"
+          }
+        ],
+        "requirements": [
+          {
+            "id": "65b88ca9-e5b0-507d-8a33-7454524dc74f",
+            "status": "proposed",
+            "statement": "The agent must answer FAQs using only confirmed facts, never inventing details.",
+            "source_message_id": "dbdca00f-745f-5e57-9456-a19682d6d699"
+          },
+          {
+            "id": "42d03ae6-eb26-505a-9012-7f14e8f8bcc1",
+            "status": "proposed",
+            "statement": "The agent must collect name, preferred date/time, and reason for each appointment booking, then confirm it.",
+            "source_message_id": "dbdca00f-745f-5e57-9456-a19682d6d699"
+          },
+          {
+            "id": "e4f50429-a64f-53e8-9a3b-741cfee0208c",
+            "status": "proposed",
+            "statement": "The agent must escalate to a human when the request is outside its scope or the customer asks for a live person.",
+            "source_message_id": "dbdca00f-745f-5e57-9456-a19682d6d699"
+          },
+          {
+            "id": "2658aaf3-f2e8-5253-97b5-520a607e4b85",
+            "status": "proposed",
+            "statement": "Assumption: The first version will run as a text chat agent (not a live phone call) so you can test it here without any telephony setup.",
+            "source_message_id": "dbdca00f-745f-5e57-9456-a19682d6d699"
+          },
+          {
+            "id": "67ac30c4-760c-574b-9fed-958fa99e6978",
+            "status": "proposed",
+            "statement": "Assumption: The agent will be scoped to three tasks: answering FAQs, booking appointments, and escalating to a human when needed.",
+            "source_message_id": "dbdca00f-745f-5e57-9456-a19682d6d699"
+          },
+          {
+            "id": "90650760-36a9-50a6-b696-7969f2394723",
+            "status": "proposed",
+            "statement": "The agent must answer FAQs using only confirmed facts, never inventing details.",
+            "source_message_id": "7b432f02-401c-5754-91b5-57410c5f5e78"
+          },
+          {
+            "id": "72abfca4-d380-583c-a32a-7fdad96d6b00",
+            "status": "proposed",
+            "statement": "The agent must collect name, preferred date/time, and reason for each appointment booking, then tell the customer their request has been noted without claiming it was actually booked.",
+            "source_message_id": "7b432f02-401c-5754-91b5-57410c5f5e78"
+          },
+          {
+            "id": "1585eed3-17e1-5c22-82eb-c4d144eb22d9",
+            "status": "proposed",
+            "statement": "The agent must escalate to a human when the request is outside its scope or the customer asks for a live person.",
+            "source_message_id": "7b432f02-401c-5754-91b5-57410c5f5e78"
+          },
+          {
+            "id": "ee6a0984-f90b-54b0-b7d4-66af0515d61a",
+            "status": "proposed",
+            "statement": "Assumption: The first version will be a text chat agent tested here, not connected to a real phone or calendar.",
+            "source_message_id": "7b432f02-401c-5754-91b5-57410c5f5e78"
+          },
+          {
+            "id": "8d15263a-7ba8-5921-88c4-11619c262986",
+            "status": "proposed",
+            "statement": "Assumption: The agent will only acknowledge bookings and escalations without claiming they actually happened.",
+            "source_message_id": "7b432f02-401c-5754-91b5-57410c5f5e78"
+          }
+        ],
+        "attachment_count": 0
+      },
+      "anonymous": true,
+      "case_keys": null,
+      "submission": {
+        "kind": "message",
+        "models": {
+          "target": "dots-studio/dots-3-note-preview:free",
+          "assistant": "dots-studio/dots-3-note-preview:free",
+          "evaluator": "dots-studio/dots-3-note-preview:free"
+        },
+        "content": "Who would confirm it later? There isn’t anyone set up to do that yet. The requirements on the right still say to confirm the booking, too. I’m not comfortable accepting that as-is. Could this just be an honest demo that says it can’t book or contact anyone yet? And how do I actually try a pretend customer conversation—do I use this chat box or ‘Check this agent’?",
+        "revision": 4,
+        "client_id": "fe9dbea8-9c4a-593b-8101-62f4a2f1118d",
+        "artifact_id": "f4604bfa-b320-5203-9855-a2175113afd6"
+      },
+      "checks_per_case": 0,
+      "max_cost_nano_usd": 0,
+      "authoring_version": 2
+    }
+  },
+  {
+    "name": "p4",
+    "plan": {
+      "free": true,
+      "calls": 2,
+      "document": {
+        "models": {
+          "target": "dots-studio/dots-3-note-preview:free",
+          "assistant": "dots-studio/dots-3-note-preview:free",
+          "evaluator": "dots-studio/dots-3-note-preview:free"
+        },
+        "messages": [
+          {
+            "id": "48d81696-e742-5a15-8e26-85091dea571e",
+            "role": "user",
+            "content": "I’m the technical cofounder of a small voice-receptionist startup. Our agent already handles FAQs, books appointments and transfers calls in demos. Before customer pilots, I want to test where it breaks, not build a new prompt. I’m especially worried about callers interrupting or correcting a booking, failed tools and awkward pauses. How would I test the agent we already have here?"
+          },
+          {
+            "id": "b3e8f225-c35a-5214-a46f-461249bc66ab",
+            "role": "assistant",
+            "content": "You can test your existing agent by running adversarial scenarios against it: interrupt it mid-booking, simulate tool failures, and watch for dead air. I've drafted a test plan with three concrete examples and success criteria covering exactly those failure modes. You can paste these prompts into your agent and see how it handles them.\n\nAssumptions to review:\n\n- You have access to the existing agent's configuration and can run test prompts through it.\n- You have a set of representative real-world caller scenarios in mind."
+          },
+          {
+            "id": "472fdd50-8063-575d-a840-6cb85cc6fb8d",
+            "role": "user",
+            "content": "That draft looks like a replacement receptionist prompt, not a test of our agent. Our setup is Twilio, Deepgram, an OpenAI model, ElevenLabs and custom Python/FastAPI orchestration with calendar-booking and transfer tools. I can’t connect a live endpoint or share credentials or recordings in this exercise. Is ‘Check this agent’ just running text against the instructions in that box? If so, what can we usefully do here without implying we’ve tested interruptions, real bookings or phone-call latency?"
+          },
+          {
+            "id": "f430d05c-553f-587f-b3b2-bbcd369db2ba",
+            "role": "assistant",
+            "content": "You're right — the draft was a replacement prompt, not a test harness. Since you can't connect live endpoints here, we can still test your agent's logic offline by mocking tool responses and injecting adversarial text inputs. I've adjusted the requirements to focus on what's testable without live integrations: mocking failures, simulating interruptions via text injection, and measuring response timing patterns. Would you like me to provide concrete Python-style test scripts or a prompt template your team can paste into your existing orchestration layer?\n\nAssumptions to review:\n\n- You can run text prompts against your existing agent's logic without live Twilio/Deepgram/ElevenLabs integration.\n- You have access to your agent's prompt and tool definitions for offline simulation."
+          }
+        ],
+        "artifacts": [
+          {
+            "id": "65f72fbb-0dd1-5400-b1ca-8f9cf787ab05",
+            "title": "Voice Receptionist Agent Test Plan",
+            "accepted": false,
+            "blueprint": {
+              "name": "Voice Receptionist Agent Test Plan",
+              "slug": "agent-check",
+              "cases": [
+                {
+                  "key": "case-1",
+                  "payload": {
+                    "question": "Caller interrupts while you're confirming an appointment: 'Wait, actually I need Thursday at 3, not Tuesday.'"
+                  }
+                },
+                {
+                  "key": "case-2",
+                  "payload": {
+                    "question": "Tool fails to book the requested slot: 'I'm sorry, I couldn't complete that booking. Would you like to try a different time or shall I transfer you to the front desk?'"
+                  }
+                },
+                {
+                  "key": "case-3",
+                  "payload": {
+                    "question": "Awkward silence after a question: 'Sure, I can help with that. What's the best number to reach you?'"
+                  }
+                }
+              ],
+              "judges": [
+                {
+                  "key": "behavior",
+                  "mode": "assertion",
+                  "rubric": "",
+                  "assertion": "The agent responds to interruptions and corrections without restarting the conversation, handles tool failures by acknowledging and pivoting, and maintains natural pacing without dead air."
+                }
+              ],
+              "difficulty": "easy",
+              "dimensions": [
+                {
+                  "key": "output_present",
+                  "source": "validators",
+                  "validators": [
+                    "has_answer"
+                  ]
+                },
+                {
+                  "key": "behavior_correctness",
+                  "source": "llm_judge",
+                  "judge_key": "behavior"
+                }
+              ],
+              "validators": [
+                {
+                  "key": "has_answer",
+                  "type": "regex_match",
+                  "target": "final_output",
+                  "expected_from": "literal:.+"
+                }
+              ],
+              "description": "Text preview of the proposed agent instructions.",
+              "instructions": "You are a voice receptionist for a small business. Handle FAQs, book appointments, and transfer calls. Be natural, concise, and responsive to interruptions and corrections. If a tool fails, acknowledge gracefully and offer an alternative. Avoid long silences or robotic pauses."
+            },
+            "agent_prompt": "You are a voice receptionist for a small business. Handle FAQs, book appointments, and transfer calls. Be natural, concise, and responsive to interruptions and corrections. If a tool fails, acknowledge gracefully and offer an alternative. Avoid long silences or robotic pauses.",
+            "source_message_id": "48d81696-e742-5a15-8e26-85091dea571e"
+          }
+        ],
+        "requirements": [
+          {
+            "id": "90914257-8880-5e50-a9f9-0685d1ddd092",
+            "status": "proposed",
+            "statement": "Test interruption handling by injecting mid-sentence corrections and verifying the agent adapts without losing context.",
+            "source_message_id": "48d81696-e742-5a15-8e26-85091dea571e"
+          },
+          {
+            "id": "7c6126be-6e42-5d89-8dce-3931fd499424",
+            "status": "proposed",
+            "statement": "Simulate tool failures and confirm the agent responds with a graceful fallback rather than crashing or looping.",
+            "source_message_id": "48d81696-e742-5a15-8e26-85091dea571e"
+          },
+          {
+            "id": "e1f78378-0c4b-5386-a4d8-a6adaf0efbd6",
+            "status": "proposed",
+            "statement": "Probe for awkward pauses by measuring response latency and ensuring the agent fills silence with a natural follow-up or clarification.",
+            "source_message_id": "48d81696-e742-5a15-8e26-85091dea571e"
+          },
+          {
+            "id": "9695461c-b3b1-5a5c-ad79-c5c0057d1091",
+            "status": "proposed",
+            "statement": "Assumption: You have access to the existing agent's configuration and can run test prompts through it.",
+            "source_message_id": "48d81696-e742-5a15-8e26-85091dea571e"
+          },
+          {
+            "id": "0a530f48-e669-512a-bf3c-e6493adbd342",
+            "status": "proposed",
+            "statement": "Assumption: You have a set of representative real-world caller scenarios in mind.",
+            "source_message_id": "48d81696-e742-5a15-8e26-85091dea571e"
+          },
+          {
+            "id": "f03c9a85-8a5e-5e1b-aa07-2bb9cf121c65",
+            "status": "proposed",
+            "statement": "Simulate tool failures by mocking calendar-booking and transfer endpoints to verify graceful fallback behavior.",
+            "source_message_id": "472fdd50-8063-575d-a840-6cb85cc6fb8d"
+          },
+          {
+            "id": "9e686ad1-36af-5081-9cba-05bfa74836cf",
+            "status": "proposed",
+            "statement": "Test interruption handling by injecting mid-sentence corrections into the conversation flow and checking context retention.",
+            "source_message_id": "472fdd50-8063-575d-a840-6cb85cc6fb8d"
+          },
+          {
+            "id": "27c91557-9356-5d8e-90e4-e816ab9f3923",
+            "status": "proposed",
+            "statement": "Probe for awkward pauses by measuring inter-response timing in text simulations and ensuring natural follow-up phrasing.",
+            "source_message_id": "472fdd50-8063-575d-a840-6cb85cc6fb8d"
+          },
+          {
+            "id": "208196ff-a6f6-5d94-9057-14e1b7b17ff0",
+            "status": "proposed",
+            "statement": "Assumption: You can run text prompts against your existing agent's logic without live Twilio/Deepgram/ElevenLabs integration.",
+            "source_message_id": "472fdd50-8063-575d-a840-6cb85cc6fb8d"
+          },
+          {
+            "id": "29db7b8f-36e8-5146-aefa-066fa57baa15",
+            "status": "proposed",
+            "statement": "Assumption: You have access to your agent's prompt and tool definitions for offline simulation.",
+            "source_message_id": "472fdd50-8063-575d-a840-6cb85cc6fb8d"
+          }
+        ],
+        "attachment_count": 0
+      },
+      "anonymous": true,
+      "case_keys": null,
+      "submission": {
+        "kind": "message",
+        "models": {
+          "target": "dots-studio/dots-3-note-preview:free",
+          "assistant": "dots-studio/dots-3-note-preview:free",
+          "evaluator": "dots-studio/dots-3-note-preview:free"
+        },
+        "content": "Python-style tests would help; we’d have to wire them into our orchestration ourselves. Here’s a hypothetical example, not a real call: a caller asks for Tuesday at 2, then corrects it to Thursday at 3 while the agent is talking. The booking request times out, so we don’t know if it succeeded. The caller then asks for a person, but the transfer fails too. What should the test inputs and assertions be, especially to avoid a duplicate or falsely confirmed booking? Please keep this as an offline test plan, not new agent instructions, and spell out what still needs a real audio/telephony test. Text-response timing isn’t enough for our call-latency question.",
+        "revision": 4,
+        "client_id": "cd8d8a00-cf64-5c1b-b2ce-ebd73939d8b2",
+        "artifact_id": "65f72fbb-0dd1-5400-b1ca-8f9cf787ab05"
+      },
+      "checks_per_case": 0,
+      "max_cost_nano_usd": 0,
+      "authoring_version": 2
+    }
+  }
+]

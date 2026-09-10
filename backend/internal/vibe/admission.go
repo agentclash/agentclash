@@ -10,25 +10,27 @@ import (
 )
 
 type Submission struct {
-	ClientID   uuid.UUID  `json:"client_id"`
-	Revision   int64      `json:"revision"`
-	Kind       string     `json:"kind"`
-	Content    string     `json:"content"`
-	Models     Models     `json:"models"`
-	ArtifactID *uuid.UUID `json:"artifact_id,omitempty"`
-	BaselineID *uuid.UUID `json:"baseline_id,omitempty"`
+	JourneyMode string     `json:"journey_mode,omitempty"`
+	ClientID    uuid.UUID  `json:"client_id"`
+	Revision    int64      `json:"revision"`
+	Kind        string     `json:"kind"`
+	Content     string     `json:"content"`
+	Models      Models     `json:"models"`
+	ArtifactID  *uuid.UUID `json:"artifact_id,omitempty"`
+	BaselineID  *uuid.UUID `json:"baseline_id,omitempty"`
 }
 type Plan struct {
-	Free          bool         `json:"free,omitempty"`
-	ChecksPerCase int          `json:"checks_per_case"`
-	Observations  []CaseResult `json:"observations,omitempty"`
-	Submission    Submission   `json:"submission"`
-	Document      Document     `json:"document"`
-	Artifact      *Artifact    `json:"artifact,omitempty"`
-	Cases         []string     `json:"case_keys"`
-	Calls         int          `json:"calls"`
-	MaxCost       int64        `json:"max_cost_nano_usd"`
-	Anonymous     bool         `json:"anonymous"`
+	AuthoringVersion int          `json:"authoring_version,omitempty"`
+	Free             bool         `json:"free,omitempty"`
+	ChecksPerCase    int          `json:"checks_per_case"`
+	Observations     []CaseResult `json:"observations,omitempty"`
+	Submission       Submission   `json:"submission"`
+	Document         Document     `json:"document"`
+	Artifact         *Artifact    `json:"artifact,omitempty"`
+	Cases            []string     `json:"case_keys"`
+	Calls            int          `json:"calls"`
+	MaxCost          int64        `json:"max_cost_nano_usd"`
+	Anonymous        bool         `json:"anonymous"`
 }
 
 func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Submission, plan Plan, cfg Config) (Operation, error) {
@@ -121,7 +123,7 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 			return err
 		}
 		for _, key := range plan.Cases {
-			result := CaseResult{CaseKey: key, ExpectedChecks: plan.ChecksPerCase, Verdict: Unknown, Checks: []CheckResult{}, Error: &Fault{"not_evaluated", "This case has not been evaluated yet."}}
+			result := CaseResult{CaseKey: key, ExpectedChecks: plan.ChecksPerCase, Verdict: Unknown, Checks: []CheckResult{}, Error: &Fault{Code: "not_evaluated", Message: "This case has not been evaluated yet."}}
 			if plan.Artifact != nil {
 				result.Version = plan.Artifact.ID.String()
 			}
@@ -138,7 +140,10 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 			}
 		}
 		if sub.Content != "" {
-			v.Document.Messages = append(v.Document.Messages, Message{sub.ClientID, "user", sub.Content, timestamp()})
+			if sub.JourneyMode != "" {
+				v.Document.Journey.Mode = sub.JourneyMode
+			}
+			v.Document.Messages = append(v.Document.Messages, Message{ID: sub.ClientID, Role: "user", Content: sub.Content, CreatedAt: timestamp(), Origin: sub.Kind, OperationID: &o.ID, ArtifactID: sub.ArtifactID})
 		}
 		v.Document.Models = sub.Models
 		if err = updateDocument(ctx, tx, v); err != nil {
@@ -386,7 +391,7 @@ func settle(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
 			if err != nil {
 				return err
 			}
-			_, err = tx.Exec(ctx, "UPDATE vibe_operations SET billing='RECONCILING',error=$2 WHERE id=$1", id, raw(&Fault{"accounting_bound_exceeded", "Provider usage exceeded its approved ceiling; accounting requires review."}))
+			_, err = tx.Exec(ctx, "UPDATE vibe_operations SET billing='RECONCILING',error=$2 WHERE id=$1", id, raw(&Fault{Code: "accounting_bound_exceeded", Message: "Provider usage exceeded its approved ceiling; accounting requires review."}))
 			return err
 		}
 		if _, err = tx.Exec(ctx, "UPDATE vibe_accounts SET held=held-$2,balance=balance-$3 WHERE id=$1", h.id, h.amount, actual); err != nil {

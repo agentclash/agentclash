@@ -26,7 +26,7 @@ func TestVibeProviderFaultsKeepSafeCategories(t *testing.T) {
 			t.Fatalf("provider classification or safe message failed: %+v", f)
 		}
 	}
-	want := &Fault{"context_limit", "Bounded context."}
+	want := &Fault{Code: "context_limit", Message: "Bounded context."}
 	if issueFrom(want) != want || issueFrom(nil) != nil {
 		t.Fatal("existing domain faults changed")
 	}

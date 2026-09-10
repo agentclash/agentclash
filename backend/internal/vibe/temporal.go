@@ -56,7 +56,7 @@ func operationFailure(err error) *Fault {
 	if errors.As(err, &application) && application.Type() == "vibe_fault" && application.Details(&f) == nil && f.Code != "" && f.Message != "" {
 		return &f
 	}
-	return &Fault{"worker_interrupted", "Execution was interrupted. Saved evidence remains available; uncertain provider calls will not be repeated."}
+	return &Fault{Code: "worker_interrupted", Message: "Execution was interrupted. Saved evidence remains available; uncertain provider calls will not be repeated."}
 }
 func NewWorker(c client.Client, r *Runner) worker.Worker {
 	w := worker.New(c, TaskQueue, worker.Options{MaxConcurrentActivityExecutionSize: 32})
@@ -75,7 +75,7 @@ func NewWorker(c client.Client, r *Runner) worker.Worker {
 		}
 		var issue *Fault
 		if code != "" {
-			issue = &Fault{code, "Execution was interrupted. Saved evidence remains available; uncertain provider calls will not be repeated."}
+			issue = &Fault{Code: code, Message: "Execution was interrupted. Saved evidence remains available; uncertain provider calls will not be repeated."}
 		}
 		return r.Service.Store.Finish(ctx, uid, issue)
 	}, activity.RegisterOptions{Name: "vibe.finalize"})
@@ -237,7 +237,7 @@ func (s *Store) expireOne(ctx context.Context, id uuid.UUID) error {
 		if err = transition(ctx, tx, id, Expired); err != nil {
 			return err
 		}
-		if _, err = tx.Exec(ctx, "UPDATE vibe_operations SET completed_at=now(),error=$2 WHERE id=$1", id, raw(&Fault{"queue_expired", "This operation expired before execution."})); err != nil {
+		if _, err = tx.Exec(ctx, "UPDATE vibe_operations SET completed_at=now(),error=$2 WHERE id=$1", id, raw(&Fault{Code: "queue_expired", Message: "This operation expired before execution."})); err != nil {
 			return err
 		}
 		return settle(ctx, tx, id)

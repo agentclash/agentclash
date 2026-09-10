@@ -21,6 +21,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CreditsDialog } from "@/components/vibe/credits-dialog";
+import { TestPlanPanel } from "@/components/vibe/test-plan-panel";
 import { ArtifactPanel, ModelSelect } from "@/components/vibe/artifact-panel";
 import { SafeMarkdown } from "@/components/vibe/safe-markdown";
 import { VibeScorecard } from "@/components/vibe/scorecard";
@@ -46,11 +47,24 @@ import {
 // Unknown responses (including generic 503s) cannot prove non-admission.
 const submissionRejections: Partial<Record<number, readonly string[]>> = {
   400: [
-    "invalid_request", "invalid_message", "invalid_operation",
-    "invalid_import", "import_limit", "unsupported_schema", "invalid_encoding",
-    "free_model_required", "unsupported_model", "evaluator_pinned",
-    "artifact_required", "baseline_required", "comparison_changed",
-    "case_limit", "graph_limit", "budget_limit", "conversation_limit", "workspace_required",
+    "invalid_request",
+    "invalid_message",
+    "invalid_operation",
+    "invalid_import",
+    "import_limit",
+    "unsupported_schema",
+    "invalid_encoding",
+    "free_model_required",
+    "unsupported_model",
+    "evaluator_pinned",
+    "artifact_required",
+    "baseline_required",
+    "comparison_changed",
+    "case_limit",
+    "graph_limit",
+    "budget_limit",
+    "conversation_limit",
+    "workspace_required",
   ],
   402: ["insufficient_credits"],
   403: ["forbidden"],
@@ -58,7 +72,12 @@ const submissionRejections: Partial<Record<number, readonly string[]>> = {
   409: ["revision_conflict", "operation_running", "invalid_state"],
   413: ["request_too_large"],
   429: ["rate_limit", "capacity_limit", "trial_limit"],
-  503: ["hosted_disabled", "pricing_unavailable", "accounting_unavailable", "trial_capacity_reached"],
+  503: [
+    "hosted_disabled",
+    "pricing_unavailable",
+    "accounting_unavailable",
+    "trial_capacity_reached",
+  ],
 };
 
 const starters = [
@@ -76,6 +95,9 @@ export function VibeClient() {
   const [config, setConfig] = useState<VibeConfig | null>(null);
   const [models, setModels] = useState<Models>(defaultModels);
   const [content, setContent] = useState("");
+  const [journeyChoice, setJourneyChoice] = useState<
+    "idea" | "existing" | "exploring"
+  >();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [connection, setConnection] = useState("");
@@ -100,19 +122,35 @@ export function VibeClient() {
   const file = useRef<HTMLInputElement>(null);
   const scrollEnd = useRef<HTMLDivElement>(null);
   const active = session?.operations.find((o) => !terminal(o.state));
-  const sessionUnavailable = !!requestedSessionID && session?.id !== requestedSessionID;
+  const sessionUnavailable =
+    !!requestedSessionID && session?.id !== requestedSessionID;
   const busy = pending || !!active || uncertain || sessionUnavailable;
-  const artifact = session?.document.artifacts.at(-1);
+  const journey = session?.document.journey;
+  const artifact = session?.document.artifacts
+    .filter(
+      (a) =>
+        journey?.mode !== "existing" ||
+        journey.preview_consent ||
+        a.kind === "test_plan",
+    )
+    .at(-1);
   const dirtyArtifact = panel && !!artifact && dirtyArtifactID === artifact.id;
   const savedModels = session?.saved_models;
   // Canonical identity survives unknown legacy receipts or changed selections;
   // only the immutable model receipt can confirm that these choices were saved.
-  const savedDraft = artifact?.accepted && !dirtyArtifact &&
-    session?.saved_artifact_id === artifact.id && session.saved_draft_id && session.workspace_id
-    ? { draft_id: session.saved_draft_id, workspace_id: session.workspace_id }
-    : null;
-  const saved = !!savedDraft && savedModels?.assistant === models.assistant &&
-    savedModels.target === models.target && savedModels.evaluator === models.evaluator;
+  const savedDraft =
+    artifact?.accepted &&
+    !dirtyArtifact &&
+    session?.saved_artifact_id === artifact.id &&
+    session.saved_draft_id &&
+    session.workspace_id
+      ? { draft_id: session.saved_draft_id, workspace_id: session.workspace_id }
+      : null;
+  const saved =
+    !!savedDraft &&
+    savedModels?.assistant === models.assistant &&
+    savedModels.target === models.target &&
+    savedModels.evaluator === models.evaluator;
   const savedModelNotice = savedModels
     ? "Your current model choices differ from those recorded when this draft was saved."
     : "Saved model choices are unknown. Your current model choices are not confirmed as saved.";
@@ -227,7 +265,9 @@ export function VibeClient() {
   };
   async function ensureSession() {
     if (requestedSessionID && session?.id !== requestedSessionID)
-      throw new Error("Load this conversation before sending. No new conversation was created.");
+      throw new Error(
+        "Load this conversation before sending. No new conversation was created.",
+      );
     if (session) return session;
     const id = crypto.randomUUID();
     const v = await vibeFetch<Session>("/sessions", await token(), {
@@ -244,6 +284,30 @@ export function VibeClient() {
       `/vibe-evals?session=${id}${workspace ? `&workspace=${workspace}` : ""}`,
     );
     return v;
+  }
+  function exportConversation() {
+    if (!session) return;
+    const url = URL.createObjectURL(
+      new Blob(
+        [
+          JSON.stringify(
+            {
+              format: "agentclash-vibe-conversation-v1",
+              document: session.document,
+              capabilities: config?.capabilities || [],
+            },
+            null,
+            2,
+          ),
+        ],
+        { type: "application/json" },
+      ),
+    );
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "agentclash-vibe-conversation.json";
+    a.click();
+    URL.revokeObjectURL(url);
   }
   async function submit(
     kind = "message",
@@ -267,6 +331,9 @@ export function VibeClient() {
           client_id: crypto.randomUUID(),
           revision: v.revision,
           kind,
+          ...(kind === "message" && !v.document.journey?.mode && journeyChoice
+            ? { journey_mode: journeyChoice }
+            : {}),
           content: text,
           models: baseline
             ? { ...models, evaluator: baseline.models.evaluator }
@@ -287,14 +354,21 @@ export function VibeClient() {
     const request = submission.current;
     if (!request) return;
     try {
-      await vibeFetch(`/sessions/${request.sessionID}/messages`, await token(), {
-        method: "POST",
-        body: request.body,
-      });
+      await vibeFetch(
+        `/sessions/${request.sessionID}/messages`,
+        await token(),
+        {
+          method: "POST",
+          body: request.body,
+        },
+      );
     } catch (e) {
       // Auth/rate/profile checks precede idempotency lookup. A later rejection
       // cannot disprove an earlier admission: retain every byte until acknowledged.
-      const rejected = !request.uncertain && e instanceof VibeError && e.status !== undefined &&
+      const rejected =
+        !request.uncertain &&
+        e instanceof VibeError &&
+        e.status !== undefined &&
         submissionRejections[e.status]?.includes(e.code) === true;
       if (rejected) submission.current = null;
       else request.uncertain = true;
@@ -306,8 +380,11 @@ export function VibeClient() {
     }
     submission.current = null;
     setUncertain(false);
-    if (request.composer !== null && request.composerVersion === composerEdits.current) {
-      setContent((current) => current === request.composer ? "" : current);
+    if (
+      request.composer !== null &&
+      request.composerVersion === composerEdits.current
+    ) {
+      setContent((current) => (current === request.composer ? "" : current));
     }
     await reload(request.sessionID);
   }
@@ -326,7 +403,7 @@ export function VibeClient() {
     }
   }
   async function edit(fields: Record<string, unknown>) {
-    if (!session) return;
+    if (!session) return false;
     setPending(true);
     setError("");
     try {
@@ -339,9 +416,11 @@ export function VibeClient() {
         },
       );
       setSession(v);
+      return true;
     } catch (e) {
       setError((e as Error).message);
       await reload();
+      return false;
     } finally {
       setPending(false);
     }
@@ -498,9 +577,13 @@ export function VibeClient() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => { setDirtyArtifactID(null); setPanel(!panel); }}
+                onClick={() => {
+                  setDirtyArtifactID(null);
+                  setPanel(!panel);
+                }}
               >
-                <PanelRight size={15} /> Your agent
+                <PanelRight size={15} />{" "}
+                {artifact.kind === "test_plan" ? "Test plan" : "Your agent"}
               </Button>
             )}
           </div>
@@ -518,10 +601,19 @@ export function VibeClient() {
                   isn’t working. We’ll figure out the next step together.
                 </p>
                 <div className="mt-8 flex flex-wrap gap-2">
-                  {starters.map((starter) => (
+                  {starters.map((starter, index) => (
                     <button
                       key={starter}
-                      onClick={() => setContent(starter)}
+                      onClick={() => {
+                        setContent(starter);
+                        setJourneyChoice(
+                          index === 0
+                            ? "existing"
+                            : index === 1
+                              ? "idea"
+                              : "exploring",
+                        );
+                      }}
                       className="rounded-xl border border-builder-border px-3 py-2.5 text-xs text-builder-fg-muted transition-colors hover:bg-builder-surface-hover hover:text-builder-fg"
                     >
                       {starter}
@@ -542,9 +634,16 @@ export function VibeClient() {
                 >
                   {message.role !== "user" && (
                     <p className="mb-2 flex items-center gap-2 text-xs font-medium">
-                      <ClashMark className="size-4" /> AgentClash
+                      <ClashMark className="size-4" />{" "}
+                      {message.origin === "playground"
+                        ? "Agent preview · Customer trial"
+                        : "AgentClash · Design"}
                     </p>
                   )}
+                  {message.role === "user" &&
+                    message.origin === "playground" && (
+                      <p className="mb-1 text-[10px]">Customer trial</p>
+                    )}
                   <SafeMarkdown>{message.content}</SafeMarkdown>
                 </div>
               ))}
@@ -552,7 +651,9 @@ export function VibeClient() {
                 <Requirements
                   requirements={session?.document.requirements || []}
                   busy={busy}
-                  onRequirement={(requirement_id, status, statement) => edit({ requirement_id, status, statement })}
+                  onRequirement={(requirement_id, status, statement) =>
+                    edit({ requirement_id, status, statement })
+                  }
                 />
               )}
               {session?.operations.map((operation) => (
@@ -570,7 +671,12 @@ export function VibeClient() {
                           await token(),
                         )
                       }
-                      busy={busy || dirtyArtifact || !artifact?.accepted}
+                      busy={
+                        busy ||
+                        dirtyArtifact ||
+                        !artifact?.accepted ||
+                        artifact.kind === "test_plan"
+                      }
                       onImprove={() => {
                         setContent(
                           "Help me improve the accepted agent instructions while keeping the evaluation unchanged. Ask me for any missing policy facts.",
@@ -609,7 +715,34 @@ export function VibeClient() {
                   )}
                   {operation.error && (
                     <p className="mt-3 text-xs leading-5 text-builder-warn">
+                      {operation.id !== session.operations.at(-1)?.id && (
+                        <span className="mr-1 font-medium">
+                          Earlier{" "}
+                          {operation.kind === "playground"
+                            ? "customer trial"
+                            : "design/evaluation request"}
+                          :
+                        </span>
+                      )}
                       {operation.error.message}
+                      {operation.error.context && (
+                        <>
+                          {artifact && (
+                            <button
+                              className="ml-2 underline"
+                              onClick={() => setPanel(true)}
+                            >
+                              Review draft and requirements
+                            </button>
+                          )}
+                          <button
+                            className="ml-2 underline"
+                            onClick={exportConversation}
+                          >
+                            Export preserved conversation
+                          </button>
+                        </>
+                      )}
                     </p>
                   )}
                   {operation.state === "CANCELLED" && (
@@ -664,8 +797,18 @@ export function VibeClient() {
         <div className="mx-auto w-full max-w-3xl shrink-0 px-5 pb-5 pt-3 sm:px-8">
           {sessionUnavailable && (
             <div className="mb-3 text-xs text-builder-fg-muted">
-              {loadingSession ? <p role="status">Loading your conversation…</p> : (
-                <Button type="button" variant="outline" size="sm" onClick={() => { setError(""); setLoadAttempt((attempt) => attempt + 1); }}>
+              {loadingSession ? (
+                <p role="status">Loading your conversation…</p>
+              ) : (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setError("");
+                    setLoadAttempt((attempt) => attempt + 1);
+                  }}
+                >
                   Retry loading conversation
                 </Button>
               )}
@@ -686,12 +829,25 @@ export function VibeClient() {
           )}
           {uncertain && (
             <div className="mb-3 text-xs text-builder-fg-muted">
-              <p>The submission acknowledgement was not confirmed. Retry the same submission to recover its saved status. Your next message stays here.</p>
-              <Button type="button" variant="outline" size="sm" disabled={pending} onClick={retrySubmission}>
+              <p>
+                The submission acknowledgement was not confirmed. Retry the same
+                submission to recover its saved status. Your next message stays
+                here.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={pending}
+                onClick={retrySubmission}
+              >
                 Retry submission
               </Button>
             </div>
           )}
+          <p className="mb-2 text-xs font-medium text-builder-fg-muted">
+            Design · Discuss or revise your agent and tests
+          </p>
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -765,30 +921,59 @@ export function VibeClient() {
           </p>
         </div>
       </div>
-      {artifact && panel && (
-        <ArtifactPanel
-          key={artifact.id}
-          artifact={artifact}
-          requirements={session?.document.requirements || []}
-          models={models}
-          choices={config?.models || []}
-          anonymous={session?.anonymous ?? true}
-          busy={busy}
-          onClose={() => { setDirtyArtifactID(null); setPanel(false); }}
-          onAccept={() => edit({ artifact_id: artifact.id })}
-          onEdit={(agent_prompt) =>
-            edit({ artifact_id: artifact.id, agent_prompt })
-          }
-          onDirtyChange={(dirty) => setDirtyArtifactID(dirty ? artifact.id : null)}
-          onRequirement={(requirement_id, status, statement) =>
-            edit({ requirement_id, status, statement })
-          }
-          onModels={setModels}
-          onCheck={() => submit("check", "")}
-          onPlay={(text) => submit("playground", text)}
-          onSave={openSave}
-        />
-      )}
+      {artifact &&
+        panel &&
+        (artifact.kind === "test_plan" ? (
+          <TestPlanPanel
+            artifact={artifact}
+            journey={journey}
+            capabilities={config?.capabilities || []}
+            requirements={session?.document.requirements || []}
+            busy={busy}
+            onClose={() => setPanel(false)}
+            onRequirement={(requirement_id, status, statement) =>
+              edit({ requirement_id, status, statement })
+            }
+            onPreview={async () => {
+              if (await edit({ preview_consent: true }))
+                setContent(
+                  "Create a prompt-only surrogate for a text preview. I understand this does not test my connected agent.",
+                );
+            }}
+          />
+        ) : (
+          <ArtifactPanel
+            key={artifact.id}
+            artifact={artifact}
+            requirements={session?.document.requirements || []}
+            capabilities={config?.capabilities || []}
+            models={models}
+            choices={config?.models || []}
+            anonymous={session?.anonymous ?? true}
+            busy={busy}
+            onClose={() => {
+              setDirtyArtifactID(null);
+              setPanel(false);
+            }}
+            onAccept={() => edit({ artifact_id: artifact.id })}
+            onEdit={(agent_prompt) =>
+              edit({ artifact_id: artifact.id, agent_prompt })
+            }
+            onEvaluationEdit={(evaluation) =>
+              edit({ artifact_id: artifact.id, evaluation })
+            }
+            onDirtyChange={(dirty) =>
+              setDirtyArtifactID(dirty ? artifact.id : null)
+            }
+            onRequirement={(requirement_id, status, statement) =>
+              edit({ requirement_id, status, statement })
+            }
+            onModels={setModels}
+            onCheck={() => submit("check", "")}
+            onPlay={(text) => submit("playground", text)}
+            onSave={openSave}
+          />
+        ))}
       <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
         <DialogContent>
           <DialogTitle>Keep what worked</DialogTitle>
@@ -797,7 +982,11 @@ export function VibeClient() {
             in this conversation use your workspace’s AI credits. Your original
             evidence stays here.
           </DialogDescription>
-          {error && <p role="alert" className="text-xs leading-5 text-builder-warn">{error}</p>}
+          {error && (
+            <p role="alert" className="text-xs leading-5 text-builder-warn">
+              {error}
+            </p>
+          )}
           {workspaces.length ? (
             <>
               <label className="text-sm">
@@ -815,7 +1004,12 @@ export function VibeClient() {
                   ))}
                 </select>
               </label>
-              <Button onClick={save} disabled={busy || dirtyArtifact || !artifact?.accepted || !!saved}>
+              <Button
+                onClick={save}
+                disabled={
+                  busy || dirtyArtifact || !artifact?.accepted || !!saved
+                }
+              >
                 {saved ? "Saved" : "Save to workspace"}
               </Button>
             </>
@@ -829,7 +1023,11 @@ export function VibeClient() {
           )}
           {savedDraft && (
             <>
-              {!saved && <p className="text-xs leading-5 text-builder-fg-muted">{savedModelNotice}</p>}
+              {!saved && (
+                <p className="text-xs leading-5 text-builder-fg-muted">
+                  {savedModelNotice}
+                </p>
+              )}
               <Link
                 href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}
                 className="text-sm underline"

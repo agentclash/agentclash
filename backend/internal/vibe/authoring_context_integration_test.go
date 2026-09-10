@@ -34,9 +34,9 @@ func TestIntegrationAuthoringIncludesActiveAcceptedArtifact(t *testing.T) {
 	var requests []provider.Request
 	fake := callFunc(func(_ context.Context, request provider.Request) (provider.Response, error) {
 		requests = append(requests, request)
-		output := `{"reply":"Review the improvement.","proposed_requirements":[],"assumptions":[],"draft":{"title":"Improved agent","agent_prompt":"Only use supplied facts. Add a clear CTA.","examples":[],"success_criteria":""}}`
+		output := `{"reply_kind":"design","journey":{"mode":"idea","stack":"","evidence":""},"requirement_changes":[],"reply":"I removed the evaluation criteria and all difficult cases.","assumptions":[],"artifact":{"kind":"agent_draft","title":"Improved agent","agent_prompt":"Only use supplied facts. Add a clear CTA.","positive_example":"Use supplied product facts","negative_example":"Invent a guarantee","insufficient_example":"No product facts supplied","success_criteria":"Use facts"}}`
 		if len(requests) == 1 {
-			output = `{"reply":"Invalid shape","proposed_requirements":[{}],"assumptions":[],"draft":null}`
+			output = `{"reply_kind":"design","journey":{"mode":"idea","stack":"","evidence":""},"requirement_changes":[],"reply":"Invalid shape","proposed_requirements":[{}],"assumptions":[],"draft":null}`
 		}
 		zero := json.Number("0")
 		return provider.Response{OutputText: output, Usage: provider.Usage{InputTokens: 100, OutputTokens: 100, CostUSD: &zero}}, nil
@@ -71,7 +71,7 @@ func TestIntegrationAuthoringIncludesActiveAcceptedArtifact(t *testing.T) {
 		if err := json.Unmarshal([]byte(request.Messages[1].Content), &data); err != nil {
 			t.Fatal(err)
 		}
-		if data.AcceptedAgent == nil || data.AcceptedAgent.ID != accepted.ID || !data.AcceptedAgent.Accepted {
+		if data.AcceptedAgent == nil || data.AcceptedAgent.AgentPrompt != accepted.AgentPrompt || !strings.Contains(string(data.AcceptedAgent.Blueprint), "original coverage") {
 			t.Errorf("authoring call %d did not identify the accepted agent separately from the proposal", i)
 		}
 		if _, err := CountContext(request, cfg.Profiles[cfg.DefaultModel], LimitsFor(true)); err != nil {
@@ -86,5 +86,9 @@ func TestIntegrationAuthoringIncludesActiveAcceptedArtifact(t *testing.T) {
 	var got, want any
 	if json.Unmarshal(improved.Blueprint, &got) != nil || json.Unmarshal(accepted.Blueprint, &want) != nil || !reflect.DeepEqual(got, want) || improved.ParentID == nil || *improved.ParentID != accepted.ID {
 		t.Fatal("improvement lost its accepted parent or changed pinned coverage")
+	}
+	reply := current.Document.Messages[len(current.Document.Messages)-1].Content
+	if strings.Contains(reply, "removed") || !strings.Contains(reply, "cases and criteria are unchanged") || improved.Proposal != nil {
+		t.Fatal("summary or proposal claimed evaluation changes that were not applied", reply)
 	}
 }

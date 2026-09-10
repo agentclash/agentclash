@@ -372,7 +372,7 @@ func cleanupSession(t *testing.T, s *Store, id uuid.UUID) {
 		}
 		rows.Close()
 		for _, op := range ids {
-			_ = s.Finish(ctx, op, &Fault{"test_cleanup", "Test ended."})
+			_ = s.Finish(ctx, op, &Fault{Code: "test_cleanup", Message: "Test ended."})
 		}
 	})
 }

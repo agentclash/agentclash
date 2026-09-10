@@ -2,7 +2,14 @@
 import { useState } from "react";
 import { Check, Download, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { Artifact, Model, Models, Requirement } from "@/lib/vibe";
+import { editableEvaluation, type EvaluationProposal } from "@/lib/vibe";
+import type {
+  Artifact,
+  Capability,
+  Model,
+  Models,
+  Requirement,
+} from "@/lib/vibe";
 import { Requirements } from "./requirements";
 
 export function ModelSelect({
@@ -43,6 +50,7 @@ export function ModelSelect({
 export function ArtifactPanel({
   artifact,
   requirements,
+  capabilities = [],
   models,
   choices,
   anonymous,
@@ -51,6 +59,7 @@ export function ArtifactPanel({
   onAccept,
   onEdit,
   onDirtyChange,
+  onEvaluationEdit,
   onRequirement,
   onModels,
   onCheck,
@@ -59,6 +68,7 @@ export function ArtifactPanel({
 }: {
   artifact: Artifact;
   requirements: Requirement[];
+  capabilities?: Capability[];
   models: Models;
   choices: Model[];
   anonymous: boolean;
@@ -67,6 +77,7 @@ export function ArtifactPanel({
   onAccept: () => void;
   onEdit: (prompt: string) => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onEvaluationEdit?: (evaluation: EvaluationProposal) => void;
   onRequirement: (
     id: string,
     status: "accepted" | "rejected" | "superseded",
@@ -79,7 +90,18 @@ export function ArtifactPanel({
 }) {
   const [prompt, setPrompt] = useState(artifact.agent_prompt);
   const [test, setTest] = useState("");
-  const dirty = prompt !== artifact.agent_prompt;
+  const initialEvaluation = editableEvaluation(artifact.blueprint);
+  const [evaluation, setEvaluation] = useState(initialEvaluation);
+  const promptDirty = prompt !== artifact.agent_prompt;
+  const evaluationDirty =
+    JSON.stringify(evaluation) !== JSON.stringify(initialEvaluation);
+  const dirty = promptDirty || evaluationDirty;
+  function changeEvaluation(next: EvaluationProposal) {
+    setEvaluation(next);
+    onDirtyChange?.(
+      promptDirty || JSON.stringify(next) !== JSON.stringify(initialEvaluation),
+    );
+  }
   function download() {
     const url = URL.createObjectURL(
       new Blob(
@@ -129,8 +151,8 @@ export function ArtifactPanel({
       </div>
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto">
         <p className="text-xs leading-5 text-builder-fg-muted">
-          This preview runs the instructions below. Paste your existing
-          agent&apos;s instructions to test them here. Your live agent is not
+          This text preview runs the instructions below on supplied inputs.
+          Review its tests before accepting. External services are not
           connected.
         </p>
         <label className="block text-xs">
@@ -139,18 +161,29 @@ export function ArtifactPanel({
             value={prompt}
             onChange={(e) => {
               setPrompt(e.target.value);
-              onDirtyChange?.(e.target.value !== artifact.agent_prompt);
+              onDirtyChange?.(
+                e.target.value !== artifact.agent_prompt || evaluationDirty,
+              );
             }}
-            disabled={busy}
+            disabled={busy || evaluationDirty}
             className="mt-2 min-h-56 w-full resize-y rounded-xl border border-builder-border bg-builder-surface p-3 text-sm leading-6 outline-none focus-visible:ring-2 focus-visible:ring-builder-border-strong"
           />
         </label>
-        {dirty && <p className="text-xs text-builder-warn">Save your edits as a new draft, then accept it before trying, checking or keeping this agent.</p>}
+        {dirty && (
+          <p className="text-xs text-builder-warn">
+            Save your edits as a new draft, then accept it before trying,
+            checking or keeping this agent.
+          </p>
+        )}
         {dirty ? (
           <Button
             size="sm"
             variant="outline"
-            onClick={() => onEdit(prompt)}
+            onClick={() =>
+              evaluationDirty && evaluation
+                ? onEvaluationEdit?.(evaluation)
+                : onEdit(prompt)
+            }
             disabled={busy}
           >
             Save as a new draft
@@ -171,7 +204,90 @@ export function ArtifactPanel({
           onChange={(target) => onModels({ ...models, target })}
           disabled={busy}
         />
-        <Requirements requirements={requirements} busy={busy} onRequirement={onRequirement} />
+        <Requirements
+          requirements={requirements}
+          busy={busy}
+          onRequirement={onRequirement}
+        />
+        {evaluation && (
+          <section aria-label="Proposed evaluation" className="space-y-3">
+            <h3 className="text-xs font-medium">
+              Examples and proposed criteria
+            </h3>
+            <p className="text-xs leading-5 text-builder-fg-muted">
+              Review these proposed test rules, including numerical thresholds
+              and assumptions. Only requirements marked “Confirmed by you” have
+              been confirmed. Insufficient evidence can mean no recommendation.
+              Accepting the draft accepts these tests; changing them creates a
+              new evaluation.
+            </p>
+            <div
+              aria-label="Criteria sources"
+              className="text-xs leading-5 text-builder-fg-muted"
+            >
+              <p>
+                Capability and evidence rules apply to every preview. Additional
+                criteria without a linked requirement are proposed assumptions.
+              </p>
+              {!evaluationDirty &&
+                requirements
+                  .filter((r) =>
+                    artifact.criteria_requirement_ids?.includes(r.id),
+                  )
+                  .map((r) => (
+                    <p key={r.id} className="mt-2">
+                      Linked requirement ·{" "}
+                      {r.status === "accepted"
+                        ? "Confirmed by you"
+                        : r.status === "proposed"
+                          ? "Proposed"
+                          : "Changed since this evaluation"}
+                      : {r.statement}
+                    </p>
+                  ))}
+            </div>
+            {evaluation.examples.map((example, i) => (
+              <label className="block text-xs" key={i}>
+                Example {i + 1}
+                <textarea
+                  aria-label={`Evaluation example ${i + 1}`}
+                  value={example}
+                  disabled={busy || promptDirty || !onEvaluationEdit}
+                  onChange={(e) =>
+                    changeEvaluation({
+                      ...evaluation,
+                      examples: evaluation.examples.map((v, n) =>
+                        n === i ? e.target.value : v,
+                      ),
+                    })
+                  }
+                  className="mt-2 min-h-20 w-full rounded-lg border border-builder-border bg-builder-surface p-3 text-sm"
+                />
+              </label>
+            ))}
+            <label className="block text-xs">
+              Expected behavior and criteria
+              <textarea
+                aria-label="Evaluation criteria"
+                value={evaluation.success_criteria}
+                disabled={busy || promptDirty || !onEvaluationEdit}
+                onChange={(e) =>
+                  changeEvaluation({
+                    ...evaluation,
+                    success_criteria: e.target.value,
+                  })
+                }
+                className="mt-2 min-h-28 w-full rounded-lg border border-builder-border bg-builder-surface p-3 text-sm"
+              />
+            </label>
+            {evaluationDirty && (
+              <p className="text-xs text-builder-warn">
+                Save these tests as a new draft above, then review and accept
+                it. A retest still uses its original evaluation.
+              </p>
+            )}
+          </section>
+        )}
         <details>
           <summary className="cursor-pointer text-xs text-builder-fg-muted">
             Evaluation details
@@ -201,11 +317,38 @@ export function ArtifactPanel({
             <Download size={13} /> Export agent and evaluation
           </Button>
         </details>
-        {artifact.accepted && (
-          <details>
-            <summary className="cursor-pointer text-xs text-builder-fg-muted">
-              Try a message yourself
+        {capabilities.length > 0 && (
+          <details className="text-xs leading-5 text-builder-fg-muted">
+            <summary className="cursor-pointer">
+              Preview capabilities and documentation
             </summary>
+            {capabilities.map((c) => (
+              <p className="mt-2" key={c.id}>
+                <strong>{c.label}:</strong> {c.description}{" "}
+                {c.url && (
+                  <a
+                    className="underline"
+                    href={c.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    Documentation ↗
+                  </a>
+                )}
+              </p>
+            ))}
+          </details>
+        )}
+        {
+          <details open>
+            <summary className="cursor-pointer text-xs text-builder-fg-muted">
+              Try a customer message
+            </summary>
+            <p className="mt-2 text-xs leading-5 text-builder-fg-muted">
+              {artifact.accepted
+                ? "Send one message to the accepted text preview. This is separate from running an evaluation."
+                : "Review the instructions and criteria, then accept the draft to try a customer message. You can revise it in Design first."}
+            </p>
             <textarea
               aria-label="Agent playground message"
               value={test}
@@ -215,13 +358,13 @@ export function ArtifactPanel({
             />
             <Button
               size="sm"
-              disabled={busy || dirty || !test.trim()}
+              disabled={busy || dirty || !artifact.accepted || !test.trim()}
               onClick={() => onPlay(test)}
             >
               Send to agent
             </Button>
           </details>
-        )}
+        }
       </div>
       <div className="mt-5 flex gap-2 border-t border-builder-border pt-4">
         <Button
@@ -229,7 +372,7 @@ export function ArtifactPanel({
           disabled={busy || dirty || !artifact.accepted}
           onClick={onCheck}
         >
-          Check this agent
+          Run evaluation
         </Button>
         <Button
           variant="outline"

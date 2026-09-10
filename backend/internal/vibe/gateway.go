@@ -176,23 +176,23 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 		if e == nil {
 			actual = &n
 		} else {
-			issue = &Fault{"usage_invalid", "Provider usage could not be accounted. Its reservation remains held."}
+			issue = &Fault{Code: "usage_invalid", Message: "Provider usage could not be accounted. Its reservation remains held."}
 		}
 	}
 	if err == nil && (response.Usage.InputTokens > int64(count.UpperBound) || response.Usage.OutputTokens > int64(req.MaxOutputTokens)) {
-		issue = &Fault{"accounting_bound_exceeded", "Provider usage exceeded its approved context limit."}
+		issue = &Fault{Code: "accounting_bound_exceeded", Message: "Provider usage exceeded its approved context limit."}
 		c, cancel := journalCtx()
 		_, _ = g.Store.DB.Exec(c, "INSERT INTO vibe_disabled_profiles(model,reason) VALUES($1,'token bound exceeded') ON CONFLICT DO NOTHING", model)
 		cancel()
 	}
 	if err == nil && response.FinishReason == provider.FinishReasonMaxTokens {
-		issue = &Fault{"output_truncated", "The model reached its output limit. The result has not been treated as a completed evaluation."}
+		issue = &Fault{Code: "output_truncated", Message: "The model reached its output limit. The result has not been treated as a completed evaluation."}
 	}
 	if actual != nil && *actual > a.MaxCost {
-		issue = &Fault{"accounting_bound_exceeded", "Provider cost exceeded its approved ceiling. Further execution is stopped for accounting review."}
+		issue = &Fault{Code: "accounting_bound_exceeded", Message: "Provider cost exceeded its approved ceiling. Further execution is stopped for accounting review."}
 	}
 	if actual == nil && issue == nil {
-		issue = &Fault{"usage_unknown", "Provider cost is still being reconciled. No further calls will be started."}
+		issue = &Fault{Code: "usage_unknown", Message: "Provider cost is still being reconciled. No further calls will be started."}
 	}
 	c, cancel := journalCtx()
 	defer cancel()

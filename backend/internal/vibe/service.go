@@ -35,6 +35,9 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 		return Operation{}, err
 	}
 	l := LimitsFor(v.Anonymous)
+	if sub.JourneyMode != "" && (sub.Kind != "message" || (sub.JourneyMode != "idea" && sub.JourneyMode != "existing" && sub.JourneyMode != "exploring")) {
+		return Operation{}, fault("invalid_message", "Choose idea, existing agent, or exploration for a design message.")
+	}
 	if sub.ClientID == uuid.Nil || sub.Revision < 0 || len(sub.Content) > l.MessageBytes {
 		return Operation{}, fault("invalid_message", "The message is missing an ID or exceeds its size limit.")
 	}
@@ -44,7 +47,10 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 	if err = s.Gate.Check(ctx, actor, l); err != nil {
 		return Operation{}, err
 	}
-	p := Plan{Submission: sub, Document: v.Document, Anonymous: v.Anonymous, Free: s.Config.FreeOnly}
+	p := Plan{AuthoringVersion: 3, Submission: sub, Document: v.Document, Anonymous: v.Anonymous, Free: s.Config.FreeOnly}
+	if sub.JourneyMode != "" {
+		p.Document.Journey.Mode = sub.JourneyMode
+	}
 	if sub.Kind == "message" || sub.Kind == "build" {
 		if strings.TrimSpace(sub.Content) == "" {
 			return Operation{}, fault("invalid_message", "Write a message first.")
@@ -103,6 +109,9 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 				p.Artifact = &copy
 				break
 			}
+		}
+		if p.Artifact != nil && p.Artifact.IsTestPlan() {
+			return Operation{}, fault("artifact_required", "This is a test plan. Review or export it to test in your own environment; it cannot run a customer trial or evaluation here.")
 		}
 		if p.Artifact == nil {
 			return Operation{}, fault("artifact_required", "Accept the draft before checking it.")
@@ -238,10 +247,10 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 			return fault("attachment_limit", "The conversation's attachment allowance is full.")
 		}
 		v.Document.AttachmentCount++
-		msg := Message{uuid.New(), "user", fmt.Sprintf("Imported %s (%d cases).", c.Bundle.Pack.Name, len(c.Cases)), timestamp()}
+		msg := Message{ID: uuid.New(), Role: "user", Content: fmt.Sprintf("Imported %s (%d cases).", c.Bundle.Pack.Name, len(c.Cases)), CreatedAt: timestamp()}
 		v.Document.Messages = append(v.Document.Messages, msg)
 		v.Document.Artifacts = append(v.Document.Artifacts, Artifact{ID: artifactID, Title: c.Bundle.Pack.Name, AgentPrompt: agentPrompt, Blueprint: b, SourceMessageID: msg.ID, CreatedAt: timestamp()})
-		v.Document.Messages = append(v.Document.Messages, Message{uuid.New(), "assistant", "Your evaluation is ready to review. Check the agent instructions and the examples, then accept the draft when they match what you want to test. Nothing has run yet.", timestamp()})
+		v.Document.Messages = append(v.Document.Messages, Message{ID: uuid.New(), Role: "assistant", Content: "Your evaluation is ready to review. Check the agent instructions and the examples, then accept the draft when they match what you want to test. Nothing has run yet.", CreatedAt: timestamp()})
 		return nil
 	})
 }
@@ -256,7 +265,7 @@ func (s *Service) Save(ctx context.Context, actor string, id uuid.UUID, revision
 			artifact = &v.Document.Artifacts[i]
 		}
 	}
-	if artifact == nil {
+	if artifact == nil || artifact.IsTestPlan() {
 		return uuid.Nil, fault("artifact_required", "Accept an evaluation draft before saving.")
 	}
 	models := v.Document.Models

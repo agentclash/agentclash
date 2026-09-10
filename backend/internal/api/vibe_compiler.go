@@ -7,6 +7,7 @@ import (
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/scoring"
 	"github.com/google/uuid"
+	"reflect"
 	"strings"
 )
 
@@ -14,6 +15,30 @@ import (
 // BundleToComposition conversion. The interactive builder's permissive fallback
 // is deliberately not used: reduced coverage is an error, never a normal run.
 type VibePackCompiler struct{}
+
+// Editing a semantic preview must never discard imported validators, judges,
+// dimensions or payload fields. Only a lossless generated-shape round trip is
+// eligible; other contracts remain available in the advanced builder.
+func canEditVibeEvaluation(content json.RawMessage, l vibe.Limits) bool {
+	var b generatedPackBlueprint
+	if json.Unmarshal(content, &b) != nil || len(b.Judges) != 1 {
+		return false
+	}
+	p := vibe.DraftProposal{Title: b.Name, AgentPrompt: b.Instructions, SuccessCriteria: b.Judges[0].Assertion}
+	for _, c := range b.Cases {
+		input, ok := c.Payload["question"].(string)
+		if !ok {
+			return false
+		}
+		p.Examples = append(p.Examples, input)
+	}
+	roundtrip, err := (VibePackCompiler{}).Draft(p, l)
+	if err != nil {
+		return false
+	}
+	var original, rebuilt any
+	return json.Unmarshal(content, &original) == nil && json.Unmarshal(roundtrip, &rebuilt) == nil && reflect.DeepEqual(original, rebuilt)
+}
 
 func (VibePackCompiler) Instructions() string {
 	return `draft has exactly this shape:

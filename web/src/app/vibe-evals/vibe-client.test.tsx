@@ -214,6 +214,62 @@ function acceptedDraft() {
   session.document.active_artifact_id = "artifact-one";
 }
 
+it("shows an existing-agent plan and documentation without runnable-agent controls", async () => {
+  acceptedDraft();
+  session.document.journey = { mode: "existing", stack: "Python / FastAPI / LangGraph", evidence: "Captured runs" };
+  session.document.artifacts.push({ id: "plan-one", kind: "test_plan", title: "Research agent tests", agent_prompt: "", blueprint: null, accepted: false, source_message_id: "m2", test_plan: { title: "Research agent tests", objective: "Check source quality", scenarios: [{ input: "No evidence", expected: "No qualifying recommendation" }], evidence_needed: ["Sources and output"], next_steps: ["Accept the prompt and run it"], local_test_code: "assert 'mock' == 'mock'" } });
+  respond = async (path) => path === "/config" ? json({ defaults: defaultModels, models: [], capabilities: [{ id: "python_sdk", label: "Python tests", available: false, description: "Runs locally", example: "raise NotImplementedError('Configure your own invocation')", next_steps: ["Review, export and configure local tests"], url: "https://github.com/agentclash/agentclash-evals/blob/main/docs/evaltest/pytest.md" }] }) : json(session);
+  await render();
+  expect(container.querySelector('aside[aria-label="Test plan"]')).toBeTruthy();
+  expect(container.textContent).toContain("Python / FastAPI / LangGraph");
+  expect(container.querySelector('select[aria-label="Agent model"]')).toBeNull();
+  expect([...container.querySelectorAll("button")].some(b => b.textContent === "Run evaluation")).toBe(false);
+  expect(container.querySelector('a[href$="pytest.md"]')).toBeTruthy();
+  expect(container.textContent).toContain("Configure your own invocation");
+  expect(container.textContent).toContain("Review, export and configure local tests");
+  expect(container.textContent).not.toContain("assert 'mock'");
+  expect(container.textContent).not.toContain("Accept the prompt and run it");
+  await click("Try a prompt-only preview");
+  expect(requests.filter(r => r.method === "PATCH").at(-1)?.body).toMatchObject({ preview_consent: true });
+  expect(posts()).toHaveLength(0);
+});
+
+it("persists an explicit existing-agent choice in the design request", async () => {
+  await render();
+  await click("I have an agent that needs testing");
+  await type("My agent runs in Python; I can share captured outputs.");
+  await click("Send message");
+  expect(posts().at(-1)?.body).toMatchObject({ journey_mode: "existing" });
+});
+
+it("shows trial prerequisites and editable actual criteria before accepting a draft", async () => {
+  acceptedDraft();
+  const a = session.document.artifacts[0]; a.accepted = false;
+  a.blueprint = { cases: [{ payload: { question: "No relevant sources" } }], judges: [{ key: "behavior", assertion: "Allow no qualifying recommendation" }], validators: [{ key: "has_answer" }], dimensions: [{}, {}] };
+  session.document.requirements = [{ id: "evidence", statement: "Use supplied evidence", status: "accepted", source_message_id: "user" }];
+  a.criteria_requirement_ids = ["evidence"];
+  await render();
+  expect(container.textContent).toContain("accept the draft to try a customer message");
+  expect(button("Send to agent").disabled).toBe(true);
+  expect(container.querySelector('[aria-label="Criteria sources"]')?.textContent).toContain("Linked requirement · Confirmed by you: Use supplied evidence");
+  await type("State uncertainty when evidence is absent", "Evaluation criteria");
+  expect(button("Run evaluation").disabled).toBe(true);
+  expect(button("Keep it").disabled).toBe(true);
+  await click("Save as a new draft");
+  expect(requests.filter(r => r.method === "PATCH").at(-1)?.body).toMatchObject({ evaluation: { examples: ["No relevant sources"], success_criteria: "State uncertainty when evidence is absent" } });
+  expect(posts()).toHaveLength(0);
+});
+
+it("groups a proposed replacement with its confirmed predecessor and keeps history", async () => {
+  session.document.requirements = [{ id: "old", statement: "Confirm the booking", status: "accepted", source_message_id: "m1" }, { id: "new", statement: "Explain that booking is unavailable", status: "proposed", source_message_id: "m2", supersedes_id: "old", change: "replace" }, { id: "retired", statement: "Old duplicate", status: "superseded", source_message_id: "m0" }];
+  await render();
+  expect(container.textContent).toContain("Previous: Confirm the booking");
+  expect(container.textContent).toContain("Requirement history");
+  expect([...container.querySelectorAll("button")].filter(b => b.textContent === "Confirm")).toHaveLength(1);
+  await click("Dismiss");
+  expect(requests.filter(r => r.method === "PATCH").at(-1)?.body).toMatchObject({ requirement_id: "new", status: "rejected" });
+});
+
 it("requires saving edited instructions as a draft then explicitly accepting before check, playground or Keep", async () => {
   acceptedDraft();
   const original = structuredClone(session.document.artifacts[0]);
@@ -239,17 +295,17 @@ it("requires saving edited instructions as a draft then explicitly accepting bef
     Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(instructions, "Edited policy");
     instructions.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  for (const name of ["Check this agent", "Send to agent", "Keep it"]) {
+  for (const name of ["Run evaluation", "Send to agent", "Keep it"]) {
     await click(name);
     expect(button(name).disabled, name).toBe(true);
   }
   expect(posts()).toHaveLength(0);
   await click("Save as a new draft");
   expect(session.document.artifacts[0]).toEqual(original);
-  expect(button("Check this agent").disabled).toBe(true);
+  expect(button("Run evaluation").disabled).toBe(true);
   expect(button("Keep it").disabled).toBe(true);
   await click("Accept this draft");
-  await click("Check this agent");
+  await click("Run evaluation");
   expect(posts()).toHaveLength(1);
   expect(posts()[0].body.artifact_id).toBe("artifact-two");
 });
@@ -265,7 +321,7 @@ it("clears the execution gate when closing the editor discards its unsaved text"
   await click("Close draft");
   await click("Your agent");
   expect(container.querySelector<HTMLTextAreaElement>('aside textarea')!.value).toBe("Original policy");
-  await click("Check this agent");
+  await click("Run evaluation");
   expect(posts()).toHaveLength(1);
 });
 
@@ -451,7 +507,7 @@ it.each([
   });
   expect(container.querySelector(selector)).toBeNull();
   expect(container.textContent).not.toContain("Your evaluation is saved.");
-  for (const name of ["Keep it", "Check this agent", "Send to agent"]) {
+  for (const name of ["Keep it", "Run evaluation", "Send to agent"]) {
     expect(button(name).disabled).toBe(true);
     await click(name);
   }
