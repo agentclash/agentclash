@@ -41,6 +41,21 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 	if sub.ClientID == uuid.Nil || sub.Revision < 0 || len(sub.Content) > l.MessageBytes {
 		return Operation{}, fault("invalid_message", "The message is missing an ID or exceeds its size limit.")
 	}
+	if sub.Kind == "message" || sub.Kind == "build" {
+		question := briefQuestion(v.Document, sub.Content)
+		// A pre-upgrade starter may already be queued. Let Store.Submit recover
+		// its immutable receipt (or reject changed content) using the same ID.
+		for _, message := range v.Document.Messages {
+			if message.ID == sub.ClientID {
+				question = ""
+				break
+			}
+		}
+		if question != "" {
+			// Existing clients already recognize this as a pre-admission rejection.
+			return Operation{}, fault("invalid_message", question)
+		}
+	}
 	if err = s.Config.ValidateModels(sub.Models, v.Anonymous); err != nil {
 		return Operation{}, err
 	}

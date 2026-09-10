@@ -84,7 +84,7 @@ func TestVibeIntegrationOnboardingFixtures(t *testing.T) {
 		wantDraft  []bool
 		importPack bool
 	}{
-		{name: "casual chat", messages: []string{"I’m figuring out what AI could do for us"}, replies: []string{question("What is one repetitive task your team spends time on?")}, wantDraft: []bool{false}},
+		{name: "casual chat", messages: []string{"I’m figuring out how AI could help our support team."}, replies: []string{question("What is one repetitive task your team spends time on?")}, wantDraft: []bool{false}},
 		{name: "sufficient brief", messages: []string{"Build an agent for persuasive marketing copy using supplied facts and a clear CTA."}, replies: []string{draft("Here is an editable sample and examples to review. Nothing has run.")}, wantDraft: []bool{true}},
 		{name: "existing research agent", messages: []string{"I have a research agent that needs testing", "Python, FastAPI and LangGraph; I can share captured runs", "Where are the SDK docs and output schema?"}, replies: []string{existingQuestion, existingPlan, supportReply}, wantDraft: []bool{false, true, false}},
 		{name: "delegated defaults", messages: []string{"Build a marketing-copy agent. You decide the writing defaults; I have not supplied product facts."}, replies: []string{draft("I used placeholders for unknown facts. Here is an editable sample.")}, wantDraft: []bool{true}},

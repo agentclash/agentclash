@@ -175,6 +175,8 @@ paths:
         Test plans are non-executable. A context_limit failure preserves the conversation
         and exposes bounded section-size diagnostics. No provider attempt is created for
         a context rejected before dispatch. Unknown outcomes must not be automatically replayed.
+        A bare onboarding starter without prior task context returns invalid_message before
+        admission, with a clarification question and no operation, reservation or provider attempt.
       parameters:
         - name: sessionId
           in: path
@@ -206,7 +208,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/VibeOperation' }
-        '400': { description: Invalid request, unusable artifact or evaluation }
+        '400': { description: 'Invalid request or missing task brief, unusable artifact or evaluation' }
         '409': { description: Revision, identity or execution-state conflict }
         '429': { description: Trial, rate or capacity limit }
   /v1/vibe/sessions/{sessionId}/save:
@@ -7143,6 +7145,7 @@ components:
         label: { type: string }
         available: { type: boolean }
         description: { type: string }
+        instructions: { type: string, description: Exact server-owned preview instruction prefix. Display separately as read-only rules while preserving it in effective prompts and exports. }
         url: { type: string, description: Reviewed documentation URL or local docs path }
         example: { type: string, description: Server-owned reviewed example; never executed by Vibe }
         next_steps: { type: array, items: { type: string }, description: Available local handoff actions }

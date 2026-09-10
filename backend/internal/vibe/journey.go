@@ -95,13 +95,14 @@ func (a *assistantReply) unpackArtifact(version int) error {
 }
 
 type Capability struct {
-	ID          string   `json:"id"`
-	Label       string   `json:"label"`
-	Available   bool     `json:"available"`
-	Description string   `json:"description"`
-	URL         string   `json:"url,omitempty"`
-	Example     string   `json:"example,omitempty"`
-	NextSteps   []string `json:"next_steps,omitempty"`
+	ID           string   `json:"id"`
+	Label        string   `json:"label"`
+	Available    bool     `json:"available"`
+	Description  string   `json:"description"`
+	Instructions string   `json:"instructions,omitempty"`
+	URL          string   `json:"url,omitempty"`
+	Example      string   `json:"example,omitempty"`
+	NextSteps    []string `json:"next_steps,omitempty"`
 }
 
 const LocalPythonHandoff = `from agentclash_eval import assert_agent
@@ -131,7 +132,7 @@ func LocalHandoffSteps() []string {
 
 func Capabilities() []Capability {
 	return []Capability{
-		{ID: "text_preview", Label: "Text preview", Available: true, Description: "Analyzes supplied text. No company discovery, source fetching or business actions."},
+		{ID: "text_preview", Label: "Text preview", Available: true, Description: "Analyzes supplied text. No company discovery, source fetching or business actions.", Instructions: previewActionPolicy},
 		{ID: "existing_agent", Label: "Existing agent testing", Description: "Your live agent is not connected. Review supplied examples or export a test plan for your own environment.", URL: "/docs/guides/vibe-evals-existing-agent"},
 		{ID: "voice", Label: "Voice and telephony", Description: "Text/mock tests exclude STT/TTS, acoustic interruptions, real transfers and call latency."},
 		{ID: "python_sdk", Label: "Local Python tests", Description: "Local pytest: assert_agent(output, metrics=[Contains(\"text\")]) from agentclash_eval and agentclash_eval.metrics. Text presence only; your invocation, auth and timeouts.", URL: "https://github.com/agentclash/agentclash-evals/blob/main/docs/evaltest/pytest.md", Example: LocalPythonHandoff, NextSteps: LocalHandoffSteps()},

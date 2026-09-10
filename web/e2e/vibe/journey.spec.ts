@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import type { Operation, Session } from "../../src/lib/vibe";
 
 const models = {
@@ -6,6 +7,7 @@ const models = {
   target: "openai/gpt-4.1-mini",
   evaluator: "openai/gpt-4.1-mini",
 };
+const previewRules = "Preview capabilities: this is a text-only simulation with no connected tools.\n\n";
 
 test("new conversations use the server's free model defaults", async ({ page }) => {
   const id = "liquid/lfm-2.5-2.6b:free";
@@ -22,7 +24,7 @@ test("new conversations use the server's free model defaults", async ({ page }) 
   await page.goto("/vibe-evals");
   await expect(page.getByRole("combobox", { name: "Assistant model" })).toHaveValue(id);
 });
-async function mockVibe(page: Page, options: { paused?: boolean; casual?: boolean; loseAcknowledgement?: boolean } = {}) {
+async function mockVibe(page: Page, options: { paused?: boolean; casual?: boolean; loseAcknowledgement?: boolean; previewRules?: boolean } = {}) {
   const submissions = new Map<string, { body: string; operation: unknown }>();
   const messageRequests: Record<string, unknown>[] = [];
   let lostAcknowledgement = false;
@@ -82,6 +84,7 @@ async function mockVibe(page: Page, options: { paused?: boolean; casual?: boolea
       return send({
         enabled: true,
         defaults: models,
+        capabilities: options.previewRules ? [{ id: "text_preview", label: "Text preview", available: true, description: "Supplied text only", instructions: previewRules }] : [],
         models: [
           { id: models.assistant, name: "GPT-4.1 Mini" },
           { id: "openai/gpt-4.1", name: "GPT-4.1" },
@@ -154,7 +157,7 @@ async function mockVibe(page: Page, options: { paused?: boolean; casual?: boolea
           id: `draft-${messages}`,
           title: "Refund assistant",
           agent_prompt:
-            "Help customers with refunds within 30 days. Escalate unclear cases.",
+            (options.previewRules ? previewRules : "") + "Help customers with refunds within 30 days. Escalate unclear cases.",
           blueprint: {
             name: "Refund check",
             cases: [{ key: "eligible" }, { key: "late" }, { key: "unclear" }],
@@ -346,6 +349,10 @@ test("simple chat sends a real message, offers proposals without a draft and nev
   const mock = await mockVibe(page, { casual: true });
   await page.goto("/vibe-evals");
   await page.getByRole("button", { name: "I’m figuring out what AI could do for us" }).click();
+  await expect(page.getByRole("heading", { name: "What task would you like to make easier?" })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Message Vibe Evals" })).toBeEmpty();
+  expect(mock.messageCount()).toBe(0);
+  await page.getByRole("textbox", { name: "Message Vibe Evals" }).fill("Help me explore how AI could support our customer support team.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(page.getByText("What would you like to explore about support agents?")).toBeVisible();
   await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toHaveCount(0);
@@ -354,6 +361,66 @@ test("simple chat sends a real message, offers proposals without a draft and nev
   await expect(page.getByText("Confirmed by you")).toBeVisible();
   expect(mock.messageCount()).toBe(1);
   expect(mock.snapshot().document.artifacts).toHaveLength(0);
+  expect(mock.checkCount()).toBe(0);
+});
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+  test(`build starter asks for a brief before any request at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const mock = await mockVibe(page);
+    const writes: string[] = [];
+    page.on("request", (request) => {
+      if (request.method() === "POST" && request.url().includes("/v1/vibe/")) writes.push(request.url());
+    });
+    await page.goto("/vibe-evals");
+    await page.getByRole("button", { name: "Help me build an agent", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "What should your agent help with?" })).toBeVisible();
+    const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
+    await expect(composer).toBeFocused();
+    await expect(composer).toBeEmpty();
+    await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeDisabled();
+    await composer.press("Enter");
+    await expect(page.getByRole("complementary", { name: "Agent draft" })).toHaveCount(0);
+    expect(mock.messageCount()).toBe(0);
+    expect(writes).toHaveLength(0);
+    expect(mock.snapshot().id).toBe("");
+    await page.screenshot({ path: test.info().outputPath("starter.png") });
+    await composer.fill("Build a support agent with a 30 day refund policy.");
+    await page.getByRole("button", { name: "I have an agent that needs testing", exact: true }).click();
+    await expect(composer).toHaveValue("Build a support agent with a 30 day refund policy.");
+    await page.getByRole("button", { name: "Help me build an agent", exact: true }).click();
+    await composer.press("Enter");
+    await expect(page.getByRole("complementary", { name: "Agent draft" })).toBeVisible();
+    expect(mock.messageCount()).toBe(1);
+    expect(mock.messageRequests()[0]).toMatchObject({ journey_mode: "idea", content: "Build a support agent with a 30 day refund policy." });
+  });
+}
+
+test("draft editor separates preview rules while edits and exports keep the effective instructions", async ({ page }) => {
+  const mock = await mockVibe(page, { previewRules: true });
+  await page.goto("/vibe-evals");
+  await page.getByRole("textbox", { name: "Message Vibe Evals" }).fill("Build a support agent with a 30 day refund policy.");
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  const instructions = page.getByRole("textbox", { name: "Agent instructions", exact: true });
+  await expect(instructions).toHaveValue("Help customers with refunds within 30 days. Escalate unclear cases.");
+  await expect(page.getByText(previewRules.trim(), { exact: true })).toBeHidden();
+  await page.screenshot({ path: test.info().outputPath("draft-editor.png") });
+  await page.getByText("Preview rules", { exact: true }).click();
+  await expect(page.getByText(previewRules.trim(), { exact: true })).toBeVisible();
+  await page.getByText("Preview rules", { exact: true }).click();
+  await instructions.fill("Use supplied refund facts. Ask when the policy is missing.");
+  await page.getByRole("button", { name: "Save as a new draft", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Accept this draft", exact: true })).toBeEnabled();
+  await expect(instructions).toHaveValue("Use supplied refund facts. Ask when the policy is missing.");
+  const effective = previewRules + "Use supplied refund facts. Ask when the policy is missing.";
+  expect(mock.snapshot().document.artifacts.at(-1)?.agent_prompt).toBe(effective);
+  await page.getByText("Evaluation details", { exact: true }).click();
+  const downloadReady = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export agent and evaluation", exact: true }).click();
+  const download = await downloadReady;
+  const exported = JSON.parse(await readFile((await download.path())!, "utf8"));
+  expect(exported.agent_prompt).toBe(effective);
+  expect(mock.messageCount()).toBe(1);
   expect(mock.checkCount()).toBe(0);
 });
 

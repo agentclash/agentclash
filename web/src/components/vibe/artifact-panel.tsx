@@ -92,6 +92,14 @@ export function ArtifactPanel({
   const [test, setTest] = useState("");
   const initialEvaluation = editableEvaluation(artifact.blueprint);
   const [evaluation, setEvaluation] = useState(initialEvaluation);
+  const previewRules = capabilities.find(
+    (c) => c.id === "text_preview",
+  )?.instructions;
+  // Keep the full prompt in state, including while config is still loading.
+  // Only the exact server-owned prefix moves into the read-only disclosure.
+  const promptPrefix =
+    previewRules && prompt.startsWith(previewRules) ? previewRules : "";
+  const editablePrompt = prompt.slice(promptPrefix.length);
   const promptDirty = prompt !== artifact.agent_prompt;
   const evaluationDirty =
     JSON.stringify(evaluation) !== JSON.stringify(initialEvaluation);
@@ -150,19 +158,29 @@ export function ArtifactPanel({
         </Button>
       </div>
       <div className="min-h-0 flex-1 space-y-5 overflow-y-auto">
-        <p className="text-xs leading-5 text-builder-fg-muted">
-          This text preview runs the instructions below on supplied inputs.
-          Review its tests before accepting. External services are not
-          connected.
-        </p>
+        <div className="space-y-2 text-xs leading-5 text-builder-fg-muted">
+          <p>Text preview · No connected tools</p>
+          <p>Review the instructions and tests, then accept to try a message.</p>
+          {previewRules && (
+            <details>
+              <summary className="w-fit cursor-pointer hover:text-builder-fg">
+                Preview rules
+              </summary>
+              <p className="mt-2">Applied automatically when you try this preview.</p>
+              <p className="mt-2 whitespace-pre-wrap">{previewRules.trim()}</p>
+            </details>
+          )}
+        </div>
         <label className="block text-xs">
           Agent instructions
           <textarea
-            value={prompt}
+            aria-label="Agent instructions"
+            value={editablePrompt}
             onChange={(e) => {
-              setPrompt(e.target.value);
+              const next = promptPrefix + e.target.value;
+              setPrompt(next);
               onDirtyChange?.(
-                e.target.value !== artifact.agent_prompt || evaluationDirty,
+                next !== artifact.agent_prompt || evaluationDirty,
               );
             }}
             disabled={busy || evaluationDirty}
@@ -197,13 +215,15 @@ export function ArtifactPanel({
             Accepted. Edits create a new version.
           </p>
         )}
-        <ModelSelect
-          label="Agent"
-          value={models.target}
-          models={choices}
-          onChange={(target) => onModels({ ...models, target })}
-          disabled={busy}
-        />
+        <div>
+          <ModelSelect
+            label="Agent"
+            value={models.target}
+            models={choices}
+            onChange={(target) => onModels({ ...models, target })}
+            disabled={busy}
+          />
+        </div>
         <Requirements
           requirements={requirements}
           busy={busy}

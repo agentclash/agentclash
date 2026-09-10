@@ -28,6 +28,7 @@ export type Capability = {
   label: string;
   available: boolean;
   description: string;
+  instructions?: string;
   url?: string;
   example?: string;
   next_steps?: string[];

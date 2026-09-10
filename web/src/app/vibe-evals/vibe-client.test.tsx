@@ -242,6 +242,88 @@ it("persists an explicit existing-agent choice in the design request", async () 
   expect(posts().at(-1)?.body).toMatchObject({ journey_mode: "existing" });
 });
 
+it.each([
+  ["Help me build an agent", "What should your agent help with?", "idea"],
+  ["I have an agent that needs testing", "What does your agent do, and how does it run?", "existing"],
+  ["I’m figuring out what AI could do for us", "What task would you like to make easier?", "exploring"],
+])("%s opens intake without creating a session, message or draft", async (label, question, mode) => {
+  harness.params = new URLSearchParams();
+  await render();
+  await click(label);
+  expect(container.querySelector("h1")?.textContent).toBe(question);
+  expect(button(label).getAttribute("aria-pressed")).toBe("true");
+  expect(document.activeElement).toBe(composer());
+  expect(composer().value).toBe("");
+  expect(button("Send message").disabled).toBe(true);
+  await act(async () => composer().dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+  expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
+  expect(container.querySelector("aside")).toBeNull();
+  await type("Help our support team answer refund questions using supplied policy.");
+  await click("Send message");
+  expect(posts()).toHaveLength(1);
+  expect(posts()[0].body).toMatchObject({ journey_mode: mode, content: "Help our support team answer refund questions using supplied policy." });
+});
+
+it("preserves the brief when selecting or switching a starter", async () => {
+  await render();
+  const brief = "A receptionist that answers questions from the business facts I supply.";
+  await type(brief);
+  await click("Help me build an agent");
+  await click("I have an agent that needs testing");
+  expect(composer().value).toBe(brief);
+  expect(document.activeElement).toBe(composer());
+  expect(button("Help me build an agent").getAttribute("aria-pressed")).toBe("false");
+  expect(posts()).toHaveLength(0);
+});
+
+it("turns a typed starter label into an intake question without sending it", async () => {
+  await render();
+  await type("  HELP ME\nBUILD AN AGENT!  ");
+  await click("Send message");
+  expect(container.querySelector("h1")?.textContent).toBe("What should your agent help with?");
+  expect(composer().value).toBe("");
+  expect(document.activeElement).toBe(composer());
+  expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
+});
+
+it("keeps the composer editable after a definite intake rejection", async () => {
+  respond = async (path) => path.endsWith("/messages")
+    ? json({ error: { code: "invalid_message", message: "What should your agent help with?" } }, 400)
+    : path === "/config" ? json({ defaults: defaultModels, models: [] }) : json(session);
+  await render();
+  await type("Help with a new project");
+  await click("Send message");
+  expect(composer().value).toBe("Help with a new project");
+  expect(container.textContent).toContain("What should your agent help with?");
+  expect(container.textContent).not.toContain("Retry submission");
+  expect(button("Send message").disabled).toBe(false);
+  expect(button("Import an evaluation").disabled).toBe(false);
+  expect(posts()).toHaveLength(1);
+});
+
+it("separates late-loading preview rules without marking the draft dirty and preserves them on edit", async () => {
+  acceptedDraft();
+  const rules = "Preview capabilities: text only, no connected actions.\n\n";
+  session.document.artifacts[0].agent_prompt = rules + "Answer supplied refund questions.";
+  const configResponse = deferred<Response>();
+  respond = async (path) => path === "/config" ? configResponse.promise : json(session);
+  await render();
+  const instructions = () => container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Agent instructions"]')!;
+  expect(instructions().value).toBe(session.document.artifacts[0].agent_prompt);
+  await act(async () => configResponse.resolve(json({ defaults: defaultModels, models: [], capabilities: [{ id: "text_preview", label: "Text preview", available: true, description: "Supplied text only", instructions: rules }] })));
+  expect(instructions().value).toBe("Answer supplied refund questions.");
+  const disclosure = [...container.querySelectorAll("details")].find((d) => d.querySelector("summary")?.textContent === "Preview rules")!;
+  expect(disclosure.open).toBe(false);
+  expect(disclosure.textContent).toContain(rules.trim());
+  expect(button("Run evaluation").disabled).toBe(false);
+  expect(container.textContent).not.toContain("Save as a new draft");
+  await type("Ask for the supplied refund policy when it is missing.", "Agent instructions");
+  expect(button("Run evaluation").disabled).toBe(true);
+  await click("Save as a new draft");
+  expect(requests.filter((r) => r.method === "PATCH").at(-1)?.body.agent_prompt).toBe(rules + "Ask for the supplied refund policy when it is missing.");
+  expect(posts()).toHaveLength(0);
+});
+
 it("shows trial prerequisites and editable actual criteria before accepting a draft", async () => {
   acceptedDraft();
   const a = session.document.artifacts[0]; a.accepted = false;

@@ -77,3 +77,15 @@ The local API/worker processes stopped after the customer trial and before the e
 Final changes strengthened guidance on stack/evidence, separating scenario inputs from expected behavior, unknown-outcome retries, truthful revision summaries and server validation of all three example categories. Automated checks cover those changes. They were not given another live authoring trial because the retained design allowance was exhausted. The capped audit therefore does **not** establish that all four founder paths now produce consistently good plans.
 
 Real WorkOS saving remains separately unverified. API tests cover saving with test authentication; there was no real sign-in/save, connected customer system, audio execution or production deployment. Raw audit transcripts, provider journals, browser state and credentials remain outside the patch.
+
+## Starter UX follow-up
+
+Manual testing exposed a first-step failure: submitting the prefilled “Help me build an agent” label produced a generic draft before the user described a task. Selecting any starter now displays one relevant intake question and focuses the composer. It preserves an existing brief and creates no session, message, artifact or AI request. Journey intent is sent with the user's actual brief.
+
+The backend rejects a bare starter without task context with the existing `invalid_message` code before admission, rate counting or budget reservation. Cached clients already recognize this rejection, so they receive a clarification question and the composer stays editable. Previously admitted starter submissions retain their original idempotent receipt. The authoring guidance also explicitly asks one question when the job is unknown.
+
+The draft editor displays authored instructions first. The exact server-owned preview prefix appears in a collapsed, read-only “Preview rules” disclosure, supplied through the optional capability `instructions` field. The full prompt remains intact in state, edits and existing exports. Late config loading does not mark an accepted draft dirty, and legacy prompts without the prefix remain readable. Compatible backend handling was started locally before the updated UI.
+
+Follow-up verification: 113 top-level Go/PostgreSQL race tests, 294 including subtests, with no failures or skips; 47 VibeClient component tests; 13 Playwright tests, including desktop/mobile intake, preserved typed briefs, and effective prompt exports. Backend binaries build, backend vet, TypeScript, changed-file ESLint, OpenAPI validation and patch checks pass. Founder initial/repair context checks still pass; initial bounds are 15,233, 13,669, 15,413 and 16,028. The previously reported unrelated repository failures remain outside this follow-up. No additional live AI requests were used.
+
+To check manually, preserve any unsent message, open a new Vibe conversation, and select “Help me build an agent.” The page should ask “What should your agent help with?” with an empty, focused composer and no draft. Type a specific brief before sending. In a resulting draft, the editor should start with the agent's instructions; expand “Preview rules” to inspect the automatic rules.
