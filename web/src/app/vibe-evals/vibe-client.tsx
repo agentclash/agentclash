@@ -86,21 +86,21 @@ const starters = [
     label: "I have an agent that needs testing",
     question: "What does your agent do, and how does it run?",
     help: "Share the setup you know and what you can provide, such as sample replies, logs, or instructions.",
-    placeholder: "My agent helps with… It runs on… I can share…",
+    placeholder: "A support agent built in Python. I can share its replies…",
   },
   {
     mode: "idea",
     label: "Help me build an agent",
     question: "What should your agent help with?",
     help: "Describe the job and who it’s for. A sentence is enough to start.",
-    placeholder: "I want an agent that helps [who] with [task]…",
+    placeholder: "An agent that answers customer questions for my shop…",
   },
   {
     mode: "exploring",
     label: "I’m figuring out what AI could do for us",
     question: "What task would you like to make easier?",
     help: "Tell me about one part of your work that takes too much time or keeps going wrong.",
-    placeholder: "We spend a lot of time on…",
+    placeholder: "We spend hours sorting customer emails…",
   },
 ] as const;
 function starterFor(text: string) {
@@ -153,9 +153,8 @@ export function VibeClient() {
   const sessionUnavailable =
     !!requestedSessionID && session?.id !== requestedSessionID;
   const busy = pending || !!active || uncertain || sessionUnavailable;
-  const intake = !session?.document.messages.length
-    ? starters.find((starter) => starter.mode === journeyChoice)
-    : undefined;
+  const starter = starters.find((choice) => choice.mode === journeyChoice);
+  const intake = !session?.document.messages.length ? starter : undefined;
   const journey = session?.document.journey;
   const artifact = session?.document.artifacts
     .filter(
@@ -642,22 +641,20 @@ export function VibeClient() {
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-5 py-8 sm:px-8">
-            {!session?.document.messages.length && (
+            {!session?.document.messages.length && !starter && (
               <div className="pb-10 pt-[min(12vh,100px)]">
                 <ClashMark className="mb-7 size-8 text-builder-fg-muted" />
-                <div aria-live="polite">
+                <div>
                   <h1
-                    id="vibe-intake-question"
                     className="max-w-xl text-3xl font-semibold tracking-tight sm:text-4xl"
                   >
-                    {intake?.question || "What are you working on?"}
+                    What are you working on?
                   </h1>
                   <p
-                    id="vibe-intake-help"
                     className="mt-4 max-w-xl text-sm leading-7 text-builder-fg-muted"
                   >
-                    {intake?.help ||
-                      "Tell me what your agent does, what you want to build, or what isn’t working. We’ll figure out the next step together."}
+                    Tell me what your agent does, what you want to build, or what
+                    isn’t working. We’ll figure out the next step together.
                   </p>
                 </div>
                 <div className="mt-8 flex flex-wrap gap-2">
@@ -680,6 +677,34 @@ export function VibeClient() {
               </div>
             )}
             <div className="space-y-8" role="log" aria-label="Conversation">
+              {starter && (
+                <section aria-label="Getting started" className="space-y-8">
+                  <div className="ml-auto max-w-[88%] rounded-2xl bg-builder-fg px-4 py-2 text-sm leading-7 text-background">
+                    {starter.label}
+                  </div>
+                  <div className="pr-4">
+                    <p className="mb-2 flex items-center gap-2 text-xs font-medium">
+                      <ClashMark className="size-4" /> AgentClash · Design
+                    </p>
+                    <p id="vibe-intake-question" className="text-sm leading-7">
+                      {starter.question}
+                    </p>
+                    <p id="vibe-intake-help" className="mt-2 text-sm leading-7 text-builder-fg-muted">
+                      {starter.help}
+                    </p>
+                    {intake && (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setJourneyChoice(undefined)}
+                        className="mt-4 rounded text-xs text-builder-fg-muted underline underline-offset-4 hover:text-builder-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-builder-border-strong disabled:opacity-50"
+                      >
+                        Change starting point
+                      </button>
+                    )}
+                  </div>
+                </section>
+              )}
               {session?.document.messages.map((message) => (
                 <div
                   key={message.id}
@@ -904,7 +929,7 @@ export function VibeClient() {
           )}
           <p className="mb-2 text-xs font-medium text-builder-fg-muted">
             {intake
-              ? "Describe it below to get started"
+              ? "Your reply"
               : "Design · Discuss or revise your agent and tests"}
           </p>
           <form

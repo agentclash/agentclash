@@ -349,7 +349,7 @@ test("simple chat sends a real message, offers proposals without a draft and nev
   const mock = await mockVibe(page, { casual: true });
   await page.goto("/vibe-evals");
   await page.getByRole("button", { name: "I’m figuring out what AI could do for us" }).click();
-  await expect(page.getByRole("heading", { name: "What task would you like to make easier?" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Getting started" }).getByText("What task would you like to make easier?", { exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Message Vibe Evals" })).toBeEmpty();
   expect(mock.messageCount()).toBe(0);
   await page.getByRole("textbox", { name: "Message Vibe Evals" }).fill("Help me explore how AI could support our customer support team.");
@@ -374,7 +374,10 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     });
     await page.goto("/vibe-evals");
     await page.getByRole("button", { name: "Help me build an agent", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "What should your agent help with?" })).toBeVisible();
+    const opening = page.getByRole("region", { name: "Getting started" });
+    await expect(opening.getByText("Help me build an agent", { exact: true })).toBeVisible();
+    await expect(opening.getByText("What should your agent help with?", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "What are you working on?" })).toHaveCount(0);
     const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
     await expect(composer).toBeFocused();
     await expect(composer).toBeEmpty();
@@ -386,8 +389,10 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     expect(mock.snapshot().id).toBe("");
     await page.screenshot({ path: test.info().outputPath("starter.png") });
     await composer.fill("Build a support agent with a 30 day refund policy.");
+    await page.getByRole("button", { name: "Change starting point", exact: true }).click();
     await page.getByRole("button", { name: "I have an agent that needs testing", exact: true }).click();
     await expect(composer).toHaveValue("Build a support agent with a 30 day refund policy.");
+    await page.getByRole("button", { name: "Change starting point", exact: true }).click();
     await page.getByRole("button", { name: "Help me build an agent", exact: true }).click();
     await composer.press("Enter");
     await expect(page.getByRole("complementary", { name: "Agent draft" })).toBeVisible();

@@ -246,12 +246,15 @@ it.each([
   ["Help me build an agent", "What should your agent help with?", "idea"],
   ["I have an agent that needs testing", "What does your agent do, and how does it run?", "existing"],
   ["I’m figuring out what AI could do for us", "What task would you like to make easier?", "exploring"],
-])("%s opens intake without creating a session, message or draft", async (label, question, mode) => {
+])("%s opens a visible chat exchange without an AI request or draft", async (label, question, mode) => {
   harness.params = new URLSearchParams();
   await render();
   await click(label);
-  expect(container.querySelector("h1")?.textContent).toBe(question);
-  expect(button(label).getAttribute("aria-pressed")).toBe("true");
+  expect(container.querySelector("h1")).toBeNull();
+  const opening = container.querySelector('[role="log"] [aria-label="Getting started"]')!;
+  expect(opening.textContent).toContain(label);
+  expect(opening.textContent).toContain(question);
+  expect(opening.textContent).toContain("AgentClash · Design");
   expect(document.activeElement).toBe(composer());
   expect(composer().value).toBe("");
   expect(button("Send message").disabled).toBe(true);
@@ -262,6 +265,10 @@ it.each([
   await click("Send message");
   expect(posts()).toHaveLength(1);
   expect(posts()[0].body).toMatchObject({ journey_mode: mode, content: "Help our support team answer refund questions using supplied policy." });
+  await act(async () => snapshot({ ...structuredClone(session), revision: 2, event_cursor: 2, document: { ...session.document, messages: [{ id: "brief", role: "user", content: "Help our support team answer refund questions using supplied policy." }] } }));
+  expect(container.querySelector('[aria-label="Getting started"]')?.textContent).toContain(question);
+  expect(container.querySelector('[role="log"]')?.textContent).toContain("Help our support team answer refund questions using supplied policy.");
+  expect(container.textContent).not.toContain("Change starting point");
 });
 
 it("preserves the brief when selecting or switching a starter", async () => {
@@ -269,10 +276,12 @@ it("preserves the brief when selecting or switching a starter", async () => {
   const brief = "A receptionist that answers questions from the business facts I supply.";
   await type(brief);
   await click("Help me build an agent");
+  await click("Change starting point");
   await click("I have an agent that needs testing");
   expect(composer().value).toBe(brief);
   expect(document.activeElement).toBe(composer());
-  expect(button("Help me build an agent").getAttribute("aria-pressed")).toBe("false");
+  expect(container.querySelector('[aria-label="Getting started"]')?.textContent).toContain("I have an agent that needs testing");
+  expect(container.querySelector('[aria-label="Getting started"]')?.textContent).not.toContain("Help me build an agent");
   expect(posts()).toHaveLength(0);
 });
 
@@ -280,7 +289,7 @@ it("turns a typed starter label into an intake question without sending it", asy
   await render();
   await type("  HELP ME\nBUILD AN AGENT!  ");
   await click("Send message");
-  expect(container.querySelector("h1")?.textContent).toBe("What should your agent help with?");
+  expect(container.querySelector('[aria-label="Getting started"]')?.textContent).toContain("What should your agent help with?");
   expect(composer().value).toBe("");
   expect(document.activeElement).toBe(composer());
   expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
