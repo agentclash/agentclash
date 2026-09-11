@@ -72,3 +72,24 @@ claim that a forced process kill can resume an in-memory human-turn activity.
 - Review the exact diff and artifacts and run the configured secret scanner
   before each local commit. Private operational evidence stays outside Git.
 - Stop after the Step 6 handoff. Do not push, provision, cut over or start Step 7.
+
+## Local verification result
+
+The locked expectations above were checked with backend build/vet/full short
+race tests, runtime vet/full short race tests, and focused reruns after the final
+pool and Redis deadline refinements. All passed.
+
+`scripts/deployment/test-maintenance.py` passed against disposable local Temporal
+and PostgreSQL: completion within SDK grace, cancellation/cleanup/retry on a
+replacement worker, five persisted billing/quota/idempotency checks, and the
+read-only drain-audit SQL against the migrated schema. The synthetic activity
+does not call a model or sandbox provider.
+
+HTTP tests passed quiet heartbeats through an idle proxy, cursor replay across
+polls, stream subscription/capacity cleanup, ordinary-request grace, forced close
+and dependency/draining readiness. Native executor cancellation and warm-pool
+tests verify fresh cleanup contexts, late-created sessions and retained errors.
+
+Production E2E and the live/manual cutover checks remain explicitly deferred as
+specified above. See `docs/deployment/maintenance.md` for the operator procedure
+and later deployment requirements. Step 6 is ready for the Step 7 handoff.
