@@ -62,3 +62,4 @@ testing/*
 !testing/codex-aws-migration-step-4-temporal-tls.md
 !testing/codex-aws-migration-step-5-migrator.md
 !testing/codex-aws-migration-step-6-maintenance.md
+!testing/codex-aws-migration-step-7-terminal.md
