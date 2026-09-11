@@ -1,5 +1,6 @@
-import { RedisClient } from "bun";
+import { Redis } from "ioredis";
 import { readFileSync } from "node:fs";
+import { checkServerIdentity } from "node:tls";
 import type { Config } from "./config.ts";
 
 export interface BudgetHold { settle(usd: number): Promise<void> }
@@ -20,7 +21,7 @@ const RESERVE = `
 local raw = redis.call('GET', KEYS[1])
 local total = tonumber(raw or '0')
 if not total or total < 0 then return redis.error_reply('invalid budget') end
-if total + tonumber(ARGV[1]) > tonumber(ARGV[2]) then return 0 end
+if total + tonumber(ARGV[1]) > tonumber(ARGV[2]) + 0.0000000001 then return 0 end
 redis.call('INCRBYFLOAT', KEYS[1], ARGV[1])
 redis.call('EXPIRE', KEYS[1], ARGV[3], 'NX')
 redis.call('SET', KEYS[2], ARGV[1], 'EX', ARGV[3])
@@ -40,18 +41,24 @@ export function createLimits(config: Config): Limits {
     if (config.production) throw new Error("Durable limits required");
     return memoryLimits(config.trialSeconds);
   }
-  let client: RedisClient;
+  let client: Redis;
   try {
-    client = new RedisClient(config.redisUrl, {
-      connectionTimeout: 2000, idleTimeout: 5000, enableOfflineQueue: false,
-      maxRetries: 1,
+    client = new Redis(config.redisUrl, {
+      lazyConnect: true, connectTimeout: 2000, commandTimeout: 2000,
+      enableOfflineQueue: false, maxRetriesPerRequest: 0,
+      autoResendUnfulfilledCommands: false,
+      retryStrategy: attempts => Math.min(attempts * 100, 2000),
       tls: config.redisUrl.startsWith("rediss:") ? {
         rejectUnauthorized: true,
+        servername: new URL(config.redisUrl).hostname.replace(/^\[|\]$/g, ""),
+        checkServerIdentity: (_name, certificate) => checkServerIdentity(
+          new URL(config.redisUrl!).hostname.replace(/^\[|\]$/g, ""), certificate),
         ...(config.redisCaFile ? { ca: readFileSync(config.redisCaFile, "utf8") } : {}),
       } : undefined,
     });
   } catch { throw new Error("Unable to configure durable limits"); }
   // Avoid unhandled connection rejections; health/request calls surface them.
+  client.on("error", () => {}); // Errors are surfaced through sanitized command failures.
   const connected = client.connect().then(() => true, () => false);
   let closed = false;
   const command = async (name: string, args: string[]) => {
@@ -59,7 +66,7 @@ export function createLimits(config: Config): Limits {
     try {
       if (closed) throw new Error();
       return await Promise.race([
-        (async () => { await connected; return client.send(name, args); })(),
+        (async () => { await connected; return client.call(name, ...args); })(),
         new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error()), 2500); }),
       ]);
     } catch { throw new Error("Durable limits unavailable"); }
@@ -84,7 +91,7 @@ export function createLimits(config: Config): Limits {
         await command("EVAL", [SETTLE, "2", key, hold, String(actual)]);
       } };
     },
-    close() { closed = true; client.close(); },
+    close() { closed = true; client.disconnect(); },
   };
 }
 
