@@ -18,8 +18,9 @@ import (
 )
 
 type Server struct {
-	httpServer *http.Server
-	config     Config
+	httpServer  *http.Server
+	config      Config
+	stopStreams context.CancelFunc
 }
 
 type routerOptions struct {
@@ -63,6 +64,8 @@ type routerOptions struct {
 	dbReadiness                dbPinger
 	temporalReadiness          temporalHealthChecker
 	sseGate                    SSEConnectionGate
+	streamOptions              runEventStreamOptions
+	redisReadiness             func(context.Context) error
 }
 
 func NewServer(
@@ -104,6 +107,7 @@ func NewServer(
 	temporalReadiness temporalHealthChecker,
 	cliAuthServices ...CLIAuthService,
 ) *Server {
+	streamCtx, stopStreams := context.WithCancel(context.Background())
 	router := buildRouter(routerOptions{
 		authMode:                   cfg.AuthMode,
 		corsAllowedOrigins:         cfg.CORSAllowedOrigins,
@@ -145,10 +149,13 @@ func NewServer(
 		dbReadiness:                dbReadiness,
 		temporalReadiness:          temporalReadiness,
 		sseGate:                    cfg.SSEConnectionGate,
+		streamOptions:              runEventStreamOptions{shutdownContext: streamCtx, heartbeatInterval: cfg.SSEHeartbeatInterval},
+		redisReadiness:             cfg.RedisReadiness,
 	})
 
 	return &Server{
-		config: cfg,
+		config:      cfg,
+		stopStreams: stopStreams,
 		httpServer: &http.Server{
 			Addr:    cfg.BindAddress,
 			Handler: router,
@@ -157,6 +164,9 @@ func NewServer(
 }
 
 func Run(ctx context.Context, server *Server, logger *slog.Logger) error {
+	if server.stopStreams != nil {
+		defer server.stopStreams()
+	}
 	errCh := make(chan error, 1)
 
 	go func() {
@@ -173,7 +183,7 @@ func Run(ctx context.Context, server *Server, logger *slog.Logger) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), server.config.ShutdownTimeout)
 		defer cancel()
 
-		if err := server.httpServer.Shutdown(shutdownCtx); err != nil {
+		if err := server.shutdown(shutdownCtx); err != nil {
 			return err
 		}
 
@@ -190,6 +200,18 @@ func Run(ctx context.Context, server *Server, logger *slog.Logger) error {
 
 		return nil
 	}
+}
+
+// shutdown cancels only long-lived streams. Ordinary requests retain their
+// contexts until the graceful deadline; Close cancels them if that expires.
+func (s *Server) shutdown(ctx context.Context) error {
+	if s.stopStreams != nil {
+		s.stopStreams()
+	}
+	if err := s.httpServer.Shutdown(ctx); err != nil {
+		return errors.Join(err, s.httpServer.Close())
+	}
+	return nil
 }
 
 func newRouter(
@@ -350,9 +372,10 @@ func buildRouter(opts routerOptions) http.Handler {
 	router.Use(requestIDMiddleware())
 	router.Use(recoverer(logger))
 	router.Use(requestLogger(logger))
+	router.Use(shutdownIngress(opts.streamOptions.shutdownContext))
 	router.Use(newCORSMiddleware(authMode, corsAllowedOrigins))
 	router.Get("/healthz", healthzHandler)
-	router.Get("/healthz/ready", healthzReadyHandler(opts.dbReadiness, opts.temporalReadiness))
+	router.Get("/healthz/ready", healthzReadyHandler(opts.dbReadiness, opts.temporalReadiness, readinessOptions{redis: opts.redisReadiness, shutdownContext: opts.streamOptions.shutdownContext}))
 	extractWorkspaceID := func(r *http.Request) (uuid.UUID, bool) {
 		// Try context first (set by authorizeWorkspaceAccess middleware).
 		if wsID, err := WorkspaceIDFromContext(r.Context()); err == nil {
@@ -390,7 +413,7 @@ func buildRouter(opts routerOptions) http.Handler {
 	registerHostedIntegrationRoutes(router, logger, hostedRunIngestionService)
 	registerGitHubWebhookRoute(router, logger, githubIntegrationService)
 	registerDodoWebhookRoute(router.With(rateLimiter.Middleware("default", extractWorkspaceID)), logger, billingService)
-	registerEventStreamRoute(router, logger, authenticator, runReadService, eventSubscriber, opts.sseGate)
+	registerEventStreamRoute(router, logger, authenticator, runReadService, eventSubscriber, opts.sseGate, opts.streamOptions)
 
 	if cliAuthService != nil {
 		router.With(rateLimiter.Middleware("default", extractWorkspaceID)).

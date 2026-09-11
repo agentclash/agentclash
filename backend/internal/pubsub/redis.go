@@ -47,6 +47,8 @@ func NewRedisClient(cfg RedisConfig) (*redis.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse redis url: %w", err)
 	}
+	// Respect request/readiness and shutdown deadlines during network I/O.
+	opts.ContextTimeoutEnabled = true
 	opts.MaxRetries = cfg.MaxRetries
 	opts.DialTimeout = cfg.DialTimeout
 	opts.ReadTimeout = cfg.ReadTimeout

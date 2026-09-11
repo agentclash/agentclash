@@ -25,20 +25,22 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	cfg, err := api.LoadConfigFromEnv()
 	if err != nil {
 		logger.Error("failed to load api server config", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	metricsCfg := observability.LoadConfigFromEnv()
 	metricsRT, err := observability.Start(context.Background(), metricsCfg, logger, "api-server")
 	if err != nil {
 		logger.Error("failed to start metrics", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer func() { _ = metricsRT.Close(context.Background()) }()
 	if metricsCfg.Enabled {
@@ -54,7 +56,7 @@ func main() {
 	db, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("failed to connect to postgres", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer db.Close()
 
@@ -66,7 +68,7 @@ func main() {
 	)
 	if err != nil {
 		logger.Error("failed to connect to temporal", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer temporalClient.Close()
 
@@ -77,9 +79,10 @@ func main() {
 		redisClient, redisErr := pubsub.NewRedisClient(redisCfg)
 		if redisErr != nil {
 			logger.Error("failed to connect to redis", "error", redisErr)
-			os.Exit(1)
+			return 1
 		}
 		defer redisClient.Close()
+		cfg.RedisReadiness = func(ctx context.Context) error { return redisClient.Ping(ctx).Err() }
 		eventPublisher = pubsub.NewRedisPublisher(redisClient)
 		eventSubscriber = pubsub.NewRedisSubscriber(redisClient, logger)
 		logger.Info("redis event streaming: enabled")
@@ -99,7 +102,7 @@ func main() {
 	})
 	if err != nil {
 		logger.Error("failed to initialize artifact storage", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	payloadResolver := runevents.NewResolver(runevents.OpenFunc(func(ctx context.Context, key string) (io.ReadCloser, error) {
 		rc, _, err := artifactStore.OpenObject(ctx, key)
@@ -144,7 +147,7 @@ func main() {
 	multiTurnManager := api.NewMultiTurnManager(authorizer, repo, repository.NewMultiTurnHumanTurnStore(db))
 	if !runReadManager.InsightsConfigured() {
 		logger.Error("run ranking insights client is not configured")
-		os.Exit(1)
+		return 1
 	}
 	replayReadManager := api.NewReplayReadManager(authorizer, repo)
 	compareReadManager := api.NewCompareReadManager(authorizer, repo)
@@ -241,7 +244,7 @@ func main() {
 		client, perr := posthog.NewClient(posthogCfg, logger)
 		if perr != nil {
 			logger.Error("failed to initialize posthog client", "error", perr)
-			os.Exit(1)
+			return 1
 		}
 		posthogClient = client
 		logger.Info("posthog analytics: enabled")
@@ -253,7 +256,7 @@ func main() {
 	} else {
 		if posthog.AnalyticsRequired() {
 			logger.Error("posthog analytics is required but POSTHOG_API_KEY is not set")
-			os.Exit(1)
+			return 1
 		}
 		logger.Info("posthog analytics: disabled (POSTHOG_API_KEY not set)")
 	}
@@ -276,7 +279,7 @@ func main() {
 		}, repo, logger)
 		if err != nil {
 			logger.Error("failed to initialize workos authenticator", "error", err)
-			os.Exit(1)
+			return 1
 		}
 		workosAuth.WithProductAnalytics(productAnalytics)
 		authenticator = api.NewCompositeAuthenticator(workosAuth, cliTokenAuth)
@@ -331,6 +334,7 @@ func main() {
 
 	if err := api.Run(ctx, server, logger); err != nil {
 		logger.Error("api server stopped with error", "error", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }
