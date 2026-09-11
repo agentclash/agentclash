@@ -81,8 +81,10 @@ Pin chart `image.tag` (or digests) to the release tag.
 
 ## Upgrades
 
-1. Apply DB migrations (`goose` / `backend/scripts/migrate.sh`) before rolling
-   api-server/worker when the release includes schema changes.
+1. Run the [application migrator](application-migrations.md) as a one-off job
+   and check its exit status before rolling api-server/worker. The existing
+   `backend/scripts/migrate.sh` hook delegates to that runner. Do not use numeric
+   Goose versions: this application preserves a full-filename migration ledger.
 2. `helm upgrade` with the new chart/`appVersion`.
 3. Watch Temporal worker slot metrics (Fleet 14) and KEDA HPA events.
 
