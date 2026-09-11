@@ -14,6 +14,7 @@ import (
 
 	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/secrets"
+	"github.com/agentclash/agentclash/backend/internal/temporalutil"
 	"github.com/google/uuid"
 )
 
@@ -54,6 +55,7 @@ type Config struct {
 	DatabaseURL                          string
 	TemporalAddress                      string
 	TemporalNamespace                    string
+	TemporalConnection                   temporalutil.ConnectionConfig
 	HostedRunCallbackSecret              string
 	CORSAllowedOrigins                   map[string]struct{} // parsed from CORS_ALLOWED_ORIGINS; empty means wildcard in dev, deny in prod
 	ShutdownTimeout                      time.Duration
@@ -316,6 +318,10 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, err
 	}
 	cfg.SecretsCipher = secretsCipher
+	cfg.TemporalConnection, err = temporalutil.LoadConnectionConfigFromEnv(appEnvironment)
+	if err != nil {
+		return Config{}, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
 
 	return cfg, nil
 }

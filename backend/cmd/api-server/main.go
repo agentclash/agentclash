@@ -61,6 +61,7 @@ func main() {
 	temporalClient, err := temporalutil.NewClient(
 		cfg.TemporalAddress,
 		cfg.TemporalNamespace,
+		cfg.TemporalConnection,
 		temporalutil.WithMetricsHandler(metricsRT.TemporalMetricsHandler()),
 	)
 	if err != nil {

@@ -1,13 +1,50 @@
 package worker
 
 import (
+	"encoding/base64"
 	"errors"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/temporalutil"
 	"github.com/agentclash/agentclash/backend/internal/workflow"
 )
+
+func TestLoadConfigFromEnvTemporalConnection(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		apiKey  string
+		tls     string
+		wantErr bool
+	}{
+		{name: "existing Cloud mode", apiKey: "temporal-test-key"},
+		{name: "reject plaintext production", wantErr: true},
+		{name: "reject unauthenticated production TLS", tls: "true", wantErr: true},
+		{name: "reject disabling Cloud TLS", apiKey: "temporal-test-key", tls: "false", wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			for _, key := range []string{"TEMPORAL_TLS_ENABLED", "TEMPORAL_TLS_CA_FILE", "TEMPORAL_TLS_SERVER_NAME", "TEMPORAL_TLS_CERT_FILE", "TEMPORAL_TLS_KEY_FILE"} {
+				unsetEnv(t, key)
+			}
+			t.Setenv("APP_ENV", "production")
+			t.Setenv("AGENTCLASH_SECRETS_MASTER_KEY", base64.StdEncoding.EncodeToString(make([]byte, 32)))
+			t.Setenv("SANDBOX_PROVIDER", "unconfigured")
+			t.Setenv("TEMPORAL_API_KEY", test.apiKey)
+			if test.tls != "" {
+				t.Setenv("TEMPORAL_TLS_ENABLED", test.tls)
+			}
+			_, err := LoadConfigFromEnv()
+			if test.wantErr {
+				if !errors.Is(err, ErrInvalidConfig) || !errors.Is(err, temporalutil.ErrInvalidConfig) {
+					t.Fatalf("expected wrapped Temporal configuration error, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
 
 func TestLoadConfigFromEnvUsesDefaultsWhenUnset(t *testing.T) {
 	unsetEnv(t, "APP_ENV")

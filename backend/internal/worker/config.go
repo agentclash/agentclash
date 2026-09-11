@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/secrets"
+	"github.com/agentclash/agentclash/backend/internal/temporalutil"
 	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/agentclash/agentclash/runtime/provider/throttle"
 )
@@ -45,6 +46,7 @@ type Config struct {
 	DatabaseURL                  string
 	TemporalAddress              string
 	TemporalNamespace            string
+	TemporalConnection           temporalutil.ConnectionConfig
 	Identity                     string
 	TaskQueue                    string   // primary/legacy display queue (first of TaskQueues)
 	TaskQueues                   []string // Fleet queue classes this process serves
@@ -83,9 +85,9 @@ type ArtifactStorageConfig struct {
 }
 
 type SandboxConfig struct {
-	Provider string
-	E2B      E2BConfig
-	Docker   DockerSandboxConfig
+	Provider   string
+	E2B        E2BConfig
+	Docker     DockerSandboxConfig
 	Kubernetes KubernetesSandboxConfig
 	// MaxConcurrent bounds live sandboxes across the worker (0 = unlimited).
 	MaxConcurrent int
@@ -366,11 +368,17 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, fmt.Errorf("WORKER_TASKQUEUE_ACTIVITIES_PER_SECOND must be >= 0")
 	}
 
+	temporalConnection, err := temporalutil.LoadConnectionConfigFromEnv(appEnvironment)
+	if err != nil {
+		return Config{}, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
+
 	return Config{
 		AppEnvironment:               appEnvironment,
 		DatabaseURL:                  databaseURL,
 		TemporalAddress:              temporalAddress,
 		TemporalNamespace:            temporalNamespace,
+		TemporalConnection:           temporalConnection,
 		Identity:                     identity,
 		TaskQueue:                    primaryQueue,
 		TaskQueues:                   taskQueues,
