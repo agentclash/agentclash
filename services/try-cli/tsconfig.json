@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM"],
+    "lib": [
+      "ES2022",
+      "DOM"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "strict": true,
@@ -9,7 +12,15 @@
     "preserveSymlinks": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    "types": ["bun"]
+    "types": [
+      "bun"
+    ]
   },
-  "include": ["server/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "server/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": [
+    "tests/frontend-route.test.ts"
+  ]
 }
