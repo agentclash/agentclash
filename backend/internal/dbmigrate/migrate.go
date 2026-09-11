@@ -122,9 +122,17 @@ func apply(ctx context.Context, conn *pgx.Conn, migration migration) error {
 }
 
 func closeConnection(conn *pgx.Conn) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 	_ = conn.Close(ctx)
+	// After a context cancellation pgx marks the connection closed before its
+	// background cleanup sends PostgreSQL's CancelRequest. A one-off process
+	// must wait for that cleanup, or os.Exit can kill the goroutine and leave
+	// the server query (and its session lock) alive until statement_timeout.
+	select {
+	case <-conn.PgConn().CleanupDone():
+	case <-ctx.Done():
+	}
 }
 
 // Database errors can contain passwords, endpoints, SQL and row values. Never

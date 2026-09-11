@@ -274,6 +274,7 @@ func TestIntegrationInterruptedMigration(t *testing.T) {
 			if err := resultOf(t, result); err == nil {
 				t.Fatal("interrupted migration succeeded")
 			}
+			assertBool(t, conn, "SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND application_name='agentclash-migrator' AND wait_event='PgSleep')", false)
 			assertBool(t, conn, "SELECT to_regclass('public.example') IS NOT NULL", false)
 			if len(ledger(t, conn)) != 0 {
 				t.Fatal("interrupted migration was recorded")
