@@ -61,3 +61,4 @@ testing/*
 !testing/feat-local-m1-byo-keys.md
 !testing/codex-aws-migration-step-4-temporal-tls.md
 !testing/codex-aws-migration-step-5-migrator.md
+!testing/codex-aws-migration-step-6-maintenance.md
