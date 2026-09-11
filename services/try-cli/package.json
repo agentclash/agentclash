@@ -10,5 +10,9 @@
   "dependencies": {
     "@try-cli/core": "file:../../try-cli/packages/core",
     "e2b": "^2.6.4"
+  },
+  "devDependencies": {
+    "@types/bun": "1.3.10",
+    "typescript": "5.9.3"
   }
 }
