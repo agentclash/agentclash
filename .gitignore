@@ -64,3 +64,4 @@ testing/*
 !testing/codex-aws-migration-step-6-maintenance.md
 !testing/codex-aws-migration-step-7-terminal.md
 !testing/codex-aws-migration-step-8-infrastructure.md
+!testing/codex-aws-migration-step-9-cicd.md
