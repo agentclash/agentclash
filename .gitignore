@@ -66,3 +66,4 @@ testing/*
 !testing/codex-aws-migration-step-8-infrastructure.md
 !testing/codex-aws-migration-step-9-cicd.md
 !testing/codex-aws-migration-step-9-1-patches.md
+!testing/codex-aws-migration-step-9-2-platform-images.md
