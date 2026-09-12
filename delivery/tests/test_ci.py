@@ -107,6 +107,10 @@ class CITests(unittest.TestCase):
             all(selected[g] for g in ("backend", "runtime", "cli", "images"))
         )
 
+    def test_secret_policy_and_toolchain_changes_are_checked(self):
+        self.assertTrue(select([".gitleaks.toml"])["platform"])
+        self.assertTrue(all(select([".tool-versions"]).values()))
+
     def test_core_demo_and_migrator_dependencies(self):
         for path in (
             "try-cli/packages/core/src/sessions.ts",

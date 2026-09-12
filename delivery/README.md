@@ -215,6 +215,10 @@ reproducible local check group. Platform checks need the pinned cfn-lint/PyYAML/
 versions in the workflow. `package.py` accepts the checksum-verified Linux Compose
 binary and produces a deterministic private bundle. Unit tests exercise failed
 stops/migrations/backups/readiness/promotion, immutable artifacts and policy guards.
+Platform checks also exercise `.gitleaks.toml` with the pinned scanner: reviewed
+non-secret fixture values must match their exact paths, while changed values and
+paths must fail. Release scans use this explicit policy and reject inline allow
+comments/external ignore files; never exempt a whole test directory.
 See [verification](VERIFICATION.md) for completed local checks and limitations.
 
 The resource shape and planning cost remain the Step 8 baseline, approximately

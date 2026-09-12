@@ -19,8 +19,11 @@ def select(paths, force=False):
             "go.work",
             "go.work.sum",
             ".dockerignore",
+            ".tool-versions",
         ):
             return dict.fromkeys(GROUPS, True)
+        if path == ".gitleaks.toml":
+            selected["platform"] = True
         if path.startswith("runtime/"):
             for key in ("backend", "runtime", "cli", "images"):
                 selected[key] = True

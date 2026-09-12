@@ -38,7 +38,7 @@ still needs a live availability/compatibility check. Caddy remains at 2.11.4.
 | Valkey | Real Go/Linux-Bun clients, TLS/ACLs, transactions/Lua/pub-sub, AOF restart/offline restore, spend/trial expiry and corrupt-tail rejection passed |
 | Caddy image | Non-root startup, all-method maintenance fence, reload and request-metadata removal from error logs passed |
 | Bootstrap | Verified Compose 5.5.1 bytes, deterministic archive and allowlisted inventory; secret and Go-binary high/critical scans passed |
-| Delivery/platform checks | 35 delivery tests and 13 platform guards passed; actionlint, cfn-lint, Python lint and shell syntax checks passed |
+| Delivery/platform checks | 36 delivery tests and 13 platform guards passed; real secret-policy regression checks, actionlint, cfn-lint, Python lint and shell syntax checks passed |
 
 The migration test initially exposed a stale Go 1.25 Dockerfile pin, which was
 corrected in all existing backend build files. The platform rehearsal exposed a
@@ -52,6 +52,17 @@ An empty result set is refused. Scanning the archive's non-executable copy had
 returned no binary coverage; that was not accepted as a vulnerability pass.
 Regression tests cover omitted/wrong binary coverage and scanner failure.
 [Trivy Go-binary coverage](https://trivy.dev/docs/latest/guide/coverage/language/golang/).
+
+The full source export initially triggered 20 findings in existing fixtures,
+semantic incident/case identifiers, invalid PEM marker tests, canary examples,
+the development-only webhook default and the public IndexNow verification key.
+Each was reviewed. `.gitleaks.toml` retains all built-in detectors and permits
+only the exact reviewed non-secret value together with its exact source path
+and detector. The source gate then passed. Real scanner regression checks inject
+different generic/PAT-shaped values into every permitted source path and move a
+reviewed fixture to an unreviewed path; all are rejected. Release scanning also
+disables inline allow comments and external ignore files. This fixture policy
+does not create any vulnerability exception.
 
 ## Compatibility and remaining gates
 

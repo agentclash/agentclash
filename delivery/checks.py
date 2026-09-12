@@ -77,6 +77,18 @@ def check(group, evidence):
     elif group == "platform":
         actionlint = evidence / "actionlint"
         install("actionlint", actionlint)
+        gitleaks = evidence / "gitleaks"
+        install("gitleaks", gitleaks)
+        run(
+            [
+                sys.executable,
+                "delivery/secret_policy.py",
+                "--gitleaks",
+                str(gitleaks),
+                "--evidence-dir",
+                str(evidence),
+            ]
+        )
         run(
             [
                 str(actionlint),
