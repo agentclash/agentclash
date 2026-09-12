@@ -2,6 +2,7 @@
 """Explicit new-volume initialization or existing-volume mount; never format on boot."""
 
 import argparse
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -18,6 +19,12 @@ def main():
     require(os.geteuid() == 0, "Root operator required")
     settings = private_json("/etc/agentclash/host.json")
     account_guard(settings)
+    with open("/var/lib/agentclash/deployment.lock", "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        operate(settings, args.command)
+
+
+def operate(settings, command):
     volume_id = settings["cache_volume_id"]
     require(
         volume_id.startswith("vol-")
@@ -30,14 +37,14 @@ def main():
     matches = [
         disk["path"]
         for disk in disks
-        if disk.get("serial", "").replace("-", "") == volume_id.replace("-", "")
+        if (disk.get("serial") or "").replace("-", "") == volume_id.replace("-", "")
     ]
     require(
         len(matches) == 1, "Expected retained EBS volume not attached unambiguously"
     )
     device = matches[0]
     signatures = json.loads(run(["wipefs", "--no-act", "--json", device]))["signatures"]
-    if args.command == "initialize":
+    if command == "initialize":
         require(
             not signatures and not settings.get("cache_uuid"),
             "Refusing to format existing or previously identified state",
@@ -48,7 +55,7 @@ def main():
             settings.get("cache_uuid"), "Recorded filesystem UUID required for rebuild"
         )
     uuid = run(["blkid", "-s", "UUID", "-o", "value", device]).decode().strip()
-    if args.command == "mount":
+    if command == "mount":
         require(uuid == settings["cache_uuid"], "Filesystem UUID mismatch")
     target = Path("/var/lib/agentclash/cache")
     target.mkdir(mode=0o700, exist_ok=True)
@@ -58,7 +65,7 @@ def main():
     )
     run(["mount", "-o", "nodev,nosuid,noexec", "UUID=" + uuid, str(target)])
     marker = target / ".volume-identity"
-    if args.command == "initialize":
+    if command == "initialize":
         marker.write_text(volume_id + "\n")
         marker.chmod(0o600)
         settings["cache_uuid"] = uuid

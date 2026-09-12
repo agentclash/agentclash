@@ -17,6 +17,7 @@ import subprocess
 import time
 
 from common import (
+    Refused,
     account_guard,
     aws,
     digest,
@@ -228,6 +229,27 @@ def stop_applications():
     marker.unlink()
 
 
+def wait_for_platform(timeout=180):
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            compose("run", "--rm", "-T", "--no-deps", "temporal-admin", timeout=15)
+            require(
+                compose(
+                    "run", "--rm", "-T", "--no-deps", "cache-admin", timeout=15
+                ).strip()
+                == b"PONG",
+                "Cache authentication/health failed",
+            )
+            break
+        except (Refused, subprocess.TimeoutExpired):
+            require(
+                time.monotonic() < deadline,
+                "Platform readiness deadline exceeded",
+            )
+            time.sleep(2)
+
+
 def main():
     os.umask(0o077)
     parser = argparse.ArgumentParser()
@@ -278,26 +300,7 @@ def main():
             )
             fence()
             compose("up", "-d", "--no-deps", "valkey", "temporal", "caddy", timeout=300)
-            deadline = time.monotonic() + 180
-            while True:
-                try:
-                    compose(
-                        "run", "--rm", "-T", "--no-deps", "temporal-admin", timeout=15
-                    )
-                    require(
-                        compose(
-                            "run", "--rm", "-T", "--no-deps", "cache-admin", timeout=15
-                        ).strip()
-                        == b"PONG",
-                        "Cache authentication/health failed",
-                    )
-                    break
-                except (Refused, subprocess.TimeoutExpired):
-                    require(
-                        time.monotonic() < deadline,
-                        "Platform readiness deadline exceeded",
-                    )
-                    time.sleep(2)
+            wait_for_platform()
 
         elif args.command in ("db-init", "db-grants"):
             stopped()
