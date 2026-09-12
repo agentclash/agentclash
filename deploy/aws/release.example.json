@@ -1,0 +1,12 @@
+{
+  "account_id": "<member-account-id>",
+  "region": "ap-southeast-1",
+  "platform": "linux/amd64",
+  "platform_lock_sha256": "<sha256-of-images.lock.json>",
+  "images": {
+    "api": "<private-ecr-repository-uri>@sha256:<image-digest>",
+    "worker": "<private-ecr-repository-uri>@sha256:<image-digest>",
+    "terminal": "<private-ecr-repository-uri>@sha256:<image-digest>",
+    "app-schema": "<private-ecr-repository-uri>@sha256:<image-digest>"
+  }
+}

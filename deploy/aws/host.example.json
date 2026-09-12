@@ -1,0 +1,57 @@
+{
+  "account_id": "<member-account-id>",
+  "region": "ap-southeast-1",
+  "operator": "<confirmed-platform-operator>",
+  "artifact_bucket": "<private-bucket>",
+  "repository": "<private-ecr-repository-uri>",
+  "database_endpoint": "<rds-dns-name>",
+  "cache_volume_id": "<retained-ebs-volume-id>",
+  "cache_uuid": "<recorded-uuid-omit-only-before-new-volume-initialization>",
+  "secrets": {
+    "api": {
+      "arn": "<api-secret-arn>",
+      "version_id": "<immutable-secret-version-id>"
+    },
+    "worker": {
+      "arn": "<worker-secret-arn>",
+      "version_id": "<immutable-secret-version-id>"
+    },
+    "terminal": {
+      "arn": "<terminal-secret-arn>",
+      "version_id": "<immutable-secret-version-id>"
+    },
+    "app-schema": {
+      "arn": "<app-schema-secret-arn>",
+      "version_id": "<immutable-secret-version-id>"
+    },
+    "temporal": {
+      "arn": "<temporal-secret-arn>",
+      "version_id": "<immutable-secret-version-id>"
+    },
+    "temporal-schema": {
+      "arn": "<temporal-schema-secret-arn>",
+      "version_id": "<immutable-secret-version-id>"
+    },
+    "temporal-admin": {
+      "arn": "<temporal-admin-secret-arn>",
+      "version_id": "<immutable-secret-version-id>"
+    },
+    "database-admin": {
+      "arn": "<database-admin-secret-arn>",
+      "version_id": "<immutable-secret-version-id>"
+    },
+    "valkey": {
+      "arn": "<valkey-secret-arn>",
+      "version_id": "<immutable-secret-version-id>"
+    },
+    "cache-admin": {
+      "arn": "<cache-admin-secret-arn>",
+      "version_id": "<immutable-secret-version-id>"
+    },
+    "caddy": {
+      "arn": "<caddy-secret-arn>",
+      "version_id": "<immutable-secret-version-id>"
+    }
+  },
+  "instance_id": "<host-instance-id>"
+}
