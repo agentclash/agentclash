@@ -31,10 +31,45 @@ def os_report(version="3.5.8-r0", vulnerable=False):
                 "FixedVersion": "3.5.8-r0",
             }
         ]
-    return {"Metadata": {"OS": {"Family": "alpine"}}, "Results": [result]}
+    return {
+        "Metadata": {
+            "OS": {"Family": "alpine"},
+            "ImageConfig": {"os": "linux", "architecture": "amd64"},
+        },
+        "Results": [result],
+    }
 
 
 class ImageGateTests(unittest.TestCase):
+    def test_scanner_cannot_report_different_bytes_or_architecture_as_a_pass(self):
+        for wrong in ("identity", "architecture"):
+            with tempfile.TemporaryDirectory() as directory:
+
+                def run(command, **_):
+                    value = os_report()
+                    value["Metadata"]["ImageID"] = (
+                        "sha256:" + ("b" if wrong == "identity" else "a") * 64
+                    )
+                    if wrong == "architecture":
+                        value["Metadata"]["ImageConfig"]["architecture"] = "arm64"
+                    Path(command[command.index("--output") + 1]).write_text(
+                        json.dumps(value)
+                    )
+
+                with self.assertRaises(Refused):
+                    Scanner(Path(directory), run).image(
+                        "alpine", "sha256:" + "a" * 64, "alpine"
+                    )
+
+    def test_upstream_export_refuses_a_mutable_reference_before_building(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch("subprocess.run") as call:
+                with self.assertRaises(Refused):
+                    Scanner(Path(directory), call).export_upstream(
+                        "input-alpine", "alpine:latest", "alpine"
+                    )
+                call.assert_not_called()
+
     def test_private_and_git_archive_modes_normalize_without_following_links(self):
         with tempfile.TemporaryDirectory() as directory:
             context = Path(directory)
@@ -71,6 +106,10 @@ class ImageGateTests(unittest.TestCase):
             reconcile(before, os_report())
 
     def test_coverage_requires_actual_os_and_expected_binary_inventory(self):
+        wrong_arch = os_report()
+        wrong_arch["Metadata"]["ImageConfig"]["architecture"] = "arm64"
+        with self.assertRaises(Refused):
+            coverage(wrong_arch, "alpine")
         for role in ("caddy", "postgres", "go", "api", "terminal", "temporal"):
             with self.assertRaises(Refused):
                 coverage(os_report(), role)

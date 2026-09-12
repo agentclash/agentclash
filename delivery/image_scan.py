@@ -2,9 +2,11 @@
 
 import json
 import os
+import hashlib
+import tarfile
 
-from common import require
-from release_contract import canonical
+from common import require, image_ref
+from release_contract import canonical, sha256
 
 
 def findings(report):
@@ -18,6 +20,11 @@ def findings(report):
 
 def coverage(report, role):
     results = report.get("Results", [])
+    config = report.get("Metadata", {}).get("ImageConfig", {})
+    require(
+        config.get("os") == "linux" and config.get("architecture") == "amd64",
+        "Scanner inspected the wrong image platform",
+    )
     require(
         report.get("Metadata", {}).get("OS", {}).get("Family") == "alpine"
         and any(r.get("Type") == "alpine" and r.get("Packages") for r in results),
@@ -104,15 +111,66 @@ class Scanner:
         self.directory, self.run = directory, run
         self.reports = []
 
+    def export_upstream(self, name, ref, role):
+        # Pure FROM preserves upstream bytes. Export only the pinned platform
+        # through the builder's digest cache instead of repeatedly pulling for
+        # scans or saving absent platforms from a partial local image index.
+        image_ref(ref)
+        context = self.directory / (name + "-export")
+        context.mkdir(mode=0o700)
+        (context / "Dockerfile").write_text("ARG UPSTREAM\nFROM ${UPSTREAM}\n")
+        archive = self.directory / (name + "-input.tar")
+        self.run(
+            [
+                "docker",
+                "build",
+                "--platform",
+                "linux/amd64",
+                "--provenance=false",
+                "--output",
+                "type=docker,dest=" + str(archive),
+                "--build-arg",
+                "UPSTREAM=" + ref,
+                "-t",
+                "agentclash-source-input:" + role,
+                str(context),
+            ],
+            timeout=1200,
+        )
+        with tarfile.open(archive) as exported:
+            entries = json.load(exported.extractfile("manifest.json"))
+            require(len(entries) == 1, "Input archive must contain one platform")
+            config = exported.extractfile(entries[0]["Config"]).read()
+            expected_id = "sha256:" + sha256(config)
+        with archive.open("rb") as stream:
+            archive_sha = hashlib.file_digest(stream, "sha256").hexdigest()
+        provenance = self.directory / (name + "-input-export.json")
+        provenance.write_bytes(
+            canonical(
+                {
+                    "upstream": ref,
+                    "platform": "linux/amd64",
+                    "archive_sha256": archive_sha,
+                    "image_id": expected_id,
+                }
+            )
+        )
+        self.reports.append(provenance)
+        return archive, expected_id
+
     def image(self, name, ref, role, *, source_input=False):
-        image_source = "docker" if ref.startswith("sha256:") else "remote"
+        archive = None
+        if ref.startswith("sha256:"):
+            source_options, target, expected_id = ["--image-src", "docker"], [ref], ref
+        else:
+            archive, expected_id = self.export_upstream(name, ref, role)
+            source_options, target = ["--input", str(archive)], []
         common = [
             str(self.directory / "trivy"),
             "image",
             "--platform",
             "linux/amd64",
-            "--image-src",
-            image_source,
+            *source_options,
             "--quiet",
             "--ignorefile",
             os.devnull,
@@ -133,21 +191,28 @@ class Scanner:
             ]
             if scanner == "vuln":
                 command += ["--severity", "HIGH,CRITICAL", "--list-all-pkgs"]
-            self.run(command + [ref], timeout=1200)
+            self.run(command + target, timeout=1200)
             self.reports.append(report)
         value = json.loads(report.read_text())
+        require(
+            value.get("Metadata", {}).get("ImageID") == expected_id,
+            "Scanner image identity differs from the selected bytes",
+        )
         coverage(value, role)
         if not source_input:
             require(not findings(value), "Image vulnerability gate failed")
         sbom = self.directory / (name + "-sbom.json")
         self.run(
-            common + ["--format", "cyclonedx", "--output", str(sbom), ref], timeout=1200
+            common + ["--format", "cyclonedx", "--output", str(sbom), *target],
+            timeout=1200,
         )
         require(
             json.loads(sbom.read_text()).get("components"),
             "Image SBOM inventory is empty",
         )
         self.reports.append(sbom)
+        if archive:
+            archive.unlink()
         return value
 
     def platform(self, name, input_ref, output_id):
