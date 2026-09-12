@@ -1,0 +1,9 @@
+# The driver verifies every APK hash; apk also checks upstream package signatures.
+# Only this remediation stage consumes an unpatched source image. No app builds
+# or runtime services may consume it before the derived image passes its gates.
+ARG UPSTREAM
+FROM ${UPSTREAM}
+USER root
+COPY packages /opt/platform-inputs
+RUN apk add --no-network --no-cache --upgrade /opt/platform-inputs/*.apk \
+    && rm -rf /opt/platform-inputs

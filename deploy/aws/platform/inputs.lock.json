@@ -1,0 +1,89 @@
+{
+  "format": 1,
+  "source_date_epoch": 1789171200,
+  "gosu": {
+    "version": "1.19",
+    "url": "https://codeload.github.com/tianon/gosu/tar.gz/refs/tags/1.19",
+    "sha256": "cd9719b775dbfedae53923c9b0dc792b66d42c51e0b36652ed6f747fbadc0164"
+  },
+  "packages": {
+    "v3.22/libcrypto3": {
+      "name": "libcrypto3",
+      "version": "3.5.8-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/libcrypto3-3.5.8-r0.apk",
+      "sha256": "1d111bc0ad6380fdda22e6513941dc2e7988d6b1621d535bed6b3fa5ef086fae"
+    },
+    "v3.22/libssl3": {
+      "name": "libssl3",
+      "version": "3.5.8-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.22/main/x86_64/libssl3-3.5.8-r0.apk",
+      "sha256": "e8d3ea5e9750cb1f4c4b459d172630925fe6bc13c113c590ac36c78013821e62"
+    },
+    "v3.23/libcrypto3": {
+      "name": "libcrypto3",
+      "version": "3.5.8-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libcrypto3-3.5.8-r0.apk",
+      "sha256": "a5592b5cf276bc7a30ac7b161d46446085490b640faa1f839ea98eb15aacad31"
+    },
+    "v3.23/libssl3": {
+      "name": "libssl3",
+      "version": "3.5.8-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libssl3-3.5.8-r0.apk",
+      "sha256": "f80b76cb5e5a52cfc1ced08f8dc3022adc0ce0a3d6e7741976731b22c71fe310"
+    },
+    "v3.23/curl": {
+      "name": "curl",
+      "version": "8.22.0-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/curl-8.22.0-r0.apk",
+      "sha256": "78829ae535239009c2dd615d0d2f58ecc0abd07855e38c1eea389fc68993f5b1"
+    },
+    "v3.23/libcurl": {
+      "name": "libcurl",
+      "version": "8.22.0-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libcurl-8.22.0-r0.apk",
+      "sha256": "f4070c2bce6aeb660a96f767f5a0eb6876d6c8421b51334d24678e0039720507"
+    },
+    "v3.23/c-ares": {
+      "name": "c-ares",
+      "version": "1.34.8-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/c-ares-1.34.8-r0.apk",
+      "sha256": "7a570d080d05e60b1256ea73586924bf9a25f468c57aae10d1cdfe7fcc3f93a2"
+    },
+    "v3.24/libcrypto3": {
+      "name": "libcrypto3",
+      "version": "3.5.8-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libcrypto3-3.5.8-r0.apk",
+      "sha256": "161223a16f042b8e469e9441291e071464fd91d4f4bbe6f496ee8d0abd4e0701"
+    },
+    "v3.24/libssl3": {
+      "name": "libssl3",
+      "version": "3.5.8-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libssl3-3.5.8-r0.apk",
+      "sha256": "aca521e5ae4a321322a9d47ed64a1775f5ab1ffd215d1e9fc0433c58f7bfd037"
+    },
+    "v3.24/libuuid": {
+      "name": "libuuid",
+      "version": "2.42.3-r1",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libuuid-2.42.3-r1.apk",
+      "sha256": "8306e5bb577696c9069fe1dfd9e1dcc39d2d481c6a1b0e707fd03c3e21aa6aa2"
+    },
+    "v3.24/ca-certificates": {
+      "name": "ca-certificates",
+      "version": "20260611-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/ca-certificates-20260611-r0.apk",
+      "sha256": "abe8a3badeb99bd147a0c5cba70364e8774e6ae05c625a86c01f11532d9721c8"
+    },
+    "v3.24/ca-certificates-bundle": {
+      "name": "ca-certificates-bundle",
+      "version": "20260611-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/ca-certificates-bundle-20260611-r0.apk",
+      "sha256": "cd7752154d0fa628a5f7360218e9e8e83edf31f7fa26f58ee42d26b507bd0372"
+    },
+    "v3.24/tzdata": {
+      "name": "tzdata",
+      "version": "2026c-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/tzdata-2026c-r0.apk",
+      "sha256": "569cc4f3d634c83347ce1d19b37452f83889b8fd479d4863cff0082977cf5ba2"
+    }
+  }
+}

@@ -4,42 +4,51 @@
     "temporal": {
       "tag": "temporalio/server:1.32.0",
       "image": "temporalio/server@sha256:c3e752127759616bb1615e0f9ba0e21635aeb5fdeb922de4f371c350955f46ae",
-      "platform": "linux/amd64"
+      "platform": "linux/amd64",
+      "usage": "immutable-runtime"
     },
     "temporal-admin": {
       "tag": "temporalio/admin-tools:1.32.0",
       "image": "temporalio/admin-tools@sha256:a9f84fb9a374b2374fe2e67c8efc0468ff3f1c66c8a0b14597ec86e349e62bca",
-      "platform": "linux/amd64"
+      "platform": "linux/amd64",
+      "usage": "immutable-runtime"
     },
     "valkey": {
       "tag": "valkey/valkey:8.1.10-alpine",
       "image": "valkey/valkey@sha256:d2e18f3410b6f616de1417f570fa55261af2898b9c5b2cfb6781ce2373ea43d1",
-      "platform": "linux/amd64"
+      "platform": "linux/amd64",
+      "usage": "immutable-runtime"
     },
     "postgres": {
       "tag": "postgres:18.6-alpine3.24",
       "image": "postgres@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2",
-      "platform": "linux/amd64"
+      "platform": "linux/amd64",
+      "usage": "remediation-source-only"
     },
     "caddy": {
       "tag": "caddy:2.11.4-alpine",
       "image": "caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648",
-      "platform": "linux/amd64"
+      "platform": "linux/amd64",
+      "usage": "remediation-source-only"
     },
     "bun": {
       "tag": "oven/bun:1.4.2-alpine",
       "image": "oven/bun@sha256:d888c0ae6c86d7866ff10c5aafdd9077b36aee6455b33dd270fb93c0dd5cef6f",
-      "platform": "linux/amd64"
+      "platform": "linux/amd64",
+      "usage": "remediation-source-only"
     },
     "go": {
       "tag": "golang:1.26.8-alpine3.24",
       "image": "golang@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628",
-      "platform": "linux/amd64"
+      "platform": "linux/amd64",
+      "usage": "remediation-source-only"
     },
     "alpine": {
       "tag": "alpine:3.24.1",
       "image": "alpine@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b",
-      "platform": "linux/amd64"
+      "platform": "linux/amd64",
+      "usage": "remediation-source-only"
     }
-  }
+  },
+  "format": 2
 }
