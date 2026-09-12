@@ -15,6 +15,14 @@ from secret_store import validate, materialize
 from render import temporal_config, acl_config
 from restore import safe_extract
 from host import manifest_validate
+from release_contract import (
+    canonical,
+    sha256,
+    platform_hash,
+    recipe_hash,
+    DERIVED,
+    UPSTREAM,
+)
 
 
 class GuardTests(unittest.TestCase):
@@ -47,6 +55,13 @@ class GuardTests(unittest.TestCase):
             "repository": "registry.example.com/app",
         }
         value = {
+            "format": 2,
+            "source_revision": "a" * 40,
+            "migration_set_sha256": "b" * 64,
+            "build_evidence_sha256": "c" * 64,
+            "bootstrap_sha256": "d" * 64,
+            "platform_source_sha256": platform_hash(ROOT.parents[1]),
+            "platform_recipe_sha256": recipe_hash(ROOT.parents[1]),
             "account_id": settings["account_id"],
             "region": "test-region",
             "platform": "linux/amd64",
@@ -57,13 +72,24 @@ class GuardTests(unittest.TestCase):
                 name: "registry.example.com/app@sha256:" + "a" * 64
                 for name in ("api", "worker", "terminal", "app-schema")
             },
+            "platform_images": {
+                **{n: "registry.example.com/app@sha256:" + "a" * 64 for n in DERIVED},
+                **{
+                    n: json.loads((ROOT / "images.lock.json").read_text())["images"][n][
+                        "image"
+                    ]
+                    for n in UPSTREAM
+                },
+            },
         }
+        settings["platform_images_sha256"] = sha256(canonical(value["platform_images"]))
         manifest_validate(value, settings)
         for key, bad in [
             ("account_id", str(2) * 12),
             ("region", "wrong"),
             ("platform", "linux/arm64"),
             ("platform_lock_sha256", "f" * 64),
+            ("platform_recipe_sha256", "f" * 64),
         ]:
             changed = dict(value)
             changed[key] = bad
@@ -75,6 +101,22 @@ class GuardTests(unittest.TestCase):
         )
         with self.assertRaises(Refused):
             manifest_validate(changed, settings)
+        # Even a valid digest in the approved registry cannot silently change
+        # Caddy during an ordinary application release.
+        changed = {
+            **value,
+            "platform_images": {
+                **value["platform_images"],
+                "caddy": "registry.example.com/app@sha256:" + "b" * 64,
+            },
+        }
+        with self.assertRaises(Refused):
+            manifest_validate(changed, settings)
+        approved = {
+            **settings,
+            "platform_images_sha256": sha256(canonical(changed["platform_images"])),
+        }
+        manifest_validate(changed, approved)
 
     def test_secret_structure_and_injection(self):
         bad = [

@@ -1,18 +1,21 @@
 # Repository-root build context; dedicated allowlist excludes deployment data.
-FROM --platform=$BUILDPLATFORM golang@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628 AS build
+ARG GO_IMAGE
+ARG RUNTIME_IMAGE
+FROM ${GO_IMAGE} AS build
+ENV GOTOOLCHAIN=local
 WORKDIR /src
 COPY backend/go.mod backend/go.sum backend/
 COPY runtime/go.mod runtime/go.sum runtime/
 COPY backend/cmd backend/cmd
 COPY backend/internal backend/internal
 COPY runtime runtime
-ARG TARGET=api-server
 ARG TARGETARCH=amd64
 WORKDIR /src/backend
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -mod=readonly -trimpath -ldflags="-s -w" -o /app ./cmd/${TARGET}
-FROM alpine@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
-RUN apk add --no-cache --upgrade ca-certificates tzdata libcrypto3=3.5.8-r0 libssl3=3.5.8-r0
-COPY --from=build /app /app
+# Compile the shared dependency graph once for the three application targets.
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -mod=readonly -trimpath -ldflags="-s -w" -o /out/ ./cmd/api-server ./cmd/worker ./cmd/db-migrate
+FROM ${RUNTIME_IMAGE}
+ARG TARGET=api-server
+COPY --from=build /out/${TARGET} /app
 COPY backend/db/migrations /migrations
 # Same binary path for the dedicated migrator target, selected at build time.
 RUN ln -s /app /migrator

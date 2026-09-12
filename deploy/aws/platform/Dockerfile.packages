@@ -6,4 +6,5 @@ FROM ${UPSTREAM}
 USER root
 COPY packages /opt/platform-inputs
 RUN apk add --no-network --no-cache --upgrade /opt/platform-inputs/*.apk \
-    && rm -rf /opt/platform-inputs
+    && rm -rf /opt/platform-inputs \
+    && rm -f /var/log/apk.log

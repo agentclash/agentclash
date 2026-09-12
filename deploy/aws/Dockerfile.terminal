@@ -1,15 +1,19 @@
-FROM oven/bun@sha256:d888c0ae6c86d7866ff10c5aafdd9077b36aee6455b33dd270fb93c0dd5cef6f AS build
+ARG BUN_IMAGE
+FROM ${BUN_IMAGE} AS build
 WORKDIR /app
 COPY try-cli/packages/core/package.json try-cli/packages/core/
 COPY try-cli/packages/core/src try-cli/packages/core/src
 COPY services/try-cli/package.json services/try-cli/bun.lock services/try-cli/
 COPY services/try-cli/server services/try-cli/server
 WORKDIR /app/services/try-cli
-RUN bun install --production --frozen-lockfile
-FROM oven/bun@sha256:d888c0ae6c86d7866ff10c5aafdd9077b36aee6455b33dd270fb93c0dd5cef6f
-RUN apk add --no-cache --upgrade libcrypto3=3.5.8-r0 libssl3=3.5.8-r0
+RUN bun install --production --frozen-lockfile \
+    && ln -s /app/services/try-cli/node_modules /app/node_modules
+FROM ${BUN_IMAGE}
 WORKDIR /app/services/try-cli
 COPY --from=build /app /app
 COPY try-cli/demos /app/try-cli/demos
 USER 10001:10001
-ENTRYPOINT ["bun", "--no-env-file", "--preserve-symlinks", "run", "server/index.ts"]
+# Resolve file: core dependencies from their common /app ancestor. Prove that
+# the unprivileged, offline image can import the core and load packaged demos.
+RUN --network=none bun --no-install --no-env-file --preserve-symlinks -e 'import { loadAllDemos } from "@try-cli/core"; if (!loadAllDemos("/app/try-cli/demos").length) throw new Error("Packaged demos are missing")'
+ENTRYPOINT ["bun", "--no-install", "--no-env-file", "--preserve-symlinks", "run", "server/index.ts"]

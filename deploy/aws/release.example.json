@@ -1,14 +1,25 @@
 {
-  "format": 1,
+  "format": 2,
   "account_id": "<member-account-id>",
   "region": "ap-southeast-1",
   "platform": "linux/amd64",
   "platform_lock_sha256": "<sha256-of-images.lock.json>",
   "platform_source_sha256": "<reviewed-platform-source-tree-hash>",
+  "platform_recipe_sha256": "<reviewed-platform-image-recipe-hash>",
   "bootstrap_sha256": "<reviewed-bootstrap-archive-hash>",
   "source_revision": "<full-source-commit-sha>",
   "migration_set_sha256": "<migration-file-set-hash>",
   "build_evidence_sha256": "<private-build-evidence-hash>",
+  "platform_images": {
+    "alpine": "<private-ecr-repository-uri>@sha256:<image-digest>",
+    "go": "<private-ecr-repository-uri>@sha256:<image-digest>",
+    "bun": "<private-ecr-repository-uri>@sha256:<image-digest>",
+    "caddy": "<private-ecr-repository-uri>@sha256:<image-digest>",
+    "postgres": "<private-ecr-repository-uri>@sha256:<image-digest>",
+    "temporal": "<exact-public-digest-from-images-lock>",
+    "temporal-admin": "<exact-public-digest-from-images-lock>",
+    "valkey": "<exact-public-digest-from-images-lock>"
+  },
   "images": {
     "api": "<private-ecr-repository-uri>@sha256:<image-digest>",
     "worker": "<private-ecr-repository-uri>@sha256:<image-digest>",

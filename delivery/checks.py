@@ -118,15 +118,35 @@ def check(group, evidence):
         for path in (ROOT / "deploy/aws").rglob("*.sh"):
             run(["bash", "-n", str(path)])
     elif group == "images":
-        from build import build_images
+        from build import build_graph
 
-        build_images(run)
+        install("trivy", evidence / "trivy")
+        env.update(
+            TRIVY_CONFIG=os.devnull,
+            TRIVY_IGNORE_FILE=os.devnull,
+            TRIVY_CACHE_DIR=str(evidence / "trivy-cache"),
+        )
+
+        # Build/scanner callers need captured JSON as well as private logs.
+        def image_run(argv, timeout=2400):
+            result = subprocess.run(
+                argv, cwd=ROOT, env=env, capture_output=True, timeout=timeout
+            )
+            with (evidence / "checks.log").open("ab") as log:
+                log.write(result.stdout + result.stderr)
+            require(result.returncode == 0, "Required image build or scan failed")
+            return result.stdout
+
+        build_graph(ROOT, evidence, image_run)
+        selection = str(evidence / "image-selection.json")
         run(
             [
                 sys.executable,
                 "deploy/aws/tests/rehearse.py",
                 "--evidence-dir",
                 str(evidence),
+                "--images",
+                selection,
             ],
             timeout=1800,
         )
@@ -136,7 +156,20 @@ def check(group, evidence):
                 "deploy/aws/tests/rehearse-edge.py",
                 "--evidence-dir",
                 str(evidence),
+                "--images",
+                selection,
             ]
+        )
+        run(
+            [
+                sys.executable,
+                "deploy/aws/tests/rehearse-terminal.py",
+                "--evidence-dir",
+                str(evidence),
+                "--images",
+                selection,
+            ],
+            timeout=600,
         )
     else:
         raise ValueError("Unknown check group")

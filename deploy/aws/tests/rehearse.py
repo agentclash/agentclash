@@ -20,6 +20,8 @@ import time
 ROOT = Path(__file__).resolve().parents[3]
 AWS = ROOT / "deploy/aws"
 sys.path.insert(0, str(AWS / "scripts"))
+sys.path.insert(0, str(ROOT / "delivery"))
+from maintained import selection
 from certificates import ca_init, issue, IDENTITIES
 from database import initialize_sql, grants_sql, DATABASES
 from render import temporal_config, acl_config
@@ -32,6 +34,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--evidence-dir", required=True)
     parser.add_argument(
+        "--images",
+        required=True,
+        help="Private image-selection.json from the scanned build",
+    )
+    parser.add_argument(
         "--cache-only", action="store_true", help="Run only cache integration checks"
     )
     args = parser.parse_args()
@@ -41,10 +48,7 @@ def main():
     evidence.mkdir(mode=0o700, parents=True, exist_ok=True)
     work = Path(tempfile.mkdtemp(prefix="platform-", dir=evidence))
     work.chmod(0o700)
-    images = {
-        n: r["image"]
-        for n, r in json.loads((AWS / "images.lock.json").read_text())["images"].items()
-    }
+    images = selection(args.images)
     env = {
         k: v
         for k, v in os.environ.items()
@@ -221,7 +225,16 @@ def main():
             # The image's initialization server accepts Unix-socket probes, then
             # exits. TCP readiness waits for the final server before role setup.
             ready(
-                ["docker", "exec", pg, "pg_isready", "-h", "127.0.0.1", "-U", "platform_admin"]
+                [
+                    "docker",
+                    "exec",
+                    pg,
+                    "pg_isready",
+                    "-h",
+                    "127.0.0.1",
+                    "-U",
+                    "platform_admin",
+                ]
             )
 
             def psql(sql, db="postgres", ok=True):
@@ -299,7 +312,7 @@ def main():
             )
             owner(app_secret, 1000)
             for _ in range(2):
-                job(app_secret, "agentclash-step8-test:migrator", ["/migrator"])
+                job(app_secret, images["app-schema"], ["/migrator"])
             psql(grants_sql("agentclash"))
             # Permissions fail under SET ROLE even though the test administrator is a superuser.
             for db, (_, runtime) in DATABASES.items():
@@ -779,7 +792,7 @@ def main():
         )
         job(
             probe_secret,
-            "agentclash-step8-test:terminal",
+            images["terminal"],
             ["bun", "--no-env-file", "--preserve-symlinks", "--eval", probe_source],
         )
         # Offline exact AOF backup, restore and fail-closed truncation proof.
@@ -818,7 +831,7 @@ def main():
             json.dumps(
                 {
                     "status": "passed",
-                    "images": "deploy/aws/images.lock.json",
+                    "images": images,
                     "checks": [
                         "three databases and distinct non-DDL runtime roles",
                         "Temporal SQL schema init and repeat upgrade",

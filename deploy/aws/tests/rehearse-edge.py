@@ -7,25 +7,27 @@ import os
 from pathlib import Path
 import secrets
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.error
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path[:0] = [str(ROOT.parents[1] / "delivery"), str(ROOT / "scripts")]
+from maintained import selection
 
 
 def main():
     os.umask(0o077)
     p = argparse.ArgumentParser()
     p.add_argument("--evidence-dir", required=True)
+    p.add_argument("--images", required=True)
     args = p.parse_args()
     evidence = Path(args.evidence_dir).resolve()
     if evidence.is_relative_to(ROOT.parents[1]):
         raise RuntimeError("Evidence must remain outside Git")
-    image = json.loads((ROOT / "images.lock.json").read_text())["images"]["caddy"][
-        "image"
-    ]
+    image = selection(args.images)["caddy"]
     name = "agentclash-edge-test-" + secrets.token_hex(5)
 
     def run(*command):

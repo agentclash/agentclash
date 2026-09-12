@@ -4,6 +4,7 @@
   "operator": "<confirmed-platform-operator>",
   "artifact_bucket": "<private-bucket>",
   "repository": "<private-ecr-repository-uri>",
+  "platform_images_sha256": "<sha256-of-canonical-approved-platform-images-map>",
   "database_endpoint": "<rds-dns-name>",
   "cache_volume_id": "<retained-ebs-volume-id>",
   "cache_uuid": "<recorded-uuid-omit-only-before-new-volume-initialization>",

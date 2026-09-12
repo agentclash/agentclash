@@ -11,6 +11,8 @@ from common import require, image_ref
 from release_contract import canonical, sha256, tree_hash, APPLICATIONS
 from tools import install
 from package import bundle
+from image_scan import Scanner
+import maintained
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCAL_IMAGES = {
@@ -19,7 +21,9 @@ LOCAL_IMAGES = {
 }
 
 
-def build_images(run, revision=None):
+def build_images(run, bases, revision=None):
+    require(set(bases) == {"go", "bun", "alpine"}, "Scanned build bases required")
+    bases = {name: maintained.local_base(run, ref) for name, ref in bases.items()}
     for name, target in (
         ("api", "api-server"),
         ("worker", "worker"),
@@ -37,10 +41,68 @@ def build_images(run, revision=None):
             LOCAL_IMAGES[name],
         ]
         if target:
-            command += ["--build-arg", "TARGET=" + target]
+            command += [
+                "--build-arg",
+                "TARGET=" + target,
+                "--build-arg",
+                "GO_IMAGE=" + bases["go"],
+                "--build-arg",
+                "RUNTIME_IMAGE=" + bases["alpine"],
+            ]
+        else:
+            command += ["--build-arg", "BUN_IMAGE=" + bases["bun"]]
         if revision:
             command += ["--label", "org.opencontainers.image.revision=" + revision]
         run(command + ["."], timeout=2400)
+
+
+def build_graph(source, directory, run, revision=None):
+    """Build and scan bases first, then applications; no cloud credentials."""
+    source, directory = Path(source).resolve(), Path(directory).resolve()
+    require(
+        not directory.is_relative_to(source), "Build evidence must remain outside Git"
+    )
+    scanner = Scanner(directory, run)
+    platform_images, recipe_sha = maintained.build(
+        source, directory, run, scanner.platform
+    )
+    build_images(
+        run, {name: platform_images[name] for name in ("go", "bun", "alpine")}, revision
+    )
+    image_ids = {}
+    for name, reference in LOCAL_IMAGES.items():
+        detail = maintained.inspect(run, reference)
+        if revision:
+            require(
+                detail["Config"]
+                .get("Labels", {})
+                .get("org.opencontainers.image.revision")
+                == revision,
+                "Built application source mismatch",
+            )
+        image_ids[name] = detail["Id"]
+        scanner.image(name, detail["Id"], name)
+    selection = directory / "image-selection.json"
+    selection.write_bytes(
+        canonical(
+            {
+                "images": image_ids,
+                "platform_images": platform_images,
+                "platform_recipe_sha256": recipe_sha,
+            }
+        )
+    )
+    return {
+        "image_ids": image_ids,
+        "platform_images": platform_images,
+        "platform_recipe_sha256": recipe_sha,
+        "reports": scanner.reports
+        + [
+            directory / "platform-inputs.json",
+            directory / "platform-identities.json",
+            selection,
+        ],
+    }
 
 
 def scan_bootstrap(directory, archive, run):
@@ -183,83 +245,11 @@ def prepare(directory, revision, private_values=()):
             str(directory / "source-secrets.json"),
         ]
     )
-    build_images(run, revision)
-    image_ids = {}
-    for name, reference in LOCAL_IMAGES.items():
-        detail = json.loads(run(["docker", "image", "inspect", reference]))[0]
-        require(
-            detail["Os"] == "linux"
-            and detail["Architecture"] == "amd64"
-            and detail["Config"]["Labels"]["org.opencontainers.image.revision"]
-            == revision,
-            "Built image source/architecture mismatch",
-        )
-        require(
-            re.fullmatch(r"sha256:[a-f0-9]{64}", detail["Id"]),
-            "Invalid built image identity",
-        )
-        image_ids[name] = detail["Id"]
+    graph = build_graph(source, directory, run, revision)
     archive = directory / "bootstrap.tar.gz"
     metadata = bundle(source, directory / "compose", archive)
-    reports = [directory / "source-secrets.json"]
+    reports = [directory / "source-secrets.json", *graph["reports"]]
     reports.extend(scan_bootstrap(directory, archive, run))
-    lock = json.loads((source / "deploy/aws/images.lock.json").read_text())
-    # Every selected runtime/admin/base image is checked, not only the apps.
-    images = {
-        **image_ids,
-        **{"platform-" + k: v["image"] for k, v in lock["images"].items()},
-    }
-    for name, ref in images.items():
-        image_source = "remote" if name.startswith("platform-") else "docker"
-        for scanner, extra in (
-            ("secret", []),
-            ("vuln", ["--severity", "HIGH,CRITICAL"]),
-        ):
-            report = directory / (name + "-" + scanner + ".json")
-            run(
-                [
-                    str(directory / "trivy"),
-                    "image",
-                    "--platform",
-                    "linux/amd64",
-                    "--image-src",
-                    image_source,
-                    "--quiet",
-                    "--ignorefile",
-                    os.devnull,
-                    "--scanners",
-                    scanner,
-                    "--exit-code",
-                    "1",
-                    "--format",
-                    "json",
-                    "--output",
-                    str(report),
-                    *extra,
-                    ref,
-                ],
-                timeout=1200,
-            )
-            reports.append(report)
-        sbom = directory / (name + "-sbom.json")
-        run(
-            [
-                str(directory / "trivy"),
-                "image",
-                "--platform",
-                "linux/amd64",
-                "--image-src",
-                image_source,
-                "--quiet",
-                "--format",
-                "cyclonedx",
-                "--output",
-                str(sbom),
-                ref,
-            ],
-            timeout=900,
-        )
-        reports.append(sbom)
     migrations = sorted(
         str(path.relative_to(source))
         for path in (source / "backend/db/migrations").glob("*.sql")
@@ -268,7 +258,9 @@ def prepare(directory, revision, private_values=()):
         "source_revision": revision,
         "bootstrap": metadata,
         "migration_set_sha256": tree_hash(source, migrations),
-        "image_ids": image_ids,
+        "image_ids": graph["image_ids"],
+        "platform_images": graph["platform_images"],
+        "platform_recipe_sha256": graph["platform_recipe_sha256"],
         "reports": reports,
         "platform_lock_sha256": sha256(
             (source / "deploy/aws/images.lock.json").read_bytes()
@@ -312,29 +304,61 @@ def publish(cloud, directory, prepared):
     registry = config["repository"].split("/")[0]
     docker("login", "--username", "AWS", "--password-stdin", registry, data=password)
     images = {}
-    for name, local in prepared["image_ids"].items():
+    platform_images = {
+        name: prepared["platform_images"][name] for name in maintained.UPSTREAM
+    }
+    artifacts = {
+        **prepared["image_ids"],
+        **{
+            "platform-" + name: prepared["platform_images"][name]
+            for name in maintained.DERIVED
+        },
+    }
+    for name, local in artifacts.items():
         tag = config["repository"] + ":" + revision + "-" + name
         docker("tag", local, tag)
+
+        def verified():
+            detail = json.loads(docker("image", "inspect", tag))[0]
+            require(
+                detail["Os"] == "linux"
+                and detail["Architecture"] == "amd64"
+                and detail["Id"] == local
+                and detail["Config"]
+                .get("Labels", {})
+                .get(
+                    maintained.LABEL
+                    if name.startswith("platform-")
+                    else "org.opencontainers.image.revision"
+                )
+                == (
+                    prepared["platform_recipe_sha256"]
+                    if name.startswith("platform-")
+                    else revision
+                ),
+                "Publication image does not match scanned source/architecture",
+            )
+            return detail
+
+        verified()
         docker("push", tag)
-        details = json.loads(docker("image", "inspect", tag))[0]
-        require(
-            details["Os"] == "linux"
-            and details["Architecture"] == "amd64"
-            and details["Config"]["Labels"]["org.opencontainers.image.revision"]
-            == revision,
-            "Published image does not match reviewed source/architecture",
-        )
+        details = verified()
         refs = [
             value
             for value in details["RepoDigests"]
             if value.startswith(config["repository"] + "@")
         ]
         require(len(refs) == 1, "Ambiguous published image digest")
-        images[name] = image_ref(refs[0])
+        if name.startswith("platform-"):
+            platform_images[name.removeprefix("platform-")] = image_ref(refs[0])
+        else:
+            images[name] = image_ref(refs[0])
     evidence = {
-        "format": 1,
+        "format": 2,
         "source_revision": revision,
         "images": images,
+        "platform_images": platform_images,
+        "platform_recipe_sha256": prepared["platform_recipe_sha256"],
         "tools_lock_sha256": prepared["tools_lock_sha256"],
         "platform_lock_sha256": prepared["platform_lock_sha256"],
         "scanners_passed": True,
@@ -344,7 +368,7 @@ def publish(cloud, directory, prepared):
             "revision": revision,
             "workflow_ref": os.environ.get("GITHUB_WORKFLOW_REF"),
             "run_id": os.environ.get("GITHUB_RUN_ID"),
-            "local_image_ids": prepared["image_ids"],
+            "local_image_ids": artifacts,
         },
         "reports": {},
     }
@@ -361,7 +385,7 @@ def publish(cloud, directory, prepared):
         directory / "bootstrap.tar.gz",
     )
     manifest = {
-        "format": 1,
+        "format": 2,
         "account_id": config["account_id"],
         "region": config["region"],
         "platform": "linux/amd64",
@@ -372,6 +396,8 @@ def publish(cloud, directory, prepared):
         "migration_set_sha256": prepared["migration_set_sha256"],
         "build_evidence_sha256": evidence_sha,
         "images": images,
+        "platform_images": platform_images,
+        "platform_recipe_sha256": prepared["platform_recipe_sha256"],
     }
     path = directory / "release.json"
     path.write_bytes(canonical(manifest))

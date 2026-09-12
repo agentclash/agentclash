@@ -13,7 +13,8 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "deploy/aws/scripts"))
-from common import private_json, require, image_ref
+from common import private_json, require
+from release_contract import validate_images, validate_release
 from cloud import Cloud, validate_config, github_guard
 
 
@@ -126,15 +127,12 @@ def main():
             )
             cloud = Cloud(config, directory, mode=mode, workflow=workflow)
             sha, manifest = cloud.release(args.source)
-            require(
-                set(manifest["images"]) == {"api", "worker", "terminal", "app-schema"},
-                "Incomplete image set",
+            validate_images(
+                manifest,
+                config["repository"],
+                json.loads((ROOT / "deploy/aws/images.lock.json").read_text()),
             )
-            for value in manifest["images"].values():
-                require(
-                    image_ref(value).split("@")[0] == config["repository"],
-                    "Unapproved image repository",
-                )
+            validate_release(manifest, ROOT)
             if args.operation == "inspect":
                 path = Path(args.output).resolve()
                 require(

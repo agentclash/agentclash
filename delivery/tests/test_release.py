@@ -1,6 +1,7 @@
 from pathlib import Path
 import sys
 import tempfile
+import json
 import time
 import unittest
 from unittest.mock import Mock, patch
@@ -8,7 +9,16 @@ from unittest.mock import Mock, patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "delivery"), str(ROOT / "deploy/aws/scripts")]
 from common import Refused
-from release_contract import canonical, sha256, validate_release, platform_hash
+from release_contract import (
+    canonical,
+    sha256,
+    validate_release,
+    platform_hash,
+    recipe_hash,
+    validate_images,
+    DERIVED,
+    UPSTREAM,
+)
 from release import Host, execute
 import health
 
@@ -35,6 +45,11 @@ class FixtureHost(Host):
 
     def validate(self, manifest):
         validate_release(manifest, ROOT)
+        validate_images(
+            manifest,
+            self.settings["repository"],
+            json.loads((ROOT / "deploy/aws/images.lock.json").read_text()),
+        )
 
     def fence(self, closed=True):
         self.closed = closed
@@ -124,16 +139,30 @@ class ReleaseTests(unittest.TestCase):
             "region": "test-region",
             "instance_id": "i-fixture",
             "operator": "fixture",
+            "repository": "registry.example.com/app",
             "delivery": {"enabled": True, "environment": "production"},
         }
         self.h = FixtureHost(self.directory.name, self.settings)
         self.manifest = {
-            "format": 1,
+            "format": 2,
             "source_revision": "a" * 40,
             "migration_set_sha256": "b" * 64,
             "build_evidence_sha256": "c" * 64,
             "bootstrap_sha256": "d" * 64,
             "platform_source_sha256": platform_hash(ROOT),
+            "platform_recipe_sha256": recipe_hash(ROOT),
+            "platform_lock_sha256": sha256(
+                (ROOT / "deploy/aws/images.lock.json").read_bytes()
+            ),
+            "platform_images": {
+                **{n: "registry.example.com/app@sha256:" + "b" * 64 for n in DERIVED},
+                **{
+                    n: json.loads((ROOT / "deploy/aws/images.lock.json").read_text())[
+                        "images"
+                    ][n]["image"]
+                    for n in UPSTREAM
+                },
+            },
             "images": {
                 name: "registry.example.com/app@sha256:" + "a" * 64
                 for name in ("api", "worker", "terminal", "app-schema")
@@ -142,6 +171,9 @@ class ReleaseTests(unittest.TestCase):
         build = {
             "source_revision": self.manifest["source_revision"],
             "images": self.manifest["images"],
+            "platform_images": self.manifest["platform_images"],
+            "platform_recipe_sha256": self.manifest["platform_recipe_sha256"],
+            "platform_lock_sha256": self.manifest["platform_lock_sha256"],
             "scanners_passed": True,
         }
         self.manifest["build_evidence_sha256"] = sha256(canonical(build))
@@ -192,6 +224,23 @@ class ReleaseTests(unittest.TestCase):
 
     def run_release(self, operation="deploy"):
         execute(self.settings, self.sha, operation, self.h)
+
+    def test_platform_attestation_mismatch_has_no_host_side_effects(self):
+        evidence = dict(
+            self.h.objects["build-evidence", self.manifest["build_evidence_sha256"]]
+        )
+        evidence["platform_images"] = {
+            **evidence["platform_images"],
+            "caddy": "registry.example.com/app@sha256:" + "e" * 64,
+        }
+        evidence_sha = sha256(canonical(evidence))
+        manifest = {**self.manifest, "build_evidence_sha256": evidence_sha}
+        release_sha = sha256(canonical(manifest))
+        self.h.objects["build-evidence", evidence_sha] = evidence
+        self.h.objects["releases", release_sha] = manifest
+        with self.assertRaises(Refused):
+            execute(self.settings, release_sha, "deploy", self.h)
+        self.assertEqual(self.h.calls, [])
 
     def test_first_release_deploy_remains_closed_then_exact_promotion(self):
         self.run_release()

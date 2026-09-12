@@ -224,6 +224,9 @@ def execute(settings, release_sha, operation="deploy", adapter=None):
     require(
         build["source_revision"] == manifest["source_revision"]
         and build["images"] == manifest["images"]
+        and build["platform_images"] == manifest["platform_images"]
+        and build["platform_recipe_sha256"] == manifest["platform_recipe_sha256"]
+        and build["platform_lock_sha256"] == manifest["platform_lock_sha256"]
         and build["scanners_passed"] is True,
         "Build evidence does not approve these exact images",
     )

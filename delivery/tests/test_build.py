@@ -5,14 +5,24 @@ import sys
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "delivery"), str(ROOT / "deploy/aws/scripts")]
-from build import scan_bootstrap
+from build import scan_bootstrap, build_graph
 from common import Refused
 
 
 class BootstrapScannerTests(unittest.TestCase):
+    def test_failed_platform_gate_never_builds_applications(self):
+        with (
+            patch("build.maintained.build", side_effect=Refused("unresolved input")),
+            patch("build.build_images") as applications,
+        ):
+            with self.assertRaises(Refused):
+                build_graph(ROOT, Path("/unused"), None)
+            applications.assert_not_called()
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)

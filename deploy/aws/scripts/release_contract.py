@@ -6,9 +6,12 @@ from pathlib import Path
 import re
 import time
 
-from common import digest, require
+from common import digest, require, image_ref
 
 APPLICATIONS = ("api", "worker", "terminal", "app-schema")
+DERIVED = ("alpine", "go", "bun", "caddy", "postgres")
+UPSTREAM = ("temporal", "temporal-admin", "valkey")
+PLATFORM = (*DERIVED, *UPSTREAM)
 
 
 def canonical(value):
@@ -25,9 +28,15 @@ def platform_files(root):
         "delivery/release.py",
         "delivery/health.py",
         "delivery/tools.lock.json",
+        "delivery/maintained.py",
         "deploy/aws/compose.yaml",
         "deploy/aws/images.lock.json",
     }
+    names.update(
+        str(p.relative_to(root))
+        for p in (root / "deploy/aws/platform").rglob("*")
+        if p.is_file()
+    )
     for directory, patterns in {
         "deploy/aws/scripts": ("*.py", "*.sh"),
         "deploy/aws/config": ("*",),
@@ -62,8 +71,39 @@ def platform_hash(root):
     return tree_hash(root, platform_files(root))
 
 
+def recipe_hash(root):
+    root = Path(root)
+    names = ["delivery/maintained.py", "deploy/aws/images.lock.json"]
+    names += [
+        str(p.relative_to(root))
+        for p in (root / "deploy/aws/platform").rglob("*")
+        if p.is_file()
+    ]
+    return tree_hash(root, names)
+
+
+def validate_images(value, repository, lock):
+    require(set(value["images"]) == set(APPLICATIONS), "Incomplete application images")
+    require(
+        set(value["platform_images"]) == set(PLATFORM), "Incomplete platform images"
+    )
+    for image in (
+        *value["images"].values(),
+        *(value["platform_images"][name] for name in DERIVED),
+    ):
+        require(
+            image_ref(image).split("@")[0] == repository,
+            "Image outside approved repository",
+        )
+    for name in UPSTREAM:
+        require(
+            image_ref(value["platform_images"][name]) == lock["images"][name]["image"],
+            "Unapproved upstream runtime image",
+        )
+
+
 def validate_release(value, root):
-    require(value.get("format") == 1, "Unsupported release format")
+    require(value.get("format") == 2, "Unsupported release format")
     require(
         re.fullmatch(r"[a-f0-9]{40}", value.get("source_revision", "")),
         "Invalid source revision",
@@ -73,6 +113,10 @@ def validate_release(value, root):
     require(
         value["platform_source_sha256"] == platform_hash(root),
         "Platform source requires a separately approved bootstrap",
+    )
+    require(
+        value["platform_recipe_sha256"] == recipe_hash(root),
+        "Platform image recipe mismatch",
     )
 
 

@@ -32,11 +32,27 @@ from common import (
 from secret_store import load
 from render import render
 from database import DATABASES, initialize_sql, grants_sql
+from release_contract import canonical, sha256, validate_images, validate_release
 
 ROOT = Path(__file__).resolve().parents[1]
 STATE = Path("/var/lib/agentclash")
 RUNTIME = Path("/run/agentclash")
 SERVICES = ("api", "worker", "terminal")
+
+
+def registry_login(settings):
+    password = aws(settings, "ecr", "get-login-password")
+    run(
+        [
+            "docker",
+            "login",
+            "--username",
+            "AWS",
+            "--password-stdin",
+            settings["repository"].split("/")[0],
+        ],
+        data=password,
+    )
 
 
 def manifest_validate(manifest, settings):
@@ -46,15 +62,17 @@ def manifest_validate(manifest, settings):
         "Release destination mismatch",
     )
     require(manifest["platform"] == "linux/amd64", "Wrong release architecture")
-    require(
-        set(manifest["images"]) == {"api", "worker", "terminal", "app-schema"},
-        "Incomplete application images",
+    validate_images(
+        manifest,
+        settings["repository"],
+        json.loads((ROOT / "images.lock.json").read_text()),
     )
-    for image in manifest["images"].values():
-        require(
-            image_ref(image).split("@")[0] == settings["repository"],
-            "Image outside approved repository",
-        )
+    validate_release(manifest, ROOT.parents[1])
+    require(
+        sha256(canonical(manifest["platform_images"]))
+        == digest(settings["platform_images_sha256"]),
+        "Platform artifact changes require separately approved host preparation",
+    )
     digest(manifest["platform_lock_sha256"])
     require(
         manifest["platform_lock_sha256"]
@@ -69,6 +87,7 @@ def settings_fingerprint(settings):
         "region",
         "instance_id",
         "repository",
+        "platform_images_sha256",
         "database_endpoint",
         "cache_volume_id",
         "cache_uuid",
@@ -174,18 +193,24 @@ def prepare(settings, release_digest):
         == settings["cache_volume_id"],
         "Retained cache volume not verified",
     )
+    registry_login(settings)
+    # Build-only Alpine/Go/Bun artifacts stay off the production host.
+    references = [
+        *manifest["images"].values(),
+        *(
+            manifest["platform_images"][name]
+            for name in ("caddy", "postgres", "temporal", "temporal-admin", "valkey")
+        ),
+    ]
+    for reference in sorted(set(references)):
+        run(["docker", "pull", "--platform", "linux/amd64", reference], timeout=600)
     generation, payloads = load(settings)
     try:
         render(generation, payloads)
     except Exception:
         shutil.rmtree(generation)
         raise
-    images = {
-        name: value["image"]
-        for name, value in json.loads((ROOT / "images.lock.json").read_text())[
-            "images"
-        ].items()
-    }
+    images = dict(manifest["platform_images"])
     images.update(manifest["images"])
     content = (
         "SECRETS_ROOT="
