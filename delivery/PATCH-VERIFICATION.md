@@ -1,8 +1,11 @@
 # Step 9.1 local patch verification
 
-Verified on 2026-09-12. Application remediation passes; release readiness remains
-blocked by the [upstream image findings](RELEASE-BLOCKERS.md). This records local
-source work, not publication or deployment. Complete reports, image identities,
+Historical Step 9.1 verification, recorded on 2026-09-12. Application remediation
+passed, while five upstream images still blocked publication at that checkpoint.
+[Step 9.2](PLATFORM-VERIFICATION.md) subsequently remediated the consumed images;
+the table below preserves the original Step 9.1 results. See
+[remaining release gates](RELEASE-BLOCKERS.md) for the current handoff.
+This records local source work, not publication or deployment. Complete reports, image identities,
 synthetic credentials, review records and operational checkpoints stay outside Git.
 
 ## Changes
@@ -87,4 +90,5 @@ the historical Step 9 result remains in [VERIFICATION.md](VERIFICATION.md).
 Live IAM/SSM, protected GitHub execution, root host rebuild, RDS engine/extension
 checks, workload capacity, real provider/browser/DNS/TLS and Vercel acceptance
 remain later gates. No source cutover or paid provisioning occurred. Neither
-passing local checks nor operator ownership waives the remaining image gate.
+passing local checks nor operator ownership waived the image gate at this
+checkpoint; Step 9.2 supplies its subsequent remediation evidence.

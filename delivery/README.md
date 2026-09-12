@@ -14,25 +14,29 @@ check all groups. The aggregate requires every selected job to succeed and rejec
 missing/cancelled checks. It does not rely on a path-filtered required workflow.
 
 `aws-release.yml` reruns checks for trusted main. Only an explicitly activated
-`aws-build` environment can publish. Four Linux/amd64 release images are built
-once; staging and production subsequently use those exact digests. Builds export
+`aws-build` environment can publish. Four Linux/amd64 application images and five
+maintained platform images are built and scanned before publication; staging and
+production subsequently use those exact digests. Builds export
 tracked Git source into a private temporary context, then apply the dedicated
 Dockerfile allowlists. Ignored workstation files and credentials cannot enter
 the context. Local image IDs are captured before scanning and used for publication
 so later changes to a local tag cannot change the candidate.
 
 Source secret scanning and all-image secret/high/critical vulnerability gates run
-before AWS credential exchange or publication. The selected public runtime/admin/
-base images are also scanned. Scanner failures have no bypass flag. Public platform
-digests use Trivy's remote source with explicit amd64 selection; application image
-IDs use the local Docker source. This avoids Docker's incomplete multi-platform
-index export problem while preserving the exact selected architecture.
+before AWS credential exchange or publication. Original source-image findings are
+retained and reconciled against the patched outputs; the three unchanged public
+runtime images must pass the same strict gate. Scanner failures have no bypass
+flag. Upstream digests are exported as exact Linux/amd64 archives through Docker's
+build cache; derived and application image IDs use the local Docker source.
+Both paths verify the scanned image identity and package coverage. See the
+[maintenance procedure](PLATFORM-IMAGES.md) and
+[Step 9.2 verification](PLATFORM-VERIFICATION.md).
 
 The private bucket receives:
 
 | Prefix | Contents / writer |
 | --- | --- |
-| `releases/<digest>.json` | Account/region, four ECR digests, source commit, migration-set and platform hashes / build role |
+| `releases/<digest>.json` | Account/region, four application digests, eight platform/base digests, source commit, migration-set and platform hashes / build role |
 | `releases/by-source/<commit>.json` | Immutable source-to-manifest index / build role |
 | `build-evidence/` | Scanner results, CycloneDX SBOMs and build provenance / build role |
 | `bundles/<digest>.tar.gz` | Allowlisted host scripts/configuration and checksum-verified Compose binary / build role or approved bootstrap publisher |

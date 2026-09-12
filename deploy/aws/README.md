@@ -56,11 +56,14 @@ requires the separately verified available RDS 18 minor. Never silently downgrad
 the source database. Application images use dedicated Dockerfiles with allowlisted
 contexts. Step 9 prepares workflows to build and publish them to private ECR,
 package these scripts and a verified Compose executable into a hash-addressed
-bootstrap bundle, and record the four ECR digests in an immutable release manifest.
+bootstrap bundle, and record application and maintained platform digests in a
+format 2 immutable release manifest. The five source-only upstream images are
+patched and scanned before consumption; see the
+[maintained-image procedure](../../delivery/PLATFORM-IMAGES.md).
 Publishing and live delivery wait for the later provisioning and activation steps.
-The [Step 9.1 record](../../delivery/PATCH-VERIFICATION.md) distinguishes passing
-application scans from unresolved upstream image findings. These pins are not
-approval to provision or publish while the release gate is blocked.
+The [Step 9.2 record](../../delivery/PLATFORM-VERIFICATION.md) records the complete
+image graph and recovery checks. Original source-image findings remain in private
+reports; publication requires current clean output scans and the later approvals.
 
 On the host, install the approved bundle at `/opt/agentclash`, create root-owned
 `/etc/agentclash/host.json` with mode 0600, and mount the retained data volume before
@@ -233,12 +236,13 @@ maintained CA bundle, not this private CA.
 ## Local verification and human handoff
 
 ```sh
-docker build --platform linux/amd64 -f deploy/aws/Dockerfile.backend --build-arg TARGET=db-migrate -t agentclash-step8-test:migrator .
-docker build --platform linux/amd64 -f deploy/aws/Dockerfile.terminal -t agentclash-step8-test:terminal .
 cfn-lint deploy/aws/cloudformation/*.yaml
 python3 -m unittest discover -s deploy/aws/tests -v
-python3 deploy/aws/tests/rehearse.py --evidence-dir <private-directory>
-python3 deploy/aws/tests/rehearse-edge.py --evidence-dir <private-directory>
+python3 delivery/checks.py images --evidence-dir <new-private-directory>
+# Repeat an individual check using the exact scanned image selection:
+python3 deploy/aws/tests/rehearse.py --evidence-dir <private-directory> --images <private-image-selection.json>
+python3 deploy/aws/tests/rehearse-edge.py --evidence-dir <private-directory> --images <private-image-selection.json>
+python3 deploy/aws/tests/rehearse-terminal.py --evidence-dir <private-directory> --images <private-image-selection.json>
 ```
 
 Install PyYAML for static tests; the host scripts otherwise use Python's standard
