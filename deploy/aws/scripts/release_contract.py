@@ -24,6 +24,7 @@ def platform_files(root):
     names = {
         "delivery/release.py",
         "delivery/health.py",
+        "delivery/tools.lock.json",
         "deploy/aws/compose.yaml",
         "deploy/aws/images.lock.json",
     }
@@ -41,8 +42,10 @@ def platform_files(root):
     for name in names:
         path = root / name
         require(
-            path.is_file() and not path.is_symlink(),
-            "Platform source must be regular files",
+            path.is_file()
+            and not path.is_symlink()
+            and path.resolve().is_relative_to(root.resolve()),
+            "Platform source must be regular files inside the checkout",
         )
     return sorted(names)
 
@@ -77,6 +80,12 @@ def validate_approval(value, settings, release_sha, previous, operation, now=Non
     now = time.time() if now is None else now
     delivery = settings["delivery"]
     require(delivery.get("enabled") is True, "Delivery is not activated")
+    if delivery["environment"] == "staging":
+        require(
+            now < delivery.get("expires_at", 0) <= now + 86400
+            and value["acknowledgements"].get("isolated_rehearsal_verified") is True,
+            "Temporary rehearsal is expired or isolation is unverified",
+        )
     require(operation in ("deploy", "promote"), "Unknown delivery operation")
     for key in ("account_id", "region", "instance_id"):
         require(value[key] == settings[key], "Approval destination mismatch")
@@ -102,6 +111,7 @@ def validate_approval(value, settings, release_sha, previous, operation, now=Non
         "drain_verified",
         "callbacks_reconciled",
         "no_automatic_schema_rollback",
+        "destination_writes_acknowledged",
     ):
         require(
             value["acknowledgements"].get(key) is True, "Operator acceptance incomplete"
@@ -116,10 +126,6 @@ def validate_approval(value, settings, release_sha, previous, operation, now=Non
         required.add("rehearsal")
     if operation == "promote":
         required.add("smoke")
-        require(
-            value["acknowledgements"].get("destination_writes_acknowledged") is True,
-            "Promotion recovery boundary unacknowledged",
-        )
     require(required <= value["evidence"].keys(), "Missing reviewed evidence")
     for name in required:
         digest(value["evidence"][name])
