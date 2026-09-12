@@ -67,7 +67,7 @@ services:
     mem_limit: 768m
     stop_grace_period: 60s
     entrypoint: [/bin/sh, /opt/secret-exec.sh]
-    command: [bun, --no-env-file, --preserve-symlinks, run, server/index.ts]
+    command: [bun, --no-install, --no-env-file, --preserve-symlinks, run, server/index.ts]
     volumes:
       - ./config/secret-exec.sh:/opt/secret-exec.sh:ro
       - ${SECRETS_ROOT}/terminal:/run/secrets:ro

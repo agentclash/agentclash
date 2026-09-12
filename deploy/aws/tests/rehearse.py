@@ -793,7 +793,14 @@ def main():
         job(
             probe_secret,
             images["terminal"],
-            ["bun", "--no-env-file", "--preserve-symlinks", "--eval", probe_source],
+            [
+                "bun",
+                "--no-install",
+                "--no-env-file",
+                "--preserve-symlinks",
+                "--eval",
+                probe_source,
+            ],
         )
         # Offline exact AOF backup, restore and fail-closed truncation proof.
         docker("stop", cache)
