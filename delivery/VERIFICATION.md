@@ -1,7 +1,9 @@
-# Step 9 local verification
+# Step 9 local verification (historical)
 
 This records source preparation, not a live AWS deployment. Private evidence
 contains commands, logs, exact image identities, approvals and scan reports.
+The later [Step 9.1 verification](PATCH-VERIFICATION.md) records patched versions
+and current image results. The table below describes the original Step 9 run.
 
 | Check | Outcome |
 | --- | --- |
@@ -38,7 +40,7 @@ image rollback.
 
 ## Next action
 
-Review and authorize the [Step 9.1 patch proposal](RELEASE-BLOCKERS.md), then
-reprice the private Step 10 resource plan. The prepared delivery source must remain
-disabled while the image gate is unresolved. There is no blanket vulnerability
-waiver and no approval to incur charges in this source-preparation step.
+Step 9.1 patched the applications; five upstream image gates remain unresolved.
+Review the [Step 9.2 proposal](RELEASE-BLOCKERS.md) before repricing the private
+Step 10 resource plan. Delivery remains disabled. There is no blanket vulnerability
+waiver or approval to incur charges in these source-preparation checkpoints.

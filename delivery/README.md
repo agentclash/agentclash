@@ -221,8 +221,9 @@ The resource shape and planning cost remain the Step 8 baseline, approximately
 USD 165–190/month before workload growth. Step 9 adds scoped IAM definitions and
 modest private release/history storage; it creates no paid resources or permanent
 staging fleet. Reprice the exact private bill of materials before Step 10.
-Publication stays blocked until current image vulnerability findings are resolved
-through the [Step 9.1 patch proposal](RELEASE-BLOCKERS.md). No blanket
+Step 9.1 application images pass scans. Publication still waits for the remaining
+upstream image findings in the [Step 9.2 proposal](RELEASE-BLOCKERS.md). Bootstrap
+scanning also requires actual Compose binary coverage. No blanket
 ignore/unfixed-vulnerability switch is included.
 
 [GitHub OIDC](https://docs.github.com/en/actions/how-tos/secure-your-work/security-harden-deployments/oidc-in-aws),

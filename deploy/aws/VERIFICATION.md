@@ -1,7 +1,10 @@
-# Step 8 local verification
+# Step 8 local verification (historical)
 
 Verified locally on 2026-09-12. This is infrastructure preparation, not a deployed
 AWS environment. Real operational evidence and inventories are stored privately.
+This records the original Step 8 pins. See the later
+[Step 9.1 verification](../../delivery/PATCH-VERIFICATION.md) for the current
+versions, repeated recovery rehearsal and remaining image blockers.
 
 - Four CloudFormation templates pass `cfn-lint`; production Compose validates with
   an explicit environment file and every image selected by digest.

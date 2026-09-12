@@ -50,14 +50,17 @@ minor, extensions, collation and actual connection use remain live rehearsal gat
 ## Build and private configuration
 
 `images.lock.json` pins public platform/build images to repository digests and
-`linux/amd64`. The Temporal server and admin tools use the matching 1.31.2 release.
-PostgreSQL 18.4 is the local compatibility-test image; the CloudFormation parameter
+`linux/amd64`. The Temporal server and admin tools use the matching 1.32.0 release.
+PostgreSQL 18.6 is the local compatibility-test image; the CloudFormation parameter
 requires the separately verified available RDS 18 minor. Never silently downgrade
 the source database. Application images use dedicated Dockerfiles with allowlisted
 contexts. Step 9 prepares workflows to build and publish them to private ECR,
 package these scripts and a verified Compose executable into a hash-addressed
 bootstrap bundle, and record the four ECR digests in an immutable release manifest.
 Publishing and live delivery wait for the later provisioning and activation steps.
+The [Step 9.1 record](../../delivery/PATCH-VERIFICATION.md) distinguishes passing
+application scans from unresolved upstream image findings. These pins are not
+approval to provision or publish while the release gate is blocked.
 
 On the host, install the approved bundle at `/opt/agentclash`, create root-owned
 `/etc/agentclash/host.json` with mode 0600, and mount the retained data volume before
@@ -176,7 +179,7 @@ recorded UUID, reinstall the same bundle, reload secret versions and restore Cad
 state if needed. Then rehearse readiness, membership IP change and lease recovery.
 The pinned server waits 25 seconds before bootstrap so old host heartbeats
 (20-second seed cutoff in this server release) age out before the new IP joins.
-[Pinned membership implementation](https://github.com/temporalio/temporal/blob/v1.31.2/common/membership/ringpop/monitor.go).
+[Pinned membership implementation](https://github.com/temporalio/temporal/blob/v1.32.0/common/membership/ringpop/monitor.go).
 Host termination protection and retained CloudFormation resources deliberately
 require an operator-reviewed replacement plan. Never format a volume during boot.
 The host replacement/EBS/SSM test remains an AWS rehearsal gate.
