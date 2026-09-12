@@ -24,6 +24,7 @@ def main():
             "cleanup-unresolved",
             "restore-unverified",
             "recovery-unverified",
+            "deployment-unresolved.json",
         ):
             if (STATE / marker).exists():
                 healthy = 0

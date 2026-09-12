@@ -8,6 +8,7 @@ reviewed separately; SSM supplies only the content digest, never shell syntax.
 import argparse
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -72,9 +73,10 @@ def settings_fingerprint(settings):
         "cache_volume_id",
         "cache_uuid",
         "secrets",
+        "delivery",
     )
     return hashlib.sha256(
-        json.dumps({key: settings[key] for key in fields}, sort_keys=True).encode()
+        json.dumps({key: settings.get(key) for key in fields}, sort_keys=True).encode()
     ).hexdigest()
 
 
@@ -269,6 +271,7 @@ def main():
             "namespace-init",
             "health",
             "deploy",
+            "promote",
         ],
     )
     parser.add_argument("argument", nargs="?")
@@ -405,10 +408,10 @@ def main():
                 == b"PONG",
                 "Cache authentication/health failed",
             )
-        elif args.command == "deploy":
+        elif args.command in ("deploy", "promote"):
             release = digest(args.argument)
-            # Step 9 installs the separately reviewed app rollout. The SSM contract
-            # is usable only after its digest has been approved in private host config.
+            # The fixed driver is imported under this lock. Never launch a child
+            # locking host operation or accept a remote script location.
             driver = Path("/opt/agentclash/delivery/release.py")
             require(
                 driver.is_file() and "delivery_driver_sha256" in settings,
@@ -422,11 +425,15 @@ def main():
                         "cleanup-unresolved",
                         "restore-unverified",
                         "recovery-unverified",
+                        "deployment-unresolved.json",
                     )
                 ),
                 "Unresolved cleanup or restore verification",
             )
-            run([sys.executable, str(driver), release], timeout=3300)
+            spec = importlib.util.spec_from_file_location("agentclash_delivery", driver)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            module.execute(settings, release, args.command)
         print("Host operation passed")
 
 

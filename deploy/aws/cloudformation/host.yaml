@@ -17,6 +17,7 @@ Parameters:
     AllowedPattern: '[a-f0-9]{64}'
     Description: Reviewed bundle at bundles/<sha256>.tar.gz in the private bucket
   Operator: {Type: String, NoEcho: true, MinLength: 1}
+  Environment: {Type: String, AllowedValues: [staging, production]}
   AlarmTopicArn: {Type: String}
 Resources:
   HostRole:
@@ -50,6 +51,8 @@ Resources:
                   - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/bundles/*'
                   - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/releases/*'
                   - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/backups/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/approvals/${Environment}/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/evidence/operator/*'
               - Effect: Allow
                 Action: s3:PutObject
                 Resource: !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/backups/*'
@@ -88,6 +91,7 @@ Resources:
       Tags:
         - {Key: Service, Value: agentclash}
         - {Key: Operator, Value: !Ref Operator}
+        - {Key: Environment, Value: !Ref Environment}
       UserData:
         Fn::Base64: !Sub |
           #!/bin/bash
