@@ -116,6 +116,18 @@ Resources:
             Action: s3:*
             Resource: [!GetAtt PrivateArtifacts.Arn, !Sub '${PrivateArtifacts.Arn}/*']
             Condition: {Bool: {'aws:SecureTransport': 'false'}}
+          - Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource:
+              - !Sub '${PrivateArtifacts.Arn}/releases/*'
+              - !Sub '${PrivateArtifacts.Arn}/bundles/*'
+              - !Sub '${PrivateArtifacts.Arn}/build-evidence/*'
+              - !Sub '${PrivateArtifacts.Arn}/evidence/operator/*'
+              - !Sub '${PrivateArtifacts.Arn}/deployments/*'
+            Condition:
+              'Null': {'s3:if-none-match': 'true'}
+              Bool: {'s3:ObjectCreationOperation': 'true'}
   Images:
     Type: AWS::ECR::Repository
     DeletionPolicy: Retain

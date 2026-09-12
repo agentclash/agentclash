@@ -144,7 +144,7 @@ def prepare(directory, revision, private_values=()):
         image_ids[name] = detail["Id"]
     archive = directory / "bootstrap.tar.gz"
     metadata = bundle(source, directory / "compose", archive)
-    reports = []
+    reports = [directory / "source-secrets.json"]
     lock = json.loads((source / "deploy/aws/images.lock.json").read_text())
     # Every selected runtime/admin/base image is checked, not only the apps.
     images = {
