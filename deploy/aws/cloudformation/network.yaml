@@ -1,0 +1,111 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Small single-host network. Public HTTPS host and isolated RDS subnets; no NAT or SSH.
+Parameters:
+  AvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+  SecondAvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+  VpcCidr:
+    Type: String
+    Default: 10.72.0.0/16
+  HostSubnetCidr:
+    Type: String
+    Default: 10.72.0.0/24
+  DatabaseSubnetCidr:
+    Type: String
+    Default: 10.72.10.0/24
+  SecondDatabaseSubnetCidr:
+    Type: String
+    Default: 10.72.11.0/24
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+  GatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+  HostSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZone
+      CidrBlock: !Ref HostSubnetCidr
+      MapPublicIpOnLaunch: false
+  DatabaseSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref AvailabilityZone
+      CidrBlock: !Ref DatabaseSubnetCidr
+  SecondDatabaseSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      AvailabilityZone: !Ref SecondAvailabilityZone
+      CidrBlock: !Ref SecondDatabaseSubnetCidr
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: GatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+  HostRoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref HostSubnet
+      RouteTableId: !Ref PublicRouteTable
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+  DatabaseRoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DatabaseSubnet
+      RouteTableId: !Ref PrivateRouteTable
+  SecondDatabaseRoute:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref SecondDatabaseSubnet
+      RouteTableId: !Ref PrivateRouteTable
+  HostSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Caddy HTTPS and ACME HTTP only; SSM administration
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 0.0.0.0/0}
+        - {IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 0.0.0.0/0}
+      SecurityGroupEgress:
+        - {IpProtocol: '-1', CidrIp: 0.0.0.0/0}
+  DatabaseSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: PostgreSQL from the application host only
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 5432
+          ToPort: 5432
+          SourceSecurityGroupId: !Ref HostSecurityGroup
+      SecurityGroupEgress:
+        - {IpProtocol: tcp, FromPort: 443, ToPort: 443, CidrIp: 127.0.0.1/32}
+Outputs:
+  VpcId: {Value: !Ref Vpc}
+  HostSubnetId: {Value: !Ref HostSubnet}
+  DatabaseSubnetId: {Value: !Ref DatabaseSubnet}
+  SecondDatabaseSubnetId: {Value: !Ref SecondDatabaseSubnet}
+  HostSecurityGroupId: {Value: !Ref HostSecurityGroup}
+  DatabaseSecurityGroupId: {Value: !Ref DatabaseSecurityGroup}

@@ -1,0 +1,157 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Replaceable SSM-managed host. Runtime IAM only; GitHub roles are a separate delivery step.
+Parameters:
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: Reviewed, patched Amazon Linux 2023 x86_64 AMI in this region
+  HostSubnetId: {Type: 'AWS::EC2::Subnet::Id'}
+  HostSecurityGroupId: {Type: 'AWS::EC2::SecurityGroup::Id'}
+  CacheVolumeId: {Type: String, AllowedPattern: 'vol-[a-f0-9]+'}
+  ArtifactBucket: {Type: String}
+  RepositoryArn: {Type: String}
+  RuntimeSecretArns:
+    Type: CommaDelimitedList
+    Description: Exact approved secret ARNs, including one-off schema/admin secrets; never wildcard
+  BootstrapSha256:
+    Type: String
+    AllowedPattern: '[a-f0-9]{64}'
+    Description: Reviewed bundle at bundles/<sha256>.tar.gz in the private bucket
+  Operator: {Type: String, NoEcho: true, MinLength: 1}
+  AlarmTopicArn: {Type: String}
+Resources:
+  HostRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: ec2.amazonaws.com}
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore'
+      Policies:
+        - PolicyName: ScopedRuntimeDelivery
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref RuntimeSecretArns
+              - Effect: Allow
+                Action: [ecr:GetDownloadUrlForLayer, ecr:BatchGetImage, ecr:BatchCheckLayerAvailability]
+                Resource: !Ref RepositoryArn
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/bundles/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/releases/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/backups/*'
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/backups/*'
+              - Effect: Allow
+                Action: cloudwatch:PutMetricData
+                Resource: '*'
+                Condition: {StringEquals: {'cloudwatch:namespace': AgentClash/Platform}}
+  HostProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles: [!Ref HostRole]
+  Host:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: t3a.large
+      CreditSpecification: {CPUCredits: standard}
+      IamInstanceProfile: !Ref HostProfile
+      Monitoring: false
+      DisableApiTermination: true
+      MetadataOptions:
+        HttpTokens: required
+        HttpEndpoint: enabled
+        HttpPutResponseHopLimit: 1
+        HttpProtocolIpv6: disabled
+        InstanceMetadataTags: disabled
+      NetworkInterfaces:
+        - DeviceIndex: '0'
+          SubnetId: !Ref HostSubnetId
+          GroupSet: [!Ref HostSecurityGroupId]
+          AssociatePublicIpAddress: true
+          DeleteOnTermination: true
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs: {VolumeType: gp3, VolumeSize: 30, Encrypted: true, DeleteOnTermination: true}
+      Tags:
+        - {Key: Service, Value: agentclash}
+        - {Key: Operator, Value: !Ref Operator}
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euo pipefail
+          umask 077
+          # No secrets or service startup in cloud-init. Package stdout stays local.
+          exec > /var/log/agentclash-bootstrap.log 2>&1
+          dnf install -y docker python3.12 awscli-2 openssl iptables unzip
+          systemctl enable --now docker amazon-ssm-agent
+          install -d -m 700 /var/lib/agentclash /etc/agentclash
+          aws s3 cp 's3://${ArtifactBucket}/bundles/${BootstrapSha256}.tar.gz' /var/lib/agentclash/bootstrap.tar.gz --only-show-errors --region '${AWS::Region}'
+          echo '${BootstrapSha256}  /var/lib/agentclash/bootstrap.tar.gz' | sha256sum -c -
+          install -d -m 755 /opt/agentclash
+          python3.12 - <<'PY'
+          import tarfile
+          with tarfile.open('/var/lib/agentclash/bootstrap.tar.gz') as archive:
+              for member in archive.getmembers():
+                  if not (member.isfile() or member.isdir()) or member.name.startswith('/') or '..' in member.name.split('/'):
+                      raise RuntimeError('Invalid bootstrap bundle')
+              archive.extractall('/opt/agentclash', filter='data')
+          PY
+          /bin/bash /opt/agentclash/deploy/aws/scripts/install-host.sh
+  CacheAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      Device: /dev/sdf
+      InstanceId: !Ref Host
+      VolumeId: !Ref CacheVolumeId
+  Address:
+    Type: AWS::EC2::EIP
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties: {Domain: vpc}
+  AddressAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt Address.AllocationId
+      InstanceId: !Ref Host
+  HostCredits:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      Namespace: AWS/EC2
+      MetricName: CPUCreditBalance
+      Dimensions: [{Name: InstanceId, Value: !Ref Host}]
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 3
+      Threshold: 30
+      ComparisonOperator: LessThanThreshold
+      AlarmActions: [!Ref AlarmTopicArn]
+  PlatformHeartbeat:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      Namespace: AgentClash/Platform
+      MetricName: Healthy
+      Dimensions: [{Name: Service, Value: agentclash}]
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopicArn]
+Outputs:
+  HostId: {Value: !Ref Host}
+  Address: {Value: !Ref Address}
+  InstanceRoleArn: {Value: !GetAtt HostRole.Arn}
