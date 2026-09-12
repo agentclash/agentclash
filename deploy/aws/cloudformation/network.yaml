@@ -17,6 +17,11 @@ Parameters:
   SecondDatabaseSubnetCidr:
     Type: String
     Default: 10.72.11.0/24
+Rules:
+  SeparateDatabaseZones:
+    Assertions:
+      - Assert: !Not [!Equals [!Ref AvailabilityZone, !Ref SecondAvailabilityZone]]
+        AssertDescription: Database subnets must use two distinct availability zones
 Resources:
   Vpc:
     Type: AWS::EC2::VPC
