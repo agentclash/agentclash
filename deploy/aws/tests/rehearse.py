@@ -496,6 +496,33 @@ def main():
             # Go module working directory is explicit without altering source configuration.
             os.chdir(ROOT / "backend")
             sdk("seed", work / "ca", work / "cert-operator")
+            # The delivery driver consumes the pinned CLI's legacy poller JSON.
+            # Verify that wire shape against real SDK pollers, not only fixtures.
+            sys.path.insert(0, str(ROOT / "delivery"))
+            from health import poller_times
+
+            for queue in ("execution", "scoring", "background"):
+                for kind in ("workflow", "activity"):
+                    result = job(
+                        cli,
+                        images["temporal-admin"],
+                        [
+                            "temporal",
+                            "task-queue",
+                            "describe",
+                            "--task-queue",
+                            queue,
+                            "--legacy-mode",
+                            "--task-queue-type-legacy",
+                            kind,
+                            "--output",
+                            "json",
+                        ],
+                    )
+                    if not poller_times(json.loads(result.stdout)):
+                        raise RuntimeError(
+                            "Pinned CLI poller response did not match the delivery check"
+                        )
             old_ip = docker(
                 "inspect",
                 "--format",

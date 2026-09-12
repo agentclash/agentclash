@@ -53,9 +53,12 @@ Resources:
                   - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/backups/*'
                   - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/approvals/${Environment}/*'
                   - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/evidence/operator/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/build-evidence/*'
               - Effect: Allow
                 Action: s3:PutObject
-                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/backups/*'
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/backups/*'
+                  - !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucket}/deployments/${Environment}/*'
               - Effect: Allow
                 Action: cloudwatch:PutMetricData
                 Resource: '*'

@@ -1,6 +1,5 @@
 """Quiet live host checks, also used by the release state-machine adapter."""
 
-from datetime import datetime
 import json
 import time
 import urllib.request
@@ -66,6 +65,16 @@ def no_database_writers(host):
     require(raw.strip() == b"0", "Database writers remain after stop")
 
 
+def poller_times(value):
+    # CLI 1.7.3 legacy mode uses Go's JSON encoding of protobuf timestamps,
+    # not protojson's RFC3339 camelCase fields. Verified by the real rehearsal.
+    return [
+        float(p["last_access_time"]["seconds"])
+        + float(p["last_access_time"].get("nanos", 0)) / 1_000_000_000
+        for p in value.get("pollers", [])
+    ]
+
+
 def ready(host, manifest, started_at, timeout=240):
     deadline = time.monotonic() + timeout
     while True:
@@ -119,13 +128,12 @@ def ready(host, manifest, started_at, timeout=240):
                             timeout=20,
                         )
                     )
+                    # A promotion may happen hours after deployment. A poller
+                    # seen only at startup is not evidence that it still polls.
+                    fresh_after = max(started_at, time.time() - 120)
                     require(
                         any(
-                            datetime.fromisoformat(
-                                p["lastAccessTime"].replace("Z", "+00:00")
-                            ).timestamp()
-                            >= started_at
-                            for p in value.get("pollers", [])
+                            accessed >= fresh_after for accessed in poller_times(value)
                         ),
                         "Missing fresh worker pollers",
                     )

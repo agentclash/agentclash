@@ -73,6 +73,20 @@ class Host:
     def fence(self, closed=True):
         self.host.fence(closed)
 
+    def emergency_fence(self):
+        try:
+            self.fence()
+        except Exception:
+            # A failed reload may leave the old open routes active. Close the
+            # only published listener before reporting failure in that case.
+            self.host.compose("stop", "caddy", timeout=360)
+            require(
+                not self.host.compose(
+                    "ps", "--status", "running", "-q", "caddy"
+                ).strip(),
+                "Public listener could not be stopped",
+            )
+
     def drain(self):
         # Detailed SQL/session/provider drain is reviewed before this final fence.
         # This signal also blocks any terminal admission bypassing the edge.
@@ -160,6 +174,38 @@ class Host:
     def public_ready(self):
         health.public_ready(self.settings)
 
+    def record(self, value):
+        value = {
+            **value,
+            "environment": self.settings["delivery"]["environment"],
+            "instance_id": self.settings["instance_id"],
+        }
+        self.write("promotion-record.json", value)
+        sha = sha256(canonical(value))
+        key = (
+            "deployments/"
+            + self.settings["delivery"]["environment"]
+            + "/"
+            + sha
+            + ".json"
+        )
+        aws(
+            self.settings,
+            "s3api",
+            "put-object",
+            "--bucket",
+            self.settings["artifact_bucket"],
+            "--key",
+            key,
+            "--body",
+            str(self.state / "promotion-record.json"),
+            "--server-side-encryption",
+            "AES256",
+            "--if-none-match",
+            "*",
+        )
+        return sha
+
 
 def execute(settings, release_sha, operation="deploy", adapter=None):
     h = adapter or Host(settings)
@@ -174,6 +220,13 @@ def execute(settings, release_sha, operation="deploy", adapter=None):
         require(not (h.state / name).exists(), "Unresolved recovery marker")
     manifest, _ = h.object("releases", release_sha)
     h.validate(manifest)
+    build, _ = h.object("build-evidence", manifest["build_evidence_sha256"])
+    require(
+        build["source_revision"] == manifest["source_revision"]
+        and build["images"] == manifest["images"]
+        and build["scanners_passed"] is True,
+        "Build evidence does not approve these exact images",
+    )
     previous_record = h.read("deployed-release.json")
     previous = previous_record["release_sha256"] if previous_record else None
     candidate = h.read("candidate-release.json")
@@ -191,7 +244,7 @@ def execute(settings, release_sha, operation="deploy", adapter=None):
     require(operation in ("deploy", "promote"), "Unknown operation")
     if operation == "deploy":
         require(
-            candidate is None and previous != release_sha,
+            candidate is None,
             "An existing candidate requires reconciliation",
         )
     else:
@@ -263,23 +316,28 @@ def execute(settings, release_sha, operation="deploy", adapter=None):
             h.write("current-release.json", manifest)
             h.write("candidate-release.json", transaction)
         else:
+            transaction["stage"] = "promotion-readiness"
+            h.write("deployment-unresolved.json", transaction)
             h.ready(manifest, candidate["started_at"])
+            transaction["stage"] = "public-smoke"
+            h.write("deployment-unresolved.json", transaction)
             h.fence(False)
             h.public_ready()
-            h.write(
-                "deployed-release.json",
-                {
-                    **candidate,
-                    "promotion_approval_sha256": approval_sha,
-                    "promoted_at": time.time(),
-                },
-            )
+            transaction["stage"] = "record-promotion"
+            h.write("deployment-unresolved.json", transaction)
+            record = {
+                **candidate,
+                "promotion_approval_sha256": approval_sha,
+                "promoted_at": time.time(),
+            }
+            record["private_history_sha256"] = h.record(record)
+            h.write("deployed-release.json", record)
             h.remove("candidate-release.json")
         h.remove("deployment-unresolved.json")
     except BaseException:
         # Even cancellation/interrupt leaves a marker. Reclosing is attempted,
         # never interpreted as a rollback or as successful cleanup.
-        h.fence()
+        h.emergency_fence()
         raise
 
 
