@@ -243,6 +243,7 @@ python3 delivery/checks.py images --evidence-dir <new-private-directory>
 python3 deploy/aws/tests/rehearse.py --evidence-dir <private-directory> --images <private-image-selection.json>
 python3 deploy/aws/tests/rehearse-edge.py --evidence-dir <private-directory> --images <private-image-selection.json>
 python3 deploy/aws/tests/rehearse-terminal.py --evidence-dir <private-directory> --images <private-image-selection.json>
+python3 deploy/aws/tests/rehearse-compose.py --evidence-dir <private-directory> --images <private-image-selection.json>
 ```
 
 Install PyYAML for static tests; the host scripts otherwise use Python's standard

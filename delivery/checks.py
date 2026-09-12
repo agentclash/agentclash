@@ -142,6 +142,16 @@ def check(group, evidence):
         run(
             [
                 sys.executable,
+                "deploy/aws/tests/rehearse-compose.py",
+                "--evidence-dir",
+                str(evidence),
+                "--images",
+                selection,
+            ]
+        )
+        run(
+            [
+                sys.executable,
                 "deploy/aws/tests/rehearse.py",
                 "--evidence-dir",
                 str(evidence),

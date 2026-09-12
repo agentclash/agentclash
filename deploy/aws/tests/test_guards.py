@@ -8,6 +8,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from common import Refused, account_guard, verify_blob, image_ref
@@ -26,6 +28,19 @@ from release_contract import (
 
 
 class GuardTests(unittest.TestCase):
+    def test_production_tmpfs_mount_is_one_bounded_absolute_path(self):
+        compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
+        for name, service in compose["services"].items():
+            with self.subTest(service=name):
+                mounts = service["tmpfs"]
+                self.assertEqual(len(mounts), 1)
+                target, options = mounts[0].split(":", 1)
+                self.assertEqual(target, "/tmp")
+                self.assertEqual(
+                    set(options.split(",")),
+                    {"rw", "noexec", "nosuid", "size=64m", "mode=1777"},
+                )
+
     def test_wrong_account_before_any_write(self):
         # Test-only generated identifiers; never reuse a real account in fixtures.
         with patch(

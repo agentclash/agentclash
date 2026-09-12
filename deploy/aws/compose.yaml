@@ -10,7 +10,7 @@ x-common: &common
   logging:
     driver: local
     options: {max-size: 10m, max-file: "3"}
-  tmpfs: [/tmp:rw,noexec,nosuid,size=64m,mode=1777]
+  tmpfs: ["/tmp:rw,noexec,nosuid,size=64m,mode=1777"]
 services:
   caddy:
     <<: *common
