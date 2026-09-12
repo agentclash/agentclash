@@ -15,6 +15,16 @@ from release_contract import canonical, recipe_hash, DERIVED, UPSTREAM, PLATFORM
 LABEL = "io.agentclash.platform-build-sha256"
 
 
+def normalize_context(context):
+    # Git archives and private scratch files have different host modes.
+    # Normalize public inputs so umask/checkout permissions cannot change
+    # platform digests or make redistributed notices unreadable.
+    for path in context.rglob("*"):
+        require(not path.is_symlink(), "Unexpected build-context link")
+        path.chmod(0o755 if path.is_dir() else 0o644)
+        os.utime(path, (0, 0))
+
+
 def local_base(run, identity):
     # BuildKit parses a bare sha256 ID as a Docker Hub tag in FROM. Give the
     # already inspected bytes a local, content-named tag and verify the binding.
@@ -85,6 +95,7 @@ def build(root, directory, run, gate):
     fetch(lock["gosu"], gosu)
 
     def docker_build(context, filename, name, arguments):
+        normalize_context(context)
         tag = "agentclash-platform-build:" + name
         archive = directory / (name + ".image.tar")
         command = [
@@ -148,7 +159,11 @@ def build(root, directory, run, gate):
         )
         if name in ("caddy", "postgres"):
             if name == "caddy":
-                shutil.copytree(recipe / "caddy", context / "source")
+                (context / "source").mkdir(mode=0o700)
+                for filename in ("main.go", "go.mod", "go.sum"):
+                    shutil.copyfile(
+                        recipe / "caddy" / filename, context / "source" / filename
+                    )
             else:
                 (context / "source").mkdir(mode=0o700)
                 with tarfile.open(gosu) as archive:

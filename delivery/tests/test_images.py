@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT / "delivery"), str(ROOT / "deploy/aws/scripts")]
 from common import Refused
 from image_scan import coverage, reconcile, Scanner
-from maintained import fetch, local_base, selection
+from maintained import fetch, local_base, selection, normalize_context
 from release_contract import APPLICATIONS, DERIVED, PLATFORM, UPSTREAM, validate_images
 
 
@@ -35,6 +35,24 @@ def os_report(version="3.5.8-r0", vulnerable=False):
 
 
 class ImageGateTests(unittest.TestCase):
+    def test_private_and_git_archive_modes_normalize_without_following_links(self):
+        with tempfile.TemporaryDirectory() as directory:
+            context = Path(directory)
+            source = context / "source"
+            source.mkdir(mode=0o700)
+            for name, mode in (("private", 0o600), ("archive", 0o644)):
+                path = source / name
+                path.write_bytes(b"public fixture")
+                path.chmod(mode)
+            normalize_context(context)
+            for path in source.iterdir():
+                self.assertEqual(path.stat().st_mode & 0o777, 0o644)
+                self.assertEqual(path.stat().st_mtime, 0)
+            self.assertEqual(source.stat().st_mode & 0o777, 0o755)
+            (source / "link").symlink_to(source / "private")
+            with self.assertRaises(Refused):
+                normalize_context(context)
+
     def test_input_findings_require_present_changed_clean_components(self):
         before, after = os_report("3.5.7-r0", True), os_report()
         self.assertEqual(reconcile(before, after)[0]["after"], ["3.5.8-r0"])
