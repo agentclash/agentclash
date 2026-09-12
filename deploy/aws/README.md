@@ -2,7 +2,8 @@
 
 Reusable Step 8 infrastructure for a small AgentClash installation. This directory
 contains no environment inventory. Preparing it does not authorize provisioning.
-Step 9 prepares CI/CD code, Step 10 separately approves paid provisioning, and
+[Step 9 delivery code](../../delivery/README.md) provides checks, immutable
+publication and guarded deployment. Step 10 separately approves paid provisioning;
 Step 11 activates protected delivery.
 Keep populated files, secret material, manifests and operational evidence outside
 this public checkout and outside build contexts.
@@ -125,12 +126,15 @@ verify it, then run the one-off migrator. `temporal-schema upgrade` is an explic
 platform operation after stopping its writers. Never run schema jobs at server
 startup or auto-downgrade schemas during app rollback.
 
-The SSM document only accepts a 64-character manifest hash. The `deploy` entrypoint
-holds the host lock and verifies the installed delivery driver's approved hash.
-It fails closed until Step 9 supplies that driver. Step 9 must preserve this lock
-across manifest download, migration, stop verification, start and readiness, and
-must not recursively acquire the same lock in child operations. SSO and CI reuse
-the same driver; no arbitrary remote-shell parameter is accepted.
+The separate deploy/promote SSM documents accept only a 64-character manifest
+hash. Both entrypoints hold the host lock and verify the installed delivery
+driver's approved hash. Delivery stays disabled until the reviewed bootstrap,
+private settings and live controls are installed. The driver preserves the lock
+across manifest download, migration, stop verification, start and readiness;
+child operations do not reacquire it. SSO and CI reuse the same driver. Deployment
+leaves intake closed and promotion requires separate private smoke approval.
+See the [delivery runbook](../../delivery/README.md) for approval, recovery and
+promotion history requirements.
 
 ## Maintenance, restart and recovery
 

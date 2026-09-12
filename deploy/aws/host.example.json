@@ -53,5 +53,12 @@
       "version_id": "<immutable-secret-version-id>"
     }
   },
-  "instance_id": "<host-instance-id>"
+  "instance_id": "<host-instance-id>",
+  "delivery_driver_sha256": "<sha256-of-installed-delivery-release.py>",
+  "delivery": {
+    "enabled": false,
+    "environment": "production",
+    "namespace": "agentclash-prod",
+    "public_readiness_urls": ["https://api.example.com/healthz/ready", "https://terminal.example.com/health/ready"]
+  }
 }
