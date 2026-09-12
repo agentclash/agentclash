@@ -43,6 +43,58 @@ def build_images(run, revision=None):
         run(command + ["."], timeout=2400)
 
 
+def scan_bootstrap(directory, archive, run):
+    """Scan installed bootstrap bytes, including Go dependencies in Compose."""
+    unpacked = directory / "bootstrap-scan"
+    unpacked.mkdir(mode=0o700)
+    with tarfile.open(archive) as packaged:
+        require(
+            all(
+                member.isfile()
+                and not member.name.startswith("/")
+                and ".." not in member.name.split("/")
+                for member in packaged.getmembers()
+            ),
+            "Invalid bootstrap member",
+        )
+        packaged.extractall(unpacked, filter="data")
+    # install-host.sh installs these exact bytes as executable. Trivy's Go
+    # binary analyzer skips non-executable files; filesystem mode also skips it.
+    (unpacked / "tools/docker-compose").chmod(0o700)
+    reports = []
+    for scanner in ("secret", "vuln"):
+        report = directory / ("bootstrap-" + scanner + ".json")
+        command = [
+            str(directory / "trivy"),
+            "rootfs",
+            "--quiet",
+            "--ignorefile",
+            os.devnull,
+            "--scanners",
+            scanner,
+            "--exit-code",
+            "1",
+            "--format",
+            "json",
+            "--output",
+            str(report),
+        ]
+        if scanner == "vuln":
+            command += ["--severity", "HIGH,CRITICAL"]
+        run(command + [str(unpacked)], timeout=1200)
+        if scanner == "vuln":
+            require(
+                any(
+                    result.get("Target") == "tools/docker-compose"
+                    and result.get("Type") == "gobinary"
+                    for result in json.loads(report.read_text()).get("Results", [])
+                ),
+                "Compose binary was not inspected by the vulnerability scanner",
+            )
+        reports.append(report)
+    return reports
+
+
 def prepare(directory, revision, private_values=()):
     directory = Path(directory)
     require(re.fullmatch(r"[a-f0-9]{40}", revision), "Invalid source revision")
@@ -145,6 +197,7 @@ def prepare(directory, revision, private_values=()):
     archive = directory / "bootstrap.tar.gz"
     metadata = bundle(source, directory / "compose", archive)
     reports = [directory / "source-secrets.json"]
+    reports.extend(scan_bootstrap(directory, archive, run))
     lock = json.loads((source / "deploy/aws/images.lock.json").read_text())
     # Every selected runtime/admin/base image is checked, not only the apps.
     images = {
