@@ -2,7 +2,8 @@
 
 Reusable Step 8 infrastructure for a small AgentClash installation. This directory
 contains no environment inventory. Preparing it does not authorize provisioning.
-CI/CD activation is Step 9; the exact paid resource plan is approved in Step 10.
+Step 9 prepares CI/CD code, Step 10 separately approves paid provisioning, and
+Step 11 activates protected delivery.
 Keep populated files, secret material, manifests and operational evidence outside
 this public checkout and outside build contexts.
 
@@ -52,9 +53,10 @@ minor, extensions, collation and actual connection use remain live rehearsal gat
 PostgreSQL 18.4 is the local compatibility-test image; the CloudFormation parameter
 requires the separately verified available RDS 18 minor. Never silently downgrade
 the source database. Application images use dedicated Dockerfiles with allowlisted
-contexts. Step 9 builds and publishes them to the private ECR repository, packages
-these scripts and a verified Compose executable into a hash-addressed bootstrap
-bundle, and supplies the four ECR digests in an immutable release manifest.
+contexts. Step 9 prepares workflows to build and publish them to private ECR,
+package these scripts and a verified Compose executable into a hash-addressed
+bootstrap bundle, and record the four ECR digests in an immutable release manifest.
+Publishing and live delivery wait for the later provisioning and activation steps.
 
 On the host, install the approved bundle at `/opt/agentclash`, create root-owned
 `/etc/agentclash/host.json` with mode 0600, and mount the retained data volume before
