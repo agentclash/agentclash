@@ -1,0 +1,20 @@
+# Repository-root build context; dedicated allowlist excludes deployment data.
+FROM --platform=$BUILDPLATFORM golang@sha256:8e02eb337d9e0ea459e041f1ee5eece41cbb61f1d83e7d883a3e2fb4862063fa AS build
+WORKDIR /src
+COPY backend/go.mod backend/go.sum backend/
+COPY runtime/go.mod runtime/go.sum runtime/
+COPY backend/cmd backend/cmd
+COPY backend/internal backend/internal
+COPY runtime runtime
+ARG TARGET=api-server
+ARG TARGETARCH=amd64
+WORKDIR /src/backend
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -mod=readonly -trimpath -ldflags="-s -w" -o /app ./cmd/${TARGET}
+FROM alpine@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659
+RUN apk add --no-cache ca-certificates tzdata
+COPY --from=build /app /app
+COPY backend/db/migrations /migrations
+# Same binary path for the dedicated migrator target, selected at build time.
+RUN ln -s /app /migrator
+USER 10001:10001
+ENTRYPOINT ["/app"]

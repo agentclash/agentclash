@@ -1,0 +1,14 @@
+FROM oven/bun@sha256:32f1fcccb1523960b254c4f80973bee1a910d60be000a45c20c9129a1efcffee AS build
+WORKDIR /app
+COPY try-cli/packages/core/package.json try-cli/packages/core/
+COPY try-cli/packages/core/src try-cli/packages/core/src
+COPY services/try-cli/package.json services/try-cli/bun.lock services/try-cli/
+COPY services/try-cli/server services/try-cli/server
+WORKDIR /app/services/try-cli
+RUN bun install --production --frozen-lockfile
+FROM oven/bun@sha256:32f1fcccb1523960b254c4f80973bee1a910d60be000a45c20c9129a1efcffee
+WORKDIR /app/services/try-cli
+COPY --from=build /app /app
+COPY try-cli/demos /app/try-cli/demos
+USER 10001:10001
+ENTRYPOINT ["bun", "--no-env-file", "--preserve-symlinks", "run", "server/index.ts"]
