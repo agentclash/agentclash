@@ -2,23 +2,23 @@
   "resolved_on": "2026-09-12",
   "images": {
     "temporal": {
-      "tag": "temporalio/server:1.31.2",
-      "image": "temporalio/server@sha256:b5ecdb8282bededae2a10c36e8d862e27d0bc2d247fc73c5416025997ab4a1da",
+      "tag": "temporalio/server:1.32.0",
+      "image": "temporalio/server@sha256:c3e752127759616bb1615e0f9ba0e21635aeb5fdeb922de4f371c350955f46ae",
       "platform": "linux/amd64"
     },
     "temporal-admin": {
-      "tag": "temporalio/admin-tools:1.31.2",
-      "image": "temporalio/admin-tools@sha256:dbc5fcd6ee8f0f4d808bf765af9a87dea9d8a283abfdcfbd2fc148496ba66107",
+      "tag": "temporalio/admin-tools:1.32.0",
+      "image": "temporalio/admin-tools@sha256:a9f84fb9a374b2374fe2e67c8efc0468ff3f1c66c8a0b14597ec86e349e62bca",
       "platform": "linux/amd64"
     },
     "valkey": {
-      "tag": "valkey/valkey:8.1.8-alpine",
-      "image": "valkey/valkey@sha256:94365b275456ae14621001c03556c732b1d93a0cdeacc317d1bdd52eba680885",
+      "tag": "valkey/valkey:8.1.10-alpine",
+      "image": "valkey/valkey@sha256:d2e18f3410b6f616de1417f570fa55261af2898b9c5b2cfb6781ce2373ea43d1",
       "platform": "linux/amd64"
     },
     "postgres": {
-      "tag": "postgres:18.4-alpine",
-      "image": "postgres@sha256:9a8afca54e7861fd90fab5fdf4c42477a6b1cb7d293595148e674e0a3181de15",
+      "tag": "postgres:18.6-alpine3.24",
+      "image": "postgres@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2",
       "platform": "linux/amd64"
     },
     "caddy": {
@@ -27,18 +27,18 @@
       "platform": "linux/amd64"
     },
     "bun": {
-      "tag": "oven/bun:1.3.10-alpine",
-      "image": "oven/bun@sha256:32f1fcccb1523960b254c4f80973bee1a910d60be000a45c20c9129a1efcffee",
+      "tag": "oven/bun:1.4.2-alpine",
+      "image": "oven/bun@sha256:d888c0ae6c86d7866ff10c5aafdd9077b36aee6455b33dd270fb93c0dd5cef6f",
       "platform": "linux/amd64"
     },
     "go": {
-      "tag": "golang:1.25.8-alpine",
-      "image": "golang@sha256:8e02eb337d9e0ea459e041f1ee5eece41cbb61f1d83e7d883a3e2fb4862063fa",
+      "tag": "golang:1.26.8-alpine3.24",
+      "image": "golang@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628",
       "platform": "linux/amd64"
     },
     "alpine": {
-      "tag": "alpine:3.23.3",
-      "image": "alpine@sha256:25109184c71bdad752c8312a8623239686a9a2071e8825f20acb8f2198c3f659",
+      "tag": "alpine:3.24.1",
+      "image": "alpine@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b",
       "platform": "linux/amd64"
     }
   }

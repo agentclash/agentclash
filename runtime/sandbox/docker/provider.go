@@ -17,9 +17,9 @@ import (
 
 	"github.com/agentclash/agentclash/runtime/maputil"
 	"github.com/agentclash/agentclash/runtime/sandbox"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/errdefs"
+	"github.com/containerd/errdefs"
 	"github.com/google/uuid"
+	"github.com/moby/moby/api/types/container"
 )
 
 // Provider creates Docker-backed sandbox sessions.

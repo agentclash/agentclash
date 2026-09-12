@@ -218,7 +218,11 @@ def main():
                     "POSTGRES_USER=platform_admin",
                 ],
             )
-            ready(["docker", "exec", pg, "pg_isready", "-U", "platform_admin"])
+            # The image's initialization server accepts Unix-socket probes, then
+            # exits. TCP readiness waits for the final server before role setup.
+            ready(
+                ["docker", "exec", pg, "pg_isready", "-h", "127.0.0.1", "-U", "platform_admin"]
+            )
 
             def psql(sql, db="postgres", ok=True):
                 return docker(

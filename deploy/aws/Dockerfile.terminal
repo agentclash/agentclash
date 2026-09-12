@@ -1,4 +1,4 @@
-FROM oven/bun@sha256:32f1fcccb1523960b254c4f80973bee1a910d60be000a45c20c9129a1efcffee AS build
+FROM oven/bun@sha256:d888c0ae6c86d7866ff10c5aafdd9077b36aee6455b33dd270fb93c0dd5cef6f AS build
 WORKDIR /app
 COPY try-cli/packages/core/package.json try-cli/packages/core/
 COPY try-cli/packages/core/src try-cli/packages/core/src
@@ -6,7 +6,8 @@ COPY services/try-cli/package.json services/try-cli/bun.lock services/try-cli/
 COPY services/try-cli/server services/try-cli/server
 WORKDIR /app/services/try-cli
 RUN bun install --production --frozen-lockfile
-FROM oven/bun@sha256:32f1fcccb1523960b254c4f80973bee1a910d60be000a45c20c9129a1efcffee
+FROM oven/bun@sha256:d888c0ae6c86d7866ff10c5aafdd9077b36aee6455b33dd270fb93c0dd5cef6f
+RUN apk add --no-cache --upgrade libcrypto3=3.5.8-r0 libssl3=3.5.8-r0
 WORKDIR /app/services/try-cli
 COPY --from=build /app /app
 COPY try-cli/demos /app/try-cli/demos

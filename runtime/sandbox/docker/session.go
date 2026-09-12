@@ -14,9 +14,9 @@ import (
 
 	"github.com/agentclash/agentclash/runtime/maputil"
 	"github.com/agentclash/agentclash/runtime/sandbox"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/errdefs"
-	"github.com/docker/docker/pkg/stdcopy"
+	"github.com/containerd/errdefs"
+	"github.com/moby/moby/api/pkg/stdcopy"
+	"github.com/moby/moby/client"
 )
 
 type session struct {
@@ -171,7 +171,7 @@ func (s *session) execInternal(ctx context.Context, request sandbox.ExecRequest)
 	}
 
 	env := mergeEnvironment(s.defaultEnvironment, request.Environment)
-	execID, err := s.engine.ContainerExecCreate(execCtx, s.id, container.ExecOptions{
+	execID, err := s.engine.ContainerExecCreate(execCtx, s.id, client.ExecCreateOptions{
 		Cmd:          command,
 		Env:          envSlice(env),
 		WorkingDir:   workingDir,
@@ -386,7 +386,6 @@ func mergeEnvironment(base, override map[string]string) map[string]string {
 	}
 	return merged
 }
-
 
 func isNotFoundErr(err error) bool {
 	if err == nil {
