@@ -248,11 +248,32 @@ class CITests(unittest.TestCase):
             self.assertNotIn("pull_request_target", workflow["on"])
             for name, job in workflow["jobs"].items():
                 if job.get("permissions", {}).get("id-token") == "write":
-                    self.assertIn("AWS_DELIVERY_ENABLED", job["if"])
-                    self.assertEqual(
-                        job["environment"],
-                        "aws-" + ("build" if name == "build" else name),
-                    )
+                    if file.name == "aws-verify.yml":
+                        # Bootstrap is manually dispatched before delivery is
+                        # enabled; the environment and expiring private config
+                        # gate it. Leave branch rejection to GitHub so it can be
+                        # observed in the negative activation check.
+                        self.assertEqual(set(workflow["on"]), {"workflow_dispatch"})
+                        self.assertEqual(job["environment"], "aws-${{ inputs.target }}")
+                        self.assertEqual(
+                            workflow["on"]["workflow_dispatch"]["inputs"]["target"][
+                                "options"
+                            ],
+                            ["build", "production"],
+                        )
+                        self.assertEqual(
+                            job["steps"][-1]["env"]["AWS_ACTIVATION_CONFIG"],
+                            "${{ secrets.AWS_ACTIVATION_CONFIG }}",
+                        )
+                        self.assertEqual(
+                            job["steps"][-1]["run"], "python3 delivery/activation.py"
+                        )
+                    else:
+                        self.assertIn("AWS_DELIVERY_ENABLED", job["if"])
+                        self.assertEqual(
+                            job["environment"],
+                            "aws-" + ("build" if name == "build" else name),
+                        )
                 for step in job.get("steps", []):
                     if "uses" in step:
                         self.assertRegex(step["uses"], r"@[a-f0-9]{40}$")
