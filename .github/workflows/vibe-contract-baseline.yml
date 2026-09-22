@@ -1,0 +1,64 @@
+name: Vibe interaction contracts and baseline
+on:
+  pull_request:
+    paths:
+      - 'backend/internal/vibe/**'
+      - 'backend/internal/api/vibe*'
+      - 'backend/db/migrations/**'
+      - 'backend/go.*'
+      - 'runtime/**'
+      - 'scripts/vibe/**'
+      - '.github/workflows/vibe-contract-baseline.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  phase-one:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: vibe_test_phase1
+          POSTGRES_USER: vibe_test
+          POSTGRES_PASSWORD: local_test_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U vibe_test -d vibe_test_phase1"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      VIBE_TEST_DATABASE_URL: postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test_phase1?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Migrate isolated fixture
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, subprocess, sys
+          sys.path.insert(0, 'scripts/vibe')
+          from db_env import connection_env
+          env = connection_env(os.environ['VIBE_TEST_DATABASE_URL'])
+          for path in sorted(Path('backend/db/migrations').glob('*.sql')):
+              sql = path.read_text().split('-- +goose Down')[0]
+              subprocess.run(['psql', '-X', '-v', 'ON_ERROR_STOP=1'], input=sql, text=True, check=True, env=env)
+          PY
+      - name: Offline contracts and quality-gate regressions
+        run: |
+          python3 -m unittest discover -s scripts/vibe -p 'test_*.py' -v
+          python3 scripts/vibe/quality.py
+      - name: Required database and contract sequences (no paid calls)
+        run: python3 scripts/vibe/run_baseline.py --report /tmp/vibe-phase1-baseline.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vibe-phase1-regression-baseline
+          path: /tmp/vibe-phase1-baseline.json
+          if-no-files-found: error

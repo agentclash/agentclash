@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "status": "provisional frozen before model tuning; not a claim of validated human accuracy",
+  "minimum_holdout_per_track": 12,
+  "minimum_per_class": 2,
+  "minimum_accuracy": 0.95,
+  "minimum_class_recall": 0.9,
+  "minimum_class_precision": 0.9,
+  "maximum_unnecessary_question_rate": 0.1,
+  "minimum_suite_completion": 0.95,
+  "critical_errors_allowed": 0,
+  "maximum_latency_regression_ratio": 1.1,
+  "note": "Missing/error outputs stay in denominators. Human review and complete measurement coverage required. Latency and cost require a matched pre-change baseline; this absolute quality gate alone does not approve Jev adoption."
+}
