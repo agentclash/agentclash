@@ -195,11 +195,12 @@ func TestIntegrationVibeConversationStateAtomicity(t *testing.T) {
 	}
 }
 func TestIntegrationVibeConversationStateRecoveryWithoutDispatch(t *testing.T) {
-	for _, precise := range []bool{false, true} {
-		t.Run(fmt.Sprint("precise=", precise), func(t *testing.T) {
+	for _, version := range []int{12, 13, 14} {
+		t.Run(fmt.Sprint("version=", version), func(t *testing.T) {
 			ctx := context.Background()
 			s, v, cfg := memoryService(t)
-			s.Config.PreciseActions = precise
+			s.Config.PreciseActions = version >= 13
+			s.Config.ContextGuidance = version >= 14
 			o, p := memoryOperation(t, s, v, "My agent converts PDF to Markdown.")
 			var err error
 			o, _, err = s.Store.Start(ctx, o.ID)
@@ -208,6 +209,9 @@ func TestIntegrationVibeConversationStateRecoveryWithoutDispatch(t *testing.T) {
 			}
 			profile := cfg.Profiles[o.Models.Assistant]
 			route := questionRoute()
+			if version == 14 {
+				route.Example = &GuidanceExample{Input: "PDF heading: Refunds", Expected: "# Refunds"}
+			}
 			output := raw(route)
 			attempt := Attempt{ID: uuid.New(), OperationID: o.ID, Step: "route", Role: Assistant, Model: o.Models.Assistant, RequestHash: Hash(raw(taskMessages(p, taskRoute, "", nil))), Policy: raw(map[string]any{"response_format": reliableRouteFormat(profile, p)}), InputBound: 15000, MaxOutput: 2048, MaxCost: 100000}
 			if err = s.Store.BeginAttempt(ctx, attempt); err != nil {
@@ -233,7 +237,7 @@ func TestIntegrationVibeConversationStateRecoveryWithoutDispatch(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if calls != 0 || len(current.Document.Messages) != 2 || current.Document.ConversationState == nil || current.Document.ConversationState.PendingQuestion == nil || current.Operations[0].State != Completed {
+			if calls != 0 || version == 14 && len(current.Document.Messages[len(current.Document.Messages)-1].Cards) != 1 || len(current.Document.Messages) != 2 || current.Document.ConversationState == nil || current.Document.ConversationState.PendingQuestion == nil || current.Operations[0].State != Completed {
 				t.Fatal("recorded response did not recover state exactly once")
 			}
 

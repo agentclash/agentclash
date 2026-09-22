@@ -9,7 +9,7 @@ import (
 
 const preciseAuthoringVersion = 13
 
-func (p Plan) precise() bool { return p.AuthoringVersion == preciseAuthoringVersion }
+func (p Plan) precise() bool { return p.AuthoringVersion == preciseAuthoringVersion || p.guided() }
 
 // Policy IDs name immutable snapshots; their hash also binds source evidence.
 // Omitting a rule from a patch never removes it.

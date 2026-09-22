@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { SafeMarkdown, safeLink } from "./safe-markdown";
+import { AgentReply, SafeMarkdown, safeLink } from "./safe-markdown";
 describe("Vibe untrusted rendering", () => {
   it("does not render HTML, scripts, remote images or javascript links", () => {
     const html = renderToStaticMarkup(
@@ -18,5 +18,14 @@ describe("Vibe untrusted rendering", () => {
     expect(safeLink("//attacker.invalid")).toBe("");
     expect(safeLink("data:text/html,hi")).toBe("");
     expect(safeLink("https://example.com")).toBe("https://example.com");
+  });
+  it("shows structured replies verbatim without rounding numbers or interpreting HTML", () => {
+    const reply =
+      '{"id":9007199254740993,"text":"<script>alert(1)</script>","escaped":"\\n"}';
+    const html = renderToStaticMarkup(<AgentReply>{reply}</AgentReply>);
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    expect(container.querySelector("pre code")?.textContent).toBe(reply);
+    expect(container.querySelector("script")).toBeNull();
   });
 });

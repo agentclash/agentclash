@@ -59,6 +59,7 @@ type ManualSuiteEdit struct {
 	Blueprint json.RawMessage `json:"blueprint"`
 }
 type ConversationContext struct {
+	Example          *GuidanceExample      `json:"example,omitempty"`
 	State            *ConversationState    `json:"state,omitempty"`
 	StateBaseHash    string                `json:"state_base_hash,omitempty"`
 	MemorySources    []SourceBlock         `json:"memory_sources,omitempty"`
@@ -178,7 +179,12 @@ func operationSource(v Session, op Operation, seen map[uuid.UUID]bool) uuid.UUID
 func reliableMessages(p Plan, instruction string, extra any) []provider.Message {
 	desired := p.Conversation.Policy
 	sources := p.Conversation.Sources
-	history := p.Document.Messages
+	// A feature rollback can admit a legacy request in a session that already
+	// contains illustrations. Keep those display-only cards out of its context.
+	history := append([]Message(nil), p.Document.Messages...)
+	for i := range history {
+		history[i].Cards = nil
+	}
 	pending := p.Conversation.Pending
 	selected := p.Artifact
 	if action, ok := extra.(map[string]any); ok && action["action"] == "suggest_fix" {

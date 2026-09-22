@@ -10,7 +10,7 @@ export type Model = {
 export type Requirement = {
   id: string;
   statement: string;
-  status: "proposed" | "accepted" | "rejected" | "superseded";
+  status: "proposed" | "accepted" | "rejected" | "superseded" | "provided";
   source_message_id: string;
   proposal_message_id?: string;
   proposed_by?: string;
@@ -31,6 +31,7 @@ export type Capability = {
   available: boolean;
   description: string;
   instructions?: string;
+  criteria_instructions?: string;
   url?: string;
   example?: string;
   next_steps?: string[];
@@ -45,11 +46,27 @@ export type TestPlan = {
 };
 export type EvaluationProposal = {
   examples: string[];
+  scenarios?: { input: string; expected: string }[];
   success_criteria: string;
 };
 export type Artifact = {
+  policy_id?: string;
+  validation?: {
+    status: "supported" | "contradicted" | "unclear" | "unavailable";
+    blueprint_hash: string;
+    policy_hash: string;
+    validator_version: string;
+  };
+  dismissed?: boolean;
+  proposal_message_id?: string;
+  quick_check?: boolean;
+  conversation_evaluation?: {
+    evidence_set_id: string;
+    expectations: Expectation[];
+  };
+  summary?: string;
   criteria_requirement_ids?: string[];
-  kind?: "agent_draft" | "test_plan";
+  kind?: "agent_draft" | "test_plan" | "conversation_evaluation" | "test_suite";
   test_plan?: TestPlan;
   proposal?: EvaluationProposal & { title: string; agent_prompt: string };
   id: string;
@@ -63,6 +80,11 @@ export type Artifact = {
 };
 export type Verdict = "PASS" | "FAIL" | "UNKNOWN";
 export type CaseResult = {
+  expectations?: Expectation[];
+  title?: string;
+  messages?: EvidenceMessage[];
+  expected?: string;
+  expected_scope?: "shared";
   case_key: string;
   version: string;
   input: unknown;
@@ -72,11 +94,29 @@ export type CaseResult = {
     key: string;
     verdict: Verdict;
     evidence: string;
+    message_ids?: string[];
     error?: { message: string };
   }[];
-  error?: { message: string };
+  error?: { code?: string; message: string };
 };
 export type Operation = {
+  completion_receipt?: {
+    action: string;
+    source_message_id: string;
+    artifact_id?: string;
+    case_count: number;
+    changed_case_count: number;
+  };
+  retry_of_operation_id?: string;
+  retryable?: boolean;
+  conversation_decision?: { intent: string; source_message_id: string };
+  source?: {
+    kind: "provided_conversations" | "prompt";
+    label: string;
+    artifact_id: string;
+    evidence_set_id?: string;
+    comparison?: "updated_replies" | "rechecked";
+  };
   baseline_id?: string;
   id: string;
   kind: string;
@@ -121,14 +161,32 @@ export type Session = {
   document: {
     conversation_state?: ConversationState;
     last_change?: ConversationChange;
+    policies?: {
+      id: string;
+      source_version?: string;
+      rules: { id: string; statement: string }[];
+    }[];
+    pending_policy_changes?: {
+      operation_id: string;
+      source_message_id: string;
+      artifact_id?: string;
+      status: "pending" | "applied";
+      message: string;
+    }[];
+    test_journey?: boolean;
+    evaluation_first?: boolean;
+    evidence_sets?: EvidenceSet[];
+    active_evidence_id?: string;
     journey?: Journey;
     messages: {
       id: string;
       role: string;
       content: string;
+      cards?: unknown[];
       origin?: string;
       operation_id?: string;
       artifact_id?: string;
+      preview_thread_id?: string;
     }[];
     requirements: Requirement[];
     artifacts: Artifact[];
@@ -137,11 +195,37 @@ export type Session = {
   };
   operations: Operation[];
 };
+export type Expectation = { id: string; statement: string };
+export type EvidenceMessage = {
+  id: string;
+  role: "user" | "assistant" | "system" | "tool" | "unknown";
+  content: string;
+};
+export type EvidenceSet = {
+  id: string;
+  parent_id?: string;
+  label: string;
+  raw: string;
+  context?: string;
+  conversations: { key: string; title: string; messages: EvidenceMessage[] }[];
+};
+export type SavedCheck = {
+  draft_id?: string;
+  id: string;
+  title: string;
+  session_id: string;
+  artifact_id: string;
+  baseline_operation_id: string;
+  workspace_id: string;
+  source: Operation["source"];
+  created_at: string;
+};
 export type VibeConfig = {
   interaction_actions?: boolean;
   capabilities?: Capability[];
   enabled: boolean;
   free_only?: boolean;
+  local_testing?: boolean;
   models: Model[];
   defaults: Models;
   anonymous_limits?: Record<string, number>;
@@ -156,8 +240,17 @@ export function editableEvaluation(
 ): EvaluationProposal | null {
   if (!blueprint || typeof blueprint !== "object") return null;
   const b = blueprint as {
-    cases?: { payload?: { question?: unknown } }[];
-    judges?: { key?: string; assertion?: unknown }[];
+    cases?: {
+      payload?: { question?: unknown };
+      expectations?: { key: string; kind: string; value?: unknown }[];
+    }[];
+    judges?: {
+      key?: string;
+      mode?: string;
+      rubric?: string;
+      assertion?: unknown;
+      context_from?: string[];
+    }[];
     validators?: { key?: string; type?: string; expected_from?: string }[];
     dimensions?: unknown[];
   };
@@ -168,6 +261,8 @@ export function editableEvaluation(
     !Array.isArray(b.judges) ||
     b.judges.length !== 1 ||
     b.judges[0].key !== "behavior" ||
+    (b.judges[0].mode !== undefined && b.judges[0].mode !== "assertion") ||
+    !!b.judges[0].rubric ||
     typeof b.judges[0].assertion !== "string" ||
     !Array.isArray(b.validators) ||
     b.validators.length !== 1 ||
@@ -175,10 +270,110 @@ export function editableEvaluation(
     b.dimensions?.length !== 2
   )
     return null;
+  const only = (value: object, keys: string[]) =>
+    Object.keys(value).every((key) => keys.includes(key));
+  // Custom contracts remain read-only. The backend also requires a lossless
+  // round trip before accepting edits, including fields unknown to this client.
+  if (
+    b.cases.some(
+      (c) =>
+        !only(c, ["key", "payload", "expectations"]) ||
+        !only(c.payload!, ["question"]),
+    ) ||
+    !only(b.judges[0], [
+      "key",
+      "mode",
+      "rubric",
+      "assertion",
+      "context_from",
+    ]) ||
+    b.validators.some(
+      (v) => !only(v, ["key", "type", "target", "expected_from"]),
+    ) ||
+    b.dimensions.some(
+      (d) =>
+        !d ||
+        typeof d !== "object" ||
+        !only(d, ["key", "source", "validators", "judge_key"]),
+    )
+  )
+    return null;
+  const contextual = b.judges[0].context_from;
+  if (contextual?.length) {
+    if (
+      contextual.length !== 1 ||
+      contextual[0] !== "case.expectations.expected_behavior" ||
+      !b.cases.every(
+        (c) =>
+          c.expectations?.length === 1 &&
+          c.expectations[0].key === "expected_behavior" &&
+          only(c.expectations[0], ["key", "kind", "value"]) &&
+          c.expectations[0].kind === "text" &&
+          typeof c.expectations[0].value === "string",
+      )
+    )
+      return null;
+    return {
+      examples: [],
+      scenarios: b.cases.map((c) => ({
+        input: c.payload!.question as string,
+        expected: c.expectations![0].value as string,
+      })),
+      success_criteria: b.judges[0].assertion.startsWith(scenarioCriteriaPrefix)
+        ? b.judges[0].assertion.slice(scenarioCriteriaPrefix.length)
+        : b.judges[0].assertion,
+    };
+  }
+  if (b.cases.some((c) => c.expectations?.length)) return null;
   return {
     examples: b.cases.map((c) => c.payload!.question as string),
     success_criteria: b.judges[0].assertion,
   };
+}
+const scenarioCriteriaPrefix =
+  "The response meets this case's expected_behavior and the following shared rules:\n\n";
+
+export function caseInput(input: unknown): string {
+  if (typeof input === "string") return input;
+  if (
+    input &&
+    typeof input === "object" &&
+    Object.keys(input).length === 1 &&
+    "question" in input &&
+    typeof input.question === "string"
+  )
+    return input.question;
+  return input == null
+    ? "Input has not been loaded."
+    : JSON.stringify(input, null, 2);
+}
+
+export function exportAgent(artifact: Artifact, models: Models) {
+  downloadVibe(
+    "agentclash-agent.json",
+    JSON.stringify(
+      {
+        format: "agentclash-vibe-v1",
+        agent_prompt: artifact.agent_prompt,
+        evaluation: artifact.blueprint,
+        models,
+      },
+      null,
+      2,
+    ),
+  );
+}
+export function downloadVibe(
+  name: string,
+  text: string,
+  type = "application/json",
+) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = name;
+  anchor.click();
+  URL.revokeObjectURL(url);
 }
 export const defaultModels: Models = {
   assistant: "openai/gpt-4.1-mini",
@@ -187,6 +382,31 @@ export const defaultModels: Models = {
 };
 export const terminal = (state: string) =>
   ["COMPLETED", "PARTIAL", "FAILED", "CANCELLED", "EXPIRED"].includes(state);
+export function completionAcknowledgement(operation: Operation): string | undefined {
+  const receipt = operation.completion_receipt;
+  if (!receipt) return undefined;
+  if (receipt.action === "prepare_tests")
+    return `${receipt.case_count} ${receipt.case_count === 1 ? "test is" : "tests are"} ready.`;
+  if (receipt.action === "edit_tests")
+    return receipt.changed_case_count > 0
+      ? `Updated ${receipt.changed_case_count} ${receipt.changed_case_count === 1 ? "test" : "tests"}.`
+      : "Updated the test rules.";
+  if (receipt.action === "suggest_fix") return "Prepared a suggested fix.";
+  return undefined;
+}
+
+export function retryVibeOperation(
+  sessionID: string,
+  operationID: string,
+  request: { client_id: string; revision: number },
+  token?: string | null,
+) {
+  return vibeFetch<Operation>(
+    `/sessions/${encodeURIComponent(sessionID)}/operations/${encodeURIComponent(operationID)}/retry`,
+    token,
+    { method: "POST", body: JSON.stringify(request) },
+  );
+}
 export const dollars = (nano: number | null) =>
   nano === null
     ? "Reconciling"

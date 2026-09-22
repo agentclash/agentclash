@@ -123,6 +123,10 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 			if s.Config.PreciseActions {
 				p.AuthoringVersion = preciseAuthoringVersion
 				p.Conversation.ContractVersion = "vibe-v13"
+				if s.Config.ContextGuidance {
+					p.AuthoringVersion = guidedAuthoringVersion
+					p.Conversation.ContractVersion = "vibe-v14"
+				}
 			}
 		}
 	}

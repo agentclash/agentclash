@@ -1,6 +1,7 @@
 "use client";
 
-import { Download, X } from "lucide-react";
+import { useState } from "react";
+import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Artifact, Capability, Journey, Requirement } from "@/lib/vibe";
 import { SafeMarkdown } from "./safe-markdown";
@@ -15,6 +16,8 @@ export function TestPlanPanel({
   onClose,
   onPreview,
   onRequirement,
+  onEdit,
+  onDirtyChange,
 }: {
   artifact: Artifact;
   journey?: Journey;
@@ -22,6 +25,10 @@ export function TestPlanPanel({
   requirements: Requirement[];
   busy: boolean;
   onClose: () => void;
+  onEdit?: (
+    scenarios: { input: string; expected: string }[],
+  ) => Promise<boolean>;
+  onDirtyChange?: (dirty: boolean) => void;
   onPreview: () => void;
   onRequirement: (
     id: string,
@@ -30,6 +37,15 @@ export function TestPlanPanel({
   ) => void;
 }) {
   const storedPlan = artifact.test_plan;
+  const [scenarios, setScenarios] = useState(storedPlan?.scenarios || []);
+  const dirty =
+    JSON.stringify(scenarios) !== JSON.stringify(storedPlan?.scenarios || []);
+  function change(next: typeof scenarios) {
+    setScenarios(next);
+    onDirtyChange?.(
+      JSON.stringify(next) !== JSON.stringify(storedPlan?.scenarios || []),
+    );
+  }
   if (!storedPlan) return null;
   const handoff = capabilities.find((c) => c.id === "python_sdk");
   const plan = {
@@ -71,127 +87,170 @@ export function TestPlanPanel({
     URL.revokeObjectURL(url);
   }
   return (
-    <aside
-      aria-label="Test plan"
-      className="fixed inset-0 z-30 flex flex-col bg-builder-panel p-5 sm:inset-y-0 sm:left-auto sm:w-[410px] sm:border-l sm:border-builder-border lg:relative lg:z-auto lg:w-[380px] lg:shrink-0"
-    >
-      <div className="mb-5 flex justify-between gap-3">
-        <div>
-          <p className="font-mono text-[10px] uppercase tracking-widest text-builder-fg-muted">
-            Test plan · Not run
-          </p>
-          <h2 className="mt-2 font-semibold tracking-tight">{plan.title}</h2>
+    <section aria-label="Test plan" className="space-y-5">
+      <div>
+        <p className="text-xs text-builder-fg-muted">Test plan · Not run</p>
+        <h1 className="mt-2 text-xl font-semibold">{plan.title}</h1>
+      </div>
+      <p className="text-sm leading-6">
+        Your existing agent is not connected. Review these situations, then
+        export the plan to test in your own environment.
+      </p>
+      <SafeMarkdown>{plan.objective}</SafeMarkdown>
+      <section aria-label="Planned scenarios" className="space-y-4">
+        {scenarios.map((scenario, i) => (
+          <fieldset
+            key={i}
+            className="space-y-3 rounded-xl border border-builder-border p-4"
+          >
+            <legend className="px-2 text-sm font-medium">
+              Situation {i + 1} · Not run
+            </legend>
+            <label className="block text-sm">
+              Message or task
+              <textarea
+                aria-label={`Planned situation ${i + 1} input`}
+                value={scenario.input}
+                readOnly={!onEdit}
+                disabled={busy}
+                onChange={(e) =>
+                  change(
+                    scenarios.map((s, n) =>
+                      n === i ? { ...s, input: e.target.value } : s,
+                    ),
+                  )
+                }
+                className="mt-2 min-h-20 w-full rounded-lg border border-builder-border bg-builder-surface p-3 leading-6"
+              />
+            </label>
+            <label className="block text-sm">
+              What should happen
+              <textarea
+                aria-label={`Planned situation ${i + 1} expected behavior`}
+                value={scenario.expected}
+                readOnly={!onEdit}
+                disabled={busy}
+                onChange={(e) =>
+                  change(
+                    scenarios.map((s, n) =>
+                      n === i ? { ...s, expected: e.target.value } : s,
+                    ),
+                  )
+                }
+                className="mt-2 min-h-20 w-full rounded-lg border border-builder-border bg-builder-surface p-3 leading-6"
+              />
+            </label>
+          </fieldset>
+        ))}
+      </section>
+      {dirty && (
+        <div className="flex gap-3">
+          <Button
+            disabled={
+              busy ||
+              scenarios.some(
+                (s) =>
+                  !s.input.trim() || s.expected.trim().split(/\s+/).length < 4,
+              )
+            }
+            onClick={async () => {
+              if (await onEdit?.(scenarios)) onDirtyChange?.(false);
+            }}
+          >
+            Apply changes
+          </Button>
+          <Button
+            variant="ghost"
+            disabled={busy}
+            onClick={() => change(storedPlan.scenarios)}
+          >
+            Discard edits
+          </Button>
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onClose}
-          aria-label="Close test plan"
-        >
-          <X size={16} />
+      )}
+      <div className="flex flex-wrap gap-3">
+        <Button disabled={dirty} onClick={download}>
+          <Download size={14} /> Export test plan
+        </Button>
+        <Button variant="outline" onClick={onClose}>
+          Ask for changes
         </Button>
       </div>
-      <div className="min-h-0 flex-1 space-y-5 overflow-y-auto text-xs leading-5">
-        <p>
-          Your live agent is not connected. Review these scenarios and ask for
-          changes in Design. Export the plan to test in your own environment.
-        </p>
-        <SafeMarkdown>{plan.objective}</SafeMarkdown>
+      <details className="rounded-xl border border-builder-border p-4 text-sm">
+        <summary className="cursor-pointer font-medium">
+          What you need to run these checks
+        </summary>
         {journey?.stack && (
-          <p>
-            <strong>Your reported stack:</strong> {journey.stack}
+          <p className="mt-3">
+            <strong>Your setup:</strong> {journey.stack}
           </p>
         )}
         {journey?.evidence && (
-          <p>
+          <p className="mt-3">
             <strong>Available evidence:</strong> {journey.evidence}
           </p>
         )}
-        <section aria-label="Planned scenarios">
-          <h3 className="font-medium">Scenarios to test</h3>
-          {plan.scenarios.map((s, i) => (
-            <div
-              key={i}
-              className="mt-3 rounded-lg border border-builder-border p-3"
-            >
-              <SafeMarkdown>{s.input}</SafeMarkdown>
-              <p className="mt-2 font-medium">Expected behavior</p>
-              <SafeMarkdown>{s.expected}</SafeMarkdown>
-            </div>
+        <h3 className="mt-4 font-medium">Evidence needed</h3>
+        <ul className="mt-2 list-disc space-y-2 pl-5">
+          {plan.evidence_needed.map((s, i) => (
+            <li key={i}>{s}</li>
           ))}
-        </section>
-        <section>
-          <h3 className="font-medium">Evidence needed</h3>
-          <ul className="mt-2 list-disc space-y-2 pl-4">
-            {plan.evidence_needed.map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ul>
-        </section>
-        <section>
-          <h3 className="font-medium">Next steps</h3>
-          <ol className="mt-2 list-decimal space-y-2 pl-4">
-            {plan.next_steps.map((s, i) => (
-              <li key={i}>
-                <SafeMarkdown>{s}</SafeMarkdown>
-              </li>
-            ))}
-          </ol>
-        </section>
+        </ul>
+        <h3 className="mt-4 font-medium">Next steps</h3>
+        <ol className="mt-2 list-decimal space-y-2 pl-5">
+          {plan.next_steps.map((s, i) => (
+            <li key={i}>
+              <SafeMarkdown>{s}</SafeMarkdown>
+            </li>
+          ))}
+        </ol>
         {plan.local_test_code && (
-          <section>
-            <h3 className="font-medium">Local example · Not executed</h3>
-            <p>
-              Configure your invocation before running this example. Contains
-              checks text presence only; verify JSON and tool traces with your
-              own assertions.
+          <details className="mt-4">
+            <summary className="cursor-pointer">
+              Local example · Not executed
+            </summary>
+            <p className="mt-2 text-xs">
+              Configure your invocation and credentials locally. Text presence
+              checks alone do not verify tools, voice or actions.
             </p>
-            <pre className="mt-2 overflow-auto whitespace-pre-wrap rounded-lg bg-builder-surface p-3 font-mono text-[11px]">
+            <pre className="mt-3 overflow-auto whitespace-pre-wrap rounded-lg bg-builder-surface p-3 text-xs">
               {plan.local_test_code}
             </pre>
-          </section>
+          </details>
         )}
-        <section>
-          <h3 className="font-medium">What this can establish</h3>
-          {capabilities.map((c) => (
+        {capabilities
+          .filter((c) => c.url)
+          .map((c) => (
             <p key={c.id} className="mt-3">
-              <strong>{c.label}:</strong> {c.description}{" "}
-              {c.url && (
-                <a
-                  href={c.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                >
-                  Documentation ↗
-                </a>
-              )}
+              <a
+                href={c.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                {c.label} documentation ↗
+              </a>
             </p>
           ))}
-        </section>
+      </details>
+      <details className="text-sm">
+        <summary className="cursor-pointer">
+          Assumptions and confirmed requirements
+        </summary>
         <Requirements
           requirements={requirements}
-          busy={busy}
+          busy={busy || dirty}
           onRequirement={onRequirement}
         />
-      </div>
-      <div className="mt-5 space-y-2 border-t border-builder-border pt-4">
-        <Button onClick={download} variant="outline" className="w-full">
-          <Download size={14} /> Export test plan
+      </details>
+      <div className="border-t border-builder-border pt-4">
+        <Button variant="ghost" disabled={busy || dirty} onClick={onPreview}>
+          Try a text simulation
         </Button>
-        <Button
-          onClick={onPreview}
-          disabled={busy}
-          variant="ghost"
-          className="w-full"
-        >
-          Try a prompt-only preview
-        </Button>
-        <p className="text-[11px] leading-5 text-builder-fg-muted">
-          A prompt preview is a separate surrogate. It does not test your
-          connected system.
+        <p className="mt-2 text-xs text-builder-fg-muted">
+          A separate preview of replies. Your real agent remains unconnected.
         </p>
       </div>
-    </aside>
+    </section>
   );
 }

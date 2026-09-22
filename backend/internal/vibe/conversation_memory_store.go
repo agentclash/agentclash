@@ -2,6 +2,7 @@ package vibe
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -44,6 +45,20 @@ func (r *Runner) completeReliableDocument(ctx context.Context, o Operation, p Pl
 	}
 	if p.precise() && c.Policy != nil && p.Conversation.Policy != nil {
 		alignBriefToPolicy(s, *p.Conversation.Policy, *c.Policy)
+	}
+	if p.guided() && p.Conversation.Example != nil {
+		messageID := deterministicID(o.ID, "completion-message")
+		c.Cards = []json.RawMessage{exampleCard(*p.Conversation.Example, s.Brief.ScopeID, messageID)}
+		shown := false
+		for _, event := range s.Guidance.Events {
+			shown = shown || event.MessageID == messageID.String() && event.Kind == "example"
+		}
+		if !shown {
+			s.Guidance.Events = append(s.Guidance.Events, GuidanceEvent{MessageID: messageID.String(), Kind: "example", Topic: "test-example"})
+		}
+		if len(s.Guidance.Events) > 32 {
+			s.Guidance.Events = s.Guidance.Events[len(s.Guidance.Events)-32:]
+		}
 	}
 	c.ConversationState = s
 	return r.Service.Store.CompleteDocument(ctx, o.ID, reply, artifact, requirements, c)

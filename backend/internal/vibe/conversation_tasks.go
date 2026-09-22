@@ -96,7 +96,10 @@ func buildTaskInput(p Plan, task conversationTask, action string, extra any) (ta
 		}
 		out.WorkingBrief = &brief
 		out.Guidance = &s.Guidance
-		out.RecentConversation = p.Document.Messages
+		out.RecentConversation = append([]Message(nil), p.Document.Messages...)
+		for i := range out.RecentConversation {
+			out.RecentConversation[i].Cards = nil
+		}
 		out.UnadoptedDialogue = visibleSourceCandidates(p)
 		seen := map[string]bool{}
 		for _, c := range out.UnadoptedDialogue {
@@ -188,6 +191,9 @@ func taskMessages(p Plan, task conversationTask, action string, extra any) []pro
 	prompt := statefulRoutePrompt
 	if p.precise() {
 		prompt = preciseRoutePrompt
+		if p.guided() {
+			prompt += guidedRoutePrompt
+		}
 	}
 	if task == taskAuthor {
 		prompt = reliableHandlerPrompt(p) + memoryAuthorPrompt

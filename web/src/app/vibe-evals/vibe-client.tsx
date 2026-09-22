@@ -1,21 +1,18 @@
 "use client";
 
-import { ConversationActions } from "@/components/vibe/conversation-actions";
 import type { ConversationAction } from "@/lib/vibe-conversation";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  ArrowUp,
-  Loader2,
-  MessageSquarePlus,
-  Paperclip,
-  PanelRight,
-  Square,
-} from "lucide-react";
-import { ClashMark } from "@/components/marketing/clash-mark";
+import { EvaluationWorkspace } from "@/components/vibe/evaluation-workspace";
+import { pendingQuickCheck, quickCheckClientID } from "@/lib/vibe-quick-check";
+import { VibeButton } from "@/components/vibe/vibe-button";
+import { sendOnEnter } from "@/components/vibe/composer-keyboard";
+import { Requirements } from "@/components/vibe/requirements";
+import { CreditsDialog } from "@/components/vibe/credits-dialog";
+import { ArrowUp, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -23,18 +20,16 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { CreditsDialog } from "@/components/vibe/credits-dialog";
-import { TestPlanPanel } from "@/components/vibe/test-plan-panel";
 import { ArtifactPanel, ModelSelect } from "@/components/vibe/artifact-panel";
-import { SafeMarkdown } from "@/components/vibe/safe-markdown";
-import { VibeScorecard } from "@/components/vibe/scorecard";
-import { Requirements } from "@/components/vibe/requirements";
+import { AgentReply } from "@/components/vibe/safe-markdown";
 import { createApiClient } from "@/lib/api/client";
 import type { UserMeResponse } from "@/lib/api/types";
 import {
+  editableEvaluation,
+  exportAgent,
   defaultModels,
-  dollars,
   terminal,
+  retryVibeOperation,
   VibeError,
   vibeFetch,
   watchVibe,
@@ -43,6 +38,7 @@ import {
   type Operation,
   type Session,
   type VibeConfig,
+  type SavedCheck,
 } from "@/lib/vibe";
 
 // POST /messages faults from api/vibe.go, Service.Prepare and Store.Submit:
@@ -53,6 +49,9 @@ const submissionRejections: Partial<Record<number, readonly string[]>> = {
     "invalid_request",
     "invalid_message",
     "invalid_operation",
+    "invalid_evidence",
+    "invalid_evaluation",
+    "evidence_roles_required",
     "invalid_import",
     "import_limit",
     "unsupported_schema",
@@ -61,6 +60,10 @@ const submissionRejections: Partial<Record<number, readonly string[]>> = {
     "unsupported_model",
     "evaluator_pinned",
     "artifact_required",
+    "agent_required",
+    "preview_changed",
+    "preview_consent_required",
+    "context_limit",
     "baseline_required",
     "comparison_changed",
     "case_limit",
@@ -82,45 +85,18 @@ const submissionRejections: Partial<Record<number, readonly string[]>> = {
     "trial_capacity_reached",
   ],
 };
+const retryRejections: Partial<Record<number, readonly string[]>> = {
+  400: ["retry_manual_edit"],
+  409: ["idempotency_conflict", "retry_not_allowed", "retry_committed", "retry_running", "retry_uncertain", "retry_stale"],
+};
 const sessionAccessLost =
   "This browser can’t access the saved session. Your unsent message is still here.";
 function isSessionAccessError(error: unknown) {
-  return error instanceof VibeError && [401, 403, 404].includes(error.status || 0);
+  return (
+    error instanceof VibeError && [401, 403, 404].includes(error.status || 0)
+  );
 }
 
-const starters = [
-  {
-    mode: "existing",
-    label: "I have an agent that needs testing",
-    question: "What does your agent do, and how does it run?",
-    help: "Share the setup you know and what you can provide, such as sample replies, logs, or instructions.",
-    placeholder: "A support agent built in Python. I can share its replies…",
-  },
-  {
-    mode: "idea",
-    label: "Help me build an agent",
-    question: "What should your agent help with?",
-    help: "Describe the job and who it’s for. A sentence is enough to start.",
-    placeholder: "An agent that answers customer questions for my shop…",
-  },
-  {
-    mode: "exploring",
-    label: "I’m figuring out what AI could do for us",
-    question: "What task would you like to make easier?",
-    help: "Tell me about one part of your work that takes too much time or keeps going wrong.",
-    placeholder: "We spend hours sorting customer emails…",
-  },
-] as const;
-function starterFor(text: string) {
-  const normalize = (value: string) =>
-    value
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .replace(/’/g, "'")
-      .replace(/[.!?]+$/, "");
-  return starters.find((starter) => normalize(starter.label) === normalize(text));
-}
 export function VibeClient() {
   const params = useSearchParams();
   const requestedSessionID = params.get("session");
@@ -129,55 +105,173 @@ export function VibeClient() {
   const { getAccessToken } = useAccessToken();
   const [session, setSession] = useState<Session | null>(null);
   const [config, setConfig] = useState<VibeConfig | null>(null);
+  const [configError, setConfigError] = useState(false);
   const [models, setModels] = useState<Models>(defaultModels);
   const [content, setContent] = useState("");
-  const [journeyChoice, setJourneyChoice] = useState<
-    "idea" | "existing" | "exploring"
-  >();
   const [pending, setPending] = useState(false);
+  const [pendingMessage, setPendingMessage] = useState<{
+    id: string;
+    content: string;
+  }>();
+  const [autoCheckID, setAutoCheckID] = useState<string>();
+  const [runPending, setRunPending] = useState(false);
+  const [requestedRunID, setRequestedRunID] = useState<string>();
+  const navigatedRunID = useRef<string | undefined>(undefined);
+  const [pendingAction, setPendingAction] = useState<string>();
+  const [blockedAutoCheckID, setBlockedAutoCheckID] = useState<string>();
+  const quickCheckAttempts = useRef(new Set<string>());
   const [error, setError] = useState("");
   const [connection, setConnection] = useState("");
-  const [panel, setPanel] = useState(false);
+  const [view, setView] = useState<"build" | "try" | "checks">(
+    params.get("view") === "try"
+      ? "try"
+      : params.get("view") === "checks"
+        ? "checks"
+        : "build",
+  );
+  const [selectedArtifactID, setSelectedArtifactID] = useState<string | null>(
+    params.get("agent"),
+  );
+  const [threadID, setThreadID] = useState(params.get("thread") || "");
+  const buildEvidence = useRef<
+    { operation: string; artifact: string } | undefined
+  >(undefined);
+  const restoredThread = useRef(params.get("thread"));
+  const [trialBuffers, setTrialBuffers] = useState<Record<string, string>>({});
+  const trialEdits = useRef<Record<string, number>>({});
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [instructionsOpen, setInstructionsOpen] = useState(false);
+  const [checksDirtyID, setChecksDirtyID] = useState<string | null>(null);
+  const [pendingEdit, setPendingEdit] = useState<{ operationID: string; artifactID: string }>();
   const [dirtyArtifactID, setDirtyArtifactID] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
+  const [saveTarget, setSaveTarget] = useState<Operation>();
+  const [savedCheck, setSavedCheck] = useState<SavedCheck>();
+  const [savedChecks, setSavedChecks] = useState<SavedCheck[]>([]);
   const [workspaces, setWorkspaces] = useState<{ id: string; name: string }[]>(
     [],
   );
   const [workspace, setWorkspace] = useState(params.get("workspace") || "");
 
   const sending = useRef(false);
+  const currentView = useRef(view);
   const submission = useRef<{
     sessionID: string;
     body: string;
     composer: string | null;
     composerVersion: number;
+    trialKey?: string;
+    retryOperationID?: string;
     uncertain: boolean;
   } | null>(null);
   const composerEdits = useRef(0);
+  const retryUnsentMessage = useRef<(() => void) | undefined>(undefined);
   const [uncertain, setUncertain] = useState(false);
   const file = useRef<HTMLInputElement>(null);
-  const scrollEnd = useRef<HTMLDivElement>(null);
   const active = session?.operations.find((o) => !terminal(o.state));
   const sessionUnavailable =
     !!requestedSessionID && session?.id !== requestedSessionID;
   const busy =
+    !config ||
     pending ||
     !!active ||
     uncertain ||
     sessionUnavailable ||
     connection === sessionAccessLost;
-  const starter = starters.find((choice) => choice.mode === journeyChoice);
-  const intake = !session?.document.messages.length ? starter : undefined;
   const journey = session?.document.journey;
-  const artifact = session?.document.artifacts
-    .filter(
+  const testJourney =
+    !!session?.document.test_journey ||
+    (!session?.document.evaluation_first &&
+      !session?.document.messages.length &&
+      !session?.document.artifacts.length &&
+      !session?.operations.length);
+  const artifacts =
+    session?.document.artifacts.filter(
       (a) =>
         journey?.mode !== "existing" ||
+        a.kind === "test_suite" ||
         journey.preview_consent ||
+        a.kind === "conversation_evaluation" ||
         a.kind === "test_plan",
-    )
-    .at(-1);
-  const dirtyArtifact = panel && !!artifact && dirtyArtifactID === artifact.id;
+    ) || [];
+  const latestArtifact = artifacts.at(-1);
+  const artifact =
+    artifacts.find((a) => a.id === selectedArtifactID) || latestArtifact;
+  const dirtyArtifact =
+    !!artifact &&
+    (dirtyArtifactID === artifact.id || checksDirtyID === artifact.id);
+  const quickCheck = pendingQuickCheck(session);
+  const quickChecking =
+    runPending ||
+    !!autoCheckID ||
+    !!(quickCheck && quickCheck.id !== blockedAutoCheckID && !dirtyArtifact);
+  const evaluation = artifact ? editableEvaluation(artifact.blueprint) : null;
+  const scenarioCount =
+    artifact?.test_plan?.scenarios.length ||
+    evaluation?.scenarios?.length ||
+    evaluation?.examples.length;
+  const emptyTrialKey = `new:${artifact?.id || ""}:${models.target}`;
+  const trialDraftKey = threadID || emptyTrialKey;
+  const trialText = trialBuffers[trialDraftKey] || "";
+  const trialHistory = [
+    ...new Map(
+      (session?.document.messages || [])
+        .filter(
+          (m) => m.origin === "playground" && m.artifact_id === artifact?.id,
+        )
+        .map((m) => {
+          const operation = session?.operations.find(
+            (o) => o.id === m.operation_id,
+          );
+          const id = m.preview_thread_id || `legacy:${m.operation_id}`;
+          return [
+            id,
+            {
+              id,
+              model: operation?.models.target,
+              legacy: !m.preview_thread_id,
+            },
+          ];
+        }),
+    ).values(),
+  ];
+  const legacyTrial = threadID.startsWith("legacy:");
+  const trialMessages =
+    session?.document.messages.filter(
+      (m) =>
+        m.origin === "playground" &&
+        m.artifact_id === artifact?.id &&
+        (m.preview_thread_id === threadID ||
+          (legacyTrial && `legacy:${m.operation_id}` === threadID)),
+    ) || [];
+  function navigate(
+    next: typeof view,
+    agent = artifact?.id,
+    thread = threadID,
+  ) {
+    setView(next);
+    currentView.current = next;
+    if (agent) setSelectedArtifactID(agent);
+    const url = new URL(window.location.href);
+    url.searchParams.set("view", next);
+    if (agent) url.searchParams.set("agent", agent);
+    else url.searchParams.delete("agent");
+    if (thread) url.searchParams.set("thread", thread);
+    else url.searchParams.delete("thread");
+    window.history.replaceState(null, "", url.pathname + url.search);
+  }
+  function newTrial() {
+    setThreadID("");
+    setTrialBuffers((old) => ({ ...old, [emptyTrialKey]: "" }));
+    navigate("try", artifact?.id, "");
+  }
+  function changeModels(next: Models) {
+    if (next.target !== models.target) {
+      setThreadID("");
+      navigate(view, artifact?.id, "");
+    }
+    setModels(next);
+  }
   const savedModels = session?.saved_models;
   // Canonical identity survives unknown legacy receipts or changed selections;
   // only the immutable model receipt can confirm that these choices were saved.
@@ -195,7 +289,7 @@ export function VibeClient() {
     savedModels.target === models.target &&
     savedModels.evaluator === models.evaluator;
   const savedModelNotice = savedModels
-    ? "Your current model choices differ from those recorded when this draft was saved."
+    ? "Your current model choices differ from those recorded when this agent was saved."
     : "Saved model choices are unknown. Your current model choices are not confirmed as saved.";
   const sessionID = session?.id;
   const attachedWorkspace = session?.workspace_id;
@@ -209,25 +303,42 @@ export function VibeClient() {
       return undefined;
     }
   }, [getAccessToken]);
+  useEffect(() => {
+    let current = true;
+    void token()
+      .then(async (auth) => {
+        if (!auth) return;
+        const items = await vibeFetch<SavedCheck[]>(
+          `/saved-checks${workspace ? `?workspace=${workspace}` : ""}`,
+          auth,
+        );
+        if (current) setSavedChecks(items);
+      })
+      .catch(() => undefined);
+    return () => {
+      current = false;
+    };
+  }, [token, workspace]);
 
   useEffect(() => {
     let alive = true;
+    setConfigError(false);
     vibeFetch<VibeConfig>("/config")
       .then((c) => {
         if (alive) {
           setConfig(c);
-          if (!params.get("session")) setModels(c.defaults);
+          if (!requestedSessionID) setModels(c.defaults);
         }
       })
       .catch(() => {
-        if (alive) setError("Vibe is not connected to the local backend yet.");
+        if (alive) setConfigError(true);
       });
     return () => {
       alive = false;
     };
-  }, [params, loadAttempt]);
+  }, [requestedSessionID, loadAttempt]);
   useEffect(() => {
-    const id = params.get("session");
+    const id = requestedSessionID;
     if (!id) return;
     let alive = true;
     setLoadingSession(true);
@@ -247,7 +358,16 @@ export function VibeClient() {
         }
         if (alive) {
           setSession(v);
-          setModels(v.document.models);
+          const message = v.document.messages.find(
+            (m) => m.preview_thread_id === restoredThread.current,
+          );
+          const trial =
+            message && v.operations.find((o) => o.id === message.operation_id);
+          setModels(
+            trial
+              ? { ...v.document.models, target: trial.models.target }
+              : v.document.models,
+          );
         }
       } catch (e) {
         if (alive) {
@@ -263,7 +383,7 @@ export function VibeClient() {
     return () => {
       alive = false;
     };
-  }, [params, token, loadAttempt]);
+  }, [requestedSessionID, token, loadAttempt]);
   useEffect(() => {
     if (!sessionID) return;
     const controller = new AbortController();
@@ -298,14 +418,6 @@ export function VibeClient() {
       clearTimeout(timer);
     };
   }, [sessionID, token, loadAttempt]);
-  useEffect(() => {
-    scrollEnd.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [session?.document.messages.length, active?.state]);
-  const artifactID = artifact?.id;
-  useEffect(() => {
-    if (artifactID) setPanel(true);
-  }, [artifactID]); // open new proposals, preserve user dismissal
-
   const reload = async (id = sessionID) => {
     if (!id) return;
     const v = await vibeFetch<Session>(`/sessions/${id}`, await token());
@@ -379,32 +491,56 @@ export function VibeClient() {
     kind = "message",
     text = content,
     baseline?: Operation,
+    extra: {
+      client_id?: string;
+      quick_check?: boolean;
+      instructions?: string;
+      purpose?: "suggest_change";
+      viewed_run_id?: string;
+      viewed_case_key?: string;
+      evidence_set_id?: string;
+      artifact_id?: string;
+      baseline_id?: string;
+    } = {},
   ) {
     if (sending.current || busy || submission.current) return;
-    if (kind === "message") {
-      if (!text.trim()) return;
-      const starter = starterFor(text);
-      const hasContext =
-        session?.document.artifacts.length ||
-        session?.document.requirements.length ||
-        session?.document.messages.some(
-          (message) =>
-            message.role === "user" &&
-            message.origin !== "playground" &&
-            message.content.trim() &&
-            !starterFor(message.content),
-        );
-      if (starter && !hasContext) {
-        setJourneyChoice(starter.mode);
-        composerEdits.current++;
-        setContent("");
-        document.getElementById("vibe-message")?.focus();
-        return;
+    if (kind === "message" && !text.trim()) return;
+    if (
+      dirtyArtifact ||
+      (kind !== "message" && (!artifact || artifact.kind === "test_plan"))
+    )
+      return;
+    let trialKey: string | undefined;
+    let previewThread: string | undefined;
+    if (kind === "playground") {
+      if (!text.trim() || legacyTrial) return;
+      previewThread = threadID || crypto.randomUUID();
+      trialKey = previewThread;
+      if (!threadID) {
+        trialEdits.current[previewThread] =
+          trialEdits.current[emptyTrialKey] || 0;
+        setTrialBuffers((old) => ({
+          ...old,
+          [previewThread!]: text,
+          [emptyTrialKey]: "",
+        }));
+        setThreadID(previewThread);
+        navigate("try", artifact?.id, previewThread);
       }
     }
-    if (kind !== "message" && (dirtyArtifact || !artifact?.accepted)) return;
-    const composerVersion = composerEdits.current;
+    const composerVersion = trialKey
+      ? trialEdits.current[trialKey] || 0
+      : composerEdits.current;
+    const clientID = extra.client_id || crypto.randomUUID();
+    if (kind === "message") {
+      retryUnsentMessage.current = undefined;
+      setPendingMessage({ id: clientID, content: text });
+      // Move the submitted text into the conversation immediately. The version
+      // check below protects anything the user types while admission is pending.
+      setContent((current) => (current === text ? "" : current));
+    }
     sending.current = true;
+    if (kind === "check" || kind === "retest") setRunPending(true);
     setPending(true);
     setError("");
     try {
@@ -412,43 +548,72 @@ export function VibeClient() {
       submission.current = {
         sessionID: v.id,
         uncertain: false,
-        composer: kind === "message" ? text : null,
+        composer: kind === "message" || kind === "playground" ? text : null,
         composerVersion,
+        trialKey,
         body: JSON.stringify({
-          client_id: crypto.randomUUID(),
+          client_id: clientID,
           revision: v.revision,
           kind,
-          ...(kind === "message" && !v.document.journey?.mode && journeyChoice
-            ? { journey_mode: journeyChoice }
-            : {}),
+          evaluation_first: true,
+          ...(testJourney ? { test_journey: true } : {}),
           content: text,
           models: baseline
             ? { ...models, evaluator: baseline.models.evaluator }
             : models,
           ...(artifact ? { artifact_id: artifact.id } : {}),
           ...(baseline ? { baseline_id: baseline.id } : {}),
+          ...(kind === "message" &&
+          buildEvidence.current?.artifact === artifact?.id
+            ? { baseline_id: buildEvidence.current?.operation }
+            : {}),
+          ...(kind === "check" || kind === "retest"
+            ? { approve_artifact: true }
+            : {}),
+          ...(previewThread ? { preview_thread_id: previewThread } : {}),
+          ...extra,
         }),
       };
       await dispatchSubmission();
+      if (kind === "message" && currentView.current === "build") {
+        setSelectedArtifactID(null);
+        setThreadID("");
+        const url = new URL(window.location.href);
+        url.searchParams.delete("agent");
+        url.searchParams.delete("thread");
+        window.history.replaceState(null, "", url.pathname + url.search);
+      }
     } catch (e) {
       setError((e as Error).message);
+      if (
+        kind === "message" &&
+        !submission.current &&
+        composerEdits.current === composerVersion
+      ) {
+        setContent((current) => current || text);
+        setPendingMessage(undefined);
+      } else if (kind === "message" && !submission.current) {
+        retryUnsentMessage.current = () =>
+          void submit(kind, text, baseline, extra);
+      }
     } finally {
       sending.current = false;
       setPending(false);
+      setRunPending(false);
     }
   }
   async function dispatchSubmission() {
     const request = submission.current;
     if (!request) return;
+    let admitted: Operation;
     try {
-      await vibeFetch(
-        `/sessions/${request.sessionID}/messages`,
-        await token(),
-        {
-          method: "POST",
-          body: request.body,
-        },
-      );
+      admitted = request.retryOperationID
+        ? await retryVibeOperation(request.sessionID, request.retryOperationID, JSON.parse(request.body), await token())
+        : await vibeFetch<Operation>(
+            `/sessions/${request.sessionID}/messages`,
+            await token(),
+            { method: "POST", body: request.body },
+          );
     } catch (e) {
       // Auth/rate/profile checks precede idempotency lookup. A later rejection
       // cannot disprove an earlier admission: retain every byte until acknowledged.
@@ -456,29 +621,142 @@ export function VibeClient() {
         !request.uncertain &&
         e instanceof VibeError &&
         e.status !== undefined &&
-        submissionRejections[e.status]?.includes(e.code) === true;
+        (submissionRejections[e.status]?.includes(e.code) === true ||
+          (!!request.retryOperationID && retryRejections[e.status]?.includes(e.code) === true));
       if (rejected) submission.current = null;
       else request.uncertain = true;
       setUncertain(!rejected);
-      if (e instanceof VibeError && e.code === "revision_conflict") {
+      if (e instanceof VibeError && (e.code === "revision_conflict" || (request.retryOperationID && rejected))) {
         await reload(request.sessionID).catch(() => undefined);
       }
       throw e;
     }
     submission.current = null;
     setUncertain(false);
-    if (
+    const requestKind = JSON.parse(request.body).kind;
+    if (requestKind === "check" || requestKind === "retest")
+      setRequestedRunID(admitted.id);
+    if (!request.trialKey && request.composer !== null)
+      buildEvidence.current = undefined;
+    if (request.trialKey) {
+      const key = request.trialKey;
+      if (request.composerVersion === (trialEdits.current[key] || 0))
+        setTrialBuffers((old) =>
+          old[key] === request.composer ? { ...old, [key]: "" } : old,
+        );
+    } else if (
       request.composer !== null &&
       request.composerVersion === composerEdits.current
     ) {
       setContent((current) => (current === request.composer ? "" : current));
     }
-    await reload(request.sessionID);
+    // A failed refresh cannot turn an acknowledged send into an unsent draft.
+    // SSE can reconcile it; retain the visible pending message until then.
+    const fresh = await reload(request.sessionID).catch((error: unknown) => {
+      setConnection(
+        isSessionAccessError(error)
+          ? sessionAccessLost
+          : "Reconnecting to saved progress…",
+      );
+      return undefined;
+    });
+    if (fresh && !request.trialKey && request.composer !== null)
+      setPendingMessage(undefined);
   }
+
+  useEffect(() => {
+    const admitted = session?.operations.find(
+      (operation) => operation.id === requestedRunID,
+    );
+    if (admitted && navigatedRunID.current !== requestedRunID) {
+      navigatedRunID.current = requestedRunID;
+      navigate("checks", admitted.source?.artifact_id);
+    }
+    // Navigation happens only when the requested run is present, never against
+    // the previous result while a new run is still being admitted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedRunID, session]);
+
+  // Reconcile an SSE acknowledgement that can arrive before the POST returns.
+  useEffect(() => {
+    if (
+      pendingMessage &&
+      session?.document.messages.some(
+        (message) => message.id === pendingMessage.id,
+      )
+    )
+      setPendingMessage(undefined);
+  }, [pendingMessage, session]);
+
+  // A saved child operation confirms that the original failed action has a
+  // retry in progress, even if its HTTP acknowledgement was lost.
+  useEffect(() => {
+    const request = submission.current;
+    if (!request?.uncertain || !request.retryOperationID || session?.id !== request.sessionID) return;
+    if (!session.operations.some(operation => operation.retry_of_operation_id === request.retryOperationID)) return;
+    submission.current = null;
+    setUncertain(false);
+    setError("");
+  }, [session, uncertain]);
+
+  useEffect(() => {
+    if (!pendingEdit) return;
+    const operation = session?.operations.find(item => item.id === pendingEdit.operationID);
+    if (!operation) return;
+    const artifactID = operation.completion_receipt?.artifact_id;
+    if (artifactID && session?.document.artifacts.some(item => item.id === artifactID)) {
+      setSelectedArtifactID(artifactID);
+      navigate("build", artifactID, "");
+      setChecksDirtyID(null);
+      setPendingEdit(undefined);
+    } else if (terminal(operation.state)) {
+      // Leave the original editor and draft intact after failed validation.
+      setPendingEdit(undefined);
+    }
+    // Navigation follows the persisted completion, not unrelated view changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingEdit, session]);
+
+  // Continue only a server-approved quick check, once per artifact. The stable
+  // client ID protects a resumed page or a second tab from admitting it twice.
+  // A rejected continuation stays reviewable and can be retried deliberately.
+  useEffect(() => {
+    if (
+      !quickCheck ||
+      busy ||
+      dirtyArtifact ||
+      !config ||
+      sending.current ||
+      submission.current ||
+      quickCheckAttempts.current.has(quickCheck.id)
+    )
+      return;
+    const current = quickCheck;
+    quickCheckAttempts.current.add(current.id);
+    setAutoCheckID(current.id);
+    void (async () => {
+      try {
+        await submit("check", "", undefined, {
+          client_id: quickCheckClientID(current.id),
+          artifact_id: current.id,
+          evidence_set_id: current.conversation_evaluation!.evidence_set_id,
+        });
+      } catch (error) {
+        setError((error as Error).message);
+      } finally {
+        setAutoCheckID(undefined);
+        setBlockedAutoCheckID(current.id);
+      }
+    })();
+    // Eligibility and availability trigger this continuation; the artifact ID
+    // guard prevents another request when snapshots or model settings change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quickCheck, busy, dirtyArtifact, config]);
   async function retrySubmission() {
     if (sending.current || pending || !submission.current) return;
     sending.current = true;
     setPending(true);
+    if (submission.current.retryOperationID) setPendingAction("Retrying your request…");
     setError("");
     try {
       await dispatchSubmission();
@@ -487,7 +765,26 @@ export function VibeClient() {
     } finally {
       sending.current = false;
       setPending(false);
+      setPendingAction(undefined);
     }
+  }
+  async function retryOperation(id: string) {
+    if (submission.current?.retryOperationID === id) {
+      await retrySubmission();
+      return;
+    }
+    if (!session || sending.current || busy || dirtyArtifact || submission.current) return;
+    const operation = session.operations.find(item => item.id === id);
+    if (!operation?.retryable || operation.completion_receipt) return;
+    submission.current = {
+      sessionID: session.id,
+      retryOperationID: id,
+      body: JSON.stringify({ client_id: crypto.randomUUID(), revision: session.revision }),
+      composer: null,
+      composerVersion: composerEdits.current,
+      uncertain: false,
+    };
+    await retrySubmission();
   }
   async function applyChoice(action: ConversationAction) {
     if (!session) return;
@@ -497,6 +794,11 @@ export function VibeClient() {
         method: "POST", body: JSON.stringify({ version: 1, kind: "action", payload: action }),
       });
       setSession(next);
+      const restored = next.document.artifacts.at(-1);
+      if (action.kind === "undo" && restored) {
+        setSelectedArtifactID(restored.id);
+        navigate("build", restored.id);
+      }
     } finally { setPending(false); }
   }
   async function reloadChoices() {
@@ -517,6 +819,29 @@ export function VibeClient() {
         },
       );
       setSession(v);
+      const suiteChange = fields.case_changes !== undefined || fields.criteria !== undefined || fields.evaluation !== undefined;
+      const admittedEdit = suiteChange && v.operations.find(operation => !session.operations.some(previous => previous.id === operation.id));
+      if (admittedEdit && !admittedEdit.completion_receipt) {
+        setPendingEdit({ operationID: admittedEdit.id, artifactID: String(fields.artifact_id || artifact?.id || "") });
+        return false;
+      }
+      if (
+        fields.agent_prompt !== undefined ||
+        fields.evaluation !== undefined ||
+        fields.case_changes !== undefined ||
+        fields.criteria !== undefined ||
+        fields.test_scenarios !== undefined ||
+        fields.expectations !== undefined
+      ) {
+        const next = v.document.artifacts.at(-1);
+        if (next) {
+          setSelectedArtifactID(next.id);
+          navigate(view, next.id, "");
+        }
+        setThreadID("");
+        setDirtyArtifactID(null);
+        setChecksDirtyID(null);
+      }
       return true;
     } catch (e) {
       setError((e as Error).message);
@@ -528,6 +853,7 @@ export function VibeClient() {
   }
   async function operationAction(id: string, action: "stop" | "approve") {
     setPending(true);
+    setPendingAction(action === "stop" ? "Stopping…" : "Starting your check…");
     setError("");
     try {
       await vibeFetch(`/operations/${id}/${action}`, await token(), {
@@ -539,6 +865,37 @@ export function VibeClient() {
       setError((e as Error).message);
     } finally {
       setPending(false);
+      setPendingAction(undefined);
+    }
+  }
+  async function attachEvidence(input: {
+    content?: string;
+    label?: string;
+    parent_id?: string;
+    roles?: Record<string, string>;
+  }) {
+    if (busy) return false;
+    setPending(true);
+    setPendingAction("Adding your answer…");
+    setError("");
+    try {
+      const v = await ensureSession();
+      const result = await vibeFetch<Session>(
+        `/sessions/${v.id}/evidence`,
+        await token(),
+        {
+          method: "POST",
+          body: JSON.stringify({ revision: v.revision, ...input }),
+        },
+      );
+      setSession(result);
+      return true;
+    } catch (e) {
+      setError((e as Error).message);
+      return false;
+    } finally {
+      setPending(false);
+      setPendingAction(undefined);
     }
   }
   async function upload(uploaded?: File) {
@@ -571,7 +928,17 @@ export function VibeClient() {
       if (file.current) file.current.value = "";
     }
   }
-  async function openSave() {
+  async function openSave(operation?: Operation) {
+    const selected =
+      operation &&
+      artifacts.find(
+        (a) =>
+          a.id ===
+          (operation.source?.artifact_id || operation.results[0]?.version),
+      );
+    if (selected) setSelectedArtifactID(selected.id);
+    setSaveTarget(selected?.kind === "test_suite" ? undefined : operation);
+    setSavedCheck(undefined);
     setError("");
     setSaveOpen(true);
     const auth = await token();
@@ -604,6 +971,27 @@ export function VibeClient() {
       });
       const latest = await reload();
       if (!latest) return;
+      if (saveTarget) {
+        const receipt = await vibeFetch<SavedCheck>(
+          `/sessions/${session.id}/save-check`,
+          auth,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              revision: latest.revision,
+              workspace_id: workspace,
+              baseline_operation_id: saveTarget.id,
+            }),
+          },
+        );
+        setSavedCheck(receipt);
+        setSavedChecks((old) => [
+          receipt,
+          ...old.filter((c) => c.id !== receipt.id),
+        ]);
+        await reload();
+        return;
+      }
       await vibeFetch<{
         draft_id: string;
         workspace_id: string;
@@ -612,11 +1000,14 @@ export function VibeClient() {
         body: JSON.stringify({
           revision: latest.revision,
           artifact_id: artifact.id,
+          approve_artifact: true,
           workspace_id: workspace,
           models,
         }),
       });
       await reload();
+      const kept = await vibeFetch<SavedCheck[]>("/saved-checks", auth);
+      setSavedChecks(kept);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -624,366 +1015,216 @@ export function VibeClient() {
     }
   }
 
+  const composerIsTrial = view === "try";
+  const setComposerText = (text: string) => {
+    if (composerIsTrial) {
+      const key = trialDraftKey;
+      trialEdits.current[key] = (trialEdits.current[key] || 0) + 1;
+      setTrialBuffers((old) => ({ ...old, [key]: text }));
+    } else {
+      composerEdits.current++;
+      setContent(text);
+    }
+  };
   return (
-    <main className="dark flex h-dvh overflow-hidden bg-background font-sans text-builder-fg">
-      <nav
-        aria-label="Vibe navigation"
-        className="hidden w-56 shrink-0 flex-col border-r border-builder-border bg-sidebar px-4 py-6 md:flex"
-      >
-        <Link
-          href="/"
-          className="mb-8 flex items-center gap-2 text-sm font-semibold"
-        >
-          <ClashMark className="size-5" /> AgentClash
-        </Link>
-        <Button
-          variant="outline"
-          className="justify-start"
-          onClick={() => {
-            window.location.href = "/vibe-evals";
-          }}
-        >
-          <MessageSquarePlus size={15} /> New conversation
-        </Button>
-        <p className="mt-8 px-2 font-mono text-[10px] uppercase tracking-widest text-builder-fg-subtle">
-          Vibe Evals
-        </p>
-        <p className="mt-3 px-2 text-xs leading-6 text-builder-fg-muted">
-          A conversation about making your agent better.
-        </p>
-        <div className="mt-auto space-y-3 border-t border-builder-border px-2 pt-4 text-xs text-builder-fg-muted">
-          <p>Free trial includes a small check and one retest.</p>
-          <Link href="/dashboard" className="block hover:text-builder-fg">
-            Your workspace ↗
-          </Link>
-        </div>
-      </nav>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-builder-border px-5">
-          <Link href="/vibe-evals" className="text-sm font-medium">
-            Vibe Evals{" "}
-            <span className="ml-2 rounded border border-builder-border px-1.5 py-0.5 font-mono text-[9px] text-builder-fg-muted">
-              PREVIEW
-            </span>
-          </Link>
-          <div className="flex gap-2">
-            {workspace && <CreditsDialog workspace={workspace} />}
-            <Link
-              href="/"
-              className="p-2 text-xs text-builder-fg-muted md:hidden"
-            >
-              AgentClash
-            </Link>
-            {artifact && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setDirtyArtifactID(null);
-                  setPanel(!panel);
-                }}
-              >
-                <PanelRight size={15} />{" "}
-                {artifact.kind === "test_plan" ? "Test plan" : "Your agent"}
-              </Button>
-            )}
-          </div>
-        </header>
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-3xl px-5 py-8 sm:px-8">
-            {!session?.document.messages.length && !starter && (
-              <div className="pb-10 pt-[min(12vh,100px)]">
-                <ClashMark className="mb-7 size-8 text-builder-fg-muted" />
-                <div>
-                  <h1
-                    className="max-w-xl text-3xl font-semibold tracking-tight sm:text-4xl"
-                  >
-                    What are you working on?
-                  </h1>
-                  <p
-                    className="mt-4 max-w-xl text-sm leading-7 text-builder-fg-muted"
-                  >
-                    Tell me what your agent does, what you want to build, or what
-                    isn’t working. We’ll figure out the next step together.
-                  </p>
-                </div>
-                <div className="mt-8 flex flex-wrap gap-2">
-                  {starters.map((starter) => (
-                    <button
-                      type="button"
-                      key={starter.mode}
-                      aria-pressed={journeyChoice === starter.mode}
-                      disabled={busy}
-                      onClick={() => {
-                        setJourneyChoice(starter.mode);
-                        document.getElementById("vibe-message")?.focus();
-                      }}
-                      className="rounded-xl border border-builder-border px-3 py-2.5 text-xs text-builder-fg-muted transition-colors hover:bg-builder-surface-hover hover:text-builder-fg aria-pressed:border-builder-border-strong aria-pressed:bg-builder-surface-hover aria-pressed:text-builder-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-builder-border-strong disabled:opacity-50"
-                    >
-                      {starter.label}
-                    </button>
-                  ))}
-                </div>
+    <main className="vibe-workspace dark flex h-dvh flex-col overflow-hidden font-sans">
+      <EvaluationWorkspace
+        testJourney={testJourney}
+        interactionActions={config?.interaction_actions}
+        onChoice={applyChoice}
+        onReloadChoices={reloadChoices}
+        modelLabel={
+          config?.models?.find((m) => m.id === models.target)?.name ||
+          models.target
+        }
+        session={session}
+        artifact={artifact}
+        view={view}
+        busy={busy}
+        onRetry={(id) => void retryOperation(id)}
+        retryPendingOperationID={pending ? submission.current?.retryOperationID : undefined}
+        retryUncertainOperationID={uncertain ? submission.current?.retryOperationID : undefined}
+        checkingTestChanges={pendingEdit?.artifactID === artifact?.id && !!pendingEdit}
+        pendingMessage={pendingMessage}
+        requestedRunID={requestedRunID}
+        quickChecking={quickChecking}
+        pendingLabel={
+          (loadingSession && !session ? "Loading your conversation…" : undefined) ||
+          pendingAction ||
+          (pending && !active
+            ? runPending || autoCheckID
+              ? "Starting your check…"
+              : pendingMessage
+                ? "Sending your message…"
+                : "Saving your changes…"
+            : undefined)
+        }
+        dirty={dirtyArtifact}
+        content={content}
+        onContent={(value) => {
+          composerEdits.current++;
+          setContent(value);
+        }}
+        onSend={(context) =>
+          void submit("message", content, undefined, {
+            ...context,
+            ...(testJourney ? {} : { quick_check: !buildEvidence.current }),
+          })
+        }
+        onMessage={(text, operation, instructions) => {
+          navigate("build");
+          void submit("message", text, undefined, {
+            ...(instructions ? { instructions } : {}),
+            ...(operation
+              ? {
+                  artifact_id:
+                    operation.source?.artifact_id ||
+                    operation.results[0]?.version,
+                  baseline_id: operation.id,
+                  purpose: "suggest_change",
+                }
+              : {}),
+          });
+        }}
+        onNavigate={navigate}
+        onRun={(baseline, evidenceID) => {
+          void submit(baseline ? "retest" : "check", "", baseline, {
+            ...(evidenceID ? { evidence_set_id: evidenceID } : {}),
+            ...(baseline?.source?.kind === "provided_conversations"
+              ? { artifact_id: baseline.source.artifact_id }
+              : {}),
+          });
+        }}
+        onAttach={attachEvidence}
+        onEdit={edit}
+        onDirty={(dirty) => {
+          setChecksDirtyID(dirty ? artifact?.id || null : null);
+          if (dirty && artifact) setSelectedArtifactID(artifact.id);
+        }}
+        onSave={openSave}
+        onSettings={() => setSettingsOpen(true)}
+        onImport={() => file.current?.click()}
+        onInstructions={() => setInstructionsOpen((open) => !open)}
+        loadEvidence={(id, key) =>
+          token().then((auth) =>
+            vibeFetch<CaseResult>(
+              `/operations/${id}/case?key=${encodeURIComponent(key)}`,
+              auth,
+            ),
+          )
+        }
+        onAction={operationAction}
+        onDispute={(rule, result, operation) => {
+          const source = artifacts.find((a) => a.id === result.version);
+          if (source) setSelectedArtifactID(source.id);
+          buildEvidence.current = testJourney
+            ? undefined
+            : {
+                operation: operation.id,
+                artifact: result.version,
+              };
+          composerEdits.current++;
+          setContent(
+            `That’s not our rule: “${rule}”\n\nThe correct expectation is: `,
+          );
+          navigate("build", result.version);
+          requestAnimationFrame(() =>
+            document.getElementById("vibe-message")?.focus(),
+          );
+        }}
+        savedChecks={savedChecks}
+        notice={
+          <>
+            {configError && (
+              <div className="mb-3 space-y-2 text-sm">
+                <p role="alert">
+                  Couldn’t connect. Your message is still here.
+                </p>
+                <VibeButton
+                  onClick={() => setLoadAttempt((attempt) => attempt + 1)}
+                >
+                  Retry connection
+                </VibeButton>
               </div>
             )}
-            <div className="space-y-8" role="log" aria-label="Conversation">
-              {starter && (
-                <section aria-label="Getting started" className="space-y-8">
-                  <div className="ml-auto max-w-[88%] rounded-2xl bg-builder-fg px-4 py-2 text-sm leading-7 text-background">
-                    {starter.label}
-                  </div>
-                  <div className="pr-4">
-                    <p className="mb-2 flex items-center gap-2 text-xs font-medium">
-                      <ClashMark className="size-4" /> AgentClash · Design
-                    </p>
-                    <p id="vibe-intake-question" className="text-sm leading-7">
-                      {starter.question}
-                    </p>
-                    <p id="vibe-intake-help" className="mt-2 text-sm leading-7 text-builder-fg-muted">
-                      {starter.help}
-                    </p>
-                    {intake && (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => setJourneyChoice(undefined)}
-                        className="mt-4 rounded text-xs text-builder-fg-muted underline underline-offset-4 hover:text-builder-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-builder-border-strong disabled:opacity-50"
-                      >
-                        Change starting point
-                      </button>
-                    )}
-                  </div>
-                </section>
-              )}
-              {session?.document.messages.map((message) => (
-                <div
-                  key={message.id}
-                  className={
-                    message.role === "user"
-                      ? "ml-auto max-w-[88%] rounded-2xl bg-builder-fg px-4 py-2 text-background"
-                      : "pr-4"
-                  }
-                >
-                  {message.role !== "user" && (
-                    <p className="mb-2 flex items-center gap-2 text-xs font-medium">
-                      <ClashMark className="size-4" />{" "}
-                      {message.origin === "playground"
-                        ? "Agent preview · Customer trial"
-                        : "AgentClash · Design"}
-                    </p>
-                  )}
-                  {message.role === "user" &&
-                    message.origin === "playground" && (
-                      <p className="mb-1 text-[10px]">Customer trial</p>
-                    )}
-                  <SafeMarkdown>{message.content}</SafeMarkdown>
-                </div>
-              ))}
-              {!artifact && (
-                <Requirements
-                  requirements={session?.document.requirements || []}
-                  busy={busy}
-                  onRequirement={(requirement_id, status, statement) =>
-                    edit({ requirement_id, status, statement })
-                  }
-                />
-              )}
-              {session?.operations.map((operation) => (
-                <div key={operation.id}>
-                  {operation.scorecard && operation.scorecard.total > 0 && (
-                    <VibeScorecard
-                      operation={operation}
-                      eventCursor={session.event_cursor}
-                      baseline={session?.operations.find(
-                        (o) => o.id === operation.baseline_id,
-                      )}
-                      loadEvidence={async (key) =>
-                        vibeFetch<CaseResult>(
-                          `/operations/${operation.id}/case?key=${encodeURIComponent(key)}`,
-                          await token(),
-                        )
-                      }
-                      busy={
-                        busy ||
-                        dirtyArtifact ||
-                        !artifact?.accepted ||
-                        artifact.kind === "test_plan"
-                      }
-                      onImprove={() => {
-                        setContent(
-                          "Help me improve the accepted agent instructions while keeping the evaluation unchanged. Ask me for any missing policy facts.",
-                        );
-                      }}
-                      onRetest={() => submit("retest", "", operation)}
-                    />
-                  )}
-                  {operation.state === "AWAITING_APPROVAL" && (
-                    <div className="rounded-xl border border-builder-border p-5">
-                      <h2 className="text-sm font-semibold">
-                        Ready when you are
-                      </h2>
-                      <p className="my-3 text-sm text-builder-fg-muted">
-                        This operation will cost at most{" "}
-                        {dollars(operation.max_cost_nano_usd)}. We’ll hold that
-                        amount and settle the actual provider spend when it
-                        finishes.
-                      </p>
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        onClick={() => operationAction(operation.id, "approve")}
-                      >
-                        Run for up to {dollars(operation.max_cost_nano_usd)}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={pending}
-                        onClick={() => operationAction(operation.id, "stop")}
-                      >
-                        Dismiss
-                      </Button>
-                    </div>
-                  )}
-                  {operation.error && (
-                    <p className="mt-3 text-xs leading-5 text-builder-warn">
-                      {operation.id !== session.operations.at(-1)?.id && (
-                        <span className="mr-1 font-medium">
-                          Earlier{" "}
-                          {operation.kind === "playground"
-                            ? "customer trial"
-                            : "design/evaluation request"}
-                          :
-                        </span>
-                      )}
-                      {operation.error.message}
-                      {operation.error.context && (
-                        <>
-                          {artifact && (
-                            <button
-                              className="ml-2 underline"
-                              onClick={() => setPanel(true)}
-                            >
-                              Review draft and requirements
-                            </button>
-                          )}
-                          <button
-                            className="ml-2 underline"
-                            onClick={exportConversation}
-                          >
-                            Export preserved conversation
-                          </button>
-                        </>
-                      )}
-                    </p>
-                  )}
-                  {operation.state === "CANCELLED" && (
-                    <p className="mt-3 text-xs text-builder-fg-muted">
-                      Execution: cancelled · Billing:{" "}
-                      {operation.billing.toLowerCase()}.{" "}
-                      {operation.billing === "RECONCILING" &&
-                        "A request already sent to the provider may still be billed; its reservation stays held."}
-                    </p>
-                  )}
-                </div>
-              ))}
-              {session && config?.interaction_actions && <ConversationActions key={session.id} session={session} busy={busy || dirtyArtifact} onAction={applyChoice} onReload={reloadChoices} />}
-              {(pending ||
-                (active && active.state !== "AWAITING_APPROVAL")) && (
-                <div
-                  role="status"
-                  className="flex items-center gap-3 text-sm text-builder-fg-muted"
-                >
-                  <Loader2 className="size-4 animate-spin" />
-                  {active?.kind === "check" || active?.kind === "retest"
-                    ? "Running the examples and checking the evidence…"
-                    : "Working on your next step…"}
-                  {active && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => operationAction(active.id, "stop")}
-                      disabled={pending}
-                    >
-                      <Square size={11} /> Stop
-                    </Button>
-                  )}
-                </div>
-              )}
-              {savedDraft && (
-                <p className="rounded-xl border border-builder-border p-4 text-sm">
-                  {saved ? "Your evaluation is saved." : savedModelNotice}{" "}
-                  <Link
-                    href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}
-                    className="underline underline-offset-4"
-                  >
-                    Open it in your workspace
-                  </Link>{" "}
-                  to expand the tests and run your connected agent. Production
-                  monitoring is a separate setup.
+            {savedDraft && (
+              <div className="mb-3 space-y-2 text-sm vibe-muted">
+                <p>
+                  {saved
+                    ? testJourney
+                      ? "Your tests are saved. Find them in History whenever you update your agent."
+                      : "Your agent and checks are saved."
+                    : savedModelNotice}
                 </p>
+                <Link
+                  className="underline"
+                  href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}
+                >
+                  {testJourney
+                    ? "Open tests in the advanced editor"
+                    : "Open your evaluation"}
+                </Link>
+              </div>
+            )}
+            {workspace && !testJourney && !session?.document.evaluation_first && (
+              <CreditsDialog workspace={workspace} />
+            )}
+            {artifact &&
+              artifact.kind !== "test_plan" &&
+              artifact.kind !== "conversation_evaluation" &&
+              !testJourney && !session?.document.evaluation_first && (
+                <VibeButton
+                  variant="quiet"
+                  disabled={busy || dirtyArtifact}
+                  onClick={() => void openSave()}
+                >
+                  Save agent
+                </VibeButton>
               )}
-            </div>
-            <div ref={scrollEnd} />
-          </div>
-        </div>
-        <div className="mx-auto w-full max-w-3xl shrink-0 px-5 pb-5 pt-3 sm:px-8">
-          {sessionUnavailable && connection !== sessionAccessLost && (
-            <div className="mb-3 text-xs text-builder-fg-muted">
-              {loadingSession ? (
-                <p role="status">Loading your conversation…</p>
-              ) : (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
+            {sessionUnavailable && !loadingSession && (
+              <p role="status" className="mb-3 text-sm vibe-muted">
+                This conversation could not be loaded.
+              </p>
+            )}
+            {error && (
+              <p role="alert" className="mb-3 text-sm text-builder-warn">
+                {error}
+              </p>
+            )}
+            {error && pendingMessage && !busy && (
+              <VibeButton onClick={() => retryUnsentMessage.current?.()}>
+                Retry unsent message
+              </VibeButton>
+            )}
+            {session?.operations.at(-1)?.error && !session.operations.at(-1)?.completion_receipt && !session.operations.at(-1)?.retry_of_operation_id && !session.document.messages.some(message => message.role === "user" && message.origin !== "playground" && message.operation_id === session.operations.at(-1)?.id) && (
+              <p role="alert" className="mb-3 text-sm text-builder-warn">
+                {session.operations.at(-1)?.error?.message}
+              </p>
+            )}
+            {connection && (
+              <p role="status" className="mb-3 text-sm vibe-muted">
+                {connection}
+              </p>
+            )}
+            {(sessionUnavailable || connection === sessionAccessLost) &&
+              !loadingSession && (
+                <VibeButton
                   onClick={() => {
+                    setConnection("");
                     setError("");
-                    setLoadAttempt((attempt) => attempt + 1);
+                    setLoadAttempt((n) => n + 1);
                   }}
                 >
-                  Retry loading conversation
-                </Button>
+                  Retry connection
+                </VibeButton>
               )}
-            </div>
-          )}
-          {error && (
-            <p
-              role="alert"
-              className="mb-3 text-xs leading-5 text-builder-warn"
-            >
-              {error}
-            </p>
-          )}
-          {connection && (
-            <p role="status" className="mb-2 text-xs text-builder-fg-muted">
-              {connection}
-            </p>
-          )}
-          {connection === sessionAccessLost && (
-            <div className="mb-3 flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={pending || uncertain}
-                onClick={() => {
-                  setError("");
-                  setConnection("");
-                  setLoadAttempt((attempt) => attempt + 1);
-                }}
-              >
-                Retry connection
-              </Button>
-              {(!session ||
+            {connection === sessionAccessLost &&
+              (!session ||
                 (!session.document.messages.length &&
                   !session.document.artifacts.length &&
                   !session.document.requirements.length &&
                   !session.operations.length)) && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
+                <VibeButton
                   disabled={pending || uncertain}
                   onClick={() => {
                     setSession(null);
@@ -998,176 +1239,368 @@ export function VibeClient() {
                   }}
                 >
                   Keep message in a new conversation
-                </Button>
+                </VibeButton>
               )}
-            </div>
-          )}
-          {uncertain && (
-            <div className="mb-3 text-xs text-builder-fg-muted">
-              <p>
-                The submission acknowledgement was not confirmed. Retry the same
-                submission to recover its saved status. Your next message stays
-                here.
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={pending}
-                onClick={retrySubmission}
-              >
-                Retry submission
-              </Button>
-            </div>
-          )}
-          <p className="mb-2 text-xs font-medium text-builder-fg-muted">
-            {intake
-              ? "Your reply"
-              : "Design · Discuss or revise your agent and tests"}
-          </p>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void submit();
-            }}
-            className="rounded-2xl border border-builder-border bg-builder-surface p-3 focus-within:border-builder-border-strong"
-          >
-            <textarea
-              id="vibe-message"
-              aria-label="Message Vibe Evals"
-              aria-describedby={
-                intake ? "vibe-intake-question vibe-intake-help" : undefined
-              }
-              placeholder={
-                intake?.placeholder ||
-                "Describe your agent, share an idea, or ask a question…"
-              }
-              value={content}
-              onChange={(e) => {
-                composerEdits.current++;
-                setContent(e.target.value);
-              }}
-              onKeyDown={(e) => {
-                if (
-                  e.key === "Enter" &&
-                  !e.shiftKey &&
-                  !e.nativeEvent.isComposing
-                ) {
-                  e.preventDefault();
-                  if (content.trim()) void submit();
-                }
-              }}
-              className="max-h-48 min-h-16 w-full resize-y bg-transparent px-1 py-1 text-sm leading-6 outline-none placeholder:text-builder-fg-subtle"
-              maxLength={session?.anonymous === false ? 65536 : 16384}
-            />
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Import an evaluation"
-                  disabled={busy}
-                  onClick={() => file.current?.click()}
-                >
-                  <Paperclip size={16} />
-                </Button>
-                <input
-                  ref={file}
-                  type="file"
-                  accept=".json,.yaml,.yml"
-                  className="hidden"
-                  aria-label="Evaluation file"
-                  onChange={(e) => upload(e.target.files?.[0])}
-                />
-                <ModelSelect
-                  label="Assistant"
-                  value={models.assistant}
-                  models={config?.models || []}
-                  onChange={(assistant) => setModels({ ...models, assistant })}
-                  disabled={busy}
-                />
+            {uncertain && !submission.current?.retryOperationID && (
+              <div className="space-y-2 text-sm vibe-muted">
+                <p>
+                  The submission acknowledgement was not confirmed. Retry to
+                  recover its saved status. Your next message stays here.
+                </p>
+                <VibeButton disabled={pending} onClick={retrySubmission}>
+                  Retry submission
+                </VibeButton>
               </div>
-              <Button
-                type="submit"
-                size="icon"
-                aria-label="Send message"
-                disabled={busy || !content.trim()}
-                className="rounded-full"
+            )}
+            {dirtyArtifact && !testJourney && (
+              <p className="mb-3 text-sm vibe-muted">
+                Save or discard your edits before running a check or sending a
+                message.
+              </p>
+            )}
+            {latestArtifact && artifact?.id !== latestArtifact.id && (
+              <VibeButton
+                disabled={busy || dirtyArtifact}
+                onClick={() => {
+                  setSelectedArtifactID(latestArtifact.id);
+                  navigate("build", latestArtifact.id, "");
+                }}
               >
-                <ArrowUp size={18} />
-              </Button>
+                Review latest version
+              </VibeButton>
+            )}
+          </>
+        }
+        instructions={
+          artifact &&
+          !testJourney &&
+          artifact.kind !== "conversation_evaluation" &&
+          artifact.kind !== "test_plan" ? (
+            <div hidden={!instructionsOpen}>
+              <ArtifactPanel
+                key={artifact.id}
+                artifact={artifact}
+                capabilities={config?.capabilities || []}
+                requirements={session?.document.requirements || []}
+                busy={busy || checksDirtyID === artifact.id}
+                onEdit={(agent_prompt) =>
+                  edit({ artifact_id: artifact.id, agent_prompt })
+                }
+                onDirtyChange={(dirty) => {
+                  setDirtyArtifactID(dirty ? artifact.id : null);
+                  if (dirty) setSelectedArtifactID(artifact.id);
+                }}
+                onRequirement={(requirement_id, status, statement) =>
+                  edit({ requirement_id, status, statement })
+                }
+              />
             </div>
-          </form>
-          <p className="mt-3 text-center text-[10px] text-builder-fg-subtle">
-            Private by default. You review drafts; AgentClash counts the
-            results.
-          </p>
-        </div>
-      </div>
-      {artifact &&
-        panel &&
-        (artifact.kind === "test_plan" ? (
-          <TestPlanPanel
-            artifact={artifact}
-            journey={journey}
-            capabilities={config?.capabilities || []}
-            requirements={session?.document.requirements || []}
-            busy={busy}
-            onClose={() => setPanel(false)}
-            onRequirement={(requirement_id, status, statement) =>
-              edit({ requirement_id, status, statement })
-            }
-            onPreview={async () => {
-              if (await edit({ preview_consent: true }))
-                setContent(
-                  "Create a prompt-only surrogate for a text preview. I understand this does not test my connected agent.",
-                );
-            }}
-          />
-        ) : (
-          <ArtifactPanel
-            key={artifact.id}
-            artifact={artifact}
-            requirements={session?.document.requirements || []}
-            capabilities={config?.capabilities || []}
-            models={models}
-            choices={config?.models || []}
-            anonymous={session?.anonymous ?? true}
-            busy={busy}
-            onClose={() => {
-              setDirtyArtifactID(null);
-              setPanel(false);
-            }}
-            onAccept={() => edit({ artifact_id: artifact.id })}
-            onEdit={(agent_prompt) =>
-              edit({ artifact_id: artifact.id, agent_prompt })
-            }
-            onEvaluationEdit={(evaluation) =>
-              edit({ artifact_id: artifact.id, evaluation })
-            }
-            onDirtyChange={(dirty) =>
-              setDirtyArtifactID(dirty ? artifact.id : null)
-            }
-            onRequirement={(requirement_id, status, statement) =>
-              edit({ requirement_id, status, statement })
-            }
-            onModels={setModels}
-            onCheck={() => submit("check", "")}
-            onPlay={(text) => submit("playground", text)}
-            onSave={openSave}
-          />
-        ))}
-      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
-        <DialogContent>
-          <DialogTitle>Keep what worked</DialogTitle>
+          ) : session?.document.requirements.length ? (
+            <details>
+              <summary className="cursor-pointer text-sm vibe-muted">
+                Requirements and assumptions
+              </summary>
+              <Requirements
+                requirements={session.document.requirements}
+                busy={busy}
+                onRequirement={(requirement_id, status, statement) =>
+                  edit({ requirement_id, status, statement })
+                }
+              />
+            </details>
+          ) : null
+        }
+        preview={
+          <section className="space-y-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <VibeButton variant="quiet" onClick={() => navigate("build")}>
+                ← Back to Vibe Evals
+              </VibeButton>
+              <VibeButton disabled={busy} onClick={newTrial}>
+                New conversation
+              </VibeButton>
+            </div>
+            <div>
+              <h1 className="text-2xl font-semibold">Try a message</h1>
+              <p className="mt-2 text-sm vibe-muted">
+                Talking to the agent from these instructions. Text only; live
+                tools are not connected.
+              </p>
+            </div>
+            {trialHistory.length > 0 && (
+              <label className="block text-sm vibe-muted">
+                Conversation{" "}
+                <select
+                  className="ml-2 rounded-lg border border-[var(--vibe-border)] bg-transparent p-2"
+                  aria-label="Trial conversation"
+                  value={
+                    trialHistory.some((t) => t.id === threadID) ? threadID : ""
+                  }
+                  disabled={busy}
+                  onChange={(e) => {
+                    const next = trialHistory.find(
+                      (t) => t.id === e.target.value,
+                    );
+                    setThreadID(e.target.value);
+                    if (next?.model)
+                      setModels((old) => ({ ...old, target: next.model! }));
+                    navigate("try", artifact?.id, e.target.value);
+                  }}
+                >
+                  <option value="">New conversation</option>
+                  {trialHistory.map((t, i) => (
+                    <option key={t.id} value={t.id}>
+                      {t.legacy ? "Earlier trial" : "Conversation"} {i + 1}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <div
+              role="log"
+              aria-label="Trial conversation"
+              className="space-y-6"
+            >
+              {trialMessages.map((m) => (
+                <div
+                  key={m.id}
+                  className={
+                    m.role === "user"
+                      ? "vibe-message vibe-message-user"
+                      : "vibe-message"
+                  }
+                >
+                  <p className="mb-2 text-xs vibe-muted">
+                    {m.role === "user" ? "You" : "Agent"}
+                  </p>
+                  <AgentReply>{m.content}</AgentReply>
+                </div>
+              ))}
+            </div>
+            {!trialMessages.length &&
+              (evaluation?.scenarios?.[0]?.input ||
+                evaluation?.examples[0]) && (
+                <VibeButton
+                  variant="quiet"
+                  onClick={() =>
+                    setComposerText(
+                      evaluation?.scenarios?.[0]?.input ||
+                        evaluation?.examples[0] ||
+                        "",
+                    )
+                  }
+                >
+                  Use an example message
+                </VibeButton>
+              )}
+            {legacyTrial ? (
+              <p className="text-sm vibe-muted">
+                Start a new conversation to try follow-ups. This earlier trial
+                used one message.
+              </p>
+            ) : (
+              <form
+                className="vibe-composer"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (trialText.trim()) void submit("playground", trialText);
+                }}
+              >
+                <label
+                  htmlFor="vibe-trial-message"
+                  className="mb-2 block text-xs vibe-muted"
+                >
+                  Message your agent
+                </label>
+                <textarea
+                  id="vibe-trial-message"
+                  aria-label="Message your agent"
+                  value={trialText}
+                  onChange={(e) => setComposerText(e.target.value)}
+                  placeholder="Send a customer message…"
+                  onKeyDown={(e) =>
+                    sendOnEnter(e, () => {
+                      if (!busy && !dirtyArtifact && trialText.trim()) {
+                        void submit("playground", trialText);
+                      }
+                    })
+                  }
+                />
+                <div className="vibe-composer-actions">
+                  <span className="text-xs vibe-muted">
+                    Separate from your conversation with Vibe Evals
+                  </span>
+                  <VibeButton
+                    variant="primary"
+                    type="submit"
+                    disabled={busy || dirtyArtifact || !trialText.trim()}
+                  >
+                    Send to agent
+                    <ArrowUp />
+                  </VibeButton>
+                </div>
+              </form>
+            )}
+          </section>
+        }
+      />
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="vibe-workspace max-h-[85vh] overflow-y-auto">
+          <DialogTitle>Settings and details</DialogTitle>
           <DialogDescription>
-            Save your agent instructions and editable evaluation. Future checks
-            in this conversation use your workspace’s AI credits. Your original
-            evidence stays here.
+            Choose models, review versions, or export your work.
+          </DialogDescription>
+          {workspace && <CreditsDialog workspace={workspace} />}
+          {artifact &&
+            artifact.kind !== "test_plan" &&
+            artifact.kind !== "conversation_evaluation" && (
+              <VibeButton
+                disabled={busy || dirtyArtifact}
+                onClick={() => {
+                  setSettingsOpen(false);
+                  void openSave();
+                }}
+              >
+                {testJourney ? "Keep these tests" : "Save agent"}
+              </VibeButton>
+            )}
+          {savedDraft && (
+            <Link
+              className="text-sm underline"
+              href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}
+            >
+              Open saved evaluation
+            </Link>
+          )}
+          {(
+            [
+              ["Assistant", "assistant"],
+              ["Agent", "target"],
+              ["Evaluator", "evaluator"],
+            ] as const
+          )
+            .filter(
+              ([, role]) =>
+                role !== "target" ||
+                artifact?.kind !== "conversation_evaluation",
+            )
+            .map(([label, role]) => (
+              <div key={role}>
+                <ModelSelect
+                  label={label}
+                  value={models[role]}
+                  models={config?.models || []}
+                  disabled={
+                    busy ||
+                    (role === "evaluator" && session?.anonymous !== false)
+                  }
+                  onChange={(value) =>
+                    changeModels({ ...models, [role]: value })
+                  }
+                />
+                <p className="mt-1 text-xs text-builder-fg-muted">
+                  {role === "assistant"
+                    ? "Plans the check and helps explain results."
+                    : role === "target"
+                      ? "Generates replies when testing instructions here. Changing it starts a fresh preview conversation."
+                      : "Grades replies against your expectations. The free trial keeps this fixed."}
+                </p>
+              </div>
+            ))}
+          {artifacts.length > 1 && (
+            <label className="text-sm">
+              Agent version
+              <select
+                aria-label="Agent version"
+                value={artifact?.id}
+                disabled={busy || dirtyArtifact}
+                className="mt-2 w-full rounded-lg border bg-background p-2"
+                onChange={(e) => {
+                  setSelectedArtifactID(e.target.value);
+                  setThreadID("");
+                  navigate(view, e.target.value, "");
+                }}
+              >
+                {artifacts.map((a, i) => (
+                  <option key={a.id} value={a.id}>
+                    Version {i + 1}: {a.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <Button
+            variant="outline"
+            disabled={busy || dirtyArtifact}
+            onClick={() => file.current?.click()}
+          >
+            <Paperclip size={16} /> Import an evaluation
+          </Button>
+          {artifact &&
+            artifact.kind !== "test_plan" &&
+            artifact.kind !== "conversation_evaluation" && (
+              <Button
+                variant="outline"
+                onClick={() => exportAgent(artifact, models)}
+              >
+                {testJourney
+                  ? "Export tests and agent instructions"
+                  : "Export agent and checks"}
+              </Button>
+            )}
+          {session && (
+            <Button variant="ghost" onClick={exportConversation}>
+              Export conversation
+            </Button>
+          )}
+          <details className="text-sm">
+            <summary className="cursor-pointer">
+              Available capabilities and documentation
+            </summary>
+            {config?.capabilities?.map((c) => (
+              <p key={c.id} className="mt-3 text-xs leading-5">
+                <strong>{c.label}:</strong> {c.description}{" "}
+                {c.url && (
+                  <a
+                    href={c.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    Documentation ↗
+                  </a>
+                )}
+              </p>
+            ))}
+          </details>
+        </DialogContent>
+      </Dialog>
+      <input
+        ref={file}
+        type="file"
+        accept=".json,.yaml,.yml"
+        className="hidden"
+        aria-label="Evaluation file"
+        onChange={(e) => upload(e.target.files?.[0])}
+      />
+      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
+        <DialogContent className="vibe-workspace">
+          <DialogTitle>
+            {testJourney
+              ? "Keep these tests"
+              : saveTarget
+                ? "Save this check"
+                : "Save agent and checks"}
+          </DialogTitle>
+          <DialogDescription>
+            {testJourney
+              ? "Save this test set so you can run it again after changing your agent."
+              : saveTarget
+                ? "Keep the source, expectations and this result together. Only you can reopen this check. Future runs use your workspace’s AI credits."
+                : `Save these instructions and ${scenarioCount || "the reviewed"} checks to your workspace. Future checks use your workspace’s AI credits.`}
           </DialogDescription>
           {error && (
-            <p role="alert" className="text-xs leading-5 text-builder-warn">
+            <p role="alert" className="text-xs text-builder-warn">
               {error}
             </p>
           )}
@@ -1191,10 +1624,21 @@ export function VibeClient() {
               <Button
                 onClick={save}
                 disabled={
-                  busy || dirtyArtifact || !artifact?.accepted || !!saved
+                  busy ||
+                  dirtyArtifact ||
+                  !artifact ||
+                  (saveTarget ? !!savedCheck : saved)
                 }
               >
-                {saved ? "Saved" : "Save to workspace"}
+                {saveTarget
+                  ? savedCheck
+                    ? "Saved"
+                    : "Save this check"
+                  : saved
+                    ? "Saved"
+                    : testJourney
+                      ? "Keep these tests"
+                      : "Save agent and checks"}
               </Button>
             </>
           ) : (
@@ -1205,18 +1649,27 @@ export function VibeClient() {
               Sign in to save your work
             </Link>
           )}
-          {savedDraft && (
+          {savedCheck && (
+            <p role="status" className="text-sm">
+              Saved. Find it in History whenever you need it.
+            </p>
+          )}
+          {!saveTarget && savedDraft && (
             <>
               {!saved && (
-                <p className="text-xs leading-5 text-builder-fg-muted">
+                <p className="text-xs text-builder-fg-muted">
                   {savedModelNotice}
                 </p>
               )}
               <Link
-                href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}
+                href={
+                  testJourney
+                    ? `/vibe-evals?session=${sessionID}&agent=${session?.saved_artifact_id || artifact?.id}`
+                    : `/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`
+                }
                 className="text-sm underline"
               >
-                Open your evaluation
+                {testJourney ? "Open saved tests" : "Open your evaluation"}
               </Link>
             </>
           )}

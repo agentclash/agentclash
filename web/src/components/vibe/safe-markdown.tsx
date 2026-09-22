@@ -2,6 +2,26 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+export function AgentReply({ children }: { children: string }) {
+  let structured = false;
+  if (/^\s*[{[]/.test(children)) {
+    try {
+      JSON.parse(children);
+      structured = true;
+    } catch {
+      /* Ordinary prose or a fenced response uses safe Markdown. */
+    }
+  }
+  // Preserve the exact text, including large numbers and escaped strings.
+  if (structured)
+    return (
+      <pre className="overflow-auto whitespace-pre-wrap rounded-lg bg-builder-surface p-3 font-mono text-xs leading-6">
+        <code>{children}</code>
+      </pre>
+    );
+  return <SafeMarkdown>{children}</SafeMarkdown>;
+}
+
 export function safeLink(url: string) {
   try {
     const parsed = new URL(url);

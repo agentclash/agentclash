@@ -85,14 +85,15 @@ func DefaultModels() Models {
 }
 
 type Message struct {
-	PreviewThreadID *uuid.UUID `json:"preview_thread_id,omitempty"`
-	ID              uuid.UUID  `json:"id"`
-	Role            string     `json:"role"`
-	Content         string     `json:"content"`
-	CreatedAt       time.Time  `json:"created_at"`
-	Origin          string     `json:"origin,omitempty"`
-	OperationID     *uuid.UUID `json:"operation_id,omitempty"`
-	ArtifactID      *uuid.UUID `json:"artifact_id,omitempty"`
+	Cards           []json.RawMessage `json:"cards,omitempty"`
+	PreviewThreadID *uuid.UUID        `json:"preview_thread_id,omitempty"`
+	ID              uuid.UUID         `json:"id"`
+	Role            string            `json:"role"`
+	Content         string            `json:"content"`
+	CreatedAt       time.Time         `json:"created_at"`
+	Origin          string            `json:"origin,omitempty"`
+	OperationID     *uuid.UUID        `json:"operation_id,omitempty"`
+	ArtifactID      *uuid.UUID        `json:"artifact_id,omitempty"`
 }
 type Requirement struct {
 	ProposedBy        string     `json:"proposed_by,omitempty"`

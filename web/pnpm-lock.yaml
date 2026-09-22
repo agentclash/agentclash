@@ -56,6 +56,9 @@ importers:
       driver.js:
         specifier: ^1.4.0
         version: 1.4.0
+      framer-motion:
+        specifier: 12.38.0
+        version: 12.38.0(@emotion/is-prop-valid@1.4.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       gray-matter:
         specifier: ^4.0.3
         version: 4.0.3

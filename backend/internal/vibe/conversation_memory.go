@@ -307,7 +307,7 @@ func proposeConversationState(p Plan, route reliableRoute, o Operation) (*Conver
 	if len(u.Facts) > 8 || len(u.Suggestions) > 4 {
 		return nil, fmt.Errorf("too many memory excerpts")
 	}
-	if route.Intent != "chat" && route.Intent != "clarify" && route.Intent != "explain_results" && (len(u.Suggestions) > 0 || u.GuidanceKind != "") {
+	if route.Intent != "chat" && route.Intent != "clarify" && route.Intent != "explain_results" && (len(u.Suggestions) > 0 || u.GuidanceKind != "" && !(p.guided() && route.Example != nil && u.GuidanceKind == "example")) {
 		return nil, fmt.Errorf("mutation acknowledgements do not display guidance or examples")
 	}
 	s := cloneState(p.Conversation.State)

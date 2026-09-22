@@ -57,7 +57,7 @@ func (r *Runner) Execute(ctx context.Context, id uuid.UUID) error {
 	if err = json.Unmarshal(o.Input, &p); err != nil {
 		return err
 	}
-	if p.AuthoringVersion > preciseAuthoringVersion {
+	if p.AuthoringVersion > guidedAuthoringVersion {
 		return fault("invalid_plan", "This request needs a newer conversation worker.")
 	}
 	ctx, cancel := context.WithDeadline(ctx, o.Deadline)

@@ -48,6 +48,9 @@ func (r *Runner) journalReliable(ctx context.Context, o Operation, step, stage s
 	if p.stateful() {
 		version = "v12"
 	}
+	if p.guided() {
+		version = "v14"
+	}
 	if p.sourceBoundary() {
 		version += "/" + SourcePolicyVersion
 	}
@@ -146,6 +149,9 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 				step = "repair"
 				messages = taskMessages(p, taskRoute, "", map[string]any{"problems": boundedDiagnostic(err.Error()), "invalid_route": resp.OutputText, "instruction": "Correct the route or ask one necessary question; no action has been accepted."})
 			}
+		}
+		if p.guided() {
+			p.Conversation.Example = route.Example
 		}
 		confirmation, e := sourceConfirmationFor(p, o, route)
 		if e != nil {

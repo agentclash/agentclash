@@ -27,12 +27,13 @@ Fix: make one to four small exact instruction patches against original_tested_ag
 During repair, modify only fields implicated by server_context.problems; preserve the original request, all unrelated rules and cases. You cannot run or commit anything. Return only the fields in this action's response schema.`
 
 type reliableRoute struct {
-	Memory           *memoryUpdate `json:"memory,omitempty"`
-	SourceMessageIDs []string      `json:"source_message_ids,omitempty"`
-	NewAgent         bool          `json:"new_agent,omitempty"`
-	Intent           string        `json:"intent"`
-	Reply            string        `json:"reply"`
-	Count            int           `json:"count"`
+	Example          *GuidanceExample `json:"example,omitempty"`
+	Memory           *memoryUpdate    `json:"memory,omitempty"`
+	SourceMessageIDs []string         `json:"source_message_ids,omitempty"`
+	NewAgent         bool             `json:"new_agent,omitempty"`
+	Intent           string           `json:"intent"`
+	Reply            string           `json:"reply"`
+	Count            int              `json:"count"`
 }
 type createSuiteCommand struct {
 	Tests testSuiteProposal `json:"tests"`
@@ -69,6 +70,9 @@ func allowedReliableActions(p Plan) []string {
 	return a
 }
 func validateReliableRoute(route reliableRoute, p Plan) error {
+	if err := validateGuidanceExample(p, route.Example); err != nil {
+		return err
+	}
 	found := false
 	for _, intent := range allowedReliableActions(p) {
 		if intent == route.Intent {
@@ -115,6 +119,10 @@ func reliableRouteFormat(profile ModelProfile, p Plan) json.RawMessage {
 	}
 	if p.stateful() {
 		properties["memory"] = memoryUpdateSchema()
+		if p.guided() {
+			properties["example"] = map[string]any{"anyOf": []any{objectSchema(map[string]any{"input": boundedText(600), "expected": boundedText(600)}), map[string]any{"type": "null"}}}
+			return structuredFormat(profile, "vibe_route_v14", objectSchema(properties))
+		}
 		return structuredFormat(profile, "vibe_route_v12", objectSchema(properties))
 	}
 	return structuredFormat(profile, "vibe_route_v11", objectSchema(properties))

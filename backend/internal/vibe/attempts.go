@@ -259,6 +259,7 @@ func (s *Store) PutResult(ctx context.Context, id uuid.UUID, c CaseResult) error
 }
 
 type AuthoringCompletion struct {
+	Cards              []json.RawMessage   `json:"cards,omitempty"`
 	Interaction        *interaction.Action `json:"interaction,omitempty"`
 	ConversationState  *ConversationState  `json:"ConversationState,omitempty"`
 	SourceConfirmation *SourceConfirmation `json:"SourceConfirmation,omitempty"`
@@ -327,7 +328,14 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 				artifact.ProposalMessageID = &replyID
 			}
 		}
-		v.Document.Messages = append(v.Document.Messages, Message{ID: replyID, Role: "assistant", Content: reply, CreatedAt: timestamp(), Origin: o.Kind, OperationID: &id, ArtifactID: artifactID, PreviewThreadID: plan.Submission.PreviewThreadID})
+		var cards []json.RawMessage
+		if len(completion) == 1 {
+			cards = completion[0].Cards
+			if err = validateMessageCards(plan, cards, completion[0].ConversationState, replyID); err != nil {
+				return err
+			}
+		}
+		v.Document.Messages = append(v.Document.Messages, Message{Cards: cards, ID: replyID, Role: "assistant", Content: reply, CreatedAt: timestamp(), Origin: o.Kind, OperationID: &id, ArtifactID: artifactID, PreviewThreadID: plan.Submission.PreviewThreadID})
 		if artifact != nil {
 			v.Document.Artifacts = append(v.Document.Artifacts, *artifact)
 		}

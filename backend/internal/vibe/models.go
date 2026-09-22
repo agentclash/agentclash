@@ -30,6 +30,7 @@ type ModelProfile struct {
 	ExpiresAt          time.Time `json:"expires_at"`
 }
 type Config struct {
+	ContextGuidance     bool
 	PreciseActions      bool
 	ConversationState   bool
 	ReliableAuthoring   bool
@@ -57,6 +58,7 @@ func LoadConfig() (Config, error) {
 		c.SourcePolicyVersion = SourcePolicyVersion
 		c.ConversationState = os.Getenv("VIBE_CONVERSATION_STATE") != "false"
 		c.PreciseActions = c.ConversationState && os.Getenv("VIBE_PRECISE_ACTIONS") != "false"
+		c.ContextGuidance = c.PreciseActions && os.Getenv("VIBE_CONTEXT_GUIDANCE") != "false"
 	}
 	c.LocalTesting = os.Getenv("VIBE_LOCAL_TESTING") == "true"
 	if c.LocalTesting && os.Getenv("APP_ENV") != "development" {
