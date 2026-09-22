@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/agentclash/agentclash/backend/internal/vibe/interaction"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -258,6 +259,7 @@ func (s *Store) PutResult(ctx context.Context, id uuid.UUID, c CaseResult) error
 }
 
 type AuthoringCompletion struct {
+	Interaction        *interaction.Action `json:"interaction,omitempty"`
 	ConversationState  *ConversationState  `json:"ConversationState,omitempty"`
 	SourceConfirmation *SourceConfirmation `json:"SourceConfirmation,omitempty"`
 	Outcome            *CompletionReceipt
@@ -303,6 +305,7 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 		if err = authorize(ctx, tx, v.Actor, v.WorkspaceID, true); err != nil {
 			return err
 		}
+		beforeState := cloneState(v.Document.ConversationState)
 		replyID := uuid.NewSHA1(o.ID, []byte("completion-message"))
 		receipt.MessageID, receipt.CommittedAt = replyID, timestamp()
 		if plan.AuthoringVersion >= 11 && artifact != nil {
@@ -376,6 +379,21 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 		}
 		if err = ReconcileRequirements(&v.Document, changes, plan.sourceMessageID(), replyID); err != nil {
 			return err
+		}
+		if plan.precise() && len(completion) == 1 && completion[0].Interaction != nil {
+			a := completion[0].Interaction
+			if checkWire("action", a) != nil || a.IdempotencyKey != plan.sourceMessageID().String() {
+				return fault("invalid_completion", "The saved choice does not match this message.")
+			}
+			v.Document.Interactions = append(v.Document.Interactions, InteractionReceipt{ID: a.IdempotencyKey, RequestHash: Hash(raw(a)), Revision: v.Revision + 1, Kind: a.Kind, Summary: reply})
+			v.Document.LastChange = &ConversationChange{ID: a.IdempotencyKey, Revision: v.Revision + 1, ScopeID: a.ScopeID, MessageID: replyID.String(), Summary: reply, BeforeState: beforeState, AfterStateHash: Hash(raw(v.Document.ConversationState)), BeforeArtifactID: latestArtifactID(v.Document), AfterArtifactID: latestArtifactID(v.Document)}
+		}
+		if plan.precise() && artifact != nil && plan.Artifact != nil && beforeState != nil && v.Document.ConversationState.Brief.ScopeID == beforeState.Brief.ScopeID && (receipt.Action == "edit_tests" || receipt.Action == "suggest_fix") {
+			v.Document.LastChange = &ConversationChange{ID: o.ID.String(), Revision: v.Revision + 1, ScopeID: beforeState.Brief.ScopeID, MessageID: replyID.String(), Summary: reply, BeforeArtifactID: &plan.Artifact.ID, AfterArtifactID: &artifact.ID, BeforeState: beforeState, AfterStateHash: Hash(raw(v.Document.ConversationState))}
+			beforePolicy, afterPolicy := plan.Conversation.Policy, policyFor(v.Document, artifact)
+			if beforePolicy != nil && afterPolicy != nil {
+				v.Document.LastChange.RuleIDs = changedRuleIDs(*beforePolicy, *afterPolicy)
+			}
 		}
 		if err = s.updateDocument(ctx, tx, v); err != nil {
 			return err

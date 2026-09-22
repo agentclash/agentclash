@@ -80,6 +80,14 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 		}
 		return *receipt, nil
 	}
+	if sub.Interaction != nil {
+		if !s.Config.PreciseActions {
+			return Operation{}, fault("invalid_request", "Reload to use the current conversation controls.")
+		}
+		if err := validateSourceAction(v, sub); err != nil {
+			return Operation{}, err
+		}
+	}
 	p := Plan{AuthoringVersion: 4, Submission: sub, Document: v.Document, Anonymous: v.Anonymous, Free: s.Config.FreeOnly, LocalTesting: s.Config.TestingLocally()}
 	if (sub.TestJourney || v.Document.TestJourney) && (sub.Kind == "message" || sub.Kind == "build") {
 		return s.prepareTestConversation(ctx, actor, v, sub, p)

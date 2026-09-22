@@ -28,6 +28,8 @@ export type ConversationQuestion = {
   proposal_revision: number | null;
 };
 export type ConversationAnswer = {
+  action?: ConversationAction;
+  adopted_facts?: ConversationFact[];
   obsolete?: boolean;
   question: ConversationQuestion;
   source: ConversationSource;
@@ -36,6 +38,8 @@ export type ConversationAnswer = {
 };
 export type ConversationState = {
   version: 1;
+  actions_version?: 1;
+  proposal?: RuleProposal;
   through_message_id?: string;
   brief: { scope_id: string; revision: number; facts: ConversationFact[] };
   pending_question?: ConversationQuestion;
@@ -44,4 +48,32 @@ export type ConversationState = {
     events?: { message_id: string; kind: "explanation" | "example" | "dismissed"; topic: string }[];
     brevity_preference?: ConversationSource;
   };
+};
+
+export type ConversationAction = {
+  idempotency_key: string;
+  scope_id: string;
+  session_revision: number;
+  kind: "answer_question" | "dismiss_help" | "adopt_proposal" | "reject_proposal" | "undo";
+  target_id: string;
+  target_revision: number;
+  option_ids: string[];
+  text: string | null;
+};
+export type RuleProposal = {
+  id: string;
+  revision: number;
+  scope_id: string;
+  status: "proposed" | "adopted" | "rejected";
+  question: ConversationQuestion;
+  facts: ConversationFact[];
+};
+export type ConversationChange = {
+  id: string;
+  revision: number;
+  scope_id: string;
+  message_id: string;
+  summary: string;
+  after_artifact_id?: string;
+  rule_ids?: string[];
 };

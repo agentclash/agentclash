@@ -38,3 +38,15 @@ type Question struct {
 	ProposalID       *string  `json:"proposal_id"`
 	ProposalRevision *int64   `json:"proposal_revision"`
 }
+
+// Action names the exact displayed target. It cannot express Run or Save.
+type Action struct {
+	IdempotencyKey  string   `json:"idempotency_key"`
+	ScopeID         string   `json:"scope_id"`
+	SessionRevision int64    `json:"session_revision"`
+	Kind            string   `json:"kind"`
+	TargetID        string   `json:"target_id"`
+	TargetRevision  int64    `json:"target_revision"`
+	OptionIDs       []string `json:"option_ids"`
+	Text            *string  `json:"text"`
+}

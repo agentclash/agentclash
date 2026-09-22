@@ -137,5 +137,14 @@ func reliableCommandFormat(profile ModelProfile, p Plan, intent string) json.Raw
 	case "suggest_fix":
 		properties = map[string]any{"instruction_edits": map[string]any{"type": "array", "minItems": 1, "maxItems": 4, "items": objectSchema(map[string]any{"before": text, "after": text})}}
 	}
+	if p.precise() && intent == "edit_tests" {
+		properties = map[string]any{"case_changes": properties["case_changes"], "policy_patch": objectSchema(map[string]any{
+			"base_id": boundedText(128), "base_hash": boundedText(64),
+			"changes": map[string]any{"type": "array", "maxItems": MaxRequirements, "items": objectSchema(map[string]any{
+				"action": map[string]any{"type": "string", "enum": []string{"add", "update", "remove"}}, "rule_id": boundedText(128), "expected_hash": map[string]any{"type": "string", "maxLength": 64}, "rule": map[string]any{"anyOf": []any{rule, map[string]any{"type": "null"}}},
+			})},
+		})}
+		return structuredFormat(profile, "vibe_edit_tests_v13", objectSchema(properties))
+	}
 	return structuredFormat(profile, "vibe_"+intent+"_v11", objectSchema(properties))
 }

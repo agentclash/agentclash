@@ -1,4 +1,4 @@
-import type { ConversationState } from "./vibe-conversation";
+import type { ConversationState, ConversationChange } from "./vibe-conversation";
 
 export type Models = { assistant: string; target: string; evaluator: string };
 export type Model = {
@@ -120,6 +120,7 @@ export type Session = {
   saved_models?: Models;
   document: {
     conversation_state?: ConversationState;
+    last_change?: ConversationChange;
     journey?: Journey;
     messages: {
       id: string;
@@ -137,6 +138,7 @@ export type Session = {
   operations: Operation[];
 };
 export type VibeConfig = {
+  interaction_actions?: boolean;
   capabilities?: Capability[];
   enabled: boolean;
   free_only?: boolean;

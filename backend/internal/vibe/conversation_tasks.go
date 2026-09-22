@@ -21,6 +21,7 @@ const (
 // The reviewer continues to use SuiteReviewInput, which has no author prose,
 // target instructions, prior scores, guidance history or unadopted dialogue.
 type taskInput struct {
+	PolicyEditBase      *policyEditBase       `json:"policy_edit_base,omitempty"`
 	Task                conversationTask      `json:"task"`
 	CurrentRequest      SourceBlock           `json:"current_request"`
 	WorkingBrief        *interaction.Brief    `json:"working_brief,omitempty"`
@@ -85,6 +86,14 @@ func buildTaskInput(p Plan, task conversationTask, action string, extra any) (ta
 	switch task {
 	case taskRoute:
 		brief := s.Brief
+		if p.precise() {
+			brief.Facts = nil
+			for _, fact := range s.Brief.Facts {
+				if fact.Status != "superseded" {
+					brief.Facts = append(brief.Facts, fact)
+				}
+			}
+		}
 		out.WorkingBrief = &brief
 		out.Guidance = &s.Guidance
 		out.RecentConversation = p.Document.Messages
@@ -103,6 +112,9 @@ func buildTaskInput(p Plan, task conversationTask, action string, extra any) (ta
 		out.RecordedOutcomes = taskOutcomes(c.RecentOutcomes)
 		out.OriginalTestedAgent, out.ObservedResults, out.ViewedRunRules = p.ObservedArtifact, p.Observations, c.ObservedPolicy
 	case taskAuthor:
+		if p.precise() {
+			out.PolicyEditBase = editBase(c.Policy)
+		}
 		out.PendingQuestion = nil
 		out.DesiredRules, out.SourceBlocks, out.Confirmed = c.Policy, c.Sources, c.Confirmed
 		if c.Policy != nil {
@@ -141,6 +153,27 @@ func buildTaskInput(p Plan, task conversationTask, action string, extra any) (ta
 			}
 		}
 	}
+	if p.precise() {
+		if out.DesiredRules != nil {
+			copy := *out.DesiredRules
+			copy.Sources = nil
+			copy.QuestionAnswers = nil
+			out.DesiredRules = &copy
+		}
+		// Validation evidence belongs to review, not the router/author. The
+		// blueprint remains exact; generated proposals duplicate it verbatim.
+		compactArtifact := func(a *Artifact) *Artifact {
+			if a == nil {
+				return nil
+			}
+			copy := *a
+			copy.Validation = nil
+			copy.Proposal = nil
+			return &copy
+		}
+		out.SelectedTests = compactArtifact(out.SelectedTests)
+		out.OriginalTestedAgent = compactArtifact(out.OriginalTestedAgent)
+	}
 	return out, nil
 }
 func taskMessages(p Plan, task conversationTask, action string, extra any) []provider.Message {
@@ -153,6 +186,9 @@ func taskMessages(p Plan, task conversationTask, action string, extra any) []pro
 		return reliableMessages(p, prompt, extra)
 	}
 	prompt := statefulRoutePrompt
+	if p.precise() {
+		prompt = preciseRoutePrompt
+	}
 	if task == taskAuthor {
 		prompt = reliableHandlerPrompt(p) + memoryAuthorPrompt
 	}

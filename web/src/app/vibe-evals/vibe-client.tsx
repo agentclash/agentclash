@@ -1,5 +1,8 @@
 "use client";
 
+import { ConversationActions } from "@/components/vibe/conversation-actions";
+import type { ConversationAction } from "@/lib/vibe-conversation";
+
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
@@ -486,6 +489,20 @@ export function VibeClient() {
       setPending(false);
     }
   }
+  async function applyChoice(action: ConversationAction) {
+    if (!session) return;
+    setPending(true);
+    try {
+      const next = await vibeFetch<Session>(`/sessions/${session.id}/actions`, await token(), {
+        method: "POST", body: JSON.stringify({ version: 1, kind: "action", payload: action }),
+      });
+      setSession(next);
+    } finally { setPending(false); }
+  }
+  async function reloadChoices() {
+    if (session) setSession(await vibeFetch<Session>(`/sessions/${session.id}`, await token()));
+  }
+
   async function edit(fields: Record<string, unknown>) {
     if (!session) return false;
     setPending(true);
@@ -870,6 +887,7 @@ export function VibeClient() {
                   )}
                 </div>
               ))}
+              {session && config?.interaction_actions && <ConversationActions key={session.id} session={session} busy={busy || dirtyArtifact} onAction={applyChoice} onReload={reloadChoices} />}
               {(pending ||
                 (active && active.state !== "AWAITING_APPROVAL")) && (
                 <div

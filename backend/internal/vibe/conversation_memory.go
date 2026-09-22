@@ -15,6 +15,8 @@ const statefulAuthoringVersion = 12
 // Dialogue memory is not executable policy. Only a reviewed PolicySnapshot
 // authorizes tests. No user sophistication or inferred persona is stored here.
 type ConversationState struct {
+	ActionsVersion   int                   `json:"actions_version,omitempty"`
+	Proposal         *RuleProposal         `json:"proposal,omitempty"`
 	Version          int                   `json:"version"`
 	ThroughMessageID string                `json:"through_message_id,omitempty"`
 	Brief            interaction.Brief     `json:"brief"`
@@ -23,11 +25,13 @@ type ConversationState struct {
 	Guidance         GuidanceHistory       `json:"guidance"`
 }
 type QuestionAnswer struct {
-	Obsolete  bool                 `json:"obsolete,omitempty"`
-	Question  interaction.Question `json:"question"`
-	Source    interaction.Source   `json:"source"`
-	OptionIDs []string             `json:"option_ids,omitempty"`
-	Unknown   bool                 `json:"unknown"`
+	Action       *interaction.Action  `json:"action,omitempty"`
+	AdoptedFacts []interaction.Fact   `json:"adopted_facts,omitempty"`
+	Obsolete     bool                 `json:"obsolete,omitempty"`
+	Question     interaction.Question `json:"question"`
+	Source       interaction.Source   `json:"source"`
+	OptionIDs    []string             `json:"option_ids,omitempty"`
+	Unknown      bool                 `json:"unknown"`
 }
 type GuidanceHistory struct {
 	Events  []GuidanceEvent     `json:"events,omitempty"`
@@ -71,7 +75,7 @@ type memoryUpdate struct {
 	GuidanceTopic       string          `json:"guidance_topic"`
 }
 
-func (p Plan) stateful() bool { return p.AuthoringVersion == statefulAuthoringVersion }
+func (p Plan) stateful() bool { return p.AuthoringVersion == statefulAuthoringVersion || p.precise() }
 func cloneState(s *ConversationState) *ConversationState {
 	if s == nil {
 		return nil
@@ -109,6 +113,9 @@ func validateConversationState(s *ConversationState, d Document) error {
 	if s.Version != conversationStateVersion || checkWire("brief", s.Brief) != nil {
 		return fmt.Errorf("invalid conversation brief version or shape")
 	}
+	if err := validateProposal(s.Proposal, d); err != nil {
+		return err
+	}
 	for _, fact := range s.Brief.Facts {
 		for _, source := range fact.Sources {
 			role := "user"
@@ -117,6 +124,21 @@ func validateConversationState(s *ConversationState, d Document) error {
 			}
 			if !sourceExists(d, source, role) && !(fact.Status == "superseded" && sourceExists(d, source, "assistant")) {
 				return fmt.Errorf("brief source does not match the original message")
+			}
+		}
+		if fact.Status == "accepted" {
+			matched := false
+			for _, answer := range s.Answers {
+				if answer.Action != nil && answer.Action.Kind == "adopt_proposal" && fact.AdoptionMessageID != nil && *fact.AdoptionMessageID == answer.Source.MessageID && Hash(raw(fact.Sources)) == Hash(raw([]interaction.Source{answer.Source})) {
+					for _, adopted := range answer.AdoptedFacts {
+						if adopted.ID == fact.ID && Hash(raw(adopted.Text)) == Hash(raw(fact.Text)) && adopted.Kind == fact.Kind {
+							matched = true
+						}
+					}
+				}
+			}
+			if !matched {
+				return fmt.Errorf("accepted fact lacks its displayed proposal adoption")
 			}
 		}
 		if fact.AdoptionMessageID != nil {
@@ -153,6 +175,20 @@ func validateConversationState(s *ConversationState, d Document) error {
 	for _, answer := range s.Answers {
 		if err := validateQuestion(answer.Question); err != nil {
 			return err
+		}
+		if answer.Action != nil {
+			a := answer.Action
+			if checkWire("action", a) != nil || a.ScopeID != answer.Question.ScopeID || a.IdempotencyKey != answer.Source.MessageID {
+				return fmt.Errorf("invalid stored answer action")
+			}
+			if a.Kind == "adopt_proposal" {
+				proposal := &RuleProposal{ID: a.TargetID, Revision: a.TargetRevision, ScopeID: a.ScopeID, Status: "adopted", Question: answer.Question, Facts: answer.AdoptedFacts}
+				if err := validateProposal(proposal, d); err != nil {
+					return err
+				}
+			} else if a.Kind != "answer_question" || a.TargetID != answer.Question.ID || a.TargetRevision != answer.Question.Revision {
+				return fmt.Errorf("answer target changed")
+			}
 		}
 		if answer.Question.Status != "answered" || !sourceExists(d, answer.Source, "user") {
 			return fmt.Errorf("invalid saved question answer")
@@ -294,38 +330,54 @@ func proposeConversationState(p Plan, route reliableRoute, o Operation) (*Conver
 		return nil, fmt.Errorf("new scope quote requires a new agent route")
 	}
 	if u.Answer != nil {
-		a, q := u.Answer, s.PendingQuestion
-		if q == nil || q.Status != "active" || q.ScopeID != s.Brief.ScopeID || q.ID != a.QuestionID || q.Revision != a.QuestionRevision || !exact(a.Quote) {
-			return nil, fmt.Errorf("answer must reference the active question and exact current message")
-		}
-		// Proposal/source consent has its own versioned action boundary. A setup
-		// interpretation cannot bypass that boundary or execute Run/Keep.
-		if q.Purpose != "clarify_job" && q.Purpose != "clarify_rule" {
-			return nil, fmt.Errorf("this question needs its explicit confirmation action")
-		}
-		if len(a.OptionIDs) > q.MaxSelections || a.Unknown && len(a.OptionIDs) > 0 {
-			return nil, fmt.Errorf("invalid question selections")
-		}
-		seen := map[string]bool{}
-		for _, id := range a.OptionIDs {
-			found := false
+		if p.precise() {
+			a := u.Answer
+			quote := a.Quote
+			if !exact(quote) {
+				return nil, fmt.Errorf("answer requires an exact current excerpt")
+			}
+			action := interaction.Action{IdempotencyKey: current.ID.String(), ScopeID: s.Brief.ScopeID, SessionRevision: p.Submission.Revision, Kind: "answer_question", TargetID: a.QuestionID, TargetRevision: a.QuestionRevision, OptionIDs: a.OptionIDs}
+			if len(action.OptionIDs) == 0 {
+				action.OptionIDs = []string{}
+				action.Text = &quote
+			}
+			if err := answerBoundQuestion(s, action, current, quote, a.Unknown); err != nil {
+				return nil, err
+			}
+		} else {
+			a, q := u.Answer, s.PendingQuestion
+			if q == nil || q.Status != "active" || q.ScopeID != s.Brief.ScopeID || q.ID != a.QuestionID || q.Revision != a.QuestionRevision || !exact(a.Quote) {
+				return nil, fmt.Errorf("answer must reference the active question and exact current message")
+			}
+			// Proposal/source consent has its own versioned action boundary. A setup
+			// interpretation cannot bypass that boundary or execute Run/Keep.
+			if q.Purpose != "clarify_job" && q.Purpose != "clarify_rule" {
+				return nil, fmt.Errorf("this question needs its explicit confirmation action")
+			}
+			if len(a.OptionIDs) > q.MaxSelections || a.Unknown && len(a.OptionIDs) > 0 {
+				return nil, fmt.Errorf("invalid question selections")
+			}
+			seen := map[string]bool{}
+			for _, id := range a.OptionIDs {
+				found := false
+				for _, option := range q.Options {
+					if id == option.ID {
+						found = true
+					}
+				}
+				if !found || seen[id] {
+					return nil, fmt.Errorf("unknown or duplicate option")
+				}
+				seen[id] = true
+			}
 			for _, option := range q.Options {
-				if id == option.ID {
-					found = true
+				if strings.EqualFold(strings.TrimSpace(a.Quote), option.Label) && len(a.OptionIDs) > 0 && (len(a.OptionIDs) != 1 || a.OptionIDs[0] != option.ID) {
+					return nil, fmt.Errorf("selected option contradicts the literal answer")
 				}
 			}
-			if !found || seen[id] {
-				return nil, fmt.Errorf("unknown or duplicate option")
-			}
-			seen[id] = true
+			q.Status = "answered"
+			s.Answers = append(s.Answers, QuestionAnswer{Question: *q, Source: stateSource(current, a.Quote), OptionIDs: a.OptionIDs, Unknown: a.Unknown})
 		}
-		for _, option := range q.Options {
-			if strings.EqualFold(strings.TrimSpace(a.Quote), option.Label) && len(a.OptionIDs) > 0 && (len(a.OptionIDs) != 1 || a.OptionIDs[0] != option.ID) {
-				return nil, fmt.Errorf("selected option contradicts the literal answer")
-			}
-		}
-		q.Status = "answered"
-		s.Answers = append(s.Answers, QuestionAnswer{Question: *q, Source: stateSource(current, a.Quote), OptionIDs: a.OptionIDs, Unknown: a.Unknown})
 	}
 	if u.CancelQuestionQuote != "" {
 		if !exact(u.CancelQuestionQuote) || u.Answer != nil {
@@ -408,6 +460,23 @@ func proposeConversationState(p Plan, route reliableRoute, o Operation) (*Conver
 	}
 	if !route.NewAgent && Hash(raw(s.Brief.Facts)) != Hash(raw(p.Conversation.State.Brief.Facts)) {
 		s.Brief.Revision++
+	}
+	if p.precise() {
+		s.ActionsVersion = 1
+		if len(u.Suggestions) > 0 {
+			id := deterministicID(o.ID, "proposal").String()
+			rev := int64(1)
+			proposal := &RuleProposal{ID: id, Revision: rev, ScopeID: s.Brief.ScopeID, Status: "proposed", Question: interaction.Question{ID: deterministicID(o.ID, "proposal-question").String(), ScopeID: s.Brief.ScopeID, Revision: 1, OriginMessageID: replyID, Purpose: "adopt_proposal", Status: "active", Text: route.Reply, Options: []interaction.Option{}, MaxSelections: 1, ProposalID: &id, ProposalRevision: &rev}}
+			for _, fact := range s.Brief.Facts {
+				if fact.Status == "proposed" && len(fact.Sources) == 1 && fact.Sources[0].MessageID == replyID {
+					proposal.Facts = append(proposal.Facts, fact)
+				}
+			}
+			if checkWire("question", proposal.Question) != nil {
+				return nil, fmt.Errorf("keep a displayed proposal below 1600 characters")
+			}
+			s.Proposal = proposal
+		}
 	}
 	if checkWire("brief", s.Brief) != nil {
 		return nil, fmt.Errorf("working brief exceeds its schema bounds")

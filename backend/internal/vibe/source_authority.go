@@ -143,6 +143,13 @@ func activeSourceConfirmation(p Plan, d Document) *SourceConfirmation {
 	if c.ArtifactID != nil && (p.Artifact == nil || p.Artifact.ID != *c.ArtifactID) || c.ArtifactID == nil && p.Artifact != nil {
 		return nil
 	}
+	if p.Submission.Interaction != nil {
+		if validateSourceAction(Session{Revision: p.Submission.Revision, Document: d}, p.Submission) != nil || !originalConfirmationSources(d, c) {
+			return nil
+		}
+		copy := *c
+		return &copy
+	}
 	switch strings.ToLower(strings.Trim(strings.TrimSpace(p.Submission.Content), ".!")) {
 	case "yes", "yes please", "use it", "use those", "confirm":
 	default:
@@ -221,6 +228,9 @@ func sourceConfirmationFor(p Plan, o Operation, route reliableRoute) (*SourceCon
 	questionLimit := 1800
 	if p.stateful() {
 		questionLimit = 1600
+		if p.precise() {
+			questionLimit = 1560
+		}
 	}
 	if len(c.Question) > questionLimit {
 		return nil, fmt.Errorf("earlier context is too long to confirm clearly; ask the user to restate the relevant rule")

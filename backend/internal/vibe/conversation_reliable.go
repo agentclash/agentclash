@@ -14,6 +14,9 @@ type reliableReplayKey struct{}
 
 func reliableHandlerPrompt(p Plan) string {
 	prompt := reliableAuthoringPrompt
+	if p.precise() {
+		prompt = strings.ReplaceAll(prompt, "Keep the complete effective rule list.", "Preserve untouched rules through patches.") + preciseAuthorPrompt
+	}
 	if p.sourceBoundary() {
 		prompt = strings.Replace(prompt, "Never reproduce quotations or invent source IDs.", "Never invent source IDs.", 1) + sourceAuthorPrompt
 	}
@@ -64,6 +67,21 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 	if p.stateful() && (p.Conversation.State == nil || p.Conversation.State.Version != conversationStateVersion || len(p.Conversation.StateBaseHash) != 64 || !p.sourceBoundary()) {
 		return fault("invalid_plan", "The saved conversation state is unavailable.")
 	}
+	if action := boundDialogueAction(p); action != nil {
+		next := cloneState(p.Conversation.State)
+		current := Message{ID: p.sourceMessageID(), Role: "user", Content: p.Submission.Content}
+		reply, e := applyStateInteraction(next, *action, current)
+		if e != nil {
+			return e
+		}
+		next.ActionsVersion = 1
+		next.ThroughMessageID = deterministicID(o.ID, "completion-message").String()
+		p.Conversation.NextState = next
+		if e = r.Service.Store.commitConversationDecision(ctx, o, p, "chat"); e != nil {
+			return e
+		}
+		return r.completeReliableDocument(ctx, o, p, reply, nil, nil, AuthoringCompletion{Interaction: action, Outcome: &CompletionReceipt{Action: "chat"}})
+	}
 	profile, err := r.reliableProfile(o, p)
 	if err != nil {
 		return err
@@ -71,51 +89,63 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 	repaired := false
 	route := reliableRoute{Intent: "edit_tests"}
 	if p.Conversation.Manual == nil {
-		step := "route"
-		messages := taskMessages(p, taskRoute, "", nil)
-		for {
-			resp, e := r.reliableCall(ctx, o, step, messages, reliableRouteFormat(profile, p))
-			if e != nil {
-				return e
+		if p.precise() && p.Conversation.Confirmed != nil {
+			c := p.Conversation.Confirmed
+			route = reliableRoute{Intent: c.Intent, Count: c.Count, NewAgent: c.NewAgent, Reply: "I will use those rules.", Memory: &memoryUpdate{}}
+			if c.NewAgent {
+				route.Memory.NewScopeQuote = p.Submission.Content
 			}
-			route = reliableRoute{}
-			err = Decode([]byte(resp.OutputText), p.limits(), &route)
-			// Only preparation uses this field to authorize a case count. An
-			// edit's real additions/removals are validated from its case patches.
-			if err == nil && p.sourceBoundary() && route.Intent != "prepare_tests" {
-				route.Count = 0
-			}
-			if err == nil && p.sourceBoundary() && p.Conversation.Confirmed != nil {
-				confirmed := p.Conversation.Confirmed
-				route = reliableRoute{Intent: confirmed.Intent, Count: confirmed.Count, NewAgent: confirmed.NewAgent, Reply: "I will use those rules.", Memory: route.Memory}
-				if p.stateful() && confirmed.NewAgent && route.Memory != nil {
-					// The existing confirmation gate verified this exact affirmative
-					// against the displayed source question, including its new scope.
-					route.Memory.NewScopeQuote = p.Submission.Content
-				}
-			}
-			if err == nil {
-				err = validateReliableRoute(route, p)
-			}
-			if err == nil && p.stateful() {
-				p.Conversation.NextState, err = proposeConversationState(p, route, o)
-			}
-			if e = r.journalReliable(ctx, o, step, "route", p, nil, err); e != nil {
-				return e
-			}
-			if err == nil {
-				break
-			}
-			var f *Fault
-			if errors.As(err, &f) && f.Code == "case_limit" {
+			p.Conversation.NextState, err = proposeConversationState(p, route, o)
+			if err != nil {
 				return err
 			}
-			if repaired {
-				return fault("invalid_response", "I couldn't understand that request reliably. Your request is saved; please try again.")
+		} else {
+			step := "route"
+			messages := taskMessages(p, taskRoute, "", nil)
+			for {
+				resp, e := r.reliableCall(ctx, o, step, messages, reliableRouteFormat(profile, p))
+				if e != nil {
+					return e
+				}
+				route = reliableRoute{}
+				err = Decode([]byte(resp.OutputText), p.limits(), &route)
+				// Only preparation uses this field to authorize a case count. An
+				// edit's real additions/removals are validated from its case patches.
+				if err == nil && p.sourceBoundary() && route.Intent != "prepare_tests" {
+					route.Count = 0
+				}
+				if err == nil && p.sourceBoundary() && p.Conversation.Confirmed != nil {
+					confirmed := p.Conversation.Confirmed
+					route = reliableRoute{Intent: confirmed.Intent, Count: confirmed.Count, NewAgent: confirmed.NewAgent, Reply: "I will use those rules.", Memory: route.Memory}
+					if p.stateful() && confirmed.NewAgent && route.Memory != nil {
+						// The existing confirmation gate verified this exact affirmative
+						// against the displayed source question, including its new scope.
+						route.Memory.NewScopeQuote = p.Submission.Content
+					}
+				}
+				if err == nil {
+					err = validateReliableRoute(route, p)
+				}
+				if err == nil && p.stateful() {
+					p.Conversation.NextState, err = proposeConversationState(p, route, o)
+				}
+				if e = r.journalReliable(ctx, o, step, "route", p, nil, err); e != nil {
+					return e
+				}
+				if err == nil {
+					break
+				}
+				var f *Fault
+				if errors.As(err, &f) && f.Code == "case_limit" {
+					return err
+				}
+				if repaired {
+					return fault("invalid_response", "I couldn't understand that request reliably. Your request is saved; please try again.")
+				}
+				repaired = true
+				step = "repair"
+				messages = taskMessages(p, taskRoute, "", map[string]any{"problems": boundedDiagnostic(err.Error()), "invalid_route": resp.OutputText, "instruction": "Correct the route or ask one necessary question; no action has been accepted."})
 			}
-			repaired = true
-			step = "repair"
-			messages = taskMessages(p, taskRoute, "", map[string]any{"problems": boundedDiagnostic(err.Error()), "invalid_route": resp.OutputText, "instruction": "Correct the route or ask one necessary question; no action has been accepted."})
 		}
 		confirmation, e := sourceConfirmationFor(p, o, route)
 		if e != nil {
@@ -289,13 +319,20 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 		copyContext := *p.Conversation
 		repairPlan.Conversation = &copyContext
 		repairPlan.Artifact = candidate
-		messages := taskMessages(repairPlan, taskAuthor, "edit_tests", map[string]any{"action": "edit_tests", "repair_candidate": true, "problems": validation.Problems, "candidate_policy": policy, "instruction": "Patch only rejected cases; do not add/remove cases. Keep supported rules and fields unchanged."})
+		if p.precise() {
+			repairPlan.Conversation.Policy = &policy
+		}
+		repairContext := map[string]any{"action": "edit_tests", "repair_candidate": true, "problems": validation.Problems, "candidate_policy": policy, "instruction": "Patch only rejected cases; do not add/remove cases. Keep supported rules and fields unchanged."}
+		if p.precise() {
+			delete(repairContext, "candidate_policy")
+		}
+		messages := taskMessages(repairPlan, taskAuthor, "edit_tests", repairContext)
 		resp, e = r.reliableCall(ctx, o, "repair", messages, reliableCommandFormat(profile, repairPlan, "edit_tests"))
 		if e != nil {
 			return e
 		}
-		var patch editSuiteCommand
-		err = Decode([]byte(resp.OutputText), p.limits(), &patch)
+		patch, decodeErr := decodeEditCommand([]byte(resp.OutputText), repairPlan)
+		err = decodeErr
 		if err == nil {
 			err = checkScopedRepair(patch, *validation, policy)
 		}
@@ -379,6 +416,17 @@ func (r *Runner) buildReliableCandidate(output []byte, intent string, o Operatio
 		if len(cmd.Tests.Scenarios) != p.Conversation.RequiredCount || strings.TrimSpace(cmd.Tests.Summary) == "" || len(cmd.Tests.Summary) > 360 {
 			return nil, policy, 0, fmt.Errorf("provide the requested number of cases and a short summary")
 		}
+		if p.precise() && p.Conversation.Policy != nil && effectiveConversationState(p).Brief.ScopeID == p.Conversation.Policy.ScopeID.String() {
+			seen := map[string]bool{}
+			for _, rule := range cmd.Rules {
+				seen[rule.ID] = true
+			}
+			for _, rule := range p.Conversation.Policy.Rules {
+				if !seen[rule.ID] {
+					cmd.Rules = append(cmd.Rules, rule)
+				}
+			}
+		}
 		criteria := cmd.Tests.SuccessCriteria
 		if p.sourceBoundary() {
 			criteria = policyGradingCriteria(cmd.Rules)
@@ -395,8 +443,8 @@ func (r *Runner) buildReliableCandidate(output []byte, intent string, o Operatio
 			candidate.ParentID = &p.Artifact.ID
 		}
 	case "edit_tests":
-		var cmd editSuiteCommand
-		if err := Decode(output, p.limits(), &cmd); err != nil {
+		cmd, err := decodeEditCommand(output, p)
+		if err != nil {
 			return nil, policy, 0, err
 		}
 		if p.Artifact == nil || len(cmd.CaseChanges) > p.limits().Cases {

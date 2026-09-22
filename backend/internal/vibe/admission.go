@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/agentclash/agentclash/backend/internal/vibe/interaction"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -12,25 +13,26 @@ import (
 )
 
 type Submission struct {
-	RetryOf         *uuid.UUID `json:"retry_of,omitempty"`
-	ViewedRunID     *uuid.UUID `json:"viewed_run_id,omitempty"`
-	ViewedCaseKey   string     `json:"viewed_case_key,omitempty"`
-	TestJourney     bool       `json:"test_journey,omitempty"`
-	QuickCheck      bool       `json:"quick_check,omitempty"`
-	EvaluationFirst bool       `json:"evaluation_first,omitempty"`
-	EvidenceSetID   *uuid.UUID `json:"evidence_set_id,omitempty"`
-	Instructions    string     `json:"instructions,omitempty"`
-	Purpose         string     `json:"purpose,omitempty"`
-	ApproveArtifact bool       `json:"approve_artifact,omitempty"`
-	PreviewThreadID *uuid.UUID `json:"preview_thread_id,omitempty"`
-	JourneyMode     string     `json:"journey_mode,omitempty"`
-	ClientID        uuid.UUID  `json:"client_id"`
-	Revision        int64      `json:"revision"`
-	Kind            string     `json:"kind"`
-	Content         string     `json:"content"`
-	Models          Models     `json:"models"`
-	ArtifactID      *uuid.UUID `json:"artifact_id,omitempty"`
-	BaselineID      *uuid.UUID `json:"baseline_id,omitempty"`
+	Interaction     *interaction.Action `json:"interaction,omitempty"`
+	RetryOf         *uuid.UUID          `json:"retry_of,omitempty"`
+	ViewedRunID     *uuid.UUID          `json:"viewed_run_id,omitempty"`
+	ViewedCaseKey   string              `json:"viewed_case_key,omitempty"`
+	TestJourney     bool                `json:"test_journey,omitempty"`
+	QuickCheck      bool                `json:"quick_check,omitempty"`
+	EvaluationFirst bool                `json:"evaluation_first,omitempty"`
+	EvidenceSetID   *uuid.UUID          `json:"evidence_set_id,omitempty"`
+	Instructions    string              `json:"instructions,omitempty"`
+	Purpose         string              `json:"purpose,omitempty"`
+	ApproveArtifact bool                `json:"approve_artifact,omitempty"`
+	PreviewThreadID *uuid.UUID          `json:"preview_thread_id,omitempty"`
+	JourneyMode     string              `json:"journey_mode,omitempty"`
+	ClientID        uuid.UUID           `json:"client_id"`
+	Revision        int64               `json:"revision"`
+	Kind            string              `json:"kind"`
+	Content         string              `json:"content"`
+	Models          Models              `json:"models"`
+	ArtifactID      *uuid.UUID          `json:"artifact_id,omitempty"`
+	BaselineID      *uuid.UUID          `json:"baseline_id,omitempty"`
 }
 type Plan struct {
 	Retry                    *RetryContext        `json:"retry,omitempty"`
@@ -103,6 +105,11 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		}
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
+		}
+		for _, receipt := range v.Document.Interactions {
+			if receipt.ID == sub.ClientID.String() {
+				return fault("idempotency_conflict", "This ID was already used for a choice.")
+			}
 		}
 		if v.Revision != sub.Revision {
 			return fault("revision_conflict", "Reload the latest conversation before sending.")

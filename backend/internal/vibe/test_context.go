@@ -120,6 +120,10 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 			if err := prepareConversationState(&p, v); err != nil {
 				return Operation{}, err
 			}
+			if s.Config.PreciseActions {
+				p.AuthoringVersion = preciseAuthoringVersion
+				p.Conversation.ContractVersion = "vibe-v13"
+			}
 		}
 	}
 	profile, err := s.Config.Profile(sub.Models.Assistant)

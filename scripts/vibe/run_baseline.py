@@ -11,6 +11,10 @@ from urllib.parse import urlparse
 ROOT=Path(__file__).resolve().parents[2]
 REQUIRED={
  "github.com/agentclash/agentclash/backend/internal/vibe": [
+  "TestVibePolicyPatchesPreserveRules", "TestVibePolicyPatchesRejectStaleAndReplacement",
+  "TestVibeBoundActionsAndProposalAuthority", "TestVibeQuestionActionsKeepBoundaries",
+  "TestIntegrationVibeBoundActionsAtomicity", "TestIntegrationVibeNaturalConsentWithoutClassification",
+  "TestIntegrationVibeActionsRespectBusyAndNewerChanges", "TestIntegrationVibePreciseEditAndUndo", "TestIntegrationVibeSourceButtonBypassesClassifier",
   "TestVibeConversationMemoryShortAnswersAndOwnership", "TestVibeConversationMemoryUnknownCancelAndNewScope",
   "TestVibeConversationMemoryRejectsInvalidAuthority", "TestVibeConversationMemorySourceValidationAndCorrection",
   "TestVibeConversationMemoryTaskIsolationAndCompaction", "TestVibeConversationMemoryLegacyAndReplayHash", "TestVibeConversationMemoryRetrievalAndRollback",
@@ -23,7 +27,7 @@ REQUIRED={
   "TestIntegrationCrashKeepsJournaledEvidenceWithoutReexecution",
   "TestIntegrationStopMidProviderAndNoRetry", "TestIntegrationAuthoringIncludesActiveAcceptedArtifact",
   "TestVibeIntegrationReviewedHandoffAndAtomicCompletion"],
- "github.com/agentclash/agentclash/backend/internal/api": ["TestVibeIntegrationDescriptionToHonestScorecardAndSave"],
+ "github.com/agentclash/agentclash/backend/internal/api": ["TestVibeIntegrationDescriptionToHonestScorecardAndSave", "TestVibeInteractionHTTPBoundary"],
  "github.com/agentclash/agentclash/backend/internal/vibe/interaction": [
   "TestContractsAcceptSupportedWireData", "TestContractsRejectAmbiguousOrAuthorityBearingData",
   "TestContractsRejectMalformedAndFutureVersions"],

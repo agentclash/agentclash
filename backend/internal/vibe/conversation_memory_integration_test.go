@@ -36,7 +36,7 @@ func memoryOperation(t *testing.T, s *Service, v Session, content string) (Opera
 	t.Helper()
 	o, err := s.Prepare(context.Background(), v.Actor, v.ID, Submission{ClientID: uuid.New(), Revision: v.Revision, Kind: "message", Content: content, Models: DefaultModels(), TestJourney: true})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal(string(raw(issueFrom(err))))
 	}
 	var p Plan
 	if err = json.Unmarshal(o.Input, &p); err != nil || !p.stateful() {
@@ -195,45 +195,52 @@ func TestIntegrationVibeConversationStateAtomicity(t *testing.T) {
 	}
 }
 func TestIntegrationVibeConversationStateRecoveryWithoutDispatch(t *testing.T) {
-	ctx := context.Background()
-	s, v, cfg := memoryService(t)
-	o, p := memoryOperation(t, s, v, "My agent converts PDF to Markdown.")
-	var err error
-	o, _, err = s.Store.Start(ctx, o.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	profile := cfg.Profiles[o.Models.Assistant]
-	route := questionRoute()
-	output := raw(route)
-	attempt := Attempt{ID: uuid.New(), OperationID: o.ID, Step: "route", Role: Assistant, Model: o.Models.Assistant, RequestHash: Hash(raw(taskMessages(p, taskRoute, "", nil))), Policy: raw(map[string]any{"response_format": reliableRouteFormat(profile, p)}), InputBound: 15000, MaxOutput: 2048, MaxCost: 100000}
-	if err = s.Store.BeginAttempt(ctx, attempt); err != nil {
-		t.Fatal(err)
-	}
-	cost := int64(100)
-	if err = s.Store.EndAttempt(ctx, attempt, string(output), raw(provider.Response{OutputText: string(output)}), &cost, nil); err != nil {
-		t.Fatal(err)
-	}
-	calls := 0
-	r := &Runner{Service: s, Gateway: &Gateway{Store: s.Store, Config: cfg, Gate: s.Gate, Client: callFunc(func(context.Context, provider.Request) (provider.Response, error) {
-		calls++
-		return provider.Response{}, fmt.Errorf("unexpected paid dispatch")
-	})}}
-	issue := &Fault{Code: "worker_interrupted", Message: "Worker interrupted."}
-	if err = r.Finalize(ctx, o.ID, issue); err != nil {
-		t.Fatal(err)
-	}
-	if err = r.Finalize(ctx, o.ID, issue); err != nil {
-		t.Fatal(err)
-	}
-	current, err := s.Store.GetSession(ctx, v.Actor, v.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if calls != 0 || len(current.Document.Messages) != 2 || current.Document.ConversationState == nil || current.Document.ConversationState.PendingQuestion == nil || current.Operations[0].State != Completed {
-		t.Fatal("recorded response did not recover state exactly once")
+	for _, precise := range []bool{false, true} {
+		t.Run(fmt.Sprint("precise=", precise), func(t *testing.T) {
+			ctx := context.Background()
+			s, v, cfg := memoryService(t)
+			s.Config.PreciseActions = precise
+			o, p := memoryOperation(t, s, v, "My agent converts PDF to Markdown.")
+			var err error
+			o, _, err = s.Store.Start(ctx, o.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			profile := cfg.Profiles[o.Models.Assistant]
+			route := questionRoute()
+			output := raw(route)
+			attempt := Attempt{ID: uuid.New(), OperationID: o.ID, Step: "route", Role: Assistant, Model: o.Models.Assistant, RequestHash: Hash(raw(taskMessages(p, taskRoute, "", nil))), Policy: raw(map[string]any{"response_format": reliableRouteFormat(profile, p)}), InputBound: 15000, MaxOutput: 2048, MaxCost: 100000}
+			if err = s.Store.BeginAttempt(ctx, attempt); err != nil {
+				t.Fatal(err)
+			}
+			cost := int64(100)
+			if err = s.Store.EndAttempt(ctx, attempt, string(output), raw(provider.Response{OutputText: string(output)}), &cost, nil); err != nil {
+				t.Fatal(err)
+			}
+			calls := 0
+			r := &Runner{Service: s, Gateway: &Gateway{Store: s.Store, Config: cfg, Gate: s.Gate, Client: callFunc(func(context.Context, provider.Request) (provider.Response, error) {
+				calls++
+				return provider.Response{}, fmt.Errorf("unexpected paid dispatch")
+			})}}
+			issue := &Fault{Code: "worker_interrupted", Message: "Worker interrupted."}
+			if err = r.Finalize(ctx, o.ID, issue); err != nil {
+				t.Fatal(err)
+			}
+			if err = r.Finalize(ctx, o.ID, issue); err != nil {
+				t.Fatal(err)
+			}
+			current, err := s.Store.GetSession(ctx, v.Actor, v.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if calls != 0 || len(current.Document.Messages) != 2 || current.Document.ConversationState == nil || current.Document.ConversationState.PendingQuestion == nil || current.Operations[0].State != Completed {
+				t.Fatal("recorded response did not recover state exactly once")
+			}
+
+		})
 	}
 }
+
 func TestIntegrationVibeConversationStateConflictAndStop(t *testing.T) {
 	for _, mode := range []string{"conflict", "stop"} {
 		t.Run(mode, func(t *testing.T) {
