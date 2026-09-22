@@ -181,9 +181,9 @@ by the actual privately retained results, not a way to fabricate passing tests.
 python3 delivery/ci.py validate --kind production --config "$DELIVERY_PRIVATE/production.json"
 python3 delivery/ci.py inspect --kind production --config "$DELIVERY_PRIVATE/production.json" \
   --source <public-commit-sha> --output "$DELIVERY_PRIVATE/candidate.json"
-python3 delivery/operator.py evidence --config "$DELIVERY_PRIVATE/production.json" \
+python3 delivery/operator_cli.py evidence --config "$DELIVERY_PRIVATE/production.json" \
   --source <public-commit-sha> --file "$DELIVERY_PRIVATE/drain-evidence.json"
-python3 delivery/operator.py approval --config "$DELIVERY_PRIVATE/production.json" \
+python3 delivery/operator_cli.py approval --config "$DELIVERY_PRIVATE/production.json" \
   --source <public-commit-sha> --file "$DELIVERY_PRIVATE/deploy-approval.json"
 python3 delivery/ci.py deploy --kind production --config "$DELIVERY_PRIVATE/production.json" --source <public-commit-sha>
 # After independent smoke verification and uploading the promotion approval:

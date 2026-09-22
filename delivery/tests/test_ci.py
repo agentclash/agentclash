@@ -33,6 +33,20 @@ def config(kind="production"):
 
 
 class CITests(unittest.TestCase):
+    def test_delivery_entrypoints_do_not_shadow_python_standard_library(self):
+        # Run without site initialization, which can otherwise preload operator
+        # and hide startup collisions present in Python 3.12 runner venvs.
+        for script in ("checks.py", "operator_cli.py"):
+            result = subprocess.run(
+                [sys.executable, "-S", str(ROOT / "delivery" / script), "--help"],
+                capture_output=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr.decode())
+
+    def test_terminal_workspace_lock_changes_rerun_terminal_checks(self):
+        for path in ("try-cli/package.json", "try-cli/bun.lock"):
+            self.assertTrue(select([path])["terminal"])
+
     def test_sso_approval_that_expires_during_build_blocks_publication(self):
         import ci
 

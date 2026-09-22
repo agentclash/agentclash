@@ -37,6 +37,8 @@ def select(paths, force=False):
             ("services/try-cli/", "try-cli/packages/core/", "try-cli/demos/")
         ):
             selected["terminal"] = selected["images"] = True
+        if path in ("try-cli/package.json", "try-cli/bun.lock"):
+            selected["terminal"] = True
         if path.startswith("web/"):
             selected["frontend"] = True
         if path.startswith("deploy/aws/"):

@@ -59,6 +59,10 @@ def check(group, evidence):
         if group == "backend":
             run([sys.executable, "scripts/db/test-migrator.py"])
     elif group == "terminal":
+        # Bun resolves the linked core package through its owning workspace in
+        # a full checkout. A fresh runner also needs that workspace's locked
+        # dependencies; a developer's existing node_modules can hide this gap.
+        run(["bun", "install", "--frozen-lockfile"], ROOT / "try-cli")
         for command in (
             ["bun", "install", "--frozen-lockfile"],
             ["bun", "run", "typecheck"],
