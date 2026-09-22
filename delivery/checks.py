@@ -2,6 +2,7 @@
 """Run repeatable checks; child output stays in private temporary storage."""
 
 import argparse
+import ast
 import os
 from pathlib import Path
 import subprocess
@@ -10,7 +11,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "deploy/aws/scripts"))
-from common import require
+from common import Refused, require
 from tools import install
 
 
@@ -22,6 +23,25 @@ def command_label(argv):
         if name in ("docker", "trivy", "bun", "go", "npm", "npx", "cfn-lint", "ruff")
         else "validation-tool"
     )
+
+
+def refusal_detail(error):
+    """Publish only invariant text already present literally in public source."""
+    if not isinstance(error, Refused):
+        return None
+    for name in ("checks.py", "build.py", "maintained.py", "image_scan.py", "tools.py"):
+        for node in ast.walk(ast.parse((ROOT / "delivery" / name).read_text())):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Name)
+                and node.func.id == "require"
+                and len(node.args) > 1
+                and isinstance(node.args[1], ast.Constant)
+                and isinstance(node.args[1].value, str)
+                and node.args[1].value == str(error)
+            ):
+                return node.args[1].value
+    return None
 
 
 def check(group, evidence):
@@ -245,6 +265,9 @@ if __name__ == "__main__":
             "ValueError",
         }
         category = type(error).__name__
+        detail = refusal_detail(error)
+        if detail:
+            print("Check invariant: " + detail, file=sys.stderr)
         print(
             "Check failure category: "
             + (category if category in categories else "internal-error"),

@@ -53,7 +53,7 @@ class CITests(unittest.TestCase):
             self.assertEqual(daemon["log-level"], "fatal")
 
     def test_check_diagnostics_never_include_command_arguments_or_private_paths(self):
-        from checks import command_label
+        from checks import command_label, refusal_detail
 
         self.assertEqual(
             command_label(["/private/fixture/trivy", "PRIVATE_CANARY"]), "trivy"
@@ -61,6 +61,11 @@ class CITests(unittest.TestCase):
         self.assertEqual(
             command_label(["/private/PRIVATE_CANARY/tool", "PRIVATE_CANARY"]),
             "validation-tool",
+        )
+        self.assertIsNone(refusal_detail(Refused("PRIVATE_CANARY")))
+        self.assertIsNone(refusal_detail(ValueError("Input hash mismatch")))
+        self.assertEqual(
+            refusal_detail(Refused("Input hash mismatch")), "Input hash mismatch"
         )
 
     def test_delivery_entrypoints_do_not_shadow_python_standard_library(self):
