@@ -69,21 +69,21 @@
     },
     "v3.24/ca-certificates": {
       "name": "ca-certificates",
-      "version": "20260611-r0",
-      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/ca-certificates-20260611-r0.apk",
-      "sha256": "abe8a3badeb99bd147a0c5cba70364e8774e6ae05c625a86c01f11532d9721c8"
+      "version": "20260909-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/ca-certificates-20260909-r0.apk",
+      "sha256": "d33f9058111586cea83cb3cca78d24efb36a45e6466fd0228f66e791f1cb79ed"
     },
     "v3.24/ca-certificates-bundle": {
       "name": "ca-certificates-bundle",
-      "version": "20260611-r0",
-      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/ca-certificates-bundle-20260611-r0.apk",
-      "sha256": "cd7752154d0fa628a5f7360218e9e8e83edf31f7fa26f58ee42d26b507bd0372"
+      "version": "20260909-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/ca-certificates-bundle-20260909-r0.apk",
+      "sha256": "a35f8cf2366d90294d0bb089af565fd17f3fa03721e61bcc7f02ed3d8334e7ea"
     },
     "v3.24/tzdata": {
       "name": "tzdata",
-      "version": "2026c-r0",
-      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/tzdata-2026c-r0.apk",
-      "sha256": "569cc4f3d634c83347ce1d19b37452f83889b8fd479d4863cff0082977cf5ba2"
+      "version": "2026d-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/tzdata-2026d-r0.apk",
+      "sha256": "e13f0f891c5e231bfb89727556bc05e9a44fce6389c6c1505f2772369da5a262"
     }
   }
 }
