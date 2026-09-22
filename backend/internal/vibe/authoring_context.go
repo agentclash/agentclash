@@ -152,6 +152,9 @@ func contextFault(req provider.Request, count ContextCount, p ModelProfile, l Li
 	}
 	label := map[string]string{"conversation": "setup conversation", "provided_chats": "provided chats", "observations": "evaluation evidence", "current_check": "current expectations", "user_request": "current message", "requirements": "requirements", "messages": "recent conversation", "latest_proposal": "latest draft or test plan", "accepted_agent": "accepted draft and evaluation", "current_message": "current message", "observed_evaluation_data": "evaluation evidence", "system_messages": "authoring instructions", "response_schema": "response contract", "provider_framing": "provider framing", "user_messages": "message"}[d.LargestSection]
 	if label == "" {
+		label = conversationContextLabels()[d.LargestSection]
+	}
+	if label == "" {
 		label = "conversation context"
 	}
 	return &Fault{Code: "context_limit", Message: fmt.Sprintf("This request is too large to send in one go. The largest part is %s. Try fewer chats or a shorter message. Your saved work is unchanged, and no model request was sent.", label), Context: d}

@@ -28,13 +28,14 @@ type PolicyRule struct {
 	SourceBlockIDs []string       `json:"source_block_ids"`
 }
 type PolicySnapshot struct {
-	SourceVersion   string        `json:"source_version,omitempty"`
-	Sources         []SourceBlock `json:"sources,omitempty"`
-	ID              uuid.UUID     `json:"id"`
-	ParentID        *uuid.UUID    `json:"parent_id,omitempty"`
-	ScopeID         uuid.UUID     `json:"scope_id"`
-	SourceMessageID uuid.UUID     `json:"source_message_id"`
-	Rules           []PolicyRule  `json:"rules"`
+	QuestionAnswers []QuestionAnswer `json:"question_answers,omitempty"`
+	SourceVersion   string           `json:"source_version,omitempty"`
+	Sources         []SourceBlock    `json:"sources,omitempty"`
+	ID              uuid.UUID        `json:"id"`
+	ParentID        *uuid.UUID       `json:"parent_id,omitempty"`
+	ScopeID         uuid.UUID        `json:"scope_id"`
+	SourceMessageID uuid.UUID        `json:"source_message_id"`
+	Rules           []PolicyRule     `json:"rules"`
 }
 type SourceCoverage struct {
 	MessageID uuid.UUID `json:"message_id"`
@@ -58,6 +59,10 @@ type ManualSuiteEdit struct {
 	Blueprint json.RawMessage `json:"blueprint"`
 }
 type ConversationContext struct {
+	State            *ConversationState    `json:"state,omitempty"`
+	StateBaseHash    string                `json:"state_base_hash,omitempty"`
+	MemorySources    []SourceBlock         `json:"memory_sources,omitempty"`
+	NextState        *ConversationState    `json:"-"`
 	SourceVersion    string                `json:"source_version,omitempty"`
 	Candidates       []SourceCandidate     `json:"source_candidates,omitempty"`
 	Confirmed        *SourceConfirmation   `json:"confirmed_sources,omitempty"`
@@ -239,7 +244,7 @@ func fitReliableContext(p *Plan, profile ModelProfile) error {
 	// Accepted rules survive compaction. Dialogue remains in the document and
 	// is only a bounded routing aid, never implicit specification authority.
 	for {
-		messages := reliableMessages(*p, reliableRoutePrompt, nil)
+		messages := taskMessages(*p, taskRoute, "", nil)
 		_, err := CountContext(provider.Request{Messages: messages, ResponseFormat: reliableRouteFormat(profile, *p), MaxOutputTokens: p.limits().OutputTokens}, profile, p.limits())
 		bytes := 0
 		for _, m := range p.Document.Messages {

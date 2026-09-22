@@ -27,11 +27,12 @@ Fix: make one to four small exact instruction patches against original_tested_ag
 During repair, modify only fields implicated by server_context.problems; preserve the original request, all unrelated rules and cases. You cannot run or commit anything. Return only the fields in this action's response schema.`
 
 type reliableRoute struct {
-	SourceMessageIDs []string `json:"source_message_ids,omitempty"`
-	NewAgent         bool     `json:"new_agent,omitempty"`
-	Intent           string   `json:"intent"`
-	Reply            string   `json:"reply"`
-	Count            int      `json:"count"`
+	Memory           *memoryUpdate `json:"memory,omitempty"`
+	SourceMessageIDs []string      `json:"source_message_ids,omitempty"`
+	NewAgent         bool          `json:"new_agent,omitempty"`
+	Intent           string        `json:"intent"`
+	Reply            string        `json:"reply"`
+	Count            int           `json:"count"`
 }
 type createSuiteCommand struct {
 	Tests testSuiteProposal `json:"tests"`
@@ -88,7 +89,7 @@ func validateReliableRoute(route reliableRoute, p Plan) error {
 		return fmt.Errorf("only preparation declares a case count")
 	}
 	if p.sourceBoundary() {
-		if route.NewAgent && route.Intent != "prepare_tests" {
+		if route.NewAgent && route.Intent != "prepare_tests" && !(p.stateful() && route.Intent == "clarify") {
 			return fmt.Errorf("only a new preparation can start another agent")
 		}
 		if _, err := sourceConfirmationFor(p, Operation{}, route); err != nil {
@@ -111,6 +112,10 @@ func reliableRouteFormat(profile ModelProfile, p Plan) json.RawMessage {
 	if p.sourceBoundary() {
 		properties["source_message_ids"] = map[string]any{"type": "array", "maxItems": 3, "items": boundedText(128)}
 		properties["new_agent"] = map[string]any{"type": "boolean"}
+	}
+	if p.stateful() {
+		properties["memory"] = memoryUpdateSchema()
+		return structuredFormat(profile, "vibe_route_v12", objectSchema(properties))
 	}
 	return structuredFormat(profile, "vibe_route_v11", objectSchema(properties))
 }

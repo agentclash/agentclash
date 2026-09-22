@@ -258,6 +258,7 @@ func (s *Store) PutResult(ctx context.Context, id uuid.UUID, c CaseResult) error
 }
 
 type AuthoringCompletion struct {
+	ConversationState  *ConversationState  `json:"ConversationState,omitempty"`
 	SourceConfirmation *SourceConfirmation `json:"SourceConfirmation,omitempty"`
 	Outcome            *CompletionReceipt
 	Policy             *PolicySnapshot
@@ -278,6 +279,9 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 		var plan Plan
 		if err = json.Unmarshal(o.Input, &plan); err != nil {
 			return err
+		}
+		if plan.stateful() && (len(completion) != 1 || completion[0].ConversationState == nil) {
+			return fault("invalid_completion", "The conversation state is missing from this response.")
 		}
 		receipt := completionReceipt(o, plan, reply, artifact, requirements, completion)
 		if err = validateCompletionReceipt(receipt); err != nil {
@@ -328,6 +332,15 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 
 		if len(completion) > 0 {
 			c := completion[0]
+			if c.ConversationState != nil {
+				if !plan.stateful() || plan.Conversation == nil || Hash(raw(v.Document.ConversationState)) != plan.Conversation.StateBaseHash {
+					return fault("conversation_state_conflict", "The conversation changed before this response could be saved.")
+				}
+				if err = validateConversationState(c.ConversationState, v.Document); err != nil {
+					return err
+				}
+				v.Document.ConversationState = cloneState(c.ConversationState)
+			}
 			sourceSubmission := plan.Submission
 			sourceSubmission.ClientID = plan.sourceMessageID()
 			if err = applyContextQuotes(&v.Document, c.ContextChanges, sourceSubmission, replyID); err != nil {

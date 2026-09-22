@@ -129,6 +129,7 @@ type Artifact struct {
 	CreatedAt              time.Time               `json:"created_at"`
 }
 type Document struct {
+	ConversationState    *ConversationState    `json:"conversation_state,omitempty"`
 	SourceConfirmation   *SourceConfirmation   `json:"source_confirmation,omitempty"`
 	Policies             []PolicySnapshot      `json:"policies,omitempty"`
 	SourceCoverage       []SourceCoverage      `json:"source_coverage,omitempty"`

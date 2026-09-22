@@ -57,10 +57,13 @@ func (r *Runner) Execute(ctx context.Context, id uuid.UUID) error {
 	if err = json.Unmarshal(o.Input, &p); err != nil {
 		return err
 	}
+	if p.AuthoringVersion > statefulAuthoringVersion {
+		return fault("invalid_plan", "This request needs a newer conversation worker.")
+	}
 	ctx, cancel := context.WithDeadline(ctx, o.Deadline)
 	defer cancel()
 	if o.Kind == "message" || o.Kind == "build" {
-		if p.AuthoringVersion == 11 {
+		if p.AuthoringVersion == 11 || p.stateful() {
 			return r.converseReliable(ctx, o, p)
 		}
 		if p.AuthoringVersion == 10 {

@@ -199,7 +199,11 @@ func sourceConfirmationFor(p Plan, o Operation, route reliableRoute) (*SourceCon
 		}
 		seen[id] = true
 		found := false
-		for _, candidate := range visibleSourceCandidates(p) {
+		candidates := visibleSourceCandidates(p)
+		if p.stateful() {
+			candidates = append(candidates, retrievedDialogue(p)...)
+		}
+		for _, candidate := range candidates {
 			if candidate.ID == id {
 				c.Sources = append(c.Sources, candidate.SourceBlock)
 				found = true
@@ -214,7 +218,11 @@ func sourceConfirmationFor(p Plan, o Operation, route reliableRoute) (*SourceCon
 	for _, source := range c.Sources {
 		c.Question += "\n\n> " + strings.ReplaceAll(source.Text, "\n", "\n> ")
 	}
-	if len(c.Question) > 1800 {
+	questionLimit := 1800
+	if p.stateful() {
+		questionLimit = 1600
+	}
+	if len(c.Question) > questionLimit {
 		return nil, fmt.Errorf("earlier context is too long to confirm clearly; ask the user to restate the relevant rule")
 	}
 	return c, nil
@@ -277,14 +285,35 @@ func reconcileSourcedPolicy(rules []PolicyRule, p Plan, o Operation, newScope bo
 		if old, ok := prior[rule.ID]; !ok || Hash(raw(old)) != Hash(raw(rule)) {
 			current := false
 			for _, e := range rule.Evidence {
-				current = current || allowedChange[e.SourceBlockID]
+				current = current || allowedChange[e.SourceBlockID] || memoryEvidenceAllowed(p, e)
 			}
 			if !current {
 				return PolicySnapshot{}, fmt.Errorf("changed rule %s needs actual evidence in the current request or specifically confirmed earlier messages", rule.ID)
 			}
 		}
 	}
+	if err := validateMemoryPolicyEvidence(p, rules); err != nil {
+		return PolicySnapshot{}, err
+	}
 	policy := PolicySnapshot{ID: deterministicID(o.ID, "policy"), ScopeID: deterministicID(o.ID, "scope"), SourceMessageID: p.sourceMessageID(), SourceVersion: SourcePolicyVersion, Rules: rules}
+	if p.stateful() {
+		var err error
+		policy.ScopeID, err = uuid.Parse(effectiveConversationState(p).Brief.ScopeID)
+		if err != nil {
+			return PolicySnapshot{}, fmt.Errorf("invalid conversation scope")
+		}
+		ids := map[string]bool{}
+		for _, rule := range rules {
+			for _, ref := range rule.SourceBlockIDs {
+				ids[ref] = true
+			}
+		}
+		for _, answer := range effectiveConversationState(p).Answers {
+			if !answer.Obsolete && answer.Question.ScopeID == policy.ScopeID.String() && ids[answer.Source.MessageID] {
+				policy.QuestionAnswers = append(policy.QuestionAnswers, answer)
+			}
+		}
+	}
 	policy.Sources = projectedRuleSources(rules, p.Conversation.Sources)
 	if old := p.Conversation.Policy; old != nil && !newScope {
 		policy.ParentID, policy.ScopeID = &old.ID, old.ScopeID

@@ -11,6 +11,11 @@ from urllib.parse import urlparse
 ROOT=Path(__file__).resolve().parents[2]
 REQUIRED={
  "github.com/agentclash/agentclash/backend/internal/vibe": [
+  "TestVibeConversationMemoryShortAnswersAndOwnership", "TestVibeConversationMemoryUnknownCancelAndNewScope",
+  "TestVibeConversationMemoryRejectsInvalidAuthority", "TestVibeConversationMemorySourceValidationAndCorrection",
+  "TestVibeConversationMemoryTaskIsolationAndCompaction", "TestVibeConversationMemoryLegacyAndReplayHash", "TestVibeConversationMemoryRetrievalAndRollback",
+  "TestIntegrationVibeConversationStateJourney", "TestIntegrationVibeConversationStateAtomicity",
+  "TestIntegrationVibeConversationStateRecoveryWithoutDispatch", "TestIntegrationVibeConversationStateConflictAndStop",
   "TestRequirementProvenanceAndReplacement", "TestVibePendingRequirementRevisionAndManualOverride",
   "TestVibeContextDiagnostics", "TestVibeExistingAgentAndSupportBoundaries",
   "TestVibeAuthoringRejectsFalseProvenanceAndInternalConfiguration",

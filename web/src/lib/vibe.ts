@@ -1,3 +1,5 @@
+import type { ConversationState } from "./vibe-conversation";
+
 export type Models = { assistant: string; target: string; evaluator: string };
 export type Model = {
   id: string;
@@ -117,6 +119,7 @@ export type Session = {
   saved_artifact_id?: string;
   saved_models?: Models;
   document: {
+    conversation_state?: ConversationState;
     journey?: Journey;
     messages: {
       id: string;

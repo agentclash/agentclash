@@ -116,6 +116,11 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 		if err := s.freezeReviewVersion(&p); err != nil {
 			return Operation{}, err
 		}
+		if s.Config.ConversationState {
+			if err := prepareConversationState(&p, v); err != nil {
+				return Operation{}, err
+			}
+		}
 	}
 	profile, err := s.Config.Profile(sub.Models.Assistant)
 	if err != nil {

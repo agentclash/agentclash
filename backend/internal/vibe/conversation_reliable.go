@@ -42,6 +42,9 @@ func (r *Runner) journalReliable(ctx context.Context, o Operation, step, stage s
 		hash, _ = CanonicalJSONHash(blueprint)
 	}
 	version := "v11"
+	if p.stateful() {
+		version = "v12"
+	}
 	if p.sourceBoundary() {
 		version += "/" + SourcePolicyVersion
 	}
@@ -58,6 +61,9 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 	if p.Conversation == nil {
 		return fault("invalid_plan", "The saved conversation context is unavailable.")
 	}
+	if p.stateful() && (p.Conversation.State == nil || p.Conversation.State.Version != conversationStateVersion || len(p.Conversation.StateBaseHash) != 64 || !p.sourceBoundary()) {
+		return fault("invalid_plan", "The saved conversation state is unavailable.")
+	}
 	profile, err := r.reliableProfile(o, p)
 	if err != nil {
 		return err
@@ -66,7 +72,7 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 	route := reliableRoute{Intent: "edit_tests"}
 	if p.Conversation.Manual == nil {
 		step := "route"
-		messages := reliableMessages(p, reliableRoutePrompt, nil)
+		messages := taskMessages(p, taskRoute, "", nil)
 		for {
 			resp, e := r.reliableCall(ctx, o, step, messages, reliableRouteFormat(profile, p))
 			if e != nil {
@@ -81,10 +87,18 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 			}
 			if err == nil && p.sourceBoundary() && p.Conversation.Confirmed != nil {
 				confirmed := p.Conversation.Confirmed
-				route = reliableRoute{Intent: confirmed.Intent, Count: confirmed.Count, NewAgent: confirmed.NewAgent, Reply: "I will use those rules."}
+				route = reliableRoute{Intent: confirmed.Intent, Count: confirmed.Count, NewAgent: confirmed.NewAgent, Reply: "I will use those rules.", Memory: route.Memory}
+				if p.stateful() && confirmed.NewAgent && route.Memory != nil {
+					// The existing confirmation gate verified this exact affirmative
+					// against the displayed source question, including its new scope.
+					route.Memory.NewScopeQuote = p.Submission.Content
+				}
 			}
 			if err == nil {
 				err = validateReliableRoute(route, p)
+			}
+			if err == nil && p.stateful() {
+				p.Conversation.NextState, err = proposeConversationState(p, route, o)
 			}
 			if e = r.journalReliable(ctx, o, step, "route", p, nil, err); e != nil {
 				return e
@@ -101,7 +115,7 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 			}
 			repaired = true
 			step = "repair"
-			messages = reliableMessages(p, reliableRoutePrompt, map[string]any{"problems": boundedDiagnostic(err.Error()), "invalid_route": resp.OutputText, "instruction": "Correct the route or ask one necessary question; no action has been accepted."})
+			messages = taskMessages(p, taskRoute, "", map[string]any{"problems": boundedDiagnostic(err.Error()), "invalid_route": resp.OutputText, "instruction": "Correct the route or ask one necessary question; no action has been accepted."})
 		}
 		confirmation, e := sourceConfirmationFor(p, o, route)
 		if e != nil {
@@ -111,19 +125,20 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 			if err = r.Service.Store.commitConversationDecision(ctx, o, p, "clarify"); err != nil {
 				return err
 			}
-			return r.Service.Store.CompleteDocument(ctx, o.ID, confirmation.Question, nil, nil, AuthoringCompletion{SourceConfirmation: confirmation, Outcome: &CompletionReceipt{Action: "clarify"}})
+			return r.completeReliableDocument(ctx, o, p, confirmation.Question, nil, nil, AuthoringCompletion{SourceConfirmation: confirmation, Outcome: &CompletionReceipt{Action: "clarify"}})
 		}
 		if err = r.Service.Store.commitConversationDecision(ctx, o, p, route.Intent); err != nil {
 			return err
 		}
 		if route.Intent == "chat" || route.Intent == "clarify" || route.Intent == "explain_results" {
-			return r.Service.Store.CompleteDocument(ctx, o.ID, route.Reply, nil, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: route.Intent}})
+			return r.completeReliableDocument(ctx, o, p, route.Reply, nil, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: route.Intent}})
 		}
 		p.Conversation.RequiredCount = route.Count
 	} else if err = r.Service.Store.commitConversationDecision(ctx, o, p, route.Intent); err != nil {
 		return err
 	}
 	applySourceScope(&p, route)
+	addMemorySources(&p)
 	if route.Intent == "edit_tests" {
 		if err = r.Service.Store.recordPendingPolicy(ctx, o, p); err != nil {
 			return err
@@ -152,7 +167,7 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 		changed = countChangedCases(p.Artifact.Blueprint, copy.Blueprint)
 	} else {
 		step := "handler"
-		messages := reliableMessages(p, reliableHandlerPrompt(p), map[string]any{"action": route.Intent, "count": route.Count})
+		messages := taskMessages(p, taskAuthor, route.Intent, map[string]any{"action": route.Intent, "count": route.Count})
 		for {
 			resp, e := r.reliableCall(ctx, o, step, messages, reliableCommandFormat(profile, p, route.Intent))
 			if e != nil {
@@ -175,13 +190,13 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 			}
 			repaired = true
 			step = "repair"
-			messages = reliableMessages(p, reliableHandlerPrompt(p), map[string]any{"action": route.Intent, "count": route.Count, "problems": boundedDiagnostic(err.Error()), "invalid_command": resp.OutputText})
+			messages = taskMessages(p, taskAuthor, route.Intent, map[string]any{"action": route.Intent, "count": route.Count, "problems": boundedDiagnostic(err.Error()), "invalid_command": resp.OutputText})
 		}
 	}
 	if route.Intent == "suggest_fix" {
 		// Instruction fixes cannot alter the test contract. Existing verified
 		// metadata carries forward; legacy suites are checked before a fresh run.
-		return r.Service.Store.CompleteDocument(ctx, o.ID, "", candidate, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: route.Intent, CommandHash: commandHash}})
+		return r.completeReliableDocument(ctx, o, p, "", candidate, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: route.Intent, CommandHash: commandHash}})
 	}
 	count := suiteCaseCount(candidate.Blueprint)
 	if route.Intent == "prepare_tests" && count != route.Count {
@@ -192,6 +207,7 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 		if e != nil {
 			return e
 		}
+		statefulReviewInput(p, &input)
 		if p.sourceBoundary() {
 			input.Summary = candidate.Summary
 		}
@@ -201,7 +217,7 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 		if p.reviewVersion() != SuiteValidatorVersion {
 			input.ValidatorVersion = p.reviewVersion()
 		}
-		resp, e := r.reliableCall(ctx, o, reviewStep, SuiteReviewMessages(input), SuiteReviewFormatFor(profile, input))
+		resp, e := r.reliableCall(ctx, o, reviewStep, reviewTaskMessages(p, input, profile), SuiteReviewFormatFor(profile, input))
 		if e != nil {
 			return e
 		}
@@ -228,7 +244,7 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 			} else {
 				feedback["problems"] = validation.Consistency.Findings
 			}
-			messages := append(SuiteReviewMessages(input), provider.Message{Role: "user", Content: string(raw(map[string]any{"server_validation_feedback": feedback}))})
+			messages := append(reviewTaskMessages(p, input, profile), provider.Message{Role: "user", Content: string(raw(map[string]any{"server_validation_feedback": feedback}))})
 			resp, e = r.reliableCall(ctx, o, "repair", messages, SuiteReviewFormatFor(profile, input))
 			if e != nil {
 				return e
@@ -261,7 +277,7 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 				// repair an internal ledger or pretending their rule is unclear.
 				return fault("validation_unavailable", "I couldn't reliably check these tests. Your request is saved and your previous tests are unchanged. Please retry.")
 			}
-			return r.Service.Store.CompleteDocument(ctx, o.ID, validationQuestion(validation), nil, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "clarify"}})
+			return r.completeReliableDocument(ctx, o, p, validationQuestion(validation), nil, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "clarify"}})
 		}
 		if repaired || p.Conversation.Manual != nil {
 			return fault("test_policy_conflict", "The proposed tests conflict with the supplied rules. Your previous tests are unchanged. Please review the expected answers or clarify the rule.")
@@ -273,7 +289,7 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 		copyContext := *p.Conversation
 		repairPlan.Conversation = &copyContext
 		repairPlan.Artifact = candidate
-		messages := reliableMessages(repairPlan, reliableHandlerPrompt(repairPlan), map[string]any{"action": "edit_tests", "repair_candidate": true, "problems": validation.Problems, "candidate_policy": policy, "instruction": "Patch only rejected cases; do not add/remove cases. Keep supported rules and fields unchanged."})
+		messages := taskMessages(repairPlan, taskAuthor, "edit_tests", map[string]any{"action": "edit_tests", "repair_candidate": true, "problems": validation.Problems, "candidate_policy": policy, "instruction": "Patch only rejected cases; do not add/remove cases. Keep supported rules and fields unchanged."})
 		resp, e = r.reliableCall(ctx, o, "repair", messages, reliableCommandFormat(profile, repairPlan, "edit_tests"))
 		if e != nil {
 			return e
@@ -321,7 +337,7 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 			coverage = append(coverage, SourceCoverage{MessageID: source.MessageID, State: "referenced"})
 		}
 	}
-	return r.Service.Store.CompleteDocument(ctx, o.ID, "", candidate, nil, AuthoringCompletion{Policy: &policy, Coverage: coverage, Outcome: &CompletionReceipt{Action: route.Intent, CommandHash: commandHash, CaseCount: count, ChangedCaseCount: changed, ValidationStatus: SuiteSupported, ValidationVersion: candidate.Validation.ValidatorVersion}})
+	return r.completeReliableDocument(ctx, o, p, "", candidate, nil, AuthoringCompletion{Policy: &policy, Coverage: coverage, Outcome: &CompletionReceipt{Action: route.Intent, CommandHash: commandHash, CaseCount: count, ChangedCaseCount: changed, ValidationStatus: SuiteSupported, ValidationVersion: candidate.Validation.ValidatorVersion}})
 }
 
 func (r *Runner) reliableProfile(o Operation, p Plan) (ModelProfile, error) {

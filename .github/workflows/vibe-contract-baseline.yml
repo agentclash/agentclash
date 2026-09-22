@@ -8,12 +8,13 @@ on:
       - 'backend/go.*'
       - 'runtime/**'
       - 'scripts/vibe/**'
+      - 'web/src/lib/vibe-conversation.ts'
       - '.github/workflows/vibe-contract-baseline.yml'
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  phase-one:
+  conversation-regressions:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -55,10 +56,10 @@ jobs:
           python3 -m unittest discover -s scripts/vibe -p 'test_*.py' -v
           python3 scripts/vibe/quality.py
       - name: Required database and contract sequences (no paid calls)
-        run: python3 scripts/vibe/run_baseline.py --report /tmp/vibe-phase1-baseline.json
+        run: python3 scripts/vibe/run_baseline.py --report /tmp/vibe-conversation-baseline.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: vibe-phase1-regression-baseline
-          path: /tmp/vibe-phase1-baseline.json
+          name: vibe-conversation-regression-baseline
+          path: /tmp/vibe-conversation-baseline.json
           if-no-files-found: error

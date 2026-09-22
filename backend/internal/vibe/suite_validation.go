@@ -94,6 +94,8 @@ type SuiteReviewCase struct {
 // This deliberately has no target response, target instructions, prior score,
 // or author justification. The reviewer sees the contract and original sources.
 type SuiteReviewInput struct {
+	ContextVersion   string            `json:"context_version,omitempty"`
+	QuestionAnswers  []QuestionAnswer  `json:"question_answers,omitempty"`
 	Summary          string            `json:"suite_summary,omitempty"`
 	ValidatorVersion string            `json:"validator_version,omitempty"`
 	CurrentRequest   SourceBlock       `json:"current_request"`
@@ -232,6 +234,10 @@ func BuildSuiteReviewInput(blueprint json.RawMessage, policy PolicySnapshot, sou
 		}
 	}
 	out.CurrentRequest, out.Policy, out.RequestedCount = request, policy, expectedCount
+	if len(policy.QuestionAnswers) > 0 {
+		out.ContextVersion = "conversation-state-v1"
+		out.QuestionAnswers = append([]QuestionAnswer(nil), policy.QuestionAnswers...)
+	}
 	out.Grading = raw(map[string]json.RawMessage{"validators": root["validators"], "judges": root["judges"], "dimensions": root["dimensions"]})
 	var err error
 	if out.BlueprintHash, err = CanonicalJSONHash(blueprint); err != nil {
@@ -250,7 +256,14 @@ Use supported only when the expectation follows the actual scenario and sources.
 Return exactly cases, rules, shared_criteria, policy_reconciliation. Cases must contain every supplied case_key exactly once. Rules must contain every supplied candidate policy rule_id exactly once. Each finding has status (supported|contradicted|unclear), rule_ids, source_block_ids and a short specific reason tied to the supplied evidence. Cases also have case_key; rules also have rule_id and must include that rule in rule_ids. Cite only supplied IDs. Every finding needs original source references. Every supported case needs an applicable candidate policy rule. Do not include an overall status: the server computes it. Do not propose a replacement suite, answer as the tested agent, or infer success from earlier model output.`
 
 func SuiteReviewMessages(input SuiteReviewInput) []provider.Message {
+	return renderSuiteReview(input, true, false)
+}
+
+func renderSuiteReview(input SuiteReviewInput, includeSchema, compact bool) []provider.Message {
 	prompt := suiteReviewPrompt
+	if input.ContextVersion == "conversation-state-v1" {
+		prompt += "\nQuestion_answers contains the actual displayed question paired with its original user answer. Use the question only to interpret that answer. Its examples/options are not requirements unless the user selected them. Unknown answers supply no fact. Candidate policy interpretations and all earlier user excerpts still need independent relevance and entailment checks against their complete originals; memory labels do not establish truth."
+	}
 	if input.Policy.SourceVersion == SourcePolicyVersion {
 		prompt += sourceReviewPrompt
 	}
@@ -262,7 +275,15 @@ func SuiteReviewMessages(input SuiteReviewInput) []provider.Message {
 			prompt += "\n" + ConsistencyReviewInstructions
 		}
 	}
-	return []provider.Message{{Role: "system", Content: prompt + "\nResponse schema: " + string(raw(suiteReviewSchemaFor(input)))}, {Role: "user", Content: string(raw(input))}}
+	if includeSchema {
+		prompt += "\nResponse schema: " + string(raw(suiteReviewSchemaFor(input)))
+	}
+	if compact {
+		// Meaning is already present in top-level question_answers. Keep the
+		// complete frozen policy/hash in storage and avoid serializing it twice.
+		input.Policy.QuestionAnswers = nil
+	}
+	return []provider.Message{{Role: "system", Content: prompt}, {Role: "user", Content: string(raw(input))}}
 }
 
 func suiteReviewSchemaFor(input SuiteReviewInput) map[string]any {

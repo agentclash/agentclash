@@ -138,6 +138,12 @@ func validateRetrySource(v Session, source Operation, original Plan) error {
 }
 
 func validateRetryBase(document Document, source Operation, original Plan) error {
+	if original.stateful() && original.Conversation != nil && original.Conversation.State != nil {
+		before, now := original.Conversation.State, document.ConversationState
+		if now != nil && (before.Brief.ScopeID != now.Brief.ScopeID || Hash(raw(before.PendingQuestion)) != Hash(raw(now.PendingQuestion))) {
+			return fault("retry_stale", "The agent or question changed after this request. Send the answer again against the current conversation.")
+		}
+	}
 	baseFound := original.Artifact == nil
 	for _, artifact := range document.Artifacts {
 		if artifact.CreatedAt.After(source.CreatedAt) {
