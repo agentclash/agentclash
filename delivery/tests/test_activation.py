@@ -94,6 +94,27 @@ def encoded_claims(value, **changes):
 
 
 class ActivationTests(unittest.TestCase):
+    def test_custom_audience_is_encoded_without_losing_request_parameters(self):
+        import urllib.parse
+
+        env = {
+            "ACTIONS_ID_TOKEN_REQUEST_URL": "https://fixture.actions.githubusercontent.com/token?api-version=2.0&audience=old",
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "PRIVATE_FIXTURE_CANARY",
+        }
+        audience = "https://invalid.agentclash.example/activation"
+        with (
+            patch.dict(os.environ, env),
+            patch("activation.get_json", return_value={"value": "transient"}) as get,
+        ):
+            self.assertEqual(activation.token(audience), "transient")
+        url, credential = get.call_args.args
+        self.assertEqual(
+            urllib.parse.parse_qs(urllib.parse.urlsplit(url).query),
+            {"api-version": ["2.0"], "audience": [audience]},
+        )
+        self.assertNotIn("PRIVATE_FIXTURE_CANARY", url)
+        self.assertEqual(credential, env["ACTIONS_ID_TOKEN_REQUEST_TOKEN"])
+
     def test_context_and_bounded_approval(self):
         value, env = fixture()
         activation.validate(value, env, now=1000)
@@ -216,6 +237,32 @@ class ActivationTests(unittest.TestCase):
             any("ReleaseSha256" in str(args) and "0" * 64 in str(args) for args in ssm)
         )
         self.assertNotIn("TRANSIENT_FIXTURE", json.dumps(result))
+
+    def test_trust_probe_diagnostic_never_prints_unexpected_credentials(self):
+        value, _ = fixture("build", "permissions")
+        cloud = MagicMock()
+        objects = {value["probe"]["release_key"]: b"{}"}
+        cloud.get.side_effect = objects.__getitem__
+        cloud.put.side_effect = lambda key, path: objects.update(
+            {key: path.read_bytes()}
+        )
+        cloud.raw.side_effect = lambda args, **kwargs: subprocess.CompletedProcess(
+            args,
+            0 if "--web-identity-token" in args else 1,
+            b"PRIVATE_FIXTURE_CANARY",
+            b"(AccessDenied)" if "--web-identity-token" not in args else b"",
+        )
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            patch("activation.Cloud", return_value=cloud),
+            patch("activation.token", return_value="TRANSIENT_FIXTURE"),
+            patch("sys.stderr", new_callable=io.StringIO) as output,
+        ):
+            with self.assertRaises(Refused):
+                activation.verify_permissions(value, directory)
+            self.assertIn("wrong-audience/unexpected-allow", output.getvalue())
+            self.assertNotIn("PRIVATE_FIXTURE_CANARY", output.getvalue())
+            self.assertNotIn("TRANSIENT_FIXTURE", output.getvalue())
 
     def test_unexpected_allow_aborts_before_publication(self):
         value, _ = fixture("build", "permissions")

@@ -9,6 +9,7 @@ import re
 import sys
 import tempfile
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -406,7 +407,11 @@ def verify_permissions(config, directory):
                 raise RuntimeError("Closed-host probe timed out")
     # Use real signed tokens; never store token or temporary credentials in receipts.
     for label, role, aud in (
-        ("wrong-audience", delivery["role_arn"], "agentclash-activation-denied"),
+        (
+            "wrong-audience",
+            delivery["role_arn"],
+            "https://invalid.agentclash.example/activation",
+        ),
         ("other-environment-role", probe["other_role_arn"], "sts.amazonaws.com"),
     ):
         with tempfile.NamedTemporaryFile(dir=directory) as path:
@@ -431,15 +436,32 @@ def verify_permissions(config, directory):
                 ],
                 ok=True,
             )
-        require(
-            authorization_denied(
-                result,
-                ("AccessDenied", "InvalidIdentityToken")
-                if label == "wrong-audience"
-                else ("AccessDenied",),
-            ),
-            "Invalid trust context was not denied",
+        denied = authorization_denied(
+            result,
+            ("AccessDenied", "InvalidIdentityToken")
+            if label == "wrong-audience"
+            else ("AccessDenied",),
         )
+        if not denied:
+            # Only a fixed probe label and known status category may be public.
+            # In particular, an unexpected allow must never print credentials.
+            category = "unexpected-allow" if result.returncode == 0 else "other-error"
+            for code in (
+                "AccessDenied",
+                "AccessDeniedException",
+                "InvalidIdentityToken",
+                "ExpiredToken",
+                "ValidationError",
+                "IDPRejectedClaim",
+            ):
+                if ("(" + code + ")").encode() in result.stderr:
+                    category = code
+                    break
+            print(
+                "Trust probe unexpected result: " + label + "/" + category,
+                file=sys.stderr,
+            )
+        require(denied, "Invalid trust context was not denied")
         if b"(InvalidIdentityToken)" in result.stderr:
             require(
                 b"audience" in result.stderr.lower(),
@@ -470,5 +492,31 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
+    except Exception as error:
+        from checks import failure_location, refusal_detail
+
+        location = failure_location(error)
+        if location:
+            print("Verification source location: " + location, file=sys.stderr)
+        detail = refusal_detail(error)
+        if detail:
+            print("Verification invariant: " + detail, file=sys.stderr)
+        category = type(error).__name__
+        known = {
+            "Refused",
+            "HTTPError",
+            "URLError",
+            "TimeoutExpired",
+            "KeyError",
+            "ValueError",
+            "TypeError",
+            "FileNotFoundError",
+        }
+        print(
+            "Verification failure category: "
+            + (category if category in known else "internal-error"),
+            file=sys.stderr,
+        )
+        if isinstance(error, urllib.error.HTTPError):
+            print("Verification HTTP status: " + str(error.code), file=sys.stderr)
         sys.exit("Protected verification refused or failed; inspect private state")

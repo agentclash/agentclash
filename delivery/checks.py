@@ -30,7 +30,15 @@ def refusal_detail(error):
     """Publish only invariant text already present literally in public source."""
     if not isinstance(error, Refused):
         return None
-    for name in ("checks.py", "build.py", "maintained.py", "image_scan.py", "tools.py"):
+    for name in (
+        "checks.py",
+        "build.py",
+        "maintained.py",
+        "image_scan.py",
+        "tools.py",
+        "activation.py",
+        "cloud.py",
+    ):
         for node in ast.walk(ast.parse((ROOT / "delivery" / name).read_text())):
             if (
                 isinstance(node, ast.Call)
