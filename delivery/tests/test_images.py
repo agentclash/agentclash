@@ -1,9 +1,12 @@
 import copy
+import hashlib
+import io
 import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+import urllib.error
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -41,6 +44,35 @@ def os_report(version="3.5.8-r0", vulnerable=False):
 
 
 class ImageGateTests(unittest.TestCase):
+    def test_official_mirror_fallback_still_requires_exact_pinned_bytes(self):
+        from contextlib import redirect_stdout
+
+        original = "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/fixture.apk"
+        expected = (
+            "https://mirrors.edge.kernel.org/alpine/v3.24/main/x86_64/fixture.apk"
+        )
+
+        class Response(io.BytesIO):
+            url = expected
+
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            redirect_stdout(io.StringIO()),
+            patch(
+                "maintained.urllib.request.urlopen",
+                side_effect=[
+                    urllib.error.HTTPError(original, 404, "private-message", {}, None),
+                    Response(b"pinned"),
+                ],
+            ) as request,
+        ):
+            path = Path(directory) / "input"
+            fetch(
+                {"url": original, "sha256": hashlib.sha256(b"pinned").hexdigest()}, path
+            )
+            self.assertEqual(path.read_bytes(), b"pinned")
+            self.assertEqual(request.call_args_list[1].args[0].full_url, expected)
+
     def test_scanner_cannot_report_different_bytes_or_architecture_as_a_pass(self):
         for wrong in ("identity", "architecture"):
             with tempfile.TemporaryDirectory() as directory:

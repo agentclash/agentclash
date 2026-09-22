@@ -7,6 +7,8 @@ from pathlib import Path
 import re
 import shutil
 import tarfile
+import time
+import urllib.error
 import urllib.request
 
 from common import require
@@ -43,9 +45,43 @@ def fetch(entry, destination):
         and re.fullmatch(r"[a-f0-9]{64}", entry["sha256"]),
         "Platform input must have an HTTPS URL and immutable SHA256",
     )
-    with urllib.request.urlopen(entry["url"], timeout=60) as response:
-        require(response.url.startswith("https://"), "Insecure input redirect")
-        content = response.read()
+    urls = [entry["url"]]
+    alpine = "https://dl-cdn.alpinelinux.org/alpine/"
+    if entry["url"].startswith(alpine):
+        # Listed by mirrors.alpinelinux.org. The exact version and reviewed
+        # checksum remain mandatory when a CDN edge cannot serve the package.
+        urls.append(
+            "https://mirrors.edge.kernel.org/alpine/" + entry["url"][len(alpine) :]
+        )
+    content = None
+    for url in urls:
+        for attempt in range(3):
+            try:
+                request = urllib.request.Request(
+                    url, headers={"User-Agent": "AgentClash-public-build-input/1"}
+                )
+                with urllib.request.urlopen(request, timeout=60) as response:
+                    require(
+                        response.url.startswith("https://"), "Insecure input redirect"
+                    )
+                    content = response.read()
+                break
+            except urllib.error.HTTPError as error:
+                if error.code not in (403, 404, 429, 500, 502, 503, 504):
+                    raise
+                if error.code in (403, 404) or attempt == 2:
+                    print(
+                        "Public build input unavailable: HTTP " + str(error.code),
+                        flush=True,
+                    )
+                    break
+            except (urllib.error.URLError, TimeoutError):
+                if attempt == 2:
+                    break
+            time.sleep(2**attempt)
+        if content is not None:
+            break
+    require(content is not None, "Pinned public build input unavailable")
     require(
         hashlib.sha256(content).hexdigest() == entry["sha256"], "Input hash mismatch"
     )
