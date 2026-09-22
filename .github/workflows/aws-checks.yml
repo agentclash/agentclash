@@ -144,6 +144,11 @@ jobs:
       with:
         fetch-depth: 0
         persist-credentials: false
+    - name: Configure the reviewed image export engine
+      uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70
+      with:
+        version: v29.3.1
+        daemon-config: '{"debug":false,"log-level":"fatal","features":{"containerd-snapshotter":true}}'
     - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
       with:
         go-version-file: backend/go.mod

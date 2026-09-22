@@ -33,6 +33,25 @@ def config(kind="production"):
 
 
 class CITests(unittest.TestCase):
+    def test_image_checks_and_publication_use_the_same_export_engine(self):
+        import yaml
+
+        for workflow, job in (
+            ("aws-checks.yml", "images"),
+            ("aws-release.yml", "build"),
+        ):
+            value = yaml.safe_load((ROOT / ".github/workflows" / workflow).read_text())
+            setup = next(
+                step
+                for step in value["jobs"][job]["steps"]
+                if step.get("uses", "").startswith("docker/setup-docker-action@")
+            )
+            self.assertEqual(setup["with"]["version"], "v29.3.1")
+            daemon = json.loads(setup["with"]["daemon-config"])
+            self.assertTrue(daemon["features"]["containerd-snapshotter"])
+            self.assertFalse(daemon["debug"])
+            self.assertEqual(daemon["log-level"], "fatal")
+
     def test_check_diagnostics_never_include_command_arguments_or_private_paths(self):
         from checks import command_label
 
