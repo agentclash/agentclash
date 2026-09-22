@@ -33,6 +33,17 @@ def config(kind="production"):
 
 
 class CITests(unittest.TestCase):
+    def test_check_diagnostics_never_include_command_arguments_or_private_paths(self):
+        from checks import command_label
+
+        self.assertEqual(
+            command_label(["/private/fixture/trivy", "PRIVATE_CANARY"]), "trivy"
+        )
+        self.assertEqual(
+            command_label(["/private/PRIVATE_CANARY/tool", "PRIVATE_CANARY"]),
+            "validation-tool",
+        )
+
     def test_delivery_entrypoints_do_not_shadow_python_standard_library(self):
         # Run without site initialization, which can otherwise preload operator
         # and hide startup collisions present in Python 3.12 runner venvs.

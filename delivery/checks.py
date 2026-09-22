@@ -14,6 +14,16 @@ from common import require
 from tools import install
 
 
+def command_label(argv):
+    """Only fixed tool names may enter public failure messages, never arguments."""
+    name = Path(argv[0]).name
+    return (
+        name
+        if name in ("docker", "trivy", "bun", "go", "npm", "npx", "cfn-lint", "ruff")
+        else "validation-tool"
+    )
+
+
 def check(group, evidence):
     evidence = Path(evidence).resolve()
     require(not evidence.is_relative_to(ROOT), "Check evidence must be outside Git")
@@ -125,6 +135,7 @@ def check(group, evidence):
         from build import build_graph
 
         install("trivy", evidence / "trivy")
+        print("Image scanner checksum verified", flush=True)
         env.update(
             TRIVY_CONFIG=os.devnull,
             TRIVY_IGNORE_FILE=os.devnull,
@@ -138,6 +149,10 @@ def check(group, evidence):
             )
             with (evidence / "checks.log").open("ab") as log:
                 log.write(result.stdout + result.stderr)
+            if result.returncode:
+                print(
+                    "Image check subprocess failed: " + command_label(argv), flush=True
+                )
             require(result.returncode == 0, "Required image build or scan failed")
             return result.stdout
 
@@ -217,7 +232,24 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
+    except Exception as error:
+        # Class names are bounded local diagnostics; exception messages and
+        # child output can contain private paths or values and stay private.
+        categories = {
+            "HTTPError",
+            "URLError",
+            "TimeoutExpired",
+            "FileNotFoundError",
+            "Refused",
+            "KeyError",
+            "ValueError",
+        }
+        category = type(error).__name__
+        print(
+            "Check failure category: "
+            + (category if category in categories else "internal-error"),
+            file=sys.stderr,
+        )
         sys.exit(
             "Required check group failed; reproduce with --evidence-dir in private storage"
         )
