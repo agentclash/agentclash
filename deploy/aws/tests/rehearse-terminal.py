@@ -33,6 +33,7 @@ def main():
     work = Path(tempfile.mkdtemp(prefix="terminal-images-", dir=evidence))
     images = selection(args.images)
     names = []
+    logs = None
     test_image = "agentclash-terminal-rehearsal:" + secrets.token_hex(6)
     env = {
         k: v
@@ -254,6 +255,38 @@ ENTRYPOINT ["bun", "--no-install", "--no-env-file", "--preserve-symlinks", "test
     finally:
         for name in reversed(names):
             subprocess.run(["docker", "rm", "-fv", name], env=env, capture_output=True)
+        if logs is not None and logs.exists():
+            # Linux preserves the container UID on bind-mounted Caddy data.
+            # Return only this disposable test-output tree to the runner so
+            # private temporary-directory cleanup can traverse its 0700 dirs.
+            run(
+                [
+                    "docker",
+                    "run",
+                    "--rm",
+                    "--network",
+                    "none",
+                    "--read-only",
+                    "--user",
+                    "0:0",
+                    "--cap-drop",
+                    "ALL",
+                    "--cap-add",
+                    "CHOWN",
+                    "--cap-add",
+                    "DAC_OVERRIDE",
+                    "--security-opt",
+                    "no-new-privileges:true",
+                    "--entrypoint",
+                    "chown",
+                    "--mount",
+                    "type=bind,source=" + str(logs) + ",target=/evidence",
+                    images["alpine"],
+                    "-R",
+                    str(os.getuid()) + ":" + str(os.getgid()),
+                    "/evidence",
+                ]
+            )
         subprocess.run(
             ["docker", "image", "rm", test_image], env=env, capture_output=True
         )

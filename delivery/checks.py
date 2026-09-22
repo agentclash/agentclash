@@ -3,6 +3,7 @@
 
 import argparse
 import ast
+import errno
 import os
 from pathlib import Path
 import subprocess
@@ -42,6 +43,18 @@ def refusal_detail(error):
             ):
                 return node.args[1].value
     return None
+
+
+def failure_location(error):
+    """Return a public source location, without exception values or locals."""
+    location = None
+    frame = error.__traceback__
+    while frame:
+        path = Path(frame.tb_frame.f_code.co_filename).resolve()
+        if path.parent == ROOT / "delivery" and path.suffix == ".py":
+            location = "delivery/" + path.name + ":" + str(frame.tb_lineno)
+        frame = frame.tb_next
+    return location
 
 
 def check(group, evidence):
@@ -269,8 +282,21 @@ if __name__ == "__main__":
             "Refused",
             "KeyError",
             "ValueError",
+            "OSError",
+            "PermissionError",
+            "FileExistsError",
+            "TypeError",
+            "AttributeError",
+            "JSONDecodeError",
         }
         category = type(error).__name__
+        location = failure_location(error)
+        if location:
+            print("Check source location: " + location, file=sys.stderr)
+        if isinstance(error, OSError) and error.errno in errno.errorcode:
+            print(
+                "Check system error: " + errno.errorcode[error.errno], file=sys.stderr
+            )
         detail = refusal_detail(error)
         if detail:
             print("Check invariant: " + detail, file=sys.stderr)
