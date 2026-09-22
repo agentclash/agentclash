@@ -205,7 +205,18 @@ def prepare(directory, revision, private_values=()):
     env = {
         k: v
         for k, v in os.environ.items()
-        if k in ("PATH", "HOME", "USER", "TMPDIR", "DOCKER_HOST", "DOCKER_CONTEXT")
+        if k
+        in (
+            "PATH",
+            "HOME",
+            "USER",
+            "TMPDIR",
+            "DOCKER_HOST",
+            "DOCKER_CONTEXT",
+            "DOCKER_CONFIG",
+            "DOCKER_TLS_VERIFY",
+            "DOCKER_CERT_PATH",
+        )
     }
     env.update(
         {
@@ -269,9 +280,8 @@ def prepare(directory, revision, private_values=()):
     }
 
 
-def publish(cloud, directory, prepared):
-    directory = Path(directory)
-    config, revision = cloud.config, prepared["source_revision"]
+def publication_environment(directory):
+    """Isolate registry auth without losing the daemon used for the build."""
     docker_env = {
         k: v
         for k, v in os.environ.items()
@@ -284,7 +294,37 @@ def publish(cloud, directory, prepared):
             "ACTIONS_ID_TOKEN_REQUEST_URL",
         )
     }
-    docker_env["DOCKER_CONFIG"] = str(directory / "docker-auth")
+
+    def context(*args, data=None):
+        result = subprocess.run(
+            ["docker", "context", *args],
+            input=data,
+            env=docker_env,
+            capture_output=True,
+            timeout=30,
+        )
+        require(result.returncode == 0, "Private Docker context transfer failed")
+        return result.stdout
+
+    selected = context("show").decode().strip()
+    require(bool(selected), "Docker context selection is missing")
+    # Export only the selected connection, including its TLS material when used.
+    # Registry credentials and credential helpers are not part of this archive.
+    archive = context("export", selected, "-") if selected != "default" else None
+    auth = Path(directory) / "docker-auth"
+    auth.mkdir(mode=0o700)
+    docker_env["DOCKER_CONFIG"] = str(auth)
+    if archive is not None:
+        docker_env.pop("DOCKER_CONTEXT", None)
+        context("import", "agentclash-publication", "-", data=archive)
+        docker_env["DOCKER_CONTEXT"] = "agentclash-publication"
+    return docker_env
+
+
+def publish(cloud, directory, prepared):
+    directory = Path(directory)
+    config, revision = cloud.config, prepared["source_revision"]
+    docker_env = publication_environment(directory)
 
     def docker(*args, data=None):
         result = subprocess.run(
