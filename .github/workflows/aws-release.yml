@@ -1,0 +1,53 @@
+name: Prepare private AWS release
+'on':
+  push:
+    branches:
+    - main
+    paths:
+    - backend/**
+    - runtime/**
+    - services/try-cli/**
+    - try-cli/packages/core/**
+    - try-cli/demos/**
+    - deploy/aws/**
+    - delivery/**
+    - scripts/db/**
+    - scripts/deployment/**
+    - .github/workflows/aws-*.yml
+    - .dockerignore
+    - Makefile
+  workflow_dispatch: {}
+permissions:
+  contents: read
+concurrency:
+  group: aws-release-build
+  cancel-in-progress: false
+jobs:
+  checks:
+    uses: ./.github/workflows/aws-checks.yml
+  build:
+    needs: checks
+    if: ${{ vars.AWS_DELIVERY_ENABLED == 'true' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    environment: aws-build
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Configure the reviewed image export engine
+      uses: docker/setup-docker-action@2bf61fb9464cc67f0cbdeabed6aa0380accd1c70
+      with:
+        version: v29.3.1
+        daemon-config: '{"debug":false,"log-level":"fatal","features":{"containerd-snapshotter":true}}'
+    - name: Build, scan and publish privately
+      env:
+        AWS_DELIVERY_CONFIG: ${{ secrets.AWS_DELIVERY_CONFIG }}
+        GITHUB_TOKEN: ${{ github.token }}
+        SOURCE_REVISION: ${{ github.sha }}
+      run: python3 delivery/ci.py build --kind build --source "$SOURCE_REVISION"

@@ -1,0 +1,17 @@
+**
+!try-cli/
+!try-cli/packages/
+!try-cli/packages/core/
+!try-cli/packages/core/package.json
+!try-cli/packages/core/src/
+!try-cli/packages/core/src/**
+!try-cli/demos/
+!try-cli/demos/**
+!services/
+!services/try-cli/
+!services/try-cli/package.json
+!services/try-cli/bun.lock
+!services/try-cli/server/
+!services/try-cli/server/**
+**/.env*
+**/*.test.ts

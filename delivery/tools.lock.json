@@ -1,0 +1,60 @@
+{
+  "format": 1,
+  "tools": {
+    "compose": {
+      "version": "v5.5.1",
+      "platforms": {
+        "linux_amd64": {
+          "url": "https://github.com/docker/compose/releases/download/v5.5.1/docker-compose-linux-x86_64",
+          "sha256": "db1889184726840f75c4f9c001048430d4f25b3be3cb084d3ddd762bc0aed576",
+          "member": null
+        }
+      }
+    },
+    "gitleaks": {
+      "version": "v8.30.1",
+      "platforms": {
+        "linux_amd64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz",
+          "sha256": "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb",
+          "member": "gitleaks"
+        },
+        "darwin_arm64": {
+          "url": "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz",
+          "sha256": "b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5",
+          "member": "gitleaks"
+        }
+      }
+    },
+    "trivy": {
+      "version": "v0.74.0",
+      "platforms": {
+        "linux_amd64": {
+          "url": "https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_Linux-64bit.tar.gz",
+          "sha256": "2ae6fe3ee734b7fdf11335663e18c75ea12dccc76062f09f164a3b0f8be4371a",
+          "member": "trivy"
+        },
+        "darwin_arm64": {
+          "url": "https://github.com/aquasecurity/trivy/releases/download/v0.74.0/trivy_0.74.0_macOS-ARM64.tar.gz",
+          "sha256": "1caada5e0e2091909357c7525d3aa76f4b660b13821bc143b190c7483e31cc11",
+          "member": "trivy"
+        }
+      }
+    },
+    "actionlint": {
+      "version": "v1.7.12",
+      "platforms": {
+        "linux_amd64": {
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz",
+          "sha256": "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8",
+          "member": "actionlint"
+        },
+        "darwin_arm64": {
+          "url": "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_arm64.tar.gz",
+          "sha256": "aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f",
+          "member": "actionlint"
+        }
+      }
+    }
+  }
+}

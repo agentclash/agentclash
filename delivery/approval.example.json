@@ -1,0 +1,24 @@
+{
+  "account_id": "<approved-account>",
+  "region": "ap-southeast-1",
+  "instance_id": "<approved-instance>",
+  "environment": "production",
+  "operation": "deploy",
+  "operator": "<confirmed-maintenance-owner>",
+  "release_sha256": "<private-manifest-digest>",
+  "previous_release_sha256": null,
+  "issued_at": 0,
+  "expires_at": 0,
+  "acknowledgements": {
+    "drain_verified": false,
+    "callbacks_reconciled": false,
+    "no_automatic_schema_rollback": false,
+    "no_previous_aws_release": false,
+    "destination_writes_acknowledged": false
+  },
+  "evidence": {
+    "drain": "<sha256-of-canonical-private-drain-evidence>",
+    "recovery": "<sha256-of-canonical-private-recovery-evidence>",
+    "rehearsal": "<sha256-of-canonical-isolated-staging-evidence>"
+  }
+}

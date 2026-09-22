@@ -1,0 +1,10 @@
+[Unit]
+Description=Volatile private runtime configuration
+Before=agentclash-platform.service
+[Mount]
+What=tmpfs
+Where=/run/agentclash
+Type=tmpfs
+Options=mode=0711,size=32M,nosuid,nodev,noexec
+[Install]
+WantedBy=multi-user.target

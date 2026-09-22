@@ -40,22 +40,46 @@ type readyResponse struct {
 	Checks  map[string]string `json:"checks"`
 }
 
-// healthzReadyHandler reports whether the API server's dependencies
-// (Postgres, Temporal) are reachable. Unlike healthzHandler, this touches
-// the network on every call, so it's meant for load-balancer/orchestrator
-// readiness checks rather than a cheap liveness ping — the plain /healthz
-// stays untouched for that purpose.
-//
-// db or temporal may be nil (e.g. a test router built without them); that
-// is reported as "not configured" rather than a panic.
-func healthzReadyHandler(db dbPinger, temporal temporalHealthChecker) http.HandlerFunc {
+type readinessOptions struct {
+	redis           func(context.Context) error
+	shutdownContext context.Context
+}
+
+func isDraining(ctx context.Context) bool { return ctx != nil && ctx.Err() != nil }
+
+// This is a process shutdown gate, not a remotely activated migration fence.
+func shutdownIngress(ctx context.Context) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if isDraining(ctx) && r.URL.Path != "/healthz" && r.URL.Path != "/healthz/ready" {
+				w.Header().Set("Retry-After", "5")
+				writeError(w, http.StatusServiceUnavailable, "service_draining", "service is shutting down")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// healthzReadyHandler checks Postgres, Temporal and configured Redis. The
+// shared deadline bounds network probes; absent required dependencies or a
+// draining process are unavailable. Disabled Redis is supported for local use.
+func healthzReadyHandler(db dbPinger, temporal temporalHealthChecker, options ...readinessOptions) http.HandlerFunc {
+	var opts readinessOptions
+	if len(options) > 0 {
+		opts = options[0]
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		if isDraining(opts.shutdownContext) {
+			writeJSON(w, http.StatusServiceUnavailable, readyResponse{OK: false, Service: "api-server", Checks: map[string]string{"lifecycle": "draining"}})
+			return
+		}
 		// Bound the entire readiness check so a stalled dependency
 		// cannot leave the readiness request pending indefinitely.
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
 
-		checks := make(map[string]string, 2)
+		checks := make(map[string]string, 3)
 		ready := true
 
 		if db == nil {
@@ -76,6 +100,19 @@ func healthzReadyHandler(db dbPinger, temporal temporalHealthChecker) http.Handl
 			ready = false
 		} else {
 			checks["temporal"] = "ok"
+		}
+
+		if opts.redis == nil {
+			checks["redis"] = "disabled"
+		} else if err := opts.redis(ctx); err != nil {
+			checks["redis"] = "unreachable"
+			ready = false
+		} else {
+			checks["redis"] = "ok"
+		}
+		if isDraining(opts.shutdownContext) {
+			checks["lifecycle"] = "draining"
+			ready = false
 		}
 
 		status := http.StatusOK

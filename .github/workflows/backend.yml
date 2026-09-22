@@ -6,12 +6,18 @@ on:
     paths:
       - "backend/**"
       - "runtime/**"
+      - "scripts/db/**"
+      - "scripts/dev/bootstrap.sh"
+      - "Makefile"
       - ".github/workflows/backend.yml"
   pull_request:
     branches: [main]
     paths:
       - "backend/**"
       - "runtime/**"
+      - "scripts/db/**"
+      - "scripts/dev/bootstrap.sh"
+      - "Makefile"
       - ".github/workflows/backend.yml"
 
 defaults:
@@ -49,6 +55,21 @@ jobs:
 
       - name: Run tests (short mode)
         run: go test -short -race -count=1 ./...
+
+  migrations:
+    name: PostgreSQL Migration Contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Isolated database and migrator image checks
+        working-directory: .
+        run: python3 scripts/db/test-migrator.py
 
   docker:
     # The production images build from the REPO ROOT context because backend/

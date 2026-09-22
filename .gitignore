@@ -59,3 +59,11 @@ testing/*
 !testing/feat-eval-sdk-1114.md
 !testing/codex-local-m1-docker-sandbox.md
 !testing/feat-local-m1-byo-keys.md
+!testing/codex-aws-migration-step-4-temporal-tls.md
+!testing/codex-aws-migration-step-5-migrator.md
+!testing/codex-aws-migration-step-6-maintenance.md
+!testing/codex-aws-migration-step-7-terminal.md
+!testing/codex-aws-migration-step-8-infrastructure.md
+!testing/codex-aws-migration-step-9-cicd.md
+!testing/codex-aws-migration-step-9-1-patches.md
+!testing/codex-aws-migration-step-9-2-platform-images.md

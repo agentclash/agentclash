@@ -1,231 +1,131 @@
-import { Sandbox } from "e2b";
 import type { Demo } from "@try-cli/core";
-import type { ServerWebSocket } from "bun";
+import type { Config } from "./config.ts";
+import type { SandboxFactory, TerminalSandbox, PtyHandle } from "./sandbox.ts";
+import { AllocationRejected } from "./sandbox.ts";
 
 export type SessionTier = "anonymous" | "authenticated";
-
-export interface TerminalSession {
-  id: string;
-  slug: string;
-  demo: Demo;
-  ip: string;
-  tier: SessionTier;
-  /** High-entropy credential the sandbox CLIs send to the gateway (NOT the
-   *  session id, which travels in loggable URLs/WS params). */
-  proxyToken: string;
-  /** Free-trial spend cap (USD) and running total, enforced by the gateway. */
-  gatewayBudgetUsd: number;
-  gatewaySpentUsd: number;
-  /** Estimated spend for in-flight gateway requests, so concurrent requests
-   *  can't all pass the budget check before any of them finishes metering. */
-  gatewayReservedUsd: number;
-  /** Whether this session's CLI is wired to the metered gateway (anon trial). */
-  trialWired: boolean;
-  /** Extra env injected into the PTY (gateway base URLs + proxy token). */
-  ptyEnv: Record<string, string>;
-  sandbox: Sandbox | null;
-  ptyPid: number | null;
-  ws: ServerWebSocket<unknown> | null;
-  expiresAt: number;
-  status: "starting" | "ready" | "expired" | "error";
-  error?: string;
-  mock: boolean;
+export interface TerminalSocket {
+  readyState: number;
+  send(data: string | Uint8Array): unknown;
+  close(code?: number, reason?: string): void;
 }
-
-// Per-tier session length (minutes). Anonymous trials are short and run on our
-// keys; signed-in users get longer and bring their own credentials.
-const ANON_MAX_MINUTES = Number(process.env.GW_ANON_MINUTES ?? 7);
-const AUTH_MAX_MINUTES = Number(process.env.GW_AUTH_MINUTES ?? 20);
-const ANON_BUDGET_USD = Number(process.env.GW_SESSION_BUDGET_USD ?? 0.3);
+export interface TrialBudget { limit: number; spent: number; reserved: number }
+export interface TerminalSession {
+  id: string; slug: string; demo: Demo; ip: string; tier: SessionTier;
+  proxyToken: string; budget: TrialBudget; trialWired: boolean;
+  ptyEnv: Record<string, string>; sandbox: TerminalSandbox | null;
+  ptyPid: number | null; ws: TerminalSocket | null; expiresAt: number;
+  status: "starting" | "ready" | "expired" | "error";
+  error?: string; mock: boolean;
+}
+interface Entry {
+  session: TerminalSession;
+  boot: Promise<void>;
+  closing: boolean;
+  abort: AbortController;
+  destroy?: Promise<void>;
+  ptyStart?: Promise<void>;
+  handle?: PtyHandle;
+  uncertainAllocation: boolean;
+  cleanupFailed: boolean;
+  resetStarted: boolean;
+}
+export class AdmissionError extends Error {}
 const SANDBOX_WORKDIR = "/home/user/project";
-// Global cap on concurrent live sandboxes, to stay under E2B's per-team
-// concurrency/rate limits (cost isn't the concern — rate limiting is).
-const MAX_CONCURRENT_SANDBOXES = Number(process.env.TRY_CLI_MAX_CONCURRENT_SANDBOXES ?? 40);
-
-// Demos whose free trial routes through the gateway, and the provider they use.
-// Demos not listed are bring-your-own-credentials only (no anon trial).
-const TRIAL_PROVIDER: Record<
-  string,
-  "anthropic" | "openai" | "xai" | "openrouter" | undefined
-> = {
-  // Claude Code free trial DISABLED — metering under-counted its agentic usage
-  // and it ran up a large bill. Claude Code is bring-your-own-key only until the
-  // gateway metering is fixed. (See GW_DAILY_CEILING_USD brake.)
-  // "claude-code": "anthropic",
-  codex: "openai",
-  grok: "xai",
-  // Each runs its OWN dedicated CLI pointed at OpenRouter through the gateway.
-  "kimi-k2": "openrouter", // kimi-cli
-  "qwen3-coder": "openrouter", // @qwen-code/qwen-code
-};
-
-const PROVIDER_ENV_KEY: Record<string, string> = {
-  anthropic: "ANTHROPIC_API_KEY",
-  openai: "OPENAI_API_KEY",
-  xai: "XAI_API_KEY",
-  openrouter: "OPENROUTER_API_KEY",
-};
-
-// OpenRouter model id per demo slug.
+const TRIAL_PROVIDER = {
+  codex: "openai", grok: "xai", "kimi-k2": "openrouter", "qwen3-coder": "openrouter",
+} as Record<string, "anthropic" | "openai" | "xai" | "openrouter" | undefined>;
 const OPENROUTER_MODEL: Record<string, string> = {
-  "kimi-k2": "moonshotai/kimi-k2",
-  "qwen3-coder": "qwen/qwen3-coder",
+  "kimi-k2": "moonshotai/kimi-k2", "qwen3-coder": "qwen/qwen3-coder",
 };
 
 export class SessionManager {
-  private sessions = new Map<string, TerminalSession>();
-  // Reverse index: gateway proxy token -> session, for O(1) gateway auth.
+  private entries = new Map<string, Entry>();
   private byProxyToken = new Map<string, TerminalSession>();
-  // Live (not yet destroyed) session count per IP. Incremented on create,
-  // decremented on destroy, so a user who finishes/resets a session frees the slot.
-  private liveSessionsPerIp = new Map<string, number>();
-  private readonly maxSessionsPerIp = 3;
-  // Count of live sandboxes we've reserved capacity for (E2B sessions).
-  private activeSandboxes = 0;
-  private readonly useE2B: boolean;
+  private draining = false;
+  private timer: ReturnType<typeof setInterval>;
 
-  constructor() {
-    this.useE2B = Boolean(process.env.E2B_API_KEY);
-    if (!this.useE2B) {
-      console.warn("[try-cli] E2B_API_KEY not set — running in mock terminal mode");
-    }
-    setInterval(() => this.cleanup(), 30_000);
+  constructor(private config: Config, private factory?: SandboxFactory) {
+    if (config.production && !factory) throw new Error("Production sandbox required");
+    this.timer = setInterval(() => { void this.expire(); }, 1000);
+    this.timer.unref();
   }
-
-  private hasCapacity(ip: string): boolean {
-    return (this.liveSessionsPerIp.get(ip) ?? 0) < this.maxSessionsPerIp;
+  get size() { return this.entries.size; }
+  get healthy() { return !this.draining && ![...this.entries.values()].some(e => e.cleanupFailed); }
+  drain() { this.draining = true; }
+  get(id: string) {
+    const entry = this.entries.get(id);
+    return entry && !entry.closing ? entry.session : undefined;
   }
-
-  get(id: string): TerminalSession | undefined {
-    return this.sessions.get(id);
+  assertAdmission(ip: string) {
+    if (this.draining) throw new AdmissionError("draining");
+    if (!this.healthy) throw new AdmissionError("cleanup_required");
+    if (this.entries.size >= this.config.maxSandboxes ||
+      [...this.entries.values()].filter(e => e.session.ip === ip).length >= 3) throw new AdmissionError("at_capacity");
   }
-
-  async create(
-    slug: string,
-    demo: Demo,
-    ip: string,
-    tier: SessionTier = "anonymous",
-  ): Promise<TerminalSession> {
-    if (!this.hasCapacity(ip)) {
-      throw new Error("Rate limit exceeded. Try again later.");
-    }
-    if (this.useE2B && this.activeSandboxes >= MAX_CONCURRENT_SANDBOXES) {
-      throw new Error("Try CLI is at capacity right now — please try again in a moment.");
-    }
-
-    const id = crypto.randomUUID();
-    const maxMinutes = tier === "authenticated" ? AUTH_MAX_MINUTES : ANON_MAX_MINUTES;
-    const minutes = Math.min(demo.sessionMinutes ?? 10, maxMinutes);
+  async create(slug: string, demo: Demo, ip: string, tier: SessionTier = "anonymous",
+    previous?: { expiresAt: number; budget: TrialBudget }): Promise<TerminalSession> {
+    this.assertAdmission(ip);
+    const minutes = Math.min(demo.sessionMinutes ?? 10, tier === "anonymous" ? this.config.anonMinutes : this.config.authMinutes);
+    const expiresAt = previous?.expiresAt ?? Date.now() + minutes * 60000;
+    if (expiresAt <= Date.now()) throw new AdmissionError("session_expired");
     const session: TerminalSession = {
-      id,
-      slug,
-      demo,
-      ip,
-      tier,
-      proxyToken: `tct_${crypto.randomUUID().replace(/-/g, "")}${crypto.randomUUID().replace(/-/g, "")}`,
-      gatewayBudgetUsd: ANON_BUDGET_USD,
-      gatewaySpentUsd: 0,
-      gatewayReservedUsd: 0,
-      trialWired: false,
-      ptyEnv: {},
-      sandbox: null,
-      ptyPid: null,
-      ws: null,
-      expiresAt: Date.now() + minutes * 60 * 1000,
-      status: "starting",
-      mock: !this.useE2B,
+      id: crypto.randomUUID(), slug, demo, ip, tier,
+      proxyToken: `tct_${crypto.randomUUID().replaceAll("-", "")}${crypto.randomUUID().replaceAll("-", "")}`,
+      budget: previous?.budget ?? { limit: this.config.sessionBudget, spent: 0, reserved: 0 },
+      trialWired: false, ptyEnv: {}, sandbox: null, ptyPid: null, ws: null,
+      expiresAt, status: this.factory ? "starting" : "ready", mock: !this.factory,
     };
-    this.sessions.set(id, session);
+    const entry: Entry = { session, closing: false, abort: new AbortController(), boot: Promise.resolve(),
+      uncertainAllocation: false, cleanupFailed: false, resetStarted: false };
+    this.entries.set(session.id, entry);
     this.byProxyToken.set(session.proxyToken, session);
-    this.liveSessionsPerIp.set(ip, (this.liveSessionsPerIp.get(ip) ?? 0) + 1);
-
-    if (this.useE2B) {
-      this.activeSandboxes++; // reserve a concurrency slot (released in destroy)
-      this.bootstrapE2B(session).catch((err) => {
-        session.status = "error";
-        session.error = err instanceof Error ? err.message : String(err);
-        console.error(`[session ${id}] bootstrap failed:`, err);
+    if (this.factory) {
+      entry.boot = this.bootstrap(entry).catch(() => {
+        session.status = "error"; session.error = "sandbox_start_failed";
       });
-    } else {
-      session.status = "ready";
+      void entry.boot.then(() => {
+        if (session.status === "error") return this.destroy(session.id);
+      }).catch(() => { console.error("[try-cli] sandbox cleanup failed; capacity retained"); });
     }
-
     return session;
   }
-
-  // e2b v2 takes the template alias as a positional arg — passing it inside the
-  // options object is silently ignored. Retries on transient E2B rate limits.
-  private async createSandboxWithRetry(template: string | undefined, timeoutMs: number) {
-    let lastErr: unknown;
-    for (let attempt = 0; attempt < 4; attempt++) {
-      try {
-        return template
-          ? await Sandbox.create(template, { timeoutMs })
-          : await Sandbox.create({ timeoutMs });
-      } catch (err) {
-        lastErr = err;
-        const msg = err instanceof Error ? err.message : String(err);
-        const rateLimited = /rate.?limit|429|too many requests/i.test(msg);
-        if (!rateLimited || attempt === 3) throw err;
-        await new Promise((r) => setTimeout(r, 500 * 2 ** attempt));
-      }
-    }
-    throw lastErr;
+  private live(entry: Entry) {
+    return !entry.closing && Date.now() < entry.session.expiresAt;
   }
-
-  private async bootstrapE2B(session: TerminalSession) {
-    const { demo } = session;
-    const timeoutMs = (demo.sessionMinutes ?? 10) * 60 * 1000;
-
-    const sandbox = await this.createSandboxWithRetry(demo.template, timeoutMs);
-    session.sandbox = sandbox;
-
-    for (const cmd of demo.install ?? []) {
-      const result = await sandbox.commands.run(cmd, { timeoutMs: 120_000 });
-      if (result.exitCode !== 0) {
-        throw new Error(`Install failed: ${cmd}\n${result.stderr}`);
-      }
-    }
-
-    // Start the user in a project dir, not $HOME — some agent CLIs (e.g. Qwen
-    // Code) refuse to run in the home directory.
+  private async bootstrap(entry: Entry) {
+    const session = entry.session;
     try {
-      await session.sandbox.commands.run(`mkdir -p ${SANDBOX_WORKDIR}`);
-    } catch {
-      /* non-fatal */
+      // Creation remains tracked until it resolves, including a late allocation
+      // after drain/destroy. The provider TTL is always bounded by the trial.
+      session.sandbox = await this.factory!.create(session.demo.template,
+        Math.max(1, session.expiresAt - Date.now()), session.id);
+    } catch (err) {
+      entry.uncertainAllocation = !(err instanceof AllocationRejected);
+      throw err;
     }
-
+    if (!this.live(entry)) return;
+    for (const command of session.demo.install ?? []) {
+      const result = await session.sandbox.commands.run(command, entry.abort.signal);
+      if (!this.live(entry)) return;
+      if (result.exitCode !== 0) throw new Error("Install failed");
+    }
+    await session.sandbox.commands.run(`mkdir -p ${SANDBOX_WORKDIR}`, entry.abort.signal);
+    if (!this.live(entry)) return;
     await this.wireGatewayTrial(session);
+    if (!this.live(entry)) return;
     session.status = "ready";
-
-    if (session.ws) {
-      await this.attachPty(session, session.ws as ServerWebSocket<{ sessionId: string }>);
-    }
+    if (session.ws) await this.attachPty(session, session.ws);
   }
-
-  /**
-   * For an anonymous trial of a supported AI CLI, point the CLI at the metered
-   * gateway with the session's proxy token. The real provider key never enters
-   * the sandbox. No-op for authenticated (BYO) sessions, non-AI demos, providers
-   * whose key isn't configured on the service, or when no gateway URL is set.
-   */
   private async wireGatewayTrial(session: TerminalSession) {
     if (session.tier !== "anonymous") return;
 
-    // opencode runs on opencode's own hosted "Zen" models with the operator's
-    // Zen key injected directly (its own account, not routed through our gateway).
-    if (session.slug === "opencode") {
-      const zen = process.env.OPENCODE_ZEN_API_KEY;
-      if (!zen) return;
-      session.ptyEnv = { OPENCODE_API_KEY: zen };
-      session.trialWired = true;
-      return;
-    }
-
+    // opencode and Claude Code are BYO-only. Operator keys must never enter
+    // a disposable sandbox, even when a provider offers promotional credits.
     const provider = TRIAL_PROVIDER[session.slug];
     if (!provider) return;
-    if (!process.env[PROVIDER_ENV_KEY[provider]]) return;
-    const gw = process.env.TRY_CLI_GATEWAY_URL;
+    if (!this.config.providerKeys[provider]) return;
+    const gw = this.config.gatewayOrigin;
     if (!gw || !session.sandbox) return;
     const base = gw.replace(/\/$/, "");
     const token = session.proxyToken;
@@ -238,7 +138,7 @@ export class SessionManager {
       env.ANTHROPIC_AUTH_TOKEN = token;
     } else if (provider === "openai") {
       env.OPENAI_API_KEY = token;
-      const model = process.env.GW_CODEX_MODEL ?? "gpt-5-codex";
+      const model = this.config.codexModel;
       const cfg =
         `model = "${model}"\n` +
         `model_provider = "trycli"\n` +
@@ -247,11 +147,7 @@ export class SessionManager {
         `base_url = "${base}/gw/openai/v1"\n` +
         `env_key = "OPENAI_API_KEY"\n` +
         `wire_api = "responses"\n`;
-      try {
-        await session.sandbox.files.write("/home/user/.codex/config.toml", cfg);
-      } catch (err) {
-        console.error(`[session ${session.id}] codex config write failed:`, err);
-      }
+      await session.sandbox.files.write("/home/user/.codex/config.toml", cfg);
     } else if (provider === "xai") {
       env.GROK_BASE_URL = `${base}/gw/xai/v1`;
       env.XAI_API_KEY = token;
@@ -284,12 +180,8 @@ export class SessionManager {
           `provider = "trycli"\n` +
           `model = "${model}"\n` +
           `max_context_size = 131072\n`;
-        try {
-          await session.sandbox.commands.run("mkdir -p /home/user/.kimi");
-          await session.sandbox.files.write("/home/user/.kimi/config.toml", cfg);
-        } catch (err) {
-          console.error(`[session ${session.id}] kimi config write failed:`, err);
-        }
+        await session.sandbox.commands.run("mkdir -p /home/user/.kimi");
+        await session.sandbox.files.write("/home/user/.kimi/config.toml", cfg);
       }
     }
 
@@ -297,73 +189,43 @@ export class SessionManager {
     session.trialWired = true;
   }
 
-  /** Resolve + authorize a gateway proxy token. Returns the live anon session
-   *  that is still within its time window, or undefined. */
-  validateGatewayToken(token: string): TerminalSession | undefined {
-    if (!token) return undefined;
-    const s = this.byProxyToken.get(token);
-    if (!s || s.tier !== "anonymous" || !s.trialWired) return undefined;
-    if (s.status === "expired" || Date.now() > s.expiresAt) return undefined;
-    return s;
+  validateGatewayToken(token: string) {
+    const session = this.byProxyToken.get(token);
+    if (!session || session.tier !== "anonymous" || !session.trialWired || session.status !== "ready" ||
+      Date.now() >= session.expiresAt) return;
+    return session;
   }
-
-  addGatewaySpend(id: string, usd: number) {
-    const s = this.sessions.get(id);
-    if (s) s.gatewaySpentUsd += usd;
-  }
-
-  async attachPty(session: TerminalSession, ws: ServerWebSocket<{ sessionId: string }>) {
+  async attachPty(session: TerminalSession, ws: TerminalSocket) {
+    const entry = this.entries.get(session.id);
+    if (!entry || !this.live(entry)) { ws.close(4004, "Session unavailable"); return; }
+    if (session.ws && session.ws !== ws) session.ws.close(4001, "Terminal reconnected");
     session.ws = ws;
-
-    if (session.mock) {
-      this.attachMockPty(session, ws);
-      return;
+    if (session.mock) { this.attachMockPty(session, ws); return; }
+    if (session.status !== "ready" || !session.sandbox) return;
+    // Keep one remote PTY and its output stream for the session lifetime.
+    // A new browser socket takes ownership; stale close callbacks cannot clear it.
+    if (!entry.ptyStart) {
+      entry.ptyStart = (async () => {
+        const handle = await session.sandbox!.pty.create({
+          cwd: SANDBOX_WORKDIR,
+          envs: { TERM: "xterm-256color", ...session.ptyEnv },
+          onData: data => { if (this.live(entry) && session.ws?.readyState === 1) session.ws.send(data); },
+        });
+        entry.handle = handle; session.ptyPid = handle.pid;
+      })();
     }
-
-    if (!session.sandbox || session.status !== "ready") return;
-
-    const { demo, sandbox } = session;
-
-    const handle = await sandbox.pty.create({
-      cols: 80,
-      rows: 24,
-      cwd: SANDBOX_WORKDIR,
-      timeoutMs: 0,
-      onData: (data) => {
-        if (ws.readyState === WebSocket.OPEN) {
-          ws.send(data);
-        }
-      },
-      envs: {
-        TERM: "xterm-256color",
-        PS1: "\\[\\033[01;32m\\]\\u@try-cli\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]$ ",
-        ...session.ptyEnv,
-      },
-    });
-
-    session.ptyPid = handle.pid;
-
-    // Render the welcome text directly to the terminal output instead of running
-    // it through the shell — passing `demo.welcome` into a shell command would let
-    // a `$(...)`/backtick payload in a demo config execute inside the sandbox.
-    const enc = new TextEncoder();
-    if (session.trialWired && ws.readyState === WebSocket.OPEN) {
-      ws.send(
-        enc.encode(
-          `\x1b[32m✓ Free trial active\x1b[0m — running on AgentClash credentials, no key needed. ` +
-            `Just run the command. Sign in to continue with your own account.\r\n\r\n`,
-        ),
-      );
-    }
-    if (demo.welcome && ws.readyState === WebSocket.OPEN) {
-      const text = demo.welcome.replace(/\r?\n/g, "\r\n");
-      ws.send(enc.encode(`${text}\r\n`));
+    await entry.ptyStart;
+    if (this.live(entry) && session.ws === ws && ws.readyState === 1) {
+      if (session.trialWired) ws.send("\r\nFree trial active. Sign in to continue with your own credentials.\r\n");
+      if (session.demo.welcome) ws.send(session.demo.welcome.replace(/\r?\n/g, "\r\n") + "\r\n");
     }
   }
-
+  detachPty(session: TerminalSession, ws: TerminalSocket) {
+    if (session.ws === ws) session.ws = null;
+  }
   private mockBuffers = new Map<string, string>();
 
-  private attachMockPty(session: TerminalSession, ws: ServerWebSocket<{ sessionId: string }>) {
+  private attachMockPty(session: TerminalSession, ws: TerminalSocket) {
     const encoder = new TextEncoder();
     const welcome = session.demo.welcome ?? `${session.demo.name} demo (mock mode — set E2B_API_KEY for real sandbox)\r\n`;
     const lines = welcome.split("\n").map((l) => `${l}\r\n`).join("");
@@ -373,7 +235,7 @@ export class SessionManager {
     this.mockBuffers.set(session.id, "");
   }
 
-  handleMockInput(session: TerminalSession, ws: ServerWebSocket<{ sessionId: string }>, data: Uint8Array) {
+  handleMockInput(session: TerminalSession, ws: TerminalSocket, data: Uint8Array) {
     const encoder = new TextEncoder();
     const prompt = `\r\n\x1b[32muser@try-cli\x1b[0m:\x1b[34m~\x1b[0m$ `;
     let buffer = this.mockBuffers.get(session.id) ?? "";
@@ -415,80 +277,65 @@ export class SessionManager {
     }
   }
 
-  async reset(session: TerminalSession): Promise<TerminalSession> {
-    const originalExpiry = session.expiresAt;
-    const tier = session.tier;
+  async reset(session: TerminalSession) {
+    this.assertAdmissionForReset();
+    const entry = this.entries.get(session.id);
+    if (!entry || entry.closing || entry.resetStarted) throw new AdmissionError("session_unavailable");
+    entry.resetStarted = true;
     await this.destroy(session.id);
-    // Reuse the original client IP so a reset (destroy + create) nets to the same
-    // live-session count for that IP rather than charging a shared bucket.
-    const next = await this.create(session.slug, session.demo, session.ip, tier);
-    // A reset must not extend an anonymous trial past its original deadline —
-    // carry over the original expiry so the free window stays hard-capped.
-    if (tier === "anonymous") next.expiresAt = originalExpiry;
-    return next;
+    // Share the budget object with in-flight metering from the previous sandbox.
+    return this.create(session.slug, session.demo, session.ip, session.tier,
+      session.tier === "anonymous" ? { expiresAt: session.expiresAt, budget: session.budget } : undefined);
   }
-
-  async destroy(id: string) {
-    const session = this.sessions.get(id);
-    if (!session) return;
-
-    // Remove from the maps first so concurrent/double destroys can't double-count.
-    this.sessions.delete(id);
+  private assertAdmissionForReset() {
+    if (this.draining) throw new AdmissionError("draining");
+  }
+  destroy(id: string): Promise<void> {
+    const entry = this.entries.get(id);
+    if (!entry) return Promise.resolve();
+    if (entry.destroy) return entry.destroy;
+    entry.closing = true;
+    entry.abort.abort();
+    const session = entry.session;
     this.byProxyToken.delete(session.proxyToken);
-    if (!session.mock) this.activeSandboxes = Math.max(0, this.activeSandboxes - 1);
-    const live = (this.liveSessionsPerIp.get(session.ip) ?? 0) - 1;
-    if (live > 0) {
-      this.liveSessionsPerIp.set(session.ip, live);
-    } else {
-      this.liveSessionsPerIp.delete(session.ip);
-    }
-
-    if (session.ptyPid && session.sandbox) {
-      try {
-        await session.sandbox.pty.kill(session.ptyPid);
-      } catch {
-        /* ignore */
+    session.ws?.close(1001, "Session ended"); session.ws = null;
+    entry.destroy = (async () => {
+      await entry.boot;
+      await entry.ptyStart?.catch(() => {});
+      // Even disconnect failure must not prevent killing the whole sandbox.
+      await entry.handle?.disconnect().catch(() => {});
+      if (session.sandbox) await session.sandbox.kill();
+      else if (entry.uncertainAllocation) {
+        // A timed-out create may have reached E2B. Retain capacity and report a
+        // failed cleanup for operator reconciliation. The local clock cannot
+        // prove when an unacknowledged remote allocation actually began.
+        throw new Error("Sandbox allocation uncertain");
       }
-    }
-    if (session.sandbox) {
-      try {
-        await session.sandbox.kill();
-      } catch {
-        /* ignore */
-      }
+      this.entries.delete(id);
+      this.mockBuffers.delete(id);
+    })().catch(() => {
+      entry.cleanupFailed = true; entry.destroy = undefined;
+      throw new Error("Sandbox cleanup failed");
+    });
+    return entry.destroy;
+  }
+  sendInput(session: TerminalSession, ws: TerminalSocket, data: Uint8Array) {
+    const entry = this.entries.get(session.id);
+    if (!entry || !this.live(entry) || session.ws !== ws) return;
+    if (session.mock) { this.handleMockInput(session, ws, data); return; }
+    if (session.sandbox && session.ptyPid !== null) {
+      void session.sandbox.pty.sendInput(session.ptyPid, data).catch(() => ws.close(1011, "Terminal input failed"));
     }
   }
-
-  sendInput(session: TerminalSession, ws: ServerWebSocket<{ sessionId: string }>, data: Uint8Array) {
-    if (session.mock) {
-      this.handleMockInput(session, ws, data);
-      return;
-    }
-    if (session.sandbox && session.ptyPid) {
-      session.sandbox.pty.sendInput(session.ptyPid, data).catch(console.error);
-    }
+  async expire() {
+    await Promise.all([...this.entries.values()].filter(e => Date.now() >= e.session.expiresAt || e.cleanupFailed).map(async e => {
+      e.session.status = "expired";
+      try { await this.destroy(e.session.id); } catch { /* capacity remains occupied */ }
+    }));
   }
-
-  resize(session: TerminalSession, cols: number, rows: number) {
-    if (session.sandbox && session.ptyPid) {
-      session.sandbox.pty.resize(session.ptyPid, { cols, rows }).catch(console.error);
-    }
-  }
-
-  private cleanup() {
-    const now = Date.now();
-    // Collect first — destroy() mutates the sessions Map, so we must not delete
-    // from it while iterating.
-    const expired: string[] = [];
-    for (const [id, session] of this.sessions) {
-      if (now > session.expiresAt) expired.push(id);
-    }
-    for (const id of expired) {
-      const session = this.sessions.get(id);
-      if (session) session.status = "expired";
-      void this.destroy(id);
-    }
+  async close() {
+    this.drain(); clearInterval(this.timer);
+    const results = await Promise.allSettled([...this.entries.keys()].map(id => this.destroy(id)));
+    if (results.some(r => r.status === "rejected")) throw new Error("Sandbox cleanup incomplete");
   }
 }
-
-export const sessions = new SessionManager();

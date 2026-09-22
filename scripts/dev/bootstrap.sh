@@ -63,7 +63,7 @@ else
   done
 
   # Without this branch the script fell through to 'make db-migrate' and died
-  # with a raw psql connection error. The usual cause is Docker not running.
+  # with a connection error. The usual cause is Docker not running.
   if [ "$pg_ready" -ne 1 ]; then
     warn "Postgres did not accept connections after 30s."
     warn "Is Docker running? Start Docker Desktop (or your daemon), then re-run 'make setup'."
@@ -71,11 +71,11 @@ else
     exit 1
   fi
 
-  if command -v psql >/dev/null 2>&1; then
+  if command -v go >/dev/null 2>&1; then
     note "Running migrations"
     make db-migrate
   else
-    warn "Skipping migrations — psql client not found. Install libpq, then run 'make db-migrate'."
+    warn "Skipping migrations — Go not found. Install Go, then run 'make db-migrate'."
   fi
 fi
 

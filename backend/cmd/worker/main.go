@@ -24,20 +24,22 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() (exitCode int) {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	cfg, err := workerapp.LoadConfigFromEnv()
 	if err != nil {
 		logger.Error("failed to load worker config", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	metricsCfg := observability.LoadConfigFromEnv()
 	metricsRT, err := observability.Start(context.Background(), metricsCfg, logger, "worker")
 	if err != nil {
 		logger.Error("failed to start metrics", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer func() { _ = metricsRT.Close(context.Background()) }()
 	if metricsCfg.Enabled {
@@ -49,18 +51,19 @@ func main() {
 	db, err := pgxpool.New(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("failed to connect to postgres", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer db.Close()
 
 	temporalClient, err := temporalutil.NewClient(
 		cfg.TemporalAddress,
 		cfg.TemporalNamespace,
+		cfg.TemporalConnection,
 		temporalutil.WithMetricsHandler(metricsRT.TemporalMetricsHandler()),
 	)
 	if err != nil {
 		logger.Error("failed to connect to temporal", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer temporalClient.Close()
 
@@ -76,7 +79,7 @@ func main() {
 	})
 	if err != nil {
 		logger.Error("failed to configure artifact storage", "error", err)
-		os.Exit(1)
+		return 1
 	}
 
 	payloadResolver := runevents.NewResolver(runevents.OpenFunc(func(ctx context.Context, key string) (io.ReadCloser, error) {
@@ -93,7 +96,7 @@ func main() {
 		client, perr := posthog.NewClient(posthogCfg, logger)
 		if perr != nil {
 			logger.Error("failed to initialize posthog client", "error", perr)
-			os.Exit(1)
+			return 1
 		}
 		posthogClient = client
 		posthogEnabled = true
@@ -106,7 +109,7 @@ func main() {
 	} else {
 		if posthog.AnalyticsRequired() {
 			logger.Error("posthog analytics is required but POSTHOG_API_KEY is not set")
-			os.Exit(1)
+			return 1
 		}
 		logger.Info("posthog analytics: disabled (POSTHOG_API_KEY not set)")
 	}
@@ -122,7 +125,7 @@ func main() {
 		client, redisErr := pubsub.NewRedisClient(redisCfg)
 		if redisErr != nil {
 			logger.Error("failed to connect to redis", "error", redisErr)
-			os.Exit(1)
+			return 1
 		}
 		redisClient = client
 		defer redisClient.Close()
@@ -171,10 +174,13 @@ func main() {
 	sandboxStack, err := workerapp.BuildSandboxProvider(cfg, redisClient, logger, metricsRT.Fleet().SandboxMetrics())
 	if err != nil {
 		logger.Error("failed to configure sandbox provider", "error", err)
-		os.Exit(1)
+		return 1
 	}
 	defer func() {
-		if cerr := sandboxStack.Close(context.Background()); cerr != nil {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), cfg.CleanupTimeout)
+		defer cancel()
+		if cerr := sandboxStack.Close(cleanupCtx); cerr != nil {
+			exitCode = 1
 			logger.Warn("sandbox provider close failed", "error", cerr)
 		}
 	}()
@@ -188,7 +194,7 @@ func main() {
 		})
 		if err != nil {
 			logger.Error("failed to configure github app client", "error", err)
-			os.Exit(1)
+			return 1
 		}
 	}
 	nativeModelInvoker := workerapp.NewNativeModelInvokerWithObserverFactory(
@@ -238,6 +244,7 @@ func main() {
 
 	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, orphanRunReaper, agentTryoutRetentionReaper, stallReaper); err != nil {
 		logger.Error("worker stopped with error", "error", err)
-		os.Exit(1)
+		return 1
 	}
+	return 0
 }

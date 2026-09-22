@@ -8,7 +8,7 @@
 # at backend/Dockerfile.
 
 # ---- Build stage ----
-FROM golang:1.25-alpine AS builder
+FROM golang:1.26.8-alpine3.24@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628 AS builder
 
 RUN apk add --no-cache git ca-certificates
 
@@ -25,6 +25,7 @@ COPY runtime /src/runtime
 # TARGET selects which binary to build: api-server or worker
 ARG TARGET=api-server
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app ./cmd/${TARGET}
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /migrator ./cmd/db-migrate
 
 # ---- Runtime stage ----
 FROM alpine:3.21
@@ -32,6 +33,7 @@ FROM alpine:3.21
 RUN apk add --no-cache ca-certificates tzdata postgresql17-client bash
 
 COPY --from=builder /app /app
+COPY --from=builder /migrator /migrator
 
 # Include migrations so Railway deploy commands can run them
 COPY --from=builder /src/backend/db/migrations /migrations

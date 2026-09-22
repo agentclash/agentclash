@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sync"
@@ -14,6 +15,7 @@ import (
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/sandbox"
 	temporalsdk "go.temporal.io/sdk/client"
+	"go.temporal.io/sdk/interceptor"
 	sdkworker "go.temporal.io/sdk/worker"
 )
 
@@ -28,24 +30,36 @@ type OrphanRunReaper interface {
 
 // multiQueueWorker hosts one Temporal worker per configured task queue class.
 type multiQueueWorker struct {
-	workers []sdkworker.Worker
+	workers    []TemporalWorker
+	started    int
+	activities *activityDrain
 }
 
 func (m *multiQueueWorker) Start() error {
-	for i, w := range m.workers {
+	for _, w := range m.workers {
 		if err := w.Start(); err != nil {
-			for j := 0; j < i; j++ {
-				m.workers[j].Stop()
-			}
+			// RunWithReaper performs bounded cleanup of successfully started queues.
 			return err
 		}
+		m.started++
 	}
 	return nil
 }
 
 func (m *multiQueueWorker) Stop() {
-	for _, w := range m.workers {
-		w.Stop()
+	var wg sync.WaitGroup
+	for _, w := range m.workers[:m.started] {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			w.Stop()
+		}()
+	}
+	wg.Wait()
+	// SDK Stop cancels activities at grace expiry but need not await their
+	// goroutines. Keep DB, sandbox and provider clients alive for cleanup.
+	if m.activities != nil {
+		m.activities.wait()
 	}
 }
 
@@ -84,35 +98,17 @@ func NewTemporalWorker(
 	}
 	datasetActivities := workflowpkg.NewDatasetGenerationActivities(repo, playgroundClient, repo)
 
-	maxActs := cfg.MaxConcurrentActivities
-	if maxActs <= 0 {
-		maxActs = defaultMaxConcurrentActivities
-	}
-	maxWFT := cfg.MaxConcurrentWorkflowTasks
-	if maxWFT <= 0 {
-		maxWFT = defaultMaxConcurrentWorkflowTasks
-	}
-
-	workers := make([]sdkworker.Worker, 0, len(queues))
+	drain := newActivityDrain()
+	workers := make([]TemporalWorker, 0, len(queues))
 	for _, queue := range queues {
-		opts := sdkworker.Options{
-			Identity:                               fmt.Sprintf("%s/%s", cfg.Identity, queue),
-			MaxConcurrentActivityExecutionSize:     maxActs,
-			MaxConcurrentWorkflowTaskExecutionSize: maxWFT,
-		}
-		if cfg.WorkerActivitiesPerSecond > 0 {
-			opts.WorkerActivitiesPerSecond = cfg.WorkerActivitiesPerSecond
-		}
-		if cfg.TaskQueueActivitiesPerSecond > 0 {
-			opts.TaskQueueActivitiesPerSecond = cfg.TaskQueueActivitiesPerSecond
-		}
+		opts := temporalWorkerOptions(cfg, queue, drain)
 		w := sdkworker.New(client, queue, opts)
 		workflowpkg.RegisterForTaskQueue(w, activities, queue)
 		workflowpkg.RegisterDatasetGenerationForTaskQueue(w, datasetActivities, queue)
 		workers = append(workers, w)
 	}
 
-	return &multiQueueWorker{workers: workers}
+	return &multiQueueWorker{workers: workers, activities: drain}
 }
 
 func Run(ctx context.Context, cfg Config, temporalWorker TemporalWorker, logger *slog.Logger) error {
@@ -134,7 +130,9 @@ func RunWithReaper(ctx context.Context, cfg Config, temporalWorker TemporalWorke
 	)
 
 	if err := temporalWorker.Start(); err != nil {
-		return fmt.Errorf("start temporal worker: %w", err)
+		done := make(chan struct{})
+		close(done)
+		return errors.Join(fmt.Errorf("start temporal worker: %w", err), stopWorker(cfg, temporalWorker, done))
 	}
 
 	reaperDoneCh := make(chan struct{})
@@ -164,7 +162,10 @@ func RunWithReaper(ctx context.Context, cfg Config, temporalWorker TemporalWorke
 	<-ctx.Done()
 
 	logger.Info("stopping worker", "shutdown_timeout", cfg.ShutdownTimeout.String())
+	return stopWorker(cfg, temporalWorker, reaperDoneCh)
+}
 
+func stopWorker(cfg Config, temporalWorker TemporalWorker, reaperDoneCh <-chan struct{}) error {
 	stoppedCh := make(chan struct{}, 1)
 	go func() {
 		temporalWorker.Stop()
@@ -189,4 +190,30 @@ func RunWithReaper(ctx context.Context, cfg Config, temporalWorker TemporalWorke
 		}
 	}
 	return nil
+}
+
+func temporalWorkerOptions(cfg Config, queue string, drain *activityDrain) sdkworker.Options {
+	maxActs := cfg.MaxConcurrentActivities
+	if maxActs <= 0 {
+		maxActs = defaultMaxConcurrentActivities
+	}
+	maxWFT := cfg.MaxConcurrentWorkflowTasks
+	if maxWFT <= 0 {
+		maxWFT = defaultMaxConcurrentWorkflowTasks
+	}
+
+	opts := sdkworker.Options{
+		Identity:                               fmt.Sprintf("%s/%s", cfg.Identity, queue),
+		MaxConcurrentActivityExecutionSize:     maxActs,
+		MaxConcurrentWorkflowTaskExecutionSize: maxWFT,
+		WorkerStopTimeout:                      cfg.WorkerStopTimeout,
+		Interceptors:                           []interceptor.WorkerInterceptor{drain},
+	}
+	if cfg.WorkerActivitiesPerSecond > 0 {
+		opts.WorkerActivitiesPerSecond = cfg.WorkerActivitiesPerSecond
+	}
+	if cfg.TaskQueueActivitiesPerSecond > 0 {
+		opts.TaskQueueActivitiesPerSecond = cfg.TaskQueueActivitiesPerSecond
+	}
+	return opts
 }

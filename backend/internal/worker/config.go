@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/secrets"
+	"github.com/agentclash/agentclash/backend/internal/temporalutil"
 	"github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/agentclash/agentclash/runtime/provider/throttle"
 )
@@ -21,7 +22,9 @@ const (
 	defaultTemporalTarget           = "localhost:7233"
 	defaultNamespace                = "default"
 	defaultAppEnvironment           = "development"
-	defaultShutdownTime             = 10 * time.Second
+	defaultShutdownTime             = 90 * time.Second
+	defaultWorkerStopTime           = 30 * time.Second
+	defaultCleanupTime              = 30 * time.Second
 	defaultHostedCallbackBaseURL    = "http://localhost:8080"
 	defaultHostedCallbackSecret     = "agentclash-dev-hosted-callback-secret"
 	defaultArtifactStorageBackend   = "filesystem"
@@ -45,6 +48,7 @@ type Config struct {
 	DatabaseURL                  string
 	TemporalAddress              string
 	TemporalNamespace            string
+	TemporalConnection           temporalutil.ConnectionConfig
 	Identity                     string
 	TaskQueue                    string   // primary/legacy display queue (first of TaskQueues)
 	TaskQueues                   []string // Fleet queue classes this process serves
@@ -57,6 +61,8 @@ type Config struct {
 	GitHubAppID                  int64
 	GitHubAppPrivateKey          string
 	ShutdownTimeout              time.Duration
+	WorkerStopTimeout            time.Duration
+	CleanupTimeout               time.Duration
 	OrphanRunReaperInterval      time.Duration
 	OrphanRunReaperThreshold     time.Duration
 
@@ -83,9 +89,9 @@ type ArtifactStorageConfig struct {
 }
 
 type SandboxConfig struct {
-	Provider string
-	E2B      E2BConfig
-	Docker   DockerSandboxConfig
+	Provider   string
+	E2B        E2BConfig
+	Docker     DockerSandboxConfig
 	Kubernetes KubernetesSandboxConfig
 	// MaxConcurrent bounds live sandboxes across the worker (0 = unlimited).
 	MaxConcurrent int
@@ -161,6 +167,19 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, err
 	}
 	shutdownTimeout, err := durationEnvOrDefault("WORKER_SHUTDOWN_TIMEOUT", defaultShutdownTime)
+	if err != nil {
+		return Config{}, err
+	}
+	workerStopTimeout, err := durationEnvOrDefault("WORKER_STOP_TIMEOUT", defaultWorkerStopTime)
+	if err != nil {
+		return Config{}, err
+	}
+	// The SDK stops workflow and activity workers sequentially within a queue.
+	// Leave additional time for activity cancellation cleanup after both graces.
+	if workerStopTimeout >= shutdownTimeout/2 {
+		return Config{}, fmt.Errorf("%w: WORKER_SHUTDOWN_TIMEOUT must exceed twice WORKER_STOP_TIMEOUT", ErrInvalidConfig)
+	}
+	cleanupTimeout, err := durationEnvOrDefault("WORKER_CLEANUP_TIMEOUT", defaultCleanupTime)
 	if err != nil {
 		return Config{}, err
 	}
@@ -366,11 +385,17 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, fmt.Errorf("WORKER_TASKQUEUE_ACTIVITIES_PER_SECOND must be >= 0")
 	}
 
+	temporalConnection, err := temporalutil.LoadConnectionConfigFromEnv(appEnvironment)
+	if err != nil {
+		return Config{}, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
+
 	return Config{
 		AppEnvironment:               appEnvironment,
 		DatabaseURL:                  databaseURL,
 		TemporalAddress:              temporalAddress,
 		TemporalNamespace:            temporalNamespace,
+		TemporalConnection:           temporalConnection,
 		Identity:                     identity,
 		TaskQueue:                    primaryQueue,
 		TaskQueues:                   taskQueues,
@@ -383,6 +408,8 @@ func LoadConfigFromEnv() (Config, error) {
 		GitHubAppID:                  githubAppID,
 		GitHubAppPrivateKey:          normalizePEMEnv(os.Getenv("GITHUB_APP_PRIVATE_KEY")),
 		ShutdownTimeout:              shutdownTimeout,
+		WorkerStopTimeout:            workerStopTimeout,
+		CleanupTimeout:               cleanupTimeout,
 		OrphanRunReaperInterval:      orphanRunReaperInterval,
 		OrphanRunReaperThreshold:     orphanRunReaperThreshold,
 

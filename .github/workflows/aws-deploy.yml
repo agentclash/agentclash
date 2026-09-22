@@ -1,0 +1,72 @@
+name: Protected AWS delivery
+'on':
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Approved isolated destination
+        type: choice
+        options:
+        - staging
+        - production
+        required: true
+      operation:
+        description: Deploy closed or promote after private smoke approval
+        type: choice
+        options:
+        - deploy
+        - promote
+        required: true
+      source_revision:
+        description: Public main commit SHA of the already built release
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: aws-delivery-${{ inputs.target }}
+  cancel-in-progress: false
+jobs:
+  staging:
+    if: ${{ vars.AWS_DELIVERY_ENABLED == 'true' && github.ref == 'refs/heads/main' && inputs.target == 'staging'
+      }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 200
+    environment: aws-staging
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Execute approved immutable operation
+      env:
+        AWS_DELIVERY_CONFIG: ${{ secrets.AWS_DELIVERY_CONFIG }}
+        GITHUB_TOKEN: ${{ github.token }}
+        SOURCE_REVISION: ${{ inputs.source_revision }}
+        DELIVERY_OPERATION: ${{ inputs.operation }}
+      run: python3 delivery/ci.py "$DELIVERY_OPERATION" --kind staging --source "$SOURCE_REVISION"
+  production:
+    if: ${{ vars.AWS_DELIVERY_ENABLED == 'true' && github.ref == 'refs/heads/main' && inputs.target == 'production'
+      }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 200
+    environment: aws-production
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Execute approved immutable operation
+      env:
+        AWS_DELIVERY_CONFIG: ${{ secrets.AWS_DELIVERY_CONFIG }}
+        GITHUB_TOKEN: ${{ github.token }}
+        SOURCE_REVISION: ${{ inputs.source_revision }}
+        DELIVERY_OPERATION: ${{ inputs.operation }}
+      run: python3 delivery/ci.py "$DELIVERY_OPERATION" --kind production --source "$SOURCE_REVISION"

@@ -4,11 +4,23 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run server/index.ts",
-    "start": "NODE_ENV=production PORT=${PORT:-3001} bun run server/index.ts"
+    "dev": "bun --preserve-symlinks run server/index.ts",
+    "start": "NODE_ENV=production PORT=${PORT:-3001} bun --no-env-file --preserve-symlinks run server/index.ts",
+    "test": "bun --no-env-file --preserve-symlinks test tests",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@try-cli/core": "file:../../try-cli/packages/core",
-    "e2b": "^2.6.4"
+    "e2b": "^2.6.4",
+    "ioredis": "5.8.2"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.2",
+    "typescript": "5.9.3"
+  },
+  "overrides": {
+    "brace-expansion": "5.0.9",
+    "tar": "7.5.21",
+    "undici": "7.29.0"
   }
 }
