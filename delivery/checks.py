@@ -68,6 +68,10 @@ def check(group, evidence):
     env["TMPDIR"] = str(evidence)
 
     def run(argv, cwd=ROOT, timeout=2400):
+        label = command_label(argv)
+        if label == "go" and len(argv) > 1 and argv[1] in ("build", "vet", "test"):
+            label += "-" + argv[1]
+        print("Required check subprocess: " + label, flush=True)
         with (evidence / "checks.log").open("ab") as log:
             result = subprocess.run(
                 argv,
@@ -77,6 +81,8 @@ def check(group, evidence):
                 stderr=subprocess.STDOUT,
                 timeout=timeout,
             )
+        if result.returncode:
+            print("Required check subprocess failed: " + label, flush=True)
         require(result.returncode == 0, "A required check failed")
 
     if group in ("backend", "runtime", "cli"):

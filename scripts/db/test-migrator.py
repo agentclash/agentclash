@@ -85,6 +85,9 @@ def main():
         with tempfile.TemporaryDirectory(prefix="agentclash-migrator-failure-") as scratch:
             migrations = Path(scratch) / "migrations"
             migrations.mkdir(mode=0o755)
+            # CI keeps evidence private with umask 077. This directory contains
+            # only synthetic SQL and is bind-mounted for the non-root migrator.
+            migrations.chmod(0o755)
             fixture = migrations / "99999_rollback_probe.sql"
             fixture.write_text("-- +goose Up\nCREATE TABLE rollback_probe(id integer); SELECT 1 / 0;\n-- +goose Down\nDROP TABLE rollback_probe;\n")
             fixture.chmod(0o644)
