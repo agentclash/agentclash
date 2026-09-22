@@ -37,12 +37,16 @@ func TestIntegrationVibeFreeAuthoringRepair(t *testing.T) {
 			proposal := DraftProposal{Title: "Refund support", AgentPrompt: "Allow refunds within 30 days. Ask for a missing date.", Examples: []string{"Refund at 10 days?", "Refund at 45 days?", "Can I get a refund?"}, SuccessCriteria: "Refund within 30 days; decline late requests; ask for missing dates."}
 			proposal.AgentPrompt = PreviewPrompt(proposal.AgentPrompt)
 			proposal.SuccessCriteria = PreviewCriteria(proposal.SuccessCriteria)
+			proposal.Summary = "Explains refund eligibility from supplied purchase dates."
+			for _, input := range proposal.Examples {
+				proposal.Scenarios = append(proposal.Scenarios, TestScenario{Input: input, Expected: proposal.SuccessCriteria})
+			}
+			proposal.Examples = nil
 			blueprint := raw(proposal)
 			var authored map[string]any
 			_ = json.Unmarshal(raw(proposal), &authored)
 			authored["kind"] = "agent_draft"
 			delete(authored, "examples")
-			authored["positive_example"], authored["negative_example"], authored["insufficient_example"] = proposal.Examples[0], proposal.Examples[1], proposal.Examples[2]
 			valid := string(raw(map[string]any{"reply_kind": "design", "journey": JourneyProposal{Mode: "idea"}, "reply": "Review the three examples.", "requirement_changes": []RequirementChange{{Action: "add", Statement: "Refund within 30 days."}}, "assumptions": []string{"Use a friendly tone."}, "criteria_requirement_ids": []string{}, "artifact": authored}))
 			// Like the live failure: a model echoes a large prompt metadata field.
 			// Put it last so partial decoding has already populated the draft.
@@ -50,7 +54,7 @@ func TestIntegrationVibeFreeAuthoringRepair(t *testing.T) {
 			calls := 0
 			fake := callFunc(func(_ context.Context, request provider.Request) (provider.Response, error) {
 				calls++
-				if string(request.ResponseFormat) != string(strictAuthoringV3Format) {
+				if string(request.ResponseFormat) != string(strictAuthoringV4Format) {
 					t.Fatal("verified schema support did not reach the provider request")
 				}
 				if _, err := CountContext(request, cfg.Profiles[cfg.DefaultModel], LimitsFor(true)); err != nil {
@@ -124,6 +128,9 @@ func TestIntegrationVibeFreeAuthoringRepair(t *testing.T) {
 					}
 				}
 				last := current.Document.Messages[len(current.Document.Messages)-1].Content
+				if !strings.Contains(last, "Chat with it to see how it responds") || strings.Contains(last, "Review the three examples.") {
+					t.Fatal("first-agent guidance came from the model instead of the prepared action", last)
+				}
 				if !strings.Contains(last, "Assumptions to review:") || current.Document.Requirements[1].Statement != "Assumption: Use a friendly tone." {
 					t.Fatal("assumption lost its visible proposed label")
 				}

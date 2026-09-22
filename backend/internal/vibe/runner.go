@@ -24,10 +24,13 @@ Return JSON with exactly these fields: {"reply":"short helpful response","propos
 // The assistant supplies semantic content. Scoring configuration and references
 // are constructed by the compiler, outside the model's output contract.
 type DraftProposal struct {
-	Title           string   `json:"title"`
-	AgentPrompt     string   `json:"agent_prompt"`
-	Examples        []string `json:"examples"`
-	SuccessCriteria string   `json:"success_criteria"`
+	TestsOnly       bool           `json:"-"`
+	Summary         string         `json:"summary,omitempty"`
+	Scenarios       []TestScenario `json:"scenarios,omitempty"`
+	Title           string         `json:"title"`
+	AgentPrompt     string         `json:"agent_prompt"`
+	Examples        []string       `json:"examples"`
+	SuccessCriteria string         `json:"success_criteria"`
 }
 
 type assistantReply struct {
@@ -57,19 +60,45 @@ func (r *Runner) Execute(ctx context.Context, id uuid.UUID) error {
 	ctx, cancel := context.WithDeadline(ctx, o.Deadline)
 	defer cancel()
 	if o.Kind == "message" || o.Kind == "build" {
+		if p.AuthoringVersion == 11 {
+			return r.converseReliable(ctx, o, p)
+		}
+		if p.AuthoringVersion == 10 {
+			return r.converseTestConversation(ctx, o, p)
+		}
+		if p.AuthoringVersion == 9 {
+			return r.converseTests(ctx, o, p)
+		}
+		if p.AuthoringVersion >= 5 {
+			return r.converseEvaluation(ctx, o, p)
+		}
 		return r.converse(ctx, o, p)
 	}
 	if o.Kind == "playground" {
-		resp, e := r.Gateway.Call(ctx, o, "playground", Target, []provider.Message{{Role: "system", Content: PreviewPrompt(p.Artifact.AgentPrompt)}, {Role: "user", Content: p.Submission.Content}}, nil)
+		messages := p.PreviewMessages
+		if len(messages) == 0 { // Queued single-message trials from older clients.
+			messages = []provider.Message{{Role: "system", Content: PreviewPrompt(p.Artifact.AgentPrompt)}, {Role: "user", Content: p.Submission.Content}}
+		}
+		resp, e := r.Gateway.Call(ctx, o, "playground", Target, messages, nil)
 		if e != nil {
 			return e
 		}
-		return r.Service.Store.CompleteDocument(ctx, id, "Agent response:\n\n"+resp.OutputText, nil, nil)
+		reply := resp.OutputText
+		if p.Submission.PreviewThreadID == nil {
+			reply = "Agent response:\n\n" + reply
+		}
+		return r.Service.Store.CompleteDocument(ctx, id, reply, nil, nil)
+	}
+	if err = r.validateBeforeRun(ctx, o, &p); err != nil {
+		return err
+	}
+	if p.Evidence != nil {
+		return r.evaluateConversations(ctx, o, p)
 	}
 	return r.evaluate(ctx, o, p)
 }
 func (r *Runner) converse(ctx context.Context, o Operation, p Plan) error {
-	l := LimitsFor(p.Anonymous)
+	l := p.limits()
 	profile, err := r.Gateway.Config.Profile(o.Models.Assistant)
 	if err != nil {
 		return err
@@ -101,6 +130,9 @@ func (r *Runner) converse(ctx context.Context, o Operation, p Plan) error {
 			}
 			if p.AuthoringVersion >= 2 {
 				parsed.Draft.AgentPrompt = PreviewPrompt(parsed.Draft.AgentPrompt)
+				if p.Submission.Instructions != "" {
+					parsed.Draft.AgentPrompt = PreviewPrompt(p.Submission.Instructions)
+				}
 				if len(parsed.Draft.AgentPrompt) > l.MessageBytes {
 					err = fmt.Errorf("shorten the agent prompt to leave room for the required preview capability instructions")
 				}
@@ -120,7 +152,7 @@ func (r *Runner) converse(ctx context.Context, o Operation, p Plan) error {
 			break
 		}
 		if attempt == MaxAuthoringRepairs {
-			return fault("invalid_draft", "The generated draft was invalid after one repair. No evaluation ran and no coverage was removed.")
+			return fault("invalid_draft", "The agent could not be prepared after one retry. Your conversation is preserved. No checks ran.")
 		}
 		// A single bounded authoring repair. Evaluators never use this path.
 		messages, err = authoringRepairMessagesWithFormat(messages, response.OutputText, err.Error(), profile, l, format, p.AuthoringVersion)
@@ -131,7 +163,10 @@ func (r *Runner) converse(ctx context.Context, o Operation, p Plan) error {
 	var artifact *Artifact
 	if parsed.Draft != nil {
 		a := parsed.Draft
-		artifact = &Artifact{Kind: "agent_draft", Proposal: a, ID: uuid.New(), Title: a.Title, AgentPrompt: a.AgentPrompt, Blueprint: blueprint, SourceMessageID: p.Submission.ClientID, CreatedAt: timestamp(), ParentID: p.Document.ActiveArtifactID}
+		artifact = &Artifact{Kind: "agent_draft", Summary: a.Summary, Proposal: a, ID: uuid.New(), Title: a.Title, AgentPrompt: a.AgentPrompt, Blueprint: blueprint, SourceMessageID: p.Submission.ClientID, CreatedAt: timestamp(), ParentID: p.Submission.ArtifactID}
+		if artifact.ParentID == nil {
+			artifact.ParentID = p.Document.ActiveArtifactID
+		}
 		artifact.CriteriaRequirementIDs = parsed.CriteriaRequirementIDs
 		if p.Artifact != nil {
 			artifact.CriteriaRequirementIDs = p.Artifact.CriteriaRequirementIDs
@@ -141,13 +176,18 @@ func (r *Runner) converse(ctx context.Context, o Operation, p Plan) error {
 			parsed.Reply = draftRevisionSummary(*p.Artifact, *artifact)
 		} else if n := len(p.Document.Artifacts); n > 0 && !p.Document.Artifacts[n-1].IsTestPlan() {
 			parsed.Reply = draftRevisionSummary(p.Document.Artifacts[n-1], *artifact)
+		} else if p.AuthoringVersion >= 4 {
+			parsed.Reply = "Your agent is ready. Chat with it to see how it responds, or review the example situations before testing its replies."
+			if p.Document.EvaluationFirst {
+				parsed.Reply = "Here are three examples to check against your rules. Review the expectations, then run the text test."
+			}
 		}
 	}
 	if parsed.TestPlan != nil {
 		if p.AuthoringVersion >= 3 {
 			parsed.TestPlan.LocalTestCode = LocalPythonHandoff
 			parsed.TestPlan.NextSteps = LocalHandoffSteps()
-			parsed.Reply = "Your offline test plan is ready. Review the scenarios, request changes in Design, or export the plan. Your agent has not run here. For local setup, use the [Python pytest guide](https://github.com/agentclash/agentclash-evals/blob/main/docs/evaltest/pytest.md) and [invocation, evidence and timeout handoff](/docs/guides/vibe-evals-existing-agent)."
+			parsed.Reply = "Your test plan is ready. Review the example situations or ask for changes here. Your existing agent is not connected and has not run here. Export the plan to test it in your own environment."
 		}
 		artifact = &Artifact{ID: uuid.New(), Kind: "test_plan", Title: parsed.TestPlan.Title, TestPlan: parsed.TestPlan, SourceMessageID: p.Submission.ClientID, CreatedAt: timestamp()}
 	}
@@ -191,14 +231,14 @@ func draftRevisionSummary(before, after Artifact) string {
 			break
 		}
 	}
-	reply := "The draft instructions, title, examples and criteria are unchanged."
+	reply := "Your agent and checks are unchanged."
 	if len(changes) > 0 {
-		reply = "Draft changes: updated " + strings.Join(changes, ", ") + "."
+		reply = "Changes ready to try: updated " + strings.Join(changes, ", ") + "."
 	}
 	if before.Accepted {
-		reply += " The accepted evaluation cases and criteria are unchanged."
+		reply += " The original checks and expected behavior are unchanged."
 	}
-	return reply + " Review this draft before accepting it."
+	return reply + " Chat with your agent, or test its replies."
 }
 
 func (a assistantReply) validate(l Limits) error {
@@ -269,7 +309,7 @@ func authoringRepairMessagesWithFormat(original []provider.Message, output, vali
 	return messages, nil
 }
 func (r *Runner) evaluate(ctx context.Context, o Operation, p Plan) error {
-	compiled, err := r.Service.Compiler.Compile(p.Artifact.Blueprint, o.Models.Evaluator, p.Artifact.ID, LimitsFor(p.Anonymous))
+	compiled, err := r.Service.Compiler.Compile(p.Artifact.Blueprint, o.Models.Evaluator, p.Artifact.ID, p.limits())
 	if err != nil {
 		return err
 	}
@@ -287,13 +327,20 @@ func (r *Runner) evaluate(ctx context.Context, o Operation, p Plan) error {
 	// Persist every planned case as UNKNOWN before the first paid call. A worker
 	// crash, cancellation, budget limit or provider outage cannot shrink totals.
 	for _, c := range compiled.Cases {
-		if err = r.Service.Store.PutResult(ctx, o.ID, CaseResult{CaseKey: c.CaseKey, ExpectedChecks: p.ChecksPerCase, Version: version, Input: raw(c.Payload), Verdict: Unknown, Checks: []CheckResult{}, Error: &Fault{Code: "not_evaluated", Message: "This case has not been evaluated yet."}}); err != nil {
+		if err = r.Service.Store.PutResult(ctx, o.ID, CaseResult{CaseKey: c.CaseKey, Expected: ExpectedBehavior(c), ExpectedChecks: p.ChecksPerCase, Version: version, Input: raw(c.Payload), Verdict: Unknown, Checks: []CheckResult{}, Error: &Fault{Code: "not_evaluated", Message: "This case has not been evaluated yet."}}); err != nil {
 			return err
 		}
 	}
 	for _, c := range compiled.Cases {
-		result := CaseResult{CaseKey: c.CaseKey, ExpectedChecks: p.ChecksPerCase, Version: version, Input: raw(c.Payload), Verdict: Unknown, Checks: []CheckResult{}}
-		response, e := r.Gateway.Call(ctx, o, "target:"+c.CaseKey, Target, []provider.Message{{Role: "system", Content: PreviewPrompt(p.Artifact.AgentPrompt)}, {Role: "user", Content: string(raw(TargetInput(c, spec)))}}, nil)
+		result := CaseResult{CaseKey: c.CaseKey, Expected: ExpectedBehavior(c), ExpectedChecks: p.ChecksPerCase, Version: version, Input: raw(c.Payload), Verdict: Unknown, Checks: []CheckResult{}}
+		instructions, request := PreviewPrompt(p.Artifact.AgentPrompt), string(raw(TargetInput(c, spec)))
+		if p.Artifact.IsTestSuite() {
+			instructions = p.Artifact.AgentPrompt
+			if question, ok := TargetInput(c, spec)["question"].(string); ok {
+				request = question
+			}
+		}
+		response, e := r.Gateway.Call(ctx, o, "target:"+c.CaseKey, Target, []provider.Message{{Role: "system", Content: instructions}, {Role: "user", Content: request}}, nil)
 		result.Output = response.OutputText
 		if e != nil {
 			result.Error = issueFrom(e)
@@ -339,7 +386,7 @@ func (r *Runner) evaluate(ctx context.Context, o Operation, p Plan) error {
 			if je != nil {
 				check.Error = issueFrom(je)
 			} else {
-				parsed, parseErr := ParseJudge(judge, []byte(jr.OutputText), LimitsFor(p.Anonymous))
+				parsed, parseErr := ParseJudge(judge, []byte(jr.OutputText), p.limits())
 				if parseErr != nil {
 					check.Error = &Fault{Code: "invalid_judge_output", Message: "The evaluator returned invalid or incomplete data. It was not repaired or counted as a behavioral failure."}
 				} else {

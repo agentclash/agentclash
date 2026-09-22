@@ -7,6 +7,7 @@ import (
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -14,6 +15,9 @@ import (
 type Gate struct{ Redis *redis.Client }
 
 func (g Gate) Check(ctx context.Context, actor string, l Limits) error {
+	if l.Rate == 0 {
+		return g.Healthy(ctx)
+	}
 	if g.Redis == nil {
 		return fault("accounting_unavailable", "Hosted execution is unavailable while budget protection is offline.")
 	}
@@ -58,7 +62,10 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 	if err := json.Unmarshal(o.Input, &plan); err != nil {
 		return provider.Response{}, err
 	}
-	l := LimitsFor(plan.Anonymous)
+	if plan.LocalTesting && !g.Config.TestingLocally() {
+		return provider.Response{}, fault("model_policy_changed", "Local testing settings changed. Send the message again.")
+	}
+	l := plan.limits()
 	if !g.Config.Enabled || g.Config.Credential == "" {
 		return provider.Response{}, fault("hosted_disabled", "Hosted model execution is not configured.")
 	}
@@ -80,8 +87,11 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 	if err != nil {
 		return provider.Response{}, err
 	}
+	if plan.AuthoringVersion >= 11 && role == Assistant && plan.Conversation != nil && plan.Conversation.Profile != nil && Hash(raw(p)) != Hash(raw(*plan.Conversation.Profile)) {
+		return provider.Response{}, fault("model_policy_changed", "The model settings changed after this request was prepared. Retry it with the current settings; your previous work is unchanged.")
+	}
 	// max_price is in USD per million tokens. Nano-USD/token divided by 1000.
-	policy := raw(map[string]any{"only": []string{p.Route}, "allow_fallbacks": false, "require_parameters": true, "max_price": map[string]any{"prompt": json.Number(fmt.Sprintf("%.3f", float64(p.InputNanoPerToken)/1000)), "completion": json.Number(fmt.Sprintf("%.3f", float64(p.OutputNanoPerToken)/1000))}})
+	policy := raw(map[string]any{"only": []string{p.Route}, "allow_fallbacks": false, "require_parameters": true, "max_price": map[string]any{"prompt": json.Number(fmt.Sprintf("%.3f", float64(p.InputNanoPerToken)/1000)), "completion": json.Number(fmt.Sprintf("%.3f", float64(p.OutputNanoPerToken)/1000)), "request": 0}})
 	if p.Free {
 		policy = raw(map[string]any{"only": []string{p.Route}, "allow_fallbacks": false, "require_parameters": true, "max_price": map[string]int{"prompt": 0, "completion": 0, "request": 0}})
 	}
@@ -135,7 +145,7 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 	}()
 	client := g.Client
 	if client == nil {
-		client = provider.NewDefaultRouter(nil, credential{g.Config.Credential})
+		client = provider.NewDefaultRouter(vibeHTTPClient(req.StepTimeout), credential{g.Config.Credential})
 	}
 	var response provider.Response
 	var output strings.Builder
@@ -203,4 +213,13 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 		return response, issue
 	}
 	return response, nil
+}
+
+// The frozen operation already bounds each provider step. The shared router's
+// 60-second default must not silently shorten a 90-second authoring review.
+func vibeHTTPClient(stepTimeout time.Duration) *http.Client {
+	if stepTimeout <= 0 {
+		stepTimeout = provider.DefaultHTTPTimeout
+	}
+	return &http.Client{Timeout: stepTimeout}
 }

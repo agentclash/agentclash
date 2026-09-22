@@ -101,11 +101,27 @@ func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
 		if err = authorize(ctx, tx, v.Actor, v.WorkspaceID, true); err != nil {
 			return err
 		}
-		if o.State != Running || timestamp().After(o.Deadline) {
+		if o.State != Running || o.Completion != nil || timestamp().After(o.Deadline) {
 			return fault("operation_stopped", "The operation was stopped or reached its deadline.")
 		}
 		expectedModel := map[Role]string{Assistant: o.Models.Assistant, Target: o.Models.Target, Evaluator: o.Models.Evaluator}[a.Role]
-		l := LimitsFor(v.Anonymous)
+		var plan Plan
+		if err = json.Unmarshal(o.Input, &plan); err != nil {
+			return err
+		}
+		if plan.AuthoringVersion >= 11 && (o.Kind == "message" || o.Kind == "build") {
+			allowed := a.Step == "route" || a.Step == "handler" || a.Step == "review" || a.Step == "repair" || a.Step == "review:repair"
+			if plan.Conversation != nil && plan.Conversation.Manual != nil {
+				allowed = a.Step == "review"
+			}
+			if !allowed || a.Role != Assistant {
+				return fault("operation_limit", "This model step is outside the admitted authoring workflow.")
+			}
+		}
+		if plan.LocalTesting && !s.localTesting {
+			return fault("model_policy_changed", "Local testing settings changed. Send the message again.")
+		}
+		l := plan.limits()
 		if expectedModel == "" || a.Model != expectedModel || a.InputBound < 1 || a.InputBound > l.ContextTokens || a.MaxOutput < 1 || a.MaxOutput > l.OutputTokens {
 			return fault("model_policy_changed", "This invocation does not match its approved model role or context limits.")
 		}
@@ -129,10 +145,6 @@ func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
 		if exists {
 			return fault("pricing_unavailable", "This model was disabled after an accounting discrepancy.")
 		}
-		var plan Plan
-		if err = json.Unmarshal(o.Input, &plan); err != nil {
-			return err
-		}
 		var spent int64
 		if err = tx.QueryRow(ctx, "SELECT COALESCE(sum(max_cost),0) FROM vibe_attempts WHERE operation_id=$1", o.ID).Scan(&spent); err != nil {
 			return err
@@ -140,7 +152,7 @@ func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
 		if a.MaxCost < 0 || (a.MaxCost == 0 && !plan.Free) || a.MaxCost > o.MaxCost-spent || o.ModelCalls >= plan.Calls {
 			return fault("operation_limit", "This operation has reached its call or cost limit.")
 		}
-		if plan.Free {
+		if plan.Free && !plan.LocalTesting {
 			var calls int
 			if err = tx.QueryRow(ctx, `SELECT count(*) FROM vibe_attempts WHERE max_cost=0 AND created_at >= (date_trunc('day', now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')`).Scan(&calls); err != nil {
 				return err
@@ -149,7 +161,7 @@ func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
 				return fault("free_capacity_reached", "This local free-model pilot has reached its daily call allowance. Saved work remains available.")
 			}
 		}
-		if v.Anonymous {
+		if v.Anonymous && !plan.LocalTesting {
 			var calls, exploration int
 			if err = tx.QueryRow(ctx, `SELECT COALESCE(sum(o.model_calls),0),COALESCE(sum(o.model_calls) FILTER(WHERE o.kind NOT IN ('check','retest')),0) FROM vibe_operations o JOIN vibe_sessions s ON s.id=o.session_id WHERE o.input->>'anonymous'='true' AND s.trial_key=(SELECT trial_key FROM vibe_sessions WHERE id=$1)`, v.ID).Scan(&calls, &exploration); err != nil {
 				return err
@@ -246,8 +258,15 @@ func (s *Store) PutResult(ctx context.Context, id uuid.UUID, c CaseResult) error
 }
 
 type AuthoringCompletion struct {
-	Journey *JourneyProposal
-	Changes []RequirementChange
+	SourceConfirmation *SourceConfirmation `json:"SourceConfirmation,omitempty"`
+	Outcome            *CompletionReceipt
+	Policy             *PolicySnapshot
+	Coverage           []SourceCoverage
+	Pending            *PendingPolicyChange
+	ContextChanges     []ContextQuote
+	Journey            *JourneyProposal
+	Changes            []RequirementChange
+	Evidence           *EvidenceSet
 }
 
 func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string, artifact *Artifact, requirements []Requirement, completion ...AuthoringCompletion) error {
@@ -255,6 +274,20 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 		o, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1 FOR UPDATE", id))
 		if err != nil {
 			return err
+		}
+		var plan Plan
+		if err = json.Unmarshal(o.Input, &plan); err != nil {
+			return err
+		}
+		receipt := completionReceipt(o, plan, reply, artifact, requirements, completion)
+		if err = validateCompletionReceipt(receipt); err != nil {
+			return err
+		}
+		if o.Completion != nil {
+			if o.Completion.InputHash != receipt.InputHash || o.Completion.CommandHash != receipt.CommandHash || o.Completion.EffectHash != "" && o.Completion.EffectHash != receipt.EffectHash {
+				return fault("completion_conflict", "This operation already committed a different result.")
+			}
+			return nil
 		}
 		if o.State != Running {
 			return fault("operation_stopped", "The operation was stopped.")
@@ -266,16 +299,28 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 		if err = authorize(ctx, tx, v.Actor, v.WorkspaceID, true); err != nil {
 			return err
 		}
-		replyID := uuid.New()
-		var plan Plan
-		if err = json.Unmarshal(o.Input, &plan); err != nil {
-			return err
+		replyID := uuid.NewSHA1(o.ID, []byte("completion-message"))
+		receipt.MessageID, receipt.CommittedAt = replyID, timestamp()
+		if plan.AuthoringVersion >= 11 && artifact != nil {
+			if acknowledgement := mutationAcknowledgement(receipt); acknowledgement != "" {
+				reply = acknowledgement
+			}
 		}
 		artifactID := plan.Submission.ArtifactID
-		if artifact != nil {
-			artifactID = &artifact.ID
+		if plan.AuthoringVersion >= 10 {
+			// Discussing a selected artifact does not create another proposal.
+			artifactID = nil
 		}
-		v.Document.Messages = append(v.Document.Messages, Message{ID: replyID, Role: "assistant", Content: reply, CreatedAt: timestamp(), Origin: o.Kind, OperationID: &id, ArtifactID: artifactID})
+		if artifact != nil {
+			copy := *artifact
+			artifact = &copy
+			artifactID = &artifact.ID
+			if plan.AuthoringVersion >= 10 {
+				artifact.SourceMessageID = plan.sourceMessageID()
+				artifact.ProposalMessageID = &replyID
+			}
+		}
+		v.Document.Messages = append(v.Document.Messages, Message{ID: replyID, Role: "assistant", Content: reply, CreatedAt: timestamp(), Origin: o.Kind, OperationID: &id, ArtifactID: artifactID, PreviewThreadID: plan.Submission.PreviewThreadID})
 		if artifact != nil {
 			v.Document.Artifacts = append(v.Document.Artifacts, *artifact)
 		}
@@ -283,6 +328,22 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 
 		if len(completion) > 0 {
 			c := completion[0]
+			sourceSubmission := plan.Submission
+			sourceSubmission.ClientID = plan.sourceMessageID()
+			if err = applyContextQuotes(&v.Document, c.ContextChanges, sourceSubmission, replyID); err != nil {
+				return err
+			}
+			if err = applyAuthoringPolicyCompletion(&v.Document, c, plan, artifact); err != nil {
+				return err
+			}
+			if c.Evidence != nil {
+				if plan.InlineEvidence == nil || Hash(raw(c.Evidence)) != Hash(raw(plan.InlineEvidence)) {
+					return fault("invalid_evidence", "The supplied conversation changed while preparing the check.")
+				}
+				if err = appendEvidence(&v, *c.Evidence, plan.limits(), plan.LocalTesting); err != nil {
+					return err
+				}
+			}
 			changes = append(changes, c.Changes...)
 			if c.Journey != nil {
 				j := &v.Document.Journey
@@ -300,10 +361,13 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 		for _, q := range requirements {
 			changes = append(changes, RequirementChange{Action: "add", Statement: q.Statement})
 		}
-		if err = ReconcileRequirements(&v.Document, changes, plan.Submission.ClientID, replyID); err != nil {
+		if err = ReconcileRequirements(&v.Document, changes, plan.sourceMessageID(), replyID); err != nil {
 			return err
 		}
-		if err = updateDocument(ctx, tx, v); err != nil {
+		if err = s.updateDocument(ctx, tx, v); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, "UPDATE vibe_operations SET completion_receipt=$2 WHERE id=$1", id, raw(receipt)); err != nil {
 			return err
 		}
 		return event(ctx, tx, v.ID, &id, "message.completed")
@@ -315,6 +379,12 @@ func (s *Store) Finish(ctx context.Context, id uuid.UUID, issue *Fault) error {
 		if err != nil {
 			return err
 		}
+		if err = s.recoverLegacyCompletion(ctx, tx, &o); err != nil {
+			return err
+		}
+		if o.Completion != nil {
+			return finishCommitted(ctx, tx, o)
+		}
 		// Recover already-journaled target text after a worker crash, without
 		// rerunning the target or inventing an evaluator verdict.
 		if _, err = tx.Exec(ctx, `UPDATE vibe_case_results r SET result=jsonb_set(r.result,'{output}',to_jsonb(a.output))
@@ -322,7 +392,8 @@ func (s *Store) Finish(ctx context.Context, id uuid.UUID, issue *Fault) error {
  AND a.step_key='target:'||r.case_key AND a.output<>'' AND COALESCE(r.result->>'output','')=''`, id); err != nil {
 			return err
 		}
-		if !o.State.Terminal() {
+		finished := !o.State.Terminal()
+		if finished {
 			state := Completed
 			var unknown int
 			if err = tx.QueryRow(ctx, `SELECT count(*) FROM vibe_case_results r WHERE operation_id=$1 AND (
@@ -359,6 +430,9 @@ func (s *Store) Finish(ctx context.Context, id uuid.UUID, issue *Fault) error {
 		}
 		if err = settle(ctx, tx, id); err != nil {
 			return err
+		}
+		if !finished {
+			return nil
 		}
 		return event(ctx, tx, o.SessionID, &id, "operation.finished")
 	})
@@ -421,7 +495,7 @@ func issueFrom(err error) *Fault {
 		// allowlisted categories; this never changes accounting or retry policy.
 		switch failure.Code {
 		case provider.FailureCodeRateLimit:
-			return &Fault{Code: "provider_rate_limit", Message: "The selected model's provider is rate limiting requests. This attempt will not be repeated automatically."}
+			return &Fault{Code: "provider_rate_limit", Message: "The selected model's provider is busy. Your request is saved."}
 		case provider.FailureCodeAuth, provider.FailureCodeCredentialUnavailable:
 			return &Fault{Code: "provider_auth", Message: "The provider could not authorize this model request. Check its server-side credential configuration."}
 		case provider.FailureCodeInvalidRequest, provider.FailureCodeUnsupportedCapability, provider.FailureCodeUnsupportedProvider:

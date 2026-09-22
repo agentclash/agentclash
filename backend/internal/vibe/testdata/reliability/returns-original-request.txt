@@ -1,0 +1,10 @@
+My agent answers questions about shop returns.
+
+Only unopened items bought within 30 days are eligible.
+Ask only for missing purchase age or item condition.
+Never claim to process a refund.
+
+Prepare three tests:
+- Unopened item bought 10 days ago.
+- Opened item bought 10 days ago.
+- Customer asks for a return without any details.

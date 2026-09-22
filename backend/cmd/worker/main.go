@@ -242,7 +242,7 @@ func main() {
 		logger.Error("invalid Vibe configuration", "error", err)
 		os.Exit(1)
 	}
-	vibeStore := &vibe.Store{DB: db}
+	vibeStore := vibe.NewStore(db, vibeConfig)
 	vibeService := &vibe.Service{Store: vibeStore, Config: vibeConfig, Gate: vibe.Gate{Redis: redisClient}, Compiler: api.VibePackCompiler{}}
 	vibeRunner := &vibe.Runner{Service: vibeService, Gateway: &vibe.Gateway{Store: vibeStore, Config: vibeConfig, Gate: vibeService.Gate}}
 	if vibeConfig.Enabled {

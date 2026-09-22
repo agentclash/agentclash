@@ -96,8 +96,9 @@ type generatedPackBlueprint struct {
 }
 
 type generatedPackCase struct {
-	Key     string         `json:"key"`
-	Payload map[string]any `json:"payload"`
+	Expectations []challengepack.CaseExpectation `json:"expectations,omitempty"`
+	Key          string                          `json:"key"`
+	Payload      map[string]any                  `json:"payload"`
 }
 
 // generatedPackJudge is scoring.LLMJudgeDeclaration reduced to the fields a
@@ -105,10 +106,11 @@ type generatedPackCase struct {
 // output_schema, timeouts) multiplies the per-run judge cost, so the mapper
 // fills it in rather than the model.
 type generatedPackJudge struct {
-	Key       string                  `json:"key"`
-	Mode      scoring.JudgeMethodMode `json:"mode"`
-	Rubric    string                  `json:"rubric"`
-	Assertion string                  `json:"assertion"`
+	ContextFrom []string                `json:"context_from,omitempty"`
+	Key         string                  `json:"key"`
+	Mode        scoring.JudgeMethodMode `json:"mode"`
+	Rubric      string                  `json:"rubric"`
+	Assertion   string                  `json:"assertion"`
 }
 
 // generatedPackSystemPrompt states the job, the two constraints that make an
@@ -306,6 +308,7 @@ func generatedPackCases(cases []generatedPackCase, challengeKey string) []challe
 			ChallengeKey: challengeKey,
 			CaseKey:      key,
 			Payload:      item.Payload,
+			Expectations: item.Expectations,
 		})
 	}
 	if len(definitions) == 0 {
@@ -330,11 +333,12 @@ func generatedPackJudges(judges []generatedPackJudge, judgeModel string, include
 			continue
 		}
 		declarations = append(declarations, scoring.LLMJudgeDeclaration{
-			Key:       key,
-			Mode:      judge.Mode,
-			Model:     strings.TrimSpace(judgeModel),
-			Rubric:    strings.TrimSpace(judge.Rubric),
-			Assertion: strings.TrimSpace(judge.Assertion),
+			Key:         key,
+			Mode:        judge.Mode,
+			Model:       strings.TrimSpace(judgeModel),
+			Rubric:      strings.TrimSpace(judge.Rubric),
+			Assertion:   strings.TrimSpace(judge.Assertion),
+			ContextFrom: judge.ContextFrom,
 		})
 	}
 	return declarations

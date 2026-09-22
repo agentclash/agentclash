@@ -294,7 +294,7 @@ func main() {
 		logger.Error("invalid Vibe configuration", "error", err)
 		os.Exit(1)
 	}
-	vibeService := &vibe.Service{Store: &vibe.Store{DB: db}, Config: vibeConfig, Gate: vibe.Gate{Redis: vibeRedis}, Compiler: api.VibePackCompiler{}}
+	vibeService := &vibe.Service{Store: vibe.NewStore(db, vibeConfig), Config: vibeConfig, Gate: vibe.Gate{Redis: vibeRedis}, Compiler: api.VibePackCompiler{}}
 	if err := billingManager.WithVibeCredits(vibeService.Store, cfg.FrontendURL); err != nil {
 		logger.Error("invalid Vibe credit configuration", "error", err)
 		os.Exit(1)

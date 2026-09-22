@@ -37,6 +37,7 @@ type TestPlan struct {
 // Wire representation of the model's single artifact union. IDs, provenance,
 // acceptance and execution permissions are supplied only by the server.
 type AuthoringArtifact struct {
+	Summary             string         `json:"summary"`
 	Kind                string         `json:"kind"`
 	Title               string         `json:"title"`
 	AgentPrompt         string         `json:"agent_prompt"`
@@ -57,7 +58,7 @@ func (a *assistantReply) unpackArtifact(version int) error {
 		if a.Draft != nil || a.TestPlan != nil {
 			return fmt.Errorf("use the single artifact field; legacy draft/test_plan fields are not valid for this request")
 		}
-		if x := a.Artifact; x != nil && x.Kind == "agent_draft" {
+		if x := a.Artifact; version == 3 && x != nil && x.Kind == "agent_draft" {
 			if len(x.Examples) != 0 || strings.TrimSpace(x.PositiveExample) == "" || strings.TrimSpace(x.NegativeExample) == "" || strings.TrimSpace(x.InsufficientExample) == "" {
 				return fmt.Errorf("supply separate positive_example, negative_example and insufficient_example inputs")
 			}
@@ -72,8 +73,20 @@ func (a *assistantReply) unpackArtifact(version int) error {
 	x := a.Artifact
 	switch x.Kind {
 	case "agent_draft":
-		if x.Objective != "" || len(x.Scenarios) > 0 || x.LocalTestCode != "" || len(x.EvidenceNeeded) > 0 || len(x.NextSteps) > 0 {
+		if x.Objective != "" || (version < 4 && len(x.Scenarios) > 0) || x.LocalTestCode != "" || len(x.EvidenceNeeded) > 0 || len(x.NextSteps) > 0 {
 			return fmt.Errorf("an agent_draft cannot also contain a test_plan")
+		}
+		if version >= 4 {
+			if strings.TrimSpace(x.Summary) == "" || len(x.Summary) > 240 || len(x.Scenarios) != 3 || len(x.Examples) > 0 || x.PositiveExample != "" || x.NegativeExample != "" || x.InsufficientExample != "" {
+				return fmt.Errorf("supply a short summary (240 bytes maximum) and three scenarios, each with input and expected behavior")
+			}
+			for _, scenario := range x.Scenarios {
+				if strings.TrimSpace(scenario.Input) == "" || strings.TrimSpace(scenario.Expected) == "" {
+					return fmt.Errorf("every scenario needs an input and observable expected behavior")
+				}
+			}
+			a.Draft = &DraftProposal{Title: x.Title, Summary: x.Summary, AgentPrompt: x.AgentPrompt, Scenarios: x.Scenarios, SuccessCriteria: x.SuccessCriteria}
+			return nil
 		}
 		examples := x.Examples
 		if x.PositiveExample != "" || x.NegativeExample != "" || x.InsufficientExample != "" {
@@ -84,7 +97,7 @@ func (a *assistantReply) unpackArtifact(version int) error {
 		}
 		a.Draft = &DraftProposal{Title: x.Title, AgentPrompt: x.AgentPrompt, Examples: examples, SuccessCriteria: x.SuccessCriteria}
 	case "test_plan":
-		if x.AgentPrompt != "" || len(x.Examples) > 0 || x.SuccessCriteria != "" || x.PositiveExample != "" || x.NegativeExample != "" || x.InsufficientExample != "" {
+		if x.Summary != "" || x.AgentPrompt != "" || len(x.Examples) > 0 || x.SuccessCriteria != "" || x.PositiveExample != "" || x.NegativeExample != "" || x.InsufficientExample != "" {
 			return fmt.Errorf("a test_plan cannot contain executable agent instructions or preview criteria")
 		}
 		a.TestPlan = &TestPlan{Title: x.Title, Objective: x.Objective, Scenarios: x.Scenarios, EvidenceNeeded: x.EvidenceNeeded, NextSteps: x.NextSteps, LocalTestCode: x.LocalTestCode}
@@ -95,14 +108,15 @@ func (a *assistantReply) unpackArtifact(version int) error {
 }
 
 type Capability struct {
-	ID           string   `json:"id"`
-	Label        string   `json:"label"`
-	Available    bool     `json:"available"`
-	Description  string   `json:"description"`
-	Instructions string   `json:"instructions,omitempty"`
-	URL          string   `json:"url,omitempty"`
-	Example      string   `json:"example,omitempty"`
-	NextSteps    []string `json:"next_steps,omitempty"`
+	CriteriaInstructions string   `json:"criteria_instructions,omitempty"`
+	ID                   string   `json:"id"`
+	Label                string   `json:"label"`
+	Available            bool     `json:"available"`
+	Description          string   `json:"description"`
+	Instructions         string   `json:"instructions,omitempty"`
+	URL                  string   `json:"url,omitempty"`
+	Example              string   `json:"example,omitempty"`
+	NextSteps            []string `json:"next_steps,omitempty"`
 }
 
 const LocalPythonHandoff = `from agentclash_eval import assert_agent
@@ -127,12 +141,12 @@ def test_observed_output():
 `
 
 func LocalHandoffSteps() []string {
-	return []string{"Review the scenarios and expected behavior; request changes in Design.", "Export this plan and use the linked pytest documentation in your own environment.", "Map inputs and observed outputs to your invocation. Configure local credentials, connect/read timeouts and an overall deadline.", "Run your own tests and capture outputs, sources and tool results. Unknown action outcomes require investigation before retrying; audio and telephony need their own harness."}
+	return []string{"Review the scenarios and expected behavior; describe any changes you want.", "Export this plan and use the linked pytest documentation in your own environment.", "Map inputs and observed outputs to your invocation. Configure local credentials, connect/read timeouts and an overall deadline.", "Run your own tests and capture outputs, sources and tool results. Unknown action outcomes require investigation before retrying; audio and telephony need their own harness."}
 }
 
 func Capabilities() []Capability {
 	return []Capability{
-		{ID: "text_preview", Label: "Text preview", Available: true, Description: "Analyzes supplied text. No company discovery, source fetching or business actions.", Instructions: previewActionPolicy},
+		{ID: "text_preview", Label: "Text preview", Available: true, Description: "Analyzes supplied text. No company discovery, source fetching or business actions.", Instructions: previewActionPolicy, CriteriaInstructions: previewEvidencePolicy},
 		{ID: "existing_agent", Label: "Existing agent testing", Description: "Your live agent is not connected. Review supplied examples or export a test plan for your own environment.", URL: "/docs/guides/vibe-evals-existing-agent"},
 		{ID: "voice", Label: "Voice and telephony", Description: "Text/mock tests exclude STT/TTS, acoustic interruptions, real transfers and call latency."},
 		{ID: "python_sdk", Label: "Local Python tests", Description: "Local pytest: assert_agent(output, metrics=[Contains(\"text\")]) from agentclash_eval and agentclash_eval.metrics. Text presence only; your invocation, auth and timeouts.", URL: "https://github.com/agentclash/agentclash-evals/blob/main/docs/evaltest/pytest.md", Example: LocalPythonHandoff, NextSteps: LocalHandoffSteps()},
@@ -171,6 +185,8 @@ func (p *TestPlan) validate(l Limits) error {
 	}
 	return nil
 }
+
+func (p *TestPlan) Validate(l Limits) error { return p.validate(l) }
 
 func (a assistantReply) validateJourney(p Plan, l Limits) error {
 	if a.Journey == nil {

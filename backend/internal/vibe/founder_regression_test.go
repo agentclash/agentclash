@@ -3,6 +3,7 @@ package vibe
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 	"os"
@@ -91,79 +92,81 @@ func TestVibeFounderContext(t *testing.T) {
 	profile := ModelProfile{Free: true, FramingAllowance: 4096, Context: 512000, StructuredOutputs: true}
 	l := LimitsFor(true)
 	for _, f := range fixtures {
-		t.Run(f.Name, func(t *testing.T) {
-			f.Plan.AuthoringVersion = 3
-			original := string(raw(f.Plan))
-			messages := authoringMessages(f.Plan, repairCompiler{}, profile)
-			req := provider.Request{Messages: messages, ResponseFormat: authoringFormatVersion(profile, 3), MaxOutputTokens: l.OutputTokens}
-			count, err := CountContext(req, profile, l)
-			if err != nil {
-				t.Fatalf("initial bound %d: %v", count.UpperBound, err)
-			}
-			t.Logf("initial bound %d", count.UpperBound)
-			if _, err = authoringRepairMessages(messages, strings.Repeat("bad", 10000), "Correct the unsupported action promise; preserve all requested coverage.", profile, l, 3); err != nil {
-				t.Fatal("no repair headroom", err)
-			}
-			if _, err = authoringRepairMessages(messages, strings.Repeat("bad", 10000), strings.Repeat("invalid draft diagnostic ", 100), profile, l, 3); err != nil {
-				t.Fatal("long diagnostic prevented the bounded repair", err)
-			}
-			var projected map[string]json.RawMessage
-			if json.Unmarshal([]byte(messages[1].Content), &projected) != nil {
-				t.Fatal("lost data boundary")
-			}
-			var doc struct {
-				Requirements []Requirement
-				Latest       *Artifact `json:"latest_proposal"`
-			}
-			if json.Unmarshal(projected["conversation_data"], &doc) != nil {
-				t.Fatal("invalid compact document")
-			}
-			if len(doc.Requirements) != len(f.Plan.Document.Requirements) {
-				t.Fatal("active requirements were removed to fit")
-			}
-			for i, q := range doc.Requirements {
-				old := f.Plan.Document.Requirements[i]
-				if q.Statement != old.Statement || q.Status != old.Status || q.ID != old.ID {
-					t.Fatal("requirement meaning or identity changed")
+		for _, version := range []int{3, 4} {
+			t.Run(fmt.Sprintf("%s/v%d", f.Name, version), func(t *testing.T) {
+				f.Plan.AuthoringVersion = version
+				original := string(raw(f.Plan))
+				messages := authoringMessages(f.Plan, repairCompiler{}, profile)
+				req := provider.Request{Messages: messages, ResponseFormat: authoringFormatVersion(profile, version), MaxOutputTokens: l.OutputTokens}
+				count, err := CountContext(req, profile, l)
+				if err != nil {
+					t.Fatalf("initial bound %d: %v", count.UpperBound, err)
 				}
-			}
-			// Reconstruct the only allowed deduplication and compare every field,
-			// including validators, judges, cases and arbitrary source evidence.
-			compareArtifact := func(projected json.RawMessage, want Artifact) {
-				var got struct {
-					AgentPrompt     string         `json:"agent_prompt"`
-					Blueprint       map[string]any `json:"blueprint"`
-					InstructionsRef string         `json:"blueprint_instructions_ref"`
+				t.Logf("initial bound %d", count.UpperBound)
+				if _, err = authoringRepairMessages(messages, strings.Repeat("bad", 10000), "Correct the unsupported action promise; preserve all requested coverage.", profile, l, version); err != nil {
+					t.Fatal("no repair headroom", err)
 				}
-				if err := json.Unmarshal(projected, &got); err != nil {
-					t.Fatal(err)
+				if _, err = authoringRepairMessages(messages, strings.Repeat("bad", 10000), strings.Repeat("invalid draft diagnostic ", 100), profile, l, version); err != nil {
+					t.Fatal("long diagnostic prevented the bounded repair", err)
 				}
-				if got.InstructionsRef == "agent_prompt" {
-					got.Blueprint["instructions"] = got.AgentPrompt
+				var projected map[string]json.RawMessage
+				if json.Unmarshal([]byte(messages[1].Content), &projected) != nil {
+					t.Fatal("lost data boundary")
 				}
-				var expected map[string]any
-				if err := json.Unmarshal(want.Blueprint, &expected); err != nil {
-					t.Fatal(err)
+				var doc struct {
+					Requirements []Requirement
+					Latest       *Artifact `json:"latest_proposal"`
 				}
-				if got.AgentPrompt != want.AgentPrompt || !reflect.DeepEqual(got.Blueprint, expected) {
-					t.Fatal("artifact coverage or instructions changed")
+				if json.Unmarshal(projected["conversation_data"], &doc) != nil {
+					t.Fatal("invalid compact document")
 				}
-			}
-			if f.Plan.Artifact != nil {
-				compareArtifact(projected["accepted_agent"], *f.Plan.Artifact)
-			}
-			if n := len(f.Plan.Document.Artifacts); n > 0 {
-				latest := f.Plan.Document.Artifacts[n-1]
-				if f.Plan.Artifact == nil || latest.ID != f.Plan.Artifact.ID {
-					var data map[string]json.RawMessage
-					_ = json.Unmarshal(projected["conversation_data"], &data)
-					compareArtifact(data["latest_proposal"], latest)
+				if len(doc.Requirements) != len(f.Plan.Document.Requirements) {
+					t.Fatal("active requirements were removed to fit")
 				}
-			}
-			if string(raw(f.Plan)) != original {
-				t.Fatal("context building mutated persisted state")
-			}
-		})
+				for i, q := range doc.Requirements {
+					old := f.Plan.Document.Requirements[i]
+					if q.Statement != old.Statement || q.Status != old.Status || q.ID != old.ID {
+						t.Fatal("requirement meaning or identity changed")
+					}
+				}
+				// Reconstruct the only allowed deduplication and compare every field,
+				// including validators, judges, cases and arbitrary source evidence.
+				compareArtifact := func(projected json.RawMessage, want Artifact) {
+					var got struct {
+						AgentPrompt     string         `json:"agent_prompt"`
+						Blueprint       map[string]any `json:"blueprint"`
+						InstructionsRef string         `json:"blueprint_instructions_ref"`
+					}
+					if err := json.Unmarshal(projected, &got); err != nil {
+						t.Fatal(err)
+					}
+					if got.InstructionsRef == "agent_prompt" {
+						got.Blueprint["instructions"] = got.AgentPrompt
+					}
+					var expected map[string]any
+					if err := json.Unmarshal(want.Blueprint, &expected); err != nil {
+						t.Fatal(err)
+					}
+					if got.AgentPrompt != want.AgentPrompt || !reflect.DeepEqual(got.Blueprint, expected) {
+						t.Fatal("artifact coverage or instructions changed")
+					}
+				}
+				if f.Plan.Artifact != nil {
+					compareArtifact(projected["accepted_agent"], *f.Plan.Artifact)
+				}
+				if n := len(f.Plan.Document.Artifacts); n > 0 {
+					latest := f.Plan.Document.Artifacts[n-1]
+					if f.Plan.Artifact == nil || latest.ID != f.Plan.Artifact.ID {
+						var data map[string]json.RawMessage
+						_ = json.Unmarshal(projected["conversation_data"], &data)
+						compareArtifact(data["latest_proposal"], latest)
+					}
+				}
+				if string(raw(f.Plan)) != original {
+					t.Fatal("context building mutated persisted state")
+				}
+			})
+		}
 	}
 }
 
@@ -402,7 +405,7 @@ func TestVibeIntegrationReviewedHandoffAndAtomicCompletion(t *testing.T) {
 	}
 	artifact := v.Document.Artifacts[0]
 	reply := v.Document.Messages[len(v.Document.Messages)-1]
-	if !artifact.IsTestPlan() || artifact.TestPlan.LocalTestCode != LocalPythonHandoff || !reflect.DeepEqual(artifact.TestPlan.NextSteps, LocalHandoffSteps()) || !strings.Contains(reply.Content, "pytest guide") || strings.Contains(reply.Content, "Accept this") || len(v.Document.Requirements) != 0 {
+	if !artifact.IsTestPlan() || artifact.TestPlan.LocalTestCode != LocalPythonHandoff || !reflect.DeepEqual(artifact.TestPlan.NextSteps, LocalHandoffSteps()) || !strings.Contains(reply.Content, "Export the plan") || strings.Contains(reply.Content, "Accept this") || len(v.Document.Requirements) != 0 {
 		t.Fatal("model handoff escaped the reviewed server contract")
 	}
 	if reply.ArtifactID == nil || *reply.ArtifactID != artifact.ID || reply.OperationID == nil || *reply.OperationID != o.ID {

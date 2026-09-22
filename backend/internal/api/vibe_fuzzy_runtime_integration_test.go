@@ -83,6 +83,7 @@ func TestVibeIntegrationFuzzyBoundsUseOperandsNotPayload(t *testing.T) {
 			artifact := session.Document.Artifacts[0]
 			if err := store.Edit(ctx, session.Actor, session.ID, session.Revision, func(v *vibe.Session) error {
 				v.Document.Artifacts[0].Accepted = true
+				v.Document.Artifacts[0].AgentPrompt = "Follow the supplied task and reply with the requested text."
 				v.Document.ActiveArtifactID = &artifact.ID
 				return nil
 			}); err != nil {

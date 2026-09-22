@@ -2,6 +2,7 @@ package vibe
 
 import (
 	"encoding/json"
+	"fmt"
 	"sort"
 )
 
@@ -11,6 +12,9 @@ func authoringFormatVersion(p ModelProfile, version int) json.RawMessage {
 	}
 	if !p.StructuredOutputs {
 		return jsonFormat
+	}
+	if version >= 4 {
+		return strictAuthoringV4Format
 	}
 	if version >= 3 {
 		return strictAuthoringV3Format
@@ -25,6 +29,9 @@ func authoringSchemaForPlan(p Plan) json.RawMessage {
 	if p.Document.Journey.Mode == "existing" && !p.Document.Journey.PreviewConsent {
 		return existingAgentSchema
 	}
+	if p.AuthoringVersion >= 4 {
+		return authoringV4Schema
+	}
 	return authoringV3Schema
 }
 
@@ -32,7 +39,7 @@ func authoringFormatForPlan(profile ModelProfile, p Plan) json.RawMessage {
 	if p.AuthoringVersion < 3 || !profile.StructuredOutputs {
 		return authoringFormatVersion(profile, p.AuthoringVersion)
 	}
-	return raw(map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "vibe_reply_v3", "strict": true, "schema": authoringSchemaForPlan(p)}})
+	return raw(map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": fmt.Sprintf("vibe_reply_v%d", p.AuthoringVersion), "strict": true, "schema": authoringSchemaForPlan(p)}})
 }
 
 func objectSchema(properties map[string]any) map[string]any {
@@ -93,6 +100,21 @@ var authoringV3Schema = func() json.RawMessage {
 	return raw(objectSchema(properties))
 }()
 var strictAuthoringV3Format = raw(map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "vibe_reply_v3", "strict": true, "schema": authoringV3Schema}})
+
+var authoringV4Schema = func() json.RawMessage {
+	var schema map[string]any
+	_ = json.Unmarshal(authoringV3Schema, &schema)
+	variants := schema["properties"].(map[string]any)["artifact"].(map[string]any)["anyOf"].([]any)
+	fields := variants[1].(map[string]any)["properties"].(map[string]any)
+	for _, key := range []string{"positive_example", "negative_example", "insufficient_example"} {
+		delete(fields, key)
+	}
+	fields["summary"] = map[string]any{"type": "string", "minLength": 1, "maxLength": 240}
+	fields["scenarios"] = map[string]any{"type": "array", "minItems": 3, "maxItems": 3, "items": objectSchema(map[string]any{"input": map[string]any{"type": "string", "minLength": 1}, "expected": map[string]any{"type": "string", "minLength": 1}})}
+	variants[1] = objectSchema(fields)
+	return raw(schema)
+}()
+var strictAuthoringV4Format = raw(map[string]any{"type": "json_schema", "json_schema": map[string]any{"name": "vibe_reply_v4", "strict": true, "schema": authoringV4Schema}})
 
 var existingAgentSchema = func() json.RawMessage {
 	var schema map[string]any

@@ -2,7 +2,9 @@ package vibe
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"sort"
@@ -10,27 +12,69 @@ import (
 )
 
 type Submission struct {
-	JourneyMode string     `json:"journey_mode,omitempty"`
-	ClientID    uuid.UUID  `json:"client_id"`
-	Revision    int64      `json:"revision"`
-	Kind        string     `json:"kind"`
-	Content     string     `json:"content"`
-	Models      Models     `json:"models"`
-	ArtifactID  *uuid.UUID `json:"artifact_id,omitempty"`
-	BaselineID  *uuid.UUID `json:"baseline_id,omitempty"`
+	RetryOf         *uuid.UUID `json:"retry_of,omitempty"`
+	ViewedRunID     *uuid.UUID `json:"viewed_run_id,omitempty"`
+	ViewedCaseKey   string     `json:"viewed_case_key,omitempty"`
+	TestJourney     bool       `json:"test_journey,omitempty"`
+	QuickCheck      bool       `json:"quick_check,omitempty"`
+	EvaluationFirst bool       `json:"evaluation_first,omitempty"`
+	EvidenceSetID   *uuid.UUID `json:"evidence_set_id,omitempty"`
+	Instructions    string     `json:"instructions,omitempty"`
+	Purpose         string     `json:"purpose,omitempty"`
+	ApproveArtifact bool       `json:"approve_artifact,omitempty"`
+	PreviewThreadID *uuid.UUID `json:"preview_thread_id,omitempty"`
+	JourneyMode     string     `json:"journey_mode,omitempty"`
+	ClientID        uuid.UUID  `json:"client_id"`
+	Revision        int64      `json:"revision"`
+	Kind            string     `json:"kind"`
+	Content         string     `json:"content"`
+	Models          Models     `json:"models"`
+	ArtifactID      *uuid.UUID `json:"artifact_id,omitempty"`
+	BaselineID      *uuid.UUID `json:"baseline_id,omitempty"`
 }
 type Plan struct {
-	AuthoringVersion int          `json:"authoring_version,omitempty"`
-	Free             bool         `json:"free,omitempty"`
-	ChecksPerCase    int          `json:"checks_per_case"`
-	Observations     []CaseResult `json:"observations,omitempty"`
-	Submission       Submission   `json:"submission"`
-	Document         Document     `json:"document"`
-	Artifact         *Artifact    `json:"artifact,omitempty"`
-	Cases            []string     `json:"case_keys"`
-	Calls            int          `json:"calls"`
-	MaxCost          int64        `json:"max_cost_nano_usd"`
-	Anonymous        bool         `json:"anonymous"`
+	Retry                    *RetryContext        `json:"retry,omitempty"`
+	ExecutionLimits          *Limits              `json:"execution_limits,omitempty"`
+	Conversation             *ConversationContext `json:"conversation,omitempty"`
+	ObservedArtifact         *Artifact            `json:"observed_artifact,omitempty"`
+	ContextThrough           *uuid.UUID           `json:"context_through,omitempty"`
+	InlineEvidence           *EvidenceSet         `json:"inline_evidence,omitempty"`
+	LocalTesting             bool                 `json:"local_testing,omitempty"`
+	Evidence                 *EvidenceSet         `json:"evidence,omitempty"`
+	Source                   *EvaluationSource    `json:"source,omitempty"`
+	PreviewMessages          []provider.Message   `json:"preview_messages,omitempty"`
+	CasePreviews             []CaseResult         `json:"case_previews,omitempty"`
+	AuthoringVersion         int                  `json:"authoring_version,omitempty"`
+	ConversationJudgeVersion int                  `json:"conversation_judge_version,omitempty"`
+	Free                     bool                 `json:"free,omitempty"`
+	ChecksPerCase            int                  `json:"checks_per_case"`
+	Observations             []CaseResult         `json:"observations,omitempty"`
+	Submission               Submission           `json:"submission"`
+	Document                 Document             `json:"document"`
+	Artifact                 *Artifact            `json:"artifact,omitempty"`
+	Cases                    []string             `json:"case_keys"`
+	Calls                    int                  `json:"calls"`
+	MaxCost                  int64                `json:"max_cost_nano_usd"`
+	Anonymous                bool                 `json:"anonymous"`
+}
+
+// The caller has already authorized the session. Admission repeats this lookup
+// under the session lock so concurrent first submissions still share one receipt.
+func (s *Store) submissionReceipt(ctx context.Context, id uuid.UUID, sub Submission) (*Operation, error) {
+	var operationID uuid.UUID
+	var hash string
+	err := s.DB.QueryRow(ctx, "SELECT id,request_hash FROM vibe_operations WHERE session_id=$1 AND client_id=$2", id, sub.ClientID).Scan(&operationID, &hash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if hash != Hash(raw(sub)) {
+		return nil, fault("idempotency_conflict", "This message ID was already used for different content.")
+	}
+	o, err := s.Operation(ctx, operationID)
+	return &o, err
 }
 
 func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Submission, plan Plan, cfg Config) (Operation, error) {
@@ -63,31 +107,67 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		if v.Revision != sub.Revision {
 			return fault("revision_conflict", "Reload the latest conversation before sending.")
 		}
+		if sub.RetryOf != nil || plan.Retry != nil {
+			if err = validateRetryAdmission(ctx, tx, v, sub, plan); err != nil {
+				return err
+			}
+		}
+		if sub.ApproveArtifact {
+			if sub.Kind != "check" && sub.Kind != "retest" {
+				return fault("invalid_message", "Only running checks can approve their expectations.")
+			}
+			// A retest approves the baseline's frozen checks. If this version
+			// has different checks, do not mark those unrun checks accepted.
+			approveVersion := true
+			if sub.Kind == "retest" && plan.Artifact != nil && sub.ArtifactID != nil {
+				for _, a := range v.Document.Artifacts {
+					if a.ID == *sub.ArtifactID {
+						approveVersion = Hash(a.Blueprint) == Hash(plan.Artifact.Blueprint)
+						if a.IsConversationEvaluation() {
+							approveVersion = Hash(raw(a.ConversationEvaluation.Expectations)) == Hash(raw(plan.Artifact.ConversationEvaluation.Expectations))
+						}
+					}
+				}
+			}
+			if approveVersion {
+				if err = acceptArtifact(&v, sub.ArtifactID); err != nil {
+					return err
+				}
+			}
+		}
 		var operations int
 		if err = tx.QueryRow(ctx, "SELECT count(*) FROM vibe_operations WHERE session_id=$1", id).Scan(&operations); err != nil {
 			return err
 		}
-		if operations >= MaxConversationOperations {
+		if !cfg.TestingLocally() && operations >= MaxConversationOperations {
 			return fault("conversation_limit", "This conversation has reached its operation limit. Save your work and start another.")
 		}
 		if plan.Free != cfg.FreeOnly {
 			return fault("pricing_unavailable", "The operation does not match this server's funding policy.")
 		}
+		if plan.LocalTesting != cfg.TestingLocally() || plan.LocalTesting && !s.localTesting {
+			return fault("model_policy_changed", "Local testing settings changed. Send the message again.")
+		}
 		if plan.Free {
 			if !cfg.FreeOnly || plan.MaxCost != 0 {
 				return fault("pricing_unavailable", "A zero-cost operation requires explicit free-only configuration.")
 			}
-			if err = cfg.ValidateModels(sub.Models, v.Anonymous); err != nil {
+			if err = validatePlanModels(cfg, plan, sub.Models, v.Anonymous); err != nil {
 				return err
 			}
 		}
-		if plan.MaxCost < 0 || (plan.MaxCost == 0 && !plan.Free) || plan.MaxCost > MaxOperationCost || plan.Calls < 1 || plan.Calls > LimitsFor(v.Anonymous).ModelCalls {
+		if plan.MaxCost < 0 || (plan.MaxCost == 0 && !plan.Free) || plan.MaxCost > MaxOperationCost || plan.Calls < 1 || plan.Calls > cfg.Limits(v.Anonymous).ModelCalls {
 			return fault("budget_limit", "Operation cannot be safely bounded.")
+		}
+		if plan.AuthoringVersion >= 11 && (sub.Kind == "message" || sub.Kind == "build") {
+			if plan.Calls > 5 || plan.operationTimeout() > 16*time.Minute || plan.Conversation != nil && plan.Conversation.Manual != nil && plan.Calls != 1 {
+				return fault("budget_limit", "The authoring workflow exceeds its call or time allowance.")
+			}
 		}
 		if err = checkCapacity(ctx, tx, v); err != nil {
 			return err
 		}
-		if v.Anonymous {
+		if v.Anonymous && !plan.LocalTesting {
 			var messages, calls, exploration, checks, retests int
 			err = tx.QueryRow(ctx, `SELECT count(*) FILTER(WHERE o.kind IN ('message','build')),COALESCE(sum(o.model_calls),0),COALESCE(sum(o.model_calls) FILTER(WHERE o.kind NOT IN ('check','retest')),0),count(*) FILTER(WHERE o.kind='check'),count(*) FILTER(WHERE o.kind='retest') FROM vibe_operations o JOIN vibe_sessions s ON s.id=o.session_id WHERE o.input->>'anonymous'='true' AND s.trial_key=(SELECT trial_key FROM vibe_sessions WHERE id=$1)`, id).Scan(&messages, &calls, &exploration, &checks, &retests)
 			if err != nil {
@@ -98,14 +178,16 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 				return fault("trial_limit", "Your free trial limit has been reached. Save your work to continue with workspace credits.")
 			}
 			if sub.Kind != "check" && sub.Kind != "retest" && exploration+plan.Calls > TrialExploreCalls {
-				return fault("trial_limit", "Your trial's remaining model calls are reserved for the initial check and retest. Check your accepted draft or save it to continue with workspace credits.")
+				return fault("trial_limit", "Your trial's remaining model calls are reserved for the initial check and retest. Run your checks, or save your agent to continue with workspace credits.")
 			}
 			if sub.Kind == "check" && checks >= 1 || sub.Kind == "retest" && retests >= 1 {
 				return fault("trial_limit", "The free trial includes one initial check and one retest.")
 			}
 		}
-		o = Operation{ID: uuid.New(), SessionID: id, Actor: actor, Kind: sub.Kind, State: Validating, Billing: Unreserved, Models: sub.Models, Input: raw(plan), MaxCost: plan.MaxCost, CreatedAt: timestamp(), Deadline: timestamp().Add(LimitsFor(v.Anonymous).OperationTimeout()), Results: []CaseResult{}}
-		if !v.Anonymous && o.MaxCost > AutomaticApprovalCost {
+		o = Operation{ID: uuid.New(), SessionID: id, Actor: actor, Kind: sub.Kind, State: Validating, Billing: Unreserved, Models: sub.Models, Input: raw(plan), MaxCost: plan.MaxCost, CreatedAt: timestamp(), Deadline: timestamp().Add(plan.operationTimeout()), Results: []CaseResult{}}
+		o.Source = plan.Source
+		o.RetryOfOperationID = sub.RetryOf
+		if !v.Anonymous && !cfg.TestingLocally() && o.MaxCost > AutomaticApprovalCost {
 			o.State = AwaitingApproval
 			o.Deadline = timestamp().Add(24 * time.Hour)
 		} else {
@@ -124,6 +206,14 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		}
 		for _, key := range plan.Cases {
 			result := CaseResult{CaseKey: key, ExpectedChecks: plan.ChecksPerCase, Verdict: Unknown, Checks: []CheckResult{}, Error: &Fault{Code: "not_evaluated", Message: "This case has not been evaluated yet."}}
+			for _, preview := range plan.CasePreviews {
+				if preview.CaseKey == key {
+					result.Input, result.Expected = preview.Input, preview.Expected
+					result.Messages, result.Title = preview.Messages, preview.Title
+					result.Expectations = preview.Expectations
+					break
+				}
+			}
 			if plan.Artifact != nil {
 				result.Version = plan.Artifact.ID.String()
 			}
@@ -139,14 +229,25 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 				return err
 			}
 		}
-		if sub.Content != "" {
+		if sub.Content != "" && sub.RetryOf == nil {
 			if sub.JourneyMode != "" {
 				v.Document.Journey.Mode = sub.JourneyMode
 			}
-			v.Document.Messages = append(v.Document.Messages, Message{ID: sub.ClientID, Role: "user", Content: sub.Content, CreatedAt: timestamp(), Origin: sub.Kind, OperationID: &o.ID, ArtifactID: sub.ArtifactID})
+			v.Document.Messages = append(v.Document.Messages, Message{ID: sub.ClientID, Role: "user", Content: sub.Content, CreatedAt: timestamp(), Origin: sub.Kind, OperationID: &o.ID, ArtifactID: sub.ArtifactID, PreviewThreadID: sub.PreviewThreadID})
 		}
 		v.Document.Models = sub.Models
-		if err = updateDocument(ctx, tx, v); err != nil {
+		if sub.EvaluationFirst {
+			v.Document.EvaluationFirst = true
+		}
+		if sub.TestJourney {
+			v.Document.TestJourney = true
+		}
+		if sub.Instructions != "" {
+			v.Document.ActiveEvidenceID = nil
+			v.Document.Journey.Mode = "idea"
+			v.Document.Journey.PreviewConsent = true
+		}
+		if err = s.updateDocument(ctx, tx, v); err != nil {
 			return err
 		}
 		return event(ctx, tx, id, &o.ID, "operation.created")
@@ -209,7 +310,18 @@ func enqueue(ctx context.Context, tx pgx.Tx, o *Operation) error {
 }
 func reserve(ctx context.Context, tx pgx.Tx, v Session, o Operation, cfg Config) error {
 	accounts := []string{}
-	if v.Anonymous {
+	if cfg.TestingLocally() && !cfg.FreeOnly {
+		// One operator-funded budget covers every local session. The stable
+		// grant ID prevents restarts or new conversations from refilling it.
+		if cfg.LocalBudget <= 0 || cfg.Campaign == "" {
+			return fault("local_budget_required", "Configure the local testing budget before using paid models.")
+		}
+		account := "local:" + cfg.Campaign
+		if err := grant(ctx, tx, account, "initial:"+account, cfg.LocalBudget); err != nil {
+			return err
+		}
+		accounts = []string{account}
+	} else if v.Anonymous {
 		if cfg.AnonymousDaily <= 0 || cfg.AnonymousCampaign <= 0 || cfg.Campaign == "" {
 			return fault("trial_capacity_reached", "Free hosted checks are currently unavailable. Your conversation can still be saved.")
 		}
@@ -292,7 +404,11 @@ func (s *Store) Approve(ctx context.Context, actor string, id uuid.UUID, cfg Con
 		if timestamp().After(o.Deadline) {
 			return fault("quote_expired", "This quote has expired. Request a new check.")
 		}
-		if err = cfg.ValidateModels(o.Models, v.Anonymous); err != nil {
+		var plan Plan
+		if err = json.Unmarshal(o.Input, &plan); err != nil {
+			return err
+		}
+		if err = validatePlanModels(cfg, plan, o.Models, v.Anonymous); err != nil {
 			return err
 		}
 		if err = checkCapacity(ctx, tx, v, o.ID); err != nil {
@@ -307,7 +423,7 @@ func (s *Store) Approve(ctx context.Context, actor string, id uuid.UUID, cfg Con
 		if err = reserve(ctx, tx, v, o, cfg); err != nil {
 			return err
 		}
-		o.Deadline = timestamp().Add(LimitsFor(v.Anonymous).OperationTimeout())
+		o.Deadline = timestamp().Add(plan.operationTimeout())
 		if err = enqueue(ctx, tx, &o); err != nil {
 			return err
 		}
@@ -329,6 +445,12 @@ func (s *Store) Stop(ctx context.Context, actor string, id uuid.UUID) error {
 		}
 		if err = authorize(ctx, tx, actor, v.WorkspaceID, true); err != nil {
 			return err
+		}
+		if err = s.recoverLegacyCompletion(ctx, tx, &o); err != nil {
+			return err
+		}
+		if o.Completion != nil {
+			return finishCommitted(ctx, tx, o)
 		}
 		if o.State.Terminal() {
 			return nil

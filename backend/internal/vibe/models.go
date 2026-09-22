@@ -13,7 +13,8 @@ import (
 )
 
 // Profiles are operator-approved price ceilings, never model-generated metadata.
-// Expired, absent or unverified profiles cannot authorize hosted execution.
+// Hosted execution requires an unexpired profile. Local testing may renew the
+// metadata check for an already conformed route without changing its contract.
 type ModelProfile struct {
 	Free               bool      `json:"free,omitempty"`
 	DisableReasoning   bool      `json:"disable_reasoning,omitempty"`
@@ -29,19 +30,34 @@ type ModelProfile struct {
 	ExpiresAt          time.Time `json:"expires_at"`
 }
 type Config struct {
-	FreeOnly          bool
-	DefaultModel      string
-	Enabled           bool
-	Credential        string
-	Profiles          map[string]ModelProfile
-	AnonymousDaily    int64
-	AnonymousCampaign int64
-	Campaign          string
+	ReliableAuthoring   bool
+	SuiteReviewVersion  string
+	SourcePolicyVersion string
+	LocalTesting        bool
+	LocalBudget         int64
+	FreeOnly            bool
+	DefaultModel        string
+	Enabled             bool
+	Credential          string
+	Profiles            map[string]ModelProfile
+	AnonymousDaily      int64
+	AnonymousCampaign   int64
+	Campaign            string
+	localProfiles       *localProfileVerifier
 }
 
 func LoadConfig() (Config, error) {
 	c := Config{Enabled: os.Getenv("VIBE_ENABLED") == "true", Credential: os.Getenv("VIBE_OPENROUTER_KEY"), Profiles: map[string]ModelProfile{}, Campaign: os.Getenv("VIBE_CAMPAIGN")}
 	c.FreeOnly = os.Getenv("VIBE_FREE_ONLY") == "true"
+	c.ReliableAuthoring = os.Getenv("VIBE_RELIABLE_AUTHORING") == "true"
+	c.SuiteReviewVersion = LatestSuiteValidatorVersion
+	if c.ReliableAuthoring {
+		c.SourcePolicyVersion = SourcePolicyVersion
+	}
+	c.LocalTesting = os.Getenv("VIBE_LOCAL_TESTING") == "true"
+	if c.LocalTesting && os.Getenv("APP_ENV") != "development" {
+		return c, fmt.Errorf("VIBE_LOCAL_TESTING requires APP_ENV=development")
+	}
 	c.DefaultModel = os.Getenv("VIBE_DEFAULT_MODEL")
 	var profiles []ModelProfile
 	if raw := os.Getenv("VIBE_MODELS_JSON"); raw != "" {
@@ -55,7 +71,7 @@ func LoadConfig() (Config, error) {
 		}
 		c.Profiles[p.ID] = p
 	}
-	for key, dst := range map[string]*int64{"VIBE_ANON_DAILY_USD": &c.AnonymousDaily, "VIBE_ANON_CAMPAIGN_USD": &c.AnonymousCampaign} {
+	for key, dst := range map[string]*int64{"VIBE_ANON_DAILY_USD": &c.AnonymousDaily, "VIBE_ANON_CAMPAIGN_USD": &c.AnonymousCampaign, "VIBE_LOCAL_BUDGET_USD": &c.LocalBudget} {
 		if s := os.Getenv(key); s != "" {
 			n, err := ParseUSD(s)
 			if err != nil {
@@ -63,6 +79,12 @@ func LoadConfig() (Config, error) {
 			}
 			*dst = n
 		}
+	}
+	if c.LocalTesting && !c.FreeOnly && (c.LocalBudget <= 0 || c.Campaign == "") {
+		return c, fmt.Errorf("paid local testing requires VIBE_LOCAL_BUDGET_USD and a stable VIBE_CAMPAIGN")
+	}
+	if c.Enabled && c.LocalTesting && !c.FreeOnly {
+		c.localProfiles = newLocalProfileVerifier()
 	}
 	if c.Enabled && (c.FreeOnly || c.DefaultModel != "") {
 		if err := c.ValidateModels(c.DefaultModels(), true); err != nil {
@@ -89,22 +111,39 @@ func (p ModelProfile) validFreeRoute() bool {
 }
 func (c Config) Profile(id string) (ModelProfile, error) {
 	p, ok := c.Profiles[id]
-	if !ok || p.ID != id || !p.Conformed || p.ExpiresAt.Before(time.Now()) || p.FramingAllowance < 2048 || p.Context < 32768 {
+	if !ok || p.ID != id || !p.Conformed || p.ExpiresAt.IsZero() || p.FramingAllowance < 2048 || p.Context < 32768 {
 		return p, fault("pricing_unavailable", "This model is unavailable until its price and context profile is verified.")
 	}
 	if c.FreeOnly {
+		if p.ExpiresAt.Before(time.Now()) {
+			return p, fault("pricing_unavailable", "This model is unavailable until its price and context profile is verified.")
+		}
 		if !p.validFreeRoute() {
 			return p, fault("free_model_required", "This server only allows its verified free model routes.")
 		}
 		return p, nil
 	}
-	if p.Free || p.InputNanoPerToken <= 0 || p.OutputNanoPerToken <= 0 || p.InputNanoPerToken > 100_000 || p.OutputNanoPerToken > 100_000 || p.Route != "openai" {
+	if p.Free || p.InputNanoPerToken <= 0 || p.OutputNanoPerToken <= 0 || p.InputNanoPerToken > 100_000 || p.OutputNanoPerToken > 100_000 {
 		return p, fault("pricing_unavailable", "This model has no approved paid price profile.")
 	}
 	switch p.ID {
 	case "openai/gpt-4o-mini", "openai/gpt-4.1-mini", "openai/gpt-4.1":
+		if p.Route != "openai" {
+			return p, fault("pricing_unavailable", "This model has no approved paid provider route.")
+		}
+	case "deepseek/deepseek-v4-flash-0731":
+		if (p.Route != "open-inference/fp8" && p.Route != "deepinfra/fp8") || !p.StructuredOutputs {
+			return p, fault("pricing_unavailable", "This model requires its verified structured-output provider route.")
+		}
 	default:
 		return p, fault("unsupported_model", "This model has no verified text token profile.")
+	}
+	if c.LocalTesting && c.localProfiles != nil && p.ID == "deepseek/deepseek-v4-flash-0731" {
+		if err := c.localProfiles.verify(p); err != nil {
+			return p, fault("pricing_unavailable", "The AI provider couldn't be verified right now. Please try again shortly.")
+		}
+	} else if p.ExpiresAt.Before(time.Now()) {
+		return p, fault("pricing_unavailable", "This model is unavailable until its price and context profile is verified.")
 	}
 	return p, nil
 }
@@ -152,6 +191,11 @@ func (p ModelProfile) BoundCost(in, out int) (int64, error) {
 	}
 	return n.Int64(), nil
 }
+
+// Reservations cannot assume more input than this endpoint can accept.
+func (p ModelProfile) inputLimit(l Limits) int {
+	return min(l.ContextTokens, p.Context-l.OutputTokens)
+}
 func AddCost(a, b int64) (int64, error) {
 	if a < 0 || b < 0 || a > math.MaxInt64-b {
 		return 0, fmt.Errorf("cost overflow")
@@ -182,7 +226,7 @@ func CountContext(req provider.Request, p ModelProfile, l Limits) (ContextCount,
 	if n.UpperBound > l.ContextTokens || req.MaxOutputTokens <= 0 || req.MaxOutputTokens > l.OutputTokens || n.UpperBound+req.MaxOutputTokens > p.Context {
 		return n, contextFault(req, n, p, l)
 	}
-	if p.Free {
+	if p.Free || !strings.HasPrefix(p.ID, "openai/") {
 		// These tokenizers are not o200k. Report only the conservative byte bound;
 		// do not present an OpenAI tokenizer estimate as this model's token count.
 		n.Method = "utf8_bytes_plus_verified_framing"

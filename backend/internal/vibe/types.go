@@ -85,13 +85,14 @@ func DefaultModels() Models {
 }
 
 type Message struct {
-	ID          uuid.UUID  `json:"id"`
-	Role        string     `json:"role"`
-	Content     string     `json:"content"`
-	CreatedAt   time.Time  `json:"created_at"`
-	Origin      string     `json:"origin,omitempty"`
-	OperationID *uuid.UUID `json:"operation_id,omitempty"`
-	ArtifactID  *uuid.UUID `json:"artifact_id,omitempty"`
+	PreviewThreadID *uuid.UUID `json:"preview_thread_id,omitempty"`
+	ID              uuid.UUID  `json:"id"`
+	Role            string     `json:"role"`
+	Content         string     `json:"content"`
+	CreatedAt       time.Time  `json:"created_at"`
+	Origin          string     `json:"origin,omitempty"`
+	OperationID     *uuid.UUID `json:"operation_id,omitempty"`
+	ArtifactID      *uuid.UUID `json:"artifact_id,omitempty"`
 }
 type Requirement struct {
 	ProposedBy        string     `json:"proposed_by,omitempty"`
@@ -106,27 +107,43 @@ type Requirement struct {
 	Change            string     `json:"change,omitempty"`
 }
 type Artifact struct {
-	CriteriaRequirementIDs []string        `json:"criteria_requirement_ids,omitempty"`
-	Kind                   string          `json:"kind,omitempty"`
-	TestPlan               *TestPlan       `json:"test_plan,omitempty"`
-	Proposal               *DraftProposal  `json:"proposal,omitempty"`
-	ID                     uuid.UUID       `json:"id"`
-	Title                  string          `json:"title"`
-	AgentPrompt            string          `json:"agent_prompt"`
-	Blueprint              json.RawMessage `json:"blueprint"`
-	SourceMessageID        uuid.UUID       `json:"source_message_id"`
-	ParentID               *uuid.UUID      `json:"parent_id,omitempty"`
-	Accepted               bool            `json:"accepted"`
-	CreatedAt              time.Time       `json:"created_at"`
+	PolicyID               *uuid.UUID              `json:"policy_id,omitempty"`
+	Validation             *SuiteValidation        `json:"validation,omitempty"`
+	Provenance             string                  `json:"provenance,omitempty"`
+	Dismissed              bool                    `json:"dismissed,omitempty"`
+	ProposalMessageID      *uuid.UUID              `json:"proposal_message_id,omitempty"`
+	QuickCheck             bool                    `json:"quick_check,omitempty"`
+	ConversationEvaluation *ConversationEvaluation `json:"conversation_evaluation,omitempty"`
+	Summary                string                  `json:"summary,omitempty"`
+	CriteriaRequirementIDs []string                `json:"criteria_requirement_ids,omitempty"`
+	Kind                   string                  `json:"kind,omitempty"`
+	TestPlan               *TestPlan               `json:"test_plan,omitempty"`
+	Proposal               *DraftProposal          `json:"proposal,omitempty"`
+	ID                     uuid.UUID               `json:"id"`
+	Title                  string                  `json:"title"`
+	AgentPrompt            string                  `json:"agent_prompt"`
+	Blueprint              json.RawMessage         `json:"blueprint"`
+	SourceMessageID        uuid.UUID               `json:"source_message_id"`
+	ParentID               *uuid.UUID              `json:"parent_id,omitempty"`
+	Accepted               bool                    `json:"accepted"`
+	CreatedAt              time.Time               `json:"created_at"`
 }
 type Document struct {
-	Journey          Journey       `json:"journey,omitempty"`
-	AttachmentCount  int           `json:"attachment_count"`
-	Messages         []Message     `json:"messages"`
-	Requirements     []Requirement `json:"requirements"`
-	Artifacts        []Artifact    `json:"artifacts"`
-	Models           Models        `json:"models"`
-	ActiveArtifactID *uuid.UUID    `json:"active_artifact_id,omitempty"`
+	SourceConfirmation   *SourceConfirmation   `json:"source_confirmation,omitempty"`
+	Policies             []PolicySnapshot      `json:"policies,omitempty"`
+	SourceCoverage       []SourceCoverage      `json:"source_coverage,omitempty"`
+	PendingPolicyChanges []PendingPolicyChange `json:"pending_policy_changes,omitempty"`
+	TestJourney          bool                  `json:"test_journey,omitempty"`
+	EvaluationFirst      bool                  `json:"evaluation_first,omitempty"`
+	EvidenceSets         []EvidenceSet         `json:"evidence_sets,omitempty"`
+	ActiveEvidenceID     *uuid.UUID            `json:"active_evidence_id,omitempty"`
+	Journey              Journey               `json:"journey,omitempty"`
+	AttachmentCount      int                   `json:"attachment_count"`
+	Messages             []Message             `json:"messages"`
+	Requirements         []Requirement         `json:"requirements"`
+	Artifacts            []Artifact            `json:"artifacts"`
+	Models               Models                `json:"models"`
+	ActiveArtifactID     *uuid.UUID            `json:"active_artifact_id,omitempty"`
 }
 type Session struct {
 	EventCursor     int64       `json:"event_cursor"`
@@ -144,23 +161,28 @@ type Session struct {
 	SavedModels     *Models     `json:"saved_models,omitempty"`
 }
 type Operation struct {
-	BaselineID *uuid.UUID      `json:"baseline_id,omitempty"`
-	ID         uuid.UUID       `json:"id"`
-	SessionID  uuid.UUID       `json:"session_id"`
-	Actor      string          `json:"-"`
-	Kind       string          `json:"kind"`
-	State      Execution       `json:"state"`
-	Billing    BillingState    `json:"billing"`
-	Models     Models          `json:"models"`
-	Input      json.RawMessage `json:"-"`
-	MaxCost    int64           `json:"max_cost_nano_usd"`
-	ActualCost *int64          `json:"actual_cost_nano_usd"`
-	ModelCalls int             `json:"model_calls"`
-	Error      *Fault          `json:"error,omitempty"`
-	Results    []CaseResult    `json:"results"`
-	Scorecard  *Scorecard      `json:"scorecard,omitempty"`
-	CreatedAt  time.Time       `json:"created_at"`
-	Deadline   time.Time       `json:"deadline"`
+	Completion         *CompletionReceipt    `json:"completion_receipt,omitempty"`
+	RetryOfOperationID *uuid.UUID            `json:"retry_of_operation_id,omitempty"`
+	Retryable          bool                  `json:"retryable,omitempty"`
+	Decision           *ConversationDecision `json:"conversation_decision,omitempty"`
+	Source             *EvaluationSource     `json:"source,omitempty"`
+	BaselineID         *uuid.UUID            `json:"baseline_id,omitempty"`
+	ID                 uuid.UUID             `json:"id"`
+	SessionID          uuid.UUID             `json:"session_id"`
+	Actor              string                `json:"-"`
+	Kind               string                `json:"kind"`
+	State              Execution             `json:"state"`
+	Billing            BillingState          `json:"billing"`
+	Models             Models                `json:"models"`
+	Input              json.RawMessage       `json:"-"`
+	MaxCost            int64                 `json:"max_cost_nano_usd"`
+	ActualCost         *int64                `json:"actual_cost_nano_usd"`
+	ModelCalls         int                   `json:"model_calls"`
+	Error              *Fault                `json:"error,omitempty"`
+	Results            []CaseResult          `json:"results"`
+	Scorecard          *Scorecard            `json:"scorecard,omitempty"`
+	CreatedAt          time.Time             `json:"created_at"`
+	Deadline           time.Time             `json:"deadline"`
 }
 type Verdict string
 
@@ -171,20 +193,26 @@ const (
 )
 
 type CheckResult struct {
-	Key      string  `json:"key"`
-	Verdict  Verdict `json:"verdict"`
-	Evidence string  `json:"evidence"`
-	Error    *Fault  `json:"error,omitempty"`
+	MessageIDs []string `json:"message_ids,omitempty"`
+	Key        string   `json:"key"`
+	Verdict    Verdict  `json:"verdict"`
+	Evidence   string   `json:"evidence"`
+	Error      *Fault   `json:"error,omitempty"`
 }
 type CaseResult struct {
-	ExpectedChecks int             `json:"expected_checks"`
-	CaseKey        string          `json:"case_key"`
-	Version        string          `json:"version"`
-	Input          json.RawMessage `json:"input"`
-	Output         string          `json:"output"`
-	Verdict        Verdict         `json:"verdict"`
-	Checks         []CheckResult   `json:"checks"`
-	Error          *Fault          `json:"error,omitempty"`
+	Expectations   []Expectation     `json:"expectations,omitempty"`
+	Title          string            `json:"title,omitempty"`
+	Messages       []EvidenceMessage `json:"messages,omitempty"`
+	ExpectedScope  string            `json:"expected_scope,omitempty"`
+	Expected       string            `json:"expected,omitempty"`
+	ExpectedChecks int               `json:"expected_checks"`
+	CaseKey        string            `json:"case_key"`
+	Version        string            `json:"version"`
+	Input          json.RawMessage   `json:"input"`
+	Output         string            `json:"output"`
+	Verdict        Verdict           `json:"verdict"`
+	Checks         []CheckResult     `json:"checks"`
+	Error          *Fault            `json:"error,omitempty"`
 }
 type Scorecard struct {
 	ChecksExpected  int      `json:"checks_expected"`

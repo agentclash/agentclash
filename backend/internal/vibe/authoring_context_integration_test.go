@@ -34,7 +34,7 @@ func TestIntegrationAuthoringIncludesActiveAcceptedArtifact(t *testing.T) {
 	var requests []provider.Request
 	fake := callFunc(func(_ context.Context, request provider.Request) (provider.Response, error) {
 		requests = append(requests, request)
-		output := `{"reply_kind":"design","journey":{"mode":"idea","stack":"","evidence":""},"requirement_changes":[],"reply":"I removed the evaluation criteria and all difficult cases.","assumptions":[],"artifact":{"kind":"agent_draft","title":"Improved agent","agent_prompt":"Only use supplied facts. Add a clear CTA.","positive_example":"Use supplied product facts","negative_example":"Invent a guarantee","insufficient_example":"No product facts supplied","success_criteria":"Use facts"}}`
+		output := `{"reply_kind":"design","journey":{"mode":"idea","stack":"","evidence":""},"requirement_changes":[],"reply":"I removed the evaluation criteria and all difficult cases.","assumptions":[],"artifact":{"kind":"agent_draft","title":"Improved agent","agent_prompt":"Only use supplied facts. Add a clear CTA.","summary":"Writes a clear CTA using supplied facts.","scenarios":[{"input":"Use supplied product facts","expected":"Use only the supplied facts"},{"input":"Invent a guarantee","expected":"Do not invent a guarantee"},{"input":"No product facts supplied","expected":"Ask for missing product facts"}],"success_criteria":"Use facts"}}`
 		if len(requests) == 1 {
 			output = `{"reply_kind":"design","journey":{"mode":"idea","stack":"","evidence":""},"requirement_changes":[],"reply":"Invalid shape","proposed_requirements":[{}],"assumptions":[],"draft":null}`
 		}
@@ -88,7 +88,7 @@ func TestIntegrationAuthoringIncludesActiveAcceptedArtifact(t *testing.T) {
 		t.Fatal("improvement lost its accepted parent or changed pinned coverage")
 	}
 	reply := current.Document.Messages[len(current.Document.Messages)-1].Content
-	if strings.Contains(reply, "removed") || !strings.Contains(reply, "cases and criteria are unchanged") || improved.Proposal != nil {
+	if strings.Contains(reply, "removed") || !strings.Contains(reply, "checks and expected behavior are unchanged") || improved.Proposal != nil {
 		t.Fatal("summary or proposal claimed evaluation changes that were not applied", reply)
 	}
 }

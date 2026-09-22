@@ -14,7 +14,15 @@ import (
 	"time"
 )
 
-type Store struct{ DB *pgxpool.Pool }
+type Store struct {
+	DB           *pgxpool.Pool
+	localTesting bool
+}
+
+func NewStore(db *pgxpool.Pool, cfg Config) *Store {
+	return &Store{DB: db, localTesting: cfg.TestingLocally()}
+}
+
 type dbQuery interface {
 	QueryRow(context.Context, string, ...any) pgx.Row
 }
@@ -111,7 +119,7 @@ func (s *Store) CreateSession(ctx context.Context, actor string, ws *uuid.UUID, 
 		if err := tx.QueryRow(ctx, "SELECT count(*) FROM vibe_sessions WHERE actor=$1", actor).Scan(&count); err != nil {
 			return err
 		}
-		if count >= 100 {
+		if !s.localTesting && count >= 100 {
 			return fault("session_limit", "Conversation limit reached.")
 		}
 		d := Document{Messages: []Message{}, Requirements: []Requirement{}, Artifacts: []Artifact{}, Models: DefaultModels()}
@@ -169,7 +177,7 @@ func (s *Store) GetSession(ctx context.Context, actor string, id uuid.UUID) (Ses
 			}
 		}
 	}
-	rows, err := tx.Query(ctx, operationSummarySelect+" WHERE session_id=$1 ORDER BY created_at LIMIT 100", id)
+	rows, err := tx.Query(ctx, operationSummarySelect+" WHERE session_id=$1 ORDER BY created_at", id)
 	if err != nil {
 		return v, err
 	}
@@ -191,6 +199,9 @@ func (s *Store) GetSession(ctx context.Context, actor string, id uuid.UUID) (Ses
 			return v, err
 		}
 	}
+	if err = s.populateRetryEligibility(ctx, tx, &v); err != nil {
+		return v, err
+	}
 	if err = tx.QueryRow(ctx, "SELECT COALESCE(max(id),0) FROM vibe_events WHERE session_id=$1", id).Scan(&v.EventCursor); err != nil {
 		return v, err
 	}
@@ -199,13 +210,13 @@ func (s *Store) GetSession(ctx context.Context, actor string, id uuid.UUID) (Ses
 
 type scanner interface{ Scan(...any) error }
 
-const operationSelect = `SELECT id,session_id,actor,kind,state,billing,models,input,max_cost,actual_cost,model_calls,error,created_at,deadline FROM vibe_operations`
-const operationSummarySelect = `SELECT id,session_id,actor,kind,state,billing,models,jsonb_build_object('submission',jsonb_build_object('baseline_id',input#>'{submission,baseline_id}')),max_cost,actual_cost,model_calls,error,created_at,deadline FROM vibe_operations`
+const operationSelect = `SELECT id,session_id,actor,kind,state,billing,models,input,max_cost,actual_cost,model_calls,error,created_at,deadline,conversation_decision,completion_receipt FROM vibe_operations`
+const operationSummarySelect = `SELECT id,session_id,actor,kind,state,billing,models,jsonb_build_object('source',input->'source','authoring_version',input->'authoring_version','submission',jsonb_build_object('baseline_id',input#>'{submission,baseline_id}','retry_of',input#>'{submission,retry_of}')),max_cost,actual_cost,model_calls,error,created_at,deadline,conversation_decision,completion_receipt FROM vibe_operations`
 
 func scanOperation(row scanner) (Operation, error) {
 	var o Operation
-	var models, issue []byte
-	err := row.Scan(&o.ID, &o.SessionID, &o.Actor, &o.Kind, &o.State, &o.Billing, &models, &o.Input, &o.MaxCost, &o.ActualCost, &o.ModelCalls, &issue, &o.CreatedAt, &o.Deadline)
+	var models, issue, decision, completion []byte
+	err := row.Scan(&o.ID, &o.SessionID, &o.Actor, &o.Kind, &o.State, &o.Billing, &models, &o.Input, &o.MaxCost, &o.ActualCost, &o.ModelCalls, &issue, &o.CreatedAt, &o.Deadline, &decision, &completion)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return o, fault("not_found", "Operation is unavailable.")
 	}
@@ -219,7 +230,19 @@ func scanOperation(row scanner) (Operation, error) {
 	if err = json.Unmarshal(o.Input, &p); err != nil {
 		return o, err
 	}
+	if len(decision) > 0 {
+		if err = json.Unmarshal(decision, &o.Decision); err != nil {
+			return o, err
+		}
+	}
+	if len(completion) > 0 {
+		if err = json.Unmarshal(completion, &o.Completion); err != nil {
+			return o, err
+		}
+	}
 	o.BaselineID = p.Submission.BaselineID
+	o.RetryOfOperationID = p.Submission.RetryOf
+	o.Source = p.Source
 	if len(issue) > 0 {
 		err = json.Unmarshal(issue, &o.Error)
 	}
@@ -233,7 +256,7 @@ func (s *Store) loadResults(ctx context.Context, tx pgx.Tx, o *Operation) error 
 	// Snapshots contain bounded verdict metadata. Full untrusted evidence is
 	// fetched per case, so a long conversation cannot amplify every SSE tick.
 	rows, err := tx.Query(ctx, `SELECT jsonb_build_object('case_key',case_key,'version',version,
- 'verdict',result->'verdict','expected_checks',result->'expected_checks','error',result->'error',
+ 'title',result->'title','verdict',result->'verdict','expected_checks',result->'expected_checks','error',result->'error',
  'checks',COALESCE((SELECT jsonb_agg(jsonb_build_object('key',c->'key','verdict',c->'verdict')) FROM jsonb_array_elements(result->'checks') c),'[]'::jsonb))
  FROM vibe_case_results WHERE operation_id=$1 ORDER BY version,case_key`, o.ID)
 	if err != nil {
@@ -289,6 +312,40 @@ func (s *Store) GetCase(ctx context.Context, actor string, id uuid.UUID, key str
 	if err = json.Unmarshal(data, &result); err != nil {
 		return result, err
 	}
+	if result.Expected == "" {
+		// Older runs stored a shared rule, not per-case expectations. Recover
+		// only their frozen declaration; never use the currently edited agent.
+		var plan Plan
+		if json.Unmarshal(o.Input, &plan) == nil && plan.Artifact != nil {
+			type rule struct {
+				Assertion string `json:"assertion"`
+				Rubric    string `json:"rubric"`
+			}
+			var contract struct {
+				Judges  []rule `json:"judges"`
+				Version struct {
+					EvaluationSpec struct {
+						Judges []rule `json:"llm_judges"`
+					} `json:"evaluation_spec"`
+				} `json:"version"`
+			}
+			if json.Unmarshal(plan.Artifact.Blueprint, &contract) == nil {
+				judges := contract.Judges
+				if len(judges) == 0 {
+					judges = contract.Version.EvaluationSpec.Judges
+				}
+				if len(judges) == 1 {
+					result.Expected = judges[0].Assertion
+					if result.Expected == "" {
+						result.Expected = judges[0].Rubric
+					}
+					if result.Expected != "" {
+						result.ExpectedScope = "shared"
+					}
+				}
+			}
+		}
+	}
 	return result, tx.Commit(ctx)
 }
 func event(ctx context.Context, tx pgx.Tx, session uuid.UUID, op *uuid.UUID, kind string) error {
@@ -310,8 +367,8 @@ func transition(ctx context.Context, tx pgx.Tx, id uuid.UUID, to Execution) erro
 	}
 	return event(ctx, tx, session, &id, "state."+string(to))
 }
-func updateDocument(ctx context.Context, tx pgx.Tx, v Session) error {
-	if len(v.Document.Messages) > MaxConversationMessages || len(v.Document.Artifacts) > MaxRevisions || len(v.Document.Requirements) > MaxRequirements {
+func (s *Store) updateDocument(ctx context.Context, tx pgx.Tx, v Session) error {
+	if !s.localTesting && (len(v.Document.Messages) > MaxConversationMessages || len(v.Document.Artifacts) > MaxRevisions || len(v.Document.Requirements) > MaxRequirements) {
 		return fault("conversation_limit", "This conversation has reached its storage limit. Save your work and start a new conversation.")
 	}
 	// Include generated and revised artifacts, not just uploaded files. The
@@ -320,7 +377,7 @@ func updateDocument(ctx context.Context, tx pgx.Tx, v Session) error {
 	for _, a := range v.Document.Artifacts {
 		artifactBytes += len(raw(a))
 	}
-	if artifactBytes > LimitsFor(v.Anonymous).StoredBytes {
+	if !s.localTesting && artifactBytes > LimitsFor(v.Anonymous).StoredBytes {
 		return fault("conversation_limit", "This conversation has reached its artifact storage limit. Export or save it before starting another.")
 	}
 	var documentBytes int
@@ -358,7 +415,7 @@ func (s *Store) Edit(ctx context.Context, actor string, id uuid.UUID, revision i
 		if err = fn(&v); err != nil {
 			return err
 		}
-		if err = updateDocument(ctx, tx, v); err != nil {
+		if err = s.updateDocument(ctx, tx, v); err != nil {
 			return err
 		}
 		return event(ctx, tx, id, nil, "document.updated")
@@ -403,7 +460,7 @@ func (s *Store) Cursor(ctx context.Context, session uuid.UUID) (int64, error) {
 	return id, err
 }
 
-func (s *Store) SaveDraft(ctx context.Context, actor string, id uuid.UUID, revision int64, ws uuid.UUID, artifact Artifact, composition json.RawMessage, models Models, explicitModels bool) (uuid.UUID, error) {
+func (s *Store) SaveDraft(ctx context.Context, actor string, id uuid.UUID, revision int64, ws uuid.UUID, artifact Artifact, composition json.RawMessage, models Models, explicitModels bool, approve ...bool) (uuid.UUID, error) {
 	var draftID uuid.UUID
 	err := s.transaction(ctx, func(tx pgx.Tx) error {
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
@@ -458,28 +515,37 @@ func (s *Store) SaveDraft(ctx context.Context, actor string, id uuid.UUID, revis
 		if err != nil {
 			return err
 		}
-		var buildID uuid.UUID
-		err = tx.QueryRow(ctx, "SELECT build_id FROM vibe_saved_artifacts WHERE session_id=$1 ORDER BY created_at LIMIT 1", id).Scan(&buildID)
-		if errors.Is(err, pgx.ErrNoRows) {
-			buildID = uuid.New()
-			_, err = tx.Exec(ctx, "INSERT INTO agent_builds(id,organization_id,workspace_id,name,slug,created_by_user_id) SELECT $1,organization_id,id,$3,$4,$5 FROM workspaces WHERE id=$2", buildID, ws, artifact.Title, "vibe-"+buildID.String(), uid)
-		}
-		if err != nil {
-			return err
-		}
-		versionID := uuid.New()
-		_, err = tx.Exec(ctx, `INSERT INTO agent_build_versions(id,agent_build_id,version_number,policy_spec,model_spec,created_by_user_id)
+		var savedBuildID, savedVersionID *uuid.UUID
+		if !artifact.IsTestSuite() {
+			var buildID uuid.UUID
+			err = tx.QueryRow(ctx, "SELECT build_id FROM vibe_saved_artifacts WHERE session_id=$1 AND build_id IS NOT NULL ORDER BY created_at LIMIT 1", id).Scan(&buildID)
+			if errors.Is(err, pgx.ErrNoRows) {
+				buildID = uuid.New()
+				_, err = tx.Exec(ctx, "INSERT INTO agent_builds(id,organization_id,workspace_id,name,slug,created_by_user_id) SELECT $1,organization_id,id,$3,$4,$5 FROM workspaces WHERE id=$2", buildID, ws, artifact.Title, "vibe-"+buildID.String(), uid)
+			}
+			if err != nil {
+				return err
+			}
+			versionID := uuid.New()
+			_, err = tx.Exec(ctx, `INSERT INTO agent_build_versions(id,agent_build_id,version_number,policy_spec,model_spec,created_by_user_id)
           SELECT $1,$2,COALESCE(max(version_number),0)+1,$3,$4,$5 FROM agent_build_versions WHERE agent_build_id=$2`, versionID, buildID, raw(map[string]any{"instructions": artifact.AgentPrompt}), raw(map[string]any{"provider": "openrouter", "model": models.Target, "vibe_source_artifact_id": artifact.ID}), uid)
-		if err != nil {
-			return err
+			if err != nil {
+				return err
+			}
+			savedBuildID, savedVersionID = &buildID, &versionID
 		}
 		// The canonical model_spec is editable. Record the selected roles only
 		// in Vibe's immutable save receipt, in the same transaction as the draft.
-		_, err = tx.Exec(ctx, "INSERT INTO vibe_saved_artifacts(session_id,artifact_id,workspace_id,draft_id,build_id,build_version_id,saved_models) VALUES($1,$2,$3,$4,$5,$6,$7)", id, artifact.ID, ws, draftID, buildID, versionID, raw(models))
+		_, err = tx.Exec(ctx, "INSERT INTO vibe_saved_artifacts(session_id,artifact_id,workspace_id,draft_id,build_id,build_version_id,saved_models) VALUES($1,$2,$3,$4,$5,$6,$7)", id, artifact.ID, ws, draftID, savedBuildID, savedVersionID, raw(models))
 		if err != nil {
 			return err
 		}
 		v.Document.Models = models
+		if len(approve) > 0 && approve[0] {
+			if err = acceptArtifact(&v, &artifact.ID); err != nil {
+				return err
+			}
+		}
 		_, err = tx.Exec(ctx, "UPDATE vibe_sessions SET workspace_id=$2,saved_draft_id=$3,document=$4,revision=revision+1,updated_at=now() WHERE id=$1", id, ws, draftID, raw(v.Document))
 		if err != nil {
 			return err

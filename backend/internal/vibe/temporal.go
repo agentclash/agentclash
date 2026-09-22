@@ -77,14 +77,14 @@ func NewWorker(c client.Client, r *Runner) worker.Worker {
 		if code != "" {
 			issue = &Fault{Code: code, Message: "Execution was interrupted. Saved evidence remains available; uncertain provider calls will not be repeated."}
 		}
-		return r.Service.Store.Finish(ctx, uid, issue)
+		return r.Finalize(ctx, uid, issue)
 	}, activity.RegisterOptions{Name: "vibe.finalize"})
 	w.RegisterActivityWithOptions(func(ctx context.Context, id string, issue *Fault) error {
 		uid, err := uuid.Parse(id)
 		if err != nil {
 			return err
 		}
-		return r.Service.Store.Finish(ctx, uid, issue)
+		return r.Finalize(ctx, uid, issue)
 	}, activity.RegisterOptions{Name: "vibe.finalize-with-fault"})
 	return w
 }

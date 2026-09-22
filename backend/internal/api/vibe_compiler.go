@@ -19,18 +19,32 @@ type VibePackCompiler struct{}
 // Editing a semantic preview must never discard imported validators, judges,
 // dimensions or payload fields. Only a lossless generated-shape round trip is
 // eligible; other contracts remain available in the advanced builder.
-func canEditVibeEvaluation(content json.RawMessage, l vibe.Limits) bool {
+func canEditVibeEvaluation(content json.RawMessage, l vibe.Limits, testsOnly bool) bool {
 	var b generatedPackBlueprint
 	if json.Unmarshal(content, &b) != nil || len(b.Judges) != 1 {
 		return false
 	}
-	p := vibe.DraftProposal{Title: b.Name, AgentPrompt: b.Instructions, SuccessCriteria: b.Judges[0].Assertion}
+	p := vibe.DraftProposal{TestsOnly: testsOnly, Title: b.Name, Summary: b.Description, AgentPrompt: b.Instructions, SuccessCriteria: b.Judges[0].Assertion}
+	if len(b.Judges[0].ContextFrom) > 0 {
+		p.SuccessCriteria = strings.TrimPrefix(p.SuccessCriteria, vibe.ScenarioCriteriaPrefix)
+	}
 	for _, c := range b.Cases {
 		input, ok := c.Payload["question"].(string)
 		if !ok {
 			return false
 		}
-		p.Examples = append(p.Examples, input)
+		if len(b.Judges[0].ContextFrom) > 0 {
+			if len(c.Expectations) != 1 || c.Expectations[0].Key != vibe.ExpectedBehaviorKey {
+				return false
+			}
+			expected, ok := c.Expectations[0].Value.(string)
+			if !ok {
+				return false
+			}
+			p.Scenarios = append(p.Scenarios, vibe.TestScenario{Input: input, Expected: expected})
+		} else {
+			p.Examples = append(p.Examples, input)
+		}
 	}
 	roundtrip, err := (VibePackCompiler{}).Draft(p, l)
 	if err != nil {
@@ -50,11 +64,35 @@ Use one to three examples, each a string containing only what the target agent s
 // cannot invent scoring enums, regex syntax, global phrase checks or references.
 // Compile below still rejects invalid coverage and reuses #1245's composition.
 func (VibePackCompiler) Draft(a vibe.DraftProposal, l vibe.Limits) (json.RawMessage, error) {
+	if a.TestsOnly {
+		// The case task is separate from the tested agent's instructions.
+		a.AgentPrompt = "{{question}}"
+	}
+	if len(a.Scenarios) > 0 {
+		if len(a.Examples) > 0 {
+			return nil, fmt.Errorf("provide scenarios or legacy examples, not both")
+		}
+		for _, scenario := range a.Scenarios {
+			if strings.TrimSpace(scenario.Expected) == "" || len(scenario.Expected) > 4096 {
+				return nil, fmt.Errorf("each situation needs expected behavior of at most 4096 bytes")
+			}
+			if err := vibe.ValidatePreviewCriteria(scenario.Expected); err != nil {
+				return nil, err
+			}
+			a.Examples = append(a.Examples, scenario.Input)
+		}
+	}
 	if strings.TrimSpace(a.Title) == "" || len(a.Title) > vibe.MaxKeyBytes || strings.TrimSpace(a.AgentPrompt) == "" || len(a.AgentPrompt) > l.MessageBytes {
 		return nil, fmt.Errorf("a bounded title and agent prompt are required")
 	}
-	if len(a.Examples) < 1 || len(a.Examples) > min(3, l.Cases) {
-		return nil, fmt.Errorf("a conversational preview requires one to three examples; no examples were removed")
+	maxCases := min(3, l.Cases)
+	if a.TestsOnly {
+		// The v9/v10 authoring validators retain their historical count
+		// contracts. New test suites use the count admitted by their caller.
+		maxCases = l.Cases
+	}
+	if len(a.Examples) < 1 || len(a.Examples) > maxCases {
+		return nil, fmt.Errorf("this preview requires between one and %d examples; no examples were removed", maxCases)
 	}
 	if strings.TrimSpace(a.SuccessCriteria) == "" || len(a.SuccessCriteria) > 4096 {
 		return nil, fmt.Errorf("success_criteria must be a nonempty string of at most 4096 bytes")
@@ -69,11 +107,22 @@ func (VibePackCompiler) Draft(a vibe.DraftProposal, l vibe.Limits) (json.RawMess
 			{Key: "behavior_correctness", Source: scoring.DimensionSourceLLMJudge, JudgeKey: "behavior"},
 		},
 	}
+	if len(a.Scenarios) > 0 {
+		p.Judges[0].ContextFrom = []string{vibe.ExpectedBehaviorReference}
+		p.Judges[0].Assertion = vibe.ScenarioCriteriaPrefix + a.SuccessCriteria
+	}
+	if a.TestsOnly {
+		p.Description = a.Summary
+	}
 	for i, example := range a.Examples {
 		if strings.TrimSpace(example) == "" || len(example) > l.MessageBytes {
 			return nil, fmt.Errorf("example %d must be a nonempty bounded string; no examples were removed", i+1)
 		}
-		p.Cases = append(p.Cases, generatedPackCase{Key: fmt.Sprintf("case-%d", i+1), Payload: map[string]any{"question": example}})
+		c := generatedPackCase{Key: fmt.Sprintf("case-%d", i+1), Payload: map[string]any{"question": example}}
+		if len(a.Scenarios) > 0 {
+			c.Expectations = []challengepack.CaseExpectation{{Key: vibe.ExpectedBehaviorKey, Kind: "text", Value: a.Scenarios[i].Expected}}
+		}
+		p.Cases = append(p.Cases, c)
 	}
 	return json.Marshal(p)
 }
@@ -167,7 +216,7 @@ func (VibePackCompiler) Compile(content json.RawMessage, evaluator string, id uu
 		if j.Mode != scoring.JudgeMethodAssertion && j.Mode != scoring.JudgeMethodRubric {
 			return out, fmt.Errorf("this evaluator needs evidence unavailable to the text preview")
 		}
-		if len(j.ContextFrom) > 0 || len(j.OutputSchema) > 0 || j.Consensus != nil || j.ReferenceFrom != "" {
+		if (len(j.ContextFrom) > 0 && (len(j.ContextFrom) != 1 || j.ContextFrom[0] != vibe.ExpectedBehaviorReference)) || len(j.OutputSchema) > 0 || j.Consensus != nil || j.ReferenceFrom != "" {
 			return out, fmt.Errorf("this evaluator has context or schema requirements unavailable in a text preview; no evaluators were removed")
 		}
 		j.Model = evaluator // explicit role policy, never the authoring/target model
@@ -220,6 +269,27 @@ func (VibePackCompiler) Compile(content json.RawMessage, evaluator string, id uu
 		return out, err
 	}
 	for _, c := range out.Cases {
+		for _, judge := range normalized.LLMJudges {
+			if len(judge.ContextFrom) > 0 {
+				expected := vibe.ExpectedBehavior(c)
+				count := 0
+				for _, e := range c.Expectations {
+					if e.Key == vibe.ExpectedBehaviorKey {
+						count++
+						if e.Kind != "text" || e.ArtifactKey != "" {
+							return out, fmt.Errorf("case %s requires a text expectation", c.CaseKey)
+						}
+					}
+				}
+				if count != 1 || strings.TrimSpace(expected) == "" || len(expected) > 4096 {
+					return out, fmt.Errorf("case %s has no unique, bounded expected behavior", c.CaseKey)
+				}
+				value, _, e := scoring.ResolveEvidenceValueForJudge(vibe.ExpectedBehaviorReference, scoring.EvaluationInput{ChallengeInputs: []scoring.EvidenceInput{vibe.CaseEvidence(c)}})
+				if e != nil || value == nil || *value != expected {
+					return out, fmt.Errorf("case %s has unavailable expected behavior", c.CaseKey)
+				}
+			}
+		}
 		if len(vibe.TargetInput(c, normalized)) == 0 {
 			return out, fmt.Errorf("case %s has no safe target inputs after withholding expected answers; payload paths must resolve without removing the whole input", c.CaseKey)
 		}

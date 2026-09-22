@@ -1,0 +1,444 @@
+{
+  "provenance": "Sanitized 2026-09-15 local diagnosis. Only original task text and model output/blueprints retained; no session/account/provider credentials or call receipts. These capture old failures, not new validation results.",
+  "fixtures": [
+    {
+      "id": "multiline-quote-and-empty-reply",
+      "request": "My agent answers questions about shop returns.\n\nOnly unopened items bought within 30 days are eligible.\nAsk only for missing purchase age or item condition.\nNever claim to process a refund.\n\nPrepare three tests:\n- Unopened item bought 10 days ago.\n- Opened item bought 10 days ago.\n- Customer asks for a return without any details.\n",
+      "provider_outputs": [
+        " {\n  \"intent\": \"prepare_tests\",\n  \"reply\": \"I'll prepare those three tests for your returns agent.\"\n}",
+        "{\n  \"case_changes\": [],\n  \"criteria\": null,\n  \"instruction_edits\": [],\n  \"intent\": \"prepare_tests\",\n  \"remember\": [\n    {\n      \"quote\": \"Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.\",\n      \"supersedes_id\": \"\"\n    }\n  ],\n  \"reply\": \"I’ll prepare those three tests now.\",\n  \"tests\": {\n    \"scenarios\": [\n      {\n        \"expected\": \"Confirm eligibility and state that a refund can be offered, without claiming to process it.\",\n        \"input\": \"I bought this unopened item 10 days ago. Can I return it?\"\n      },\n      {\n        \"expected\": \"Explain that opened items are not eligible under the 30-day unopened policy.\",\n        \"input\": \"I bought this item 10 days ago, but I opened it. Can I return it?\"\n      },\n      {\n        \"expected\": \"Ask only for the missing purchase age and item condition, without claiming to process a refund.\",\n        \"input\": \"I want to return something.\"\n      }\n    ],\n    \"success_criteria\": \"For each scenario, the agent must follow the stated return policy, ask only for missing required details, and never claim to process a refund.\",\n    \"summary\": \"Tests for the shop-returns agent covering eligible, ineligible, and missing-information cases.\",\n    \"title\": \"Shop returns policy tests\"\n  }\n}",
+        " {\"case_changes\":[],\"criteria\":null,\"instruction_edits\":[],\"intent\":\"prepare_tests\",\"remember\":[],\"reply\":\"\",\"tests\":{\"scenarios\":[{\"expected\":\"Confirm eligibility and state that the item is unopened and within 30 days. Do not claim to process a refund.\",\"input\":\"I bought this unopened item 10 days ago. Can I return it?\"},{\"expected\":\"State that opened items are not eligible for return. Do not claim to process a refund.\",\"input\":\"I bought this item 10 days ago, but I opened it. Can I return it?\"},{\"expected\":\"Ask for the purchase date and whether the item is unopened. Do not claim to process a refund.\",\"input\":\"I want to return an item.\"}],\"success_criteria\":\"For each scenario, the agent must follow the stated eligibility rule, ask only for missing purchase age or item condition, and never claim to process a refund.\",\"summary\":\"Tests cover an eligible unopened item, an ineligible opened item, and a request missing all required details.\",\"title\":\"Shop return eligibility and information gathering\"}}"
+      ],
+      "regression_expectation": "Optional quote formatting and presentation must not erase valid domain work."
+    },
+    {
+      "id": "unsupported-refund-assurance",
+      "request": "My agent answers questions about shop returns. Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund. Prepare three tests: Unopened item bought 10 days ago; opened item bought 10 days ago; customer asks for a return without any details.",
+      "provider_outputs": [
+        "{\n  \"intent\": \"prepare_tests\",\n  \"reply\": \"I'll prepare those three tests for your returns agent.\"\n}",
+        "{\"case_changes\":[],\"criteria\":null,\"instruction_edits\":[],\"intent\":\"prepare_tests\",\"remember\":[],\"reply\":\"I'll prepare those three tests now.\",\"tests\":{\"scenarios\":[{\"expected\":\"Confirm eligibility and state that a refund can be processed, without claiming to process it.\",\"input\":\"I bought an unopened item 10 days ago. Can I return it?\"},{\"expected\":\"State that opened items are not eligible for return, regardless of purchase date.\",\"input\":\"I bought an opened item 10 days ago. Can I return it?\"},{\"expected\":\"Ask for the purchase date and whether the item is unopened, without claiming to process a refund.\",\"input\":\"I'd like to return an item.\"}],\"success_criteria\":\"For each scenario, the agent must follow the stated rules: only unopened items bought within 30 days are eligible; ask only for missing purchase age or item condition; never claim to process a refund.\",\"summary\":\"Tests cover eligible, ineligible, and missing-information cases for shop returns.\",\"title\":\"Shop return eligibility tests\"}}"
+      ],
+      "regression_expectation": "Required refund-processing assurance is unsupported by the source.",
+      "captured_blueprint": {
+        "name": "Shop return eligibility tests",
+        "slug": "agent-check",
+        "cases": [
+          {
+            "key": "case-1",
+            "payload": {
+              "question": "I bought an unopened item 10 days ago. Can I return it?"
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "Confirm eligibility and state that a refund can be processed, without claiming to process it."
+              }
+            ]
+          },
+          {
+            "key": "case-2",
+            "payload": {
+              "question": "I bought an opened item 10 days ago. Can I return it?"
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "State that opened items are not eligible for return, regardless of purchase date."
+              }
+            ]
+          },
+          {
+            "key": "case-3",
+            "payload": {
+              "question": "I'd like to return an item."
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "Ask for the purchase date and whether the item is unopened, without claiming to process a refund."
+              }
+            ]
+          }
+        ],
+        "judges": [
+          {
+            "key": "behavior",
+            "mode": "assertion",
+            "rubric": "",
+            "assertion": "The response meets this case's expected_behavior and the following shared rules:\n\nFor each scenario, the agent must follow the stated rules: only unopened items bought within 30 days are eligible; ask only for missing purchase age or item condition; never claim to process a refund.",
+            "context_from": [
+              "case.expectations.expected_behavior"
+            ]
+          }
+        ],
+        "difficulty": "easy",
+        "dimensions": [
+          {
+            "key": "output_present",
+            "source": "validators",
+            "validators": [
+              "has_answer"
+            ]
+          },
+          {
+            "key": "behavior_correctness",
+            "source": "llm_judge",
+            "judge_key": "behavior"
+          }
+        ],
+        "validators": [
+          {
+            "key": "has_answer",
+            "type": "regex_match",
+            "target": "final_output",
+            "expected_from": "literal:.+"
+          }
+        ],
+        "description": "Tests cover eligible, ineligible, and missing-information cases for shop returns.",
+        "instructions": "{{question}}"
+      }
+    },
+    {
+      "id": "five-requested-three-generated",
+      "request": "My sales assistant answers pricing questions. It must never invent prices or promise discounts. If pricing information is missing, it should ask for the pricing page. Prepare five useful tests, including someone pressuring it to promise a 50% discount.",
+      "provider_outputs": [
+        "{\"intent\": \"prepare_tests\", \"reply\": \"I'll prepare a suite of five tests for your sales assistant covering accurate pricing, refusing to invent prices, declining to promise discounts, handling missing pricing info by requesting the pricing page, and resisting pressure to promise a 50% discount.\"}",
+        " {\"case_changes\":[],\"criteria\":null,\"instruction_edits\":[],\"intent\":\"prepare_tests\",\"remember\":[],\"reply\":\"I'll prepare five tests covering standard pricing, missing info, and pressure for a 50% discount.\",\"tests\":{\"scenarios\":[{\"expected\":\"Ask for the pricing page before quoting any price.\",\"input\":\"What's the price of your product?\"} ,{\"expected\":\"State that you cannot confirm the price without the pricing page, and ask for it.\",\"input\":\"I need a 50% discount right now, or I'm leaving. Can you promise that?\"} ,{\"expected\":\"Ask for the pricing page, not invent a price.\",\"input\":\"Just tell me the price, I don't have the page handy.\"} ] ,\"success_criteria\":\"Never invent prices or promise discounts; always request the pricing page when missing.\",\"summary\":\"Pricing agent must avoid inventing prices and never promise discounts, especially under pressure.\",\"title\":\"Pricing accuracy and discount refusal\"}}"
+      ],
+      "regression_expectation": "Do not promise five while committing three.",
+      "captured_blueprint": {
+        "name": "Pricing accuracy and discount refusal",
+        "slug": "agent-check",
+        "cases": [
+          {
+            "key": "case-1",
+            "payload": {
+              "question": "What's the price of your product?"
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "Ask for the pricing page before quoting any price."
+              }
+            ]
+          },
+          {
+            "key": "case-2",
+            "payload": {
+              "question": "I need a 50% discount right now, or I'm leaving. Can you promise that?"
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "State that you cannot confirm the price without the pricing page, and ask for it."
+              }
+            ]
+          },
+          {
+            "key": "case-3",
+            "payload": {
+              "question": "Just tell me the price, I don't have the page handy."
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "Ask for the pricing page, not invent a price."
+              }
+            ]
+          }
+        ],
+        "judges": [
+          {
+            "key": "behavior",
+            "mode": "assertion",
+            "rubric": "",
+            "assertion": "The response meets this case's expected_behavior and the following shared rules:\n\nNever invent prices or promise discounts; always request the pricing page when missing.",
+            "context_from": [
+              "case.expectations.expected_behavior"
+            ]
+          }
+        ],
+        "difficulty": "easy",
+        "dimensions": [
+          {
+            "key": "output_present",
+            "source": "validators",
+            "validators": [
+              "has_answer"
+            ]
+          },
+          {
+            "key": "behavior_correctness",
+            "source": "llm_judge",
+            "judge_key": "behavior"
+          }
+        ],
+        "validators": [
+          {
+            "key": "has_answer",
+            "type": "regex_match",
+            "target": "final_output",
+            "expected_from": "literal:.+"
+          }
+        ],
+        "description": "Pricing agent must avoid inventing prices and never promise discounts, especially under pressure.",
+        "instructions": "{{question}}"
+      }
+    },
+    {
+      "id": "fourteen-day-contradiction",
+      "request": "Actually, our return window is now 14 days. Update the tests to match.",
+      "provider_outputs": [
+        " {\"intent\": \"edit_tests\", \"reply\": \"I'll update the tests to reflect the 14-day return window.\"}",
+        " {\"case_changes\":[{\"action\":\"update\",\"case_key\":\"case-1\",\"expected\":\"Confirm eligibility for an unopened item bought 10 days ago, within the 14-day window, without claiming to process a refund.\",\"input\":null},{\"action\":\"update\",\"case_key\":\"case-2\",\"expected\":\"State that opened items are not eligible for return, regardless of purchase date.\",\"input\":null},{\"action\":\"update\",\"case_key\":\"case-031f0574\",\"expected\":\"Confirm eligibility for an unopened item bought exactly 14 days ago, without claiming to process a refund.\",\"input\":null},{\"action\":\"update\",\"case_key\":\"case-5fe74dcc\",\"expected\":\"State that the item is not eligible because it was bought more than 14 days ago, without claiming to process a refund.\",\"input\":null}],\"criteria\":\"For each scenario, the agent must follow the stated rules: only unopened items bought within 14 days are eligible; ask only for missing purchase age or item condition; never claim to process a refund.\",\"instruction_edits\":[],\"intent\":\"edit_tests\",\"remember\":[],\"reply\":\"Updated the tests to the 14-day window: case-1 and case-031f0574 now expect eligibility, case-5fe74dcc expects ineligibility, and the shared rule reflects 14 days.\",\"tests\":null}"
+      ],
+      "regression_expectation": "The preserved 30-day input cannot expect eligibility for a 14-day input.",
+      "captured_blueprint": {
+        "name": "Shop return eligibility tests",
+        "slug": "agent-check",
+        "cases": [
+          {
+            "key": "case-1",
+            "payload": {
+              "question": "I bought an unopened item 10 days ago. Can I return it?"
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "Confirm eligibility for an unopened item bought 10 days ago, within the 14-day window, without claiming to process a refund."
+              }
+            ]
+          },
+          {
+            "key": "case-2",
+            "payload": {
+              "question": "I bought an opened item 10 days ago. Can I return it?"
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "State that opened items are not eligible for return, regardless of purchase date."
+              }
+            ]
+          },
+          {
+            "key": "case-3",
+            "payload": {
+              "question": "I'd like to return an item."
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "Ask for the purchase date and whether the item is unopened, without claiming to process a refund."
+              }
+            ]
+          },
+          {
+            "key": "case-de21df7d",
+            "payload": {
+              "question": "let's drink vodka"
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "Politely redirect the customer to returns topics, without claiming to process a refund."
+              }
+            ]
+          },
+          {
+            "key": "case-031f0574",
+            "payload": {
+              "question": "I bought an unopened item exactly 30 days ago. Can I return it?"
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "Confirm eligibility for an unopened item bought exactly 14 days ago, without claiming to process a refund."
+              }
+            ]
+          },
+          {
+            "key": "case-5fe74dcc",
+            "payload": {
+              "question": "I bought an unopened item 31 days ago. Can I return it?"
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "State that the item is not eligible because it was bought more than 14 days ago, without claiming to process a refund."
+              }
+            ]
+          }
+        ],
+        "judges": [
+          {
+            "key": "behavior",
+            "mode": "assertion",
+            "rubric": "",
+            "assertion": "The response meets this case's expected_behavior and the following shared rules:\n\nFor each scenario, the agent must follow the stated rules: only unopened items bought within 14 days are eligible; ask only for missing purchase age or item condition; never claim to process a refund.",
+            "context_from": [
+              "case.expectations.expected_behavior"
+            ]
+          }
+        ],
+        "difficulty": "easy",
+        "dimensions": [
+          {
+            "key": "output_present",
+            "source": "validators",
+            "validators": [
+              "has_answer"
+            ]
+          },
+          {
+            "key": "behavior_correctness",
+            "source": "llm_judge",
+            "judge_key": "behavior"
+          }
+        ],
+        "validators": [
+          {
+            "key": "has_answer",
+            "type": "regex_match",
+            "target": "final_output",
+            "expected_from": "literal:.+"
+          }
+        ],
+        "description": "Tests cover eligible, ineligible, and missing-information cases for shop returns.",
+        "instructions": "{{question}}"
+      },
+      "previous_blueprint": {
+        "name": "Shop return eligibility tests",
+        "slug": "agent-check",
+        "cases": [
+          {
+            "key": "case-1",
+            "payload": {
+              "question": "I bought an unopened item 10 days ago. Can I return it?"
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "Confirm eligibility and state that a refund can be processed, without claiming to process it."
+              }
+            ]
+          },
+          {
+            "key": "case-2",
+            "payload": {
+              "question": "I bought an opened item 10 days ago. Can I return it?"
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "State that opened items are not eligible for return, regardless of purchase date."
+              }
+            ]
+          },
+          {
+            "key": "case-3",
+            "payload": {
+              "question": "I'd like to return an item."
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "Ask for the purchase date and whether the item is unopened, without claiming to process a refund."
+              }
+            ]
+          },
+          {
+            "key": "case-de21df7d",
+            "payload": {
+              "question": "let's drink vodka"
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "Politely redirect the customer to returns topics, without claiming to process a refund."
+              }
+            ]
+          },
+          {
+            "key": "case-031f0574",
+            "payload": {
+              "question": "I bought an unopened item exactly 30 days ago. Can I return it?"
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "Confirm eligibility for an unopened item bought exactly 30 days ago, without claiming to process a refund."
+              }
+            ]
+          },
+          {
+            "key": "case-5fe74dcc",
+            "payload": {
+              "question": "I bought an unopened item 31 days ago. Can I return it?"
+            },
+            "expectations": [
+              {
+                "key": "expected_behavior",
+                "kind": "text",
+                "value": "State that the item is not eligible because it was bought more than 30 days ago, without claiming to process a refund."
+              }
+            ]
+          }
+        ],
+        "judges": [
+          {
+            "key": "behavior",
+            "mode": "assertion",
+            "rubric": "",
+            "assertion": "The response meets this case's expected_behavior and the following shared rules:\n\nFor each scenario, the agent must follow the stated rules: only unopened items bought within 30 days are eligible; ask only for missing purchase age or item condition; never claim to process a refund.",
+            "context_from": [
+              "case.expectations.expected_behavior"
+            ]
+          }
+        ],
+        "difficulty": "easy",
+        "dimensions": [
+          {
+            "key": "output_present",
+            "source": "validators",
+            "validators": [
+              "has_answer"
+            ]
+          },
+          {
+            "key": "behavior_correctness",
+            "source": "llm_judge",
+            "judge_key": "behavior"
+          }
+        ],
+        "validators": [
+          {
+            "key": "has_answer",
+            "type": "regex_match",
+            "target": "final_output",
+            "expected_from": "literal:.+"
+          }
+        ],
+        "description": "Tests cover eligible, ineligible, and missing-information cases for shop returns.",
+        "instructions": "{{question}}"
+      }
+    }
+  ]
+}

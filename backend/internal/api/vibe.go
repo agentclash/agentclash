@@ -40,7 +40,7 @@ func (h *VibeHandler) Routes() http.Handler {
 			// context. The endpoint then applies the stricter trial/type limits.
 			if r.Method == http.MethodPost || r.Method == http.MethodPatch {
 				limit := vibe.LimitsFor(false).RequestBytes
-				if strings.HasSuffix(r.URL.Path, "/import") {
+				if strings.HasSuffix(r.URL.Path, "/import") || strings.HasSuffix(r.URL.Path, "/evidence") {
 					limit = vibe.LimitsFor(false).FileBytes
 				}
 				if encoding := r.Header.Get("Content-Encoding"); encoding != "" && encoding != "identity" {
@@ -66,12 +66,16 @@ func (h *VibeHandler) Routes() http.Handler {
 	r.Get("/sessions/{sessionID}", h.get)
 	r.Post("/sessions/{sessionID}/messages", h.submit)
 	r.Post("/sessions/{sessionID}/import", h.importFile)
+	r.Post("/sessions/{sessionID}/evidence", h.addEvidence)
 	r.Patch("/sessions/{sessionID}", h.edit)
 	r.Post("/sessions/{sessionID}/claim", h.claim)
 	r.Post("/sessions/{sessionID}/save", h.save)
+	r.Post("/sessions/{sessionID}/save-check", h.saveCheck)
+	r.Get("/saved-checks", h.savedChecks)
 	r.Get("/sessions/{sessionID}/events", h.events)
 	r.Post("/operations/{operationID}/approve", h.approve)
 	r.Post("/operations/{operationID}/stop", h.stop)
+	r.Post("/sessions/{sessionID}/operations/{operationID}/retry", h.retry)
 	r.Get("/operations/{operationID}/case", h.caseEvidence)
 	return r
 }
@@ -91,7 +95,7 @@ func (h *VibeHandler) caseEvidence(w http.ResponseWriter, r *http.Request) {
 		vibeError(w, &vibe.Fault{Code: "invalid_request", Message: "Choose a case key of at most 128 bytes."})
 		return
 	}
-	if err = h.Service.Gate.Check(r.Context(), "evidence:"+actor, vibe.LimitsFor(strings.HasPrefix(actor, "anon:"))); err != nil {
+	if err = h.Service.Gate.Check(r.Context(), "evidence:"+actor, h.Service.Config.Limits(strings.HasPrefix(actor, "anon:"))); err != nil {
 		vibeError(w, err)
 		return
 	}
@@ -120,7 +124,7 @@ func vibeError(w http.ResponseWriter, err error) {
 			status = 404
 		case "forbidden":
 			status = 403
-		case "revision_conflict", "idempotency_conflict", "operation_running", "invalid_state", "saved_model_conflict":
+		case "revision_conflict", "idempotency_conflict", "operation_running", "invalid_state", "saved_model_conflict", "retry_not_allowed", "retry_committed", "retry_running", "retry_uncertain", "retry_stale":
 			status = 409
 		case "rate_limit", "capacity_limit", "trial_limit":
 			status = 429
@@ -189,7 +193,7 @@ func (h *VibeHandler) issue(w http.ResponseWriter, r *http.Request) (string, err
 	// RemoteAddr is the trusted transport peer. Forwarded headers are never
 	// accepted as a rate-limit identity without a configured trusted proxy.
 	ip, _, _ := net.SplitHostPort(r.RemoteAddr)
-	if err := h.Service.Gate.Check(r.Context(), "issue:"+ip, vibe.LimitsFor(true)); err != nil {
+	if err := h.Service.Gate.Check(r.Context(), "issue:"+ip, h.Service.Config.Limits(true)); err != nil {
 		return "", err
 	}
 	b := make([]byte, 32)
@@ -236,7 +240,7 @@ func (h *VibeHandler) config(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
-	vibeJSON(w, 200, map[string]any{"capabilities": vibe.Capabilities(), "enabled": h.Service.Config.Enabled, "free_only": h.Service.Config.FreeOnly, "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": vibe.LimitsFor(true), "signed_in_limits": vibe.LimitsFor(false), "trial_budget_nano_usd": vibe.TrialBudget})
+	vibeJSON(w, 200, map[string]any{"capabilities": vibe.Capabilities(), "enabled": h.Service.Config.Enabled, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget})
 }
 func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 	var input struct {
@@ -259,7 +263,7 @@ func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 		vibeError(w, err)
 		return
 	}
-	if err = h.Service.Gate.Check(r.Context(), actor, vibe.LimitsFor(strings.HasPrefix(actor, "anon:"))); err != nil {
+	if err = h.Service.Gate.Check(r.Context(), actor, h.Service.Config.Limits(strings.HasPrefix(actor, "anon:"))); err != nil {
 		vibeError(w, err)
 		return
 	}
@@ -345,10 +349,16 @@ func (h *VibeHandler) edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		PreviewConsent *bool `json:"preview_consent,omitempty"`
+		CaseChanges    []vibe.CaseChange   `json:"case_changes,omitempty"`
+		Criteria       *string             `json:"criteria,omitempty"`
+		Dismissed      *bool               `json:"dismissed,omitempty"`
+		Expectations   []vibe.Expectation  `json:"expectations,omitempty"`
+		PreviewConsent *bool               `json:"preview_consent,omitempty"`
+		TestScenarios  []vibe.TestScenario `json:"test_scenarios,omitempty"`
 		Evaluation     *struct {
-			Examples        []string `json:"examples"`
-			SuccessCriteria string   `json:"success_criteria"`
+			Scenarios       []vibe.TestScenario `json:"scenarios,omitempty"`
+			Examples        []string            `json:"examples"`
+			SuccessCriteria string              `json:"success_criteria"`
 		} `json:"evaluation,omitempty"`
 		Revision      int64      `json:"revision"`
 		ArtifactID    *uuid.UUID `json:"artifact_id,omitempty"`
@@ -361,7 +371,44 @@ func (h *VibeHandler) edit(w http.ResponseWriter, r *http.Request) {
 		vibeError(w, err)
 		return
 	}
+	// Suite edits requiring inference leave Store.Edit's transaction and enter
+	// the same admitted validation workflow as conversational changes.
+	if input.ArtifactID != nil && (input.CaseChanges != nil || input.Criteria != nil || input.Evaluation != nil) {
+		for _, a := range v.Document.Artifacts {
+			if a.ID != *input.ArtifactID || !a.IsTestSuite() || (!h.Service.Config.ReliableAuthoring && a.Provenance != "ai_generated" && a.Validation == nil && a.PolicyID == nil) {
+				continue
+			}
+			if input.AgentPrompt != nil || input.Dismissed != nil || input.Expectations != nil || input.PreviewConsent != nil || input.TestScenarios != nil || input.RequirementID != nil || (input.Evaluation != nil && (input.CaseChanges != nil || input.Criteria != nil)) {
+				vibeError(w, &vibe.Fault{Code: "invalid_request", Message: "Choose one test change at a time."})
+				return
+			}
+			limits := h.Service.Config.Limits(v.Anonymous)
+			var blueprint json.RawMessage
+			if input.Evaluation != nil {
+				if !canEditVibeEvaluation(a.Blueprint, limits, true) {
+					vibeError(w, &vibe.Fault{Code: "invalid_request", Message: "This imported evaluation has additional coverage. Edit it in the advanced builder; no tests were removed."})
+					return
+				}
+				blueprint, err = h.Service.Compiler.Draft(vibe.DraftProposal{TestsOnly: true, Title: a.Title, Summary: a.Summary, Scenarios: input.Evaluation.Scenarios, Examples: input.Evaluation.Examples, SuccessCriteria: input.Evaluation.SuccessCriteria}, limits)
+			} else {
+				blueprint, err = vibe.PatchTestSuite(a.Blueprint, input.CaseChanges, input.Criteria, limits)
+			}
+			if err != nil {
+				vibeError(w, &vibe.Fault{Code: "invalid_request", Message: err.Error()})
+				return
+			}
+			if _, err = h.Service.PrepareSuiteEdit(r.Context(), v.Actor, v.ID, input.Revision, a.ID, blueprint); err != nil {
+				vibeError(w, err)
+				return
+			}
+			h.get(w, r)
+			return
+		}
+	}
 	err = h.Service.Store.Edit(r.Context(), v.Actor, v.ID, input.Revision, func(s *vibe.Session) error {
+		if input.Expectations != nil && input.ArtifactID != nil {
+			return vibe.EditConversationEvaluation(s, *input.ArtifactID, input.Expectations)
+		}
 		if input.PreviewConsent != nil {
 			s.Document.Journey.PreviewConsent = *input.PreviewConsent
 			return nil
@@ -370,6 +417,46 @@ func (h *VibeHandler) edit(w http.ResponseWriter, r *http.Request) {
 			for i := range s.Document.Artifacts {
 				a := &s.Document.Artifacts[i]
 				if a.ID == *input.ArtifactID {
+					if input.Dismissed != nil {
+						if !a.IsTestSuite() || input.AgentPrompt != nil || input.Evaluation != nil || input.CaseChanges != nil || input.Criteria != nil || input.TestScenarios != nil {
+							return &vibe.Fault{Code: "invalid_request", Message: "Choose one suggestion to dismiss or reopen."}
+						}
+						a.Dismissed = *input.Dismissed
+						return nil
+					}
+					if input.CaseChanges != nil || input.Criteria != nil {
+						if !a.IsTestSuite() || input.Evaluation != nil || input.AgentPrompt != nil {
+							return &vibe.Fault{Code: "invalid_request", Message: "Choose the tests to edit."}
+						}
+						limits := h.Service.Config.Limits(s.Anonymous)
+						blueprint, e := vibe.PatchTestSuite(a.Blueprint, input.CaseChanges, input.Criteria, limits)
+						if e != nil {
+							return &vibe.Fault{Code: "invalid_request", Message: e.Error()}
+						}
+						copy := *a
+						copy.ID, copy.ParentID, copy.CreatedAt, copy.Accepted = uuid.New(), &a.ID, time.Now().UTC(), false
+						copy.Blueprint, copy.Proposal, copy.Dismissed = blueprint, nil, false
+						if _, e = h.Service.Compiler.Compile(blueprint, s.Document.Models.Evaluator, copy.ID, limits); e != nil {
+							return &vibe.Fault{Code: "invalid_request", Message: e.Error()}
+						}
+						vibe.AppendTestRevision(s, copy, "Updated the test expectations.")
+						return nil
+					}
+					if input.TestScenarios != nil {
+						if !a.IsTestPlan() || a.TestPlan == nil || input.AgentPrompt != nil || input.Evaluation != nil {
+							return &vibe.Fault{Code: "invalid_request", Message: "Choose a test plan to edit these situations."}
+						}
+						plan := *a.TestPlan
+						plan.Scenarios = input.TestScenarios
+						if e := plan.Validate(vibe.LimitsFor(s.Anonymous)); e != nil {
+							return &vibe.Fault{Code: "invalid_request", Message: e.Error()}
+						}
+						copy := *a
+						copy.ID, copy.ParentID, copy.TestPlan, copy.CreatedAt = uuid.New(), &a.ID, &plan, time.Now().UTC()
+						copy.Accepted = false
+						s.Document.Artifacts = append(s.Document.Artifacts, copy)
+						return nil
+					}
 					if a.IsTestPlan() {
 						return &vibe.Fault{Code: "artifact_required", Message: "This is a test plan. Export it or explicitly choose a prompt preview; it is not a runnable agent."}
 					}
@@ -377,11 +464,11 @@ func (h *VibeHandler) edit(w http.ResponseWriter, r *http.Request) {
 						if e := vibe.ValidatePreviewCriteria(input.Evaluation.SuccessCriteria); e != nil {
 							return &vibe.Fault{Code: "invalid_request", Message: e.Error()}
 						}
-						if !canEditVibeEvaluation(a.Blueprint, vibe.LimitsFor(s.Anonymous)) {
+						if !canEditVibeEvaluation(a.Blueprint, h.Service.Config.Limits(s.Anonymous), a.IsTestSuite()) {
 							return &vibe.Fault{Code: "invalid_request", Message: "This imported evaluation has additional coverage. Edit it in the advanced builder; no tests were removed."}
 						}
-						proposal := vibe.DraftProposal{Title: a.Title, AgentPrompt: a.AgentPrompt, Examples: input.Evaluation.Examples, SuccessCriteria: vibe.PreviewCriteria(input.Evaluation.SuccessCriteria)}
-						blueprint, e := h.Service.Compiler.Draft(proposal, vibe.LimitsFor(s.Anonymous))
+						proposal := vibe.DraftProposal{TestsOnly: a.IsTestSuite(), Title: a.Title, Summary: a.Summary, AgentPrompt: a.AgentPrompt, Examples: input.Evaluation.Examples, Scenarios: input.Evaluation.Scenarios, SuccessCriteria: vibe.PreviewCriteria(input.Evaluation.SuccessCriteria)}
+						blueprint, e := h.Service.Compiler.Draft(proposal, h.Service.Config.Limits(s.Anonymous))
 						if e != nil {
 							return &vibe.Fault{Code: "invalid_request", Message: e.Error()}
 						}
@@ -393,7 +480,7 @@ func (h *VibeHandler) edit(w http.ResponseWriter, r *http.Request) {
 						copy.Blueprint = blueprint
 						copy.Proposal = &proposal
 						copy.CriteriaRequirementIDs = nil // Edited criteria need a fresh provenance review.
-						if _, e = h.Service.Compiler.Compile(blueprint, s.Document.Models.Evaluator, copy.ID, vibe.LimitsFor(s.Anonymous)); e != nil {
+						if _, e = h.Service.Compiler.Compile(blueprint, s.Document.Models.Evaluator, copy.ID, h.Service.Config.Limits(s.Anonymous)); e != nil {
 							return &vibe.Fault{Code: "invalid_request", Message: e.Error()}
 						}
 						s.Document.Artifacts = append(s.Document.Artifacts, copy)
@@ -407,8 +494,20 @@ func (h *VibeHandler) edit(w http.ResponseWriter, r *http.Request) {
 						copy.ID = uuid.New()
 						copy.ParentID = &a.ID
 						copy.AgentPrompt = vibe.PreviewPrompt(*input.AgentPrompt)
+						if a.IsTestSuite() {
+							copy.AgentPrompt = *input.AgentPrompt
+						}
+						copy.Summary = "" // A previous generated summary may no longer describe the edit.
+						copy.Proposal = nil
+						if a.IsTestSuite() {
+							copy.Summary, copy.Proposal = a.Summary, a.Proposal
+						}
 						copy.Accepted = false
 						copy.CreatedAt = time.Now().UTC()
+						if a.IsTestSuite() {
+							vibe.AppendTestRevision(s, copy, "Updated the agent instructions.")
+							return nil
+						}
 						s.Document.Artifacts = append(s.Document.Artifacts, copy)
 						return nil
 					}
@@ -463,16 +562,17 @@ func (h *VibeHandler) save(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var input struct {
-		Revision    int64        `json:"revision"`
-		ArtifactID  uuid.UUID    `json:"artifact_id"`
-		WorkspaceID uuid.UUID    `json:"workspace_id"`
-		Models      *vibe.Models `json:"models,omitempty"`
+		Revision        int64        `json:"revision"`
+		ApproveArtifact bool         `json:"approve_artifact,omitempty"`
+		ArtifactID      uuid.UUID    `json:"artifact_id"`
+		WorkspaceID     uuid.UUID    `json:"workspace_id"`
+		Models          *vibe.Models `json:"models,omitempty"`
 	}
 	if err = vibeBody(w, r, v.Anonymous, &input); err != nil {
 		vibeError(w, err)
 		return
 	}
-	id, err := h.Service.Save(r.Context(), v.Actor, v.ID, input.Revision, input.ArtifactID, input.WorkspaceID, input.Models)
+	id, err := h.Service.Save(r.Context(), v.Actor, v.ID, input.Revision, input.ArtifactID, input.WorkspaceID, input.Models, input.ApproveArtifact)
 	if err != nil {
 		vibeError(w, err)
 		return
@@ -480,7 +580,31 @@ func (h *VibeHandler) save(w http.ResponseWriter, r *http.Request) {
 	vibeJSON(w, 200, map[string]any{"draft_id": id, "workspace_id": input.WorkspaceID})
 }
 func (h *VibeHandler) approve(w http.ResponseWriter, r *http.Request) { h.operationAction(w, r, true) }
-func (h *VibeHandler) stop(w http.ResponseWriter, r *http.Request)    { h.operationAction(w, r, false) }
+
+func (h *VibeHandler) retry(w http.ResponseWriter, r *http.Request) {
+	v, err := h.session(r)
+	if err != nil {
+		vibeError(w, err)
+		return
+	}
+	id, err := vibeID(r, "operationID")
+	if err != nil {
+		vibeError(w, err)
+		return
+	}
+	var input vibe.RetryRequest
+	if err = vibeBody(w, r, v.Anonymous, &input); err != nil {
+		vibeError(w, err)
+		return
+	}
+	op, err := h.Service.Retry(r.Context(), v.Actor, v.ID, id, input)
+	if err != nil {
+		vibeError(w, err)
+		return
+	}
+	vibeJSON(w, http.StatusAccepted, op)
+}
+func (h *VibeHandler) stop(w http.ResponseWriter, r *http.Request) { h.operationAction(w, r, false) }
 func (h *VibeHandler) operationAction(w http.ResponseWriter, r *http.Request, approve bool) {
 	actor, err := h.actor(r)
 	if err != nil {
@@ -498,7 +622,7 @@ func (h *VibeHandler) operationAction(w http.ResponseWriter, r *http.Request, ap
 		return
 	}
 	if approve {
-		if err = h.Service.Gate.Check(r.Context(), actor, vibe.LimitsFor(false)); err == nil {
+		if err = h.Service.Gate.Check(r.Context(), actor, h.Service.Config.Limits(false)); err == nil {
 			err = h.Service.Store.Approve(r.Context(), actor, id, h.Service.Config)
 		}
 	} else {
@@ -525,9 +649,13 @@ func (h *VibeHandler) events(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := "vibe:sse:" + vibe.Hash([]byte(v.Actor))
+	connectionLimit := vibe.MaxSSEConnections
+	if h.Service.Config.TestingLocally() {
+		connectionLimit = 0
+	}
 	lease := uuid.NewString()
 	now := time.Now().UnixMilli()
-	n, err := redis.Eval(r.Context(), `redis.call('ZREMRANGEBYSCORE',KEYS[1],'-inf',ARGV[1]); if redis.call('ZCARD',KEYS[1])>=2 then return 0 end; redis.call('ZADD',KEYS[1],ARGV[2],ARGV[3]); redis.call('PEXPIRE',KEYS[1],70000); return 1`, []string{key}, now, now+60000, lease).Int()
+	n, err := redis.Eval(r.Context(), `redis.call('ZREMRANGEBYSCORE',KEYS[1],'-inf',ARGV[1]); if tonumber(ARGV[4])>0 and redis.call('ZCARD',KEYS[1])>=tonumber(ARGV[4]) then return 0 end; redis.call('ZADD',KEYS[1],ARGV[2],ARGV[3]); redis.call('PEXPIRE',KEYS[1],70000); return 1`, []string{key}, now, now+60000, lease, connectionLimit).Int()
 	if err != nil || n != 1 {
 		vibeError(w, &vibe.Fault{Code: "capacity_limit", Message: "Too many event connections. Close another tab and reconnect."})
 		return

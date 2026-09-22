@@ -57,10 +57,9 @@ func TestVibeIntegrationSaveUsesSelectedModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	artifact := vibe.Artifact{ID: uuid.New(), Title: "Copy helper", AgentPrompt: "Use only verified facts and a CTA.", Blueprint: blueprint, Accepted: true, CreatedAt: time.Now()}
+	artifact := vibe.Artifact{ID: uuid.New(), Title: "Copy helper", AgentPrompt: "Use only verified facts and a CTA.", Blueprint: blueprint, Accepted: false, CreatedAt: time.Now()}
 	if err := store.Edit(ctx, actor, session.ID, session.Revision, func(v *vibe.Session) error {
 		v.Document.Artifacts = []vibe.Artifact{artifact}
-		v.Document.ActiveArtifactID = &artifact.ID
 		return nil
 	}); err != nil {
 		t.Fatal(err)
@@ -91,6 +90,10 @@ func TestVibeIntegrationSaveUsesSelectedModels(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w
 	}
+	if response := post(payload); response.Code != http.StatusBadRequest {
+		t.Fatal("legacy save silently accepted unchecked instructions")
+	}
+	payload["approve_artifact"] = true
 	response := post(payload)
 	if response.Code != http.StatusOK {
 		t.Fatalf("save rejected selected models: status=%d body=%s", response.Code, response.Body.String())
@@ -112,6 +115,9 @@ func TestVibeIntegrationSaveUsesSelectedModels(t *testing.T) {
 	session, err = store.GetSession(ctx, actor, session.ID)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !session.Document.Artifacts[0].Accepted || session.Document.ActiveArtifactID == nil || *session.Document.ActiveArtifactID != artifact.ID {
+		t.Fatal("saving did not atomically approve the selected version")
 	}
 	if session.Document.Models != selected {
 		t.Fatalf("snapshot retained stale models: %+v", session.Document.Models)

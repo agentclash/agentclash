@@ -376,3 +376,21 @@ func cleanupSession(t *testing.T, s *Store, id uuid.UUID) {
 		}
 	})
 }
+
+func TestVibeLongConversationKeepsNewestOperationVisible(t *testing.T) {
+	s := integrationStore(t)
+	v := anonSession(t, s)
+	ctx := context.Background()
+	for i := 0; i < 105; i++ {
+		sub := Submission{ClientID: uuid.New(), Kind: "message", Models: DefaultModels()}
+		_, err := s.DB.Exec(ctx, `INSERT INTO vibe_operations(id,session_id,actor,kind,state,billing,models,input,max_cost,actual_cost,model_calls,deadline,created_at,client_id,request_hash)
+		VALUES($1,$2,$3,'message','COMPLETED','RELEASED',$4,$5,0,0,0,now()+interval '10 minutes',now()+$6*interval '1 second',$7,'long-session-fixture')`, uuid.New(), v.ID, v.Actor, raw(sub.Models), raw(Plan{Submission: sub}), i, sub.ClientID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	loaded, err := s.GetSession(ctx, v.Actor, v.ID)
+	if err != nil || len(loaded.Operations) != 105 {
+		t.Fatal("long local conversations hide newer operations", err, len(loaded.Operations))
+	}
+}

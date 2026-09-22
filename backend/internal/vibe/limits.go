@@ -69,6 +69,33 @@ func LimitsFor(anonymous bool) Limits {
 	return Limits{256 << 10, 64 << 10, 1 << 20, 5, 20 << 20, 24, 50000, 256, 1024, 64 << 10, 200, 20, 2, 2, 20, 32768, 4096, 6, 12, 128, 2, 2, 3, 30, 900, 300, 60}
 }
 
+// Local testing removes cumulative trial quotas and the preview context cap.
+// Keep bounded request sizes, concurrency and per-operation call graphs. Each
+// invocation still has to fit its verified model's context including output.
+func (c Config) TestingLocally() bool { return c.LocalTesting }
+
+func (c Config) Limits(anonymous bool) Limits {
+	return executionLimits(anonymous, c.TestingLocally())
+}
+
+func (p Plan) limits() Limits {
+	if p.AuthoringVersion >= 11 && p.ExecutionLimits != nil {
+		return *p.ExecutionLimits
+	}
+	return executionLimits(p.Anonymous, p.LocalTesting)
+}
+
+func executionLimits(anonymous, localTesting bool) Limits {
+	l := LimitsFor(anonymous)
+	if localTesting {
+		l.ContextTokens = MaxDocumentBytes
+		l.Rate = 0
+		l.Cases = l.ImportCases
+		l.ModelCalls = 2*l.Cases + 4
+	}
+	return l
+}
+
 func (l Limits) OperationTimeout() time.Duration {
 	return time.Duration(l.OperationSeconds) * time.Second
 }

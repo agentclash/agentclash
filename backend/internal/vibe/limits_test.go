@@ -72,7 +72,7 @@ func TestMoney(t *testing.T) {
 	}
 }
 func TestFullContextBound(t *testing.T) {
-	p := ModelProfile{FramingAllowance: 2048, Context: 128000}
+	p := ModelProfile{ID: "openai/gpt-4.1-mini", FramingAllowance: 2048, Context: 128000}
 	l := LimitsFor(true)
 	r := provider.Request{MaxOutputTokens: 2048, Messages: []provider.Message{{Role: "system", Content: strings.Repeat("policy", 2000)}, {Role: "user", Content: "hi"}}, Tools: []provider.ToolDefinition{{Name: "test", Description: strings.Repeat("tool", 2000)}}}
 	if _, err := CountContext(r, p, l); err == nil {

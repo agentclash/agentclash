@@ -12,14 +12,14 @@ func TestVibeEvaluationEditsPreserveImportedCoverage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !canEditVibeEvaluation(blueprint, vibe.LimitsFor(true)) {
+	if !canEditVibeEvaluation(blueprint, vibe.LimitsFor(true), false) {
 		t.Fatal("generated preview not editable")
 	}
 	var b map[string]any
 	_ = json.Unmarshal(blueprint, &b)
 	b["validators"] = append(b["validators"].([]any), map[string]any{"key": "extra", "type": "regex_match", "target": "final_output", "expected_from": "literal:required"})
 	changed, _ := json.Marshal(b)
-	if canEditVibeEvaluation(changed, vibe.LimitsFor(true)) {
+	if canEditVibeEvaluation(changed, vibe.LimitsFor(true), false) {
 		t.Fatal("semantic edit would silently drop imported coverage")
 	}
 }
