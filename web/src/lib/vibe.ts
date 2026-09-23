@@ -108,6 +108,8 @@ export type CaseResult = {
   error?: { code?: string; message: string };
 };
 export type Operation = {
+  progress?: { phase: string; completed_cases: number; total_cases: number };
+  diagnostics?: { stage_millis: Record<string, number>; retry_outcome?: string; unresolved_billing_since?: string; unresolved_billing_age_ms?: number };
   grading?: {
     version: number; hash: string; criteria_hash: string; tests_hash: string;
     parser: string; normalization: string; schema: string; prompt_hash: string;
@@ -141,6 +143,7 @@ export type Operation = {
   max_cost_nano_usd: number;
   actual_cost_nano_usd: number | null;
   error?: {
+    retry_available_at?: string;
     code: string;
     message: string;
     context?: {
@@ -165,6 +168,8 @@ export type Operation = {
   };
 };
 export type Session = {
+  server_time?: string;
+  diagnostics?: { first_useful_result_ms?: number; first_save_ms?: number };
   event_cursor?: number;
   id: string;
   revision: number;

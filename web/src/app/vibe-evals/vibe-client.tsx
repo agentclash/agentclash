@@ -86,6 +86,7 @@ const submissionRejections: Partial<Record<number, readonly string[]>> = {
   ],
 };
 const retryRejections: Partial<Record<number, readonly string[]>> = {
+  429: ["retry_cooldown"],
   400: ["retry_manual_edit"],
   409: ["idempotency_conflict", "retry_not_allowed", "retry_committed", "retry_running", "retry_uncertain", "retry_stale"],
 };

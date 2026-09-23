@@ -199,6 +199,10 @@ func (s *Store) GetSession(ctx context.Context, actor string, id uuid.UUID) (Ses
 			return v, err
 		}
 	}
+	v.ServerTime = timestamp()
+	if err = populateProgress(ctx, tx, &v); err != nil {
+		return v, err
+	}
 	if err = s.populateRetryEligibility(ctx, tx, &v); err != nil {
 		return v, err
 	}
@@ -258,7 +262,7 @@ func (s *Store) loadResults(ctx context.Context, tx pgx.Tx, o *Operation) error 
 	// fetched per case, so a long conversation cannot amplify every SSE tick.
 	rows, err := tx.Query(ctx, `SELECT jsonb_build_object('case_key',case_key,'version',version,
  'title',result->'title','verdict',result->'verdict','expected_checks',result->'expected_checks','error',result->'error',
- 'checks',COALESCE((SELECT jsonb_agg(jsonb_build_object('key',c->'key','verdict',c->'verdict')) FROM jsonb_array_elements(result->'checks') c),'[]'::jsonb))
+ 'checks',COALESCE((SELECT jsonb_agg(jsonb_build_object('key',c->'key','verdict',c->'verdict')) FROM jsonb_array_elements(COALESCE(NULLIF(result->'checks','null'::jsonb),'[]'::jsonb)) c),'[]'::jsonb))
  FROM vibe_case_results WHERE operation_id=$1 ORDER BY version,case_key`, o.ID)
 	if err != nil {
 		return err

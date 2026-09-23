@@ -8,6 +8,7 @@ import (
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"time"
 )
 
 type Attempt struct {
@@ -182,7 +183,10 @@ func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
 			return err
 		}
 		_, err = tx.Exec(ctx, "UPDATE vibe_operations SET model_calls=model_calls+1 WHERE id=$1", o.ID)
-		return err
+		if err != nil {
+			return err
+		}
+		return event(ctx, tx, o.SessionID, &o.ID, "attempt.started")
 	})
 }
 func (s *Store) Generation(ctx context.Context, id uuid.UUID, generation string) error {
@@ -248,6 +252,9 @@ func nullableJSON(v *Fault) []byte {
 	return raw(v)
 }
 func (s *Store) PutResult(ctx context.Context, id uuid.UUID, c CaseResult) error {
+	if c.Checks == nil {
+		c.Checks = []CheckResult{}
+	}
 	return s.transaction(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `INSERT INTO vibe_case_results(operation_id,case_key,version,result) VALUES($1,$2,$3,$4) ON CONFLICT(operation_id,case_key,version) DO UPDATE SET result=EXCLUDED.result`, id, c.CaseKey, c.Version, raw(c))
 		if err != nil {
@@ -256,6 +263,11 @@ func (s *Store) PutResult(ctx context.Context, id uuid.UUID, c CaseResult) error
 		var session uuid.UUID
 		if err = tx.QueryRow(ctx, "SELECT session_id FROM vibe_operations WHERE id=$1", id).Scan(&session); err != nil {
 			return err
+		}
+		if c.Verdict == Pass || c.Verdict == Fail {
+			if err = recordUsefulResult(ctx, tx, session, id); err != nil {
+				return err
+			}
 		}
 		return event(ctx, tx, session, &id, "case.updated")
 	})
@@ -412,6 +424,11 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 		if _, err = tx.Exec(ctx, "UPDATE vibe_operations SET completion_receipt=$2 WHERE id=$1", id, raw(receipt)); err != nil {
 			return err
 		}
+		if artifact != nil {
+			if err = recordUsefulResult(ctx, tx, v.ID, id); err != nil {
+				return err
+			}
+		}
 		return event(ctx, tx, v.ID, &id, "message.completed")
 	})
 }
@@ -440,8 +457,8 @@ func (s *Store) Finish(ctx context.Context, id uuid.UUID, issue *Fault) error {
 			var unknown int
 			if err = tx.QueryRow(ctx, `SELECT count(*) FROM vibe_case_results r WHERE operation_id=$1 AND (
  result->>'verdict'='UNKNOWN' OR COALESCE((result->>'expected_checks')::integer,0) >
- (SELECT count(*) FROM jsonb_array_elements(result->'checks') c WHERE c->>'verdict' IN ('PASS','FAIL')) OR
- EXISTS(SELECT 1 FROM jsonb_array_elements(result->'checks') c WHERE c->>'verdict'='UNKNOWN'))`, id).Scan(&unknown); err != nil {
+ (SELECT count(*) FROM jsonb_array_elements(COALESCE(NULLIF(result->'checks','null'::jsonb),'[]'::jsonb)) c WHERE c->>'verdict' IN ('PASS','FAIL')) OR
+ EXISTS(SELECT 1 FROM jsonb_array_elements(COALESCE(NULLIF(result->'checks','null'::jsonb),'[]'::jsonb)) c WHERE c->>'verdict'='UNKNOWN'))`, id).Scan(&unknown); err != nil {
 				return err
 			}
 			if unknown > 0 {
@@ -508,7 +525,7 @@ func (s *Store) ReconcileCost(ctx context.Context, id uuid.UUID, cost int64, usa
 				return err
 			}
 		}
-		if _, err := tx.Exec(ctx, "UPDATE vibe_attempts SET actual_cost=$2,usage=$3,state='RECONCILED',completed_at=now() WHERE id=$1", id, cost, usage); err != nil {
+		if _, err := tx.Exec(ctx, "UPDATE vibe_attempts SET actual_cost=$2,usage=$3,state='RECONCILED',completed_at=COALESCE(completed_at,now()) WHERE id=$1", id, cost, usage); err != nil {
 			return err
 		}
 		o, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1", op))
@@ -537,7 +554,12 @@ func issueFrom(err error) *Fault {
 		// allowlisted categories; this never changes accounting or retry policy.
 		switch failure.Code {
 		case provider.FailureCodeRateLimit:
-			return &Fault{Code: "provider_rate_limit", Message: "The selected model's provider is busy. Your request is saved."}
+			delay := failure.RetryAfter
+			if delay <= 0 {
+				delay = 30 * time.Second
+			}
+			available := timestamp().Add(delay)
+			return &Fault{Code: "provider_rate_limit", Message: "The selected model's provider is busy. Your request is saved.", RetryAvailableAt: &available}
 		case provider.FailureCodeAuth, provider.FailureCodeCredentialUnavailable:
 			return &Fault{Code: "provider_auth", Message: "The provider could not authorize this model request. Check its server-side credential configuration."}
 		case provider.FailureCodeInvalidRequest, provider.FailureCodeUnsupportedCapability, provider.FailureCodeUnsupportedProvider:

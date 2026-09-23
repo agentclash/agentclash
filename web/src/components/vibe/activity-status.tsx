@@ -8,6 +8,21 @@ export function conversationActivity(operation: Operation, testJourney?: boolean
   if (operation.state === "AWAITING_APPROVAL") return "Review the cost before continuing.";
   if (operation.state === "CANCELLING") return "Stopping…";
   if (operation.state === "QUEUED") return "Waiting to start…";
+  if (operation.state === "AWAITING_INPUT") return "One detail is needed to continue.";
+  if (operation.state === "FINALIZING") return "Saving your results…";
+  const progress = operation.progress;
+  if (progress && operation.state === "RUNNING") {
+    const count = progress.total_cases > 0 ? `${progress.completed_cases} of ${progress.total_cases} results saved · ` : "";
+    const label: Record<string, string> = {
+      understanding: "Understanding your request…",
+      preparing: "Preparing your next step…",
+      reviewing: "Checking the tests against your rules…",
+      repairing: "Adjusting the tests to match your rules…",
+      running_agent: "Waiting for your agent’s reply…",
+      grading: "Checking the reply…",
+    };
+    if (label[progress.phase]) return count + label[progress.phase];
+  }
   if (operation.kind === "message" || operation.kind === "build") {
     if (!testJourney) return "Preparing your next step…";
     const intent = operation.conversation_decision?.intent;

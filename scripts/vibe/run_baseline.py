@@ -11,6 +11,9 @@ from urllib.parse import urlparse
 ROOT=Path(__file__).resolve().parents[2]
 REQUIRED={
  "github.com/agentclash/agentclash/backend/internal/vibe": [
+  "TestVibeRetryTimingSurvivesFaultSerialization", "TestIntegrationVibeRetryCooldownEnforcedAtBothBoundaries", "TestIntegrationVibeDurableProgressAndDiagnostics",
+  "TestIntegrationVibeRetryPreservesSourceAndDeduplicates", "TestIntegrationVibeRetryRejectsUncertainCostAndChangedBase", "TestIntegrationVibeRetryAllowsManualRateLimitDuringReconciliation",
+  "TestIntegrationVibeReliableRecoveryCommitsRecordedReviewWithoutDispatch", "TestIntegrationVibeReliableRecoveryRejectsIncompleteEvidenceAndStoppedWork",
   "TestIntegrationVibeRecordedRegradePreservesEvidence", "TestVibeGroundedJudgeEvidence", "TestVibeGroundedConversationFindings", "TestVibeGradingIdentity",
   "TestVibeGuidanceContractAndIsolation", "TestIntegrationVibeGuidanceDoesNotBecomePolicy", "TestIntegrationVibeExplanationCanAccompanyPreparation",
   "TestVibePolicyPatchesPreserveRules", "TestVibePolicyPatchesRejectStaleAndReplacement",
@@ -29,7 +32,7 @@ REQUIRED={
   "TestIntegrationCrashKeepsJournaledEvidenceWithoutReexecution",
   "TestIntegrationStopMidProviderAndNoRetry", "TestIntegrationAuthoringIncludesActiveAcceptedArtifact",
   "TestVibeIntegrationReviewedHandoffAndAtomicCompletion"],
- "github.com/agentclash/agentclash/backend/internal/api": ["TestVibeGroundedResultsAndRegrade", "TestVibeIntegrationDescriptionToHonestScorecardAndSave", "TestVibeInteractionHTTPBoundary"],
+ "github.com/agentclash/agentclash/backend/internal/api": ["TestVibeRetryCooldownHTTP", "TestVibeGroundedResultsAndRegrade", "TestVibeIntegrationDescriptionToHonestScorecardAndSave", "TestVibeInteractionHTTPBoundary"],
  "github.com/agentclash/agentclash/backend/internal/vibe/interaction": [
   "TestContractsAcceptSupportedWireData", "TestContractsRejectAmbiguousOrAuthorityBearingData",
   "TestContractsRejectMalformedAndFutureVersions"],

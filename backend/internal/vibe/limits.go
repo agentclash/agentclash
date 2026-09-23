@@ -101,9 +101,10 @@ func (l Limits) OperationTimeout() time.Duration {
 }
 
 type Fault struct {
-	Code    string             `json:"code"`
-	Message string             `json:"message"`
-	Context *ContextDiagnostic `json:"context,omitempty"`
+	RetryAvailableAt *time.Time         `json:"retry_available_at,omitempty"`
+	Code             string             `json:"code"`
+	Message          string             `json:"message"`
+	Context          *ContextDiagnostic `json:"context,omitempty"`
 }
 
 func (e *Fault) Error() string         { return e.Message }

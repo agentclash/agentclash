@@ -189,3 +189,50 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   await page.reload();
   await expect(failedTurn.getByRole("status")).toHaveText("Completed on retry.");
 });
+
+test("provider cooldown crosses the real worker and API and retry creates one new operation", async ({ page }, info) => {
+  const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
+  await page.request.post(`${api}/__fixture/control`, { data: { rate_limit_calls: 1 } });
+  await page.goto("/vibe-evals");
+  const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
+  const original = await readFile(path.resolve(process.cwd(), "../backend/internal/vibe/testdata/reliability/returns-original-request.txt"), "utf8");
+  await composer.fill(original);
+  await composer.press("Enter");
+  await expect(page.getByRole("button", { name: /Try again in/ })).toBeDisabled();
+  const sessionID = new URL(page.url()).searchParams.get("session")!;
+  let state = await evidence(page, sessionID);
+  const failed = state.session.operations.at(-1)!;
+  expect(failed.error?.code).toBe("provider_rate_limit");
+  expect(failed.error?.retry_available_at).toBeTruthy();
+  expect(failed.billing).toBe("RECONCILING");
+  expect(failed.diagnostics?.unresolved_billing_since).toBeTruthy();
+  const calls = state.calls.length;
+  const early = await page.request.post(`${api}/v1/vibe/sessions/${sessionID}/operations/${failed.id}/retry`, {
+    headers: { Origin: new URL(page.url()).origin },
+    data: { client_id: await page.evaluate(() => crypto.randomUUID()), revision: state.session.revision },
+  });
+  expect(early.status()).toBe(429);
+  expect(early.headers()["retry-after"]).toBeTruthy();
+  expect((await early.json()).error.code).toBe("retry_cooldown");
+  await page.reload();
+  await expect(page.getByRole("button", { name: /Try again in/ })).toBeDisabled();
+  await composer.fill("Keep my next message.");
+  const retry = page.getByRole("button", { name: "Try again", exact: true });
+  await expect(retry).toBeEnabled({ timeout: 30_000 });
+  state = await evidence(page, sessionID);
+  expect(state.calls.length).toBe(calls); // Countdown never dispatches.
+  expect(state.session.operations).toHaveLength(1);
+  await retry.click();
+  const completed = await finished(page, sessionID, 1);
+  expect(completed.state, JSON.stringify(completed.error)).toBe("COMPLETED");
+  await expect(page.getByRole("heading", { name: "3 tests are ready" })).toBeVisible();
+  await expect(composer).toHaveValue("Keep my next message.");
+  state = await evidence(page, sessionID);
+  expect(state.session.operations).toHaveLength(2);
+  expect(state.session.operations[0].billing).toBe("RECONCILING");
+  expect(state.session.operations[1].diagnostics?.retry_outcome).toBe("completed");
+  expect(state.session.diagnostics?.first_useful_result_ms).toBeGreaterThanOrEqual(0);
+  expect(state.session.document.messages.filter(message => message.role === "user")).toHaveLength(1);
+  expect(errors).toEqual([]);
+  await page.screenshot({ path: info.outputPath("rate-limit-recovered.png") });
+});

@@ -150,21 +150,25 @@ type Document struct {
 	ActiveArtifactID     *uuid.UUID            `json:"active_artifact_id,omitempty"`
 }
 type Session struct {
-	EventCursor     int64       `json:"event_cursor"`
-	ID              uuid.UUID   `json:"id"`
-	Actor           string      `json:"-"`
-	WorkspaceID     *uuid.UUID  `json:"workspace_id,omitempty"`
-	Anonymous       bool        `json:"anonymous"`
-	Revision        int64       `json:"revision"`
-	Title           string      `json:"title"`
-	Document        Document    `json:"document"`
-	Operations      []Operation `json:"operations"`
-	UpdatedAt       time.Time   `json:"updated_at"`
-	SavedDraftID    *uuid.UUID  `json:"saved_draft_id,omitempty"`
-	SavedArtifactID *uuid.UUID  `json:"saved_artifact_id,omitempty"`
-	SavedModels     *Models     `json:"saved_models,omitempty"`
+	ServerTime      time.Time           `json:"server_time"`
+	Diagnostics     *SessionDiagnostics `json:"diagnostics,omitempty"`
+	EventCursor     int64               `json:"event_cursor"`
+	ID              uuid.UUID           `json:"id"`
+	Actor           string              `json:"-"`
+	WorkspaceID     *uuid.UUID          `json:"workspace_id,omitempty"`
+	Anonymous       bool                `json:"anonymous"`
+	Revision        int64               `json:"revision"`
+	Title           string              `json:"title"`
+	Document        Document            `json:"document"`
+	Operations      []Operation         `json:"operations"`
+	UpdatedAt       time.Time           `json:"updated_at"`
+	SavedDraftID    *uuid.UUID          `json:"saved_draft_id,omitempty"`
+	SavedArtifactID *uuid.UUID          `json:"saved_artifact_id,omitempty"`
+	SavedModels     *Models             `json:"saved_models,omitempty"`
 }
 type Operation struct {
+	Progress           *Progress             `json:"progress,omitempty"`
+	Diagnostics        *OperationDiagnostics `json:"diagnostics,omitempty"`
 	Grading            *GradingContract      `json:"grading,omitempty"`
 	TargetConfig       *TargetConfiguration  `json:"target_config,omitempty"`
 	Completion         *CompletionReceipt    `json:"completion_receipt,omitempty"`

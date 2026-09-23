@@ -221,6 +221,9 @@ func TestVibeIntegrationDescriptionToHonestScorecardAndSave(t *testing.T) {
 	if v.Anonymous {
 		t.Fatal("saved workspace conversation still uses subsidy")
 	}
+	if v.Diagnostics == nil || v.Diagnostics.FirstUsefulResultMillis == nil || v.Diagnostics.FirstSaveMillis == nil || *v.Diagnostics.FirstSaveMillis < *v.Diagnostics.FirstUsefulResultMillis {
+		t.Fatalf("first useful result/save completion were not recorded: %+v", v.Diagnostics)
+	}
 	var trialKey string
 	if err = db.QueryRow(ctx, "SELECT trial_key FROM vibe_sessions WHERE id=$1", v.ID).Scan(&trialKey); err != nil || trialKey != actor {
 		t.Fatal("trial history reset")

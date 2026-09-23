@@ -40,6 +40,8 @@ import type { ConversationAction } from "@/lib/vibe-conversation";
 import { hasConversationChoice, primarySurface } from "@/lib/vibe-presentation";
 import { ConversationActions } from "./conversation-actions";
 import { ConversationGuidance, ExampleComparison } from "./conversation-guidance";
+import { RetryControl } from "./retry-control";
+import { recoveryMessage } from "./recovery-message";
 import { VibeButton } from "./vibe-button";
 import { SafeMarkdown } from "./safe-markdown";
 import { EvidenceIntake, exampleBrief } from "./evidence-intake";
@@ -685,7 +687,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                           <Message message={m} animate={false} />
                           <ConversationGuidance cards={m.cards} scope={p.session?.document.conversation_state?.brief.scope_id} message={m.id} />
                           {m.role === "user" && m.operation_id && (
-                            <OperationFeedback original={operationByID.get(m.operation_id)} operation={latestOperations.get(m.operation_id)}
+                            <OperationFeedback serverTime={p.session?.server_time} original={operationByID.get(m.operation_id)} operation={latestOperations.get(m.operation_id)}
                               primary={primary === "recovery" && latestOperations.get(m.operation_id)?.id === operations.at(-1)?.id} busy={p.busy || p.dirty} pendingID={p.retryPendingOperationID} uncertainID={p.retryUncertainOperationID} onRetry={p.onRetry} />
                           )}
                         </div>
@@ -706,7 +708,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                         <Message message={m} />
                         <ConversationGuidance cards={m.cards} scope={p.session?.document.conversation_state?.brief.scope_id} message={m.id} />
                         {m.role === "user" && m.operation_id && (
-                          <OperationFeedback original={operationByID.get(m.operation_id)} operation={latestOperations.get(m.operation_id)}
+                          <OperationFeedback serverTime={p.session?.server_time} original={operationByID.get(m.operation_id)} operation={latestOperations.get(m.operation_id)}
                             primary={primary === "recovery" && latestOperations.get(m.operation_id)?.id === operations.at(-1)?.id} busy={p.busy || p.dirty} pendingID={p.retryPendingOperationID} uncertainID={p.retryUncertainOperationID} onRetry={p.onRetry} />
                         )}
                         {m.id === proposalMessage?.id && suiteCard && <div className="mt-5">{suiteCard}</div>}
@@ -1027,7 +1029,8 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
   );
 }
 
-function OperationFeedback({ original, operation, busy, pendingID, uncertainID, onRetry, primary }: {
+function OperationFeedback({ original, operation, busy, pendingID, uncertainID, onRetry, primary, serverTime }: {
+  serverTime?: string;
   primary?: boolean;
   original?: Operation;
   operation?: Operation;
@@ -1043,18 +1046,16 @@ function OperationFeedback({ original, operation, busy, pendingID, uncertainID, 
   const uncertain = uncertainID === operation.id;
   const retrying = pendingID === operation.id || !terminal(operation.state);
 	const rateLimited = operation.error?.code === "provider_rate_limit" || original.error.code === "provider_rate_limit";
-  // Historical generic failures sometimes claimed that nonexistent tests had
-  // been saved. A missing receipt cannot substantiate that claim.
-  const message = operation.error?.code === "invalid_response" && operation.error.message.includes("tests are saved")
-    ? "I couldn’t complete that response. Your request is still here."
-    : operation.error?.message || original.error.message;
+  const message = recoveryMessage(operation) || original.error.message;
   return (
     <div className="mt-3 space-y-2 text-sm">
       <p role="alert" className="text-builder-warn">{message}</p>
       {uncertain && <p className="vibe-muted">The retry acknowledgement wasn’t confirmed. Retry to recover its saved status.</p>}
       {retrying && <p role="status" className="vibe-muted">Retrying this request…</p>}
       {onRetry && (operation.retryable || uncertain) && (
-        <VibeButton variant={primary ? "primary" : "secondary"} disabled={retrying || (busy && !uncertain)} onClick={() => onRetry(operation.id)}>{rateLimited ? "Try again" : "Retry"}</VibeButton>
+        <RetryControl availableAt={uncertain ? undefined : operation.error?.retry_available_at} serverTime={serverTime}
+          primary={primary} disabled={retrying || (busy && !uncertain)} onRetry={() => onRetry(operation.id)}
+          label={rateLimited ? "Try again" : "Retry"} />
       )}
     </div>
   );

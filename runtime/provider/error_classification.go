@@ -1,6 +1,7 @@
 package provider
 
 import (
+	"math"
 	"net"
 	"net/http"
 	"strconv"
@@ -25,9 +26,12 @@ func parseRetryAfter(header http.Header) time.Duration {
 	}
 	seconds, err := strconv.ParseFloat(value, 64)
 	if err != nil {
+		if date, e := http.ParseTime(value); e == nil {
+			return max(time.Until(date), 0)
+		}
 		return 0
 	}
-	if seconds <= 0 {
+	if seconds <= 0 || math.IsNaN(seconds) || math.IsInf(seconds, 0) || seconds >= float64(math.MaxInt64)/float64(time.Second) {
 		return 0
 	}
 	return time.Duration(seconds * float64(time.Second))

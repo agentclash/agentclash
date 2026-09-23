@@ -127,7 +127,7 @@ func vibeError(w http.ResponseWriter, err error) {
 			status = 403
 		case "revision_conflict", "idempotency_conflict", "operation_running", "invalid_state", "saved_model_conflict", "retry_not_allowed", "retry_committed", "retry_running", "retry_uncertain", "retry_stale":
 			status = 409
-		case "rate_limit", "capacity_limit", "trial_limit":
+		case "retry_cooldown", "rate_limit", "capacity_limit", "trial_limit":
 			status = 429
 		case "insufficient_credits":
 			status = 402
@@ -140,6 +140,14 @@ func vibeError(w http.ResponseWriter, err error) {
 		code, message, status = "request_too_large", "Request exceeds its byte limit.", 413
 	}
 	issue := map[string]any{"code": code, "message": message}
+	if f != nil && f.RetryAvailableAt != nil {
+		issue["retry_available_at"] = f.RetryAvailableAt
+		seconds := int64(time.Until(*f.RetryAvailableAt).Seconds()) + 1
+		if seconds < 1 {
+			seconds = 1
+		}
+		w.Header().Set("Retry-After", strconv.FormatInt(seconds, 10))
+	}
 	if f != nil && f.Context != nil {
 		issue["context"] = f.Context
 	}

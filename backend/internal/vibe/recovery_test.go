@@ -54,6 +54,9 @@ func TestIntegrationCrashKeepsJournaledEvidenceWithoutReexecution(t *testing.T) 
 		t.Fatal(err)
 	}
 	v, _ = s.GetSession(ctx, v.Actor, v.ID)
+	if v.Operations[0].Diagnostics.StageMillis["running_agent"] != 0 {
+		t.Fatal("late cost reconciliation invented a model duration")
+	}
 	if v.Operations[0].Scorecard.Unknown != 2 || v.Operations[0].Billing != Settled {
 		t.Fatal("accounting reconciliation reran the evaluation")
 	}

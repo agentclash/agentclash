@@ -5,6 +5,7 @@ import { ArrowRight, Bookmark, Copy, Lightbulb } from "lucide-react";
 import { dollars, terminal, type CaseResult, type Operation } from "@/lib/vibe";
 import { CaseEvidence } from "./case-evidence";
 import { originalInputs } from "./result-prompts";
+import { recoveryMessage } from "./recovery-message";
 import { VibeButton } from "./vibe-button";
 
 export function VibeScorecard({
@@ -200,10 +201,12 @@ export function VibeScorecard({
             {score.unknown > 0
               ? `${score.unknown} ${score.unknown === 1 ? "result is" : "results are"} unresolved. `
               : "Some checks are incomplete. "}
-            Missing evidence is not counted as a pass.
+            An unfinished grade is not a failure by your agent. Completed results are kept.
           </p>
         )}
       </div>
+
+      {done && operation.error && <p role="alert" className="text-sm text-builder-warn">{recoveryMessage(operation)}</p>}
 
       {leading && (
         <div className="vibe-panel" aria-label="Leading finding">

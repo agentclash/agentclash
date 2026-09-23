@@ -129,7 +129,7 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 		defer cancel()
 		return g.Store.Generation(c, a.ID, id)
 	}
-	ctx, finishTrace := traceCall(ctx, role, model)
+	ctx, finishTrace := traceCall(ctx, role, model, step)
 	callCtx, cancelCall := context.WithCancel(ctx)
 	done := make(chan struct{})
 	defer close(done)

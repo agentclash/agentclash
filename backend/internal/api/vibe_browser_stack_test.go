@@ -75,14 +75,16 @@ func TestVibeBrowserStack(t *testing.T) {
 	})
 	router.Post("/__fixture/control", func(w http.ResponseWriter, r *http.Request) {
 		var command struct {
-			FailEditCalls int `json:"fail_edit_calls"`
+			FailEditCalls  int `json:"fail_edit_calls"`
+			RateLimitCalls int `json:"rate_limit_calls"`
 		}
-		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&command); err != nil || command.FailEditCalls < 0 || command.FailEditCalls > 2 {
-			http.Error(w, "expected fail_edit_calls in [0,2]", http.StatusBadRequest)
+		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&command); err != nil || command.FailEditCalls < 0 || command.FailEditCalls > 2 || command.RateLimitCalls < 0 || command.RateLimitCalls > 2 {
+			http.Error(w, "expected fixture failure counts in [0,2]", http.StatusBadRequest)
 			return
 		}
 		fake.mu.Lock()
 		fake.failEditCalls = command.FailEditCalls
+		fake.rateLimitCalls = command.RateLimitCalls
 		fake.mu.Unlock()
 		browserFixtureJSON(w, map[string]bool{"ok": true})
 	})
@@ -261,9 +263,10 @@ type browserFixtureCall struct {
 }
 
 type browserFixtureProvider struct {
-	mu            sync.Mutex
-	failEditCalls int
-	calls         []browserFixtureCall
+	mu             sync.Mutex
+	failEditCalls  int
+	rateLimitCalls int
+	calls          []browserFixtureCall
 }
 
 func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Request) (provider.Response, error) {
@@ -372,6 +375,10 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 		f.calls = append(f.calls, browserFixtureCall{Role: name, Request: &input.Request})
 		switch name {
 		case "vibe_route_v11":
+			if f.rateLimitCalls > 0 {
+				f.rateLimitCalls--
+				return provider.Response{}, provider.Failure{ProviderKey: "openrouter", Code: provider.FailureCodeRateLimit, Message: "Fixture busy", RetryAfter: 20 * time.Second}
+			}
 			intent, count := "prepare_tests", 3
 			if strings.HasPrefix(input.Request.Text, "Suggest a focused") {
 				intent, count = "suggest_fix", 0

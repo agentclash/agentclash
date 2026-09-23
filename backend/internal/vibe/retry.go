@@ -56,6 +56,9 @@ func (s *Service) Retry(ctx context.Context, actor string, sessionID, operationI
 	if err = validateRetrySource(v, source, original); err != nil {
 		return Operation{}, err
 	}
+	if err = validateRetryTiming(source); err != nil {
+		return Operation{}, err
+	}
 	if !s.Config.Enabled || s.Config.Credential == "" {
 		return Operation{}, fault("hosted_disabled", "Hosted Vibe execution is not configured yet.")
 	}
@@ -192,6 +195,9 @@ func validateRetryAdmission(ctx context.Context, tx pgx.Tx, v Session, sub Submi
 	if err = validateRetrySource(v, source, original); err != nil {
 		return err
 	}
+	if err = validateRetryTiming(source); err != nil {
+		return err
+	}
 	expected := retrySubmission(original.Submission, source.ID, RetryRequest{ClientID: sub.ClientID, Revision: sub.Revision})
 	if Hash(raw(expected)) != Hash(raw(sub)) || Hash(raw(plan.Submission)) != Hash(raw(sub)) || *plan.Retry != retryContext(source, original) {
 		return fault("retry_not_allowed", "A retry must preserve its original request, model and source.")
@@ -240,6 +246,15 @@ func (s *Store) populateRetryEligibility(ctx context.Context, tx pgx.Tx, v *Sess
 			return err
 		}
 		o.Retryable = !uncertain || manuallyRetryableRateLimit(full)
+	}
+	return nil
+}
+
+// The timestamp belongs to the failed attempt, not the browser clock. Receipts
+// are recovered before this guard; retrying a lost acknowledgement never spends.
+func validateRetryTiming(source Operation) error {
+	if source.Error != nil && source.Error.RetryAvailableAt != nil && timestamp().Before(*source.Error.RetryAvailableAt) {
+		return &Fault{Code: "retry_cooldown", Message: "The provider is still busy. Try again when the countdown finishes.", RetryAvailableAt: source.Error.RetryAvailableAt}
 	}
 	return nil
 }

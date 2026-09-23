@@ -452,7 +452,7 @@ it.each(["PARTIAL", "CANCELLED"])(
     await render(operation([unknown], state));
     expect(container.textContent).toContain("1 result is unresolved");
     expect(container.textContent).toContain(
-      "Missing evidence is not counted as a pass",
+      "An unfinished grade is not a failure by your agent",
     );
     expect(
       container

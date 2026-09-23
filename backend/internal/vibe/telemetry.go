@@ -6,11 +6,14 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/metric"
+	"time"
 )
 
 // Uses the application's existing OpenTelemetry provider/exporters. Prompts,
 // outputs, cookies, keys and workspace/user IDs are never metric labels.
-func traceCall(ctx context.Context, role Role, model string) (context.Context, func(error, *int64)) {
+func traceCall(ctx context.Context, role Role, model, step string) (context.Context, func(error, *int64)) {
+	started := time.Now()
+	phase := attemptPhase(step, role)
 	ctx, span := otel.Tracer("agentclash/vibe").Start(ctx, "vibe.model_call")
 	span.SetAttributes(attribute.String("vibe.role", string(role)), attribute.String("gen_ai.request.model", model))
 	return ctx, func(err error, cost *int64) {
@@ -20,8 +23,11 @@ func traceCall(ctx context.Context, role Role, model string) (context.Context, f
 			status = "error"
 			span.SetStatus(codes.Error, "model invocation did not complete")
 		}
-		attrs := metric.WithAttributes(attribute.String("role", string(role)), attribute.String("status", status))
+		attrs := metric.WithAttributes(attribute.String("role", string(role)), attribute.String("stage", phase), attribute.String("status", status))
 		meter := otel.Meter("agentclash/vibe")
+		if duration, e := meter.Float64Histogram("vibe.stage.duration", metric.WithUnit("s")); e == nil {
+			duration.Record(ctx, time.Since(started).Seconds(), attrs)
+		}
 		if calls, e := meter.Int64Counter("vibe.model.calls"); e == nil {
 			calls.Add(ctx, 1, attrs)
 		}

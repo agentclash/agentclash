@@ -66,6 +66,14 @@ func TestIntegrationVibeRetryPreservesSourceAndDeduplicates(t *testing.T) {
 	if err != nil || again.ID != retried.ID || again.Completion == nil {
 		t.Fatalf("completed retry acknowledgement changed: %+v %v", again, err)
 	}
+	current, err = s.GetSession(ctx, v.Actor, v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Operations[1].Diagnostics.RetryOutcome != "completed" {
+		t.Fatal("retry success was not recorded")
+	}
+
 }
 
 func TestIntegrationVibeRetryRejectsCrossSessionAndStaleRevision(t *testing.T) {
