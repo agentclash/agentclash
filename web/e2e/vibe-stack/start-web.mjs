@@ -1,3 +1,4 @@
+import { startAuthFixture } from "./auth-fixture.mjs";
 import { spawn } from "node:child_process";
 import { cp, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,6 +11,7 @@ import { fileURLToPath } from "node:url";
 const web = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const staging = await mkdtemp(path.join(tmpdir(), "agentclash-vibe-browser-"));
 let child;
+let closeAuth;
 let stopping = false;
 async function stop(signal = "SIGTERM") {
   if (stopping) return;
@@ -18,11 +20,13 @@ async function stop(signal = "SIGTERM") {
     child.kill(signal);
     await new Promise(resolve => child.once("exit", resolve));
   }
+  if (closeAuth) await closeAuth();
   await rm(staging, { recursive: true, force: true });
 }
 process.on("SIGTERM", () => void stop());
 process.on("SIGINT", () => void stop("SIGINT"));
 try {
+  closeAuth = await startAuthFixture(Number(process.env.WORKOS_API_PORT || "55442"), `http://127.0.0.1:${process.env.VIBE_BROWSER_WEB_PORT ?? "53518"}`);
   await Promise.all([
     ...["src", "public", "package.json", "tsconfig.json", "next.config.ts", "postcss.config.mjs"].map(
       entry => cp(path.join(web, entry), path.join(staging, entry), { recursive: true }),

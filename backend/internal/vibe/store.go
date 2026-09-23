@@ -199,6 +199,12 @@ func (s *Store) GetSession(ctx context.Context, actor string, id uuid.UUID) (Ses
 			return v, err
 		}
 	}
+	v.RuleCoverage = map[string][]RuleCoverage{}
+	for _, a := range v.Document.Artifacts {
+		if rows := ruleCoverage(v.Document, a); len(rows) > 0 {
+			v.RuleCoverage[a.ID.String()] = rows
+		}
+	}
 	v.ServerTime = timestamp()
 	if err = populateProgress(ctx, tx, &v); err != nil {
 		return v, err
@@ -466,6 +472,9 @@ func (s *Store) Cursor(ctx context.Context, session uuid.UUID) (int64, error) {
 }
 
 func (s *Store) SaveDraft(ctx context.Context, actor string, id uuid.UUID, revision int64, ws uuid.UUID, artifact Artifact, composition json.RawMessage, models Models, explicitModels bool, approve ...bool) (uuid.UUID, error) {
+	return s.saveDraft(ctx, actor, id, revision, ws, artifact, composition, models, explicitModels, nil, approve...)
+}
+func (s *Store) saveDraft(ctx context.Context, actor string, id uuid.UUID, revision int64, ws uuid.UUID, artifact Artifact, composition json.RawMessage, models Models, explicitModels bool, baseline *uuid.UUID, approve ...bool) (uuid.UUID, error) {
 	var draftID uuid.UUID
 	err := s.transaction(ctx, func(tx pgx.Tx) error {
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
@@ -478,11 +487,19 @@ func (s *Store) SaveDraft(ctx context.Context, actor string, id uuid.UUID, revis
 		if err = authorize(ctx, tx, actor, &ws, true); err != nil {
 			return err
 		}
-		if v.Revision != revision {
-			return fault("revision_conflict", "Reload the latest conversation before saving.")
-		}
 		if v.WorkspaceID != nil && *v.WorkspaceID != ws {
 			return fault("workspace_conflict", "This conversation is already attached to a different workspace.")
+		}
+		existing, err := savedDraftReceipt(ctx, tx, id, artifact.ID, models, explicitModels, baseline)
+		if err != nil {
+			return err
+		}
+		if existing != uuid.Nil {
+			draftID = existing
+			return nil
+		}
+		if v.Revision != revision {
+			return fault("revision_conflict", "Reload the latest conversation before saving.")
 		}
 		var active bool
 		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state IN ('QUEUED','RUNNING','AWAITING_APPROVAL','FINALIZING','CANCELLING'))", id).Scan(&active); err != nil {
@@ -491,25 +508,16 @@ func (s *Store) SaveDraft(ctx context.Context, actor string, id uuid.UUID, revis
 		if active {
 			return fault("operation_running", "Finish or stop the current operation before attaching workspace credits.")
 		}
-		var savedModels []byte
-		err = tx.QueryRow(ctx, `SELECT s.draft_id,s.saved_models FROM vibe_saved_artifacts s
-			WHERE s.session_id=$1 AND s.artifact_id=$2`, id, artifact.ID).Scan(&draftID, &savedModels)
-		if err == nil {
-			var previous *Models
-			if len(savedModels) > 0 {
-				if err := json.Unmarshal(savedModels, &previous); err != nil {
-					return err
-				}
+		if baseline != nil {
+			var valid bool
+			if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE id=$1 AND session_id=$2
+              AND input#>>'{artifact,id}'=$3 AND kind IN ('check','retest')
+              AND state IN ('COMPLETED','PARTIAL','FAILED','CANCELLED','EXPIRED'))`, *baseline, id, artifact.ID.String()).Scan(&valid); err != nil {
+				return err
 			}
-			// Older saves have no model-choice receipt. Keep legacy retries
-			// without choices working, but never claim new choices were saved.
-			if (previous == nil && explicitModels) || (previous != nil && *previous != models) {
-				return fault("saved_model_conflict", "These instructions are already saved with different or unrecorded model choices. Open the saved draft in your workspace, or edit and accept a new draft before saving new choices.")
+			if !valid {
+				return fault("baseline_required", "Choose a completed run of these exact tests.")
 			}
-			return nil
-		}
-		if !errors.Is(err, pgx.ErrNoRows) {
-			return err
 		}
 		uid, err := uuid.Parse(strings.TrimPrefix(actor, "user:"))
 		if err != nil {
@@ -541,7 +549,7 @@ func (s *Store) SaveDraft(ctx context.Context, actor string, id uuid.UUID, revis
 		}
 		// The canonical model_spec is editable. Record the selected roles only
 		// in Vibe's immutable save receipt, in the same transaction as the draft.
-		_, err = tx.Exec(ctx, "INSERT INTO vibe_saved_artifacts(session_id,artifact_id,workspace_id,draft_id,build_id,build_version_id,saved_models) VALUES($1,$2,$3,$4,$5,$6,$7)", id, artifact.ID, ws, draftID, savedBuildID, savedVersionID, raw(models))
+		_, err = tx.Exec(ctx, "INSERT INTO vibe_saved_artifacts(session_id,artifact_id,workspace_id,draft_id,build_id,build_version_id,saved_models,baseline_operation_id) VALUES($1,$2,$3,$4,$5,$6,$7,$8)", id, artifact.ID, ws, draftID, savedBuildID, savedVersionID, raw(models), baseline)
 		if err != nil {
 			return err
 		}

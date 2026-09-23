@@ -167,7 +167,10 @@ export type Operation = {
     incomplete_cases?: number;
   };
 };
+export type RuleCoverage = { rule_id: string; statement: string; case_keys: string[] };
+
 export type Session = {
+  rule_coverage?: Record<string, RuleCoverage[]>;
   server_time?: string;
   diagnostics?: { first_useful_result_ms?: number; first_save_ms?: number };
   event_cursor?: number;
@@ -230,6 +233,8 @@ export type EvidenceSet = {
   conversations: { key: string; title: string; messages: EvidenceMessage[] }[];
 };
 export type SavedCheck = {
+  kind?: "brief";
+  models?: Models;
   draft_id?: string;
   id: string;
   title: string;

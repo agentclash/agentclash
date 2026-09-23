@@ -4,7 +4,7 @@ import type { ConversationAction } from "@/lib/vibe-conversation";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
+import { useAccessToken, useAuth } from "@workos-inc/authkit-nextjs/components";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EvaluationWorkspace } from "@/components/vibe/evaluation-workspace";
 import { pendingQuickCheck, quickCheckClientID } from "@/lib/vibe-quick-check";
@@ -41,6 +41,8 @@ import {
   type SavedCheck,
 } from "@/lib/vibe";
 
+import { keepReturnURL, savedWorkURL } from "@/lib/vibe-keep";
+
 // POST /messages faults from api/vibe.go, Service.Prepare and Store.Submit:
 // these exact code/status pairs reject before admission or roll back its transaction.
 // Unknown responses (including generic 503s) cannot prove non-admission.
@@ -72,6 +74,7 @@ const submissionRejections: Partial<Record<number, readonly string[]>> = {
     "conversation_limit",
     "workspace_required",
   ],
+  401: ["unauthenticated"],
   402: ["insufficient_credits"],
   403: ["forbidden"],
   404: ["not_found"],
@@ -104,6 +107,8 @@ export function VibeClient() {
   const [loadAttempt, setLoadAttempt] = useState(0);
   const [loadingSession, setLoadingSession] = useState(!!requestedSessionID);
   const { getAccessToken } = useAccessToken();
+  const { loading: authLoading, user: authUser } = useAuth();
+  const authUserID = authUser?.id;
   const [session, setSession] = useState<Session | null>(null);
   const [config, setConfig] = useState<VibeConfig | null>(null);
   const [configError, setConfigError] = useState(false);
@@ -146,6 +151,9 @@ export function VibeClient() {
   const [pendingEdit, setPendingEdit] = useState<{ operationID: string; artifactID: string }>();
   const [dirtyArtifactID, setDirtyArtifactID] = useState<string | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
+  const [saveAccess, setSaveAccess] = useState<"loading" | "signed_out" | "ready" | "error">("loading");
+  const [saveBaseline, setSaveBaseline] = useState<string>();
+  const saveResumed = useRef(false);
   const [saveTarget, setSaveTarget] = useState<Operation>();
   const [savedCheck, setSavedCheck] = useState<SavedCheck>();
   const [savedChecks, setSavedChecks] = useState<SavedCheck[]>([]);
@@ -197,7 +205,7 @@ export function VibeClient() {
     ) || [];
   const latestArtifact = artifacts.at(-1);
   const artifact =
-    artifacts.find((a) => a.id === selectedArtifactID) || latestArtifact;
+    selectedArtifactID ? artifacts.find((a) => a.id === selectedArtifactID) : latestArtifact;
   const dirtyArtifact =
     !!artifact &&
     (dirtyArtifactID === artifact.id || checksDirtyID === artifact.id);
@@ -273,10 +281,11 @@ export function VibeClient() {
     }
     setModels(next);
   }
-  const savedModels = session?.saved_models;
+  const keptArtifact = savedChecks.find(c => c.session_id === session?.id && c.artifact_id === artifact?.id && c.draft_id);
+  const savedModels = keptArtifact?.models || (session?.saved_artifact_id === artifact?.id ? session?.saved_models : undefined);
   // Canonical identity survives unknown legacy receipts or changed selections;
   // only the immutable model receipt can confirm that these choices were saved.
-  const savedDraft =
+  const savedDraft = artifact?.accepted && !dirtyArtifact && keptArtifact?.draft_id ? { draft_id: keptArtifact.draft_id, workspace_id: keptArtifact.workspace_id } :
     artifact?.accepted &&
     !dirtyArtifact &&
     session?.saved_artifact_id === artifact.id &&
@@ -298,12 +307,13 @@ export function VibeClient() {
     if (attachedWorkspace) setWorkspace(attachedWorkspace);
   }, [attachedWorkspace]);
   const token = useCallback(async () => {
+    if (authLoading || !authUserID) return undefined;
     try {
       return await getAccessToken();
     } catch {
       return undefined;
     }
-  }, [getAccessToken]);
+  }, [getAccessToken, authLoading, authUserID]);
   useEffect(() => {
     let current = true;
     void token()
@@ -313,7 +323,7 @@ export function VibeClient() {
           `/saved-checks${workspace ? `?workspace=${workspace}` : ""}`,
           auth,
         );
-        if (current) setSavedChecks(items);
+        if (current) setSavedChecks(Array.isArray(items) ? items : []);
       })
       .catch(() => undefined);
     return () => {
@@ -340,7 +350,7 @@ export function VibeClient() {
   }, [requestedSessionID, loadAttempt]);
   useEffect(() => {
     const id = requestedSessionID;
-    if (!id) return;
+    if (!id || authLoading) return;
     let alive = true;
     setLoadingSession(true);
     void (async () => {
@@ -384,14 +394,16 @@ export function VibeClient() {
     return () => {
       alive = false;
     };
-  }, [requestedSessionID, token, loadAttempt]);
+  }, [requestedSessionID, token, loadAttempt, authLoading]);
   useEffect(() => {
-    if (!sessionID) return;
+    if (!sessionID || authLoading) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
+    let claimAttempted = false;
     const connect = async () => {
+      const auth = await token();
       try {
-        await watchVibe(sessionID, await token(), controller.signal, (v) => {
+        await watchVibe(sessionID, auth, controller.signal, (v) => {
           setSession((old) =>
             old &&
             old.id === v.id &&
@@ -404,6 +416,20 @@ export function VibeClient() {
         });
       } catch (e) {
         if (!controller.signal.aborted) {
+          // AuthKit may finish loading after the first anonymous snapshot. The
+          // signed-in stream then needs the same ownership claim as a reload.
+          if (auth && e instanceof VibeError && e.code === "not_found" && !claimAttempted) {
+            claimAttempted = true;
+            try {
+              const claimed = await vibeFetch<Session>(`/sessions/${sessionID}/claim`, auth, { method: "POST", body: "{}" });
+              if (!controller.signal.aborted) {
+                setSession(old => old && old.id === claimed.id && (old.revision > claimed.revision || (old.event_cursor || 0) > (claimed.event_cursor || 0)) ? old : claimed);
+                setConnection("");
+                timer = setTimeout(connect, 0);
+              }
+              return;
+            } catch { /* A different owner's session must remain inaccessible. */ }
+          }
           if (isSessionAccessError(e)) {
             setConnection(sessionAccessLost);
             return;
@@ -418,7 +444,7 @@ export function VibeClient() {
       controller.abort();
       clearTimeout(timer);
     };
-  }, [sessionID, token, loadAttempt]);
+  }, [sessionID, token, loadAttempt, authLoading]);
   const reload = async (id = sessionID) => {
     if (!id) return;
     const v = await vibeFetch<Session>(`/sessions/${id}`, await token());
@@ -938,40 +964,110 @@ export function VibeClient() {
           (operation.source?.artifact_id || operation.results[0]?.version),
       );
     if (selected) setSelectedArtifactID(selected.id);
+    setSaveBaseline(operation?.id);
     setSaveTarget(selected?.kind === "test_suite" ? undefined : operation);
     setSavedCheck(undefined);
     setError("");
     setSaveOpen(true);
-    const auth = await token();
-    if (!auth) return;
+  }
+  useEffect(() => {
+    if (!saveOpen || authLoading) return;
+    let current = true;
+    setSaveAccess("loading");
+    void token().then(async auth => {
+      if (!current) return;
+      if (!auth) { setWorkspaces([]); setSaveAccess("signed_out"); return; }
+      try {
+        const me = await createApiClient(auth).get<UserMeResponse>("/v1/users/me");
+        if (!current) return;
+        const available = me.organizations.flatMap(o => o.workspaces.filter(w =>
+          (["workspace_admin", "workspace_member"].includes(w.role) || o.role === "org_admin") && (!attachedWorkspace || w.id === attachedWorkspace)));
+        setWorkspaces(available);
+        setWorkspace(old => attachedWorkspace || (available.some(w => w.id === old) ? old : available[0]?.id || ""));
+        setSaveAccess("ready");
+      } catch (e) {
+        if (!current) return;
+        const expired = (e as { status?: number }).status === 401;
+        setSaveAccess(expired ? "signed_out" : "error");
+        setError(expired ? "Sign in again to keep your work. Your tests are still here." : "Couldn’t load your workspaces. Try again.");
+      }
+    });
+    return () => { current = false; };
+  }, [saveOpen, token, attachedWorkspace, loadAttempt, authLoading]);
+  useEffect(() => {
+    if (!session || saveResumed.current) return;
+    if (params.get("keep") !== "1") {
+      // Browser Back from a canceled login returns to the original URL. Restore
+      // the same draft and selection without reopening or submitting the save.
+      try {
+        const draft = JSON.parse(sessionStorage.getItem(`vibe-keep:${session.id}`) || "null");
+        if (draft?.version === 1 && (!params.get("agent") || params.get("agent") === draft.artifact) && session.document.artifacts.some(a => a.id === draft.artifact)) {
+          saveResumed.current = true;
+          setSelectedArtifactID(draft.artifact);
+          if (typeof draft.content === "string") setContent(draft.content);
+          if ([draft.models?.assistant, draft.models?.target, draft.models?.evaluator].every(v => typeof v === "string")) setModels(draft.models);
+        }
+      } catch { /* A canceled login never discards durable tests. */ }
+      return;
+    }
+    saveResumed.current = true;
+    const exact = session.document.artifacts.find(a => a.id === params.get("agent"));
+    const baselineID = params.get("keep_run") || undefined;
+    const baseline = session.operations.find(o => o.id === baselineID);
+    if (!exact || (baselineID && (!baseline || !terminal(baseline.state) ||
+      (baseline.source?.artifact_id || baseline.results[0]?.version) !== exact.id))) {
+      setError("This saved selection is unavailable. Choose the tests you want to keep."); return;
+    }
+    setSelectedArtifactID(exact.id);
+    setSaveBaseline(baselineID);
+    setSaveTarget(exact.kind === "test_suite" ? undefined : baseline);
     try {
-      const me =
-        await createApiClient(auth).get<UserMeResponse>("/v1/users/me");
-      const available = me.organizations.flatMap((o) =>
-        o.workspaces.filter(
-          (w) =>
-            ["workspace_admin", "workspace_member"].includes(w.role) ||
-            o.role === "org_admin",
-        ),
-      );
-      setWorkspaces(available);
-      if (!workspace && available[0]) setWorkspace(available[0].id);
-    } catch (e) {
-      setError((e as Error).message);
+      const raw = sessionStorage.getItem(`vibe-keep:${session.id}`);
+      if (raw) {
+        const draft = JSON.parse(raw);
+        if (draft.version === 1 && draft.artifact === exact.id && typeof draft.content === "string") setContent(draft.content);
+        if (draft.version === 1 && draft.artifact === exact.id && [draft.models?.assistant, draft.models?.target, draft.models?.evaluator].every(v => typeof v === "string")) setModels(draft.models);
+      }
+    } catch { /* Storage may be blocked; the durable tests remain accessible. */ }
+    setSaveOpen(true);
+  }, [session, params]);
+  function closeSave(open: boolean) {
+    setSaveOpen(open);
+    if (!open) {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("keep"); url.searchParams.delete("keep_run");
+      window.history.replaceState(null, "", url.pathname + url.search);
+      if (session) { try { sessionStorage.removeItem(`vibe-keep:${session.id}`); } catch {} }
     }
   }
+  function rememberSave() {
+    if (session && artifact) {
+      try { sessionStorage.setItem(`vibe-keep:${session.id}`, JSON.stringify({ version: 1, artifact: artifact.id, content, models })); } catch {}
+    }
+  }
+
   async function save() {
     if (!session || !artifact || !workspace) return;
     setPending(true);
     setError("");
     try {
       const auth = await token();
+      if (!auth) { setSaveAccess("signed_out"); return; }
       await vibeFetch(`/sessions/${session.id}/claim`, auth, {
         method: "POST",
         body: "{}",
       });
       const latest = await reload();
       if (!latest) return;
+      if (artifact.kind === "test_plan") {
+        const receipt = await vibeFetch<SavedCheck>(`/sessions/${session.id}/save-brief`, auth, {
+          method: "POST", body: JSON.stringify({ revision: latest.revision, artifact_id: artifact.id, workspace_id: workspace }),
+        });
+        setSavedCheck(receipt);
+        setSavedChecks(old => [receipt, ...old.filter(c => c.id !== receipt.id)]);
+        await reload();
+        return;
+      }
       if (saveTarget) {
         const receipt = await vibeFetch<SavedCheck>(
           `/sessions/${session.id}/save-check`,
@@ -1003,14 +1099,19 @@ export function VibeClient() {
           artifact_id: artifact.id,
           approve_artifact: true,
           workspace_id: workspace,
+          baseline_operation_id: saveBaseline,
           models,
         }),
       });
       await reload();
       const kept = await vibeFetch<SavedCheck[]>("/saved-checks", auth);
-      setSavedChecks(kept);
+      setSavedChecks(Array.isArray(kept) ? kept : []);
     } catch (e) {
-      setError((e as Error).message);
+      if (e instanceof VibeError && e.status === 401) setSaveAccess("signed_out");
+      if (e instanceof VibeError && e.status === 403) {
+        setWorkspaces([]); setSaveAccess("ready");
+        setError("Your workspace access changed. Ask its owner for permission to save here.");
+      } else setError((e as Error).message);
     } finally {
       setPending(false);
     }
@@ -1194,6 +1295,7 @@ export function VibeClient() {
                 This conversation could not be loaded.
               </p>
             )}
+            {session && selectedArtifactID && !artifact && <p role="alert" className="text-sm text-builder-warn">This test version is unavailable. Open History to choose saved work.</p>}
             {error && (
               <p role="alert" className="mb-3 text-sm text-builder-warn">
                 {error}
@@ -1591,17 +1693,17 @@ export function VibeClient() {
         aria-label="Evaluation file"
         onChange={(e) => upload(e.target.files?.[0])}
       />
-      <Dialog open={saveOpen} onOpenChange={setSaveOpen}>
+      <Dialog open={saveOpen} onOpenChange={closeSave}>
         <DialogContent className="vibe-workspace">
           <DialogTitle>
-            {testJourney
+            {artifact?.kind === "test_plan" ? "Keep this brief" : testJourney
               ? "Keep these tests"
               : saveTarget
                 ? "Save this check"
                 : "Save agent and checks"}
           </DialogTitle>
           <DialogDescription>
-            {testJourney
+            {artifact?.kind === "test_plan" ? "Keep your plan for when you’re ready. No agent or results are needed." : testJourney
               ? "Save this test set so you can run it again after changing your agent."
               : saveTarget
                 ? "Keep the source, expectations and this result together. Only you can reopen this check. Future runs use your workspace’s AI credits."
@@ -1612,7 +1714,10 @@ export function VibeClient() {
               {error}
             </p>
           )}
-          {workspaces.length ? (
+          {saveAccess === "loading" ? <p role="status" className="text-sm vibe-muted">Loading your workspaces…</p>
+            : saveAccess === "error" ? <Button onClick={() => setLoadAttempt(n => n + 1)}>Try again</Button>
+            : saveAccess === "ready" && !workspaces.length ? <p className="text-sm">You need a workspace you can save to. <Link className="underline" href="/dashboard">Open your workspace</Link>, or ask its owner for access. Your work is still here.</p>
+            : saveAccess === "ready" ? (
             <>
               <label className="text-sm">
                 Workspace
@@ -1635,10 +1740,11 @@ export function VibeClient() {
                   busy ||
                   dirtyArtifact ||
                   !artifact ||
-                  (saveTarget ? !!savedCheck : saved)
+                  !workspaces.some(w => w.id === workspace) ||
+                  (artifact?.kind === "test_plan" || saveTarget ? !!savedCheck : saved)
                 }
               >
-                {saveTarget
+                {artifact?.kind === "test_plan" ? (savedCheck ? "Saved" : "Keep this brief") : saveTarget
                   ? savedCheck
                     ? "Saved"
                     : "Save this check"
@@ -1651,16 +1757,15 @@ export function VibeClient() {
             </>
           ) : (
             <Link
-              href={`/auth/login?returnTo=${encodeURIComponent(`/vibe-evals?session=${sessionID || ""}`)}`}
+              href={`/auth/login?returnTo=${encodeURIComponent(keepReturnURL(sessionID || "", artifact?.id || "", workspace, saveBaseline))}`}
+              onClick={rememberSave}
               className="rounded-lg bg-primary px-4 py-3 text-center text-sm text-primary-foreground"
             >
               Sign in to save your work
             </Link>
           )}
           {savedCheck && (
-            <p role="status" className="text-sm">
-              Saved. Find it in History whenever you need it.
-            </p>
+            <p role="status" className="text-sm">Saved. <a className="underline" href={savedWorkURL(savedCheck)}>Open saved {savedCheck.kind === "brief" ? "brief" : "check"}</a></p>
           )}
           {!saveTarget && savedDraft && (
             <>
@@ -1669,16 +1774,17 @@ export function VibeClient() {
                   {savedModelNotice}
                 </p>
               )}
-              <Link
+              <a
                 href={
                   testJourney
-                    ? `/vibe-evals?session=${sessionID}&agent=${session?.saved_artifact_id || artifact?.id}`
+                    ? savedWorkURL(keptArtifact || { session_id: sessionID!, artifact_id: artifact!.id, workspace_id: savedDraft.workspace_id, baseline_operation_id: saveBaseline || "" })
                     : `/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`
                 }
                 className="text-sm underline"
               >
                 {testJourney ? "Open saved tests" : "Open your evaluation"}
-              </Link>
+              </a>
+              {testJourney && <Link className="text-sm underline" href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}>Open in full pack builder</Link>}
             </>
           )}
         </DialogContent>

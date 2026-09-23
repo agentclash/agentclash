@@ -114,3 +114,17 @@ describe("invite return-to helpers", () => {
     );
   });
 });
+
+it("preserves only validated Vibe save identities through sign-in", () => {
+  const id = "a8000000-0000-4000-8000-000000000001";
+  const next = sanitizeReturnTo(`/vibe-evals?session=${id}&agent=${id}&keep_run=${id}&keep=1&view=checks&workspace=${id}&next=https://evil.example&content=secret`);
+  const params = new URL(next, "http://localhost").searchParams;
+  expect(params.get("session")).toBe(id);
+  expect(params.get("agent")).toBe(id);
+  expect(params.get("keep_run")).toBe(id);
+  expect(params.get("keep")).toBe("1");
+  expect(params.has("next")).toBe(false);
+  expect(params.has("content")).toBe(false);
+  expect(sanitizeReturnTo("/vibe-evals?session=invalid&agent=https://evil.example&keep=1")).toBe("/vibe-evals");
+  expect(sanitizeReturnTo("//evil.example/vibe-evals")).toBe("/dashboard");
+});

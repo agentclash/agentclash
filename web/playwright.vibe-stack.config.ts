@@ -16,6 +16,7 @@ export default defineConfig({
   outputDir: "test-results/vibe-stack",
   use: {
     baseURL,
+    actionTimeout: 30_000,
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
     launchOptions: process.env.VIBE_TEST_CHROMIUM
@@ -45,6 +46,9 @@ export default defineConfig({
         VIBE_BROWSER_WEB_PORT: port,
         NEXT_PUBLIC_API_URL: apiURL,
         NEXT_TELEMETRY_DISABLED: "1",
+        WORKOS_API_HOSTNAME: "127.0.0.1",
+        WORKOS_API_PORT: "55442",
+        WORKOS_API_HTTPS: "false",
         WORKOS_CLIENT_ID: "client_test_vibe_stack",
         WORKOS_API_KEY: "sk_test_not_a_real_key",
         WORKOS_COOKIE_PASSWORD: "vibe-stack-cookie-password-32-characters-long",

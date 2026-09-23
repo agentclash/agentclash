@@ -72,6 +72,7 @@ func (h *VibeHandler) Routes() http.Handler {
 	r.Post("/sessions/{sessionID}/claim", h.claim)
 	r.Post("/sessions/{sessionID}/save", h.save)
 	r.Post("/sessions/{sessionID}/save-check", h.saveCheck)
+	r.Post("/sessions/{sessionID}/save-brief", h.saveBrief)
 	r.Get("/saved-checks", h.savedChecks)
 	r.Get("/sessions/{sessionID}/events", h.events)
 	r.Post("/operations/{operationID}/approve", h.approve)
@@ -123,9 +124,11 @@ func vibeError(w http.ResponseWriter, err error) {
 		switch code {
 		case "not_found":
 			status = 404
+		case "unauthenticated":
+			status = 401
 		case "forbidden":
 			status = 403
-		case "revision_conflict", "idempotency_conflict", "operation_running", "invalid_state", "saved_model_conflict", "retry_not_allowed", "retry_committed", "retry_running", "retry_uncertain", "retry_stale":
+		case "revision_conflict", "idempotency_conflict", "operation_running", "invalid_state", "saved_model_conflict", "saved_baseline_conflict", "retry_not_allowed", "retry_committed", "retry_running", "retry_uncertain", "retry_stale":
 			status = 409
 		case "retry_cooldown", "rate_limit", "capacity_limit", "trial_limit":
 			status = 429
@@ -186,7 +189,7 @@ func (h *VibeHandler) actor(r *http.Request) (string, error) {
 	if r.Header.Get("Authorization") != "" {
 		caller, err := h.Auth.Authenticate(r)
 		if err != nil {
-			return "", &vibe.Fault{Code: "forbidden", Message: "Sign in again to continue."}
+			return "", &vibe.Fault{Code: "unauthenticated", Message: "Sign in again to continue."}
 		}
 		return "user:" + caller.UserID.String(), nil
 	}
@@ -575,13 +578,14 @@ func (h *VibeHandler) save(w http.ResponseWriter, r *http.Request) {
 		ApproveArtifact bool         `json:"approve_artifact,omitempty"`
 		ArtifactID      uuid.UUID    `json:"artifact_id"`
 		WorkspaceID     uuid.UUID    `json:"workspace_id"`
+		BaselineID      *uuid.UUID   `json:"baseline_operation_id,omitempty"`
 		Models          *vibe.Models `json:"models,omitempty"`
 	}
 	if err = vibeBody(w, r, v.Anonymous, &input); err != nil {
 		vibeError(w, err)
 		return
 	}
-	id, err := h.Service.Save(r.Context(), v.Actor, v.ID, input.Revision, input.ArtifactID, input.WorkspaceID, input.Models, input.ApproveArtifact)
+	id, err := h.Service.SaveWithBaseline(r.Context(), v.Actor, v.ID, input.Revision, input.ArtifactID, input.WorkspaceID, input.Models, input.BaselineID, input.ApproveArtifact)
 	if err != nil {
 		vibeError(w, err)
 		return

@@ -7,6 +7,7 @@ import { VibeClient } from "./vibe-client";
 
 const harness = vi.hoisted(() => ({
   params: new URLSearchParams("session=session-one"),
+  authLoading: false,
   token: vi.fn(async () => undefined as string | undefined),
   watch: vi.fn(),
   me: vi.fn(),
@@ -14,6 +15,7 @@ const harness = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({ useSearchParams: () => harness.params }));
 vi.mock("@workos-inc/authkit-nextjs/components", () => ({
   useAccessToken: () => ({ getAccessToken: harness.token }),
+  useAuth: () => ({ loading: harness.authLoading, user: { id: "fixture-user" } }),
 }));
 vi.mock("@/lib/vibe", async (original) => ({
   ...(await original<typeof import("@/lib/vibe")>()),
@@ -119,6 +121,8 @@ function posts() {
 }
 
 beforeEach(() => {
+  harness.authLoading = false;
+  sessionStorage.clear();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   Element.prototype.scrollIntoView = vi.fn();
   harness.params = new URLSearchParams("session=session-one");
@@ -146,7 +150,7 @@ beforeEach(() => {
   };
   requests = [];
   respond = async (path) =>
-    path === "/config"
+    path === "/saved-checks" ? json([]) : path === "/config"
       ? json({ enabled: true, defaults: defaultModels, models: [] })
       : json(session);
   vi.stubGlobal(
@@ -2142,7 +2146,7 @@ it("keeps a generated suite in the canonical pack system without creating an age
     (a) => a.textContent === "Open saved tests",
   )!;
   expect(reopen.getAttribute("href")).toBe(
-    `/vibe-evals?session=${session.id}&agent=${suite.id}`,
+    `/vibe-evals?session=${session.id}&agent=${suite.id}&workspace=workspace-one`,
   );
   expect(posts()).toHaveLength(0);
 });
@@ -2351,7 +2355,7 @@ it("saves a provided-chat check without creating a prompt or agent build", async
   });
   expect(write?.body).not.toHaveProperty("agent_prompt");
   expect(requests.some((r) => r.path.endsWith("/save"))).toBe(false);
-  expect(document.body.textContent).toContain("Find it in History");
+  expect(document.body.textContent).toContain("Open saved check");
 });
 
 it("keeps a message unsent until the backend configuration loads and retries without losing it", async () => {
@@ -2381,4 +2385,85 @@ it("keeps a message unsent until the backend configuration loads and retries wit
   expect(button("Send message").disabled).toBe(false);
   await click("Send message");
   expect(posts()[0].body.models).toEqual(selected);
+});
+
+it("returns from sign-in to the exact older selection without automatic saving or inference", async () => {
+  const original = scenarioAgent("Original tests"); original.kind = "test_suite"; session.document.test_journey = true;
+  session.document.artifacts.push({ ...original, id: "newer-version", title: "Newer tests" });
+  signedInWorkspace();
+  harness.params = new URLSearchParams(`session=session-one&agent=${original.id}&keep=1&workspace=workspace-one`);
+  sessionStorage.setItem("vibe-keep:session-one", JSON.stringify({ version: 1, artifact: original.id, content: "An unsent question", models: defaultModels }));
+  await render();
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Keep these tests");
+  expect(composer().value).toBe("An unsent question");
+  expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
+  expect(container.textContent).not.toContain("Newer tests");
+});
+
+it("lets the user cancel sign-in without losing the selected tests", async () => {
+  const suite = scenarioAgent(); suite.kind = "test_suite"; session.document.test_journey = true;
+  await render(); await click("Keep these tests");
+  const link = [...document.querySelectorAll("a")].find(a => a.textContent === "Sign in to save your work")!;
+  const back = new URL(link.href).searchParams.get("returnTo")!;
+  expect(new URL(back, "http://localhost").searchParams.get("agent")).toBe(suite.id);
+  expect(back).toContain("keep=1");
+  expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
+  await click("Close"); expect(composer()).toBeTruthy();
+});
+
+it.each(["no access", "expired", "network"])("handles %s while loading save workspaces", async failure => {
+  const suite = scenarioAgent(); suite.kind = "test_suite"; session.document.test_journey = true;
+  signedInWorkspace();
+  if (failure === "no access") harness.me.mockResolvedValue({ organizations: [] });
+  else harness.me.mockRejectedValue(Object.assign(new Error("failed"), { status: failure === "expired" ? 401 : 503 }));
+  await render(); await click("Keep these tests");
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.querySelector("select")).toBeNull();
+  expect(dialog.textContent).toContain(failure === "no access" ? "workspace you can save to" : failure === "expired" ? "Sign in again" : "Try again");
+  expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
+});
+
+it("keeps a preparation brief without a pack, agent or model call", async () => {
+  const brief = scenarioAgent("PDF conversion plan"); brief.kind = "test_plan";
+  brief.test_plan = { title: brief.title, objective: "Keep tables", scenarios: [], evidence_needed: ["A converted file"], next_steps: [], local_test_code: "" };
+  session.document.test_journey = true; signedInWorkspace();
+  respond = async path => path === "/config" ? json({ enabled: true, defaults: defaultModels, models: [] }) : path === "/saved-checks" ? json([]) : path.endsWith("/save-brief") ? json({ kind: "brief", id: "brief-receipt", session_id: session.id, artifact_id: brief.id, workspace_id: "workspace-one", baseline_operation_id: "", title: brief.title }) : json(session);
+  await render(); await click("Keep this brief");
+  await act(async () => [...document.querySelector('[role="dialog"]')!.querySelectorAll("button")].find(b => b.textContent === "Keep this brief")!.click());
+  expect(requests.filter(r => r.path.endsWith("/save-brief"))).toHaveLength(1);
+  expect(requests.some(r => r.path.endsWith("/save") || r.path.endsWith("/messages"))).toBe(false);
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Open saved brief");
+});
+
+it("does not substitute the newest tests for a missing saved version", async () => {
+  scenarioAgent("Newer tests"); harness.params = new URLSearchParams("session=session-one&agent=missing-version&keep=1");
+  await render();
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(container.textContent).toContain("selection is unavailable");
+  expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
+});
+
+it("claims the anonymous conversation when authentication finishes before its event stream connects", async () => {
+  const suite=scenarioAgent(); suite.kind="test_suite";session.document.test_journey=true;
+  signedInWorkspace();
+  harness.watch.mockRejectedValueOnce(new VibeError("not_found","Conversation is unavailable.",404));
+  const previous=respond;
+  respond=async(path,options)=>{
+    if(path.endsWith("/claim")){session={...session,anonymous:false,revision:session.revision+1};return json(session);}
+    return previous(path,options);
+  };
+  await render();
+  await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10));});
+  expect(requests.filter(r=>r.path.endsWith("/claim"))).toHaveLength(1);
+  expect(posts()).toHaveLength(0);
+  expect(container.textContent).not.toContain("can’t access the saved session");
+});
+
+it("waits for auth loading before requesting a private saved session", async () => {
+  signedInWorkspace();harness.authLoading=true;
+  await render();
+  expect(requests.some(r=>r.path.startsWith("/sessions/"))).toBe(false);
+  harness.authLoading=false;
+  await render();
+  expect(requests.some(r=>r.path==="/sessions/session-one")).toBe(true);
 });

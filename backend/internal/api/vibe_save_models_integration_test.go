@@ -104,6 +104,26 @@ func TestVibeIntegrationSaveUsesSelectedModels(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &saved); err != nil {
 		t.Fatal(err)
 	}
+
+	t.Run("lost acknowledgment survives old revision and expired profile", func(t *testing.T) {
+		before, err := store.GetSession(ctx, actor, session.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		old := cfg.Profiles[selected.Target]
+		expired := old
+		expired.ExpiresAt = time.Now().Add(-time.Hour)
+		cfg.Profiles[selected.Target] = expired
+		defer func() { cfg.Profiles[selected.Target] = old }()
+		repeat := post(payload)
+		if repeat.Code != http.StatusOK || !bytes.Contains(repeat.Body.Bytes(), []byte(saved.DraftID.String())) {
+			t.Fatalf("lost save receipt: %d %s", repeat.Code, repeat.Body.String())
+		}
+		after, err := store.GetSession(ctx, actor, session.ID)
+		if err != nil || before.Revision != after.Revision || before.EventCursor != after.EventCursor {
+			t.Fatal("save retry mutated conversation", err)
+		}
+	})
 	var target string
 	var composition []byte
 	if err := db.QueryRow(ctx, `SELECT v.model_spec->>'model',d.composition FROM vibe_saved_artifacts s JOIN agent_build_versions v ON v.id=s.build_version_id JOIN challenge_pack_drafts d ON d.id=s.draft_id WHERE s.draft_id=$1`, saved.DraftID).Scan(&target, &composition); err != nil {
@@ -177,7 +197,7 @@ func TestVibeIntegrationSaveUsesSelectedModels(t *testing.T) {
 	t.Run("unsupported model cannot change saved state", func(t *testing.T) {
 		payload["models"] = vibe.Models{Assistant: selected.Assistant, Target: "unapproved/provider-model", Evaluator: selected.Evaluator}
 		bad := post(payload)
-		if bad.Code != http.StatusServiceUnavailable || !strings.Contains(bad.Body.String(), "pricing_unavailable") {
+		if bad.Code != http.StatusConflict || !strings.Contains(bad.Body.String(), "saved_model_conflict") {
 			t.Fatalf("unsupported model accepted: %d %s", bad.Code, bad.Body.String())
 		}
 		current, err := store.GetSession(ctx, actor, session.ID)

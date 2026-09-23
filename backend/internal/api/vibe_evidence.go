@@ -89,3 +89,26 @@ func (h *VibeHandler) savedChecks(w http.ResponseWriter, r *http.Request) {
 	}
 	vibeJSON(w, 200, items)
 }
+
+func (h *VibeHandler) saveBrief(w http.ResponseWriter, r *http.Request) {
+	v, err := h.session(r)
+	if err != nil {
+		vibeError(w, err)
+		return
+	}
+	var input struct {
+		Revision    int64     `json:"revision"`
+		WorkspaceID uuid.UUID `json:"workspace_id"`
+		ArtifactID  uuid.UUID `json:"artifact_id"`
+	}
+	if err = vibeBody(w, r, v.Anonymous, &input); err != nil {
+		vibeError(w, err)
+		return
+	}
+	saved, err := h.Service.Store.SaveBrief(r.Context(), v.Actor, v.ID, input.Revision, input.WorkspaceID, input.ArtifactID)
+	if err != nil {
+		vibeError(w, err)
+		return
+	}
+	vibeJSON(w, http.StatusOK, saved)
+}

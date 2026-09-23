@@ -2,9 +2,12 @@ package api
 
 // This opt-in fixture serves the production HTTP handler and executes its outbox
 // through a real Temporal server/worker. Only provider responses and Redis are
-// fixtures. Never construct a network-backed provider client in this file.
+// fixtures. The opt-in auth test uses a local identity provider and real
+// DevelopmentAuthenticator; no hosted identity service is contacted. Never
+// construct a network-backed provider client in this file.
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/vibe"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/alicebob/miniredis/v2"
@@ -69,7 +73,25 @@ func TestVibeBrowserStack(t *testing.T) {
 	router := chi.NewRouter()
 	origin := browserFixtureEnv("VIBE_BROWSER_WEB_ORIGIN", "http://127.0.0.1:53518")
 	router.Use(newCORSMiddleware("dev", map[string]struct{}{origin: {}}))
-	router.Mount("/v1/vibe", (&VibeHandler{Service: svc, CookieSecret: uuid.NewString() + uuid.NewString()}).Routes())
+	browserFixtureIdentity(t, db)
+	if err := store.Grant(ctx, "org:a8000000-0000-4000-8000-000000000002", "fixture-auth-credit", vibe.NanoUSD); err != nil {
+		t.Fatal(err)
+	}
+	auth := browserDevelopmentAuth{}
+	router.Get("/v1/users/me", func(w http.ResponseWriter, r *http.Request) {
+		caller, err := auth.Authenticate(r)
+		if err != nil {
+			writeAuthzError(w, err)
+			return
+		}
+		result, err := NewUserManager(repository.New(db)).GetMe(r.Context(), caller)
+		if err != nil {
+			http.Error(w, "fixture user unavailable", 500)
+			return
+		}
+		browserFixtureJSON(w, result)
+	})
+	router.Mount("/v1/vibe", (&VibeHandler{Service: svc, Auth: auth, CookieSecret: uuid.NewString() + uuid.NewString()}).Routes())
 	router.Get("/__fixture/ready", func(w http.ResponseWriter, r *http.Request) {
 		browserFixtureJSON(w, map[string]any{"ready": true, "temporal_namespace": namespace, "provider": "in-process scripted fixture"})
 	})
@@ -502,4 +524,41 @@ func browserFixtureConsistencyPayload(ledger vibe.ConsistencyLedger, schemaName 
 		cases = append(cases, map[string]any{"case_key": c.CaseKey, "facts": c.Facts})
 	}
 	return map[string]any{"entities": ledger.Entities, "fields": ledger.Fields, "missing_only": ledger.MissingOnly, "cases": cases}
+}
+
+// Only the opt-in localhost test server maps its local identity-provider token
+// into the production development authenticator's header contract.
+type browserDevelopmentAuth struct{}
+
+func (browserDevelopmentAuth) Authenticate(r *http.Request) (Caller, error) {
+	parts := strings.Split(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), ".")
+	if len(parts) != 3 {
+		return Caller{}, ErrUnauthenticated
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return Caller{}, ErrUnauthenticated
+	}
+	var claims struct {
+		Subject string `json:"sub"`
+	}
+	if json.Unmarshal(payload, &claims) != nil || claims.Subject != "a8000000-0000-4000-8000-000000000001" {
+		return Caller{}, ErrUnauthenticated
+	}
+	copy := r.Clone(r.Context())
+	copy.Header.Set(headerUserID, claims.Subject)
+	return NewDevelopmentAuthenticator().Authenticate(copy)
+}
+func browserFixtureIdentity(t *testing.T, db *pgxpool.Pool) {
+	t.Helper()
+	for _, sql := range []string{
+		`INSERT INTO users(id,workos_user_id,email) VALUES('a8000000-0000-4000-8000-000000000001','a8000000-0000-4000-8000-000000000001','vibe-browser@example.invalid')`,
+		`INSERT INTO organizations(id,name,slug) VALUES('a8000000-0000-4000-8000-000000000002','Browser tests','vibe-browser')`,
+		`INSERT INTO workspaces(id,organization_id,name,slug) VALUES('a8000000-0000-4000-8000-000000000003','a8000000-0000-4000-8000-000000000002','Browser workspace','vibe-browser')`,
+		`INSERT INTO organization_memberships(organization_id,user_id,role,membership_status) VALUES('a8000000-0000-4000-8000-000000000002','a8000000-0000-4000-8000-000000000001','org_admin','active')`,
+	} {
+		if _, err := db.Exec(context.Background(), sql); err != nil {
+			t.Fatal(err)
+		}
+	}
 }

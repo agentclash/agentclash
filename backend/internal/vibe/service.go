@@ -421,10 +421,23 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 	})
 }
 func (s *Service) Save(ctx context.Context, actor string, id uuid.UUID, revision int64, artifactID, ws uuid.UUID, selected *Models, approve ...bool) (uuid.UUID, error) {
+	return s.SaveWithBaseline(ctx, actor, id, revision, artifactID, ws, selected, nil, approve...)
+}
+func (s *Service) SaveWithBaseline(ctx context.Context, actor string, id uuid.UUID, revision int64, artifactID, ws uuid.UUID, selected *Models, baseline *uuid.UUID, approve ...bool) (uuid.UUID, error) {
 	v, err := s.Store.GetSession(ctx, actor, id)
 	if err != nil {
 		return uuid.Nil, err
 	}
+	models := v.Document.Models
+	if selected != nil {
+		models = *selected
+	}
+	// Recover an acknowledged durable save before consulting mutable policy,
+	// pricing or revision state. Authorization and immutable choices still match.
+	if receipt, err := s.Store.SavedDraftReceipt(ctx, actor, id, ws, artifactID, models, selected != nil, baseline); err != nil || receipt != uuid.Nil {
+		return receipt, err
+	}
+
 	var artifact *Artifact
 	for i := range v.Document.Artifacts {
 		if v.Document.Artifacts[i].ID == artifactID && (v.Document.Artifacts[i].Accepted || len(approve) > 0 && approve[0]) {
@@ -446,7 +459,6 @@ func (s *Service) Save(ctx context.Context, actor string, id uuid.UUID, revision
 	if artifact.IsTestSuite() && !suppliedImport(v.Document, *artifact) && (s.Config.ReliableAuthoring || artifact.Validation != nil || artifact.Provenance == "ai_generated") && !s.currentArtifactPolicy(v.Document, *artifact) {
 		return uuid.Nil, fault("tests_not_ready", "These tests need a rule review before they can be saved. Run the existing tests to review them, or describe the intended rules to prepare an update.")
 	}
-	models := v.Document.Models
 	if selected != nil {
 		// Saving does not run a model. Explicit choices must still belong to the
 		// configured catalog, not user-controlled provider/routing overrides.
@@ -459,5 +471,5 @@ func (s *Service) Save(ctx context.Context, actor string, id uuid.UUID, revision
 	if err != nil {
 		return uuid.Nil, err
 	}
-	return s.Store.SaveDraft(ctx, actor, id, revision, ws, *artifact, c.Composition, models, selected != nil, approve...)
+	return s.Store.saveDraft(ctx, actor, id, revision, ws, *artifact, c.Composition, models, selected != nil, baseline, approve...)
 }

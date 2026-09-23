@@ -36,10 +36,12 @@ import {
   type SavedCheck,
   type Session,
 } from "@/lib/vibe";
+import { savedWorkURL } from "@/lib/vibe-keep";
 import type { ConversationAction } from "@/lib/vibe-conversation";
 import { hasConversationChoice, primarySurface } from "@/lib/vibe-presentation";
 import { ConversationActions } from "./conversation-actions";
 import { ConversationGuidance, ExampleComparison } from "./conversation-guidance";
+import { CoverageNote } from "./coverage-note";
 import { RetryControl } from "./retry-control";
 import { recoveryMessage } from "./recovery-message";
 import { VibeButton } from "./vibe-button";
@@ -84,7 +86,7 @@ export type EvaluationWorkspaceProps = {
     operation?: Operation,
     instructions?: string,
   ) => void;
-  onNavigate: (view: View) => void;
+  onNavigate: (view: View, artifactID?: string) => void;
   onRun: (baseline?: Operation, evidenceID?: string) => void;
   onAttach: (input: {
     content?: string;
@@ -664,6 +666,13 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                       : undefined
                   }
                 />
+                {result.results.length > 0 && terminal(result.state) && (
+                  <CoverageNote key={result.id} rows={p.session?.rule_coverage?.[result.source?.artifact_id || result.results[0]?.version] || []}
+                    busy={p.busy || p.dirty || !!p.content.trim()} onSuggest={rule => {
+                      p.onNavigate("build", result.source?.artifact_id || result.results[0]?.version);
+                      p.onContent(`I’d like one additional test for this rule: ${rule}. Keep every existing test and its grading unchanged. Prepare the extra test for review; do not run it.`);
+                    }} />
+                )}
               </motion.div>
             ) : waitingForResult ? null : (
               <div className={welcome ? "" : "space-y-7"}>
@@ -740,8 +749,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                     <div className="vibe-panel p-5">
                       <h2 className="font-semibold">{p.artifact.title}</h2>
                       <p className="mt-2 text-sm vibe-muted">
-                        Add an answer from your app to see what it gets right
-                        and what needs attention.
+                        {p.artifact.test_plan?.objective || "Keep this plan until your agent is ready."}
                       </p>
                       <div className="mt-4 flex flex-wrap gap-2">
                         <VibeButton onClick={() => changeSource("chats")}>
@@ -753,11 +761,23 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                           Try instructions
                         </VibeButton>
                       </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <VibeButton variant="quiet" disabled={p.busy || p.dirty} onClick={() => p.onSave()}>Keep this brief</VibeButton>
+                        <VibeButton variant="quiet" onClick={() => {
+                          const url = URL.createObjectURL(new Blob([JSON.stringify(p.artifact!.test_plan, null, 2)], { type: "application/json" }));
+                          const a = document.createElement("a"); a.href = url; a.download = "vibe-preparation-brief.json"; a.click();
+                          setTimeout(() => URL.revokeObjectURL(url), 1000);
+                        }}>Download brief</VibeButton>
+                      </div>
                       <details className="mt-4">
                         <summary>View the plan</summary>
-                        <pre className="vibe-transcript p-4 text-sm">
-                          {JSON.stringify(p.artifact.test_plan, null, 2)}
-                        </pre>
+                        <div className="mt-3 space-y-4 text-sm">
+                          {p.artifact.test_plan?.scenarios.map((scenario, i) => <div key={i}>
+                            <p>{scenario.input}</p><p className="mt-1 vibe-muted">Expected: {scenario.expected}</p>
+                          </div>)}
+                          {!!p.artifact.test_plan?.evidence_needed.length && <div><p className="font-medium">What you’ll need</p><ul className="mt-2 list-disc space-y-1 pl-5">{p.artifact.test_plan.evidence_needed.map((item,i)=><li key={i}>{item}</li>)}</ul></div>}
+                          {!!p.artifact.test_plan?.next_steps.length && <div><p className="font-medium">When you’re ready</p><ul className="mt-2 list-disc space-y-1 pl-5">{p.artifact.test_plan.next_steps.map((item,i)=><li key={i}>{item}</li>)}</ul></div>}
+                        </div>
                       </details>
                     </div>
                   ) : (
@@ -981,7 +1001,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
         <DialogContent className="vibe-workspace max-h-[85vh] overflow-y-auto">
           <DialogTitle>
-            {p.testJourney ? "Your saved tests" : "Your saved checks"}
+            Your saved work
           </DialogTitle>
           <DialogDescription>
             {p.testJourney
@@ -990,20 +1010,20 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
           </DialogDescription>
           {p.savedChecks.length ? (
             p.savedChecks.map((c) => (
-              <Link
+              <a
                 key={c.id}
                 className="rounded-lg border p-3 text-sm"
-                href={`/vibe-evals?session=${c.session_id}&agent=${c.artifact_id}${c.baseline_operation_id && c.baseline_operation_id !== "00000000-0000-0000-0000-000000000000" ? `&view=checks&run=${c.baseline_operation_id}` : ""}`}
+                href={savedWorkURL(c)}
               >
                 {c.title}
                 <span className="mt-1 block text-xs text-muted-foreground">
-                  {c.draft_id
+                  {c.kind === "brief" ? "Preparation brief · not run" : c.draft_id
                     ? "Saved tests"
                     : c.source?.kind === "provided_conversations"
                       ? "Provided chats"
                       : "Text test"}
                 </span>
-              </Link>
+              </a>
             ))
           ) : (
             <p className="text-sm text-muted-foreground">

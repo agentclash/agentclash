@@ -3,6 +3,7 @@ package vibe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"time"
@@ -12,6 +13,8 @@ import (
 )
 
 type SavedCheck struct {
+	Models      *Models           `json:"models,omitempty"`
+	Kind        string            `json:"kind,omitempty"`
 	DraftID     *uuid.UUID        `json:"draft_id,omitempty"`
 	ID          uuid.UUID         `json:"id"`
 	SessionID   uuid.UUID         `json:"session_id"`
@@ -40,11 +43,21 @@ func (s *Store) SaveCheck(ctx context.Context, actor string, id uuid.UUID, revis
 		if err != nil {
 			return fault("forbidden", "Sign in to save your check.")
 		}
-		if v.Revision != revision {
-			return fault("revision_conflict", "Reload the conversation before saving.")
-		}
 		if v.WorkspaceID != nil && *v.WorkspaceID != ws {
 			return fault("workspace_conflict", "This conversation belongs to another workspace.")
+		}
+		var receiptSource []byte
+		err = tx.QueryRow(ctx, `SELECT id,session_id,artifact_id,baseline_operation_id,workspace_id,title,source,created_at
+            FROM vibe_saved_checks WHERE session_id=$1 AND baseline_operation_id=$2`, id, baseline).
+			Scan(&saved.ID, &saved.SessionID, &saved.ArtifactID, &saved.BaselineID, &saved.WorkspaceID, &saved.Title, &receiptSource, &saved.CreatedAt)
+		if err == nil {
+			return json.Unmarshal(receiptSource, &saved.Source)
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		if v.Revision != revision {
+			return fault("revision_conflict", "Reload the conversation before saving.")
 		}
 		var busy bool
 		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND state IN ('QUEUED','RUNNING','AWAITING_APPROVAL','FINALIZING','CANCELLING'))", id).Scan(&busy); err != nil {
@@ -120,11 +133,8 @@ func (s *Store) ListChecks(ctx context.Context, actor string, ws uuid.UUID) ([]S
 	rows.Close()
 	// A canonical pack receipt is also an entry point back to the exact tests,
 	// agent and baseline in Vibe. It is not a bookmark in place of the pack.
-	packRows, err := s.DB.Query(ctx, `SELECT a.draft_id,a.session_id,a.artifact_id,a.workspace_id,d.name,a.created_at,
- COALESCE((SELECT o.id FROM vibe_operations o WHERE o.session_id=a.session_id
- AND o.input#>>'{artifact,id}'=a.artifact_id::text AND o.kind IN ('check','retest')
- AND o.state IN ('COMPLETED','PARTIAL','FAILED','CANCELLED','EXPIRED') ORDER BY o.created_at DESC LIMIT 1),
- '00000000-0000-0000-0000-000000000000'::uuid)
+	packRows, err := s.DB.Query(ctx, `SELECT a.draft_id,a.session_id,a.artifact_id,a.workspace_id,d.name,a.created_at,a.saved_models,
+ COALESCE(a.baseline_operation_id,'00000000-0000-0000-0000-000000000000'::uuid)
  FROM vibe_saved_artifacts a JOIN vibe_sessions s ON s.id=a.session_id
  JOIN challenge_pack_drafts d ON d.id=a.draft_id
  WHERE s.actor=$2 AND ($1::uuid IS NULL OR a.workspace_id=$1)
@@ -134,9 +144,16 @@ func (s *Store) ListChecks(ctx context.Context, actor string, ws uuid.UUID) ([]S
 	}
 	for packRows.Next() {
 		var c SavedCheck
-		if err = packRows.Scan(&c.ID, &c.SessionID, &c.ArtifactID, &c.WorkspaceID, &c.Title, &c.CreatedAt, &c.BaselineID); err != nil {
+		var models []byte
+		if err = packRows.Scan(&c.ID, &c.SessionID, &c.ArtifactID, &c.WorkspaceID, &c.Title, &c.CreatedAt, &models, &c.BaselineID); err != nil {
 			packRows.Close()
 			return nil, err
+		}
+		if len(models) > 0 {
+			if err = json.Unmarshal(models, &c.Models); err != nil {
+				packRows.Close()
+				return nil, err
+			}
 		}
 		c.DraftID = &c.ID
 		c.Source = &EvaluationSource{Kind: "prompt", Label: "Saved tests", ArtifactID: c.ArtifactID}
@@ -147,6 +164,26 @@ func (s *Store) ListChecks(ctx context.Context, actor string, ws uuid.UUID) ([]S
 	if err != nil {
 		return nil, err
 	}
+	briefRows, err := s.DB.Query(ctx, `SELECT b.id,b.session_id,b.artifact_id,b.workspace_id,b.artifact->>'title',b.created_at
+      FROM vibe_saved_briefs b JOIN vibe_sessions s ON s.id=b.session_id
+      WHERE b.created_by=$2 AND s.actor=$3 AND ($1::uuid IS NULL OR b.workspace_id=$1) ORDER BY b.created_at DESC LIMIT 100`, scope, uid, actor)
+	if err != nil {
+		return nil, err
+	}
+	for briefRows.Next() {
+		c := SavedCheck{Kind: "brief"}
+		if err = briefRows.Scan(&c.ID, &c.SessionID, &c.ArtifactID, &c.WorkspaceID, &c.Title, &c.CreatedAt); err != nil {
+			briefRows.Close()
+			return nil, err
+		}
+		items = append(items, c)
+	}
+	err = briefRows.Err()
+	briefRows.Close()
+	if err != nil {
+		return nil, err
+	}
+
 	sort.Slice(items, func(i, j int) bool { return items[i].CreatedAt.After(items[j].CreatedAt) })
 	accessible := []SavedCheck{}
 	for _, c := range items {

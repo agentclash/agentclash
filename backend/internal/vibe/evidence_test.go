@@ -261,7 +261,7 @@ func TestIntegrationEvidenceCorrectionsAndSavedCheckPrivacy(t *testing.T) {
 		t.Fatal(err)
 	}
 	v, _ = s.GetSession(ctx, v.Actor, v.ID)
-	again, err := s.SaveCheck(ctx, v.Actor, v.ID, v.Revision, *v.WorkspaceID, o.ID)
+	again, err := s.SaveCheck(ctx, v.Actor, v.ID, v.Revision-1, *v.WorkspaceID, o.ID)
 	if err != nil || again.ID != saved.ID {
 		t.Fatal("save duplicated", err)
 	}
