@@ -30,28 +30,44 @@ type ModelProfile struct {
 	ExpiresAt          time.Time `json:"expires_at"`
 }
 type Config struct {
-	GroundedJudging     bool
-	ContextGuidance     bool
-	PreciseActions      bool
-	ConversationState   bool
-	ReliableAuthoring   bool
-	SuiteReviewVersion  string
-	SourcePolicyVersion string
-	LocalTesting        bool
-	LocalBudget         int64
-	FreeOnly            bool
-	DefaultModel        string
-	Enabled             bool
-	Credential          string
-	Profiles            map[string]ModelProfile
-	AnonymousDaily      int64
-	AnonymousCampaign   int64
-	Campaign            string
-	localProfiles       *localProfileVerifier
+	UnderstandingMode    string
+	UnderstandingProfile *UnderstandingProfile
+	GroundedJudging      bool
+	ContextGuidance      bool
+	PreciseActions       bool
+	ConversationState    bool
+	ReliableAuthoring    bool
+	SuiteReviewVersion   string
+	SourcePolicyVersion  string
+	LocalTesting         bool
+	LocalBudget          int64
+	FreeOnly             bool
+	DefaultModel         string
+	Enabled              bool
+	Credential           string
+	Profiles             map[string]ModelProfile
+	AnonymousDaily       int64
+	AnonymousCampaign    int64
+	Campaign             string
+	localProfiles        *localProfileVerifier
 }
 
 func LoadConfig() (Config, error) {
 	c := Config{Enabled: os.Getenv("VIBE_ENABLED") == "true", Credential: os.Getenv("VIBE_OPENROUTER_KEY"), Profiles: map[string]ModelProfile{}, Campaign: os.Getenv("VIBE_CAMPAIGN")}
+	c.UnderstandingMode = os.Getenv("VIBE_JEV_MODE")
+	if c.UnderstandingMode == "" {
+		c.UnderstandingMode = "off"
+	}
+	if c.UnderstandingMode != "off" && c.UnderstandingMode != "shadow" && c.UnderstandingMode != "advisory" {
+		return c, fmt.Errorf("VIBE_JEV_MODE must be off, shadow or advisory")
+	}
+	if value := os.Getenv("VIBE_JEV_PROFILE_JSON"); value != "" {
+		var profile UnderstandingProfile
+		if err := Decode([]byte(value), LimitsFor(false), &profile); err != nil || !profile.valid() {
+			return c, fmt.Errorf("invalid VIBE_JEV_PROFILE_JSON")
+		}
+		c.UnderstandingProfile = &profile
+	}
 	c.FreeOnly = os.Getenv("VIBE_FREE_ONLY") == "true"
 	c.ReliableAuthoring = os.Getenv("VIBE_RELIABLE_AUTHORING") == "true"
 	c.GroundedJudging = os.Getenv("VIBE_GROUNDED_JUDGING") != "false"

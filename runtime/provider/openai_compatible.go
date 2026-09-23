@@ -333,10 +333,13 @@ type openAICompletionChunk struct {
 		} `json:"delta"`
 	} `json:"choices"`
 	Usage *struct {
-		PromptTokens     int64        `json:"prompt_tokens"`
-		CompletionTokens int64        `json:"completion_tokens"`
-		TotalTokens      int64        `json:"total_tokens"`
-		Cost             *json.Number `json:"cost"`
+		PromptTokens        int64        `json:"prompt_tokens"`
+		CompletionTokens    int64        `json:"completion_tokens"`
+		TotalTokens         int64        `json:"total_tokens"`
+		Cost                *json.Number `json:"cost"`
+		PromptTokensDetails struct {
+			CachedTokens *int64 `json:"cached_tokens"`
+		} `json:"prompt_tokens_details"`
 	} `json:"usage,omitempty"`
 }
 
@@ -518,10 +521,11 @@ func processOpenAIStreamEvent(providerKey string, raw []byte, accumulator *Strea
 			Terminal: StreamTerminal{
 				ProviderModelID: chunk.Model,
 				Usage: &Usage{
-					InputTokens:  chunk.Usage.PromptTokens,
-					OutputTokens: chunk.Usage.CompletionTokens,
-					TotalTokens:  chunk.Usage.TotalTokens,
-					CostUSD:      chunk.Usage.Cost,
+					InputTokens:       chunk.Usage.PromptTokens,
+					OutputTokens:      chunk.Usage.CompletionTokens,
+					TotalTokens:       chunk.Usage.TotalTokens,
+					CostUSD:           chunk.Usage.Cost,
+					CachedInputTokens: validCachedTokens(chunk.Usage.PromptTokensDetails.CachedTokens, chunk.Usage.PromptTokens),
 				},
 				RawResponse: raw,
 			},
@@ -547,4 +551,12 @@ func emitOpenAIStreamDelta(accumulator *StreamAccumulator, onDelta func(StreamDe
 		}
 	}
 	return nil
+}
+
+// Unknown or inconsistent cache metadata must not be reported as a cache miss.
+func validCachedTokens(cached *int64, input int64) *int64 {
+	if cached == nil || *cached < 0 || *cached > input {
+		return nil
+	}
+	return cached
 }

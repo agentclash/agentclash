@@ -38,6 +38,8 @@ func attemptPhase(step string, role Role) string {
 		return "running_agent"
 	}
 	switch step {
+	case understandingStep:
+		return "advisory_understanding"
 	case "route":
 		return "understanding"
 	case "review", "review:repair":

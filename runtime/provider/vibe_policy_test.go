@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -29,6 +30,35 @@ func TestOpenRouterBoundedPolicyOnWire(t *testing.T) {
 	result, err := client.InvokeModel(context.Background(), Request{ProviderKey: "openrouter", CredentialReference: "test", Model: "openai/gpt-4.1-mini", MaxOutputTokens: 2048, Temperature: &zero, ResponseFormat: json.RawMessage(`{"type":"json_object"}`), OpenRouterPolicy: json.RawMessage(`{"only":["openai"],"allow_fallbacks":false,"require_parameters":true,"max_price":{"prompt":0.4,"completion":1.6}}`), MaxResponseBytes: 4096, Messages: []Message{{Role: "user", Content: "hello"}}, OnGeneration: func(id string) error { seen = id; return nil }})
 	if err != nil || seen != "gen-safe" || result.GenerationID != seen || result.Usage.CostUSD == nil || result.Usage.CostUSD.String() != "0.0000112" {
 		t.Fatalf("generation/cost lost: %#v %v", result, err)
+	}
+}
+
+func TestOpenRouterPromptCacheAccounting(t *testing.T) {
+	for _, metadata := range []string{``, `,"prompt_tokens_details":{"cached_tokens":0}`, `,"prompt_tokens_details":{"cached_tokens":12}`, `,"prompt_tokens_details":{"cached_tokens":-1}`, `,"prompt_tokens_details":{"cached_tokens":30}`} {
+		t.Run(metadata, func(t *testing.T) {
+			client := NewOpenAICompatibleClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return sseResponse(http.StatusOK, fmt.Sprintf("data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"},\"finish_reason\":\"stop\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":2,\"total_tokens\":22,\"cost\":0.00001%s}}\n\ndata: [DONE]\n\n", metadata)), nil
+			})}, "https://openrouter.ai/api/v1", staticCredentialResolver{value: "fake"})
+			result, err := client.InvokeModel(context.Background(), Request{ProviderKey: "openrouter", CredentialReference: "test", Model: "model", Messages: []Message{{Role: "user", Content: "hello"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			cached := result.Usage.CachedInputTokens
+			switch {
+			case strings.Contains(metadata, ":12}"):
+				if cached == nil || *cached != 12 {
+					t.Fatal("cache hit lost")
+				}
+			case strings.Contains(metadata, ":0}"):
+				if cached == nil || *cached != 0 {
+					t.Fatal("known miss lost")
+				}
+			default:
+				if cached != nil {
+					t.Fatal("unknown/invalid cache usage became known")
+				}
+			}
+		})
 	}
 }
 

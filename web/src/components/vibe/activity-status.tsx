@@ -15,6 +15,7 @@ export function conversationActivity(operation: Operation, testJourney?: boolean
     const count = progress.total_cases > 0 ? `${progress.completed_cases} of ${progress.total_cases} results saved · ` : "";
     const label: Record<string, string> = {
       understanding: "Understanding your request…",
+      advisory_understanding: "Understanding your request…",
       preparing: "Preparing your next step…",
       reviewing: "Checking the tests against your rules…",
       repairing: "Adjusting the tests to match your rules…",

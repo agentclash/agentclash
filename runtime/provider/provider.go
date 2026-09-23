@@ -117,9 +117,11 @@ type Response struct {
 }
 
 type Usage struct {
-	InputTokens  int64
-	OutputTokens int64
-	TotalTokens  int64
+	// Nil means the provider did not report prompt-cache usage.
+	CachedInputTokens *int64 `json:",omitempty"`
+	InputTokens       int64
+	OutputTokens      int64
+	TotalTokens       int64
 	// Nil is unknown, never zero. OpenRouter returns a USD decimal.
 	CostUSD *json.Number
 }

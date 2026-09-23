@@ -15,6 +15,7 @@ it("uses the provider stage and saved count without treating UNKNOWN as a pass",
   expect(conversationActivity({ ...operation, state: "FINALIZING" })).toBe("Saving your results…");
   expect(conversationActivity({ ...operation, state: "AWAITING_INPUT" })).toBe("One detail is needed to continue.");
   expect(conversationActivity({ ...operation, kind: "message", progress: { phase: "reviewing", completed_cases: 0, total_cases: 0 } })).toBe("Checking the tests against your rules…");
+  expect(conversationActivity({ ...operation, kind: "message", progress: { phase: "advisory_understanding", completed_cases: 0, total_cases: 0 } })).toBe("Understanding your request…");
 });
 
 it("counts down on the server clock without auto-submitting and keeps focus", async () => {

@@ -151,6 +151,7 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 	if err != nil {
 		return Operation{}, err
 	}
+	prepareUnderstanding(&p, s.Config)
 	return s.Store.Submit(ctx, actor, v.ID, sub, p, s.Config)
 }
 

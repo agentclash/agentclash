@@ -35,33 +35,36 @@ type Submission struct {
 	BaselineID      *uuid.UUID          `json:"baseline_id,omitempty"`
 }
 type Plan struct {
-	Grading                  *GradingContract     `json:"grading,omitempty"`
-	TargetConfig             *TargetConfiguration `json:"target_config,omitempty"`
-	RegradeOf                *uuid.UUID           `json:"regrade_of,omitempty"`
-	SavedResults             []CaseResult         `json:"saved_results,omitempty"`
-	Retry                    *RetryContext        `json:"retry,omitempty"`
-	ExecutionLimits          *Limits              `json:"execution_limits,omitempty"`
-	Conversation             *ConversationContext `json:"conversation,omitempty"`
-	ObservedArtifact         *Artifact            `json:"observed_artifact,omitempty"`
-	ContextThrough           *uuid.UUID           `json:"context_through,omitempty"`
-	InlineEvidence           *EvidenceSet         `json:"inline_evidence,omitempty"`
-	LocalTesting             bool                 `json:"local_testing,omitempty"`
-	Evidence                 *EvidenceSet         `json:"evidence,omitempty"`
-	Source                   *EvaluationSource    `json:"source,omitempty"`
-	PreviewMessages          []provider.Message   `json:"preview_messages,omitempty"`
-	CasePreviews             []CaseResult         `json:"case_previews,omitempty"`
-	AuthoringVersion         int                  `json:"authoring_version,omitempty"`
-	ConversationJudgeVersion int                  `json:"conversation_judge_version,omitempty"`
-	Free                     bool                 `json:"free,omitempty"`
-	ChecksPerCase            int                  `json:"checks_per_case"`
-	Observations             []CaseResult         `json:"observations,omitempty"`
-	Submission               Submission           `json:"submission"`
-	Document                 Document             `json:"document"`
-	Artifact                 *Artifact            `json:"artifact,omitempty"`
-	Cases                    []string             `json:"case_keys"`
-	Calls                    int                  `json:"calls"`
-	MaxCost                  int64                `json:"max_cost_nano_usd"`
-	Anonymous                bool                 `json:"anonymous"`
+	UnderstandingSelection   *UnderstandingSelection `json:"understanding_selection,omitempty"`
+	Understanding            *UnderstandingPlan      `json:"understanding,omitempty"`
+	ObservedSignals          UnderstandingSignals    `json:"-"`
+	Grading                  *GradingContract        `json:"grading,omitempty"`
+	TargetConfig             *TargetConfiguration    `json:"target_config,omitempty"`
+	RegradeOf                *uuid.UUID              `json:"regrade_of,omitempty"`
+	SavedResults             []CaseResult            `json:"saved_results,omitempty"`
+	Retry                    *RetryContext           `json:"retry,omitempty"`
+	ExecutionLimits          *Limits                 `json:"execution_limits,omitempty"`
+	Conversation             *ConversationContext    `json:"conversation,omitempty"`
+	ObservedArtifact         *Artifact               `json:"observed_artifact,omitempty"`
+	ContextThrough           *uuid.UUID              `json:"context_through,omitempty"`
+	InlineEvidence           *EvidenceSet            `json:"inline_evidence,omitempty"`
+	LocalTesting             bool                    `json:"local_testing,omitempty"`
+	Evidence                 *EvidenceSet            `json:"evidence,omitempty"`
+	Source                   *EvaluationSource       `json:"source,omitempty"`
+	PreviewMessages          []provider.Message      `json:"preview_messages,omitempty"`
+	CasePreviews             []CaseResult            `json:"case_previews,omitempty"`
+	AuthoringVersion         int                     `json:"authoring_version,omitempty"`
+	ConversationJudgeVersion int                     `json:"conversation_judge_version,omitempty"`
+	Free                     bool                    `json:"free,omitempty"`
+	ChecksPerCase            int                     `json:"checks_per_case"`
+	Observations             []CaseResult            `json:"observations,omitempty"`
+	Submission               Submission              `json:"submission"`
+	Document                 Document                `json:"document"`
+	Artifact                 *Artifact               `json:"artifact,omitempty"`
+	Cases                    []string                `json:"case_keys"`
+	Calls                    int                     `json:"calls"`
+	MaxCost                  int64                   `json:"max_cost_nano_usd"`
+	Anonymous                bool                    `json:"anonymous"`
 }
 
 // The caller has already authorized the session. Admission repeats this lookup
@@ -170,8 +173,15 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		if plan.MaxCost < 0 || (plan.MaxCost == 0 && !plan.Free) || plan.MaxCost > MaxOperationCost || plan.Calls < 1 || plan.Calls > cfg.Limits(v.Anonymous).ModelCalls {
 			return fault("budget_limit", "Operation cannot be safely bounded.")
 		}
+		if err = validateUnderstandingPlan(plan); err != nil {
+			return err
+		}
 		if plan.AuthoringVersion >= 11 && (sub.Kind == "message" || sub.Kind == "build") {
-			if plan.Calls > 5 || plan.operationTimeout() > 16*time.Minute || plan.Conversation != nil && plan.Conversation.Manual != nil && plan.Calls != 1 {
+			allowedCalls := 5
+			if plan.Understanding != nil {
+				allowedCalls++
+			}
+			if plan.Calls > allowedCalls || plan.operationTimeout() > 16*time.Minute || plan.Conversation != nil && plan.Conversation.Manual != nil && plan.Calls != 1 {
 				return fault("budget_limit", "The authoring workflow exceeds its call or time allowance.")
 			}
 		}

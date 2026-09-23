@@ -51,10 +51,11 @@ func (c credential) Resolve(_ context.Context, ref string) (string, error) {
 }
 
 type Gateway struct {
-	Store  *Store
-	Config Config
-	Gate   Gate
-	Client provider.Client
+	Store                  *Store
+	Config                 Config
+	Gate                   Gate
+	UnderstandingTransport http.RoundTripper
+	Client                 provider.Client
 }
 
 func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role, messages []provider.Message, format json.RawMessage) (provider.Response, error) {
