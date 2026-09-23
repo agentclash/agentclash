@@ -495,7 +495,7 @@ export function VibeClient() {
       client_id?: string;
       quick_check?: boolean;
       instructions?: string;
-      purpose?: "suggest_change";
+      purpose?: "suggest_change" | "regrade";
       viewed_run_id?: string;
       viewed_case_key?: string;
       evidence_set_id?: string;
@@ -1114,6 +1114,13 @@ export function VibeClient() {
           )
         }
         onAction={operationAction}
+        onRegrade={config?.grading_recheck ? (operation) => {
+          void submit("retest", "", undefined, {
+            purpose: "regrade",
+            baseline_id: operation.id,
+            artifact_id: operation.source?.artifact_id || operation.results[0]?.version,
+          });
+        } : undefined}
         onDispute={(rule, result, operation) => {
           const source = artifacts.find((a) => a.id === result.version);
           if (source) setSelectedArtifactID(source.id);

@@ -57,6 +57,9 @@ func (r *Runner) Execute(ctx context.Context, id uuid.UUID) error {
 	if err = json.Unmarshal(o.Input, &p); err != nil {
 		return err
 	}
+	if p.Grading != nil && !gradingSupported(p.Grading) {
+		return fault("grading_changed", "This check needs its recorded grading version. Earlier results are preserved.")
+	}
 	if p.AuthoringVersion > guidedAuthoringVersion {
 		return fault("invalid_plan", "This request needs a newer conversation worker.")
 	}
@@ -326,6 +329,15 @@ func (r *Runner) evaluate(ctx context.Context, o Operation, p Plan) error {
 	if err != nil {
 		return err
 	}
+	if p.Grading != nil {
+		hash, err := gradingCriteriaHash(spec)
+		if err != nil {
+			return err
+		}
+		if hash != p.Grading.CriteriaHash {
+			return fault("grading_changed", "The saved grading rules no longer compile to the same settings. Start a new check.")
+		}
+	}
 	version := p.Artifact.ID.String()
 	// Persist every planned case as UNKNOWN before the first paid call. A worker
 	// crash, cancellation, budget limit or provider outage cannot shrink totals.
@@ -343,7 +355,20 @@ func (r *Runner) evaluate(ctx context.Context, o Operation, p Plan) error {
 				request = question
 			}
 		}
-		response, e := r.Gateway.Call(ctx, o, "target:"+c.CaseKey, Target, []provider.Message{{Role: "system", Content: instructions}, {Role: "user", Content: request}}, nil)
+		var response provider.Response
+		var e error
+		if p.RegradeOf != nil {
+			response.OutputText, e = p.savedOutput(c.CaseKey)
+			if e != nil {
+				result.Error = &Fault{Code: "evidence_unavailable", Message: "No complete saved reply is available to recheck."}
+				if err = r.Service.Store.PutResult(ctx, o.ID, result); err != nil {
+					return err
+				}
+				continue
+			}
+		} else {
+			response, e = r.Gateway.Call(ctx, o, "target:"+c.CaseKey, Target, []provider.Message{{Role: "system", Content: instructions}, {Role: "user", Content: request}}, nil)
+		}
 		result.Output = response.OutputText
 		if e != nil {
 			result.Error = issueFrom(e)
@@ -385,11 +410,17 @@ func (r *Runner) evaluate(ctx context.Context, o Operation, p Plan) error {
 		for _, judge := range spec.LLMJudges {
 			check := CheckResult{Key: judge.Key, Verdict: Unknown}
 			messages := JudgeMessages(judge, c, response.OutputText)
+			if p.Grading != nil {
+				messages = groundedJudgeMessages(judge, c, response.OutputText)
+			}
 			jr, je := r.Gateway.Call(ctx, o, "judge:"+c.CaseKey+":"+judge.Key, Evaluator, messages, jsonFormat)
 			if je != nil {
 				check.Error = issueFrom(je)
 			} else {
 				parsed, parseErr := ParseJudge(judge, []byte(jr.OutputText), p.limits())
+				if p.Grading != nil {
+					parsed, parseErr = parseGroundedJudge(judge, response.OutputText, []byte(jr.OutputText), p.limits())
+				}
 				if parseErr != nil {
 					check.Error = &Fault{Code: "invalid_judge_output", Message: "The evaluator returned invalid or incomplete data. It was not repaired or counted as a behavioral failure."}
 				} else {

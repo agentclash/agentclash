@@ -87,6 +87,9 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 	if err != nil {
 		return provider.Response{}, err
 	}
+	if err = validateGradingDispatch(plan, role, p); err != nil {
+		return provider.Response{}, err
+	}
 	if plan.AuthoringVersion >= 11 && role == Assistant && plan.Conversation != nil && plan.Conversation.Profile != nil && Hash(raw(p)) != Hash(raw(*plan.Conversation.Profile)) {
 		return provider.Response{}, fault("model_policy_changed", "The model settings changed after this request was prepared. Retry it with the current settings; your previous work is unchanged.")
 	}
@@ -109,6 +112,12 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 		return provider.Response{}, err
 	}
 	a := Attempt{ID: uuid.New(), OperationID: o.ID, Step: step, Role: role, Model: model, Policy: raw(map[string]any{"profile": p, "routing": json.RawMessage(policy), "temperature": temp, "context": count, "response_format": format, "reasoning": req.Reasoning}), RequestHash: Hash(raw(messages)), InputBound: count.UpperBound, MaxOutput: req.MaxOutputTokens, MaxCost: cost}
+	if plan.Grading != nil {
+		var policyFields map[string]any
+		_ = json.Unmarshal(a.Policy, &policyFields)
+		policyFields["grading_hash"] = plan.Grading.Hash
+		a.Policy = raw(policyFields)
+	}
 	if err = g.Store.BeginAttempt(ctx, a); err != nil {
 		return provider.Response{}, err
 	}
@@ -197,6 +206,9 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 	}
 	if err == nil && response.FinishReason == provider.FinishReasonMaxTokens {
 		issue = &Fault{Code: "output_truncated", Message: "The model reached its output limit. The result has not been treated as a completed evaluation."}
+	}
+	if err == nil && plan.Grading != nil && (role == Target || role == Evaluator) && response.ProviderModelID != "" && response.ProviderModelID != model {
+		issue = &Fault{Code: "model_policy_changed", Message: "The provider returned a different model than the one pinned for this check. This response was not graded."}
 	}
 	if actual != nil && *actual > a.MaxCost {
 		issue = &Fault{Code: "accounting_bound_exceeded", Message: "Provider cost exceeded its approved ceiling. Further execution is stopped for accounting review."}

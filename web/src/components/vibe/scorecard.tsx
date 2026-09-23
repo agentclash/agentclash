@@ -17,6 +17,8 @@ export function VibeScorecard({
   onRetest,
   onNewReplies,
   onDispute,
+  onRegrade,
+  onNewCheck,
   onSave,
   onRecheck,
   busy,
@@ -32,6 +34,8 @@ export function VibeScorecard({
   onNewReplies?: () => void;
   onDispute?: (rule: string, result: CaseResult) => void;
   onSave?: () => void;
+  onRegrade?: () => void;
+  onNewCheck?: () => void;
   onRecheck?: () => void;
   busy: boolean;
   testJourney?: boolean;
@@ -48,9 +52,12 @@ export function VibeScorecard({
     : score.total === 1
       ? "example"
       : "examples";
-  const rechecked = operation.source?.comparison === "rechecked";
+  const regraded = operation.source?.comparison === "regraded";
+  const rechecked = regraded || operation.source?.comparison === "rechecked";
+  const comparable = comparableGrades(operation, baseline);
+
   const oldResults = new Map(
-    baseline?.results.map((result) => [result.case_key, result]),
+    (comparable ? baseline : undefined)?.results.map((result) => [result.case_key, result]),
   );
   const newFailures = operation.results.filter(
     (result) =>
@@ -101,7 +108,7 @@ export function VibeScorecard({
       : score.total === 0
         ? "No replies were checked."
         : rechecked
-          ? "Same chats rechecked"
+          ? regraded ? "Saved replies regraded" : "Same chats rechecked"
           : regressions
             ? `${regressions} new ${regressions === 1 ? "issue" : "issues"} in this update`
             : score.failed
@@ -120,7 +127,7 @@ export function VibeScorecard({
           className="text-[28px] font-semibold leading-tight tracking-tight sm:text-[32px]"
           aria-live="polite"
         >
-          {testJourney && done && !stopped && score.total > 0
+          {testJourney && done && !stopped && score.total > 0 && !regraded
             ? `${score.passed} of ${score.total} tests passed`
             : headline}
         </h1>
@@ -129,9 +136,9 @@ export function VibeScorecard({
             done && score.total === 0 ? (
               "No tests produced a result."
             ) : done ? (
-              `${score.failed ? `${score.failed} ${score.failed === 1 ? "needs" : "need"} attention.` : ""}${score.unknown ? ` ${score.unknown} couldn't be completed.` : score.failed ? "" : "Your agent handled these requests as expected."}`
+              `${score.failed ? `${score.failed} ${score.failed === 1 ? "needs" : "need"} attention.` : ""}${score.unknown ? ` ${score.unknown} couldn't be completed.` : score.failed ? "" : "These replies met the expectations."}`
             ) : (
-              "Sending each test to your agent and checking its reply…"
+              regraded ? "Rechecking grades using the saved replies…" : "Sending each test to your agent and checking its reply…"
             )
           ) : (
             <>
@@ -144,13 +151,19 @@ export function VibeScorecard({
             </>
           )}
         </p>
+        <p className="mt-2 text-xs vibe-muted">
+          {regraded ? "Saved replies only. Your agent was not called again." : provided
+            ? "Based on the chats you provided. Your live app was not called."
+            : "Text replies from your saved instructions. Your live app was not called."}
+        </p>
+        {baseline && done && !rechecked && !comparable && <p className="mt-3 text-sm vibe-muted">These runs do not have matching verified grading settings. Earlier results are kept separately.</p>}
         {rechecked && (
           <p className="mt-3 text-sm vibe-muted">
-            These are the same recorded replies. A different grade does not show
+            These are the same saved replies. A different grade does not show
             that your agent improved.
           </p>
         )}
-        {baseline && done && !rechecked && (
+        {baseline && comparable && done && !rechecked && (
           <p
             className={`mt-3 text-sm${testJourney && regressions ? " text-builder-warn" : ""}`}
           >
@@ -201,6 +214,7 @@ export function VibeScorecard({
             evidenceVersion={evidenceVersion}
             load={loadEvidence}
             onDispute={onDispute}
+            onRegrade={done ? onRegrade : undefined}
             origin={operation.source?.kind}
             defaultOpen
             focused
@@ -308,6 +322,7 @@ export function VibeScorecard({
                   evidenceVersion={evidenceVersion}
                   load={loadEvidence}
                   onDispute={onDispute}
+                  onRegrade={done ? onRegrade : undefined}
                   origin={operation.source?.kind}
                   allowFixPrompt={!testJourney}
                   busy={busy}
@@ -325,6 +340,7 @@ export function VibeScorecard({
                 evidenceVersion={evidenceVersion}
                 load={loadEvidence}
                 onDispute={onDispute}
+                onRegrade={done ? onRegrade : undefined}
                 origin={operation.source?.kind}
                 busy={busy}
               />
@@ -344,7 +360,7 @@ export function VibeScorecard({
               : ""}
           </p>
           <p>
-            {provided
+            {regraded ? "Previously saved replies were graded again. The original replies, rules and results are unchanged." : provided
               ? `${operation.source?.label || "Provided conversations"}. Every message in the provided chats was included. No replies were generated and no live agent was called.`
               : "New text replies generated here from the saved instructions. Each example starts fresh; tools, live data and preview chats are not included."}
           </p>
@@ -353,7 +369,7 @@ export function VibeScorecard({
             {score.checks_expected ?? score.total} expectations evaluated.
           </p>
           <p>
-            {!provided && (
+            {!provided && !regraded && (
               <>
                 Target: {operation.models.target}
                 <br />
@@ -366,6 +382,11 @@ export function VibeScorecard({
               ? "Provider spend is still being reconciled."
               : `Provider spend: ${dollars(operation.actual_cost_nano_usd)}.`}
           </p>
+          {done && onNewCheck && (
+            <VibeButton variant="quiet" disabled={busy} onClick={onNewCheck}>
+              Run as a separate check
+            </VibeButton>
+          )}
           {done && !testJourney && (
             <div className="flex flex-wrap gap-2">
               {score.failed > 0 && (
@@ -468,4 +489,13 @@ function CopyOriginalInputs({
       )}
     </div>
   );
+}
+
+// Historical runs remain readable, but model names alone cannot establish that
+// the same grading contract was used. Hashes come from the admitted server plan.
+export function comparableGrades(operation: Operation, baseline?: Operation) {
+  return !!baseline && operation.baseline_id === baseline.id &&
+    operation.grading?.version === 1 && baseline.grading?.version === 1 &&
+    !!operation.grading.hash && operation.grading.hash === baseline.grading.hash &&
+    operation.source?.kind === baseline.source?.kind;
 }

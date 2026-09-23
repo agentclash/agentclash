@@ -282,6 +282,7 @@ test("direct paste checks saved chats, copies a grounded fix and exposes a regre
         models,
         max_cost_nano_usd: 0,
         actual_cost_nano_usd: 0,
+        grading: { version: 1, hash: "same-fixture-contract" } as Operation["grading"],
         baseline_id: body.baseline_id,
         source: {
           kind: "provided_conversations",
@@ -339,7 +340,7 @@ test("direct paste checks saved chats, copies a grounded fix and exposes a regre
   ).toBeVisible();
   await expect(leading.getByRole("button", { name: "See evidence", exact: true })).toHaveAttribute("aria-expanded", "false");
   await expect(leading.getByText("Expected behavior", { exact: true })).toBeHidden();
-  await expect(leading.getByRole("button", { name: "That’s not what I meant" })).toBeVisible();
+  await expect(leading.getByRole("button", { name: "Change the expected behavior" })).toBeVisible();
   for (const summary of ["Other results · 1", "What was checked"]) {
     await expect(scorecard.locator("details").filter({
       has: page.locator("summary", { hasText: summary }),
@@ -375,7 +376,7 @@ test("direct paste checks saved chats, copies a grounded fix and exposes a regre
   ).toBeVisible();
   await expect(leading.getByText("All checks · 1", { exact: true })).toBeVisible();
   await leading.getByRole("button", { name: "Hide evidence", exact: true }).click();
-  await leading.getByRole("button", { name: "That’s not what I meant" }).click();
+  await leading.getByRole("button", { name: "Change the expected behavior" }).click();
   await expect(
     page.getByRole("textbox", { name: "Message Vibe Evals" }),
   ).toHaveValue(/The correct expectation is:/);

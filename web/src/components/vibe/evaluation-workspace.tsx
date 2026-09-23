@@ -102,6 +102,7 @@ export type EvaluationWorkspaceProps = {
   retryPendingOperationID?: string;
   retryUncertainOperationID?: string;
   checkingTestChanges?: boolean;
+  onRegrade?: (operation: Operation) => void;
   onDispute: (rule: string, result: CaseResult, operation: Operation) => void;
   notice: ReactNode;
   preview: ReactNode;
@@ -619,7 +620,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                           <option key={r.id} value={r.id}>
                             {i === runs.length - 1 ? "Latest · " : ""}Check{" "}
                             {i + 1}
-                            {r.kind === "retest" ? " · comparison" : ""}
+                            {r.source?.comparison === "regraded" ? " · grades rechecked" : r.kind === "retest" ? " · comparison" : ""}
                           </option>
                         ))}
                       </select>
@@ -652,6 +653,8 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   onDispute={(rule, evidence) => {
                     p.onDispute(rule, evidence, result);
                   }}
+                  onNewCheck={() => startRun(undefined, result.source?.evidence_set_id)}
+                  onRegrade={p.onRegrade ? () => p.onRegrade?.(result) : undefined}
                   onSave={() => p.onSave(result)}
                   onRecheck={
                     result.source?.kind === "provided_conversations"

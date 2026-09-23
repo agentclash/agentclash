@@ -12,6 +12,9 @@ import (
 )
 
 func (s *Service) validateSubmissionModels(sub Submission, v Session) error {
+	if sub.Purpose == "regrade" {
+		return validateRoleModels(s.Config, sub.Models, v.Anonymous, Evaluator)
+	}
 	provided := sub.EvidenceSetID != nil || (v.Document.EvaluationFirst && v.Document.ActiveEvidenceID != nil)
 	for _, a := range v.Document.Artifacts {
 		if sub.ArtifactID != nil && a.ID == *sub.ArtifactID && a.IsConversationEvaluation() {
@@ -44,6 +47,9 @@ func validateRoleModels(cfg Config, models Models, anonymous bool, role Role) er
 	return nil
 }
 func validatePlanModels(cfg Config, p Plan, models Models, anonymous bool) error {
+	if p.RegradeOf != nil {
+		return validateRoleModels(cfg, models, anonymous, Evaluator)
+	}
 	if p.AuthoringVersion >= 5 {
 		return validateRoleModels(cfg, models, anonymous, Assistant)
 	}
@@ -186,6 +192,12 @@ func (s *Service) prepareConversations(ctx context.Context, actor string, v Sess
 			return Operation{}, err
 		}
 		p.MaxCost = cost * int64(p.Calls)
+		if err = s.freezeGrading(&p); err != nil {
+			return Operation{}, err
+		}
+		if err = s.verifyComparison(ctx, p); err != nil {
+			return Operation{}, err
+		}
 		for _, c := range p.Evidence.Conversations {
 			messages := conversationJudgeMessagesForPlan(p, c)
 			if _, err = CountContext(provider.Request{Messages: messages, ResponseFormat: jsonFormat, MaxOutputTokens: l.OutputTokens}, profile, l); err != nil {
@@ -208,24 +220,8 @@ func compareEvidencePlans(old, next Plan) (string, error) {
 		return "", fault("comparison_changed", "The expectations changed. Run this as a new check to keep the earlier result intact.")
 	}
 	normalize := func(content string) string { return strings.TrimSpace(strings.ReplaceAll(content, "\r\n", "\n")) }
-	questions := func(e EvidenceSet) []any {
-		list := []any{}
-		for _, c := range e.Conversations {
-			turns := []string{}
-			for _, m := range c.Messages {
-				// Keep all non-agent context and turn boundaries fixed. A tool
-				// result or customer message moving between turns is a new test.
-				if m.Role == "assistant" {
-					turns = append(turns, "assistant")
-				} else {
-					turns = append(turns, m.Role+":"+normalize(m.Content))
-				}
-			}
-			list = append(list, turns)
-		}
-		return list
-	}
-	if Hash(raw(questions(*old.Evidence))) != Hash(raw(questions(*next.Evidence))) {
+
+	if Hash(raw(evidenceComparisonInputs(*old.Evidence))) != Hash(raw(evidenceComparisonInputs(*next.Evidence))) {
 		return "", fault("comparison_changed", "The customer messages, conversation context or turn order changed. Start a new check to test these chats.")
 	}
 	// Compare canonical roles/text, not upload metadata or filenames.
@@ -439,6 +435,9 @@ func ConversationJudgeMessages(expectations []Expectation, c EvidenceConversatio
 }
 
 func conversationJudgeMessagesForPlan(p Plan, c EvidenceConversation) []provider.Message {
+	if p.Grading != nil {
+		return groundedConversationMessages(p.Artifact.ConversationEvaluation.Expectations, c)
+	}
 	messages := ConversationJudgeMessages(p.Artifact.ConversationEvaluation.Expectations, c)
 	if p.ConversationJudgeVersion >= 1 {
 		messages[0].Content += "\nWrite each evidence explanation in plain language, usually no more than 30 words. State the observed behavior and why it meets or misses the rule; for UNKNOWN, state what is missing. Do not put internal rule IDs or message IDs in evidence prose. Keep exact supporting IDs in message_ids unchanged. Use more words only when needed to explain the finding accurately."
@@ -521,7 +520,11 @@ func (r *Runner) evaluateConversations(ctx context.Context, o Operation, p Plan)
 		result := conversationResult(p, c)
 		response, err := r.Gateway.Call(ctx, o, "conversation-judge:"+c.Key, Evaluator, conversationJudgeMessagesForPlan(p, c), jsonFormat)
 		if err == nil {
-			result.Checks, err = ParseConversationJudge([]byte(response.OutputText), p.Artifact.ConversationEvaluation.Expectations, c, p.limits())
+			if p.Grading != nil {
+				result.Checks, err = parseGroundedConversation([]byte(response.OutputText), p.Artifact.ConversationEvaluation.Expectations, c, p.limits())
+			} else {
+				result.Checks, err = ParseConversationJudge([]byte(response.OutputText), p.Artifact.ConversationEvaluation.Expectations, c, p.limits())
+			}
 			if err != nil {
 				result.Error = &Fault{Code: "invalid_judge_output", Message: "The evaluator could not support a valid finding. This chat is unresolved."}
 				result.Checks = []CheckResult{}

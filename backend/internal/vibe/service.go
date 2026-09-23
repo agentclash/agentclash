@@ -36,8 +36,8 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 		return Operation{}, err
 	}
 	l := s.Config.Limits(v.Anonymous)
-	if sub.Purpose != "" && (sub.Purpose != "suggest_change" || sub.Kind != "message" || sub.BaselineID == nil || sub.Instructions != "") {
-		return Operation{}, fault("invalid_message", "Choose a completed check before requesting a suggested change.")
+	if sub.Purpose != "" && !((sub.Purpose == "suggest_change" && sub.Kind == "message" || sub.Purpose == "regrade" && sub.Kind == "retest" && sub.Content == "" && sub.EvidenceSetID == nil && sub.Interaction == nil) && sub.BaselineID != nil && sub.Instructions == "") {
+		return Operation{}, fault("invalid_message", "Choose a completed check for this action.")
 	}
 	if sub.JourneyMode != "" && (sub.Kind != "message" || (sub.JourneyMode != "idea" && sub.JourneyMode != "existing" && sub.JourneyMode != "exploring")) {
 		return Operation{}, fault("invalid_message", "Choose idea, existing agent, or exploration for a design message.")
@@ -89,6 +89,9 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 		}
 	}
 	p := Plan{AuthoringVersion: 4, Submission: sub, Document: v.Document, Anonymous: v.Anonymous, Free: s.Config.FreeOnly, LocalTesting: s.Config.TestingLocally()}
+	if sub.Purpose == "regrade" {
+		return s.prepareRegrade(ctx, actor, v, sub, p)
+	}
 	if (sub.TestJourney || v.Document.TestJourney) && (sub.Kind == "message" || sub.Kind == "build") {
 		return s.prepareTestConversation(ctx, actor, v, sub, p)
 	}
@@ -345,6 +348,12 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 	}
 	if sub.Kind == "check" || sub.Kind == "retest" {
 		if err = s.prepareRunValidation(&p, v); err != nil {
+			return Operation{}, err
+		}
+		if err = s.freezeGrading(&p); err != nil {
+			return Operation{}, err
+		}
+		if err = s.verifyComparison(ctx, p); err != nil {
 			return Operation{}, err
 		}
 	}

@@ -101,6 +101,28 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   expect(rerun.models.evaluator).toBe(baseline.models.evaluator);
   expect(state.hashes[fix.id]).toEqual(originalHashes);
   await page.screenshot({ path: info.outputPath("same-tests-fix.png") });
+  expect(rerun.grading?.hash).toBe(baseline.grading?.hash);
+  expect(rerun.target_config?.instructions_hash).not.toBe(baseline.target_config?.instructions_hash);
+
+  // A grade dispute reuses replies. It cannot call the target or edit the suite.
+  const beforeRegrade = state;
+  const passedResults = page.locator("summary").filter({ hasText: /^Test results/ });
+  await passedResults.click();
+  await page.locator('[aria-label="Individual results"] summary').first().click();
+  await expect(page.getByRole("region", { name: "Evidence for this grade" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Recheck saved grades", exact: true }).first().click();
+  const regraded = await finished(page, sessionID!, beforeRegrade.session.operations.length);
+  expect(regraded.source?.comparison).toBe("regraded");
+  expect(regraded.baseline_id).toBe(rerun.id);
+  await expect(page.getByRole("heading", { name: "Saved replies regraded", exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Saved replies regraded", exact: true })).toBeVisible();
+  state = await evidence(page, sessionID!);
+  expect(state.calls.slice(beforeRegrade.calls.length).map(call => call.role)).toEqual(["judge", "judge", "judge"]);
+  expect(state.session.document.artifacts).toEqual(beforeRegrade.session.document.artifacts);
+  expect(state.session.operations.find(op => op.id === baseline.id)?.scorecard).toEqual(baseline.scorecard);
+  await page.screenshot({ path: info.outputPath("saved-grades-rechecked.png") });
+
 
   // A direct editor request must receive the same real policy review as chat.
   await openTests(page);

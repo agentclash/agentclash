@@ -241,7 +241,7 @@ func (h *VibeHandler) config(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
-	vibeJSON(w, 200, map[string]any{"capabilities": vibe.Capabilities(), "enabled": h.Service.Config.Enabled, "interaction_actions": h.Service.Config.PreciseActions, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget})
+	vibeJSON(w, 200, map[string]any{"capabilities": vibe.Capabilities(), "enabled": h.Service.Config.Enabled, "interaction_actions": h.Service.Config.PreciseActions, "grading_recheck": h.Service.Config.GroundedJudging, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget})
 }
 func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 	var input struct {

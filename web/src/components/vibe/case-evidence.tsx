@@ -5,6 +5,7 @@ import { Check, ChevronRight, Copy, HelpCircle, X } from "lucide-react";
 import { caseInput, type CaseResult, type EvidenceMessage } from "@/lib/vibe";
 import { AgentReply, SafeMarkdown } from "./safe-markdown";
 import { VibeButton } from "./vibe-button";
+import { GroundedFinding, verifiedFinding } from "./grounded-finding";
 import {
   evidenceRole,
   expectedBehavior,
@@ -21,6 +22,7 @@ export function CaseEvidence({
   onImprove,
   busy,
   onDispute,
+  onRegrade,
   defaultOpen = false,
   focused = false,
   allowFixPrompt = false,
@@ -34,6 +36,7 @@ export function CaseEvidence({
   onImprove?: (result: CaseResult) => void;
   busy?: boolean;
   onDispute?: (rule: string, result: CaseResult) => void;
+  onRegrade?: () => void;
   defaultOpen?: boolean;
   focused?: boolean;
   allowFixPrompt?: boolean;
@@ -173,11 +176,11 @@ export function CaseEvidence({
                 <SafeMarkdown>{visibleExplanation}</SafeMarkdown>
               </div>
             )}
-            <PrimaryReply
+            {verifiedFinding(evidence, finding) ? <GroundedFinding result={evidence} check={finding} /> : <PrimaryReply
               evidence={evidence}
               finding={finding}
               origin={origin}
-            />
+            />}
             {prompt && (
               <FixPromptCopy
                 prompt={prompt}
@@ -191,6 +194,7 @@ export function CaseEvidence({
               finding={finding}
               origin={origin}
               onDispute={onDispute}
+              onRegrade={onRegrade}
               onImprove={onImprove}
               busy={busy}
             />
@@ -239,7 +243,7 @@ function PrimaryReply({
           : origin === "provided_conversations"
             ? "App reply"
             : "Recorded reply"}
-        {excerpt ? " · excerpt" : ""}
+        {excerpt ? " · preview; full reply below" : ""}
       </p>
       <p className="vibe-transcript">
         {quote}
@@ -254,6 +258,7 @@ function EvidenceDetails({
   finding,
   origin,
   onDispute,
+  onRegrade,
   onImprove,
   busy,
 }: {
@@ -261,6 +266,7 @@ function EvidenceDetails({
   finding?: EvidenceCheck;
   origin?: EvidenceOrigin;
   onDispute?: (rule: string, result: CaseResult) => void;
+  onRegrade?: () => void;
   onImprove?: (result: CaseResult) => void;
   busy?: boolean;
 }) {
@@ -289,10 +295,12 @@ function EvidenceDetails({
               onDispute(expectedBehavior(evidence, finding), evidence)
             }
           >
-            That’s not what I meant
+            Change the expected behavior
           </VibeButton>
         )}
+        {onRegrade && <VibeButton variant="quiet" disabled={busy} onClick={onRegrade}>Recheck saved grades</VibeButton>}
       </div>
+      {onRegrade && <p className="text-xs vibe-muted">Rechecking uses the same replies and rules. Your earlier results stay saved.</p>}
       <div
         id={id}
         hidden={!expanded}
@@ -374,6 +382,7 @@ function EvidenceDetails({
               <SafeMarkdown>
                 {check.error?.message || check.evidence}
               </SafeMarkdown>
+              <GroundedFinding result={evidence} check={check} />
               <CitedMessages evidence={evidence} check={check} />
               {onDispute && (
                 <VibeButton

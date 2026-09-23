@@ -56,6 +56,7 @@ export function fixPrompt(result: CaseResult, origin?: EvidenceOrigin) {
       explanation:
         check.evidence || "This saved check failed without a recorded explanation.",
       cited_message_ids: check.message_ids || [],
+      finding: check.evidence_version === 1 ? check.finding : undefined,
     })),
     original_input: result.input ?? null,
     original_conversation: result.messages || null,

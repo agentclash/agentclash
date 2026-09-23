@@ -397,6 +397,7 @@ async function mockVibe(
       checks++;
       const operation: Operation = {
         id: `check-${checks}`,
+        grading: { version: 1, hash: "matching-fixture-contract" } as Operation["grading"],
         kind: body.kind,
         state: options.paused ? "RUNNING" : "PARTIAL",
         billing: options.paused ? "RESERVED" : "SETTLED",

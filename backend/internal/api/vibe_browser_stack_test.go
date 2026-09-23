@@ -48,7 +48,7 @@ func TestVibeBrowserStack(t *testing.T) {
 	mini := miniredis.RunT(t)
 	rc := redis.NewClient(&redis.Options{Addr: mini.Addr()})
 	defer rc.Close()
-	cfg := vibe.Config{ReliableAuthoring: true, Enabled: true, FreeOnly: true, LocalTesting: true, Credential: "fake-no-network", DefaultModel: browserFixtureModel, Campaign: uuid.NewString(), AnonymousDaily: vibe.NanoUSD, AnonymousCampaign: 5 * vibe.NanoUSD, Profiles: map[string]vibe.ModelProfile{browserFixtureModel: {ID: browserFixtureModel, Route: "liquid/fp8", Free: true, Conformed: true, StructuredOutputs: true, Context: 65536, FramingAllowance: 4096, ExpiresAt: time.Now().Add(time.Hour)}}}
+	cfg := vibe.Config{GroundedJudging: true, ReliableAuthoring: true, Enabled: true, FreeOnly: true, LocalTesting: true, Credential: "fake-no-network", DefaultModel: browserFixtureModel, Campaign: uuid.NewString(), AnonymousDaily: vibe.NanoUSD, AnonymousCampaign: 5 * vibe.NanoUSD, Profiles: map[string]vibe.ModelProfile{browserFixtureModel: {ID: browserFixtureModel, Route: "liquid/fp8", Free: true, Conformed: true, StructuredOutputs: true, Context: 65536, FramingAllowance: 4096, ExpiresAt: time.Now().Add(time.Hour)}}}
 	cfg.SuiteReviewVersion = browserFixtureEnv("VIBE_BROWSER_REVIEW_VERSION", vibe.LatestSuiteValidatorVersion)
 	store := vibe.NewStore(db, cfg)
 	svc := &vibe.Service{Store: store, Config: cfg, Gate: vibe.Gate{Redis: rc}, Compiler: VibePackCompiler{}}
@@ -285,6 +285,19 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 	name := format.JSONSchema.Name
 	var output any
 	switch {
+	case strings.Contains(req.Messages[0].Content, "Every finding has exactly"):
+		name = "judge"
+		var input struct {
+			Criteria struct {
+				Key string `json:"key"`
+			} `json:"criteria"`
+			Replies []vibe.EvidenceMessage `json:"replies"`
+		}
+		if err := json.Unmarshal([]byte(req.Messages[1].Content), &input); err != nil || len(input.Replies) != 1 {
+			return provider.Response{}, fmt.Errorf("missing saved reply: %v", err)
+		}
+		text := input.Replies[0].Content
+		output = map[string]any{"key": input.Criteria.Key, "pass": text != "Opened items are eligible.", "reasoning": "The scripted response is compared with the unopened-only return policy.", "finding": map[string]any{"kind": "observed", "quotes": []any{map[string]any{"message_id": "output", "text": text}}, "missing": "", "covered_message_ids": []string{}}}
 	case strings.HasPrefix(req.Messages[0].Content, "Evaluate the supplied output"):
 		name = "judge"
 		var input struct {

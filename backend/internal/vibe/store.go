@@ -211,7 +211,7 @@ func (s *Store) GetSession(ctx context.Context, actor string, id uuid.UUID) (Ses
 type scanner interface{ Scan(...any) error }
 
 const operationSelect = `SELECT id,session_id,actor,kind,state,billing,models,input,max_cost,actual_cost,model_calls,error,created_at,deadline,conversation_decision,completion_receipt FROM vibe_operations`
-const operationSummarySelect = `SELECT id,session_id,actor,kind,state,billing,models,jsonb_build_object('source',input->'source','authoring_version',input->'authoring_version','submission',jsonb_build_object('baseline_id',input#>'{submission,baseline_id}','retry_of',input#>'{submission,retry_of}')),max_cost,actual_cost,model_calls,error,created_at,deadline,conversation_decision,completion_receipt FROM vibe_operations`
+const operationSummarySelect = `SELECT id,session_id,actor,kind,state,billing,models,jsonb_strip_nulls(jsonb_build_object('source',input->'source','grading',input->'grading','target_config',input->'target_config','authoring_version',input->'authoring_version','submission',jsonb_build_object('baseline_id',input#>'{submission,baseline_id}','retry_of',input#>'{submission,retry_of}'))),max_cost,actual_cost,model_calls,error,created_at,deadline,conversation_decision,completion_receipt FROM vibe_operations`
 
 func scanOperation(row scanner) (Operation, error) {
 	var o Operation
@@ -243,6 +243,7 @@ func scanOperation(row scanner) (Operation, error) {
 	o.BaselineID = p.Submission.BaselineID
 	o.RetryOfOperationID = p.Submission.RetryOf
 	o.Source = p.Source
+	o.Grading, o.TargetConfig = p.Grading, p.TargetConfig
 	if len(issue) > 0 {
 		err = json.Unmarshal(issue, &o.Error)
 	}

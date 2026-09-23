@@ -80,6 +80,7 @@ export type Artifact = {
 };
 export type Verdict = "PASS" | "FAIL" | "UNKNOWN";
 export type CaseResult = {
+  expected_checks?: number;
   expectations?: Expectation[];
   title?: string;
   messages?: EvidenceMessage[];
@@ -95,11 +96,25 @@ export type CaseResult = {
     verdict: Verdict;
     evidence: string;
     message_ids?: string[];
+    evidence_version?: number;
+    finding?: {
+      kind: "observed" | "missing_behavior" | "unassessed";
+      quotes: { message_id: string; text: string }[];
+      missing: string;
+      covered_message_ids: string[];
+    };
     error?: { message: string };
   }[];
   error?: { code?: string; message: string };
 };
 export type Operation = {
+  grading?: {
+    version: number; hash: string; criteria_hash: string; tests_hash: string;
+    parser: string; normalization: string; schema: string; prompt_hash: string;
+    aggregation: string;
+    evaluator: { provider: string; model: string; route: string; temperature: number; max_output: number; disable_reasoning: boolean };
+  };
+  target_config?: { provider: string; model: string; route: string; temperature: number; max_output: number; disable_reasoning: boolean; instructions_hash: string };
   completion_receipt?: {
     action: string;
     source_message_id: string;
@@ -115,7 +130,7 @@ export type Operation = {
     label: string;
     artifact_id: string;
     evidence_set_id?: string;
-    comparison?: "updated_replies" | "rechecked";
+    comparison?: "updated_replies" | "rechecked" | "regraded";
   };
   baseline_id?: string;
   id: string;
@@ -222,6 +237,7 @@ export type SavedCheck = {
 };
 export type VibeConfig = {
   interaction_actions?: boolean;
+  grading_recheck?: boolean;
   capabilities?: Capability[];
   enabled: boolean;
   free_only?: boolean;

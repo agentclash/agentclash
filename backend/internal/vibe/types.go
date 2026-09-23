@@ -165,6 +165,8 @@ type Session struct {
 	SavedModels     *Models     `json:"saved_models,omitempty"`
 }
 type Operation struct {
+	Grading            *GradingContract      `json:"grading,omitempty"`
+	TargetConfig       *TargetConfiguration  `json:"target_config,omitempty"`
 	Completion         *CompletionReceipt    `json:"completion_receipt,omitempty"`
 	RetryOfOperationID *uuid.UUID            `json:"retry_of_operation_id,omitempty"`
 	Retryable          bool                  `json:"retryable,omitempty"`
@@ -197,11 +199,13 @@ const (
 )
 
 type CheckResult struct {
-	MessageIDs []string `json:"message_ids,omitempty"`
-	Key        string   `json:"key"`
-	Verdict    Verdict  `json:"verdict"`
-	Evidence   string   `json:"evidence"`
-	Error      *Fault   `json:"error,omitempty"`
+	EvidenceVersion int      `json:"evidence_version,omitempty"`
+	Finding         *Finding `json:"finding,omitempty"`
+	MessageIDs      []string `json:"message_ids,omitempty"`
+	Key             string   `json:"key"`
+	Verdict         Verdict  `json:"verdict"`
+	Evidence        string   `json:"evidence"`
+	Error           *Fault   `json:"error,omitempty"`
 }
 type CaseResult struct {
 	Expectations   []Expectation     `json:"expectations,omitempty"`

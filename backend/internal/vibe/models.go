@@ -30,6 +30,7 @@ type ModelProfile struct {
 	ExpiresAt          time.Time `json:"expires_at"`
 }
 type Config struct {
+	GroundedJudging     bool
 	ContextGuidance     bool
 	PreciseActions      bool
 	ConversationState   bool
@@ -53,6 +54,7 @@ func LoadConfig() (Config, error) {
 	c := Config{Enabled: os.Getenv("VIBE_ENABLED") == "true", Credential: os.Getenv("VIBE_OPENROUTER_KEY"), Profiles: map[string]ModelProfile{}, Campaign: os.Getenv("VIBE_CAMPAIGN")}
 	c.FreeOnly = os.Getenv("VIBE_FREE_ONLY") == "true"
 	c.ReliableAuthoring = os.Getenv("VIBE_RELIABLE_AUTHORING") == "true"
+	c.GroundedJudging = os.Getenv("VIBE_GROUNDED_JUDGING") != "false"
 	c.SuiteReviewVersion = LatestSuiteValidatorVersion
 	if c.ReliableAuthoring {
 		c.SourcePolicyVersion = SourcePolicyVersion

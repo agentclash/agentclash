@@ -35,6 +35,10 @@ type Submission struct {
 	BaselineID      *uuid.UUID          `json:"baseline_id,omitempty"`
 }
 type Plan struct {
+	Grading                  *GradingContract     `json:"grading,omitempty"`
+	TargetConfig             *TargetConfiguration `json:"target_config,omitempty"`
+	RegradeOf                *uuid.UUID           `json:"regrade_of,omitempty"`
+	SavedResults             []CaseResult         `json:"saved_results,omitempty"`
 	Retry                    *RetryContext        `json:"retry,omitempty"`
 	ExecutionLimits          *Limits              `json:"execution_limits,omitempty"`
 	Conversation             *ConversationContext `json:"conversation,omitempty"`
@@ -119,7 +123,7 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 				return err
 			}
 		}
-		if sub.ApproveArtifact {
+		if sub.ApproveArtifact && plan.RegradeOf == nil {
 			if sub.Kind != "check" && sub.Kind != "retest" {
 				return fault("invalid_message", "Only running checks can approve their expectations.")
 			}
@@ -193,6 +197,7 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		}
 		o = Operation{ID: uuid.New(), SessionID: id, Actor: actor, Kind: sub.Kind, State: Validating, Billing: Unreserved, Models: sub.Models, Input: raw(plan), MaxCost: plan.MaxCost, CreatedAt: timestamp(), Deadline: timestamp().Add(plan.operationTimeout()), Results: []CaseResult{}}
 		o.Source = plan.Source
+		o.Grading, o.TargetConfig = plan.Grading, plan.TargetConfig
 		o.RetryOfOperationID = sub.RetryOf
 		if !v.Anonymous && !cfg.TestingLocally() && o.MaxCost > AutomaticApprovalCost {
 			o.State = AwaitingApproval

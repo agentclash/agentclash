@@ -294,7 +294,7 @@ export function TestSuitePanel({
           </div>}
           {ready && (
             <p className="text-xs vibe-muted">
-              Agent instructions · {modelLabel || "Selected model"}
+              Text test here · {modelLabel || "Selected model"}. Your live app is not called.
             </p>
           )}
           <details className="text-sm vibe-muted">

@@ -243,7 +243,7 @@ it("leads with one reply and keeps complete evidence behind a single accessible 
   expect(
     button("Copy fix prompt").closest('[aria-label="Leading finding"]'),
   ).toBe(leading);
-  expect(button("That’s not what I meant").closest("[hidden]")).toBeNull();
+  expect(button("Change the expected behavior").closest("[hidden]")).toBeNull();
   expect(load.mock.calls).toEqual([["memory"]]);
   for (const label of ["Other results", "What was checked"]) {
     const details = [...container.querySelectorAll("details")].find((node) =>
@@ -254,7 +254,7 @@ it("leads with one reply and keeps complete evidence behind a single accessible 
   await click("See evidence");
   expect(button("Hide evidence").getAttribute("aria-expanded")).toBe("true");
   expect(fullEvidence.hidden).toBe(false);
-  await click("That’s not what I meant");
+  await click("Change the expected behavior");
   expect(dispute).toHaveBeenCalledWith(
     "Ask only for missing details.",
     failure,
@@ -275,7 +275,7 @@ it("keeps a long reply complete in evidence and the fix prompt while showing a l
   const quote = container.querySelector(
     '[aria-label="Leading finding"] blockquote',
   )!;
-  expect(quote.textContent).toContain("App reply · excerpt");
+  expect(quote.textContent).toContain("App reply · preview; full reply below");
   expect(quote.textContent).not.toContain("The exact final sentence.");
   await click("See evidence");
   const fullEvidence = document.getElementById(
@@ -399,7 +399,10 @@ it("prioritizes a new regression over an existing failure without hiding either"
       },
     ],
   };
-  await render(operation([failure, regressed]), operation([failure, passing]));
+  const old = operation([failure, passing]);
+  const next = { ...operation([failure, regressed]), id: "next", baseline_id: old.id };
+  old.grading = next.grading = { version: 1, hash: "matching" } as Operation["grading"];
+  await render(next, old);
   expect(container.querySelector("h1")!.textContent).toContain("1 new issue");
   expect(
     container.querySelector('[aria-label="Leading finding"] summary')!

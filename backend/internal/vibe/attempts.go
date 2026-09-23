@@ -110,6 +110,9 @@ func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
 		if err = json.Unmarshal(o.Input, &plan); err != nil {
 			return err
 		}
+		if plan.RegradeOf != nil && a.Role != Evaluator {
+			return fault("operation_limit", "Rechecking saved grades can only call the evaluator.")
+		}
 		if plan.AuthoringVersion >= 11 && (o.Kind == "message" || o.Kind == "build") {
 			allowed := a.Step == "route" || a.Step == "handler" || a.Step == "review" || a.Step == "repair" || a.Step == "review:repair"
 			if plan.Conversation != nil && plan.Conversation.Manual != nil {
