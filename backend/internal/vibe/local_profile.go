@@ -112,7 +112,11 @@ func (v *localProfileVerifier) fetch(p ModelProfile) error {
 	if e.Context < p.Context || (e.MaxPrompt != nil && *e.MaxPrompt < p.Context) || (e.MaxCompletion != nil && *e.MaxCompletion < 4096) {
 		return fmt.Errorf("endpoint context or output allowance decreased")
 	}
-	for _, parameter := range []string{"structured_outputs", "response_format", "max_tokens", "temperature", "reasoning"} {
+	parameters := []string{"structured_outputs", "response_format", "max_tokens", "reasoning"}
+	if !p.OmitTemperature {
+		parameters = append(parameters, "temperature")
+	}
+	for _, parameter := range parameters {
 		if !slices.Contains(e.Parameters, parameter) {
 			return fmt.Errorf("endpoint no longer supports %s", parameter)
 		}
@@ -130,6 +134,14 @@ func (v *localProfileVerifier) fetch(p ModelProfile) error {
 			continue
 		}
 		ceiling := int64(0)
+		// Vibe sends no tools or plugins. This route's optional web-search
+		// tariff cannot apply; all other unknown nonzero charges fail closed.
+		if unusedTextOnlyTariff(p, field) {
+			if _, err := catalogPrice(raw); err != nil {
+				return fmt.Errorf("endpoint %s price invalid", field)
+			}
+			continue
+		}
 		if field == "input_cache_read" {
 			ceiling = p.InputNanoPerToken
 		}
@@ -139,6 +151,13 @@ func (v *localProfileVerifier) fetch(p ModelProfile) error {
 		}
 	}
 	return nil
+}
+
+func unusedTextOnlyTariff(p ModelProfile, field string) bool {
+	if p.ID == "openai/gpt-5.4-mini" && p.Route == "openai" {
+		return field == "web_search"
+	}
+	return false
 }
 
 func catalogPrice(raw json.RawMessage) (int64, error) {

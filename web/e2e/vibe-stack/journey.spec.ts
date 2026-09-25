@@ -93,7 +93,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   const fix = state.session.document.artifacts.at(-1)!;
   expect(state.hashes[fix.id]).toEqual(originalHashes);
   expect(fix.agent_prompt).toBe(baselineArtifact.agent_prompt.replace("Opened items are eligible.", "Only unopened items are eligible."));
-  await page.getByRole("button", { name: "Test the suggested fix", exact: true }).click();
+  await page.getByRole("button", { name: "Improve and rerun", exact: true }).click();
   await expect(page.getByRole("heading", { name: "3 of 3 tests passed" })).toBeVisible();
   state = await evidence(page, sessionID!);
   const rerun = state.session.operations.at(-1)!;

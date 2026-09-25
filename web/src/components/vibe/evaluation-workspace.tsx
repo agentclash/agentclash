@@ -41,8 +41,11 @@ import type { ConversationAction } from "@/lib/vibe-conversation";
 import { hasConversationChoice, primarySurface } from "@/lib/vibe-presentation";
 import { ConversationActions } from "./conversation-actions";
 import { ConversationGuidance, ExampleComparison } from "./conversation-guidance";
+import { CaseEvidence } from "./case-evidence";
+import { EvaluationOutcome } from "./evaluation-outcome";
 import { CoverageNote } from "./coverage-note";
 import { RetryControl } from "./retry-control";
+import { RetryModelControl } from "./retry-model-control";
 import { recoveryMessage } from "./recovery-message";
 import { VibeButton } from "./vibe-button";
 import { SafeMarkdown } from "./safe-markdown";
@@ -64,6 +67,17 @@ User: Plan a one-day Jaipur trip for two people with a total budget of ₹5,000,
 Assistant: Here’s your plan: transport ₹2,000, food ₹2,000, and activities ₹4,000. Total: ₹8,000. This fits within your ₹5,000 budget.`;
 
 export type EvaluationWorkspaceProps = {
+  twoDoor?: boolean;
+  onDoor?: (door: "build" | "test") => void;
+  contextControl?: ReactNode;
+  history?: Session[];
+  onSwitchContext?: (id: string) => void;
+  buildStart?: boolean;
+  buildAnswer?: boolean;
+  onSample?: () => void;
+  onTougher?: (text: string, count: number, artifactID: string) => void;
+  sendBlocked?: boolean;
+  costNotice?: string;
   interactionActions?: boolean;
   onChoice?: (action: ConversationAction) => Promise<void>;
   onReloadChoices?: () => Promise<void>;
@@ -102,7 +116,8 @@ export type EvaluationWorkspaceProps = {
   onInstructions: () => void;
   loadEvidence: (operation: string, key: string) => Promise<CaseResult>;
   onAction: (id: string, action: "stop" | "approve") => void;
-  onRetry?: (id: string) => void;
+  onRetry?: (id: string, assistantModel?: string) => void;
+  retryModels?: { id: string; name: string }[];
   retryPendingOperationID?: string;
   retryUncertainOperationID?: string;
   checkingTestChanges?: boolean;
@@ -116,6 +131,9 @@ export type EvaluationWorkspaceProps = {
 
 export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
   const params = useSearchParams();
+  const door = p.session?.document.evaluation?.door;
+  const entry = !!p.twoDoor && !door && !p.session?.document.messages.length && !p.session?.document.artifacts.length;
+
   const reduced = useReducedMotion();
   const [intake, setIntake] = useState<"chats" | "instructions" | null>(null);
   const [compare, setCompare] = useState<Operation>();
@@ -310,11 +328,11 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
     p.onNavigate("build");
   };
   const send = () => {
-    if (p.busy || p.dirty || !p.content.trim()) return;
+    if (p.busy || p.dirty || p.sendBlocked || !p.content.trim()) return;
     if (p.view !== "build") p.onNavigate("build");
     p.onSend(result && terminal(result.state) ? { viewed_run_id: result.id } : undefined);
   };
-  const showComposer = p.view !== "try" && !intake;
+  const showComposer = p.view !== "try" && !intake && !entry;
   const compactComposer = showResult || (!!p.testJourney && !!p.artifact);
   useComposerAutosize(composer, p.content, compactComposer, showComposer, `${p.view}:${welcome}`);
   const primary = primarySurface({ busy: p.busy, dirty: p.dirty, typing: !!p.content.trim(),
@@ -325,6 +343,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
     <div className="space-y-5" data-proposal-id={p.artifact.id}>
       {promptChanged && <PromptChange key={`instructions:${p.artifact.id}`} before={parent!.agent_prompt} after={p.artifact.agent_prompt} />}
       <TestSuitePanel primary={primary === "tests"} key={`tests:${p.artifact.id}`} artifact={p.artifact} busy={p.busy} blocked={p.dirty}
+        parent={parent}
         comparison={!!changeBaseline} onRun={() => startRun(changeBaseline)} onEdit={p.onEdit}
         onDirty={p.onDirty} onSave={() => p.onSave()} onSettings={p.onSettings} modelLabel={p.modelLabel}
         checkingChanges={p.checkingTestChanges}
@@ -477,34 +496,29 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
           <div
             className={`vibe-column ${welcome ? "pb-12 pt-[clamp(3rem,15vh,9rem)]" : "py-8 sm:py-12"}`}
           >
-            {welcome && !intake && (
-              <div className="vibe-welcome mb-7">
-                <h1 className="text-[30px] font-semibold leading-[1.2] tracking-tight sm:text-[36px]">
-                  {p.testJourney
-                    ? "What should your agent do?"
-                    : "Check the AI in your app."}
-                </h1>
-                <p className="mt-4 max-w-[520px] vibe-muted">
-                  {p.testJourney
-                    ? "Describe its job and rules. We’ll check what works and what needs fixing."
-                    : "Tell us what it does, or paste an answer you want checked."}
-                </p>
-                {p.testJourney && (
-                  <p className="mt-3 !text-sm vibe-muted">
-                    Already have an agent or challenge pack? Describe it here or{" "}
-                    <button
-                      type="button"
-                      disabled={p.busy || p.dirty}
-                      onClick={p.onImport}
-                      className="cursor-pointer rounded-sm underline underline-offset-4 hover:text-[var(--vibe-fg)] disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      import your pack
-                    </button>
-                    .
-                  </p>
-                )}
+            {welcome && !intake && (entry ? <section className="vibe-welcome mb-7">
+              <h1 className="text-[30px] font-semibold leading-tight tracking-tight sm:text-[36px]">What would you like AI to handle?</h1>
+              <p className="mt-4 vibe-muted">Try an idea, or find out what your existing agent gets right and wrong.</p>
+              <div className="vibe-entry-doors mt-7">
+                <button type="button" disabled={p.busy} onClick={() => p.onDoor?.("build")}><span>Build an agent <ArrowRight size={18}/></span><small>I have something I want AI to handle.</small></button>
+                <button type="button" disabled={p.busy} onClick={() => p.onDoor?.("test")}><span>Test what you have <ArrowRight size={18}/></span><small>Use agent instructions, saved conversations, or a challenge pack.</small></button>
               </div>
-            )}
+            </section> : <div className="vibe-welcome mb-7">
+              <h1 className="text-[30px] font-semibold leading-tight tracking-tight sm:text-[36px]">{door === "build" ? "What would you like help with?" : door === "test" ? "Bring what you have." : p.testJourney ? "What should your agent do?" : "Check the AI in your app."}</h1>
+              <p className="mt-4 max-w-[560px] vibe-muted">{door === "build" ? "Describe a repetitive task. We’ll make a prototype and try three situations to see what works." : door === "test" ? "Start with instructions, an actual conversation, or tests you already use." : p.testJourney ? "Describe its job and rules. We’ll check what works and what needs fixing." : "Tell us what it does, or paste an answer you want checked."}</p>
+              {door === "test" && <><div className="mt-5 flex flex-wrap gap-2">
+                <VibeButton disabled={p.busy} onClick={p.onImport}>Import challenge pack</VibeButton>
+                <VibeButton disabled={p.busy} onClick={() => changeSource("chats")}>Paste conversation</VibeButton>
+                <VibeButton disabled={p.busy} onClick={() => changeSource("instructions")}>Use agent instructions</VibeButton>
+              </div><p className="mt-3 text-sm vibe-muted">Live connections aren’t available here yet. Instructions recreate behavior; conversations show recorded replies; a pack supplies tests.</p></>}
+              {!door && p.testJourney && <p className="mt-3 text-sm vibe-muted">Already have an agent or challenge pack? Describe it here or <button type="button" className="underline underline-offset-4" disabled={p.busy} onClick={p.onImport}>import your pack</button>.</p>}
+            </div>)}
+            {!!p.history?.length && <details className="mb-5 text-sm vibe-muted"><summary>Earlier evaluations in this chat</summary><div className="mt-3 space-y-4">{p.history.map(c => <section key={c.id} className="vibe-panel p-4"><p className="font-medium">{c.document.artifacts.at(-1)?.title}</p><p className="mt-1">{c.operations.filter(o => terminal(o.state) && o.scorecard).length} saved runs. Viewing history does not switch your active evaluation.</p>{c.operations.filter(o => terminal(o.state) && o.scorecard).map(o => <details key={o.id} className="mt-2"><summary>{o.scorecard!.passed} passed · {o.scorecard!.failed} failed · {o.scorecard!.unknown} unassessed</summary>{o.results.map(result => <CaseEvidence key={result.case_key} summary={result} load={key => p.loadEvidence(o.id,key)} />)}</details>)}<VibeButton variant="quiet" disabled={!!p.pendingLabel || p.dirty} onClick={() => p.onSwitchContext?.(c.id)}>Switch to this evaluation</VibeButton></section>)}</div></details>}
+            {door && p.artifact?.agent_prompt && <section aria-label="Prototype scope" className="mb-5 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-medium">Interactive prototype{p.artifact.sample ? " · Sample demonstration" : ""}</p><VibeButton variant="quiet" onClick={() => p.onNavigate("try")}>Talk to this prototype</VibeButton></div>
+              <p className="vibe-muted">{p.artifact.scope_note || "Runs here using what you supplied; your business systems aren’t connected."}</p>
+              {p.artifact.sample && <p className="mt-1 vibe-muted">These results check the sample, not your business policy.</p>}
+            </section>}
             {p.view === "try" ? (
               p.preview
             ) : intake === "chats" ? (
@@ -632,6 +646,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   </div>
                 )}
                 <VibeScorecard
+                  findingFirst={!!door}
                   testJourney={p.testJourney}
                   primary={primary === "results"}
                   operation={result}
@@ -666,6 +681,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                       : undefined
                   }
                 />
+                {door && p.session && p.artifact && terminal(result.state) && <EvaluationOutcome key={`outcome:${result.id}`} session={p.session} artifact={p.session.document.artifacts.find(a => a.id === result.source?.artifact_id) || p.artifact} operation={result} busy={p.busy || p.dirty} loadEvidence={p.loadEvidence} onTougher={p.onTougher} />}
                 {result.results.length > 0 && terminal(result.state) && (
                   <CoverageNote key={result.id} rows={p.session?.rule_coverage?.[result.source?.artifact_id || result.results[0]?.version] || []}
                     busy={p.busy || p.dirty || !!p.content.trim()} onSuggest={rule => {
@@ -697,7 +713,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                           <ConversationGuidance cards={m.cards} scope={p.session?.document.conversation_state?.brief.scope_id} message={m.id} />
                           {m.role === "user" && m.operation_id && (
                             <OperationFeedback serverTime={p.session?.server_time} original={operationByID.get(m.operation_id)} operation={latestOperations.get(m.operation_id)}
-                              primary={primary === "recovery" && latestOperations.get(m.operation_id)?.id === operations.at(-1)?.id} busy={p.busy || p.dirty} pendingID={p.retryPendingOperationID} uncertainID={p.retryUncertainOperationID} onRetry={p.onRetry} />
+                              primary={primary === "recovery" && latestOperations.get(m.operation_id)?.id === operations.at(-1)?.id} busy={p.busy || p.dirty} pendingID={p.retryPendingOperationID} uncertainID={p.retryUncertainOperationID} onRetry={p.onRetry} retryModels={p.retryModels} />
                           )}
                         </div>
                       ))}
@@ -718,7 +734,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                         <ConversationGuidance cards={m.cards} scope={p.session?.document.conversation_state?.brief.scope_id} message={m.id} />
                         {m.role === "user" && m.operation_id && (
                           <OperationFeedback serverTime={p.session?.server_time} original={operationByID.get(m.operation_id)} operation={latestOperations.get(m.operation_id)}
-                            primary={primary === "recovery" && latestOperations.get(m.operation_id)?.id === operations.at(-1)?.id} busy={p.busy || p.dirty} pendingID={p.retryPendingOperationID} uncertainID={p.retryUncertainOperationID} onRetry={p.onRetry} />
+                            primary={primary === "recovery" && latestOperations.get(m.operation_id)?.id === operations.at(-1)?.id} busy={p.busy || p.dirty} pendingID={p.retryPendingOperationID} uncertainID={p.retryUncertainOperationID} onRetry={p.onRetry} retryModels={p.retryModels} />
                         )}
                         {m.id === proposalMessage?.id && suiteCard && <div className="mt-5">{suiteCard}</div>}
                       </div>
@@ -812,7 +828,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   ))}
               </div>
             )}
-            {p.view === "build" && !intake && p.session && p.interactionActions && p.onChoice && p.onReloadChoices && (
+            {p.view === "build" && !intake && p.session && !p.buildAnswer && p.interactionActions && p.onChoice && p.onReloadChoices && (
               <div className="mt-4"><ConversationActions key={p.session.id} session={p.session} busy={p.busy || p.dirty} primary={primary === "choices"} onAction={p.onChoice} onReload={p.onReloadChoices} /></div>
             )}
             {p.instructions &&
@@ -859,6 +875,14 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
             <div className={`vibe-notice ${welcome ? "" : "mt-7"}`}>
               {p.notice}
             </div>
+            {p.session?.document.build?.phase === "error" && !activityLabel && !operations.some(operation => operation.error && operation.id === p.session?.operations.at(-1)?.id) && (
+              <p role="alert" className="mt-4 text-sm text-builder-warn">
+                {p.session.document.build.error?.message || "This Build cycle stopped. Your work is saved."}{" "}
+                {p.session.document.artifacts.length ? "You can edit this prototype and use Run tests for a fresh estimate." : "Use New evaluation to start another prototype."}
+              </p>
+            )}
+            {p.buildAnswer && !p.busy && <div className="mt-4"><VibeButton onClick={p.onSample}>Use a sample policy</VibeButton><p className="mt-2 text-xs vibe-muted">A labelled demonstration. Your real policy stays unspecified.</p></div>}
+            {p.contextControl && <div className="vibe-active-context">{p.contextControl}</div>}
             {showComposer && (
               <div className={welcome ? "" : "mt-7"}>
                 {!welcome && !showResult && (
@@ -888,7 +912,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                     maxLength={p.session?.anonymous === false ? 65536 : 16384}
                     placeholder={
                       welcome
-                        ? p.testJourney
+                        ? door === "build" ? "We spend hours answering customer questions about returns…" : p.testJourney
                           ? "My agent helps customers with returns…"
                           : "I made an AI trip planner…"
                         : showResult
@@ -916,14 +940,15 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                       }
                       type="submit"
                       aria-label="Send message"
-                      disabled={p.busy || p.dirty || !p.content.trim()}
+                      disabled={p.busy || p.dirty || p.sendBlocked || !p.content.trim()}
                     >
-                      {!showResult && "Send"}
+                      {p.buildStart ? "Build and try 3 examples" : !showResult && "Send"}
                       <ArrowUp />
                     </VibeButton>
                   </div>
                 </form>
-                {welcome && (
+                {p.costNotice && <p className="mt-2 text-xs vibe-muted" role="status">{p.costNotice}</p>}
+                {welcome && !entry && (
                   <VibeButton
                     variant="quiet"
                     className="mt-3 !px-0"
@@ -1049,7 +1074,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
   );
 }
 
-function OperationFeedback({ original, operation, busy, pendingID, uncertainID, onRetry, primary, serverTime }: {
+function OperationFeedback({ original, operation, busy, pendingID, uncertainID, onRetry, primary, serverTime, retryModels = [] }: {
   serverTime?: string;
   primary?: boolean;
   original?: Operation;
@@ -1057,7 +1082,8 @@ function OperationFeedback({ original, operation, busy, pendingID, uncertainID, 
   busy: boolean;
   pendingID?: string;
   uncertainID?: string;
-  onRetry?: (id: string) => void;
+  onRetry?: (id: string, assistantModel?: string) => void;
+  retryModels?: { id: string; name: string }[];
 }) {
   if (!operation || !original?.error) return null;
   const acknowledgement = completionAcknowledgement(operation);
@@ -1073,9 +1099,14 @@ function OperationFeedback({ original, operation, busy, pendingID, uncertainID, 
       {uncertain && <p className="vibe-muted">The retry acknowledgement wasn’t confirmed. Retry to recover its saved status.</p>}
       {retrying && <p role="status" className="vibe-muted">Retrying this request…</p>}
       {onRetry && (operation.retryable || uncertain) && (
-        <RetryControl availableAt={uncertain ? undefined : operation.error?.retry_available_at} serverTime={serverTime}
+        <div className="flex flex-wrap items-start gap-2">
+        <RetryControl key={`${operation.id}:${uncertain ? "recover" : operation.error?.retry_available_at || "ready"}`} availableAt={uncertain ? undefined : operation.error?.retry_available_at} serverTime={serverTime}
           primary={primary} disabled={retrying || (busy && !uncertain)} onRetry={() => onRetry(operation.id)}
           label={rateLimited ? "Try again" : "Retry"} />
+        {!uncertain && <RetryModelControl key={operation.id} disabled={retrying || busy}
+          models={retryModels.filter(model => model.id !== operation.models.assistant)}
+          onRetry={model => onRetry(operation.id, model)} />}
+        </div>
       )}
     </div>
   );

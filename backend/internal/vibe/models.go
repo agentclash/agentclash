@@ -18,6 +18,7 @@ import (
 type ModelProfile struct {
 	Free               bool      `json:"free,omitempty"`
 	DisableReasoning   bool      `json:"disable_reasoning,omitempty"`
+	OmitTemperature    bool      `json:"omit_temperature,omitempty"`
 	StructuredOutputs  bool      `json:"structured_outputs,omitempty"`
 	ID                 string    `json:"id"`
 	Name               string    `json:"name"`
@@ -30,6 +31,7 @@ type ModelProfile struct {
 	ExpiresAt          time.Time `json:"expires_at"`
 }
 type Config struct {
+	TwoDoor              bool
 	UnderstandingMode    string
 	UnderstandingProfile *UnderstandingProfile
 	GroundedJudging      bool
@@ -37,6 +39,8 @@ type Config struct {
 	PreciseActions       bool
 	ConversationState    bool
 	ReliableAuthoring    bool
+	InterpretedAuthoring bool
+	AssistantFallback    bool
 	SuiteReviewVersion   string
 	SourcePolicyVersion  string
 	LocalTesting         bool
@@ -77,8 +81,11 @@ func LoadConfig() (Config, error) {
 		c.ConversationState = os.Getenv("VIBE_CONVERSATION_STATE") != "false"
 		c.PreciseActions = c.ConversationState && os.Getenv("VIBE_PRECISE_ACTIONS") != "false"
 		c.ContextGuidance = c.PreciseActions && os.Getenv("VIBE_CONTEXT_GUIDANCE") != "false"
+		c.InterpretedAuthoring = c.ContextGuidance && os.Getenv("VIBE_INTERPRETED_AUTHORING") == "true"
+		c.AssistantFallback = c.InterpretedAuthoring && os.Getenv("VIBE_ASSISTANT_FALLBACK") != "false"
 	}
 	c.LocalTesting = os.Getenv("VIBE_LOCAL_TESTING") == "true"
+	c.TwoDoor = c.InterpretedAuthoring && os.Getenv("VIBE_TWO_DOOR") == "true"
 	if c.LocalTesting && os.Getenv("APP_ENV") != "development" {
 		return c, fmt.Errorf("VIBE_LOCAL_TESTING requires APP_ENV=development")
 	}
@@ -159,10 +166,22 @@ func (c Config) Profile(id string) (ModelProfile, error) {
 		if (p.Route != "open-inference/fp8" && p.Route != "deepinfra/fp8") || !p.StructuredOutputs {
 			return p, fault("pricing_unavailable", "This model requires its verified structured-output provider route.")
 		}
+	case "deepseek/deepseek-v4.1-flash":
+		if p.Route != "coreweave/fp8" || !p.StructuredOutputs {
+			return p, fault("pricing_unavailable", "This model requires its verified structured-output provider route.")
+		}
+	case "openai/gpt-5.4-mini":
+		if p.Route != "openai" || !p.StructuredOutputs || !p.OmitTemperature || !p.DisableReasoning {
+			return p, fault("pricing_unavailable", "This model requires its verified structured-output settings.")
+		}
+	case "deepseek/deepseek-v4-pro":
+		if p.Route != "baidu/fp8" || !p.StructuredOutputs {
+			return p, fault("pricing_unavailable", "This model requires its verified structured-output provider route.")
+		}
 	default:
 		return p, fault("unsupported_model", "This model has no verified text token profile.")
 	}
-	if c.LocalTesting && c.localProfiles != nil && p.ID == "deepseek/deepseek-v4-flash-0731" {
+	if c.LocalTesting && c.localProfiles != nil && (!strings.HasPrefix(p.ID, "openai/") || p.ID == "openai/gpt-5.4-mini") {
 		if err := c.localProfiles.verify(p); err != nil {
 			return p, fault("pricing_unavailable", "The AI provider couldn't be verified right now. Please try again shortly.")
 		}
@@ -177,10 +196,16 @@ func (c Config) ValidateModels(m Models, anon bool) error {
 			return err
 		}
 	}
-	if anon && m.Evaluator != c.DefaultModels().Evaluator {
+	if c.EvaluatorPinned(anon) && m.Evaluator != c.DefaultModels().Evaluator {
 		return fault("evaluator_pinned", "The free trial uses a fixed evaluator for comparable results.")
 	}
 	return nil
+}
+
+// Paid local testing may compare graders. Hosted/free trials keep their fixed
+// evaluator; changing a local grader still changes the frozen grading identity.
+func (c Config) EvaluatorPinned(anonymous bool) bool {
+	return anonymous && !(c.TestingLocally() && !c.FreeOnly)
 }
 func ParseUSD(s string) (int64, error) {
 	if len(s) == 0 || len(s) > 64 || strings.ContainsAny(s, "eE/ ") {
@@ -250,7 +275,7 @@ func CountContext(req provider.Request, p ModelProfile, l Limits) (ContextCount,
 	if n.UpperBound > l.ContextTokens || req.MaxOutputTokens <= 0 || req.MaxOutputTokens > l.OutputTokens || n.UpperBound+req.MaxOutputTokens > p.Context {
 		return n, contextFault(req, n, p, l)
 	}
-	if p.Free || !strings.HasPrefix(p.ID, "openai/") {
+	if p.Free || (p.ID != "openai/gpt-4o-mini" && p.ID != "openai/gpt-4.1-mini" && p.ID != "openai/gpt-4.1") {
 		// These tokenizers are not o200k. Report only the conservative byte bound;
 		// do not present an OpenAI tokenizer estimate as this model's token count.
 		n.Method = "utf8_bytes_plus_verified_framing"

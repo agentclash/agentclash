@@ -142,7 +142,7 @@ func (VibePackCompiler) Compile(content json.RawMessage, evaluator string, id uu
 			return out, err
 		}
 		if b.Version.ExecutionMode != "" && b.Version.ExecutionMode != challengepack.ExecutionModePromptEval && b.Version.ExecutionMode != challengepack.ExecutionModeNative {
-			return out, fmt.Errorf("this pack needs an advanced execution mode; open it in the pack builder")
+			return out, &vibe.Fault{Code: "unsupported_capability", Message: fmt.Errorf("this pack needs an advanced execution mode; open it in the pack builder").Error()}
 		}
 	} else {
 		var p generatedPackBlueprint
@@ -173,17 +173,17 @@ func (VibePackCompiler) Compile(content json.RawMessage, evaluator string, id uu
 		}
 	}
 	if len(b.Tools) > 0 || len(b.Version.ToolPolicy) > 0 || len(b.Version.Filesystem) > 0 || b.Version.Sandbox != nil || len(b.Version.Assets) > 0 || b.Modality != "" || b.Security != nil {
-		return out, fmt.Errorf("this pack requires capabilities unavailable in a text preview; open the original pack in the builder")
+		return out, &vibe.Fault{Code: "unsupported_capability", Message: fmt.Errorf("this pack requires capabilities unavailable in a text preview; open the original pack in the builder").Error()}
 	}
 	if len(b.Challenges) != 1 {
-		return out, fmt.Errorf("a text preview supports one task; split multi-task packs explicitly")
+		return out, &vibe.Fault{Code: "unsupported_capability", Message: fmt.Errorf("a text preview supports one task; split multi-task packs explicitly").Error()}
 	}
 	if len(b.Challenges[0].Assets) > 0 || len(b.Challenges[0].ArtifactRefs) > 0 {
-		return out, fmt.Errorf("file-backed challenges need the advanced runner")
+		return out, &vibe.Fault{Code: "unsupported_capability", Message: fmt.Errorf("file-backed challenges need the advanced runner").Error()}
 	}
 	spec := &b.Version.EvaluationSpec
 	if len(spec.Metrics) > 0 || spec.Behavioral != nil || len(spec.PostExecutionChecks) > 0 {
-		return out, fmt.Errorf("metrics, behavioral signals and post-execution checks require the advanced runner; no coverage was removed")
+		return out, &vibe.Fault{Code: "unsupported_capability", Message: fmt.Errorf("metrics, behavioral signals and post-execution checks require the advanced runner; no coverage was removed").Error()}
 	}
 	if len(spec.Validators) == 0 || len(spec.Validators) > l.Checks || len(spec.LLMJudges) > l.Evaluators {
 		return out, fmt.Errorf("evaluation exceeds the validator or evaluator limit")
@@ -211,13 +211,13 @@ func (VibePackCompiler) Compile(content json.RawMessage, evaluator string, id uu
 			return out, fmt.Errorf("evaluator key exceeds 128 bytes")
 		}
 		if len(j.Models) > 0 || j.Samples > 1 {
-			return out, fmt.Errorf("multi-model judges and repeated sampling require an advanced run")
+			return out, &vibe.Fault{Code: "unsupported_capability", Message: fmt.Errorf("multi-model judges and repeated sampling require an advanced run").Error()}
 		}
 		if j.Mode != scoring.JudgeMethodAssertion && j.Mode != scoring.JudgeMethodRubric {
-			return out, fmt.Errorf("this evaluator needs evidence unavailable to the text preview")
+			return out, &vibe.Fault{Code: "unsupported_capability", Message: fmt.Errorf("this evaluator needs evidence unavailable to the text preview").Error()}
 		}
 		if (len(j.ContextFrom) > 0 && (len(j.ContextFrom) != 1 || j.ContextFrom[0] != vibe.ExpectedBehaviorReference)) || len(j.OutputSchema) > 0 || j.Consensus != nil || j.ReferenceFrom != "" {
-			return out, fmt.Errorf("this evaluator has context or schema requirements unavailable in a text preview; no evaluators were removed")
+			return out, &vibe.Fault{Code: "unsupported_capability", Message: fmt.Errorf("this evaluator has context or schema requirements unavailable in a text preview; no evaluators were removed").Error()}
 		}
 		j.Model = evaluator // explicit role policy, never the authoring/target model
 	}
@@ -227,16 +227,16 @@ func (VibePackCompiler) Compile(content json.RawMessage, evaluator string, id uu
 				return out, fmt.Errorf("case key exceeds 128 bytes")
 			}
 			if len(c.Artifacts) > 0 || len(c.Assets) > 0 || c.UserSimulator != nil {
-				return out, fmt.Errorf("artifact-backed cases need the advanced runner")
+				return out, &vibe.Fault{Code: "unsupported_capability", Message: fmt.Errorf("artifact-backed cases need the advanced runner").Error()}
 			}
 			for _, input := range c.Inputs {
 				if input.ArtifactKey != "" || input.Path != "" {
-					return out, fmt.Errorf("file inputs require an advanced runner")
+					return out, &vibe.Fault{Code: "unsupported_capability", Message: fmt.Errorf("file inputs require an advanced runner").Error()}
 				}
 			}
 			for _, expectation := range c.Expectations {
 				if expectation.ArtifactKey != "" {
-					return out, fmt.Errorf("file expectations require an advanced runner")
+					return out, &vibe.Fault{Code: "unsupported_capability", Message: fmt.Errorf("file expectations require an advanced runner").Error()}
 				}
 			}
 			out.Cases = append(out.Cases, c)
@@ -314,7 +314,7 @@ func (VibePackCompiler) Compile(content json.RawMessage, evaluator string, id uu
 	// Vibe persists validator/judge verdicts, not advanced dimension results.
 	for _, dimension := range normalized.Scorecard.Dimensions {
 		if dimension.Source != scoring.DimensionSourceValidators && dimension.Source != scoring.DimensionSourceLLMJudge {
-			return out, fmt.Errorf("dimension %s uses unsupported preview source %s; open it in the advanced runner; no coverage was removed", dimension.Key, dimension.Source)
+			return out, &vibe.Fault{Code: "unsupported_capability", Message: fmt.Errorf("dimension %s uses unsupported preview source %s; open it in the advanced runner; no coverage was removed", dimension.Key, dimension.Source).Error()}
 		}
 	}
 	// Execute the compiled bundle, including inferred judge mode and defaults.

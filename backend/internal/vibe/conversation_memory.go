@@ -15,14 +15,15 @@ const statefulAuthoringVersion = 12
 // Dialogue memory is not executable policy. Only a reviewed PolicySnapshot
 // authorizes tests. No user sophistication or inferred persona is stored here.
 type ConversationState struct {
-	ActionsVersion   int                   `json:"actions_version,omitempty"`
-	Proposal         *RuleProposal         `json:"proposal,omitempty"`
-	Version          int                   `json:"version"`
-	ThroughMessageID string                `json:"through_message_id,omitempty"`
-	Brief            interaction.Brief     `json:"brief"`
-	PendingQuestion  *interaction.Question `json:"pending_question,omitempty"`
-	Answers          []QuestionAnswer      `json:"answers,omitempty"`
-	Guidance         GuidanceHistory       `json:"guidance"`
+	PendingPreparation *SourceBlock          `json:"pending_preparation,omitempty"`
+	ActionsVersion     int                   `json:"actions_version,omitempty"`
+	Proposal           *RuleProposal         `json:"proposal,omitempty"`
+	Version            int                   `json:"version"`
+	ThroughMessageID   string                `json:"through_message_id,omitempty"`
+	Brief              interaction.Brief     `json:"brief"`
+	PendingQuestion    *interaction.Question `json:"pending_question,omitempty"`
+	Answers            []QuestionAnswer      `json:"answers,omitempty"`
+	Guidance           GuidanceHistory       `json:"guidance"`
 }
 type QuestionAnswer struct {
 	Action       *interaction.Action  `json:"action,omitempty"`
@@ -112,6 +113,17 @@ func validateConversationState(s *ConversationState, d Document) error {
 	} // Legacy sessions have no reconstructed consent.
 	if s.Version != conversationStateVersion || checkWire("brief", s.Brief) != nil {
 		return fmt.Errorf("invalid conversation brief version or shape")
+	}
+	if pending := s.PendingPreparation; pending != nil {
+		found := false
+		for _, m := range d.Messages {
+			if m.Role == "user" && m.Origin != "playground" && m.ID == pending.MessageID && Hash(raw(originalBlock(m.ID, m.Content))) == Hash(raw(pending)) {
+				found = true
+			}
+		}
+		if !found {
+			return fmt.Errorf("pending preparation lost its original request")
+		}
 	}
 	if err := validateProposal(s.Proposal, d); err != nil {
 		return err
@@ -250,6 +262,7 @@ func prepareConversationState(p *Plan, v Session) error {
 			return fmt.Errorf("conversation checkpoint is unavailable")
 		}
 		if advanced {
+			s.PendingPreparation = nil
 			if s.PendingQuestion != nil {
 				s.PendingQuestion.Status = "superseded"
 			}
@@ -388,6 +401,7 @@ func proposeConversationState(p Plan, route reliableRoute, o Operation) (*Conver
 		}
 	}
 	for _, f := range u.Facts {
+		f.Quote = restoreEvidenceQuote(f.Quote, current.Content)
 		if !exact(f.Quote) || (f.Kind != "job" && f.Kind != "rule" && f.Kind != "has_agent" && f.Kind != "has_pack") {
 			return nil, fmt.Errorf("fact needs a typed exact current-user excerpt")
 		}
@@ -397,7 +411,7 @@ func proposeConversationState(p Plan, route reliableRoute, o Operation) (*Conver
 		if u.Answer != nil && u.Answer.Unknown && f.Quote == u.Answer.Quote {
 			return nil, fmt.Errorf("an unknown answer is not a stated fact")
 		}
-		if err := mergeMemoryFact(s, f, stateSource(current, f.Quote), "stated", o.ID); err != nil {
+		if err := mergeMemoryFact(s, f, stateSource(current, f.Quote), "stated", o.ID, p.interpreted()); err != nil {
 			return nil, err
 		}
 	}
@@ -417,7 +431,7 @@ func proposeConversationState(p Plan, route reliableRoute, o Operation) (*Conver
 		}
 		next := &interaction.Question{ID: deterministicID(o.ID, "question").String(), ScopeID: s.Brief.ScopeID, Revision: 1, OriginMessageID: replyID, Purpose: q.Purpose, Status: "active", Text: q.Text, MaxSelections: q.MaxSelections, Options: []interaction.Option{}}
 		for i, label := range q.Options {
-			if !strings.Contains(route.Reply, label) {
+			if !p.interpreted() && !strings.Contains(route.Reply, label) {
 				return nil, fmt.Errorf("question options must be displayed")
 			}
 			next.Options = append(next.Options, interaction.Option{ID: fmt.Sprintf("option-%d", i+1), Label: label})
@@ -484,7 +498,7 @@ func proposeConversationState(p Plan, route reliableRoute, o Operation) (*Conver
 	return s, nil
 }
 
-func mergeMemoryFact(s *ConversationState, f memoryFact, source interaction.Source, status string, operation uuid.UUID) error {
+func mergeMemoryFact(s *ConversationState, f memoryFact, source interaction.Source, status string, operation uuid.UUID, acceptedCorrection ...bool) error {
 	var supersedes *string
 	for i := range s.Brief.Facts {
 		old := &s.Brief.Facts[i]
@@ -492,7 +506,7 @@ func mergeMemoryFact(s *ConversationState, f memoryFact, source interaction.Sour
 			return nil
 		}
 		if f.SupersedesID != "" && old.ID == f.SupersedesID {
-			if old.Kind != f.Kind || old.Status != "stated" {
+			if old.Kind != f.Kind || old.Status != "stated" && !(len(acceptedCorrection) == 1 && acceptedCorrection[0] && old.Status == "accepted") {
 				return fmt.Errorf("only a matching active stated fact can be corrected here")
 			}
 			id := old.ID

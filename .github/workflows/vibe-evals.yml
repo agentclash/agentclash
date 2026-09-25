@@ -4,6 +4,7 @@ on:
     paths:
       - 'backend/internal/vibe/**'
       - 'backend/internal/api/vibe*'
+      - 'backend/internal/api/challenge_pack_generate_contract.go'
       - 'backend/internal/api/billing*'
       - 'backend/internal/api/config.go'
       - 'backend/internal/api/cors.go'
@@ -16,10 +17,13 @@ on:
       - 'runtime/challengepack/**'
       - 'web/src/app/vibe-evals/**'
       - 'web/src/components/vibe/**'
-      - 'web/src/lib/vibe.ts'
+      - 'web/src/lib/vibe*'
       - 'web/e2e/vibe/**'
+      - 'web/e2e/vibe-stack/**'
       - 'web/playwright.vibe.config.ts'
+      - 'web/playwright.vibe-stack.config.ts'
       - 'web/package*.json'
+      - 'scripts/vibe/**'
       - '.github/workflows/vibe-evals.yml'
   workflow_dispatch:
 permissions:
@@ -62,12 +66,12 @@ jobs:
       - name: Failure injection and database concurrency (no provider calls)
         working-directory: backend
         run: |
-          go test -race ./internal/vibe ./internal/api -run 'Test(Vibe|Integration|Structured|YAML|Fanout|Money|FullContext|Unknown|Coverage|Requirement|StateMachine|MissingPricing|TrialEconomics|PaidTemporal|InvalidJudge|CORSMiddleware|BillingManager.*Webhook|AgentTryoutPromot|Generate)' -count=1
+          go test -p 1 -race ./internal/vibe ./internal/api -run 'Test(Vibe|Suite|Consistency|Integration|Structured|YAML|Fanout|Money|FullContext|Unknown|Coverage|RunQuote|SampleIdentity|Requirement|StateMachine|MissingPricing|TrialEconomics|PaidTemporal|InvalidJudge|CORSMiddleware|BillingManager.*Webhook|AgentTryoutPromot|Generate|Evidence|Conversation)' -count=1
           go build ./...
           go vet ./...
       - name: Shared provider and scoring regressions
         working-directory: runtime
-        run: go test ./provider ./scoring -count=1
+        run: go test ./provider ./scoring ./challengepack -count=1
   browser-journeys:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -88,4 +92,50 @@ jobs:
       - name: Typecheck and safe Markdown tests
         run: |
           npx tsc --noEmit --incremental false
-          npx vitest run src/app/vibe-evals src/components/vibe
+          npx vitest run src/app/vibe-evals src/components/vibe src/lib/vibe.test.ts
+  browser-worker-journey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: vibe_test
+          POSTGRES_USER: vibe_test
+          POSTGRES_PASSWORD: local_test_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U vibe_test -d vibe_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      VIBE_TEST_DATABASE_URL: postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      - run: npx playwright install --with-deps chromium
+        working-directory: web
+      - name: Browser to real API, PostgreSQL and Temporal worker (fake inference)
+        working-directory: web
+        run: npx playwright test --config playwright.vibe-stack.config.ts
+      - name: Two-door Build and existing-agent journeys (fake inference)
+        working-directory: web
+        env:
+          VIBE_BROWSER_V15: '1'
+          VIBE_BROWSER_TWO_DOOR: '1'
+        run: npx playwright test --config playwright.vibe-stack.config.ts two-door.spec.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vibe-browser-worker-evidence
+          path: web/test-results/vibe-stack
+          if-no-files-found: ignore

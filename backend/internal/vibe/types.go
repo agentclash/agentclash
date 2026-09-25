@@ -108,6 +108,9 @@ type Requirement struct {
 	Change            string     `json:"change,omitempty"`
 }
 type Artifact struct {
+	UnavailableReason      string                  `json:"unavailable_reason,omitempty"`
+	Sample                 string                  `json:"sample,omitempty"`
+	ScopeNote              string                  `json:"scope_note,omitempty"`
 	PolicyID               *uuid.UUID              `json:"policy_id,omitempty"`
 	Validation             *SuiteValidation        `json:"validation,omitempty"`
 	Provenance             string                  `json:"provenance,omitempty"`
@@ -130,6 +133,8 @@ type Artifact struct {
 	CreatedAt              time.Time               `json:"created_at"`
 }
 type Document struct {
+	Evaluation           *EvaluationContext    `json:"evaluation,omitempty"`
+	Build                *BuildProgress        `json:"build,omitempty"`
 	Interactions         []InteractionReceipt  `json:"interactions,omitempty"`
 	LastChange           *ConversationChange   `json:"last_change,omitempty"`
 	ConversationState    *ConversationState    `json:"conversation_state,omitempty"`

@@ -176,6 +176,29 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+it.each([false, true])("paid local testing permits evaluator choice without sending a request: %s", async (freeOnly) => {
+  const alternative = "deepseek/deepseek-v4.1-flash";
+  respond = async (path) => path === "/config"
+    ? json({ enabled: true, local_testing: true, free_only: freeOnly, defaults: defaultModels,
+      models: [{ id: defaultModels.assistant, name: "Original" }, { id: alternative, name: "DeepSeek V4.1 Flash" }] })
+    : json(session);
+  await render();
+  await selectModel("Assistant", alternative);
+  await openSettings();
+  const evaluator = document.querySelector<HTMLSelectElement>('select[aria-label="Evaluator model"]')!;
+  expect(evaluator.disabled).toBe(freeOnly);
+  expect(document.body.textContent).toContain("Retry with another model");
+  if (!freeOnly) {
+    await click("Use assistant model for all roles");
+    for (const label of ["Assistant", "Agent", "Evaluator"]) {
+      expect(document.querySelector<HTMLSelectElement>(`select[aria-label="${label} model"]`)!.value).toBe(alternative);
+    }
+  } else {
+    expect(document.body.textContent).not.toContain("Use assistant model for all roles");
+  }
+  expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
+});
+
 it.each(["setup", "agent"])(
   "sends the %s composer with Enter and preserves Shift+Enter and IME input",
   async (mode) => {
@@ -1932,6 +1955,38 @@ function failedPreparation(): Operation {
   session.operations = [failed];
   return failed;
 }
+
+it("switches a failed request's assistant explicitly and recovers a lost acknowledgement with the same choice", async () => {
+  const failed = failedPreparation();
+  failed.error = { code: "provider_rate_limit", message: "Provider busy.", retry_available_at: new Date(Date.now() + 60000).toISOString() };
+  const alternative = { id: "openai/gpt-5.4-mini", name: "GPT-5.4 Mini", input_nano_per_token: 750, output_nano_per_token: 3750 };
+  let attempts = 0;
+  respond = async path => {
+    if (path === "/config") return json({ enabled: true, defaults: defaultModels, models: [alternative] });
+    if (path.endsWith("/retry")) {
+      if (++attempts === 1) throw new TypeError("Lost acknowledgement");
+      return json({ ...failed, id: "retry-switched", models: { ...defaultModels, assistant: alternative.id }, retry_of_operation_id: failed.id, state: "QUEUED", error: undefined, retryable: false });
+    }
+    return json(session);
+  };
+  await render();
+  await type("Keep my next question.");
+  await click("Retry with another model");
+  expect(attempts).toBe(0);
+  await click(alternative.name);
+  expect(attempts).toBe(1);
+  expect(container.textContent).not.toContain("Retry with another model");
+  const first = requests.find(request => request.path.endsWith("/retry"))!;
+  expect(first.body).toEqual({ client_id: expect.any(String), revision: 1, assistant_model: alternative.id });
+  session = { ...session, revision: 4, event_cursor: 4 };
+  await act(async () => snapshot(structuredClone(session)));
+  await click("Try again");
+  const retries = requests.filter(request => request.path.endsWith("/retry"));
+  expect(retries).toHaveLength(2);
+  expect(retries[1].body).toEqual(first.body);
+  expect(composer().value).toBe("Keep my next question.");
+  expect(posts()).toHaveLength(0);
+});
 
 it("retries an acknowledged failure once without resending a message or clearing typed-ahead text", async () => {
   const failed = failedPreparation();

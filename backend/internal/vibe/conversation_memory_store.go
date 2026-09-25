@@ -19,6 +19,9 @@ func (r *Runner) completeReliableDocument(ctx context.Context, o Operation, p Pl
 		return fmt.Errorf("missing v12 conversation completion")
 	}
 	c := completion[0]
+	if p.interpreted() && p.Submission.Interaction != nil && p.Conversation.Confirmed == nil {
+		c.Interaction = p.Submission.Interaction
+	}
 	s := cloneState(p.Conversation.NextState)
 	if c.SourceConfirmation != nil {
 		q := c.SourceConfirmation

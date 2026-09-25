@@ -18,6 +18,7 @@ type Progress struct {
 }
 
 type OperationDiagnostics struct {
+	AlternativeAssistant       string           `json:"alternative_assistant,omitempty"`
 	StageMillis                map[string]int64 `json:"stage_millis"`
 	RetryOutcome               string           `json:"retry_outcome,omitempty"`
 	UnresolvedBillingSince     *time.Time       `json:"unresolved_billing_since,omitempty"`
@@ -36,6 +37,21 @@ func attemptPhase(step string, role Role) string {
 	}
 	if role == Target {
 		return "running_agent"
+	}
+	if strings.HasSuffix(step, ":fallback") {
+		return "switching_assistant"
+	}
+	if step == "route:repair" {
+		return "understanding"
+	}
+	if step == "handler:repair" {
+		return "preparing"
+	}
+	if step == "candidate:review" {
+		return "reviewing"
+	}
+	if step == "candidate:patch" {
+		return "repairing"
 	}
 	switch step {
 	case understandingStep:
@@ -78,7 +94,7 @@ func populateProgress(ctx context.Context, tx pgx.Tx, v *Session) error {
 	}
 	// One bounded metadata query for the whole session. Do not load raw evidence,
 	// provider responses or prompts into the repeatedly transmitted snapshot.
-	rows, err := tx.Query(ctx, `SELECT a.operation_id,a.step_key,a.role,a.created_at,a.completed_at,a.actual_cost IS NULL,(a.state <> 'RECONCILED' OR a.error IS NOT NULL)
+	rows, err := tx.Query(ctx, `SELECT a.operation_id,a.step_key,a.role,a.created_at,a.completed_at,a.actual_cost IS NULL,(a.state <> 'RECONCILED' OR a.error IS NOT NULL),a.model
 	 FROM vibe_attempts a JOIN vibe_operations o ON o.id=a.operation_id WHERE o.session_id=$1 ORDER BY a.created_at,a.id`, v.ID)
 	if err != nil {
 		return err
@@ -88,10 +104,11 @@ func populateProgress(ctx context.Context, tx pgx.Tx, v *Session) error {
 		var id uuid.UUID
 		var step string
 		var role Role
+		var model string
 		var start time.Time
 		var end *time.Time
 		var unresolved, timed bool
-		if err = rows.Scan(&id, &step, &role, &start, &end, &unresolved, &timed); err != nil {
+		if err = rows.Scan(&id, &step, &role, &start, &end, &unresolved, &timed, &model); err != nil {
 			return err
 		}
 		o := byID[id]
@@ -99,6 +116,9 @@ func populateProgress(ctx context.Context, tx pgx.Tx, v *Session) error {
 			continue
 		}
 		phase := attemptPhase(step, role)
+		if role == Assistant && strings.HasSuffix(step, ":fallback") {
+			o.Diagnostics.AlternativeAssistant = model
+		}
 		if o.State == Running {
 			o.Progress.Phase = phase
 		}

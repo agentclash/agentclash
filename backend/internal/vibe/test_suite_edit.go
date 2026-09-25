@@ -9,6 +9,59 @@ import (
 	"github.com/google/uuid"
 )
 
+// Expansion is a typed UI action, not just an instruction to the model. Existing
+// cases and all grading metadata must remain byte-equivalent as JSON values.
+func validateCoverageExpansion(p Plan, candidate *Artifact, policy PolicySnapshot) error {
+	if p.Submission.AdditionalExamples == 0 {
+		return nil
+	}
+	if p.Artifact == nil || candidate == nil || p.Conversation == nil || p.Conversation.Policy == nil {
+		return fmt.Errorf("adding coverage needs existing tests and rules")
+	}
+	if candidate.AgentPrompt != p.Artifact.AgentPrompt || !sameJSON(raw(policy.Rules), raw(p.Conversation.Policy.Rules)) {
+		return fmt.Errorf("keep the original instructions and all rules unchanged")
+	}
+	var before, after map[string]json.RawMessage
+	if err := json.Unmarshal(p.Artifact.Blueprint, &before); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(candidate.Blueprint, &after); err != nil {
+		return err
+	}
+	var oldCases, newCases []json.RawMessage
+	if err := json.Unmarshal(before["cases"], &oldCases); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(after["cases"], &newCases); err != nil {
+		return err
+	}
+	delete(before, "cases")
+	delete(after, "cases")
+	if !sameJSON(raw(before), raw(after)) || len(newCases) != len(oldCases)+p.Submission.AdditionalExamples {
+		return fmt.Errorf("add exactly %d examples without changing grading or pack metadata", p.Submission.AdditionalExamples)
+	}
+	kept := map[string]json.RawMessage{}
+	for _, c := range newCases {
+		var key struct {
+			Key string `json:"key"`
+		}
+		if json.Unmarshal(c, &key) != nil || key.Key == "" || kept[key.Key] != nil {
+			return fmt.Errorf("each example needs a unique stable key")
+		}
+		kept[key.Key] = c
+	}
+	for _, c := range oldCases {
+		var key struct {
+			Key string `json:"key"`
+		}
+		_ = json.Unmarshal(c, &key)
+		if !sameJSON(c, kept[key.Key]) {
+			return fmt.Errorf("keep existing case %s and its expected answer unchanged", key.Key)
+		}
+	}
+	return nil
+}
+
 // Explicit editor changes get the same message ownership as generated proposals.
 func AppendTestRevision(s *Session, artifact Artifact, description string) {
 	requestID, replyID := uuid.New(), uuid.New()

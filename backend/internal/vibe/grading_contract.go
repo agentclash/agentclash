@@ -21,6 +21,7 @@ type ModelExecution struct {
 	Temperature      float64 `json:"temperature"`
 	MaxOutput        int     `json:"max_output"`
 	DisableReasoning bool    `json:"disable_reasoning"`
+	OmitTemperature  bool    `json:"omit_temperature,omitempty"`
 }
 type GradingContract struct {
 	Version       int            `json:"version"`
@@ -40,7 +41,7 @@ type TargetConfiguration struct {
 }
 
 func modelExecution(profile ModelProfile, l Limits) ModelExecution {
-	return ModelExecution{Provider: "openrouter", Model: profile.ID, Route: profile.Route, Temperature: 0, MaxOutput: l.OutputTokens, DisableReasoning: profile.DisableReasoning}
+	return ModelExecution{Provider: "openrouter", Model: profile.ID, Route: profile.Route, Temperature: 0, MaxOutput: l.OutputTokens, DisableReasoning: profile.DisableReasoning, OmitTemperature: profile.OmitTemperature}
 }
 func (g GradingContract) fingerprint() string {
 	g.Hash = ""

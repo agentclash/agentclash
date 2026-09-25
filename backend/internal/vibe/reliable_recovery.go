@@ -15,7 +15,7 @@ import (
 // otherwise every required response must already be complete in the journal.
 func (r *Runner) Finalize(ctx context.Context, id uuid.UUID, issue *Fault) error {
 	if issue == nil || issue.Code != "worker_interrupted" {
-		return r.Service.Store.Finish(ctx, id, issue)
+		return r.finishAndContinue(ctx, id, issue)
 	}
 	o, err := r.Service.Store.Operation(ctx, id)
 	if err != nil {
@@ -34,7 +34,19 @@ func (r *Runner) Finalize(ctx context.Context, id uuid.UUID, issue *Fault) error
 			}
 		}
 	}
-	return r.Service.Store.Finish(ctx, id, issue)
+	return r.finishAndContinue(ctx, id, issue)
+}
+
+func (r *Runner) finishAndContinue(ctx context.Context, id uuid.UUID, issue *Fault) error {
+	if err := r.Service.Store.Finish(ctx, id, issue); err != nil {
+		return err
+	}
+	if err := r.Service.Store.syncBuildResult(ctx, id); err != nil {
+		return err
+	}
+	// A durable sweep also retries DB/admission failures here. This call never
+	// executes a provider; it only queues the already-authorized child check.
+	return r.Service.AdvanceBuild(ctx, id)
 }
 
 func recoveryDatabaseError(err error) bool {

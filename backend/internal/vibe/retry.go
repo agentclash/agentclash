@@ -10,8 +10,9 @@ import (
 )
 
 type RetryRequest struct {
-	ClientID uuid.UUID `json:"client_id"`
-	Revision int64     `json:"revision"`
+	ClientID       uuid.UUID `json:"client_id"`
+	Revision       int64     `json:"revision"`
+	AssistantModel string    `json:"assistant_model,omitempty"`
 }
 
 type RetryContext struct {
@@ -19,6 +20,7 @@ type RetryContext struct {
 	RootOperationID uuid.UUID `json:"root_operation_id"`
 	SourceMessageID uuid.UUID `json:"source_message_id"`
 	Intent          string    `json:"intent,omitempty"`
+	AssistantModel  string    `json:"assistant_model,omitempty"`
 }
 
 // Retry is a new, explicitly admitted authoring operation. It does not restart a
@@ -42,6 +44,9 @@ func (s *Service) Retry(ctx context.Context, actor string, sessionID, operationI
 		return Operation{}, err
 	}
 	sub := retrySubmission(original.Submission, source.ID, request)
+	if sub.AdditionalExamples > 0 && !s.Config.InterpretedAuthoring {
+		return Operation{}, fault("hosted_disabled", "Additional coverage is not enabled. Your existing examples remain available.")
+	}
 	// An acknowledgement lost after admission must return the same operation,
 	// even if that retry has since committed or the conversation has advanced.
 	if receipt, e := s.Store.submissionReceipt(ctx, sessionID, sub); receipt != nil || e != nil {
@@ -56,7 +61,7 @@ func (s *Service) Retry(ctx context.Context, actor string, sessionID, operationI
 	if err = validateRetrySource(v, source, original); err != nil {
 		return Operation{}, err
 	}
-	if err = validateRetryTiming(source); err != nil {
+	if err = validateRetryModelTiming(source, sub.Models.Assistant); err != nil {
 		return Operation{}, err
 	}
 	if !s.Config.Enabled || s.Config.Credential == "" {
@@ -69,15 +74,26 @@ func (s *Service) Retry(ctx context.Context, actor string, sessionID, operationI
 		return Operation{}, err
 	}
 	retry := retryContext(source, original)
+	retry.AssistantModel = request.AssistantModel
 	p := Plan{Submission: sub, Document: v.Document, Anonymous: v.Anonymous, Free: s.Config.FreeOnly, LocalTesting: s.Config.TestingLocally(), Retry: &retry, Conversation: original.Conversation}
+	if original.Cycle != nil {
+		cycle := *original.Cycle
+		cycle.Step = "retry:" + request.ClientID.String()
+		p.Cycle = &cycle
+		// The same cycle retains its question count and its remaining ceiling.
+		// Retry authorization is explicit, and normal unknown-outcome guards remain.
+	}
 	// Use current admission/authoring rules without rewriting the failed plan.
-	// Its original source, selected version, viewed result and model stay bound.
+	// The original source, selected version, target and evaluator stay bound.
 	return s.prepareTestConversation(ctx, actor, v, sub, p)
 }
 
 func retrySubmission(original Submission, source uuid.UUID, request RetryRequest) Submission {
 	sub := original
 	sub.ClientID, sub.Revision, sub.RetryOf = request.ClientID, request.Revision, &source
+	if request.AssistantModel != "" {
+		sub.Models.Assistant = request.AssistantModel
+	}
 	return sub
 }
 
@@ -195,12 +211,14 @@ func validateRetryAdmission(ctx context.Context, tx pgx.Tx, v Session, sub Submi
 	if err = validateRetrySource(v, source, original); err != nil {
 		return err
 	}
-	if err = validateRetryTiming(source); err != nil {
+	if err = validateRetryModelTiming(source, sub.Models.Assistant); err != nil {
 		return err
 	}
-	expected := retrySubmission(original.Submission, source.ID, RetryRequest{ClientID: sub.ClientID, Revision: sub.Revision})
-	if Hash(raw(expected)) != Hash(raw(sub)) || Hash(raw(plan.Submission)) != Hash(raw(sub)) || *plan.Retry != retryContext(source, original) {
-		return fault("retry_not_allowed", "A retry must preserve its original request, model and source.")
+	expected := retrySubmission(original.Submission, source.ID, RetryRequest{ClientID: sub.ClientID, Revision: sub.Revision, AssistantModel: plan.Retry.AssistantModel})
+	expectedContext := retryContext(source, original)
+	expectedContext.AssistantModel = plan.Retry.AssistantModel
+	if Hash(raw(expected)) != Hash(raw(sub)) || Hash(raw(plan.Submission)) != Hash(raw(sub)) || *plan.Retry != expectedContext {
+		return fault("retry_not_allowed", "A retry must preserve its original request, source, target and evaluator.")
 	}
 	var uncertain, duplicate bool
 	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_attempts WHERE operation_id=$1 AND (actual_cost IS NULL OR completed_at IS NULL OR state='DISPATCHING'))`, source.ID).Scan(&uncertain); err != nil {
@@ -257,4 +275,13 @@ func validateRetryTiming(source Operation) error {
 		return &Fault{Code: "retry_cooldown", Message: "The provider is still busy. Try again when the countdown finishes.", RetryAvailableAt: source.Error.RetryAvailableAt}
 	}
 	return nil
+}
+
+// Retry-After belongs to the model that failed. An explicitly selected other
+// model gets fresh admission and its own provider/budget checks.
+func validateRetryModelTiming(source Operation, assistant string) error {
+	if assistant != source.Models.Assistant {
+		return nil
+	}
+	return validateRetryTiming(source)
 }

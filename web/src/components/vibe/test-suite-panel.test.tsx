@@ -76,7 +76,7 @@ it("lets someone without an agent keep prepared tests without offering a fabrica
   const save = vi.fn();
   await act(async () => root.render(<TestSuitePanel artifact={artifact} busy={false} blocked={false} comparison={false}
     onRun={run} onEdit={vi.fn()} onDirty={vi.fn()} onSave={save} onSettings={vi.fn()} />));
-  await act(async () => button("I don’t have an agent yet").click());
+  await act(async () => button("Keep for later").click());
   expect(node.querySelectorAll(".vibe-button-primary")).toHaveLength(1);
   expect(node.querySelector(".vibe-button-primary")?.textContent).toContain("Keep these tests");
   expect(run).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();

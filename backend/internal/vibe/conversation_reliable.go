@@ -29,6 +29,10 @@ For newly written expected answers under an ask-only-for-missing-information rul
 
 func (r *Runner) reliableCall(ctx context.Context, o Operation, step string, messages []provider.Message, format json.RawMessage) (provider.Response, error) {
 	if replay, _ := ctx.Value(reliableReplayKey{}).(bool); replay {
+		var plan Plan
+		if json.Unmarshal(o.Input, &plan) == nil && plan.interpreted() {
+			return r.Service.Store.recordedInterpretedResponse(ctx, o.ID, step, Hash(raw(messages)), format)
+		}
 		return r.Service.Store.RecordedResponse(ctx, o.ID, step, Hash(raw(messages)), format)
 	}
 	return r.Gateway.Call(ctx, o, step, Assistant, messages, format)
@@ -51,6 +55,9 @@ func (r *Runner) journalReliable(ctx context.Context, o Operation, step, stage s
 	if p.guided() {
 		version = "v14"
 	}
+	if p.interpreted() {
+		version = "v15"
+	}
 	if p.sourceBoundary() {
 		version += "/" + SourcePolicyVersion
 	}
@@ -64,6 +71,9 @@ func boundedDiagnostic(s string) string {
 }
 
 func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) error {
+	if p.interpreted() {
+		return r.converseInterpreted(ctx, o, p)
+	}
 	if p.Conversation == nil {
 		return fault("invalid_plan", "The saved conversation context is unavailable.")
 	}
@@ -115,6 +125,17 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 				}
 				route = reliableRoute{}
 				err = Decode([]byte(resp.OutputText), p.limits(), &route)
+				if err == nil && p.sourceBoundary() {
+					// The current message is already an explicit source. A redundant
+					// citation is not a request to adopt historical dialogue.
+					ids := make([]string, 0, len(route.SourceMessageIDs))
+					for _, id := range route.SourceMessageIDs {
+						if id != p.Conversation.CurrentRequest.ID {
+							ids = append(ids, id)
+						}
+					}
+					route.SourceMessageIDs = ids
+				}
 				// Only preparation uses this field to authorize a case count. An
 				// edit's real additions/removals are validated from its case patches.
 				if err == nil && p.sourceBoundary() && route.Intent != "prepare_tests" {
@@ -465,7 +486,7 @@ func (r *Runner) buildReliableCandidate(output []byte, intent string, o Operatio
 					// IDs are assigned deterministically by the server. A model's
 					// guessed key must neither overwrite a case nor waste a repair.
 					cmd.CaseChanges[i].CaseKey = ""
-					if !hasCurrentExampleEvidence(cmd.Rules, p) {
+					if p.Submission.AdditionalExamples == 0 && !hasCurrentExampleEvidence(cmd.Rules, p) {
 						return nil, policy, 0, fmt.Errorf("include the requested addition as a case-specific rule with kind=example evidence from the current request; preserve existing business rules")
 					}
 				}

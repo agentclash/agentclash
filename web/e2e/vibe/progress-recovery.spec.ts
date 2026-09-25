@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import type { Session } from "../../src/lib/vibe";
+import type { Model, Session } from "../../src/lib/vibe";
 
 function fixture(): Session {
   const models = { assistant: "fixture/free", target: "fixture/free", evaluator: "fixture/free" };
@@ -15,17 +15,27 @@ function fixture(): Session {
   };
 }
 
-async function serve(page: Page, state: Session) {
+async function serve(page: Page, state: Session, models: Model[] = []) {
   const control = { disconnected: false, posts: [] as unknown[], snapshots: 0 };
   await page.route("**/v1/vibe/**", async route => {
     const request = route.request(), path = new URL(request.url()).pathname;
     const headers = { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" };
     if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { ...headers, "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS" } });
-    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, defaults: state.document.models, models: [] } });
+    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, defaults: state.document.models, models } });
     if (request.method() === "POST") {
       control.posts.push(request.postDataJSON());
       state.operations[0].retryable = false;
       state.event_cursor!++;
+      if (request.postDataJSON().assistant_model) {
+        const completed = { ...state.operations[0], id: "model-retry", state: "COMPLETED", billing: "SETTLED", error: undefined,
+          retry_of_operation_id: state.operations[0].id,
+          models: { ...state.operations[0].models, assistant: request.postDataJSON().assistant_model },
+          completion_receipt: { action: "chat", source_message_id: "request", case_count: 0, changed_case_count: 0 },
+        };
+        state.operations.push(completed);
+        state.document.models = completed.models;
+        return route.fulfill({ headers, json: completed });
+      }
       return route.fulfill({ headers, json: state.operations[0] });
     }
     state.server_time = new Date().toISOString();
@@ -38,6 +48,72 @@ async function serve(page: Page, state: Session) {
   });
   return control;
 }
+
+test("automatic recovery shows real progress without sending or clearing typed-ahead text", async ({ page }, info) => {
+  const state = fixture();
+  state.operations[0] = { ...state.operations[0], state: "RUNNING", error: undefined, retryable: false,
+    progress: { phase: "switching_assistant", completed_cases: 0, total_cases: 0 } };
+  const control = await serve(page, state);
+  const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto(`/vibe-evals?session=${state.id}`);
+  const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
+  await composer.fill("Also check opened items.");
+  await expect(page.getByRole("status").filter({ hasText: "Trying another model…" })).toBeVisible();
+  await expect(page.locator(".vibe-status-shine")).toHaveCount(0);
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`automatic-recovery-${width}.png`), fullPage: true });
+  }
+  state.operations[0] = { ...state.operations[0], state: "COMPLETED", billing: "SETTLED", completion_receipt: { action: "clarify", source_message_id: "request", case_count: 0, changed_case_count: 0 } };
+  state.document.messages.push({ id: "clarification", role: "assistant", content: "Which returns qualify?", operation_id: "request-op" });
+  state.event_cursor!++;
+  await expect(page.getByText("Which returns qualify?", { exact: true })).toBeVisible();
+  await expect(composer).toHaveValue("Also check opened items.");
+  await expect(page.getByRole("button", { name: "Retry", exact: true })).toHaveCount(0);
+  expect(control.posts).toHaveLength(0);
+  expect(errors).toEqual([]);
+});
+
+test("another-model retry works during cooldown, fits mobile and keeps the saved message", async ({ page }, info) => {
+  const state = fixture();
+  state.operations[0].error!.retry_available_at = new Date(Date.now() + 120_000).toISOString();
+  const models = [
+    { id: state.document.models.assistant, name: "Original model", input_nano_per_token: 100, output_nano_per_token: 300 },
+    { id: "deepseek/deepseek-v4.1-flash", name: "DeepSeek V4.1 Flash", input_nano_per_token: 200, output_nano_per_token: 650 },
+    { id: "openai/gpt-5.4-mini", name: "GPT-5.4 Mini", input_nano_per_token: 750, output_nano_per_token: 4500 },
+    { id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro", input_nano_per_token: 1700, output_nano_per_token: 3400 },
+  ];
+  const control = await serve(page, state, models);
+  const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+  await page.goto(`/vibe-evals?session=${state.id}`);
+  await expect(page.getByRole("button", { name: /Try again in/ })).toBeDisabled();
+  const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
+  await composer.fill("My next question stays here.");
+  const choose = page.getByRole("button", { name: "Retry with another model", exact: true });
+  await choose.click();
+  await expect(choose).toHaveAttribute("aria-expanded", "true");
+  await expect(page.getByRole("button", { name: "Original model", exact: true })).toHaveCount(0);
+  expect(control.posts).toHaveLength(0);
+  for (const width of [320, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await choose.scrollIntoViewIfNeeded();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: info.outputPath(`model-retry-${width}.png`), fullPage: true });
+  }
+  const alternative = page.getByRole("button", { name: "GPT-5.4 Mini", exact: true });
+  await alternative.focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => control.posts.length).toBe(1);
+  expect(control.posts[0]).toEqual({ client_id: expect.any(String), revision: 1, assistant_model: "openai/gpt-5.4-mini" });
+  await expect(page.getByText("Completed on retry.", { exact: true })).toBeVisible();
+  await expect(composer).toHaveValue("My next question stays here.");
+  await expect(page.locator('[data-message-id="request"]')).toHaveCount(1);
+  expect(state.operations[1].models.target).toBe(models[0].id);
+  expect(state.operations[1].models.evaluator).toBe(models[0].id);
+  expect(errors).toEqual([]);
+});
 
 test("provider cooldown survives reload, enables a manual retry and preserves the next message", async ({ page }, info) => {
   const state = fixture(), control = await serve(page, state);

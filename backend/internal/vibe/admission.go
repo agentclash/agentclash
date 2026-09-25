@@ -13,28 +13,34 @@ import (
 )
 
 type Submission struct {
-	Interaction     *interaction.Action `json:"interaction,omitempty"`
-	RetryOf         *uuid.UUID          `json:"retry_of,omitempty"`
-	ViewedRunID     *uuid.UUID          `json:"viewed_run_id,omitempty"`
-	ViewedCaseKey   string              `json:"viewed_case_key,omitempty"`
-	TestJourney     bool                `json:"test_journey,omitempty"`
-	QuickCheck      bool                `json:"quick_check,omitempty"`
-	EvaluationFirst bool                `json:"evaluation_first,omitempty"`
-	EvidenceSetID   *uuid.UUID          `json:"evidence_set_id,omitempty"`
-	Instructions    string              `json:"instructions,omitempty"`
-	Purpose         string              `json:"purpose,omitempty"`
-	ApproveArtifact bool                `json:"approve_artifact,omitempty"`
-	PreviewThreadID *uuid.UUID          `json:"preview_thread_id,omitempty"`
-	JourneyMode     string              `json:"journey_mode,omitempty"`
-	ClientID        uuid.UUID           `json:"client_id"`
-	Revision        int64               `json:"revision"`
-	Kind            string              `json:"kind"`
-	Content         string              `json:"content"`
-	Models          Models              `json:"models"`
-	ArtifactID      *uuid.UUID          `json:"artifact_id,omitempty"`
-	BaselineID      *uuid.UUID          `json:"baseline_id,omitempty"`
+	estimateOnly       bool
+	RunQuoteID         *uuid.UUID          `json:"run_quote_id,omitempty"`
+	CycleID            *uuid.UUID          `json:"cycle_id,omitempty"`
+	Interaction        *interaction.Action `json:"interaction,omitempty"`
+	RetryOf            *uuid.UUID          `json:"retry_of,omitempty"`
+	ViewedRunID        *uuid.UUID          `json:"viewed_run_id,omitempty"`
+	ViewedCaseKey      string              `json:"viewed_case_key,omitempty"`
+	TestJourney        bool                `json:"test_journey,omitempty"`
+	AdditionalExamples int                 `json:"additional_examples,omitempty"`
+	QuickCheck         bool                `json:"quick_check,omitempty"`
+	EvaluationFirst    bool                `json:"evaluation_first,omitempty"`
+	EvidenceSetID      *uuid.UUID          `json:"evidence_set_id,omitempty"`
+	Instructions       string              `json:"instructions,omitempty"`
+	Purpose            string              `json:"purpose,omitempty"`
+	ApproveArtifact    bool                `json:"approve_artifact,omitempty"`
+	PreviewThreadID    *uuid.UUID          `json:"preview_thread_id,omitempty"`
+	JourneyMode        string              `json:"journey_mode,omitempty"`
+	ClientID           uuid.UUID           `json:"client_id"`
+	Revision           int64               `json:"revision"`
+	Kind               string              `json:"kind"`
+	Content            string              `json:"content"`
+	Models             Models              `json:"models"`
+	ArtifactID         *uuid.UUID          `json:"artifact_id,omitempty"`
+	BaselineID         *uuid.UUID          `json:"baseline_id,omitempty"`
 }
 type Plan struct {
+	Cycle                    *BuildCyclePlan         `json:"cycle,omitempty"`
+	AssistantRecovery        *AssistantRecovery      `json:"assistant_recovery,omitempty"`
 	UnderstandingSelection   *UnderstandingSelection `json:"understanding_selection,omitempty"`
 	Understanding            *UnderstandingPlan      `json:"understanding,omitempty"`
 	ObservedSignals          UnderstandingSignals    `json:"-"`
@@ -87,6 +93,9 @@ func (s *Store) submissionReceipt(ctx context.Context, id uuid.UUID, sub Submiss
 }
 
 func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Submission, plan Plan, cfg Config) (Operation, error) {
+	if sub.estimateOnly {
+		return Operation{Input: raw(plan), MaxCost: plan.MaxCost}, nil
+	}
 	var o Operation
 	hash := Hash(raw(sub))
 	err := s.transaction(ctx, func(tx pgx.Tx) error {
@@ -176,8 +185,20 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		if err = validateUnderstandingPlan(plan); err != nil {
 			return err
 		}
+		if err = validateInterpretedAllowance(plan, cfg); err != nil {
+			return err
+		}
 		if plan.AuthoringVersion >= 11 && (sub.Kind == "message" || sub.Kind == "build") {
 			allowedCalls := 5
+			if plan.interpreted() {
+				allowedCalls = 8
+				if plan.AuthoringVersion == buildAuthoringVersion {
+					allowedCalls = 10
+				}
+				if plan.AssistantRecovery != nil {
+					allowedCalls++
+				}
+			}
 			if plan.Understanding != nil {
 				allowedCalls++
 			}
@@ -209,7 +230,7 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		o.Source = plan.Source
 		o.Grading, o.TargetConfig = plan.Grading, plan.TargetConfig
 		o.RetryOfOperationID = sub.RetryOf
-		if !v.Anonymous && !cfg.TestingLocally() && o.MaxCost > AutomaticApprovalCost {
+		if plan.Cycle == nil && sub.RunQuoteID == nil && !v.Anonymous && !cfg.TestingLocally() && o.MaxCost > AutomaticApprovalCost {
 			o.State = AwaitingApproval
 			o.Deadline = timestamp().Add(24 * time.Hour)
 		} else {
@@ -218,6 +239,12 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO vibe_operations(id,session_id,actor,client_id,request_hash,kind,state,billing,models,input,max_cost,deadline) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`, o.ID, id, actor, sub.ClientID, hash, sub.Kind, Created, o.Billing, raw(o.Models), o.Input, o.MaxCost, o.Deadline)
 		if err != nil {
+			return err
+		}
+		if err = admitRunQuote(ctx, tx, v, plan, o); err != nil {
+			return err
+		}
+		if err = admitBuildCycle(ctx, tx, v, sub, plan, o); err != nil {
 			return err
 		}
 		if err = transition(ctx, tx, o.ID, Validating); err != nil {
@@ -258,6 +285,15 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 			v.Document.Messages = append(v.Document.Messages, Message{ID: sub.ClientID, Role: "user", Content: sub.Content, CreatedAt: timestamp(), Origin: sub.Kind, OperationID: &o.ID, ArtifactID: sub.ArtifactID, PreviewThreadID: sub.PreviewThreadID})
 		}
 		v.Document.Models = sub.Models
+		if plan.Cycle != nil {
+			progress := &BuildProgress{CycleID: plan.Cycle.ID, Phase: "preparing", ClarificationsUsed: plan.Cycle.ClarificationsUsed, Sample: plan.Cycle.Sample}
+			if plan.Cycle.Step == "check" {
+				progress.Phase = "checking"
+				progress.ArtifactID = sub.ArtifactID
+				progress.CheckID = &o.ID
+			}
+			v.Document.Build = progress
+		}
 		if sub.EvaluationFirst {
 			v.Document.EvaluationFirst = true
 		}
@@ -453,7 +489,7 @@ func (s *Store) Approve(ctx context.Context, actor string, id uuid.UUID, cfg Con
 	})
 }
 func (s *Store) Stop(ctx context.Context, actor string, id uuid.UUID) error {
-	return s.transaction(ctx, func(tx pgx.Tx) error {
+	err := s.transaction(ctx, func(tx pgx.Tx) error {
 		o, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1 FOR UPDATE", id))
 		if err != nil {
 			return err
@@ -470,6 +506,12 @@ func (s *Store) Stop(ctx context.Context, actor string, id uuid.UUID) error {
 		}
 		if err = s.recoverLegacyCompletion(ctx, tx, &o); err != nil {
 			return err
+		}
+		var plan Plan
+		if json.Unmarshal(o.Input, &plan) == nil && plan.Cycle != nil {
+			if _, err = tx.Exec(ctx, "UPDATE vibe_cycle_quotes SET stopped_at=COALESCE(stopped_at,now()) WHERE id=$1", plan.Cycle.ID); err != nil {
+				return err
+			}
 		}
 		if o.Completion != nil {
 			return finishCommitted(ctx, tx, o)
@@ -491,6 +533,10 @@ func (s *Store) Stop(ctx context.Context, actor string, id uuid.UUID) error {
 		}
 		return event(ctx, tx, v.ID, &id, "operation.cancelled")
 	})
+	if err != nil {
+		return err
+	}
+	return s.syncBuildResult(ctx, id)
 }
 
 // settle retains the entire operation hold while any attempt is uncertain,

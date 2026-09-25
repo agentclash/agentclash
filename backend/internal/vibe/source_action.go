@@ -30,6 +30,27 @@ func validateSourceAction(v Session, sub Submission) error {
 	return nil
 }
 
+func validateClarificationAction(v Session, sub Submission) error {
+	a := sub.Interaction
+	if a == nil || checkWire("action", a) != nil || a.Kind != "answer_question" || a.SessionRevision != v.Revision || sub.Revision != v.Revision || sub.ClientID.String() != a.IdempotencyKey || sub.Kind != "message" || !sub.TestJourney {
+		return staleInteraction()
+	}
+	if sub.Purpose != "" || sub.Instructions != "" || sub.RetryOf != nil || sub.BaselineID != nil || sub.ViewedRunID != nil || sub.ViewedCaseKey != "" || sub.ApproveArtifact || sub.QuickCheck || sub.EvaluationFirst || sub.EvidenceSetID != nil || sub.PreviewThreadID != nil || sub.JourneyMode != "" {
+		return staleInteraction()
+	}
+	if Hash(raw(sub.ArtifactID)) != Hash(raw(latestArtifactID(v.Document))) {
+		return staleInteraction()
+	}
+	m, err := interactionMessage(v.Document.ConversationState, *a)
+	if err != nil {
+		return err
+	}
+	if m.Content != sub.Content {
+		return staleInteraction()
+	}
+	return answerBoundQuestion(cloneState(v.Document.ConversationState), *a, m, m.Content, false)
+}
+
 // Most choices are pure state changes. Source adoption continues the exact
 // already-requested authoring action, using frozen source IDs and case count.
 func (s *Service) Interact(ctx context.Context, actor string, id uuid.UUID, a interaction.Action) error {
@@ -57,6 +78,21 @@ func (s *Service) Interact(ctx context.Context, actor string, id uuid.UUID, a in
 		}
 		_, err = s.Prepare(ctx, actor, id, sub)
 		return err
+	}
+	if s.Config.InterpretedAuthoring && a.Kind == "answer_question" {
+		if op, e := s.Store.submissionReceiptForAction(ctx, id, a); op != nil || e != nil {
+			return e
+		}
+		m, e := interactionMessage(v.Document.ConversationState, a)
+		if e != nil {
+			return e
+		}
+		sub := Submission{ClientID: m.ID, Revision: a.SessionRevision, Kind: "message", Content: m.Content, Models: v.Document.Models, TestJourney: true, Interaction: &a, ArtifactID: latestArtifactID(v.Document)}
+		if e = validateClarificationAction(v, sub); e != nil {
+			return e
+		}
+		_, e = s.Prepare(ctx, actor, id, sub)
+		return e
 	}
 	return s.Store.ApplyInteraction(ctx, actor, id, a)
 }

@@ -193,6 +193,9 @@ func buildTaskInput(p Plan, task conversationTask, action string, extra any) (ta
 	return out, nil
 }
 func taskMessages(p Plan, task conversationTask, action string, extra any) []provider.Message {
+	if p.interpreted() && task == taskRoute {
+		return interpretationMessages(p, extra)
+	}
 	// Version 11 remains byte-for-byte compatible with recorded requests.
 	if !p.stateful() {
 		prompt := reliableRoutePrompt
@@ -326,7 +329,15 @@ func reviewTaskMessages(p Plan, input SuiteReviewInput, profile ModelProfile) []
 	if !p.stateful() {
 		return SuiteReviewMessages(input)
 	}
-	return renderSuiteReview(input, !profile.StructuredOutputs, true)
+	messages := renderSuiteReview(input, !profile.StructuredOutputs, true)
+	if p.interpreted() {
+		messages[0].Content += `
+Field aliases identify requested FIELD NAMES, not their values. For example, if the source says "Ask only for missing purchase age or item condition", use exact source spans "purchase age" and "item condition" as aliases. "30 days", "unopened" and "bought within 30 days" are values/conditions, not aliases for those field names. Scenario evidence and literals must come from that case's INPUT, never its expected answer or the policy.
+input_pointer is relative to the case's input value. If that value is {"question":"..."}, the pointer is /question, never /input/question or /cases/0/input/question. For a missing field use an empty literal and evidence; do not quote the whole customer message as evidence of a value.
+An explicit agent job description is valid scope evidence. A scope rule like "The agent answers Shopify returns questions" need not be repeated in every expected answer. Do not reject it merely because it describes the job rather than a separate output obligation. Casual conversation is still never job evidence.
+Test-generation directions (case count and which scenarios to include) describe the suite. Do not require every individual case to mention or exercise every requested scenario. A missing-details case correctly expects a question; it need not decide eligibility without those details. Judge only the applicable supplied rules. A contradicted finding must identify an actual incompatible requirement; do not mark a case contradicted when your reason says its expectation follows the rules.`
+	}
+	return messages
 }
 
 func memoryUpdateSchema() any {

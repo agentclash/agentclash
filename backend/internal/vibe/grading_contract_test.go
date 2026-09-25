@@ -34,7 +34,7 @@ func TestVibeGradingIdentity(t *testing.T) {
 	if err := svc.freezeGrading(&plan); err != nil || before.Hash != plan.Grading.Hash {
 		t.Fatal("replies or harmless newline changes broke comparison", err)
 	}
-	for _, field := range []string{"route", "model", "reasoning", "output", "parser", "normalization", "schema", "prompt", "criteria", "aggregation"} {
+	for _, field := range []string{"route", "model", "reasoning", "omit_temperature", "output", "parser", "normalization", "schema", "prompt", "criteria", "aggregation"} {
 		t.Run(field, func(t *testing.T) {
 			p := plan
 			g := *plan.Grading
@@ -47,6 +47,8 @@ func TestVibeGradingIdentity(t *testing.T) {
 				changed.ID = "different"
 			case "reasoning":
 				changed.DisableReasoning = !changed.DisableReasoning
+			case "omit_temperature":
+				changed.OmitTemperature = !changed.OmitTemperature
 			case "output":
 				g.Evaluator.MaxOutput++
 			case "parser":

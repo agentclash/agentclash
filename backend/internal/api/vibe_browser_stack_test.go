@@ -54,6 +54,11 @@ func TestVibeBrowserStack(t *testing.T) {
 	defer rc.Close()
 	cfg := vibe.Config{GroundedJudging: true, ReliableAuthoring: true, Enabled: true, FreeOnly: true, LocalTesting: true, Credential: "fake-no-network", DefaultModel: browserFixtureModel, Campaign: uuid.NewString(), AnonymousDaily: vibe.NanoUSD, AnonymousCampaign: 5 * vibe.NanoUSD, Profiles: map[string]vibe.ModelProfile{browserFixtureModel: {ID: browserFixtureModel, Route: "liquid/fp8", Free: true, Conformed: true, StructuredOutputs: true, Context: 65536, FramingAllowance: 4096, ExpiresAt: time.Now().Add(time.Hour)}}}
 	cfg.SuiteReviewVersion = browserFixtureEnv("VIBE_BROWSER_REVIEW_VERSION", vibe.LatestSuiteValidatorVersion)
+	if os.Getenv("VIBE_BROWSER_V15") == "1" {
+		cfg.ConversationState, cfg.PreciseActions, cfg.ContextGuidance, cfg.InterpretedAuthoring = true, true, true, true
+		cfg.SourcePolicyVersion = vibe.SourcePolicyVersion
+		cfg.TwoDoor = os.Getenv("VIBE_BROWSER_TWO_DOOR") == "1"
+	}
 	store := vibe.NewStore(db, cfg)
 	svc := &vibe.Service{Store: store, Config: cfg, Gate: vibe.Gate{Redis: rc}, Compiler: VibePackCompiler{}}
 	fake := &browserFixtureProvider{}
@@ -67,7 +72,7 @@ func TestVibeBrowserStack(t *testing.T) {
 	dispatched := make(chan struct{})
 	go func() {
 		defer close(dispatched)
-		vibe.DispatchOutbox(dispatchCtx, temporalClient, store, slog.Default())
+		vibe.DispatchOutbox(dispatchCtx, temporalClient, store, slog.Default(), svc)
 	}()
 	defer func() { cancelDispatch(); <-dispatched }()
 	router := chi.NewRouter()
@@ -97,6 +102,7 @@ func TestVibeBrowserStack(t *testing.T) {
 	})
 	router.Post("/__fixture/control", func(w http.ResponseWriter, r *http.Request) {
 		var command struct {
+			TargetDelayMS  int `json:"target_delay_ms"`
 			FailEditCalls  int `json:"fail_edit_calls"`
 			RateLimitCalls int `json:"rate_limit_calls"`
 		}
@@ -105,6 +111,7 @@ func TestVibeBrowserStack(t *testing.T) {
 			return
 		}
 		fake.mu.Lock()
+		fake.targetDelayMS = min(max(command.TargetDelayMS, 0), 3000)
 		fake.failEditCalls = command.FailEditCalls
 		fake.rateLimitCalls = command.RateLimitCalls
 		fake.mu.Unlock()
@@ -285,6 +292,7 @@ type browserFixtureCall struct {
 }
 
 type browserFixtureProvider struct {
+	targetDelayMS  int
 	mu             sync.Mutex
 	failEditCalls  int
 	rateLimitCalls int
@@ -308,8 +316,14 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 		}
 	}
 	name := format.JSONSchema.Name
+	if name == "" && strings.Contains(req.Messages[0].Content, "DECISION EXAMPLES (illustrations") {
+		name = "vibe_interpretation_v15"
+	}
 	var output any
 	switch {
+	case strings.HasPrefix(req.Messages[0].Content, "Write instructions for a bounded interactive"):
+		f.calls = append(f.calls, browserFixtureCall{Role: "prototype"})
+		return browserFixtureResponse(`{"instructions":"Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund."}`), nil
 	case strings.Contains(req.Messages[0].Content, "Every finding has exactly"):
 		name = "judge"
 		var input struct {
@@ -334,6 +348,9 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 		output = map[string]any{"pass": input.Output != "Opened items are eligible.", "reasoning": "The scripted response is compared with the unopened-only return policy."}
 	case name == "":
 		name = "target"
+		if f.targetDelayMS > 0 {
+			time.Sleep(time.Duration(f.targetDelayMS) * time.Millisecond)
+		}
 		question := req.Messages[len(req.Messages)-1].Content
 		answer := "What is the purchase age and item condition?"
 		if strings.Contains(question, "unopened") {
@@ -396,6 +413,46 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 		}
 		f.calls = append(f.calls, browserFixtureCall{Role: name, Request: &input.Request})
 		switch name {
+		case "vibe_edit_tests_v13":
+			var bases struct {
+				Base map[string]any `json:"policy_edit_base"`
+			}
+			if err := json.Unmarshal([]byte(req.Messages[1].Content), &bases); err != nil {
+				return provider.Response{}, err
+			}
+			first, second := "I bought an unopened item exactly 30 days ago. Can I return it?", "My item is unopened. Can I return it?"
+			firstExpected, secondExpected := "Confirm eligibility without claiming to process a refund.", "Ask only for purchase age."
+			output = map[string]any{"policy_patch": map[string]any{"base_id": bases.Base["id"], "base_hash": bases.Base["hash"], "changes": []any{}}, "case_changes": []vibe.CaseChange{{Action: "add", Input: &first, Expected: &firstExpected}, {Action: "add", Input: &second, Expected: &secondExpected}}}
+		case "vibe_interpretation_v15": // JSON mode plus the server-validated typed union.
+			if os.Getenv("VIBE_BROWSER_V15") != "1" {
+				return provider.Response{}, fmt.Errorf("unexpected JSON-mode stage")
+			}
+			facts := []any{}
+			var answer any
+			var action any = map[string]any{"kind": "reply", "text": "Tell me what your agent should help with.", "example": nil}
+			if strings.HasPrefix(input.Request.Text, "Suggest a focused") {
+				action = map[string]any{"kind": "suggest_fix"}
+			}
+			if input.Request.Text == "Build me a returns agent for Shopify" {
+				facts = append(facts, map[string]any{"kind": "job", "quote": input.Request.Text, "correction_ref": 0})
+				action = map[string]any{"kind": "ask", "text": "Which returns should qualify?", "purpose": "clarify_rule", "options": []string{}}
+			} else if strings.Contains(input.Request.Text, "sample policy") || strings.Contains(input.Request.Text, "don't know") {
+				answer = map[string]any{"quote": input.Request.Text, "unknown": true}
+			} else if strings.Contains(input.Request.Text, "Only unopened") {
+				if strings.Contains(input.Request.Text, "Answer shop return questions.") {
+					facts = append(facts, map[string]any{"kind": "job", "quote": "Answer shop return questions.", "correction_ref": 0})
+				}
+				facts = append(facts, map[string]any{"kind": "rule", "quote": input.Request.Text, "correction_ref": 0})
+				var stateInput struct {
+					PendingQuestion any `json:"pending_question"`
+				}
+				_ = json.Unmarshal([]byte(req.Messages[1].Content), &stateInput)
+				if stateInput.PendingQuestion != nil {
+					answer = map[string]any{"quote": input.Request.Text, "unknown": false}
+				}
+				action = map[string]any{"kind": "prepare_tests", "count": 3}
+			}
+			output = map[string]any{"observations": facts, "answer": answer, "scope_change_quote": "", "source_message_ids": []string{}, "brevity_quote": "", "action": action}
 		case "vibe_route_v11":
 			if f.rateLimitCalls > 0 {
 				f.rateLimitCalls--
@@ -416,6 +473,9 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 			rules := []vibe.PolicyRule{}
 			for _, rule := range [][2]string{{"job", "Answer shop return questions."}, {"window", "The return window is 30 days."}, {"condition", "Only unopened items are eligible."}, {"missing", "Ask only for missing purchase age or item condition."}, {"no-refund", "Never claim to process a refund."}} {
 				rules = append(rules, vibe.PolicyRule{ID: rule[0], Statement: rule[1], SourceBlockIDs: []string{input.Request.ID}})
+				if os.Getenv("VIBE_BROWSER_V15") == "1" {
+					rules[len(rules)-1].Evidence = []vibe.RuleEvidence{{SourceBlockID: input.Request.ID, Quote: input.Request.Text, Kind: "requirement"}}
+				}
 			}
 			output = map[string]any{"rules": rules, "tests": map[string]any{"title": "Return checks", "summary": "Eligibility and missing details.", "success_criteria": "Only unopened purchases within 30 days are eligible. Ask only for missing age or condition. Never claim to process a refund.", "scenarios": []vibe.TestScenario{{Input: "I bought an unopened item exactly 10 days ago. Can I return it?", Expected: "Confirm eligibility without claiming to process a refund."}, {Input: "I opened the item bought 10 days ago. Can I return it?", Expected: "Explain that opened items are ineligible."}, {Input: "Can I return an item?", Expected: "Ask only for purchase age and condition."}}}}
 		case "vibe_edit_tests_v11":
@@ -492,6 +552,11 @@ func browserFixtureConsistency(input vibe.SuiteReviewInput) (vibe.ConsistencyLed
 		age := vibe.ConsistencyFact{EntityID: "item", FieldID: "purchase-age", State: "missing", InputPointer: "/question"}
 		condition := vibe.ConsistencyFact{EntityID: "item", FieldID: "condition", State: "missing", InputPointer: "/question"}
 		switch payload.Question {
+		case "I bought an unopened item exactly 30 days ago. Can I return it?":
+			age.State, age.Evidence, age.Literal = "present", "I bought an unopened item exactly 30 days ago.", "30"
+			condition.State, condition.Evidence, condition.Literal = "present", age.Evidence, "unopened"
+		case "My item is unopened. Can I return it?":
+			condition.State, condition.Evidence, condition.Literal = "present", "My item is unopened.", "unopened"
 		case "I bought an unopened item exactly 10 days ago. Can I return it?":
 			age.State, age.Evidence, age.Literal = "present", "I bought an unopened item exactly 10 days ago.", "10"
 			condition.State, condition.Evidence, condition.Literal = "present", age.Evidence, "unopened"

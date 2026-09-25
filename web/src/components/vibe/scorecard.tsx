@@ -1,14 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, Bookmark, Copy, Lightbulb } from "lucide-react";
 import { dollars, terminal, type CaseResult, type Operation } from "@/lib/vibe";
+import { verifiedFinding } from "./grounded-finding";
 import { CaseEvidence } from "./case-evidence";
 import { originalInputs } from "./result-prompts";
 import { recoveryMessage } from "./recovery-message";
 import { VibeButton } from "./vibe-button";
 
 export function VibeScorecard({
+  findingFirst = false,
   primary = true,
   operation,
   baseline,
@@ -25,6 +27,7 @@ export function VibeScorecard({
   busy,
   testJourney = false,
 }: {
+  findingFirst?: boolean;
   primary?: boolean;
   operation: Operation;
   baseline?: Operation;
@@ -42,6 +45,19 @@ export function VibeScorecard({
   testJourney?: boolean;
 }) {
   const [copiedFinding, setCopiedFinding] = useState("");
+  const [concreteFinding,setConcreteFinding]=useState<{id:string;text:string}>();
+  const failedKey=operation.results.find(c => c.verdict==="FAIL")?.case_key;
+  useEffect(() => {
+    if (!findingFirst || !failedKey || !terminal(operation.state)) return;
+    let live=true;
+    void loadEvidence(failedKey).then(result => {
+      const check=result.checks.find(c => c.verdict==="FAIL" && verifiedFinding(result,c));
+      if (live && check) setConcreteFinding({id:operation.id,text:check.evidence.slice(0,220)});
+    }).catch(() => undefined);
+    return () => {live=false};
+    // Evidence callbacks are recreated by the parent; immutable run identity controls loading.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[findingFirst,failedKey,operation.id,operation.state]);
   const score = operation.scorecard;
   if (!score) return null;
   const done = terminal(operation.state);
@@ -128,10 +144,12 @@ export function VibeScorecard({
           className="text-[28px] font-semibold leading-tight tracking-tight sm:text-[32px]"
           aria-live="polite"
         >
-          {testJourney && done && !stopped && score.total > 0 && !regraded
+          {findingFirst ? (concreteFinding?.id === operation.id ? concreteFinding.text : headline) : testJourney && done && !stopped && score.total > 0 && !regraded
             ? `${score.passed} of ${score.total} tests passed`
             : headline}
         </h1>
+        {findingFirst && done && <p className="mt-3 text-sm">{score.passed} passed · {score.failed} failed · {score.unknown} unassessed</p>}
+        {findingFirst && done && !stopped && score.total > 0 && !score.failed && !incomplete && <p className="mt-2 text-sm vibe-muted">All these examples passed. This does not prove reliability beyond these situations; live integrations and unseen inputs remain untested.</p>}
         <p className="mt-3 text-sm vibe-muted">
           {testJourney ? (
             done && score.total === 0 ? (

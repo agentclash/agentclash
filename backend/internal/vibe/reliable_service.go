@@ -171,6 +171,9 @@ func (s *Service) currentArtifactPolicy(d Document, a Artifact) bool {
 	return validArtifactPolicy(d, a) && (!s.Config.ReliableAuthoring || a.Validation.ValidatorVersion == s.Config.reviewVersion())
 }
 func (s *Service) prepareRunValidation(p *Plan, v Session) error {
+	if p.Artifact != nil && s.verifiedSample(*p.Artifact, p.limits()) {
+		return nil
+	}
 	if p.Artifact == nil || !p.Artifact.IsTestSuite() || suppliedImport(v.Document, *p.Artifact) {
 		return nil
 	}

@@ -6,8 +6,8 @@ import (
 	"unicode/utf8"
 )
 
-// Some structured-output providers change quotation styles while copying an
-// otherwise exact clause. Restore the original bytes only for a unique match;
+// Providers sometimes reflow pasted blockquotes or change quotation styles.
+// Restore the original bytes only for a unique formatting-equivalent match;
 // never accept paraphrases, missing words, changed negation, or ambiguous spans.
 // The restored evidence still goes through exact validation and semantic review.
 func restoreEvidenceQuote(quote, source string) string {
@@ -27,11 +27,28 @@ func foldEvidenceQuotes(text string) (string, []int) {
 	var folded strings.Builder
 	offsets := make([]int, 0, len(text)+1)
 	var previous rune
+	linePrefix := true
+	blockquote := strings.HasPrefix(strings.TrimSpace(text), "> ")
 	word := func(r rune) bool { return unicode.IsLetter(r) || unicode.IsNumber(r) }
 	for i, r := range text {
 		_, size := utf8.DecodeRuneInString(text[i:])
 		next, _ := utf8.DecodeRuneInString(text[i+size:])
 		canonical := r
+		if blockquote && linePrefix && r == '>' && unicode.IsSpace(next) {
+			linePrefix = false
+			continue
+		}
+		if unicode.IsSpace(r) {
+			if r == '\n' || r == '\r' {
+				linePrefix = true
+			}
+			canonical = ' '
+			if previous == ' ' {
+				continue
+			}
+		} else {
+			linePrefix = false
+		}
 		switch r {
 		case '“', '”':
 			canonical = '"'
@@ -47,7 +64,7 @@ func foldEvidenceQuotes(text string) (string, []int) {
 		for n := folded.Len() - before; n > 0; n-- {
 			offsets = append(offsets, i)
 		}
-		previous = r
+		previous = canonical
 	}
 	return folded.String(), append(offsets, len(text))
 }

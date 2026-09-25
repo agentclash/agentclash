@@ -11,7 +11,7 @@ import (
 
 const guidedAuthoringVersion = 14
 
-func (p Plan) guided() bool { return p.AuthoringVersion == guidedAuthoringVersion }
+func (p Plan) guided() bool { return p.AuthoringVersion == guidedAuthoringVersion || p.interpreted() }
 
 // The router may supply one illustration, never UI code, evidence or actions.
 // Keeping it separate from message text prevents it entering source selection.

@@ -19,6 +19,7 @@ export function conversationActivity(operation: Operation, testJourney?: boolean
       preparing: "Preparing your next step…",
       reviewing: "Checking the tests against your rules…",
       repairing: "Adjusting the tests to match your rules…",
+      switching_assistant: "Trying another model…",
       running_agent: "Waiting for your agent’s reply…",
       grading: "Checking the reply…",
     };

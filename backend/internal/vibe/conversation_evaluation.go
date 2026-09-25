@@ -41,7 +41,7 @@ func validateRoleModels(cfg Config, models Models, anonymous bool, role Role) er
 	if _, err := cfg.Profile(id); err != nil {
 		return err
 	}
-	if anonymous && role == Evaluator && id != cfg.DefaultModels().Evaluator {
+	if cfg.EvaluatorPinned(anonymous) && role == Evaluator && id != cfg.DefaultModels().Evaluator {
 		return fault("evaluator_pinned", "The free trial uses a fixed evaluator for comparable results.")
 	}
 	return nil

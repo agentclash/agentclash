@@ -36,6 +36,19 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 		return Operation{}, err
 	}
 	l := s.Config.Limits(v.Anonymous)
+	if sub.AdditionalExamples < 0 || sub.AdditionalExamples > l.Cases || sub.AdditionalExamples > 0 && (sub.Kind != "message" || sub.ArtifactID == nil || v.Document.Evaluation == nil || sub.CycleID != nil) {
+		return Operation{}, fault("invalid_request", "Choose a bounded batch for an existing evaluation.")
+	}
+	if sub.AdditionalExamples > 0 && !s.Config.InterpretedAuthoring {
+		return Operation{}, fault("hosted_disabled", "Additional coverage is not enabled. Your existing examples remain available.")
+	}
+	if v.Document.Evaluation != nil && v.Document.Evaluation.Door == "build" && len(v.Document.Artifacts) == 0 && sub.Kind == "message" && sub.CycleID == nil {
+		return Operation{}, fault("quote_expired", "Use Build and try 3 examples, or Retry your saved request.")
+	}
+	if v.Document.Evaluation != nil && (sub.Kind == "check" || sub.Kind == "retest") && sub.CycleID == nil && sub.RunQuoteID == nil && !sub.estimateOnly {
+		return Operation{}, fault("quote_expired", "See the examples and maximum cost before running.")
+	}
+
 	if sub.Purpose != "" && !((sub.Purpose == "suggest_change" && sub.Kind == "message" || sub.Purpose == "regrade" && sub.Kind == "retest" && sub.Content == "" && sub.EvidenceSetID == nil && sub.Interaction == nil) && sub.BaselineID != nil && sub.Instructions == "") {
 		return Operation{}, fault("invalid_message", "Choose a completed check for this action.")
 	}
@@ -51,7 +64,7 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 	if sub.QuickCheck && (sub.Kind != "message" || (!sub.EvaluationFirst && !v.Document.EvaluationFirst) || sub.Instructions != "") {
 		return Operation{}, fault("invalid_message", "Quick checks apply to messages containing recorded replies.")
 	}
-	if (sub.Kind == "message" || sub.Kind == "build") && !sub.EvaluationFirst && !v.Document.EvaluationFirst {
+	if sub.CycleID == nil && (sub.Kind == "message" || sub.Kind == "build") && !sub.EvaluationFirst && !v.Document.EvaluationFirst {
 		question := briefQuestion(v.Document, sub.Content)
 		// A pre-upgrade starter may already be queued. Let Store.Submit recover
 		// its immutable receipt (or reject changed content) using the same ID.
@@ -85,10 +98,18 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 			return Operation{}, fault("invalid_request", "Reload to use the current conversation controls.")
 		}
 		if err := validateSourceAction(v, sub); err != nil {
-			return Operation{}, err
+			if !s.Config.InterpretedAuthoring {
+				return Operation{}, err
+			}
+			if e := validateClarificationAction(v, sub); e != nil {
+				return Operation{}, e
+			}
 		}
 	}
 	p := Plan{AuthoringVersion: 4, Submission: sub, Document: v.Document, Anonymous: v.Anonymous, Free: s.Config.FreeOnly, LocalTesting: s.Config.TestingLocally()}
+	if err = s.prepareBuildCycle(ctx, v, sub, &p); err != nil {
+		return Operation{}, err
+	}
 	if sub.Purpose == "regrade" {
 		return s.prepareRegrade(ctx, actor, v, sub, p)
 	}
@@ -246,6 +267,9 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 				break
 			}
 		}
+		if p.Artifact != nil && p.Artifact.UnavailableReason != "" {
+			return Operation{}, fault("unsupported_capability", p.Artifact.UnavailableReason)
+		}
 		if p.Artifact != nil && p.Artifact.IsTestPlan() {
 			return Operation{}, fault("artifact_required", "This is a test plan. Review or export it to test in your own environment; it cannot run a customer trial or evaluation here.")
 		}
@@ -375,9 +399,38 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 	// Round-trip our explicitly versioned export. Model preferences are data;
 	// importing a file cannot change the active model policy or start execution.
 	agentPrompt := ""
+	sample := ""
 	var envelope map[string]json.RawMessage
 	if err = json.Unmarshal(b, &envelope); err != nil {
 		return err
+	}
+	if string(envelope["format"]) == `"agentclash-evaluation-v1"` {
+		var exported struct {
+			Format     string          `json:"format"`
+			ArtifactID uuid.UUID       `json:"artifact_id"`
+			Artifacts  []Artifact      `json:"artifacts"`
+			Scope      string          `json:"scope"`
+			Sample     *string         `json:"sample"`
+			Rules      json.RawMessage `json:"rules"`
+			Runs       json.RawMessage `json:"runs"`
+		}
+		if err = Decode(b, l, &exported); err != nil {
+			return err
+		}
+		found := false
+		for _, a := range exported.Artifacts {
+			if a.ID == exported.ArtifactID {
+				b, agentPrompt, sample = a.Blueprint, a.AgentPrompt, a.Sample
+				found = true
+				break
+			}
+		}
+		if !found || len(agentPrompt) > l.MessageBytes {
+			return fault("invalid_pack", "The export does not identify a bounded agent version.")
+		}
+		// Historical scores and source claims are evidence, never imported as
+		// new successful runs or automatically accepted business requirements.
+		envelope = map[string]json.RawMessage{}
 	}
 	if _, ok := envelope["format"]; ok {
 		var exported struct {
@@ -397,6 +450,24 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 	artifactID := uuid.New()
 	c, err := s.Compiler.Compile(b, v.Document.Models.Evaluator, artifactID, l)
 	if err != nil {
+		if capability, ok := err.(*Fault); ok && capability.Code == "unsupported_capability" && v.Document.Evaluation != nil {
+			return s.Store.Edit(ctx, actor, id, revision, func(current *Session) error {
+				total := len(b)
+				for _, saved := range current.Document.Artifacts {
+					total += len(saved.Blueprint)
+				}
+				if !s.Config.TestingLocally() && (total > l.StoredBytes || current.Document.AttachmentCount >= l.Files) {
+					return fault("attachment_limit", "This pack exceeds the attachment allowance.")
+				}
+				current.Document.AttachmentCount++
+				a := Artifact{ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: "Imported challenge pack", Blueprint: b, AgentPrompt: agentPrompt, CreatedAt: timestamp(), UnavailableReason: capability.Message}
+				current.Document.Artifacts = append(current.Document.Artifacts, a)
+				current.Document.ActiveArtifactID = &a.ID
+				current.Document.TestJourney = true
+				current.Document.Messages = append(current.Document.Messages, Message{ID: uuid.New(), Role: "assistant", Content: "Your original pack is preserved. It needs capabilities unavailable here; no tests were removed or run.", ArtifactID: &a.ID, CreatedAt: timestamp()})
+				return nil
+			})
+		}
 		return fault("invalid_pack", "This evaluation could not be imported without changing its coverage: "+err.Error())
 	}
 	return s.Store.Edit(ctx, actor, id, revision, func(v *Session) error {
@@ -415,7 +486,7 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 		v.Document.Messages = append(v.Document.Messages, msg)
 		replyID := uuid.New()
 		v.Document.TestJourney = true
-		v.Document.Artifacts = append(v.Document.Artifacts, Artifact{ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: c.Bundle.Pack.Name, AgentPrompt: agentPrompt, Blueprint: b, SourceMessageID: msg.ID, ProposalMessageID: &replyID, CreatedAt: timestamp()})
+		v.Document.Artifacts = append(v.Document.Artifacts, Artifact{ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: c.Bundle.Pack.Name, Sample: sample, ScopeNote: prototypeScope, AgentPrompt: agentPrompt, Blueprint: b, SourceMessageID: msg.ID, ProposalMessageID: &replyID, CreatedAt: timestamp()})
 		v.Document.Messages = append(v.Document.Messages, Message{ID: replyID, Role: "assistant", Content: fmt.Sprintf("Your %d imported tests are ready to review.", len(c.Cases)), ArtifactID: &artifactID, CreatedAt: timestamp()})
 		return nil
 	})
@@ -447,7 +518,8 @@ func (s *Service) SaveWithBaseline(ctx context.Context, actor string, id uuid.UU
 	if artifact == nil || artifact.IsTestPlan() {
 		return uuid.Nil, fault("artifact_required", "Review the agent and checks, then save them to your workspace.")
 	}
-	if artifact.IsTestSuite() && !suppliedImport(v.Document, *artifact) && s.Config.SourcePolicyVersion != "" {
+	verifiedSample := s.verifiedSample(*artifact, s.Config.Limits(v.Anonymous))
+	if artifact.IsTestSuite() && !suppliedImport(v.Document, *artifact) && !verifiedSample && s.Config.SourcePolicyVersion != "" {
 		policy := policyFor(v.Document, artifact)
 		if policy == nil {
 			return uuid.Nil, sourceReviewRequired()
@@ -456,7 +528,7 @@ func (s *Service) SaveWithBaseline(ctx context.Context, actor string, id uuid.UU
 			return uuid.Nil, err
 		}
 	}
-	if artifact.IsTestSuite() && !suppliedImport(v.Document, *artifact) && (s.Config.ReliableAuthoring || artifact.Validation != nil || artifact.Provenance == "ai_generated") && !s.currentArtifactPolicy(v.Document, *artifact) {
+	if artifact.IsTestSuite() && !suppliedImport(v.Document, *artifact) && !verifiedSample && (s.Config.ReliableAuthoring || artifact.Validation != nil || artifact.Provenance == "ai_generated") && !s.currentArtifactPolicy(v.Document, *artifact) {
 		return uuid.Nil, fault("tests_not_ready", "These tests need a rule review before they can be saved. Run the existing tests to review them, or describe the intended rules to prepare an update.")
 	}
 	if selected != nil {

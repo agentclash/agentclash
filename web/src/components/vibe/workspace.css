@@ -434,3 +434,16 @@
 }
 
 .vibe-choice-button { max-width: 100%; min-height: 44px; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+
+/* The entry adds two choices to the existing chat, with the same border scale. */
+.vibe-entry-doors { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.vibe-entry-doors > button { display:flex; flex-direction:column; justify-content:flex-start; text-align:left; border:1px solid var(--vibe-border); border-radius:16px; padding:22px; background:var(--vibe-surface,#131310); cursor:pointer; }
+.vibe-entry-doors > button:hover { border-color:var(--vibe-muted,#8d8b80); }
+.vibe-entry-doors > button:focus-visible { outline:2px solid var(--vibe-fg); outline-offset:3px; }
+.vibe-entry-doors span { width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; font-weight:600; }
+.vibe-entry-doors small { display:block; margin-top:8px; color:var(--vibe-muted); font-size:13px; line-height:1.6; }
+.vibe-active-context { position:sticky; bottom:0; z-index:5; background:var(--vibe-bg,#0c0c09); margin-top:20px; padding-block:10px; border-top:1px solid var(--vibe-border); }
+.vibe-context-bar { display:flex; align-items:center; flex-wrap:wrap; gap:8px 16px; font-size:12px; }
+.vibe-context-bar select { flex:1; min-width:0; max-width:100%; padding:8px; border:1px solid var(--vibe-border); border-radius:8px; background:var(--vibe-bg,#0c0c09); color:var(--vibe-fg); text-overflow:ellipsis; }
+.vibe-context-bar summary { cursor:pointer; padding:8px 0; }
+@media(max-width:600px) { .vibe-entry-doors { grid-template-columns:1fr; } .vibe-entry-doors > button { padding:18px; } }

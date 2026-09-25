@@ -112,6 +112,9 @@ func boundedText(maximum int) map[string]any {
 	return map[string]any{"type": "string", "minLength": 1, "maxLength": maximum}
 }
 func reliableRouteFormat(profile ModelProfile, p Plan) json.RawMessage {
+	if p.interpreted() {
+		return interpretationFormat(profile)
+	}
 	properties := map[string]any{"intent": map[string]any{"type": "string", "enum": allowedReliableActions(p)}, "reply": boundedText(1800), "count": map[string]any{"type": "integer", "minimum": 0}}
 	if p.sourceBoundary() {
 		properties["source_message_ids"] = map[string]any{"type": "array", "maxItems": 3, "items": boundedText(128)}

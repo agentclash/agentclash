@@ -19,7 +19,7 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 		return Operation{}, fault("invalid_message", "Add your agent's instructions using Add your agent; use this conversation to discuss the tests.")
 	}
 	p.AuthoringVersion = 10
-	p.Document = Document{TestJourney: true, Requirements: append([]Requirement(nil), v.Document.Requirements...)}
+	p.Document = Document{Evaluation: v.Document.Evaluation, Build: v.Document.Build, TestJourney: true, Requirements: append([]Requirement(nil), v.Document.Requirements...)}
 	for _, m := range v.Document.Messages {
 		if m.Origin != "playground" {
 			p.Document.Messages = append(p.Document.Messages, m)
@@ -137,12 +137,18 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 	if p.Conversation != nil {
 		p.Conversation.Profile = &profile
 	}
+	if err := prepareInterpretedPlan(&p, s.Config, profile); err != nil {
+		return Operation{}, err
+	}
 	l := p.limits()
 	cost, err := profile.BoundCost(profile.inputLimit(l), l.OutputTokens)
 	if err != nil {
 		return Operation{}, err
 	}
 	p.MaxCost = cost * int64(p.Calls)
+	if p.AssistantRecovery != nil {
+		p.MaxCost += p.AssistantRecovery.MaxCost - cost
+	}
 	if p.AuthoringVersion >= 11 {
 		err = fitReliableContext(&p, profile)
 	} else {
@@ -151,7 +157,9 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 	if err != nil {
 		return Operation{}, err
 	}
-	prepareUnderstanding(&p, s.Config)
+	if p.Cycle == nil {
+		prepareUnderstanding(&p, s.Config)
+	}
 	return s.Store.Submit(ctx, actor, v.ID, sub, p, s.Config)
 }
 

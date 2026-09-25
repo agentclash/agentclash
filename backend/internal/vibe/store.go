@@ -589,6 +589,18 @@ func (s *Store) Claim(ctx context.Context, anonActor, userActor string, id uuid.
 		if err != nil {
 			return err
 		}
+		// The cookie-authenticated owner claims the chat and its contexts as a
+		// group. Only rows still owned by that exact anonymous actor can move.
+		var root uuid.UUID
+		e := tx.QueryRow(ctx, "SELECT chat_id FROM vibe_evaluation_contexts WHERE evaluation_id=$1", id).Scan(&root)
+		if e == pgx.ErrNoRows {
+			root = id
+		} else if e != nil {
+			return e
+		}
+		if _, err = tx.Exec(ctx, `UPDATE vibe_sessions SET actor=$3,revision=revision+1,updated_at=now() WHERE actor=$2 AND (id=$1 OR id IN(SELECT evaluation_id FROM vibe_evaluation_contexts WHERE chat_id=$1))`, root, anonActor, userActor); err != nil {
+			return err
+		}
 		return event(ctx, tx, id, nil, "session.claimed")
 	})
 }

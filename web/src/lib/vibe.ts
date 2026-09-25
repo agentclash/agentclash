@@ -50,6 +50,9 @@ export type EvaluationProposal = {
   success_criteria: string;
 };
 export type Artifact = {
+  sample?: string;
+  scope_note?: string;
+  unavailable_reason?: string;
   policy_id?: string;
   validation?: {
     status: "supported" | "contradicted" | "unclear" | "unavailable";
@@ -109,7 +112,7 @@ export type CaseResult = {
 };
 export type Operation = {
   progress?: { phase: string; completed_cases: number; total_cases: number };
-  diagnostics?: { stage_millis: Record<string, number>; retry_outcome?: string; unresolved_billing_since?: string; unresolved_billing_age_ms?: number };
+  diagnostics?: { alternative_assistant?: string; stage_millis: Record<string, number>; retry_outcome?: string; unresolved_billing_since?: string; unresolved_billing_age_ms?: number };
   grading?: {
     version: number; hash: string; criteria_hash: string; tests_hash: string;
     parser: string; normalization: string; schema: string; prompt_hash: string;
@@ -182,6 +185,8 @@ export type Session = {
   saved_artifact_id?: string;
   saved_models?: Models;
   document: {
+    evaluation?: { id: string; chat_id: string; door: "build" | "test" };
+    build?: { cycle_id: string; phase: string; clarifications_used: number; artifact_id?: string; check_id?: string; sample?: string; error?: { code: string; message: string } };
     conversation_state?: ConversationState;
     last_change?: ConversationChange;
     policies?: {
@@ -245,7 +250,11 @@ export type SavedCheck = {
   source: Operation["source"];
   created_at: string;
 };
+export type BuildQuote = { id: string; request: { content: string; models: Models }; max_cost_nano_usd: number; cases: number; expires_at: string };
+export type RunQuote = { id: string; max_cost_nano_usd: number; cases: number; calls: number; expires_at: string };
+
 export type VibeConfig = {
+  two_door?: boolean;
   interaction_actions?: boolean;
   grading_recheck?: boolean;
   capabilities?: Capability[];
@@ -424,7 +433,7 @@ export function completionAcknowledgement(operation: Operation): string | undefi
 export function retryVibeOperation(
   sessionID: string,
   operationID: string,
-  request: { client_id: string; revision: number },
+  request: { client_id: string; revision: number; assistant_model?: string },
   token?: string | null,
 ) {
   return vibeFetch<Operation>(

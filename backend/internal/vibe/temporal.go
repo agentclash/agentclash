@@ -91,7 +91,7 @@ func NewWorker(c client.Client, r *Runner) worker.Worker {
 
 // DispatchOutbox can run on every worker. Temporal WorkflowIDRejectDuplicate plus
 // the journal makes delivery at least once without repeating paid execution.
-func DispatchOutbox(ctx context.Context, c client.Client, s *Store, logger *slog.Logger) {
+func DispatchOutbox(ctx context.Context, c client.Client, s *Store, logger *slog.Logger, services ...*Service) {
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -99,6 +99,9 @@ func DispatchOutbox(ctx context.Context, c client.Client, s *Store, logger *slog
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		}
+		if len(services) > 0 {
+			ResumeBuilds(ctx, services[0])
 		}
 		rows, err := s.DB.Query(ctx, `SELECT b.operation_id FROM vibe_outbox b JOIN vibe_operations o ON o.id=b.operation_id WHERE b.delivered_at IS NULL AND o.state='QUEUED' ORDER BY o.created_at LIMIT 50`)
 		if err != nil {

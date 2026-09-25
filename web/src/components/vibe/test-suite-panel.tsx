@@ -13,6 +13,7 @@ const instructionsHelp =
   "Show me the exact instructions used by the AI agent in my app, and which model it uses. Include its existing rules. Do not rewrite them. I want to test those instructions in Vibe Evals.";
 
 export function TestSuitePanel({
+  parent,
   primary = true,
   artifact,
   busy,
@@ -28,6 +29,7 @@ export function TestSuitePanel({
   checkingChanges = false,
   rules = [],
 }: {
+  parent?: Artifact;
   primary?: boolean;
   artifact: Artifact;
   busy: boolean;
@@ -44,6 +46,7 @@ export function TestSuitePanel({
   rules?: { id: string; statement: string }[];
 }) {
   const tests = suiteCases(artifact.blueprint);
+  const [prototypeMode,setPrototypeMode]=useState(false);
   const [preparingOnly, setPreparingOnly] = useState(false);
   const [focusedCase, setFocusedCase] = useState<string>();
   const [editing, setEditing] = useState(false);
@@ -55,7 +58,9 @@ export function TestSuitePanel({
   const cases = tests;
   const changes = changedCases(tests, draft);
   const ready = !!artifact.agent_prompt.trim();
+  const added = parent ? tests.filter(test => !suiteCases(parent.blueprint).some(old => old.key===test.key)).length : 0;
   const validationBlocked = !!artifact.validation && artifact.validation.status !== "supported";
+  if (artifact.unavailable_reason) return <section className="vibe-panel p-5 space-y-3"><h2 className="text-xl font-semibold">Pack kept · needs the advanced runner</h2><p className="text-sm vibe-muted">{artifact.unavailable_reason} Your original tests are intact; none were run.</p><VibeButton onClick={() => {const url=URL.createObjectURL(new Blob([JSON.stringify(artifact.blueprint,null,2)],{type:"application/json"}));const a=document.createElement("a");a.href=url;a.download="challenge-pack.json";a.click();setTimeout(() => URL.revokeObjectURL(url),1000)}}>Export original pack</VibeButton></section>;
   if (!cases.length)
     return <p>This pack needs the full pack builder to display its tests. Your original file is preserved.</p>;
 
@@ -81,6 +86,7 @@ export function TestSuitePanel({
             : artifact.summary}
         </p>
       </div>
+      {added>0 && <p className="text-sm vibe-muted">{added} new examples · {cases.length-added} existing examples. Running this batch checks all {cases.length}; earlier results are kept separately.</p>}
       {!editing && !agentOpen && <TestMeaning />}
       {rules.length > 0 && !editing && !agentOpen && (
         <details className="text-sm vibe-muted">
@@ -192,23 +198,24 @@ export function TestSuitePanel({
           }}
         >
           <div>
-            <h3 className="font-medium">Add your agent’s instructions</h3>
+            <h3 className="font-medium">{prototypeMode ? "Describe a prototype to try" : "Add your agent’s instructions"}</h3>
             <p className="mt-1 text-sm vibe-muted">
               We’ll run these with {modelLabel || "the selected model"}. This
               tests text replies; your app’s tools and data aren’t connected.
             </p>
           </div>
+          {prototypeMode && <p className="text-xs vibe-muted">Use your own description and rules. The pack’s expected answers won’t be added to the prototype instructions.</p>}
           <label className="block text-sm">
-            Agent instructions
+            {prototypeMode ? "Its job and your rules" : "Agent instructions"}
             <textarea
-              aria-label="Agent instructions"
+              aria-label={prototypeMode ? "Its job and your rules" : "Agent instructions"}
               className="vibe-textarea mt-2 min-h-40"
               value={instructions}
               onChange={(e) => {
                 setInstructions(e.target.value);
                 onDirty(true);
               }}
-              placeholder="Paste the instructions your agent actually uses…"
+              placeholder={prototypeMode ? "Help customers decide whether their order qualifies for a refund. Our rules are…" : "Paste the instructions your agent actually uses…"}
               autoFocus
             />
           </label>
@@ -218,7 +225,7 @@ export function TestSuitePanel({
               type="submit"
               disabled={busy || !instructions.trim()}
             >
-              Use these instructions <ArrowRight />
+              {prototypeMode ? "Create interactive prototype" : "Use these instructions"} <ArrowRight />
             </VibeButton>
             <VibeButton
               variant="quiet"
@@ -274,7 +281,7 @@ export function TestSuitePanel({
                 ? pendingPolicy
                   ? "Run previous tests"
                   : comparison
-                  ? "Test the suggested fix"
+                  ? "Improve and rerun"
                   : `Run ${cases.length} ${cases.length === 1 ? "test" : "tests"}`
                 : preparingOnly ? "Keep these tests" : "Add your agent"}
               <ArrowRight />
@@ -290,7 +297,7 @@ export function TestSuitePanel({
           </div>
           {!ready && <div className="text-sm vibe-muted">
             {preparingOnly ? <><p>Keep these examples for your team. Add an agent when you’re ready to run them.</p><VibeButton variant="quiet" className="!px-0" disabled={busy} onClick={() => setAgentOpen(true)}>Add an agent later</VibeButton></>
-              : <VibeButton variant="quiet" className="!px-0" disabled={busy} onClick={() => setPreparingOnly(true)}>I don’t have an agent yet</VibeButton>}
+              : <><p>A pack supplies examples and expectations. Add an agent to get actual replies.</p><VibeButton variant="quiet" className="!px-0" disabled={busy} onClick={() => {setPrototypeMode(true);setAgentOpen(true)}}>Create a prototype</VibeButton><VibeButton variant="quiet" disabled={busy} onClick={() => setPreparingOnly(true)}>Keep for later</VibeButton></>}
           </div>}
           {ready && (
             <p className="text-xs vibe-muted">

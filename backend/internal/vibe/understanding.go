@@ -155,7 +155,7 @@ func validateUnderstandingPlan(p Plan) error {
 	if !understandingEligible(p) || (u.Mode != "shadow" && u.Mode != "advisory") || u.Version != understandingVersion ||
 		u.RubricHash != Hash(understandingRubric) || !u.Profile.valid() || u.RequestHash != Hash(u.Request) ||
 		u.InputBound != len(u.Request)+4096 || u.InputBound > u.Profile.InputLimit ||
-		u.MaxCost != int64(u.InputBound)*u.Profile.InputNanoPerToken || p.MaxCost <= u.MaxCost || p.Calls != 6 {
+		u.MaxCost != int64(u.InputBound)*u.Profile.InputNanoPerToken || p.MaxCost <= u.MaxCost || p.Calls != understandingExpectedCalls(p) {
 		return fault("invalid_plan", "The optional understanding allowance does not match its frozen contract.")
 	}
 	// Reassemble to guard route, state, rubric and policy, not just a self-hash.

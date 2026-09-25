@@ -112,6 +112,22 @@ func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
 			return err
 		}
 		advisory := a.Step == understandingStep && plan.Understanding != nil
+		if plan.interpreted() && a.Role == Assistant && !advisory {
+			profile, e := assistantStepProfile(plan, a.Step)
+			if e != nil {
+				return e
+			}
+			expectedModel = profile.ID
+			var policy struct {
+				Profile ModelProfile `json:"profile"`
+			}
+			if json.Unmarshal(a.Policy, &policy) != nil || Hash(raw(policy.Profile)) != Hash(raw(profile)) {
+				return fault("model_policy_changed", "The assistant invocation does not match its frozen profile.")
+			}
+			if e = checkAssistantRecovery(ctx, tx, o, plan, a); e != nil {
+				return e
+			}
+		}
 		if advisory {
 			expectedModel = plan.Understanding.Profile.Model
 		}
@@ -123,6 +139,9 @@ func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
 		}
 		if plan.AuthoringVersion >= 11 && (o.Kind == "message" || o.Kind == "build") {
 			allowed := advisory || a.Step == "route" || a.Step == "handler" || a.Step == "review" || a.Step == "repair" || a.Step == "review:repair"
+			if plan.interpreted() {
+				allowed = advisory || interpretedStepAllowed(a.Step)
+			}
 			if plan.Conversation != nil && plan.Conversation.Manual != nil {
 				allowed = a.Step == "review"
 			}
@@ -335,7 +354,7 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 		beforeState := cloneState(v.Document.ConversationState)
 		replyID := uuid.NewSHA1(o.ID, []byte("completion-message"))
 		receipt.MessageID, receipt.CommittedAt = replyID, timestamp()
-		if plan.AuthoringVersion >= 11 && artifact != nil {
+		if plan.AuthoringVersion >= 11 && artifact != nil && plan.Cycle == nil {
 			if acknowledgement := mutationAcknowledgement(receipt); acknowledgement != "" {
 				reply = acknowledgement
 			}
@@ -364,6 +383,21 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 		v.Document.Messages = append(v.Document.Messages, Message{Cards: cards, ID: replyID, Role: "assistant", Content: reply, CreatedAt: timestamp(), Origin: o.Kind, OperationID: &id, ArtifactID: artifactID, PreviewThreadID: plan.Submission.PreviewThreadID})
 		if artifact != nil {
 			v.Document.Artifacts = append(v.Document.Artifacts, *artifact)
+		}
+		if plan.Cycle != nil {
+			progress := &BuildProgress{CycleID: plan.Cycle.ID, Phase: "ready", ClarificationsUsed: plan.Cycle.ClarificationsUsed}
+			if artifact != nil {
+				progress.ArtifactID = &artifact.ID
+				progress.Sample = artifact.Sample
+			}
+			if receipt.Action == "clarify" {
+				if progress.ClarificationsUsed >= 1 {
+					return fault("question_budget", "The initial Build cycle cannot ask another question.")
+				}
+				progress.ClarificationsUsed++
+				progress.Phase = "clarifying"
+			}
+			v.Document.Build = progress
 		}
 		changes := []RequirementChange{}
 
@@ -421,6 +455,11 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 			}
 			v.Document.Interactions = append(v.Document.Interactions, InteractionReceipt{ID: a.IdempotencyKey, RequestHash: Hash(raw(a)), Revision: v.Revision + 1, Kind: a.Kind, Summary: reply})
 			v.Document.LastChange = &ConversationChange{ID: a.IdempotencyKey, Revision: v.Revision + 1, ScopeID: a.ScopeID, MessageID: replyID.String(), Summary: reply, BeforeState: beforeState, AfterStateHash: Hash(raw(v.Document.ConversationState)), BeforeArtifactID: latestArtifactID(v.Document), AfterArtifactID: latestArtifactID(v.Document)}
+			// An answer that creates tests is an authoring transaction. The
+			// state-only Undo control must not restore old memory over new tests.
+			if plan.interpreted() && artifact != nil {
+				v.Document.LastChange = nil
+			}
 		}
 		if plan.precise() && artifact != nil && plan.Artifact != nil && beforeState != nil && v.Document.ConversationState.Brief.ScopeID == beforeState.Brief.ScopeID && (receipt.Action == "edit_tests" || receipt.Action == "suggest_fix") {
 			v.Document.LastChange = &ConversationChange{ID: o.ID.String(), Revision: v.Revision + 1, ScopeID: beforeState.Brief.ScopeID, MessageID: replyID.String(), Summary: reply, BeforeArtifactID: &plan.Artifact.ID, AfterArtifactID: &artifact.ID, BeforeState: beforeState, AfterStateHash: Hash(raw(v.Document.ConversationState))}

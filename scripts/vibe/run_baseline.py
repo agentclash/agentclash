@@ -11,6 +11,11 @@ from urllib.parse import urlparse
 ROOT=Path(__file__).resolve().parents[2]
 REQUIRED={
  "github.com/agentclash/agentclash/backend/internal/vibe": [
+  "TestRunQuoteBindsPurposeAndExecution", "TestSampleIdentityAndConcreteScope", "TestCoverageExpansionCannotRewriteBaseline",
+  "TestIntegrationVibeBuildStopPreventsContinuation", "TestIntegrationVibeBuildRetryRetainsQuestionBudget",
+  "TestIntegrationVibeBuildContextsDoNotInheritRules", "TestIntegrationVibeBuildOneQuestionThenUnknownRunsSample",
+  "TestIntegrationVibeBuildClearBriefCreatesRunnablePrototype", "TestIntegrationVibeBuildQuoteIsBoundAndCannotResetQuestionBudget",
+  "TestIntegrationVibeRunQuoteDoesNotExecuteAndBindsVersion", "TestIntegrationVibeBuildVagueThenUnknownDoesNotInterview",
   "TestVibeCoverageUsesOnlyAcceptedCurrentRules", "TestIntegrationVibeKeepBriefAndPermissions", "TestIntegrationVibeKeepExactPackAndRun", "TestIntegrationEvidenceCorrectionsAndSavedCheckPrivacy",
   "TestVibeUnderstandingAdmissionAndIsolation", "TestVibeUnderstandingStrictResponse", "TestVibeUnderstandingRetainsEvidenceNotJokes",
   "TestIntegrationVibeUnderstandingModesAndFallback", "TestIntegrationVibeUnderstandingRecoveryAndBudget",
@@ -35,7 +40,7 @@ REQUIRED={
   "TestIntegrationCrashKeepsJournaledEvidenceWithoutReexecution",
   "TestIntegrationStopMidProviderAndNoRetry", "TestIntegrationAuthoringIncludesActiveAcceptedArtifact",
   "TestVibeIntegrationReviewedHandoffAndAtomicCompletion"],
- "github.com/agentclash/agentclash/backend/internal/api": ["TestVibeExpiredAuthenticationHTTP", "TestVibeIntegrationCoreJourneyKeepsRunnableTests", "TestVibeIntegrationSaveUsesSelectedModels", "TestVibeRetryCooldownHTTP", "TestVibeGroundedResultsAndRegrade", "TestVibeIntegrationDescriptionToHonestScorecardAndSave", "TestVibeInteractionHTTPBoundary"],
+ "github.com/agentclash/agentclash/backend/internal/api": ["TestVibeIntegrationTwoDoorImportsPreserveEvidence", "TestVibeExpiredAuthenticationHTTP", "TestVibeIntegrationCoreJourneyKeepsRunnableTests", "TestVibeIntegrationSaveUsesSelectedModels", "TestVibeRetryCooldownHTTP", "TestVibeGroundedResultsAndRegrade", "TestVibeIntegrationDescriptionToHonestScorecardAndSave", "TestVibeInteractionHTTPBoundary"],
  "github.com/agentclash/agentclash/backend/internal/vibe/interaction": [
   "TestContractsAcceptSupportedWireData", "TestContractsRejectAmbiguousOrAuthorityBearingData",
   "TestContractsRejectMalformedAndFutureVersions"],

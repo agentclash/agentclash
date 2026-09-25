@@ -84,6 +84,15 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 	default:
 		return provider.Response{}, fault("invalid_role", "Invalid model role.")
 	}
+	var frozenAssistant *ModelProfile
+	if role == Assistant && plan.interpreted() {
+		var e error
+		frozenAssistant, e = assistantStepProfile(plan, step)
+		if e != nil {
+			return provider.Response{}, e
+		}
+		model = frozenAssistant.ID
+	}
 	p, err := g.Config.Profile(model)
 	if err != nil {
 		return provider.Response{}, err
@@ -91,7 +100,10 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 	if err = validateGradingDispatch(plan, role, p); err != nil {
 		return provider.Response{}, err
 	}
-	if plan.AuthoringVersion >= 11 && role == Assistant && plan.Conversation != nil && plan.Conversation.Profile != nil && Hash(raw(p)) != Hash(raw(*plan.Conversation.Profile)) {
+	if frozenAssistant == nil && plan.Conversation != nil {
+		frozenAssistant = plan.Conversation.Profile
+	}
+	if plan.AuthoringVersion >= 11 && role == Assistant && frozenAssistant != nil && Hash(raw(p)) != Hash(raw(*frozenAssistant)) {
 		return provider.Response{}, fault("model_policy_changed", "The model settings changed after this request was prepared. Retry it with the current settings; your previous work is unchanged.")
 	}
 	// max_price is in USD per million tokens. Nano-USD/token divided by 1000.
@@ -101,6 +113,9 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 	}
 	temp := 0.0
 	req := provider.Request{ProviderKey: "openrouter", CredentialReference: "vibe-hosted", Model: model, Messages: messages, MaxOutputTokens: l.OutputTokens, Temperature: &temp, ResponseFormat: format, OpenRouterPolicy: policy, MaxResponseBytes: MaxProviderResponseBytes, StepTimeout: time.Duration(l.ProviderSeconds) * time.Second}
+	if p.OmitTemperature {
+		req.Temperature = nil
+	}
 	if p.DisableReasoning {
 		req.Reasoning = raw(map[string]bool{"enabled": false})
 	}
@@ -112,7 +127,7 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 	if err != nil {
 		return provider.Response{}, err
 	}
-	a := Attempt{ID: uuid.New(), OperationID: o.ID, Step: step, Role: role, Model: model, Policy: raw(map[string]any{"profile": p, "routing": json.RawMessage(policy), "temperature": temp, "context": count, "response_format": format, "reasoning": req.Reasoning}), RequestHash: Hash(raw(messages)), InputBound: count.UpperBound, MaxOutput: req.MaxOutputTokens, MaxCost: cost}
+	a := Attempt{ID: uuid.New(), OperationID: o.ID, Step: step, Role: role, Model: model, Policy: raw(map[string]any{"profile": p, "routing": json.RawMessage(policy), "temperature": req.Temperature, "context": count, "response_format": format, "reasoning": req.Reasoning}), RequestHash: Hash(raw(messages)), InputBound: count.UpperBound, MaxOutput: req.MaxOutputTokens, MaxCost: cost}
 	if plan.Grading != nil {
 		var policyFields map[string]any
 		_ = json.Unmarshal(a.Policy, &policyFields)
@@ -208,7 +223,7 @@ func (g *Gateway) Call(ctx context.Context, o Operation, step string, role Role,
 	if err == nil && response.FinishReason == provider.FinishReasonMaxTokens {
 		issue = &Fault{Code: "output_truncated", Message: "The model reached its output limit. The result has not been treated as a completed evaluation."}
 	}
-	if err == nil && plan.Grading != nil && (role == Target || role == Evaluator) && response.ProviderModelID != "" && response.ProviderModelID != model {
+	if err == nil && (plan.Grading != nil && (role == Target || role == Evaluator) || plan.interpreted() && role == Assistant) && response.ProviderModelID != "" && response.ProviderModelID != model {
 		issue = &Fault{Code: "model_policy_changed", Message: "The provider returned a different model than the one pinned for this check. This response was not graded."}
 	}
 	if actual != nil && *actual > a.MaxCost {

@@ -252,7 +252,7 @@ func main() {
 			os.Exit(1)
 		}
 		defer vw.Stop()
-		go vibe.DispatchOutbox(ctx, temporalClient, vibeStore, logger)
+		go vibe.DispatchOutbox(ctx, temporalClient, vibeStore, logger, vibeService)
 	}
 	// Accounting recovery continues even when new Vibe execution is disabled.
 	go vibe.ReconcileLoop(ctx, vibeStore, vibeConfig, logger)

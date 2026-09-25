@@ -144,6 +144,25 @@ func TestIntegrationVibeConversationStateJourney(t *testing.T) {
 		t.Fatal("later revalidation lost the short answer context", err)
 	}
 }
+
+func TestIntegrationVibeCurrentMessageCitationDoesNotAdoptDialogue(t *testing.T) {
+	s, v, _ := memoryService(t)
+	v, op := memoryExecute(t, s, v, "drin vodka hewhe", func(req provider.Request) any {
+		var input taskInput
+		if err := json.Unmarshal([]byte(req.Messages[1].Content), &input); err != nil {
+			t.Fatal(err)
+		}
+		return reliableRoute{Intent: "chat", Reply: "Ha, I'm here when you're ready.", SourceMessageIDs: []string{input.CurrentRequest.ID}, Memory: &memoryUpdate{}}
+	})
+	if op.State != Completed || len(v.Document.Artifacts) != 0 || v.Document.SourceConfirmation != nil {
+		t.Fatal("redundant current-message citation failed or adopted a joke")
+	}
+	for _, fact := range v.Document.ConversationState.Brief.Facts {
+		if fact.Status == "stated" || fact.Status == "accepted" {
+			t.Fatal("joke became a fact")
+		}
+	}
+}
 func TestIntegrationVibeConversationStateAtomicity(t *testing.T) {
 	ctx := context.Background()
 	s, v, _ := memoryService(t)
