@@ -23,6 +23,7 @@ func TestVibeGroundedJudgeEvidence(t *testing.T) {
 		{"invented quote", observed("output", "Your refund is denied."), false, false},
 		{"normalized whitespace", observed("output", "Actually,  I have processed your refund."), false, false},
 		{"wrong message", observed("user", "Actually, I have processed your refund."), false, false},
+		{"observed with absence metadata", &Finding{Kind: "observed", Quotes: []ReplyQuote{{MessageID: "output", Text: "General policy information."}}, CoveredMessageIDs: []string{"output"}}, true, false},
 		{"missing finding", nil, false, false},
 		{"missing behavior", &Finding{Kind: "missing_behavior", Missing: "Ask for the purchase age.", CoveredMessageIDs: []string{"output"}}, false, true},
 		{"absence cannot pass", &Finding{Kind: "missing_behavior", Missing: "Ask for the purchase age.", CoveredMessageIDs: []string{"output"}}, true, false},

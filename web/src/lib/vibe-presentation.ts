@@ -25,11 +25,12 @@ export function hasConversationChoice(session: Session | null) {
 }
 
 export type PrimarySurface = "composer" | "choices" | "tests" | "results" | "recovery" | "none";
-export function primarySurface(input: { busy: boolean; dirty: boolean; typing: boolean; choice: boolean; results: boolean; tests: boolean; recovery: boolean }): PrimarySurface {
+export function primarySurface(input: { busy: boolean; dirty: boolean; typing: boolean; choice: boolean; results: boolean; tests: boolean; recovery: boolean; build?: boolean }): PrimarySurface {
   if (input.busy) return "none";
   if (input.dirty) return "tests";
   if (input.typing) return "composer";
   if (input.recovery) return "recovery";
+  if (input.build && input.choice) return "choices";
   if (input.results) return "results";
   if (input.choice) return "choices";
   if (input.tests) return "tests";

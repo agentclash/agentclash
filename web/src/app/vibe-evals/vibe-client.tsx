@@ -1,18 +1,22 @@
 "use client";
 
+import { readBuildDrafts, writeBuildDrafts } from "@/lib/vibe-build-drafts";
+
 import type { ConversationAction } from "@/lib/vibe-conversation";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAccessToken, useAuth } from "@workos-inc/authkit-nextjs/components";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PrototypeTrial } from "@/components/vibe/prototype-trial";
 import { EvaluationWorkspace } from "@/components/vibe/evaluation-workspace";
+import { buildVersion, workingBuildArtifact } from "@/lib/vibe-build-timeline";
+import { EvaluationNavigation, evaluationIdentity } from "@/components/vibe/evaluation-navigation";
 import { pendingQuickCheck, quickCheckClientID } from "@/lib/vibe-quick-check";
 import { VibeButton } from "@/components/vibe/vibe-button";
-import { sendOnEnter } from "@/components/vibe/composer-keyboard";
 import { Requirements } from "@/components/vibe/requirements";
 import { CreditsDialog } from "@/components/vibe/credits-dialog";
-import { ArrowUp, Paperclip } from "lucide-react";
+import { Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,7 +25,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ArtifactPanel, ModelSelect } from "@/components/vibe/artifact-panel";
-import { AgentReply } from "@/components/vibe/safe-markdown";
 import { createApiClient } from "@/lib/api/client";
 import type { UserMeResponse } from "@/lib/api/types";
 import {
@@ -117,11 +120,19 @@ export function VibeClient() {
   const [session, setSession] = useState<Session | null>(null);
   const activeSessionRef = useRef<string | undefined>(requestedSessionID || undefined);
   const contextDrafts = useRef<Record<string, string>>({});
+  const contextTrials = useRef<Record<string, { artifact?: string; thread: string; target: string; trying: boolean }>>({});
   const contextChoice = useRef<{ root: string; door: "build" | "test"; id: string } | undefined>(undefined);
+  // Choosing the wrong door is reversible until a context has any saved work.
+  // The server intentionally keeps context creation append-only; hide the empty
+  // abandoned child locally instead of deleting history or changing its API.
+  const entryOrigin = useRef<string | undefined>(undefined);
+  const discardedContextIDs = useRef(new Set<string>());
   const [contexts, setContexts] = useState<Session[]>([]);
+  const [newEvaluation, setNewEvaluation] = useState(false);
+  const [savedWorkOpen, setSavedWorkOpen] = useState(false);
   const [buildQuote, setBuildQuote] = useState<BuildQuote>();
   const [quoteError, setQuoteError] = useState("");
-  const [runQuote, setRunQuote] = useState<{ quote: RunQuote; kind: string; baseline?: Operation; extra: { evidence_set_id?: string; artifact_id?: string; purpose?: "regrade" }; sessionID: string; revision: number }>();
+  const [runQuote, setRunQuote] = useState<{ quote: RunQuote; kind: string; baseline?: Operation; extra: { client_id?: string; additional_examples?: number; evidence_set_id?: string; artifact_id?: string; purpose?: "regrade" }; content?: string; sessionID: string; revision: number }>();
   const [config, setConfig] = useState<VibeConfig | null>(null);
   const [configError, setConfigError] = useState(false);
   const [models, setModels] = useState<Models>(defaultModels);
@@ -216,8 +227,8 @@ export function VibeClient() {
         a.kind === "test_plan",
     ) || [];
   const latestArtifact = artifacts.at(-1);
-  const artifact =
-    selectedArtifactID ? artifacts.find((a) => a.id === selectedArtifactID) : latestArtifact;
+  const workingArtifact = session?.document.evaluation?.door === "build" ? workingBuildArtifact(session) : undefined;
+  const artifact = selectedArtifactID ? artifacts.find((a) => a.id === selectedArtifactID) : session?.document.evaluation?.door === "build" ? workingArtifact : latestArtifact;
   const dirtyArtifact =
     !!artifact &&
     (dirtyArtifactID === artifact.id || checksDirtyID === artifact.id);
@@ -231,8 +242,10 @@ export function VibeClient() {
     artifact?.test_plan?.scenarios.length ||
     evaluation?.scenarios?.length ||
     evaluation?.examples.length;
-  const emptyTrialKey = `new:${artifact?.id || ""}:${models.target}`;
-  const trialDraftKey = threadID || emptyTrialKey;
+  const buildJourney = session?.document.evaluation?.door === "build";
+  const trialPrefix = `${session?.id || "new"}:${artifact?.id || ""}:`;
+  const emptyTrialKey = `${trialPrefix}new:${models.target}`;
+  const trialDraftKey = threadID ? `${trialPrefix}${threadID}` : emptyTrialKey;
   const trialText = trialBuffers[trialDraftKey] || "";
   const trialHistory = [
     ...new Map(
@@ -272,10 +285,10 @@ export function VibeClient() {
   ) {
     setView(next);
     currentView.current = next;
-    if (agent) setSelectedArtifactID(agent);
+    if (agent && !(buildJourney && next === "checks")) setSelectedArtifactID(agent);
     const url = new URL(window.location.href);
     url.searchParams.set("view", next);
-    if (agent) url.searchParams.set("agent", agent);
+    if (agent && !(buildJourney && next === "checks")) url.searchParams.set("agent", agent);
     else url.searchParams.delete("agent");
     if (thread) url.searchParams.set("thread", thread);
     else url.searchParams.delete("thread");
@@ -284,7 +297,7 @@ export function VibeClient() {
   function newTrial() {
     setThreadID("");
     setTrialBuffers((old) => ({ ...old, [emptyTrialKey]: "" }));
-    navigate("try", artifact?.id, "");
+    navigate(buildJourney && view !== "try" ? "build" : "try", artifact?.id, "");
   }
   function changeModels(next: Models) {
     if (next.target !== models.target) {
@@ -314,6 +327,10 @@ export function VibeClient() {
     ? "Your current model choices differ from those recorded when this agent was saved."
     : "Saved model choices are unknown. Your current model choices are not confirmed as saved.";
   const sessionID = session?.id;
+  useEffect(() => {
+    if (sessionID && buildJourney && !loadingSession && activeSessionRef.current === sessionID)
+      writeBuildDrafts(sessionID, content, trialBuffers);
+  }, [sessionID, buildJourney, loadingSession, content, trialBuffers]);
   const attachedWorkspace = session?.workspace_id;
   useEffect(() => {
     if (attachedWorkspace) setWorkspace(attachedWorkspace);
@@ -382,6 +399,13 @@ export function VibeClient() {
         if (alive) {
           activeSessionRef.current = v.id;
           setSession(v);
+          if (v.document.evaluation?.door === "build") {
+            const draft = readBuildDrafts(v.id);
+            if (draft) {
+              if (composerEdits.current === 0) setContent(draft.guide);
+              setTrialBuffers(old => ({ ...draft.trials, ...old }));
+            }
+          }
           const message = v.document.messages.find(
             (m) => m.preview_thread_id === restoredThread.current,
           );
@@ -556,16 +580,30 @@ export function VibeClient() {
     if (id && !requestedRunID) setRequestedRunID(id);
   }, [session?.document.build?.check_id, requestedRunID]);
   function adoptContext(v: Session) {
-    if (sessionID) contextDrafts.current[sessionID] = content;
+    setNewEvaluation(false);
+    if (sessionID) {
+      contextDrafts.current[sessionID] = content;
+      contextTrials.current[sessionID] = { artifact: artifact?.id, thread: threadID, target: models.target, trying: view === "try" };
+    }
     activeSessionRef.current = v.id;
     composerEdits.current++;
-    setContent(contextDrafts.current[v.id] || "");
-    setSession(v); setModels(v.document.models); setSelectedArtifactID(null); setThreadID("");
-    setView("build"); currentView.current = "build"; setRequestedRunID(undefined);
+    setContent(contextDrafts.current[v.id] ?? readBuildDrafts(v.id)?.guide ?? "");
+    const previousTrial = contextTrials.current[v.id];
+    const restoreTrial = previousTrial && v.document.artifacts.some(a => a.id === previousTrial.artifact);
+    setSession(v); setModels(restoreTrial ? { ...v.document.models, target: previousTrial.target } : v.document.models);
+    setSelectedArtifactID(restoreTrial ? previousTrial.artifact || null : null);
+    setThreadID(restoreTrial ? previousTrial.thread : "");
+    const nextView = restoreTrial && previousTrial.trying ? "try" : "build";
+    setView(nextView); currentView.current = nextView; setRequestedRunID(undefined);
     setError(""); setConnection(""); setPendingMessage(undefined); setPendingEdit(undefined);
     setChecksDirtyID(null); setDirtyArtifactID(null); setBuildQuote(undefined); setRunQuote(undefined);
     buildEvidence.current = undefined;
-    window.history.replaceState(null, "", `/vibe-evals?session=${v.id}`);
+    const restoredURL = new URL("/vibe-evals", window.location.origin);
+    restoredURL.searchParams.set("session", v.id);
+    restoredURL.searchParams.set("view", nextView);
+    if (restoreTrial && previousTrial.artifact) restoredURL.searchParams.set("agent", previousTrial.artifact);
+    if (restoreTrial && previousTrial.thread) restoredURL.searchParams.set("thread", previousTrial.thread);
+    window.history.replaceState(null, "", restoredURL.pathname + restoredURL.search);
   }
   async function chooseDoor(door: "build" | "test") {
     if (sending.current || pending || uncertain || dirtyArtifact) return;
@@ -573,6 +611,7 @@ export function VibeClient() {
     try {
       const current = await ensureSession();
       const root = current.document.evaluation?.chat_id || current.id;
+      entryOrigin.current ||= current.id;
       if (!contextChoice.current || contextChoice.current.root !== root || contextChoice.current.door !== door)
         contextChoice.current = { root, door, id: crypto.randomUUID() };
       const child = await vibeFetch<Session>(`/sessions/${root}/evaluations`, await token(), { method: "POST", body: JSON.stringify({client_id: contextChoice.current.id, door}) });
@@ -587,6 +626,36 @@ export function VibeClient() {
     catch (e) { setError((e as Error).message); }
     finally { setPending(false); }
   }
+  function openNewEvaluation() {
+    if (sessionID) entryOrigin.current = sessionID;
+    setNewEvaluation(true);
+  }
+  const canChangeDoor = !!session?.document.evaluation &&
+    session.document.messages.length === 0 &&
+    session.document.artifacts.length === 0 &&
+    session.operations.length === 0 &&
+    !(session.document.evidence_sets?.length) &&
+    !session.document.build &&
+    !pending && !uncertain && !dirtyArtifact;
+  async function changeDoor() {
+    if (!canChangeDoor || !sessionID) return;
+    const origin = entryOrigin.current;
+    if (!origin || origin === sessionID) {
+      setNewEvaluation(true);
+      return;
+    }
+    setPending(true);
+    try {
+      const previous = await vibeFetch<Session>(`/sessions/${origin}`, await token());
+      discardedContextIDs.current.add(sessionID);
+      adoptContext(previous);
+      setNewEvaluation(true);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setPending(false);
+    }
+  }
   function sendMessage(text = content, context?: { viewed_run_id: string }) {
     if (buildStart && !quoteMatches) return;
     void submit("message", text, undefined, {
@@ -595,13 +664,23 @@ export function VibeClient() {
       ...(testJourney || session?.document.evaluation ? {} : { quick_check: !buildEvidence.current }),
     });
   }
+  async function requestPreparation(text: string, count: number, artifactID: string) {
+    if (!session || busy) return;
+    const clientID = crypto.randomUUID();
+    const extra = { client_id: clientID, additional_examples: count, artifact_id: artifactID };
+    setPending(true); setError("");
+    try {
+      const quote = await vibeFetch<RunQuote>(`/sessions/${session.id}/run-quote`, await token(), {method:"POST", body:JSON.stringify({ ...extra, revision:session.revision, kind:"message", content:text, models, evaluation_first:true, test_journey:true })});
+      setRunQuote({quote, kind:"message", content:text, extra, sessionID:session.id, revision:session.revision});
+    } catch(e) { setError((e as Error).message); } finally {setPending(false);}
+  }
   async function requestRun(baseline?: Operation, evidenceID?: string, purpose?: "regrade") {
-    const extra = { ...(purpose ? {purpose} : {}), ...(evidenceID ? { evidence_set_id: evidenceID } : {}), ...(baseline?.source?.kind === "provided_conversations" ? { artifact_id: baseline.source.artifact_id } : {}) };
+    const extra = { artifact_id: artifact?.id, ...(purpose ? {purpose} : {}), ...(evidenceID ? { evidence_set_id: evidenceID } : {}), ...(baseline?.source?.kind === "provided_conversations" ? { artifact_id: baseline.source.artifact_id } : {}) };
     const kind = baseline ? "retest" : "check";
     if (!session?.document.evaluation) { void submit(kind, "", baseline, extra); return; }
     setPending(true);
     try {
-      const q = await vibeFetch<RunQuote>(`/sessions/${session.id}/run-quote`, await token(), { method: "POST", body: JSON.stringify({ client_id: crypto.randomUUID(), revision: session.revision, kind, models: baseline ? {...models, evaluator: baseline.models.evaluator} : models, artifact_id: artifact?.id, baseline_id: baseline?.id, approve_artifact: true, ...extra }) });
+      const q = await vibeFetch<RunQuote>(`/sessions/${session.id}/run-quote`, await token(), { method: "POST", body: JSON.stringify({ client_id: crypto.randomUUID(), revision: session.revision, kind, models: baseline ? {...models, evaluator: baseline.models.evaluator} : models, baseline_id: baseline?.id, approve_artifact: true, ...extra }) });
       setRunQuote({ quote: q, kind, baseline, extra, sessionID: session.id, revision: session.revision });
     } catch (e) { setError((e as Error).message); }
     finally { setPending(false); }
@@ -637,17 +716,17 @@ export function VibeClient() {
     if (kind === "playground") {
       if (!text.trim() || legacyTrial) return;
       previewThread = threadID || crypto.randomUUID();
-      trialKey = previewThread;
+      trialKey = `${trialPrefix}${previewThread}`;
       if (!threadID) {
-        trialEdits.current[previewThread] =
+        trialEdits.current[trialKey] =
           trialEdits.current[emptyTrialKey] || 0;
         setTrialBuffers((old) => ({
           ...old,
-          [previewThread!]: text,
+          [trialKey!]: text,
           [emptyTrialKey]: "",
         }));
         setThreadID(previewThread);
-        navigate("try", artifact?.id, previewThread);
+        navigate(buildJourney && view !== "try" ? "build" : "try", artifact?.id, previewThread);
       }
     }
     const composerVersion = trialKey
@@ -683,7 +762,7 @@ export function VibeClient() {
           models: baseline
             ? { ...models, evaluator: baseline.models.evaluator }
             : models,
-          ...(artifact ? { artifact_id: artifact.id } : {}),
+          ...((kind === "message" && workingArtifact) ? { artifact_id: workingArtifact.id } : artifact ? { artifact_id: artifact.id } : {}),
           ...(baseline ? { baseline_id: baseline.id } : {}),
           ...(kind === "message" &&
           buildEvidence.current?.artifact === artifact?.id
@@ -795,7 +874,7 @@ export function VibeClient() {
     );
     if (admitted && navigatedRunID.current !== requestedRunID) {
       navigatedRunID.current = requestedRunID;
-      navigate("checks", admitted.source?.artifact_id);
+      if (session?.document.evaluation?.door !== "build") navigate("checks", admitted.source?.artifact_id);
     }
     // Navigation happens only when the requested run is present, never against
     // the previous result while a new run is still being admitted.
@@ -955,6 +1034,7 @@ export function VibeClient() {
       }
       if (
         fields.agent_prompt !== undefined ||
+        fields.build_from_policy === true ||
         fields.evaluation !== undefined ||
         fields.case_changes !== undefined ||
         fields.criteria !== undefined ||
@@ -1218,36 +1298,40 @@ export function VibeClient() {
     }
   }
 
-  const composerIsTrial = view === "try";
-  const setComposerText = (text: string) => {
-    if (composerIsTrial) {
-      const key = trialDraftKey;
-      trialEdits.current[key] = (trialEdits.current[key] || 0) + 1;
-      setTrialBuffers((old) => ({ ...old, [key]: text }));
-    } else {
-      composerEdits.current++;
-      setContent(text);
-    }
+  const activeContext = session?.document.evaluation ? evaluationIdentity(session) : null;
+  const setTrialText = (text: string) => {
+    const key = trialDraftKey;
+    trialEdits.current[key] = (trialEdits.current[key] || 0) + 1;
+    setTrialBuffers(old => ({ ...old, [key]: text }));
   };
   return (
     <main className="vibe-workspace dark flex h-dvh flex-col overflow-hidden font-sans">
       <Dialog open={!!runQuote} onOpenChange={open => { if (!open) setRunQuote(undefined); }}>
-        <DialogContent><DialogTitle>{runQuote?.baseline ? "Rerun the same examples" : "Try these examples"}</DialogTitle>
-          <DialogDescription>{runQuote?.quote.cases} examples · up to {dollars(runQuote?.quote.max_cost_nano_usd || 0)}. Usually a few minutes; provider queues can take longer. {runQuote?.baseline ? "The same examples and grading stay fixed. Earlier results are kept." : "This run uses the selected instructions or recorded replies."}</DialogDescription>
-          <VibeButton variant="primary" disabled={busy || runQuote?.sessionID !== sessionID || runQuote?.revision !== session?.revision} onClick={() => { if (!runQuote) return; const q=runQuote; setRunQuote(undefined); void submit(q.kind,"",q.baseline,{...q.extra,run_quote_id:q.quote.id}); }}>Run {runQuote?.quote.cases} examples</VibeButton>
+        <DialogContent><DialogTitle>{runQuote?.kind === "message" ? "Prepare tougher situations" : runQuote?.baseline ? "Rerun the same examples" : "Try these examples"}</DialogTitle>
+          <DialogDescription>{runQuote?.kind === "message" ? `${runQuote.extra.additional_examples} new situations to prepare` : `${runQuote?.quote.cases} examples`} · up to {dollars(runQuote?.quote.max_cost_nano_usd || 0)}. Usually a few minutes; provider queues can take longer. {runQuote?.kind === "message" ? "Includes preparation, review and bounded repairs. Your existing cases stay unchanged; running the new batch has a separate estimate." : runQuote?.baseline ? "The same examples and grading stay fixed. Earlier results are kept." : "This run uses the selected instructions or recorded replies."}</DialogDescription>
+          <VibeButton variant="primary" disabled={busy || runQuote?.sessionID !== sessionID || runQuote?.revision !== session?.revision} onClick={() => { if (!runQuote) return; const q=runQuote; setRunQuote(undefined); void submit(q.kind,q.content || "",q.baseline,{...q.extra,run_quote_id:q.quote.id}); }}>{runQuote?.kind === "message" ? "Prepare these situations" : `Run ${runQuote?.quote.cases} examples`}</VibeButton>
         </DialogContent>
       </Dialog>
-      <EvaluationWorkspace
+      <EvaluationNavigation enabled={config?.two_door} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
+        choosing={newEvaluation} disabled={pending || uncertain || dirtyArtifact}
+        onNew={openNewEvaluation}
+        onSwitch={id => { if (id === sessionID) setNewEvaluation(false); else void switchContext(id); }}
+        onSettings={() => setSettingsOpen(true)} onSavedWork={() => setSavedWorkOpen(true)}>
+      {navigationToggle => <EvaluationWorkspace
         key={session?.id || "entry"}
         twoDoor={config?.two_door}
+        navigationToggle={navigationToggle}
+        newEvaluation={newEvaluation}
+        contextNavigationBlocked={pending || uncertain || dirtyArtifact}
+        onCancelNew={() => setNewEvaluation(false)}
+        canChangeDoor={canChangeDoor}
+        onChangeDoor={() => void changeDoor()}
+        savedWorkOpen={savedWorkOpen}
+        onSavedWorkOpenChange={setSavedWorkOpen}
         onDoor={door => void chooseDoor(door)}
-        contextControl={session?.document.evaluation && <div className="vibe-context-bar">
-          <label className="sr-only" htmlFor="active-evaluation">Active evaluation</label>
-          <select id="active-evaluation" aria-label="Active evaluation" value={session.id} disabled={pending || uncertain || dirtyArtifact} onChange={e => void switchContext(e.target.value)}>
-            {(contexts.some(c => c.id === session.id) ? contexts : [...contexts, session]).map(c => { const a = c.document.artifacts.at(-1); return <option key={c.id} value={c.id}>{a?.title || (c.document.evaluation?.door === "build" ? "New prototype" : "Your agent")} · {a?.kind === "conversation_evaluation" ? "Saved conversations" : a?.agent_prompt ? `Prototype v${c.document.artifacts.filter((item,index,list) => item.agent_prompt && item.agent_prompt !== list[index-1]?.agent_prompt).length}` : "Setup"}</option>; })}
-          </select>
-          <details><summary>New evaluation</summary><div className="flex flex-wrap gap-2 py-2"><VibeButton disabled={pending || uncertain || dirtyArtifact} onClick={() => void chooseDoor("build")}>Build an agent</VibeButton><VibeButton disabled={pending || uncertain || dirtyArtifact} onClick={() => void chooseDoor("test")}>Test what you have</VibeButton></div></details>
-        </div>}
+        contextControl={activeContext && <p className="vibe-context-label" aria-label="Active evaluation" title={`${activeContext.title} · ${activeContext.scope}`}>
+          <span className="vibe-context-dot" aria-hidden="true" /><span className="vibe-context-title">{activeContext.title}</span><span>· {activeContext.scope}</span>
+        </p>}
         history={contexts.filter(c => c.id !== sessionID && c.document.artifacts.length > 0)}
         onSwitchContext={id => void switchContext(id)}
         buildStart={buildStart}
@@ -1296,7 +1380,7 @@ export function VibeClient() {
         onTougher={(text, count, artifactID) => {
           navigate("build");
           setSelectedArtifactID(null);
-          void submit("message", text, undefined, {additional_examples:count, artifact_id:artifactID});
+          void requestPreparation(text, count, artifactID);
         }}
         onMessage={(text, operation, instructions) => {
           navigate("build");
@@ -1373,7 +1457,7 @@ export function VibeClient() {
                 <p>
                   {saved
                     ? testJourney
-                      ? "Your tests are saved. Find them in History whenever you update your agent."
+                      ? "Your tests are saved. Find them in Saved work whenever you update your agent."
                       : "Your agent and checks are saved."
                     : savedModelNotice}
                 </p>
@@ -1533,139 +1617,22 @@ export function VibeClient() {
           ) : null
         }
         preview={
-          <section className="space-y-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <VibeButton variant="quiet" onClick={() => navigate("build")}>
-                ← Back to Vibe Evals
-              </VibeButton>
-              <VibeButton disabled={busy} onClick={newTrial}>
-                New conversation
-              </VibeButton>
-            </div>
-            <div>
-              <h1 className="text-2xl font-semibold">Try a message</h1>
-              <p className="mt-2 text-sm vibe-muted">
-                Talking to the agent from these instructions. Text only; live
-                tools are not connected.
-              </p>
-            </div>
-            {trialHistory.length > 0 && (
-              <label className="block text-sm vibe-muted">
-                Conversation{" "}
-                <select
-                  className="ml-2 rounded-lg border border-[var(--vibe-border)] bg-transparent p-2"
-                  aria-label="Trial conversation"
-                  value={
-                    trialHistory.some((t) => t.id === threadID) ? threadID : ""
-                  }
-                  disabled={busy}
-                  onChange={(e) => {
-                    const next = trialHistory.find(
-                      (t) => t.id === e.target.value,
-                    );
-                    setThreadID(e.target.value);
-                    if (next?.model)
-                      setModels((old) => ({ ...old, target: next.model! }));
-                    navigate("try", artifact?.id, e.target.value);
-                  }}
-                >
-                  <option value="">New conversation</option>
-                  {trialHistory.map((t, i) => (
-                    <option key={t.id} value={t.id}>
-                      {t.legacy ? "Earlier trial" : "Conversation"} {i + 1}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            <div
-              role="log"
-              aria-label="Trial conversation"
-              className="space-y-6"
-            >
-              {trialMessages.map((m) => (
-                <div
-                  key={m.id}
-                  className={
-                    m.role === "user"
-                      ? "vibe-message vibe-message-user"
-                      : "vibe-message"
-                  }
-                >
-                  <p className="mb-2 text-xs vibe-muted">
-                    {m.role === "user" ? "You" : "Agent"}
-                  </p>
-                  <AgentReply>{m.content}</AgentReply>
-                </div>
-              ))}
-            </div>
-            {!trialMessages.length &&
-              (evaluation?.scenarios?.[0]?.input ||
-                evaluation?.examples[0]) && (
-                <VibeButton
-                  variant="quiet"
-                  onClick={() =>
-                    setComposerText(
-                      evaluation?.scenarios?.[0]?.input ||
-                        evaluation?.examples[0] ||
-                        "",
-                    )
-                  }
-                >
-                  Use an example message
-                </VibeButton>
-              )}
-            {legacyTrial ? (
-              <p className="text-sm vibe-muted">
-                Start a new conversation to try follow-ups. This earlier trial
-                used one message.
-              </p>
-            ) : (
-              <form
-                className="vibe-composer"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (trialText.trim()) void submit("playground", trialText);
-                }}
-              >
-                <label
-                  htmlFor="vibe-trial-message"
-                  className="mb-2 block text-xs vibe-muted"
-                >
-                  Message your agent
-                </label>
-                <textarea
-                  id="vibe-trial-message"
-                  aria-label="Message your agent"
-                  value={trialText}
-                  onChange={(e) => setComposerText(e.target.value)}
-                  placeholder="Send a customer message…"
-                  onKeyDown={(e) =>
-                    sendOnEnter(e, () => {
-                      if (!busy && !dirtyArtifact && trialText.trim()) {
-                        void submit("playground", trialText);
-                      }
-                    })
-                  }
-                />
-                <div className="vibe-composer-actions">
-                  <span className="text-xs vibe-muted">
-                    Separate from your conversation with Vibe Evals
-                  </span>
-                  <VibeButton
-                    variant="primary"
-                    type="submit"
-                    disabled={busy || dirtyArtifact || !trialText.trim()}
-                  >
-                    Send to agent
-                    <ArrowUp />
-                  </VibeButton>
-                </div>
-              </form>
-            )}
-          </section>
+          <PrototypeTrial inline={buildJourney} dock={buildJourney} title={artifact?.title} version={session && artifact ? buildVersion(session, artifact) : undefined} busy={busy || dirtyArtifact} text={trialText}
+            onText={setTrialText} onSend={() => void submit("playground", trialText)}
+            onBack={() => navigate("build")} onNew={newTrial} thread={threadID}
+            history={trialHistory} messages={trialMessages}
+            model={config?.models?.find(m => m.id === models.target)}
+            example={evaluation?.scenarios?.[0]?.input || evaluation?.examples[0]}
+            onThread={id => {
+              const next = trialHistory.find(t => t.id === id);
+              setThreadID(id);
+              if (next?.model) setModels(old => ({ ...old, target: next.model! }));
+              navigate(buildJourney && view !== "try" ? "build" : "try", artifact?.id, id);
+            }} />
         }
       />
+      }
+      </EvaluationNavigation>
       <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
         <DialogContent className="vibe-workspace max-h-[85vh] overflow-y-auto">
           <DialogTitle>Settings and details</DialogTitle>

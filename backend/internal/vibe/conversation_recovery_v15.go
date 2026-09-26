@@ -43,7 +43,7 @@ func validateInterpretedAllowance(p Plan, cfg Config) error {
 		return err
 	}
 	expectedCost, expectedCalls := 8*cost, 8
-	if p.AuthoringVersion == buildAuthoringVersion {
+	if p.AuthoringVersion == legacyBuildAuthoringVersion || p.taskBuild() {
 		expectedCost, expectedCalls = 10*cost, 10
 	}
 	if r := p.AssistantRecovery; r != nil {
@@ -79,9 +79,10 @@ func prepareInterpretedPlan(p *Plan, cfg Config, primary ModelProfile) error {
 	p.AuthoringVersion = interpretedAuthoringVersion
 	p.Conversation.ContractVersion = "vibe-v15"
 	p.Calls = 8 // three initial/repair pairs plus one candidate patch/review pair
-	if p.Cycle != nil && p.Cycle.Step != "check" {
+	if p.Cycle != nil && p.Cycle.Step != "check" || p.Document.Evaluation != nil && p.Document.Evaluation.Door == "build" {
 		p.AuthoringVersion = buildAuthoringVersion
-		p.Conversation.ContractVersion = "vibe-v16"
+		p.Conversation.ContractVersion = "vibe-v18"
+		p.Conversation.ValidatorVersion = EntailmentSuiteValidatorVersion
 		p.Calls = 10 // v15 preparation plus an independent prototype/repair pair
 	}
 	l := p.limits()

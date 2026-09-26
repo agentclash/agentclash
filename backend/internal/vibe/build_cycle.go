@@ -9,16 +9,25 @@ import (
 	"time"
 )
 
-const buildAuthoringVersion = 16
+const legacyBuildAuthoringVersion = 16
+const assertionBuildAuthoringVersion = 17
+const buildAuthoringVersion = 18
+
+func (p Plan) taskBuild() bool {
+	return p.AuthoringVersion == assertionBuildAuthoringVersion || p.AuthoringVersion == buildAuthoringVersion
+}
+
+func (p Plan) continuingBuild() bool { return p.AuthoringVersion == buildAuthoringVersion }
 
 type BuildProgress struct {
-	CycleID            uuid.UUID  `json:"cycle_id"`
-	Phase              string     `json:"phase"`
-	ClarificationsUsed int        `json:"clarifications_used"`
-	ArtifactID         *uuid.UUID `json:"artifact_id,omitempty"`
-	CheckID            *uuid.UUID `json:"check_id,omitempty"`
-	Sample             string     `json:"sample,omitempty"`
-	Error              *Fault     `json:"error,omitempty"`
+	RespondingToQuestion string     `json:"responding_to_question,omitempty"`
+	CycleID              uuid.UUID  `json:"cycle_id"`
+	Phase                string     `json:"phase"`
+	ClarificationsUsed   int        `json:"clarifications_used"`
+	ArtifactID           *uuid.UUID `json:"artifact_id,omitempty"`
+	CheckID              *uuid.UUID `json:"check_id,omitempty"`
+	Sample               string     `json:"sample,omitempty"`
+	Error                *Fault     `json:"error,omitempty"`
 }
 type BuildCyclePlan struct {
 	ID                 uuid.UUID `json:"id"`

@@ -94,6 +94,9 @@ func (s *Service) PrepareSuiteEdit(ctx context.Context, actor string, id uuid.UU
 	if err = s.freezeReviewVersion(&p); err != nil {
 		return Operation{}, err
 	}
+	if s.Config.InterpretedAuthoring && v.Document.Evaluation != nil && v.Document.Evaluation.Door == "build" {
+		p.Conversation.ValidatorVersion = EntailmentSuiteValidatorVersion
+	}
 	l = p.limits()
 	if p.Conversation.Policy == nil {
 		if p.sourceBoundary() {
@@ -168,7 +171,10 @@ func (s *Service) currentArtifactPolicy(d Document, a Artifact) bool {
 			return false
 		}
 	}
-	return validArtifactPolicy(d, a) && (!s.Config.ReliableAuthoring || a.Validation.ValidatorVersion == s.Config.reviewVersion())
+	if s.Config.InterpretedAuthoring && d.Evaluation != nil && d.Evaluation.Door == "build" {
+		return validArtifactPolicy(d, a) && a.Validation.ValidatorVersion == EntailmentSuiteValidatorVersion
+	}
+	return validArtifactPolicy(d, a) && (!s.Config.ReliableAuthoring || a.Validation.ValidatorVersion == s.Config.reviewVersion() || d.Evaluation != nil && d.Evaluation.Door == "build" && assertionSuiteVersion(a.Validation.ValidatorVersion))
 }
 func (s *Service) prepareRunValidation(p *Plan, v Session) error {
 	if p.Artifact != nil && s.verifiedSample(*p.Artifact, p.limits()) {
@@ -229,6 +235,9 @@ func (s *Service) prepareRunValidation(p *Plan, v Session) error {
 	p.AuthoringVersion = 11
 	if err := s.freezeReviewVersion(p); err != nil {
 		return err
+	}
+	if s.Config.InterpretedAuthoring && v.Document.Evaluation != nil && v.Document.Evaluation.Door == "build" {
+		p.Conversation.ValidatorVersion = EntailmentSuiteValidatorVersion
 	}
 	profile, err := s.Config.Profile(p.Submission.Models.Assistant)
 	if err != nil {

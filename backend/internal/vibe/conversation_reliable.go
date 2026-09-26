@@ -20,8 +20,14 @@ func reliableHandlerPrompt(p Plan) string {
 	if p.sourceBoundary() {
 		prompt = strings.Replace(prompt, "Never reproduce quotations or invent source IDs.", "Never invent source IDs.", 1) + sourceAuthorPrompt
 	}
-	if p.reviewVersion() != LatestSuiteValidatorVersion {
+	if p.reviewVersion() != LatestSuiteValidatorVersion && !assertionSuiteVersion(p.reviewVersion()) {
 		return prompt
+	}
+	if p.continuingBuild() {
+		prompt += "\nThe selected sample is an independently authored demonstration contract: use its scoped desired_rules as assumptions, not user policy. For a harder batch, add a small useful number of distinct situations decided by those rules; preserve every existing case, expectation, grading setting and instruction. Respect an explicit requested count. Do not ask for actual policy just to continue the sample. Missing policy boundaries remain gaps, never invented expectations. A new actual rule starts a separate baseline without sample assumptions."
+	}
+	if p.taskBuild() {
+		prompt += "\nFor this first Build batch, choose distinct decisions supported by the supplied rules. Independently exercise OR alternatives where possible. Keep each expectation short, with one assertion per sentence. Include ONLY requirements justified by these sources, including negative requirements. Do not add generic refunds, PDFs, privacy or integration prohibitions to unrelated tasks. Runtime limitations belong to the prototype harness, not the business score. Never copy authoring instructions into the agent prompt."
 	}
 	return prompt + `
 For newly written expected answers under an ask-only-for-missing-information rule, put each required question in a simple separate sentence: "Ask for <field name>." Use the exact field names from the user's rule. For already supplied facts, omit a request or say "Do not ask for <field name>." Put other expected behavior in separate sentences. Preserve the user's meaning and scenario facts; do not rewrite unrelated existing cases merely to change their style.`
@@ -486,12 +492,15 @@ func (r *Runner) buildReliableCandidate(output []byte, intent string, o Operatio
 					// IDs are assigned deterministically by the server. A model's
 					// guessed key must neither overwrite a case nor waste a repair.
 					cmd.CaseChanges[i].CaseKey = ""
-					if p.Submission.AdditionalExamples == 0 && !hasCurrentExampleEvidence(cmd.Rules, p) {
+					if p.Submission.AdditionalExamples == 0 && !p.continuingBuild() && !hasCurrentExampleEvidence(cmd.Rules, p) {
 						return nil, policy, 0, fmt.Errorf("include the requested addition as a case-specific rule with kind=example evidence from the current request; preserve existing business rules")
 					}
 				}
 			}
 			criteria := policyGradingCriteria(cmd.Rules)
+			if p.Conversation.Policy != nil && p.Conversation.Policy.SampleBasis != "" {
+				criteria = samplePrototype(p.Conversation.Policy.SampleBasis).SuccessCriteria
+			}
 			cmd.Criteria = &criteria
 		}
 		bp, err := patchTestSuite(p.Artifact.Blueprint, cmd.CaseChanges, cmd.Criteria, p.limits(), o.ID)
@@ -543,6 +552,16 @@ func (r *Runner) buildReliableCandidate(output []byte, intent string, o Operatio
 		policy, err = reconcilePolicy(rules, p, o, intent == "prepare_tests")
 		if err != nil {
 			return nil, policy, 0, err
+		}
+	}
+	if p.continuingBuild() && intent != "suggest_fix" {
+		if policy.SampleBasis != "" {
+			candidate.Sample, candidate.SampleBasis = policy.SampleBasis, &policy
+		} else {
+			candidate.Sample, candidate.SampleBasis = "", nil
+			if p.Conversation.Policy == nil || !sameJSON(raw(policy.Rules), raw(p.Conversation.Policy.Rules)) {
+				candidate.AgentPrompt = ""
+			}
 		}
 	}
 	return &candidate, policy, changed, nil

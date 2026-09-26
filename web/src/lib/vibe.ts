@@ -51,6 +51,7 @@ export type EvaluationProposal = {
 };
 export type Artifact = {
   sample?: string;
+  sample_basis?: { sample_basis: string; rules: { id: string; statement: string }[] };
   scope_note?: string;
   unavailable_reason?: string;
   policy_id?: string;
@@ -186,7 +187,7 @@ export type Session = {
   saved_models?: Models;
   document: {
     evaluation?: { id: string; chat_id: string; door: "build" | "test" };
-    build?: { cycle_id: string; phase: string; clarifications_used: number; artifact_id?: string; check_id?: string; sample?: string; error?: { code: string; message: string } };
+    build?: { responding_to_question?: string; cycle_id: string; phase: string; clarifications_used: number; artifact_id?: string; check_id?: string; sample?: string; error?: { code: string; message: string } };
     conversation_state?: ConversationState;
     last_change?: ConversationChange;
     policies?: {

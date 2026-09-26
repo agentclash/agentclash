@@ -376,12 +376,13 @@ func (h *VibeHandler) edit(w http.ResponseWriter, r *http.Request) {
 			Examples        []string            `json:"examples"`
 			SuccessCriteria string              `json:"success_criteria"`
 		} `json:"evaluation,omitempty"`
-		Revision      int64      `json:"revision"`
-		ArtifactID    *uuid.UUID `json:"artifact_id,omitempty"`
-		AgentPrompt   *string    `json:"agent_prompt,omitempty"`
-		RequirementID *uuid.UUID `json:"requirement_id,omitempty"`
-		Status        string     `json:"status,omitempty"`
-		Statement     *string    `json:"statement,omitempty"`
+		Revision        int64      `json:"revision"`
+		ArtifactID      *uuid.UUID `json:"artifact_id,omitempty"`
+		AgentPrompt     *string    `json:"agent_prompt,omitempty"`
+		BuildFromPolicy bool       `json:"build_from_policy,omitempty"`
+		RequirementID   *uuid.UUID `json:"requirement_id,omitempty"`
+		Status          string     `json:"status,omitempty"`
+		Statement       *string    `json:"statement,omitempty"`
 	}
 	if err = vibeBody(w, r, v.Anonymous, &input); err != nil {
 		vibeError(w, err)
@@ -389,6 +390,10 @@ func (h *VibeHandler) edit(w http.ResponseWriter, r *http.Request) {
 	}
 	// Suite edits requiring inference leave Store.Edit's transaction and enter
 	// the same admitted validation workflow as conversational changes.
+	if input.BuildFromPolicy && (input.ArtifactID == nil || input.AgentPrompt != nil || input.Dismissed != nil || input.Expectations != nil || input.PreviewConsent != nil || input.TestScenarios != nil || input.Evaluation != nil || input.CaseChanges != nil || input.Criteria != nil || input.RequirementID != nil) {
+		vibeError(w, &vibe.Fault{Code: "invalid_request", Message: "Recover one saved prototype at a time."})
+		return
+	}
 	if input.ArtifactID != nil && (input.CaseChanges != nil || input.Criteria != nil || input.Evaluation != nil) {
 		for _, a := range v.Document.Artifacts {
 			if a.ID != *input.ArtifactID || !a.IsTestSuite() || (!h.Service.Config.ReliableAuthoring && a.Provenance != "ai_generated" && a.Validation == nil && a.PolicyID == nil) {
@@ -501,6 +506,13 @@ func (h *VibeHandler) edit(w http.ResponseWriter, r *http.Request) {
 						}
 						s.Document.Artifacts = append(s.Document.Artifacts, copy)
 						return nil
+					}
+					if input.BuildFromPolicy {
+						instructions, err := vibe.RecoverBuildInstructions(s.Document, *a)
+						if err != nil {
+							return err
+						}
+						input.AgentPrompt = &instructions
 					}
 					if input.AgentPrompt != nil {
 						if strings.TrimSpace(*input.AgentPrompt) == "" || len(vibe.PreviewPrompt(*input.AgentPrompt)) > vibe.LimitsFor(s.Anonymous).MessageBytes {

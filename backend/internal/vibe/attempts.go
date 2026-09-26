@@ -357,6 +357,12 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 		if plan.AuthoringVersion >= 11 && artifact != nil && plan.Cycle == nil {
 			if acknowledgement := mutationAcknowledgement(receipt); acknowledgement != "" {
 				reply = acknowledgement
+				if plan.continuingBuild() && artifact.AgentPrompt != "" {
+					reply = "The updated version is ready to try. Review the change below, then check its replies."
+					if artifact.Sample != "" {
+						reply = "The tougher checks are ready. They use the same sample assumptions; your earlier results are kept."
+					}
+				}
 			}
 		}
 		artifactID := plan.Submission.ArtifactID
@@ -383,6 +389,13 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 		v.Document.Messages = append(v.Document.Messages, Message{Cards: cards, ID: replyID, Role: "assistant", Content: reply, CreatedAt: timestamp(), Origin: o.Kind, OperationID: &id, ArtifactID: artifactID, PreviewThreadID: plan.Submission.PreviewThreadID})
 		if artifact != nil {
 			v.Document.Artifacts = append(v.Document.Artifacts, *artifact)
+			if plan.continuingBuild() && v.Document.ActiveArtifactID == nil && artifact.AgentPrompt != "" {
+				if saved := activeBuildArtifactID(v.Document); saved != nil {
+					v.Document.ActiveArtifactID = saved
+				} else {
+					v.Document.ActiveArtifactID = &artifact.ID
+				}
+			}
 		}
 		if plan.Cycle != nil {
 			progress := &BuildProgress{CycleID: plan.Cycle.ID, Phase: "ready", ClarificationsUsed: plan.Cycle.ClarificationsUsed}
@@ -396,6 +409,9 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 				}
 				progress.ClarificationsUsed++
 				progress.Phase = "clarifying"
+			}
+			if plan.taskBuild() && artifact == nil && receipt.Action != "clarify" {
+				progress.Phase = "blocked"
 			}
 			v.Document.Build = progress
 		}

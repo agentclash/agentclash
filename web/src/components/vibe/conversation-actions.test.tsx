@@ -67,10 +67,10 @@ it("binds Undo to its saved receipt and hides it when a newer turn arrives", asy
   session.document.conversation_state!.through_message_id = questionID;
   await render(session); expect(button("Undo")).toBeUndefined();
 });
-it("disables controls while busy and hides other-scope or legacy questions", async () => {
+it("retires choices while busy and hides other-scope or legacy questions", async () => {
   const session = fixture(); const onAction = await render(session, undefined, true);
-  expect(button("14 days").disabled).toBe(true);
-  await act(async () => button("14 days").click()); expect(onAction).not.toHaveBeenCalled();
+  expect(button("14 days")).toBeUndefined();
+  expect(onAction).not.toHaveBeenCalled();
   session.document.conversation_state!.pending_question!.scope_id = questionID;
   await render(session); expect(node.querySelector("button")).toBeNull();
   delete session.document.conversation_state!.actions_version;

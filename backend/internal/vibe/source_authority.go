@@ -305,6 +305,12 @@ func reconcileSourcedPolicy(rules []PolicyRule, p Plan, o Operation, newScope bo
 	if err := validateMemoryPolicyEvidence(p, rules); err != nil {
 		return PolicySnapshot{}, err
 	}
+	if old := p.Conversation.Policy; old != nil && old.SampleBasis != "" {
+		if !sameJSON(raw(old.Rules), raw(rules)) {
+			return PolicySnapshot{}, fmt.Errorf("preserve the sample assumptions; real business rules require a separate version")
+		}
+		return *old, nil
+	}
 	policy := PolicySnapshot{ID: deterministicID(o.ID, "policy"), ScopeID: deterministicID(o.ID, "scope"), SourceMessageID: p.sourceMessageID(), SourceVersion: SourcePolicyVersion, Rules: rules}
 	if p.stateful() {
 		var err error
@@ -387,6 +393,9 @@ func projectedRuleSources(rules []PolicyRule, sources []SourceBlock) []SourceBlo
 }
 
 func verifiedPolicySources(d Document, policy PolicySnapshot) ([]SourceBlock, error) {
+	if policy.SampleBasis != "" {
+		return verifiedSampleSources(d, policy)
+	}
 	if policy.SourceVersion != SourcePolicyVersion || len(policy.Sources) == 0 {
 		return nil, sourceReviewRequired()
 	}
@@ -435,6 +444,8 @@ func sourceReviewRequired() error {
 // Shared grading is executable policy, not an author-written success summary.
 // Explicit examples keep their case-specific expectations and must not silently
 // become global obligations for every test.
+const policyGradingPreamble = "Follow these rules where applicable to the case:\n"
+
 func policyGradingCriteria(rules []PolicyRule) string {
 	clauses := []string{}
 	for _, rule := range rules {
@@ -445,7 +456,7 @@ func policyGradingCriteria(rules []PolicyRule) string {
 			}
 		}
 	}
-	return "Follow these rules where applicable to the case:\n" + strings.Join(clauses, "\n")
+	return policyGradingPreamble + strings.Join(clauses, "\n")
 }
 
 func hasCurrentExampleEvidence(rules []PolicyRule, p Plan) bool {
@@ -471,5 +482,9 @@ func policyGradingMatches(blueprint json.RawMessage, policy PolicySnapshot) bool
 			Assertion string `json:"assertion"`
 		} `json:"judges"`
 	}
-	return json.Unmarshal(blueprint, &root) == nil && len(root.Judges) == 1 && root.Judges[0].Assertion == ScenarioCriteriaPrefix+policyGradingCriteria(policy.Rules)
+	criteria := policyGradingCriteria(policy.Rules)
+	if policy.SampleBasis != "" {
+		criteria = samplePrototype(policy.SampleBasis).SuccessCriteria
+	}
+	return json.Unmarshal(blueprint, &root) == nil && len(root.Judges) == 1 && root.Judges[0].Assertion == ScenarioCriteriaPrefix+criteria
 }

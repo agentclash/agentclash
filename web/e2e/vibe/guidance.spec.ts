@@ -33,7 +33,8 @@ for (const width of [320, 390, 768, 1280, 1440]) {
     });
     await page.goto(`/vibe-evals?session=${session.id}`);
     const example = page.getByRole("region", { name: "Illustrative test" });
-    await expect(example).toBeVisible(); await expect(example).toContainText("Example only");
+    // AuthKit finishes its initial session check on the reused dev server.
+    await expect(example).toBeVisible({ timeout: 15000 }); await expect(example).toContainText("Example only");
     await expect(example).toContainText("Nothing was run");
     await expect(page.getByRole("group", { name: question.text })).toBeVisible();
     await page.getByRole("button", { name: "Hide example", exact: true }).click();

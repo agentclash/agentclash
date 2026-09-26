@@ -516,7 +516,7 @@ function CopyOriginalInputs({
 // the same grading contract was used. Hashes come from the admitted server plan.
 export function comparableGrades(operation: Operation, baseline?: Operation) {
   return !!baseline && operation.baseline_id === baseline.id &&
-    operation.grading?.version === 1 && baseline.grading?.version === 1 &&
+    (operation.grading?.version === 1 || operation.grading?.version === 2) && baseline.grading?.version === operation.grading.version &&
     !!operation.grading.hash && operation.grading.hash === baseline.grading.hash &&
     operation.source?.kind === baseline.source?.kind;
 }

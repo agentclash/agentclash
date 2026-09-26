@@ -28,6 +28,7 @@ type PolicyRule struct {
 	SourceBlockIDs []string       `json:"source_block_ids"`
 }
 type PolicySnapshot struct {
+	SampleBasis     string           `json:"sample_basis,omitempty"`
 	QuestionAnswers []QuestionAnswer `json:"question_answers,omitempty"`
 	SourceVersion   string           `json:"source_version,omitempty"`
 	Sources         []SourceBlock    `json:"sources,omitempty"`
@@ -84,6 +85,10 @@ func originalBlock(id uuid.UUID, content string) SourceBlock {
 	return SourceBlock{ID: id.String(), MessageID: id, Text: content, Hash: Hash([]byte(content))}
 }
 func policyFor(d Document, a *Artifact) *PolicySnapshot {
+	if a != nil && a.SampleBasis != nil {
+		copy := *a.SampleBasis
+		return &copy
+	}
 	if a == nil || a.PolicyID == nil {
 		return nil
 	}

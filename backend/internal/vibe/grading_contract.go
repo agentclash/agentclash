@@ -48,7 +48,15 @@ func (g GradingContract) fingerprint() string {
 	return Hash(raw(g))
 }
 func gradingSupported(g *GradingContract) bool {
-	return g != nil && g.Version == 1 && g.Hash == g.fingerprint() && g.Parser == gradingParserVersion && g.Schema == "judge-finding-json-v1" && g.Normalization == gradingNormalizationVersion && g.Aggregation == "all-checks-v1" && g.PromptHash == Hash([]byte(groundedJudgeInstruction+groundedSingleInstruction+groundedConversationInstruction))
+	return g != nil && (g.Version == 1 || g.Version == 2) && g.Hash == g.fingerprint() && g.Parser == gradingParserVersion && g.Schema == "judge-finding-json-v1" && g.Normalization == gradingNormalizationVersion && g.Aggregation == "all-checks-v1" && g.PromptHash == gradingPromptHash(g.Version)
+}
+
+func gradingPromptHash(version int) string {
+	prompt := groundedJudgeInstruction + groundedSingleInstruction + groundedConversationInstruction
+	if version == 2 {
+		prompt += groundedFindingShapeInstruction
+	}
+	return Hash([]byte(prompt))
 }
 
 func (s *Service) freezeGrading(p *Plan) error {
@@ -60,6 +68,9 @@ func (s *Service) freezeGrading(p *Plan) error {
 		return err
 	}
 	g := &GradingContract{Version: 1, Schema: "judge-finding-json-v1", Parser: gradingParserVersion, Normalization: gradingNormalizationVersion, Aggregation: "all-checks-v1", PromptHash: Hash([]byte(groundedJudgeInstruction + groundedSingleInstruction + groundedConversationInstruction)), Evaluator: modelExecution(profile, p.limits())}
+	if p.Artifact.Validation != nil && assertionSuiteVersion(p.Artifact.Validation.ValidatorVersion) {
+		g.Version, g.PromptHash = 2, gradingPromptHash(2)
+	}
 	if p.Evidence != nil {
 		g.CriteriaHash = Hash(raw(p.Artifact.ConversationEvaluation.Expectations))
 		g.TestsHash = Hash(raw(evidenceComparisonInputs(*p.Evidence)))

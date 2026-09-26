@@ -17,7 +17,12 @@ export function useComposerAutosize(
     const resize = () => {
       if (disposed) return;
       input.style.height = "auto";
-      input.style.height = `${Math.min(input.scrollHeight, compact ? 160 : 240)}px`;
+      // A wrapped hint is not user content. It must not expand an empty input.
+      const placeholder = input.placeholder;
+      input.placeholder = "";
+      const viewport = window.visualViewport?.height || window.innerHeight;
+      input.style.height = `${Math.min(input.scrollHeight, compact ? 160 : 240, Math.max(44, viewport * 0.24))}px`;
+      input.placeholder = placeholder;
     };
     resize();
     const observer = typeof ResizeObserver === "undefined" ? undefined : new ResizeObserver(() => {
@@ -27,7 +32,8 @@ export function useComposerAutosize(
       resize();
     });
     observer?.observe(input);
+    window.visualViewport?.addEventListener("resize", resize);
     void document.fonts?.ready.then(resize);
-    return () => { disposed = true; observer?.disconnect(); };
+    return () => { disposed = true; observer?.disconnect(); window.visualViewport?.removeEventListener("resize", resize); };
   }, [ref, content, compact, visible, placement]);
 }

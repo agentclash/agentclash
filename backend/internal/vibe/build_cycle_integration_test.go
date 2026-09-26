@@ -59,7 +59,7 @@ func TestSampleIdentityAndConcreteScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := Artifact{Sample: "returns", Blueprint: b}
+	a := Artifact{Sample: "returns", Blueprint: b, AgentPrompt: samplePrototype("returns").AgentPrompt}
 	if !s.verifiedSample(a, LimitsFor(true)) {
 		t.Fatal("server sample was not recognized")
 	}
@@ -100,7 +100,7 @@ func TestIntegrationVibeBuildRetryRetainsQuestionBudget(t *testing.T) {
 	job := "Build a returns assistant."
 	o, q := startBuild(t, s, v, job)
 	v = executeBuildFixture(t, s, o, func(provider.Request) any {
-		return interpretationFixture(askAction{Kind: "ask", Text: "Which returns qualify?", Purpose: "clarify_rule", Options: []string{}}, factObservation{Kind: "job", Quote: job})
+		return interpretationFixture(buildAskAction{askAction: askAction{Kind: "ask", Text: "Which returns qualify?", Purpose: "clarify_rule", Options: []string{}}, MissingFactType: "correctness_rule", WhyNeeded: "Eligibility requires a policy"}, factObservation{Kind: "job", Quote: job})
 	})
 	o, err := s.Prepare(ctx, v.Actor, v.ID, Submission{ClientID: uuid.New(), Revision: v.Revision, Kind: "message", Content: "I don't know", Models: DefaultModels(), TestJourney: true, CycleID: &q.ID})
 	if err != nil {
@@ -172,10 +172,14 @@ func startBuild(t *testing.T, s *Service, v Session, content string) (Operation,
 	ctx := context.Background()
 	q, err := s.QuoteBuild(ctx, v.Actor, v.ID, BuildQuoteRequest{Content: content, Models: DefaultModels()})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("quote: %+v", err)
 	}
 	o, err := s.Prepare(ctx, v.Actor, v.ID, Submission{ClientID: uuid.New(), Revision: v.Revision, Kind: "message", Content: content, Models: DefaultModels(), TestJourney: true, CycleID: &q.ID})
 	if err != nil {
+		var f *Fault
+		if errors.As(err, &f) {
+			t.Fatalf("prepare: %v context=%+v", err, f.Context)
+		}
 		t.Fatal(err)
 	}
 	return o, q
@@ -188,6 +192,10 @@ func executeBuildFixture(t *testing.T, s *Service, o Operation, answer func(prov
 		return provider.Response{OutputText: string(raw(answer(req))), Usage: provider.Usage{CostUSD: &cost}}, nil
 	})}}
 	if err := r.Execute(ctx, o.ID); err != nil {
+		var f *Fault
+		if errors.As(err, &f) {
+			t.Fatalf("execute: %v context=%+v", err, f.Context)
+		}
 		t.Fatal(err)
 	}
 	if err := r.Finalize(ctx, o.ID, nil); err != nil {
@@ -241,7 +249,7 @@ func TestIntegrationVibeBuildOneQuestionThenUnknownRunsSample(t *testing.T) {
 	job := "Build a returns assistant."
 	o, q := startBuild(t, s, v, job)
 	v = executeBuildFixture(t, s, o, func(provider.Request) any {
-		return interpretationFixture(askAction{Kind: "ask", Text: "Which returns qualify?", Purpose: "clarify_rule", Options: []string{}}, factObservation{Kind: "job", Quote: job})
+		return interpretationFixture(buildAskAction{askAction: askAction{Kind: "ask", Text: "Which returns qualify?", Purpose: "clarify_rule", Options: []string{}}, MissingFactType: "correctness_rule", WhyNeeded: "Eligibility requires a policy"}, factObservation{Kind: "job", Quote: job})
 	})
 	if v.Document.Build.ClarificationsUsed != 1 || v.Document.Build.Phase != "clarifying" {
 		t.Fatal("question budget was not persisted")
@@ -281,40 +289,51 @@ func TestIntegrationVibeBuildOneQuestionThenUnknownRunsSample(t *testing.T) {
 }
 
 func TestIntegrationVibeBuildClearBriefCreatesRunnablePrototype(t *testing.T) {
-	s, v := buildService(t)
-	job := "My agent helps with returns."
-	rule := "Only unopened items bought within 30 days qualify."
-	o, _ := startBuild(t, s, v, job+" "+rule)
-	calls := 0
-	v = executeBuildFixture(t, s, o, func(req provider.Request) any {
-		calls++
-		switch calls {
-		case 1:
-			return interpretationFixture(prepareAction{Kind: "prepare_tests", Count: 3}, factObservation{Kind: "job", Quote: job}, factObservation{Kind: "rule", Quote: rule})
-		case 2:
-			var input taskInput
-			_ = json.Unmarshal([]byte(req.Messages[1].Content), &input)
-			id := input.CurrentRequest.ID
-			return createSuiteCommand{Rules: []PolicyRule{{ID: "returns", Statement: rule, SourceBlockIDs: []string{id}, Evidence: []RuleEvidence{{SourceBlockID: id, Quote: rule, Kind: "requirement"}}}}, Tests: testSuiteProposal{Title: "Returns", Summary: "Unopened, within 30 days.", SuccessCriteria: rule, Scenarios: []TestScenario{{Input: "Unopened, 10 days.", Expected: "Eligible."}, {Input: "Opened, 10 days.", Expected: "Not eligible."}, {Input: "Unopened, 45 days.", Expected: "Not eligible."}}}}
-		case 3:
-			var input SuiteReviewInput
-			_ = json.Unmarshal([]byte(req.Messages[1].Content), &input)
-			return supportedSuiteReview(input)
-		case 4:
-			if strings.Contains(req.Messages[1].Content, "Eligible.") || strings.Contains(req.Messages[1].Content, "45 days") {
-				t.Fatal("expected answers reached prototype writer")
-			}
-			return map[string]string{"instructions": rule}
-		default:
-			t.Fatal("unexpected dispatch")
-			return nil
+	for _, repair := range []bool{false, true} {
+		name := "separate evidence"
+		if repair {
+			name = "repair compound job observation"
 		}
-	})
-	if v.Document.Build.ClarificationsUsed != 0 || v.Document.Build.Phase != "checking" {
-		t.Fatal("clear brief stopped early", string(raw(v.Document.Build)))
-	}
-	if len(v.Document.Artifacts) != 1 || v.Document.Artifacts[0].AgentPrompt == "" {
-		t.Fatal("prototype not runnable")
+		t.Run(name, func(t *testing.T) {
+			s, v := buildService(t)
+			job := "My agent helps with returns."
+			rule := "Only unopened items bought within 30 days qualify."
+			o, _ := startBuild(t, s, v, job+" "+rule)
+			calls, repairs := 0, 0
+			v = executeBuildFixture(t, s, o, func(req provider.Request) any {
+				calls++
+				if repair && calls == 1 {
+					repairs++
+					return interpretationFixture(prepareAction{Kind: "prepare_tests", Count: 3}, factObservation{Kind: "job", Quote: job + " " + rule})
+				}
+				switch calls - repairs {
+				case 1:
+					return interpretationFixture(prepareAction{Kind: "prepare_tests", Count: 3}, factObservation{Kind: "job", Quote: job}, factObservation{Kind: "rule", Quote: rule})
+				case 2:
+					var input taskInput
+					_ = json.Unmarshal([]byte(req.Messages[1].Content), &input)
+					id := input.CurrentRequest.ID
+					return createSuiteCommand{Rules: []PolicyRule{{ID: "returns", Statement: rule, SourceBlockIDs: []string{id}, Evidence: []RuleEvidence{{SourceBlockID: id, Quote: rule, Kind: "requirement"}}}}, Tests: testSuiteProposal{Title: "Returns", Summary: "Unopened, within 30 days.", SuccessCriteria: rule, Scenarios: []TestScenario{{Input: "Unopened, 10 days.", Expected: "Eligible."}, {Input: "Opened, 10 days.", Expected: "Not eligible."}, {Input: "Unopened, 45 days.", Expected: "Not eligible."}}}}
+				case 3:
+					var input SuiteReviewInput
+					_ = json.Unmarshal([]byte(req.Messages[1].Content), &input)
+					return supportedSuiteReview(input)
+				default:
+					t.Fatal("unexpected dispatch")
+					return nil
+				}
+			})
+			if v.Document.Build.ClarificationsUsed != 0 || v.Document.Build.Phase != "checking" {
+				t.Fatal("clear brief stopped early", string(raw(v.Document.Build)))
+			}
+			if len(v.Document.Artifacts) != 1 || v.Document.Artifacts[0].AgentPrompt == "" {
+				t.Fatal("prototype not runnable")
+			}
+			if calls != 3+repairs || !strings.Contains(v.Document.Artifacts[0].AgentPrompt, rule) || strings.Contains(v.Document.Artifacts[0].AgentPrompt, "45 days") {
+				t.Fatal("prototype must compile reviewed rules without an extra writer or answer-key leakage")
+			}
+
+		})
 	}
 }
 
@@ -337,7 +356,7 @@ func TestIntegrationVibeBuildQuoteIsBoundAndCannotResetQuestionBudget(t *testing
 		t.Fatal(err)
 	}
 	v = executeBuildFixture(t, s, o, func(provider.Request) any {
-		return interpretationFixture(askAction{Kind: "ask", Text: "Which returns qualify?", Purpose: "clarify_rule", Options: []string{}}, factObservation{Kind: "job", Quote: request.Content})
+		return interpretationFixture(buildAskAction{askAction: askAction{Kind: "ask", Text: "Which returns qualify?", Purpose: "clarify_rule", Options: []string{}}, MissingFactType: "correctness_rule", WhyNeeded: "Eligibility requires a policy"}, factObservation{Kind: "job", Quote: request.Content})
 	})
 	_, err = s.QuoteBuild(ctx, v.Actor, v.ID, request)
 	requireFault(t, err, "invalid_request")
@@ -404,7 +423,7 @@ func TestIntegrationVibeBuildVagueThenUnknownDoesNotInterview(t *testing.T) {
 		value.Answer = &answerObservation{Quote: "I don't know", Unknown: true}
 		return value
 	})
-	if v.Document.Build.ClarificationsUsed != 1 || v.Document.Build.Phase != "checking" || v.Document.Artifacts[0].Sample != "email" {
+	if v.Document.Build.ClarificationsUsed != 1 || v.Document.Build.Phase != "blocked" || len(v.Document.Artifacts) != 0 {
 		t.Fatal("vague request became another interview")
 	}
 }

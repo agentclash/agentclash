@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/google/uuid"
 	"strings"
 )
 
@@ -24,12 +25,20 @@ func prototypeSources(policy PolicySnapshot) []string {
 	return rules
 }
 func (r *Runner) preparePrototype(ctx context.Context, o Operation, p Plan, a *Artifact, policy PolicySnapshot, used *bool) error {
-	if p.Cycle == nil || p.Cycle.Step == "check" || a.AgentPrompt != "" {
+	if p.Cycle == nil && !p.continuingBuild() || p.Cycle != nil && p.Cycle.Step == "check" || a.AgentPrompt != "" {
 		return nil
 	}
 	rules := prototypeSources(policy)
 	if len(rules) == 0 {
 		return fault("rules_required", "The prototype needs a supported task or a labelled sample.")
+	}
+	if p.taskBuild() {
+		// The task already has reviewed original clauses. Compiling those
+		// directly avoids a second author inventing policy or copying its
+		// own harness instructions. No test inputs/answer keys are included.
+		a.AgentPrompt = PreviewPrompt("Help with the following job, following these supplied rules:\n\n" + strings.Join(rules, "\n"))
+		a.ScopeNote = prototypeScopeFor(strings.Join(rules, " "))
+		return nil
 	}
 	var instructions struct {
 		Instructions string `json:"instructions"`
@@ -55,6 +64,16 @@ func (r *Runner) preparePrototype(ctx context.Context, o Operation, p Plan, a *A
 // A fallback demonstration is a server-authored fixture, not a business rule
 // extracted from an unknown answer. Its policy never enters working memory.
 func samplePrototype(kind string) DraftProposal {
+	if kind == "email_sorting" {
+		return DraftProposal{TestsOnly: true, Title: "Sample email sorter", Summary: "Fictional sample rules, not your inbox policy.",
+			AgentPrompt:     PreviewPrompt("For this sample, label messages promising prizes or asking for bank details as Spam. Label order questions as Customer message. For other messages, say Unsure. Only suggest a label; do not move or send messages."),
+			SuccessCriteria: "Use the sample rules: prize promises or requests for bank details mean Spam; order questions mean Customer message. Other messages are unspecified.",
+			Scenarios: []TestScenario{
+				{Input: "You won a prize! Claim your gift now.", Expected: "Label this message Spam because it promises a prize."},
+				{Input: "Please send your bank account details to verify your account.", Expected: "Label this message Spam because it asks for bank details."},
+				{Input: "When will my order arrive?", Expected: "Label this message Customer message because it asks about an order."},
+			}}
+	}
 	if kind == "returns" {
 		return DraftProposal{TestsOnly: true, Title: "Sample returns assistant", Summary: "Sample policy, not your business policy.", AgentPrompt: PreviewPrompt("Sample shop policy: only unopened items bought within 30 days qualify for a return. Explain eligibility, ask only for missing purchase age or condition, and never claim to process a refund."), SuccessCriteria: "Follow this fictional sample policy only: unopened items within 30 days qualify; opened or older items do not. Ask only for missing purchase age or condition. Never claim a refund was processed.", Scenarios: []TestScenario{{Input: "My item is unopened and I bought it 10 days ago. Can I return it?", Expected: "Explain that it qualifies under the sample policy; do not claim to process a refund."}, {Input: "I opened it and bought it 10 days ago. Can I return it?", Expected: "Explain that opened items do not qualify under the sample policy."}, {Input: "I want to return something.", Expected: "Ask for purchase age and whether it is unopened, without deciding eligibility."}}}
 	}
@@ -96,32 +115,66 @@ func buildSampleKind(p Plan) string {
 		if f.Kind == "job" {
 			for _, s := range f.Sources {
 				job := strings.ToLower(s.Quote)
+				if p.taskBuild() {
+					return sampleKindForJob(job)
+				}
 				if strings.Contains(job, "return") || strings.Contains(job, "refund") {
 					return "returns"
 				}
 			}
 		}
 	}
+	if p.taskBuild() {
+		return ""
+	}
 	return "email"
+}
+
+func sampleKindForJob(job string) string {
+	job = strings.ToLower(job)
+	if strings.Contains(job, "refund") || strings.Contains(job, "returns") {
+		return "returns"
+	}
+	if strings.Contains(job, "spam") {
+		return "email_sorting"
+	}
+	if (strings.Contains(job, "email") || strings.Contains(job, "message")) && (strings.Contains(job, "draft") || strings.Contains(job, "repl")) {
+		return "email"
+	}
+	return ""
 }
 func (r *Runner) completeSamplePrototype(ctx context.Context, o Operation, p Plan) error {
 	kind := buildSampleKind(p)
+	if kind == "" {
+		p.Conversation.NextState.PendingQuestion = nil
+		p.Conversation.NextState.PendingPreparation = nil
+		return r.completeReliableDocument(ctx, o, p, "I don’t have enough information for a useful first version of this task yet. Your description is saved. Add the task and one rule it should follow when you’re ready; no prototype or checks were run.", nil, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "chat"}})
+	}
 	proposal := samplePrototype(kind)
 	blueprint, err := r.Service.Compiler.Draft(proposal, p.limits())
 	if err != nil {
 		return err
 	}
 	a := Artifact{ID: deterministicID(o.ID, "artifact"), Kind: "test_suite", Title: proposal.Title, Summary: proposal.Summary, AgentPrompt: proposal.AgentPrompt, Blueprint: blueprint, SourceMessageID: p.sourceMessageID(), CreatedAt: operationTime(o), Sample: kind, ScopeNote: prototypeScopeFor(proposal.AgentPrompt) + " Sample policy/data; unspecified business behavior is not tested.", Provenance: "server_sample"}
+	if p.continuingBuild() {
+		scope, _ := uuid.Parse(p.Conversation.NextState.Brief.ScopeID)
+		basis := samplePolicy(kind, scope)
+		a.SampleBasis = &basis
+	}
 	p.Conversation.NextState.PendingQuestion = nil
 	p.Conversation.NextState.PendingPreparation = nil
 	p.Cycle.Sample = kind
-	return r.completeReliableDocument(ctx, o, p, "Using a labelled sample demonstration. Your actual business rules remain unspecified.", &a, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "prepare_tests", CaseCount: 3, CommandHash: Hash(blueprint)}})
+	reply := "Using a labelled sample demonstration. Your actual business rules remain unspecified."
+	if p.continuingBuild() {
+		reply = "I’ll start with sample rules you can change: " + samplePrototype(kind).SuccessCriteria
+	}
+	return r.completeReliableDocument(ctx, o, p, reply, &a, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "prepare_tests", CaseCount: 3, CommandHash: Hash(blueprint)}})
 }
 
 func (s *Service) verifiedSample(a Artifact, l Limits) bool {
-	if a.Sample != "returns" && a.Sample != "email" {
+	if a.Sample != "returns" && a.Sample != "email" && a.Sample != "email_sorting" {
 		return false
 	}
 	expected, err := s.Compiler.Draft(samplePrototype(a.Sample), l)
-	return err == nil && sameJSON(expected, a.Blueprint)
+	return err == nil && a.AgentPrompt == samplePrototype(a.Sample).AgentPrompt && sameJSON(expected, a.Blueprint)
 }

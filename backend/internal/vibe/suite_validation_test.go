@@ -71,6 +71,15 @@ func suiteReviewFixture(t *testing.T) (json.RawMessage, SuiteReviewInput) {
 	return blueprint, input
 }
 
+func fixtureAssertionSupport(input SuiteReviewInput) AssertionSupport {
+	rule := input.Policy.Rules[0]
+	if len(rule.Evidence) > 0 {
+		e := rule.Evidence[0]
+		return AssertionSupport{RuleID: rule.ID, SourceBlockID: e.SourceBlockID, Quote: e.Quote}
+	}
+	return AssertionSupport{RuleID: rule.ID, SourceBlockID: input.Sources[0].ID, Quote: input.Sources[0].Text}
+}
+
 func supportedSuiteReview(input SuiteReviewInput) map[string]any {
 	finding := func(ids []string) SuiteReviewFinding {
 		return SuiteReviewFinding{Status: SuiteSupported, RuleIDs: ids, SourceBlockIDs: []string{input.Sources[0].ID}, Reason: "The expected behavior follows the stated facts and policy."}
@@ -85,7 +94,24 @@ func supportedSuiteReview(input SuiteReviewInput) map[string]any {
 	for _, c := range input.Cases {
 		cases = append(cases, SuiteCaseReview{CaseKey: c.CaseKey, SuiteReviewFinding: finding(ruleIDs)})
 	}
-	return map[string]any{"cases": cases, "rules": rules, "shared_criteria": finding(ruleIDs), "policy_reconciliation": finding(ruleIDs)}
+
+	reply := map[string]any{"cases": cases, "rules": rules, "shared_criteria": finding(ruleIDs), "policy_reconciliation": finding(ruleIDs)}
+	if assertionSuiteVersion(input.ValidatorVersion) {
+		reviews := []SuiteAssertionReview{}
+		for _, claim := range suiteAssertions(input) {
+			reviews = append(reviews, SuiteAssertionReview{ID: claim.ID, SuiteReviewFinding: finding(ruleIDs), Support: []AssertionSupport{fixtureAssertionSupport(input)}})
+		}
+		if input.ValidatorVersion == EntailmentSuiteValidatorVersion {
+			for i := range reviews {
+				reviews[i].Applicability = &AssertionApplicability{InputFacts: "Fixture facts", RuleDirection: "Explicit fixture rule implies this outcome", Explanation: "No other decision satisfies this fixture rule"}
+				if strings.HasPrefix(reviews[i].ID, "shared_criteria:") {
+					reviews[i].Applicability.InputFacts = "shared rule"
+				}
+			}
+		}
+		reply["assertions"] = reviews
+	}
+	return reply
 }
 
 func TestSuiteReviewRequiresCompleteGroundedEvidence(t *testing.T) {

@@ -42,6 +42,10 @@ it("gives one surface priority from actual state and explicit typing, without in
   expect(primarySurface({ ...state, tests: true })).toBe("tests");
   expect(primarySurface({ ...state, tests: true, choice: true })).toBe("choices");
   expect(primarySurface({ ...state, choice: true, results: true })).toBe("results");
+  // Inline historical results must not compete with the next Build question.
+  expect(primarySurface({ ...state, build: true, choice: true, results: true })).toBe("choices");
+  expect(primarySurface({ ...state, build: true, results: true, typing: true })).toBe("composer");
+  expect(primarySurface({ ...state, build: true, results: true, recovery: true })).toBe("recovery");
   expect(primarySurface({ ...state, results: true, recovery: true })).toBe("recovery");
   expect(primarySurface({ ...state, results: true, choice: true, typing: true })).toBe("composer");
   expect(primarySurface({ ...state, results: true, typing: true, dirty: true })).toBe("tests");

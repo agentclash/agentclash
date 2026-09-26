@@ -26,6 +26,9 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 		}
 	}
 	selected := sub.ArtifactID
+	if selected == nil && v.Document.Evaluation != nil && v.Document.Evaluation.Door == "build" {
+		selected = activeBuildArtifactID(v.Document)
+	}
 	if selected == nil && len(v.Document.Artifacts) > 0 {
 		id := v.Document.Artifacts[len(v.Document.Artifacts)-1].ID
 		selected = &id
@@ -109,6 +112,9 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 		}
 	}
 	p.Calls = 3 // Router, optional narrow handler, and one repair across the whole turn.
+	if s.Config.InterpretedAuthoring && v.Document.Evaluation != nil && v.Document.Evaluation.Door == "build" {
+		s.attachSampleBasis(&p, v)
+	}
 	if s.Config.ReliableAuthoring {
 		if err := prepareReliableContext(&p, v, s.Config.SourcePolicyVersion); err != nil {
 			return Operation{}, err

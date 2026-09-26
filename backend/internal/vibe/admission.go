@@ -192,7 +192,7 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 			allowedCalls := 5
 			if plan.interpreted() {
 				allowedCalls = 8
-				if plan.AuthoringVersion == buildAuthoringVersion {
+				if plan.AuthoringVersion == legacyBuildAuthoringVersion || plan.taskBuild() {
 					allowedCalls = 10
 				}
 				if plan.AssistantRecovery != nil {
@@ -287,6 +287,9 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		v.Document.Models = sub.Models
 		if plan.Cycle != nil {
 			progress := &BuildProgress{CycleID: plan.Cycle.ID, Phase: "preparing", ClarificationsUsed: plan.Cycle.ClarificationsUsed, Sample: plan.Cycle.Sample}
+			if plan.taskBuild() && plan.Cycle.Step == "answer" && v.Document.ConversationState != nil && v.Document.ConversationState.PendingQuestion != nil {
+				progress.RespondingToQuestion = v.Document.ConversationState.PendingQuestion.ID
+			}
 			if plan.Cycle.Step == "check" {
 				progress.Phase = "checking"
 				progress.ArtifactID = sub.ArtifactID

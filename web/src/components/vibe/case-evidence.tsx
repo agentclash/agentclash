@@ -29,6 +29,9 @@ export function CaseEvidence({
   onFixCopied,
   origin,
   concise = false,
+  exampleFirst = false,
+  onEvidence,
+  prefetch = false,
 }: {
   summary: CaseResult;
   load: (key: string) => Promise<CaseResult>;
@@ -43,6 +46,9 @@ export function CaseEvidence({
   onFixCopied?: () => void;
   origin?: EvidenceOrigin;
   concise?: boolean;
+  exampleFirst?: boolean;
+  onEvidence?: (evidence: CaseResult) => void;
+  prefetch?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const [refresh, setRefresh] = useState(0);
@@ -54,14 +60,16 @@ export function CaseEvidence({
   } | null>(null);
   // Bodies are redacted from snapshots. A persisted event can recover output
   // without changing verdicts, so include its version in the evidence cache key.
-  // Identical SSE snapshots still reuse the cache; closed rows never fetch.
+  // Identical SSE snapshots reuse the cache; closed rows fetch only when explicitly prefetched.
   const metadata = JSON.stringify([evidenceVersion, summary]);
   const loader = useRef(load);
+  const received = useRef(onEvidence);
   useEffect(() => {
     loader.current = load;
-  }, [load]);
+    received.current = onEvidence;
+  }, [load, onEvidence]);
   useEffect(() => {
-    if (!open) return;
+    if (!open && !prefetch) return;
     let current = true;
     void loader
       .current(summary.case_key)
@@ -75,7 +83,10 @@ export function CaseEvidence({
           throw new Error(
             "Saved evidence could not be read for this result. Try loading it again.",
           );
-        if (current) setSettled({ metadata, refresh, result });
+        if (current) {
+          setSettled({ metadata, refresh, result });
+          received.current?.(result);
+        }
       })
       .catch((e: Error) => {
         if (current) setSettled({ metadata, refresh, error: e.message });
@@ -83,7 +94,7 @@ export function CaseEvidence({
     return () => {
       current = false;
     };
-  }, [open, metadata, summary.case_key, summary.version, refresh]);
+  }, [open, prefetch, metadata, summary.case_key, summary.version, refresh]);
   const current =
     settled?.metadata === metadata && settled.refresh === refresh
       ? settled
@@ -127,7 +138,7 @@ export function CaseEvidence({
             (concise && evidence?.input != null
               ? caseInput(evidence.input)
               : summary.case_key
-                  .replace(/^case-/, concise ? "Test " : "Situation ")
+                  .replace(/^case-/, exampleFirst ? "Example " : concise ? "Test " : "Situation ")
                   .replaceAll("-", " "))}
         </span>
         <span className="text-xs text-builder-fg-muted">
@@ -163,6 +174,11 @@ export function CaseEvidence({
                 {evidence.error.message}
               </p>
             )}
+            {exampleFirst && <div className="vibe-example-evidence">
+              <div><p className="vibe-evidence-label">Situation we tried</p><SafeMarkdown>{caseInput(evidence.input)}</SafeMarkdown></div>
+              <div><p className="vibe-evidence-label">What it should do</p><SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown></div>
+              <div><p className="vibe-evidence-label">What it actually replied</p>{evidence.output ? <div className="vibe-example-reply"><AgentReply>{evidence.output}</AgentReply></div> : <p>No reply was recorded.</p>}</div>
+            </div>}
             {finding && (
               <div>
                 <p className="mb-1 text-xs vibe-muted">
@@ -176,11 +192,11 @@ export function CaseEvidence({
                 <SafeMarkdown>{visibleExplanation}</SafeMarkdown>
               </div>
             )}
-            {verifiedFinding(evidence, finding) ? <GroundedFinding result={evidence} check={finding} /> : <PrimaryReply
+            {!exampleFirst && (verifiedFinding(evidence, finding) ? <GroundedFinding result={evidence} check={finding} /> : <PrimaryReply
               evidence={evidence}
               finding={finding}
               origin={origin}
-            />}
+            />)}
             {prompt && (
               <FixPromptCopy
                 prompt={prompt}

@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-// A quote is a dry preparation of the real graph, never an execution. Its
-// fingerprint excludes the client request ID but binds all execution choices.
+// A quote prepares the real graph without executing it. Run fingerprints bind
+// execution choices; preparation also binds the exact message receipt.
 type RunQuote struct {
 	ID          uuid.UUID `json:"id"`
 	Kind        string    `json:"kind"`
@@ -22,6 +22,10 @@ type RunQuote struct {
 }
 
 func runFingerprint(p Plan) string {
+	if p.Submission.Kind == "message" {
+		p.Submission.RunQuoteID = nil
+		return Hash(raw(p))
+	}
 	return Hash(raw(struct {
 		Kind     string
 		Purpose  string
@@ -37,7 +41,7 @@ func runFingerprint(p Plan) string {
 	}{p.Submission.Kind, p.Submission.Purpose, p.Submission.Models, p.Artifact, p.Evidence, p.Submission.BaselineID, p.MaxCost, p.Calls, p.Grading, p.TargetConfig, p.ExecutionLimits}))
 }
 func (s *Service) QuoteRun(ctx context.Context, actor string, id uuid.UUID, sub Submission) (RunQuote, error) {
-	if sub.Kind != "check" && sub.Kind != "retest" {
+	if sub.Kind != "check" && sub.Kind != "retest" && !(sub.Kind == "message" && sub.AdditionalExamples > 0) {
 		return RunQuote{}, fault("invalid_request", "Choose examples to run first.")
 	}
 	sub.estimateOnly = true

@@ -185,6 +185,9 @@ func buildTaskInput(p Plan, task conversationTask, action string, extra any) (ta
 			copy := *a
 			copy.Validation = nil
 			copy.Proposal = nil
+			if p.continuingBuild() {
+				copy.SampleBasis = nil
+			}
 			return &copy
 		}
 		out.SelectedTests = compactArtifact(out.SelectedTests)
@@ -330,7 +333,9 @@ func reviewTaskMessages(p Plan, input SuiteReviewInput, profile ModelProfile) []
 		return SuiteReviewMessages(input)
 	}
 	messages := renderSuiteReview(input, !profile.StructuredOutputs, true)
-	if p.interpreted() {
+	if p.continuingBuild() {
+		messages[0].Content += "\nFor consistency fields, aliases quote original field NAMES, not values. input_pointer is relative to the case input (/question, not /input/question). Missing values have empty literals/evidence. Input facts come from INPUT only, never expectations. Apply only relevant conditions to each case; suite-level scenario directions do not apply to every reply."
+	} else if p.interpreted() {
 		messages[0].Content += `
 Field aliases identify requested FIELD NAMES, not their values. For example, if the source says "Ask only for missing purchase age or item condition", use exact source spans "purchase age" and "item condition" as aliases. "30 days", "unopened" and "bought within 30 days" are values/conditions, not aliases for those field names. Scenario evidence and literals must come from that case's INPUT, never its expected answer or the policy.
 input_pointer is relative to the case's input value. If that value is {"question":"..."}, the pointer is /question, never /input/question or /cases/0/input/question. For a missing field use an empty literal and evidence; do not quote the whole customer message as evidence of a value.

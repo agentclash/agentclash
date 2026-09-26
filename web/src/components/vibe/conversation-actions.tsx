@@ -23,7 +23,8 @@ export function ConversationActions({ session, busy, onAction, onReload, primary
   const state = session.document.conversation_state;
   if (state?.actions_version !== 1) return null;
   const proposal = state.proposal?.status === "proposed" && state.proposal.scope_id === state.brief.scope_id ? state.proposal : undefined;
-  const question = state.pending_question?.status === "active" && state.pending_question.scope_id === state.brief.scope_id ? state.pending_question : undefined;
+  const answering = !!session.document.build?.responding_to_question && session.operations.some(o => !["COMPLETED", "FAILED", "CANCELLED", "EXPIRED"].includes(o.state));
+  const question = !answering && !busy && state.pending_question?.status === "active" && state.pending_question.scope_id === state.brief.scope_id ? state.pending_question : undefined;
   const change = session.document.last_change;
   const canUndo = change?.scope_id === state.brief.scope_id && change.message_id === state.through_message_id && change.after_artifact_id === session.document.artifacts.at(-1)?.id;
   const disabled = busy || pending;

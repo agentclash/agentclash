@@ -13,6 +13,7 @@ const instructionsHelp =
   "Show me the exact instructions used by the AI agent in my app, and which model it uses. Include its existing rules. Do not rewrite them. I want to test those instructions in Vibe Evals.";
 
 export function TestSuitePanel({
+  buildJourney = false,
   parent,
   primary = true,
   artifact,
@@ -29,6 +30,7 @@ export function TestSuitePanel({
   checkingChanges = false,
   rules = [],
 }: {
+  buildJourney?: boolean;
   parent?: Artifact;
   primary?: boolean;
   artifact: Artifact;
@@ -74,7 +76,7 @@ export function TestSuitePanel({
               ? `${cases.length} ${cases.length === 1 ? "test from" : "tests from"} your previous policy`
             : comparison
             ? "Ready to test the fix"
-            : `${cases.length} ${cases.length === 1 ? "test is" : "tests are"} ready`}
+            : buildJourney && parent ? "Your updated version is ready" : `${cases.length} ${cases.length === 1 ? "test is" : "tests are"} ready`}
         </h2>
         <p className="mt-2 text-sm vibe-muted">
           {validationBlocked
@@ -275,15 +277,15 @@ export function TestSuitePanel({
             <VibeButton
               variant={primary ? "primary" : "secondary"}
               disabled={busy || blocked || validationBlocked}
-              onClick={() => (preparingOnly && !ready ? onSave() : ready ? onRun() : setAgentOpen(true))}
+              onClick={() => (preparingOnly && !ready ? onSave() : ready ? onRun() : buildJourney && rules.length ? void onEdit({ artifact_id: artifact.id, build_from_policy: true }) : setAgentOpen(true))}
             >
               {ready
                 ? pendingPolicy
                   ? "Run previous tests"
                   : comparison
-                  ? "Improve and rerun"
-                  : `Run ${cases.length} ${cases.length === 1 ? "test" : "tests"}`
-                : preparingOnly ? "Keep these tests" : "Add your agent"}
+                  ? buildJourney ? "Apply change and check again" : "Improve and rerun"
+                  : buildJourney && parent ? "Update and check" : `Run ${cases.length} ${cases.length === 1 ? "test" : "tests"}`
+                : preparingOnly ? "Keep these tests" : buildJourney && rules.length ? "Build from saved rules" : "Add your agent"}
               <ArrowRight />
             </VibeButton>
             {tests.some(t => t.editable) && <VibeButton
@@ -297,7 +299,7 @@ export function TestSuitePanel({
           </div>
           {!ready && <div className="text-sm vibe-muted">
             {preparingOnly ? <><p>Keep these examples for your team. Add an agent when you’re ready to run them.</p><VibeButton variant="quiet" className="!px-0" disabled={busy} onClick={() => setAgentOpen(true)}>Add an agent later</VibeButton></>
-              : <><p>A pack supplies examples and expectations. Add an agent to get actual replies.</p><VibeButton variant="quiet" className="!px-0" disabled={busy} onClick={() => {setPrototypeMode(true);setAgentOpen(true)}}>Create a prototype</VibeButton><VibeButton variant="quiet" disabled={busy} onClick={() => setPreparingOnly(true)}>Keep for later</VibeButton></>}
+              : <><p>{buildJourney && rules.length ? "Use your saved requirements to create a version you can try. We’ll check these saved expectations before running; no answers are copied into its instructions." : "A pack supplies examples and expectations. Add an agent to get actual replies."}</p><VibeButton variant="quiet" className="!px-0" disabled={busy} onClick={() => {setPrototypeMode(true);setAgentOpen(true)}}>Create a prototype</VibeButton><VibeButton variant="quiet" disabled={busy} onClick={() => setPreparingOnly(true)}>Keep for later</VibeButton></>}
           </div>}
           {ready && (
             <p className="text-xs vibe-muted">

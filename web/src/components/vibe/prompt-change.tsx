@@ -8,15 +8,18 @@ import { VibeButton } from "./vibe-button";
 export function PromptChange({
   before,
   after,
+  defaultOpen = false,
 }: {
   before: string;
   after: string;
+  defaultOpen?: boolean;
 }) {
+  const [open, setOpen] = useState(defaultOpen);
   const [copied, setCopied] = useState(false);
   const [issue, setIssue] = useState("");
   const changes = instructionDiff(before, after);
   return (
-    <details className="vibe-panel text-sm">
+    <details className="vibe-panel text-sm" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
       <summary>Review the instruction change</summary>
       <div className="space-y-4 border-t border-[var(--vibe-border)] p-5">
         <p className="vibe-transcript leading-7" aria-label="Instruction changes">

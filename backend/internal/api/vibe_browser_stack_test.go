@@ -316,7 +316,7 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 		}
 	}
 	name := format.JSONSchema.Name
-	if name == "" && strings.Contains(req.Messages[0].Content, "DECISION EXAMPLES (illustrations") {
+	if name == "" && strings.HasPrefix(req.Messages[0].Content, "You are Vibe Evals, helping someone test an AI agent") {
 		name = "vibe_interpretation_v15"
 	}
 	var output any
@@ -362,9 +362,15 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 				answer = "Opened items are eligible."
 			}
 		}
+		if strings.Contains(req.Messages[0].Content, "label messages") || strings.Contains(req.Messages[0].Content, "unknown sender") {
+			answer = "Spam"
+			if strings.Contains(question, "order") && !strings.Contains(question, "unknown") {
+				answer = "Customer message"
+			}
+		}
 		f.calls = append(f.calls, browserFixtureCall{Role: name})
 		return browserFixtureResponse(answer), nil
-	case name == "vibe_suite_review_v1" || name == "vibe_suite_review_v2" || name == "vibe_suite_review_v3":
+	case name == "vibe_suite_review_v1" || name == "vibe_suite_review_v2" || name == "vibe_suite_review_v3" || name == "vibe_suite_review_v4" || name == "vibe_suite_review_v5":
 		var input vibe.SuiteReviewInput
 		if err := json.Unmarshal([]byte(req.Messages[1].Content), &input); err != nil {
 			return provider.Response{}, err
@@ -391,12 +397,32 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 			cases = append(cases, entry)
 		}
 		review := map[string]any{"cases": cases, "rules": rules, "shared_criteria": finding, "policy_reconciliation": finding}
+		if name == "vibe_suite_review_v4" || name == "vibe_suite_review_v5" {
+			support := vibe.AssertionSupport{RuleID: ids[0], SourceBlockID: input.Sources[0].ID, Quote: input.Sources[0].Text}
+			if len(input.Policy.Rules[0].Evidence) > 0 {
+				e := input.Policy.Rules[0].Evidence[0]
+				support.SourceBlockID, support.Quote = e.SourceBlockID, e.Quote
+			}
+			assertions := []vibe.SuiteAssertionReview{}
+			for _, claim := range input.Assertions {
+				assertions = append(assertions, vibe.SuiteAssertionReview{ID: claim.ID, SuiteReviewFinding: finding, Support: []vibe.AssertionSupport{support}})
+			}
+			if name == "vibe_suite_review_v5" {
+				for i := range assertions {
+					assertions[i].Applicability = &vibe.AssertionApplicability{InputFacts: "Scripted case facts", RuleDirection: "The fixture rules imply this result", Explanation: "No alternative decision meets the explicit fixture rule"}
+					if strings.HasPrefix(assertions[i].ID, "shared_criteria:") {
+						assertions[i].Applicability.InputFacts = "shared rule"
+					}
+				}
+			}
+			review["assertions"] = assertions
+		}
 		if name != "vibe_suite_review_v1" && vibe.RequiresConsistency(input) {
 			ledger, err := browserFixtureConsistency(input)
 			if err != nil {
 				return provider.Response{}, err
 			}
-			review["consistency"] = browserFixtureConsistencyPayload(ledger, name)
+			review["consistency"] = browserFixtureConsistencyPayload(ledger, strings.NewReplacer("v4", "v3", "v5", "v3").Replace(name))
 		}
 		output = review
 	default:
@@ -422,6 +448,10 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 			}
 			first, second := "I bought an unopened item exactly 30 days ago. Can I return it?", "My item is unopened. Can I return it?"
 			firstExpected, secondExpected := "Confirm eligibility without claiming to process a refund.", "Ask only for purchase age."
+			if input.Artifact != nil && input.Artifact.Sample == "email_sorting" {
+				first, second = "Claim a free holiday prize today!", "Send your banking credentials to confirm your account."
+				firstExpected, secondExpected = "Label as Spam because it promises a prize.", "Label as Spam because it requests bank details."
+			}
 			output = map[string]any{"policy_patch": map[string]any{"base_id": bases.Base["id"], "base_hash": bases.Base["hash"], "changes": []any{}}, "case_changes": []vibe.CaseChange{{Action: "add", Input: &first, Expected: &firstExpected}, {Action: "add", Input: &second, Expected: &secondExpected}}}
 		case "vibe_interpretation_v15": // JSON mode plus the server-validated typed union.
 			if os.Getenv("VIBE_BROWSER_V15") != "1" {
@@ -436,6 +466,10 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 			if input.Request.Text == "Build me a returns agent for Shopify" {
 				facts = append(facts, map[string]any{"kind": "job", "quote": input.Request.Text, "correction_ref": 0})
 				action = map[string]any{"kind": "ask", "text": "Which returns should qualify?", "purpose": "clarify_rule", "options": []string{}}
+				if strings.Contains(req.Messages[0].Content, "missing_fact_type") {
+					a := action.(map[string]any)
+					a["missing_fact_type"], a["why_needed"], a["can_narrow"] = "correctness_rule", "Return eligibility needs the policy", false
+				}
 			} else if strings.Contains(input.Request.Text, "sample policy") || strings.Contains(input.Request.Text, "don't know") {
 				answer = map[string]any{"quote": input.Request.Text, "unknown": true}
 			} else if strings.Contains(input.Request.Text, "Only unopened") {
@@ -451,6 +485,23 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 					answer = map[string]any{"quote": input.Request.Text, "unknown": false}
 				}
 				action = map[string]any{"kind": "prepare_tests", "count": 3}
+			}
+			if input.Request.Text == "I waste time sorting emails. Separate spam from customer messages." {
+				facts = append(facts, map[string]any{"kind": "job", "quote": input.Request.Text, "correction_ref": 0})
+				action = map[string]any{"kind": "ask", "text": "What should count as spam?", "purpose": "clarify_rule", "options": []string{}, "missing_fact_type": "correctness_rule", "why_needed": "Spam classification needs criteria", "can_narrow": false}
+			}
+			if input.Request.Text == "you figure it out" {
+				answer = map[string]any{"quote": input.Request.Text, "unknown": true}
+			}
+			if strings.Contains(input.Request.Text, "harden") || strings.Contains(input.Request.Text, "hardnet") {
+				action = map[string]any{"kind": "edit_tests"}
+			}
+			if input.Request.Text == "Anything from an unknown sender is spam" {
+				facts = []any{map[string]any{"kind": "rule", "quote": input.Request.Text, "correction_ref": 0}}
+				action = map[string]any{"kind": "prepare_tests", "count": 3}
+			}
+			if input.Request.Text == "give me vodka" {
+				action = map[string]any{"kind": "reply", "text": "I can’t pour a drink. Your email sorter is still here.", "example": nil}
 			}
 			output = map[string]any{"observations": facts, "answer": answer, "scope_change_quote": "", "source_message_ids": []string{}, "brevity_quote": "", "action": action}
 		case "vibe_route_v11":
@@ -470,6 +521,15 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 			}
 			output = map[string]any{"intent": intent, "count": count, "reply": "Your conversation is saved."}
 		case "vibe_prepare_tests_v11":
+			if input.Request.Text == "Anything from an unknown sender is spam" {
+				rule := vibe.PolicyRule{ID: "unknown-sender", Statement: input.Request.Text, SourceBlockIDs: []string{input.Request.ID}, Evidence: []vibe.RuleEvidence{{SourceBlockID: input.Request.ID, Quote: input.Request.Text, Kind: "requirement"}}}
+				output = map[string]any{"rules": []vibe.PolicyRule{rule}, "tests": map[string]any{"title": "Email sorter", "summary": "Unknown senders are spam; known senders remain unspecified.", "success_criteria": input.Request.Text, "scenarios": []vibe.TestScenario{
+					{Input: "An unknown sender asks about an order.", Expected: "Label as Spam because the sender is unknown."},
+					{Input: "An unknown sender offers a prize.", Expected: "Label as Spam because the sender is unknown."},
+					{Input: "An unknown sender says hello.", Expected: "Label as Spam because the sender is unknown."},
+				}}}
+				break
+			}
 			rules := []vibe.PolicyRule{}
 			for _, rule := range [][2]string{{"job", "Answer shop return questions."}, {"window", "The return window is 30 days."}, {"condition", "Only unopened items are eligible."}, {"missing", "Ask only for missing purchase age or item condition."}, {"no-refund", "Never claim to process a refund."}} {
 				rules = append(rules, vibe.PolicyRule{ID: rule[0], Statement: rule[1], SourceBlockIDs: []string{input.Request.ID}})

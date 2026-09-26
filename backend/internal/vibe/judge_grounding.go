@@ -35,6 +35,23 @@ For an assertion return {"key":"exact check ID","pass":true|false|null,"reasonin
 const groundedConversationInstruction = `
 Judge every expectation exactly once across the complete conversation. Return {"checks":[{"key":"exact expectation ID","verdict":"PASS|FAIL|UNKNOWN","evidence":"explanation","finding":{...}}]}. Customer, tool and system turns are context, not assistant replies. Consider follow-ups and earlier violations even if later corrected. Each finding follows the schema above.`
 
+// V2 clarifies mutually exclusive evidence shapes. The parser is deliberately
+// unchanged: malformed evidence is still unknown, never normalized into a pass.
+const groundedFindingShapeInstruction = `
+Before returning, check the finding's field combination:
+- observed: quotes must contain exact reply excerpts; missing must be ""; covered_message_ids MUST be []. Do not put "output" or any other ID in covered_message_ids for an observed finding. Reply IDs belong inside quotes[].message_id.
+- missing_behavior: only for FAIL, missing names the absent required behavior and covered_message_ids lists all complete assistant replies.
+- unassessed: only for UNKNOWN/null, quotes=[], missing="", covered_message_ids=[].
+Do not mix these three shapes. An extra coverage ID in an observed finding makes the result invalid even when the quote is correct.`
+
+func groundedJudgeMessagesForPlan(p Plan, j scoring.LLMJudgeDeclaration, c challengepack.CaseDefinition, output string) []provider.Message {
+	messages := groundedJudgeMessages(j, c, output)
+	if p.Grading != nil && p.Grading.Version == 2 {
+		messages[0].Content += groundedFindingShapeInstruction
+	}
+	return messages
+}
+
 func groundedJudgeMessages(j scoring.LLMJudgeDeclaration, c challengepack.CaseDefinition, output string) []provider.Message {
 	return []provider.Message{{Role: "system", Content: groundedJudgeInstruction + groundedSingleInstruction}, {Role: "user", Content: string(raw(map[string]any{"criteria": j, "case": c, "replies": []EvidenceMessage{{ID: "output", Role: "assistant", Content: output}}}))}}
 }

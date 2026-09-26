@@ -436,7 +436,11 @@ func ConversationJudgeMessages(expectations []Expectation, c EvidenceConversatio
 
 func conversationJudgeMessagesForPlan(p Plan, c EvidenceConversation) []provider.Message {
 	if p.Grading != nil {
-		return groundedConversationMessages(p.Artifact.ConversationEvaluation.Expectations, c)
+		messages := groundedConversationMessages(p.Artifact.ConversationEvaluation.Expectations, c)
+		if p.Grading.Version == 2 {
+			messages[0].Content += groundedFindingShapeInstruction
+		}
+		return messages
 	}
 	messages := ConversationJudgeMessages(p.Artifact.ConversationEvaluation.Expectations, c)
 	if p.ConversationJudgeVersion >= 1 {

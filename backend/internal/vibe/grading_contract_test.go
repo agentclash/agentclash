@@ -1,11 +1,45 @@
 package vibe
 
 import (
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/agentclash/agentclash/runtime/challengepack"
+	"github.com/agentclash/agentclash/runtime/scoring"
 	"github.com/google/uuid"
 )
+
+func TestBuildGradingShapeKeepsLegacyContract(t *testing.T) {
+	cfg := testConfig()
+	cfg.GroundedJudging = true
+	svc := Service{Config: cfg}
+	p := Plan{Submission: Submission{Models: cfg.DefaultModels()}, Artifact: &Artifact{ConversationEvaluation: &ConversationEvaluation{}}, Evidence: &EvidenceSet{}}
+	if err := svc.freezeGrading(&p); err != nil {
+		t.Fatal(err)
+	}
+	legacy := *p.Grading
+	p.Artifact.Validation = &SuiteValidation{ValidatorVersion: AssertionSuiteValidatorVersion}
+	if err := svc.freezeGrading(&p); err != nil {
+		t.Fatal(err)
+	}
+	if p.Grading.Version != 2 || p.Grading.Hash == legacy.Hash || !gradingSupported(p.Grading) || !gradingSupported(&legacy) {
+		t.Fatal("new prompt needs distinct grading identity while legacy replay remains valid")
+	}
+	j := scoring.LLMJudgeDeclaration{Key: "behavior", Mode: scoring.JudgeMethodAssertion}
+	m := groundedJudgeMessagesForPlan(p, j, challengepack.CaseDefinition{}, "Spam")
+	if !strings.Contains(m[0].Content, groundedFindingShapeInstruction) {
+		t.Fatal("new prompt missing shape rules")
+	}
+	p.Grading = &legacy
+	m = groundedJudgeMessagesForPlan(p, j, challengepack.CaseDefinition{}, "Spam")
+	if m[0].Content != groundedJudgeMessages(j, challengepack.CaseDefinition{}, "Spam")[0].Content {
+		t.Fatal("legacy prompt changed")
+	}
+	if r, err := parseGroundedJudge(j, "Spam", raw(map[string]any{"key": "behavior", "pass": true, "reasoning": "It labelled spam.", "finding": &Finding{Kind: "observed", Quotes: []ReplyQuote{{MessageID: "output", Text: "Spam"}}, CoveredMessageIDs: []string{"output"}}}), LimitsFor(true)); err == nil || r.Verdict != Unknown {
+		t.Fatal("invalid live shape was silently promoted to pass")
+	}
+}
 
 func TestVibeGradingIdentity(t *testing.T) {
 	cfg := testConfig()

@@ -411,7 +411,7 @@ func (r *Runner) evaluate(ctx context.Context, o Operation, p Plan) error {
 			check := CheckResult{Key: judge.Key, Verdict: Unknown}
 			messages := JudgeMessages(judge, c, response.OutputText)
 			if p.Grading != nil {
-				messages = groundedJudgeMessages(judge, c, response.OutputText)
+				messages = groundedJudgeMessagesForPlan(p, judge, c, response.OutputText)
 			}
 			jr, je := r.Gateway.Call(ctx, o, "judge:"+c.CaseKey+":"+judge.Key, Evaluator, messages, jsonFormat)
 			if je != nil {

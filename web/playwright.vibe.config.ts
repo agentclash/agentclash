@@ -3,6 +3,8 @@ const baseURL = process.env.VIBE_TEST_BASE_URL ?? "http://127.0.0.1:53517";
 
 export default defineConfig({
   testDir: "./e2e/vibe",
+  // Keep this suite from clearing the real-stack suite's active recordings.
+  outputDir: "test-results/vibe",
   fullyParallel: false,
   workers: 1,
   timeout: 45_000,

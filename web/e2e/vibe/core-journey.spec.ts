@@ -326,7 +326,7 @@ for (const mobile of [false, true]) {
     await page.locator("summary").filter({ hasText: /^Review the instruction change$/ }).click();
     await page.getByLabel("Instruction changes").scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("instruction-diff.png") });
-    await page.getByRole("button", { name: "Test the suggested fix" }).click();
+    await page.getByRole("button", { name: "Improve and rerun", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "3 of 3 tests passed" }),
     ).toBeVisible();

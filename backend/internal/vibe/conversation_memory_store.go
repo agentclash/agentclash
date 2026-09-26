@@ -46,7 +46,7 @@ func (r *Runner) completeReliableDocument(ctx context.Context, o Operation, p Pl
 	if p.precise() {
 		s.ActionsVersion = 1
 	}
-	if p.precise() && c.Policy != nil && p.Conversation.Policy != nil {
+	if p.precise() && c.Policy != nil && c.Policy.SampleBasis == "" && p.Conversation.Policy != nil && p.Conversation.Policy.SampleBasis == "" {
 		alignBriefToPolicy(s, *p.Conversation.Policy, *c.Policy)
 	}
 	if p.guided() && p.Conversation.Example != nil {

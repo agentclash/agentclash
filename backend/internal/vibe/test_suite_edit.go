@@ -13,7 +13,17 @@ import (
 // cases and all grading metadata must remain byte-equivalent as JSON values.
 func validateCoverageExpansion(p Plan, candidate *Artifact, policy PolicySnapshot) error {
 	if p.Submission.AdditionalExamples == 0 {
-		return nil
+		if !p.continuingBuild() || p.Artifact == nil || candidate == nil || p.Conversation == nil || p.Conversation.Policy == nil || !sameJSON(raw(policy.Rules), raw(p.Conversation.Policy.Rules)) {
+			return nil
+		}
+		added := suiteCaseCount(candidate.Blueprint) - suiteCaseCount(p.Artifact.Blueprint)
+		if added <= 0 {
+			if policy.SampleBasis != "" {
+				return fmt.Errorf("add new situations without replacing the existing sample baseline")
+			}
+			return nil
+		}
+		p.Submission.AdditionalExamples = added
 	}
 	if p.Artifact == nil || candidate == nil || p.Conversation == nil || p.Conversation.Policy == nil {
 		return fmt.Errorf("adding coverage needs existing tests and rules")

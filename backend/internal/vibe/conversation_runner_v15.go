@@ -113,7 +113,13 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 						return r.completeSamplePrototype(ctx, o, p)
 					}
 					route.Intent, route.Count = "prepare_tests", 3
-					p.Conversation.NextState.PendingQuestion = nil
+					if p.taskBuild() {
+						if q := p.Conversation.NextState.PendingQuestion; q != nil && q.Status == "active" {
+							q.Status = "superseded"
+						}
+					} else {
+						p.Conversation.NextState.PendingQuestion = nil
+					}
 				} else if route.Intent == "chat" {
 					route.Intent, route.Reply = "clarify", "Which repetitive task would you like AI to help with?"
 					if route.Memory == nil {
@@ -126,6 +132,9 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 					}
 				}
 			}
+		}
+		if p.continuingBuild() {
+			prepareBuildContinuation(&p, &route)
 		}
 		confirmation, e := sourceConfirmationFor(p, o, route)
 		if e != nil {
@@ -145,6 +154,11 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 		}
 		if route.Intent == "chat" || route.Intent == "clarify" || route.Intent == "explain_results" {
 			return r.completeReliableDocument(ctx, o, p, route.Reply, nil, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: route.Intent}})
+		}
+		if p.taskBuild() && route.Intent == "prepare_tests" {
+			if q := p.Conversation.NextState.PendingQuestion; q != nil && q.Status == "active" {
+				q.Status = "superseded"
+			}
 		}
 		p.Conversation.RequiredCount = route.Count
 	} else if err = r.Service.Store.commitConversationDecision(ctx, o, p, route.Intent); err != nil {
@@ -250,7 +264,7 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 		if validation.Status == SuiteSupported {
 			break
 		}
-		if validation.Status == SuiteUnclear {
+		if validation.Status == SuiteUnclear && !p.continuingBuild() {
 			if validation.Consistency != nil && len(validation.Consistency.Findings) > 0 {
 				// A failure to ground the review is not a missing business rule.
 				// Keep diagnostics in the attempt instead of asking the user to
@@ -261,6 +275,9 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 				return r.completeSamplePrototype(ctx, o, p)
 			}
 			return r.completeReliableDocument(ctx, o, p, validationQuestion(validation), nil, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "clarify"}})
+		}
+		if patched && p.continuingBuild() && validation.Status == SuiteUnclear {
+			return r.completeReliableDocument(ctx, o, p, "Some proposed situations still need a rule before they can be scored. I kept your working version and earlier results unchanged. "+validationQuestion(validation), nil, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "chat"}})
 		}
 		if patched || p.Conversation.Manual != nil {
 			return fault("test_policy_conflict", "The proposed tests conflict with the supplied rules. Your previous tests are unchanged. Please review the expected answers or clarify the rule.")
@@ -292,6 +309,9 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 		if err == nil {
 			if p.sourceBoundary() {
 				criteria := policyGradingCriteria(patch.Rules)
+				if policy.SampleBasis != "" {
+					criteria = samplePrototype(policy.SampleBasis).SuccessCriteria
+				}
 				patch.Criteria = &criteria
 			}
 			candidate.Blueprint, err = patchTestSuite(candidate.Blueprint, patch.CaseChanges, patch.Criteria, p.limits(), o.ID)
@@ -329,7 +349,7 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 	for _, source := range p.Conversation.Sources {
 		// Referencing a block does not prove every clause was extracted. Retain
 		// the original in subsequent context even after a successful review.
-		if referenced[source.ID] {
+		if referenced[source.ID] && policy.SampleBasis == "" {
 			coverage = append(coverage, SourceCoverage{MessageID: source.MessageID, State: "referenced"})
 		}
 	}

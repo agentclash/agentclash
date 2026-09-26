@@ -108,6 +108,7 @@ type Requirement struct {
 	Change            string     `json:"change,omitempty"`
 }
 type Artifact struct {
+	SampleBasis            *PolicySnapshot         `json:"sample_basis,omitempty"`
 	UnavailableReason      string                  `json:"unavailable_reason,omitempty"`
 	Sample                 string                  `json:"sample,omitempty"`
 	ScopeNote              string                  `json:"scope_note,omitempty"`

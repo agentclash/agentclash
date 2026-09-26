@@ -12,7 +12,7 @@ import (
 const interpretedAuthoringVersion = 15
 
 func (p Plan) interpreted() bool {
-	return p.AuthoringVersion == interpretedAuthoringVersion || p.AuthoringVersion == buildAuthoringVersion
+	return p.AuthoringVersion == interpretedAuthoringVersion || (p.AuthoringVersion == legacyBuildAuthoringVersion || p.taskBuild())
 }
 
 // The model describes meaning. Database identifiers, revisions, source hashes
@@ -46,6 +46,24 @@ type askAction struct {
 	Purpose string   `json:"purpose"`
 	Options []string `json:"options"`
 }
+type buildAskAction struct {
+	askAction
+	MissingFactType string `json:"missing_fact_type"`
+	WhyNeeded       string `json:"why_needed"`
+	CanNarrow       bool   `json:"can_narrow"`
+}
+
+func interpretationSchemaFor(p Plan) *jsonschema.Schema {
+	s := interpretationSchema()
+	if p.taskBuild() {
+		ask := inferredSchema[buildAskAction]()
+		ask.Properties["kind"].Enum = []any{"ask"}
+		ask.Properties["missing_fact_type"].Enum = []any{"job", "correctness_rule", "preference", "integration"}
+		s.Properties["action"].AnyOf[1] = ask
+	}
+	return s
+}
+
 type proposeAction struct {
 	Kind        string            `json:"kind"`
 	Text        string            `json:"text"`
@@ -143,6 +161,9 @@ func interpretationMessages(p Plan, extra any) []provider.Message {
 	data["facts"] = interpretationFacts(p)
 	data["pending_preparation"] = effectiveConversationState(p).PendingPreparation
 	data["available_actions"] = allowedReliableActions(p)
+	if p.continuingBuild() {
+		data["build_continuation"] = "Keep the selected prototype in this conversation. A sample_basis is a usable demonstration with explicit assumptions, not missing user policy. Requests to harden or add tougher situations mean edit_tests using those assumptions, not asking for real rules again. Casual interruptions retain the task. New actual rules are kind=rule observations; the server prepares a separate real-policy version. Do not imply this connects business systems. Do not ask an already-answered unknown question again."
+	}
 	q := effectiveConversationState(p).PendingQuestion
 	if q != nil && q.Status == "active" && (q.Purpose == "clarify_job" || q.Purpose == "clarify_rule") {
 		labels := []string{}
@@ -152,7 +173,20 @@ func interpretationMessages(p Plan, extra any) []provider.Message {
 		data["active_question"] = map[string]any{"text": q.Text, "purpose": q.Purpose, "options": labels}
 	}
 	// JSON-only providers receive exactly the same schema we validate locally.
-	prompt := interpretationPrompt + "\nSchema: " + string(raw(interpretationSchema())) + interpretationExamples
+	examples := interpretationExamples
+	if p.taskBuild() {
+		examples = `
+Build decision examples (illustrations, never sources):
+- Separate the task (kind=job) from each decision rule (kind=rule), using exact current-user excerpts. A compound brief contains both; never put the entire brief in a single job observation and omit its rules. prepare_tests requires both task and rule evidence, including already saved facts. If neither current nor saved evidence supplies a rule, ask for it instead of claiming readiness.
+- "drin vodka hewhe": reply briefly; observations=[], answer=null. A cocktail-assistant job is different from banter.
+- "Build a returns assistant": observe the job; ask which returns qualify, missing_fact_type=correctness_rule, why_needed="Eligibility depends on the return policy", can_narrow=false. No invented policy in answer options.
+- Email sorter with no criteria: ask what distinguishes spam from customer messages. Do not ask about moving or archiving emails; those integrations are unavailable.
+- Policy supplied after a question: prepare_tests, count=3; quote current rules only. If it answers a DIFFERENT question, retain the useful observations with answer=null, without pretending an action option was selected.
+- "I don't know": answer.unknown=true, quote that answer. The server chooses a labelled matching demonstration or stops without inventing a job.
+- "What are tests?": explain using a hypothetical task and desired answer; no rule observations.
+For every ask include missing_fact_type, why_needed (the correctness decision it changes), and can_narrow (whether a useful supported task avoids it). Never spend a question on optional preferences or unavailable integrations.`
+	}
+	prompt := interpretationPrompt + "\nSchema: " + string(raw(interpretationSchemaFor(p))) + examples
 	if p.Cycle != nil {
 		prompt += fmt.Sprintf("\nThis is an explicitly authorized Build and try 3 examples cycle. Clarification questions already used: %d of 1. A clear job and correctness rules need ZERO questions. Missing tone, name, format or integration details are not reasons to ask. Ask only if a missing decision rule prevents a useful narrower text prototype. No task: ask which repetitive task. No refund policy: ask its policy. Do not ask another question after the budget is used; prepare exactly 3 supported examples, or indicate the answer is unknown so the server can use a labelled demonstration. Never invent policy or claim a connected system. Do not start a different agent scope within this evaluation.", p.Cycle.ClarificationsUsed)
 	}
@@ -169,7 +203,7 @@ func decodeInterpretation(b []byte, p Plan) (reliableRoute, error) {
 	if err := json.Unmarshal(b, &value); err != nil {
 		return route, err
 	}
-	schema, err := interpretationSchema().Resolve(nil)
+	schema, err := interpretationSchemaFor(p).Resolve(nil)
 	if err != nil {
 		return route, err
 	}
@@ -262,6 +296,22 @@ func decodeInterpretation(b []byte, p Plan) (reliableRoute, error) {
 		_ = json.Unmarshal(v.Action, &a)
 		route.Intent, route.Reply = "clarify", a.Text
 		u.Question = &memoryQuestion{Purpose: a.Purpose, Text: a.Text, Options: a.Options, MaxSelections: 1}
+		if p.taskBuild() {
+			var decision buildAskAction
+			_ = json.Unmarshal(v.Action, &decision)
+			if strings.TrimSpace(decision.WhyNeeded) == "" {
+				return route, fmt.Errorf("explain which decision needs this missing fact")
+			}
+			if decision.CanNarrow {
+				route.Intent, route.Count = "prepare_tests", 3
+				u.Question = nil
+			} else if decision.MissingFactType == "preference" || decision.MissingFactType == "integration" {
+				// Those capabilities are outside this prototype. Ask for an
+				// observable rule instead; never spend the question on wiring.
+				route.Reply = "What rule should it follow when deciding what to do?"
+				u.Question = &memoryQuestion{Purpose: "clarify_rule", Text: route.Reply, Options: []string{}, MaxSelections: 1}
+			}
+		}
 	case "propose":
 		var a proposeAction
 		_ = json.Unmarshal(v.Action, &a)
@@ -296,6 +346,13 @@ func decodeInterpretation(b []byte, p Plan) (reliableRoute, error) {
 		q := effectiveConversationState(p).PendingQuestion
 		criteria = criteria || u.Answer != nil && !u.Answer.Unknown && q != nil && q.Purpose == "clarify_rule"
 		if !job || !criteria {
+			if p.taskBuild() {
+				// A ready action with missing evidence is an inconsistent model
+				// interpretation, not proof the user omitted a rule. Give the
+				// existing bounded repair a chance to extract the supplied facts.
+				// Never promote job text to policy automatically.
+				return route, fmt.Errorf("prepare_tests requires separate job and rule evidence: job=%t rule=%t. Extract exact task and rule excerpts separately from the original request or use saved facts. If the request really lacks a decision rule, return ask with the missing correctness decision; do not invent a rule", job, criteria)
+			}
 			question, purpose := "What should a good answer follow? Share one rule or example.", "clarify_rule"
 			if !job {
 				question, purpose = "What should your agent help with?", "clarify_job"

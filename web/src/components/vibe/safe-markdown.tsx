@@ -32,7 +32,7 @@ export function safeLink(url: string) {
 }
 export function SafeMarkdown({ children }: { children: string }) {
   return (
-    <div className="space-y-3 break-words text-sm leading-7 [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-builder-surface [&_pre]:p-3 [&_code]:font-mono [&_code]:text-xs">
+    <div className="vibe-markdown space-y-3 break-words text-sm leading-7 [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-builder-surface [&_pre]:p-3 [&_code]:font-mono [&_code]:text-xs">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         skipHtml
