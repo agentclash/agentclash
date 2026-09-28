@@ -36,8 +36,10 @@ type BuildCyclePlan struct {
 	Sample             string    `json:"sample,omitempty"`
 }
 type BuildQuoteRequest struct {
-	Content string `json:"content"`
-	Models  Models `json:"models"`
+	Content            string     `json:"content"`
+	ArtifactID         *uuid.UUID `json:"artifact_id,omitempty"`
+	AdditionalExamples int        `json:"additional_examples,omitempty"`
+	Models             Models     `json:"models"`
 }
 type BuildQuote struct {
 	ID            uuid.UUID         `json:"id"`
@@ -48,6 +50,8 @@ type BuildQuote struct {
 	MaxCalls      int               `json:"max_calls"`
 	ExpiresAt     time.Time         `json:"expires_at"`
 	Profiles      map[string]string `json:"profiles"`
+	Revision      int64             `json:"revision,omitempty"`
+	BaselineHash  string            `json:"baseline_hash,omitempty"`
 }
 
 func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, request BuildQuoteRequest) (BuildQuote, error) {
@@ -58,7 +62,7 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 	if !s.Config.TwoDoor {
 		return BuildQuote{}, fault("hosted_disabled", "The new Build flow is not enabled.")
 	}
-	if v.Document.Evaluation == nil || v.Document.Evaluation.Door != "build" || len(v.Document.Artifacts) > 0 || v.Document.Build != nil {
+	if request.AdditionalExamples == 0 && (v.Document.Evaluation == nil || v.Document.Evaluation.Door != "build" || len(v.Document.Artifacts) > 0 || v.Document.Build != nil) {
 		return BuildQuote{}, fault("invalid_request", "Start a new Build evaluation for this prototype.")
 	}
 	if len(request.Content) == 0 || len(request.Content) > s.Config.Limits(v.Anonymous).MessageBytes {
@@ -69,6 +73,15 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 	}
 	l := s.Config.Limits(v.Anonymous)
 	quote := BuildQuote{ID: uuid.New(), Request: request, Cases: 3, MaxCalls: 26, ExpiresAt: timestamp().Add(30 * time.Minute), Profiles: map[string]string{}}
+	judges := 1
+	if request.AdditionalExamples != 0 {
+		cases, count, hash, e := s.expansionQuote(ctx, v, request)
+		if e != nil {
+			return BuildQuote{}, e
+		}
+		quote.Cases, judges, quote.BaselineHash, quote.Revision = cases, count, hash, v.Revision
+		quote.MaxCalls = 10 + cases*(1+judges)
+	}
 	costs := map[string]int64{}
 	for _, model := range []string{request.Models.Assistant, request.Models.Target, request.Models.Evaluator} {
 		profile, e := s.Config.Profile(model)
@@ -81,12 +94,25 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 		}
 		quote.Profiles[model] = Hash(raw(profile))
 	}
-	quote.MaxCost = 20*costs[request.Models.Assistant] + 3*(costs[request.Models.Target]+costs[request.Models.Evaluator])
 	primary, _ := s.Config.Profile(request.Models.Assistant)
 	temp := Plan{AuthoringVersion: guidedAuthoringVersion, Conversation: &ConversationContext{Profile: &primary}, Anonymous: v.Anonymous, LocalTesting: s.Config.TestingLocally()}
+	if err = s.freezeReviewVersion(&temp); err != nil {
+		return quote, err
+	}
 	if err = prepareInterpretedPlan(&temp, s.Config, primary); err != nil {
 		return quote, err
 	}
+	// Authoring includes the complete semantic review. Quote the same frozen
+	// output allowance used at admission, independently of target/judge limits.
+	authorCost, err := primary.BoundCost(primary.inputLimit(temp.limits()), temp.limits().OutputTokens)
+	if err != nil {
+		return quote, err
+	}
+	authorCalls := int64(20)
+	if request.AdditionalExamples > 0 {
+		authorCalls = 10
+	}
+	quote.MaxCost = authorCalls*authorCost + int64(quote.Cases)*(costs[request.Models.Target]+int64(judges)*costs[request.Models.Evaluator])
 	if temp.AssistantRecovery != nil {
 		quote.MaxCost += 2 * temp.AssistantRecovery.MaxCost
 		quote.MaxCalls += 2
@@ -123,7 +149,7 @@ func (s *Service) prepareBuildCycle(ctx context.Context, v Session, sub Submissi
 			return fault("quote_expired", "Model pricing changed. Get a new estimate before running.")
 		}
 	}
-	if v.Document.Build != nil && v.Document.Build.CycleID != quote.ID {
+	if quote.Request.AdditionalExamples == 0 && v.Document.Build != nil && v.Document.Build.CycleID != quote.ID {
 		return fault("invalid_state", "Continue this evaluation’s existing cycle; its question budget cannot be reset.")
 	}
 	cycle := &BuildCyclePlan{ID: quote.ID, Step: "prepare"}
@@ -131,8 +157,8 @@ func (s *Service) prepareBuildCycle(ctx context.Context, v Session, sub Submissi
 		cycle.ClarificationsUsed = progress.ClarificationsUsed
 		cycle.Sample = progress.Sample
 		switch progress.Phase {
-		case "clarifying":
-			cycle.Step = "answer"
+		case "clarifying", "waiting":
+			cycle.Step = "message:" + sub.ClientID.String()
 		case "ready":
 			if sub.Kind != "check" || progress.ArtifactID == nil || sub.ArtifactID == nil || *progress.ArtifactID != *sub.ArtifactID {
 				return fault("invalid_request", "Use the prepared prototype for this check.")
@@ -147,6 +173,20 @@ func (s *Service) prepareBuildCycle(ctx context.Context, v Session, sub Submissi
 	}
 	if cycle.Step != "check" && sub.Kind != "message" {
 		return fault("invalid_request", "This estimate authorizes prototype preparation and its first three examples.")
+	}
+	if quote.Request.AdditionalExamples > 0 {
+		if cycle.Step != "prepare" && cycle.Step != "check" {
+			return fault("invalid_state", "This batch cannot start an onboarding conversation.")
+		}
+		if cycle.Step == "prepare" {
+			_, _, hash, e := s.expansionQuote(ctx, v, quote.Request)
+			if e != nil {
+				return e
+			}
+			if hash != quote.BaselineHash || v.Revision != quote.Revision || sub.ArtifactID == nil || quote.Request.ArtifactID == nil || *sub.ArtifactID != *quote.Request.ArtifactID || sub.AdditionalExamples != quote.Request.AdditionalExamples {
+				return fault("quote_expired", "This batch changed. Review a new estimate.")
+			}
+		}
 	}
 	p.Cycle = cycle
 	return nil
@@ -278,7 +318,7 @@ func (s *Store) syncBuildResult(ctx context.Context, id uuid.UUID) error {
 }
 
 func ResumeBuilds(ctx context.Context, s *Service) {
-	rows, err := s.Store.DB.Query(ctx, `SELECT o.id FROM vibe_cycle_steps c JOIN vibe_operations o ON o.id=c.operation_id JOIN vibe_sessions s ON s.id=o.session_id JOIN vibe_cycle_quotes q ON q.id=c.cycle_id WHERE (c.step IN ('prepare','answer') OR c.step LIKE 'retry:%') AND o.state='COMPLETED' AND s.document#>>'{build,phase}'='ready' AND s.document#>>'{build,cycle_id}'=c.cycle_id::text AND q.stopped_at IS NULL ORDER BY o.created_at LIMIT 20`)
+	rows, err := s.Store.DB.Query(ctx, `SELECT o.id FROM vibe_cycle_steps c JOIN vibe_operations o ON o.id=c.operation_id JOIN vibe_sessions s ON s.id=o.session_id JOIN vibe_cycle_quotes q ON q.id=c.cycle_id WHERE (c.step IN ('prepare','answer') OR c.step LIKE 'retry:%' OR c.step LIKE 'message:%') AND o.state='COMPLETED' AND s.document->>'format_version'='1' AND s.document#>>'{build,phase}'='ready' AND s.document#>>'{build,cycle_id}'=c.cycle_id::text AND q.stopped_at IS NULL ORDER BY o.created_at LIMIT 20`)
 	if err != nil {
 		return
 	}

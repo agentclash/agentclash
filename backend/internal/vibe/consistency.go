@@ -97,7 +97,7 @@ For every case, give exactly one present, missing, or unclear fact per declared 
 Extract obligations from the ACTUAL expected text, not from the behavior you think it should request. Include every ask and do_not_ask obligation for a recognized field, quoting its entire clause. "Ask for both A and B" has TWO ask obligations, even if A is already present. Do not silently correct it to ask only for B. Conditional, disjunctive, quoted, or otherwise unsupported instructions must be treated as unclear, not rewritten as unconditional requests. Do not provide confidence scores.`
 
 const ConsistencyReviewInstructionsV3 = `When consistency is required, also return a consistency ledger containing entities, fields, missing_only, and cases. This is a narrow missing-information check, not a claim that arbitrary prose has been proved.
-Use stable entity and field IDs. Ground entity names and every field alias in an exact, unique original-source substring. Alias-to-field and scenario-fact mappings are your interpretations: report unclear if ambiguous. Do not invent an alias or change the meaning of a name. Cite the complete original missing-only instruction, including negation or conditions, and every field it names. Never omit a named field to make the check pass.
+Use stable entity and field IDs. Ground entity names and every field alias in an exact, unique original-source substring. Alias-to-field and scenario-fact mappings are your interpretations: report unclear if ambiguous. Do not invent an alias or change the meaning of a name. Cite the complete original missing-only instruction, including negation or conditions, and every field it names. Never omit a named field to make the check pass. Every named field must have an alias copied from the missing-only instruction itself: for "Ask only for missing purchase age or item condition", use "purchase age" and "item condition", not values such as "30 days" or "unopened". Additional aliases cannot replace these field names.
 For every case, give exactly one present, missing, or unclear fact per declared field. input_pointer is a JSON Pointer to a string in the supplied input object. Present facts require an exact unique COMPLETE input clause and the literal value within it. Its final sentence delimiter may be omitted, but never cut off leading words, negation, a condition, a disjunction or uncertainty. Number literals must be exact decimal text, with no conversion or arithmetic. A missing fact may have empty evidence and literal; it is an interpretation of absence, not proof. Use unclear if a fact cannot be resolved.
 Cases contain only case_key and facts. Do not output obligations or rewrite the expected behavior. The server separately derives information requests from the original expected text. Review that exact text semantically as well: "Ask for both A and B" requests both, even if A is already present. Do not provide confidence scores.`
 
@@ -395,7 +395,7 @@ func checkSuiteConsistency(input SuiteReviewInput, ledger ConsistencyLedger, v3 
 		}
 		ids, valid := parseFieldList(match[1], fields, true)
 		if !valid || !sameStringSet(ids, constraint.FieldIDs) {
-			add("", "", SuiteUnclear, "missing_rule_fields", "The field ledger does not cover every field in the original missing-only instruction.")
+			add("", "", SuiteUnclear, "missing_rule_fields", "Field aliases must include each field name in the original instruction: "+clause.text)
 		}
 		delete(bySource, sourceKey(clause.id, clause.text))
 	}

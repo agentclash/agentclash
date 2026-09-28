@@ -58,11 +58,28 @@ describe("Build history", () => {
 });
 
 describe("truthful Build status", () => {
-  const passed = operation("run", "check", { scorecard: { passed: 3, failed: 0, unknown: 0, total: 3, evaluated: 3, pass_rate: 1, coverage: 1 } });
+  const passed = operation("run", "check", { results: [1, 2, 3].map(n => ({ case_key: `case-${n}`, version: "v1", input: null, output: "Done", verdict: "PASS" as const, checks: [] })), scorecard: { passed: 3, failed: 0, unknown: 0, total: 3, evaluated: 3, pass_rate: 1, coverage: 1 } });
+  it.each(["message", "build"])("waits for the route before announcing work for %s", kind => {
+    const message = operation("turn", kind, { state: "QUEUED" });
+    expect(buildProgress(message)).toBe("Thinking…");
+    message.state = "RUNNING";
+    message.progress = { phase: "understanding", completed_cases: 0, total_cases: 0 };
+    expect(buildProgress(message)).toBe("Thinking…");
+    message.conversation_decision = { intent: "chat", source_message_id: "greeting" };
+    expect(buildProgress(message)).toBe("Replying…");
+    expect(buildProgress({ ...message, state: "FINALIZING" })).toBe("Saving your reply…");
+    expect(buildProgress({ ...message, state: "COMPLETED" })).toBeUndefined();
+    expect(buildProgress({ ...message, state: "CANCELLING" })).toBe("Stopping…");
+    message.conversation_decision = { intent: "prepare_tests", source_message_id: "task" };
+    expect(buildProgress(message)).toBe("Creating your prototype…");
+    message.progress.phase = "switching_assistant";
+    expect(buildProgress(message)).toBe("Trying another model…");
+  });
   it("distinguishes an all-pass from incomplete, stopped and unavailable checks", () => {
     expect(buildRunSummary(passed)).toBe("It handled these 3 situations as expected.");
     for (const incomplete of [ { incomplete_cases: 1 }, { evaluated: 2 }, { unknown: 1 }, { passed: 2 } ])
       expect(buildRunSummary({ ...passed, scorecard: { ...passed.scorecard!, ...incomplete } })).toContain("could not be fully checked");
+    expect(buildRunSummary({ ...passed, results: passed.results.slice(0, 2) })).toContain("could not be fully checked");
     expect(buildRunSummary({ ...passed, state: "CANCELLED" })).toContain("Stopped");
     expect(buildRunSummary({ ...passed, state: "FAILED" })).toContain("couldn’t finish");
     expect(buildRunSummary({ ...passed, state: "EXPIRED" })).toContain("couldn’t finish");

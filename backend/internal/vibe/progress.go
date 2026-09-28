@@ -54,7 +54,7 @@ func attemptPhase(step string, role Role) string {
 		return "repairing"
 	}
 	switch step {
-	case understandingStep:
+	case "advisory:signals": // Historical attempts remain readable.
 		return "advisory_understanding"
 	case "route":
 		return "understanding"

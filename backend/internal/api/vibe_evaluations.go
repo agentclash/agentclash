@@ -6,6 +6,42 @@ import (
 	"net/http"
 )
 
+func (h *VibeHandler) listSessions(w http.ResponseWriter, r *http.Request) {
+	actor, err := h.actor(r)
+	if err != nil {
+		vibeError(w, err)
+		return
+	}
+	items, err := h.Service.Store.AgentSessions(r.Context(), actor)
+	if err != nil {
+		vibeError(w, err)
+		return
+	}
+	vibeJSON(w, 200, items)
+}
+
+func (h *VibeHandler) continueSession(w http.ResponseWriter, r *http.Request) {
+	v, err := h.session(r)
+	if err != nil {
+		vibeError(w, err)
+		return
+	}
+	var input struct {
+		ClientID   uuid.UUID `json:"client_id"`
+		ArtifactID uuid.UUID `json:"artifact_id"`
+	}
+	if err = vibeBody(w, r, v.Anonymous, &input); err != nil {
+		vibeError(w, err)
+		return
+	}
+	copy, err := h.Service.ContinueArchive(r.Context(), v.Actor, v.ID, input.ArtifactID, input.ClientID)
+	if err != nil {
+		vibeError(w, err)
+		return
+	}
+	vibeJSON(w, 201, copy)
+}
+
 func (h *VibeHandler) evaluations(w http.ResponseWriter, r *http.Request) {
 	v, err := h.session(r)
 	if err != nil {
@@ -18,31 +54,6 @@ func (h *VibeHandler) evaluations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	vibeJSON(w, 200, values)
-}
-func (h *VibeHandler) createEvaluation(w http.ResponseWriter, r *http.Request) {
-	v, err := h.session(r)
-	if err != nil {
-		vibeError(w, err)
-		return
-	}
-	if !h.Service.Config.TwoDoor {
-		vibeError(w, &vibe.Fault{Code: "hosted_disabled", Message: "The new entry flow is not enabled."})
-		return
-	}
-	var input struct {
-		ClientID uuid.UUID `json:"client_id"`
-		Door     string    `json:"door"`
-	}
-	if err = vibeBody(w, r, v.Anonymous, &input); err != nil {
-		vibeError(w, err)
-		return
-	}
-	value, err := h.Service.Store.CreateEvaluation(r.Context(), v.Actor, v.ID, input.ClientID, input.Door)
-	if err != nil {
-		vibeError(w, err)
-		return
-	}
-	vibeJSON(w, 201, value)
 }
 func (h *VibeHandler) buildQuote(w http.ResponseWriter, r *http.Request) {
 	v, err := h.session(r)

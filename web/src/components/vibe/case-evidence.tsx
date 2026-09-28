@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronRight, Copy, HelpCircle, X } from "lucide-react";
 import { caseInput, type CaseResult, type EvidenceMessage } from "@/lib/vibe";
+import { validCaseEvidence } from "@/lib/vibe-evidence";
 import { AgentReply, SafeMarkdown } from "./safe-markdown";
 import { VibeButton } from "./vibe-button";
 import { GroundedFinding, verifiedFinding } from "./grounded-finding";
@@ -30,7 +31,9 @@ export function CaseEvidence({
   origin,
   concise = false,
   exampleFirst = false,
+  compactPreview = false,
   onEvidence,
+  onReload,
   prefetch = false,
 }: {
   summary: CaseResult;
@@ -47,7 +50,9 @@ export function CaseEvidence({
   origin?: EvidenceOrigin;
   concise?: boolean;
   exampleFirst?: boolean;
+  compactPreview?: boolean;
   onEvidence?: (evidence: CaseResult) => void;
+  onReload?: () => void;
   prefetch?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -74,12 +79,7 @@ export function CaseEvidence({
     void loader
       .current(summary.case_key)
       .then((result) => {
-        if (
-          result.case_key !== summary.case_key ||
-          result.version !== summary.version ||
-          !Array.isArray(result.checks) ||
-          typeof result.output !== "string"
-        )
+        if (!validCaseEvidence({ case_key: summary.case_key, version: summary.version }, result))
           throw new Error(
             "Saved evidence could not be read for this result. Try loading it again.",
           );
@@ -175,11 +175,11 @@ export function CaseEvidence({
               </p>
             )}
             {exampleFirst && <div className="vibe-example-evidence">
-              <div><p className="vibe-evidence-label">Situation we tried</p><SafeMarkdown>{caseInput(evidence.input)}</SafeMarkdown></div>
-              <div><p className="vibe-evidence-label">What it should do</p><SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown></div>
-              <div><p className="vibe-evidence-label">What it actually replied</p>{evidence.output ? <div className="vibe-example-reply"><AgentReply>{evidence.output}</AgentReply></div> : <p>No reply was recorded.</p>}</div>
+              <div><p className="vibe-evidence-label">{compactPreview ? "We gave it" : "Situation we tried"}</p>{compactPreview ? <EvidenceExcerpt text={caseInput(evidence.input)} label="input" /> : <SafeMarkdown>{caseInput(evidence.input)}</SafeMarkdown>}</div>
+              {!compactPreview && <div><p className="vibe-evidence-label">What it should do</p><SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown></div>}
+              <div><p className="vibe-evidence-label">{compactPreview ? "It replied" : "What it actually replied"}</p>{evidence.output ? <div className="vibe-example-reply">{compactPreview ? <EvidenceExcerpt text={evidence.output} label="reply" /> : <AgentReply>{evidence.output}</AgentReply>}</div> : <p>No reply was recorded.</p>}</div>
             </div>}
-            {finding && (
+            {finding && (!compactPreview || finding.verdict === "FAIL") && (
               <div>
                 <p className="mb-1 text-xs vibe-muted">
                   {finding.verdict === "FAIL"
@@ -197,7 +197,7 @@ export function CaseEvidence({
               finding={finding}
               origin={origin}
             />)}
-            {prompt && (
+            {!compactPreview && prompt && (
               <FixPromptCopy
                 prompt={prompt}
                 busy={busy}
@@ -205,7 +205,7 @@ export function CaseEvidence({
                 onCopied={onFixCopied}
               />
             )}
-            <EvidenceDetails
+            {!compactPreview && <EvidenceDetails
               evidence={evidence}
               finding={finding}
               origin={origin}
@@ -213,14 +213,14 @@ export function CaseEvidence({
               onRegrade={onRegrade}
               onImprove={onImprove}
               busy={busy}
-            />
+            />}
           </>
         )}
         {(error || summary.verdict === "UNKNOWN") && (
           <VibeButton
             variant="quiet"
             disabled={loading}
-            onClick={() => setRefresh((value) => value + 1)}
+            onClick={() => { onReload?.(); setRefresh((value) => value + 1); }}
           >
             Reload saved evidence
           </VibeButton>
@@ -228,6 +228,16 @@ export function CaseEvidence({
       </div>
     </details>
   );
+}
+
+function EvidenceExcerpt({ text, label }: { text: string; label: "input" | "reply" }) {
+  if (text.length <= 240) return <AgentReply>{text}</AgentReply>;
+  const boundary = text.lastIndexOf(" ", 240);
+  const excerpt = text.slice(0, boundary > 180 ? boundary : 240);
+  return <>
+    <p className="vibe-evidence-excerpt">{excerpt}… <span className="vibe-muted">(excerpt)</span></p>
+    <details className="vibe-evidence-full"><summary>Show full {label}</summary><AgentReply>{text}</AgentReply></details>
+  </>;
 }
 
 function PrimaryReply({

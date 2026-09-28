@@ -1,6 +1,7 @@
 package vibe
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -43,7 +44,7 @@ func TestVibeGuidanceContractAndIsolation(t *testing.T) {
 		t.Fatal("unbounded guidance")
 	}
 	p.Document.Messages = []Message{{ID: id, Role: "assistant", Content: "Which formatting matters?", Cards: []json.RawMessage{card}}}
-	for _, task := range []conversationTask{taskRoute, taskAuthor, taskExplain, taskSignals} {
+	for _, task := range []conversationTask{taskRoute, taskAuthor, taskExplain} {
 		input, err := buildTaskInput(p, task, "prepare_tests", nil)
 		if err != nil || strings.Contains(string(raw(input)), example.Expected) {
 			t.Fatal("illustration entered model context", task, err)
@@ -124,5 +125,21 @@ func TestIntegrationVibeExplanationCanAccompanyPreparation(t *testing.T) {
 	})
 	if stage != 3 || len(v.Document.Artifacts) != 1 || len(v.Document.Messages[len(v.Document.Messages)-1].Cards) != 1 || op.Completion.CaseCount != 1 {
 		t.Fatal("help blocked preparation or changed its count")
+	}
+}
+
+func TestIntegrationV1IllustrationHasNoAdaptiveHistoryOrPolicy(t *testing.T) {
+	s, v, _ := memoryService(t)
+	s.Config.PreciseActions, s.Config.ContextGuidance = true, true
+	if err := s.Store.Edit(context.Background(), v.Actor, v.ID, v.Revision, func(v *Session) error { v.Document.FormatVersion = 1; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	v, _ = s.Store.GetSession(context.Background(), v.Actor, v.ID)
+	v, _ = memoryExecute(t, s, v, "What is a test?", func(provider.Request) any {
+		return reliableRoute{Intent: "chat", Reply: "A situation and what a good response should do.", Memory: &memoryUpdate{}, Example: &GuidanceExample{Input: "Say hello", Expected: "A greeting"}}
+	})
+	m := v.Document.Messages[len(v.Document.Messages)-1]
+	if len(m.Cards) != 1 || len(v.Document.ConversationState.Guidance.Events) != 0 || len(v.Document.Policies) != 0 || len(v.Document.Artifacts) != 0 {
+		t.Fatal("illustration was hidden or became adaptive history/requirements")
 	}
 }

@@ -60,10 +60,10 @@ export function EvaluationNavigation(p: Props) {
       }}><PanelLeftClose /></VibeButton>}
     </div>
     <div className="vibe-sidebar-create">
-      <VibeButton disabled={p.disabled} onClick={() => navigate(p.onNew, mobile)}><Plus />New evaluation</VibeButton>
+      <VibeButton disabled={p.disabled} onClick={() => navigate(p.onNew, mobile)}><Plus />New agent</VibeButton>
     </div>
-    <nav aria-label="Evaluations in this chat" className="vibe-sidebar-list">
-      <p className="vibe-sidebar-label">Your evaluations</p>
+    <nav aria-label="Your agents" className="vibe-sidebar-list">
+      <p className="vibe-sidebar-label">Your agents</p>
       {contexts.length ? contexts.map(context => {
         const { title, scope } = evaluationIdentity(context);
         const running = context.operations.some(operation => !terminal(operation.state));
@@ -93,16 +93,16 @@ export function EvaluationNavigation(p: Props) {
     }} onOpenChangeComplete={open => {
       if (!open) { const action = afterDrawerClose.current; afterDrawerClose.current = null; action?.(); }
     }}>
-      <SheetTrigger render={<VibeButton variant="quiet" className="vibe-mobile-toggle" aria-label="Open evaluations" />}><PanelLeftOpen /></SheetTrigger>
+      <SheetTrigger render={<VibeButton variant="quiet" className="vibe-mobile-toggle" aria-label="Open agents" />}><PanelLeftOpen /></SheetTrigger>
       <SheetContent side="left" className="vibe-workspace vibe-sidebar-sheet" finalFocus={() => !drawerNavigating.current}>
-        <SheetTitle className="sr-only">Your evaluations</SheetTitle>
-        <SheetDescription className="sr-only">Switch evaluations or start something new.</SheetDescription>
+        <SheetTitle className="sr-only">Your agents</SheetTitle>
+        <SheetDescription className="sr-only">Switch agents or start something new.</SheetDescription>
         {navigation(true)}
       </SheetContent>
     </Sheet>
   </>;
   return <div className="vibe-shell" data-collapsed={collapsed}>
-    <motion.aside className="vibe-sidebar" aria-label="Evaluation sidebar" inert={collapsed} aria-hidden={collapsed || undefined}
+    <motion.aside className="vibe-sidebar" aria-label="Agent sidebar" inert={collapsed} aria-hidden={collapsed || undefined}
       initial={false} animate={{ width: collapsed ? 0 : 252, opacity: collapsed ? 0 : 1 }}
       transition={{ duration: reduced ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] }}>
       <div className="vibe-sidebar-inner">{navigation(false)}</div>

@@ -187,6 +187,7 @@ export type Session = {
   saved_models?: Models;
   document: {
     evaluation?: { id: string; chat_id: string; door: "build" | "test" };
+    format_version?: number;
     build?: { responding_to_question?: string; cycle_id: string; phase: string; clarifications_used: number; artifact_id?: string; check_id?: string; sample?: string; error?: { code: string; message: string } };
     conversation_state?: ConversationState;
     last_change?: ConversationChange;
@@ -251,7 +252,7 @@ export type SavedCheck = {
   source: Operation["source"];
   created_at: string;
 };
-export type BuildQuote = { id: string; request: { content: string; models: Models }; max_cost_nano_usd: number; cases: number; expires_at: string };
+export type BuildQuote = { max_calls: number; id: string; request: { content: string; models: Models }; max_cost_nano_usd: number; cases: number; expires_at: string };
 export type RunQuote = { id: string; max_cost_nano_usd: number; cases: number; calls: number; expires_at: string };
 
 export type VibeConfig = {

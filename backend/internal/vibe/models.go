@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/tiktoken-go/tokenizer"
-	"math"
 	"math/big"
 	"os"
 	"strings"
@@ -32,8 +31,6 @@ type ModelProfile struct {
 }
 type Config struct {
 	TwoDoor              bool
-	UnderstandingMode    string
-	UnderstandingProfile *UnderstandingProfile
 	GroundedJudging      bool
 	ContextGuidance      bool
 	PreciseActions       bool
@@ -58,34 +55,17 @@ type Config struct {
 
 func LoadConfig() (Config, error) {
 	c := Config{Enabled: os.Getenv("VIBE_ENABLED") == "true", Credential: os.Getenv("VIBE_OPENROUTER_KEY"), Profiles: map[string]ModelProfile{}, Campaign: os.Getenv("VIBE_CAMPAIGN")}
-	c.UnderstandingMode = os.Getenv("VIBE_JEV_MODE")
-	if c.UnderstandingMode == "" {
-		c.UnderstandingMode = "off"
-	}
-	if c.UnderstandingMode != "off" && c.UnderstandingMode != "shadow" && c.UnderstandingMode != "advisory" {
-		return c, fmt.Errorf("VIBE_JEV_MODE must be off, shadow or advisory")
-	}
-	if value := os.Getenv("VIBE_JEV_PROFILE_JSON"); value != "" {
-		var profile UnderstandingProfile
-		if err := Decode([]byte(value), LimitsFor(false), &profile); err != nil || !profile.valid() {
-			return c, fmt.Errorf("invalid VIBE_JEV_PROFILE_JSON")
-		}
-		c.UnderstandingProfile = &profile
-	}
 	c.FreeOnly = os.Getenv("VIBE_FREE_ONLY") == "true"
-	c.ReliableAuthoring = os.Getenv("VIBE_RELIABLE_AUTHORING") == "true"
+	// One supported authoring contract for new application requests. Older
+	// versions remain decodable for immutable journals and archive reads.
+	c.ReliableAuthoring, c.ConversationState, c.PreciseActions = true, true, true
+	c.ContextGuidance, c.InterpretedAuthoring = true, true
+	c.SourcePolicyVersion = SourcePolicyVersion
 	c.GroundedJudging = os.Getenv("VIBE_GROUNDED_JUDGING") != "false"
 	c.SuiteReviewVersion = LatestSuiteValidatorVersion
-	if c.ReliableAuthoring {
-		c.SourcePolicyVersion = SourcePolicyVersion
-		c.ConversationState = os.Getenv("VIBE_CONVERSATION_STATE") != "false"
-		c.PreciseActions = c.ConversationState && os.Getenv("VIBE_PRECISE_ACTIONS") != "false"
-		c.ContextGuidance = c.PreciseActions && os.Getenv("VIBE_CONTEXT_GUIDANCE") != "false"
-		c.InterpretedAuthoring = c.ContextGuidance && os.Getenv("VIBE_INTERPRETED_AUTHORING") == "true"
-		c.AssistantFallback = c.InterpretedAuthoring && os.Getenv("VIBE_ASSISTANT_FALLBACK") != "false"
-	}
+	c.AssistantFallback = os.Getenv("VIBE_ASSISTANT_FALLBACK") != "false"
 	c.LocalTesting = os.Getenv("VIBE_LOCAL_TESTING") == "true"
-	c.TwoDoor = c.InterpretedAuthoring && os.Getenv("VIBE_TWO_DOOR") == "true"
+	c.TwoDoor = true
 	if c.LocalTesting && os.Getenv("APP_ENV") != "development" {
 		return c, fmt.Errorf("VIBE_LOCAL_TESTING requires APP_ENV=development")
 	}
@@ -244,12 +224,6 @@ func (p ModelProfile) BoundCost(in, out int) (int64, error) {
 // Reservations cannot assume more input than this endpoint can accept.
 func (p ModelProfile) inputLimit(l Limits) int {
 	return min(l.ContextTokens, p.Context-l.OutputTokens)
-}
-func AddCost(a, b int64) (int64, error) {
-	if a < 0 || b < 0 || a > math.MaxInt64-b {
-		return 0, fmt.Errorf("cost overflow")
-	}
-	return a + b, nil
 }
 
 type ContextCount struct {

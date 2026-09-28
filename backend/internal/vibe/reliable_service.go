@@ -34,7 +34,7 @@ func (s *Service) freezeReviewVersion(p *Plan) error {
 		l := p.limits()
 		// The grounded consistency ledger needs room in the response. Admission
 		// prices every call using this same frozen allowance before dispatch.
-		l.OutputTokens = max(l.OutputTokens, 4096)
+		l.OutputTokens = max(l.OutputTokens, 8192)
 		if version == LatestSuiteValidatorVersion {
 			// Live grounded reviews take longer than the old prose-only reply.
 			// Freeze enough time for the bounded response and complete graph.

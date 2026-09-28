@@ -44,6 +44,19 @@ func questionRoute() reliableRoute {
 func answerFor(q *interaction.Question, quote string, unknown bool) *memoryAnswer {
 	return &memoryAnswer{QuestionID: q.ID, QuestionRevision: q.Revision, Quote: quote, Unknown: unknown, OptionIDs: []string{}}
 }
+func TestVibeRealTaskSupersedesOfferedDemo(t *testing.T) {
+	d, _ := memoryTurn(t, Document{}, "I want AI to help somehow", reliableRoute{Intent: "clarify", Reply: "Which repetitive task should it handle?", Memory: &memoryUpdate{Question: &memoryQuestion{Purpose: "clarify_job", Text: "Which repetitive task should it handle?", MaxSelections: 1}}})
+	q := *d.ConversationState.PendingQuestion
+	d, _ = memoryTurn(t, d, "I don't know", reliableRoute{Intent: "chat", Reply: "Try a sample email assistant", Memory: &memoryUpdate{Answer: answerFor(&q, "I don't know", true)}})
+	d.ConversationState.PendingDemo = &DemoOffer{ID: uuid.NewString(), ScopeID: d.ConversationState.Brief.ScopeID, OriginMessageID: d.Messages[len(d.Messages)-1].ID.String(), Sample: "email"}
+	if err := validateConversationState(d.ConversationState, d); err != nil {
+		t.Fatal(err)
+	}
+	d, _ = memoryTurn(t, d, "Sort incoming customer emails", reliableRoute{Intent: "prepare_tests", Count: 3, Reply: "I will try your email sorter.", Memory: &memoryUpdate{Facts: []memoryFact{{Kind: "job", Quote: "Sort incoming customer emails"}}}})
+	if d.ConversationState.PendingDemo != nil {
+		t.Fatal("a real job left the unrelated demo choice active")
+	}
+}
 func TestVibeConversationMemoryShortAnswersAndOwnership(t *testing.T) {
 	d, _ := memoryTurn(t, Document{}, "My agent converts PDF to Markdown.", questionRoute())
 	q := *d.ConversationState.PendingQuestion
@@ -214,7 +227,7 @@ func TestVibeConversationMemoryTaskIsolationAndCompaction(t *testing.T) {
 		t.Fatal("compaction lost question")
 	}
 	addMemorySources(&p)
-	for _, task := range []conversationTask{taskAuthor, taskExplain, taskSignals} {
+	for _, task := range []conversationTask{taskAuthor, taskExplain} {
 		input, err := buildTaskInput(p, task, "prepare_tests", nil)
 		if err != nil {
 			t.Fatal(err)
@@ -224,9 +237,6 @@ func TestVibeConversationMemoryTaskIsolationAndCompaction(t *testing.T) {
 		}
 		if task == taskAuthor && (input.Guidance != nil || strings.Contains(string(raw(input)), "preserve headings")) {
 			t.Fatal("unadopted teaching became author context")
-		}
-		if task == taskSignals && (len(input.SourceBlocks) > 0 || input.SelectedTests != nil || len(input.ObservedResults) > 0) {
-			t.Fatal("advisory context received unnecessary data")
 		}
 	}
 	if _, err := buildTaskInput(p, conversationTask("invented"), "", nil); err == nil {

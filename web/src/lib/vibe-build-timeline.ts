@@ -57,11 +57,13 @@ export function buildTimeline(session: Session): BuildEntry[] {
 }
 
 export function buildProgress(operation: Operation) {
+  const message = operation.kind === "message" || operation.kind === "build";
+  const intent = operation.conversation_decision?.intent;
   if (operation.state === "CANCELLING") return "Stopping…";
   if (operation.state === "AWAITING_APPROVAL") return "Review the cost before continuing.";
   if (operation.state === "AWAITING_INPUT") return "One detail is needed to continue.";
-  if (operation.state === "QUEUED") return "Waiting to start…";
-  if (operation.state === "FINALIZING") return "Saving your results…";
+  if (operation.state === "QUEUED") return message ? "Thinking…" : "Waiting to start…";
+  if (operation.state === "FINALIZING") return message ? "Saving your reply…" : "Saving your results…";
   if (terminal(operation.state)) return undefined;
   if (operation.kind === "playground") return "Your prototype is replying…";
   if (operation.kind === "check" || operation.kind === "retest") {
@@ -70,10 +72,12 @@ export function buildProgress(operation: Operation) {
       ? `${completed_cases} of ${total_cases} examples checked…`
       : total_cases > 0 ? `Trying ${total_cases} examples…` : "Trying your examples…";
   }
-  if (operation.conversation_decision?.intent === "suggest_fix") return "Preparing a suggested improvement…";
   if (operation.progress?.phase === "switching_assistant") return "Trying another model…";
-  if (operation.conversation_decision?.intent === "prepare_tests" || operation.kind === "build") return "Creating your prototype…";
-  return "Understanding your request…";
+  if (intent === "suggest_fix") return "Preparing a suggested improvement…";
+  if (intent === "prepare_tests") return "Creating your prototype…";
+  if (intent === "chat") return "Replying…";
+  if (intent === "explain_results") return "Reading your results…";
+  return "Thinking…";
 }
 
 export function buildRunSummary(operation: Operation) {
@@ -84,7 +88,7 @@ export function buildRunSummary(operation: Operation) {
   if (!score || score.total === 0) return "No replies were checked.";
   if (operation.source?.comparison === "regraded") return "Saved replies regraded. The prototype hasn’t changed.";
   if (score.failed) return `${score.failed === 1 ? "One example needs" : `${score.failed} examples need`} attention.`;
-  if (score.unknown || score.evaluated < score.total || score.incomplete_cases || score.passed !== score.total)
+  if (score.unknown || score.evaluated !== score.total || score.incomplete_cases || score.passed !== score.total || operation.results.length !== score.total || operation.results.some(c => c.verdict !== "PASS"))
     return "Some examples could not be fully checked.";
   return score.total === 1 ? "It handled this situation as expected." : `It handled these ${score.total} situations as expected.`;
 }

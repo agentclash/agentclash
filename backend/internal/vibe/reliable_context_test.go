@@ -149,16 +149,23 @@ func TestVibeReliableReviewVersionAndOutputAllowanceAreFrozen(t *testing.T) {
 	if err := s.freezeReviewVersion(&p); err != nil {
 		t.Fatal(err)
 	}
-	if p.reviewVersion() != LatestSuiteValidatorVersion || p.limits().OutputTokens != 4096 || p.limits().ProviderSeconds != 90 {
+	if p.reviewVersion() != LatestSuiteValidatorVersion || p.limits().OutputTokens != 8192 || p.limits().ProviderSeconds != 90 {
 		t.Fatal("new reviewer allowance was not frozen")
 	}
 	s.Config.SuiteReviewVersion = SuiteValidatorVersion
-	if p.reviewVersion() != LatestSuiteValidatorVersion || p.limits().OutputTokens != 4096 {
+	if p.reviewVersion() != LatestSuiteValidatorVersion || p.limits().OutputTokens != 8192 {
 		t.Fatal("configuration changed an admitted review")
 	}
 	legacy := Plan{Anonymous: true, AuthoringVersion: 11, Conversation: &ConversationContext{}}
 	if legacy.reviewVersion() != SuiteValidatorVersion || legacy.limits().OutputTokens != 2048 {
 		t.Fatal("old operation reinterpreted as a new reviewer")
+	}
+	// Already admitted work retains its old ceiling; only new quotes change.
+	oldLimits := LimitsFor(true)
+	oldLimits.OutputTokens = 4096
+	old := Plan{Anonymous: true, AuthoringVersion: 11, ExecutionLimits: &oldLimits}
+	if old.limits().OutputTokens != 4096 {
+		t.Fatal("new review allowance changed a saved authorization")
 	}
 	s.Config.SuiteReviewVersion = "unknown"
 	if err := s.freezeReviewVersion(&legacy); err == nil {

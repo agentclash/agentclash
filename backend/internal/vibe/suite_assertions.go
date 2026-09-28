@@ -281,6 +281,15 @@ func bindReviewEvidenceSchema(schema map[string]any, input SuiteReviewInput) {
 	}
 	supportVariants := []any{}
 	for _, rule := range input.Policy.Rules {
+		if len(rule.Evidence) > 0 {
+			for _, evidence := range rule.Evidence {
+				supportVariants = append(supportVariants, objectSchema(map[string]any{
+					"rule_id": enum([]string{rule.ID}), "source_block_id": enum([]string{evidence.SourceBlockID}),
+					"quote": enum([]string{evidence.Quote}),
+				}))
+			}
+			continue
+		}
 		supportVariants = append(supportVariants, objectSchema(map[string]any{
 			"rule_id": enum([]string{rule.ID}), "source_block_id": enum(rule.SourceBlockIDs),
 			"quote": map[string]any{"type": "string", "minLength": 1},

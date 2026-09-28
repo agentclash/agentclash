@@ -17,16 +17,6 @@ type AssistantRecovery struct {
 	MaxCost int64        `json:"max_cost_nano_usd"`
 }
 
-func understandingExpectedCalls(p Plan) int {
-	if p.interpreted() {
-		if p.AssistantRecovery != nil {
-			return 10
-		}
-		return 9
-	}
-	return 6
-}
-
 func validateInterpretedAllowance(p Plan, cfg Config) error {
 	if !p.interpreted() {
 		if p.AssistantRecovery != nil {
@@ -61,10 +51,6 @@ func validateInterpretedAllowance(p Plan, cfg Config) error {
 		}
 		expectedCalls++
 		expectedCost += bound
-	}
-	if p.Understanding != nil {
-		expectedCalls++
-		expectedCost += p.Understanding.MaxCost
 	}
 	if p.Calls != expectedCalls || p.MaxCost != expectedCost {
 		return fault("budget_limit", "The assistant call graph is not fully reserved.")

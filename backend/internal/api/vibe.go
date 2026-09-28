@@ -63,9 +63,10 @@ func (h *VibeHandler) Routes() http.Handler {
 	r.Get("/credits", h.creditBalance)
 	r.Post("/credit-checkouts", h.creditCheckout)
 	r.Post("/sessions", h.create)
+	r.Get("/sessions", h.listSessions)
 	r.Get("/sessions/{sessionID}", h.get)
+	r.Post("/sessions/{sessionID}/continue", h.continueSession)
 	r.Get("/sessions/{sessionID}/evaluations", h.evaluations)
-	r.Post("/sessions/{sessionID}/evaluations", h.createEvaluation)
 	r.Post("/sessions/{sessionID}/build-quote", h.buildQuote)
 	r.Post("/sessions/{sessionID}/run-quote", h.runQuote)
 	r.Post("/sessions/{sessionID}/messages", h.submit)
@@ -261,10 +262,15 @@ func (h *VibeHandler) config(w http.ResponseWriter, r *http.Request) {
 func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		ID          uuid.UUID  `json:"id"`
+		Door        string     `json:"door,omitempty"`
 		WorkspaceID *uuid.UUID `json:"workspace_id,omitempty"`
 	}
 	if err := vibeBody(w, r, true, &input); err != nil {
 		vibeError(w, err)
+		return
+	}
+	if h.Service.Config.TwoDoor && input.Door == "" {
+		vibeError(w, &vibe.Fault{Code: "invalid_request", Message: "Choose Build an agent or Improve an existing agent."})
 		return
 	}
 	if input.ID == uuid.Nil {
@@ -283,7 +289,12 @@ func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 		vibeError(w, err)
 		return
 	}
-	v, err := h.Service.Store.CreateSession(r.Context(), actor, input.WorkspaceID, input.ID, h.Service.Config.DefaultModels())
+	var v vibe.Session
+	if input.Door != "" {
+		v, err = h.Service.Store.CreateAgent(r.Context(), actor, input.WorkspaceID, input.ID, input.Door, h.Service.Config.DefaultModels())
+	} else {
+		v, err = h.Service.Store.CreateSession(r.Context(), actor, input.WorkspaceID, input.ID, h.Service.Config.DefaultModels())
+	}
 	if err != nil {
 		vibeError(w, err)
 		return
@@ -299,7 +310,11 @@ func (h *VibeHandler) session(r *http.Request) (vibe.Session, error) {
 	if err != nil {
 		return vibe.Session{}, err
 	}
-	return h.Service.Store.GetSession(r.Context(), actor, id)
+	v, err := h.Service.Store.GetSession(r.Context(), actor, id)
+	if err == nil && h.Service.Config.TwoDoor && v.Document.FormatVersion != 1 && r.Method != http.MethodGet && !strings.HasSuffix(r.URL.Path, "/continue") && !strings.HasSuffix(r.URL.Path, "/claim") {
+		return vibe.Session{}, &vibe.Fault{Code: "invalid_state", Message: "This is a saved earlier conversation. Continue in V1 to make a working copy; the original stays unchanged."}
+	}
+	return v, err
 }
 func (h *VibeHandler) get(w http.ResponseWriter, r *http.Request) {
 	v, err := h.session(r)

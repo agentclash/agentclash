@@ -258,6 +258,10 @@ func (s *Service) AddEvidence(ctx context.Context, actor string, id uuid.UUID, i
 	if err != nil {
 		return err
 	}
+	if v.Document.FormatVersion == 1 {
+		return fault("unsupported_capability", "Use agent instructions or a challenge pack. Recorded-conversation grading is not available in V1.")
+	}
+
 	l := s.Config.Limits(v.Anonymous)
 	if err = s.Gate.Check(ctx, actor, l); err != nil {
 		return err

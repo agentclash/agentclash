@@ -71,6 +71,16 @@ func TestOpenRouterOversizedResponseIsNotSuccess(t *testing.T) {
 	}
 }
 
+func TestOpenRouterLengthFinishPreservesTruncationAndUsage(t *testing.T) {
+	client := NewOpenAICompatibleClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return sseResponse(http.StatusOK, "data: {\"choices\":[{\"delta\":{\"content\":\"{\"},\"finish_reason\":\"length\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":4096,\"total_tokens\":4116,\"cost\":0.002}}\n\ndata: [DONE]\n\n"), nil
+	})}, "https://openrouter.ai/api/v1", staticCredentialResolver{value: "fake"})
+	response, err := client.InvokeModel(context.Background(), Request{ProviderKey: "openrouter", CredentialReference: "test", Model: "model", Messages: []Message{{Role: "user", Content: "review"}}})
+	if err != nil || response.FinishReason != FinishReasonMaxTokens || response.OutputText != "{" || response.Usage.OutputTokens != 4096 || response.Usage.CostUSD == nil {
+		t.Fatalf("truncation or accounting lost: %#v, %v", response, err)
+	}
+}
+
 func TestOpenRouterExplicitReasoningControl(t *testing.T) {
 	body, err := buildOpenAIRequestBody(Request{Model: "dots-studio/dots-3-note-preview:free", Reasoning: json.RawMessage(`{"enabled":false}`), Messages: []Message{{Role: "user", Content: "hello"}}}, true)
 	if err != nil {

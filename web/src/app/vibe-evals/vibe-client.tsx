@@ -1,6 +1,10 @@
 "use client";
 
+import { downloadJSON, exportRuns } from "@/lib/vibe-export";
+
 import { readBuildDrafts, writeBuildDrafts } from "@/lib/vibe-build-drafts";
+import { WEB_EVENTS } from "@/lib/analytics/events";
+import { captureBuildEvent } from "@/lib/vibe-build-analytics";
 
 import type { ConversationAction } from "@/lib/vibe-conversation";
 
@@ -8,15 +12,14 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAccessToken, useAuth } from "@workos-inc/authkit-nextjs/components";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ArchivedConversation } from "@/components/vibe/archived-conversation";
 import { PrototypeTrial } from "@/components/vibe/prototype-trial";
 import { EvaluationWorkspace } from "@/components/vibe/evaluation-workspace";
 import { buildVersion, workingBuildArtifact } from "@/lib/vibe-build-timeline";
 import { EvaluationNavigation, evaluationIdentity } from "@/components/vibe/evaluation-navigation";
-import { pendingQuickCheck, quickCheckClientID } from "@/lib/vibe-quick-check";
 import { VibeButton } from "@/components/vibe/vibe-button";
-import { Requirements } from "@/components/vibe/requirements";
 import { CreditsDialog } from "@/components/vibe/credits-dialog";
-import { Paperclip } from "lucide-react";
+import { AgentSettings } from "@/components/vibe/agent-settings";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -24,12 +27,10 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArtifactPanel, ModelSelect } from "@/components/vibe/artifact-panel";
 import { createApiClient } from "@/lib/api/client";
 import type { UserMeResponse } from "@/lib/api/types";
 import {
   editableEvaluation,
-  exportAgent,
   defaultModels,
   terminal,
   retryVibeOperation,
@@ -121,7 +122,7 @@ export function VibeClient() {
   const activeSessionRef = useRef<string | undefined>(requestedSessionID || undefined);
   const contextDrafts = useRef<Record<string, string>>({});
   const contextTrials = useRef<Record<string, { artifact?: string; thread: string; target: string; trying: boolean }>>({});
-  const contextChoice = useRef<{ root: string; door: "build" | "test"; id: string } | undefined>(undefined);
+  const contextChoice = useRef<{ door: "build" | "test"; id: string } | undefined>(undefined);
   // Choosing the wrong door is reversible until a context has any saved work.
   // The server intentionally keeps context creation append-only; hide the empty
   // abandoned child locally instead of deleting history or changing its API.
@@ -132,9 +133,11 @@ export function VibeClient() {
   const [savedWorkOpen, setSavedWorkOpen] = useState(false);
   const [buildQuote, setBuildQuote] = useState<BuildQuote>();
   const [quoteError, setQuoteError] = useState("");
-  const [runQuote, setRunQuote] = useState<{ quote: RunQuote; kind: string; baseline?: Operation; extra: { client_id?: string; additional_examples?: number; evidence_set_id?: string; artifact_id?: string; purpose?: "regrade" }; content?: string; sessionID: string; revision: number }>();
+  const [runQuote, setRunQuote] = useState<{ quote: RunQuote; kind: string; baseline?: Operation; extra: { client_id?: string; cycle_id?: string; additional_examples?: number; evidence_set_id?: string; artifact_id?: string; purpose?: "regrade" }; content?: string; sessionID: string; revision: number }>();
   const [config, setConfig] = useState<VibeConfig | null>(null);
   const [configError, setConfigError] = useState(false);
+  // Loading configuration must not render the legacy entry before the V1 shell.
+  const twoDoor = config === null ? true : config.two_door;
   const [models, setModels] = useState<Models>(defaultModels);
   const [content, setContent] = useState("");
   const [pending, setPending] = useState(false);
@@ -142,13 +145,10 @@ export function VibeClient() {
     id: string;
     content: string;
   }>();
-  const [autoCheckID, setAutoCheckID] = useState<string>();
   const [runPending, setRunPending] = useState(false);
   const [requestedRunID, setRequestedRunID] = useState<string>();
   const navigatedRunID = useRef<string | undefined>(undefined);
   const [pendingAction, setPendingAction] = useState<string>();
-  const [blockedAutoCheckID, setBlockedAutoCheckID] = useState<string>();
-  const quickCheckAttempts = useRef(new Set<string>());
   const [error, setError] = useState("");
   const [connection, setConnection] = useState("");
   const [view, setView] = useState<"build" | "try" | "checks">(
@@ -165,11 +165,11 @@ export function VibeClient() {
   const buildEvidence = useRef<
     { operation: string; artifact: string } | undefined
   >(undefined);
+  const savedCaseReads = useRef(new Map<string, Promise<CaseResult>>());
   const restoredThread = useRef(params.get("thread"));
   const [trialBuffers, setTrialBuffers] = useState<Record<string, string>>({});
   const trialEdits = useRef<Record<string, number>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [instructionsOpen, setInstructionsOpen] = useState(false);
   const [checksDirtyID, setChecksDirtyID] = useState<string | null>(null);
   const [pendingEdit, setPendingEdit] = useState<{ operationID: string; artifactID: string }>();
   const [dirtyArtifactID, setDirtyArtifactID] = useState<string | null>(null);
@@ -232,11 +232,6 @@ export function VibeClient() {
   const dirtyArtifact =
     !!artifact &&
     (dirtyArtifactID === artifact.id || checksDirtyID === artifact.id);
-  const quickCheck = pendingQuickCheck(session);
-  const quickChecking =
-    runPending ||
-    !!autoCheckID ||
-    !!(quickCheck && quickCheck.id !== blockedAutoCheckID && !dirtyArtifact);
   const evaluation = artifact ? editableEvaluation(artifact.blueprint) : null;
   const scenarioCount =
     artifact?.test_plan?.scenarios.length ||
@@ -530,33 +525,36 @@ export function VibeClient() {
     );
     return v;
   }
-  function exportConversation() {
-    if (!session) return;
-    const url = URL.createObjectURL(
-      new Blob(
-        [
-          JSON.stringify(
-            {
-              format: "agentclash-vibe-conversation-v1",
-              document: session.document,
-              capabilities: config?.capabilities || [],
-            },
-            null,
-            2,
-          ),
-        ],
-        { type: "application/json" },
-      ),
-    );
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "agentclash-vibe-conversation.json";
-    a.click();
-    URL.revokeObjectURL(url);
+  async function exportConversation() {
+    if (!session || pending) return;
+    const snapshot = session;
+    setPending(true);
+    setError("");
+    try {
+      const auth = await token();
+      const operations = await exportRuns(snapshot, (id, key) => vibeFetch<CaseResult>(`/operations/${id}/case?key=${encodeURIComponent(key)}`, auth));
+      downloadJSON("agentclash-vibe-conversation.json", {format: "agentclash-vibe-conversation-v1", document: snapshot.document, operations, capabilities: config?.capabilities || []});
+      if (snapshot.document.evaluation?.door === "build") captureBuildEvent(WEB_EVENTS.VIBE_BUILD_EXPORT_REQUESTED, { session_id: snapshot.id, artifact_id: artifact?.id, sample: !!artifact?.sample, format: "json" });
+    } catch (e) { setError((e as Error).message); }
+    finally { setPending(false); }
   }
-  const chatID = session?.document.evaluation?.chat_id || sessionID;
+  function loadSavedCase(id: string, key: string): Promise<CaseResult> {
+    const owner = session?.id;
+    if (!owner || activeSessionRef.current !== owner)
+      return Promise.reject(new Error("This conversation changed. Reopen its saved checks."));
+    const cacheKey = JSON.stringify([owner, id, key]);
+    const existing = savedCaseReads.current.get(cacheKey);
+    if (existing) return existing;
+    const request = token().then(auth => vibeFetch<CaseResult>(`/operations/${id}/case?key=${encodeURIComponent(key)}`, auth));
+    savedCaseReads.current.set(cacheKey, request);
+    const forget = () => {
+      if (savedCaseReads.current.get(cacheKey) === request) savedCaseReads.current.delete(cacheKey);
+    };
+    void request.then(forget, forget);
+    return request;
+  }
   const buildStart = session?.document.evaluation?.door === "build" && !session.document.build && !session.document.artifacts.length;
-  const buildAnswer = session?.document.build?.phase === "clarifying";
+  const continuingBuild = (session?.document.build?.phase === "clarifying" || session?.document.build?.phase === "waiting");
   const quoteMatches = !!buildQuote && buildQuote.request.content === content && JSON.stringify(buildQuote.request.models) === JSON.stringify(models) && Date.parse(buildQuote.expires_at) > Date.now();
   useEffect(() => {
     if (!buildStart || !sessionID || !content.trim()) { setBuildQuote(undefined); setQuoteError(""); return; }
@@ -569,12 +567,12 @@ export function VibeClient() {
     return () => { live = false; clearTimeout(timer); };
   }, [buildStart, sessionID, content, models, token]);
   useEffect(() => {
-    if (!config?.two_door || !chatID) return;
+    if (!config?.two_door) return;
     let live = true;
-    void token().then(auth => vibeFetch<Session[]>(`/sessions/${chatID}/evaluations`, auth))
+    void token().then(auth => vibeFetch<Session[]>("/sessions", auth))
       .then(items => { if (live) setContexts(items); }).catch(() => undefined);
     return () => { live = false; };
-  }, [chatID, sessionID, session?.event_cursor, token, config?.two_door]);
+  }, [sessionID, session?.event_cursor, token, config?.two_door]);
   useEffect(() => {
     const id = session?.document.build?.check_id;
     if (id && !requestedRunID) setRequestedRunID(id);
@@ -606,16 +604,23 @@ export function VibeClient() {
     window.history.replaceState(null, "", restoredURL.pathname + restoredURL.search);
   }
   async function chooseDoor(door: "build" | "test") {
-    if (sending.current || pending || uncertain || dirtyArtifact) return;
+    if (!config || sending.current || pending || uncertain || dirtyArtifact) return;
     setPending(true);
     try {
-      const current = await ensureSession();
-      const root = current.document.evaluation?.chat_id || current.id;
-      entryOrigin.current ||= current.id;
-      if (!contextChoice.current || contextChoice.current.root !== root || contextChoice.current.door !== door)
-        contextChoice.current = { root, door, id: crypto.randomUUID() };
-      const child = await vibeFetch<Session>(`/sessions/${root}/evaluations`, await token(), { method: "POST", body: JSON.stringify({client_id: contextChoice.current.id, door}) });
-      adoptContext(child); contextChoice.current = undefined;
+      entryOrigin.current ||= sessionID;
+      if (!contextChoice.current || contextChoice.current.door !== door)
+        contextChoice.current = { door, id: crypto.randomUUID() };
+      const auth = await token();
+      const id = contextChoice.current.id;
+      await vibeFetch<Session>("/sessions", auth, { method: "POST", body: JSON.stringify({ id, door, ...(workspace ? { workspace_id: workspace } : {}) }) });
+      // Confirm that private-cookie ownership survived before adopting the URL.
+      const agent = await vibeFetch<Session>(`/sessions/${id}`, auth);
+      const draft = canChangeDoor ? content : "";
+      if (canChangeDoor && sessionID) discardedContextIDs.current.add(sessionID);
+      adoptContext(agent);
+      setContent(draft);
+      contextChoice.current = undefined;
+      if (door === "build") captureBuildEvent(WEB_EVENTS.VIBE_BUILD_ENTRY_SELECTED, { session_id: agent.id, entry_source: "two_door" }, agent.id);
     } catch (e) { setError((e as Error).message); }
     finally { setPending(false); }
   }
@@ -656,11 +661,12 @@ export function VibeClient() {
       setPending(false);
     }
   }
-  function sendMessage(text = content, context?: { viewed_run_id: string }) {
+  function sendMessage(text = content, context?: { viewed_run_id: string }, demoID?: string) {
     if (buildStart && !quoteMatches) return;
     void submit("message", text, undefined, {
       ...context,
-      ...(buildStart ? { cycle_id: buildQuote!.id } : buildAnswer ? { cycle_id: session!.document.build!.cycle_id } : {}),
+      ...(demoID ? { demo_id: demoID } : {}),
+      ...(buildStart ? { cycle_id: buildQuote!.id } : continuingBuild ? { cycle_id: session!.document.build!.cycle_id } : {}),
       ...(testJourney || session?.document.evaluation ? {} : { quick_check: !buildEvidence.current }),
     });
   }
@@ -670,8 +676,8 @@ export function VibeClient() {
     const extra = { client_id: clientID, additional_examples: count, artifact_id: artifactID };
     setPending(true); setError("");
     try {
-      const quote = await vibeFetch<RunQuote>(`/sessions/${session.id}/run-quote`, await token(), {method:"POST", body:JSON.stringify({ ...extra, revision:session.revision, kind:"message", content:text, models, evaluation_first:true, test_journey:true })});
-      setRunQuote({quote, kind:"message", content:text, extra, sessionID:session.id, revision:session.revision});
+      const quote = await vibeFetch<BuildQuote>(`/sessions/${session.id}/build-quote`, await token(), {method:"POST", body:JSON.stringify({ content:text, models, artifact_id:artifactID, additional_examples:count })});
+      setRunQuote({quote: {...quote, calls: quote.max_calls}, kind:"message", content:text, extra: {...extra, cycle_id:quote.id}, sessionID:session.id, revision:session.revision});
     } catch(e) { setError((e as Error).message); } finally {setPending(false);}
   }
   async function requestRun(baseline?: Operation, evidenceID?: string, purpose?: "regrade") {
@@ -699,6 +705,7 @@ export function VibeClient() {
       purpose?: "suggest_change" | "regrade";
       viewed_run_id?: string;
       viewed_case_key?: string;
+      demo_id?: string;
       evidence_set_id?: string;
       artifact_id?: string;
       baseline_id?: string;
@@ -738,7 +745,7 @@ export function VibeClient() {
       setPendingMessage({ id: clientID, content: text });
       // Move the submitted text into the conversation immediately. The version
       // check below protects anything the user types while admission is pending.
-      setContent((current) => (current === text ? "" : current));
+      if (!extra.demo_id) setContent((current) => (current === text ? "" : current));
     }
     sending.current = true;
     if (kind === "check" || kind === "retest") setRunPending(true);
@@ -749,7 +756,7 @@ export function VibeClient() {
       submission.current = {
         sessionID: v.id,
         uncertain: false,
-        composer: kind === "message" || kind === "playground" ? text : null,
+        composer: kind === "playground" || kind === "message" && !extra.demo_id ? text : null,
         composerVersion,
         trialKey,
         body: JSON.stringify({
@@ -787,15 +794,17 @@ export function VibeClient() {
     } catch (e) {
       setError((e as Error).message);
       if (
-        kind === "message" &&
+        kind === "message" && !extra.demo_id &&
         !submission.current &&
         composerEdits.current === composerVersion
       ) {
         setContent((current) => current || text);
         setPendingMessage(undefined);
-      } else if (kind === "message" && !submission.current) {
+      } else if (kind === "message" && !submission.current && !extra.demo_id) {
         retryUnsentMessage.current = () =>
           void submit(kind, text, baseline, extra);
+      } else if (extra.demo_id && !submission.current) {
+        setPendingMessage(undefined);
       }
     } finally {
       sending.current = false;
@@ -837,7 +846,13 @@ export function VibeClient() {
     if (activeSessionRef.current !== request.sessionID) return;
     if (request.retryOperationID && JSON.parse(request.body).assistant_model)
       setModels(current => ({ ...current, assistant: admitted.models.assistant }));
-    const requestKind = JSON.parse(request.body).kind;
+    const submitted = JSON.parse(request.body);
+    const requestKind = submitted.kind;
+    if (session?.document.evaluation?.door === "build" && (requestKind === "message" || requestKind === "playground")) {
+      const base = { session_id: request.sessionID, operation_id: admitted.id, artifact_id: submitted.artifact_id, sample: !!artifact?.sample };
+      captureBuildEvent(WEB_EVENTS.VIBE_BUILD_MESSAGE_ADMITTED, { ...base, recipient: requestKind === "playground" ? "prototype" : "guide" }, admitted.id);
+      if (submitted.demo_id) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_DEMO_SELECTED, { ...base, sample_id: "email" }, admitted.id);
+    }
     if (requestKind === "check" || requestKind === "retest")
       setRequestedRunID(admitted.id);
     if (!request.trialKey && request.composer !== null)
@@ -924,41 +939,6 @@ export function VibeClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingEdit, session]);
 
-  // Continue only a server-approved quick check, once per artifact. The stable
-  // client ID protects a resumed page or a second tab from admitting it twice.
-  // A rejected continuation stays reviewable and can be retried deliberately.
-  useEffect(() => {
-    if (
-      !quickCheck ||
-      busy ||
-      dirtyArtifact ||
-      !config ||
-      sending.current ||
-      submission.current ||
-      quickCheckAttempts.current.has(quickCheck.id)
-    )
-      return;
-    const current = quickCheck;
-    quickCheckAttempts.current.add(current.id);
-    setAutoCheckID(current.id);
-    void (async () => {
-      try {
-        await submit("check", "", undefined, {
-          client_id: quickCheckClientID(current.id),
-          artifact_id: current.id,
-          evidence_set_id: current.conversation_evaluation!.evidence_set_id,
-        });
-      } catch (error) {
-        setError((error as Error).message);
-      } finally {
-        setAutoCheckID(undefined);
-        setBlockedAutoCheckID(current.id);
-      }
-    })();
-    // Eligibility and availability trigger this continuation; the artifact ID
-    // guard prevents another request when snapshots or model settings change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [quickCheck, busy, dirtyArtifact, config]);
   async function retrySubmission() {
     if (sending.current || pending || !submission.current) return;
     sending.current = true;
@@ -983,6 +963,7 @@ export function VibeClient() {
     if (!session || sending.current || busy || dirtyArtifact || submission.current) return;
     const operation = session.operations.find(item => item.id === id);
     if (!operation?.retryable || operation.completion_receipt) return;
+    if (buildJourney) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_RECOVERY_CLICKED, { session_id: session.id, operation_id: id, artifact_id: operation.source?.artifact_id, action: assistantModel ? "alternate_assistant" : "retry", error_code: operation.error?.code });
     submission.current = {
       sessionID: session.id,
       retryOperationID: id,
@@ -1060,6 +1041,7 @@ export function VibeClient() {
     }
   }
   async function operationAction(id: string, action: "stop" | "approve") {
+    if (action === "stop" && buildJourney && session) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_RECOVERY_CLICKED, { session_id: session.id, operation_id: id, action: "stop" });
     setPending(true);
     setPendingAction(action === "stop" ? "Stopping…" : "Starting your check…");
     setError("");
@@ -1071,36 +1053,6 @@ export function VibeClient() {
       await reload();
     } catch (e) {
       setError((e as Error).message);
-    } finally {
-      setPending(false);
-      setPendingAction(undefined);
-    }
-  }
-  async function attachEvidence(input: {
-    content?: string;
-    label?: string;
-    parent_id?: string;
-    roles?: Record<string, string>;
-  }) {
-    if (busy) return false;
-    setPending(true);
-    setPendingAction("Adding your answer…");
-    setError("");
-    try {
-      const v = await ensureSession();
-      const result = await vibeFetch<Session>(
-        `/sessions/${v.id}/evidence`,
-        await token(),
-        {
-          method: "POST",
-          body: JSON.stringify({ revision: v.revision, ...input }),
-        },
-      );
-      setSession(result);
-      return true;
-    } catch (e) {
-      setError((e as Error).message);
-      return false;
     } finally {
       setPending(false);
       setPendingAction(undefined);
@@ -1307,22 +1259,29 @@ export function VibeClient() {
   return (
     <main className="vibe-workspace dark flex h-dvh flex-col overflow-hidden font-sans">
       <Dialog open={!!runQuote} onOpenChange={open => { if (!open) setRunQuote(undefined); }}>
-        <DialogContent><DialogTitle>{runQuote?.kind === "message" ? "Prepare tougher situations" : runQuote?.baseline ? "Rerun the same examples" : "Try these examples"}</DialogTitle>
-          <DialogDescription>{runQuote?.kind === "message" ? `${runQuote.extra.additional_examples} new situations to prepare` : `${runQuote?.quote.cases} examples`} · up to {dollars(runQuote?.quote.max_cost_nano_usd || 0)}. Usually a few minutes; provider queues can take longer. {runQuote?.kind === "message" ? "Includes preparation, review and bounded repairs. Your existing cases stay unchanged; running the new batch has a separate estimate." : runQuote?.baseline ? "The same examples and grading stay fixed. Earlier results are kept." : "This run uses the selected instructions or recorded replies."}</DialogDescription>
-          <VibeButton variant="primary" disabled={busy || runQuote?.sessionID !== sessionID || runQuote?.revision !== session?.revision} onClick={() => { if (!runQuote) return; const q=runQuote; setRunQuote(undefined); void submit(q.kind,q.content || "",q.baseline,{...q.extra,run_quote_id:q.quote.id}); }}>{runQuote?.kind === "message" ? "Prepare these situations" : `Run ${runQuote?.quote.cases} examples`}</VibeButton>
+        <DialogContent><DialogTitle>{runQuote?.kind === "message" ? "Try tougher situations" : runQuote?.baseline ? "Rerun the same examples" : "Try these examples"}</DialogTitle>
+          <DialogDescription>{runQuote?.kind === "message" ? `${runQuote.extra.additional_examples} new situations + ${(runQuote.quote.cases || 0) - (runQuote.extra.additional_examples || 0)} existing examples` : `${runQuote?.quote.cases} examples`} · up to {dollars(runQuote?.quote.max_cost_nano_usd || 0)}. Usually a few minutes; provider queues can take longer. {runQuote?.kind === "message" ? "Includes preparation, review, bounded repairs and running this batch. Existing cases and their earlier results stay unchanged." : runQuote?.baseline ? "The same examples and grading stay fixed. Earlier results are kept." : "This run uses the selected instructions or recorded replies."}</DialogDescription>
+          <VibeButton variant="primary" disabled={busy || runQuote?.sessionID !== sessionID || runQuote?.revision !== session?.revision} onClick={() => { if (!runQuote) return; const q=runQuote; setRunQuote(undefined); void submit(q.kind,q.content || "",q.baseline,{...q.extra,...(q.extra.cycle_id ? {} : {run_quote_id:q.quote.id})}); }}>{runQuote?.kind === "message" ? "Prepare and run this batch" : `Run ${runQuote?.quote.cases} examples`}</VibeButton>
         </DialogContent>
       </Dialog>
-      <EvaluationNavigation enabled={config?.two_door} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
-        choosing={newEvaluation} disabled={pending || uncertain || dirtyArtifact}
+      <EvaluationNavigation enabled={twoDoor} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
+        choosing={newEvaluation} disabled={!config || pending || uncertain || dirtyArtifact}
         onNew={openNewEvaluation}
         onSwitch={id => { if (id === sessionID) setNewEvaluation(false); else void switchContext(id); }}
         onSettings={() => setSettingsOpen(true)} onSavedWork={() => setSavedWorkOpen(true)}>
-      {navigationToggle => <EvaluationWorkspace
+      {navigationToggle => session && session.document.format_version !== 1 && !newEvaluation && config?.two_door ? <ArchivedConversation key={session.id} session={session} navigation={navigationToggle} busy={pending} error={error}
+        onExport={exportConversation} loadEvidence={(id, key) => token().then(auth => vibeFetch<CaseResult>(`/operations/${id}/case?key=${encodeURIComponent(key)}`, auth))} onContinue={async (artifactID, clientID) => {
+          setPending(true); setError("");
+          try {
+            const copy = await vibeFetch<Session>(`/sessions/${session.id}/continue`, await token(), { method: "POST", body: JSON.stringify({ client_id: clientID, artifact_id: artifactID }) });
+            adoptContext(copy);
+          } catch (e) { setError((e as Error).message); } finally { setPending(false); }
+        }} /> : <EvaluationWorkspace
         key={session?.id || "entry"}
-        twoDoor={config?.two_door}
+        twoDoor={twoDoor}
         navigationToggle={navigationToggle}
         newEvaluation={newEvaluation}
-        contextNavigationBlocked={pending || uncertain || dirtyArtifact}
+        contextNavigationBlocked={!config || pending || uncertain || dirtyArtifact}
         onCancelNew={() => setNewEvaluation(false)}
         canChangeDoor={canChangeDoor}
         onChangeDoor={() => void changeDoor()}
@@ -1332,13 +1291,11 @@ export function VibeClient() {
         contextControl={activeContext && <p className="vibe-context-label" aria-label="Active evaluation" title={`${activeContext.title} · ${activeContext.scope}`}>
           <span className="vibe-context-dot" aria-hidden="true" /><span className="vibe-context-title">{activeContext.title}</span><span>· {activeContext.scope}</span>
         </p>}
-        history={contexts.filter(c => c.id !== sessionID && c.document.artifacts.length > 0)}
-        onSwitchContext={id => void switchContext(id)}
         buildStart={buildStart}
-        buildAnswer={buildAnswer}
         onSample={() => sendMessage("I don’t know. Use a clearly labelled sample policy or a narrower sample demonstration.")}
+        onDemo={id => sendMessage("Try a sample email assistant", undefined, id)}
         sendBlocked={buildStart && !quoteMatches}
-        costNotice={buildStart ? (quoteError || (content.trim() ? quoteMatches ? `3 examples · up to ${dollars(buildQuote!.max_cost_nano_usd)} total, including one clarification if needed. Stop anytime.` : "Calculating the maximum cost…" : "You’ll see the maximum cost before running.")) : undefined}
+        sendError={buildStart ? quoteError : undefined}
         testJourney={testJourney}
         interactionActions={config?.interaction_actions}
         onChoice={applyChoice}
@@ -1358,12 +1315,12 @@ export function VibeClient() {
         checkingTestChanges={pendingEdit?.artifactID === artifact?.id && !!pendingEdit}
         pendingMessage={pendingMessage}
         requestedRunID={requestedRunID}
-        quickChecking={quickChecking}
+        quickChecking={runPending}
         pendingLabel={
           (loadingSession && !session ? "Loading your conversation…" : undefined) ||
           pendingAction ||
           (pending && !active
-            ? runPending || autoCheckID
+            ? runPending
               ? "Starting your check…"
               : pendingMessage
                 ? "Sending your message…"
@@ -1384,7 +1341,7 @@ export function VibeClient() {
         }}
         onMessage={(text, operation, instructions) => {
           navigate("build");
-          void submit("message", text, undefined, {
+          void submit("message", instructions && session?.document.format_version === 1 ? `${text}\n\nAgent instructions to check:\n${instructions}` : text, undefined, {
             ...(instructions ? { instructions } : {}),
             ...(operation
               ? {
@@ -1399,7 +1356,6 @@ export function VibeClient() {
         }}
         onNavigate={navigate}
         onRun={(baseline, evidenceID) => void requestRun(baseline, evidenceID)}
-        onAttach={attachEvidence}
         onEdit={edit}
         onDirty={(dirty) => {
           setChecksDirtyID(dirty ? artifact?.id || null : null);
@@ -1408,15 +1364,7 @@ export function VibeClient() {
         onSave={openSave}
         onSettings={() => setSettingsOpen(true)}
         onImport={() => file.current?.click()}
-        onInstructions={() => setInstructionsOpen((open) => !open)}
-        loadEvidence={(id, key) =>
-          token().then((auth) =>
-            vibeFetch<CaseResult>(
-              `/operations/${id}/case?key=${encodeURIComponent(key)}`,
-              auth,
-            ),
-          )
-        }
+        loadEvidence={loadSavedCase}
         onAction={operationAction}
         onRegrade={config?.grading_recheck ? operation => void requestRun(operation, undefined, "regrade") : undefined}
         onDispute={(rule, result, operation) => {
@@ -1577,45 +1525,6 @@ export function VibeClient() {
             )}
           </>
         }
-        instructions={
-          artifact &&
-          !testJourney &&
-          artifact.kind !== "conversation_evaluation" &&
-          artifact.kind !== "test_plan" ? (
-            <div hidden={!instructionsOpen}>
-              <ArtifactPanel
-                key={artifact.id}
-                artifact={artifact}
-                capabilities={config?.capabilities || []}
-                requirements={session?.document.requirements || []}
-                busy={busy || checksDirtyID === artifact.id}
-                onEdit={(agent_prompt) =>
-                  edit({ artifact_id: artifact.id, agent_prompt })
-                }
-                onDirtyChange={(dirty) => {
-                  setDirtyArtifactID(dirty ? artifact.id : null);
-                  if (dirty) setSelectedArtifactID(artifact.id);
-                }}
-                onRequirement={(requirement_id, status, statement) =>
-                  edit({ requirement_id, status, statement })
-                }
-              />
-            </div>
-          ) : session?.document.requirements.length ? (
-            <details>
-              <summary className="cursor-pointer text-sm vibe-muted">
-                Requirements and assumptions
-              </summary>
-              <Requirements
-                requirements={session.document.requirements}
-                busy={busy}
-                onRequirement={(requirement_id, status, statement) =>
-                  edit({ requirement_id, status, statement })
-                }
-              />
-            </details>
-          ) : null
-        }
         preview={
           <PrototypeTrial inline={buildJourney} dock={buildJourney} title={artifact?.title} version={session && artifact ? buildVersion(session, artifact) : undefined} busy={busy || dirtyArtifact} text={trialText}
             onText={setTrialText} onSend={() => void submit("playground", trialText)}
@@ -1633,150 +1542,13 @@ export function VibeClient() {
       />
       }
       </EvaluationNavigation>
-      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
-        <DialogContent className="vibe-workspace max-h-[85vh] overflow-y-auto">
-          <DialogTitle>Settings and details</DialogTitle>
-          <DialogDescription>
-            Choose models, review versions, or export your work.
-          </DialogDescription>
-          {workspace && <CreditsDialog workspace={workspace} />}
-          {artifact &&
-            artifact.kind !== "test_plan" &&
-            artifact.kind !== "conversation_evaluation" && (
-              <VibeButton
-                disabled={busy || dirtyArtifact}
-                onClick={() => {
-                  setSettingsOpen(false);
-                  void openSave();
-                }}
-              >
-                {testJourney ? "Keep these tests" : "Save agent"}
-              </VibeButton>
-            )}
-          {savedDraft && (
-            <Link
-              className="text-sm underline"
-              href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}
-            >
-              Open saved evaluation
-            </Link>
-          )}
-          {(
-            [
-              ["Assistant", "assistant"],
-              ["Agent", "target"],
-              ["Evaluator", "evaluator"],
-            ] as const
-          )
-            .filter(
-              ([, role]) =>
-                role !== "target" ||
-                artifact?.kind !== "conversation_evaluation",
-            )
-            .map(([label, role]) => (
-              <div key={role}>
-                <ModelSelect
-                  label={label}
-                  value={models[role]}
-                  models={config?.models || []}
-                  disabled={
-                    busy ||
-                    (role === "evaluator" && session?.anonymous !== false &&
-                      !(config?.local_testing && !config?.free_only))
-                  }
-                  onChange={(value) =>
-                    changeModels({ ...models, [role]: value })
-                  }
-                />
-                <p className="mt-1 text-xs text-builder-fg-muted">
-                  {role === "assistant"
-                    ? "Plans the check and helps explain results."
-                    : role === "target"
-                      ? "Generates replies when testing instructions here. Changing it starts a fresh preview conversation."
-                      : config?.local_testing && !config?.free_only
-                        ? "Grades replies against your expectations. Changing it requires a new baseline or rechecking saved grades."
-                        : "Grades replies against your expectations. The free trial keeps this fixed."}
-                </p>
-              </div>
-            ))}
-          {config?.local_testing && !config?.free_only && (
-            <Button variant="outline" disabled={busy} onClick={() =>
-              changeModels({ assistant: models.assistant, target: models.assistant, evaluator: models.assistant })
-            }>
-              Use assistant model for all roles
-            </Button>
-          )}
-          <p className="text-xs text-builder-fg-muted">
-            Model changes apply to new messages and runs. Use “Retry with another model” to switch a failed request.
-          </p>
-          {artifacts.length > 1 && (
-            <label className="text-sm">
-              Agent version
-              <select
-                aria-label="Agent version"
-                value={artifact?.id}
-                disabled={busy || dirtyArtifact}
-                className="mt-2 w-full rounded-lg border bg-background p-2"
-                onChange={(e) => {
-                  setSelectedArtifactID(e.target.value);
-                  setThreadID("");
-                  navigate(view, e.target.value, "");
-                }}
-              >
-                {artifacts.map((a, i) => (
-                  <option key={a.id} value={a.id}>
-                    Version {i + 1}: {a.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          <Button
-            variant="outline"
-            disabled={busy || dirtyArtifact}
-            onClick={() => file.current?.click()}
-          >
-            <Paperclip size={16} /> Import an evaluation
-          </Button>
-          {artifact &&
-            artifact.kind !== "test_plan" &&
-            artifact.kind !== "conversation_evaluation" && (
-              <Button
-                variant="outline"
-                onClick={() => exportAgent(artifact, models)}
-              >
-                {testJourney
-                  ? "Export tests and agent instructions"
-                  : "Export agent and checks"}
-              </Button>
-            )}
-          {session && (
-            <Button variant="ghost" onClick={exportConversation}>
-              Export conversation
-            </Button>
-          )}
-          <details className="text-sm">
-            <summary className="cursor-pointer">
-              Available capabilities and documentation
-            </summary>
-            {config?.capabilities?.map((c) => (
-              <p key={c.id} className="mt-3 text-xs leading-5">
-                <strong>{c.label}:</strong> {c.description}{" "}
-                {c.url && (
-                  <a
-                    href={c.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                  >
-                    Documentation ↗
-                  </a>
-                )}
-              </p>
-            ))}
-          </details>
-        </DialogContent>
-      </Dialog>
+      <AgentSettings open={settingsOpen} onOpenChange={setSettingsOpen}
+        config={config} session={session} artifact={artifact} artifacts={artifacts}
+        models={models} busy={busy || dirtyArtifact} workspace={workspace}
+        testJourney={testJourney} savedDraft={savedDraft} onModels={changeModels}
+        onVersion={id => {setSelectedArtifactID(id); setThreadID(""); navigate(view, id, "");}}
+        onSave={() => void openSave()} onImport={() => file.current?.click()}
+        onExportConversation={() => void exportConversation()} />
       <input
         ref={file}
         type="file"

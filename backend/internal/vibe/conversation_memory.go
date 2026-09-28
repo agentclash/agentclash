@@ -16,6 +16,7 @@ const statefulAuthoringVersion = 12
 // authorizes tests. No user sophistication or inferred persona is stored here.
 type ConversationState struct {
 	PendingPreparation *SourceBlock          `json:"pending_preparation,omitempty"`
+	PendingDemo        *DemoOffer            `json:"pending_demo,omitempty"`
 	ActionsVersion     int                   `json:"actions_version,omitempty"`
 	Proposal           *RuleProposal         `json:"proposal,omitempty"`
 	Version            int                   `json:"version"`
@@ -24,6 +25,12 @@ type ConversationState struct {
 	PendingQuestion    *interaction.Question `json:"pending_question,omitempty"`
 	Answers            []QuestionAnswer      `json:"answers,omitempty"`
 	Guidance           GuidanceHistory       `json:"guidance"`
+}
+type DemoOffer struct {
+	ID              string `json:"id"`
+	ScopeID         string `json:"scope_id"`
+	OriginMessageID string `json:"origin_message_id"`
+	Sample          string `json:"sample"`
 }
 type QuestionAnswer struct {
 	Action       *interaction.Action  `json:"action,omitempty"`
@@ -113,6 +120,20 @@ func validateConversationState(s *ConversationState, d Document) error {
 	} // Legacy sessions have no reconstructed consent.
 	if s.Version != conversationStateVersion || checkWire("brief", s.Brief) != nil {
 		return fmt.Errorf("invalid conversation brief version or shape")
+	}
+	if offer := s.PendingDemo; offer != nil {
+		if offer.ID == "" || offer.ScopeID != s.Brief.ScopeID || offer.Sample != "email" || s.PendingQuestion == nil || s.PendingQuestion.Purpose != "clarify_job" || s.PendingQuestion.Status != "answered" {
+			return fmt.Errorf("demo offer is not bound to an answered task question")
+		}
+		found := false
+		for _, m := range d.Messages {
+			if m.ID.String() == offer.OriginMessageID && m.Role == "assistant" && strings.Contains(m.Content, "sample email assistant") {
+				found = true
+			}
+		}
+		if !found {
+			return fmt.Errorf("demo offer does not match the displayed reply")
+		}
 	}
 	if pending := s.PendingPreparation; pending != nil {
 		found := false
@@ -413,6 +434,9 @@ func proposeConversationState(p Plan, route reliableRoute, o Operation) (*Conver
 		}
 		if err := mergeMemoryFact(s, f, stateSource(current, f.Quote), "stated", o.ID, p.interpreted()); err != nil {
 			return nil, err
+		}
+		if f.Kind == "job" {
+			s.PendingDemo = nil
 		}
 	}
 	for _, f := range u.Suggestions {

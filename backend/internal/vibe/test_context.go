@@ -15,11 +15,14 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 	if strings.TrimSpace(sub.Content) == "" {
 		return Operation{}, fault("invalid_message", "Write a message first.")
 	}
-	if sub.QuickCheck || sub.EvidenceSetID != nil || sub.Instructions != "" {
+	if sub.QuickCheck || sub.EvidenceSetID != nil || sub.Instructions != "" && v.Document.FormatVersion != 1 {
 		return Operation{}, fault("invalid_message", "Add your agent's instructions using Add your agent; use this conversation to discuss the tests.")
 	}
+	if v.Document.FormatVersion == 1 && sub.Instructions != "" && len(v.Document.Artifacts) > 0 {
+		return Operation{}, fault("invalid_message", "Edit the instructions on your existing test pack, or start a new agent to check different instructions.")
+	}
 	p.AuthoringVersion = 10
-	p.Document = Document{Evaluation: v.Document.Evaluation, Build: v.Document.Build, TestJourney: true, Requirements: append([]Requirement(nil), v.Document.Requirements...)}
+	p.Document = Document{FormatVersion: v.Document.FormatVersion, TargetInstructions: v.Document.TargetInstructions, Evaluation: v.Document.Evaluation, Build: v.Document.Build, TestJourney: true, Requirements: append([]Requirement(nil), v.Document.Requirements...)}
 	for _, m := range v.Document.Messages {
 		if m.Origin != "playground" {
 			p.Document.Messages = append(p.Document.Messages, m)
@@ -162,9 +165,6 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 	}
 	if err != nil {
 		return Operation{}, err
-	}
-	if p.Cycle == nil {
-		prepareUnderstanding(&p, s.Config)
 	}
 	return s.Store.Submit(ctx, actor, v.ID, sub, p, s.Config)
 }

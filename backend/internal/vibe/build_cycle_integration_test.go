@@ -94,6 +94,47 @@ func TestIntegrationVibeBuildStopPreventsContinuation(t *testing.T) {
 	requireFault(t, err, "invalid_state")
 }
 
+func TestIntegrationBuildQuoteReservesFullReviewAndTruncationStops(t *testing.T) {
+	s, v := buildService(t)
+	s.Config.SuiteReviewVersion = LatestSuiteValidatorVersion
+	o, quote := startBuild(t, s, v, "Build a returns assistant.")
+	var plan Plan
+	if err := json.Unmarshal(o.Input, &plan); err != nil {
+		t.Fatal(err)
+	}
+	if plan.limits().OutputTokens != 8192 {
+		t.Fatal("complete semantic review did not receive its admitted allowance")
+	}
+	checkCost := int64(0)
+	for _, model := range []string{DefaultModels().Target, DefaultModels().Evaluator} {
+		profile := s.Config.Profiles[model]
+		l := s.Config.Limits(v.Anonymous)
+		cost, err := profile.BoundCost(profile.inputLimit(l), l.OutputTokens)
+		if err != nil {
+			t.Fatal(err)
+		}
+		checkCost += 3 * cost
+	}
+	if quote.MaxCost != 2*plan.MaxCost+checkCost {
+		t.Fatal("upfront quote underprices initial/clarification reviews or automatic checks")
+	}
+	calls := 0
+	r := &Runner{Service: s, Gateway: &Gateway{Store: s.Store, Config: s.Config, Gate: s.Gate, Client: callFunc(func(context.Context, provider.Request) (provider.Response, error) {
+		calls++
+		cost := json.Number("0.000001")
+		return provider.Response{OutputText: `{`, FinishReason: provider.FinishReasonMaxTokens, Usage: provider.Usage{CostUSD: &cost}}, nil
+	})}}
+	err := r.Execute(context.Background(), o.ID)
+	requireFault(t, err, "output_truncated")
+	if calls != 1 {
+		t.Fatal("truncated response triggered blind repair/fallback calls")
+	}
+	current, err := s.Store.GetSession(context.Background(), v.Actor, v.ID)
+	if err != nil || len(current.Document.Artifacts) != 0 {
+		t.Fatal("truncated output published a prototype", err)
+	}
+}
+
 func TestIntegrationVibeBuildRetryRetainsQuestionBudget(t *testing.T) {
 	s, v := buildService(t)
 	ctx := context.Background()
@@ -140,7 +181,7 @@ func buildService(t *testing.T) (*Service, Session) {
 	s, root := interpretedService(t)
 	s.Config.TwoDoor = true
 	s.Compiler = buildScheduleCompiler{}
-	v, err := s.Store.CreateEvaluation(context.Background(), root.Actor, root.ID, uuid.New(), "build")
+	v, err := s.Store.CreateAgent(context.Background(), root.Actor, nil, uuid.New(), "build", DefaultModels())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,6 +370,14 @@ func TestIntegrationVibeBuildClearBriefCreatesRunnablePrototype(t *testing.T) {
 			if len(v.Document.Artifacts) != 1 || v.Document.Artifacts[0].AgentPrompt == "" {
 				t.Fatal("prototype not runnable")
 			}
+			if len(v.Document.Policies) != 1 || len(v.Document.Requirements) != 0 {
+				t.Fatal("expected one canonical policy")
+			}
+			for _, fact := range v.Document.ConversationState.Brief.Facts {
+				if fact.Kind == "rule" {
+					t.Fatal("committed rule duplicated in dialogue memory")
+				}
+			}
 			if calls != 3+repairs || !strings.Contains(v.Document.Artifacts[0].AgentPrompt, rule) || strings.Contains(v.Document.Artifacts[0].AgentPrompt, "45 days") {
 				t.Fatal("prototype must compile reviewed rules without an extra writer or answer-key leakage")
 			}
@@ -404,12 +453,12 @@ func TestIntegrationVibeRunQuoteDoesNotExecuteAndBindsVersion(t *testing.T) {
 	}
 }
 
-func TestIntegrationVibeBuildVagueThenUnknownDoesNotInterview(t *testing.T) {
+func TestIntegrationVibeBuildVagueThenUnknownWaitsForDemoChoice(t *testing.T) {
 	s, v := buildService(t)
 	ctx := context.Background()
 	o, q := startBuild(t, s, v, "I want to automate stuff")
 	v = executeBuildFixture(t, s, o, func(provider.Request) any {
-		return interpretationFixture(replyAction{Kind: "reply", Text: "Tell me more."})
+		return interpretationFixture(buildAskAction{askAction: askAction{Kind: "ask", Text: "Which repetitive task would you like AI to help with?", Purpose: "clarify_job", Options: []string{}}, MissingFactType: "job", WhyNeeded: "There is no identifiable task yet"})
 	})
 	if v.Document.Build.ClarificationsUsed != 1 || v.Document.ConversationState.PendingQuestion == nil {
 		t.Fatal("canonical question not persisted")
@@ -423,7 +472,44 @@ func TestIntegrationVibeBuildVagueThenUnknownDoesNotInterview(t *testing.T) {
 		value.Answer = &answerObservation{Quote: "I don't know", Unknown: true}
 		return value
 	})
-	if v.Document.Build.ClarificationsUsed != 1 || v.Document.Build.Phase != "blocked" || len(v.Document.Artifacts) != 0 {
-		t.Fatal("vague request became another interview")
+	if v.Document.Build.ClarificationsUsed != 1 || v.Document.Build.Phase != "waiting" || len(v.Document.Artifacts) != 0 || v.Document.ConversationState.PendingDemo == nil {
+		t.Fatal("taskless answer started work or repeated the interview")
+	}
+	offer := v.Document.ConversationState.PendingDemo
+	choice := Submission{ClientID: uuid.New(), Revision: v.Revision, Kind: "message", Content: "Try a sample email assistant", DemoID: offer.ID, Models: DefaultModels(), TestJourney: true, CycleID: &q.ID}
+	if _, err := s.Prepare(ctx, v.Actor, v.ID, Submission{ClientID: uuid.New(), Revision: v.Revision, Kind: "message", Content: choice.Content, DemoID: "wrong-offer", Models: DefaultModels(), TestJourney: true, CycleID: &q.ID}); err == nil {
+		t.Fatal("stale demo choice was admitted")
+	}
+	wrongText := choice
+	wrongText.ClientID = uuid.New()
+	wrongText.Content = "Use my own returns policy"
+	if _, err := s.Prepare(ctx, v.Actor, v.ID, wrongText); err == nil {
+		t.Fatal("demo choice accepted an unrelated rule message")
+	}
+	o, err = s.Prepare(ctx, v.Actor, v.ID, choice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again, err := s.Prepare(ctx, v.Actor, v.ID, choice); err != nil || again.ID != o.ID {
+		t.Fatal("duplicate demo selection created another cycle", err)
+	}
+	v = executeBuildFixture(t, s, o, func(provider.Request) any {
+		t.Fatal("demo selection routed through a model")
+		return nil
+	})
+	if v.Document.Build.Phase != "checking" || len(v.Document.Artifacts) != 1 || v.Document.Artifacts[0].Sample != "email" || v.Document.ConversationState.PendingDemo != nil || len(v.Document.Policies) != 0 {
+		t.Fatal("selected demo did not produce one labelled sample check without changing user policy")
+	}
+	checks := 0
+	for _, operation := range v.Operations {
+		if operation.Kind == "check" {
+			checks++
+			if len(operation.Results) != 3 {
+				t.Fatal("demo did not schedule exactly three saved cases")
+			}
+		}
+	}
+	if checks != 1 {
+		t.Fatal("demo selection scheduled duplicate or no checks", checks)
 	}
 }

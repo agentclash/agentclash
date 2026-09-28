@@ -3,7 +3,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   defaultModels,
-  type EvidenceSet,
   type Operation,
   type Session,
 } from "@/lib/vibe";
@@ -12,7 +11,6 @@ import {
   exampleAnswer,
   type EvaluationWorkspaceProps,
 } from "./evaluation-workspace";
-import { EvidenceIntake } from "./evidence-intake";
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
@@ -79,32 +77,6 @@ function operation(id: string): Operation {
   };
 }
 
-function evidence(id: string, unknown = false): EvidenceSet {
-  return {
-    id,
-    label: "App answer",
-    raw: "User: Keep the total under 5000.\nAssistant: The total is 8000.",
-    conversations: [
-      {
-        key: "trip",
-        title: "Trip request",
-        messages: [
-          {
-            id: "question",
-            role: "user",
-            content: "Keep the total under 5000.",
-          },
-          {
-            id: "answer",
-            role: unknown ? "unknown" : "assistant",
-            content: "The total is 8000.",
-          },
-        ],
-      },
-    ],
-  };
-}
-
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal(
@@ -131,19 +103,16 @@ beforeEach(() => {
     onMessage: vi.fn(),
     onNavigate: vi.fn(),
     onRun: vi.fn(),
-    onAttach: vi.fn(async () => true),
     onEdit: vi.fn(async () => true),
     onDirty: vi.fn(),
     onSave: vi.fn(),
     onImport: vi.fn(),
     onSettings: vi.fn(),
-    onInstructions: vi.fn(),
     loadEvidence: vi.fn(),
     onAction: vi.fn(),
     onDispute: vi.fn(),
     notice: null,
     preview: null,
-    instructions: null,
     savedChecks: [],
   };
 });
@@ -319,33 +288,18 @@ it("shows the pending message before session admission and preserves focus and t
   expect(container.querySelectorAll(".vibe-message-user")).toHaveLength(1);
 });
 
-it("keeps a blocked instruction proposal accessible without claiming work is running", async () => {
-  const artifact = {
-    id: "artifact-one",
-    kind: "agent_draft" as const,
-    title: "Trip planner",
-    agent_prompt: "Keep the total within the budget.",
-    blueprint: {
-      evaluation: {
-        examples: ["Plan a trip"],
-        success_criteria: "Respect the budget",
-      },
-    },
-    accepted: true,
-    source_message_id: "message-one",
-  };
-  await render({
-    session: session([
-      { id: "message-one", role: "user", content: "Try these instructions" },
-    ]),
-    artifact,
-    busy: true,
-  });
-  expect(
-    container.querySelector('[aria-label="Proposed check"]'),
-  ).not.toBeNull();
-  expect(container.querySelector('[role="status"]')?.textContent).toBe("");
-  expect(button("Agent instructions")).toBeTruthy();
+it("offers instructions and packs without the retired conversation-upload workflow", async () => {
+  const data = session([]);
+  data.document.evaluation = { id: data.id, chat_id: data.id, door: "test" };
+  data.document.format_version = 1;
+  await render({ session: data, twoDoor: true });
+  expect(container.textContent).not.toContain("Paste a real conversation");
+  await act(async () => button("Paste agent instructions").click());
+  expect(container.querySelector('textarea[aria-label="Conversations to check"]')).toBeNull();
+  const input = container.querySelector<HTMLTextAreaElement>('#vibe-instructions-source')!;
+  await type(input, "Only unopened items qualify.");
+  await act(async () => button("Prepare examples").click());
+  expect(props.onMessage).toHaveBeenCalledWith(expect.any(String), undefined, "Only unopened items qualify.");
 });
 
 it("holds the direct-check proposal behind one truthful activity state", async () => {
@@ -519,76 +473,60 @@ it("preserves a reader's position and offers the new response without scrolling 
   expect(scroll).toHaveBeenCalledWith({ behavior: "auto", block: "nearest" });
 });
 
-it("starts a comparison once, only after fresh evidence arrives with persisted speakers", async () => {
-  const onAttach = vi.fn(async () => true);
-  const onPrepare = vi.fn();
-  let current = evidence("old");
-  const draw = () =>
-    root.render(
-      <EvidenceIntake
-        evidence={current}
-        busy={false}
-        comparing
-        autoPrepare
-        onAttach={onAttach}
-        onPrepare={onPrepare}
-        onCancel={vi.fn()}
-      />,
-    );
-  await act(async () => draw());
-  expect(onPrepare).not.toHaveBeenCalled();
-  await act(async () => button("Edit source").click());
-  await type(
-    container.querySelector("textarea")!,
-    "User: Keep the total under 5000.\nAssistant: The new total is 4500.",
-  );
-  await act(async () => button("Check new answer").click());
-  expect(onPrepare).not.toHaveBeenCalled();
-  current = evidence("new", true);
-  await act(async () => draw());
-  expect(onPrepare).not.toHaveBeenCalled();
-  await act(async () => {
-    const speaker = container.querySelector<HTMLSelectElement>(
-      'select[aria-label="Speaker for answer"]',
-    )!;
-    speaker.value = "assistant";
-    speaker.dispatchEvent(new Event("change", { bubbles: true }));
-  });
-  expect(onPrepare).not.toHaveBeenCalled();
-  await act(async () => button("Save speakers and check").click());
-  expect(onPrepare).not.toHaveBeenCalled();
-  current = evidence("corrected");
-  await act(async () => draw());
-  expect(onPrepare).toHaveBeenCalledExactlyOnceWith("corrected");
-  current = evidence("unrelated-later-update");
-  await act(async () => draw());
-  expect(onPrepare).toHaveBeenCalledTimes(1);
+it.each(["waiting", "clarifying"])("offers a sample only for a real clarification, not idle banter: %s", async phase => {
+ const current = session([{id: "joke", role: "user", content: "let's drink vodka yay"}]);
+ current.document.evaluation = {id: current.id, chat_id: current.id, door: "build"};
+ current.document.build = {cycle_id: "cycle", phase, clarifications_used: phase === "clarifying" ? 1 : 0};
+ await act(async () => root.render(<EvaluationWorkspace {...props} session={current} twoDoor onSample={vi.fn()} />));
+ expect(container.textContent?.includes("Use a sample policy")).toBe(phase === "clarifying");
 });
 
-it("does not start work after a failed evidence submission", async () => {
-  const onPrepare = vi.fn();
-  const onAttach = vi.fn(async () => false);
-  const draw = (source?: EvidenceSet) =>
-    root.render(
-      <EvidenceIntake
-        evidence={source}
-        busy={false}
-        comparing
-        autoPrepare
-        onAttach={onAttach}
-        onPrepare={onPrepare}
-        onCancel={vi.fn()}
-      />,
-    );
-  await act(async () => draw());
-  await type(
-    container.querySelector("textarea")!,
-    "User: Question\nAssistant: Answer",
-  );
-  await act(async () => button("Check new answer").click());
-  await act(async () => draw(evidence("late-snapshot")));
-  expect(onPrepare).not.toHaveBeenCalled();
-  expect(container.querySelector("textarea")?.value).toContain(
-    "User: Question",
-  );
+it("shows a saved taskless demo offer without starting it", async () => {
+ const current = session([{id: "offer-reply", role: "assistant", content: "You can try a sample email assistant."}]);
+ current.document.evaluation = {id: current.id, chat_id: current.id, door: "build"};
+ current.document.build = {cycle_id: "cycle", phase: "waiting", clarifications_used: 1};
+ current.document.conversation_state = {version: 1, brief: {scope_id: "scope", revision: 1, facts: []}, guidance: {}, pending_demo: {id: "offer", scope_id: "scope", origin_message_id: "offer-reply", sample: "email"}};
+ const choose = vi.fn();
+ await act(async () => root.render(<EvaluationWorkspace {...props} session={current} twoDoor onDemo={choose} />));
+ expect(choose).not.toHaveBeenCalled();
+ expect(container.textContent).toContain("You can describe your own task instead.");
+ await act(async () => button("Try a sample email assistant").click());
+ expect(choose).toHaveBeenCalledExactlyOnceWith("offer");
+});
+
+it("does not promise a prototype for an unclassified message or casual chat", async () => {
+  const current = session([{ id: "greeting", role: "user", content: "hhui", operation_id: "turn" }]);
+  current.document.evaluation = { id: current.id, chat_id: current.id, door: "build" };
+  current.document.build = { cycle_id: "cycle", phase: "preparing", clarifications_used: 0 };
+  const turn: Operation = { ...operation("turn"), kind: "message", state: "QUEUED", source: undefined, scorecard: undefined };
+  current.operations = [turn];
+  const show = () => act(async () => root.render(<EvaluationWorkspace {...props} session={current} twoDoor busy />));
+  for (const state of ["QUEUED", "RUNNING", "FINALIZING"] as const) {
+    turn.state = state;
+    await show();
+    expect(container.textContent).not.toMatch(/first version|three made-up|Creating your prototype|Saving your results|Waiting to start/);
+    expect(button("Stop")).toBeTruthy();
+  }
+  turn.state = "RUNNING";
+  turn.conversation_decision = { intent: "chat", source_message_id: "greeting" };
+  await show();
+  expect(container.textContent).toContain("Replying…");
+  expect(container.querySelector(".vibe-build-intro")).toBeNull();
+  turn.state = "COMPLETED";
+  current.document.build.phase = "waiting";
+  current.document.messages.push({ id: "reply", role: "assistant", content: "Hi! What would you like help with?", operation_id: "turn" });
+  await show();
+  expect(container.textContent).toContain("Hi! What would you like help with?");
+  expect(container.querySelector(".vibe-build-intro")).toBeNull();
+});
+
+it("announces prototype creation only after a confirmed build decision", async () => {
+  const current = session([{ id: "task", role: "user", content: "Sort customer emails.", operation_id: "turn" }]);
+  current.document.evaluation = { id: current.id, chat_id: current.id, door: "build" };
+  current.document.build = { cycle_id: "cycle", phase: "preparing", clarifications_used: 0 };
+  current.operations = [{ ...operation("turn"), kind: "message", state: "RUNNING", source: undefined, scorecard: undefined,
+    conversation_decision: { intent: "prepare_tests", source_message_id: "task" } }];
+  await act(async () => root.render(<EvaluationWorkspace {...props} session={current} twoDoor busy />));
+  expect(container.querySelector(".vibe-build-intro")?.textContent).toContain("I’m making a first version");
+  expect(container.textContent).toContain("Creating your prototype…");
 });

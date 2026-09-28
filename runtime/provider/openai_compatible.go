@@ -500,7 +500,7 @@ func processOpenAIStreamEvent(providerKey string, raw []byte, accumulator *Strea
 
 		if choice.FinishReason != nil {
 			terminal := StreamTerminal{
-				FinishReason:    *choice.FinishReason,
+				FinishReason:    NormalizeOpenAIFinishReason(*choice.FinishReason),
 				ProviderModelID: chunk.Model,
 				RawResponse:     raw,
 			}

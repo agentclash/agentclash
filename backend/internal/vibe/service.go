@@ -35,8 +35,14 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 	if err != nil {
 		return Operation{}, err
 	}
+	if s.Config.TwoDoor && v.Document.FormatVersion != 1 {
+		return Operation{}, fault("invalid_state", "This earlier conversation is read-only. Continue in V1 before starting new work.")
+	}
+	if v.Document.FormatVersion == 1 && sub.AdditionalExamples > 0 && sub.CycleID == nil {
+		return Operation{}, fault("invalid_request", "Review the total preparation and run cost before adding tougher situations.")
+	}
 	l := s.Config.Limits(v.Anonymous)
-	if sub.AdditionalExamples < 0 || sub.AdditionalExamples > l.Cases || sub.AdditionalExamples > 0 && (sub.Kind != "message" || sub.ArtifactID == nil || v.Document.Evaluation == nil || sub.CycleID != nil) {
+	if sub.AdditionalExamples < 0 || sub.AdditionalExamples > l.Cases || sub.AdditionalExamples > 0 && (sub.Kind != "message" || sub.ArtifactID == nil || v.Document.Evaluation == nil) {
 		return Operation{}, fault("invalid_request", "Choose a bounded batch for an existing evaluation.")
 	}
 	if sub.AdditionalExamples > 0 && !s.Config.InterpretedAuthoring {
@@ -112,6 +118,12 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 	}
 	if sub.Purpose == "regrade" {
 		return s.prepareRegrade(ctx, actor, v, sub, p)
+	}
+	if v.Document.FormatVersion == 1 && (sub.Kind == "message" || sub.Kind == "build") {
+		if sub.QuickCheck || sub.EvidenceSetID != nil || sub.Instructions != "" && !strings.Contains(sub.Content, sub.Instructions) {
+			return Operation{}, fault("invalid_message", "Use agent instructions or import a test pack. Recorded-conversation grading is not available in V1.")
+		}
+		return s.prepareTestConversation(ctx, actor, v, sub, p)
 	}
 	if (sub.TestJourney || v.Document.TestJourney) && (sub.Kind == "message" || sub.Kind == "build") {
 		return s.prepareTestConversation(ctx, actor, v, sub, p)

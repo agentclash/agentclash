@@ -1,14 +1,10 @@
 "use client";
 
+import { downloadJSON, exportRuns } from "@/lib/vibe-export";
 import { useState } from "react";
 import type { Artifact, CaseResult, Operation, RuleCoverage, Session } from "@/lib/vibe";
 import { VibeButton } from "./vibe-button";
 
-function download(name: string, value: unknown) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(value, null, 2)], {type:"application/json"}));
-  const link = document.createElement("a"); link.href=url; link.download=name; link.click();
-  setTimeout(() => URL.revokeObjectURL(url),1000);
-}
 export function coverageProposal(rows: RuleCoverage[]) {
   const gaps = rows.filter(row => !row.case_keys.length).slice(0,3);
   if (gaps.length) return gaps.map(row => `One situation covering: ${row.statement}`);
@@ -32,8 +28,8 @@ export function EvaluationOutcome({session, artifact, operation, busy, loadEvide
   async function exportWork() {
     setWorking(true); setError("");
     try {
-      const runs=await Promise.all(session.operations.filter(o => o.results.length>0).map(async o => ({...o, results:await Promise.all(o.results.map(c => loadEvidence(o.id,c.case_key)))})));
-      download("vibe-evaluation.json",{format:"agentclash-evaluation-v1", artifact_id:artifact.id, scope:artifact.scope_note || "Runs here; business systems are not connected.", sample:artifact.sample || null, artifacts:session.document.artifacts, rules:session.document.policies, runs});
+      const runs=await exportRuns(session, loadEvidence);
+      downloadJSON("vibe-evaluation.json",{format:"agentclash-evaluation-v1", artifact_id:artifact.id, scope:artifact.scope_note || "Runs here; business systems are not connected.", sample:artifact.sample || null, artifacts:session.document.artifacts, rules:session.document.policies, runs});
     } catch(e) {setError((e as Error).message)} finally {setWorking(false)}
   }
   async function prepareHandoff() {
@@ -54,7 +50,7 @@ export function EvaluationOutcome({session, artifact, operation, busy, loadEvide
       {!showTougher && completed && artifact.kind === "test_suite" && proposals.length>0 && onTougher && <VibeButton disabled={busy || working} onClick={() => setTougher(!tougher)}>Try tougher situations</VibeButton>}
       {completed && <VibeButton variant="quiet" disabled={busy || working} onClick={() => void prepareHandoff()}>Make this production-ready</VibeButton>}
     </div>}
-    {tougher && <div className="vibe-panel p-4 text-sm space-y-3"><p>Prepare {proposals.length} additional examples. Your existing examples and results stay intact.</p><ul className="list-disc pl-5 space-y-2">{proposals.map(x => <li key={x}>{x}</li>)}</ul><p className="vibe-muted">Next, review the preparation cost. You’ll see a separate estimate before running the new batch.</p><VibeButton disabled={busy} onClick={() => {setTougher(false);onTougher?.(`Add exactly ${proposals.length} examples covering the following gaps or input variations, using only our existing rules. Preserve every existing case, expectation and grading setting; do not invent business rules or run anything. ${proposals.join("; ")}`,proposals.length,artifact.id)}}>Prepare these examples</VibeButton></div>}
+    {tougher && <div className="vibe-panel p-4 text-sm space-y-3"><p>Prepare {proposals.length} additional examples. Your existing examples and results stay intact.</p><ul className="list-disc pl-5 space-y-2">{proposals.map(x => <li key={x}>{x}</li>)}</ul><p className="vibe-muted">Next, review one maximum cost for preparing and running this batch, including your original examples.</p><VibeButton disabled={busy} onClick={() => {setTougher(false);onTougher?.(`Add exactly ${proposals.length} examples covering the following gaps or input variations, using only our existing rules. Preserve every existing case, expectation and grading setting; do not invent business rules beyond this batch. ${proposals.join("; ")}`,proposals.length,artifact.id)}}>See cost and continue</VibeButton></div>}
     {handoff && <div className="vibe-panel p-4 space-y-3"><label className="block text-sm" htmlFor="production-summary">Review your handoff</label><textarea id="production-summary" className="vibe-textarea w-full min-h-60 text-sm" value={summary} onChange={e => setSummary(e.target.value)}/><p className="text-xs vibe-muted">Copy this summary to reuse when booking. Nothing is sent automatically. Findings, fixes and exports remain available here.</p><div className="flex flex-wrap gap-2"><VibeButton onClick={() => void navigator.clipboard.writeText(summary).catch(() => setError("Select and copy the summary above."))}>Copy summary</VibeButton><a className="vibe-button inline-flex items-center rounded-lg border border-[var(--vibe-border)] px-4 py-2 text-sm" href="https://cal.com/atharva-kanherkar-epgztu/agentclash-demo" target="_blank" rel="noreferrer">Talk to our team</a><VibeButton variant="quiet" onClick={() => void exportWork()}>Export / build it myself</VibeButton></div></div>}
     {error && <p role="alert" className="text-sm text-builder-warn">{error}</p>}
   </section>;

@@ -26,6 +26,17 @@ export const WEB_EVENTS = {
   /** User promoted a run failure to a regression case. */
   REGRESSION_CASE_PROMOTED: "web.regression.case_promoted",
 
+  VIBE_BUILD_ENTRY_SELECTED: "web.vibe.build.entry_selected",
+  VIBE_BUILD_MESSAGE_ADMITTED: "web.vibe.build.message_admitted",
+  VIBE_BUILD_CLARIFICATION_VIEWED: "web.vibe.build.clarification_viewed",
+  VIBE_BUILD_DEMO_SELECTED: "web.vibe.build.demo_selected",
+  VIBE_BUILD_RESULT_VIEWED: "web.vibe.build.result_viewed",
+  VIBE_BUILD_EXAMPLE_VIEWED: "web.vibe.build.example_viewed",
+  VIBE_BUILD_ACTION_CLICKED: "web.vibe.build.action_clicked",
+  VIBE_BUILD_TRIAL_REPLY_VIEWED: "web.vibe.build.trial_reply_viewed",
+  VIBE_BUILD_RECOVERY_CLICKED: "web.vibe.build.recovery_clicked",
+  VIBE_BUILD_EXPORT_REQUESTED: "web.vibe.build.export_requested",
+
   // Public agent-tryouts funnel (anonymous visitors trying an agent).
   /** Anonymous tryout session successfully launched. */
   TRYOUT_SESSION_STARTED: "web.tryout.session_started",
@@ -51,7 +62,27 @@ export const WEB_EVENTS = {
 
 export type WebEventName = (typeof WEB_EVENTS)[keyof typeof WEB_EVENTS];
 
+export type VibeBuildEventBase = {
+  schema_version: 1;
+  door: "build";
+  session_id: string;
+  viewport: "mobile" | "tablet" | "desktop";
+  artifact_id?: string;
+  operation_id?: string;
+  sample?: boolean;
+};
+
 export interface WebEventPayloads {
+  [WEB_EVENTS.VIBE_BUILD_ENTRY_SELECTED]: VibeBuildEventBase & { entry_source: "two_door" | "return" };
+  [WEB_EVENTS.VIBE_BUILD_MESSAGE_ADMITTED]: VibeBuildEventBase & { recipient: "guide" | "prototype" };
+  [WEB_EVENTS.VIBE_BUILD_CLARIFICATION_VIEWED]: VibeBuildEventBase & { question_id: string; clarification_count: number };
+  [WEB_EVENTS.VIBE_BUILD_DEMO_SELECTED]: VibeBuildEventBase & { sample_id: "email" };
+  [WEB_EVENTS.VIBE_BUILD_RESULT_VIEWED]: VibeBuildEventBase & { outcome: "all_pass" | "failure" | "unassessed" | "incomplete"; passed: number; failed: number; unknown: number };
+  [WEB_EVENTS.VIBE_BUILD_EXAMPLE_VIEWED]: VibeBuildEventBase & { case_ordinal: number; elapsed_ms?: number };
+  [WEB_EVENTS.VIBE_BUILD_ACTION_CLICKED]: VibeBuildEventBase & { action: "try" | "checks" | "rules" | "change" | "tougher" | "save" | "export" | "review_problem" | "review_fix" };
+  [WEB_EVENTS.VIBE_BUILD_TRIAL_REPLY_VIEWED]: VibeBuildEventBase & { thread_id?: string };
+  [WEB_EVENTS.VIBE_BUILD_RECOVERY_CLICKED]: VibeBuildEventBase & { action: "stop" | "retry" | "alternate_assistant" | "reload_evidence"; error_code?: string };
+  [WEB_EVENTS.VIBE_BUILD_EXPORT_REQUESTED]: VibeBuildEventBase & { format: "json" };
   [WEB_EVENTS.AUTH_COMPLETED]: { provider: "workos" };
   [WEB_EVENTS.APP_SESSION_STARTED]: { posthog_session_id: string };
   [WEB_EVENTS.MARKETING_CTA_CLICKED]: {

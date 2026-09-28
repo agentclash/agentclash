@@ -297,7 +297,7 @@ func TestVibeReliabilityIntegrationVersionUpgradeIsPricedAndKeepsOriginalPolicy(
 	if err := json.Unmarshal(op.Input, &p); err != nil {
 		t.Fatal(err)
 	}
-	if p.AuthoringVersion != 11 || p.Conversation == nil || p.Conversation.ValidatorVersion != vibe.LatestSuiteValidatorVersion || p.ExecutionLimits == nil || p.ExecutionLimits.OutputTokens != 4096 || p.Calls != 7 {
+	if p.AuthoringVersion != 11 || p.Conversation == nil || p.Conversation.ValidatorVersion != vibe.LatestSuiteValidatorVersion || p.ExecutionLimits == nil || p.ExecutionLimits.OutputTokens != 8192 || p.Calls != 7 {
 		t.Fatalf("version upgrade was not frozen with its complete graph: %+v", p)
 	}
 	beforeHash, beforeErr := vibe.CanonicalJSONHash(original.Blueprint)

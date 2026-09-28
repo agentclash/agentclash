@@ -111,8 +111,7 @@ func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
 		if err = json.Unmarshal(o.Input, &plan); err != nil {
 			return err
 		}
-		advisory := a.Step == understandingStep && plan.Understanding != nil
-		if plan.interpreted() && a.Role == Assistant && !advisory {
+		if plan.interpreted() && a.Role == Assistant {
 			profile, e := assistantStepProfile(plan, a.Step)
 			if e != nil {
 				return e
@@ -128,19 +127,13 @@ func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
 				return e
 			}
 		}
-		if advisory {
-			expectedModel = plan.Understanding.Profile.Model
-		}
-		if err = checkUnderstandingAllowance(ctx, tx, o, plan, a); err != nil {
-			return err
-		}
 		if plan.RegradeOf != nil && a.Role != Evaluator {
 			return fault("operation_limit", "Rechecking saved grades can only call the evaluator.")
 		}
 		if plan.AuthoringVersion >= 11 && (o.Kind == "message" || o.Kind == "build") {
-			allowed := advisory || a.Step == "route" || a.Step == "handler" || a.Step == "review" || a.Step == "repair" || a.Step == "review:repair"
+			allowed := a.Step == "route" || a.Step == "handler" || a.Step == "review" || a.Step == "repair" || a.Step == "review:repair"
 			if plan.interpreted() {
-				allowed = advisory || interpretedStepAllowed(a.Step)
+				allowed = interpretedStepAllowed(a.Step)
 			}
 			if plan.Conversation != nil && plan.Conversation.Manual != nil {
 				allowed = a.Step == "review"
@@ -153,10 +146,6 @@ func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
 			return fault("model_policy_changed", "Local testing settings changed. Send the message again.")
 		}
 		l := plan.limits()
-		if advisory {
-			l.ContextTokens = plan.Understanding.Profile.InputLimit
-			l.OutputTokens = 512
-		}
 		if expectedModel == "" || a.Model != expectedModel || a.InputBound < 1 || a.InputBound > l.ContextTokens || a.MaxOutput < 1 || a.MaxOutput > l.OutputTokens {
 			return fault("model_policy_changed", "This invocation does not match its approved model role or context limits.")
 		}
@@ -412,6 +401,14 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 			}
 			if plan.taskBuild() && artifact == nil && receipt.Action != "clarify" {
 				progress.Phase = "blocked"
+				if receipt.Action == "chat" {
+					progress.Phase = "waiting"
+					if len(completion) > 0 && completion[0].ConversationState != nil {
+						if q := completion[0].ConversationState.PendingQuestion; q != nil && q.Status == "active" {
+							progress.Phase = "clarifying"
+						}
+					}
+				}
 			}
 			v.Document.Build = progress
 		}

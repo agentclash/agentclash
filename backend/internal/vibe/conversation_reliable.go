@@ -119,9 +119,6 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 				return err
 			}
 		} else {
-			if err = r.observeUnderstanding(ctx, o, &p); err != nil {
-				return err
-			}
 			step := "route"
 			messages := taskMessages(p, taskRoute, "", nil)
 			for {

@@ -10,6 +10,7 @@ import (
 )
 
 const prototypeScope = "Runs here using what you supplied; your business systems aren’t connected."
+const sampleEmailAssistantChoice = "Try a sample email assistant"
 
 // Only reviewed requirement clauses reach the prototype writer. Case-specific
 // examples, expected replies, judges and imported scoring material never do.
@@ -25,6 +26,14 @@ func prototypeSources(policy PolicySnapshot) []string {
 	return rules
 }
 func (r *Runner) preparePrototype(ctx context.Context, o Operation, p Plan, a *Artifact, policy PolicySnapshot, used *bool) error {
+	if p.Document.FormatVersion == 1 && a.AgentPrompt == "" && (p.Submission.Instructions != "" || p.Document.TargetInstructions != "") {
+		a.AgentPrompt = p.Submission.Instructions
+		if a.AgentPrompt == "" {
+			a.AgentPrompt = p.Document.TargetInstructions
+		}
+		a.ScopeNote = prototypeScopeFor(a.AgentPrompt)
+		return nil
+	}
 	if p.Cycle == nil && !p.continuingBuild() || p.Cycle != nil && p.Cycle.Step == "check" || a.AgentPrompt != "" {
 		return nil
 	}
@@ -103,6 +112,9 @@ func buildHasJob(p Plan) bool {
 	return false
 }
 func buildHasRules(p Plan) bool {
+	if p.Conversation.Policy != nil && len(p.Conversation.Policy.Rules) > 0 {
+		return true
+	}
 	for _, f := range effectiveConversationState(p).Brief.Facts {
 		if f.Kind == "rule" && (f.Status == "stated" || f.Status == "accepted") {
 			return true
@@ -145,6 +157,22 @@ func sampleKindForJob(job string) string {
 }
 func (r *Runner) completeSamplePrototype(ctx context.Context, o Operation, p Plan) error {
 	kind := buildSampleKind(p)
+	if p.Submission.DemoID != "" && p.Conversation.NextState.PendingDemo != nil {
+		kind = p.Conversation.NextState.PendingDemo.Sample
+	}
+	if kind == "" && !buildHasJob(p) {
+		if p.taskBuild() {
+			p.Conversation.NextState.PendingPreparation = nil
+			p.Conversation.NextState.PendingDemo = &DemoOffer{
+				ID:              deterministicID(o.ID, "demo-offer").String(),
+				ScopeID:         p.Conversation.NextState.Brief.ScopeID,
+				OriginMessageID: deterministicID(o.ID, "completion-message").String(),
+				Sample:          "email",
+			}
+			return r.completeReliableDocument(ctx, o, p, "No problem. You can try a sample email assistant, or describe your own task below. The sample uses fictional messages and your own rules remain unspecified.", nil, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "chat"}})
+		}
+		kind = "email"
+	}
 	if kind == "" {
 		p.Conversation.NextState.PendingQuestion = nil
 		p.Conversation.NextState.PendingPreparation = nil
@@ -163,10 +191,11 @@ func (r *Runner) completeSamplePrototype(ctx context.Context, o Operation, p Pla
 	}
 	p.Conversation.NextState.PendingQuestion = nil
 	p.Conversation.NextState.PendingPreparation = nil
+	p.Conversation.NextState.PendingDemo = nil
 	p.Cycle.Sample = kind
 	reply := "Using a labelled sample demonstration. Your actual business rules remain unspecified."
 	if p.continuingBuild() {
-		reply = "I’ll start with sample rules you can change: " + samplePrototype(kind).SuccessCriteria
+		reply = "I made a labelled sample you can try here. Your own business rules are still unspecified."
 	}
 	return r.completeReliableDocument(ctx, o, p, reply, &a, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "prepare_tests", CaseCount: 3, CommandHash: Hash(blueprint)}})
 }

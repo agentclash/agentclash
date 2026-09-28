@@ -167,6 +167,7 @@ func TestBuildReviewSchemaConstrainsCoverageAndEvidence(t *testing.T) {
 	_, input := suiteReviewFixture(t)
 	input.Sources = append(input.Sources, SourceBlock{ID: "unrelated-current-request", Text: "Make it tougher"})
 	input.ValidatorVersion = EntailmentSuiteValidatorVersion
+	input.Policy.Rules[0].Evidence = []RuleEvidence{{Kind: "requirement", SourceBlockID: input.Sources[0].ID, Quote: input.Sources[0].Text}}
 	var schema jsonschema.Schema
 	if err := json.Unmarshal(raw(suiteReviewSchemaFor(input)), &schema); err != nil {
 		t.Fatal(err)
@@ -175,7 +176,7 @@ func TestBuildReviewSchemaConstrainsCoverageAndEvidence(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, scenario := range []string{"complete", "omitted assertion", "invented source", "wrong rule source", "unknown assertion", "shared rule used case facts"} {
+	for _, scenario := range []string{"complete", "omitted assertion", "invented source", "wrong rule source", "unknown assertion", "paraphrased support quote", "shared rule used case facts"} {
 		t.Run(scenario, func(t *testing.T) {
 			var reply map[string]any
 			if err := json.Unmarshal(raw(supportedSuiteReview(input)), &reply); err != nil {
@@ -189,6 +190,8 @@ func TestBuildReviewSchemaConstrainsCoverageAndEvidence(t *testing.T) {
 				reply["rules"].([]any)[0].(map[string]any)["source_block_ids"] = []any{"mistyped-source-uuid"}
 			case "unknown assertion":
 				assertions[0].(map[string]any)["id"] = "invented-assertion"
+			case "paraphrased support quote":
+				assertions[0].(map[string]any)["support"].([]any)[0].(map[string]any)["quote"] = "The policy means returns are fine."
 			case "wrong rule source":
 				assertions[0].(map[string]any)["support"].([]any)[0].(map[string]any)["source_block_id"] = "unrelated-current-request"
 			case "shared rule used case facts":
@@ -268,8 +271,9 @@ func TestBuildRecoverDraftUsesOnlyIndependentRequirements(t *testing.T) {
 	}
 }
 
-func TestIntegrationVibeBuildPreparationQuotePreservesReceipt(t *testing.T) {
+func TestIntegrationLegacyBuildPreparationQuotePreservesReceipt(t *testing.T) {
 	s, v := buildService(t)
+	s.Config.TwoDoor = false // Frozen legacy contract; the V1 API no longer admits this flow.
 	ctx := context.Background()
 	d, _ := memoryTurn(t, Document{}, "My agent converts PDF to Markdown.", questionRoute())
 	d.Evaluation = v.Document.Evaluation

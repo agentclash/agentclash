@@ -35,6 +35,9 @@ func (s *Service) Retry(ctx context.Context, actor string, sessionID, operationI
 	if err != nil {
 		return Operation{}, err
 	}
+	if s.Config.TwoDoor && v.Document.FormatVersion != 1 {
+		return Operation{}, fault("invalid_state", "This earlier conversation is read-only. Continue in V1 before starting new work.")
+	}
 	source, err := s.Store.Operation(ctx, operationID)
 	if err != nil || source.SessionID != sessionID || source.Actor != actor {
 		return Operation{}, fault("not_found", "That request is unavailable in this conversation.")

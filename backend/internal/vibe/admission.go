@@ -16,6 +16,7 @@ type Submission struct {
 	estimateOnly       bool
 	RunQuoteID         *uuid.UUID          `json:"run_quote_id,omitempty"`
 	CycleID            *uuid.UUID          `json:"cycle_id,omitempty"`
+	DemoID             string              `json:"demo_id,omitempty"`
 	Interaction        *interaction.Action `json:"interaction,omitempty"`
 	RetryOf            *uuid.UUID          `json:"retry_of,omitempty"`
 	ViewedRunID        *uuid.UUID          `json:"viewed_run_id,omitempty"`
@@ -39,38 +40,35 @@ type Submission struct {
 	BaselineID         *uuid.UUID          `json:"baseline_id,omitempty"`
 }
 type Plan struct {
-	Cycle                    *BuildCyclePlan         `json:"cycle,omitempty"`
-	AssistantRecovery        *AssistantRecovery      `json:"assistant_recovery,omitempty"`
-	UnderstandingSelection   *UnderstandingSelection `json:"understanding_selection,omitempty"`
-	Understanding            *UnderstandingPlan      `json:"understanding,omitempty"`
-	ObservedSignals          UnderstandingSignals    `json:"-"`
-	Grading                  *GradingContract        `json:"grading,omitempty"`
-	TargetConfig             *TargetConfiguration    `json:"target_config,omitempty"`
-	RegradeOf                *uuid.UUID              `json:"regrade_of,omitempty"`
-	SavedResults             []CaseResult            `json:"saved_results,omitempty"`
-	Retry                    *RetryContext           `json:"retry,omitempty"`
-	ExecutionLimits          *Limits                 `json:"execution_limits,omitempty"`
-	Conversation             *ConversationContext    `json:"conversation,omitempty"`
-	ObservedArtifact         *Artifact               `json:"observed_artifact,omitempty"`
-	ContextThrough           *uuid.UUID              `json:"context_through,omitempty"`
-	InlineEvidence           *EvidenceSet            `json:"inline_evidence,omitempty"`
-	LocalTesting             bool                    `json:"local_testing,omitempty"`
-	Evidence                 *EvidenceSet            `json:"evidence,omitempty"`
-	Source                   *EvaluationSource       `json:"source,omitempty"`
-	PreviewMessages          []provider.Message      `json:"preview_messages,omitempty"`
-	CasePreviews             []CaseResult            `json:"case_previews,omitempty"`
-	AuthoringVersion         int                     `json:"authoring_version,omitempty"`
-	ConversationJudgeVersion int                     `json:"conversation_judge_version,omitempty"`
-	Free                     bool                    `json:"free,omitempty"`
-	ChecksPerCase            int                     `json:"checks_per_case"`
-	Observations             []CaseResult            `json:"observations,omitempty"`
-	Submission               Submission              `json:"submission"`
-	Document                 Document                `json:"document"`
-	Artifact                 *Artifact               `json:"artifact,omitempty"`
-	Cases                    []string                `json:"case_keys"`
-	Calls                    int                     `json:"calls"`
-	MaxCost                  int64                   `json:"max_cost_nano_usd"`
-	Anonymous                bool                    `json:"anonymous"`
+	Cycle                    *BuildCyclePlan      `json:"cycle,omitempty"`
+	AssistantRecovery        *AssistantRecovery   `json:"assistant_recovery,omitempty"`
+	Grading                  *GradingContract     `json:"grading,omitempty"`
+	TargetConfig             *TargetConfiguration `json:"target_config,omitempty"`
+	RegradeOf                *uuid.UUID           `json:"regrade_of,omitempty"`
+	SavedResults             []CaseResult         `json:"saved_results,omitempty"`
+	Retry                    *RetryContext        `json:"retry,omitempty"`
+	ExecutionLimits          *Limits              `json:"execution_limits,omitempty"`
+	Conversation             *ConversationContext `json:"conversation,omitempty"`
+	ObservedArtifact         *Artifact            `json:"observed_artifact,omitempty"`
+	ContextThrough           *uuid.UUID           `json:"context_through,omitempty"`
+	InlineEvidence           *EvidenceSet         `json:"inline_evidence,omitempty"`
+	LocalTesting             bool                 `json:"local_testing,omitempty"`
+	Evidence                 *EvidenceSet         `json:"evidence,omitempty"`
+	Source                   *EvaluationSource    `json:"source,omitempty"`
+	PreviewMessages          []provider.Message   `json:"preview_messages,omitempty"`
+	CasePreviews             []CaseResult         `json:"case_previews,omitempty"`
+	AuthoringVersion         int                  `json:"authoring_version,omitempty"`
+	ConversationJudgeVersion int                  `json:"conversation_judge_version,omitempty"`
+	Free                     bool                 `json:"free,omitempty"`
+	ChecksPerCase            int                  `json:"checks_per_case"`
+	Observations             []CaseResult         `json:"observations,omitempty"`
+	Submission               Submission           `json:"submission"`
+	Document                 Document             `json:"document"`
+	Artifact                 *Artifact            `json:"artifact,omitempty"`
+	Cases                    []string             `json:"case_keys"`
+	Calls                    int                  `json:"calls"`
+	MaxCost                  int64                `json:"max_cost_nano_usd"`
+	Anonymous                bool                 `json:"anonymous"`
 }
 
 // The caller has already authorized the session. Admission repeats this lookup
@@ -130,6 +128,12 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		if v.Revision != sub.Revision {
 			return fault("revision_conflict", "Reload the latest conversation before sending.")
 		}
+		if sub.DemoID != "" {
+			offer := v.Document.ConversationState
+			if sub.Kind != "message" || sub.Content != sampleEmailAssistantChoice || sub.AdditionalExamples != 0 || sub.ArtifactID != nil || v.Document.Evaluation == nil || v.Document.Evaluation.Door != "build" || v.Document.Build == nil || v.Document.Build.Phase != "waiting" || offer == nil || offer.PendingDemo == nil || offer.PendingDemo.ID != sub.DemoID || plan.Cycle == nil || plan.Cycle.ID != v.Document.Build.CycleID {
+				return fault("stale_demo_choice", "This demo choice is no longer available. Reload your conversation.")
+			}
+		}
 		if sub.RetryOf != nil || plan.Retry != nil {
 			if err = validateRetryAdmission(ctx, tx, v, sub, plan); err != nil {
 				return err
@@ -182,9 +186,6 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		if plan.MaxCost < 0 || (plan.MaxCost == 0 && !plan.Free) || plan.MaxCost > MaxOperationCost || plan.Calls < 1 || plan.Calls > cfg.Limits(v.Anonymous).ModelCalls {
 			return fault("budget_limit", "Operation cannot be safely bounded.")
 		}
-		if err = validateUnderstandingPlan(plan); err != nil {
-			return err
-		}
 		if err = validateInterpretedAllowance(plan, cfg); err != nil {
 			return err
 		}
@@ -198,9 +199,6 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 				if plan.AssistantRecovery != nil {
 					allowedCalls++
 				}
-			}
-			if plan.Understanding != nil {
-				allowedCalls++
 			}
 			if plan.Calls > allowedCalls || plan.operationTimeout() > 16*time.Minute || plan.Conversation != nil && plan.Conversation.Manual != nil && plan.Calls != 1 {
 				return fault("budget_limit", "The authoring workflow exceeds its call or time allowance.")
@@ -287,7 +285,7 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		v.Document.Models = sub.Models
 		if plan.Cycle != nil {
 			progress := &BuildProgress{CycleID: plan.Cycle.ID, Phase: "preparing", ClarificationsUsed: plan.Cycle.ClarificationsUsed, Sample: plan.Cycle.Sample}
-			if plan.taskBuild() && plan.Cycle.Step == "answer" && v.Document.ConversationState != nil && v.Document.ConversationState.PendingQuestion != nil {
+			if plan.taskBuild() && plan.Cycle.Step != "prepare" && plan.Cycle.Step != "check" && v.Document.ConversationState != nil && v.Document.ConversationState.PendingQuestion != nil {
 				progress.RespondingToQuestion = v.Document.ConversationState.PendingQuestion.ID
 			}
 			if plan.Cycle.Step == "check" {
@@ -304,6 +302,9 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 			v.Document.TestJourney = true
 		}
 		if sub.Instructions != "" {
+			if v.Document.FormatVersion == 1 {
+				v.Document.TargetInstructions = sub.Instructions
+			}
 			v.Document.ActiveEvidenceID = nil
 			v.Document.Journey.Mode = "idea"
 			v.Document.Journey.PreviewConsent = true
@@ -458,6 +459,9 @@ func (s *Store) Approve(ctx context.Context, actor string, id uuid.UUID, cfg Con
 		}
 		if err = authorize(ctx, tx, actor, v.WorkspaceID, true); err != nil {
 			return err
+		}
+		if cfg.TwoDoor && v.Document.FormatVersion != 1 {
+			return fault("invalid_state", "This earlier conversation is read-only. Continue in V1 before starting new work.")
 		}
 		if o.State != AwaitingApproval {
 			return fault("invalid_state", "This operation is not awaiting approval.")

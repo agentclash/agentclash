@@ -31,6 +31,14 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 		}
 		return r.completeReliableDocument(ctx, o, p, reply, nil, nil, AuthoringCompletion{Interaction: action, Outcome: &CompletionReceipt{Action: "chat"}})
 	}
+	if p.Submission.DemoID != "" && p.taskBuild() {
+		p.Conversation.NextState = cloneState(p.Conversation.State)
+		offer := p.Conversation.NextState.PendingDemo
+		if offer == nil || offer.ID != p.Submission.DemoID || buildHasJob(p) {
+			return fault("stale_demo_choice", "This demo choice is no longer available. Reload your conversation.")
+		}
+		return r.completeSamplePrototype(ctx, o, p)
+	}
 	profile, err := r.reliableProfile(o, p)
 	if err != nil {
 		return err
@@ -50,9 +58,6 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 				return err
 			}
 		} else {
-			if err = r.observeUnderstanding(ctx, o, &p); err != nil {
-				return err
-			}
 			_, _, err = r.interpretedStage(ctx, o, p, "route", &fallbackUsed, taskMessages(p, taskRoute, "", nil), func(profile ModelProfile) json.RawMessage { return interpretationFormat(profile) }, func(output []byte) error {
 				var e error
 				p.Conversation.NextState = nil
@@ -101,37 +106,10 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 		}
 		if p.Document.Evaluation != nil && route.NewAgent && len(p.Document.Artifacts) > 0 {
 			p.Conversation.NextState = cloneState(p.Conversation.State)
-			return r.completeReliableDocument(ctx, o, p, "Use New evaluation beside the message box to start a different agent. These rules and results will stay here.", nil, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "chat"}})
+			return r.completeReliableDocument(ctx, o, p, "Use New agent in the sidebar to start a different agent. These rules and results will stay here.", nil, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "chat"}})
 		}
-		if p.Cycle != nil {
-			if route.Intent == "prepare_tests" {
-				route.Count = 3
-			}
-			if route.Intent == "chat" || route.Intent == "clarify" {
-				if p.Cycle.ClarificationsUsed >= 1 || (buildHasJob(p) && buildHasRules(p)) {
-					if !buildHasRules(p) {
-						return r.completeSamplePrototype(ctx, o, p)
-					}
-					route.Intent, route.Count = "prepare_tests", 3
-					if p.taskBuild() {
-						if q := p.Conversation.NextState.PendingQuestion; q != nil && q.Status == "active" {
-							q.Status = "superseded"
-						}
-					} else {
-						p.Conversation.NextState.PendingQuestion = nil
-					}
-				} else if route.Intent == "chat" {
-					route.Intent, route.Reply = "clarify", "Which repetitive task would you like AI to help with?"
-					if route.Memory == nil {
-						route.Memory = &memoryUpdate{}
-					}
-					route.Memory.Question = &memoryQuestion{Purpose: "clarify_job", Text: route.Reply, MaxSelections: 1}
-					p.Conversation.NextState, err = proposeConversationState(p, route, o)
-					if err != nil {
-						return err
-					}
-				}
-			}
+		if applyBuildDecision(p, &route) {
+			return r.completeSamplePrototype(ctx, o, p)
 		}
 		if p.continuingBuild() {
 			prepareBuildContinuation(&p, &route)

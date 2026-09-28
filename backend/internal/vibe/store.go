@@ -110,41 +110,54 @@ func scanSession(row pgx.Row) (Session, error) {
 	return v, err
 }
 func (s *Store) CreateSession(ctx context.Context, actor string, ws *uuid.UUID, id uuid.UUID, defaults ...Models) (Session, error) {
+	d := Document{Messages: []Message{}, Requirements: []Requirement{}, Artifacts: []Artifact{}, Models: DefaultModels()}
+	if len(defaults) > 0 {
+		d.Models = defaults[0]
+	}
+	return s.createSession(ctx, actor, ws, id, d)
+}
+
+func (s *Store) createSession(ctx context.Context, actor string, ws *uuid.UUID, id uuid.UUID, d Document) (Session, error) {
 	var v Session
 	err := s.transaction(ctx, func(tx pgx.Tx) error {
-		if err := authorize(ctx, tx, actor, ws, true); err != nil {
-			return err
-		}
-		var count int
-		if err := tx.QueryRow(ctx, "SELECT count(*) FROM vibe_sessions WHERE actor=$1", actor).Scan(&count); err != nil {
-			return err
-		}
-		if !s.localTesting && count >= 100 {
-			return fault("session_limit", "Conversation limit reached.")
-		}
-		d := Document{Messages: []Message{}, Requirements: []Requirement{}, Artifacts: []Artifact{}, Models: DefaultModels()}
-		if len(defaults) > 0 {
-			d.Models = defaults[0]
-		}
-		var trial *string
-		if strings.HasPrefix(actor, "anon:") || ws == nil {
-			t := actor
-			trial = &t
-		}
-		_, err := tx.Exec(ctx, `INSERT INTO vibe_sessions(id,actor,workspace_id,trial_key,document) VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO NOTHING`, id, actor, ws, trial, raw(d))
-		if err != nil {
-			return err
-		}
-		v, err = scanSession(tx.QueryRow(ctx, sessionSelect, id))
-		if err != nil {
-			return err
-		}
-		if v.Actor != actor {
-			return fault("not_found", "Conversation is unavailable.")
-		}
-		return nil
+		var err error
+		v, err = s.createSessionTx(ctx, tx, actor, ws, id, d)
+		return err
 	})
 	return v, err
+}
+
+func (s *Store) createSessionTx(ctx context.Context, tx pgx.Tx, actor string, ws *uuid.UUID, id uuid.UUID, d Document) (Session, error) {
+	if err := authorize(ctx, tx, actor, ws, true); err != nil {
+		return Session{}, err
+	}
+	if v, err := scanSession(tx.QueryRow(ctx, sessionSelect, id)); err == nil {
+		if v.Actor != actor {
+			return Session{}, fault("not_found", "Conversation is unavailable.")
+		}
+		return v, nil
+	} else {
+		var f *Fault
+		if !errors.As(err, &f) || f.Code != "not_found" {
+			return Session{}, err
+		}
+	}
+	var count int
+	if err := tx.QueryRow(ctx, "SELECT count(*) FROM vibe_sessions WHERE actor=$1", actor).Scan(&count); err != nil {
+		return Session{}, err
+	}
+	if !s.localTesting && count >= 100 {
+		return Session{}, fault("session_limit", "Conversation limit reached.")
+	}
+	var trial *string
+	if strings.HasPrefix(actor, "anon:") || ws == nil {
+		t := actor
+		trial = &t
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO vibe_sessions(id,actor,workspace_id,trial_key,document) VALUES($1,$2,$3,$4,$5)`, id, actor, ws, trial, raw(d)); err != nil {
+		return Session{}, err
+	}
+	return scanSession(tx.QueryRow(ctx, sessionSelect, id))
 }
 func (s *Store) GetSession(ctx context.Context, actor string, id uuid.UUID) (Session, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
@@ -471,9 +484,6 @@ func (s *Store) Cursor(ctx context.Context, session uuid.UUID) (int64, error) {
 	return id, err
 }
 
-func (s *Store) SaveDraft(ctx context.Context, actor string, id uuid.UUID, revision int64, ws uuid.UUID, artifact Artifact, composition json.RawMessage, models Models, explicitModels bool, approve ...bool) (uuid.UUID, error) {
-	return s.saveDraft(ctx, actor, id, revision, ws, artifact, composition, models, explicitModels, nil, approve...)
-}
 func (s *Store) saveDraft(ctx context.Context, actor string, id uuid.UUID, revision int64, ws uuid.UUID, artifact Artifact, composition json.RawMessage, models Models, explicitModels bool, baseline *uuid.UUID, approve ...bool) (uuid.UUID, error) {
 	var draftID uuid.UUID
 	err := s.transaction(ctx, func(tx pgx.Tx) error {

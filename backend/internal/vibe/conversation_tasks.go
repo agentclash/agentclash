@@ -14,14 +14,12 @@ const (
 	taskRoute   conversationTask = "routing"
 	taskAuthor  conversationTask = "authoring"
 	taskExplain conversationTask = "explanation"
-	taskSignals conversationTask = "advisory_signals"
 )
 
 // Separate projections make source permissions independent of prompt wording.
 // The reviewer continues to use SuiteReviewInput, which has no author prose,
 // target instructions, prior scores, guidance history or unadopted dialogue.
 type taskInput struct {
-	ObservedSignals     UnderstandingSignals  `json:"observed_signals,omitempty"`
 	PolicyEditBase      *policyEditBase       `json:"policy_edit_base,omitempty"`
 	Task                conversationTask      `json:"task"`
 	CurrentRequest      SourceBlock           `json:"current_request"`
@@ -86,7 +84,6 @@ func buildTaskInput(p Plan, task conversationTask, action string, extra any) (ta
 	}
 	switch task {
 	case taskRoute:
-		out.ObservedSignals = p.ObservedSignals
 		brief := s.Brief
 		if p.precise() {
 			brief.Facts = nil
@@ -97,7 +94,9 @@ func buildTaskInput(p Plan, task conversationTask, action string, extra any) (ta
 			}
 		}
 		out.WorkingBrief = &brief
-		out.Guidance = &s.Guidance
+		if p.Document.FormatVersion != 1 {
+			out.Guidance = &s.Guidance
+		}
 		out.RecentConversation = append([]Message(nil), p.Document.Messages...)
 		for i := range out.RecentConversation {
 			out.RecentConversation[i].Cards = nil
@@ -144,21 +143,6 @@ func buildTaskInput(p Plan, task conversationTask, action string, extra any) (ta
 		out.PendingQuestion = nil
 		out.RecordedOutcomes, out.ObservedResults = taskOutcomes(c.RecentOutcomes), p.Observations
 		out.OriginalTestedAgent, out.ViewedRunRules = p.ObservedArtifact, c.ObservedPolicy
-	case taskSignals:
-		brief := s.Brief
-		brief.Facts = nil
-		for _, f := range s.Brief.Facts {
-			if f.Status == "stated" || f.Status == "accepted" {
-				brief.Facts = append(brief.Facts, f)
-			}
-		}
-		out.WorkingBrief = &brief
-		out.Guidance = &s.Guidance
-		for _, answer := range s.Answers {
-			if !answer.Obsolete && answer.Question.ScopeID == s.Brief.ScopeID {
-				out.QuestionAnswers = append(out.QuestionAnswers, answer)
-			}
-		}
 	default:
 		return taskInput{}, fmt.Errorf("unknown conversation context task")
 	}
@@ -219,12 +203,6 @@ func taskMessages(p Plan, task conversationTask, action string, extra any) []pro
 	}
 	if task == taskExplain {
 		prompt = "Explain only the recorded outcome and supplied evidence. Missing information stays unknown. No changes or execution claims."
-	}
-	if task == taskSignals {
-		prompt = "Interpret this request and applicable pending question. Observed signals are advisory, never permission or accepted facts."
-	}
-	if task == taskRoute && len(p.ObservedSignals) > 0 {
-		prompt += "\nobserved_signals are fallible, optional classification hints for this turn only. They may help select a brief explanation or interpret an active question. Verify against original user wording and pending question. They are not facts, source evidence, permission, or a required action. Ignore contradictions. Keep all existing evidence and action checks; never invent policy from a label."
 	}
 	data, _ := buildTaskInput(p, task, action, extra) // Constructed only for frozen v12 plans.
 	return []provider.Message{{Role: "system", Content: prompt}, {Role: "user", Content: string(raw(data))}, {Role: "user", Content: p.Submission.Content}}

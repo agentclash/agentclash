@@ -43,6 +43,7 @@ export type ConversationState = {
   through_message_id?: string;
   brief: { scope_id: string; revision: number; facts: ConversationFact[] };
   pending_question?: ConversationQuestion;
+  pending_demo?: { id: string; scope_id: string; origin_message_id: string; sample: "email" };
   answers?: ConversationAnswer[];
   guidance: {
     events?: { message_id: string; kind: "explanation" | "example" | "dismissed"; topic: string }[];

@@ -46,7 +46,7 @@ func (r *Runner) completeReliableDocument(ctx context.Context, o Operation, p Pl
 	if p.precise() {
 		s.ActionsVersion = 1
 	}
-	if p.precise() && c.Policy != nil && c.Policy.SampleBasis == "" && p.Conversation.Policy != nil && p.Conversation.Policy.SampleBasis == "" {
+	if p.Document.FormatVersion != 1 && p.precise() && c.Policy != nil && c.Policy.SampleBasis == "" && p.Conversation.Policy != nil && p.Conversation.Policy.SampleBasis == "" {
 		alignBriefToPolicy(s, *p.Conversation.Policy, *c.Policy)
 	}
 	if p.guided() && p.Conversation.Example != nil {
@@ -61,6 +61,26 @@ func (r *Runner) completeReliableDocument(ctx context.Context, o Operation, p Pl
 		}
 		if len(s.Guidance.Events) > 32 {
 			s.Guidance.Events = s.Guidance.Events[len(s.Guidance.Events)-32:]
+		}
+	}
+	if p.Document.FormatVersion == 1 {
+		// Presentation history is not part of the evaluation specification.
+		s.Guidance = GuidanceHistory{}
+		if c.Policy != nil {
+			// The validated immutable policy now owns these rules and answer
+			// bindings. Keep only unfinished dialogue facts in working memory.
+			facts := s.Brief.Facts[:0]
+			for _, fact := range s.Brief.Facts {
+				if fact.Kind != "rule" {
+					facts = append(facts, fact)
+				}
+			}
+			s.Brief.Facts = facts
+			s.Answers = nil
+			s.PendingPreparation = nil
+			if s.PendingQuestion != nil && s.PendingQuestion.Status != "active" {
+				s.PendingQuestion = nil
+			}
 		}
 	}
 	c.ConversationState = s

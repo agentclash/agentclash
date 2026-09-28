@@ -2,7 +2,6 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { defaultModels, VibeError, type Operation, type Session } from "@/lib/vibe";
-import { quickCheckClientID } from "@/lib/vibe-quick-check";
 import { VibeClient } from "./vibe-client";
 
 const harness = vi.hoisted(() => ({
@@ -54,6 +53,7 @@ async function render() {
   await act(async () => root.render(<VibeClient />));
 }
 function button(name: string) {
+  if (name === "Try a message") name = "Try it yourself";
   if (
     name === "Apply changes" &&
     [...container.querySelectorAll("button")].some(
@@ -594,103 +594,6 @@ it("shows the submitted message before admission and preserves a newer draft aft
   expect(composer().value).toBe("My next thought");
 });
 
-it("continues a server-authorized pasted-chat check once and keeps result navigation tied to its operation", async () => {
-  const artifactID = "42316676-f6e5-4af9-8912-ce6936d42c3c";
-  const response = deferred<Response>();
-  respond = async (path) =>
-    path === "/config"
-      ? json({ defaults: defaultModels, models: [] })
-      : path.endsWith("/messages")
-        ? response.promise
-        : json(session);
-  await render();
-  session = {
-    ...session,
-    revision: 2,
-    event_cursor: 2,
-    document: {
-      ...session.document,
-      messages: [
-        {
-          id: "pasted-message",
-          role: "user",
-          content: "Customer: Hello\nAgent: Hello",
-        },
-      ],
-      active_evidence_id: "pasted-evidence",
-      evidence_sets: [
-        {
-          id: "pasted-evidence",
-          label: "Chat",
-          raw: "Customer: Hello\nAgent: Hello",
-          conversations: [
-            {
-              key: "chat-1",
-              title: "Chat",
-              messages: [
-                { id: "c1-m1", role: "user", content: "Hello" },
-                { id: "c1-m2", role: "assistant", content: "Hello" },
-              ],
-            },
-          ],
-        },
-      ],
-      artifacts: [
-        {
-          id: artifactID,
-          title: "Greeting",
-          kind: "conversation_evaluation",
-          quick_check: true,
-          source_message_id: "pasted-message",
-          accepted: false,
-          agent_prompt: "",
-          blueprint: null,
-          conversation_evaluation: {
-            evidence_set_id: "pasted-evidence",
-            expectations: [
-              { id: "rule-1", statement: "Respond to the greeting." },
-            ],
-          },
-        },
-      ],
-    },
-  };
-  await act(async () => snapshot(structuredClone(session)));
-  expect(posts()).toHaveLength(1);
-  expect(posts()[0].body).toMatchObject({
-    kind: "check",
-    artifact_id: artifactID,
-    evidence_set_id: "pasted-evidence",
-    approve_artifact: true,
-    client_id: quickCheckClientID(artifactID),
-  });
-  await act(async () => snapshot(structuredClone(session)));
-  expect(posts()).toHaveLength(1);
-  session.document.artifacts[0].accepted = true;
-  session.operations.push({
-    id: "quick-run",
-    kind: "check",
-    state: "RUNNING",
-    billing: "RESERVED",
-    models: defaultModels,
-    max_cost_nano_usd: 0,
-    actual_cost_nano_usd: null,
-    results: [],
-    source: {
-      kind: "provided_conversations",
-      artifact_id: artifactID,
-      evidence_set_id: "pasted-evidence",
-      label: "Chat",
-    },
-  });
-  session.revision++;
-  session.event_cursor = session.revision;
-  await act(async () => response.resolve(json(session.operations[0], 202)));
-  expect(window.location.search).toContain("view=checks");
-  await act(async () => snapshot(structuredClone(session)));
-  expect(posts()).toHaveLength(1);
-});
-
 function acceptedDraft() {
   session.document.artifacts = [
     {
@@ -806,9 +709,7 @@ it("keeps an inaccessible accepted draft available while offering an explicit co
       new VibeError("not_found", "Conversation unavailable", 404),
     );
   await render();
-  expect(
-    container.querySelector('section[aria-label="Proposed check"]'),
-  ).not.toBeNull();
+  expect(button("Try it yourself")).toBeTruthy();
   expect(button("Retry connection").disabled).toBe(false);
   expect(container.textContent).not.toContain(
     "Keep message in a new conversation",
@@ -826,278 +727,9 @@ it("keeps an inaccessible accepted draft available while offering an explicit co
   expect(container.textContent).not.toContain(
     "This browser can’t access the saved session",
   );
-  expect(
-    container.querySelector('section[aria-label="Proposed check"]'),
-  ).not.toBeNull();
+  expect(button("Try it yourself")).toBeTruthy();
   expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
 });
-
-it("separates late-loading preview rules without marking the draft dirty and preserves them on edit", async () => {
-  acceptedDraft();
-  const rules = "Preview capabilities: text only, no connected actions.\n\n";
-  session.document.artifacts[0].agent_prompt =
-    rules + "Answer supplied refund questions.";
-  const configResponse = deferred<Response>();
-  respond = async (path) =>
-    path === "/config" ? configResponse.promise : json(session);
-  await render();
-  const instructions = () =>
-    container.querySelector<HTMLTextAreaElement>(
-      'textarea[aria-label="Agent instructions"]',
-    )!;
-  expect(instructions().value).toBe(session.document.artifacts[0].agent_prompt);
-  await act(async () =>
-    configResponse.resolve(
-      json({
-        defaults: defaultModels,
-        models: [],
-        capabilities: [
-          {
-            id: "text_preview",
-            label: "Text preview",
-            available: true,
-            description: "Supplied text only",
-            instructions: rules,
-          },
-        ],
-      }),
-    ),
-  );
-  expect(instructions().value).toBe("Answer supplied refund questions.");
-  const disclosure = [...container.querySelectorAll("details")].find(
-    (d) => d.querySelector("summary")?.textContent === "How this preview works",
-  )!;
-  expect(disclosure.open).toBe(false);
-  expect(disclosure.textContent).toContain(rules.trim());
-  expect(button("Run these tests").disabled).toBe(false);
-  expect(container.textContent).not.toContain("Apply changes");
-  await type(
-    "Ask for the supplied refund policy when it is missing.",
-    "Agent instructions",
-  );
-  expect(button("Run these tests").disabled).toBe(true);
-  await click("Apply changes");
-  expect(
-    requests.filter((r) => r.method === "PATCH").at(-1)?.body.agent_prompt,
-  ).toBe(rules + "Ask for the supplied refund policy when it is missing.");
-  expect(posts()).toHaveLength(0);
-});
-
-it("allows trying an unaccepted agent and editing the legacy shared rule without confirming requirements", async () => {
-  acceptedDraft();
-  const a = session.document.artifacts[0];
-  a.accepted = false;
-  a.blueprint = {
-    cases: [{ payload: { question: "No relevant sources" } }],
-    judges: [
-      { key: "behavior", assertion: "Allow no qualifying recommendation" },
-    ],
-    validators: [{ key: "has_answer" }],
-    dimensions: [{}, {}],
-  };
-  await render();
-  expect(container.textContent).not.toContain("Accept this draft");
-  await click("Try a message");
-  await type("Find relevant sources", "Message your agent");
-  await click("Send to agent");
-  expect(posts()[0].body).toMatchObject({
-    kind: "playground",
-    artifact_id: a.id,
-    preview_thread_id: expect.any(String),
-  });
-  expect(posts()[0].body.approve_artifact).toBeUndefined();
-  expect(a.accepted).toBe(false);
-  await openChecks();
-  await click("Edit expectations");
-  await type(
-    "State uncertainty when evidence is absent",
-    "Shared expected behavior",
-  );
-  expect(button("Save agent").disabled).toBe(true);
-  await click("Apply changes");
-  expect(
-    requests.filter((r) => r.method === "PATCH").at(-1)?.body,
-  ).toMatchObject({
-    evaluation: {
-      examples: ["No relevant sources"],
-      success_criteria: "State uncertainty when evidence is absent",
-    },
-  });
-  expect(posts()).toHaveLength(1);
-});
-
-it("groups a proposed replacement with its confirmed predecessor and keeps history", async () => {
-  session.document.messages = [
-    { id: "m2", role: "user", content: "Explain that booking is unavailable." },
-  ];
-  session.document.requirements = [
-    {
-      id: "old",
-      statement: "Confirm the booking",
-      status: "accepted",
-      source_message_id: "m1",
-    },
-    {
-      id: "new",
-      statement: "Explain that booking is unavailable",
-      status: "proposed",
-      source_message_id: "m2",
-      supersedes_id: "old",
-      change: "replace",
-    },
-    {
-      id: "retired",
-      statement: "Old duplicate",
-      status: "superseded",
-      source_message_id: "m0",
-    },
-  ];
-  await render();
-  expect(container.textContent).toContain("Previous: Confirm the booking");
-  expect(container.textContent).toContain("Requirement history");
-  expect(
-    [...container.querySelectorAll("button")].filter(
-      (b) => b.textContent === "Confirm",
-    ),
-  ).toHaveLength(1);
-  await click("Dismiss");
-  expect(
-    requests.filter((r) => r.method === "PATCH").at(-1)?.body,
-  ).toMatchObject({ requirement_id: "new", status: "rejected" });
-});
-
-it("applies edited instructions as a new version and approves them atomically when checks run", async () => {
-  acceptedDraft();
-  const original = structuredClone(session.document.artifacts[0]);
-  respond = async (path, options) => {
-    if (path === "/config")
-      return json({ defaults: defaultModels, models: [] });
-    if (options.method === "PATCH") {
-      const body = JSON.parse(String(options.body));
-      if (body.revision !== session.revision)
-        return json(
-          { error: { code: "revision_conflict", message: "Stale edit" } },
-          409,
-        );
-      session.document.artifacts.push({
-        ...original,
-        id: "artifact-two",
-        parent_id: original.id,
-        agent_prompt: body.agent_prompt,
-        accepted: false,
-      });
-      session.event_cursor = ++session.revision;
-    }
-    return json(session);
-  };
-  await render();
-  await click("Agent instructions");
-  await type("Edited policy", "Agent instructions");
-  for (const name of ["Run these tests", "Try a message", "Save agent"])
-    expect(button(name).disabled).toBe(true);
-  expect(posts()).toHaveLength(0);
-  await click("Apply changes");
-  expect(session.document.artifacts[0]).toEqual(original);
-  expect(session.document.artifacts[1].accepted).toBe(false);
-  expect(button("Try a message").disabled).toBe(false);
-  await click("Run these tests");
-  expect(posts()).toHaveLength(1);
-  expect(posts()[0].body).toMatchObject({
-    artifact_id: "artifact-two",
-    approve_artifact: true,
-    kind: "check",
-  });
-  expect(requests.filter((r) => r.method === "PATCH")).toHaveLength(1);
-});
-
-it("preserves unapplied instructions when the editor closes and requires an explicit discard", async () => {
-  acceptedDraft();
-  await render();
-  await click("Agent instructions");
-  await type("Unsaved policy", "Agent instructions");
-  await click("Agent instructions");
-  await click("Agent instructions");
-  expect(
-    container.querySelector<HTMLTextAreaElement>(
-      'textarea[aria-label="Agent instructions"]',
-    )!.value,
-  ).toBe("Unsaved policy");
-  expect(button("Run these tests").disabled).toBe(true);
-  await click("Discard edits");
-  expect(
-    container.querySelector<HTMLTextAreaElement>(
-      'textarea[aria-label="Agent instructions"]',
-    )!.value,
-  ).toBe("Original policy");
-  await click("Run these tests");
-  expect(posts()).toHaveLength(1);
-});
-
-it.each([
-  ["Confirm", "accepted"],
-  ["Dismiss", "rejected"],
-] as const)(
-  "lets a conversational proposal be %s with no draft and no scorecard",
-  async (action, status) => {
-    respond = async (path, options) => {
-      if (path === "/config")
-        return json({ defaults: defaultModels, models: [] });
-      if (path.endsWith("/messages")) {
-        session.document.messages = [
-          {
-            id: "reply",
-            role: "assistant",
-            content: "Would you like to explore support use cases?",
-          },
-        ];
-        session.document.requirements = [
-          {
-            id: "proposal",
-            statement: "Explore support use cases",
-            status: "proposed",
-            source_message_id: "reply",
-          },
-        ];
-        session.revision++;
-        session.event_cursor = session.revision;
-      }
-      if (options.method === "PATCH") {
-        const body = JSON.parse(String(options.body));
-        if (body.revision !== session.revision)
-          return json(
-            { error: { code: "revision_conflict", message: "Stale proposal" } },
-            409,
-          );
-        expect(body.requirement_id).toBe("proposal");
-        session.document.requirements[0].status = body.status;
-        session.revision++;
-        session.event_cursor = session.revision;
-      }
-      return json(session);
-    };
-    await render();
-    await type("Just exploring AI");
-    await click("Send message");
-    expect(posts()).toHaveLength(1);
-    expect(container.textContent).toContain(
-      "Would you like to explore support use cases?",
-    );
-    expect(
-      container.querySelector('article[aria-label="Evaluation scorecard"]'),
-    ).toBeNull();
-    expect(
-      container.querySelector('section[aria-label="Proposed check"]'),
-    ).toBeNull();
-    expect(container.textContent).toContain(
-      "Proposed · needs your confirmation",
-    );
-    await click(action);
-    expect(session.document.requirements[0].status).toBe(status);
-    expect(container.textContent).not.toContain(
-      "Proposed · needs your confirmation",
-    );
-  },
-);
 
 function signedInWorkspace() {
   harness.token.mockResolvedValue("test-access-token");
@@ -1387,49 +1019,6 @@ it.each([
 );
 
 it.each([
-  { name: "confirmed", receipt: { saved_models: defaultModels } },
-  { name: "legacy null", receipt: { saved_models: null } },
-  { name: "legacy absent", receipt: {} },
-])(
-  "keeps dirty instructions gated with a $name canonical association",
-  async ({ receipt }) => {
-    acceptedDraft();
-    signedInWorkspace();
-    Object.assign(session, {
-      anonymous: false,
-      workspace_id: "workspace-one",
-      saved_draft_id: "canonical-one",
-      saved_artifact_id: "artifact-one",
-      ...receipt,
-    });
-    await render();
-    const selector =
-      'a[href="/workspaces/workspace-one/challenge-packs/builder/canonical-one"]';
-    expect(container.querySelector(selector)).not.toBeNull();
-    await click("Agent instructions");
-    await type("Unsaved policy", "Agent instructions");
-    expect(container.querySelector(selector)).toBeNull();
-    expect(container.textContent).not.toContain(
-      "Your agent and checks are saved.",
-    );
-    for (const name of ["Save agent", "Run these tests", "Try a message"]) {
-      expect(button(name).disabled).toBe(true);
-      await click(name);
-    }
-    expect(document.querySelector('[role="dialog"]')).toBeNull();
-    expect(requests.filter((r) => r.method !== "GET")).toHaveLength(0);
-    await click("Discard edits");
-    expect(
-      container.querySelector<HTMLTextAreaElement>(
-        'textarea[aria-label="Agent instructions"]',
-      )!.value,
-    ).toBe("Original policy");
-    expect(container.querySelector(selector)).not.toBeNull();
-    expect(button("Save agent").disabled).toBe(false);
-  },
-);
-
-it.each([
   {
     name: "legacy null",
     receipt: { saved_models: null },
@@ -1640,30 +1229,6 @@ it.each([
       )!.value,
     ).toBe("A complete task");
     expect(posts()).toHaveLength(0);
-    await openChecks();
-    await click("Edit expectations");
-    expect(
-      container.querySelector<HTMLTextAreaElement>(
-        'textarea[aria-label="Example 3 expected"]',
-      )!.value,
-    ).toBe("Ask for the missing information.");
-    await type("Ask for a specific missing field.", "Example 3 expected");
-    await click("Apply changes");
-    expect(
-      requests.filter((r) => r.method === "PATCH").at(-1)?.body,
-    ).toMatchObject({
-      evaluation: {
-        examples: [],
-        scenarios: [
-          expect.anything(),
-          expect.anything(),
-          {
-            input: "An incomplete task",
-            expected: "Ask for a specific missing field.",
-          },
-        ],
-      },
-    });
     expect(posts()).toHaveLength(0);
   },
 );
@@ -2247,38 +1812,6 @@ it("keeps optional instruction testing behind More options without a source-sele
   });
 });
 
-it("reveals Conversation and Results only when a provided-chat check starts", async () => {
-  recordedCheck();
-  respond = async (path, options) => {
-    if (path === "/config")
-      return json({ defaults: defaultModels, models: [] });
-    if (path.endsWith("/messages")) {
-      const body = JSON.parse(String(options.body));
-      recordedResult();
-      session.revision++;
-      expect(body).toMatchObject({
-        kind: "check",
-        artifact_id: "conversation-check",
-        evidence_set_id: "evidence-one",
-        approve_artifact: true,
-      });
-      return json(session.operations[0], 202);
-    }
-    return json(session);
-  };
-  await render();
-  expect(container.querySelectorAll('[role="tab"]')).toHaveLength(0);
-  await type("An unsent question");
-  await click("Check these chats");
-  expect(
-    [...container.querySelectorAll('[role="tab"]')].map((t) => t.textContent),
-  ).toEqual(["Conversation", "Results"]);
-  expect(button("Results").getAttribute("aria-selected")).toBe("true");
-  expect(composer().value).toBe("An unsent question");
-  expect(posts()).toHaveLength(1);
-  expect(posts()[0].body.preview_thread_id).toBeUndefined();
-});
-
 it("cites exact chat messages and prepares a disputed rule without silently changing it", async () => {
   const { result } = recordedResult();
   respond = async (path) =>
@@ -2323,48 +1856,6 @@ it("requests a suggested change on demand with the selected evidence baseline", 
   });
   expect(posts()[0].body.content).toContain("do not claim to apply it");
   expect(session.document.artifacts[0].agent_prompt).toBe("");
-});
-
-it("uploads updated chats before comparing and retains the original evaluator and check", async () => {
-  const { evidence, operation } = recordedResult();
-  respond = async (path, options) => {
-    if (path === "/config")
-      return json({ defaults: defaultModels, models: [] });
-    if (path.endsWith("/evidence")) {
-      const body = JSON.parse(String(options.body));
-      session.document.evidence_sets!.push({
-        ...evidence,
-        id: "updated-chats",
-        raw: body.content,
-      });
-      session.document.active_evidence_id = "updated-chats";
-      session.revision++;
-    }
-    return json(session);
-  };
-  await render();
-  await click("Compare an update");
-  const text = container.querySelector<HTMLTextAreaElement>("#vibe-evidence")!;
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(
-      HTMLTextAreaElement.prototype,
-      "value",
-    )!.set!.call(
-      text,
-      evidence.raw.replace("When did you buy it?", "It is eligible."),
-    );
-    text.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-  expect(posts()).toHaveLength(0);
-  await click("Check new answer");
-  expect(posts()).toHaveLength(1);
-  expect(posts()[0].body).toMatchObject({
-    kind: "retest",
-    baseline_id: operation.id,
-    artifact_id: "conversation-check",
-    evidence_set_id: "updated-chats",
-    models: operation.models,
-  });
 });
 
 it("saves a provided-chat check without creating a prompt or agent build", async () => {
@@ -2413,7 +1904,40 @@ it("saves a provided-chat check without creating a prompt or agent build", async
   expect(document.body.textContent).toContain("Open saved check");
 });
 
-it("keeps a message unsent until the backend configuration loads and retries without losing it", async () => {
+it("keeps the V1 entry visible while configuration loads, fails, and retries", async () => {
+  const ready = deferred<Response>();
+  harness.params = new URLSearchParams();
+  let configLoads = 0;
+  respond = async (path) => {
+    if (path === "/config") {
+      if (++configLoads === 1) return ready.promise;
+      return json({ two_door: true, defaults: defaultModels, models: [] });
+    }
+    return json([]);
+  };
+  const entry = () => {
+    expect(container.textContent).toContain("What would you like AI to handle?");
+    expect(container.textContent).not.toContain("What should your agent do?");
+    expect(container.querySelector('[aria-label="Agent sidebar"]')).not.toBeNull();
+    expect(composer()).toBeNull();
+    return [...container.querySelectorAll<HTMLButtonElement>("button")]
+      .filter(b => /Build an agent|Improve an existing agent/.test(b.textContent || ""));
+  };
+  await render();
+  const doors = entry();
+  expect(doors).toHaveLength(2);
+  expect(doors.every(b => b.disabled)).toBe(true);
+  await act(async () => doors.forEach(b => b.click()));
+  expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
+  await act(async () => ready.reject(new TypeError("Offline")));
+  expect(entry().every(b => b.disabled)).toBe(true);
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain("Couldn’t connect");
+  await click("Retry connection");
+  expect(entry().every(b => !b.disabled)).toBe(true);
+  expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
+});
+
+it("keeps a saved conversation's draft unsent until configuration loads and retries without losing it", async () => {
   const ready = deferred<Response>();
   const selected = {
     assistant: "verified/free",
@@ -2421,7 +1945,7 @@ it("keeps a message unsent until the backend configuration loads and retries wit
     evaluator: "verified/free",
   };
   let configLoads = 0;
-  harness.params = new URLSearchParams();
+  session.document.messages = [{ id: "earlier", role: "user", content: "Check my app." }];
   respond = async (path) => {
     if (path === "/config") {
       configLoads++;
@@ -2439,7 +1963,7 @@ it("keeps a message unsent until the backend configuration loads and retries wit
   await click("Retry connection");
   expect(button("Send message").disabled).toBe(false);
   await click("Send message");
-  expect(posts()[0].body.models).toEqual(selected);
+  expect(posts()[0].body.models).toEqual(session.document.models);
 });
 
 it("returns from sign-in to the exact older selection without automatic saving or inference", async () => {
@@ -2476,18 +2000,6 @@ it.each(["no access", "expired", "network"])("handles %s while loading save work
   expect(dialog.querySelector("select")).toBeNull();
   expect(dialog.textContent).toContain(failure === "no access" ? "workspace you can save to" : failure === "expired" ? "Sign in again" : "Try again");
   expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
-});
-
-it("keeps a preparation brief without a pack, agent or model call", async () => {
-  const brief = scenarioAgent("PDF conversion plan"); brief.kind = "test_plan";
-  brief.test_plan = { title: brief.title, objective: "Keep tables", scenarios: [], evidence_needed: ["A converted file"], next_steps: [], local_test_code: "" };
-  session.document.test_journey = true; signedInWorkspace();
-  respond = async path => path === "/config" ? json({ enabled: true, defaults: defaultModels, models: [] }) : path === "/saved-checks" ? json([]) : path.endsWith("/save-brief") ? json({ kind: "brief", id: "brief-receipt", session_id: session.id, artifact_id: brief.id, workspace_id: "workspace-one", baseline_operation_id: "", title: brief.title }) : json(session);
-  await render(); await click("Keep this brief");
-  await act(async () => [...document.querySelector('[role="dialog"]')!.querySelectorAll("button")].find(b => b.textContent === "Keep this brief")!.click());
-  expect(requests.filter(r => r.path.endsWith("/save-brief"))).toHaveLength(1);
-  expect(requests.some(r => r.path.endsWith("/save") || r.path.endsWith("/messages"))).toBe(false);
-  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Open saved brief");
 });
 
 it("does not substitute the newest tests for a missing saved version", async () => {
