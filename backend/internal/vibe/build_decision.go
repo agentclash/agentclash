@@ -8,7 +8,7 @@ func applyBuildDecision(p Plan, route *reliableRoute) bool {
 		return false
 	}
 	if route.Intent == "prepare_tests" {
-		if !buildHasRules(p) && buildSampleKind(p) == "email_sorting" {
+		if p.AuthoringVersion < materialBuildAuthoringVersion && !buildHasRules(p) && buildSampleKind(p) == "email_sorting" {
 			return true
 		}
 		route.Count = 3
@@ -27,7 +27,7 @@ func applyBuildDecision(p Plan, route *reliableRoute) bool {
 		return false
 	}
 	ready := buildHasJob(p) && buildHasRules(p)
-	starter := !buildHasRules(p) && buildSampleKind(p) == "email_sorting"
+	starter := p.AuthoringVersion < materialBuildAuthoringVersion && !buildHasRules(p) && buildSampleKind(p) == "email_sorting"
 	if !ready && !starter && p.Cycle.ClarificationsUsed == 0 {
 		return false
 	}

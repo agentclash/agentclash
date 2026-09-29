@@ -16,18 +16,22 @@ async function render(operation = op, options: { current?: boolean; sample?: str
   const session: Session = { id: "session", anonymous: true, revision: 1, document: { artifacts: [target], messages: [], requirements: [], models: defaultModels }, operations: [...options.baseline ? [options.baseline] : [], operation] };
   await act(async () => root.render(<BuildRunResult session={session} operation={operation} artifact={target} current={options.current !== false} first primary busy={false} loadEvidence={load} onTry={trial} onImprove={improve} onDetails={details} onGuide={vi.fn()} onSave={vi.fn()} />));
 }
-it("shows one real reply before asking the user to open the full checks", async () => {
+it("keeps passing evidence closed and opens the full checks only on request", async () => {
   const second = { ...evidence, case_key: "second", input: null, output: "" };
   await render({ ...op, results: [...op.results, second], scorecard: { ...op.scorecard!, total: 2, evaluated: 2, passed: 2 } });
-  expect(node.querySelectorAll(".vibe-result-row")).toHaveLength(1);
-  expect(load).toHaveBeenCalledTimes(1);
-  expect(node.querySelector(".vibe-result-more")?.hasAttribute("open")).toBe(false);
+  expect(node.querySelectorAll(".vibe-result-row")).toHaveLength(0);
+  expect(load).not.toHaveBeenCalled();
   await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent?.includes("See 2 checks"))!.click());
   expect(details).toHaveBeenCalledTimes(1);
 });
+async function openSample() {
+  await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent === "Try a sample")!.click());
+}
 it("shows an actual example and explains it once, with a direct way to try the prototype", async () => {
   await render();
   expect(node.textContent).toContain("This check matched your rules");
+  expect(load).not.toHaveBeenCalled();
+  await openSample();
   expect(load).toHaveBeenCalledWith("run1", "email");
   expect(node.querySelector(".vibe-result-row summary")?.textContent).toContain("Win a prize");
   expect(node.querySelector(".vibe-result-row")?.hasAttribute("open")).toBe(true);
@@ -47,6 +51,7 @@ it("shows exact short excerpts and lets a reader expand long saved text", async 
   const longReply = "A careful but lengthy reply explaining the decision. ".repeat(12);
   load.mockResolvedValue({ ...evidence, input: longInput, output: longReply });
   await render();
+  await openSample();
   expect(node.querySelectorAll(".vibe-evidence-excerpt")).toHaveLength(2);
   expect(node.textContent).toContain("Show full input");
   expect(node.textContent).toContain("Show full reply");
@@ -68,7 +73,7 @@ it("keeps sample-policy provenance visible", async () => {
   expect(node.querySelector(".vibe-scope-rules")?.textContent).toContain("Prize promises are spam.");
 });
 it("recovers missing evidence without making up a reply or offering a fix", async () => {
-  load.mockRejectedValue(new Error("Evidence unavailable")); await render();
+  load.mockRejectedValue(new Error("Evidence unavailable")); await render(); await openSample();
   const row = node.querySelector(".vibe-result-row") as HTMLDetailsElement;
   await act(async () => { row.open = true; row.dispatchEvent(new Event("toggle")); });
   expect(node.textContent).toContain("Evidence unavailable");
@@ -80,6 +85,9 @@ it("offers improvement only after a supported failure and does not submit automa
   const failure: CaseResult = { ...evidence, verdict: "FAIL", output: "Not spam", checks: [{ key: "behavior", verdict: "FAIL", evidence: "It let a spam email through.", evidence_version: 1, finding: { kind: "observed", missing: "", quotes: [{ message_id: "output", text: "Not spam" }], covered_message_ids: [] } }] };
   load.mockResolvedValue(failure);
   await render({ ...op, results: [failure], scorecard: { ...op.scorecard!, passed: 0, failed: 1 } });
+  expect(load).not.toHaveBeenCalled();
+  const row = node.querySelector(".vibe-result-row") as HTMLDetailsElement;
+  await act(async () => { row.open=true; row.dispatchEvent(new Event("toggle")); });
   expect(node.querySelector("[role=status]")?.textContent).toBe("It let a spam email through.");
   expect(improve).not.toHaveBeenCalled();
   await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent?.includes("Review a fix"))!.click());

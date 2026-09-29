@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"github.com/agentclash/agentclash/backend/internal/enquiries"
+	"github.com/agentclash/agentclash/backend/internal/vibe/inputs"
 	"io"
 	"log/slog"
 	"os"
@@ -243,6 +245,17 @@ func main() {
 		os.Exit(1)
 	}
 	vibeStore := vibe.NewStore(db, vibeConfig)
+	vibeStore.Inputs.Blobs = artifactStore
+	if runtime := os.Getenv("VIBE_PDF_RUNTIME"); runtime != "" {
+		if parser, e := inputs.NewParser(ctx, runtime); e == nil {
+			vibeStore.Inputs.Parser = parser
+		} else {
+			logger.Warn("PDF reading disabled; isolation check failed", "error", e)
+		}
+	}
+	go vibeStore.Inputs.Run(ctx, logger)
+	go vibeStore.ProjectCleanupLoop(ctx, logger)
+	go enquiries.FromEnv(db).Run(ctx, logger)
 	vibeService := &vibe.Service{Store: vibeStore, Config: vibeConfig, Gate: vibe.Gate{Redis: redisClient}, Compiler: api.VibePackCompiler{}}
 	vibeRunner := &vibe.Runner{Service: vibeService, Gateway: &vibe.Gateway{Store: vibeStore, Config: vibeConfig, Gate: vibeService.Gate}}
 	if vibeConfig.Enabled {

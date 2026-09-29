@@ -50,6 +50,9 @@ export type EvaluationProposal = {
   success_criteria: string;
 };
 export type Artifact = {
+  input_contract?: { version: number; formats: string[]; label: string };
+  required_capabilities?: string[];
+  reference_inputs?: import("./vibe-inputs").InputBinding[];
   sample?: string;
   sample_basis?: { sample_basis: string; rules: { id: string; statement: string }[] };
   scope_note?: string;
@@ -70,7 +73,7 @@ export type Artifact = {
   };
   summary?: string;
   criteria_requirement_ids?: string[];
-  kind?: "agent_draft" | "test_plan" | "conversation_evaluation" | "test_suite";
+  kind?: "task_brief" | "agent_draft" | "test_plan" | "conversation_evaluation" | "test_suite";
   test_plan?: TestPlan;
   proposal?: EvaluationProposal & { title: string; agent_prompt: string };
   id: string;
@@ -188,7 +191,7 @@ export type Session = {
   document: {
     evaluation?: { id: string; chat_id: string; door: "build" | "test" };
     format_version?: number;
-    build?: { responding_to_question?: string; cycle_id: string; phase: string; clarifications_used: number; artifact_id?: string; check_id?: string; sample?: string; error?: { code: string; message: string } };
+    build?: { trial_id?: string; responding_to_question?: string; cycle_id: string; phase: string; clarifications_used: number; artifact_id?: string; check_id?: string; sample?: string; error?: { code: string; message: string } };
     conversation_state?: ConversationState;
     last_change?: ConversationChange;
     policies?: {
@@ -209,6 +212,8 @@ export type Session = {
     active_evidence_id?: string;
     journey?: Journey;
     messages: {
+      materials?: import("./vibe-inputs").InputBinding[];
+      execution?: { capabilities: string[]; target_completed: boolean };
       id: string;
       role: string;
       content: string;
@@ -252,10 +257,12 @@ export type SavedCheck = {
   source: Operation["source"];
   created_at: string;
 };
-export type BuildQuote = { max_calls: number; id: string; request: { content: string; models: Models }; max_cost_nano_usd: number; cases: number; expires_at: string };
+export type BuildQuote = { max_calls: number; id: string; request: { adopt_rules?: import("./vibe-inputs").DocumentSource[]; inputs?: import("./vibe-inputs").InputBinding[]; content: string; models: Models }; max_cost_nano_usd: number; cases: number; expires_at: string };
 export type RunQuote = { id: string; max_cost_nano_usd: number; cases: number; calls: number; expires_at: string };
 
 export type VibeConfig = {
+ pdf_uploads?: boolean;
+ contact?: { email: string; available: boolean };
   two_door?: boolean;
   interaction_actions?: boolean;
   grading_recheck?: boolean;
@@ -498,7 +505,7 @@ export async function vibeFetch<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const headers = new Headers(options.headers);
-  if (!(options.body instanceof Blob))
+  if (!(options.body instanceof Blob) && !(options.body instanceof FormData))
     headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(`${baseURL()}/v1/vibe${path}`, {
@@ -507,13 +514,14 @@ export async function vibeFetch<T>(
     credentials: "include",
     cache: "no-store",
   });
-  const result = await response.json();
+  const result = await response.json().catch(() => null);
   if (!response.ok)
     throw new VibeError(
-      result.error?.code || "request_failed",
-      result.error?.message || "Could not complete the request.",
+      result?.error?.code || "request_failed",
+      result?.error?.message || "Could not complete the request. Please try again.",
       response.status,
     );
+  if (result === null) throw new VibeError("invalid_response", "The server returned an unreadable response. Please try again.", response.status);
   return result;
 }
 

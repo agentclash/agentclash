@@ -9,7 +9,8 @@ test.afterEach(async({page},info)=>{
 });
 async function evidence(page: import("@playwright/test").Page) {
  const id=new URL(page.url()).searchParams.get("session");
- return (await page.request.get(`${api}/__fixture/evidence?session=${id}`)).json();
+ const result=await (await page.request.get(`${api}/__fixture/evidence?session=${id}`)).json();
+ return {...result,calls:result.calls || []};
 }
 test("clear Build goes through real worker to three results, scoped export and interactive prototype",async({page},info)=>{
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
@@ -30,9 +31,8 @@ test("clear Build goes through real worker to three results, scoped export and i
  await expect(page.getByRole('article',{name:'Prototype example results'})).toBeVisible();
  await expect(page.getByRole('tab',{name:'Conversation',exact:true})).toHaveAttribute('aria-selected','true');
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
- await expect(page.getByRole('status').filter({hasText:'It handled these 3 situations as expected.'})).toBeVisible();
- await expect(page.getByText('Situation we tried',{exact:true})).toBeVisible();
- await expect(page.getByText('What it actually replied',{exact:true})).toBeVisible();
+ await expect(page.getByRole('status').filter({hasText:'All 3 checks matched your rules.'})).toBeVisible();
+ await expect(page.locator('.vibe-result-row')).toHaveCount(0);
  await expect(page.getByLabel('Active evaluation')).toBeVisible();
  await page.screenshot({path:info.outputPath('results-desktop.png'),fullPage:true});
  for(const width of [320,390]) {
@@ -43,7 +43,7 @@ test("clear Build goes through real worker to three results, scoped export and i
   await page.screenshot({path:info.outputPath(`results-${width}.png`),fullPage:true});
  }
  await page.setViewportSize({width:1280,height:900});
- await page.locator('summary').filter({hasText:'Save, export and next steps'}).click();
+ await page.getByRole('button',{name:'Download / save',exact:true}).click();
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export / build it myself',exact:true}).click();await download;
  await page.getByRole('button',{name:'Try it yourself',exact:true}).click();
  await expect(page.getByText(/business systems aren’t connected/).first()).toBeVisible();
@@ -174,7 +174,7 @@ test("tougher situations prepare and run one authorized batch while preserving t
  await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('results');
  const before=await evidence(page), baseline=before.session.document.artifacts.at(-1);
- await page.locator('summary').filter({hasText:'Save, export and next steps'}).click();
+ await page.getByRole('button',{name:'Download / save',exact:true}).click();
  await page.getByRole('button',{name:'Try tougher situations',exact:true}).click();
  await expect(page.getByText('Prepare 2 additional examples.',{exact:false})).toBeVisible();
  expect((await evidence(page)).session.operations).toHaveLength(2);
@@ -292,7 +292,7 @@ test("sample continuation retains its prototype through harder requests, chat, r
  expect(v.session.operations.at(-1).scorecard.total).toBe(3);
  expect(v.calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(callsBefore+11);
  await page.getByRole('tab',{name:'Conversation',exact:true}).click();
- await page.getByRole('button',{name:'Save / export',exact:true}).click();
+ await page.getByRole('button',{name:'Download / save',exact:true}).click();
  const download=page.waitForEvent('download'); await page.getByRole('button',{name:'Export / build it myself',exact:true}).click();await download;
  await page.screenshot({path:info.outputPath('sample-followup-real-policy.png'),fullPage:true});
 });

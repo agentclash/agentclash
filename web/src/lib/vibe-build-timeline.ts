@@ -31,7 +31,7 @@ export function buildTimeline(session: Session): BuildEntry[] {
   const artifactAnchor = (artifact: Artifact) => messageIndex.get(artifact.proposal_message_id || "")
     ?? messages.findIndex(m => m.role === "assistant" && m.artifact_id === artifact.id);
   session.document.artifacts.forEach((artifact) => {
-    if (!artifact.agent_prompt && (artifact.kind !== "test_suite" || artifact.dismissed)) return;
+    if (!artifact.agent_prompt && artifact.kind !== "task_brief" && (artifact.kind !== "test_suite" || artifact.dismissed)) return;
     const anchor = artifactAnchor(artifact);
     add(anchor < 0 ? messages.length : anchor, { id: `prototype:${artifact.id}`, kind: "prototype", artifact, version: buildVersion(session, artifact) });
   });

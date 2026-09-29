@@ -196,7 +196,7 @@ func BuildSuiteReviewInput(blueprint json.RawMessage, policy PolicySnapshot, sou
 	if strings.TrimSpace(out.SharedCriteria) == "" || len(out.SharedCriteria) > l.MessageBytes {
 		return out, fmt.Errorf("suite review requires bounded shared criteria")
 	}
-	if policy.SourceVersion == SourcePolicyVersion && !policyGradingMatches(blueprint, policy) {
+	if supportedSourceVersion(policy.SourceVersion) && !policyGradingMatches(blueprint, policy) {
 		return out, fmt.Errorf("shared grading must match the sourced business rules")
 	}
 	if policy.ID == uuid.Nil || len(policy.Rules) == 0 || len(policy.Rules) > MaxRequirements {
@@ -222,7 +222,7 @@ func BuildSuiteReviewInput(blueprint json.RawMessage, policy PolicySnapshot, sou
 			return out, fmt.Errorf("policy clauses must have unique identities, text, and source references")
 		}
 		seen[rule.ID] = true
-		if policy.SourceVersion == SourcePolicyVersion {
+		if supportedSourceVersion(policy.SourceVersion) {
 			if err := validateRuleEvidence(rule, blocks); err != nil {
 				return out, err
 			}
@@ -276,11 +276,14 @@ Return exactly cases, rules, shared_criteria, policy_reconciliation, assertions,
 	if input.ContextVersion == "conversation-state-v1" {
 		prompt += "\nQuestion_answers contains the actual displayed question paired with its original user answer. Use the question only to interpret that answer. Its examples/options are not requirements unless the user selected them. Unknown answers supply no fact. Candidate policy interpretations and all earlier user excerpts still need independent relevance and entailment checks against their complete originals; memory labels do not establish truth."
 	}
-	if input.Policy.SourceVersion == SourcePolicyVersion {
+	if supportedSourceVersion(input.Policy.SourceVersion) {
 		if input.ValidatorVersion == EntailmentSuiteValidatorVersion {
 			prompt += "\nSource contract: rule evidence must be an explicit requirement or explicitly requested example, and the interpretation must follow it. Check complete current/confirmed messages for omitted clauses, negation, jokes, hypotheticals and cherry-picking. Earlier excerpts grant no authority to the rest of old chat. Questions are not corrections; never invent rules to justify cases. Report omissions or unsupported source selection in policy_reconciliation and affected findings. Missing-only ledger fields come only from requirement evidence, not case-specific examples. Record each declared field for every case; missing values alone do not require asking for them outside the rule's scope."
 		} else {
 			prompt += sourceReviewPrompt
+		}
+		if input.Policy.SourceVersion == DocumentSourceVersion {
+			prompt += documentSourcePrompt
 		}
 	}
 	if consistencySuiteVersion(input.ValidatorVersion) && RequiresConsistency(input) {
@@ -604,7 +607,7 @@ func validateSuiteReviewCoverage(result *SuiteValidation, input SuiteReviewInput
 // Reconstruct coverage as well as checking hashes, so absent or partial legacy
 // metadata cannot be interpreted as acceptance.
 func SuiteValidationMatches(result *SuiteValidation, blueprint json.RawMessage, policy PolicySnapshot) bool {
-	if policy.SourceVersion == SourcePolicyVersion && !policyGradingMatches(blueprint, policy) {
+	if supportedSourceVersion(policy.SourceVersion) && !policyGradingMatches(blueprint, policy) {
 		return false
 	}
 	if result == nil || result.Status != SuiteSupported || !knownSuiteVersion(result.ValidatorVersion) || len(result.Problems) != 0 {

@@ -68,10 +68,20 @@ func prepareInterpretedPlan(p *Plan, cfg Config, primary ModelProfile) error {
 	if p.Cycle != nil && p.Cycle.Step != "check" || p.Document.Evaluation != nil && p.Document.Evaluation.Door == "build" {
 		p.AuthoringVersion = buildAuthoringVersion
 		p.Conversation.ContractVersion = "vibe-v18"
+		if cfg.MaterialBuild {
+			p.AuthoringVersion = materialBuildAuthoringVersion
+			p.Conversation.ContractVersion = "vibe-v19"
+		}
 		p.Conversation.ValidatorVersion = EntailmentSuiteValidatorVersion
 		p.Calls = 10 // v15 preparation plus an independent prototype/repair pair
 	}
 	l := p.limits()
+	if p.AuthoringVersion >= materialBuildAuthoringVersion {
+		// The reviewed schema already uses most of the old 16k byte bound.
+		// Reserve this larger envelope before adding factual references. It is
+		// still checked against each model's window and the whole-cycle price.
+		l.ContextTokens = max(l.ContextTokens, 32768)
+	}
 	l.OperationSeconds = min(l.QueueSeconds+9*l.ProviderSeconds+30, 16*60)
 	p.ExecutionLimits = &l
 	if cfg.FreeOnly || !cfg.AssistantFallback {

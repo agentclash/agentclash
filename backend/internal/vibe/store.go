@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/agentclash/agentclash/backend/internal/vibe/inputs"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -16,11 +17,12 @@ import (
 
 type Store struct {
 	DB           *pgxpool.Pool
+	Inputs       *inputs.Repository
 	localTesting bool
 }
 
 func NewStore(db *pgxpool.Pool, cfg Config) *Store {
-	return &Store{DB: db, localTesting: cfg.TestingLocally()}
+	return &Store{DB: db, Inputs: &inputs.Repository{DB: db}, localTesting: cfg.TestingLocally()}
 }
 
 type dbQuery interface {
@@ -95,7 +97,7 @@ func (s *Store) Authorize(ctx context.Context, session Session, write bool) erro
 	return authorize(ctx, s.DB, session.Actor, session.WorkspaceID, write)
 }
 
-const sessionSelect = `SELECT id,actor,workspace_id,workspace_id IS NULL,revision,title,document,updated_at,saved_draft_id FROM vibe_sessions WHERE id=$1`
+const sessionSelect = `SELECT id,actor,workspace_id,workspace_id IS NULL,revision,title,document,updated_at,saved_draft_id FROM vibe_sessions WHERE id=$1 AND deleted_at IS NULL`
 
 func scanSession(row pgx.Row) (Session, error) {
 	v := Session{Operations: []Operation{}}
@@ -585,7 +587,8 @@ func (s *Store) Claim(ctx context.Context, anonActor, userActor string, id uuid.
 			return err
 		}
 		if v.Actor == userActor {
-			return nil
+			_, err := tx.Exec(ctx, `UPDATE vibe_inputs SET expires_at=NULL WHERE session_id=$1 AND expires_at>now() AND status NOT IN ('deleted','expired')`, id)
+			return err
 		}
 		if v.Actor != anonActor || !v.Anonymous {
 			return fault("not_found", "Conversation is unavailable.")
@@ -609,6 +612,9 @@ func (s *Store) Claim(ctx context.Context, anonActor, userActor string, id uuid.
 			return e
 		}
 		if _, err = tx.Exec(ctx, `UPDATE vibe_sessions SET actor=$3,revision=revision+1,updated_at=now() WHERE actor=$2 AND (id=$1 OR id IN(SELECT evaluation_id FROM vibe_evaluation_contexts WHERE chat_id=$1))`, root, anonActor, userActor); err != nil {
+			return err
+		}
+		if _, err = tx.Exec(ctx, `UPDATE vibe_inputs i SET expires_at=NULL FROM vibe_sessions s WHERE i.session_id=s.id AND s.actor=$2 AND (s.id=$1 OR s.id IN (SELECT evaluation_id FROM vibe_evaluation_contexts WHERE chat_id=$1)) AND i.expires_at>now() AND i.status NOT IN ('deleted','expired')`, root, userActor); err != nil {
 			return err
 		}
 		return event(ctx, tx, id, nil, "session.claimed")

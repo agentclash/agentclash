@@ -32,9 +32,22 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 	if selected == nil && v.Document.Evaluation != nil && v.Document.Evaluation.Door == "build" {
 		selected = activeBuildArtifactID(v.Document)
 	}
-	if selected == nil && len(v.Document.Artifacts) > 0 {
-		id := v.Document.Artifacts[len(v.Document.Artifacts)-1].ID
-		selected = &id
+	if selected == nil {
+		for i := len(v.Document.Artifacts) - 1; i >= 0; i-- {
+			if v.Document.Artifacts[i].IsTestSuite() {
+				id := v.Document.Artifacts[i].ID
+				selected = &id
+				break
+			}
+		}
+	} else {
+		// An unexecuted project brief is conversation context, not a test suite.
+		for _, a := range v.Document.Artifacts {
+			if a.ID == *selected && a.Kind == "task_brief" {
+				selected = nil
+				break
+			}
+		}
 	}
 	for _, a := range v.Document.Artifacts {
 		if selected != nil && a.ID == *selected && a.IsTestSuite() {
@@ -147,6 +160,9 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 		p.Conversation.Profile = &profile
 	}
 	if err := prepareInterpretedPlan(&p, s.Config, profile); err != nil {
+		return Operation{}, err
+	}
+	if err := s.prepareDocumentSources(ctx, v, &p); err != nil {
 		return Operation{}, err
 	}
 	l := p.limits()

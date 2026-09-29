@@ -42,7 +42,6 @@ import { EvaluationOutcome } from "./evaluation-outcome";
 import { CoverageNote } from "./coverage-note";
 import { OperationFeedback } from "./operation-feedback";
 import { VibeButton } from "./vibe-button";
-import { SafeMarkdown } from "./safe-markdown";
 
 
 import { PromptChange } from "./prompt-change";
@@ -53,7 +52,8 @@ import { VibeScorecard } from "./scorecard";
 import { TestSuitePanel, exampleAgentDescription } from "./test-suite-panel";
 import { EvaluationEntry } from "./evaluation-entry";
 import { evaluationIdentity } from "./evaluation-navigation";
-import { BuildConversation } from "./build-conversation";
+import { BuildWorkspace } from "./build-workspace";
+import { Message } from "./vibe-message";
 import { buildProgress } from "@/lib/vibe-build-timeline";
 import { WEB_EVENTS } from "@/lib/analytics/events";
 import { captureBuildEvent } from "@/lib/vibe-build-analytics";
@@ -68,6 +68,7 @@ User: Plan a one-day Jaipur trip for two people with a total budget of ₹5,000,
 Assistant: Here’s your plan: transport ₹2,000, food ₹2,000, and activities ₹4,000. Total: ₹8,000. This fits within your ₹5,000 budget.`;
 
 export type EvaluationWorkspaceProps = {
+ materialInput?: ReactNode;
   twoDoor?: boolean;
   onDoor?: (door: "build" | "test") => void;
   contextControl?: ReactNode;
@@ -376,7 +377,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
         comparison={!!changeBaseline} onRun={() => startRun(changeBaseline)} onEdit={p.onEdit}
         onDirty={p.onDirty} onSave={() => p.onSave()} onSettings={p.onSettings} modelLabel={p.modelLabel}
         checkingChanges={p.checkingTestChanges}
-        rules={p.session?.document.policies?.find(policy => policy.id === p.artifact!.policy_id && policy.source_version === "spec-sources-v1")?.rules}
+        rules={p.session?.document.policies?.find(policy => policy.id === p.artifact!.policy_id && ["spec-sources-v1", "spec-sources-v2"].includes(policy.source_version || ""))?.rules}
         pendingPolicy={p.session?.document.pending_policy_changes?.some(change => change.status === "pending" && (!change.artifact_id || change.artifact_id === p.artifact!.id))} />
       {promptChanged && <VibeButton variant="quiet" disabled={p.busy || p.dirty}
         onClick={() => void p.onEdit({artifact_id: p.artifact!.id, dismissed: true})}>Dismiss suggestion</VibeButton>}
@@ -413,6 +414,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
         </div>
       )}
       <div className="vibe-column vibe-composer-dock-inner">
+ {p.materialInput}
         {p.contextControl && <div className="vibe-active-context">{p.contextControl}</div>}
         {previewOpen ? p.preview : <>
         <div>
@@ -669,18 +671,10 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
               {p.artifact.sample && <p className="mt-1 vibe-muted">These results check the sample, not your business policy.</p>}
             </section>}
             {buildJourney && p.session && !welcome && <div hidden={(p.view !== "build" && p.view !== "try") || !!intake}>
-              <BuildConversation session={p.session} artifact={p.artifact} busy={p.busy || p.dirty} primary={buildPrimary}
-                previewOpen={previewOpen} onPreviewOpen={(open, id) => p.onNavigate(open ? "try" : "build", id || p.artifact?.id)} onReviewArtifact={id => p.onNavigate("build", id)} preview={p.view === "try" ? null : p.preview}
+              <BuildWorkspace session={p.session} artifact={p.artifact} busy={p.busy || p.dirty} primary={buildPrimary}
+                onPreviewOpen={(open, id) => p.onNavigate(open ? "try" : "build", id || p.artifact?.id)} onReviewArtifact={id => p.onNavigate("build", id)}
                 proposal={active ? null : suiteCard}
-                pending={pendingMessage && <div data-pending-message><Message message={pendingMessage} pending /></div>}
-                renderMessage={m => <><Message message={m} animate={false} /><ConversationGuidance cards={m.cards} scope={p.session?.document.conversation_state?.brief.scope_id} message={m.id} />
-
-                  {m.role === "user" && m.operation_id && <OperationFeedback serverTime={p.session?.server_time}
-                    original={operationByID.get(m.operation_id)} operation={latestOperations.get(m.operation_id)}
-                    primary={primary === "recovery" && latestOperations.get(m.operation_id)?.id === operations.at(-1)?.id}
-                    busy={p.busy || p.dirty} pendingID={p.retryPendingOperationID} uncertainID={p.retryUncertainOperationID}
-                    onRetry={p.onRetry} retryModels={p.retryModels} />}
-                </>}
+                pendingMessage={pendingMessage} recovery={{ primary: primary === "recovery", pendingID: p.retryPendingOperationID, uncertainID:p.retryUncertainOperationID, onRetry:p.onRetry, retryModels:p.retryModels }}
                 onDetails={inspectRun}
                 onGuide={() => { p.onNavigate("build"); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true })); }}
                 onImprove={operation => {
@@ -985,35 +979,5 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
       <SavedWorkDialog open={historyOpen} onOpenChange={setHistoryOpen} testJourney={p.testJourney}
         savedChecks={p.savedChecks} hasResults={runs.length > 0} onResults={() => switchView("checks")} />
     </>
-  );
-}
-
-
-function Message({
-  message,
-  pending = false,
-  animate = true,
-}: {
-  message: Session["document"]["messages"][number];
-  pending?: boolean;
-  animate?: boolean;
-}) {
-  const reduced = useReducedMotion();
-  return (
-    <motion.div
-      className={`vibe-message ${message.role === "user" ? "vibe-message-user" : ""}`}
-      data-pending={pending || undefined}
-      initial={!animate || reduced ? false : { opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: reduced ? 0 : 0.18 }}
-    >
-      {message.role !== "user" && (
-        <p className="mb-2 flex items-center gap-2 text-xs vibe-muted">
-          <ClashMark className="size-4" />
-          Vibe Evals
-        </p>
-      )}
-      <SafeMarkdown>{message.content}</SafeMarkdown>
-    </motion.div>
   );
 }

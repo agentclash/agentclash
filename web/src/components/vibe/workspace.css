@@ -606,3 +606,16 @@
   .vibe-composer-compact { padding:10px 12px; }
   .vibe-composer-dock { padding-top:8px; }
 }
+
+/* Material controls stay compact in the dock and scroll independently of chat. */
+.vibe-task-input { font-size: .8125rem; max-height: min(42dvh, 28rem); overflow-y: auto; }
+.vibe-material-chip { border: 1px solid var(--vibe-border, #302f29); border-radius: .75rem; padding: .65rem .8rem; margin: .4rem 0; }
+.vibe-material-chip p { margin: .3rem 0; }
+.vibe-material-preview { max-height: 10rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .75rem; }
+.vibe-task-input textarea, .vibe-project-enquiry textarea, .vibe-project-enquiry input, .vibe-task-input select { border: 1px solid var(--vibe-border, #302f29); border-radius: .6rem; background: #141410; padding: .6rem .75rem; min-width: 0; max-width: 100%; }
+.vibe-task-input textarea { width: 100%; resize: vertical; max-height: 10rem; }
+.vibe-project-enquiry { min-width: 0; }
+.vibe-project-enquiry form { margin-top: .75rem; }
+.vibe-project-enquiry textarea { max-height: 22rem; }
+.vibe-project-enquiry label, .vibe-project-enquiry input { max-width: 100%; }
+.vibe-build-actions > .vibe-prototype-details { margin: 0; align-self: center; }

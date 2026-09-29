@@ -275,6 +275,13 @@ func (s *Store) PutResult(ctx context.Context, id uuid.UUID, c CaseResult) error
 		c.Checks = []CheckResult{}
 	}
 	return s.transaction(ctx, func(tx pgx.Tx) error {
+		var active bool
+		if err := tx.QueryRow(ctx, `SELECT s.deleted_at IS NULL FROM vibe_sessions s JOIN vibe_operations o ON o.session_id=s.id WHERE o.id=$1`, id).Scan(&active); err != nil {
+			return err
+		}
+		if !active {
+			return fault("not_found", "Project is unavailable.")
+		}
 		_, err := tx.Exec(ctx, `INSERT INTO vibe_case_results(operation_id,case_key,version,result) VALUES($1,$2,$3,$4) ON CONFLICT(operation_id,case_key,version) DO UPDATE SET result=EXCLUDED.result`, id, c.CaseKey, c.Version, raw(c))
 		if err != nil {
 			return err
@@ -293,6 +300,7 @@ func (s *Store) PutResult(ctx context.Context, id uuid.UUID, c CaseResult) error
 }
 
 type AuthoringCompletion struct {
+	InlineInput        *InlineInput        `json:"inline_input,omitempty"`
 	Cards              []json.RawMessage   `json:"cards,omitempty"`
 	Interaction        *interaction.Action `json:"interaction,omitempty"`
 	ConversationState  *ConversationState  `json:"ConversationState,omitempty"`
@@ -340,6 +348,9 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 		if err = authorize(ctx, tx, v.Actor, v.WorkspaceID, true); err != nil {
 			return err
 		}
+		if err = validateBoundSources(ctx, tx, v.ID, plan); err != nil {
+			return err
+		}
 		beforeState := cloneState(v.Document.ConversationState)
 		replyID := uuid.NewSHA1(o.ID, []byte("completion-message"))
 		receipt.MessageID, receipt.CommittedAt = replyID, timestamp()
@@ -375,7 +386,21 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 				return err
 			}
 		}
-		v.Document.Messages = append(v.Document.Messages, Message{Cards: cards, ID: replyID, Role: "assistant", Content: reply, CreatedAt: timestamp(), Origin: o.Kind, OperationID: &id, ArtifactID: artifactID, PreviewThreadID: plan.Submission.PreviewThreadID})
+		var executed *ExecutionReceipt
+		if o.Kind == "playground" {
+			executed = &ExecutionReceipt{Capabilities: []string{"text_generation"}, TargetCompleted: true}
+			materials, e := resolveMaterialSet(ctx, tx, v.ID, executionInputs(plan), false)
+			if e != nil {
+				return e
+			}
+			for _, material := range materials {
+				if material.Kind == "pdf" {
+					executed.Capabilities = append(executed.Capabilities, "pdf_text_extraction")
+					break
+				}
+			}
+		}
+		v.Document.Messages = append(v.Document.Messages, Message{Execution: executed, Materials: executionInputs(plan), Cards: cards, ID: replyID, Role: "assistant", Content: reply, CreatedAt: timestamp(), Origin: o.Kind, OperationID: &id, ArtifactID: artifactID, PreviewThreadID: plan.Submission.PreviewThreadID})
 		if artifact != nil {
 			v.Document.Artifacts = append(v.Document.Artifacts, *artifact)
 			if plan.continuingBuild() && v.Document.ActiveArtifactID == nil && artifact.AgentPrompt != "" {
@@ -386,32 +411,15 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 				}
 			}
 		}
-		if plan.Cycle != nil {
-			progress := &BuildProgress{CycleID: plan.Cycle.ID, Phase: "ready", ClarificationsUsed: plan.Cycle.ClarificationsUsed}
-			if artifact != nil {
-				progress.ArtifactID = &artifact.ID
-				progress.Sample = artifact.Sample
+		if len(completion) == 1 && completion[0].InlineInput != nil {
+			if err = validateInlineInput(ctx, tx, o.SessionID, plan, completion[0].InlineInput); err != nil {
+				return err
 			}
-			if receipt.Action == "clarify" {
-				if progress.ClarificationsUsed >= 1 {
-					return fault("question_budget", "The initial Build cycle cannot ask another question.")
-				}
-				progress.ClarificationsUsed++
-				progress.Phase = "clarifying"
-			}
-			if plan.taskBuild() && artifact == nil && receipt.Action != "clarify" {
-				progress.Phase = "blocked"
-				if receipt.Action == "chat" {
-					progress.Phase = "waiting"
-					if len(completion) > 0 && completion[0].ConversationState != nil {
-						if q := completion[0].ConversationState.PendingQuestion; q != nil && q.Status == "active" {
-							progress.Phase = "clarifying"
-						}
-					}
-				}
-			}
-			v.Document.Build = progress
 		}
+		if err = completeBuildProgress(&v.Document, plan, o, artifact, receipt, completion); err != nil {
+			return err
+		}
+
 		changes := []RequirementChange{}
 
 		if len(completion) > 0 {

@@ -27,13 +27,15 @@ Fix: make one to four small exact instruction patches against original_tested_ag
 During repair, modify only fields implicated by server_context.problems; preserve the original request, all unrelated rules and cases. You cannot run or commit anything. Return only the fields in this action's response schema.`
 
 type reliableRoute struct {
-	Example          *GuidanceExample `json:"example,omitempty"`
-	Memory           *memoryUpdate    `json:"memory,omitempty"`
-	SourceMessageIDs []string         `json:"source_message_ids,omitempty"`
-	NewAgent         bool             `json:"new_agent,omitempty"`
-	Intent           string           `json:"intent"`
-	Reply            string           `json:"reply"`
-	Count            int              `json:"count"`
+	MaterialQuote        string           `json:"-"`
+	RequiredCapabilities []string         `json:"-"`
+	Example              *GuidanceExample `json:"example,omitempty"`
+	Memory               *memoryUpdate    `json:"memory,omitempty"`
+	SourceMessageIDs     []string         `json:"source_message_ids,omitempty"`
+	NewAgent             bool             `json:"new_agent,omitempty"`
+	Intent               string           `json:"intent"`
+	Reply                string           `json:"reply"`
+	Count                int              `json:"count"`
 }
 type createSuiteCommand struct {
 	Tests testSuiteProposal `json:"tests"`

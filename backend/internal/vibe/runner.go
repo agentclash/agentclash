@@ -57,10 +57,13 @@ func (r *Runner) Execute(ctx context.Context, id uuid.UUID) error {
 	if err = json.Unmarshal(o.Input, &p); err != nil {
 		return err
 	}
+	if err = validateBoundSources(ctx, r.Service.Store.DB, o.SessionID, p); err != nil {
+		return err
+	}
 	if p.Grading != nil && !gradingSupported(p.Grading) {
 		return fault("grading_changed", "This check needs its recorded grading version. Earlier results are preserved.")
 	}
-	if p.AuthoringVersion > buildAuthoringVersion {
+	if p.AuthoringVersion > materialBuildAuthoringVersion {
 		return fault("invalid_plan", "This request needs a newer conversation worker.")
 	}
 	ctx, cancel := context.WithDeadline(ctx, o.Deadline)
@@ -84,6 +87,10 @@ func (r *Runner) Execute(ctx context.Context, id uuid.UUID) error {
 		messages := p.PreviewMessages
 		if len(messages) == 0 { // Queued single-message trials from older clients.
 			messages = []provider.Message{{Role: "system", Content: PreviewPrompt(p.Artifact.AgentPrompt)}, {Role: "user", Content: p.Submission.Content}}
+		}
+		messages, e := materialMessages(ctx, r.Service.Store.DB, o.SessionID, messages, executionInputs(p))
+		if e != nil {
+			return e
 		}
 		resp, e := r.Gateway.Call(ctx, o, "playground", Target, messages, nil)
 		if e != nil {
@@ -367,7 +374,11 @@ func (r *Runner) evaluate(ctx context.Context, o Operation, p Plan) error {
 				continue
 			}
 		} else {
-			response, e = r.Gateway.Call(ctx, o, "target:"+c.CaseKey, Target, []provider.Message{{Role: "system", Content: instructions}, {Role: "user", Content: request}}, nil)
+			messages, materialErr := materialMessages(ctx, r.Service.Store.DB, o.SessionID, []provider.Message{{Role: "system", Content: instructions}, {Role: "user", Content: request}}, p.Artifact.ReferenceInputs)
+			if materialErr != nil {
+				return materialErr
+			}
+			response, e = r.Gateway.Call(ctx, o, "target:"+c.CaseKey, Target, messages, nil)
 		}
 		result.Output = response.OutputText
 		if e != nil {
@@ -412,6 +423,10 @@ func (r *Runner) evaluate(ctx context.Context, o Operation, p Plan) error {
 			messages := JudgeMessages(judge, c, response.OutputText)
 			if p.Grading != nil {
 				messages = groundedJudgeMessagesForPlan(p, judge, c, response.OutputText)
+			}
+			messages, e = materialMessages(ctx, r.Service.Store.DB, o.SessionID, messages, p.Artifact.ReferenceInputs)
+			if e != nil {
+				return e
 			}
 			jr, je := r.Gateway.Call(ctx, o, "judge:"+c.CaseKey+":"+judge.Key, Evaluator, messages, jsonFormat)
 			if je != nil {

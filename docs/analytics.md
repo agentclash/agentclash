@@ -202,3 +202,9 @@ Use a fresh browser after deploying API/worker first, then web, then dashboard:
 Accept only when there is one merged person timeline, exactly one canonical
 signup, one canonical completion per run, no signup on the returning login,
 sanitized properties, and confirmed web/API/worker configuration.
+
+Build material/contact events: `web.vibe.build.input_status` carries input ID,
+kind and terminal status; `enquiry_opened` carries project/version IDs;
+`enquiry_received` adds the durable enquiry ID; `email_draft_opened` records
+opening a mail draft, never a send. These respect the existing consent gate.
+No filenames, contact fields, document text, outputs or summaries are included.

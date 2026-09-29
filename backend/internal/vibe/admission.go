@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/agentclash/agentclash/backend/internal/vibe/inputs"
 	"github.com/agentclash/agentclash/backend/internal/vibe/interaction"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
@@ -13,6 +14,8 @@ import (
 )
 
 type Submission struct {
+	AdoptRules         []DocumentSource `json:"adopt_rules,omitempty"`
+	Inputs             []inputs.Binding `json:"inputs,omitempty"`
 	estimateOnly       bool
 	RunQuoteID         *uuid.UUID          `json:"run_quote_id,omitempty"`
 	CycleID            *uuid.UUID          `json:"cycle_id,omitempty"`
@@ -40,6 +43,8 @@ type Submission struct {
 	BaselineID         *uuid.UUID          `json:"baseline_id,omitempty"`
 }
 type Plan struct {
+	InlineInput              *InlineInput         `json:"-"`
+	RequiredCapabilities     []string             `json:"-"`
 	Cycle                    *BuildCyclePlan      `json:"cycle,omitempty"`
 	AssistantRecovery        *AssistantRecovery   `json:"assistant_recovery,omitempty"`
 	Grading                  *GradingContract     `json:"grading,omitempty"`
@@ -204,6 +209,12 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 				return fault("budget_limit", "The authoring workflow exceeds its call or time allowance.")
 			}
 		}
+		if err = validateBoundSources(ctx, tx, id, plan); err != nil {
+			return err
+		}
+		if _, err = resolveMaterials(ctx, tx, id, sub.Inputs); err != nil {
+			return err
+		}
 		if err = checkCapacity(ctx, tx, v); err != nil {
 			return err
 		}
@@ -276,25 +287,14 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 				return err
 			}
 		}
-		if sub.Content != "" && sub.RetryOf == nil {
+		if sub.Content != "" && sub.RetryOf == nil && (plan.Cycle == nil || plan.Cycle.Step != "initial_trial") {
 			if sub.JourneyMode != "" {
 				v.Document.Journey.Mode = sub.JourneyMode
 			}
-			v.Document.Messages = append(v.Document.Messages, Message{ID: sub.ClientID, Role: "user", Content: sub.Content, CreatedAt: timestamp(), Origin: sub.Kind, OperationID: &o.ID, ArtifactID: sub.ArtifactID, PreviewThreadID: sub.PreviewThreadID})
+			v.Document.Messages = append(v.Document.Messages, Message{AdoptedSources: adoptedSources(sub), Materials: sub.Inputs, ID: sub.ClientID, Role: "user", Content: sub.Content, CreatedAt: timestamp(), Origin: sub.Kind, OperationID: &o.ID, ArtifactID: sub.ArtifactID, PreviewThreadID: sub.PreviewThreadID})
 		}
 		v.Document.Models = sub.Models
-		if plan.Cycle != nil {
-			progress := &BuildProgress{CycleID: plan.Cycle.ID, Phase: "preparing", ClarificationsUsed: plan.Cycle.ClarificationsUsed, Sample: plan.Cycle.Sample}
-			if plan.taskBuild() && plan.Cycle.Step != "prepare" && plan.Cycle.Step != "check" && v.Document.ConversationState != nil && v.Document.ConversationState.PendingQuestion != nil {
-				progress.RespondingToQuestion = v.Document.ConversationState.PendingQuestion.ID
-			}
-			if plan.Cycle.Step == "check" {
-				progress.Phase = "checking"
-				progress.ArtifactID = sub.ArtifactID
-				progress.CheckID = &o.ID
-			}
-			v.Document.Build = progress
-		}
+		admitBuildProgress(&v.Document, plan, o)
 		if sub.EvaluationFirst {
 			v.Document.EvaluationFirst = true
 		}
@@ -394,13 +394,31 @@ func reserve(ctx context.Context, tx pgx.Tx, v Session, o Operation, cfg Config)
 		day := "subsidy:" + cfg.Campaign + ":" + timestamp().Format("2006-01-02")
 		campaign := "subsidy:" + cfg.Campaign
 		explore := trial + ":explore"
+		var cycle Plan
+		_ = json.Unmarshal(o.Input, &cycle)
+		buildAllowance := cycle.Cycle != nil && (cycle.AuthoringVersion == materialBuildAuthoringVersion || (o.Kind == "check" || o.Kind == "playground"))
+		if buildAllowance {
+			var version, extra int
+			if err := tx.QueryRow(ctx, `SELECT COALESCE((specification->>'version')::int,1), COALESCE((specification#>>'{request,additional_examples}')::int,0) FROM vibe_cycle_quotes WHERE id=$1 AND session_id=$2`, cycle.Cycle.ID, v.ID).Scan(&version, &extra); err != nil {
+				return err
+			}
+			buildAllowance = version >= 2 && extra == 0
+		}
 		for key, amount := range map[string]int64{trial: TrialBudget, explore: TrialExploreBudget, day: cfg.AnonymousDaily, campaign: cfg.AnonymousCampaign} {
 			if err := grant(ctx, tx, key, "initial:"+key, amount); err != nil {
 				return err
 			}
 		}
 		accounts = []string{trial, day, campaign}
-		if o.Kind != "check" && o.Kind != "retest" {
+		if buildAllowance {
+			// This sub-account is keyed to the stable guest identity, not a new
+			// session or retry. Signup and new projects cannot refill it.
+			build := trial + ":build-v19"
+			if err := grant(ctx, tx, build, "initial:"+build, FirstBuildSpendCeiling); err != nil {
+				return err
+			}
+			accounts = append(accounts, build)
+		} else if o.Kind != "check" && o.Kind != "retest" {
 			accounts = append(accounts, explore)
 		}
 	} else {

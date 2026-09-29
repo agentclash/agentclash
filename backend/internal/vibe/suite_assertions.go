@@ -149,7 +149,7 @@ func suiteAssertions(input SuiteReviewInput) []SuiteAssertion {
 		add("case:"+c.CaseKey, c.Expected)
 	}
 	criteria := input.SharedCriteria
-	if input.ValidatorVersion == EntailmentSuiteValidatorVersion && input.Policy.SourceVersion == SourcePolicyVersion && criteria == policyGradingCriteria(input.Policy.Rules) {
+	if input.ValidatorVersion == EntailmentSuiteValidatorVersion && supportedSourceVersion(input.Policy.SourceVersion) && criteria == policyGradingCriteria(input.Policy.Rules) {
 		// This exact server-owned heading merely applies the independently
 		// reviewed rules. It is not a user obligation requiring its own quote.
 		// Never strip arbitrary text or a mismatched/imported grading contract.
@@ -225,7 +225,7 @@ func validateAssertionReviews(result *SuiteValidation, input SuiteReviewInput) e
 			if !ok || !containsString(rule.SourceBlockIDs, e.SourceBlockID) || !containsString(r.RuleIDs, e.RuleID) || !containsString(r.SourceBlockIDs, e.SourceBlockID) || strings.TrimSpace(e.Quote) == "" || !strings.Contains(sources[e.SourceBlockID], e.Quote) {
 				return fmt.Errorf("assertion support must quote its referenced rule's original source")
 			}
-			if input.Policy.SourceVersion == SourcePolicyVersion {
+			if supportedSourceVersion(input.Policy.SourceVersion) {
 				inReviewedClause := false
 				for _, clause := range rule.Evidence {
 					if clause.SourceBlockID == e.SourceBlockID && strings.Contains(clause.Quote, e.Quote) {

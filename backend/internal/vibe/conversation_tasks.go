@@ -279,7 +279,7 @@ func validateMemoryPolicyEvidence(p Plan, rules []PolicyRule) error {
 	}
 	for _, rule := range rules {
 		for _, evidence := range rule.Evidence {
-			if evidence.SourceBlockID == p.Conversation.CurrentRequest.ID || old[Hash(raw(evidence))] {
+			if evidence.SourceBlockID == p.Conversation.CurrentRequest.ID || explicitlyAdopted(p, evidence.SourceBlockID) || old[Hash(raw(evidence))] {
 				continue
 			}
 			confirmed := false

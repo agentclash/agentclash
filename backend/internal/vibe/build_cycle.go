@@ -4,44 +4,62 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/agentclash/agentclash/backend/internal/vibe/inputs"
+	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"slices"
 	"time"
 )
 
 const legacyBuildAuthoringVersion = 16
 const assertionBuildAuthoringVersion = 17
 const buildAuthoringVersion = 18
+const materialBuildAuthoringVersion = 19
+
+// Provisional ceilings; live model/quality benchmarks are a release gate.
+const FirstBuildSpendCeiling = NanoUSD / 2
+const FirstBuildTokenTarget = 500_000
 
 func (p Plan) taskBuild() bool {
-	return p.AuthoringVersion == assertionBuildAuthoringVersion || p.AuthoringVersion == buildAuthoringVersion
+	return p.AuthoringVersion == assertionBuildAuthoringVersion || (p.AuthoringVersion == buildAuthoringVersion || p.AuthoringVersion == materialBuildAuthoringVersion)
 }
 
-func (p Plan) continuingBuild() bool { return p.AuthoringVersion == buildAuthoringVersion }
+func (p Plan) continuingBuild() bool {
+	return (p.AuthoringVersion == buildAuthoringVersion || p.AuthoringVersion == materialBuildAuthoringVersion)
+}
 
 type BuildProgress struct {
-	RespondingToQuestion string     `json:"responding_to_question,omitempty"`
-	CycleID              uuid.UUID  `json:"cycle_id"`
-	Phase                string     `json:"phase"`
-	ClarificationsUsed   int        `json:"clarifications_used"`
-	ArtifactID           *uuid.UUID `json:"artifact_id,omitempty"`
-	CheckID              *uuid.UUID `json:"check_id,omitempty"`
-	Sample               string     `json:"sample,omitempty"`
-	Error                *Fault     `json:"error,omitempty"`
+	InlineInput          *InlineInput `json:"inline_input,omitempty"`
+	TrialID              *uuid.UUID   `json:"trial_id,omitempty"`
+	RespondingToQuestion string       `json:"responding_to_question,omitempty"`
+	CycleID              uuid.UUID    `json:"cycle_id"`
+	Phase                string       `json:"phase"`
+	ClarificationsUsed   int          `json:"clarifications_used"`
+	ArtifactID           *uuid.UUID   `json:"artifact_id,omitempty"`
+	CheckID              *uuid.UUID   `json:"check_id,omitempty"`
+	Sample               string       `json:"sample,omitempty"`
+	Error                *Fault       `json:"error,omitempty"`
 }
 type BuildCyclePlan struct {
-	ID                 uuid.UUID `json:"id"`
-	Step               string    `json:"step"`
-	ClarificationsUsed int       `json:"clarifications_used"`
-	Sample             string    `json:"sample,omitempty"`
+	AdoptedRules       []DocumentSource `json:"adopted_rules,omitempty"`
+	Materials          []inputs.Binding `json:"materials,omitempty"`
+	ID                 uuid.UUID        `json:"id"`
+	Step               string           `json:"step"`
+	ClarificationsUsed int              `json:"clarifications_used"`
+	Sample             string           `json:"sample,omitempty"`
 }
 type BuildQuoteRequest struct {
-	Content            string     `json:"content"`
-	ArtifactID         *uuid.UUID `json:"artifact_id,omitempty"`
-	AdditionalExamples int        `json:"additional_examples,omitempty"`
-	Models             Models     `json:"models"`
+	AdoptRules         []DocumentSource `json:"adopt_rules,omitempty"`
+	Inputs             []inputs.Binding `json:"inputs,omitempty"`
+	Content            string           `json:"content"`
+	ArtifactID         *uuid.UUID       `json:"artifact_id,omitempty"`
+	AdditionalExamples int              `json:"additional_examples,omitempty"`
+	Models             Models           `json:"models"`
 }
 type BuildQuote struct {
+	TokenBound    int               `json:"token_bound,omitempty"`
+	Version       int               `json:"version,omitempty"`
 	ID            uuid.UUID         `json:"id"`
 	Request       BuildQuoteRequest `json:"request"`
 	MaxCost       int64             `json:"max_cost_nano_usd"`
@@ -71,8 +89,40 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 	if err = s.Config.ValidateModels(request.Models, v.Anonymous); err != nil {
 		return BuildQuote{}, err
 	}
+	if _, err = resolveMaterials(ctx, s.Store.DB, id, request.Inputs); err != nil {
+		return BuildQuote{}, err
+	}
+	if len(request.AdoptRules) > 8 {
+		return BuildQuote{}, fault("invalid_input", "Use at most eight policy excerpts.")
+	}
+	for _, source := range request.AdoptRules {
+		if err = validateDocumentSource(ctx, s.Store.DB, id, source); err != nil {
+			return BuildQuote{}, err
+		}
+	}
 	l := s.Config.Limits(v.Anonymous)
-	quote := BuildQuote{ID: uuid.New(), Request: request, Cases: 3, MaxCalls: 26, ExpiresAt: timestamp().Add(30 * time.Minute), Profiles: map[string]string{}}
+	if len(request.Inputs) > 0 {
+		// Reject material that cannot fit even the initial input before spending
+		// on authoring. Each final invocation still checks its complete prompt.
+		messages, e := materialMessages(ctx, s.Store.DB, id, []provider.Message{{Role: "system", Content: PreviewPrompt(request.Content)}}, request.Inputs)
+		if e != nil {
+			return BuildQuote{}, e
+		}
+		profile, e := s.Config.Profile(request.Models.Target)
+		if e != nil {
+			return BuildQuote{}, e
+		}
+		if _, e = CountContext(provider.Request{Messages: messages, MaxOutputTokens: l.OutputTokens}, profile, l); e != nil {
+			return BuildQuote{}, e
+		}
+	}
+	quote := BuildQuote{Version: 1, ID: uuid.New(), Request: request, Cases: 3, MaxCalls: 26, ExpiresAt: timestamp().Add(30 * time.Minute), Profiles: map[string]string{}}
+	if s.Config.MaterialBuild {
+		quote.Version = 2
+	}
+	if len(request.Inputs) > 0 && !s.Config.MaterialBuild {
+		return BuildQuote{}, fault("hosted_disabled", "Material-based Build is not enabled.")
+	}
 	judges := 1
 	if request.AdditionalExamples != 0 {
 		cases, count, hash, e := s.expansionQuote(ctx, v, request)
@@ -96,6 +146,9 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 	}
 	primary, _ := s.Config.Profile(request.Models.Assistant)
 	temp := Plan{AuthoringVersion: guidedAuthoringVersion, Conversation: &ConversationContext{Profile: &primary}, Anonymous: v.Anonymous, LocalTesting: s.Config.TestingLocally()}
+	if s.Config.MaterialBuild {
+		temp.Document.Evaluation = v.Document.Evaluation
+	}
 	if err = s.freezeReviewVersion(&temp); err != nil {
 		return quote, err
 	}
@@ -118,7 +171,22 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 		quote.MaxCalls += 2
 		quote.Profiles[temp.AssistantRecovery.Profile.ID] = Hash(raw(temp.AssistantRecovery.Profile))
 	}
+	if hasTaskInput(request.Inputs) || quote.Version >= 2 && request.AdditionalExamples == 0 {
+		quote.MaxCost += costs[request.Models.Target]
+		quote.MaxCalls++
+	}
 	quote.EstimatedCost = quote.MaxCost // only the auditable ceiling is advertised
+	if quote.Version >= 2 && request.AdditionalExamples == 0 {
+		quote.TokenBound = int(authorCalls)*(primary.inputLimit(temp.limits())+temp.limits().OutputTokens) + (quote.MaxCalls-int(authorCalls))*(l.ContextTokens+l.OutputTokens)
+		if quote.MaxCost > FirstBuildSpendCeiling {
+			return BuildQuote{}, fault("budget_limit", "The complete first run cannot fit the current $0.50 model allowance with these models. Choose a lower-cost model in Settings. Nothing was run or shortened.")
+		}
+		if v.Anonymous && !s.Config.TestingLocally() {
+			if err = checkInitialBuildQuota(ctx, s.Store.DB, v.ID, uuid.Nil, quote); err != nil {
+				return BuildQuote{}, err
+			}
+		}
+	}
 
 	_, err = s.Store.DB.Exec(ctx, `INSERT INTO vibe_cycle_quotes(id,session_id,request_hash,specification,max_cost,expires_at) VALUES($1,$2,$3,$4,$5,$6)`, quote.ID, id, Hash(raw(request)), raw(quote), quote.MaxCost, quote.ExpiresAt)
 	return quote, err
@@ -152,7 +220,18 @@ func (s *Service) prepareBuildCycle(ctx context.Context, v Session, sub Submissi
 	if quote.Request.AdditionalExamples == 0 && v.Document.Build != nil && v.Document.Build.CycleID != quote.ID {
 		return fault("invalid_state", "Continue this evaluation’s existing cycle; its question budget cannot be reset.")
 	}
-	cycle := &BuildCyclePlan{ID: quote.ID, Step: "prepare"}
+	cycle := &BuildCyclePlan{ID: quote.ID, Step: "prepare", Materials: quote.Request.Inputs, AdoptedRules: adoptedSources(sub)}
+	if len(quote.Request.AdoptRules) > 0 && v.Document.Build != nil {
+		var saved []byte
+		if err := s.Store.DB.QueryRow(ctx, `SELECT o.input FROM vibe_cycle_steps c JOIN vibe_operations o ON o.id=c.operation_id WHERE c.cycle_id=$1 AND c.step='prepare'`, quote.ID).Scan(&saved); err != nil {
+			return err
+		}
+		var original Plan
+		if err := json.Unmarshal(saved, &original); err != nil {
+			return err
+		}
+		cycle.AdoptedRules = adoptedSources(original.Submission)
+	}
 	if progress := v.Document.Build; progress != nil && progress.CycleID == quote.ID {
 		cycle.ClarificationsUsed = progress.ClarificationsUsed
 		cycle.Sample = progress.Sample
@@ -160,18 +239,27 @@ func (s *Service) prepareBuildCycle(ctx context.Context, v Session, sub Submissi
 		case "clarifying", "waiting":
 			cycle.Step = "message:" + sub.ClientID.String()
 		case "ready":
-			if sub.Kind != "check" || progress.ArtifactID == nil || sub.ArtifactID == nil || *progress.ArtifactID != *sub.ArtifactID {
+			if (sub.Kind != "check" && sub.Kind != "playground") || progress.ArtifactID == nil || sub.ArtifactID == nil || *progress.ArtifactID != *sub.ArtifactID {
 				return fault("invalid_request", "Use the prepared prototype for this check.")
 			}
 			cycle.Step = "check"
+			trialInputs := initialTrialInputs(quote, progress)
+			if quote.Version >= 2 && hasTaskInput(trialInputs) && progress.TrialID == nil {
+				if sub.Kind != "playground" || !slices.Equal(sub.Inputs, trialInputs) {
+					return fault("invalid_request", "Try the supplied material before checking this prototype.")
+				}
+				cycle.Step = "initial_trial"
+			} else if sub.Kind != "check" {
+				return fault("invalid_request", "The initial trial is already complete.")
+			}
 		default:
 			return fault("invalid_state", "This Build cycle already has work in progress or results.")
 		}
 	}
-	if cycle.Step == "prepare" && (quote.Request.Content != sub.Content || timestamp().After(quote.ExpiresAt)) {
+	if cycle.Step == "prepare" && (!slices.Equal(quote.Request.AdoptRules, sub.AdoptRules) || quote.Request.Content != sub.Content || !slices.Equal(quote.Request.Inputs, sub.Inputs) || timestamp().After(quote.ExpiresAt)) {
 		return fault("quote_expired", "Your request changed or its estimate expired. Get a new estimate.")
 	}
-	if cycle.Step != "check" && sub.Kind != "message" {
+	if cycle.Step != "check" && cycle.Step != "initial_trial" && sub.Kind != "message" {
 		return fault("invalid_request", "This estimate authorizes prototype preparation and its first three examples.")
 	}
 	if quote.Request.AdditionalExamples > 0 {
@@ -209,6 +297,11 @@ func admitBuildCycle(ctx context.Context, tx pgx.Tx, v Session, sub Submission, 
 	}
 	if authorized == nil && (p.Cycle.Step != "prepare" || timestamp().After(q.ExpiresAt) || q.Request.Content != sub.Content) {
 		return fault("quote_expired", "Get a current estimate before running.")
+	}
+	if authorized == nil && q.Version >= 2 && q.Request.AdditionalExamples == 0 && v.Anonymous && !p.LocalTesting {
+		if err := checkInitialBuildQuota(ctx, tx, v.ID, o.ID, q); err != nil {
+			return err
+		}
 	}
 	var used int64
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(sum(CASE WHEN o.billing IN ('SETTLED','RELEASED') THEN COALESCE(o.actual_cost,0) ELSE o.max_cost END),0) FROM vibe_cycle_steps s JOIN vibe_operations o ON o.id=s.operation_id WHERE s.cycle_id=$1`, p.Cycle.ID).Scan(&used); err != nil {
@@ -259,6 +352,16 @@ func (s *Service) AdvanceBuild(ctx context.Context, id uuid.UUID) error {
 		return err
 	}
 	sub := Submission{ClientID: deterministicID(p.Cycle.ID, "check"), Revision: v.Revision, Kind: "check", Models: quote.Request.Models, ArtifactID: progress.ArtifactID, ApproveArtifact: true, CycleID: &p.Cycle.ID}
+	trialInputs := initialTrialInputs(quote, progress)
+	if quote.Version >= 2 && hasTaskInput(trialInputs) && progress.TrialID == nil {
+		sub.Kind = "playground"
+		sub.ClientID = deterministicID(p.Cycle.ID, "initial_trial")
+		sub.ApproveArtifact = false
+		sub.Inputs = trialInputs
+		sub.Content = "Process the supplied material according to your instructions."
+		thread := deterministicID(p.Cycle.ID, "initial_trial_thread")
+		sub.PreviewThreadID = &thread
+	}
 	if receipt, e := s.Store.submissionReceipt(ctx, v.ID, sub); receipt != nil || e != nil {
 		return e
 	}
@@ -318,7 +421,7 @@ func (s *Store) syncBuildResult(ctx context.Context, id uuid.UUID) error {
 }
 
 func ResumeBuilds(ctx context.Context, s *Service) {
-	rows, err := s.Store.DB.Query(ctx, `SELECT o.id FROM vibe_cycle_steps c JOIN vibe_operations o ON o.id=c.operation_id JOIN vibe_sessions s ON s.id=o.session_id JOIN vibe_cycle_quotes q ON q.id=c.cycle_id WHERE (c.step IN ('prepare','answer') OR c.step LIKE 'retry:%' OR c.step LIKE 'message:%') AND o.state='COMPLETED' AND s.document->>'format_version'='1' AND s.document#>>'{build,phase}'='ready' AND s.document#>>'{build,cycle_id}'=c.cycle_id::text AND q.stopped_at IS NULL ORDER BY o.created_at LIMIT 20`)
+	rows, err := s.Store.DB.Query(ctx, `SELECT o.id FROM vibe_cycle_steps c JOIN vibe_operations o ON o.id=c.operation_id JOIN vibe_sessions s ON s.id=o.session_id JOIN vibe_cycle_quotes q ON q.id=c.cycle_id WHERE (c.step IN ('prepare','answer','initial_trial') OR c.step LIKE 'retry:%' OR c.step LIKE 'message:%') AND o.state='COMPLETED' AND s.document->>'format_version'='1' AND s.document#>>'{build,phase}'='ready' AND s.document#>>'{build,cycle_id}'=c.cycle_id::text AND q.stopped_at IS NULL ORDER BY o.created_at LIMIT 20`)
 	if err != nil {
 		return
 	}

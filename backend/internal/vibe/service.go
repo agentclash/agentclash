@@ -99,6 +99,12 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 		}
 		return *receipt, nil
 	}
+	if len(sub.Inputs) > 0 && sub.Kind != "message" && sub.Kind != "playground" {
+		return Operation{}, fault("invalid_input", "Materials can be used for preparation or a prototype trial, not as replacement check inputs.")
+	}
+	if _, err = resolveMaterials(ctx, s.Store.DB, id, sub.Inputs); err != nil {
+		return Operation{}, err
+	}
 	if sub.Interaction != nil {
 		if !s.Config.PreciseActions {
 			return Operation{}, fault("invalid_request", "Reload to use the current conversation controls.")
@@ -327,7 +333,7 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 			}
 		}
 		if sub.Kind == "playground" {
-			if sub.Content == "" {
+			if sub.Content == "" && len(sub.Inputs) == 0 {
 				return Operation{}, fault("invalid_message", "Write a test message for the agent.")
 			}
 			p.Calls = 1
@@ -340,7 +346,11 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 				p.PreviewMessages, err = previewMessages(v, sub, *p.Artifact)
 			}
 			if err == nil {
-				_, err = CountContext(provider.Request{Messages: p.PreviewMessages, MaxOutputTokens: l.OutputTokens}, profile, l)
+				var messages []provider.Message
+				messages, err = materialMessages(ctx, s.Store.DB, id, p.PreviewMessages, executionInputs(p))
+				if err == nil {
+					_, err = CountContext(provider.Request{Messages: messages, MaxOutputTokens: l.OutputTokens}, profile, l)
+				}
 				if f, ok := err.(*Fault); ok && f.Code == "context_limit" {
 					f.Message = "This trial conversation has reached its context limit. Start a new conversation; your previous messages are preserved. Nothing was sent."
 				}

@@ -7,6 +7,7 @@ import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from 
 import { ClashMark } from "@/components/marketing/clash-mark";
 import { terminal, type Session } from "@/lib/vibe";
 import { workingBuildArtifact, buildVersion } from "@/lib/vibe-build-timeline";
+import { DeleteProject } from "./delete-project";
 import { VibeButton } from "./vibe-button";
 
 export function evaluationIdentity(session: Session) {
@@ -25,6 +26,7 @@ type Props = {
   session: Session | null;
   choosing: boolean;
   disabled: boolean;
+  onDeleted?: (id: string) => void;
   onNew: () => void;
   onSwitch: (id: string) => void;
   onSettings: () => void;
@@ -34,6 +36,7 @@ type Props = {
 
 // Navigation consumes existing context data. It never creates a session or runs a model.
 export function EvaluationNavigation(p: Props) {
+  const [deleting, setDeleting] = useState<Session>();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const expandButton = useRef<HTMLButtonElement>(null);
@@ -79,6 +82,7 @@ export function EvaluationNavigation(p: Props) {
       }) : <p className="vibe-sidebar-empty">Your work will appear here.</p>}
     </nav>
     <div className="vibe-sidebar-footer">
+      {p.session?.document.evaluation && p.onDeleted && <VibeButton variant="quiet" disabled={p.disabled} onClick={() => navigate(() => setDeleting(p.session!), mobile)}>Delete this project</VibeButton>}
       <VibeButton variant="quiet" onClick={() => navigate(p.onSavedWork, mobile)}><Archive />Saved work</VibeButton>
       <VibeButton variant="quiet" onClick={() => navigate(p.onSettings, mobile)}><Settings />Settings</VibeButton>
     </div>
@@ -107,6 +111,7 @@ export function EvaluationNavigation(p: Props) {
       transition={{ duration: reduced ? 0 : 0.2, ease: [0.22, 1, 0.36, 1] }}>
       <div className="vibe-sidebar-inner">{navigation(false)}</div>
     </motion.aside>
+    {deleting && p.onDeleted && <DeleteProject session={deleting} onClose={() => setDeleting(undefined)} onDeleted={p.onDeleted} />}
     <div className="vibe-main">{p.children(toggle)}</div>
   </div>;
 }

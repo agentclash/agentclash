@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { ArrowUp } from "lucide-react";
 import { dollars, type Model, type Session } from "@/lib/vibe";
 import { AgentReply } from "./safe-markdown";
@@ -8,7 +8,9 @@ import { VibeButton } from "./vibe-button";
 import { sendOnEnter } from "./composer-keyboard";
 import { useComposerAutosize } from "./use-composer-autosize";
 
-export function PrototypeTrial({ inline, dock = false, title, version, busy, text, onText, onSend, onBack, onNew, thread, onThread, history, messages, example, model }: {
+export function PrototypeTrial({ materialInput, hasMaterial = false, inline, dock = false, title, version, busy, text, onText, onSend, onBack, onNew, thread, onThread, history, messages, example, model }: {
+  materialInput?: ReactNode;
+  hasMaterial?: boolean;
   inline: boolean;
   dock?: boolean;
   title?: string;
@@ -43,10 +45,11 @@ export function PrototypeTrial({ inline, dock = false, title, version, busy, tex
     </div>}
     {!dock && !messages.length && example && <VibeButton variant="quiet" disabled={busy} onClick={() => onText(example)}>Use an example message</VibeButton>}
     {thread.startsWith("legacy:") ? <p className="vibe-build-note">Start a new conversation to try follow-ups. This earlier trial used one message.</p> : <>
-      <form className="vibe-composer vibe-composer-compact vibe-chat-composer" onSubmit={event => { event.preventDefault(); if (!busy && text.trim()) onSend(); }}>
+      {materialInput}
+      <form className="vibe-composer vibe-composer-compact vibe-chat-composer" onSubmit={event => { event.preventDefault(); if (!busy && (text.trim() || hasMaterial)) onSend(); }}>
         <label className="sr-only" htmlFor="vibe-trial-message">Message your agent</label>
-        <textarea id="vibe-trial-message" ref={input} rows={1} aria-label="Message your agent" placeholder={/email|spam/i.test(title || "") ? "Paste an email to try…" : "Give your prototype a task…"} value={text} onChange={event => onText(event.target.value)} onKeyDown={event => sendOnEnter(event, () => { if (!busy && text.trim()) onSend(); })} />
-        <VibeButton type="submit" variant="primary" aria-label={inline ? "Send to prototype" : "Send to agent"} disabled={busy || !text.trim()}>{dock && <span>Try it</span>}<ArrowUp /></VibeButton>
+        <textarea id="vibe-trial-message" ref={input} rows={1} aria-label="Message your agent" placeholder="Give your prototype a task…" value={text} onChange={event => onText(event.target.value)} onKeyDown={event => sendOnEnter(event, () => { if (!busy && (text.trim() || hasMaterial)) onSend(); })} />
+        <VibeButton type="submit" variant="primary" aria-label={inline ? "Send to prototype" : "Send to agent"} disabled={busy || (!text.trim() && !hasMaterial)}>{dock && <span>Try it</span>}<ArrowUp /></VibeButton>
       </form>
       {!dock && <p className="vibe-build-note">This generates a reply; it does not run or change your tests.</p>}
       {model && <details className="vibe-trial-cost"><summary>{model.name} · {model.input_nano_per_token || model.output_nano_per_token ? "Uses credits · model rates" : "Free model"}</summary>

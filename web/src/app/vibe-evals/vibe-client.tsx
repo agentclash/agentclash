@@ -1,5 +1,9 @@
 "use client";
 
+import { VibeConnection } from "@/lib/vibe-connection";
+import { useVibeInputs } from "@/lib/use-vibe-inputs";
+import type { InputBinding } from "@/lib/vibe-inputs";
+import { TaskInput } from "@/components/vibe/task-input";
 import { downloadJSON, exportRuns } from "@/lib/vibe-export";
 
 import { readBuildDrafts, writeBuildDrafts } from "@/lib/vibe-build-drafts";
@@ -553,19 +557,23 @@ export function VibeClient() {
     void request.then(forget, forget);
     return request;
   }
+  const materialScope = view === "try" ? `trial:${artifact?.id || ""}:${threadID}` : "guide";
+  const materials = useVibeInputs(sessionID || "", materialScope, token);
+  const materialFingerprint = JSON.stringify(materials.bindings);
+  const adoptionFingerprint = JSON.stringify(materials.adoptions);
   const buildStart = session?.document.evaluation?.door === "build" && !session.document.build && !session.document.artifacts.length;
   const continuingBuild = (session?.document.build?.phase === "clarifying" || session?.document.build?.phase === "waiting");
-  const quoteMatches = !!buildQuote && buildQuote.request.content === content && JSON.stringify(buildQuote.request.models) === JSON.stringify(models) && Date.parse(buildQuote.expires_at) > Date.now();
+  const quoteMatches = !!buildQuote && buildQuote.request.content === content && JSON.stringify(buildQuote.request.inputs || []) === materialFingerprint && JSON.stringify(buildQuote.request.adopt_rules || []) === adoptionFingerprint && JSON.stringify(buildQuote.request.models) === JSON.stringify(models) && Date.parse(buildQuote.expires_at) > Date.now();
   useEffect(() => {
     if (!buildStart || !sessionID || !content.trim()) { setBuildQuote(undefined); setQuoteError(""); return; }
     let live = true;
     setQuoteError("");
     const timer = setTimeout(() => {
-      void token().then(auth => vibeFetch<BuildQuote>(`/sessions/${sessionID}/build-quote`, auth, { method: "POST", body: JSON.stringify({ content, models }) }))
+      void token().then(auth => vibeFetch<BuildQuote>(`/sessions/${sessionID}/build-quote`, auth, { method: "POST", body: JSON.stringify({ content, models, ...(materials.bindings.length ? { inputs: materials.bindings } : {}), ...(materials.adoptions.length ? { adopt_rules: materials.adoptions } : {}) }) }))
         .then(q => { if (live) setBuildQuote(q); }).catch(e => { if (live) setQuoteError(e.message); });
     }, 400);
     return () => { live = false; clearTimeout(timer); };
-  }, [buildStart, sessionID, content, models, token]);
+  }, [buildStart, sessionID, content, models, token, materials.bindings, materials.adoptions]);
   useEffect(() => {
     if (!config?.two_door) return;
     let live = true;
@@ -663,6 +671,7 @@ export function VibeClient() {
   }
   function sendMessage(text = content, context?: { viewed_run_id: string }, demoID?: string) {
     if (buildStart && !quoteMatches) return;
+    if (materials.blocked && buildStart) return;
     void submit("message", text, undefined, {
       ...context,
       ...(demoID ? { demo_id: demoID } : {}),
@@ -696,6 +705,7 @@ export function VibeClient() {
     text = content,
     baseline?: Operation,
     extra: {
+      inputs?: InputBinding[];
       client_id?: string;
       cycle_id?: string;
       run_quote_id?: string;
@@ -721,7 +731,7 @@ export function VibeClient() {
     let trialKey: string | undefined;
     let previewThread: string | undefined;
     if (kind === "playground") {
-      if (!text.trim() || legacyTrial) return;
+      if ((!text.trim() && !materials.bindings.length) || materials.blocked || legacyTrial) return;
       previewThread = threadID || crypto.randomUUID();
       trialKey = `${trialPrefix}${previewThread}`;
       if (!threadID) {
@@ -739,6 +749,8 @@ export function VibeClient() {
     const composerVersion = trialKey
       ? trialEdits.current[trialKey] || 0
       : composerEdits.current;
+    const capturedAdoptions = kind === "message" && buildStart ? materials.adoptions : [];
+    const capturedInputs = (kind === "playground" || kind === "message" && buildStart) ? materials.bindings : [];
     const clientID = extra.client_id || crypto.randomUUID();
     if (kind === "message") {
       retryUnsentMessage.current = undefined;
@@ -766,6 +778,8 @@ export function VibeClient() {
           evaluation_first: true,
           ...(testJourney ? { test_journey: true } : {}),
           content: text,
+          ...(capturedInputs.length ? { inputs: capturedInputs } : {}),
+          ...(capturedAdoptions.length ? { adopt_rules: capturedAdoptions } : {}),
           models: baseline
             ? { ...models, evaluator: baseline.models.evaluator }
             : models,
@@ -1264,8 +1278,14 @@ export function VibeClient() {
           <VibeButton variant="primary" disabled={busy || runQuote?.sessionID !== sessionID || runQuote?.revision !== session?.revision} onClick={() => { if (!runQuote) return; const q=runQuote; setRunQuote(undefined); void submit(q.kind,q.content || "",q.baseline,{...q.extra,...(q.extra.cycle_id ? {} : {run_quote_id:q.quote.id})}); }}>{runQuote?.kind === "message" ? "Prepare and run this batch" : `Run ${runQuote?.quote.cases} examples`}</VibeButton>
         </DialogContent>
       </Dialog>
-      <EvaluationNavigation enabled={twoDoor} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
+      <VibeConnection.Provider value={{ token, contact: config?.contact }}><EvaluationNavigation enabled={twoDoor} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
         choosing={newEvaluation} disabled={!config || pending || uncertain || dirtyArtifact}
+        onDeleted={id => {
+          discardedContextIDs.current.add(id);
+          setContexts(old => old.filter(item => item.id !== id));
+          delete contextDrafts.current[id]; delete contextTrials.current[id];
+          if (sessionID === id) { setSession(null); setNewEvaluation(true); setContent(""); setPendingMessage(undefined); setError(""); window.history.replaceState(null,"","/vibe-evals"); }
+        }}
         onNew={openNewEvaluation}
         onSwitch={id => { if (id === sessionID) setNewEvaluation(false); else void switchContext(id); }}
         onSettings={() => setSettingsOpen(true)} onSavedWork={() => setSavedWorkOpen(true)}>
@@ -1294,7 +1314,8 @@ export function VibeClient() {
         buildStart={buildStart}
         onSample={() => sendMessage("I don’t know. Use a clearly labelled sample policy or a narrower sample demonstration.")}
         onDemo={id => sendMessage("Try a sample email assistant", undefined, id)}
-        sendBlocked={buildStart && !quoteMatches}
+        materialInput={buildJourney && buildStart ? <TaskInput key={`${sessionID}:${materialScope}`} configure inputs={materials} pdfAvailable={!!config?.pdf_uploads} disabled={busy} /> : undefined}
+        sendBlocked={buildStart && (!quoteMatches || materials.blocked)}
         sendError={buildStart ? quoteError : undefined}
         testJourney={testJourney}
         interactionActions={config?.interaction_actions}
@@ -1526,7 +1547,8 @@ export function VibeClient() {
           </>
         }
         preview={
-          <PrototypeTrial inline={buildJourney} dock={buildJourney} title={artifact?.title} version={session && artifact ? buildVersion(session, artifact) : undefined} busy={busy || dirtyArtifact} text={trialText}
+          <PrototypeTrial inline={buildJourney} dock={buildJourney} title={artifact?.title} version={session && artifact ? buildVersion(session, artifact) : undefined} busy={busy || dirtyArtifact || materials.blocked} text={trialText} hasMaterial={materials.bindings.length > 0}
+            materialInput={buildJourney ? <TaskInput key={`${sessionID}:${materialScope}`} inputs={materials} pdfAvailable={!!config?.pdf_uploads} disabled={busy || dirtyArtifact} /> : undefined}
             onText={setTrialText} onSend={() => void submit("playground", trialText)}
             onBack={() => navigate("build")} onNew={newTrial} thread={threadID}
             history={trialHistory} messages={trialMessages}
@@ -1541,7 +1563,7 @@ export function VibeClient() {
         }
       />
       }
-      </EvaluationNavigation>
+      </EvaluationNavigation></VibeConnection.Provider>
       <AgentSettings open={settingsOpen} onOpenChange={setSettingsOpen}
         config={config} session={session} artifact={artifact} artifacts={artifacts}
         models={models} busy={busy || dirtyArtifact} workspace={workspace}

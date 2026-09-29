@@ -19,6 +19,7 @@ func (r *Runner) completeReliableDocument(ctx context.Context, o Operation, p Pl
 		return fmt.Errorf("missing v12 conversation completion")
 	}
 	c := completion[0]
+	c.InlineInput = p.InlineInput
 	if p.interpreted() && p.Submission.Interaction != nil && p.Conversation.Confirmed == nil {
 		c.Interaction = p.Submission.Interaction
 	}

@@ -3,6 +3,9 @@ on:
   pull_request:
     paths:
       - 'backend/internal/vibe/**'
+      - 'backend/internal/enquiries/**'
+      - 'backend/internal/email/**'
+      - 'backend/Dockerfile.worker'
       - 'backend/internal/api/vibe*'
       - 'backend/internal/api/challenge_pack_generate_contract.go'
       - 'backend/internal/api/billing*'
@@ -18,6 +21,7 @@ on:
       - 'web/src/app/vibe-evals/**'
       - 'web/src/components/vibe/**'
       - 'web/src/lib/vibe*'
+      - 'web/src/lib/use-vibe-inputs*'
       - 'web/e2e/vibe/**'
       - 'web/e2e/vibe-stack/**'
       - 'web/playwright.vibe.config.ts'
@@ -69,6 +73,9 @@ jobs:
           go test -p 1 -race ./internal/vibe ./internal/api -run 'Test(Vibe|Suite|Consistency|Integration|Structured|YAML|Fanout|Money|FullContext|Unknown|Coverage|RunQuote|SampleIdentity|Requirement|StateMachine|MissingPricing|TrialEconomics|PaidTemporal|InvalidJudge|CORSMiddleware|BillingManager.*Webhook|AgentTryoutPromot|Generate|Evidence|Conversation)' -count=1
           go build ./...
           go vet ./...
+      - name: Material and enquiry transaction regressions
+        working-directory: backend
+        run: go test -race ./internal/enquiries ./internal/vibe/inputs -count=1
       - name: Shared provider and scoring regressions
         working-directory: runtime
         run: go test ./provider ./scoring ./challengepack -count=1
@@ -133,9 +140,34 @@ jobs:
           VIBE_BROWSER_V15: '1'
           VIBE_BROWSER_TWO_DOOR: '1'
         run: npx playwright test --config playwright.vibe-stack.config.ts two-door.spec.ts
+      - name: Supplied-text output, recovery and contact journey (fake inference)
+        working-directory: web
+        env:
+          VIBE_BROWSER_V15: '1'
+          VIBE_BROWSER_TWO_DOOR: '1'
+          VIBE_BROWSER_MATERIALS: '1'
+        run: npx playwright test --config playwright.vibe-stack.config.ts materials.spec.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: vibe-browser-worker-evidence
           path: web/test-results/vibe-stack
           if-no-files-found: ignore
+  isolated-pdf-reader:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: Install the pinned reader, outside the application environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap python3-venv
+          /usr/bin/python3 -m venv "$RUNNER_TEMP/vibe-pdf-runtime"
+          "$RUNNER_TEMP/vibe-pdf-runtime/bin/pip" install -r backend/internal/vibe/inputs/requirements.txt
+      - name: Actual extraction and denial of secrets, network, writes and excess memory
+        working-directory: backend
+        run: VIBE_TEST_PDF_RUNTIME="$RUNNER_TEMP/vibe-pdf-runtime" go test -v ./internal/vibe/inputs -count=1

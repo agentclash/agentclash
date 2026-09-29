@@ -30,6 +30,7 @@ type ModelProfile struct {
 	ExpiresAt          time.Time `json:"expires_at"`
 }
 type Config struct {
+	MaterialBuild        bool
 	TwoDoor              bool
 	GroundedJudging      bool
 	ContextGuidance      bool
@@ -66,6 +67,7 @@ func LoadConfig() (Config, error) {
 	c.AssistantFallback = os.Getenv("VIBE_ASSISTANT_FALLBACK") != "false"
 	c.LocalTesting = os.Getenv("VIBE_LOCAL_TESTING") == "true"
 	c.TwoDoor = true
+	c.MaterialBuild = os.Getenv("VIBE_MATERIAL_BUILD") != "false"
 	if c.LocalTesting && os.Getenv("APP_ENV") != "development" {
 		return c, fmt.Errorf("VIBE_LOCAL_TESTING requires APP_ENV=development")
 	}

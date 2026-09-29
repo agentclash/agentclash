@@ -15,11 +15,12 @@ import (
 // Current requests retain complete original blocks. Historical specification
 // blocks contain only reviewed evidence, with the original hash for provenance.
 type SourceBlock struct {
-	OriginalHash string    `json:"original_hash,omitempty"`
-	ID           string    `json:"id"`
-	MessageID    uuid.UUID `json:"message_id"`
-	Text         string    `json:"text"`
-	Hash         string    `json:"hash"`
+	Document     *DocumentSource `json:"document,omitempty"`
+	OriginalHash string          `json:"original_hash,omitempty"`
+	ID           string          `json:"id"`
+	MessageID    uuid.UUID       `json:"message_id"`
+	Text         string          `json:"text"`
+	Hash         string          `json:"hash"`
 }
 type PolicyRule struct {
 	Evidence       []RuleEvidence `json:"evidence,omitempty"`

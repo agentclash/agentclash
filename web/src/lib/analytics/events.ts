@@ -35,6 +35,10 @@ export const WEB_EVENTS = {
   VIBE_BUILD_ACTION_CLICKED: "web.vibe.build.action_clicked",
   VIBE_BUILD_TRIAL_REPLY_VIEWED: "web.vibe.build.trial_reply_viewed",
   VIBE_BUILD_RECOVERY_CLICKED: "web.vibe.build.recovery_clicked",
+  VIBE_BUILD_INPUT_STATUS: "web.vibe.build.input_status",
+  VIBE_BUILD_ENQUIRY_OPENED: "web.vibe.build.enquiry_opened",
+  VIBE_BUILD_ENQUIRY_RECEIVED: "web.vibe.build.enquiry_received",
+  VIBE_BUILD_EMAIL_DRAFT_OPENED: "web.vibe.build.email_draft_opened",
   VIBE_BUILD_EXPORT_REQUESTED: "web.vibe.build.export_requested",
 
   // Public agent-tryouts funnel (anonymous visitors trying an agent).
@@ -73,6 +77,10 @@ export type VibeBuildEventBase = {
 };
 
 export interface WebEventPayloads {
+  [WEB_EVENTS.VIBE_BUILD_INPUT_STATUS]: VibeBuildEventBase & { input_id: string; kind: "pdf" | "text"; status: string };
+  [WEB_EVENTS.VIBE_BUILD_ENQUIRY_OPENED]: VibeBuildEventBase;
+  [WEB_EVENTS.VIBE_BUILD_ENQUIRY_RECEIVED]: VibeBuildEventBase & { enquiry_id: string };
+  [WEB_EVENTS.VIBE_BUILD_EMAIL_DRAFT_OPENED]: VibeBuildEventBase;
   [WEB_EVENTS.VIBE_BUILD_ENTRY_SELECTED]: VibeBuildEventBase & { entry_source: "two_door" | "return" };
   [WEB_EVENTS.VIBE_BUILD_MESSAGE_ADMITTED]: VibeBuildEventBase & { recipient: "guide" | "prototype" };
   [WEB_EVENTS.VIBE_BUILD_CLARIFICATION_VIEWED]: VibeBuildEventBase & { question_id: string; clarification_count: number };
@@ -82,7 +90,7 @@ export interface WebEventPayloads {
   [WEB_EVENTS.VIBE_BUILD_ACTION_CLICKED]: VibeBuildEventBase & { action: "try" | "checks" | "rules" | "change" | "tougher" | "save" | "export" | "review_problem" | "review_fix" };
   [WEB_EVENTS.VIBE_BUILD_TRIAL_REPLY_VIEWED]: VibeBuildEventBase & { thread_id?: string };
   [WEB_EVENTS.VIBE_BUILD_RECOVERY_CLICKED]: VibeBuildEventBase & { action: "stop" | "retry" | "alternate_assistant" | "reload_evidence"; error_code?: string };
-  [WEB_EVENTS.VIBE_BUILD_EXPORT_REQUESTED]: VibeBuildEventBase & { format: "json" };
+  [WEB_EVENTS.VIBE_BUILD_EXPORT_REQUESTED]: VibeBuildEventBase & { format: "json" | "markdown" };
   [WEB_EVENTS.AUTH_COMPLETED]: { provider: "workos" };
   [WEB_EVENTS.APP_SESSION_STARTED]: { posthog_session_id: string };
   [WEB_EVENTS.MARKETING_CTA_CLICKED]: {

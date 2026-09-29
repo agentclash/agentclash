@@ -190,7 +190,7 @@ func missingSourceClauses(input SuiteReviewInput) []missingSourceClause {
 	var out []missingSourceClause
 	seen := map[string]bool{}
 	sources := input.Sources
-	if input.Policy.SourceVersion == SourcePolicyVersion {
+	if supportedSourceVersion(input.Policy.SourceVersion) {
 		sources = nil
 		for _, rule := range input.Policy.Rules {
 			for _, evidence := range rule.Evidence {

@@ -2,6 +2,7 @@ package vibe
 
 import (
 	"encoding/json"
+	"github.com/agentclash/agentclash/backend/internal/vibe/inputs"
 	"github.com/google/uuid"
 	"time"
 )
@@ -85,6 +86,9 @@ func DefaultModels() Models {
 }
 
 type Message struct {
+	Execution       *ExecutionReceipt `json:"execution,omitempty"`
+	AdoptedSources  []DocumentSource  `json:"adopted_sources,omitempty"`
+	Materials       []inputs.Binding  `json:"materials,omitempty"`
 	Cards           []json.RawMessage `json:"cards,omitempty"`
 	PreviewThreadID *uuid.UUID        `json:"preview_thread_id,omitempty"`
 	ID              uuid.UUID         `json:"id"`
@@ -108,6 +112,9 @@ type Requirement struct {
 	Change            string     `json:"change,omitempty"`
 }
 type Artifact struct {
+	InputContract          *InputContract          `json:"input_contract,omitempty"`
+	RequiredCapabilities   []string                `json:"required_capabilities,omitempty"`
+	ReferenceInputs        []inputs.Binding        `json:"reference_inputs,omitempty"`
 	SampleBasis            *PolicySnapshot         `json:"sample_basis,omitempty"`
 	UnavailableReason      string                  `json:"unavailable_reason,omitempty"`
 	Sample                 string                  `json:"sample,omitempty"`

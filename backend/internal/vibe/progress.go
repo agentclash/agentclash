@@ -2,9 +2,11 @@ package vibe
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -26,8 +28,20 @@ type OperationDiagnostics struct {
 }
 
 type SessionDiagnostics struct {
-	FirstUsefulResultMillis *int64 `json:"first_useful_result_ms,omitempty"`
-	FirstSaveMillis         *int64 `json:"first_save_ms,omitempty"`
+	BuildUsage              *BuildUsage `json:"build_usage,omitempty"`
+	FirstUsefulResultMillis *int64      `json:"first_useful_result_ms,omitempty"`
+	FirstSaveMillis         *int64      `json:"first_save_ms,omitempty"`
+}
+
+// Actual journal totals, including repairs/fallbacks. Unknown usage is counted
+// explicitly; the 500k target is not a truncation or a model context allowance.
+type BuildUsage struct {
+	CycleID       uuid.UUID        `json:"cycle_id"`
+	Tokens        int64            `json:"reported_tokens"`
+	Cost          int64            `json:"reported_cost_nano_usd"`
+	UnknownTokens int              `json:"attempts_without_tokens"`
+	UnknownCost   int              `json:"attempts_without_cost"`
+	Stages        map[string]int64 `json:"stage_tokens"`
 }
 
 // Stage names are bounded labels, never case keys, prompts, or model output.
@@ -72,6 +86,10 @@ func caseCompleted(c CaseResult) bool {
 }
 
 func populateProgress(ctx context.Context, tx pgx.Tx, v *Session) error {
+	v.Diagnostics = &SessionDiagnostics{}
+	if v.Document.Build != nil {
+		v.Diagnostics.BuildUsage = &BuildUsage{CycleID: v.Document.Build.CycleID, Stages: map[string]int64{}}
+	}
 	byID := map[uuid.UUID]*Operation{}
 	for i := range v.Operations {
 		o := &v.Operations[i]
@@ -94,7 +112,7 @@ func populateProgress(ctx context.Context, tx pgx.Tx, v *Session) error {
 	}
 	// One bounded metadata query for the whole session. Do not load raw evidence,
 	// provider responses or prompts into the repeatedly transmitted snapshot.
-	rows, err := tx.Query(ctx, `SELECT a.operation_id,a.step_key,a.role,a.created_at,a.completed_at,a.actual_cost IS NULL,(a.state <> 'RECONCILED' OR a.error IS NOT NULL),a.model
+	rows, err := tx.Query(ctx, `SELECT a.operation_id,a.step_key,a.role,a.created_at,a.completed_at,a.actual_cost IS NULL,(a.state <> 'RECONCILED' OR a.error IS NOT NULL),a.model,a.usage,a.actual_cost,COALESCE(o.input#>>'{cycle,id}','')
 	 FROM vibe_attempts a JOIN vibe_operations o ON o.id=a.operation_id WHERE o.session_id=$1 ORDER BY a.created_at,a.id`, v.ID)
 	if err != nil {
 		return err
@@ -108,7 +126,10 @@ func populateProgress(ctx context.Context, tx pgx.Tx, v *Session) error {
 		var start time.Time
 		var end *time.Time
 		var unresolved, timed bool
-		if err = rows.Scan(&id, &step, &role, &start, &end, &unresolved, &timed, &model); err != nil {
+		var usage []byte
+		var cost *int64
+		var cycle string
+		if err = rows.Scan(&id, &step, &role, &start, &end, &unresolved, &timed, &model, &usage, &cost, &cycle); err != nil {
 			return err
 		}
 		o := byID[id]
@@ -116,6 +137,19 @@ func populateProgress(ctx context.Context, tx pgx.Tx, v *Session) error {
 			continue
 		}
 		phase := attemptPhase(step, role)
+		if total := v.Diagnostics.BuildUsage; total != nil && total.CycleID.String() == cycle {
+			if tokens, known := reportedAttemptTokens(usage); known {
+				total.Tokens += tokens
+				total.Stages[phase] += tokens
+			} else {
+				total.UnknownTokens++
+			}
+			if cost == nil {
+				total.UnknownCost++
+			} else {
+				total.Cost += *cost
+			}
+		}
 		if role == Assistant && strings.HasSuffix(step, ":fallback") {
 			o.Diagnostics.AlternativeAssistant = model
 		}
@@ -137,12 +171,35 @@ func populateProgress(ctx context.Context, tx pgx.Tx, v *Session) error {
 		return err
 	}
 	rows.Close()
-	v.Diagnostics = &SessionDiagnostics{}
 	return tx.QueryRow(ctx, `SELECT
 	 (EXTRACT(EPOCH FROM (min(e.created_at) FILTER (WHERE e.kind='result.useful')-s.created_at))*1000)::bigint,
 	 (EXTRACT(EPOCH FROM (min(e.created_at) FILTER (WHERE e.kind IN ('draft.saved','check.saved'))-s.created_at))*1000)::bigint
 	 FROM vibe_sessions s LEFT JOIN vibe_events e ON e.session_id=s.id WHERE s.id=$1 GROUP BY s.created_at`, v.ID).
 		Scan(&v.Diagnostics.FirstUsefulResultMillis, &v.Diagnostics.FirstSaveMillis)
+}
+
+// The journal stores the complete provider response, not a bare Usage value.
+// Reconciliation replaces it with OpenRouter's generation receipt; native
+// token counts there describe the billed model tokens (not normalized tokens).
+func reportedAttemptTokens(b []byte) (int64, bool) {
+	var receipt struct {
+		Usage provider.Usage
+		Data  *struct {
+			Input  *int64 `json:"native_tokens_prompt"`
+			Output *int64 `json:"native_tokens_completion"`
+		} `json:"data"`
+	}
+	if json.Unmarshal(b, &receipt) != nil {
+		return 0, false
+	}
+	if receipt.Data != nil && receipt.Data.Input != nil && receipt.Data.Output != nil {
+		if *receipt.Data.Input < 0 || *receipt.Data.Output < 0 {
+			return 0, false
+		}
+		return *receipt.Data.Input + *receipt.Data.Output, true
+	}
+	tokens := max(receipt.Usage.TotalTokens, receipt.Usage.InputTokens+receipt.Usage.OutputTokens)
+	return tokens, tokens > 0
 }
 
 // Called only inside the serialized writer transaction. Delivery retries cannot

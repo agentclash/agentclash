@@ -69,7 +69,7 @@ func (s *Store) Evaluations(ctx context.Context, actor string, chatID uuid.UUID)
 	if _, err := s.GetSession(ctx, actor, chatID); err != nil {
 		return nil, err
 	}
-	rows, err := s.DB.Query(ctx, "SELECT evaluation_id FROM vibe_evaluation_contexts WHERE chat_id=$1 ORDER BY created_at", chatID)
+	rows, err := s.DB.Query(ctx, "SELECT evaluation_id FROM vibe_evaluation_contexts e JOIN vibe_sessions s ON s.id=e.evaluation_id WHERE chat_id=$1 AND s.deleted_at IS NULL ORDER BY e.created_at", chatID)
 	if err != nil {
 		return nil, err
 	}

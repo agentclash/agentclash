@@ -206,7 +206,7 @@ func (s *Service) prepareRunValidation(p *Plan, v Session) error {
 	var sources []SourceBlock
 	if integrityValid {
 		policy = *policyFor(v.Document, p.Artifact)
-		if policy.SourceVersion == SourcePolicyVersion {
+		if supportedSourceVersion(policy.SourceVersion) {
 			sources, _ = verifiedPolicySources(v.Document, policy)
 		} else {
 			wanted := map[string]bool{}

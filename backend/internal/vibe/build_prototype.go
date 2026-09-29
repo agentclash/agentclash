@@ -47,6 +47,12 @@ func (r *Runner) preparePrototype(ctx context.Context, o Operation, p Plan, a *A
 		// own harness instructions. No test inputs/answer keys are included.
 		a.AgentPrompt = PreviewPrompt("Help with the following job, following these supplied rules:\n\n" + strings.Join(rules, "\n"))
 		a.ScopeNote = prototypeScopeFor(strings.Join(rules, " "))
+		if p.AuthoringVersion >= materialBuildAuthoringVersion {
+			a.InputContract = materialContract()
+			a.RequiredCapabilities = p.RequiredCapabilities
+			a.ReferenceInputs = referenceInputs(p)
+			a.ScopeNote = prototypeScope + " It can process supplied text. PDF text is available only after a successful upload; images, linked resources and live tools are not read."
+		}
 		return nil
 	}
 	var instructions struct {
@@ -174,6 +180,23 @@ func (r *Runner) completeSamplePrototype(ctx context.Context, o Operation, p Pla
 		kind = "email"
 	}
 	if kind == "" {
+		if p.AuthoringVersion >= materialBuildAuthoringVersion {
+			task := ""
+			for _, fact := range effectiveConversationState(p).Brief.Facts {
+				if fact.Kind == "job" && (fact.Status == "stated" || fact.Status == "accepted") {
+					for _, source := range fact.Sources {
+						if task != "" {
+							task += "\n"
+						}
+						task += source.Quote
+					}
+				}
+			}
+			a := Artifact{ID: deterministicID(o.ID, "artifact"), Kind: "task_brief", Title: "Your project brief", Summary: task, Blueprint: raw(map[string]any{}), ScopeNote: "Not executed. This brief preserves your task; it is not an agent or a passing check. Supply material and any missing decision rule to make a useful text prototype. Business systems are not connected.", SourceMessageID: p.sourceMessageID(), CreatedAt: operationTime(o), Provenance: "user_brief"}
+			p.Conversation.NextState.PendingQuestion = nil
+			p.Conversation.NextState.PendingPreparation = nil
+			return r.completeReliableDocument(ctx, o, p, "I saved your project brief. I haven’t run an agent or checks for it yet.", &a, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "chat"}})
+		}
 		p.Conversation.NextState.PendingQuestion = nil
 		p.Conversation.NextState.PendingPreparation = nil
 		return r.completeReliableDocument(ctx, o, p, "I don’t have enough information for a useful first version of this task yet. Your description is saved. Add the task and one rule it should follow when you’re ready; no prototype or checks were run.", nil, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "chat"}})

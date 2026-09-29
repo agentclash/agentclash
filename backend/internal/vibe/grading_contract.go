@@ -25,6 +25,7 @@ type ModelExecution struct {
 }
 type GradingContract struct {
 	Version       int            `json:"version"`
+	ReferenceHash string         `json:"reference_hash,omitempty"`
 	Hash          string         `json:"hash"`
 	CriteriaHash  string         `json:"criteria_hash"`
 	TestsHash     string         `json:"tests_hash"`
@@ -103,6 +104,9 @@ func (s *Service) freezeGrading(p *Plan) error {
 			}
 			p.TargetConfig = &TargetConfiguration{ModelExecution: modelExecution(target, p.limits()), InstructionsHash: Hash([]byte(instructions))}
 		}
+	}
+	if len(p.Artifact.ReferenceInputs) > 0 {
+		g.ReferenceHash = Hash(raw(p.Artifact.ReferenceInputs))
 	}
 	g.Hash = g.fingerprint()
 	p.Grading = g

@@ -51,17 +51,17 @@ The consistency ledger covers missing-only instructions in the policy's requirem
 Declare only fields named by those missing-only instructions in the consistency ledger. A case-specific example does not introduce extra fields such as utterance. Every case still records the same declared fields, marked missing when absent, even for a requested off-topic scenario. A missing fact alone does not require the expected answer to ask for it; assess the actual expected behavior in the scenario's scope.`
 
 func (p Plan) sourceBoundary() bool {
-	return p.Conversation != nil && p.Conversation.SourceVersion == SourcePolicyVersion
+	return p.Conversation != nil && supportedSourceVersion(p.Conversation.SourceVersion)
 }
 
 func prepareSourceBoundary(p *Plan, v Session, version string) error {
-	if version != SourcePolicyVersion {
+	if !supportedSourceVersion(version) {
 		return fault("invalid_configuration", "The configured specification version is unavailable.")
 	}
 	c := p.Conversation
 	c.SourceVersion, c.Sources = version, nil
 	if c.Policy != nil {
-		if c.Policy.SourceVersion != version {
+		if !supportedSourceVersion(c.Policy.SourceVersion) {
 			c.Policy = nil
 		} else {
 			sources, err := verifiedPolicySources(v.Document, *c.Policy)
@@ -69,10 +69,13 @@ func prepareSourceBoundary(p *Plan, v Session, version string) error {
 				return err
 			}
 			c.Sources = append(c.Sources, sources...)
+			if c.Policy.SourceVersion == DocumentSourceVersion {
+				c.SourceVersion = DocumentSourceVersion
+			}
 		}
 	}
 	if c.ObservedPolicy != nil {
-		if c.ObservedPolicy.SourceVersion != version {
+		if !supportedSourceVersion(c.ObservedPolicy.SourceVersion) {
 			c.ObservedPolicy = nil
 		} else if _, err := verifiedPolicySources(v.Document, *c.ObservedPolicy); err != nil {
 			return err
@@ -175,6 +178,7 @@ func activeSourceConfirmation(p Plan, d Document) *SourceConfirmation {
 func originalConfirmationSources(d Document, c *SourceConfirmation) bool {
 	for _, source := range c.Sources {
 		found := false
+
 		for _, m := range d.Messages {
 			if m.Role == "user" && m.Origin != "playground" && m.ID == source.MessageID && originalBlock(m.ID, m.Content) == source {
 				found = true
@@ -244,7 +248,13 @@ func applySourceScope(p *Plan, route reliableRoute) {
 	}
 	p.Artifact, p.ObservedArtifact, p.Observations = nil, nil, nil
 	p.Conversation.Policy, p.Conversation.ObservedPolicy, p.Conversation.Pending = nil, nil, nil
-	p.Conversation.Sources = nil
+	adopted := []SourceBlock{}
+	for _, source := range p.Conversation.Sources {
+		if source.Document != nil && explicitlyAdopted(*p, source.ID) {
+			adopted = append(adopted, source)
+		}
+	}
+	p.Conversation.Sources = adopted
 	if p.Conversation.Confirmed != nil {
 		p.Conversation.Sources = append(p.Conversation.Sources, p.Conversation.Confirmed.Sources...)
 	}
@@ -292,10 +302,17 @@ func reconcileSourcedPolicy(rules []PolicyRule, p Plan, o Operation, newScope bo
 		if err := validateRuleEvidence(rule, blocks); err != nil {
 			return PolicySnapshot{}, err
 		}
+		if input := p.InlineInput; input != nil {
+			for _, e := range rule.Evidence {
+				if e.SourceBlockID == p.Conversation.CurrentRequest.ID && !strings.Contains(p.Submission.Content[:input.Start], e.Quote) && !strings.Contains(p.Submission.Content[input.End:], e.Quote) {
+					return PolicySnapshot{}, fmt.Errorf("rule %s cites task material as policy; cite only the instruction clauses outside that material", rule.ID)
+				}
+			}
+		}
 		if old, ok := prior[rule.ID]; !ok || Hash(raw(old)) != Hash(raw(rule)) {
 			current := false
 			for _, e := range rule.Evidence {
-				current = current || allowedChange[e.SourceBlockID] || memoryEvidenceAllowed(p, e)
+				current = current || allowedChange[e.SourceBlockID] || explicitlyAdopted(p, e.SourceBlockID) || memoryEvidenceAllowed(p, e)
 			}
 			if !current {
 				return PolicySnapshot{}, fmt.Errorf("changed rule %s needs actual evidence in the current request or specifically confirmed earlier messages", rule.ID)
@@ -311,7 +328,7 @@ func reconcileSourcedPolicy(rules []PolicyRule, p Plan, o Operation, newScope bo
 		}
 		return *old, nil
 	}
-	policy := PolicySnapshot{ID: deterministicID(o.ID, "policy"), ScopeID: deterministicID(o.ID, "scope"), SourceMessageID: p.sourceMessageID(), SourceVersion: SourcePolicyVersion, Rules: rules}
+	policy := PolicySnapshot{ID: deterministicID(o.ID, "policy"), ScopeID: deterministicID(o.ID, "scope"), SourceMessageID: p.sourceMessageID(), SourceVersion: p.Conversation.SourceVersion, Rules: rules}
 	if p.stateful() {
 		var err error
 		policy.ScopeID, err = uuid.Parse(effectiveConversationState(p).Brief.ScopeID)
@@ -396,15 +413,28 @@ func verifiedPolicySources(d Document, policy PolicySnapshot) ([]SourceBlock, er
 	if policy.SampleBasis != "" {
 		return verifiedSampleSources(d, policy)
 	}
-	if policy.SourceVersion != SourcePolicyVersion || len(policy.Sources) == 0 {
+	if !supportedSourceVersion(policy.SourceVersion) || len(policy.Sources) == 0 {
 		return nil, sourceReviewRequired()
 	}
 	blocks := map[string]SourceBlock{}
 	for _, source := range policy.Sources {
-		if source.ID != source.MessageID.String() || source.Hash != Hash([]byte(source.Text)) {
+		if source.Document == nil && source.ID != source.MessageID.String() || source.Hash != Hash([]byte(source.Text)) {
 			return nil, sourceReviewRequired()
 		}
 		found := false
+		if source.Document != nil {
+			if policy.SourceVersion != DocumentSourceVersion || !documentAdoptionSaved(d, source) {
+				return nil, sourceReviewRequired()
+			}
+			found = true
+			for _, rule := range policy.Rules {
+				for _, e := range rule.Evidence {
+					if e.SourceBlockID == source.ID && !strings.Contains(source.Document.Quote, e.Quote) {
+						return nil, sourceReviewRequired()
+					}
+				}
+			}
+		}
 		for _, m := range d.Messages {
 			if m.ID == source.MessageID && m.Role == "user" && m.Origin != "playground" && Hash([]byte(m.Content)) == source.OriginalHash {
 				found = true

@@ -98,6 +98,9 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 		if p.guided() {
 			p.Conversation.Example = route.Example
 		}
+		if err = r.bindInterpretedMaterial(ctx, o, &p, route); err != nil {
+			return err
+		}
 		if p.Submission.AdditionalExamples > 0 {
 			// This explicit action adds coverage; it cannot adopt new policy or
 			// reinterpret the selected evaluation as a different agent.

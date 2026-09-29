@@ -24,7 +24,9 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/backend/internal/vibe"
+	"github.com/agentclash/agentclash/backend/internal/vibe/inputs"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-chi/chi/v5"
@@ -59,7 +61,24 @@ func TestVibeBrowserStack(t *testing.T) {
 		cfg.SourcePolicyVersion = vibe.SourcePolicyVersion
 		cfg.TwoDoor = os.Getenv("VIBE_BROWSER_TWO_DOOR") == "1"
 	}
+	cfg.MaterialBuild = os.Getenv("VIBE_BROWSER_MATERIALS") == "1"
 	store := vibe.NewStore(db, cfg)
+	if cfg.MaterialBuild {
+		blobs, e := storage.NewFilesystemStore(storage.Config{FilesystemRoot: t.TempDir(), Bucket: "fixture"})
+		if e != nil {
+			t.Fatal(e)
+		}
+		store.Inputs.Blobs = blobs
+		if runtime := os.Getenv("VIBE_TEST_PDF_RUNTIME"); runtime != "" {
+			parser, e := inputs.NewParser(ctx, runtime)
+			if e != nil {
+				t.Fatal(e)
+			}
+			store.Inputs.Parser = parser
+		}
+		go store.Inputs.Run(ctx, slog.Default())
+		go store.ProjectCleanupLoop(ctx, slog.Default())
+	}
 	svc := &vibe.Service{Store: store, Config: cfg, Gate: vibe.Gate{Redis: rc}, Compiler: VibePackCompiler{}}
 	fake := &browserFixtureProvider{}
 	runner := &vibe.Runner{Service: svc, Gateway: &vibe.Gateway{Store: store, Config: cfg, Gate: svc.Gate, Client: fake}}
@@ -368,6 +387,18 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 				answer = "Customer message"
 			}
 		}
+		if strings.Contains(req.Messages[0].Content, "Summarize meeting notes") {
+			answer = "The team discussed a deadline; no deadline was decided."
+			if strings.Contains(question, "Mira") {
+				answer = "Mira will ship the prototype on Friday."
+			}
+			if strings.Contains(question, "Ana") {
+				answer = "Ana owns the report due Tuesday."
+			}
+			if strings.Contains(question, "pause") {
+				answer = "The team decided to pause. No owner was selected."
+			}
+		}
 		f.calls = append(f.calls, browserFixtureCall{Role: name})
 		return browserFixtureResponse(answer), nil
 	case name == "vibe_suite_review_v1" || name == "vibe_suite_review_v2" || name == "vibe_suite_review_v3" || name == "vibe_suite_review_v4" || name == "vibe_suite_review_v5":
@@ -503,6 +534,10 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 			if input.Request.Text == "give me vodka" {
 				action = map[string]any{"kind": "reply", "text": "I can’t pour a drink. Your email sorter is still here.", "example": nil}
 			}
+			if strings.HasPrefix(input.Request.Text, "Summarize meeting notes") {
+				facts = []any{map[string]any{"kind": "job", "quote": input.Request.Text, "correction_ref": 0}}
+				action = map[string]any{"kind": "prepare_tests", "count": 3}
+			}
 			output = map[string]any{"observations": facts, "answer": answer, "scope_change_quote": "", "source_message_ids": []string{}, "brevity_quote": "", "action": action}
 		case "vibe_route_v11":
 			if f.rateLimitCalls > 0 {
@@ -521,6 +556,11 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 			}
 			output = map[string]any{"intent": intent, "count": count, "reply": "Your conversation is saved."}
 		case "vibe_prepare_tests_v11":
+			if strings.HasPrefix(input.Request.Text, "Summarize meeting notes") {
+				rule := vibe.PolicyRule{ID: "summary", Statement: input.Request.Text, SourceBlockIDs: []string{input.Request.ID}, Evidence: []vibe.RuleEvidence{{SourceBlockID: input.Request.ID, Quote: input.Request.Text, Kind: "requirement"}}}
+				output = map[string]any{"rules": []vibe.PolicyRule{rule}, "tests": map[string]any{"title": "Meeting notes assistant", "summary": input.Request.Text, "success_criteria": input.Request.Text, "scenarios": []vibe.TestScenario{{Input: "Ana owns the report, due Tuesday.", Expected: "Summarize Ana owns the report due Tuesday."}, {Input: "A deadline was discussed but not decided.", Expected: "Do not invent a deadline."}, {Input: "The team decided to pause. No owner was chosen.", Expected: "Summarize the pause without inventing an owner."}}}}
+				break
+			}
 			if input.Request.Text == "Anything from an unknown sender is spam" {
 				rule := vibe.PolicyRule{ID: "unknown-sender", Statement: input.Request.Text, SourceBlockIDs: []string{input.Request.ID}, Evidence: []vibe.RuleEvidence{{SourceBlockID: input.Request.ID, Quote: input.Request.Text, Kind: "requirement"}}}
 				output = map[string]any{"rules": []vibe.PolicyRule{rule}, "tests": map[string]any{"title": "Email sorter", "summary": "Unknown senders are spam; known senders remain unspecified.", "success_criteria": input.Request.Text, "scenarios": []vibe.TestScenario{

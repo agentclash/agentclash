@@ -24,7 +24,23 @@ COPY runtime /src/runtime
 
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /app ./cmd/worker
 
-# ---- Runtime stage ----
+# Opt-in: docker build --target pdf-worker -f backend/Dockerfile.worker .
+# Requires unprivileged user/network namespaces. Startup disables PDF uploads
+# when the isolation self-check fails; never run this target as root/privileged.
+FROM debian:bookworm-slim AS pdf-worker
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata python3 python3-venv bubblewrap \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --system --uid 10001 --create-home worker
+COPY backend/internal/vibe/inputs/requirements.txt /tmp/pdf-requirements.txt
+RUN python3 -m venv /opt/vibe-pdf-runtime \
+    && /opt/vibe-pdf-runtime/bin/pip install --no-cache-dir -r /tmp/pdf-requirements.txt \
+    && rm /tmp/pdf-requirements.txt
+COPY --from=builder /app /app
+ENV VIBE_PDF_RUNTIME=/opt/vibe-pdf-runtime
+USER 10001:10001
+ENTRYPOINT ["/app"]
+
+# ---- Default runtime stage (text-only, unchanged) ----
 FROM alpine:3.21
 
 RUN apk add --no-cache ca-certificates tzdata

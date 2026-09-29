@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/agentclash/agentclash/backend/internal/enquiries"
 	"github.com/agentclash/agentclash/backend/internal/vibe"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -23,6 +24,7 @@ import (
 )
 
 type VibeHandler struct {
+	Enquiries    *enquiries.Store
 	Billing      *BillingManager
 	Service      *vibe.Service
 	Auth         Authenticator
@@ -38,7 +40,7 @@ func (h *VibeHandler) Routes() http.Handler {
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			// Enforce the absolute transport ceiling before loading any session
 			// context. The endpoint then applies the stricter trial/type limits.
-			if r.Method == http.MethodPost || r.Method == http.MethodPatch {
+			if (r.Method == http.MethodPost || r.Method == http.MethodPatch) && !strings.HasSuffix(r.URL.Path, "/inputs") {
 				limit := vibe.LimitsFor(false).RequestBytes
 				if strings.HasSuffix(r.URL.Path, "/import") || strings.HasSuffix(r.URL.Path, "/evidence") {
 					limit = vibe.LimitsFor(false).FileBytes
@@ -60,11 +62,20 @@ func (h *VibeHandler) Routes() http.Handler {
 		})
 	})
 	r.Get("/config", h.config)
+	r.Post("/sessions/{sessionID}/enquiries", h.createEnquiry)
+	r.Get("/sessions/{sessionID}/enquiries/{enquiryID}", h.getEnquiry)
+	r.Post("/sessions/{sessionID}/inputs", h.createInput)
+	r.Get("/sessions/{sessionID}/inputs", h.listInputs)
+	r.Get("/sessions/{sessionID}/inputs/{inputID}", h.getInput)
+	r.Get("/sessions/{sessionID}/inputs/{inputID}/download", h.downloadInput)
+	r.Delete("/sessions/{sessionID}/inputs/{inputID}", h.deleteInput)
 	r.Get("/credits", h.creditBalance)
 	r.Post("/credit-checkouts", h.creditCheckout)
 	r.Post("/sessions", h.create)
 	r.Get("/sessions", h.listSessions)
 	r.Get("/sessions/{sessionID}", h.get)
+	r.Delete("/sessions/{sessionID}", h.deleteProject)
+	r.Get("/sessions/{sessionID}/deletion", h.projectDeletion)
 	r.Post("/sessions/{sessionID}/continue", h.continueSession)
 	r.Get("/sessions/{sessionID}/evaluations", h.evaluations)
 	r.Post("/sessions/{sessionID}/build-quote", h.buildQuote)
@@ -127,6 +138,10 @@ func vibeError(w http.ResponseWriter, err error) {
 		code, message = f.Code, f.Message
 		status = 400
 		switch code {
+		case "unsupported_media":
+			status = 415
+		case "input_unavailable":
+			status = 409
 		case "not_found":
 			status = 404
 		case "unauthenticated":
@@ -256,8 +271,14 @@ func (h *VibeHandler) config(w http.ResponseWriter, r *http.Request) {
 			models = append(models, p)
 		}
 	}
+	contact := map[string]any{"email": "", "available": false}
+	if h.Enquiries != nil {
+		contact["email"] = h.Enquiries.Recipient
+		contact["available"] = h.Enquiries.Available()
+	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
-	vibeJSON(w, 200, map[string]any{"two_door": h.Service.Config.TwoDoor, "capabilities": vibe.Capabilities(), "enabled": h.Service.Config.Enabled, "interaction_actions": h.Service.Config.PreciseActions, "grading_recheck": h.Service.Config.GroundedJudging, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget})
+	pdfAvailable := h.Service.Config.MaterialBuild && h.Service.Store.Inputs.PDFAvailable(r.Context())
+	vibeJSON(w, 200, map[string]any{"contact": contact, "pdf_uploads": pdfAvailable, "two_door": h.Service.Config.TwoDoor, "capabilities": vibe.AvailableCapabilities(pdfAvailable), "enabled": h.Service.Config.Enabled, "interaction_actions": h.Service.Config.PreciseActions, "grading_recheck": h.Service.Config.GroundedJudging, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget})
 }
 func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 	var input struct {
