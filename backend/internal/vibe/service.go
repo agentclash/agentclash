@@ -122,6 +122,7 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 	if err = s.prepareBuildCycle(ctx, v, sub, &p); err != nil {
 		return Operation{}, err
 	}
+	l = p.limits()
 	if sub.Purpose == "regrade" {
 		return s.prepareRegrade(ctx, actor, v, sub, p)
 	}

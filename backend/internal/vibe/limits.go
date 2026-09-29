@@ -79,7 +79,7 @@ func (c Config) Limits(anonymous bool) Limits {
 }
 
 func (p Plan) limits() Limits {
-	if p.AuthoringVersion >= 11 && p.ExecutionLimits != nil {
+	if p.ExecutionLimits != nil && (p.AuthoringVersion >= 11 || p.Cycle != nil) {
 		return *p.ExecutionLimits
 	}
 	return executionLimits(p.Anonymous, p.LocalTesting)

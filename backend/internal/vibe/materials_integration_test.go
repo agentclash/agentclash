@@ -32,7 +32,21 @@ func addText(t *testing.T, s *Service, v Session, text string) inputs.Binding {
 	return inputs.Binding{ID: r.ID, Hash: r.Hash, Usage: "task_input"}
 }
 func TestIntegrationMaterialBuildRunsActualInputBeforeChecksOnce(t *testing.T) {
+	for _, local := range []bool{false, true} {
+		name := "hosted"
+		if local {
+			name = "local"
+		}
+		t.Run(name, func(t *testing.T) { verifyMaterialBuildContinuation(t, local) })
+	}
+}
+
+func verifyMaterialBuildContinuation(t *testing.T, local bool) {
+	t.Helper()
 	s, v := materialService(t)
+	s.Config.LocalTesting = local
+	s.Config.LocalBudget, s.Config.Campaign = 10*NanoUSD, "material-local-"+uuid.NewString()
+	s.Store = NewStore(s.Store.DB, s.Config)
 	ctx := context.Background()
 	binding := addText(t, s, v, "At the planning meeting, Mira agreed to ship the prototype on Friday.")
 	reference := addText(t, s, v, "The project codename is KESTREL.")
@@ -41,6 +55,9 @@ func TestIntegrationMaterialBuildRunsActualInputBeforeChecksOnce(t *testing.T) {
 	quote, err := s.QuoteBuild(ctx, v.Actor, v.ID, BuildQuoteRequest{Content: job, Models: DefaultModels(), Inputs: []inputs.Binding{binding, reference}})
 	if err != nil {
 		t.Fatal(err)
+	}
+	if quote.MaxCost > FirstBuildSpendCeiling {
+		t.Fatal("local testing inflated the bounded initial journey")
 	}
 	sub := Submission{ClientID: uuid.New(), Revision: v.Revision, Kind: "message", Content: job, Models: DefaultModels(), TestJourney: true, CycleID: &quote.ID, Inputs: []inputs.Binding{binding, reference}}
 	o, err := s.Prepare(ctx, v.Actor, v.ID, sub)
@@ -87,6 +104,14 @@ func TestIntegrationMaterialBuildRunsActualInputBeforeChecksOnce(t *testing.T) {
 	if trial.ID == uuid.Nil {
 		t.Fatal("missing actual trial")
 	}
+	trialOperation, err := s.Store.Operation(ctx, trial.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var trialPlan Plan
+	if err := json.Unmarshal(trialOperation.Input, &trialPlan); err != nil || trialPlan.limits().ContextTokens != LimitsFor(v.Anonymous).ContextTokens {
+		t.Fatal("initial trial did not retain its quoted context envelope", err)
+	}
 	v = executeBuildFixture(t, s, trial, func(req provider.Request) any {
 		all := string(raw(req.Messages))
 		if !strings.Contains(all, "Mira") || !strings.Contains(all, "KESTREL") || strings.Contains(all, "Ana owns") {
@@ -117,6 +142,9 @@ func TestIntegrationMaterialBuildRunsActualInputBeforeChecksOnce(t *testing.T) {
 			var frozen Plan
 			if err := json.Unmarshal(stored.Input, &frozen); err != nil {
 				t.Fatal(err)
+			}
+			if frozen.limits().ContextTokens != LimitsFor(v.Anonymous).ContextTokens {
+				t.Fatal("automatic checks exceeded their quoted context envelope")
 			}
 			refs := referenceInputs(frozen)
 			if len(refs) != 1 || refs[0].ID != reference.ID {

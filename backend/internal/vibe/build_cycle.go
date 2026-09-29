@@ -72,6 +72,16 @@ type BuildQuote struct {
 	BaselineHash  string            `json:"baseline_hash,omitempty"`
 }
 
+func (q BuildQuote) executionLimits(cfg Config, anonymous bool) Limits {
+	l := cfg.Limits(anonymous)
+	if q.Version >= 2 && q.Request.AdditionalExamples == 0 {
+		// The bounded first journey uses the same context envelope locally and
+		// hosted. Local quota exemptions must not reserve entire model windows.
+		l.ContextTokens = LimitsFor(anonymous).ContextTokens
+	}
+	return l
+}
+
 func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, request BuildQuoteRequest) (BuildQuote, error) {
 	v, err := s.Store.GetSession(ctx, actor, id)
 	if err != nil {
@@ -100,7 +110,11 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 			return BuildQuote{}, err
 		}
 	}
-	l := s.Config.Limits(v.Anonymous)
+	quote := BuildQuote{Version: 1, ID: uuid.New(), Request: request, Cases: 3, MaxCalls: 26, ExpiresAt: timestamp().Add(30 * time.Minute), Profiles: map[string]string{}}
+	if s.Config.MaterialBuild {
+		quote.Version = 2
+	}
+	l := quote.executionLimits(s.Config, v.Anonymous)
 	if len(request.Inputs) > 0 {
 		// Reject material that cannot fit even the initial input before spending
 		// on authoring. Each final invocation still checks its complete prompt.
@@ -115,10 +129,6 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 		if _, e = CountContext(provider.Request{Messages: messages, MaxOutputTokens: l.OutputTokens}, profile, l); e != nil {
 			return BuildQuote{}, e
 		}
-	}
-	quote := BuildQuote{Version: 1, ID: uuid.New(), Request: request, Cases: 3, MaxCalls: 26, ExpiresAt: timestamp().Add(30 * time.Minute), Profiles: map[string]string{}}
-	if s.Config.MaterialBuild {
-		quote.Version = 2
 	}
 	if len(request.Inputs) > 0 && !s.Config.MaterialBuild {
 		return BuildQuote{}, fault("hosted_disabled", "Material-based Build is not enabled.")
@@ -146,6 +156,7 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 	}
 	primary, _ := s.Config.Profile(request.Models.Assistant)
 	temp := Plan{AuthoringVersion: guidedAuthoringVersion, Conversation: &ConversationContext{Profile: &primary}, Anonymous: v.Anonymous, LocalTesting: s.Config.TestingLocally()}
+	temp.ExecutionLimits = &l
 	if s.Config.MaterialBuild {
 		temp.Document.Evaluation = v.Document.Evaluation
 	}
@@ -277,6 +288,10 @@ func (s *Service) prepareBuildCycle(ctx context.Context, v Session, sub Submissi
 		}
 	}
 	p.Cycle = cycle
+	if quote.Version >= 2 && quote.Request.AdditionalExamples == 0 {
+		l := quote.executionLimits(s.Config, v.Anonymous)
+		p.ExecutionLimits = &l
+	}
 	return nil
 }
 
