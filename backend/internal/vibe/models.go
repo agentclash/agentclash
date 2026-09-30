@@ -53,7 +53,7 @@ func LoadConfig() (Config, error) {
 	c := Config{Enabled: os.Getenv("VIBE_ENABLED") == "true", Credential: os.Getenv("VIBE_OPENROUTER_KEY"), Profiles: map[string]ModelProfile{}, Campaign: os.Getenv("VIBE_CAMPAIGN")}
 	c.FreeOnly = os.Getenv("VIBE_FREE_ONLY") == "true"
 	// One supported authoring contract for new application requests. Older
-	// versions remain decodable for immutable journals and archive reads.
+	// versions remain decodable for immutable journals and historical V1 results.
 	c.SourcePolicyVersion = SourcePolicyVersion
 	c.GroundedJudging = os.Getenv("VIBE_GROUNDED_JUDGING") != "false"
 	c.SuiteReviewVersion = LatestSuiteValidatorVersion

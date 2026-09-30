@@ -35,7 +35,7 @@ func (q *queryCounter) TraceQueryStart(ctx context.Context, _ *pgx.Conn, _ pgx.T
 func (*queryCounter) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
 
 func TestVibeFileAndSnapshotQueriesAreBounded(t *testing.T) {
-	h := newReliabilityHarness(t, 1)
+	h := newVibeAPIHarness(t)
 	cfg, err := pgxpool.ParseConfig(os.Getenv("VIBE_TEST_DATABASE_URL"))
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +47,7 @@ func TestVibeFileAndSnapshotQueriesAreBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
- defer db.Exec(h.ctx,`DELETE FROM vibe_enquiries WHERE session_id=$1`,h.session.ID)
+	defer db.Exec(h.ctx, `DELETE FROM vibe_enquiries WHERE session_id=$1`, h.session.ID)
 	h.svc.Store.DB = db
 	h.svc.Store.Inputs.DB = db
 	contact := &enquiries.Store{DB: db, Recipient: "team@example.test", Sender: &testEnquirySender{}}

@@ -24,7 +24,7 @@ func (f groundingClient) InvokeModel(c context.Context, r provider.Request) (pro
 func TestVibeGroundedResultsAndRegrade(t *testing.T) {
 	for _, mode := range []string{"valid", "invented_quote", "provider_error", "truncated_target", "wrong_model"} {
 		t.Run(mode, func(t *testing.T) {
-			h := newReliabilityHarness(t, 3)
+			h := newVibeAPIHarness(t)
 			h.svc.Config.GroundedJudging = true
 			h.svc.Config.FreeOnly = false
 			h.svc.Config.LocalBudget = 100 * vibe.NanoUSD

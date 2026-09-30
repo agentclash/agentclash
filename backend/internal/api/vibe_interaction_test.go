@@ -13,7 +13,7 @@ import (
 )
 
 func TestVibeInteractionHTTPBoundary(t *testing.T) {
-	h := newReliabilityHarness(t, 1)
+	h := newVibeAPIHarness(t)
 	scope, msg, qid := uuid.NewString(), uuid.New(), uuid.NewString()
 	q := interaction.Question{ID: qid, ScopeID: scope, Revision: 1, OriginMessageID: msg.String(), Purpose: "clarify_rule", Status: "active", Text: "Return within 14 days or 30 days?", Options: []interaction.Option{{ID: "14", Label: "14 days"}, {ID: "30", Label: "30 days"}}, MaxSelections: 1}
 	if err := h.svc.Store.Edit(h.ctx, h.actor, h.session.ID, h.session.Revision, func(s *vibe.Session) error {

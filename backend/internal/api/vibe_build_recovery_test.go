@@ -13,7 +13,7 @@ import (
 )
 
 func TestVibeBuildRecoveryHTTPKeepsTestsAndWorkingVersion(t *testing.T) {
-	h := newReliabilityHarness(t, 1)
+	h := newVibeAPIHarness(t)
 	source := "Unknown senders are spam."
 	sid, pid, aid, workingID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	block := vibe.SourceBlock{ID: sid.String(), MessageID: sid, Text: source, Hash: vibe.Hash([]byte(source)), OriginalHash: vibe.Hash([]byte(source))}
