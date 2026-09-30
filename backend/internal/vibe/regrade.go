@@ -13,7 +13,7 @@ func (s *Service) prepareRegrade(ctx context.Context, actor string, v Session, s
 		return Operation{}, fault("regrade_unavailable", "Rechecking saved grades is unavailable with the current settings.")
 	}
 	original, err := s.Store.Operation(ctx, *sub.BaselineID)
-	if err != nil || original.Actor != actor || original.SessionID != v.ID || !original.State.Terminal() || (original.Kind != "check" && original.Kind != "retest") {
+	if err != nil || original.SessionID != v.ID || !original.State.Terminal() || (original.Kind != "check" && original.Kind != "retest") {
 		return Operation{}, fault("baseline_required", "Choose a saved result from this conversation to recheck its grades.")
 	}
 	var old Plan

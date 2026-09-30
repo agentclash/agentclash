@@ -19,24 +19,25 @@ func (g Gate) Check(ctx context.Context, actor string, l Limits) error {
 		return g.Healthy(ctx)
 	}
 	if g.Redis == nil {
-		return fault("accounting_unavailable", "Hosted execution is unavailable while budget protection is offline.")
+		return temporaryAdmission("accounting_unavailable", "Hosted execution is unavailable while budget protection is offline.")
 	}
 	key := "vibe:rate:" + Hash([]byte(actor)) + ":" + timestamp().Format("200601021504")
 	n, err := g.Redis.Eval(ctx, `local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],120) end; return n`, []string{key}).Int()
 	if err != nil {
-		return fault("accounting_unavailable", "Hosted execution is unavailable while budget protection is offline.")
+		return temporaryAdmission("accounting_unavailable", "Hosted execution is unavailable while budget protection is offline.")
 	}
 	if n > l.Rate {
-		return fault("rate_limit", "Too many requests. Try again in a minute.")
+		available := timestamp().Add(time.Minute)
+		return &Fault{Code: "rate_limit", Message: "Too many requests. Try again in a minute.", AdmissionRetryable: true, RetryAvailableAt: &available}
 	}
 	return nil
 }
 func (g Gate) Healthy(ctx context.Context) error {
 	if g.Redis == nil {
-		return fault("accounting_unavailable", "Budget protection is offline.")
+		return temporaryAdmission("accounting_unavailable", "Budget protection is offline.")
 	}
 	if err := g.Redis.Ping(ctx).Err(); err != nil {
-		return fault("accounting_unavailable", "Budget protection is offline.")
+		return temporaryAdmission("accounting_unavailable", "Budget protection is offline.")
 	}
 	return nil
 }

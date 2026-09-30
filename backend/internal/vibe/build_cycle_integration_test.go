@@ -242,7 +242,11 @@ func executeBuildFixture(t *testing.T, s *Service, o Operation, answer func(prov
 	if err := r.Finalize(ctx, o.ID, nil); err != nil {
 		t.Fatal(err)
 	}
-	v, err := s.Store.GetSession(ctx, o.Actor, o.SessionID)
+	actor, _, err := s.Store.currentOwner(ctx, o.SessionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	v, err := s.Store.GetSession(ctx, actor, o.SessionID)
 	if err != nil {
 		t.Fatal(err)
 	}

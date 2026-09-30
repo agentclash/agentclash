@@ -41,6 +41,7 @@ type BuildProgress struct {
 	ArtifactID           *uuid.UUID   `json:"artifact_id,omitempty"`
 	CheckID              *uuid.UUID   `json:"check_id,omitempty"`
 	Sample               string       `json:"sample,omitempty"`
+	AdmissionRetries     int          `json:"admission_retries,omitempty"`
 	Error                *Fault       `json:"error,omitempty"`
 }
 type BuildCyclePlan struct {
@@ -354,7 +355,14 @@ func (s *Service) AdvanceBuild(ctx context.Context, id uuid.UUID) error {
 	if json.Unmarshal(o.Input, &p) != nil || p.Cycle == nil || !o.State.Terminal() {
 		return nil
 	}
-	v, err := s.Store.GetSession(ctx, o.Actor, o.SessionID)
+	actor, deleted, err := s.Store.currentOwner(ctx, o.SessionID)
+	if err != nil {
+		return err
+	}
+	if deleted {
+		return nil
+	}
+	v, err := s.Store.GetSession(ctx, actor, o.SessionID)
 	if err != nil {
 		return err
 	}
@@ -362,10 +370,17 @@ func (s *Service) AdvanceBuild(ctx context.Context, id uuid.UUID) error {
 	if progress == nil || progress.CycleID != p.Cycle.ID || progress.Phase != "ready" || progress.ArtifactID == nil {
 		return nil
 	}
+	if progress.Error != nil && progress.Error.RetryAvailableAt != nil && timestamp().Before(*progress.Error.RetryAvailableAt) {
+		return nil
+	}
 	var quote BuildQuote
 	var specification []byte
-	if err = s.Store.DB.QueryRow(ctx, "SELECT specification FROM vibe_cycle_quotes WHERE id=$1", p.Cycle.ID).Scan(&specification); err != nil {
+	var stopped *time.Time
+	if err = s.Store.DB.QueryRow(ctx, "SELECT specification,stopped_at FROM vibe_cycle_quotes WHERE id=$1", p.Cycle.ID).Scan(&specification, &stopped); err != nil {
 		return err
+	}
+	if stopped != nil {
+		return nil
 	}
 	if err = json.Unmarshal(specification, &quote); err != nil {
 		return err
@@ -392,8 +407,21 @@ func (s *Service) AdvanceBuild(ctx context.Context, id uuid.UUID) error {
 		}
 		return s.Store.Edit(ctx, v.Actor, v.ID, v.Revision, func(current *Session) error {
 			if current.Document.Build != nil && current.Document.Build.CycleID == p.Cycle.ID && current.Document.Build.Phase == "ready" {
-				current.Document.Build.Phase = "error"
-				current.Document.Build.Error = f
+				b := current.Document.Build
+				b.Phase = "error"
+				if f.AdmissionRetryable {
+					b.Phase = "ready"
+					delay := 5 * time.Second * time.Duration(1<<min(b.AdmissionRetries, 4))
+					available := timestamp().Add(min(delay, time.Minute))
+					if f.RetryAvailableAt != nil && available.Before(*f.RetryAvailableAt) {
+						available = *f.RetryAvailableAt
+					}
+					copy := *f
+					copy.RetryAvailableAt = &available
+					f = &copy
+					b.AdmissionRetries++
+				}
+				b.Error = f
 			}
 			return nil
 		})
@@ -409,6 +437,13 @@ func (s *Store) syncBuildResult(ctx context.Context, id uuid.UUID) error {
 		}
 		var p Plan
 		if json.Unmarshal(o.Input, &p) != nil || p.Cycle == nil {
+			return nil
+		}
+		var deleted bool
+		if err = tx.QueryRow(ctx, "SELECT deleted_at IS NOT NULL FROM vibe_sessions WHERE id=$1", o.SessionID).Scan(&deleted); err != nil {
+			return err
+		}
+		if deleted {
 			return nil
 		}
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", o.SessionID))
@@ -440,7 +475,7 @@ func (s *Store) syncBuildResult(ctx context.Context, id uuid.UUID) error {
 }
 
 func ResumeBuilds(ctx context.Context, s *Service) {
-	rows, err := s.Store.DB.Query(ctx, `SELECT o.id FROM vibe_cycle_steps c JOIN vibe_operations o ON o.id=c.operation_id JOIN vibe_sessions s ON s.id=o.session_id JOIN vibe_cycle_quotes q ON q.id=c.cycle_id WHERE (c.step IN ('prepare','answer','initial_trial') OR c.step LIKE 'retry:%' OR c.step LIKE 'message:%') AND o.state='COMPLETED' AND s.document->>'format_version'='1' AND s.document#>>'{build,phase}'='ready' AND s.document#>>'{build,cycle_id}'=c.cycle_id::text AND q.stopped_at IS NULL ORDER BY o.created_at LIMIT 20`)
+	rows, err := s.Store.DB.Query(ctx, `SELECT o.id FROM vibe_cycle_steps c JOIN vibe_operations o ON o.id=c.operation_id JOIN vibe_sessions s ON s.id=o.session_id JOIN vibe_cycle_quotes q ON q.id=c.cycle_id WHERE (c.step IN ('prepare','answer','initial_trial') OR c.step LIKE 'retry:%' OR c.step LIKE 'message:%') AND o.state='COMPLETED' AND s.document->>'format_version'='1' AND s.document#>>'{build,phase}'='ready' AND s.document#>>'{build,cycle_id}'=c.cycle_id::text AND q.stopped_at IS NULL AND s.deleted_at IS NULL AND (s.document#>>'{build,error,retry_available_at}' IS NULL OR (s.document#>>'{build,error,retry_available_at}')::timestamptz<=now()) ORDER BY o.created_at LIMIT 20`)
 	if err != nil {
 		return
 	}

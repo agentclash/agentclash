@@ -330,14 +330,14 @@ func checkCapacity(ctx context.Context, tx pgx.Tx, v Session, exclude ...uuid.UU
 		return err
 	}
 	if queued >= l.Queued || running >= l.Running {
-		return fault("capacity_limit", "Too many active operations. Wait for one to finish.")
+		return temporaryAdmission("capacity_limit", "Too many active operations. Wait for one to finish.")
 	}
 	if v.WorkspaceID != nil {
 		if err := tx.QueryRow(ctx, `SELECT count(*) FILTER(WHERE o.state IN ('QUEUED','AWAITING_APPROVAL') AND o.id<>$2),count(*) FILTER(WHERE o.state IN ('RUNNING','CANCELLING','FINALIZING')) FROM vibe_operations o JOIN vibe_sessions s ON s.id=o.session_id WHERE s.workspace_id=$1`, *v.WorkspaceID, ignored).Scan(&queued, &running); err != nil {
 			return err
 		}
 		if queued >= MaxWorkspaceQueued || running >= MaxWorkspaceRunning {
-			return fault("capacity_limit", "This workspace has reached its operation limit.")
+			return temporaryAdmission("capacity_limit", "This workspace has reached its operation limit.")
 		}
 	}
 	if err := tx.QueryRow(ctx, `SELECT count(*) FILTER(WHERE o.state IN ('QUEUED','AWAITING_APPROVAL') AND o.id<>$2),count(*) FILTER(WHERE o.state IN ('RUNNING','CANCELLING','FINALIZING')) FROM vibe_operations o JOIN vibe_sessions s ON s.id=o.session_id WHERE (s.workspace_id IS NULL)=$1`, v.Anonymous, ignored).Scan(&queued, &running); err != nil {
@@ -348,7 +348,7 @@ func checkCapacity(ctx context.Context, tx pgx.Tx, v Session, exclude ...uuid.UU
 		maxQ, maxR = 100, 20
 	}
 	if queued >= maxQ || running >= maxR {
-		return fault("capacity_limit", "Hosted capacity is busy. Try again shortly.")
+		return temporaryAdmission("capacity_limit", "Hosted capacity is busy. Try again shortly.")
 	}
 	return nil
 }

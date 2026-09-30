@@ -61,7 +61,14 @@ func (r *Runner) bindInterpretedMaterial(ctx context.Context, o Operation, p *Pl
 	if route.MaterialQuote == "" || route.Intent != "prepare_tests" && route.Intent != "clarify" {
 		return nil
 	}
-	record, err := r.Service.Store.Inputs.Create(ctx, o.SessionID, o.Actor, deterministicID(o.ID, "inline-material"), "text", "Material from your message", []byte(route.MaterialQuote))
+	actor, deleted, err := r.Service.Store.currentOwner(ctx, o.SessionID)
+	if err != nil {
+		return err
+	}
+	if deleted {
+		return fault("operation_stopped", "This project was deleted.")
+	}
+	record, err := r.Service.Store.Inputs.Create(ctx, o.SessionID, actor, deterministicID(o.ID, "inline-material"), "text", "Material from your message", []byte(route.MaterialQuote))
 	if err != nil {
 		return err
 	}

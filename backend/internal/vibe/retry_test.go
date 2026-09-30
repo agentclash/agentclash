@@ -31,6 +31,11 @@ func TestIntegrationVibeRetryPreservesSourceAndDeduplicates(t *testing.T) {
 	v, original, _ := failedRetrySource(t, s)
 	ctx := context.Background()
 	service := &Service{Store: s, Config: testConfig(), Gate: testGate(t)}
+	actor := claimTestProject(t, s, v)
+	v, err := s.GetSession(ctx, actor, v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	request := RetryRequest{ClientID: uuid.New(), Revision: v.Revision}
 	retried, err := service.Retry(ctx, v.Actor, v.ID, original.ID, request)
 	if err != nil {

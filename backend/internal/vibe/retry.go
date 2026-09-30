@@ -39,7 +39,7 @@ func (s *Service) Retry(ctx context.Context, actor string, sessionID, operationI
 		return Operation{}, fault("invalid_state", "This earlier conversation is read-only. Start a new V1 project.")
 	}
 	source, err := s.Store.Operation(ctx, operationID)
-	if err != nil || source.SessionID != sessionID || source.Actor != actor {
+	if err != nil || source.SessionID != sessionID {
 		return Operation{}, fault("not_found", "That request is unavailable in this conversation.")
 	}
 	var original Plan
@@ -116,7 +116,7 @@ func manuallyRetryableRateLimit(o Operation) bool {
 }
 
 func validateRetrySource(v Session, source Operation, original Plan) error {
-	if source.SessionID != v.ID || source.Actor != v.Actor {
+	if source.SessionID != v.ID {
 		return fault("not_found", "That request is unavailable in this conversation.")
 	}
 	if source.Completion != nil || source.State == Completed {
@@ -201,7 +201,7 @@ func validateRetryAdmission(ctx context.Context, tx pgx.Tx, v Session, sub Submi
 		return fault("retry_not_allowed", "Use the original request's Retry action.")
 	}
 	source, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1 FOR UPDATE", *sub.RetryOf))
-	if err != nil || source.SessionID != v.ID || source.Actor != v.Actor {
+	if err != nil || source.SessionID != v.ID {
 		return fault("not_found", "That request is unavailable in this conversation.")
 	}
 	var original Plan

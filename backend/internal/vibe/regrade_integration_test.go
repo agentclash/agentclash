@@ -57,6 +57,11 @@ func TestIntegrationVibeRecordedRegradePreservesEvidence(t *testing.T) {
 		t.Fatal(original, err)
 	}
 	v, _ = s.GetSession(ctx, v.Actor, v.ID)
+	actor := claimTestProject(t, s, v)
+	v, err = s.GetSession(ctx, actor, v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	oldArtifacts := raw(v.Document.Artifacts)
 	regrade, err := prepare("retest", "regrade", &o.ID)
 	if err != nil {

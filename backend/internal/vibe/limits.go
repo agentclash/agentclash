@@ -101,10 +101,11 @@ func (l Limits) OperationTimeout() time.Duration {
 }
 
 type Fault struct {
-	RetryAvailableAt *time.Time         `json:"retry_available_at,omitempty"`
-	Code             string             `json:"code"`
-	Message          string             `json:"message"`
-	Context          *ContextDiagnostic `json:"context,omitempty"`
+	AdmissionRetryable bool               `json:"-"`
+	RetryAvailableAt   *time.Time         `json:"retry_available_at,omitempty"`
+	Code               string             `json:"code"`
+	Message            string             `json:"message"`
+	Context            *ContextDiagnostic `json:"context,omitempty"`
 }
 
 func (e *Fault) Error() string         { return e.Message }
@@ -119,4 +120,10 @@ func GraphCalls(cases, versions, repetitions, evaluators, samples, helpers, retr
 		return 0, fault("graph_limit", "The complete check requires too many model calls.")
 	}
 	return n, nil
+}
+
+// Retryability is assigned at the failed admission boundary, never inferred
+// from a broad accounting error that might represent a frozen funding account.
+func temporaryAdmission(code, message string) error {
+	return &Fault{Code: code, Message: message, AdmissionRetryable: true}
 }
