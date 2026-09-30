@@ -67,7 +67,7 @@ func prepareInterpretedPlan(p *Plan, cfg Config, primary ModelProfile) error {
 	if p.Cycle != nil && p.Cycle.Step != "check" || p.Document.Evaluation != nil && p.Document.Evaluation.Door == "build" {
 		version = buildAuthoringVersion
 		if cfg.MaterialBuild {
-			version = groundedBuildAuthoringVersion
+			version = contextualBuildAuthoringVersion
 		}
 		p.Conversation.ValidatorVersion = EntailmentSuiteValidatorVersion
 	}

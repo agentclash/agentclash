@@ -42,7 +42,7 @@ func TestIntegrationBuildCleaningRequestRepairsAllInventedClauses(t *testing.T) 
 				t.Fatal(err)
 			}
 			var p Plan
-			if err = json.Unmarshal(o.Input, &p); err != nil || p.AuthoringVersion != groundedBuildAuthoringVersion {
+			if err = json.Unmarshal(o.Input, &p); err != nil || p.AuthoringVersion != contextualBuildAuthoringVersion {
 				t.Fatal("new Build did not use the revised contract", err)
 			}
 			good := []TestScenario{
@@ -229,7 +229,7 @@ func TestIntegrationBuildRetryUpgradesLegacyPreparationWithoutDuplicatingRequest
 	if err := json.Unmarshal(retry.Input, &updated); err != nil {
 		t.Fatal(err)
 	}
-	if updated.AuthoringVersion != groundedBuildAuthoringVersion || updated.Submission.Content != cleaningCompanyRequest || updated.sourceMessageID() != original.sourceMessageID() || updated.Cycle.ID != original.Cycle.ID || updated.Cycle.ClarificationsUsed != original.Cycle.ClarificationsUsed {
+	if updated.AuthoringVersion != contextualBuildAuthoringVersion || updated.Submission.Content != cleaningCompanyRequest || updated.sourceMessageID() != original.sourceMessageID() || updated.Cycle.ID != original.Cycle.ID || updated.Cycle.ClarificationsUsed != original.Cycle.ClarificationsUsed {
 		t.Fatal("retry lost the source, question budget, or revised authoring contract")
 	}
 	saved, err := s.Store.Operation(ctx, o.ID)

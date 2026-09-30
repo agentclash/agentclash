@@ -26,12 +26,17 @@ func prototypeSources(policy PolicySnapshot) []string {
 	return rules
 }
 func (r *Runner) preparePrototype(ctx context.Context, o Operation, p Plan, a *Artifact, policy PolicySnapshot, used *bool) error {
+	if p.AuthoringVersion >= contextualBuildAuthoringVersion {
+		bindExecutionContext(a, p)
+	}
 	if p.Document.FormatVersion == 1 && a.AgentPrompt == "" && (p.Submission.Instructions != "" || p.Document.TargetInstructions != "") {
 		a.AgentPrompt = p.Submission.Instructions
 		if a.AgentPrompt == "" {
 			a.AgentPrompt = p.Document.TargetInstructions
 		}
-		a.ScopeNote = prototypeScopeFor(a.AgentPrompt)
+		if p.AuthoringVersion < contextualBuildAuthoringVersion {
+			a.ScopeNote = prototypeScopeFor(a.AgentPrompt)
+		}
 		return nil
 	}
 	if p.Cycle == nil && !p.continuingBuild() || p.Cycle != nil && p.Cycle.Step == "check" || a.AgentPrompt != "" {
@@ -46,8 +51,10 @@ func (r *Runner) preparePrototype(ctx context.Context, o Operation, p Plan, a *A
 		// directly avoids a second author inventing policy or copying its
 		// own harness instructions. No test inputs/answer keys are included.
 		a.AgentPrompt = PreviewPrompt("Help with the following job, following these supplied rules:\n\n" + strings.Join(rules, "\n"))
-		a.ScopeNote = prototypeScopeFor(strings.Join(rules, " "))
-		if p.AuthoringVersion >= materialBuildAuthoringVersion {
+		if p.AuthoringVersion < contextualBuildAuthoringVersion {
+			a.ScopeNote = prototypeScopeFor(strings.Join(rules, " "))
+		}
+		if p.AuthoringVersion >= materialBuildAuthoringVersion && p.AuthoringVersion < contextualBuildAuthoringVersion {
 			a.InputContract = materialContract()
 			a.RequiredCapabilities = p.RequiredCapabilities
 			a.ReferenceInputs = referenceInputs(p)
@@ -72,7 +79,9 @@ func (r *Runner) preparePrototype(ctx context.Context, o Operation, p Plan, a *A
 		return err
 	}
 	a.AgentPrompt = PreviewPrompt(instructions.Instructions)
-	a.ScopeNote = prototypeScopeFor(strings.Join(rules, " "))
+	if p.AuthoringVersion < contextualBuildAuthoringVersion {
+		a.ScopeNote = prototypeScopeFor(strings.Join(rules, " "))
+	}
 	return nil
 }
 
@@ -180,7 +189,7 @@ func (r *Runner) completeSamplePrototype(ctx context.Context, o Operation, p Pla
 		kind = "email"
 	}
 	if kind == "" {
-		if p.AuthoringVersion >= materialBuildAuthoringVersion {
+		if p.AuthoringVersion >= materialBuildAuthoringVersion && p.AuthoringVersion < contextualBuildAuthoringVersion {
 			task := ""
 			for _, fact := range effectiveConversationState(p).Brief.Facts {
 				if fact.Kind == "job" && (fact.Status == "stated" || fact.Status == "accepted") {

@@ -157,6 +157,9 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 	var commandHash string
 	changed := 0
 	if p.Conversation.Manual != nil {
+		if p.AuthoringVersion >= contextualBuildAuthoringVersion {
+			p.Conversation.NextState = cloneState(p.Conversation.State)
+		}
 		if p.Artifact == nil || p.Conversation.Policy == nil {
 			return fault("rules_required", "Describe the rules for these tests before editing them here. Your original tests are unchanged.")
 		}

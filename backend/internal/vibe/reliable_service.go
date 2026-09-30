@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -114,6 +115,15 @@ func (s *Service) PrepareSuiteEdit(ctx context.Context, actor string, id uuid.UU
 	}
 	p.AuthoringVersion = interpretedAuthoringVersion
 	p.Conversation.ContractVersion = "vibe-v15"
+	if s.Config.MaterialBuild && v.Document.Evaluation != nil && v.Document.Evaluation.Door == "build" {
+		p.AuthoringVersion = contextualBuildAuthoringVersion
+		p.Conversation.ContractVersion = "vibe-v21"
+		l.ContextTokens = max(l.ContextTokens, 32768)
+		p.ExecutionLimits = &l
+		if _, err = resolveMaterialSet(ctx, s.Store.DB, id, referenceInputs(p), false); err != nil {
+			return Operation{}, err
+		}
+	}
 	p.Conversation.Manual = &ManualSuiteEdit{Blueprint: blueprint}
 	p.Calls = 1
 	profile, err := s.Config.Profile(sub.Models.Assistant)
@@ -121,6 +131,21 @@ func (s *Service) PrepareSuiteEdit(ctx context.Context, actor string, id uuid.UU
 		return Operation{}, err
 	}
 	p.Conversation.Profile = &profile
+	if p.AuthoringVersion == contextualBuildAuthoringVersion {
+		in, e := BuildSuiteReviewInput(blueprint, *p.Conversation.Policy, p.Conversation.Sources, p.Conversation.CurrentRequest, suiteCaseCount(blueprint), l)
+		if e != nil {
+			return Operation{}, e
+		}
+		statefulReviewInput(p, &in)
+		in.Summary, in.PreviousPolicy, in.ValidatorVersion = a.Summary, p.Conversation.Policy, p.reviewVersion()
+		messages, e := authoringMessages(ctx, s.Store.DB, id, p, "review", reviewTaskMessages(p, in, profile))
+		if e != nil {
+			return Operation{}, e
+		}
+		if _, e = CountContext(provider.Request{Messages: messages, ResponseFormat: SuiteReviewFormatFor(profile, in), MaxOutputTokens: l.OutputTokens}, profile, l); e != nil {
+			return Operation{}, e
+		}
+	}
 	p.MaxCost, err = profile.BoundCost(profile.inputLimit(l), l.OutputTokens)
 	if err != nil {
 		return Operation{}, err

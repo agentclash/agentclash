@@ -20,6 +20,8 @@ func authoringPolicyFor(version int) (authoringPolicy, bool) {
 		return authoringPolicy{Version: 18, Contract: "vibe-v18", Calls: 10, Prototype: true}, true
 	case groundedBuildAuthoringVersion:
 		return authoringPolicy{Version: 20, Contract: "vibe-v20", Calls: 10, Prototype: true, Materials: true}, true
+	case contextualBuildAuthoringVersion:
+		return authoringPolicy{Version: 21, Contract: "vibe-v21", Calls: 10, Prototype: true, Materials: true}, true
 	}
 	return authoringPolicy{}, false
 }

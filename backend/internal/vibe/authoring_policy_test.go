@@ -5,7 +5,7 @@ import (
 )
 
 func TestAuthoringPoliciesRetainContractsAndBounds(t *testing.T) {
-	for _, version := range []int{15, 18, 20} {
+	for _, version := range []int{15, 18, 20, 21} {
 		policy, ok := authoringPolicyFor(version)
 		if !ok {
 			t.Fatal(version)
@@ -34,7 +34,7 @@ func TestAuthoringPoliciesRetainContractsAndBounds(t *testing.T) {
 		}
 
 	}
-	for _, version := range []int{0, 4, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21} {
+	for _, version := range []int{0, 4, 9, 10, 11, 12, 13, 14, 16, 17, 19, 22} {
 		if retainedAuthoring(version) {
 			t.Fatal("retired contract executable", version)
 		}

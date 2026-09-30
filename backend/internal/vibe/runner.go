@@ -43,7 +43,7 @@ func (r *Runner) Execute(ctx context.Context, id uuid.UUID) error {
 	if p.Grading != nil && !gradingSupported(p.Grading) {
 		return fault("grading_changed", "This check needs its recorded grading version. Earlier results are preserved.")
 	}
-	if p.AuthoringVersion > groundedBuildAuthoringVersion {
+	if p.AuthoringVersion > contextualBuildAuthoringVersion {
 		return fault("invalid_plan", "This request needs a newer conversation worker.")
 	}
 	ctx, cancel := context.WithDeadline(ctx, o.Deadline)
