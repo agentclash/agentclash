@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/storage"
+	"github.com/agentclash/agentclash/backend/internal/vibe/access"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -138,13 +139,11 @@ func (s *Repository) Create(ctx context.Context, session uuid.UUID, actor string
 		return r, err
 	}
 	defer tx.Rollback(ctx)
-	var owner string
-	if err = tx.QueryRow(ctx, "SELECT actor FROM vibe_sessions WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", session).Scan(&owner); err != nil {
+	v, err := access.Lookup(ctx, tx, actor, session, true, true)
+	if err != nil {
 		return r, err
 	}
-	if owner != actor {
-		return r, ErrUnavailable
-	}
+	owner := v.Actor
 	// Bound persistent storage as well as individual uploads. Account ownership,
 	// not workspace funding, determines whether the source expires.
 	var used int64
@@ -189,12 +188,25 @@ func (s *Repository) Create(ctx context.Context, session uuid.UUID, actor string
 	}
 	return r, nil
 }
-func (s *Repository) Delete(ctx context.Context, session, id uuid.UUID) error {
-	tag, err := s.DB.Exec(ctx, `UPDATE vibe_inputs SET status='deleted',pages='[]',warnings='[]',error='',deleted_at=COALESCE(deleted_at,now()) WHERE session_id=$1 AND id=$2`, session, id)
-	if err == nil && tag.RowsAffected() == 0 {
+func (s *Repository) Delete(ctx context.Context, session, id uuid.UUID, actor string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	if _, err = access.Lookup(ctx, tx, actor, session, true, true); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `UPDATE vibe_inputs SET status='deleted',pages='[]',warnings='[]',error='',deleted_at=COALESCE(deleted_at,now()) WHERE session_id=$1 AND id=$2`, session, id)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
 		return ErrUnavailable
 	}
-	return err
+	return tx.Commit(ctx)
 }
 func (s *Repository) Download(ctx context.Context, r Record) (io.ReadCloser, error) {
 	if !r.Usable(time.Now()) {

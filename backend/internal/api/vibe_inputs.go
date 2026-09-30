@@ -27,12 +27,8 @@ func inputError(w http.ResponseWriter, err error) {
 	vibeError(w, err)
 }
 func (h *VibeHandler) createInput(w http.ResponseWriter, r *http.Request) {
-	v, err := h.session(r)
+	v, err := h.authorizedSession(r, true)
 	if err != nil {
-		vibeError(w, err)
-		return
-	}
-	if err = h.Service.Store.Authorize(r.Context(), v, true); err != nil {
 		vibeError(w, err)
 		return
 	}
@@ -152,7 +148,7 @@ func (h *VibeHandler) createInput(w http.ResponseWriter, r *http.Request) {
 	vibeJSON(w, status, record)
 }
 func (h *VibeHandler) listInputs(w http.ResponseWriter, r *http.Request) {
-	v, err := h.session(r)
+	v, err := h.authorizedSession(r, false)
 	if err != nil {
 		vibeError(w, err)
 		return
@@ -165,7 +161,7 @@ func (h *VibeHandler) listInputs(w http.ResponseWriter, r *http.Request) {
 	vibeJSON(w, 200, records)
 }
 func (h *VibeHandler) input(r *http.Request) (inputs.Record, error) {
-	v, err := h.session(r)
+	v, err := h.authorizedSession(r, false)
 	if err != nil {
 		return inputs.Record{}, err
 	}
@@ -184,17 +180,14 @@ func (h *VibeHandler) getInput(w http.ResponseWriter, r *http.Request) {
 	vibeJSON(w, 200, record)
 }
 func (h *VibeHandler) deleteInput(w http.ResponseWriter, r *http.Request) {
-	v, e := h.session(r)
-	if e == nil {
-		e = h.Service.Store.Authorize(r.Context(), v, true)
-	}
-	if e != nil {
-		vibeError(w, e)
+	v, err := h.authorizedSession(r, true)
+	if err != nil {
+		vibeError(w, err)
 		return
 	}
-	record, err := h.input(r)
+	id, err := vibeID(r, "inputID")
 	if err == nil {
-		err = h.Service.Store.Inputs.Delete(r.Context(), record.SessionID, record.ID)
+		err = h.Service.Store.Inputs.Delete(r.Context(), v.ID, id, v.Actor)
 	}
 	if err != nil {
 		inputError(w, err)

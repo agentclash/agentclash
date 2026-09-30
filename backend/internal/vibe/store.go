@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/agentclash/agentclash/backend/internal/vibe/access"
 	"github.com/agentclash/agentclash/backend/internal/vibe/inputs"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -58,40 +59,21 @@ func (s *Store) transaction(ctx context.Context, fn func(pgx.Tx) error) error {
 	return tx.Commit(ctx)
 }
 
-func authorize(ctx context.Context, q dbQuery, actor string, ws *uuid.UUID, write bool) error {
-	if strings.HasPrefix(actor, "anon:") {
-		if ws == nil {
-			return nil
-		}
-		return fault("forbidden", "Sign in to save to a workspace.")
+func accessFault(err error) error {
+	if errors.Is(err, access.ErrForbidden) {
+		return fault("forbidden", "Account or workspace is unavailable.")
 	}
-	id, err := uuid.Parse(strings.TrimPrefix(actor, "user:"))
-	if err != nil {
-		return fault("forbidden", "Invalid identity.")
-	}
-	if ws == nil {
-		var ok bool
-		err = q.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE id=$1 AND archived_at IS NULL)", id).Scan(&ok)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return fault("forbidden", "Account is unavailable.")
-		}
-		return nil
-	}
-	var ok bool
-	err = q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM workspaces w JOIN organizations g ON g.id=w.organization_id AND g.archived_at IS NULL JOIN users u ON u.id=$1 AND u.archived_at IS NULL WHERE w.id=$2 AND w.archived_at IS NULL AND
- EXISTS(SELECT 1 FROM organization_memberships om WHERE om.organization_id=w.organization_id AND om.user_id=u.id AND om.membership_status='active') AND (
- EXISTS(SELECT 1 FROM workspace_memberships m WHERE m.workspace_id=w.id AND m.user_id=u.id AND m.membership_status='active' AND (NOT $3 OR m.role IN ('workspace_admin','workspace_member'))) OR
- EXISTS(SELECT 1 FROM organization_memberships m WHERE m.organization_id=w.organization_id AND m.user_id=u.id AND m.membership_status='active' AND m.role='org_admin')))`, id, *ws, write).Scan(&ok)
-	if err != nil {
-		return err
-	}
-	if !ok {
+	if errors.Is(err, access.ErrUnavailable) {
 		return fault("not_found", "Conversation or workspace is unavailable.")
 	}
-	return nil
+	return err
+}
+func authorize(ctx context.Context, q dbQuery, actor string, ws *uuid.UUID, write bool) error {
+	return accessFault(access.Authorize(ctx, q, actor, ws, write))
+}
+func (s *Store) SessionAccess(ctx context.Context, actor string, id uuid.UUID, write bool) (access.Session, error) {
+	v, err := access.Lookup(ctx, s.DB, actor, id, write, false)
+	return v, accessFault(err)
 }
 func (s *Store) Authorize(ctx context.Context, session Session, write bool) error {
 	return authorize(ctx, s.DB, session.Actor, session.WorkspaceID, write)
@@ -209,10 +191,8 @@ func (s *Store) GetSession(ctx context.Context, actor string, id uuid.UUID) (Ses
 		return v, err
 	}
 	rows.Close()
-	for i := range v.Operations {
-		if err = s.loadResults(ctx, tx, &v.Operations[i]); err != nil {
-			return v, err
-		}
+	if err = s.loadResults(ctx, tx, &v); err != nil {
+		return v, err
 	}
 	v.RuleCoverage = map[string][]RuleCoverage{}
 	for _, a := range v.Document.Artifacts {
@@ -278,33 +258,44 @@ func scanOperation(row scanner) (Operation, error) {
 func (s *Store) Operation(ctx context.Context, id uuid.UUID) (Operation, error) {
 	return scanOperation(s.DB.QueryRow(ctx, operationSelect+" WHERE id=$1", id))
 }
-func (s *Store) loadResults(ctx context.Context, tx pgx.Tx, o *Operation) error {
-	// Snapshots contain bounded verdict metadata. Full untrusted evidence is
-	// fetched per case, so a long conversation cannot amplify every SSE tick.
-	rows, err := tx.Query(ctx, `SELECT jsonb_build_object('case_key',case_key,'version',version,
+func (s *Store) loadResults(ctx context.Context, tx pgx.Tx, v *Session) error {
+	rows, err := tx.Query(ctx, `SELECT r.operation_id,jsonb_build_object('case_key',case_key,'version',version,
  'title',result->'title','verdict',result->'verdict','expected_checks',result->'expected_checks','error',result->'error',
  'checks',COALESCE((SELECT jsonb_agg(jsonb_build_object('key',c->'key','verdict',c->'verdict')) FROM jsonb_array_elements(COALESCE(NULLIF(result->'checks','null'::jsonb),'[]'::jsonb)) c),'[]'::jsonb))
- FROM vibe_case_results WHERE operation_id=$1 ORDER BY version,case_key`, o.ID)
+ FROM vibe_case_results r JOIN vibe_operations o ON o.id=r.operation_id WHERE o.session_id=$1 ORDER BY r.operation_id,version,case_key`, v.ID)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
+	byID := map[uuid.UUID]*Operation{}
+	for i := range v.Operations {
+		byID[v.Operations[i].ID] = &v.Operations[i]
+	}
 	for rows.Next() {
+		var id uuid.UUID
 		var b []byte
-		if err = rows.Scan(&b); err != nil {
+		if err = rows.Scan(&id, &b); err != nil {
 			return err
 		}
 		var c CaseResult
 		if err = json.Unmarshal(b, &c); err != nil {
 			return err
 		}
-		o.Results = append(o.Results, c)
+		if o := byID[id]; o != nil {
+			o.Results = append(o.Results, c)
+		}
 	}
-	if o.Kind == "check" || o.Kind == "retest" {
-		v := Aggregate(o.Results)
-		o.Scorecard = &v
+	if err = rows.Err(); err != nil {
+		return err
 	}
-	return rows.Err()
+	for i := range v.Operations {
+		o := &v.Operations[i]
+		if o.Kind == "check" || o.Kind == "retest" {
+			score := Aggregate(o.Results)
+			o.Scorecard = &score
+		}
+	}
+	return nil
 }
 
 func (s *Store) GetCase(ctx context.Context, actor string, id uuid.UUID, key string) (CaseResult, error) {

@@ -45,7 +45,7 @@ REQUIRED={
   "TestIntegrationCrashKeepsJournaledEvidenceWithoutReexecution",
   "TestIntegrationStopMidProviderAndNoRetry", 
   ],
- "github.com/agentclash/agentclash/backend/internal/api": ["TestVibeBuildRecoveryHTTPKeepsTestsAndWorkingVersion", "TestVibeIntegrationTwoDoorImportsPreserveEvidence", "TestVibeExpiredAuthenticationHTTP", "TestVibeIntegrationSaveUsesSelectedModels", "TestVibeRetryCooldownHTTP", "TestVibeGroundedResultsAndRegrade", "TestVibeInteractionHTTPBoundary"],
+ "github.com/agentclash/agentclash/backend/internal/api": ["TestVibeFileAndSnapshotQueriesAreBounded", "TestVibeBuildRecoveryHTTPKeepsTestsAndWorkingVersion", "TestVibeIntegrationTwoDoorImportsPreserveEvidence", "TestVibeExpiredAuthenticationHTTP", "TestVibeIntegrationSaveUsesSelectedModels", "TestVibeRetryCooldownHTTP", "TestVibeGroundedResultsAndRegrade", "TestVibeInteractionHTTPBoundary"],
  "github.com/agentclash/agentclash/backend/internal/vibe/interaction": [
   "TestContractsAcceptSupportedWireData", "TestContractsRejectAmbiguousOrAuthorityBearingData",
   "TestContractsRejectMalformedAndFutureVersions"],

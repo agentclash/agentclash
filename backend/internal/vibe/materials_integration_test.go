@@ -201,7 +201,7 @@ func TestIntegrationDocumentPolicySourceCannotOutliveItsGrantOrInput(t *testing.
 	if !found {
 		t.Fatal("explicit document policy missing")
 	}
-	if err = s.Store.Inputs.Delete(ctx, v.ID, b.ID); err != nil {
+	if err = s.Store.Inputs.Delete(ctx, v.ID, b.ID, v.Actor); err != nil {
 		t.Fatal(err)
 	}
 	if err = validateBoundSources(ctx, s.Store.DB, v.ID, p); err == nil {
@@ -231,7 +231,7 @@ func TestIntegrationMaterialOwnershipExpiryIdempotencyAndDeletion(t *testing.T) 
 	if _, err = inputs.Resolve(ctx, s.Store.DB, uuid.New(), binding); err == nil {
 		t.Fatal("cross-project material accepted")
 	}
-	if err = s.Store.Inputs.Delete(ctx, v.ID, a.ID); err != nil {
+	if err = s.Store.Inputs.Delete(ctx, v.ID, a.ID, v.Actor); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = inputs.Resolve(ctx, s.Store.DB, v.ID, binding); err == nil {

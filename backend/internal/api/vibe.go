@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"github.com/agentclash/agentclash/backend/internal/enquiries"
 	"github.com/agentclash/agentclash/backend/internal/vibe"
+	"github.com/agentclash/agentclash/backend/internal/vibe/access"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"io"
@@ -131,6 +132,12 @@ func vibeJSON(w http.ResponseWriter, status int, v any) {
 	_ = encoder.Encode(v)
 }
 func vibeError(w http.ResponseWriter, err error) {
+	if errors.Is(err, access.ErrUnavailable) {
+		err = &vibe.Fault{Code: "not_found", Message: "Project is unavailable."}
+	}
+	if errors.Is(err, access.ErrForbidden) {
+		err = &vibe.Fault{Code: "forbidden", Message: "Account or workspace is unavailable."}
+	}
 	code, message, status := "unavailable", "Vibe could not complete this request. Try again shortly.", 503
 	var f *vibe.Fault
 	if errors.As(err, &f) {
@@ -333,6 +340,21 @@ func (h *VibeHandler) session(r *http.Request) (vibe.Session, error) {
 	v, err := h.Service.Store.GetSession(r.Context(), actor, id)
 	if err == nil && h.Service.Config.TwoDoor && v.Document.FormatVersion != 1 && r.Method != http.MethodGet && !strings.HasSuffix(r.URL.Path, "/claim") {
 		return vibe.Session{}, &vibe.Fault{Code: "invalid_state", Message: "This is a saved earlier conversation. Start a new V1 project."}
+	}
+	return v, err
+}
+func (h *VibeHandler) authorizedSession(r *http.Request, write bool) (access.Session, error) {
+	actor, err := h.actor(r)
+	if err != nil {
+		return access.Session{}, err
+	}
+	id, err := vibeID(r, "sessionID")
+	if err != nil {
+		return access.Session{}, err
+	}
+	v, err := h.Service.Store.SessionAccess(r.Context(), actor, id, write)
+	if err == nil && write && h.Service.Config.TwoDoor && v.FormatVersion != 1 {
+		return access.Session{}, &vibe.Fault{Code: "invalid_state", Message: "Start a new V1 project."}
 	}
 	return v, err
 }

@@ -17,6 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/agentclash/agentclash/backend/internal/email"
+	"github.com/agentclash/agentclash/backend/internal/vibe/access"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -26,6 +27,8 @@ var ErrInvalid = errors.New("Provide a reply email and a summary of at most 12,0
 var ErrQuota = errors.New("This project already has three enquiries today. Use your existing receipt or email us directly.")
 
 var ErrDisabled = errors.New("Contact isn't set up yet. You can copy your summary.")
+var ErrRevision = errors.New("project revision unavailable")
+var ErrUnavailable = errors.New("project or source unavailable")
 var ErrConflict = errors.New("This enquiry ID already belongs to another request.")
 
 type Source struct {
@@ -83,6 +86,8 @@ func (s *Store) Get(ctx context.Context, session, client uuid.UUID) (Receipt, er
 	return r, err
 }
 func (s *Store) Create(ctx context.Context, session uuid.UUID, actor string, r Request) (Receipt, error) {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
 	if err := Validate(r); err != nil {
 		return Receipt{}, err
 	}
@@ -94,12 +99,9 @@ func (s *Store) Create(ctx context.Context, session uuid.UUID, actor string, r R
 		return Receipt{}, err
 	}
 	defer tx.Rollback(ctx)
-	var owner string
-	if err = tx.QueryRow(ctx, "SELECT actor FROM vibe_sessions WHERE id=$1 AND deleted_at IS NULL FOR UPDATE", session).Scan(&owner); err != nil {
+	v, err := access.Lookup(ctx, tx, actor, session, true, true)
+	if err != nil {
 		return Receipt{}, err
-	}
-	if owner != actor {
-		return Receipt{}, pgx.ErrNoRows
 	}
 	var oldHash string
 	var receipt Receipt
@@ -112,6 +114,28 @@ func (s *Store) Create(ctx context.Context, session uuid.UUID, actor string, r R
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
 		return Receipt{}, err
+	}
+	if r.Source.Revision > v.Revision {
+		return Receipt{}, ErrRevision
+	}
+	var valid bool
+	if r.Source.ArtifactID != nil {
+		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_sessions s,jsonb_array_elements(COALESCE(s.document->'artifacts','[]'::jsonb)) a WHERE s.id=$1 AND a->>'id'=$2)`, session, r.Source.ArtifactID.String()).Scan(&valid)
+		if err != nil {
+			return Receipt{}, err
+		}
+		if !valid {
+			return Receipt{}, ErrUnavailable
+		}
+	}
+	if r.Source.OperationID != nil {
+		err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND id=$2)`, session, *r.Source.OperationID).Scan(&valid)
+		if err != nil {
+			return Receipt{}, err
+		}
+		if !valid {
+			return Receipt{}, ErrUnavailable
+		}
 	}
 	if !s.Available() {
 		return Receipt{}, ErrDisabled

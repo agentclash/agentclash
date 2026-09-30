@@ -243,27 +243,60 @@ func validateRetryAdmission(ctx context.Context, tx pgx.Tx, v Session, sub Submi
 // Eligibility is advisory UI data; Submit repeats all guards under its writer
 // lock. Read the complete failed plan only for potential retry candidates.
 func (s *Store) populateRetryEligibility(ctx context.Context, tx pgx.Tx, v *Session) error {
+	ids := []uuid.UUID{}
+	byID := map[uuid.UUID]*Operation{}
 	for i := range v.Operations {
 		o := &v.Operations[i]
-		if o.Completion != nil || (o.State != Failed && o.State != Cancelled && o.State != Expired) || (o.Kind != "message" && o.Kind != "build") || ((o.Billing != Settled && o.Billing != Released) && !manuallyRetryableRateLimit(*o)) {
-			continue
+		if o.Completion == nil && (o.State == Failed || o.State == Cancelled || o.State == Expired) && (o.Kind == "message" || o.Kind == "build") && (o.Billing == Settled || o.Billing == Released || manuallyRetryableRateLimit(*o)) {
+			ids = append(ids, o.ID)
+			byID[o.ID] = o
 		}
-		full, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1", o.ID))
-		if err != nil {
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	rows, err := tx.Query(ctx, operationSelect+" WHERE id=ANY($1)", ids)
+	if err != nil {
+		return err
+	}
+	full := []Operation{}
+	for rows.Next() {
+		o, e := scanOperation(rows)
+		if e != nil {
+			rows.Close()
+			return e
+		}
+		full = append(full, o)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	uncertain := map[uuid.UUID]bool{}
+	rows, err = tx.Query(ctx, `SELECT DISTINCT operation_id FROM vibe_attempts WHERE operation_id=ANY($1) AND (actual_cost IS NULL OR completed_at IS NULL OR state='DISPATCHING')`, ids)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id uuid.UUID
+		if err = rows.Scan(&id); err != nil {
 			return err
 		}
+		uncertain[id] = true
+	}
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	for _, o := range full {
 		var plan Plan
-		if err = json.Unmarshal(full.Input, &plan); err != nil {
+		if err = json.Unmarshal(o.Input, &plan); err != nil {
 			return err
 		}
-		if validateRetrySource(*v, full, plan) != nil {
-			continue
+		if validateRetrySource(*v, o, plan) == nil {
+			byID[o.ID].Retryable = !uncertain[o.ID] || manuallyRetryableRateLimit(o)
 		}
-		var uncertain bool
-		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_attempts WHERE operation_id=$1 AND (actual_cost IS NULL OR completed_at IS NULL OR state='DISPATCHING'))`, o.ID).Scan(&uncertain); err != nil {
-			return err
-		}
-		o.Retryable = !uncertain || manuallyRetryableRateLimit(full)
 	}
 	return nil
 }

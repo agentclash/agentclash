@@ -49,6 +49,8 @@ Status: implemented. Local inventory found 191 pre-V1 projects and 30 V1 project
 - Batch case summaries and retry metadata across operations; reuse loaded preparation data while rechecking write authorization under locks.
 - Acceptance: file/download/delete reads stay constant with 1 versus 100 operations; snapshots stay bounded; revoked access fails.
 
+Status: implemented. File and contact endpoints use `access.Lookup`; file deletion and enquiry creation repeat permissions under the parent lock. Snapshot case summaries and retry metadata use batched queries. HTTP regression verifies identical query counts with 1 and 100 operations, hides full evidence, and rejects revoked access inside writes.
+
 ### 5. Scoped locking
 
 - Pass the five-second transaction context into every callback and database operation.
