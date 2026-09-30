@@ -59,6 +59,8 @@ Status: implemented. File and contact endpoints use `access.Lookup`; file deleti
 - Reconciliation resolves the owner, locks in order and rechecks accounting. Remove the universal advisory lock only after all dependent invariants migrate.
 - Acceptance: unrelated projects can edit/cancel independently; no double charge, capacity breach or premature release of uncertain holds.
 
+Status: implemented. Project/operation/account locks replace the universal advisory lock; bounded contexts reach every transaction callback. Provider content and diagnostics recheck deletion under the parent lock. Race regressions cover independent edits/cancellation, exact settlement/grants, retained uncertain holds and cross-project capacity counting. Final browser/CI verification remains the rollout gate.
+
 ## Required verification and rollout
 
 Use isolated migrated test databases and fake inference for the automated floor. Use `agent-run` for heavy checks.

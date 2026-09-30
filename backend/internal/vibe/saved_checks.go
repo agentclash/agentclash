@@ -28,7 +28,7 @@ type SavedCheck struct {
 
 func (s *Store) SaveCheck(ctx context.Context, actor string, id uuid.UUID, revision int64, ws, baseline uuid.UUID) (SavedCheck, error) {
 	var saved SavedCheck
-	err := s.transaction(ctx, func(tx pgx.Tx) error {
+	err := s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
 		if err != nil {
 			return err

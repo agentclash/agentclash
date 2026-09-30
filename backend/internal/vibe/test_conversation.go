@@ -2,7 +2,6 @@ package vibe
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -38,22 +37,17 @@ func validConversationIntent(intent string) bool {
 }
 
 func (s *Store) commitConversationDecision(ctx context.Context, o Operation, p Plan, intent string) error {
-	return s.transaction(ctx, func(tx pgx.Tx) error {
-		var previous []byte
-		var state Execution
-		if err := tx.QueryRow(ctx, "SELECT conversation_decision,state FROM vibe_operations WHERE id=$1 FOR UPDATE", o.ID).Scan(&previous, &state); err != nil {
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		locked, err := lockOperation(ctx, tx, o.ID, projectWrite)
+		if err != nil {
 			return err
 		}
-		if state != Running {
+		if locked.State != Running {
 			return fault("operation_stopped", "The operation was stopped.")
 		}
 		decision := ConversationDecision{Intent: intent, SourceMessageID: p.sourceMessageID()}
-		if len(previous) > 0 {
-			var saved ConversationDecision
-			if err := json.Unmarshal(previous, &saved); err != nil {
-				return err
-			}
-			if saved != decision {
+		if locked.Decision != nil {
+			if *locked.Decision != decision {
 				return fault("action_changed", "The response changed its action unexpectedly. Your tests are unchanged; please try again.")
 			}
 			return nil

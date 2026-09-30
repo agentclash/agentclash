@@ -30,7 +30,10 @@ func (s *Store) BeginCheckout(ctx context.Context, user, org, id uuid.UUID, p Cr
 	if id == uuid.Nil || p.ID == "" || p.Credits <= 0 || p.Credits > 1000*NanoUSD || p.PriceMinor <= 0 || p.PriceMinor > 1_000_000 || p.Currency != "USD" {
 		return c, false, fault("invalid_product", "The credit product is not configured.")
 	}
-	err := s.transaction(ctx, func(tx pgx.Tx) error {
+	err := s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := lockScopes(ctx, tx, "checkout:"+id.String()); err != nil {
+			return err
+		}
 		var allowed bool
 		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM organization_memberships m JOIN organizations g ON g.id=m.organization_id AND g.archived_at IS NULL JOIN users u ON u.id=m.user_id AND u.archived_at IS NULL WHERE m.organization_id=$1 AND m.user_id=$2 AND m.role='org_admin' AND m.membership_status='active')`, org, user).Scan(&allowed); err != nil {
 			return err
@@ -79,7 +82,10 @@ func (s *Store) ApplyCreditPayment(ctx context.Context, id, org uuid.UUID, payme
 	if payment == "" || len(payment) > 256 || subtotal <= 0 {
 		return fmt.Errorf("invalid payment evidence")
 	}
-	return s.transaction(ctx, func(tx pgx.Tx) error {
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := lockScopes(ctx, tx, "payment:"+payment); err != nil {
+			return err
+		}
 		var c Checkout
 		if err := tx.QueryRow(ctx, "SELECT organization_id,product_id,credits,price_minor,currency,remote_id FROM vibe_credit_checkouts WHERE id=$1 FOR UPDATE", id).Scan(&c.OrganizationID, &c.Product.ID, &c.Product.Credits, &c.Product.PriceMinor, &c.Product.Currency, &c.RemoteID); err != nil {
 			return err
@@ -121,7 +127,10 @@ func (s *Store) ReviewCreditPayment(ctx context.Context, source, payment, kind s
 	if source == "" || payment == "" || len(source) > 512 || len(payment) > 256 {
 		return fmt.Errorf("invalid credit review evidence")
 	}
-	return s.transaction(ctx, func(tx pgx.Tx) error {
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		if err := lockScopes(ctx, tx, "payment:"+payment); err != nil {
+			return err
+		}
 		if _, err := tx.Exec(ctx, "INSERT INTO vibe_credit_reviews(source,payment_id,event_type,payload) VALUES($1,$2,$3,$4) ON CONFLICT DO NOTHING", source, payment, kind, payload); err != nil {
 			return err
 		}

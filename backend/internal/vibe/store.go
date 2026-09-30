@@ -39,10 +39,9 @@ func raw(v any) []byte {
 	return b
 }
 
-// Short DB-only critical sections serialize admission, grants and settlement.
-// No provider, Redis or Temporal requests occur while this lock is held.
-// Account row locks additionally protect callers that grant from billing.
-func (s *Store) transaction(ctx context.Context, fn func(pgx.Tx) error) error {
+// DB-only callbacks receive the transaction deadline, including lock waits.
+// External provider, Redis and Temporal requests run outside these callbacks.
+func (s *Store) transaction(ctx context.Context, fn func(context.Context, pgx.Tx) error) error {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	tx, err := s.DB.Begin(ctx)
@@ -50,10 +49,7 @@ func (s *Store) transaction(ctx context.Context, fn func(pgx.Tx) error) error {
 		return err
 	}
 	defer tx.Rollback(ctx)
-	if _, err = tx.Exec(ctx, "SELECT pg_advisory_xact_lock(8318071246)"); err != nil {
-		return err
-	}
-	if err = fn(tx); err != nil {
+	if err = fn(ctx, tx); err != nil {
 		return err
 	}
 	return tx.Commit(ctx)
@@ -103,7 +99,7 @@ func (s *Store) CreateSession(ctx context.Context, actor string, ws *uuid.UUID, 
 
 func (s *Store) createSession(ctx context.Context, actor string, ws *uuid.UUID, id uuid.UUID, d Document) (Session, error) {
 	var v Session
-	err := s.transaction(ctx, func(tx pgx.Tx) error {
+	err := s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
 		v, err = s.createSessionTx(ctx, tx, actor, ws, id, d)
 		return err
@@ -125,6 +121,22 @@ func (s *Store) createSessionTx(ctx context.Context, tx pgx.Tx, actor string, ws
 		if !errors.As(err, &f) || f.Code != "not_found" {
 			return Session{}, err
 		}
+	}
+	// No row exists yet. Serialize only this actor's creation count and the
+	// client-supplied ID, then recheck for a concurrent idempotent creation.
+	if err := lockScopes(ctx, tx, "session-create:actor:"+actor, "session-create:id:"+id.String()); err != nil {
+		return Session{}, err
+	}
+	var existing bool
+	if err := tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_sessions WHERE id=$1)", id).Scan(&existing); err != nil {
+		return Session{}, err
+	}
+	if existing {
+		v, err := scanSession(tx.QueryRow(ctx, sessionSelect, id))
+		if err != nil || v.Actor != actor {
+			return Session{}, fault("not_found", "Conversation is unavailable.")
+		}
+		return v, nil
 	}
 	var count int
 	if err := tx.QueryRow(ctx, "SELECT count(*) FROM vibe_sessions WHERE actor=$1", actor).Scan(&count); err != nil {
@@ -408,7 +420,7 @@ func (s *Store) updateDocument(ctx context.Context, tx pgx.Tx, v Session) error 
 	return err
 }
 func (s *Store) Edit(ctx context.Context, actor string, id uuid.UUID, revision int64, fn func(*Session) error) error {
-	return s.transaction(ctx, func(tx pgx.Tx) error {
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
 		if err != nil {
 			return err
@@ -446,26 +458,29 @@ func (s *Store) Grant(ctx context.Context, account, source string, amount int64)
 	if amount <= 0 || amount > 1_000_000*NanoUSD || source == "" {
 		return fmt.Errorf("invalid credit grant")
 	}
-	return s.transaction(ctx, func(tx pgx.Tx) error { return grant(ctx, tx, account, source, amount) })
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error { return grant(ctx, tx, account, source, amount) })
 }
 func grant(ctx context.Context, tx pgx.Tx, account, source string, amount int64) error {
 	if _, err := tx.Exec(ctx, "INSERT INTO vibe_accounts(id) VALUES($1) ON CONFLICT DO NOTHING", account); err != nil {
 		return err
 	}
-	var oldAccount string
-	var oldAmount int64
-	err := tx.QueryRow(ctx, "SELECT account_id,amount FROM vibe_grants WHERE source=$1", source).Scan(&oldAccount, &oldAmount)
-	if err == nil {
+	if err := lockFunding(ctx, tx, []string{account}); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, "INSERT INTO vibe_grants(source,account_id,amount) VALUES($1,$2,$3) ON CONFLICT DO NOTHING", source, account, amount)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		var oldAccount string
+		var oldAmount int64
+		if err = tx.QueryRow(ctx, "SELECT account_id,amount FROM vibe_grants WHERE source=$1", source).Scan(&oldAccount, &oldAmount); err != nil {
+			return err
+		}
 		if oldAccount != account || oldAmount != amount {
 			return fault("idempotency_conflict", "Credit source was already applied with different details.")
 		}
 		return nil
-	}
-	if !errors.Is(err, pgx.ErrNoRows) {
-		return err
-	}
-	if _, err = tx.Exec(ctx, "INSERT INTO vibe_grants(source,account_id,amount) VALUES($1,$2,$3)", source, account, amount); err != nil {
-		return err
 	}
 	_, err = tx.Exec(ctx, "UPDATE vibe_accounts SET balance=balance+$2 WHERE id=$1", account, amount)
 	return err
@@ -479,7 +494,7 @@ func (s *Store) Cursor(ctx context.Context, session uuid.UUID) (int64, error) {
 
 func (s *Store) saveDraft(ctx context.Context, actor string, id uuid.UUID, revision int64, ws uuid.UUID, artifact Artifact, composition json.RawMessage, models Models, explicitModels bool, baseline *uuid.UUID, approve ...bool) (uuid.UUID, error) {
 	var draftID uuid.UUID
-	err := s.transaction(ctx, func(tx pgx.Tx) error {
+	err := s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
 		if err != nil {
 			return err
@@ -571,45 +586,74 @@ func (s *Store) saveDraft(ctx context.Context, actor string, id uuid.UUID, revis
 	return draftID, err
 }
 
+// Claim locks the whole existing family in ID order. The second discovery
+// detects an evaluation created while those locks were being acquired.
 func (s *Store) Claim(ctx context.Context, anonActor, userActor string, id uuid.UUID) error {
-	return s.transaction(ctx, func(tx pgx.Tx) error {
-		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var root uuid.UUID
+		if err := tx.QueryRow(ctx, "SELECT COALESCE((SELECT chat_id FROM vibe_evaluation_contexts WHERE evaluation_id=$1),$1)", id).Scan(&root); err != nil {
+			return err
+		}
+		ids, err := sessionFamily(ctx, tx, root)
 		if err != nil {
 			return err
 		}
-		if v.Actor == userActor {
-			_, err := tx.Exec(ctx, `UPDATE vibe_inputs SET expires_at=NULL WHERE session_id=$1 AND expires_at>now() AND status NOT IN ('deleted','expired')`, id)
+		var v Session
+		for _, member := range ids {
+			locked, e := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", member))
+			if e != nil {
+				return e
+			}
+			if member == id {
+				v = locked
+			}
+		}
+		latest, err := sessionFamily(ctx, tx, root)
+		if err != nil {
 			return err
 		}
-		if v.Actor != anonActor || !v.Anonymous {
+		if len(ids) != len(latest) {
+			return fault("revision_conflict", "The chat changed. Try claiming it again.")
+		}
+		if v.ID == uuid.Nil {
 			return fault("not_found", "Conversation is unavailable.")
 		}
 		if err = authorize(ctx, tx, userActor, nil, true); err != nil {
 			return err
 		}
-		// Pending work retains its immutable funding identity but dispatch checks
-		// the new session owner's current permissions. Claim never runs a model.
-		_, err = tx.Exec(ctx, "UPDATE vibe_sessions SET actor=$2,revision=revision+1,updated_at=now() WHERE id=$1", id, userActor)
-		if err != nil {
+		if v.Actor == userActor {
+			_, err = tx.Exec(ctx, `UPDATE vibe_inputs SET expires_at=NULL WHERE session_id=ANY($1) AND expires_at>now() AND status NOT IN ('deleted','expired')`, ids)
 			return err
 		}
-		// The cookie-authenticated owner claims the chat and its contexts as a
-		// group. Only rows still owned by that exact anonymous actor can move.
-		var root uuid.UUID
-		e := tx.QueryRow(ctx, "SELECT chat_id FROM vibe_evaluation_contexts WHERE evaluation_id=$1", id).Scan(&root)
-		if e == pgx.ErrNoRows {
-			root = id
-		} else if e != nil {
-			return e
+		if v.Actor != anonActor || !v.Anonymous {
+			return fault("not_found", "Conversation is unavailable.")
 		}
-		if _, err = tx.Exec(ctx, `UPDATE vibe_sessions SET actor=$3,revision=revision+1,updated_at=now() WHERE actor=$2 AND (id=$1 OR id IN(SELECT evaluation_id FROM vibe_evaluation_contexts WHERE chat_id=$1))`, root, anonActor, userActor); err != nil {
+		// Immutable trial/funding identities do not change when the owner signs up.
+		if _, err = tx.Exec(ctx, "UPDATE vibe_sessions SET actor=$3,revision=revision+1,updated_at=now() WHERE id=ANY($1) AND actor=$2", ids, anonActor, userActor); err != nil {
 			return err
 		}
-		if _, err = tx.Exec(ctx, `UPDATE vibe_inputs i SET expires_at=NULL FROM vibe_sessions s WHERE i.session_id=s.id AND s.actor=$2 AND (s.id=$1 OR s.id IN (SELECT evaluation_id FROM vibe_evaluation_contexts WHERE chat_id=$1)) AND i.expires_at>now() AND i.status NOT IN ('deleted','expired')`, root, userActor); err != nil {
+		if _, err = tx.Exec(ctx, `UPDATE vibe_inputs i SET expires_at=NULL FROM vibe_sessions s WHERE i.session_id=s.id AND s.actor=$2 AND s.id=ANY($1) AND i.expires_at>now() AND i.status NOT IN ('deleted','expired')`, ids, userActor); err != nil {
 			return err
 		}
 		return event(ctx, tx, id, nil, "session.claimed")
 	})
+}
+
+func sessionFamily(ctx context.Context, tx pgx.Tx, root uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := tx.Query(ctx, "SELECT id FROM vibe_sessions WHERE deleted_at IS NULL AND (id=$1 OR id IN(SELECT evaluation_id FROM vibe_evaluation_contexts WHERE chat_id=$1)) ORDER BY id", root)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	ids := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err = rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 func timestamp() time.Time { return time.Now().UTC() }

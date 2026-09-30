@@ -62,14 +62,23 @@ func (s *Store) RecordDomainOutcome(ctx context.Context, operationID uuid.UUID, 
 			return fault("invalid_outcome", "The operation diagnostic exceeded its bounds.")
 		}
 	}
-	tag, err := s.DB.Exec(ctx, `UPDATE vibe_attempts SET domain_outcome=$3 WHERE operation_id=$1 AND step_key=$2 AND (domain_outcome IS NULL OR domain_outcome=$3::jsonb)`, operationID, step, raw(outcome))
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() != 1 {
-		return fault("outcome_conflict", "The recorded operation outcome cannot be replaced.")
-	}
-	return nil
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		o, err := lockOperation(ctx, tx, operationID, projectWrite)
+		if err != nil {
+			return err
+		}
+		if _, err = scanSession(tx.QueryRow(ctx, sessionSelect, o.SessionID)); err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, `UPDATE vibe_attempts SET domain_outcome=$3 WHERE operation_id=$1 AND step_key=$2 AND (domain_outcome IS NULL OR domain_outcome=$3::jsonb)`, operationID, step, raw(outcome))
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return fault("outcome_conflict", "The recorded operation outcome cannot be replaced.")
+		}
+		return nil
+	})
 }
 
 func boundedOutcomeName(value string) bool {

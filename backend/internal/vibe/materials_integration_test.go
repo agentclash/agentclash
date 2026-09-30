@@ -313,10 +313,16 @@ func TestIntegrationEnquiryAndProjectDeletion(t *testing.T) {
 	if _, err = s.Store.Inputs.Create(ctx, v.ID, v.Actor, uuid.New(), "text", "late", []byte("late write")); err == nil {
 		t.Fatal("late input resurrected project")
 	}
-	if err = s.Store.CleanupProjects(ctx); err != nil {
-		t.Fatal(err)
+	// Other fixtures may leave more than one batch of earlier eligible rows.
+	for batch := 0; batch < 10; batch++ {
+		if err = s.Store.CleanupProjects(ctx); err != nil {
+			t.Fatal(err)
+		}
+		receipt, err = s.Store.DeletionStatus(ctx, v.Actor, v.ID)
+		if err != nil || receipt.Status == "deleted" {
+			break
+		}
 	}
-	receipt, err = s.Store.DeletionStatus(ctx, v.Actor, v.ID)
 	if err != nil || receipt.Status != "deleted" {
 		t.Fatal(receipt, err)
 	}

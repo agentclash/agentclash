@@ -101,7 +101,7 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 	}
 	var o Operation
 	hash := Hash(raw(sub))
-	err := s.transaction(ctx, func(tx pgx.Tx) error {
+	err := s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
 		if err != nil {
 			return err
@@ -110,6 +110,9 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 			return fault("not_found", "Conversation is unavailable.")
 		}
 		if err = authorize(ctx, tx, actor, v.WorkspaceID, true); err != nil {
+			return err
+		}
+		if err = lockCapacity(ctx, tx, v); err != nil {
 			return err
 		}
 		var oldHash string
@@ -363,6 +366,7 @@ func enqueue(ctx context.Context, tx pgx.Tx, o *Operation) error {
 }
 func reserve(ctx context.Context, tx pgx.Tx, v Session, o Operation, cfg Config) error {
 	accounts := []string{}
+	grants := map[string]int64{}
 	if cfg.TestingLocally() && !cfg.FreeOnly {
 		// One operator-funded budget covers every local session. The stable
 		// grant ID prevents restarts or new conversations from refilling it.
@@ -370,9 +374,7 @@ func reserve(ctx context.Context, tx pgx.Tx, v Session, o Operation, cfg Config)
 			return fault("local_budget_required", "Configure the local testing budget before using paid models.")
 		}
 		account := "local:" + cfg.Campaign
-		if err := grant(ctx, tx, account, "initial:"+account, cfg.LocalBudget); err != nil {
-			return err
-		}
+		grants[account] = cfg.LocalBudget
 		accounts = []string{account}
 	} else if v.Anonymous {
 		if cfg.AnonymousDaily <= 0 || cfg.AnonymousCampaign <= 0 || cfg.Campaign == "" {
@@ -395,19 +397,13 @@ func reserve(ctx context.Context, tx pgx.Tx, v Session, o Operation, cfg Config)
 			}
 			buildAllowance = version >= 2 && extra == 0
 		}
-		for key, amount := range map[string]int64{trial: TrialBudget, explore: TrialExploreBudget, day: cfg.AnonymousDaily, campaign: cfg.AnonymousCampaign} {
-			if err := grant(ctx, tx, key, "initial:"+key, amount); err != nil {
-				return err
-			}
-		}
+		grants = map[string]int64{trial: TrialBudget, explore: TrialExploreBudget, day: cfg.AnonymousDaily, campaign: cfg.AnonymousCampaign}
 		accounts = []string{trial, day, campaign}
 		if buildAllowance {
 			// This sub-account is keyed to the stable guest identity, not a new
 			// session or retry. Signup and new projects cannot refill it.
 			build := trial + ":build-v19"
-			if err := grant(ctx, tx, build, "initial:"+build, FirstBuildSpendCeiling); err != nil {
-				return err
-			}
+			grants[build] = FirstBuildSpendCeiling
 			accounts = append(accounts, build)
 		} else if o.Kind != "check" && o.Kind != "retest" {
 			accounts = append(accounts, explore)
@@ -422,7 +418,38 @@ func reserve(ctx context.Context, tx pgx.Tx, v Session, o Operation, cfg Config)
 		}
 		accounts = []string{"org:" + org.String()}
 		if cfg.FreeOnly && o.MaxCost == 0 {
-			if _, err := tx.Exec(ctx, "INSERT INTO vibe_accounts(id) VALUES($1) ON CONFLICT DO NOTHING", accounts[0]); err != nil {
+			grants[accounts[0]] = 0
+		}
+	}
+	// Creation, initial grants and holds use the same complete sorted set.
+	// Locking only the held accounts after granting can invert settlement order.
+	all := append([]string{}, accounts...)
+	for key := range grants {
+		all = append(all, key)
+	}
+	sort.Strings(all)
+	for i, key := range all {
+		if i > 0 && all[i-1] == key {
+			continue
+		}
+		if _, create := grants[key]; create {
+			if _, err := tx.Exec(ctx, "INSERT INTO vibe_accounts(id) VALUES($1) ON CONFLICT DO NOTHING", key); err != nil {
+				return err
+			}
+		}
+		if err := lockFunding(ctx, tx, []string{key}); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return fault("insufficient_credits", "This workspace has no AI credits.")
+			}
+			return err
+		}
+	}
+	for i, key := range all {
+		if i > 0 && all[i-1] == key {
+			continue
+		}
+		if amount := grants[key]; amount > 0 {
+			if err := grant(ctx, tx, key, "initial:"+key, amount); err != nil {
 				return err
 			}
 		}
@@ -431,7 +458,7 @@ func reserve(ctx context.Context, tx pgx.Tx, v Session, o Operation, cfg Config)
 	for _, id := range accounts {
 		var balance, held int64
 		var disabled bool
-		err := tx.QueryRow(ctx, "SELECT balance,held,disabled FROM vibe_accounts WHERE id=$1 FOR UPDATE", id).Scan(&balance, &held, &disabled)
+		err := tx.QueryRow(ctx, "SELECT balance,held,disabled FROM vibe_accounts WHERE id=$1", id).Scan(&balance, &held, &disabled)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return fault("insufficient_credits", "This workspace has no AI credits.")
 		}
@@ -454,8 +481,8 @@ func reserve(ctx context.Context, tx pgx.Tx, v Session, o Operation, cfg Config)
 	return nil
 }
 func (s *Store) Approve(ctx context.Context, actor string, id uuid.UUID, cfg Config) error {
-	return s.transaction(ctx, func(tx pgx.Tx) error {
-		o, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1 FOR UPDATE", id))
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		o, err := lockOperation(ctx, tx, id, capacityChange)
 		if err != nil {
 			return err
 		}
@@ -505,8 +532,8 @@ func (s *Store) Approve(ctx context.Context, actor string, id uuid.UUID, cfg Con
 	})
 }
 func (s *Store) Stop(ctx context.Context, actor string, id uuid.UUID) error {
-	err := s.transaction(ctx, func(tx pgx.Tx) error {
-		o, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1 FOR UPDATE", id))
+	err := s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		o, err := lockOperation(ctx, tx, id, projectWrite)
 		if err != nil {
 			return err
 		}
@@ -589,6 +616,13 @@ func settle(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
 	// This is conservative and makes multiple reconciliation callbacks idempotent.
 	if unknown > 0 {
 		_, err = tx.Exec(ctx, "UPDATE vibe_operations SET billing='RECONCILING',actual_cost=NULL WHERE id=$1", id)
+		return err
+	}
+	ids := make([]string, 0, len(holds))
+	for _, h := range holds {
+		ids = append(ids, h.id)
+	}
+	if err = lockFunding(ctx, tx, ids); err != nil {
 		return err
 	}
 	for _, h := range holds {

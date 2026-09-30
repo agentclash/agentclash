@@ -171,7 +171,7 @@ func TestIntegrationVibeV15OneAlternativeAndReplay(t *testing.T) {
 	}
 	// Exercise the transactional fallback guard itself, independently of the
 	// completed-operation/configuration checks that also prevent dispatch.
-	err = s.Store.transaction(ctx, func(tx pgx.Tx) error {
+	err = s.Store.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		return checkAssistantRecovery(ctx, tx, got, p, Attempt{Step: "handler:fallback", MaxCost: p.AssistantRecovery.MaxCost})
 	})
 	requireFault(t, err, "operation_limit")
@@ -196,7 +196,7 @@ func TestIntegrationVibeV15UncertainBillingStopsRecovery(t *testing.T) {
 	if err == nil || issueFrom(err).Code != "usage_unknown" || calls != 1 {
 		t.Fatal(fmt.Sprint(err), calls)
 	}
-	err = s.Store.transaction(ctx, func(tx pgx.Tx) error {
+	err = s.Store.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		return checkAssistantRecovery(ctx, tx, o, p, Attempt{Step: "route:fallback", MaxCost: p.AssistantRecovery.MaxCost})
 	})
 	requireFault(t, err, "operation_limit")

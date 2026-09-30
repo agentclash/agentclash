@@ -259,7 +259,7 @@ func (s *Store) ApplyInteraction(ctx context.Context, actor string, id uuid.UUID
 	if checkWire("action", a) != nil {
 		return fault("invalid_request", "Choose one available action.")
 	}
-	return s.transaction(ctx, func(tx pgx.Tx) error {
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
 		if err != nil {
 			return err

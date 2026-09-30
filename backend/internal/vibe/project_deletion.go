@@ -63,7 +63,7 @@ func (s *Store) deleteProject(ctx context.Context, actor string, id uuid.UUID, r
 	if err != nil || receipt.DeletedAt != nil {
 		return receipt, err
 	}
-	err = s.transaction(ctx, func(tx pgx.Tx) error {
+	err = s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		v, e := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
 		if e != nil {
 			return e
@@ -85,7 +85,7 @@ func (s *Store) deleteProject(ctx context.Context, actor string, id uuid.UUID, r
 		if !retiring && v.Document.Evaluation == nil {
 			return fault("invalid_request", "Delete a selected evaluation, not its shared chat container.")
 		}
-		rows, e := tx.Query(ctx, `SELECT id FROM vibe_operations WHERE session_id=$1 AND state NOT IN ('COMPLETED','PARTIAL','FAILED','CANCELLED','EXPIRED')`, id)
+		rows, e := tx.Query(ctx, `SELECT id FROM vibe_operations WHERE session_id=$1 AND state NOT IN ('COMPLETED','PARTIAL','FAILED','CANCELLED','EXPIRED') ORDER BY id FOR UPDATE`, id)
 		if e != nil {
 			return e
 		}
@@ -105,6 +105,9 @@ func (s *Store) deleteProject(ctx context.Context, actor string, id uuid.UUID, r
 		rows.Close()
 		if retiring && len(ids) > 0 {
 			return fault("retirement_pending", "This project still has pending execution.")
+		}
+		if e = operationFunding(ctx, tx, ids); e != nil {
+			return e
 		}
 		for _, op := range ids {
 			if e = transition(ctx, tx, op, Cancelling); e != nil {
@@ -166,7 +169,7 @@ func (s *Store) CleanupProjects(ctx context.Context) error {
 	}
 	rows.Close()
 	for _, id := range ids {
-		err = s.transaction(ctx, func(tx pgx.Tx) error {
+		err = s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 			var eligible bool
 			// Lock the same parent as content writers before rechecking.
 			if e := tx.QueryRow(ctx, `SELECT (`+cleanupEligible+`) FROM vibe_sessions WHERE id=$1 FOR UPDATE`, id).Scan(&eligible); e != nil {

@@ -79,6 +79,8 @@ jobs:
       - name: Shared provider and scoring regressions
         working-directory: runtime
         run: go test ./provider ./scoring ./challengepack -count=1
+      - name: Mandatory current-contract regression floor (no missing or skipped tests)
+        run: python3 testing/vibe-local/with-build-test-db.py python3 scripts/vibe/run_baseline.py --report "$RUNNER_TEMP/vibe-floor.json"
   browser-journeys:
     runs-on: ubuntu-latest
     timeout-minutes: 20

@@ -20,7 +20,7 @@ type quoteRecord struct {
 }
 
 func (s *Store) persistQuote(ctx context.Context, actor string, sessionID uuid.UUID, revision int64, q quoteRecord) error {
-	return s.transaction(ctx, func(tx pgx.Tx) error {
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", sessionID))
 		if err != nil || v.Actor != actor {
 			return fault("not_found", "Project is unavailable.")

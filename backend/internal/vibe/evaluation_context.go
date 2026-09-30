@@ -19,7 +19,7 @@ func (s *Store) CreateEvaluation(ctx context.Context, actor string, chatID, clie
 		return Session{}, fault("invalid_request", "Choose Build an agent or Test what you have.")
 	}
 	var result Session
-	err := s.transaction(ctx, func(tx pgx.Tx) error {
+	err := s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		chat, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", chatID))
 		if err != nil || chat.Actor != actor {
 			return fault("not_found", "This chat is unavailable.")

@@ -14,7 +14,7 @@ import (
 // access. A stale revision is safe only when the same immutable save exists.
 func (s *Store) SavedDraftReceipt(ctx context.Context, actor string, id, ws, artifact uuid.UUID, models Models, explicit bool, baseline *uuid.UUID) (uuid.UUID, error) {
 	var result uuid.UUID
-	err := s.transaction(ctx, func(tx pgx.Tx) error {
+	err := s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
 		if err != nil {
 			return err
@@ -67,7 +67,7 @@ func savedDraftReceipt(ctx context.Context, tx pgx.Tx, id, artifact uuid.UUID, m
 // it stores the exact brief; it does not compile a pack, invent a score or call AI.
 func (s *Store) SaveBrief(ctx context.Context, actor string, id uuid.UUID, revision int64, ws, artifactID uuid.UUID) (SavedCheck, error) {
 	var saved SavedCheck
-	err := s.transaction(ctx, func(tx pgx.Tx) error {
+	err := s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
 		if err != nil {
 			return err

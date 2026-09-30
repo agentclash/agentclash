@@ -27,9 +27,9 @@ type Attempt struct {
 func (s *Store) Start(ctx context.Context, id uuid.UUID) (Operation, Session, error) {
 	var o Operation
 	var v Session
-	err := s.transaction(ctx, func(tx pgx.Tx) error {
+	err := s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
-		o, err = scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1 FOR UPDATE", id))
+		o, err = lockOperation(ctx, tx, id, capacityChange)
 		if err != nil {
 			return err
 		}
@@ -91,8 +91,8 @@ func (s *Store) Start(ctx context.Context, id uuid.UUID) (Operation, Session, er
 // BeginAttempt commits DISPATCHING before external I/O. A duplicate step never
 // authorizes another provider call, regardless of Temporal retry/replay behavior.
 func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
-	return s.transaction(ctx, func(tx pgx.Tx) error {
-		o, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1 FOR UPDATE", a.OperationID))
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		o, err := lockOperation(ctx, tx, a.OperationID, attemptDispatch)
 		if err != nil {
 			return err
 		}
@@ -145,6 +145,9 @@ func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
 			return fault("model_policy_changed", "This invocation does not match its approved model role or context limits.")
 		}
 		var frozen bool
+		if err = operationFunding(ctx, tx, []uuid.UUID{o.ID}); err != nil {
+			return err
+		}
 		if err = tx.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM vibe_reservations r JOIN vibe_accounts a ON a.id=r.account_id WHERE r.operation_id=$1 AND a.disabled)", o.ID).Scan(&frozen); err != nil {
 			return err
 		}
@@ -217,17 +220,50 @@ func (s *Store) Generation(ctx context.Context, id uuid.UUID, generation string)
 	return nil
 }
 func (s *Store) AppendOutput(ctx context.Context, id uuid.UUID, part string) error {
-	tag, err := s.DB.Exec(ctx, "UPDATE vibe_attempts SET output=output || $2 WHERE id=$1 AND octet_length(output)+octet_length($2)<=1048576", id, part)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() != 1 {
-		return fault("provider_response_limit", "The provider evidence journal reached its limit.")
-	}
-	return nil
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		var op uuid.UUID
+		if err := tx.QueryRow(ctx, "SELECT operation_id FROM vibe_attempts WHERE id=$1", id).Scan(&op); err != nil {
+			return err
+		}
+		o, err := lockOperation(ctx, tx, op, projectWrite)
+		if err != nil {
+			return err
+		}
+		if _, err = scanSession(tx.QueryRow(ctx, sessionSelect, o.SessionID)); err != nil {
+			return err
+		}
+		tag, err := tx.Exec(ctx, "UPDATE vibe_attempts SET output=output || $2 WHERE id=$1 AND completed_at IS NULL AND octet_length(output)+octet_length($2)<=1048576", id, part)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() != 1 {
+			return fault("output_limit", "Provider output stopped or exceeded its limit.")
+		}
+		return nil
+	})
 }
 func (s *Store) EndAttempt(ctx context.Context, a Attempt, output string, usage json.RawMessage, cost *int64, issue *Fault) error {
-	return s.transaction(ctx, func(tx pgx.Tx) error {
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		o, err := lockOperation(ctx, tx, a.OperationID, projectWrite)
+		if err != nil {
+			return err
+		}
+		var ceiling int64
+		var model string
+		var completed *time.Time
+		if err = tx.QueryRow(ctx, "SELECT max_cost,model,completed_at FROM vibe_attempts WHERE id=$1 AND operation_id=$2 FOR UPDATE", a.ID, o.ID).Scan(&ceiling, &model, &completed); err != nil {
+			return err
+		}
+		if completed != nil {
+			return nil
+		}
+		var deleted bool
+		if err = tx.QueryRow(ctx, "SELECT deleted_at IS NOT NULL FROM vibe_sessions WHERE id=$1", o.SessionID).Scan(&deleted); err != nil {
+			return err
+		}
+		if deleted {
+			output, usage, issue = "", json.RawMessage(`{}`), nil
+		}
 		state := "SUCCEEDED"
 		if cost == nil {
 			state = "UNCERTAIN"
@@ -235,20 +271,18 @@ func (s *Store) EndAttempt(ctx context.Context, a Attempt, output string, usage 
 		if issue != nil && cost != nil {
 			state = "RECONCILED"
 		}
-		if cost != nil && (*cost < 0 || *cost > a.MaxCost) {
-			if _, err := tx.Exec(ctx, "INSERT INTO vibe_disabled_profiles(model,reason) VALUES($1,'provider cost exceeded reservation') ON CONFLICT DO NOTHING", a.Model); err != nil {
+		if cost != nil && (*cost < 0 || *cost > ceiling) {
+			if err = operationFunding(ctx, tx, []uuid.UUID{o.ID}); err != nil {
 				return err
 			}
-			if _, err := tx.Exec(ctx, "UPDATE vibe_accounts SET disabled=true WHERE id IN (SELECT account_id FROM vibe_reservations WHERE operation_id=$1)", a.OperationID); err != nil {
+			if _, err = tx.Exec(ctx, "INSERT INTO vibe_disabled_profiles(model,reason) VALUES($1,'provider cost exceeded reservation') ON CONFLICT DO NOTHING", model); err != nil {
+				return err
+			}
+			if _, err = tx.Exec(ctx, "UPDATE vibe_accounts SET disabled=true WHERE id IN (SELECT account_id FROM vibe_reservations WHERE operation_id=$1)", o.ID); err != nil {
 				return err
 			}
 		}
-		_, err := tx.Exec(ctx, "UPDATE vibe_attempts SET state=$2,output=$3,usage=$4,actual_cost=$5,error=$6,completed_at=now() WHERE id=$1 AND completed_at IS NULL", a.ID, state, output, usage, cost, nullableJSON(issue))
-		if err != nil {
-			return err
-		}
-		o, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1 FOR UPDATE", a.OperationID))
-		if err != nil {
+		if _, err = tx.Exec(ctx, "UPDATE vibe_attempts SET state=$2,output=$3,usage=$4,actual_cost=$5,error=$6,completed_at=now() WHERE id=$1", a.ID, state, output, usage, cost, nullableJSON(issue)); err != nil {
 			return err
 		}
 		if o.State.Terminal() {
@@ -269,15 +303,15 @@ func (s *Store) PutResult(ctx context.Context, id uuid.UUID, c CaseResult) error
 	if c.Checks == nil {
 		c.Checks = []CheckResult{}
 	}
-	return s.transaction(ctx, func(tx pgx.Tx) error {
-		var active bool
-		if err := tx.QueryRow(ctx, `SELECT s.deleted_at IS NULL FROM vibe_sessions s JOIN vibe_operations o ON o.session_id=s.id WHERE o.id=$1`, id).Scan(&active); err != nil {
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		o, err := lockOperation(ctx, tx, id, projectWrite)
+		if err != nil {
 			return err
 		}
-		if !active {
-			return fault("not_found", "Project is unavailable.")
+		if _, err = scanSession(tx.QueryRow(ctx, sessionSelect, o.SessionID)); err != nil {
+			return err
 		}
-		_, err := tx.Exec(ctx, `INSERT INTO vibe_case_results(operation_id,case_key,version,result) VALUES($1,$2,$3,$4) ON CONFLICT(operation_id,case_key,version) DO UPDATE SET result=EXCLUDED.result`, id, c.CaseKey, c.Version, raw(c))
+		_, err = tx.Exec(ctx, `INSERT INTO vibe_case_results(operation_id,case_key,version,result) VALUES($1,$2,$3,$4) ON CONFLICT(operation_id,case_key,version) DO UPDATE SET result=EXCLUDED.result`, id, c.CaseKey, c.Version, raw(c))
 		if err != nil {
 			return err
 		}
@@ -311,8 +345,8 @@ type AuthoringCompletion struct {
 }
 
 func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string, artifact *Artifact, requirements []Requirement, completion ...AuthoringCompletion) error {
-	return s.transaction(ctx, func(tx pgx.Tx) error {
-		o, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1 FOR UPDATE", id))
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		o, err := lockOperation(ctx, tx, id, projectWrite)
 		if err != nil {
 			return err
 		}
@@ -499,10 +533,17 @@ func (s *Store) CompleteDocument(ctx context.Context, id uuid.UUID, reply string
 	})
 }
 func (s *Store) Finish(ctx context.Context, id uuid.UUID, issue *Fault) error {
-	return s.transaction(ctx, func(tx pgx.Tx) error {
-		o, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1 FOR UPDATE", id))
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		o, err := lockOperation(ctx, tx, id, projectWrite)
 		if err != nil {
 			return err
+		}
+		var deleted bool
+		if err = tx.QueryRow(ctx, "SELECT deleted_at IS NOT NULL FROM vibe_sessions WHERE id=$1", o.SessionID).Scan(&deleted); err != nil {
+			return err
+		}
+		if deleted {
+			return settle(ctx, tx, o.ID)
 		}
 		if err = s.recoverLegacyCompletion(ctx, tx, &o); err != nil {
 			return err
@@ -569,8 +610,15 @@ func (s *Store) ReconcileCost(ctx context.Context, id uuid.UUID, cost int64, usa
 	if cost < 0 {
 		return fault("invalid_cost", "Negative provider cost.")
 	}
-	return s.transaction(ctx, func(tx pgx.Tx) error {
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var op uuid.UUID
+		if err := tx.QueryRow(ctx, "SELECT operation_id FROM vibe_attempts WHERE id=$1", id).Scan(&op); err != nil {
+			return err
+		}
+		o, err := lockOperation(ctx, tx, op, projectWrite)
+		if err != nil {
+			return err
+		}
 		var existing *int64
 		var ceiling int64
 		var model string
@@ -583,7 +631,17 @@ func (s *Store) ReconcileCost(ctx context.Context, id uuid.UUID, cost int64, usa
 			}
 			return nil
 		}
+		var deleted bool
+		if err = tx.QueryRow(ctx, "SELECT deleted_at IS NOT NULL FROM vibe_sessions WHERE id=$1", o.SessionID).Scan(&deleted); err != nil {
+			return err
+		}
+		if deleted {
+			usage = json.RawMessage(`{}`)
+		}
 		if cost > ceiling {
+			if err = operationFunding(ctx, tx, []uuid.UUID{op}); err != nil {
+				return err
+			}
 			if _, err := tx.Exec(ctx, "INSERT INTO vibe_disabled_profiles(model,reason) VALUES($1,'reconciliation exceeded ceiling') ON CONFLICT DO NOTHING", model); err != nil {
 				return err
 			}
@@ -592,10 +650,6 @@ func (s *Store) ReconcileCost(ctx context.Context, id uuid.UUID, cost int64, usa
 			}
 		}
 		if _, err := tx.Exec(ctx, "UPDATE vibe_attempts SET actual_cost=$2,usage=$3,state='RECONCILED',completed_at=COALESCE(completed_at,now()) WHERE id=$1", id, cost, usage); err != nil {
-			return err
-		}
-		o, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1", op))
-		if err != nil {
 			return err
 		}
 		if o.State.Terminal() {

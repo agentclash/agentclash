@@ -209,8 +209,8 @@ func (s *Store) expire(ctx context.Context) error {
 }
 
 func (s *Store) expireOne(ctx context.Context, id uuid.UUID) error {
-	return s.transaction(ctx, func(tx pgx.Tx) error {
-		o, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1 FOR UPDATE", id))
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		o, err := lockOperation(ctx, tx, id, projectWrite)
 		if err != nil {
 			return err
 		}

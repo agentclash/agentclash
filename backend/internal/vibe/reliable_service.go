@@ -327,12 +327,12 @@ func (r *Runner) validateBeforeRun(ctx context.Context, o Operation, p *Plan) er
 	return r.Service.Store.recordSuiteValidation(ctx, o, p.Artifact, *p.Conversation.Policy)
 }
 func (s *Store) recordSuiteValidation(ctx context.Context, o Operation, a *Artifact, policy PolicySnapshot) error {
-	return s.transaction(ctx, func(tx pgx.Tx) error {
-		var state Execution
-		if err := tx.QueryRow(ctx, "SELECT state FROM vibe_operations WHERE id=$1 FOR UPDATE", o.ID).Scan(&state); err != nil {
+	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
+		locked, err := lockOperation(ctx, tx, o.ID, projectWrite)
+		if err != nil {
 			return err
 		}
-		if state != Running {
+		if locked.State != Running {
 			return fault("operation_stopped", "The operation was stopped.")
 		}
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", o.SessionID))
