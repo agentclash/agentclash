@@ -587,7 +587,7 @@ func (s *Store) Stop(ctx context.Context, actor string, id uuid.UUID) error {
 func settle(ctx context.Context, tx pgx.Tx, id uuid.UUID) error {
 	var actual, uncertain int64
 	var unknown int
-	if err := tx.QueryRow(ctx, "SELECT COALESCE(sum(actual_cost),0),COALESCE(sum(max_cost) FILTER(WHERE actual_cost IS NULL),0),count(*) FILTER(WHERE actual_cost IS NULL) FROM vibe_attempts WHERE operation_id=$1", id).Scan(&actual, &uncertain, &unknown); err != nil {
+	if err := tx.QueryRow(ctx, "SELECT COALESCE(sum(actual_cost),0),COALESCE(sum(max_cost) FILTER(WHERE actual_cost IS NULL),0),count(*) FILTER(WHERE actual_cost IS NULL OR reconciliation_evidence->>'conflict'='true') FROM vibe_attempts WHERE operation_id=$1", id).Scan(&actual, &uncertain, &unknown); err != nil {
 		return err
 	}
 	rows, err := tx.Query(ctx, "SELECT account_id,amount FROM vibe_reservations WHERE operation_id=$1 AND settled_amount IS NULL ORDER BY account_id", id)

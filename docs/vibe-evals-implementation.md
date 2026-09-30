@@ -19,7 +19,7 @@ Keep the current UI and journeys. No new framework, historical-result rewrite, o
 | 1 | CI uses its migrated database directly; mandatory fake-inference regressions run from tracked files. | Complete: 117 required tests passed |
 | 2 | One artifact execution-context owner; regeneration preserves references. New material Build/manual review uses contract 21; retained 15/18/20 identities remain unchanged. | Passed: regeneration, material manual review and frozen-wire regression tests |
 | 3 | Current session owner authorizes claim/continuation/retry/regrade. Temporary admission failures back off without replay; deleted Builds finalize accounting without new content. | Passed: signup during inline preparation, backoff/single continuation, claimed retry/regrade, deletion finalization with uncertain holds |
-| 4 | Provider cost evidence does not finish a reply. Receipt/response orderings preserve output, settle once and quarantine conflicting costs. | Pending |
+| 4 | Provider cost evidence does not finish a reply. Receipt/response orderings preserve output, settle once and quarantine conflicting costs. | Passed: both callback orders, concurrent duplicates/conflicts, Stop and accounting/deletion races |
 | 5 | One immutable-request recovery owner; explicit proven rejection unlocks editing. Attachment selection is atomic across upload/attach/restore/polling. | Pending |
 | 6 | PDF jobs/downloads/completion are bounded to 50/25/5 seconds; heartbeat/cleanup run independently. Expiry is independent of four-way, bounded provider reconciliation. | Pending |
 

@@ -242,57 +242,6 @@ func (s *Store) AppendOutput(ctx context.Context, id uuid.UUID, part string) err
 		return nil
 	})
 }
-func (s *Store) EndAttempt(ctx context.Context, a Attempt, output string, usage json.RawMessage, cost *int64, issue *Fault) error {
-	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		o, err := lockOperation(ctx, tx, a.OperationID, projectWrite)
-		if err != nil {
-			return err
-		}
-		var ceiling int64
-		var model string
-		var completed *time.Time
-		if err = tx.QueryRow(ctx, "SELECT max_cost,model,completed_at FROM vibe_attempts WHERE id=$1 AND operation_id=$2 FOR UPDATE", a.ID, o.ID).Scan(&ceiling, &model, &completed); err != nil {
-			return err
-		}
-		if completed != nil {
-			return nil
-		}
-		var deleted bool
-		if err = tx.QueryRow(ctx, "SELECT deleted_at IS NOT NULL FROM vibe_sessions WHERE id=$1", o.SessionID).Scan(&deleted); err != nil {
-			return err
-		}
-		if deleted {
-			output, usage, issue = "", json.RawMessage(`{}`), nil
-		}
-		state := "SUCCEEDED"
-		if cost == nil {
-			state = "UNCERTAIN"
-		}
-		if issue != nil && cost != nil {
-			state = "RECONCILED"
-		}
-		if cost != nil && (*cost < 0 || *cost > ceiling) {
-			if err = operationFunding(ctx, tx, []uuid.UUID{o.ID}); err != nil {
-				return err
-			}
-			if _, err = tx.Exec(ctx, "INSERT INTO vibe_disabled_profiles(model,reason) VALUES($1,'provider cost exceeded reservation') ON CONFLICT DO NOTHING", model); err != nil {
-				return err
-			}
-			if _, err = tx.Exec(ctx, "UPDATE vibe_accounts SET disabled=true WHERE id IN (SELECT account_id FROM vibe_reservations WHERE operation_id=$1)", o.ID); err != nil {
-				return err
-			}
-		}
-		if _, err = tx.Exec(ctx, "UPDATE vibe_attempts SET state=$2,output=$3,usage=$4,actual_cost=$5,error=$6,completed_at=now() WHERE id=$1", a.ID, state, output, usage, cost, nullableJSON(issue)); err != nil {
-			return err
-		}
-		if o.State.Terminal() {
-			if err = settle(ctx, tx, o.ID); err != nil {
-				return err
-			}
-		}
-		return event(ctx, tx, o.SessionID, &o.ID, "attempt.finished")
-	})
-}
 func nullableJSON(v *Fault) []byte {
 	if v == nil {
 		return nil
@@ -601,63 +550,6 @@ func (s *Store) Finish(ctx context.Context, id uuid.UUID, issue *Fault) error {
 			return nil
 		}
 		return event(ctx, tx, o.SessionID, &id, "operation.finished")
-	})
-}
-
-// ReconcileCost is an accounting-only, trusted callback. It cannot restart work
-// or invent lost output. Unknown generation IDs remain held for manual review.
-func (s *Store) ReconcileCost(ctx context.Context, id uuid.UUID, cost int64, usage json.RawMessage) error {
-	if cost < 0 {
-		return fault("invalid_cost", "Negative provider cost.")
-	}
-	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
-		var op uuid.UUID
-		if err := tx.QueryRow(ctx, "SELECT operation_id FROM vibe_attempts WHERE id=$1", id).Scan(&op); err != nil {
-			return err
-		}
-		o, err := lockOperation(ctx, tx, op, projectWrite)
-		if err != nil {
-			return err
-		}
-		var existing *int64
-		var ceiling int64
-		var model string
-		if err := tx.QueryRow(ctx, "SELECT operation_id,actual_cost,max_cost,model FROM vibe_attempts WHERE id=$1 FOR UPDATE", id).Scan(&op, &existing, &ceiling, &model); err != nil {
-			return err
-		}
-		if existing != nil {
-			if *existing != cost {
-				return fault("reconciliation_conflict", "Provider cost conflicts with settled evidence.")
-			}
-			return nil
-		}
-		var deleted bool
-		if err = tx.QueryRow(ctx, "SELECT deleted_at IS NOT NULL FROM vibe_sessions WHERE id=$1", o.SessionID).Scan(&deleted); err != nil {
-			return err
-		}
-		if deleted {
-			usage = json.RawMessage(`{}`)
-		}
-		if cost > ceiling {
-			if err = operationFunding(ctx, tx, []uuid.UUID{op}); err != nil {
-				return err
-			}
-			if _, err := tx.Exec(ctx, "INSERT INTO vibe_disabled_profiles(model,reason) VALUES($1,'reconciliation exceeded ceiling') ON CONFLICT DO NOTHING", model); err != nil {
-				return err
-			}
-			if _, err := tx.Exec(ctx, "UPDATE vibe_accounts SET disabled=true WHERE id IN (SELECT account_id FROM vibe_reservations WHERE operation_id=$1)", op); err != nil {
-				return err
-			}
-		}
-		if _, err := tx.Exec(ctx, "UPDATE vibe_attempts SET actual_cost=$2,usage=$3,state='RECONCILED',completed_at=COALESCE(completed_at,now()) WHERE id=$1", id, cost, usage); err != nil {
-			return err
-		}
-		if o.State.Terminal() {
-			if err = settle(ctx, tx, op); err != nil {
-				return err
-			}
-		}
-		return event(ctx, tx, o.SessionID, &op, "billing.reconciled")
 	})
 }
 
