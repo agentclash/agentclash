@@ -16,10 +16,10 @@ Keep the current UI and journeys. No new framework, historical-result rewrite, o
 
 | Phase | Change and acceptance | Status |
 | --- | --- | --- |
-| 1 | CI uses its migrated database directly; mandatory fake-inference regressions run from tracked files. | Complete: 117 required tests passed |
+| 1 | CI uses its migrated database directly; mandatory fake-inference regressions run from tracked files. | Passed: 137 required tests in a clean committed archive; no missing/skipped tests |
 | 2 | One artifact execution-context owner; regeneration preserves references. New material Build/manual review uses contract 21; retained 15/18/20 identities remain unchanged. | Passed: regeneration, material manual review and frozen-wire regression tests |
-| 3 | Current session owner authorizes claim/continuation/retry/regrade. Temporary admission failures back off without replay; deleted Builds finalize accounting without new content. | Passed: signup during inline preparation, backoff/single continuation, claimed retry/regrade, deletion finalization with uncertain holds |
-| 4 | Provider cost evidence does not finish a reply. Receipt/response orderings preserve output, settle once and quarantine conflicting costs. | Passed: both callback orders, concurrent duplicates/conflicts, Stop and accounting/deletion races |
+| 3 | Current session owner authorizes claim/continuation/retry/regrade. Temporary admission failures back off without replay; deleted Builds finalize accounting without new content. | Passed: signup during preparation/inline extraction, capacity/rate/budget-guard recovery with one child, claimed retry/regrade, deletion finalization with uncertain holds |
+| 4 | Provider cost evidence does not finish a reply. Receipt/response orderings preserve output, settle once and quarantine conflicting costs. | Passed: both callback orders, concurrent duplicates/conflicts, interruption, recorded-response recovery, Stop and accounting/deletion races |
 | 5 | One immutable-request recovery owner; explicit proven rejection unlocks editing. Attachment selection is atomic across upload/attach/restore/polling. | Passed: immutable recovery, lost enquiry acknowledgement → 403 → same body/ID, PDF selection races and delayed restoration; typecheck |
 | 6 | PDF jobs/downloads/completion are bounded to 50/25/5 seconds; heartbeat/cleanup run independently. Expiry is independent of four-way, bounded provider reconciliation. | Passed: stalled reads/polls, independent heartbeat/expiry, fair receipt rotation, takeover/deletion/expiry publication guards and shutdown |
 
@@ -34,15 +34,20 @@ Add desired-behavior regressions with each fix and require them in the committed
 - Workers: stalled blob/provider requests, lease takeover, maintenance deadlines and shutdown; no uncertain paid work released by TTL.
 - Product/browser: Build clear/vague/casual/text/PDF and Improve instructions/conversations/imports; fixed baselines, loading, Stop/retry, historical result refresh, export/contact. Desktop 1440×900; mobile 390×844 and 360×800.
 
-Record actual results below. Earlier local verification predates these fixes and is not proof of clean-checkout CI or current completion.
-
 ### Verified results
 
-Pending this implementation. Tests use fake inference and establish application behavior, not model accuracy. No real enquiries are sent.
+Verified on 2026-09-30, through code commit `5f2dff49`:
+
+- Clean committed archive: **137 mandatory regressions passed**, with the ignored database wrapper and local secrets absent. The external fixture supplied an isolated migrated database; the committed runner executed directly. The runner's own 20 validation tests passed.
+- Full backend race suites passed for Vibe, API, enquiries, materials and interaction. Backend build/vet and shared provider/scoring/challenge-pack suites passed. Actual isolated PDF extraction and denial of secrets/network/writes/excess memory passed.
+- **219 frontend tests** and TypeScript passed. **74 mocked browser scenarios** and **17 real API/PostgreSQL/Temporal browser journeys** passed, including supplied text/PDF, Improve imports/conversations, recovery, fixed baselines, exports and fake contact delivery. Two opt-in cookie-smoke tests were skipped in the mocked suite; none of the required regression floor was skipped.
+- Desktop 1440×900 and mobile 390×844/360×800 were checked, with screenshot inspection of results, composer/context visibility and the contact dialog. Safari and a physical iOS keyboard remain unverified.
+
+All twelve findings have automated coverage, including stalled downloads and provider polls. Tests use fake inference and establish application behavior, not model accuracy. No real enquiries were sent. GitHub-hosted CI remains outstanding: the PR conflicts with `main`, and the new workflow is not registered on the default branch. Passing local clean-checkout commands does not imply hosted CI passed.
 
 ### Rollout
 
-Deploy rejection metadata before the frontend recovery change. Missing metadata stays uncertain. Apply the additive accounting migration, then coordinate worker replacement after active paid execution drains; never overlap old reconciliation with new attempt handling. Preserve V1 projects, original funding identities/holds and independent saved packs. Lost historical references require explicit reattachment; lost replies cannot be invented.
+Deploy rejection metadata before the frontend recovery change. Missing metadata stays uncertain. Apply additive migration **00086** for reconciliation evidence, then coordinate worker replacement after active paid execution drains; never overlap old reconciliation with new attempt handling. Preserve V1 projects, original funding identities/holds and independent saved packs. Lost historical references require explicit reattachment; lost replies cannot be invented.
 
 Pre-V1 retirement remains an explicit per-deployment inventory/drain operation, not a migration: `go -C backend run ./cmd/vibe-retire` is dry-run by default; `--apply` requires zero pending retiring execution. The previous local run retired 191 pre-V1 projects, preserved 30 V1 projects, and left six cleanup holds requiring accounting/file resolution.
 
