@@ -59,7 +59,7 @@ func (s *Service) QuoteRun(ctx context.Context, actor string, id uuid.UUID, sub 
 		return RunQuote{}, fault("budget_limit", "Choose a smaller batch before running.")
 	}
 	q := RunQuote{ID: uuid.New(), Kind: "run", Revision: sub.Revision, Fingerprint: runFingerprint(p), MaxCost: p.MaxCost, Cases: len(p.Cases), Calls: p.Calls, ExpiresAt: timestamp().Add(10 * time.Minute)}
-	_, err = s.Store.DB.Exec(ctx, `INSERT INTO vibe_cycle_quotes(id,session_id,request_hash,specification,max_cost,expires_at) VALUES($1,$2,$3,$4,$5,$6)`, q.ID, id, q.Fingerprint, raw(q), q.MaxCost, q.ExpiresAt)
+	err = s.Store.persistQuote(ctx, actor, id, sub.Revision, quoteRecord{q.ID, q.Fingerprint, raw(q), q.MaxCost, q.ExpiresAt})
 	return q, err
 }
 func admitRunQuote(ctx context.Context, tx pgx.Tx, v Session, p Plan, o Operation) error {

@@ -105,8 +105,15 @@ func (s *Store) DeleteProject(ctx context.Context, actor string, id uuid.UUID, r
 	return s.DeletionStatus(ctx, actor, id)
 }
 
+// Eligibility is shared by candidate selection and the locked recheck. Billing
+// holds, files awaiting physical deletion and in-flight delivery must survive.
+const cleanupEligible = `deleted_at IS NOT NULL AND cleanup_finished_at IS NULL
+ AND NOT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=vibe_sessions.id AND billing NOT IN ('SETTLED','RELEASED','UNRESERVED'))
+ AND NOT EXISTS(SELECT 1 FROM vibe_inputs WHERE session_id=vibe_sessions.id AND object_key<>'')
+ AND NOT EXISTS(SELECT 1 FROM vibe_enquiries WHERE session_id=vibe_sessions.id AND status='sending' AND lease_until>now())`
+
 func (s *Store) CleanupProjects(ctx context.Context) error {
-	rows, err := s.DB.Query(ctx, `SELECT id FROM vibe_sessions WHERE deleted_at IS NOT NULL AND cleanup_finished_at IS NULL LIMIT 20`)
+	rows, err := s.DB.Query(ctx, `SELECT id FROM vibe_sessions WHERE `+cleanupEligible+` ORDER BY deleted_at,id LIMIT 20`)
 	if err != nil {
 		return err
 	}
@@ -126,11 +133,12 @@ func (s *Store) CleanupProjects(ctx context.Context) error {
 	rows.Close()
 	for _, id := range ids {
 		err = s.transaction(ctx, func(tx pgx.Tx) error {
-			var unsettled bool
-			if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_operations WHERE session_id=$1 AND billing NOT IN ('SETTLED','RELEASED','UNRESERVED')) OR EXISTS(SELECT 1 FROM vibe_inputs WHERE session_id=$1 AND object_key<>'') OR EXISTS(SELECT 1 FROM vibe_enquiries WHERE session_id=$1 AND status='sending' AND lease_until>now())`, id).Scan(&unsettled); e != nil {
+			var eligible bool
+			// Lock the same parent as content writers before rechecking.
+			if e := tx.QueryRow(ctx, `SELECT (`+cleanupEligible+`) FROM vibe_sessions WHERE id=$1 FOR UPDATE`, id).Scan(&eligible); e != nil {
 				return e
 			}
-			if unsettled {
+			if !eligible {
 				return nil
 			}
 			// Retain costs, hashes and funding identity for reconciliation and abuse

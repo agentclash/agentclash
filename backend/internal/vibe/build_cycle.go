@@ -200,7 +200,7 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 		}
 	}
 
-	_, err = s.Store.DB.Exec(ctx, `INSERT INTO vibe_cycle_quotes(id,session_id,request_hash,specification,max_cost,expires_at) VALUES($1,$2,$3,$4,$5,$6)`, quote.ID, id, Hash(raw(request)), raw(quote), quote.MaxCost, quote.ExpiresAt)
+	err = s.Store.persistQuote(ctx, actor, id, v.Revision, quoteRecord{quote.ID, Hash(raw(request)), raw(quote), quote.MaxCost, quote.ExpiresAt})
 	return quote, err
 }
 
