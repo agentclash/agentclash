@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ArrowRight,
@@ -46,6 +46,7 @@ import { VibeButton } from "./vibe-button";
 
 import { PromptChange } from "./prompt-change";
 import { ActivityStatus, conversationActivity } from "./activity-status";
+import { buildReadingAnchor, useConversationScroll } from "./use-conversation-scroll";
 import { useComposerAutosize } from "./use-composer-autosize";
 import { sendOnEnter } from "./composer-keyboard";
 import { VibeScorecard } from "./scorecard";
@@ -60,7 +61,6 @@ import { captureBuildEvent } from "@/lib/vibe-build-analytics";
 import "./workspace.css";
 
 type View = "build" | "try" | "checks";
-const scrollPositions = new Map<string, number>();
 
 export const exampleAnswer = `Check this answer from my trip-planning app. It should respect the total budget, including every listed cost.
 
@@ -114,6 +114,7 @@ export type EvaluationWorkspaceProps = {
   onDirty: (dirty: boolean) => void;
   onSave: (operation?: Operation) => void;
   onImport: () => void;
+  importNotice?: ReactNode;
   onSettings: () => void;
   loadEvidence: (operation: string, key: string) => Promise<CaseResult>;
   onAction: (id: string, action: "stop" | "approve") => void;
@@ -155,24 +156,11 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
   useEffect(() => {
     if (p.newEvaluation) newEntry.current?.focus();
   }, [p.newEvaluation]);
-  const [isNearBottom, setIsNearBottom] = useState(true);
   const [runSelection, setRunSelection] = useState({
     id: params.get("run") || undefined,
     request: p.requestedRunID,
   });
-  const end = useRef<HTMLDivElement>(null);
-  const scrollRegion = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
-  const nearBottom = useRef(true);
-  const scrollKey = `${p.session?.id || "entry"}:${p.view}`;
-  useLayoutEffect(() => {
-    const region = scrollRegion.current;
-    if (region && buildJourney) {
-      region.scrollTop = scrollPositions.get(scrollKey) || 0;
-      nearBottom.current = region.scrollHeight - region.scrollTop - region.clientHeight < 120;
-      setIsNearBottom(nearBottom.current);
-    }
-  }, [scrollKey, buildJourney]);
   const parent = p.session?.document.artifacts.find(
     (a) => a.id === p.artifact?.parent_id,
   );
@@ -272,57 +260,21 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
           ? "Waiting for your check…"
           : undefined);
   const contentStamp = [
-    messages.at(-1)?.id,
+    p.session?.document.messages.at(-1)?.id,
     pendingMessage?.id,
     p.artifact?.id,
     result?.id,
     result?.state,
     ...operations.filter(operation => operation.error || operation.retry_of_operation_id).map(operation => `${operation.id}:${operation.state}:${!!operation.completion_receipt}`),
   ].join(":");
-  const [readPosition, setReadPosition] = useState({
-    session: p.session?.id,
-    stamp: contentStamp,
+  const scroll = useConversationScroll({
+    sessionID: p.session?.id, view: p.view, stamp: contentStamp, build: buildJourney,
+    anchor: buildJourney && p.session ? buildReadingAnchor(p.session, pendingMessage?.id) : undefined,
+    reduced,
   });
-  const hasNewResponse =
-    !isNearBottom &&
-    readPosition.session === p.session?.id &&
-    readPosition.stamp !== contentStamp;
-  const markRead = () =>
-    setReadPosition((previous) =>
-      previous.session === p.session?.id && previous.stamp === contentStamp
-        ? previous
-        : { session: p.session?.id, stamp: contentStamp },
-    );
-  const previousContent = useRef({
-    session: p.session?.id,
-    stamp: contentStamp,
-  });
-  useEffect(() => {
-    const previous = previousContent.current;
-    previousContent.current = { session: p.session?.id, stamp: contentStamp };
-    if (previous.session !== p.session?.id || previous.stamp === contentStamp)
-      return;
-    if (nearBottom.current) {
-      if (buildJourney) {
-        // Reveal the beginning of the newest turn/card, not the tail of a long
-        // response. Subsequent evidence expansion keeps the browser's anchor.
-        const region = scrollRegion.current;
-        const entries = region?.querySelectorAll<HTMLElement>("[data-build-entry], [data-pending-message]");
-        const newest = entries?.[entries.length - 1];
-        if (region && newest) {
-          const top = newest.getBoundingClientRect().top - region.getBoundingClientRect().top + region.scrollTop;
-          region.scrollTo?.({ top: Math.min(top, region.scrollHeight - region.clientHeight), behavior: reduced ? "auto" : "smooth" });
-        }
-        return;
-      }
-      end.current?.scrollIntoView?.({
-        behavior: reduced ? "auto" : "smooth",
-        block: "nearest",
-      });
-    }
-  }, [contentStamp, p.session?.id, reduced, buildJourney]);
+  const { region: scrollRegion, end, isNearBottom, hasNewResponse, markRead } = scroll;
   const switchView = (view: View) => {
-    if (buildJourney && scrollRegion.current) scrollPositions.set(scrollKey, scrollRegion.current.scrollTop);
+    if (buildJourney) scroll.remember();
     setIntake(null);
     markRead();
     p.onNavigate(view);
@@ -339,8 +291,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
   };
   const send = () => {
     if (p.busy || p.dirty || p.sendBlocked || !p.content.trim()) return;
-    nearBottom.current = true;
-    setIsNearBottom(true);
+    scroll.follow();
     if (p.view !== "build") p.onNavigate("build");
     const context = buildJourney ? referencedRun : result;
     p.onSend(context && terminal(context.state) ? { viewed_run_id: context.id } : undefined);
@@ -361,7 +312,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
     requestAnimationFrame(() => composer.current?.focus({ preventScroll: true }));
   }
   function inspectRun(operation: Operation) {
-    if (scrollRegion.current) scrollPositions.set(scrollKey, scrollRegion.current.scrollTop);
+    scroll.remember();
     setRunSelection({ id: operation.id, request: p.requestedRunID });
     p.onNavigate("checks");
     const url = new URL(window.location.href);
@@ -394,28 +345,19 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
   );
   const composerDock = showComposer && !p.newEvaluation && (
     <div className="vibe-composer-dock" data-testid="vibe-composer-dock">
-      {(hasNewResponse || (buildJourney && !isNearBottom)) && (
-        <div className="vibe-new-response">
-          <VibeButton
-            onClick={() => {
-              nearBottom.current = true;
-              setIsNearBottom(true);
-              markRead();
-              end.current?.scrollIntoView?.({
-                behavior: reduced ? "auto" : "smooth",
-                block: "nearest",
-              });
-              composer.current?.focus({ preventScroll: true });
-            }}
-          >
-            {hasNewResponse ? "New response" : "Latest"}
-            <ArrowDown />
-          </VibeButton>
-        </div>
-      )}
       <div className="vibe-column vibe-composer-dock-inner">
- {p.materialInput}
-        {p.contextControl && <div className="vibe-active-context">{p.contextControl}</div>}
+        <div className="vibe-dock-heading">
+          {p.contextControl && <div className="vibe-active-context">{p.contextControl}</div>}
+          {(hasNewResponse || (buildJourney && !isNearBottom)) && (
+            <VibeButton variant="quiet" className="vibe-new-response" onClick={() => {
+              scroll.jumpToLatest();
+              composer.current?.focus({ preventScroll: true });
+            }}>
+              {hasNewResponse ? "New response" : "Latest"}<ArrowDown />
+            </VibeButton>
+          )}
+        </div>
+        {p.materialInput}
         {previewOpen ? p.preview : <>
         <div>
           {referencedRun && <div className="vibe-run-reference"><span>Asking about this saved result · {referencedRun.scorecard?.passed ?? 0} passed</span><button type="button" aria-label="Remove result reference" onClick={() => setReferencedRun(undefined)}>×</button></div>}
@@ -624,18 +566,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
         hidden={p.newEvaluation}
         className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto"
         id="vibe-scroll-region"
-        onScroll={(event) => {
-          const region = event.currentTarget;
-          if (buildJourney) {
-            scrollPositions.set(scrollKey, region.scrollTop);
-            if (scrollPositions.size > 100) scrollPositions.delete(scrollPositions.keys().next().value!);
-          }
-          const wasNearBottom = nearBottom.current;
-          nearBottom.current =
-            region.scrollHeight - region.scrollTop - region.clientHeight < 120;
-          setIsNearBottom(nearBottom.current);
-          if (nearBottom.current || wasNearBottom) markRead();
-        }}
+        onScroll={scroll.onScroll}
       >
         <div
           id="vibe-workspace-panel"
@@ -654,7 +585,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   <TooltipProvider delay={250}>
                     <Tooltip>
                       <TooltipTrigger aria-label="What is a test pack?" className="vibe-source-tooltip"><CircleHelp aria-hidden="true" /></TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[280px] leading-relaxed">A test pack is a saved set of situations to try and what a good response should do. Import one only if you already have it.</TooltipContent>
+                      <TooltipContent side="top" className="max-w-[280px] leading-relaxed">A test pack (also called a challenge pack) contains situations to try and what a good response should do. Import one only if you already have it.</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 </div>
@@ -665,6 +596,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
               {door === "build" && p.canChangeDoor && <button type="button" className="vibe-door-switch" onClick={p.onChangeDoor}>Already have an agent? Improve it instead.</button>}
               {!door && p.testJourney && <p className="mt-3 text-sm vibe-muted">Already have an agent or challenge pack? Describe it here or <button type="button" className="underline underline-offset-4" disabled={p.busy} onClick={p.onImport}>import your pack</button>.</p>}
             </div>)}
+            {p.importNotice}
             {door && !buildJourney && p.artifact?.agent_prompt && <section aria-label="Prototype scope" className="mb-5 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-medium">Interactive prototype{p.artifact.sample ? " · Sample demonstration" : ""}</p><VibeButton variant="quiet" onClick={() => p.onNavigate("try")}>Talk to this prototype</VibeButton></div>
               <p className="vibe-muted">{p.artifact.scope_note || "Runs here using what you supplied; your business systems aren’t connected."}</p>
@@ -678,8 +610,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                 onDetails={inspectRun}
                 onGuide={() => { p.onNavigate("build"); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true })); }}
                 onImprove={operation => {
-                  nearBottom.current = true;
-                  setIsNearBottom(true);
+                  scroll.follow();
                   p.onMessage("Suggest a focused improvement to these agent instructions using the failed examples. Preserve the checks and expected behavior.", operation);
                 }}
                 onSave={p.onSave} onTougher={p.onTougher} loadEvidence={p.loadEvidence} />
@@ -807,7 +738,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   }
                 />
                 {buildJourney && <VibeButton variant="quiet" onClick={() => askAboutRun(result)}>Ask about this result</VibeButton>}
-                {door && p.session && p.artifact && terminal(result.state) && <EvaluationOutcome key={`outcome:${result.id}`} session={p.session} artifact={p.session.document.artifacts.find(a => a.id === result.source?.artifact_id) || p.artifact} operation={result} busy={p.busy || p.dirty} loadEvidence={p.loadEvidence} onTougher={buildJourney && result.source?.artifact_id !== p.artifact.id ? undefined : p.onTougher} />}
+                {door && p.session && p.artifact && terminal(result.state) && <EvaluationOutcome key={`outcome:${result.id}`} hideContact={buildJourney} session={p.session} artifact={p.session.document.artifacts.find(a => a.id === result.source?.artifact_id) || p.artifact} operation={result} busy={p.busy || p.dirty} loadEvidence={p.loadEvidence} onTougher={buildJourney && result.source?.artifact_id !== p.artifact.id ? undefined : p.onTougher} />}
                 {result.results.length > 0 && terminal(result.state) && (
                   <CoverageNote key={result.id} rows={p.session?.rule_coverage?.[result.source?.artifact_id || result.results[0]?.version] || []}
                     busy={p.busy || p.dirty || !!p.content.trim() || (buildJourney && result.source?.artifact_id !== p.artifact?.id)} onSuggest={rule => {

@@ -23,7 +23,7 @@ export function BuildWorkspace({ pendingMessage, recovery, ...props }: Props) {
       latest.set(operation.retry_of_operation_id, latest.get(operation.id)!);
   }
   return <BuildConversation {...props}
-    pending={pendingMessage && <div data-pending-message><Message message={pendingMessage} pending /></div>}
+    pending={pendingMessage && <div data-pending-message={`message:${pendingMessage.id}`}><Message message={pendingMessage} pending /></div>}
     renderMessage={message => <>
       <Message message={message} animate={false} />
       <ConversationGuidance cards={message.cards} scope={props.session.document.conversation_state?.brief.scope_id} message={message.id} />

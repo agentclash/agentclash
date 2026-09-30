@@ -462,7 +462,7 @@ it.each([
       expect(container.textContent).toContain(`Blocked by ${code}`);
       expect(button("Send message").disabled).toBe(true);
       await openSettings();
-      expect(button("Import an evaluation").disabled).toBe(true);
+      expect(button("Import a test pack").disabled).toBe(true);
       expect(button("Save agent").disabled).toBe(true);
       for (const label of ["Assistant", "Agent"])
         expect(
@@ -631,7 +631,7 @@ it("keeps the composer editable after a definite intake rejection", async () => 
   expect(container.textContent).not.toContain("Retry submission");
   expect(button("Send message").disabled).toBe(false);
   await openSettings();
-  expect(button("Import an evaluation").disabled).toBe(false);
+  expect(button("Import a test pack").disabled).toBe(false);
   await click("Close");
   expect(posts()).toHaveLength(1);
 });
@@ -822,7 +822,7 @@ it.each([
       await selectModel(label, "openai/gpt-4.1");
     }
     await openSettings();
-    expect(button("Import an evaluation").disabled).toBe(false);
+    expect(button("Import a test pack").disabled).toBe(false);
     await click("Close");
     expect(button("Send message").disabled).toBe(false);
     expect(button("Save agent").disabled).toBe(false);

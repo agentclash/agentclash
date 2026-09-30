@@ -131,7 +131,7 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
             disabled={busy}
             onClick={() => onImport()}
           >
-            <Paperclip size={16} /> Import an evaluation
+            <Paperclip size={16} /> Import a test pack
           </Button>
           {artifact &&
             artifact.kind !== "test_plan" &&

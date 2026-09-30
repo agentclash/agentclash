@@ -45,6 +45,17 @@ async function openScorecardSection(page: Page, name: string | RegExp) {
   );
 }
 
+async function openLegacy(page: Page) {
+  await page.goto("/vibe-evals");
+  await expect(page.getByRole("heading", { name: "What should your agent do?" })).toBeVisible({ timeout: 20000 });
+}
+
+async function openInstructions(page: Page) {
+  const tests = page.getByRole("region", { name: "Your tests" });
+  await openDetails(tests.locator("summary").filter({ hasText: "More options" }));
+  await tests.getByRole("button", { name: "Change agent instructions" }).click();
+}
+
 test("new conversations use the server's free model defaults", async ({
   page,
 }) => {
@@ -252,7 +263,9 @@ async function mockVibe(
           ? null
           : {
               id: `draft-${messages}`,
+              kind: "test_suite" as const,
               title: "Refund assistant",
+              proposal_message_id: `assistant-${messages}`,
               agent_prompt:
                 (options.previewRules ? previewRules : "") +
                 "Help customers with refunds within 30 days. Escalate unclear cases.",
@@ -328,7 +341,7 @@ async function mockVibe(
               source_message_id: body.client_id,
             };
         if (draft) session.document.artifacts.push(draft);
-        if (messages === 1)
+        if (messages === 1 && !options.casual)
           session.document.requirements.push({
             id: "policy-one",
             statement: "Refunds are allowed within 30 days.",
@@ -548,7 +561,7 @@ test("describe, review, independently select agent, check, inspect unknowns and 
   page,
 }) => {
   const mock = await mockVibe(page);
-  await page.goto("/vibe-evals");
+  await openLegacy(page);
   await expect(
     page.getByRole("heading", { name: "What should your agent do?" }),
   ).toBeVisible();
@@ -558,21 +571,11 @@ test("describe, review, independently select agent, check, inspect unknowns and 
       "We need a customer support agent. Refunds are allowed within 30 days; escalate unclear cases.",
     );
   await page.getByRole("button", { name: "Send message", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "Here’s what I’ll check" }),
-  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "3 tests are ready" })).toBeVisible();
   expect(mock.messageCount()).toBe(1);
-  await page
-    .getByRole("button", { name: "Agent instructions", exact: true })
-    .click();
-  await page
-    .getByText("Assumptions and confirmed requirements", { exact: true })
-    .first()
-    .click();
-  await expect(
-    page.getByText("Proposed · needs your confirmation"),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Confirm", exact: true }).click();
+  // Review an exact saved expectation before selecting the target model.
+  await openDetails(page.getByRole("region", { name: "Your tests" }).locator("summary").filter({ hasText: "Refund after 10 days?" }));
+  await expect(page.getByText("Explain that it is eligible.")).toBeVisible();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await page
     .getByRole("combobox", { name: "Agent model", exact: true })
@@ -581,7 +584,7 @@ test("describe, review, independently select agent, check, inspect unknowns and 
     page.getByRole("combobox", { name: "Assistant model" }),
   ).toHaveValue(models.assistant);
   await page.getByRole("button", { name: "Close", exact: true }).click();
-  await page.getByRole("button", { name: "Run 3 examples" }).click();
+  await page.getByRole("button", { name: "Run 3 tests" }).click();
   await expect(
     page.getByRole("article", { name: "Evaluation scorecard" }),
   ).toContainText("1 passed · 0 need attention · 2 unresolved");
@@ -612,7 +615,7 @@ test("simple chat sends a real message, offers proposals without a draft and nev
   page,
 }) => {
   const mock = await mockVibe(page, { casual: true });
-  await page.goto("/vibe-evals");
+  await openLegacy(page);
   await page
     .getByRole("textbox", { name: "Message Vibe Evals" })
     .fill("Help me explore how AI could support our customer support team.");
@@ -626,15 +629,8 @@ test("simple chat sends a real message, offers proposals without a draft and nev
   await expect(
     page.getByRole("region", { name: "Your agent", exact: true }),
   ).toHaveCount(0);
-  await page.getByText("Requirements and assumptions", { exact: true }).click();
-  await page.getByRole("button", { name: "Confirm", exact: true }).click();
-  await expect
-    .poll(() => mock.snapshot().document.requirements[0].status)
-    .toBe("accepted");
-  await openDetails(
-    page.locator("summary").filter({ hasText: "Requirements and assumptions" }),
-  );
-  await expect(page.getByText("Confirmed by you")).toBeVisible();
+  // Casual exploration has no draft policy to confirm or execute.
+  expect(mock.snapshot().document.requirements).toHaveLength(0);
   expect(mock.messageCount()).toBe(1);
   expect(mock.snapshot().document.artifacts).toHaveLength(0);
   expect(mock.checkCount()).toBe(0);
@@ -649,7 +645,7 @@ for (const viewport of [
   }) => {
     await page.setViewportSize(viewport);
     const mock = await mockVibe(page);
-    await page.goto("/vibe-evals");
+    await openLegacy(page);
     await expect(page.getByRole("tablist")).toHaveCount(0);
     await expect(
       page.getByRole("button", { name: "Send message", exact: true }),
@@ -658,7 +654,7 @@ for (const viewport of [
     await page.getByRole("button", { name: "Use this description" }).click();
     expect(mock.messageCount()).toBe(0);
     await page.getByRole("button", { name: "Send message", exact: true }).click();
-    await page.getByRole("button", { name: "Run 3 examples" }).click();
+    await page.getByRole("button", { name: "Run 3 tests" }).click();
     await expect(page.getByRole("tab", { name: "Results" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -679,14 +675,12 @@ test("draft editor separates preview rules while edits and exports keep the effe
   page,
 }) => {
   const mock = await mockVibe(page, { previewRules: true });
-  await page.goto("/vibe-evals");
+  await openLegacy(page);
   await page
     .getByRole("textbox", { name: "Message Vibe Evals" })
     .fill("Build a support agent with a 30 day refund policy.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Agent instructions", exact: true })
-    .click();
+  await openInstructions(page);
   const instructions = page.getByRole("textbox", {
     name: "Agent instructions",
     exact: true,
@@ -707,10 +701,10 @@ test("draft editor separates preview rules while edits and exports keep the effe
     "Use supplied refund facts. Ask when the policy is missing.",
   );
   await page
-    .getByRole("button", { name: "Apply changes", exact: true })
+    .getByRole("button", { name: "Use these instructions", exact: true })
     .click();
   await expect(
-    page.getByRole("button", { name: "Try a message", exact: true }),
+    page.getByRole("button", { name: "Try it yourself", exact: true }),
   ).toBeEnabled();
   await expect(instructions).toHaveValue(
     "Use supplied refund facts. Ask when the policy is missing.",
@@ -733,7 +727,7 @@ test("draft editor separates preview rules while edits and exports keep the effe
 });
 
 async function createAndCheck(page: Page) {
-  await page.goto("/vibe-evals");
+  await openLegacy(page);
   await page
     .getByRole("textbox", { name: "Message Vibe Evals" })
     .fill("Build a support agent with a 30 day refund policy.");
@@ -741,7 +735,7 @@ async function createAndCheck(page: Page) {
     .getByRole("button", { name: "Send message", exact: true })
     .click({ clickCount: 2 });
   await page
-    .getByRole("button", { name: "Run 3 examples", exact: true })
+    .getByRole("button", { name: "Run 3 tests", exact: true })
     .click();
 }
 
@@ -749,7 +743,7 @@ test("Try keeps followups separate from Build and starts fresh on reset", async 
   page,
 }) => {
   const mock = await mockVibe(page);
-  await page.goto("/vibe-evals");
+  await openLegacy(page);
   await page
     .getByRole("textbox", { name: "Message Vibe Evals" })
     .fill("Build a return-policy assistant.");
@@ -758,7 +752,7 @@ test("Try keeps followups separate from Build and starts fresh on reset", async 
     .getByRole("textbox", { name: "Message Vibe Evals" })
     .fill("Unsent changes to my agent");
   await page
-    .getByRole("button", { name: "Try a message", exact: true })
+    .getByRole("button", { name: "Try it yourself", exact: true })
     .click();
   const composer = page.getByRole("textbox", { name: "Message your agent" });
   await composer.fill("I bought it 10 days ago.");
@@ -779,7 +773,7 @@ test("Try keeps followups separate from Build and starts fresh on reset", async 
     page.getByRole("log", { name: "Conversation with Vibe Evals" }),
   ).not.toContainText("Is it unopened?");
   await page
-    .getByRole("button", { name: "Try a message", exact: true })
+    .getByRole("button", { name: "Try it yourself", exact: true })
     .click();
   await expect(composer).toHaveValue("It is unopened.");
   await page
@@ -870,12 +864,12 @@ test("lost acknowledgement retries exactly after SSE advances and preserves the 
   page,
 }) => {
   const mock = await mockVibe(page, { loseAcknowledgement: true });
-  await page.goto("/vibe-evals");
+  await openLegacy(page);
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   await composer.fill("Build a refund agent.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Here’s what I’ll check" }),
+    page.getByRole("heading", { name: "3 tests are ready" }),
   ).toBeVisible();
   expect(mock.messageRequests()).toHaveLength(1);
   await composer.fill("Here is my next question");
@@ -893,26 +887,24 @@ test("unapplied instructions cannot run checks; applying creates a ready-to-try 
   page,
 }) => {
   const mock = await mockVibe(page);
-  await page.goto("/vibe-evals");
+  await openLegacy(page);
   await page
     .getByRole("textbox", { name: "Message Vibe Evals" })
     .fill("Build a refund agent.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
-  await page
-    .getByRole("button", { name: "Agent instructions", exact: true })
-    .click();
+  await openInstructions(page);
   await page
     .getByRole("textbox", { name: "Agent instructions", exact: true })
     .fill("Edited policy: escalate all exceptions.");
   await expect(
-    page.getByRole("button", { name: "Run 3 examples" }),
-  ).toBeDisabled();
+    page.getByRole("button", { name: "Run 3 tests" }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Save agent", exact: true }),
   ).toBeDisabled();
   expect(mock.checkCount()).toBe(0);
-  await page.getByRole("button", { name: "Apply changes" }).click();
-  await page.getByRole("button", { name: "Run 3 examples" }).click();
+  await page.getByRole("button", { name: "Use these instructions" }).click();
+  await page.getByRole("button", { name: "Run 3 tests" }).click();
   await expect(
     page.getByRole("article", { name: "Evaluation scorecard" }),
   ).toBeVisible();

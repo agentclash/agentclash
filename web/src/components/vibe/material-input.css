@@ -1,0 +1,53 @@
+/* Material controls share the dialog frame with the other Build dialogs. */
+.vibe-task-input { min-width: 0; max-height: none; overflow: visible; }
+.vibe-task-input > .vibe-button { max-width: 100%; }
+.vibe-material-chips { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; margin: 6px 0 0; padding: 0; list-style: none; }
+.vibe-material-chip { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-width: 0; max-width: 100%; margin: 0; padding: 2px 4px 2px 9px; border: 1px solid var(--vibe-border); border-radius: 9px; background: var(--vibe-surface); }
+.vibe-material-chip-name { min-width: 0; max-width: min(34ch, 48vw); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.vibe-material-chip-status { flex: none; color: var(--vibe-muted); font-size: 12px; }
+.vibe-material-chip .vibe-button { min-height: 32px; padding: 5px 7px; font-size: 12px; }
+.vibe-material-inline-status, .vibe-material-inline-error { margin: 4px 0 0; font-size: 12px; overflow-wrap: anywhere; }
+.vibe-material-inline-error, .vibe-material-error { color: #f0ad9f; }
+.vibe-material-dialog { min-width: 0; }
+.vibe-material-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; min-width: 0; }
+.vibe-material-dialog-heading { min-width: 0; }
+.vibe-material-dialog-head [data-slot="dialog-title"] { font-size: 20px; line-height: 1.2; }
+.vibe-material-dialog-head [data-slot="dialog-description"] { margin-top: 7px; max-width: 48ch; color: var(--vibe-muted); line-height: 1.45; }
+.vibe-material-dialog-head > .vibe-button { flex: none; }
+.vibe-material-dialog-body { min-width: 0; overflow-x: hidden; }
+.vibe-material-tabs { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 5px; padding: 4px; border: 1px solid var(--vibe-border); border-radius: 11px; background: #10100e; }
+.vibe-material-tab { min-width: 0; min-height: 44px; border: 0; border-radius: 8px; color: var(--vibe-muted); background: transparent; cursor: pointer; font-size: 14px; }
+.vibe-material-tab[data-active] { color: #191814; background: #eee9dc; font-weight: 600; }
+.vibe-material-tab-panel { min-width: 0; padding-top: 16px; }
+.vibe-material-tab-panel > label, .vibe-material-config label, .vibe-material-rule-fields label { display: block; margin-bottom: 5px; font-size: 14px; font-weight: 500; }
+.vibe-material-tab-panel input[type="file"] { display: block; width: 100%; max-width: 100%; min-width: 0; padding: 8px; border: 1px solid var(--vibe-border); border-radius: 9px; color: var(--vibe-fg); background: var(--vibe-surface); font-size: 13px; overflow: hidden; }
+.vibe-material-tab-panel input[type="file"]::file-selector-button { max-width: 100%; margin-right: 9px; padding: 7px 10px; border: 1px solid var(--vibe-border); border-radius: 7px; background: #272621; color: var(--vibe-fg); }
+.vibe-material-dialog textarea, .vibe-material-dialog select { display: block; width: 100%; max-width: 100%; min-width: 0; border: 1px solid var(--vibe-border); border-radius: 9px; padding: 9px 11px; color: var(--vibe-fg); background: var(--vibe-surface); font-size: 16px; line-height: 1.5; }
+.vibe-material-dialog textarea { resize: vertical; }
+.vibe-material-hint { margin: 8px 0 0; color: var(--vibe-muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.vibe-material-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.vibe-material-section { min-width: 0; margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--vibe-border); }
+.vibe-material-section h3 { margin: 0 0 10px; font-size: 15px; font-weight: 600; }
+.vibe-material-detail { min-width: 0; padding: 12px; border: 1px solid var(--vibe-border); border-radius: 10px; }
+.vibe-material-detail + .vibe-material-detail { margin-top: 8px; }
+.vibe-material-detail-head { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 3px 12px; min-width: 0; }
+.vibe-material-detail-head strong { min-width: 0; overflow-wrap: anywhere; }
+.vibe-material-detail-head span { color: var(--vibe-muted); font-size: 12px; }
+.vibe-material-detail p { margin-bottom: 0; }
+.vibe-material-check { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; line-height: 1.4; }
+.vibe-material-check input { flex: none; margin-top: 3px; }
+.vibe-material-config { margin-top: 12px; }
+.vibe-material-config summary, .vibe-material-saved summary { cursor: pointer; padding: 7px 0; }
+.vibe-material-config > label { margin-top: 10px; }
+.vibe-material-rule-fields { display: grid; gap: 6px; min-width: 0; margin-top: 12px; }
+.vibe-material-preview { max-width: 100%; max-height: 10rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; }
+.vibe-material-delete { margin-top: 12px; padding: 10px; border-radius: 8px; background: #2b1c19; }
+.vibe-material-saved ul { padding: 0; list-style: none; }
+.vibe-material-saved li { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 5px 0; }
+.vibe-material-saved li span { min-width: 0; overflow-wrap: anywhere; }
+.vibe-material-dialog :is(input,button,summary,textarea,select):focus-visible { outline: 2px solid #d8c9a5; outline-offset: 2px; }
+@media (max-width: 420px) {
+  .vibe-material-dialog-head { align-items: flex-start; }
+  .vibe-material-dialog-head > .vibe-button { min-width: 44px; padding-inline: 8px; }
+  .vibe-material-chip-name { max-width: 38vw; }
+}

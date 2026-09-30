@@ -1,0 +1,25 @@
+.vibe-enquiry-dialog[data-slot="dialog-content"] { display:flex; flex-direction:column; overflow:hidden; width:min(560px,calc(100vw - 32px)); max-width:none; max-height:calc(100dvh - 32px); min-width:0; }
+.vibe-enquiry-heading { min-width:0; padding-right:36px; }
+.vibe-enquiry-heading [data-slot="dialog-title"] { font-size:18px; line-height:1.35; }
+.vibe-enquiry-heading [data-slot="dialog-description"] { margin-top:8px; line-height:1.5; }
+.vibe-enquiry-body { flex:1 1 auto; min-height:0; min-width:0; overflow-y:auto; overscroll-behavior:contain; }
+.vibe-enquiry-form { display:flex; flex-direction:column; align-items:stretch; gap:16px; min-width:0; }
+.vibe-enquiry-field { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.vibe-enquiry-field label { font-size:14px; font-weight:500; }
+.vibe-enquiry-field-heading { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+.vibe-enquiry-field-heading .vibe-button { min-height:36px; }
+.vibe-enquiry-field .vibe-textarea { box-sizing:border-box; display:block; width:100%; min-width:0; font-size:16px; }
+.vibe-enquiry-field textarea { min-height:180px; resize:vertical; }
+.vibe-enquiry-field input { min-height:44px; }
+.vibe-enquiry-optional { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+.vibe-enquiry-availability, .vibe-enquiry-receipt { border:1px solid var(--vibe-border); border-radius:9px; padding:12px; line-height:1.5; }
+.vibe-enquiry-direct-email { min-width:0; overflow-wrap:anywhere; font-size:14px; line-height:1.5; }
+.vibe-enquiry-direct-email a { text-decoration:underline; text-underline-offset:3px; }
+.vibe-enquiry-direct-email p + p { margin-top:4px; font-size:12px; }
+.vibe-enquiry-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.vibe-enquiry-error { color:var(--vibe-error,#ef8369); line-height:1.5; outline:none; }
+.vibe-enquiry-dialog .vibe-button { min-height:40px; }
+@media (max-width:600px) {
+  .vibe-enquiry-optional { grid-template-columns:1fr; }
+  .vibe-enquiry-field textarea { min-height:150px; }
+}

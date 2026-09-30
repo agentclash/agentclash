@@ -5,6 +5,7 @@ test("v15 real stack: joke, vague job, clarification, three clean tests", async 
   const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await page.goto("/vibe-evals");
+  if (process.env.VIBE_BROWSER_TWO_DOOR === "1") await page.getByRole("button", { name: /Improve an existing agent/ }).click();
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   const send = page.getByRole("button", { name: "Send message", exact: true });
   await composer.fill("drin vodka hewhe");
@@ -25,7 +26,8 @@ test("v15 real stack: joke, vague job, clarification, three clean tests", async 
   await composer.press("Enter");
   await expect.poll(async () => {
     evidence = await (await page.request.get(`${api}/__fixture/evidence?session=${session}`)).json();
-    return evidence.session.operations.at(-1)?.completion_receipt?.action;
+    const operation = evidence.session.operations.at(-1);
+    return operation?.completion_receipt?.action || (["FAILED", "CANCELLED", "PARTIAL"].includes(operation?.state) ? `${operation.state}: ${operation.error?.code || "unknown"}: ${operation.error?.message || "no error detail"}` : undefined);
   }, { timeout: 60_000 }).toBe("prepare_tests");
   expect(evidence.session.document.artifacts).toHaveLength(1);
   const suite = evidence.session.document.artifacts[0];

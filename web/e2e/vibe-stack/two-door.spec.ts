@@ -174,7 +174,7 @@ test("tougher situations prepare and run one authorized batch while preserving t
  await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('results');
  const before=await evidence(page), baseline=before.session.document.artifacts.at(-1);
- await page.getByRole('button',{name:'Download / save',exact:true}).click();
+ await page.locator('.vibe-build-next-actions:not([hidden]) .vibe-build-more > summary').click();
  await page.getByRole('button',{name:'Try tougher situations',exact:true}).click();
  await expect(page.getByText('Prepare 2 additional examples.',{exact:false})).toBeVisible();
  expect((await evidence(page)).session.operations).toHaveLength(2);

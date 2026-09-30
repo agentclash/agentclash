@@ -246,7 +246,7 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   await expect(page.getByRole("heading",{name:"3 tests are ready"})).toBeVisible();
   const id=new URL(page.url()).searchParams.get("session")!;
   const before=await evidence(page,id); const artifact=before.session.document.artifacts.at(-1)!;
-  await page.getByRole("button",{name:"I don’t have an agent yet",exact:true}).click();
+  await page.getByRole("button",{name:"Keep for later",exact:true}).click();
   await page.getByRole("button",{name:"Keep these tests",exact:true}).click();
   const link=page.getByRole("link",{name:"Sign in to save your work"});
   expect(new URL((await link.getAttribute("href"))!,page.url()).searchParams.get("returnTo")).toContain(`agent=${artifact.id}`);
@@ -255,7 +255,7 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   // Cancel once: the original anonymous cookie and preparation remain valid.
   await page.goBack();
   await expect(page.getByRole("heading",{name:"3 tests are ready"})).toBeVisible();
-  await page.getByRole("button",{name:"I don’t have an agent yet",exact:true}).click();
+  await page.getByRole("button",{name:"Keep for later",exact:true}).click();
   await page.getByRole("button",{name:"Keep these tests",exact:true}).click();
   await page.getByRole("link",{name:"Sign in to save your work"}).click();
   await page.getByRole("button",{name:"Continue with AgentClash"}).click();

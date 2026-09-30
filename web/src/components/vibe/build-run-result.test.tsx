@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { defaultModels, type Artifact, type CaseResult, type Operation, type Session } from "@/lib/vibe";
 import { BuildRunResult } from "./build-run-result";
+import { BuildNextActions } from "./build-next-actions";
 
 const artifact: Artifact = { id: "v1", title: "Sorter", agent_prompt: "Classify email", blueprint: { cases: [{ key: "email", payload: { question: "Win a prize" } }] }, accepted: true, source_message_id: "brief" };
 const evidence: CaseResult = { version: "v1", case_key: "email", input: { question: "Win a prize" }, expected: "Mark as spam", output: "Spam", verdict: "PASS", checks: [{ key: "behavior", verdict: "PASS", evidence: "It classified the sample correctly." }] };
@@ -14,12 +15,15 @@ afterEach(async () => { await act(async () => root.unmount()); node.remove(); vi
 async function render(operation = op, options: { current?: boolean; sample?: string; baseline?: Operation } = {}) {
   const target = { ...artifact, sample: options.sample, sample_basis: options.sample ? { sample_basis: options.sample, rules: [{ id: "rule-1", statement: "Prize promises are spam." }] } : undefined };
   const session: Session = { id: "session", anonymous: true, revision: 1, document: { artifacts: [target], messages: [], requirements: [], models: defaultModels }, operations: [...options.baseline ? [options.baseline] : [], operation] };
-  await act(async () => root.render(<BuildRunResult session={session} operation={operation} artifact={target} current={options.current !== false} first primary busy={false} loadEvidence={load} onTry={trial} onImprove={improve} onDetails={details} onGuide={vi.fn()} onSave={vi.fn()} />));
+  await act(async () => root.render(<><BuildRunResult session={session} operation={operation} artifact={target} current={options.current !== false} first busy={false} loadEvidence={load} onImprove={improve} onDetails={details} />
+    {options.current !== false && <BuildNextActions session={session} artifact={target} operation={operation} hasOutput={false} busy={false} primary onTry={trial} onDetails={details} onGuide={vi.fn()} onSave={vi.fn()} loadEvidence={load} />}</>));
 }
 it("keeps passing evidence closed and opens the full checks only on request", async () => {
   const second = { ...evidence, case_key: "second", input: null, output: "" };
   await render({ ...op, results: [...op.results, second], scorecard: { ...op.scorecard!, total: 2, evaluated: 2, passed: 2 } });
   expect(node.querySelectorAll(".vibe-result-row")).toHaveLength(0);
+  expect(node.querySelectorAll(".vibe-build-next-actions")).toHaveLength(1);
+  expect(node.querySelectorAll(".vibe-project-enquiry")).toHaveLength(1);
   expect(load).not.toHaveBeenCalled();
   await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent?.includes("See 2 checks"))!.click());
   expect(details).toHaveBeenCalledTimes(1);
@@ -92,14 +96,18 @@ it("offers improvement only after a supported failure and does not submit automa
   expect(improve).not.toHaveBeenCalled();
   await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent?.includes("Review a fix"))!.click());
   expect(improve).toHaveBeenCalledTimes(1);
+  await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent === "Try it yourself")!.click());
+  expect(trial).toHaveBeenCalledTimes(1);
 });
 it("never treats unknowns or a stopped check as a complete success", async () => {
   await render({ ...op, scorecard: { ...op.scorecard!, passed: 0, unknown: 1 } });
   expect(node.textContent).toContain("could not be fully checked");
-  expect(node.textContent).not.toContain("Try it yourself");
+  expect(node.textContent).toContain("See what happened");
+  expect(node.textContent).toContain("Try it yourself");
   await render({ ...op, state: "CANCELLED" });
   expect(node.textContent).toContain("Stopped");
   expect(node.textContent).not.toContain("This check matched your rules");
+  expect(node.querySelector(".vibe-build-next-actions")?.hasAttribute("hidden")).toBe(true);
 });
 it("reports improvements and regressions only against matching tests and grading", async () => {
   const grading: NonNullable<Operation["grading"]> = { version: 1, hash: "same-tests-and-grader", criteria_hash: "criteria", tests_hash: "tests", parser: "v1", normalization: "v1", schema: "v1", prompt_hash: "judge", aggregation: "v1", evaluator: { provider: "fixture", model: "judge", route: "fixture", temperature: 0, max_output: 1000, disable_reasoning: true } };

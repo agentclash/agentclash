@@ -154,6 +154,16 @@ export function VibeClient() {
   const navigatedRunID = useRef<string | undefined>(undefined);
   const [pendingAction, setPendingAction] = useState<string>();
   const [error, setError] = useState("");
+  const [importError, setImportError] = useState<{ sessionID?: string; message: string }>();
+  const importNotice = useRef<HTMLDivElement>(null);
+  const quoteTrigger = useRef<HTMLElement | null>(null);
+  const quoteHeading = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (importError && !newEvaluation) {
+      importNotice.current?.focus();
+      importNotice.current?.scrollIntoView?.({ block: "nearest" });
+    }
+  }, [importError, newEvaluation]);
   const [connection, setConnection] = useState("");
   const [view, setView] = useState<"build" | "try" | "checks">(
     params.get("view") === "try"
@@ -601,7 +611,7 @@ export function VibeClient() {
     setThreadID(restoreTrial ? previousTrial.thread : "");
     const nextView = restoreTrial && previousTrial.trying ? "try" : "build";
     setView(nextView); currentView.current = nextView; setRequestedRunID(undefined);
-    setError(""); setConnection(""); setPendingMessage(undefined); setPendingEdit(undefined);
+    setError(""); setImportError(undefined); setConnection(""); setPendingMessage(undefined); setPendingEdit(undefined);
     setChecksDirtyID(null); setDirtyArtifactID(null); setBuildQuote(undefined); setRunQuote(undefined);
     buildEvidence.current = undefined;
     const restoredURL = new URL("/vibe-evals", window.location.origin);
@@ -640,6 +650,7 @@ export function VibeClient() {
     finally { setPending(false); }
   }
   function openNewEvaluation() {
+    setImportError(undefined);
     if (sessionID) entryOrigin.current = sessionID;
     setNewEvaluation(true);
   }
@@ -654,6 +665,7 @@ export function VibeClient() {
     if (!canChangeDoor || !sessionID) return;
     const origin = entryOrigin.current;
     if (!origin || origin === sessionID) {
+      setImportError(undefined);
       setNewEvaluation(true);
       return;
     }
@@ -681,6 +693,7 @@ export function VibeClient() {
   }
   async function requestPreparation(text: string, count: number, artifactID: string) {
     if (!session || busy) return;
+    quoteTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const clientID = crypto.randomUUID();
     const extra = { client_id: clientID, additional_examples: count, artifact_id: artifactID };
     setPending(true); setError("");
@@ -690,6 +703,7 @@ export function VibeClient() {
     } catch(e) { setError((e as Error).message); } finally {setPending(false);}
   }
   async function requestRun(baseline?: Operation, evidenceID?: string, purpose?: "regrade") {
+    quoteTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const extra = { artifact_id: artifact?.id, ...(purpose ? {purpose} : {}), ...(evidenceID ? { evidence_set_id: evidenceID } : {}), ...(baseline?.source?.kind === "provided_conversations" ? { artifact_id: baseline.source.artifact_id } : {}) };
     const kind = baseline ? "retest" : "check";
     if (!session?.document.evaluation) { void submit(kind, "", baseline, extra); return; }
@@ -1075,9 +1089,11 @@ export function VibeClient() {
   async function upload(uploaded?: File) {
     if (!uploaded || busy) return;
     setPending(true);
-    setError("");
+    setImportError(undefined);
+    let importSessionID = sessionID;
     try {
       const v = await ensureSession();
+      importSessionID = v.id;
       if (uploaded.size > (v.anonymous ? 256 * 1024 : 1024 * 1024))
         throw new Error("This file exceeds the import size limit.");
       const result = await vibeFetch<Session>(
@@ -1096,7 +1112,11 @@ export function VibeClient() {
       );
       setSession(result);
     } catch (e) {
-      setError((e as Error).message);
+      const message = e instanceof VibeError && (!e.status || e.status >= 500)
+        ? "Couldn’t import this file. Choose another file, or try importing again."
+        : (e as Error).message;
+      setImportError({ sessionID: importSessionID, message });
+      setSettingsOpen(false);
     } finally {
       setPending(false);
       if (file.current) file.current.value = "";
@@ -1273,10 +1293,15 @@ export function VibeClient() {
   return (
     <main className="vibe-workspace dark flex h-dvh flex-col overflow-hidden font-sans">
       <Dialog open={!!runQuote} onOpenChange={open => { if (!open) setRunQuote(undefined); }}>
-        <DialogContent><DialogTitle>{runQuote?.kind === "message" ? "Try tougher situations" : runQuote?.baseline ? "Rerun the same examples" : "Try these examples"}</DialogTitle>
+        <DialogContent className="vibe-workspace vibe-dialog" initialFocus={quoteHeading} finalFocus={() => {
+          const trigger = quoteTrigger.current;
+          return trigger?.isConnected && !trigger.matches(":disabled") ? trigger : document.getElementById("vibe-trial-message") || document.getElementById("vibe-message");
+        }}><DialogTitle ref={quoteHeading} tabIndex={-1}>{runQuote?.kind === "message" ? "Try tougher situations" : runQuote?.baseline ? "Rerun the same examples" : "Try these examples"}</DialogTitle>
+          <div className="vibe-dialog-body">
           <DialogDescription>{runQuote?.kind === "message" ? `${runQuote.extra.additional_examples} new situations + ${(runQuote.quote.cases || 0) - (runQuote.extra.additional_examples || 0)} existing examples` : `${runQuote?.quote.cases} examples`} · up to {dollars(runQuote?.quote.max_cost_nano_usd || 0)}. Usually a few minutes; provider queues can take longer. {runQuote?.kind === "message" ? "Includes preparation, review, bounded repairs and running this batch. Existing cases and their earlier results stay unchanged." : runQuote?.baseline ? "The same examples and grading stay fixed. Earlier results are kept." : "This run uses the selected instructions or recorded replies."}</DialogDescription>
           <VibeButton variant="primary" disabled={busy || runQuote?.sessionID !== sessionID || runQuote?.revision !== session?.revision} onClick={() => { if (!runQuote) return; const q=runQuote; setRunQuote(undefined); void submit(q.kind,q.content || "",q.baseline,{...q.extra,...(q.extra.cycle_id ? {} : {run_quote_id:q.quote.id})}); }}>{runQuote?.kind === "message" ? "Prepare and run this batch" : `Run ${runQuote?.quote.cases} examples`}</VibeButton>
-        </DialogContent>
+          <VibeButton variant="quiet" onClick={() => setRunQuote(undefined)}>Cancel</VibeButton>
+        </div></DialogContent>
       </Dialog>
       <VibeConnection.Provider value={{ token, contact: config?.contact }}><EvaluationNavigation enabled={twoDoor} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
         choosing={newEvaluation} disabled={!config || pending || uncertain || dirtyArtifact}
@@ -1384,6 +1409,10 @@ export function VibeClient() {
         }}
         onSave={openSave}
         onSettings={() => setSettingsOpen(true)}
+        importNotice={importError && importError.sessionID === sessionID && !newEvaluation && <div ref={importNotice} tabIndex={-1} className="vibe-import-error" role="alert">
+          <p>{importError.message}</p>
+          <VibeButton variant="quiet" disabled={busy} onClick={() => file.current?.click()}>Choose a file</VibeButton>
+        </div>}
         onImport={() => file.current?.click()}
         loadEvidence={loadSavedCase}
         onAction={operationAction}
@@ -1409,10 +1438,11 @@ export function VibeClient() {
         savedChecks={savedChecks}
         notice={
           <>
+            {!config && !configError && <p className="vibe-connection-status" role="status">Connecting…</p>}
             {configError && (
               <div className="mb-3 space-y-2 text-sm">
                 <p role="alert">
-                  Couldn’t connect. Your message is still here.
+                  Couldn’t connect. Try again.{content.trim() ? " Your message is still here." : ""}
                 </p>
                 <VibeButton
                   onClick={() => setLoadAttempt((attempt) => attempt + 1)}

@@ -1,420 +1,121 @@
-import { expect, test } from "@playwright/test";
-import type {
-  CaseResult,
-  EvidenceSet,
-  Operation,
-  Session,
-} from "../../src/lib/vibe";
+import { expect, test, type Page } from "@playwright/test";
+import { defaultModels, type CaseResult, type EvidenceSet, type Operation, type Session } from "../../src/lib/vibe";
 
-const models = {
-  assistant: "test/assistant",
-  target: "unused/target",
-  evaluator: "test/evaluator",
-};
 const artifactID = "a129a2a3-246a-42f1-9b11-cba998eaf153";
-const brief =
-  "Our support agent should follow a 30-day return policy and remember details across follow-ups.";
-const expectations = [
-  {
-    id: "rule",
-    statement: "Use the details already supplied and apply the 30-day policy.",
-  },
-];
-const original = `Customer: I bought it 10 days ago.
-Agent: Is it unopened?
-Customer: Yes.
-Agent: When did you buy it?
----
-Customer: I bought it 45 days ago, unopened.
-Agent: It is outside the 30-day window.`;
-const updated = original
-  .replace("When did you buy it?", "It is eligible.")
-  .replace("It is outside the 30-day window.", "It is eligible.");
-const firstMessage = `${brief}\n\n${original}`;
+const titles = ["Remember a purchase", "Outside the return window"];
+const customer = ["I bought it 10 days ago.", "I bought it 45 days ago, unopened."];
 
-function savedEvidence(raw: string, isUpdate = false): EvidenceSet {
+function evidence(id: string, corrected: boolean): EvidenceSet {
   return {
-    id: isUpdate ? "evidence-2" : "evidence-1",
-    label: "Pasted conversations",
-    raw,
-    conversations: [
-      {
-        key: "chat-1",
-        title: "Remember a purchase",
-        messages: [
-          { id: "c1-m1", role: "user", content: "I bought it 10 days ago." },
-          { id: "c1-m2", role: "assistant", content: "Is it unopened?" },
-          { id: "c1-m3", role: "user", content: "Yes." },
-          {
-            id: "c1-m4",
-            role: "assistant",
-            content: isUpdate ? "It is eligible." : "When did you buy it?",
-          },
-        ],
-      },
-      {
-        key: "chat-2",
-        title: "Outside the return window",
-        messages: [
-          {
-            id: "c2-m1",
-            role: "user",
-            content: "I bought it 45 days ago, unopened.",
-          },
-          {
-            id: "c2-m2",
-            role: "assistant",
-            content: isUpdate
-              ? "It is eligible."
-              : "It is outside the 30-day window.",
-          },
-        ],
-      },
-    ],
+    id, label: corrected ? "Updated replies" : "Pasted conversations", raw: corrected ? "Updated saved transcript" : "Original saved transcript",
+    conversations: titles.map((title, index) => ({
+      key: `chat-${index + 1}`, title,
+      messages: [
+        { id: `c${index + 1}-m1`, role: "user" as const, content: customer[index] },
+        { id: `c${index + 1}-m2`, role: "assistant" as const, content: corrected ? "It is eligible." : index === 0 ? "When did you buy it?" : "It is outside the 30-day window." },
+      ],
+    })),
   };
 }
 
-test("direct paste checks saved chats, copies a grounded fix and exposes a regression in new answers", async ({
-  page,
-}) => {
-  const state: Session = {
-    id: "conversation-browser",
-    revision: 0,
-    anonymous: true,
-    document: {
-      models,
-      messages: [],
-      requirements: [],
-      artifacts: [],
-      evaluation_first: true,
-      evidence_sets: [],
-    },
-    operations: [],
-  };
-  const requests: Record<string, unknown>[] = [];
-  let uploads = 0;
-  const edits: unknown[] = [];
-  const copied: string[] = [];
-  await page.exposeFunction("recordCopiedText", (text: string) => {
-    copied.push(text);
-  });
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: {
-        writeText: (text: string) =>
-          (window as unknown as {
-            recordCopiedText: (value: string) => Promise<void>;
-          }).recordCopiedText(text),
-      },
-    });
-  });
-  const snapshot = () => ({
-    ...state,
-    event_cursor: state.revision,
-    operations: state.operations.map((o) => ({
-      ...o,
-      results: o.results.map((r) => ({
-        ...r,
-        messages: undefined,
-        checks: r.checks.map((c) => ({
-          ...c,
-          evidence: "",
-          message_ids: undefined,
-        })),
-      })),
-    })),
-  });
-  await page.route("**/v1/vibe/**", async (route) => {
-    const req = route.request(),
-      path = new URL(req.url()).pathname;
-    const headers = {
-      "Access-Control-Allow-Origin": new URL(page.url()).origin,
-      "Access-Control-Allow-Credentials": "true",
+const original = evidence("evidence-1", false);
+const updated = evidence("evidence-2", true);
+
+function results(set: EvidenceSet, corrected: boolean): CaseResult[] {
+  return set.conversations.map((conversation, index) => {
+    const verdict = (corrected ? index === 0 : index === 1) ? "PASS" : "FAIL";
+    const explanation = corrected
+      ? index === 0 ? "Uses the previously supplied purchase age." : "Allows a return after 45 days."
+      : index === 0 ? "Asks for a purchase age the customer already supplied." : "Correctly declines the late return.";
+    return {
+      case_key: conversation.key, title: conversation.title, version: artifactID,
+      input: { conversation: conversation.title }, output: conversation.messages[1].content,
+      messages: conversation.messages, expected: "Remember purchase details and use the 30-day return window.",
+      verdict, checks: [{ key: "rule", verdict, evidence: explanation, message_ids: conversation.messages.map(message => message.id) }],
     };
-    const send = (body: unknown, status = 200) =>
-      route.fulfill({
-        status,
-        headers,
-        contentType: "application/json",
-        body: JSON.stringify(body),
-      });
-    if (req.method() === "OPTIONS")
-      return route.fulfill({
-        status: 204,
-        headers: {
-          ...headers,
-          "Access-Control-Allow-Headers": "Content-Type,Authorization,If-Match",
-          "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS",
-        },
-      });
-    if (path.endsWith("/config"))
-      return send({
-        enabled: true,
-        free_only: true,
-        defaults: models,
-        models: [],
-      });
-    if (path.endsWith("/events"))
-      return route.fulfill({
-        headers,
-        contentType: "text/event-stream",
-        body: `event: snapshot\ndata: ${JSON.stringify(snapshot())}\n\n`,
-      });
+  });
+}
+
+function operation(id: string, set: EvidenceSet, corrected: boolean): Operation {
+  return {
+    id, kind: corrected ? "retest" : "check", state: "COMPLETED", billing: "RELEASED", models: defaultModels,
+    max_cost_nano_usd: 0, actual_cost_nano_usd: 0, baseline_id: corrected ? "recorded-1" : undefined,
+    source: { kind: "provided_conversations", label: "Pasted conversations", artifact_id: artifactID,
+      evidence_set_id: set.id, comparison: corrected ? "updated_replies" : undefined },
+    results: results(set, corrected),
+    scorecard: { total: 2, passed: 1, failed: 1, unknown: 0, evaluated: 2, coverage: 1, pass_rate: 0.5 },
+  };
+}
+
+// Direct-paste/retest controls belonged to the earlier workflow; current Improve keeps those chats as a read-only archive.
+const archived: Session = {
+  id: "legacy-chats", revision: 2, event_cursor: 2, anonymous: true,
+  document: {
+    models: defaultModels, requirements: [], evidence_sets: [original, updated], active_evidence_id: updated.id,
+    artifacts: [{ id: artifactID, kind: "conversation_evaluation", title: "Return policy chat", agent_prompt: "Follow the 30-day return policy.", blueprint: {}, accepted: true, source_message_id: "request", conversation_evaluation: { evidence_set_id: original.id, expectations: [{ id: "rule", statement: "Use known purchase age and apply the policy." }] } }],
+    messages: [
+      { id: "request", role: "user", content: "Check our support agent against the 30-day policy.", operation_id: "prepare" },
+      { id: "prepared", role: "assistant", content: "Saved conversations and checks are available below.", operation_id: "prepare" },
+    ],
+  },
+  operations: [operation("recorded-1", original, false), operation("recorded-2", updated, true)],
+};
+
+async function serve(page: Page) {
+  const writes: string[] = [];
+  const caseReads: string[] = [];
+  await page.route("**/v1/vibe/**", async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const headers = { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" };
+    if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { ...headers, "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS" } });
+    if (request.method() !== "GET") {
+      writes.push(`${request.method()} ${path}`);
+      return route.fulfill({ status: 405, headers, json: { error: { message: "Archived fixture is read-only" } } });
+    }
+    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, two_door: true, defaults: defaultModels, models: [] } });
+    if (path.endsWith("/sessions")) return route.fulfill({ headers, json: [archived] });
+    if (path.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(archived)}\n\n` });
     if (path.endsWith("/case")) {
-      const operation = state.operations.find((o) => path.includes(o.id));
-      return send(
-        operation?.results.find(
-          (c) => c.case_key === new URL(req.url()).searchParams.get("key"),
-        ),
-      );
+      const id = path.split("/operations/")[1]?.split("/")[0];
+      const key = url.searchParams.get("key");
+      caseReads.push(`${id}:${key}`);
+      const result = archived.operations.find(item => item.id === id)?.results.find(item => item.case_key === key);
+      return route.fulfill({ status: result ? 200 : 404, headers, json: result || { error: { message: "Case missing" } } });
     }
-    if (req.method() === "POST" && path.endsWith("/sessions")) {
-      state.id = req.postDataJSON().id;
-      return send(snapshot(), 201);
-    }
-    if (req.method() === "POST" && path.endsWith("/evidence")) {
-      const body = req.postDataJSON();
-      uploads++;
-      expect(uploads).toBe(1);
-      expect(body.content).toBe(updated);
-      const evidence = savedEvidence(body.content, true);
-      expect(evidence.conversations.map((chat) =>
-        chat.messages.filter((message) => message.role === "user"),
-      )).toEqual(state.document.evidence_sets![0].conversations.map((chat) =>
-        chat.messages.filter((message) => message.role === "user"),
-      ));
-      state.document.evidence_sets!.push(evidence);
-      state.document.active_evidence_id = evidence.id;
-      state.revision++;
-      return send(snapshot());
-    }
-    if (req.method() === "POST" && path.endsWith("/messages")) {
-      const body = req.postDataJSON();
-      requests.push(body);
-      state.revision++;
-      if (body.kind === "message") {
-        expect(body.content).toBe(firstMessage);
-        expect(body.quick_check).toBe(true);
-        expect(state.document.artifacts).toHaveLength(0);
-        state.document.messages.push({
-          id: body.client_id,
-          role: "user",
-          content: body.content,
-        });
-        // The authoring response saves the pasted evidence and explicitly grants
-        // quick_check. The browser must continue with one separate check request.
-        const evidence = savedEvidence(body.content);
-        state.document.evidence_sets!.push(evidence);
-        state.document.active_evidence_id = evidence.id;
-        state.document.artifacts.push({
-          id: artifactID,
-          kind: "conversation_evaluation",
-          title: "Support quality",
-          agent_prompt: "",
-          blueprint: null,
-          accepted: false,
-          quick_check: true,
-          source_message_id: body.client_id,
-          conversation_evaluation: {
-            evidence_set_id: evidence.id,
-            expectations: structuredClone(expectations),
-          },
-        });
-        state.document.messages.push({
-          id: "prepared",
-          artifact_id: artifactID,
-          role: "assistant",
-          content:
-            "I’ll check these replies against your return policy and whether the agent remembers details in follow-ups.",
-        });
-        return send({ id: "message", state: "COMPLETED" }, 202);
-      }
-      expect(["check", "retest"]).toContain(body.kind);
-      expect(body.artifact_id).toBe(artifactID);
-      expect(body.approve_artifact).toBe(true);
-      const evidence = state.document.evidence_sets!.find(
-        (e) => e.id === body.evidence_set_id,
-      )!;
-      const repeat = body.kind === "retest";
-      if (repeat) {
-        expect(body.baseline_id).toBe("recorded-1");
-        expect(body.models.evaluator).toBe(models.evaluator);
-        expect(body.evidence_set_id).toBe("evidence-2");
-      } else {
-        expect(body.baseline_id).toBeUndefined();
-        expect(body.evidence_set_id).toBe("evidence-1");
-      }
-      const artifact = state.document.artifacts[0];
-      expect(artifact.conversation_evaluation!.expectations).toEqual(expectations);
-      artifact.accepted = true;
-      const results: CaseResult[] = evidence.conversations.map((c, i) => ({
-        case_key: c.key,
-        title: c.title,
-        version: artifactID,
-        input: { conversation: c.title },
-        output: "",
-        messages: c.messages,
-        expected: "Remember purchase details and use the return window.",
-        expectations: structuredClone(expectations),
-        verdict: (repeat ? i === 1 : i === 0) ? "FAIL" : "PASS",
-        checks: [
-          {
-            key: "rule",
-            verdict: (repeat ? i === 1 : i === 0) ? "FAIL" : "PASS",
-            evidence:
-              i === 0
-                ? repeat
-                  ? "Uses the previously supplied purchase age."
-                  : "Asks for a purchase age the customer already supplied."
-                : repeat
-                  ? "Allows a return after 45 days."
-                  : "Correctly declines the late return.",
-            message_ids: i === 0 ? ["c1-m1", "c1-m4"] : ["c2-m1", "c2-m2"],
-          },
-        ],
-      }));
-      const operation: Operation = {
-        id: `recorded-${state.operations.length + 1}`,
-        kind: body.kind,
-        state: "COMPLETED",
-        billing: "RELEASED",
-        models,
-        max_cost_nano_usd: 0,
-        actual_cost_nano_usd: 0,
-        grading: { version: 1, hash: "same-fixture-contract" } as Operation["grading"],
-        baseline_id: body.baseline_id,
-        source: {
-          kind: "provided_conversations",
-          label: evidence.label,
-          artifact_id: artifactID,
-          evidence_set_id: evidence.id,
-          comparison: repeat ? "updated_replies" : undefined,
-        },
-        results,
-        scorecard: {
-          passed: 1,
-          failed: 1,
-          unknown: 0,
-          total: 2,
-          evaluated: 2,
-          pass_rate: 0.5,
-          coverage: 1,
-        },
-      };
-      state.operations.push(operation);
-      return send(operation, 202);
-    }
-    if (req.method() === "PATCH") edits.push(req.postDataJSON());
-    return send(snapshot());
+    if (path.endsWith("/saved-checks")) return route.fulfill({ headers, json: [] });
+    return route.fulfill({ headers, json: archived });
   });
-  // This contract remains available when reopening an existing recorded-chat session.
-  await page.goto(`/vibe-evals?session=${state.id}`);
-  await expect(page.getByRole("heading", { name: "Check the AI in your app." })).toBeVisible();
-  const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
-  await composer.fill(brief);
-  await composer.press("Shift+Enter");
-  await expect(composer).toHaveValue(brief + "\n");
-  expect(requests).toHaveLength(0);
-  await composer.fill(firstMessage);
-  await composer.press("Enter");
-  await expect(
-    page.getByRole("heading", { name: "One thing to fix" }),
-  ).toBeVisible();
-  expect(requests.map((request) => request.kind)).toEqual(["message", "check"]);
-  expect(uploads).toBe(0);
-  const originalEvidence = structuredClone(state.document.evidence_sets![0]);
-  const originalResults = structuredClone(state.operations[0].results);
-  const scorecard = page.getByRole("article", { name: "Evaluation scorecard" });
-  const leading = scorecard.locator('[aria-label="Leading finding"]');
-  await expect(leading.locator(":scope > details")).toHaveAttribute("open", "");
-  await expect(leading.locator("summary").first()).toContainText("Remember a purchase");
-  await expect(
-    leading.getByText("Asks for a purchase age the customer already supplied.", {
-      exact: true,
-    }).first(),
-  ).toBeVisible();
-  await expect(leading.locator("blockquote:visible")).toHaveCount(1);
-  await expect(
-    leading.locator("blockquote").getByText("When did you buy it?", { exact: true }).first(),
-  ).toBeVisible();
-  await expect(leading.getByRole("button", { name: "See evidence", exact: true })).toHaveAttribute("aria-expanded", "false");
-  await expect(leading.getByText("Expected behavior", { exact: true })).toBeHidden();
-  await expect(leading.getByRole("button", { name: "Change the expected behavior" })).toBeVisible();
-  for (const summary of ["Other results · 1", "What was checked"]) {
-    await expect(scorecard.locator("details").filter({
-      has: page.locator("summary", { hasText: summary }),
-    }).last()).not.toHaveAttribute("open");
-  }
-  await leading.getByRole("button", { name: "Copy fix prompt", exact: true }).click();
-  await expect(leading.getByRole("status")).toContainText("Copied. Paste it into your coding tool");
-  expect(copied).toHaveLength(1);
-  expect(copied[0]).toContain("Asks for a purchase age the customer already supplied.");
-  expect(copied[0]).toContain("I bought it 10 days ago.");
-  expect(copied[0]).toContain("Is it unopened?");
-  expect(copied[0]).toContain("When did you buy it?");
-  expect(copied[0]).toContain(expectations[0].statement);
-  expect(copied[0]).toContain("it does not establish a root cause");
-  expect(copied[0]).toContain("No code or agent instructions have been changed");
-  expect(copied[0]).toContain("Vibe Evals did not call the live app");
-  expect(requests).toHaveLength(2);
-  await scorecard.getByRole("button", { name: "Copy original inputs" }).click();
-  await expect(scorecard.getByRole("status").filter({ hasText: "Original inputs copied" })).toBeVisible();
-  expect(JSON.parse(copied[1])).toEqual({
-    conversations: originalEvidence.conversations.map((chat) => ({
-      messages: chat.messages.map(({ role, content }) => ({
-        role,
-        content: role === "assistant" ? "[Paste the new agent reply here]" : content,
-      })),
-    })),
-  });
-  await leading.getByRole("button", { name: "See evidence", exact: true }).click();
-  await expect(leading.getByText("Full conversation · 4 messages", { exact: true })).toBeVisible();
-  await expect(leading.locator("blockquote").getByText("I bought it 10 days ago.", { exact: true }).first()).toBeVisible();
-  await expect(
-    leading.getByText("Is it unopened?", { exact: true }),
-  ).toBeVisible();
-  await expect(leading.getByText("All checks · 1", { exact: true })).toBeVisible();
-  await leading.getByRole("button", { name: "Hide evidence", exact: true }).click();
-  await leading.getByRole("button", { name: "Change the expected behavior" }).click();
-  await expect(
-    page.getByRole("textbox", { name: "Message Vibe Evals" }),
-  ).toHaveValue(/The correct expectation is:/);
-  expect(requests).toHaveLength(2);
-  expect(edits).toHaveLength(0);
-  await page.getByRole("textbox", { name: "Message Vibe Evals" }).fill("");
-  await page.getByRole("tab", { name: "Results", exact: true }).click();
-  await scorecard.getByRole("button", { name: "Check the new answer", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Check the new answer", exact: true })).toBeVisible();
-  await page
-    .getByRole("textbox", { name: "Conversations to check" })
-    .fill(updated);
-  await page.getByRole("button", { name: "Check new answer", exact: true }).click();
-  await expect(
-    page.getByRole("heading", { name: "1 new issue in this update" }),
-  ).toBeVisible();
-  await expect(scorecard).toContainText(
-    "1 previously failing chat now passes · 1 new failure",
-  );
-  await expect(scorecard).toContainText("Same expectations and evaluator. Same customer messages.");
-  await expect(leading.locator("summary").first()).toContainText("Outside the return window");
-  await expect(
-    leading.getByText("Allows a return after 45 days.", { exact: true }).first(),
-  ).toBeVisible();
-  await expect(leading.locator("blockquote").getByText("It is eligible.", { exact: true }).first()).toBeVisible();
-  await leading.getByRole("button", { name: "See evidence", exact: true }).click();
-  await expect(leading.locator("blockquote").getByText("I bought it 45 days ago, unopened.", { exact: true }).first()).toBeVisible();
-  expect(requests.map((request) => request.kind)).toEqual(["message", "check", "retest"]);
-  expect(uploads).toBe(1);
-  expect(state.document.evidence_sets![0]).toEqual(originalEvidence);
-  expect(state.operations[0].results).toEqual(originalResults);
-  expect(state.document.artifacts[0].conversation_evaluation!.expectations).toEqual(expectations);
-  expect(state.document.artifacts[0].agent_prompt).toBe("");
+  await page.goto("/vibe-evals?session=legacy-chats");
+  await expect(page.getByRole("heading", { name: "Saved conversation" })).toBeVisible({ timeout: 15_000 });
+  return { writes, caseReads };
+}
+
+test("legacy saved chats retain both historical scorecards and evidence without writes", async ({ page }) => {
+  const before = structuredClone(archived);
+  const { writes, caseReads } = await serve(page);
+  await expect(page.getByText("This earlier conversation is read-only.", { exact: false })).toBeVisible();
+  await expect(page.getByText("Check our support agent against the 30-day policy.")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Message Vibe Evals" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Check the new answer" })).toHaveCount(0);
+  const scorecards = page.locator("details").filter({ has: page.locator("summary", { hasText: "Saved results · 1 passed · 1 failed" }) });
+  await expect(scorecards).toHaveCount(2);
+  await scorecards.nth(0).locator(":scope > summary").click();
+  await scorecards.nth(1).locator(":scope > summary").click();
+  await expect(scorecards.nth(0).getByText("Remember a purchase")).toBeVisible();
+  await expect(scorecards.nth(1).getByText("Outside the return window")).toBeVisible();
+  await scorecards.nth(0).locator(".vibe-result-row").first().locator("summary").click();
+  await scorecards.nth(1).locator(".vibe-result-row").nth(1).locator("summary").click();
+  await expect(scorecards.nth(0)).toContainText("Asks for a purchase age the customer already supplied.");
+  await expect(scorecards.nth(1)).toContainText("Allows a return after 45 days.");
+  await expect(scorecards.nth(0)).toContainText("When did you buy it?");
+  await expect(scorecards.nth(1)).toContainText("It is eligible.");
+  expect(caseReads).toEqual(expect.arrayContaining(["recorded-1:chat-1", "recorded-2:chat-2"]));
+  expect(writes).toEqual([]);
+  expect(archived).toEqual(before);
   await page.reload();
-  await expect(
-    page.getByRole("heading", { name: "1 new issue in this update" }),
-  ).toBeVisible();
-  expect(state.operations).toHaveLength(2);
-  expect(requests.map((request) => request.kind)).toEqual(["message", "check", "retest"]);
-  expect(edits).toHaveLength(0);
+  await expect(page.getByRole("heading", { name: "Saved conversation" })).toBeVisible();
+  await expect(page.locator("details > summary").filter({ hasText: "Saved results · 1 passed · 1 failed" })).toHaveCount(2);
+  expect(writes).toEqual([]);
 });

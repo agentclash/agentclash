@@ -9,6 +9,15 @@ export function buildVersion(session: Session, artifact: Artifact) {
   return session.document.artifacts.filter(a => a.agent_prompt).findIndex(a => a.id === artifact.id) + 1;
 }
 
+export function currentBuildAction(session: Session): { artifact: Artifact; operation?: Operation; hasOutput: boolean } | undefined {
+  const artifact = workingBuildArtifact(session) || session.document.artifacts.filter(a => a.kind === "task_brief").at(-1);
+  if (!artifact) return undefined;
+  const operation = session.operations.filter(o => (o.kind === "check" || o.kind === "retest")
+    && (o.source?.artifact_id || o.results[0]?.version) === artifact.id).at(-1);
+  const hasOutput = session.document.messages.some(m => m.origin === "playground" && m.role === "assistant" && m.artifact_id === artifact.id);
+  return { artifact, operation, hasOutput };
+}
+
 export type BuildMessage = Session["document"]["messages"][number];
 export type BuildEntry =
   | { id: string; kind: "message"; message: BuildMessage }

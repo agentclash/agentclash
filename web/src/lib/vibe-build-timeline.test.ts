@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { defaultModels, type Artifact, type Operation, type Session } from "./vibe";
-import { buildProgress, buildRunSummary, buildTimeline } from "./vibe-build-timeline";
+import { buildProgress, buildRunSummary, buildTimeline, currentBuildAction } from "./vibe-build-timeline";
 
 const artifact: Artifact = { id: "v1", title: "Returns", agent_prompt: "Use the policy", blueprint: {}, accepted: true, source_message_id: "user", proposal_message_id: "reply" };
 function operation(id: string, kind = "message", fields: Partial<Operation> = {}): Operation {
@@ -28,6 +28,17 @@ describe("Build history", () => {
     const runs = buildTimeline(s).filter(e => e.kind === "run");
     expect(runs.map(e => [e.operation.id, e.artifact?.id])).toEqual([["run1", "v1"], ["run2", "v2"]]);
     expect(buildTimeline(s).map(e => e.id).indexOf("run:run1")).toBeLessThan(buildTimeline(s).map(e => e.id).indexOf("message:fix"));
+  });
+  it("selects the active version's own output and run, never a newer unrelated run", () => {
+    const s = session();
+    s.document.artifacts.push({ ...artifact, id: "v2", source_message_id: "new" });
+    s.document.active_artifact_id = "v2";
+    s.document.messages.push({ id: "old-output", role: "assistant", content: "Old output", origin: "playground", artifact_id: "v1" });
+    s.operations.push(operation("unrelated", "check", { source: { kind: "prompt", label: "Old", artifact_id: "v1" } }));
+    expect(currentBuildAction(s)).toMatchObject({ artifact: { id: "v2" }, operation: undefined, hasOutput: false });
+    s.operations.push(operation("v2-run", "check", { source: { kind: "prompt", label: "New", artifact_id: "v2" } }));
+    s.document.messages.push({ id: "new-output", role: "assistant", content: "New output", origin: "playground", artifact_id: "v2" });
+    expect(currentBuildAction(s)).toMatchObject({ artifact: { id: "v2" }, operation: { id: "v2-run" }, hasOutput: true });
   });
   it("keeps trial messages labelled and replay stable without changing source data", () => {
     const s = session();
