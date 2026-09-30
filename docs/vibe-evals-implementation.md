@@ -30,6 +30,8 @@ Status: implemented; focused isolated PostgreSQL race tests passed.
 - Delete competing caches, direct replacements and child URL/run synchronization. Workspace receives typed display data and explicit callbacks. Keep content-bound submission IDs, uncertain admission and late-acknowledgement edit guards.
 - Acceptance: drafts survive switch/refresh; delayed responses cannot roll back progress; selecting result B survives refresh; production components stay below 1,000 lines.
 
+Status: implemented; 91 focused frontend tests passed. TypeScript passed. Browser checks are part of the final rollout gate.
+
 ### 3. Retire old chats and authoring pipelines
 
 - Inventory sessions by document format, operation states, pending outbox and Temporal execution. Drain retiring contracts; require zero pending execution before code removal.

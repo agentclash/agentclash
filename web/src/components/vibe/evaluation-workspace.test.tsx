@@ -103,6 +103,7 @@ beforeEach(() => {
     onMessage: vi.fn(),
     onNavigate: vi.fn(),
     onRun: vi.fn(),
+    onSelectRun: vi.fn(async (run: string) => { await render({ requestedRunID: run }); }),
     onEdit: vi.fn(async () => true),
     onDirty: vi.fn(),
     onSave: vi.fn(),

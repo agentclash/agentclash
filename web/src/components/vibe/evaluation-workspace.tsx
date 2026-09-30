@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
@@ -110,6 +109,7 @@ export type EvaluationWorkspaceProps = {
   ) => void;
   onNavigate: (view: View, artifactID?: string) => void;
   onRun: (baseline?: Operation, evidenceID?: string) => void;
+  onSelectRun: (run: string) => void;
   onEdit: (fields: Record<string, unknown>) => Promise<boolean>;
   onDirty: (dirty: boolean) => void;
   onSave: (operation?: Operation) => void;
@@ -131,7 +131,6 @@ export type EvaluationWorkspaceProps = {
 };
 
 export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
-  const params = useSearchParams();
   const door = p.session?.document.evaluation?.door;
   const buildJourney = door === "build";
   const previewOpen = buildJourney && p.view === "try";
@@ -156,10 +155,6 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
   useEffect(() => {
     if (p.newEvaluation) newEntry.current?.focus();
   }, [p.newEvaluation]);
-  const [runSelection, setRunSelection] = useState({
-    id: params.get("run") || undefined,
-    request: p.requestedRunID,
-  });
   const composer = useRef<HTMLTextAreaElement>(null);
   const parent = p.session?.document.artifacts.find(
     (a) => a.id === p.artifact?.parent_id,
@@ -184,10 +179,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
       (o) => o.kind === "check" || o.kind === "retest",
     ) || [];
   const latest = runs.at(-1);
-  const runID =
-    runSelection.request === p.requestedRunID
-      ? runSelection.id || p.requestedRunID
-      : p.requestedRunID;
+  const runID = p.requestedRunID;
   const result = runID ? runs.find((o) => o.id === runID) : latest;
   const active = p.session?.operations.find((o) => !terminal(o.state));
   const messages =
@@ -281,7 +273,6 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
     if (!buildJourney) scrollRegion.current?.scrollTo?.({ top: 0, behavior: "auto" });
   };
   const startRun = (baseline?: Operation, id?: string) => {
-    setRunSelection({ id: undefined, request: p.requestedRunID });
     setIntake(null);
     p.onRun(baseline, id);
   };
@@ -313,11 +304,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
   }
   function inspectRun(operation: Operation) {
     scroll.remember();
-    setRunSelection({ id: operation.id, request: p.requestedRunID });
-    p.onNavigate("checks");
-    const url = new URL(window.location.href);
-    url.searchParams.set("run", operation.id);
-    window.history.replaceState(null, "", url.pathname + url.search);
+    p.onSelectRun(operation.id);
   }
   const suiteContents = p.artifact?.kind === "test_suite" ? (
     <div className="space-y-5" data-proposal-id={p.artifact.id}>
@@ -688,10 +675,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                         aria-label="Result history"
                         value={result.id}
                         onChange={(e) =>
-                          setRunSelection({
-                            id: e.target.value,
-                            request: p.requestedRunID,
-                          })
+                          p.onSelectRun(e.target.value)
                         }
                         className="ml-2 rounded-lg border border-[var(--vibe-border)] bg-transparent p-2"
                       >
