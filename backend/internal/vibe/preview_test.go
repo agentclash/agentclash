@@ -165,7 +165,7 @@ func TestVibeIntegrationRetestApprovesOnlyExecutedChecks(t *testing.T) {
 	s := integrationStore(t)
 	v := anonSession(t, s)
 	ctx := context.Background()
-	a := Artifact{ID: uuid.New(), Title: "Revised agent", AgentPrompt: "Use supplied facts.", Blueprint: raw(map[string]any{"judges": []map[string]string{{"assertion": "Different, unrun rules"}}})}
+	a := Artifact{ID: uuid.New(), Kind: "test_suite", Title: "Revised agent", AgentPrompt: "Use supplied facts.", Blueprint: raw(map[string]any{"judges": []map[string]string{{"assertion": "Different, unrun rules"}}})}
 	if err := s.Edit(ctx, v.Actor, v.ID, v.Revision, func(v *Session) error { v.Document.Artifacts = []Artifact{a}; return nil }); err != nil {
 		t.Fatal(err)
 	}
@@ -205,7 +205,7 @@ func TestVibeIntegrationRetestApprovesOnlyExecutedChecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	var next Plan
-	if json.Unmarshal(improvement.Input, &next) != nil || next.Artifact == nil || Hash(next.Artifact.Blueprint) != Hash(tested.Blueprint) || len(next.Observations) != 1 {
+	if json.Unmarshal(improvement.Input, &next) != nil || next.ObservedArtifact == nil || Hash(next.ObservedArtifact.Blueprint) != Hash(tested.Blueprint) || len(next.Observations) != 1 {
 		t.Fatal("coaching did not preserve the checks that produced the selected evidence")
 	}
 	if err = s.Stop(ctx, v.Actor, improvement.ID); err != nil {

@@ -11,21 +11,22 @@ from urllib.parse import urlparse
 ROOT=Path(__file__).resolve().parents[2]
 REQUIRED={
  "github.com/agentclash/agentclash/backend/internal/vibe": [
+  "TestAuthoringPoliciesRetainContractsAndBounds","TestRetainedAuthoringWireIdentity","TestIntegrationRetirementUsesDocumentFormatAndIsRepeatable","TestIntegrationRetirementRequiresDrainedExecution","TestIntegrationQuotePersistenceCannotResurrectDeletedContent","TestIntegrationQuotePersistenceRechecksOwnershipAndRevision","TestIntegrationCleanupSkipsBlockedProjectsBeforeBatchLimit","TestIntegrationVibeV15JokeThenShopifyAndBoundAnswer","TestIntegrationVibeV15OneAlternativeAndReplay","TestIntegrationVibeV15RetriesOnlyFailedStageAndRecordsReviewer","TestIntegrationVibeV15UncertainBillingStopsRecovery","TestVibeSourceBoundaryAddedExamplesNeedTheirOwnEvidence","TestVibeSourceBoundaryConsistencyUsesAdoptedClauses","TestVibeSourceBoundaryConversationIsNotSpecification","TestVibeSourceBoundaryEvidenceAndScope","TestVibeSourceBoundaryExplicitExampleKeepsNarrowFieldChecks","TestVibeSourceBoundaryExplicitExamplesStayAvailable","TestVibeSourceBoundaryGradingTracksPolicyCorrection","TestVibeSourceBoundaryHistoricalUseNeedsSpecificConfirmation","TestVibeSourceBoundaryQuoteRepairPreservesExactEvidence","TestVibeSourceBoundaryRejectsHistoricalChatCitation","TestVibeSourceBoundaryRestoresOnlyUnambiguousQuoteStyle","TestVibeV15ActionSchemaAndAuthority","TestVibeV15AdmissionFreezesOnlyApprovedAlternative","TestVibeV15FirstJobHasNoPlaceholderCorrections","TestVibeV15ReadinessDoesNotInventReturnPolicy","TestVibeV15RecoveryFaultPolicy","TestVibeV15RepairKeepsOriginalRequestLast","TestVibeV15ShortAnswersBindOnServer",
   "TestBuildReviewSeparatesHarnessHeadingFromPolicy", "TestBuildReviewSchemaConstrainsCoverageAndEvidence", "TestBuildSharedRuleReviewMustNotBorrowCaseFacts", "TestBuildRecoverDraftUsesOnlyIndependentRequirements",
-  "TestIntegrationVibeBuildPreparationQuotePreservesReceipt", "TestBuildPreparationQuoteBindsRequest",
+  "TestBuildPreparationQuoteBindsRequest",
   "TestBuildSampleContextSurvivesFollowup", "TestBuildFollowupCompilesRealRules", "TestBuildSampleCannotBypassWithChangedInstructions", "TestBuildSampleBasisRejectsForeignOrChangedSources", "TestBuildEntailmentReviewRejectsUndecidedOutcomes", "TestBuildEntailmentReviewRequiresAuditAndPreservesV4",
   "TestBuildReviewRequiresEveryAssertion", "TestBuildAssertionsIncludeUnrelatedProhibitions", "TestBuildSamplesMatchTask", "TestBuildQuestionNeedsCorrectnessReason", "TestBuildReadinessRequiresSeparateRuleEvidence", "TestIntegrationVibeBuildRejectsInventedExpectation",
   "TestBuildGradingShapeKeepsLegacyContract", "TestRunQuoteBindsPurposeAndExecution", "TestSampleIdentityAndConcreteScope", "TestCoverageExpansionCannotRewriteBaseline",
   "TestIntegrationVibeBuildStopPreventsContinuation", "TestIntegrationVibeBuildRetryRetainsQuestionBudget",
   "TestIntegrationVibeBuildContextsDoNotInheritRules", "TestIntegrationVibeBuildOneQuestionThenUnknownRunsSample",
   "TestIntegrationVibeBuildClearBriefCreatesRunnablePrototype", "TestIntegrationVibeBuildQuoteIsBoundAndCannotResetQuestionBudget",
-  "TestIntegrationVibeRunQuoteDoesNotExecuteAndBindsVersion", "TestIntegrationVibeBuildVagueThenUnknownDoesNotInterview",
+  "TestIntegrationVibeRunQuoteDoesNotExecuteAndBindsVersion", 
   "TestVibeCoverageUsesOnlyAcceptedCurrentRules", "TestIntegrationVibeKeepBriefAndPermissions", "TestIntegrationVibeKeepExactPackAndRun", "TestIntegrationEvidenceCorrectionsAndSavedCheckPrivacy",
-  "TestVibeUnderstandingAdmissionAndIsolation", "TestVibeUnderstandingStrictResponse", "TestVibeUnderstandingRetainsEvidenceNotJokes",
-  "TestIntegrationVibeUnderstandingModesAndFallback", "TestIntegrationVibeUnderstandingRecoveryAndBudget",
+  
+  
   "TestVibeRetryTimingSurvivesFaultSerialization", "TestIntegrationVibeRetryCooldownEnforcedAtBothBoundaries", "TestIntegrationVibeDurableProgressAndDiagnostics",
   "TestIntegrationVibeRetryPreservesSourceAndDeduplicates", "TestIntegrationVibeRetryRejectsUncertainCostAndChangedBase", "TestIntegrationVibeRetryAllowsManualRateLimitDuringReconciliation",
-  "TestIntegrationVibeReliableRecoveryCommitsRecordedReviewWithoutDispatch", "TestIntegrationVibeReliableRecoveryRejectsIncompleteEvidenceAndStoppedWork",
+  
   "TestIntegrationVibeRecordedRegradePreservesEvidence", "TestVibeGroundedJudgeEvidence", "TestVibeGroundedConversationFindings", "TestVibeGradingIdentity",
   "TestVibeGuidanceContractAndIsolation", "TestIntegrationVibeGuidanceDoesNotBecomePolicy", "TestIntegrationVibeExplanationCanAccompanyPreparation",
   "TestVibePolicyPatchesPreserveRules", "TestVibePolicyPatchesRejectStaleAndReplacement",
@@ -36,15 +37,15 @@ REQUIRED={
   "TestVibeConversationMemoryRejectsInvalidAuthority", "TestVibeConversationMemorySourceValidationAndCorrection",
   "TestVibeConversationMemoryTaskIsolationAndCompaction", "TestVibeConversationMemoryLegacyAndReplayHash", "TestVibeConversationMemoryRetrievalAndRollback",
   "TestIntegrationVibeConversationStateJourney", "TestIntegrationVibeConversationStateAtomicity",
-  "TestIntegrationVibeConversationStateRecoveryWithoutDispatch", "TestIntegrationVibeConversationStateConflictAndStop",
+  "TestIntegrationVibeConversationStateConflictAndStop",
   "TestRequirementProvenanceAndReplacement", "TestVibePendingRequirementRevisionAndManualOverride",
-  "TestVibeContextDiagnostics", "TestVibeExistingAgentAndSupportBoundaries",
-  "TestVibeAuthoringRejectsFalseProvenanceAndInternalConfiguration",
+  "TestVibeContextDiagnostics", 
+  
   "TestIntegrationDuplicateMessageAndRevision", "TestIntegrationAtomicWalletReservations",
   "TestIntegrationCrashKeepsJournaledEvidenceWithoutReexecution",
-  "TestIntegrationStopMidProviderAndNoRetry", "TestIntegrationAuthoringIncludesActiveAcceptedArtifact",
-  "TestVibeIntegrationReviewedHandoffAndAtomicCompletion"],
- "github.com/agentclash/agentclash/backend/internal/api": ["TestVibeBuildRecoveryHTTPKeepsTestsAndWorkingVersion", "TestVibeIntegrationTwoDoorImportsPreserveEvidence", "TestVibeExpiredAuthenticationHTTP", "TestVibeIntegrationCoreJourneyKeepsRunnableTests", "TestVibeIntegrationSaveUsesSelectedModels", "TestVibeRetryCooldownHTTP", "TestVibeGroundedResultsAndRegrade", "TestVibeIntegrationDescriptionToHonestScorecardAndSave", "TestVibeInteractionHTTPBoundary"],
+  "TestIntegrationStopMidProviderAndNoRetry", 
+  ],
+ "github.com/agentclash/agentclash/backend/internal/api": ["TestVibeBuildRecoveryHTTPKeepsTestsAndWorkingVersion", "TestVibeIntegrationTwoDoorImportsPreserveEvidence", "TestVibeExpiredAuthenticationHTTP", "TestVibeIntegrationSaveUsesSelectedModels", "TestVibeRetryCooldownHTTP", "TestVibeGroundedResultsAndRegrade", "TestVibeInteractionHTTPBoundary"],
  "github.com/agentclash/agentclash/backend/internal/vibe/interaction": [
   "TestContractsAcceptSupportedWireData", "TestContractsRejectAmbiguousOrAuthorityBearingData",
   "TestContractsRejectMalformedAndFutureVersions"],

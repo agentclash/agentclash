@@ -25,7 +25,6 @@ func memoryService(t *testing.T) (*Service, Session, Config) {
 	s := integrationStore(t)
 	v := anonSession(t, s)
 	cfg := testConfig()
-	cfg.ReliableAuthoring, cfg.ConversationState = true, true
 	cfg.SourcePolicyVersion = SourcePolicyVersion
 	profile := cfg.Profiles[DefaultModels().Assistant]
 	profile.StructuredOutputs = true
@@ -52,7 +51,11 @@ func memoryExecute(t *testing.T, s *Service, v Session, content string, answer f
 	r := &Runner{Service: s, Gateway: &Gateway{Store: s.Store, Config: s.Config, Gate: s.Gate, Client: callFunc(func(_ context.Context, request provider.Request) (provider.Response, error) {
 		calls++
 		cost := json.Number("0.000001")
-		return provider.Response{OutputText: string(raw(answer(request))), Usage: provider.Usage{CostUSD: &cost}}, nil
+		value := answer(request)
+		if route, ok := value.(reliableRoute); ok {
+			value = interpretedRouteFixture(route)
+		}
+		return provider.Response{OutputText: string(raw(value)), Usage: provider.Usage{CostUSD: &cost}}, nil
 	})}}
 	if err := r.Execute(ctx, o.ID); err != nil {
 		t.Fatalf("after %d fixture calls: %s", calls, raw(issueFrom(err)))
@@ -92,8 +95,12 @@ func TestIntegrationVibeConversationStateJourney(t *testing.T) {
 		stage++
 		switch stage {
 		case 1:
-			var input taskInput
-			if err := json.Unmarshal([]byte(request.Messages[1].Content), &input); err != nil || input.PendingQuestion == nil || input.PendingQuestion.ID != question.ID {
+			var input struct {
+				ActiveQuestion *struct {
+					Text string `json:"text"`
+				} `json:"active_question"`
+			}
+			if err := json.Unmarshal([]byte(request.Messages[1].Content), &input); err != nil || input.ActiveQuestion == nil || input.ActiveQuestion.Text != question.Text {
 				t.Fatal("saved question was not supplied after reload", err)
 			}
 			return reliableRoute{Intent: "prepare_tests", Reply: "I'll prepare one example.", Count: 1, Memory: &memoryUpdate{Answer: answerFor(&question, "30 days", false), Facts: []memoryFact{{Kind: "rule", Quote: "30 days"}}}}
@@ -213,56 +220,6 @@ func TestIntegrationVibeConversationStateAtomicity(t *testing.T) {
 		t.Fatal("state completion has no receipt")
 	}
 }
-func TestIntegrationVibeConversationStateRecoveryWithoutDispatch(t *testing.T) {
-	for _, version := range []int{12, 13, 14} {
-		t.Run(fmt.Sprint("version=", version), func(t *testing.T) {
-			ctx := context.Background()
-			s, v, cfg := memoryService(t)
-			s.Config.PreciseActions = version >= 13
-			s.Config.ContextGuidance = version >= 14
-			o, p := memoryOperation(t, s, v, "My agent converts PDF to Markdown.")
-			var err error
-			o, _, err = s.Store.Start(ctx, o.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			profile := cfg.Profiles[o.Models.Assistant]
-			route := questionRoute()
-			if version == 14 {
-				route.Example = &GuidanceExample{Input: "PDF heading: Refunds", Expected: "# Refunds"}
-			}
-			output := raw(route)
-			attempt := Attempt{ID: uuid.New(), OperationID: o.ID, Step: "route", Role: Assistant, Model: o.Models.Assistant, RequestHash: Hash(raw(taskMessages(p, taskRoute, "", nil))), Policy: raw(map[string]any{"response_format": reliableRouteFormat(profile, p)}), InputBound: 15000, MaxOutput: 2048, MaxCost: 100000}
-			if err = s.Store.BeginAttempt(ctx, attempt); err != nil {
-				t.Fatal(err)
-			}
-			cost := int64(100)
-			if err = s.Store.EndAttempt(ctx, attempt, string(output), raw(provider.Response{OutputText: string(output)}), &cost, nil); err != nil {
-				t.Fatal(err)
-			}
-			calls := 0
-			r := &Runner{Service: s, Gateway: &Gateway{Store: s.Store, Config: cfg, Gate: s.Gate, Client: callFunc(func(context.Context, provider.Request) (provider.Response, error) {
-				calls++
-				return provider.Response{}, fmt.Errorf("unexpected paid dispatch")
-			})}}
-			issue := &Fault{Code: "worker_interrupted", Message: "Worker interrupted."}
-			if err = r.Finalize(ctx, o.ID, issue); err != nil {
-				t.Fatal(err)
-			}
-			if err = r.Finalize(ctx, o.ID, issue); err != nil {
-				t.Fatal(err)
-			}
-			current, err := s.Store.GetSession(ctx, v.Actor, v.ID)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if calls != 0 || version == 14 && len(current.Document.Messages[len(current.Document.Messages)-1].Cards) != 1 || len(current.Document.Messages) != 2 || current.Document.ConversationState == nil || current.Document.ConversationState.PendingQuestion == nil || current.Operations[0].State != Completed {
-				t.Fatal("recorded response did not recover state exactly once")
-			}
-
-		})
-	}
-}
 
 func TestIntegrationVibeConversationStateConflictAndStop(t *testing.T) {
 	for _, mode := range []string{"conflict", "stop"} {
@@ -297,4 +254,44 @@ func TestIntegrationVibeConversationStateConflictAndStop(t *testing.T) {
 			}
 		})
 	}
+}
+
+// Shared semantic fixtures now emit the current interpretation contract. This
+// keeps state/undo assertions independent of the retired router wire format.
+func interpretedRouteFixture(route reliableRoute) interpretation {
+	out := interpretation{Observations: []factObservation{}, SourceMessageIDs: route.SourceMessageIDs}
+	if out.SourceMessageIDs == nil {
+		out.SourceMessageIDs = []string{}
+	}
+	if m := route.Memory; m != nil {
+		out.ScopeChangeQuote = m.NewScopeQuote
+		out.BrevityQuote = m.BrevityQuote
+		out.CancelQuestionQuote = m.CancelQuestionQuote
+		for _, f := range m.Facts {
+			out.Observations = append(out.Observations, factObservation{Kind: f.Kind, Quote: f.Quote})
+		}
+		if m.Answer != nil {
+			out.Answer = &answerObservation{Quote: m.Answer.Quote, Unknown: m.Answer.Unknown}
+		}
+	}
+	switch route.Intent {
+	case "chat", "explain_results":
+		out.Action = raw(replyAction{Kind: map[string]string{"chat": "reply", "explain_results": "explain_results"}[route.Intent], Text: route.Reply, Example: route.Example})
+	case "clarify":
+		a := askAction{Kind: "ask", Text: route.Reply, Purpose: "clarify_rule", Options: []string{}}
+		if route.Memory != nil && route.Memory.Question != nil {
+			a.Text = route.Memory.Question.Text
+			a.Purpose = route.Memory.Question.Purpose
+			a.Options = route.Memory.Question.Options
+			if a.Options == nil {
+				a.Options = []string{}
+			}
+		}
+		out.Action = raw(a)
+	case "prepare_tests":
+		out.Action = raw(prepareAction{Kind: route.Intent, Count: route.Count})
+	default:
+		out.Action = raw(mutationAction{Kind: route.Intent})
+	}
+	return out
 }

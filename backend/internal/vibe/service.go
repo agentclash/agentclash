@@ -36,7 +36,7 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 		return Operation{}, err
 	}
 	if s.Config.TwoDoor && v.Document.FormatVersion != 1 {
-		return Operation{}, fault("invalid_state", "This earlier conversation is read-only. Continue in V1 before starting new work.")
+		return Operation{}, fault("invalid_state", "This earlier conversation is read-only. Start a new V1 project.")
 	}
 	if v.Document.FormatVersion == 1 && sub.AdditionalExamples > 0 && sub.CycleID == nil {
 		return Operation{}, fault("invalid_request", "Review the total preparation and run cost before adding tougher situations.")
@@ -44,9 +44,6 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 	l := s.Config.Limits(v.Anonymous)
 	if sub.AdditionalExamples < 0 || sub.AdditionalExamples > l.Cases || sub.AdditionalExamples > 0 && (sub.Kind != "message" || sub.ArtifactID == nil || v.Document.Evaluation == nil) {
 		return Operation{}, fault("invalid_request", "Choose a bounded batch for an existing evaluation.")
-	}
-	if sub.AdditionalExamples > 0 && !s.Config.InterpretedAuthoring {
-		return Operation{}, fault("hosted_disabled", "Additional coverage is not enabled. Your existing examples remain available.")
 	}
 	if v.Document.Evaluation != nil && v.Document.Evaluation.Door == "build" && len(v.Document.Artifacts) == 0 && sub.Kind == "message" && sub.CycleID == nil {
 		return Operation{}, fault("quote_expired", "Use Build and try 3 examples, or Retry your saved request.")
@@ -106,13 +103,7 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 		return Operation{}, err
 	}
 	if sub.Interaction != nil {
-		if !s.Config.PreciseActions {
-			return Operation{}, fault("invalid_request", "Reload to use the current conversation controls.")
-		}
 		if err := validateSourceAction(v, sub); err != nil {
-			if !s.Config.InterpretedAuthoring {
-				return Operation{}, err
-			}
 			if e := validateClarificationAction(v, sub); e != nil {
 				return Operation{}, e
 			}
@@ -126,155 +117,25 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 	if sub.Purpose == "regrade" {
 		return s.prepareRegrade(ctx, actor, v, sub, p)
 	}
-	if v.Document.FormatVersion == 1 && (sub.Kind == "message" || sub.Kind == "build") {
+	if sub.Kind == "message" || sub.Kind == "build" {
 		if sub.QuickCheck || sub.EvidenceSetID != nil || sub.Instructions != "" && !strings.Contains(sub.Content, sub.Instructions) {
-			return Operation{}, fault("invalid_message", "Use agent instructions or import a test pack. Recorded-conversation grading is not available in V1.")
+			return Operation{}, fault("invalid_message", "Supply agent instructions or import a test pack. Recorded replies need explicit expectations before grading.")
 		}
 		return s.prepareTestConversation(ctx, actor, v, sub, p)
-	}
-	if (sub.TestJourney || v.Document.TestJourney) && (sub.Kind == "message" || sub.Kind == "build") {
-		return s.prepareTestConversation(ctx, actor, v, sub, p)
-	}
-	if !sub.TestJourney && !v.Document.TestJourney && (sub.EvaluationFirst || v.Document.EvaluationFirst) {
-		p.Document.EvaluationFirst = true
-		p.Evidence = findEvidence(v.Document, sub.EvidenceSetID)
-		if sub.Kind == "message" && sub.Instructions == "" && sub.EvidenceSetID == nil && sub.BaselineID == nil {
-			p.InlineEvidence, err = ParseMessageEvidence(sub.Content, l)
-			if err != nil {
-				return Operation{}, err
-			}
-			if p.InlineEvidence != nil {
-				p.Evidence = p.InlineEvidence
-			}
-		}
-		if sub.Instructions != "" {
-			p.Evidence = nil
-		}
-		selected := sub.ArtifactID
-		if selected == nil && sub.Instructions == "" {
-			selected = v.Document.ActiveArtifactID
+	} else if sub.Kind == "check" || sub.Kind == "retest" || sub.Kind == "playground" {
+		if evidence := findEvidence(v.Document, sub.EvidenceSetID); evidence != nil {
+			p.Evidence = evidence
 		}
 		for _, a := range v.Document.Artifacts {
-			if selected != nil && a.ID == *selected {
+			if sub.ArtifactID != nil && a.ID == *sub.ArtifactID {
 				copy := a
 				p.Artifact = &copy
-			}
-		}
-		if sub.Instructions != "" || p.InlineEvidence != nil {
-			p.Artifact = nil
-		}
-		if p.Artifact != nil && !p.Artifact.IsConversationEvaluation() && sub.Kind != "message" && sub.Kind != "build" {
-			// A later chat upload cannot change an older instruction test or preview.
-			p.Evidence = nil
-		}
-		if p.Evidence != nil || p.Artifact != nil && p.Artifact.IsConversationEvaluation() || (sub.Kind == "message" && p.Artifact == nil && sub.Instructions == "") {
-			return s.prepareConversations(ctx, actor, v, sub, p)
-		}
-		// Explicitly supplied instructions opt into a local text test.
-		if sub.Instructions != "" {
-			p.Document.Journey.Mode = "idea"
-			p.Document.Journey.PreviewConsent = true
-		}
-	}
-	if sub.JourneyMode != "" {
-		p.Document.Journey.Mode = sub.JourneyMode
-	}
-	if sub.Kind == "message" || sub.Kind == "build" {
-		if strings.TrimSpace(sub.Content) == "" {
-			return Operation{}, fault("invalid_message", "Write a message first.")
-		}
-		selected := sub.ArtifactID
-		if sub.Instructions != "" {
-			selected = nil
-			p.Document.Artifacts = nil
-		}
-		if selected == nil && sub.Instructions == "" {
-			selected = v.Document.ActiveArtifactID
-		}
-		if selected != nil {
-			found := false
-			for _, a := range v.Document.Artifacts {
-				if a.ID == *selected {
-					found = true
-					p.Document.Artifacts = []Artifact{a}
-					if a.Accepted && !a.IsTestPlan() {
-						copy := a
-						p.Artifact = &copy
-					}
-					break
-				}
-			}
-			if !found {
-				return Operation{}, fault("artifact_required", "Choose an existing agent version.")
-			}
-		}
-		p.Document.Messages = nil
-		for _, message := range v.Document.Messages {
-			if message.Origin != "playground" {
-				p.Document.Messages = append(p.Document.Messages, message)
-			}
-		}
-		if len(p.Document.Messages) > 6 {
-			p.Document.Messages = p.Document.Messages[len(p.Document.Messages)-6:]
-		}
-		if len(p.Document.Artifacts) > 1 {
-			p.Document.Artifacts = p.Document.Artifacts[len(p.Document.Artifacts)-1:]
-		}
-		for i := len(v.Operations) - 1; i >= 0; i-- {
-			if sub.BaselineID != nil && v.Operations[i].ID != *sub.BaselineID {
-				continue
-			}
-			if len(v.Operations[i].Results) > 0 {
-				if selected != nil {
-					if !v.Operations[i].State.Terminal() || v.Operations[i].Results[0].Version != selected.String() {
-						continue
-					}
-					// Coach against the checks that produced this version's
-					// evidence, including a retest with a different baseline.
-					original, e := s.Store.Operation(ctx, v.Operations[i].ID)
-					if e != nil {
-						return Operation{}, e
-					}
-					var tested Plan
-					if e = json.Unmarshal(original.Input, &tested); e != nil {
-						return Operation{}, e
-					}
-					if tested.Artifact != nil {
-						copy := p.Document.Artifacts[0]
-						copy.Blueprint = tested.Artifact.Blueprint
-						p.Artifact = &copy
-					}
-				}
-				for _, result := range v.Operations[i].Results {
-					if len(p.Observations) == 3 {
-						break
-					}
-					result, err = s.Store.GetCase(ctx, actor, v.Operations[i].ID, result.CaseKey)
-					if err != nil {
-						return Operation{}, err
-					}
-					if len(result.Output) > 2048 {
-						result.Output = result.Output[:2048] + " [excerpt; full output is saved in the scorecard]"
-					}
-					p.Observations = append(p.Observations, result)
-				}
 				break
 			}
 		}
-		if sub.BaselineID != nil && (selected == nil || len(p.Observations) == 0) {
-			return Operation{}, fault("baseline_required", "Choose a completed check for this agent version before improving from its evidence.")
+		if p.Artifact != nil && p.Artifact.IsConversationEvaluation() {
+			return s.prepareConversations(ctx, actor, v, sub, p)
 		}
-		p.Calls = 2 // one authoring call and, only if needed, one repair
-		profile, e := s.Config.Profile(sub.Models.Assistant)
-		if e != nil {
-			return Operation{}, e
-		}
-		cost, e := profile.BoundCost(profile.inputLimit(l), l.OutputTokens)
-		if e != nil {
-			return Operation{}, e
-		}
-		p.MaxCost = cost * int64(p.Calls)
-	} else if sub.Kind == "check" || sub.Kind == "retest" || sub.Kind == "playground" {
 		p.Document = Document{}
 		if sub.ArtifactID == nil {
 			return Operation{}, fault("artifact_required", "Choose an agent first.")
@@ -551,7 +412,7 @@ func (s *Service) SaveWithBaseline(ctx context.Context, actor string, id uuid.UU
 			return uuid.Nil, err
 		}
 	}
-	if artifact.IsTestSuite() && !suppliedImport(v.Document, *artifact) && !verifiedSample && (s.Config.ReliableAuthoring || artifact.Validation != nil || artifact.Provenance == "ai_generated") && !s.currentArtifactPolicy(v.Document, *artifact) {
+	if artifact.IsTestSuite() && !suppliedImport(v.Document, *artifact) && !verifiedSample && !s.currentArtifactPolicy(v.Document, *artifact) {
 		return uuid.Nil, fault("tests_not_ready", "These tests need a rule review before they can be saved. Run the existing tests to review them, or describe the intended rules to prepare an update.")
 	}
 	if selected != nil {

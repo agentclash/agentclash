@@ -36,7 +36,30 @@ func (s *Store) DeletionStatus(ctx context.Context, actor string, id uuid.UUID) 
 	return r, nil
 }
 func (s *Store) DeleteProject(ctx context.Context, actor string, id uuid.UUID, revision int64) (DeletionReceipt, error) {
-	receipt, err := s.DeletionStatus(ctx, actor, id)
+	return s.deleteProject(ctx, actor, id, revision, false)
+}
+
+func (s *Store) deletionReceipt(ctx context.Context, id uuid.UUID) (DeletionReceipt, error) {
+	var r DeletionReceipt
+	err := s.DB.QueryRow(ctx, `SELECT deleted_at,cleanup_finished_at FROM vibe_sessions WHERE id=$1`, id).Scan(&r.DeletedAt, &r.FinishedAt)
+	r.Status = "active"
+	if r.DeletedAt != nil {
+		r.Status = "deleting"
+	}
+	if r.FinishedAt != nil {
+		r.Status = "deleted"
+	}
+	return r, err
+}
+
+func (s *Store) deleteProject(ctx context.Context, actor string, id uuid.UUID, revision int64, retiring bool) (DeletionReceipt, error) {
+	var receipt DeletionReceipt
+	var err error
+	if retiring {
+		receipt, err = s.deletionReceipt(ctx, id)
+	} else {
+		receipt, err = s.DeletionStatus(ctx, actor, id)
+	}
 	if err != nil || receipt.DeletedAt != nil {
 		return receipt, err
 	}
@@ -48,13 +71,18 @@ func (s *Store) DeleteProject(ctx context.Context, actor string, id uuid.UUID, r
 		if actor != v.Actor {
 			return fault("not_found", "Project is unavailable.")
 		}
-		if e = authorize(ctx, tx, actor, v.WorkspaceID, true); e != nil {
-			return e
+		if !retiring {
+			if e = authorize(ctx, tx, actor, v.WorkspaceID, true); e != nil {
+				return e
+			}
+		}
+		if retiring && v.Document.FormatVersion == 1 {
+			return fault("invalid_state", "V1 projects cannot be retired.")
 		}
 		if v.Revision != revision {
 			return fault("revision_conflict", "Reload this project before deleting it.")
 		}
-		if v.Document.Evaluation == nil {
+		if !retiring && v.Document.Evaluation == nil {
 			return fault("invalid_request", "Delete a selected evaluation, not its shared chat container.")
 		}
 		rows, e := tx.Query(ctx, `SELECT id FROM vibe_operations WHERE session_id=$1 AND state NOT IN ('COMPLETED','PARTIAL','FAILED','CANCELLED','EXPIRED')`, id)
@@ -75,6 +103,9 @@ func (s *Store) DeleteProject(ctx context.Context, actor string, id uuid.UUID, r
 			return e
 		}
 		rows.Close()
+		if retiring && len(ids) > 0 {
+			return fault("retirement_pending", "This project still has pending execution.")
+		}
 		for _, op := range ids {
 			if e = transition(ctx, tx, op, Cancelling); e != nil {
 				return e
@@ -101,6 +132,9 @@ func (s *Store) DeleteProject(ctx context.Context, actor string, id uuid.UUID, r
 	})
 	if err != nil {
 		return receipt, err
+	}
+	if retiring {
+		return s.deletionReceipt(ctx, id)
 	}
 	return s.DeletionStatus(ctx, actor, id)
 }
@@ -145,7 +179,7 @@ func (s *Store) CleanupProjects(ctx context.Context) error {
 			// limits. Content and inference results have no accounting purpose.
 			for _, sql := range []string{
 				`DELETE FROM vibe_case_results WHERE operation_id IN (SELECT id FROM vibe_operations WHERE session_id=$1)`,
-				`UPDATE vibe_attempts SET output='',usage='{}',policy='{}',domain_outcome=NULL,error=NULL WHERE operation_id IN (SELECT id FROM vibe_operations WHERE session_id=$1)`,
+				`UPDATE vibe_attempts SET output='',usage='{}',policy=CASE WHEN max_cost=0 THEN '{"profile":{"free":true}}'::jsonb ELSE '{}'::jsonb END,domain_outcome=NULL,error=NULL WHERE operation_id IN (SELECT id FROM vibe_operations WHERE session_id=$1)`,
 				`UPDATE vibe_operations SET input=jsonb_build_object('anonymous',COALESCE((input->>'anonymous')::boolean,false)),error=NULL,conversation_decision=NULL,completion_receipt=NULL,understanding_outcome=NULL WHERE session_id=$1`,
 				`UPDATE vibe_enquiries SET content='{}',status=CASE WHEN status='provider_accepted' THEN status ELSE 'cancelled' END WHERE session_id=$1`,
 				`UPDATE vibe_cycle_quotes SET specification='{}' WHERE session_id=$1`,

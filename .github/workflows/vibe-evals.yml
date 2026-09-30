@@ -70,7 +70,7 @@ jobs:
       - name: Failure injection and database concurrency (no provider calls)
         working-directory: backend
         run: |
-          go test -p 1 -race ./internal/vibe ./internal/api -run 'Test(Vibe|Suite|Consistency|Integration|Structured|YAML|Fanout|Money|FullContext|Unknown|Coverage|RunQuote|SampleIdentity|Requirement|StateMachine|MissingPricing|TrialEconomics|PaidTemporal|InvalidJudge|CORSMiddleware|BillingManager.*Webhook|AgentTryoutPromot|Generate|Evidence|Conversation)' -count=1
+          go test -p 1 -race ./internal/vibe ./internal/api -run 'Test(Vibe|Suite|Consistency|Integration|Structured|YAML|Fanout|Money|FullContext|Unknown|Coverage|RunQuote|SampleIdentity|Requirement|StateMachine|MissingPricing|TrialEconomics|PaidTemporal|InvalidJudge|CORSMiddleware|BillingManager.*Webhook|AgentTryoutPromot|Generate|Evidence|Conversation|AuthoringPolicies|RetainedAuthoring)' -count=1
           go build ./...
           go vet ./...
       - name: Material and enquiry transaction regressions

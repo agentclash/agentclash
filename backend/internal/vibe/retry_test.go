@@ -56,7 +56,12 @@ func TestIntegrationVibeRetryPreservesSourceAndDeduplicates(t *testing.T) {
 	if _, _, err = s.Start(ctx, retried.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err = s.CompleteDocument(ctx, retried.ID, "Prepared on retry.", nil, nil); err != nil {
+	state := cloneState(plan.Conversation.State)
+	state.ThroughMessageID = deterministicID(retried.ID, "completion-message").String()
+	if err = s.commitConversationDecision(ctx, retried, plan, "chat"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.CompleteDocument(ctx, retried.ID, "Prepared on retry.", nil, nil, AuthoringCompletion{ConversationState: state, Outcome: &CompletionReceipt{Action: "chat"}}); err != nil {
 		t.Fatal(err)
 	}
 	if err = s.Finish(ctx, retried.ID, nil); err != nil {

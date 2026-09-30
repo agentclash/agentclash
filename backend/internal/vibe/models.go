@@ -30,28 +30,23 @@ type ModelProfile struct {
 	ExpiresAt          time.Time `json:"expires_at"`
 }
 type Config struct {
-	MaterialBuild        bool
-	TwoDoor              bool
-	GroundedJudging      bool
-	ContextGuidance      bool
-	PreciseActions       bool
-	ConversationState    bool
-	ReliableAuthoring    bool
-	InterpretedAuthoring bool
-	AssistantFallback    bool
-	SuiteReviewVersion   string
-	SourcePolicyVersion  string
-	LocalTesting         bool
-	LocalBudget          int64
-	FreeOnly             bool
-	DefaultModel         string
-	Enabled              bool
-	Credential           string
-	Profiles             map[string]ModelProfile
-	AnonymousDaily       int64
-	AnonymousCampaign    int64
-	Campaign             string
-	localProfiles        *localProfileVerifier
+	MaterialBuild       bool
+	TwoDoor             bool
+	GroundedJudging     bool
+	AssistantFallback   bool
+	SuiteReviewVersion  string
+	SourcePolicyVersion string
+	LocalTesting        bool
+	LocalBudget         int64
+	FreeOnly            bool
+	DefaultModel        string
+	Enabled             bool
+	Credential          string
+	Profiles            map[string]ModelProfile
+	AnonymousDaily      int64
+	AnonymousCampaign   int64
+	Campaign            string
+	localProfiles       *localProfileVerifier
 }
 
 func LoadConfig() (Config, error) {
@@ -59,8 +54,6 @@ func LoadConfig() (Config, error) {
 	c.FreeOnly = os.Getenv("VIBE_FREE_ONLY") == "true"
 	// One supported authoring contract for new application requests. Older
 	// versions remain decodable for immutable journals and archive reads.
-	c.ReliableAuthoring, c.ConversationState, c.PreciseActions = true, true, true
-	c.ContextGuidance, c.InterpretedAuthoring = true, true
 	c.SourcePolicyVersion = SourcePolicyVersion
 	c.GroundedJudging = os.Getenv("VIBE_GROUNDED_JUDGING") != "false"
 	c.SuiteReviewVersion = LatestSuiteValidatorVersion

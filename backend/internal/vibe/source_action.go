@@ -57,9 +57,6 @@ func (s *Service) Interact(ctx context.Context, actor string, id uuid.UUID, a in
 	if checkWire("action", a) != nil {
 		return fault("invalid_request", "Choose one available action.")
 	}
-	if !s.Config.PreciseActions {
-		return fault("invalid_request", "Reload to use the current conversation controls.")
-	}
 	v, err := s.Store.GetSession(ctx, actor, id)
 	if err != nil {
 		return err
@@ -79,7 +76,7 @@ func (s *Service) Interact(ctx context.Context, actor string, id uuid.UUID, a in
 		_, err = s.Prepare(ctx, actor, id, sub)
 		return err
 	}
-	if s.Config.InterpretedAuthoring && a.Kind == "answer_question" {
+	if a.Kind == "answer_question" {
 		if op, e := s.Store.submissionReceiptForAction(ctx, id, a); op != nil || e != nil {
 			return e
 		}

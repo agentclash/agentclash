@@ -194,17 +194,8 @@ func (s *Store) Submit(ctx context.Context, actor string, id uuid.UUID, sub Subm
 		if err = validateInterpretedAllowance(plan, cfg); err != nil {
 			return err
 		}
-		if plan.AuthoringVersion >= 11 && (sub.Kind == "message" || sub.Kind == "build") {
-			allowedCalls := 5
-			if plan.interpreted() {
-				allowedCalls = 8
-				if plan.AuthoringVersion == legacyBuildAuthoringVersion || plan.taskBuild() {
-					allowedCalls = 10
-				}
-				if plan.AssistantRecovery != nil {
-					allowedCalls++
-				}
-			}
+		if policy, ok := authoringPolicyFor(plan.AuthoringVersion); ok && (sub.Kind == "message" || sub.Kind == "build") {
+			allowedCalls, _ := policy.allowance(0, plan.AssistantRecovery)
 			if plan.Calls > allowedCalls || plan.operationTimeout() > 16*time.Minute || plan.Conversation != nil && plan.Conversation.Manual != nil && plan.Calls != 1 {
 				return fault("budget_limit", "The authoring workflow exceeds its call or time allowance.")
 			}
@@ -479,7 +470,7 @@ func (s *Store) Approve(ctx context.Context, actor string, id uuid.UUID, cfg Con
 			return err
 		}
 		if cfg.TwoDoor && v.Document.FormatVersion != 1 {
-			return fault("invalid_state", "This earlier conversation is read-only. Continue in V1 before starting new work.")
+			return fault("invalid_state", "This earlier conversation is read-only. Start a new V1 project.")
 		}
 		if o.State != AwaitingApproval {
 			return fault("invalid_state", "This operation is not awaiting approval.")

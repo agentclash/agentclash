@@ -88,13 +88,13 @@ func (s *Service) PrepareSuiteEdit(ctx context.Context, actor string, id uuid.UU
 	}
 	sub := Submission{ClientID: uuid.New(), Revision: revision, Kind: "message", Content: "Check and apply these manually edited test cases and expected answers. Preserve my existing business rules.", ArtifactID: &artifactID, Models: v.Document.Models, TestJourney: true}
 	p := Plan{Submission: sub, Artifact: a, Document: v.Document, Anonymous: v.Anonymous, Free: s.Config.FreeOnly, LocalTesting: s.Config.TestingLocally()}
-	if err = prepareReliableContext(&p, v, s.Config.SourcePolicyVersion); err != nil {
+	if err = prepareReliableContext(&p, v, SourcePolicyVersion); err != nil {
 		return Operation{}, err
 	}
 	if err = s.freezeReviewVersion(&p); err != nil {
 		return Operation{}, err
 	}
-	if s.Config.InterpretedAuthoring && v.Document.Evaluation != nil && v.Document.Evaluation.Door == "build" {
+	if v.Document.Evaluation != nil && v.Document.Evaluation.Door == "build" {
 		p.Conversation.ValidatorVersion = EntailmentSuiteValidatorVersion
 	}
 	l = p.limits()
@@ -109,6 +109,11 @@ func (s *Service) PrepareSuiteEdit(ctx context.Context, actor string, id uuid.UU
 		p.Conversation.Policy = &policy
 		p.Conversation.Sources = append(sources, p.Conversation.CurrentRequest)
 	}
+	if err = prepareConversationState(&p, v); err != nil {
+		return Operation{}, err
+	}
+	p.AuthoringVersion = interpretedAuthoringVersion
+	p.Conversation.ContractVersion = "vibe-v15"
 	p.Conversation.Manual = &ManualSuiteEdit{Blueprint: blueprint}
 	p.Calls = 1
 	profile, err := s.Config.Profile(sub.Models.Assistant)
@@ -171,10 +176,10 @@ func (s *Service) currentArtifactPolicy(d Document, a Artifact) bool {
 			return false
 		}
 	}
-	if s.Config.InterpretedAuthoring && d.Evaluation != nil && d.Evaluation.Door == "build" {
+	if d.Evaluation != nil && d.Evaluation.Door == "build" {
 		return validArtifactPolicy(d, a) && a.Validation.ValidatorVersion == EntailmentSuiteValidatorVersion
 	}
-	return validArtifactPolicy(d, a) && (!s.Config.ReliableAuthoring || a.Validation.ValidatorVersion == s.Config.reviewVersion() || d.Evaluation != nil && d.Evaluation.Door == "build" && assertionSuiteVersion(a.Validation.ValidatorVersion))
+	return validArtifactPolicy(d, a) && (a.Validation.ValidatorVersion == s.Config.reviewVersion() || d.Evaluation != nil && d.Evaluation.Door == "build" && assertionSuiteVersion(a.Validation.ValidatorVersion))
 }
 func (s *Service) prepareRunValidation(p *Plan, v Session) error {
 	if p.Artifact != nil && s.verifiedSample(*p.Artifact, p.limits()) {
@@ -198,9 +203,6 @@ func (s *Service) prepareRunValidation(p *Plan, v Session) error {
 	integrityValid := validArtifactPolicy(v.Document, *p.Artifact)
 	if !integrityValid && (p.Artifact.Validation != nil || p.Artifact.Provenance == "ai_generated") {
 		return fault("tests_not_ready", "These tests have changed since they were checked. Prepare or review the update before running them.")
-	}
-	if !s.Config.ReliableAuthoring {
-		return nil
 	}
 	var policy PolicySnapshot
 	var sources []SourceBlock
@@ -236,7 +238,7 @@ func (s *Service) prepareRunValidation(p *Plan, v Session) error {
 	if err := s.freezeReviewVersion(p); err != nil {
 		return err
 	}
-	if s.Config.InterpretedAuthoring && v.Document.Evaluation != nil && v.Document.Evaluation.Door == "build" {
+	if v.Document.Evaluation != nil && v.Document.Evaluation.Door == "build" {
 		p.Conversation.ValidatorVersion = EntailmentSuiteValidatorVersion
 	}
 	profile, err := s.Config.Profile(p.Submission.Models.Assistant)

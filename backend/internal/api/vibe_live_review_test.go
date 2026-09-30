@@ -173,7 +173,7 @@ func runLiveReviewMeasurement(t *testing.T, consistency bool) {
 	}
 	// A future deployment default cannot silently change the fixed baseline.
 	cfg.SuiteReviewVersion = version
-	if !cfg.Enabled || !cfg.TestingLocally() || cfg.FreeOnly || !cfg.ReliableAuthoring || cfg.Credential == "" || cfg.DefaultModels().Assistant != "deepseek/deepseek-v4-flash-0731" {
+	if !cfg.Enabled || !cfg.TestingLocally() || cfg.FreeOnly || cfg.Credential == "" || cfg.DefaultModels().Assistant != "deepseek/deepseek-v4-flash-0731" {
 		t.Fatal("requires the existing enabled local DeepSeek paid configuration and reliable authoring")
 	}
 	profile, err := cfg.Profile(cfg.DefaultModels().Assistant)

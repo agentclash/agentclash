@@ -141,7 +141,7 @@ type Artifact struct {
 	CreatedAt              time.Time               `json:"created_at"`
 }
 type Document struct {
-	ContinuedFrom        *ArchiveSource        `json:"continued_from,omitempty"`
+	ContinuedFrom        *retiredArchiveSource `json:"continued_from,omitempty"`
 	TargetInstructions   string                `json:"target_instructions,omitempty"`
 	FormatVersion        int                   `json:"format_version,omitempty"`
 	Evaluation           *EvaluationContext    `json:"evaluation,omitempty"`

@@ -54,10 +54,9 @@ func TestVibeBrowserStack(t *testing.T) {
 	mini := miniredis.RunT(t)
 	rc := redis.NewClient(&redis.Options{Addr: mini.Addr()})
 	defer rc.Close()
-	cfg := vibe.Config{GroundedJudging: true, ReliableAuthoring: true, Enabled: true, FreeOnly: true, LocalTesting: true, Credential: "fake-no-network", DefaultModel: browserFixtureModel, Campaign: uuid.NewString(), AnonymousDaily: vibe.NanoUSD, AnonymousCampaign: 5 * vibe.NanoUSD, Profiles: map[string]vibe.ModelProfile{browserFixtureModel: {ID: browserFixtureModel, Route: "liquid/fp8", Free: true, Conformed: true, StructuredOutputs: true, Context: 65536, FramingAllowance: 4096, ExpiresAt: time.Now().Add(time.Hour)}}}
+	cfg := vibe.Config{GroundedJudging: true, Enabled: true, FreeOnly: true, LocalTesting: true, Credential: "fake-no-network", DefaultModel: browserFixtureModel, Campaign: uuid.NewString(), AnonymousDaily: vibe.NanoUSD, AnonymousCampaign: 5 * vibe.NanoUSD, Profiles: map[string]vibe.ModelProfile{browserFixtureModel: {ID: browserFixtureModel, Route: "liquid/fp8", Free: true, Conformed: true, StructuredOutputs: true, Context: 65536, FramingAllowance: 4096, ExpiresAt: time.Now().Add(time.Hour)}}}
 	cfg.SuiteReviewVersion = browserFixtureEnv("VIBE_BROWSER_REVIEW_VERSION", vibe.LatestSuiteValidatorVersion)
 	if os.Getenv("VIBE_BROWSER_V15") == "1" {
-		cfg.ConversationState, cfg.PreciseActions, cfg.ContextGuidance, cfg.InterpretedAuthoring = true, true, true, true
 		cfg.SourcePolicyVersion = vibe.SourcePolicyVersion
 		cfg.TwoDoor = os.Getenv("VIBE_BROWSER_TWO_DOOR") == "1"
 	}

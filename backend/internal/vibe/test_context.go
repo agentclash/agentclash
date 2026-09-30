@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 )
 
@@ -127,31 +126,20 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 			p.Observations = append(p.Observations, c)
 		}
 	}
-	p.Calls = 3 // Router, optional narrow handler, and one repair across the whole turn.
-	if s.Config.InterpretedAuthoring && v.Document.Evaluation != nil && v.Document.Evaluation.Door == "build" {
+	if v.Document.Evaluation != nil && v.Document.Evaluation.Door == "build" {
 		s.attachSampleBasis(&p, v)
 	}
-	if s.Config.ReliableAuthoring {
-		if err := prepareReliableContext(&p, v, s.Config.SourcePolicyVersion); err != nil {
-			return Operation{}, err
-		}
-		if err := s.freezeReviewVersion(&p); err != nil {
-			return Operation{}, err
-		}
-		if s.Config.ConversationState {
-			if err := prepareConversationState(&p, v); err != nil {
-				return Operation{}, err
-			}
-			if s.Config.PreciseActions {
-				p.AuthoringVersion = preciseAuthoringVersion
-				p.Conversation.ContractVersion = "vibe-v13"
-				if s.Config.ContextGuidance {
-					p.AuthoringVersion = guidedAuthoringVersion
-					p.Conversation.ContractVersion = "vibe-v14"
-				}
-			}
-		}
+	if err := prepareReliableContext(&p, v, SourcePolicyVersion); err != nil {
+		return Operation{}, err
 	}
+	if err := s.freezeReviewVersion(&p); err != nil {
+		return Operation{}, err
+	}
+	if err := prepareConversationState(&p, v); err != nil {
+		return Operation{}, err
+	}
+	p.AuthoringVersion = guidedAuthoringVersion
+	p.Conversation.ContractVersion = "vibe-v14"
 	profile, err := s.Config.Profile(sub.Models.Assistant)
 	if err != nil {
 		return Operation{}, err
@@ -174,83 +162,11 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 	if p.AssistantRecovery != nil {
 		p.MaxCost += p.AssistantRecovery.MaxCost - cost
 	}
-	if p.AuthoringVersion >= 11 {
-		err = fitReliableContext(&p, profile)
-	} else {
-		err = fitTestConversation(&p, profile)
-	}
+	err = fitReliableContext(&p, profile)
 	if err != nil {
 		return Operation{}, err
 	}
 	return s.Store.Submit(ctx, actor, v.ID, sub, p, s.Config)
-}
-
-// Exact source excerpts and versioned artifacts are durable memory. This is
-// extractive compaction, not a lossy paraphrase that can change a policy.
-func testConversationMessages(p Plan) []provider.Message {
-	history := make([]map[string]any, 0, len(p.Document.Messages))
-	for _, m := range p.Document.Messages {
-		history = append(history, map[string]any{"id": m.ID, "role": m.Role, "content": m.Content})
-	}
-	facts := []map[string]any{}
-	for _, q := range p.Document.Requirements {
-		if q.Status == "superseded" || q.Status == "rejected" {
-			continue
-		}
-		facts = append(facts, map[string]any{"id": q.ID, "source_message_id": q.SourceMessageID, "excerpt": q.Statement, "status": q.Status})
-	}
-	compact := func(a *Artifact) any {
-		if a == nil {
-			return nil
-		}
-		return map[string]any{"id": a.ID, "title": a.Title, "instructions": a.AgentPrompt, "tests": a.Blueprint, "dismissed": a.Dismissed}
-	}
-	return []provider.Message{{Role: "system", Content: testConversationPrompt}, {Role: "user", Content: string(raw(map[string]any{
-		"recent_conversation": history, "earlier_conversation_compacted_through": p.ContextThrough,
-		"source_excerpts": facts, "selected_tests": compact(p.Artifact), "viewed_agent": compact(p.ObservedArtifact),
-		"viewed_results": p.Observations, "requested_purpose": p.Submission.Purpose,
-	}))}, {Role: "user", Content: p.Submission.Content}}
-}
-
-func fitTestConversation(p *Plan, profile ModelProfile) error {
-	// Keep a useful recent exchange by byte budget even on large-context models;
-	// saved source excerpts carry older requirements forward without full replies.
-	historyBytes := func() int {
-		n := 0
-		for _, m := range p.Document.Messages {
-			n += len(m.Content)
-		}
-		return n
-	}
-	trim := func() bool {
-		if len(p.Document.Messages) == 0 || len(p.Document.Requirements) == 0 && len(p.Document.Messages) <= 1 {
-			return false
-		}
-		index := 0
-		// Old v9 sessions may not yet have source excerpts. Keep their initial
-		// description until durable memory exists, together with recent turns.
-		if len(p.Document.Requirements) == 0 {
-			index = 1
-		}
-		id := p.Document.Messages[index].ID
-		p.ContextThrough = &id
-		p.Document.Messages = append(p.Document.Messages[:index:index], p.Document.Messages[index+1:]...)
-		return true
-	}
-	for historyBytes() > 12000 {
-		if !trim() {
-			break
-		}
-	}
-	for {
-		_, err := CountContext(provider.Request{Messages: testConversationMessages(*p), ResponseFormat: testConversationFormat(profile, *p), MaxOutputTokens: p.limits().OutputTokens}, profile, p.limits())
-		if err == nil {
-			return nil
-		}
-		if !trim() {
-			return err
-		}
-	}
 }
 
 func applyContextQuotes(d *Document, changes []ContextQuote, sub Submission, replyID uuid.UUID) error {

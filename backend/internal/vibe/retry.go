@@ -36,7 +36,7 @@ func (s *Service) Retry(ctx context.Context, actor string, sessionID, operationI
 		return Operation{}, err
 	}
 	if s.Config.TwoDoor && v.Document.FormatVersion != 1 {
-		return Operation{}, fault("invalid_state", "This earlier conversation is read-only. Continue in V1 before starting new work.")
+		return Operation{}, fault("invalid_state", "This earlier conversation is read-only. Start a new V1 project.")
 	}
 	source, err := s.Store.Operation(ctx, operationID)
 	if err != nil || source.SessionID != sessionID || source.Actor != actor {
@@ -47,9 +47,6 @@ func (s *Service) Retry(ctx context.Context, actor string, sessionID, operationI
 		return Operation{}, err
 	}
 	sub := retrySubmission(original.Submission, source.ID, request)
-	if sub.AdditionalExamples > 0 && !s.Config.InterpretedAuthoring {
-		return Operation{}, fault("hosted_disabled", "Additional coverage is not enabled. Your existing examples remain available.")
-	}
 	// An acknowledgement lost after admission must return the same operation,
 	// even if that retry has since committed or the conversation has advanced.
 	if receipt, e := s.Store.submissionReceipt(ctx, sessionID, sub); receipt != nil || e != nil {

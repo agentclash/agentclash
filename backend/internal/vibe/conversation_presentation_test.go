@@ -66,9 +66,12 @@ func TestVibeGuidanceContractAndIsolation(t *testing.T) {
 
 func TestIntegrationVibeGuidanceDoesNotBecomePolicy(t *testing.T) {
 	s, v, _ := memoryService(t)
-	s.Config.PreciseActions, s.Config.ContextGuidance = true, true
 	v, _ = memoryExecute(t, s, v, "My agent converts PDF to Markdown.", func(provider.Request) any {
 		route := questionRoute()
+		return route
+	})
+	v, _ = memoryExecute(t, s, v, "What does a test mean?", func(provider.Request) any {
+		route := reliableRoute{Intent: "chat", Reply: "Here is an illustration.", Memory: &memoryUpdate{}}
 		route.Example = &GuidanceExample{Input: "PDF heading: Pricing", Expected: "# Pricing"}
 		return route
 	})
@@ -88,21 +91,20 @@ func TestIntegrationVibeGuidanceDoesNotBecomePolicy(t *testing.T) {
 		}
 		return reliableRoute{Intent: "chat", Reply: "What matters for your converter?", Memory: &memoryUpdate{}}
 	})
-	if v.Document.ConversationState.PendingQuestion.ID != question || len(v.Document.Messages[1].Cards) != 1 || len(v.Document.Policies) != 0 {
+	if v.Document.ConversationState.PendingQuestion.ID != question || len(v.Document.Messages[3].Cards) != 1 || len(v.Document.Policies) != 0 {
 		t.Fatal("chat lost the question/illustration or added policy")
 	}
 }
 
 func TestIntegrationVibeExplanationCanAccompanyPreparation(t *testing.T) {
 	s, v, _ := memoryService(t)
-	s.Config.PreciseActions, s.Config.ContextGuidance = true, true
 	rule := "My agent returns the text it receives unchanged."
 	stage := 0
 	v, op := memoryExecute(t, s, v, rule+" Explain what a test is and prepare exactly one test.", func(req provider.Request) any {
 		stage++
 		switch stage {
 		case 1:
-			return reliableRoute{Intent: "prepare_tests", Count: 1, Reply: "I'll prepare one test.", Memory: &memoryUpdate{Facts: []memoryFact{{Kind: "job", Quote: rule}}}, Example: &GuidanceExample{Input: "Hello", Expected: "Hello"}}
+			return reliableRoute{Intent: "prepare_tests", Count: 1, Reply: "I'll prepare one test.", Memory: &memoryUpdate{Facts: []memoryFact{{Kind: "job", Quote: "My agent"}, {Kind: "rule", Quote: "returns the text it receives unchanged."}}}, Example: &GuidanceExample{Input: "Hello", Expected: "Hello"}}
 		case 2:
 			var input taskInput
 			_ = json.Unmarshal([]byte(req.Messages[1].Content), &input)
@@ -123,14 +125,13 @@ func TestIntegrationVibeExplanationCanAccompanyPreparation(t *testing.T) {
 		}
 		return nil
 	})
-	if stage != 3 || len(v.Document.Artifacts) != 1 || len(v.Document.Messages[len(v.Document.Messages)-1].Cards) != 1 || op.Completion.CaseCount != 1 {
-		t.Fatal("help blocked preparation or changed its count")
+	if stage != 3 || len(v.Document.Artifacts) != 1 || len(v.Document.Messages[len(v.Document.Messages)-1].Cards) != 0 || op.Completion.CaseCount != 1 {
+		t.Fatalf("help blocked preparation: calls=%d artifacts=%d receipt=%s cards=%d", stage, len(v.Document.Artifacts), raw(op.Completion), len(v.Document.Messages[len(v.Document.Messages)-1].Cards))
 	}
 }
 
 func TestIntegrationV1IllustrationHasNoAdaptiveHistoryOrPolicy(t *testing.T) {
 	s, v, _ := memoryService(t)
-	s.Config.PreciseActions, s.Config.ContextGuidance = true, true
 	if err := s.Store.Edit(context.Background(), v.Actor, v.ID, v.Revision, func(v *Session) error { v.Document.FormatVersion = 1; return nil }); err != nil {
 		t.Fatal(err)
 	}

@@ -21,7 +21,7 @@ func TestVibeLiveBuildEntailment(t *testing.T) {
 		t.Skip("paid, explicitly opted-in local verification")
 	}
 	cfg, err := vibe.LoadConfig()
-	if err != nil || !cfg.TestingLocally() || !cfg.InterpretedAuthoring || cfg.FreeOnly || cfg.Credential == "" {
+	if err != nil || !cfg.TestingLocally() || cfg.FreeOnly || cfg.Credential == "" {
 		t.Fatal("requires existing paid local configuration")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Minute)

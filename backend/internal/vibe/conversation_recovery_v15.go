@@ -24,7 +24,7 @@ func validateInterpretedAllowance(p Plan, cfg Config) error {
 		}
 		return nil
 	}
-	if !cfg.InterpretedAuthoring || p.Conversation == nil || p.Conversation.Profile == nil || p.Conversation.Manual != nil {
+	if p.Conversation == nil || p.Conversation.Profile == nil {
 		return fault("invalid_plan", "The interpreted authoring contract is unavailable.")
 	}
 	profile := *p.Conversation.Profile
@@ -32,18 +32,19 @@ func validateInterpretedAllowance(p Plan, cfg Config) error {
 	if err != nil {
 		return err
 	}
-	expectedCost, expectedCalls := 8*cost, 8
-	if p.AuthoringVersion == legacyBuildAuthoringVersion || p.taskBuild() {
-		expectedCost, expectedCalls = 10*cost, 10
+	policy, ok := authoringPolicyFor(p.AuthoringVersion)
+	if !ok {
+		return fault("invalid_plan", "This authoring contract has retired.")
+	}
+	expectedCalls, expectedCost := policy.allowance(cost, nil)
+	if p.Conversation.Manual != nil {
+		expectedCalls, expectedCost = 1, cost
+		if p.AssistantRecovery != nil {
+			return fault("invalid_plan", "Manual review has no fallback allowance.")
+		}
 	}
 	if r := p.AssistantRecovery; r != nil {
-		model := ""
-		if strings.HasPrefix(profile.ID, "deepseek/") {
-			model = "openai/gpt-5.4-mini"
-		}
-		if profile.ID == "openai/gpt-5.4-mini" {
-			model = "deepseek/deepseek-v4.1-flash"
-		}
+		model := recoveryModel(profile.ID)
 		configured, ok := cfg.Profiles[r.Profile.ID]
 		bound, e := r.Profile.BoundCost(r.Profile.inputLimit(p.limits()), p.limits().OutputTokens)
 		if cfg.FreeOnly || !cfg.AssistantFallback || model == "" || r.Profile.ID != model || !ok || Hash(raw(configured)) != Hash(raw(r.Profile)) || e != nil || bound != r.MaxCost {
@@ -59,22 +60,19 @@ func validateInterpretedAllowance(p Plan, cfg Config) error {
 }
 
 func prepareInterpretedPlan(p *Plan, cfg Config, primary ModelProfile) error {
-	if !cfg.InterpretedAuthoring || !p.guided() || p.Conversation.Manual != nil {
+	if p.Conversation.Manual != nil {
 		return nil
 	}
-	p.AuthoringVersion = interpretedAuthoringVersion
-	p.Conversation.ContractVersion = "vibe-v15"
-	p.Calls = 8 // three initial/repair pairs plus one candidate patch/review pair
+	version := interpretedAuthoringVersion
 	if p.Cycle != nil && p.Cycle.Step != "check" || p.Document.Evaluation != nil && p.Document.Evaluation.Door == "build" {
-		p.AuthoringVersion = buildAuthoringVersion
-		p.Conversation.ContractVersion = "vibe-v18"
+		version = buildAuthoringVersion
 		if cfg.MaterialBuild {
-			p.AuthoringVersion = groundedBuildAuthoringVersion
-			p.Conversation.ContractVersion = "vibe-v20"
+			version = groundedBuildAuthoringVersion
 		}
 		p.Conversation.ValidatorVersion = EntailmentSuiteValidatorVersion
-		p.Calls = 10 // v15 preparation plus an independent prototype/repair pair
 	}
+	policy, _ := authoringPolicyFor(version)
+	p.AuthoringVersion, p.Conversation.ContractVersion, p.Calls = policy.Version, policy.Contract, policy.Calls
 	l := p.limits()
 	if p.AuthoringVersion >= materialBuildAuthoringVersion {
 		// The reviewed schema already uses most of the old 16k byte bound.
@@ -87,13 +85,7 @@ func prepareInterpretedPlan(p *Plan, cfg Config, primary ModelProfile) error {
 	if cfg.FreeOnly || !cfg.AssistantFallback {
 		return nil
 	}
-	model := ""
-	if strings.HasPrefix(primary.ID, "deepseek/") {
-		model = "openai/gpt-5.4-mini"
-	}
-	if primary.ID == "openai/gpt-5.4-mini" {
-		model = "deepseek/deepseek-v4.1-flash"
-	}
+	model := recoveryModel(primary.ID)
 	if model == "" {
 		return nil
 	}
@@ -114,21 +106,13 @@ func assistantStepProfile(p Plan, step string) (*ModelProfile, error) {
 	if p.Conversation == nil || p.Conversation.Profile == nil {
 		return nil, fmt.Errorf("missing frozen assistant profile")
 	}
-	if p.interpreted() && strings.HasSuffix(step, ":fallback") {
-		if p.AssistantRecovery == nil || !interpretedStepAllowed(step) {
+	if policy, ok := authoringPolicyFor(p.AuthoringVersion); ok && strings.HasSuffix(step, ":fallback") {
+		if p.AssistantRecovery == nil || !policy.stageAllowed(step, p.Conversation.Manual != nil) {
 			return nil, fault("operation_limit", "This alternative was not admitted.")
 		}
 		return &p.AssistantRecovery.Profile, nil
 	}
 	return p.Conversation.Profile, nil
-}
-
-func interpretedStepAllowed(step string) bool {
-	switch step {
-	case "route", "route:repair", "route:fallback", "handler", "handler:repair", "handler:fallback", "review", "review:repair", "review:fallback", "candidate:patch", "candidate:review", "prototype", "prototype:repair", "prototype:fallback":
-		return true
-	}
-	return false
 }
 
 func recoverableAssistantFault(err error) bool {

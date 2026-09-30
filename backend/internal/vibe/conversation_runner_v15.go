@@ -8,7 +8,7 @@ import (
 	"github.com/agentclash/agentclash/runtime/provider"
 )
 
-// Versioned runner preserves exact replay of v11-v14 operation journals.
+// One authoring executor for retained Improve 15 and Build 18/20 contracts.
 func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) error {
 	if p.Conversation == nil {
 		return fault("invalid_plan", "The saved conversation context is unavailable.")

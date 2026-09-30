@@ -41,6 +41,8 @@ Status: implemented; 91 focused frontend tests passed. TypeScript passed. Browse
 - Preserve serialized requests/hashes/journals for retained contracts. New admissions use current policies; do not replay retired plans. Remove exclusively obsolete tests/config branches while retaining import, recorded-conversation, provenance and accounting coverage.
 - Acceptance: repeatable retirement; one current executor; request identities and spending limits unchanged.
 
+Status: implemented. Local inventory found 191 pre-V1 projects and 30 V1 projects, with zero pending retiring operations/outbox or running Vibe workflows. The administrative command retired the pre-V1 content and is safe to repeat. Current-project content and financial records remain. The backend race floor passed; request fingerprints for Improve 15 and Build 18/20 match the original PR head. Retired archive/executor-only fixtures were replaced by current-contract coverage. Every other deployment must pass its own inventory/drain before rollout.
+
 ### 4. Authorization separate from presentation
 
 - Use a small authorized-session lookup for file and enquiry endpoints. Full snapshots belong to conversation reads/streaming.

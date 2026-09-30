@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 
@@ -14,7 +15,6 @@ import (
 func proposalSession(t *testing.T) (*Service, Session) {
 	t.Helper()
 	s, v, _ := memoryService(t)
-	s.Config.PreciseActions = true
 	d, _ := displayedProposal(t)
 	d.Models = DefaultModels()
 	d.TestJourney = true
@@ -136,9 +136,8 @@ func TestIntegrationVibeActionsRespectBusyAndNewerChanges(t *testing.T) {
 func returnsPolicySession(t *testing.T) (*Service, Session) {
 	t.Helper()
 	s, v, _ := memoryService(t)
-	s.Config.PreciseActions = true
-	clauses := []string{"My agent answers shop return questions.", "Returns within 30 days.", "Only unopened items.", "Never claim to process a refund."}
-	text := clauses[0] + " " + clauses[1] + " " + clauses[2] + " " + clauses[3] + " Prepare one test."
+	clauses := []string{"My agent checks returns.", "Returns within 30 days.", "Only unopened items."}
+	text := strings.Join(clauses, " ") + " Prepare one test."
 	stage := 0
 	v, _ = memoryExecute(t, s, v, text, func(req provider.Request) any {
 		stage++
@@ -157,7 +156,7 @@ func returnsPolicySession(t *testing.T) (*Service, Session) {
 			var in taskInput
 			_ = json.Unmarshal([]byte(req.Messages[1].Content), &in)
 			rules := []PolicyRule{}
-			for i, id := range []string{"job", "window", "condition", "refund"} {
+			for i, id := range []string{"job", "window", "condition"} {
 				rules = append(rules, PolicyRule{ID: id, Statement: clauses[i], SourceBlockIDs: []string{in.CurrentRequest.ID}, Evidence: []RuleEvidence{{SourceBlockID: in.CurrentRequest.ID, Quote: clauses[i], Kind: "requirement"}}})
 			}
 			return createSuiteCommand{Rules: rules, Tests: testSuiteProposal{Title: "Returns", Summary: "Return eligibility.", Scenarios: []TestScenario{{Input: "Unopened item bought 20 days ago.", Expected: "Eligible for return."}}}}
@@ -238,7 +237,7 @@ func TestIntegrationVibePreciseEditAndUndo(t *testing.T) {
 			}
 			updated := current.Document.Artifacts[1]
 			after := policyFor(current.Document, &updated)
-			if len(after.Rules) != 4 || Hash(raw(after.Rules[2:])) != Hash(raw(before.Rules[2:])) || current.Document.LastChange == nil || len(current.Document.LastChange.RuleIDs) != 1 {
+			if len(after.Rules) != 3 || Hash(raw(after.Rules[2:])) != Hash(raw(before.Rules[2:])) || current.Document.LastChange == nil || len(current.Document.LastChange.RuleIDs) != 1 {
 				t.Fatal("precise edit changed unrelated policy")
 			}
 			for _, fact := range current.Document.ConversationState.Brief.Facts {
@@ -270,7 +269,6 @@ func TestIntegrationVibePreciseEditAndUndo(t *testing.T) {
 func TestIntegrationVibeSourceButtonBypassesClassifier(t *testing.T) {
 	ctx := context.Background()
 	s, v, _ := memoryService(t)
-	s.Config.PreciseActions = true
 	rules := "My agent answers return questions. Unopened items bought within 30 days can be returned."
 	v, _ = memoryExecute(t, s, v, rules, func(provider.Request) any {
 		return reliableRoute{Intent: "chat", Reply: "Tell me what you'd like to test.", Memory: &memoryUpdate{}}

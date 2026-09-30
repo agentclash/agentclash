@@ -76,7 +76,6 @@ func (h *VibeHandler) Routes() http.Handler {
 	r.Get("/sessions/{sessionID}", h.get)
 	r.Delete("/sessions/{sessionID}", h.deleteProject)
 	r.Get("/sessions/{sessionID}/deletion", h.projectDeletion)
-	r.Post("/sessions/{sessionID}/continue", h.continueSession)
 	r.Get("/sessions/{sessionID}/evaluations", h.evaluations)
 	r.Post("/sessions/{sessionID}/build-quote", h.buildQuote)
 	r.Post("/sessions/{sessionID}/run-quote", h.runQuote)
@@ -278,7 +277,7 @@ func (h *VibeHandler) config(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
 	pdfAvailable := h.Service.Config.MaterialBuild && h.Service.Store.Inputs.PDFAvailable(r.Context())
-	vibeJSON(w, 200, map[string]any{"contact": contact, "pdf_uploads": pdfAvailable, "two_door": h.Service.Config.TwoDoor, "capabilities": vibe.AvailableCapabilities(pdfAvailable), "enabled": h.Service.Config.Enabled, "interaction_actions": h.Service.Config.PreciseActions, "grading_recheck": h.Service.Config.GroundedJudging, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget})
+	vibeJSON(w, 200, map[string]any{"contact": contact, "pdf_uploads": pdfAvailable, "two_door": h.Service.Config.TwoDoor, "capabilities": vibe.AvailableCapabilities(pdfAvailable), "enabled": h.Service.Config.Enabled, "interaction_actions": true, "grading_recheck": h.Service.Config.GroundedJudging, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget})
 }
 func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 	var input struct {
@@ -332,8 +331,8 @@ func (h *VibeHandler) session(r *http.Request) (vibe.Session, error) {
 		return vibe.Session{}, err
 	}
 	v, err := h.Service.Store.GetSession(r.Context(), actor, id)
-	if err == nil && h.Service.Config.TwoDoor && v.Document.FormatVersion != 1 && r.Method != http.MethodGet && !strings.HasSuffix(r.URL.Path, "/continue") && !strings.HasSuffix(r.URL.Path, "/claim") {
-		return vibe.Session{}, &vibe.Fault{Code: "invalid_state", Message: "This is a saved earlier conversation. Continue in V1 to make a working copy; the original stays unchanged."}
+	if err == nil && h.Service.Config.TwoDoor && v.Document.FormatVersion != 1 && r.Method != http.MethodGet && !strings.HasSuffix(r.URL.Path, "/claim") {
+		return vibe.Session{}, &vibe.Fault{Code: "invalid_state", Message: "This is a saved earlier conversation. Start a new V1 project."}
 	}
 	return v, err
 }
@@ -432,7 +431,7 @@ func (h *VibeHandler) edit(w http.ResponseWriter, r *http.Request) {
 	}
 	if input.ArtifactID != nil && (input.CaseChanges != nil || input.Criteria != nil || input.Evaluation != nil) {
 		for _, a := range v.Document.Artifacts {
-			if a.ID != *input.ArtifactID || !a.IsTestSuite() || (!h.Service.Config.ReliableAuthoring && a.Provenance != "ai_generated" && a.Validation == nil && a.PolicyID == nil) {
+			if a.ID != *input.ArtifactID || !a.IsTestSuite() {
 				continue
 			}
 			if input.AgentPrompt != nil || input.Dismissed != nil || input.Expectations != nil || input.PreviewConsent != nil || input.TestScenarios != nil || input.RequirementID != nil || (input.Evaluation != nil && (input.CaseChanges != nil || input.Criteria != nil)) {

@@ -34,25 +34,6 @@ func validatePreviewText(text string) error {
 	return nil
 }
 
-func validatePreviewProposal(a assistantReply) error {
-	if a.Draft == nil {
-		return nil
-	}
-	for _, text := range []string{a.Reply, a.Draft.AgentPrompt, a.Draft.SuccessCriteria} {
-		if err := validatePreviewText(text); err != nil {
-			return err
-		}
-	}
-	for _, q := range a.Changes {
-		if q.Action != "remove" {
-			if err := validatePreviewText(q.Statement); err != nil {
-				return err
-			}
-		}
-	}
-	return ValidatePreviewCriteria(a.Draft.SuccessCriteria)
-}
-
 // Manual criterion edits create new contracts but cannot grant capabilities.
 func ValidatePreviewCriteria(criteria string) error {
 	criteria = strings.TrimPrefix(criteria, previewEvidencePolicy)

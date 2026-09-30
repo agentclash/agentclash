@@ -23,11 +23,11 @@ func (r *Runner) Finalize(ctx context.Context, id uuid.UUID, issue *Fault) error
 	}
 	if o.Completion == nil && o.State == Running && (o.Kind == "message" || o.Kind == "build") {
 		var p Plan
-		if json.Unmarshal(o.Input, &p) == nil && (p.AuthoringVersion == 11 || p.stateful()) && p.Conversation != nil {
+		if json.Unmarshal(o.Input, &p) == nil && retainedAuthoring(p.AuthoringVersion) && p.Conversation != nil {
 			// Do not reuse the expired paid activity deadline. This finalizer has
 			// its own short deadline and can only read recorded provider output.
 			replay := context.WithValue(ctx, reliableReplayKey{}, true)
-			if err = r.converseReliable(replay, o, p); recoveryDatabaseError(err) {
+			if err = r.converseInterpreted(replay, o, p); recoveryDatabaseError(err) {
 				// Infrastructure failures can be retried by Temporal. A missing,
 				// ambiguous or invalid stage preserves the original operation fault.
 				return err

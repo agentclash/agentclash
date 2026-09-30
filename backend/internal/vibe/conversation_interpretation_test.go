@@ -133,7 +133,7 @@ func TestVibeV15RecoveryFaultPolicy(t *testing.T) {
 	if !recoverableAssistantFault(fault("provider_rate_limit", "busy")) {
 		t.Fatal("known busy failure not recoverable")
 	}
-	if interpretedStepAllowed("repair") || interpretedStepAllowed("route:fallback:again") {
+	if authoringStageAllowed(Plan{AuthoringVersion: 15}, "repair") || authoringStageAllowed(Plan{AuthoringVersion: 15}, "route:fallback:again") {
 		t.Fatal("unbounded step")
 	}
 }
@@ -162,7 +162,7 @@ func TestVibeV15AdmissionFreezesOnlyApprovedAlternative(t *testing.T) {
 	for _, primaryID := range []string{"deepseek/deepseek-v4.1-flash", "deepseek/deepseek-v4-pro", "openai/gpt-5.4-mini"} {
 		t.Run(primaryID, func(t *testing.T) {
 			cfg := testConfig()
-			cfg.InterpretedAuthoring, cfg.AssistantFallback = true, true
+			cfg.AssistantFallback = true
 			base := cfg.Profiles[DefaultModels().Assistant]
 			for id, route := range map[string]string{"deepseek/deepseek-v4.1-flash": "coreweave/fp8", "deepseek/deepseek-v4-pro": "baidu/fp8", "openai/gpt-5.4-mini": "openai"} {
 				p := base

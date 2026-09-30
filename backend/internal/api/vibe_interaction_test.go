@@ -14,7 +14,6 @@ import (
 
 func TestVibeInteractionHTTPBoundary(t *testing.T) {
 	h := newReliabilityHarness(t, 1)
-	h.svc.Config.PreciseActions = true
 	scope, msg, qid := uuid.NewString(), uuid.New(), uuid.NewString()
 	q := interaction.Question{ID: qid, ScopeID: scope, Revision: 1, OriginMessageID: msg.String(), Purpose: "clarify_rule", Status: "active", Text: "Return within 14 days or 30 days?", Options: []interaction.Option{{ID: "14", Label: "14 days"}, {ID: "30", Label: "30 days"}}, MaxSelections: 1}
 	if err := h.svc.Store.Edit(h.ctx, h.actor, h.session.ID, h.session.Revision, func(s *vibe.Session) error {
@@ -63,8 +62,8 @@ func TestVibeInteractionHTTPBoundary(t *testing.T) {
 		t.Fatal("identical delivery did not recover", w.Code, w.Body.String())
 	}
 	h.reload()
-	if len(h.session.Operations) != 0 || len(h.session.Document.ConversationState.Answers) != 1 {
-		t.Fatal("HTTP action dispatched inference or duplicated answer")
+	if len(h.session.Operations) != 1 || len(h.session.Document.Messages) != 2 || h.session.Document.Messages[1].Content != "14 days" || h.session.Operations[0].ModelCalls != 0 {
+		t.Fatal("HTTP action did not enqueue one bound answer without inference")
 	}
 	bad := a
 	bad.IdempotencyKey = uuid.NewString()

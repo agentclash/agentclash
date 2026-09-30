@@ -111,7 +111,8 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 			return BuildQuote{}, err
 		}
 	}
-	quote := BuildQuote{Version: 1, ID: uuid.New(), Request: request, Cases: 3, MaxCalls: 26, ExpiresAt: timestamp().Add(30 * time.Minute), Profiles: map[string]string{}}
+	buildPolicy, _ := authoringPolicyFor(buildAuthoringVersion)
+	quote := BuildQuote{Version: 1, ID: uuid.New(), Request: request, Cases: 3, MaxCalls: 2*buildPolicy.Calls + 6, ExpiresAt: timestamp().Add(30 * time.Minute), Profiles: map[string]string{}}
 	if s.Config.MaterialBuild {
 		quote.Version = 2
 	}
@@ -141,7 +142,7 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 			return BuildQuote{}, e
 		}
 		quote.Cases, judges, quote.BaselineHash, quote.Revision = cases, count, hash, v.Revision
-		quote.MaxCalls = 10 + cases*(1+judges)
+		quote.MaxCalls = buildPolicy.Calls + cases*(1+judges)
 	}
 	costs := map[string]int64{}
 	for _, model := range []string{request.Models.Assistant, request.Models.Target, request.Models.Evaluator} {
@@ -173,10 +174,11 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 	if err != nil {
 		return quote, err
 	}
-	authorCalls := int64(20)
+	turns := int64(2)
 	if request.AdditionalExamples > 0 {
-		authorCalls = 10
+		turns = 1
 	}
+	authorCalls := turns * int64(buildPolicy.Calls)
 	quote.MaxCost = authorCalls*authorCost + int64(quote.Cases)*(costs[request.Models.Target]+int64(judges)*costs[request.Models.Evaluator])
 	if temp.AssistantRecovery != nil {
 		quote.MaxCost += 2 * temp.AssistantRecovery.MaxCost

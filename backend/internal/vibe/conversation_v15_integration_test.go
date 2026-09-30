@@ -15,7 +15,6 @@ import (
 
 func interpretedService(t *testing.T) (*Service, Session) {
 	s, v, _ := memoryService(t)
-	s.Config.PreciseActions, s.Config.ContextGuidance, s.Config.InterpretedAuthoring = true, true, true
 	return s, v
 }
 
@@ -164,7 +163,7 @@ func TestIntegrationVibeV15OneAlternativeAndReplay(t *testing.T) {
 	}
 	// Replay reads the same three settled outputs even when provider config is gone.
 	r.Gateway.Config.Profiles = nil
-	if err = r.converseReliable(context.WithValue(ctx, reliableReplayKey{}, true), got, p); err != nil {
+	if err = r.converseInterpreted(context.WithValue(ctx, reliableReplayKey{}, true), got, p); err != nil {
 		t.Fatal("replay", err)
 	}
 	if calls != 3 {

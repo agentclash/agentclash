@@ -19,7 +19,6 @@ import Link from "next/link";
 
 
 
-import { ArchivedConversation } from "@/components/vibe/archived-conversation";
 import { PrototypeTrial } from "@/components/vibe/prototype-trial";
 import { EvaluationWorkspace } from "@/components/vibe/evaluation-workspace";
 import { buildVersion } from "@/lib/vibe-build-timeline";
@@ -63,14 +62,7 @@ return (
         onNew={openNewEvaluation}
         onSwitch={id => { if (id === sessionID) setNewEvaluation(false); else void switchContext(id); }}
         onSettings={() => setSettingsOpen(true)} onSavedWork={() => setSavedWorkOpen(true)}>
-      {navigationToggle => session && session.document.format_version !== 1 && !newEvaluation && config?.two_door ? <ArchivedConversation key={session.id} session={session} navigation={navigationToggle} busy={pending} error={error || snapshots.loadError}
-        onExport={exportConversation} loadEvidence={(id, key) => token().then(auth => vibeFetch<CaseResult>(`/operations/${id}/case?key=${encodeURIComponent(key)}`, auth))} onContinue={async (artifactID, clientID) => {
-          setPending(true); setError("");
-          try {
-            const copy = await vibeFetch<Session>(`/sessions/${session.id}/continue`, await token(), { method: "POST", body: JSON.stringify({ client_id: clientID, artifact_id: artifactID }) });
-            adoptContext(copy);
-          } catch (e) { setError((e as Error).message); } finally { setPending(false); }
-        }} /> : <EvaluationWorkspace
+      {navigationToggle => <EvaluationWorkspace
         key={session?.id || "entry"}
         twoDoor={twoDoor}
         navigationToggle={navigationToggle}
