@@ -581,6 +581,7 @@ it("shows the submitted message before admission and preserves a newer draft aft
           error: {
             code: "invalid_message",
             message: "Try sending that again.",
+            admission: "rejected",
           },
         },
         400,
@@ -616,6 +617,7 @@ it("keeps the composer editable after a definite intake rejection", async () => 
             error: {
               code: "invalid_message",
               message: "What should your agent help with?",
+              admission: "rejected",
             },
           },
           400,
@@ -784,7 +786,7 @@ it.each([
         });
       if (path.endsWith("/messages"))
         return json(
-          { error: { code, message: "Execution was not admitted" } },
+          { error: { code, message: "Execution was not admitted", admission: "rejected" } },
           503,
         );
       if (path.endsWith("/save")) {

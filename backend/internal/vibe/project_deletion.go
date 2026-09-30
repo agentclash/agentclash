@@ -182,7 +182,9 @@ func (s *Store) CleanupProjects(ctx context.Context) error {
 			// limits. Content and inference results have no accounting purpose.
 			for _, sql := range []string{
 				`DELETE FROM vibe_case_results WHERE operation_id IN (SELECT id FROM vibe_operations WHERE session_id=$1)`,
-				`UPDATE vibe_attempts SET output='',usage='{}',reconciliation_evidence=CASE WHEN reconciliation_evidence->>'conflict'='true' THEN '{"conflict":true}'::jsonb ELSE NULL END,policy=CASE WHEN max_cost=0 THEN '{"profile":{"free":true}}'::jsonb ELSE '{}'::jsonb END,domain_outcome=NULL,error=NULL WHERE operation_id IN (SELECT id FROM vibe_operations WHERE session_id=$1)`,
+				`UPDATE vibe_attempts SET output='',usage='{}',reconciliation_evidence=CASE WHEN reconciliation_evidence IS NULL THEN NULL ELSE
+				(reconciliation_evidence - 'receipts') || jsonb_build_object('receipts',COALESCE((SELECT jsonb_agg(jsonb_build_object('cost',r->'cost')) FROM jsonb_array_elements(COALESCE(reconciliation_evidence->'receipts','[]')) r),'[]'::jsonb)) END,
+				policy=CASE WHEN max_cost=0 THEN '{"profile":{"free":true}}'::jsonb ELSE '{}'::jsonb END,domain_outcome=NULL,error=NULL WHERE operation_id IN (SELECT id FROM vibe_operations WHERE session_id=$1)`,
 				`UPDATE vibe_operations SET input=jsonb_build_object('anonymous',COALESCE((input->>'anonymous')::boolean,false)),error=NULL,conversation_decision=NULL,completion_receipt=NULL,understanding_outcome=NULL WHERE session_id=$1`,
 				`UPDATE vibe_enquiries SET content='{}',status=CASE WHEN status='provider_accepted' THEN status ELSE 'cancelled' END WHERE session_id=$1`,
 				`UPDATE vibe_cycle_quotes SET specification='{}' WHERE session_id=$1`,

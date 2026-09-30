@@ -100,7 +100,7 @@ func TestIntegrationReconcileAttemptOverrunFreezesBackingAccounts(t *testing.T) 
 			requireRegressionFault(t, s.ReconcileCost(ctx, a.ID, cost+1, json.RawMessage(`{}`)), "reconciliation_conflict")
 			requireRegressionFault(t, s.BeginAttempt(ctx, a), "operation_stopped")
 			current, err := s.Operation(ctx, o.ID)
-			if err != nil || current.State != Cancelled || current.Billing != Settled || current.ActualCost == nil || *current.ActualCost != cost || current.ModelCalls != 1 {
+			if err != nil || current.State != Cancelled || current.Billing != Reconciling || current.ActualCost != nil || current.ModelCalls != 1 {
 				t.Fatalf("reconciliation restarted work or changed settlement: %+v err=%v", current, err)
 			}
 			var settled int

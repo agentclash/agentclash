@@ -3,6 +3,7 @@ package vibe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/agentclash/agentclash/backend/internal/email"
 	"github.com/agentclash/agentclash/backend/internal/enquiries"
 	"github.com/agentclash/agentclash/backend/internal/vibe/inputs"
@@ -262,7 +263,7 @@ func TestIntegrationEnquiryAndProjectDeletion(t *testing.T) {
 	addText(t, s, v, "Private project text")
 	delivery := &enquiries.Store{DB: s.Store.DB}
 	request := enquiries.Request{ClientID: uuid.New(), Source: enquiries.Source{Revision: v.Revision}, Email: "person@example.test", Summary: "Discuss building a notes assistant."}
-	if _, err := delivery.Create(ctx, v.ID, v.Actor, request); err != enquiries.ErrDisabled {
+	if _, err := delivery.Create(ctx, v.ID, v.Actor, request); !errors.Is(err, enquiries.ErrDisabled) {
 		t.Fatal("unconfigured email accepted", err)
 	}
 	delivery.Recipient = "team@example.test"
@@ -277,7 +278,7 @@ func TestIntegrationEnquiryAndProjectDeletion(t *testing.T) {
 		t.Fatal("lost acknowledgement wasn't recoverable", err)
 	}
 	request.Summary = "different"
-	if _, err = delivery.Create(ctx, v.ID, v.Actor, request); err != enquiries.ErrConflict {
+	if _, err = delivery.Create(ctx, v.ID, v.Actor, request); !errors.Is(err, enquiries.ErrConflict) {
 		t.Fatal("changed enquiry reused receipt", err)
 	}
 	sub := Submission{ClientID: uuid.New(), Revision: v.Revision, Kind: "playground", Models: DefaultModels()}

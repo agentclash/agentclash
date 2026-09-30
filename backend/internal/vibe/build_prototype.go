@@ -189,7 +189,7 @@ func (r *Runner) completeSamplePrototype(ctx context.Context, o Operation, p Pla
 		kind = "email"
 	}
 	if kind == "" {
-		if p.AuthoringVersion >= materialBuildAuthoringVersion && p.AuthoringVersion < contextualBuildAuthoringVersion {
+		if p.AuthoringVersion >= materialBuildAuthoringVersion {
 			task := ""
 			for _, fact := range effectiveConversationState(p).Brief.Facts {
 				if fact.Kind == "job" && (fact.Status == "stated" || fact.Status == "accepted") {

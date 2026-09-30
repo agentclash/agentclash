@@ -11,7 +11,7 @@ import (
 
 type costReceipt struct {
 	Cost    int64           `json:"cost"`
-	Receipt json.RawMessage `json:"receipt"`
+	Receipt json.RawMessage `json:"receipt,omitempty"`
 }
 type costEvidence struct {
 	Receipts     []costReceipt `json:"receipts,omitempty"`
@@ -19,12 +19,20 @@ type costEvidence struct {
 	Conflict     bool          `json:"conflict,omitempty"`
 }
 
-func freezeAccounting(ctx context.Context, tx pgx.Tx, o Operation, model, reason string) error {
+func (e *costEvidence) scrubContent() {
+	for i := range e.Receipts {
+		e.Receipts[i].Receipt = nil
+	}
+}
+
+func freezeAccounting(ctx context.Context, tx pgx.Tx, o Operation, model string, overCeiling bool) error {
 	if err := operationFunding(ctx, tx, []uuid.UUID{o.ID}); err != nil {
 		return err
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO vibe_disabled_profiles(model,reason) VALUES($1,$2) ON CONFLICT DO NOTHING`, model, reason); err != nil {
-		return err
+	if overCeiling {
+		if _, err := tx.Exec(ctx, `INSERT INTO vibe_disabled_profiles(model,reason) VALUES($1,'provider cost exceeds approved ceiling') ON CONFLICT DO NOTHING`, model); err != nil {
+			return err
+		}
 	}
 	_, err := tx.Exec(ctx, `UPDATE vibe_accounts SET disabled=true WHERE id IN (SELECT account_id FROM vibe_reservations WHERE operation_id=$1)`, o.ID)
 	return err
@@ -64,6 +72,13 @@ func (s *Store) EndAttempt(ctx context.Context, a Attempt, output string, usage 
 		if known != nil {
 			cost = known
 		}
+		state := "SUCCEEDED"
+		if cost == nil {
+			state = "UNCERTAIN"
+		}
+		if issue != nil && cost != nil {
+			state = "RECONCILED"
+		}
 		var deleted bool
 		if err = tx.QueryRow(ctx, `SELECT deleted_at IS NOT NULL FROM vibe_sessions WHERE id=$1`, o.SessionID).Scan(&deleted); err != nil {
 			return err
@@ -72,21 +87,15 @@ func (s *Store) EndAttempt(ctx context.Context, a Attempt, output string, usage 
 			output = ""
 			usage = json.RawMessage(`{}`)
 			issue = nil
-			evidence = costEvidence{Conflict: evidence.Conflict}
+			evidence.scrubContent()
 		}
-		if evidence.Conflict || cost != nil && (*cost < 0 || *cost > ceiling) {
-			if err = freezeAccounting(ctx, tx, o, model, "provider cost requires accounting review"); err != nil {
+		overCeiling := cost != nil && (*cost < 0 || *cost > ceiling)
+		if evidence.Conflict || overCeiling {
+			if err = freezeAccounting(ctx, tx, o, model, overCeiling); err != nil {
 				return err
 			}
 		}
 		if completed == nil {
-			state := "SUCCEEDED"
-			if cost == nil {
-				state = "UNCERTAIN"
-			}
-			if issue != nil && cost != nil {
-				state = "RECONCILED"
-			}
 			_, err = tx.Exec(ctx, `UPDATE vibe_attempts SET state=$2,output=$3,usage=$4,actual_cost=$5,error=$6,completed_at=now(),reconciliation_evidence=$7 WHERE id=$1`, a.ID, state, output, usage, cost, nullableJSON(issue), raw(evidence))
 		} else {
 			_, err = tx.Exec(ctx, `UPDATE vibe_attempts SET reconciliation_evidence=$2 WHERE id=$1`, a.ID, raw(evidence))
@@ -151,10 +160,10 @@ func (s *Store) ReconcileCost(ctx context.Context, id uuid.UUID, cost int64, rec
 			return err
 		}
 		if deleted {
-			evidence = costEvidence{Conflict: evidence.Conflict}
+			evidence.scrubContent()
 		}
 		if evidence.Conflict || cost > ceiling {
-			if err = freezeAccounting(ctx, tx, o, model, "provider receipt requires accounting review"); err != nil {
+			if err = freezeAccounting(ctx, tx, o, model, cost > ceiling); err != nil {
 				return err
 			}
 		}
