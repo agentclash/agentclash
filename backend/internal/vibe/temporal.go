@@ -2,7 +2,6 @@ package vibe
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -13,10 +12,7 @@ import (
 	"go.temporal.io/sdk/temporal"
 	"go.temporal.io/sdk/worker"
 	"go.temporal.io/sdk/workflow"
-	"io"
 	"log/slog"
-	"net/http"
-	"net/url"
 	"time"
 )
 
@@ -129,61 +125,9 @@ func DispatchOutbox(ctx context.Context, c client.Client, s *Store, logger *slog
 		}
 	}
 }
-func ReconcileLoop(ctx context.Context, s *Store, cfg Config, logger *slog.Logger) {
-	ticker := time.NewTicker(time.Minute)
-	defer ticker.Stop()
-	httpClient := &http.Client{Timeout: 15 * time.Second, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-		items, err := s.AwaitingReconciliation(ctx)
-		if err != nil {
-			continue
-		}
-		for id, generation := range items {
-			if cfg.Credential == "" {
-				break
-			}
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://openrouter.ai/api/v1/generation?id="+url.QueryEscape(generation), nil)
-			if err != nil {
-				continue
-			}
-			req.Header.Set("Authorization", "Bearer "+cfg.Credential)
-			resp, err := httpClient.Do(req)
-			if err != nil {
-				continue
-			}
-			b, e := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-			resp.Body.Close()
-			if e != nil || resp.StatusCode != 200 {
-				continue
-			}
-			var result struct {
-				Data struct {
-					ID   string       `json:"id"`
-					Cost *json.Number `json:"total_cost"`
-				} `json:"data"`
-			}
-			if e = json.Unmarshal(b, &result); e != nil || result.Data.Cost == nil || result.Data.ID != generation {
-				continue
-			}
-			cost, e := ParseUSD(result.Data.Cost.String())
-			if e != nil {
-				continue
-			}
-			if e = s.ReconcileCost(ctx, id, cost, b); e != nil {
-				logger.Warn("vibe reconciliation needs review", "attempt_id", id, "error", e)
-			}
-		}
-		// Expiry releases only work proven never dispatched. In-flight/uncertain
-		// attempts never release on TTL. Admission and expiry share the DB lock.
-		_ = s.expire(ctx)
-	}
-}
 func (s *Store) expire(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	rows, err := s.DB.Query(ctx, `SELECT o.id FROM vibe_operations o JOIN vibe_sessions s ON s.id=o.session_id WHERE
  (o.state='AWAITING_APPROVAL' AND o.deadline<now()) OR (o.state='QUEUED' AND (o.deadline<now() OR
  EXTRACT(EPOCH FROM now()-COALESCE(o.queued_at,o.created_at)) > CASE WHEN s.workspace_id IS NULL THEN 60 ELSE 300 END)) LIMIT 100`)

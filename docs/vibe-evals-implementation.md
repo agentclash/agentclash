@@ -21,7 +21,7 @@ Keep the current UI and journeys. No new framework, historical-result rewrite, o
 | 3 | Current session owner authorizes claim/continuation/retry/regrade. Temporary admission failures back off without replay; deleted Builds finalize accounting without new content. | Passed: signup during inline preparation, backoff/single continuation, claimed retry/regrade, deletion finalization with uncertain holds |
 | 4 | Provider cost evidence does not finish a reply. Receipt/response orderings preserve output, settle once and quarantine conflicting costs. | Passed: both callback orders, concurrent duplicates/conflicts, Stop and accounting/deletion races |
 | 5 | One immutable-request recovery owner; explicit proven rejection unlocks editing. Attachment selection is atomic across upload/attach/restore/polling. | Passed: immutable recovery, lost enquiry acknowledgement → 403 → same body/ID, PDF selection races and delayed restoration; typecheck |
-| 6 | PDF jobs/downloads/completion are bounded to 50/25/5 seconds; heartbeat/cleanup run independently. Expiry is independent of four-way, bounded provider reconciliation. | Pending |
+| 6 | PDF jobs/downloads/completion are bounded to 50/25/5 seconds; heartbeat/cleanup run independently. Expiry is independent of four-way, bounded provider reconciliation. | Passed: stalled reads/polls, independent heartbeat/expiry, fair receipt rotation, takeover/deletion/expiry publication guards and shutdown |
 
 ### Verification
 

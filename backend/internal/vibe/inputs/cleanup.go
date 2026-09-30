@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/agentclash/agentclash/backend/internal/storage"
+	"time"
 )
 
 // Staging is recorded before object storage. An uncertain database commit can
@@ -21,7 +22,7 @@ func (s *Repository) cleanupStaging(ctx context.Context) error {
 			return err
 		}
 		if !committed {
-			if err = s.Blobs.DeleteObject(ctx, key); err != nil && !errors.Is(err, storage.ErrObjectNotFound) {
+			if err = s.deleteBlob(ctx, key); err != nil && !errors.Is(err, storage.ErrObjectNotFound) {
 				return err
 			}
 		}
@@ -30,4 +31,10 @@ func (s *Repository) cleanupStaging(ctx context.Context) error {
 		}
 	}
 	return rows.Err()
+}
+
+func (s *Repository) deleteBlob(ctx context.Context, key string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	return s.Blobs.DeleteObject(ctx, key)
 }

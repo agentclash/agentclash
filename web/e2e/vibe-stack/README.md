@@ -7,7 +7,7 @@ request interception is used. A scripted `provider.Client` replaces model
 responses, and miniredis supplies Redis protocol behavior. It makes no provider
 network requests and does not measure semantic model accuracy or real billing.
 The fixture uses current Improve 15 and Build 18 authoring with the latest
-suite validator and V1 two-door entry. Material mode enables Build 20 and the
+suite validator and V1 two-door entry. Material mode enables Build 21 and the
 real isolated PDF reader. Older V1 persisted results are covered by store/API
 regressions; retired authoring executors are never dispatched.
 The journey checks:

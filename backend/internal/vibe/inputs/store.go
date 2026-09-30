@@ -125,12 +125,15 @@ func (s *Repository) Create(ctx context.Context, session uuid.UUID, actor string
 		if _, err = s.DB.Exec(ctx, `INSERT INTO vibe_input_staging(object_key) VALUES($1)`, key); err != nil {
 			return r, err
 		}
-		if _, err = s.Blobs.PutObject(ctx, storage.PutObjectInput{Key: key, Body: bytes.NewReader(data), SizeBytes: int64(len(data)), ContentType: "application/pdf"}); err != nil {
+		upload, done := context.WithTimeout(ctx, 25*time.Second)
+		defer done()
+		if _, err = s.Blobs.PutObject(upload, storage.PutObjectInput{Key: key, Body: bytes.NewReader(data), SizeBytes: int64(len(data)), ContentType: "application/pdf"}); err != nil {
+			done()
 			return r, err
 		}
 		defer func() {
 			if err != nil && !commitAttempted {
-				_ = s.Blobs.DeleteObject(context.WithoutCancel(ctx), key)
+				_ = s.deleteBlob(context.WithoutCancel(ctx), key)
 			}
 		}()
 	}
@@ -181,7 +184,7 @@ func (s *Repository) Create(ctx context.Context, session uuid.UUID, actor string
 		return r, err
 	}
 	if r.ID != id && key != "" {
-		_ = s.Blobs.DeleteObject(context.WithoutCancel(ctx), key)
+		_ = s.deleteBlob(context.WithoutCancel(ctx), key)
 	}
 	if key != "" {
 		_, _ = s.DB.Exec(context.WithoutCancel(ctx), `DELETE FROM vibe_input_staging WHERE object_key=$1`, key)
@@ -215,13 +218,14 @@ func (s *Repository) Download(ctx context.Context, r Record) (io.ReadCloser, err
 	if r.Kind == "text" {
 		return io.NopCloser(strings.NewReader(r.Text())), nil
 	}
-	body, _, err := s.Blobs.OpenObject(ctx, r.ObjectKey)
-	return body, err
+	return s.openBlob(ctx, r.ObjectKey, 25*time.Second)
 }
 
 // Sweep is repeatable after a crash. Claim and expiry serialize on the session
 // row, and expiry never follows the workspace/trial billing flag.
 func (s *Repository) Sweep(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	rows, err := s.DB.Query(ctx, `SELECT DISTINCT session_id FROM vibe_inputs WHERE expires_at<=now() AND status NOT IN ('deleted','expired') LIMIT 50`)
 	if err != nil {
 		return err
@@ -275,7 +279,7 @@ func (s *Repository) Sweep(ctx context.Context) error {
 		if err = rows.Scan(&id, &key); err != nil {
 			return err
 		}
-		if err = s.Blobs.DeleteObject(ctx, key); err != nil && !errors.Is(err, storage.ErrObjectNotFound) {
+		if err = s.deleteBlob(ctx, key); err != nil && !errors.Is(err, storage.ErrObjectNotFound) {
 			return err
 		}
 		if _, err = s.DB.Exec(ctx, "UPDATE vibe_inputs SET object_key='' WHERE id=$1 AND status IN ('deleted','expired')", id); err != nil {
