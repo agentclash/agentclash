@@ -174,6 +174,13 @@ func TestIntegrationVibeDomainJournalAndRecordedResponse(t *testing.T) {
 	if err != nil || got.OutputText != response.OutputText {
 		t.Fatalf("complete response was unavailable: %+v %v", got, err)
 	}
+	if err = s.ReconcileCost(ctx, a.ID, cost, json.RawMessage(`{"receipt":"matching"}`)); err != nil {
+		t.Fatal(err)
+	}
+	got, err = s.RecordedResponse(ctx, o.ID, a.Step, a.RequestHash, format)
+	if err != nil || got.OutputText != response.OutputText {
+		t.Fatalf("matching financial receipt made complete execution unrecoverable: %+v %v", got, err)
+	}
 	_, err = s.RecordedResponse(ctx, o.ID, a.Step, Hash([]byte("different request")), format)
 	requireFault(t, err, "recovery_unavailable")
 	_, err = s.RecordedResponse(ctx, o.ID, a.Step, a.RequestHash, json.RawMessage(`{"type":"different"}`))

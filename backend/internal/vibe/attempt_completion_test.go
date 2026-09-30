@@ -63,12 +63,12 @@ func TestReceiptAndResponseOrderingsPreserveExecution(t *testing.T) {
 					t.Fatal(e)
 				}
 			}
-			var output string
+			var output, state string
 			var savedUsage, savedReceipt []byte
-			if e := s.DB.QueryRow(ctx, `SELECT output,usage,reconciliation_evidence FROM vibe_attempts WHERE id=$1`, a.ID).Scan(&output, &savedUsage, &savedReceipt); e != nil {
+			if e := s.DB.QueryRow(ctx, `SELECT output,state,usage,reconciliation_evidence FROM vibe_attempts WHERE id=$1`, a.ID).Scan(&output, &state, &savedUsage, &savedReceipt); e != nil {
 				t.Fatal(e)
 			}
-			if output != "complete response" || !sameJSON(savedUsage, usage) {
+			if output != "complete response" || state != "SUCCEEDED" || !sameJSON(savedUsage, usage) {
 				t.Fatal("execution evidence lost")
 			}
 			var evidence costEvidence

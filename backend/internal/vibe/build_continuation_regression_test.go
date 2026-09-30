@@ -3,10 +3,11 @@ package vibe
 import (
 	"context"
 	"encoding/json"
-	"github.com/agentclash/agentclash/runtime/provider"
-	"github.com/google/uuid"
 	"testing"
 	"time"
+
+	"github.com/agentclash/agentclash/runtime/provider"
+	"github.com/google/uuid"
 )
 
 func claimTestProject(t *testing.T, s *Store, v Session) string {
@@ -59,6 +60,13 @@ func TestDeletedBuildFinalizationPreservesUncertainHold(t *testing.T) {
 
 // Keep a real persisted artifact/quote, and pause only the admission boundary.
 func TestBuildTemporaryAdmissionResumesOnceAfterClaim(t *testing.T) {
+	for _, reason := range []string{"budget_guard", "capacity", "rate_limit"} {
+		t.Run(reason, func(t *testing.T) { temporaryBuildAdmission(t, reason) })
+	}
+}
+
+func temporaryBuildAdmission(t *testing.T, reason string) {
+	t.Helper()
 	s, v := materialService(t)
 	ctx := context.Background()
 	job := "Summarize notes without inventing details."
@@ -67,6 +75,8 @@ func TestBuildTemporaryAdmissionResumesOnceAfterClaim(t *testing.T) {
 	gate := s.Gate
 	actor := ""
 	calls := 0
+	blocked := []Operation{}
+	rateKey := ""
 	v = executeBuildFixture(t, s, o, func(req provider.Request) any {
 		calls++
 		switch calls {
@@ -83,7 +93,30 @@ func TestBuildTemporaryAdmissionResumesOnceAfterClaim(t *testing.T) {
 		default:
 			var in SuiteReviewInput
 			json.Unmarshal([]byte(req.Messages[1].Content), &in)
-			s.Gate = Gate{}
+			switch reason {
+			case "budget_guard":
+				s.Gate = Gate{}
+			case "capacity":
+				for i := 0; i < s.Config.Limits(v.Anonymous).Queued; i++ {
+					other, e := s.Store.CreateAgent(ctx, actor, nil, uuid.New(), "build", DefaultModels())
+					if e != nil {
+						t.Fatal(e)
+					}
+					cleanupSession(t, s.Store, other.ID)
+					// Seed an already-queued capacity occupant. Admitting it here
+					// would correctly fail while the parent is still executing.
+					pending := Operation{ID: uuid.New()}
+					if _, e = s.Store.DB.Exec(ctx, `INSERT INTO vibe_operations(id,session_id,actor,client_id,request_hash,kind,state,billing,models,input,max_cost,deadline) VALUES($1,$2,$3,$4,'capacity-fixture','playground','QUEUED','UNRESERVED',$5,'{}',0,now()+interval '5 minutes')`, pending.ID, other.ID, actor, uuid.New(), raw(DefaultModels())); e != nil {
+						t.Fatal(e)
+					}
+					blocked = append(blocked, pending)
+				}
+			case "rate_limit":
+				rateKey = "vibe:rate:" + Hash([]byte(actor)) + ":" + timestamp().Format("200601021504")
+				if e := gate.Redis.Set(ctx, rateKey, s.Config.Limits(v.Anonymous).Rate, 2*time.Minute).Err(); e != nil {
+					t.Fatal(e)
+				}
+			}
 			return supportedSuiteReview(in)
 		}
 	})
@@ -93,7 +126,20 @@ func TestBuildTemporaryAdmissionResumesOnceAfterClaim(t *testing.T) {
 	if v.Document.Build.Error.RetryAvailableAt.Sub(timestamp()) < 4*time.Second {
 		t.Fatal("missing backoff")
 	}
+	if reason == "rate_limit" && v.Document.Build.Error.RetryAvailableAt.Sub(timestamp()) < 55*time.Second {
+		t.Fatal("automatic retry ignored the server cooldown")
+	}
 	s.Gate = gate
+	for _, pending := range blocked {
+		if e := s.Store.Stop(ctx, actor, pending.ID); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if rateKey != "" {
+		if e := gate.Redis.Del(ctx, rateKey).Err(); e != nil {
+			t.Fatal(e)
+		}
+	}
 	if e := s.Store.Edit(ctx, actor, v.ID, v.Revision, func(v *Session) error {
 		past := timestamp().Add(-time.Second)
 		v.Document.Build.Error.RetryAvailableAt = &past
@@ -116,6 +162,9 @@ func TestBuildTemporaryAdmissionResumesOnceAfterClaim(t *testing.T) {
 	}
 	if count != 1 || v.Document.Build.InlineInput == nil {
 		t.Fatalf("expected one material trial; got %d, progress=%s", count, raw(v.Document.Build))
+	}
+	if calls != 3 {
+		t.Fatal("admission retry repeated a provider call", calls)
 	}
 	original, e := s.Store.Operation(ctx, o.ID)
 	if e != nil || original.Actor == actor {

@@ -167,7 +167,7 @@ func (s *Store) ReconcileCost(ctx context.Context, id uuid.UUID, cost int64, rec
 				return err
 			}
 		}
-		if _, err = tx.Exec(ctx, `UPDATE vibe_attempts SET actual_cost=COALESCE(actual_cost,$2),reconciliation_evidence=$3,state=CASE WHEN completed_at IS NOT NULL THEN 'RECONCILED' ELSE state END WHERE id=$1`, id, cost, raw(evidence)); err != nil {
+		if _, err = tx.Exec(ctx, `UPDATE vibe_attempts SET actual_cost=COALESCE(actual_cost,$2),reconciliation_evidence=$3,state=CASE WHEN state='UNCERTAIN' AND completed_at IS NOT NULL THEN 'RECONCILED' ELSE state END WHERE id=$1`, id, cost, raw(evidence)); err != nil {
 			return err
 		}
 		if o.State.Terminal() {
