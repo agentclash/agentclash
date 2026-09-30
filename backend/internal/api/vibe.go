@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/agentclash/agentclash/backend/internal/enquiries"
+	"github.com/agentclash/agentclash/backend/internal/mutation"
 	"github.com/agentclash/agentclash/backend/internal/vibe"
 	"github.com/agentclash/agentclash/backend/internal/vibe/access"
 	"github.com/go-chi/chi/v5"
@@ -132,6 +133,7 @@ func vibeJSON(w http.ResponseWriter, status int, v any) {
 	_ = encoder.Encode(v)
 }
 func vibeError(w http.ResponseWriter, err error) {
+	rejected := mutation.IsRejected(err)
 	if errors.Is(err, access.ErrUnavailable) {
 		err = &vibe.Fault{Code: "not_found", Message: "Project is unavailable."}
 	}
@@ -169,6 +171,9 @@ func vibeError(w http.ResponseWriter, err error) {
 		code, message, status = "request_too_large", "Request exceeds its byte limit.", 413
 	}
 	issue := map[string]any{"code": code, "message": message}
+	if rejected {
+		issue["admission"] = "rejected"
+	}
 	if f != nil && f.RetryAvailableAt != nil {
 		issue["retry_available_at"] = f.RetryAvailableAt
 		seconds := int64(time.Until(*f.RetryAvailableAt).Seconds()) + 1
@@ -369,12 +374,12 @@ func (h *VibeHandler) get(w http.ResponseWriter, r *http.Request) {
 func (h *VibeHandler) submit(w http.ResponseWriter, r *http.Request) {
 	v, err := h.session(r)
 	if err != nil {
-		vibeError(w, err)
+		vibeError(w, mutation.Reject(err))
 		return
 	}
 	var sub vibe.Submission
 	if err = vibeBody(w, r, v.Anonymous, &sub); err != nil {
-		vibeError(w, err)
+		vibeError(w, mutation.Reject(err))
 		return
 	}
 	o, err := h.Service.Prepare(r.Context(), v.Actor, v.ID, sub)
@@ -670,17 +675,17 @@ func (h *VibeHandler) approve(w http.ResponseWriter, r *http.Request) { h.operat
 func (h *VibeHandler) retry(w http.ResponseWriter, r *http.Request) {
 	v, err := h.session(r)
 	if err != nil {
-		vibeError(w, err)
+		vibeError(w, mutation.Reject(err))
 		return
 	}
 	id, err := vibeID(r, "operationID")
 	if err != nil {
-		vibeError(w, err)
+		vibeError(w, mutation.Reject(err))
 		return
 	}
 	var input vibe.RetryRequest
 	if err = vibeBody(w, r, v.Anonymous, &input); err != nil {
-		vibeError(w, err)
+		vibeError(w, mutation.Reject(err))
 		return
 	}
 	op, err := h.Service.Retry(r.Context(), v.Actor, v.ID, id, input)

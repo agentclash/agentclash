@@ -45,7 +45,9 @@ REQUIRED={
   "TestIntegrationCrashKeepsJournaledEvidenceWithoutReexecution",
   "TestIntegrationStopMidProviderAndNoRetry", 
   ],
- "github.com/agentclash/agentclash/backend/internal/api": ["TestVibeFileAndSnapshotQueriesAreBounded", "TestVibeBuildRecoveryHTTPKeepsTestsAndWorkingVersion", "TestVibeIntegrationTwoDoorImportsPreserveEvidence", "TestVibeExpiredAuthenticationHTTP", "TestVibeIntegrationSaveUsesSelectedModels", "TestVibeRetryCooldownHTTP", "TestVibeGroundedResultsAndRegrade", "TestVibeInteractionHTTPBoundary"],
+ "github.com/agentclash/agentclash/backend/internal/api": ["TestVibeAdmissionMetadataRequiresProof", "TestVibeFileAndSnapshotQueriesAreBounded", "TestVibeBuildRecoveryHTTPKeepsTestsAndWorkingVersion", "TestVibeIntegrationTwoDoorImportsPreserveEvidence", "TestVibeExpiredAuthenticationHTTP", "TestVibeIntegrationSaveUsesSelectedModels", "TestVibeRetryCooldownHTTP", "TestVibeGroundedResultsAndRegrade", "TestVibeInteractionHTTPBoundary"],
+ "github.com/agentclash/agentclash/backend/internal/enquiries": ["TestEnquiryValidation", "TestEnquiryDeliveryRecoveryAndConfigDrift"],
+ "github.com/agentclash/agentclash/backend/internal/vibe/inputs": ["TestTextBoundsDoNotTruncate"],
  "github.com/agentclash/agentclash/backend/internal/vibe/interaction": [
   "TestContractsAcceptSupportedWireData", "TestContractsRejectAmbiguousOrAuthorityBearingData",
   "TestContractsRejectMalformedAndFutureVersions"],
@@ -76,7 +78,7 @@ def main():
         env=dict(os.environ)
         for k in list(env):
             if k.startswith("VIBE_LIVE_"): env.pop(k)
-        process=subprocess.run(["go","test","-p","1","-race","-json","-count=1","-timeout=8m","./internal/vibe","./internal/api","./internal/vibe/interaction","-run",regex],cwd=ROOT/"backend",env=env,capture_output=True,text=True)
+        process=subprocess.run(["go","test","-p","1","-race","-json","-count=1","-timeout=8m","./internal/vibe","./internal/api","./internal/vibe/interaction","./internal/enquiries","./internal/vibe/inputs","-run",regex],cwd=ROOT/"backend",env=env,capture_output=True,text=True)
         events=[]
         for line in process.stdout.splitlines():
             try: events.append(json.loads(line))

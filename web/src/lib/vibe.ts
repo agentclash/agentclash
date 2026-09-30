@@ -466,6 +466,7 @@ export class VibeError extends Error {
     public code: string,
     message: string,
     public status?: number,
+    public admission?: "rejected",
   ) {
     super(message);
   }
@@ -520,6 +521,7 @@ export async function vibeFetch<T>(
       result?.error?.code || "request_failed",
       result?.error?.message || "Could not complete the request. Please try again.",
       response.status,
+      result?.error?.admission === "rejected" ? "rejected" : undefined,
     );
   if (result === null) throw new VibeError("invalid_response", "The server returned an unreadable response. Please try again.", response.status);
   return result;
@@ -547,6 +549,7 @@ export async function watchVibe(
       result?.error?.code || "request_failed",
       result?.error?.message || "Connection interrupted.",
       response.status,
+      result?.error?.admission === "rejected" ? "rejected" : undefined,
     );
   }
   if (!response.body)

@@ -2,7 +2,8 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { VibeError, vibeFetch, type Artifact, type Operation, type Session } from "@/lib/vibe";
+import { vibeFetch, type Artifact, type Operation, type Session } from "@/lib/vibe";
+import { recoverRequest } from "@/lib/vibe-request-recovery";
 import { useVibeConnection } from "@/lib/vibe-connection";
 import { enquiryEmailLink, projectSummary, type EnquiryReceipt } from "@/lib/vibe-enquiries";
 import { WEB_EVENTS } from "@/lib/analytics/events";
@@ -18,7 +19,7 @@ export function ProjectEnquiry({ session, artifact, operation, primary = false }
   const [draft, setDraft] = useState<Draft>(() => ({ summary: projectSummary(session, artifact, operation), email: "", name: "", company: "" }));
   const source = useRef({ artifact_id: artifact.id, operation_id: operation?.id, revision: session.revision });
   const opened = useRef(false);
-  const request = useRef<{ session: string; body: string; client: string }>(undefined);
+  const request = useRef<{ session: string; body: string; client: string; uncertain: boolean }>(undefined);
   const sending = useRef(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -56,7 +57,7 @@ export function ProjectEnquiry({ session, artifact, operation, primary = false }
       if (!saved) return;
       const body = JSON.parse(saved);
       if (typeof body.summary !== "string" || typeof body.email !== "string" || typeof body.name !== "string" || typeof body.company !== "string" || body.source?.artifact_id !== artifact.id || !Number.isInteger(body.source.revision)) return;
-      if (typeof body.client_id === "string") request.current = { session: session.id, body: saved, client: body.client_id };
+      if (typeof body.client_id === "string") request.current = { session: session.id, body: saved, client: body.client_id, uncertain: true };
       source.current = body.source;
       setDraft({ summary: body.summary, email: body.email, name: body.name, company: body.company });
       opened.current = true;
@@ -77,16 +78,16 @@ export function ProjectEnquiry({ session, artifact, operation, primary = false }
       const body = JSON.stringify({ ...draft, client_id: client, source: source.current });
       try { sessionStorage.setItem(storageKey, body); }
       catch { submitError("Your browser couldn't save the enquiry for safe retry. Copy the summary and use direct email, or enable site storage."); return; }
-      request.current = { session: session.id, client, body };
+      request.current = { session: session.id, client, body, uncertain: false };
     }
     const captured = request.current;
     sending.current = true; setBusy(true); setError("");
     try { received(await vibeFetch<EnquiryReceipt>(`/sessions/${captured.session}/enquiries`, await token(), { method: "POST", body: captured.body })); }
     catch (e) {
-      if (e instanceof VibeError && e.status && e.status < 500 && e.code !== "idempotency_conflict") {
+      if (recoverRequest(captured,e) === "rejected") {
         request.current = undefined;
         persist(draft);
-        submitError(e.message);
+        submitError((e as Error).message);
       } else submitError(`${(e as Error).message} Retry uses the same enquiry; it won’t submit another one.`);
     } finally { sending.current = false; setBusy(false); }
   }

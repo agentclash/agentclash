@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/agentclash/agentclash/backend/internal/mutation"
 	"log/slog"
 	"net/mail"
 	"os"
@@ -85,7 +86,13 @@ func (s *Store) Get(ctx context.Context, session, client uuid.UUID) (Receipt, er
 	err := s.DB.QueryRow(ctx, `SELECT id,status,created_at FROM vibe_enquiries WHERE session_id=$1 AND client_id=$2`, session, client).Scan(&r.ID, &r.Status, &r.CreatedAt)
 	return r, err
 }
-func (s *Store) Create(ctx context.Context, session uuid.UUID, actor string, r Request) (Receipt, error) {
+func (s *Store) Create(ctx context.Context, session uuid.UUID, actor string, r Request) (result Receipt, err error) {
+	committing := false
+	defer func() {
+		if err != nil && !committing {
+			err = mutation.Reject(err)
+		}
+	}()
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := Validate(r); err != nil {
@@ -152,6 +159,7 @@ func (s *Store) Create(ctx context.Context, session uuid.UUID, actor string, r R
 	if err != nil {
 		return Receipt{}, err
 	}
+	committing = true
 	return receipt, tx.Commit(ctx)
 }
 func (s *Store) Run(ctx context.Context, logger *slog.Logger) {

@@ -75,7 +75,7 @@ it("shows validation only after submit and preserves the draft after a 4xx", asy
   sessionStorage.setItem(storageKey, JSON.stringify(draft));
   await act(async () => root.unmount()); root = createRoot(node);
   await render(); await click("Discuss this with AgentClash");
-  vi.mocked(vibeFetch).mockRejectedValueOnce(new VibeError("invalid_request", "Please review the email.", 400));
+  vi.mocked(vibeFetch).mockRejectedValueOnce(new VibeError("invalid_request", "Please review the email.", 400, "rejected"));
   await submit();
   expect(popup()!.querySelector('[role="alert"]')!.textContent).toContain("Please review the email.");
   expect(JSON.parse(sessionStorage.getItem(storageKey)!).client_id).toBeUndefined();
@@ -105,4 +105,16 @@ it("reuses the exact body after a lost acknowledgement and reload", async () => 
 
 it("does not truncate long summaries into an email URL", () => {
   expect(enquiryEmailLink("team@example.test", "long summary ".repeat(1000))).toBeUndefined();
+});
+
+it("keeps the original enquiry after a lost acknowledgement followed by rejected authentication", async () => {
+ sessionStorage.setItem(storageKey,JSON.stringify(draft));
+ vi.mocked(vibeFetch).mockRejectedValueOnce(new Error("Lost acknowledgement"));
+ await render();await click("Discuss this with AgentClash");await submit();
+ const body=vi.mocked(vibeFetch).mock.calls[0][2]!.body;
+ vi.mocked(vibeFetch).mockRejectedValueOnce(new VibeError("forbidden","Sign in again",403,"rejected"));await submit();
+ expect(sessionStorage.getItem(storageKey)).toBe(body);
+ expect(popup()!.querySelector("textarea")!.disabled).toBe(true);
+ vi.mocked(vibeFetch).mockResolvedValueOnce({id:"original-receipt",status:"received"});await submit();
+ expect(vi.mocked(vibeFetch).mock.calls.map(call=>call[2]!.body)).toEqual([body,body,body]);
 });

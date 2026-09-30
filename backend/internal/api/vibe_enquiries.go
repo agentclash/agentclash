@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"github.com/agentclash/agentclash/backend/internal/mutation"
 	"net/http"
 
 	"github.com/agentclash/agentclash/backend/internal/enquiries"
@@ -11,7 +12,7 @@ import (
 func (h *VibeHandler) createEnquiry(w http.ResponseWriter, r *http.Request) {
 	v, err := h.authorizedSession(r, true)
 	if err != nil {
-		vibeError(w, err)
+		vibeError(w, mutation.Reject(err))
 		return
 	}
 	if h.Enquiries == nil {
@@ -20,11 +21,12 @@ func (h *VibeHandler) createEnquiry(w http.ResponseWriter, r *http.Request) {
 	}
 	var input enquiries.Request
 	if err = vibeBody(w, r, v.Anonymous, &input); err != nil {
-		vibeError(w, err)
+		vibeError(w, mutation.Reject(err))
 		return
 	}
 	receipt, err := h.Enquiries.Create(r.Context(), v.ID, v.Actor, input)
 	if err != nil {
+		rejected := mutation.IsRejected(err)
 		switch {
 		case errors.Is(err, enquiries.ErrDisabled):
 			err = &vibe.Fault{Code: "hosted_disabled", Message: err.Error()}
@@ -38,6 +40,9 @@ func (h *VibeHandler) createEnquiry(w http.ResponseWriter, r *http.Request) {
 			err = &vibe.Fault{Code: "invalid_request", Message: err.Error()}
 		case errors.Is(err, enquiries.ErrQuota):
 			err = &vibe.Fault{Code: "rate_limit", Message: err.Error()}
+		}
+		if rejected {
+			err = mutation.Reject(err)
 		}
 		vibeError(w, err)
 		return

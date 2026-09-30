@@ -3,7 +3,9 @@ package vibe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/agentclash/agentclash/backend/internal/mutation"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
@@ -27,7 +29,13 @@ type Service struct {
 	Compiler Compiler
 }
 
-func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub Submission) (Operation, error) {
+func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub Submission) (result Operation, err error) {
+	defer func() {
+		var f *Fault
+		if errors.As(err, &f) {
+			err = mutation.Reject(err)
+		}
+	}()
 	if !s.Config.Enabled || s.Config.Credential == "" {
 		return Operation{}, fault("hosted_disabled", "Hosted Vibe execution is not configured yet. You can still import and review an evaluation.")
 	}

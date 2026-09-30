@@ -3,6 +3,8 @@ package vibe
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"github.com/agentclash/agentclash/backend/internal/mutation"
 	"strings"
 
 	"github.com/google/uuid"
@@ -27,7 +29,13 @@ type RetryContext struct {
 // Temporal activity or repeat a provider attempt with an uncertain outcome.
 // A rate limit is the narrow exception: people may explicitly make a new,
 // separately budgeted attempt while the original provider cost is reconciled.
-func (s *Service) Retry(ctx context.Context, actor string, sessionID, operationID uuid.UUID, request RetryRequest) (Operation, error) {
+func (s *Service) Retry(ctx context.Context, actor string, sessionID, operationID uuid.UUID, request RetryRequest) (result Operation, err error) {
+	defer func() {
+		var f *Fault
+		if errors.As(err, &f) {
+			err = mutation.Reject(err)
+		}
+	}()
 	if request.ClientID == uuid.Nil || request.Revision < 0 {
 		return Operation{}, fault("invalid_message", "A new request ID and the conversation revision are required.")
 	}

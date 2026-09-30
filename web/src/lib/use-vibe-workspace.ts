@@ -31,62 +31,11 @@ import { evaluationIdentity } from "@/components/vibe/evaluation-navigation";
 
 
 
+import { recoverRequest } from "./vibe-request-recovery";
 import { editableEvaluation, defaultModels, terminal, retryVibeOperation, VibeError, vibeFetch, type CaseResult, type BuildQuote, type RunQuote, type Models, type Operation, type Session, type VibeConfig, type SavedCheck } from "@/lib/vibe";
 
 
 
-// POST /messages faults from api/vibe.go, Service.Prepare and Store.Submit:
-// these exact code/status pairs reject before admission or roll back its transaction.
-// Unknown responses (including generic 503s) cannot prove non-admission.
-const submissionRejections: Partial<Record<number, readonly string[]>> = {
-  400: [
-    "quote_expired",
-    "unsupported_capability",
-    "invalid_request",
-    "invalid_message",
-    "invalid_operation",
-    "invalid_evidence",
-    "invalid_evaluation",
-    "evidence_roles_required",
-    "invalid_import",
-    "import_limit",
-    "unsupported_schema",
-    "invalid_encoding",
-    "free_model_required",
-    "unsupported_model",
-    "evaluator_pinned",
-    "artifact_required",
-    "agent_required",
-    "preview_changed",
-    "preview_consent_required",
-    "context_limit",
-    "baseline_required",
-    "comparison_changed",
-    "case_limit",
-    "graph_limit",
-    "budget_limit",
-    "conversation_limit",
-    "workspace_required",
-  ],
-  401: ["unauthenticated"],
-  402: ["insufficient_credits"],
-  403: ["forbidden"],
-  404: ["not_found"],
-  409: ["revision_conflict", "operation_running", "invalid_state"],
-  413: ["request_too_large"],
-  429: ["rate_limit", "capacity_limit", "trial_limit"],
-  503: [
-    "hosted_disabled",
-    "pricing_unavailable",
-    "accounting_unavailable",
-    "trial_capacity_reached",
-  ],
-};
-const retryRejections: Partial<Record<number, readonly string[]>> = {
-  429: ["retry_cooldown"],
-  400: ["retry_manual_edit"],
-  409: ["idempotency_conflict", "retry_not_allowed", "retry_committed", "retry_running", "retry_uncertain", "retry_stale"],
-};
 export function useVibeWorkspace() {
 
   const params = useSearchParams();
@@ -660,14 +609,8 @@ export function useVibeWorkspace() {
     } catch (e) {
       // Auth/rate/profile checks precede idempotency lookup. A later rejection
       // cannot disprove an earlier admission: retain every byte until acknowledged.
-      const rejected =
-        !request.uncertain &&
-        e instanceof VibeError &&
-        e.status !== undefined &&
-        (submissionRejections[e.status]?.includes(e.code) === true ||
-          (!!request.retryOperationID && retryRejections[e.status]?.includes(e.code) === true));
+      const rejected = recoverRequest(request, e) === "rejected";
       if (rejected) submission.current = null;
-      else request.uncertain = true;
       setUncertain(!rejected);
       if (e instanceof VibeError && (e.code === "revision_conflict" || (request.retryOperationID && rejected))) {
         await reload(request.sessionID).catch(() => undefined);

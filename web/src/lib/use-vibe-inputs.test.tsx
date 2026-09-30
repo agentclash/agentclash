@@ -54,3 +54,24 @@ it("requires explicit exact policy selection and distinguishes detach from delet
   await act(async()=>state.remove("file-a",true));
   expect(vibeFetch).toHaveBeenCalledWith("/sessions/a/inputs/file-a",undefined,{method:"DELETE"});
 });
+
+it("serializes attachments and applies the one-PDF policy to current selection",async()=>{
+ let resolve!:(value:TaskMaterial)=>void;
+ vi.mocked(vibeFetch).mockReturnValueOnce(new Promise(done=>{resolve=done;}));
+ await render();await act(async()=>{void state.attach("pdf-a");void state.attach("pdf-b");});
+ expect(vibeFetch).toHaveBeenCalledTimes(1);
+ await act(async()=>resolve({...material,id:"pdf-a",kind:"pdf"}));
+ vi.mocked(vibeFetch).mockResolvedValueOnce({...material,id:"pdf-b",kind:"pdf"});
+ await act(async()=>state.attach("pdf-b"));expect(state.items.map(x=>x.material.id)).toEqual(["pdf-a"]);
+ expect(state.error).toContain("one PDF");
+ await act(async()=>state.remove("pdf-a"));
+ vi.mocked(vibeFetch).mockResolvedValueOnce({...material,id:"pdf-b",kind:"pdf"});
+ await act(async()=>state.attach("pdf-b"));expect(state.items.map(x=>x.material.id)).toEqual(["pdf-b"]);
+});
+it("does not restore a saved selection over edits made during loading",async()=>{
+ sessionStorage.setItem("vibe-materials:a:guide",JSON.stringify([{id:"old",usage:"task_input",quote:"",page:1,acknowledged:false}]));
+ let resolve!:(value:TaskMaterial)=>void;vi.mocked(vibeFetch).mockReturnValueOnce(new Promise(done=>{resolve=done;}));
+ await render();vi.mocked(uploadMaterial).mockResolvedValueOnce({...material,id:"new"});
+ await act(async()=>state.add("New notes"));await act(async()=>resolve({...material,id:"old"}));
+ expect(state.items.map(x=>x.material.id)).toEqual(["new"]);
+});

@@ -3,7 +3,9 @@ package vibe
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/agentclash/agentclash/backend/internal/mutation"
 	"strings"
 
 	"github.com/agentclash/agentclash/runtime/provider"
@@ -49,7 +51,13 @@ func (s *Service) freezeReviewVersion(p *Plan) error {
 
 // Explicit editor writes use the same candidate gate as conversation. The
 // provider runs in the worker, never inside the session edit transaction.
-func (s *Service) PrepareSuiteEdit(ctx context.Context, actor string, id uuid.UUID, revision int64, artifactID uuid.UUID, blueprint json.RawMessage) (Operation, error) {
+func (s *Service) PrepareSuiteEdit(ctx context.Context, actor string, id uuid.UUID, revision int64, artifactID uuid.UUID, blueprint json.RawMessage) (result Operation, err error) {
+	defer func() {
+		var f *Fault
+		if errors.As(err, &f) {
+			err = mutation.Reject(err)
+		}
+	}()
 	v, err := s.Store.GetSession(ctx, actor, id)
 	if err != nil {
 		return Operation{}, err
