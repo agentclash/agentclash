@@ -35,13 +35,17 @@ def drained(host, settings):
         "temporal-admin",
         "temporal",
         "workflow",
-        "count",
+        "list",
         "--query",
         'ExecutionStatus="Running"',
+        "--limit",
+        "1",
         "--output",
         "json",
     )
-    require(json.loads(raw).get("count") in (0, "0"), "Open Temporal work remains")
+    # The pinned CLI omits zero-valued count fields. An empty workflow list
+    # proves the same drain condition without depending on that encoding.
+    require(json.loads(raw) == [], "Open Temporal work remains or response is invalid")
     require(
         settings["delivery"]["namespace"] == "agentclash-prod",
         "Use an isolated cluster for rehearsal",

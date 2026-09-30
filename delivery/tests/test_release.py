@@ -89,6 +89,57 @@ class FixtureHost(Host):
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_temporal_drain_uses_bounded_empty_list(self):
+        host = Mock()
+        host.compose.return_value = b"[]"
+        health.drained(host, {"delivery": {"namespace": "agentclash-prod"}})
+        host.compose.assert_called_once_with(
+            "run",
+            "--rm",
+            "-T",
+            "--no-deps",
+            "temporal-admin",
+            "temporal",
+            "workflow",
+            "list",
+            "--query",
+            'ExecutionStatus="Running"',
+            "--limit",
+            "1",
+            "--output",
+            "json",
+        )
+
+    def test_temporal_drain_refuses_work_or_unexpected_response(self):
+        for raw in (
+            b'[{"execution":{"workflowId":"test-running-workflow"}}]',
+            b"{}",
+            b"null",
+            b"false",
+            b"0",
+            b'{"count":0}',
+            b'"[]"',
+        ):
+            with self.subTest(raw=raw):
+                host = Mock()
+                host.compose.return_value = raw
+                with self.assertRaises(Refused):
+                    health.drained(
+                        host, {"delivery": {"namespace": "agentclash-prod"}}
+                    )
+
+    def test_temporal_drain_refuses_failed_query(self):
+        host = Mock()
+        host.compose.side_effect = Refused("query failed")
+        with self.assertRaises(Refused):
+            health.drained(host, {"delivery": {"namespace": "agentclash-prod"}})
+
+    def test_temporal_drain_refuses_malformed_json(self):
+        host = Mock()
+        host.compose.return_value = b"not JSON"
+        with self.assertRaises(ValueError):
+            health.drained(host, {"delivery": {"namespace": "agentclash-prod"}})
+
     def test_real_cli_timestamp_shape_and_no_stale_poller_acceptance(self):
         now = time.time()
         value = {"pollers": [{"last_access_time": {"seconds": int(now), "nanos": 100}}]}
