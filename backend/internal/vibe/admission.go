@@ -396,7 +396,7 @@ func reserve(ctx context.Context, tx pgx.Tx, v Session, o Operation, cfg Config)
 		explore := trial + ":explore"
 		var cycle Plan
 		_ = json.Unmarshal(o.Input, &cycle)
-		buildAllowance := cycle.Cycle != nil && (cycle.AuthoringVersion == materialBuildAuthoringVersion || (o.Kind == "check" || o.Kind == "playground"))
+		buildAllowance := cycle.Cycle != nil && (cycle.AuthoringVersion >= materialBuildAuthoringVersion || (o.Kind == "check" || o.Kind == "playground"))
 		if buildAllowance {
 			var version, extra int
 			if err := tx.QueryRow(ctx, `SELECT COALESCE((specification->>'version')::int,1), COALESCE((specification#>>'{request,additional_examples}')::int,0) FROM vibe_cycle_quotes WHERE id=$1 AND session_id=$2`, cycle.Cycle.ID, v.ID).Scan(&version, &extra); err != nil {

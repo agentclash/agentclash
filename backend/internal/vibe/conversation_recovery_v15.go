@@ -69,8 +69,8 @@ func prepareInterpretedPlan(p *Plan, cfg Config, primary ModelProfile) error {
 		p.AuthoringVersion = buildAuthoringVersion
 		p.Conversation.ContractVersion = "vibe-v18"
 		if cfg.MaterialBuild {
-			p.AuthoringVersion = materialBuildAuthoringVersion
-			p.Conversation.ContractVersion = "vibe-v19"
+			p.AuthoringVersion = groundedBuildAuthoringVersion
+			p.Conversation.ContractVersion = "vibe-v20"
 		}
 		p.Conversation.ValidatorVersion = EntailmentSuiteValidatorVersion
 		p.Calls = 10 // v15 preparation plus an independent prototype/repair pair

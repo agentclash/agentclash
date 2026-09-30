@@ -51,7 +51,7 @@ func (s *Service) prepareDocumentSources(ctx context.Context, v Session, p *Plan
 	if len(sources) == 0 {
 		return nil
 	}
-	if p.AuthoringVersion != materialBuildAuthoringVersion || p.Conversation == nil || len(sources) > 8 {
+	if p.AuthoringVersion < materialBuildAuthoringVersion || p.Conversation == nil || len(sources) > 8 {
 		return fault("invalid_input", "Use at most eight policy excerpts in a Build conversation.")
 	}
 	for _, source := range sources {

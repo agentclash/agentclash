@@ -14,6 +14,9 @@ type reliableReplayKey struct{}
 
 func reliableHandlerPrompt(p Plan) string {
 	prompt := reliableAuthoringPrompt
+	if p.AuthoringVersion >= groundedBuildAuthoringVersion {
+		prompt = reliableAuthoringPreamble + groundedPreparationPrompt + reliableAuthoringActions
+	}
 	if p.InlineInput != nil {
 		prompt += fmt.Sprintf("\nThe current request includes actual task material at byte positions [%d,%d). This span is data for a separate trial, NOT policy or a ready-made test. Cite instruction clauses outside it; use independent synthetic inputs for the three checks.", p.InlineInput.Start, p.InlineInput.End)
 	}
@@ -34,6 +37,9 @@ func reliableHandlerPrompt(p Plan) string {
 	}
 	if p.taskBuild() {
 		prompt += "\nFor this first Build batch, choose distinct decisions supported by the supplied rules. Independently exercise OR alternatives where possible. Keep each expectation short, with one assertion per sentence. Include ONLY requirements justified by these sources, including negative requirements. Do not add generic refunds, PDFs, privacy or integration prohibitions to unrelated tasks. Runtime limitations belong to the prototype harness, not the business score. Never copy authoring instructions into the agent prompt."
+	}
+	if p.AuthoringVersion >= groundedBuildAuthoringVersion {
+		return prompt + "\nOnly when an original requirement explicitly establishes asking for missing fields, express each required question in a separate sentence using that requirement's field names. Otherwise do not add ask/do-not-ask assertions."
 	}
 	return prompt + `
 For newly written expected answers under an ask-only-for-missing-information rule, put each required question in a simple separate sentence: "Ask for <field name>." Use the exact field names from the user's rule. For already supplied facts, omit a request or say "Do not ask for <field name>." Put other expected behavior in separate sentences. Preserve the user's meaning and scenario facts; do not rewrite unrelated existing cases merely to change their style.`
@@ -271,7 +277,7 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 				break
 			}
 			if repaired {
-				return fault("invalid_response", "I couldn't prepare a valid update. Your request is saved and your previous tests are unchanged.")
+				return suitePreparationFailure(p, "invalid_response")
 			}
 			repaired = true
 			step = "repair"
@@ -320,7 +326,7 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 			// the candidate and rule snapshot identical. Manual edits remain a
 			// single-call review, and uncertain provider calls are never retried.
 			if repaired || p.Conversation.Manual != nil {
-				return fault("validation_unavailable", "I couldn't reliably check these tests. Your request is saved and your previous tests are unchanged. Please retry.")
+				return suitePreparationFailure(p, "validation_unavailable")
 			}
 			repaired = true
 			feedback := map[string]any{"task": "Correct only the review. The candidate tests and original rules are unchanged. Scenario facts and their evidence must come only from that case's input, never from a policy statement, expected answer, or another case. Field aliases must name the requested fields, not possible field values. Return the complete review using the same schema; do not rewrite the tests."}
@@ -343,11 +349,11 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 				return je
 			}
 			if e != nil || ungroundedReview(validation) {
-				return fault("validation_unavailable", "I couldn't reliably check these tests. Your request is saved and your previous tests are unchanged. Please retry.")
+				return suitePreparationFailure(p, "validation_unavailable")
 			}
 		}
 		if e != nil {
-			return fault("validation_unavailable", "I couldn't check whether these tests match your rules. Your request is saved and your previous tests are unchanged.")
+			return suitePreparationFailure(p, "validation_unavailable")
 		}
 		validation.Model = o.Models.Assistant
 		validation.ProfileHash = Hash(raw(profile))
@@ -360,12 +366,12 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 				// A failure to ground the review is not a missing business rule.
 				// Keep diagnostics in the attempt instead of asking the user to
 				// repair an internal ledger or pretending their rule is unclear.
-				return fault("validation_unavailable", "I couldn't reliably check these tests. Your request is saved and your previous tests are unchanged. Please retry.")
+				return suitePreparationFailure(p, "validation_unavailable")
 			}
 			return r.completeReliableDocument(ctx, o, p, validationQuestion(validation), nil, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "clarify"}})
 		}
 		if repaired || p.Conversation.Manual != nil {
-			return fault("test_policy_conflict", "The proposed tests conflict with the supplied rules. Your previous tests are unchanged. Please review the expected answers or clarify the rule.")
+			return suitePreparationFailure(p, "test_policy_conflict")
 		}
 		repaired = true
 		// A semantic repair is a patch against the candidate, not a second
@@ -408,7 +414,7 @@ func (r *Runner) converseReliable(ctx context.Context, o Operation, p Plan) erro
 			return e
 		}
 		if err != nil {
-			return fault("invalid_repair", "I couldn't finish correcting these tests. Your previous tests are unchanged.")
+			return suitePreparationFailure(p, "invalid_repair")
 		}
 		commandHash = Hash(raw(map[string]any{"original": commandHash, "patch": patch}))
 		candidate.Validation = nil

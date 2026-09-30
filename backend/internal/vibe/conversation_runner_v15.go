@@ -250,7 +250,7 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 				// A failure to ground the review is not a missing business rule.
 				// Keep diagnostics in the attempt instead of asking the user to
 				// repair an internal ledger or pretending their rule is unclear.
-				return fault("validation_unavailable", "I couldn't reliably check these tests. Your request is saved and your previous tests are unchanged. Please retry.")
+				return suitePreparationFailure(p, "validation_unavailable")
 			}
 			if p.Cycle != nil && p.Cycle.ClarificationsUsed >= 1 {
 				return r.completeSamplePrototype(ctx, o, p)
@@ -261,7 +261,7 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 			return r.completeReliableDocument(ctx, o, p, "Some proposed situations still need a rule before they can be scored. I kept your working version and earlier results unchanged. "+validationQuestion(validation), nil, nil, AuthoringCompletion{Outcome: &CompletionReceipt{Action: "chat"}})
 		}
 		if patched || p.Conversation.Manual != nil {
-			return fault("test_policy_conflict", "The proposed tests conflict with the supplied rules. Your previous tests are unchanged. Please review the expected answers or clarify the rule.")
+			return suitePreparationFailure(p, "test_policy_conflict")
 		}
 		patched = true
 		// A semantic repair is a patch against the candidate, not a second
@@ -273,10 +273,7 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 		if p.precise() {
 			repairPlan.Conversation.Policy = &policy
 		}
-		repairContext := map[string]any{"action": "edit_tests", "repair_candidate": true, "problems": validation.Problems, "candidate_policy": policy, "instruction": "Patch only rejected cases; do not add/remove cases. Keep supported rules and fields unchanged."}
-		if p.precise() {
-			delete(repairContext, "candidate_policy")
-		}
+		repairContext := suiteRepairContext(p, input, *validation, policy)
 		messages := taskMessages(repairPlan, taskAuthor, "edit_tests", repairContext)
 		resp, e = r.reliableCall(ctx, o, "candidate:patch", messages, reliableCommandFormat(profile, repairPlan, "edit_tests"))
 		if e != nil {
@@ -307,7 +304,7 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 			return e
 		}
 		if err != nil {
-			return fault("invalid_repair", "I couldn't finish correcting these tests. Your previous tests are unchanged.")
+			return suitePreparationFailure(p, "invalid_repair")
 		}
 		commandHash = Hash(raw(map[string]any{"original": commandHash, "patch": patch}))
 		candidate.Validation = nil

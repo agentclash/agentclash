@@ -311,6 +311,9 @@ func reviewTaskMessages(p Plan, input SuiteReviewInput, profile ModelProfile) []
 		return SuiteReviewMessages(input)
 	}
 	messages := renderSuiteReview(input, !profile.StructuredOutputs, true)
+	if p.AuthoringVersion >= groundedBuildAuthoringVersion {
+		messages[0].Content += "\nCheck that the case actually supplies the material needed for its expected output. A description such as 'messages with names and dates' is not concrete message content. If the expectation requires extracting or summarizing absent content, mark the case contradicted and explain which material the author omitted. This is a defective generated input, not a missing user policy. Do not demand absent facts or unavailable tools from the target. Concrete fictional case data is allowed; invented business obligations are not."
+	}
 	if p.continuingBuild() {
 		messages[0].Content += "\nFor consistency fields, aliases quote original field NAMES, not values. input_pointer is relative to the case input (/question, not /input/question). Missing values have empty literals/evidence. Input facts come from INPUT only, never expectations. Apply only relevant conditions to each case; suite-level scenario directions do not apply to every reply."
 	} else if p.interpreted() {

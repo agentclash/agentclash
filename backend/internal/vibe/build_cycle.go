@@ -16,17 +16,18 @@ const legacyBuildAuthoringVersion = 16
 const assertionBuildAuthoringVersion = 17
 const buildAuthoringVersion = 18
 const materialBuildAuthoringVersion = 19
+const groundedBuildAuthoringVersion = 20
 
 // Provisional ceilings; live model/quality benchmarks are a release gate.
 const FirstBuildSpendCeiling = NanoUSD / 2
 const FirstBuildTokenTarget = 500_000
 
 func (p Plan) taskBuild() bool {
-	return p.AuthoringVersion == assertionBuildAuthoringVersion || (p.AuthoringVersion == buildAuthoringVersion || p.AuthoringVersion == materialBuildAuthoringVersion)
+	return p.AuthoringVersion >= assertionBuildAuthoringVersion && p.AuthoringVersion <= groundedBuildAuthoringVersion
 }
 
 func (p Plan) continuingBuild() bool {
-	return (p.AuthoringVersion == buildAuthoringVersion || p.AuthoringVersion == materialBuildAuthoringVersion)
+	return p.AuthoringVersion >= buildAuthoringVersion && p.AuthoringVersion <= groundedBuildAuthoringVersion
 }
 
 type BuildProgress struct {
