@@ -22,11 +22,17 @@ function buildEvaluation(): Session {
   return build;
 }
 
-async function serve(page: Page, many = false) {
-  const first = evaluation("first"), second = evaluation("second");
+async function serve(page: Page, many = false, prototypes = false) {
+  const first = prototypes ? { ...buildEvaluation(), id: "first" } : evaluation("first");
+  const second = prototypes ? { ...buildEvaluation(), id: "second" } : evaluation("second");
+  if (prototypes) {
+    first.document.evaluation!.id = first.id;
+    second.document.evaluation!.id = second.id;
+  } else {
   second.document.messages = [{ id: "request", role: "user", content: "Check our support agent.", operation_id: "running" }];
   second.operations = [{ id: "running", kind: "message", state: "RUNNING", billing: "RESERVED", models: defaultModels,
     max_cost_nano_usd: 1, actual_cost_nano_usd: 0, results: [], progress: { phase: "understanding", completed_cases: 0, total_cases: 0 } }];
+  }
   const sessions = new Map([[first.id, first], [second.id, second]]);
   if (many) for (let index = 0; index < 30; index++) {
     const extra = evaluation(`older-${index}`);
@@ -72,9 +78,39 @@ async function serve(page: Page, many = false) {
   });
   await page.goto("/vibe-evals?session=first");
   // The reused development server also waits for AuthKit's initial session check.
-  await expect(page.getByRole("heading", { name: "Improve an agent you already have." })).toBeVisible({ timeout: 15_000 });
+  if (prototypes) await expect(page.getByRole("button", { name: "Try it yourself", exact: true })).toBeVisible({ timeout: 15_000 });
+  else await expect(page.getByRole("heading", { name: "Improve an agent you already have." })).toBeVisible({ timeout: 15_000 });
   return { first, second, sessions, posts, errors };
 }
+
+test("a stored trial in B survives opening A, switching, editing and refreshing", async ({ page }) => {
+  await page.addInitScript(model => {
+    if (!sessionStorage.getItem("vibe-build-drafts:second"))
+      sessionStorage.setItem("vibe-build-drafts:second", JSON.stringify({
+        version: 1, guide: "B's separate guide draft",
+        trials: { ["second:prototype:new:" + model]: "B's unsent trial" },
+      }));
+  }, defaultModels.target);
+  const control = await serve(page, false, true);
+  const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
+  await composer.fill("A's unsent guide");
+  await page.locator('[data-evaluation-id="second"]').click();
+  await expect(composer).toHaveValue("B's separate guide draft");
+  await page.getByRole("button", { name: "Try it yourself", exact: true }).click();
+  const trial = page.getByRole("textbox", { name: "Message your agent", exact: true });
+  await expect(trial).toHaveValue("B's unsent trial");
+  await trial.fill("B's edited unsent trial");
+  await page.locator('[data-evaluation-id="first"]').click();
+  await expect(composer).toHaveValue("A's unsent guide");
+  await page.locator('[data-evaluation-id="second"]').click();
+  await expect(trial).toHaveValue("B's edited unsent trial");
+  await page.reload();
+  await expect(trial).toHaveValue("B's edited unsent trial");
+  await page.getByRole("button", { name: "Back to Vibe Evals" }).click();
+  await expect(composer).toHaveValue("B's separate guide draft");
+  expect(control.posts).toHaveLength(0);
+  expect(control.errors).toEqual([]);
+});
 
 test("sidebar creation and cancellation preserve the draft and never start a run", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });

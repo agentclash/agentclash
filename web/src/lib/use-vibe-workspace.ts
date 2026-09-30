@@ -137,8 +137,6 @@ export function useVibeWorkspace() {
   }>();
   const [runPending, setRunPending] = useState(false);
   const requestedRunID = navigation.run;
-  const setRequestedRunID = (run: string | undefined) => navigation.update({ run });
-  const navigatedRunID = useRef<string | undefined>(undefined);
   const [pendingAction, setPendingAction] = useState<string>();
   const [error, setError] = useState("");
   const [importError, setImportError] = useState<{ sessionID?: string; message: string }>();
@@ -416,10 +414,6 @@ export function useVibeWorkspace() {
       .then(items => { if (live) setContexts(items); }).catch(() => undefined);
     return () => { live = false; };
   }, [sessionID, session?.event_cursor, token, config?.two_door]);
-  useEffect(() => {
-    const id = session?.document.build?.check_id;
-    if (id && !requestedRunID) setRequestedRunID(id);
-  }, [session?.document.build?.check_id, requestedRunID]);
   function adoptContext(v: Session) {
     setNewEvaluation(false);
     select(v.id);
@@ -692,8 +686,11 @@ export function useVibeWorkspace() {
       captureBuildEvent(WEB_EVENTS.VIBE_BUILD_MESSAGE_ADMITTED, { ...base, recipient: requestKind === "playground" ? "prototype" : "guide" }, admitted.id);
       if (submitted.demo_id) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_DEMO_SELECTED, { ...base, sample_id: "email" }, admitted.id);
     }
-    if (requestKind === "check" || requestKind === "retest")
-      setRequestedRunID(admitted.id);
+    if (requestKind === "check" || requestKind === "retest") {
+      const checksView = session?.document.evaluation?.door === "build" ? view : "checks";
+      navigation.update({ run: admitted.id, view: checksView, artifact: admitted.source?.artifact_id || null });
+      currentView.current = checksView;
+    }
     if (!request.trialKey && request.composer !== null)
       buildEvidence.current = undefined;
     if (request.trialKey) {
@@ -711,7 +708,7 @@ export function useVibeWorkspace() {
     // A failed refresh cannot turn an acknowledged send into an unsent draft.
     // SSE can reconcile it; retain the visible pending message until then.
     const fresh = await reload(request.sessionID).catch((error: unknown) => {
-      setConnection(
+      if (activeSessionRef.current === request.sessionID) setConnection(
         isSessionAccessError(error)
           ? sessionAccessLost
           : "Reconnecting to saved progress…",
@@ -721,19 +718,6 @@ export function useVibeWorkspace() {
     if (fresh && !request.trialKey && request.composer !== null)
       setPendingMessage(undefined);
   }
-
-  useEffect(() => {
-    const admitted = session?.operations.find(
-      (operation) => operation.id === requestedRunID,
-    );
-    if (admitted && navigatedRunID.current !== requestedRunID) {
-      navigatedRunID.current = requestedRunID;
-      if (session?.document.evaluation?.door !== "build") navigate("checks", admitted.source?.artifact_id);
-    }
-    // Navigation happens only when the requested run is present, never against
-    // the previous result while a new run is still being admitted.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestedRunID, session]);
 
   // Reconcile an SSE acknowledgement that can arrive before the POST returns.
   useEffect(() => {

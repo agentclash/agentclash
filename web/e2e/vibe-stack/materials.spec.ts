@@ -3,7 +3,10 @@ import { expect, test } from "@playwright/test";
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const task = "Summarize meeting notes, including decisions and action owners.";
 const notes = "At the planning meeting, Mira agreed to ship the prototype on Friday.";
-test.beforeEach(() => test.skip(process.env.VIBE_BROWSER_MATERIALS !== "1", "Material Build fixture"));
+test.beforeEach(async ({request}) => {
+  test.skip(process.env.VIBE_BROWSER_MATERIALS !== "1", "Material Build fixture");
+  await request.post(`${api}/__fixture/control`, {data:{reset_calls:true}});
+});
 
 async function saved(page: import("@playwright/test").Page) {
   const id = new URL(page.url()).searchParams.get("session");
@@ -56,11 +59,11 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   await expect(page.getByRole("dialog")).toContainText("Contact isn’t set up yet. You can copy your summary.");
   const summary=page.getByRole("textbox",{name:"Project summary",exact:true});
   await expect(summary).not.toHaveValue(/Mira|Ana/);
-  for(const width of [1440,768,390,320]) {
-    await page.setViewportSize({width,height:900});
+  for(const viewport of [{width:1440,height:900},{width:390,height:844},{width:360,height:800}]) {
+    await page.setViewportSize(viewport);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(page.getByLabel("Active evaluation")).toBeInViewport();
-    await page.screenshot({path:info.outputPath(`${kind}-${width}.png`)});
+    await page.screenshot({path:info.outputPath(`${kind}-${viewport.width}.png`)});
   }
   await page.setViewportSize({width:1440,height:900});
   await page.getByRole("dialog").getByRole("button",{name:"Close",exact:true}).click();

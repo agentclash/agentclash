@@ -671,7 +671,7 @@ for (const viewport of [
   });
 }
 
-test("draft editor separates preview rules while edits and exports keep the effective instructions", async ({
+test("draft editor exposes the full instructions and exports the user's exact replacement", async ({
   page,
 }) => {
   const mock = await mockVibe(page, { previewRules: true });
@@ -686,17 +686,9 @@ test("draft editor separates preview rules while edits and exports keep the effe
     exact: true,
   });
   await expect(instructions).toHaveValue(
-    "Help customers with refunds within 30 days. Escalate unclear cases.",
+    previewRules + "Help customers with refunds within 30 days. Escalate unclear cases.",
   );
-  await expect(
-    page.getByText(previewRules.trim(), { exact: true }),
-  ).toBeHidden();
   await page.screenshot({ path: test.info().outputPath("draft-editor.png") });
-  await page.getByText("How this preview works", { exact: true }).click();
-  await expect(
-    page.getByText(previewRules.trim(), { exact: true }),
-  ).toBeVisible();
-  await page.getByText("How this preview works", { exact: true }).click();
   await instructions.fill(
     "Use supplied refund facts. Ask when the policy is missing.",
   );
@@ -706,11 +698,7 @@ test("draft editor separates preview rules while edits and exports keep the effe
   await expect(
     page.getByRole("button", { name: "Try it yourself", exact: true }),
   ).toBeEnabled();
-  await expect(instructions).toHaveValue(
-    "Use supplied refund facts. Ask when the policy is missing.",
-  );
-  const effective =
-    previewRules + "Use supplied refund facts. Ask when the policy is missing.";
+  const effective = "Use supplied refund facts. Ask when the policy is missing.";
   expect(mock.snapshot().document.artifacts.at(-1)?.agent_prompt).toBe(
     effective,
   );

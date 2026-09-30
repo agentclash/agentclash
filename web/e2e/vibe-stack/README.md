@@ -6,12 +6,10 @@ worker**, the compiler, and the persisted attempt/result journal. No Playwright
 request interception is used. A scripted `provider.Client` replaces model
 responses, and miniredis supplies Redis protocol behavior. It makes no provider
 network requests and does not measure semantic model accuracy or real billing.
-The fixture defaults to the current `suite-review-v3` validator, supplying a
-source-grounded fact ledger for these fixed scenarios. V3 derives expected ask
-obligations on the server; the fake provider omits that field entirely. Set
-`VIBE_BROWSER_REVIEW_VERSION=suite-review-v1` or `suite-review-v2` to check an older
-review contract. V2 retains its original model-extracted obligation fields.
-
+The fixture uses current Improve 15 and Build 18 authoring with the latest
+suite validator and V1 two-door entry. Material mode enables Build 20 and the
+real isolated PDF reader. Older V1 persisted results are covered by store/API
+regressions; retired authoring executors are never dispatched.
 The journey checks:
 
 - Byte-preserved multiline preparation and exactly three reviewed, persisted tests.

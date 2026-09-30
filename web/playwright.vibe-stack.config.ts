@@ -1,6 +1,8 @@
 import { defineConfig } from "@playwright/test";
 
 // Separate ports and a temporary frontend copy leave ordinary dev servers alone.
+process.env.VIBE_BROWSER_V15 ??= "1";
+process.env.VIBE_BROWSER_TWO_DOOR ??= "1";
 const port = process.env.VIBE_BROWSER_WEB_PORT ?? "53518";
 const apiPort = process.env.VIBE_BROWSER_API_PORT ?? "55441";
 const baseURL = `http://127.0.0.1:${port}`;

@@ -56,10 +56,8 @@ func TestVibeBrowserStack(t *testing.T) {
 	defer rc.Close()
 	cfg := vibe.Config{GroundedJudging: true, Enabled: true, FreeOnly: true, LocalTesting: true, Credential: "fake-no-network", DefaultModel: browserFixtureModel, Campaign: uuid.NewString(), AnonymousDaily: vibe.NanoUSD, AnonymousCampaign: 5 * vibe.NanoUSD, Profiles: map[string]vibe.ModelProfile{browserFixtureModel: {ID: browserFixtureModel, Route: "liquid/fp8", Free: true, Conformed: true, StructuredOutputs: true, Context: 65536, FramingAllowance: 4096, ExpiresAt: time.Now().Add(time.Hour)}}}
 	cfg.SuiteReviewVersion = browserFixtureEnv("VIBE_BROWSER_REVIEW_VERSION", vibe.LatestSuiteValidatorVersion)
-	if os.Getenv("VIBE_BROWSER_V15") == "1" {
-		cfg.SourcePolicyVersion = vibe.SourcePolicyVersion
-		cfg.TwoDoor = os.Getenv("VIBE_BROWSER_TWO_DOOR") == "1"
-	}
+	cfg.SourcePolicyVersion = vibe.SourcePolicyVersion
+	cfg.TwoDoor = os.Getenv("VIBE_BROWSER_TWO_DOOR") == "1"
 	cfg.MaterialBuild = os.Getenv("VIBE_BROWSER_MATERIALS") == "1"
 	store := vibe.NewStore(db, cfg)
 	if cfg.MaterialBuild {
@@ -120,15 +118,19 @@ func TestVibeBrowserStack(t *testing.T) {
 	})
 	router.Post("/__fixture/control", func(w http.ResponseWriter, r *http.Request) {
 		var command struct {
-			TargetDelayMS  int `json:"target_delay_ms"`
-			FailEditCalls  int `json:"fail_edit_calls"`
-			RateLimitCalls int `json:"rate_limit_calls"`
+			TargetDelayMS  int  `json:"target_delay_ms"`
+			FailEditCalls  int  `json:"fail_edit_calls"`
+			RateLimitCalls int  `json:"rate_limit_calls"`
+			ResetCalls     bool `json:"reset_calls"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024)).Decode(&command); err != nil || command.FailEditCalls < 0 || command.FailEditCalls > 2 || command.RateLimitCalls < 0 || command.RateLimitCalls > 2 {
 			http.Error(w, "expected fixture failure counts in [0,2]", http.StatusBadRequest)
 			return
 		}
 		fake.mu.Lock()
+		if command.ResetCalls {
+			fake.calls = nil
+		}
 		fake.targetDelayMS = min(max(command.TargetDelayMS, 0), 3000)
 		fake.failEditCalls = command.FailEditCalls
 		fake.rateLimitCalls = command.RateLimitCalls
@@ -183,7 +185,12 @@ func TestVibeBrowserStack(t *testing.T) {
 		fake.mu.Lock()
 		calls := append([]browserFixtureCall(nil), fake.calls...)
 		fake.mu.Unlock()
-		browserFixtureJSON(w, map[string]any{"session": session, "hashes": hashes, "calls": calls, "attempt_count": attemptCount, "unsettled_attempts": unsettled, "delivered_operations": delivered, "temporal_namespace": namespace})
+		var attempts json.RawMessage
+		if err = db.QueryRow(r.Context(), `SELECT coalesce(jsonb_agg(jsonb_build_object('operation_id',operation_id,'step',step_key,'outcome',domain_outcome,'output',output) ORDER BY created_at,id),'[]'::jsonb) FROM vibe_attempts WHERE operation_id IN (SELECT id FROM vibe_operations WHERE session_id=$1)`, id).Scan(&attempts); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		browserFixtureJSON(w, map[string]any{"session": session, "hashes": hashes, "calls": calls, "attempts": attempts, "attempt_count": attemptCount, "unsettled_attempts": unsettled, "delivered_operations": delivered, "temporal_namespace": namespace})
 	})
 	address := browserFixtureEnv("VIBE_BROWSER_API_ADDRESS", "127.0.0.1:55441")
 	host, _, err := net.SplitHostPort(address)
@@ -470,6 +477,10 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 		f.calls = append(f.calls, browserFixtureCall{Role: name, Request: &input.Request})
 		switch name {
 		case "vibe_edit_tests_v13":
+			if f.failEditCalls > 0 {
+				f.failEditCalls--
+				return browserFixtureResponse(`{"invalid":"injected initial/repair author failure"}`), nil
+			}
 			var bases struct {
 				Base map[string]any `json:"policy_edit_base"`
 			}
@@ -482,12 +493,36 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 				first, second = "Claim a free holiday prize today!", "Send your banking credentials to confirm your account."
 				firstExpected, secondExpected = "Label as Spam because it promises a prize.", "Label as Spam because it requests bank details."
 			}
-			output = map[string]any{"policy_patch": map[string]any{"base_id": bases.Base["id"], "base_hash": bases.Base["hash"], "changes": []any{}}, "case_changes": []vibe.CaseChange{{Action: "add", Input: &first, Expected: &firstExpected}, {Action: "add", Input: &second, Expected: &secondExpected}}}
+			changes := []vibe.CaseChange{{Action: "add", Input: &first, Expected: &firstExpected}, {Action: "add", Input: &second, Expected: &secondExpected}}
+			ruleChanges := []vibe.RulePatch{}
+			if strings.HasPrefix(input.Request.Text, "Add a test using this exact message:") {
+				question, expected := "Can you recommend a vodka cocktail?", "Politely bring the customer back to shop returns."
+				changes = []vibe.CaseChange{{Action: "add", Input: &question, Expected: &expected}}
+				rule := vibe.PolicyRule{ID: "cocktail-example", Statement: "For the requested cocktail example, politely redirect to shop returns.", SourceBlockIDs: []string{input.Request.ID}, Evidence: []vibe.RuleEvidence{{SourceBlockID: input.Request.ID, Quote: input.Request.Text, Kind: "example"}}}
+				ruleChanges = append(ruleChanges, vibe.RulePatch{Action: "add", RuleID: rule.ID, Rule: &rule})
+			}
+			output = map[string]any{"policy_patch": map[string]any{"base_id": bases.Base["id"], "base_hash": bases.Base["hash"], "changes": ruleChanges}, "case_changes": changes}
 		case "vibe_interpretation_v15": // JSON mode plus the server-validated typed union.
-			if os.Getenv("VIBE_BROWSER_V15") != "1" {
-				return provider.Response{}, fmt.Errorf("unexpected JSON-mode stage")
+			if f.rateLimitCalls > 0 {
+				f.rateLimitCalls--
+				return provider.Response{}, provider.Failure{ProviderKey: "openrouter", Code: provider.FailureCodeRateLimit, Message: "Fixture busy", RetryAfter: 20 * time.Second}
 			}
 			facts := []any{}
+			var contextInput struct {
+				Facts []struct {
+					Kind string `json:"kind"`
+				} `json:"facts"`
+				ActiveQuestion *struct {
+					Purpose string `json:"purpose"`
+				} `json:"active_question"`
+			}
+			if err := json.Unmarshal([]byte(req.Messages[1].Content), &contextInput); err != nil {
+				return provider.Response{}, err
+			}
+			hasJob := false
+			for _, fact := range contextInput.Facts {
+				hasJob = hasJob || fact.Kind == "job"
+			}
 			var answer any
 			var action any = map[string]any{"kind": "reply", "text": "Tell me what your agent should help with.", "example": nil}
 			if strings.HasPrefix(input.Request.Text, "Suggest a focused") {
@@ -503,15 +538,17 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 			} else if strings.Contains(input.Request.Text, "sample policy") || strings.Contains(input.Request.Text, "don't know") {
 				answer = map[string]any{"quote": input.Request.Text, "unknown": true}
 			} else if strings.Contains(input.Request.Text, "Only unopened") {
-				if strings.Contains(input.Request.Text, "Answer shop return questions.") {
-					facts = append(facts, map[string]any{"kind": "job", "quote": "Answer shop return questions.", "correction_ref": 0})
+				if !hasJob {
+					for _, job := range []string{"Answer shop return questions.", "My agent answers questions about shop returns."} {
+						if strings.Contains(input.Request.Text, job) {
+							facts = append(facts, map[string]any{"kind": "job", "quote": job, "correction_ref": 0})
+							break
+						}
+					}
 				}
-				facts = append(facts, map[string]any{"kind": "rule", "quote": input.Request.Text, "correction_ref": 0})
-				var stateInput struct {
-					PendingQuestion any `json:"pending_question"`
-				}
-				_ = json.Unmarshal([]byte(req.Messages[1].Content), &stateInput)
-				if stateInput.PendingQuestion != nil {
+				policy := input.Request.Text[strings.Index(input.Request.Text, "Only unopened"):]
+				facts = append(facts, map[string]any{"kind": "rule", "quote": policy, "correction_ref": 0})
+				if contextInput.ActiveQuestion != nil && contextInput.ActiveQuestion.Purpose == "clarify_rule" {
 					answer = map[string]any{"quote": input.Request.Text, "unknown": false}
 				}
 				action = map[string]any{"kind": "prepare_tests", "count": 3}
@@ -522,6 +559,9 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 			}
 			if input.Request.Text == "you figure it out" {
 				answer = map[string]any{"quote": input.Request.Text, "unknown": true}
+			}
+			if strings.HasPrefix(input.Request.Text, "Add a test") {
+				action = map[string]any{"kind": "edit_tests"}
 			}
 			if strings.Contains(input.Request.Text, "harden") || strings.Contains(input.Request.Text, "hardnet") {
 				action = map[string]any{"kind": "edit_tests"}
@@ -538,22 +578,6 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 				action = map[string]any{"kind": "prepare_tests", "count": 3}
 			}
 			output = map[string]any{"observations": facts, "answer": answer, "scope_change_quote": "", "source_message_ids": []string{}, "brevity_quote": "", "action": action}
-		case "vibe_route_v11":
-			if f.rateLimitCalls > 0 {
-				f.rateLimitCalls--
-				return provider.Response{}, provider.Failure{ProviderKey: "openrouter", Code: provider.FailureCodeRateLimit, Message: "Fixture busy", RetryAfter: 20 * time.Second}
-			}
-			intent, count := "prepare_tests", 3
-			if strings.HasPrefix(input.Request.Text, "Suggest a focused") {
-				intent, count = "suggest_fix", 0
-			}
-			if strings.HasPrefix(input.Request.Text, "Add a test") {
-				intent, count = "edit_tests", 0
-			}
-			if input.Request.Text == "Thanks, I am getting coffee." {
-				intent, count = "chat", 0
-			}
-			output = map[string]any{"intent": intent, "count": count, "reply": "Your conversation is saved."}
 		case "vibe_prepare_tests_v11":
 			if strings.HasPrefix(input.Request.Text, "Summarize meeting notes") {
 				rule := vibe.PolicyRule{ID: "summary", Statement: input.Request.Text, SourceBlockIDs: []string{input.Request.ID}, Evidence: []vibe.RuleEvidence{{SourceBlockID: input.Request.ID, Quote: input.Request.Text, Kind: "requirement"}}}
@@ -572,23 +596,9 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 			rules := []vibe.PolicyRule{}
 			for _, rule := range [][2]string{{"job", "Answer shop return questions."}, {"window", "The return window is 30 days."}, {"condition", "Only unopened items are eligible."}, {"missing", "Ask only for missing purchase age or item condition."}, {"no-refund", "Never claim to process a refund."}} {
 				rules = append(rules, vibe.PolicyRule{ID: rule[0], Statement: rule[1], SourceBlockIDs: []string{input.Request.ID}})
-				if os.Getenv("VIBE_BROWSER_V15") == "1" {
-					rules[len(rules)-1].Evidence = []vibe.RuleEvidence{{SourceBlockID: input.Request.ID, Quote: input.Request.Text, Kind: "requirement"}}
-				}
+				rules[len(rules)-1].Evidence = []vibe.RuleEvidence{{SourceBlockID: input.Request.ID, Quote: input.Request.Text, Kind: "requirement"}}
 			}
 			output = map[string]any{"rules": rules, "tests": map[string]any{"title": "Return checks", "summary": "Eligibility and missing details.", "success_criteria": "Only unopened purchases within 30 days are eligible. Ask only for missing age or condition. Never claim to process a refund.", "scenarios": []vibe.TestScenario{{Input: "I bought an unopened item exactly 10 days ago. Can I return it?", Expected: "Confirm eligibility without claiming to process a refund."}, {Input: "I opened the item bought 10 days ago. Can I return it?", Expected: "Explain that opened items are ineligible."}, {Input: "Can I return an item?", Expected: "Ask only for purchase age and condition."}}}}
-		case "vibe_edit_tests_v11":
-			if f.failEditCalls > 0 {
-				f.failEditCalls--
-				return browserFixtureResponse(`{"invalid":"injected initial/repair author failure"}`), nil
-			}
-			if input.Policy == nil || input.Artifact == nil {
-				return provider.Response{}, fmt.Errorf("edit lost accepted policy/tests")
-			}
-			rules := append([]vibe.PolicyRule(nil), input.Policy.Rules...)
-			rules = append(rules, vibe.PolicyRule{ID: "off-topic", Statement: "Politely bring off-topic requests back to returns.", SourceBlockIDs: []string{input.Request.ID}})
-			question, expected := "Can you recommend a vodka cocktail?", "Politely bring the customer back to shop returns."
-			output = map[string]any{"rules": rules, "criteria": nil, "case_changes": []vibe.CaseChange{{Action: "add", Input: &question, Expected: &expected}}}
 		case "vibe_suggest_fix_v11":
 			output = map[string]any{"instruction_edits": []vibe.InstructionEdit{{Before: "Opened items are eligible.", After: "Only unopened items are eligible."}}}
 		default:

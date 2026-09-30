@@ -2,7 +2,10 @@ import {expect,test} from "@playwright/test";
 import {writeFile} from "node:fs/promises";
 const api=`http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const description="Answer shop return questions. Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund. Prepare exactly three tests.";
-test.beforeEach(()=>test.skip(process.env.VIBE_BROWSER_TWO_DOOR!=="1","Two-door opt-in fixture"));
+test.beforeEach(async({request})=>{
+ test.skip(process.env.VIBE_BROWSER_TWO_DOOR!=="1","Two-door opt-in fixture");
+ await request.post(`${api}/__fixture/control`,{data:{reset_calls:true}});
+});
 test.afterEach(async({page},info)=>{
  if(new URL(page.url()).searchParams.get("session")) await writeFile(info.outputPath("persisted-evidence.json"),JSON.stringify(await evidence(page),null,2));
  await page.request.post(`${api}/__fixture/control`,{data:{target_delay_ms:0}});
@@ -13,6 +16,7 @@ async function evidence(page: import("@playwright/test").Page) {
  return {...result,calls:result.calls || []};
 }
 test("clear Build goes through real worker to three results, scoped export and interactive prototype",async({page},info)=>{
+ await page.setViewportSize({width:1440,height:900});
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
  await page.goto('/vibe-evals');
  await expect(page.getByRole('button',{name:/Build an agent/})).toBeVisible();
@@ -35,12 +39,12 @@ test("clear Build goes through real worker to three results, scoped export and i
  await expect(page.locator('.vibe-result-row')).toHaveCount(0);
  await expect(page.getByLabel('Active evaluation')).toBeVisible();
  await page.screenshot({path:info.outputPath('results-desktop.png'),fullPage:true});
- for(const width of [320,390]) {
-  await page.setViewportSize({width,height:900});
+ for(const viewport of [{width:360,height:800},{width:390,height:844}]) {
+  await page.setViewportSize(viewport);
   await page.getByLabel('Active evaluation').scrollIntoViewIfNeeded();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await expect(page.getByLabel('Active evaluation')).toBeInViewport();
-  await page.screenshot({path:info.outputPath(`results-${width}.png`),fullPage:true});
+  await page.screenshot({path:info.outputPath(`results-${viewport.width}.png`),fullPage:true});
  }
  await page.setViewportSize({width:1280,height:900});
  await page.getByRole('button',{name:'Download / save',exact:true}).click();
@@ -96,11 +100,11 @@ test("one question then unknown produces a labelled sample, with no invented req
  await page.screenshot({path:info.outputPath('sample-results.png'),fullPage:true});
 });
 test("entry and context controls fit desktop and mobile",async({page},info)=>{
- for(const width of [320,390,768,1280,1440]) {
-  await page.setViewportSize({width,height:900});await page.goto('/vibe-evals');
+ for(const viewport of [{width:360,height:800},{width:390,height:844},{width:768,height:900},{width:1440,height:900}]) {
+  await page.setViewportSize(viewport);await page.goto('/vibe-evals');
   await expect(page.getByRole('button',{name:/Improve an existing agent/})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await page.screenshot({path:info.outputPath(`entry-${width}.png`),fullPage:true});
+  await page.screenshot({path:info.outputPath(`entry-${viewport.width}.png`),fullPage:true});
  }
  await page.getByRole('button',{name:/Improve an existing agent/}).click();
  for(const name of ['Import a test pack','Paste agent instructions']) await expect(page.getByRole('button',{name,exact:true})).toBeVisible();

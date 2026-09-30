@@ -21,7 +21,7 @@ on:
       - 'web/src/app/vibe-evals/**'
       - 'web/src/components/vibe/**'
       - 'web/src/lib/vibe*'
-      - 'web/src/lib/use-vibe-inputs*'
+      - 'web/src/lib/use-vibe-*'
       - 'web/e2e/vibe/**'
       - 'web/e2e/vibe-stack/**'
       - 'web/playwright.vibe.config.ts'
@@ -101,10 +101,10 @@ jobs:
       - name: Typecheck and safe Markdown tests
         run: |
           npx tsc --noEmit --incremental false
-          npx vitest run src/app/vibe-evals src/components/vibe src/lib/vibe.test.ts
+          npx vitest run src/app/vibe-evals src/components/vibe src/lib/vibe.test.ts src/lib/vibe-controllers.test.tsx
   browser-worker-journey:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
     services:
       postgres:
         image: postgres:17-alpine
@@ -133,22 +133,22 @@ jobs:
         working-directory: web
       - run: npx playwright install --with-deps chromium
         working-directory: web
+      - name: Install the isolated PDF reader for browser coverage
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap python3-venv
+          /usr/bin/python3 -m venv "$RUNNER_TEMP/vibe-pdf-runtime"
+          "$RUNNER_TEMP/vibe-pdf-runtime/bin/pip" install -r backend/internal/vibe/inputs/requirements.txt
       - name: Browser to real API, PostgreSQL and Temporal worker (fake inference)
         working-directory: web
-        run: npx playwright test --config playwright.vibe-stack.config.ts
-      - name: Two-door Build and existing-agent journeys (fake inference)
-        working-directory: web
-        env:
-          VIBE_BROWSER_V15: '1'
-          VIBE_BROWSER_TWO_DOOR: '1'
-        run: npx playwright test --config playwright.vibe-stack.config.ts two-door.spec.ts
+        run: npx playwright test --config playwright.vibe-stack.config.ts interpretation.spec.ts journey.spec.ts two-door.spec.ts
       - name: Supplied-text output, recovery and contact journey (fake inference)
         working-directory: web
         env:
           VIBE_BROWSER_V15: '1'
           VIBE_BROWSER_TWO_DOOR: '1'
           VIBE_BROWSER_MATERIALS: '1'
-        run: npx playwright test --config playwright.vibe-stack.config.ts materials.spec.ts
+        run: VIBE_TEST_PDF_RUNTIME="$RUNNER_TEMP/vibe-pdf-runtime" npx playwright test --config playwright.vibe-stack.config.ts materials.spec.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:

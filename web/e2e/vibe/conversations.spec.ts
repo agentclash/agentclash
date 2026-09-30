@@ -47,10 +47,13 @@ function operation(id: string, set: EvidenceSet, corrected: boolean): Operation 
   };
 }
 
-// Direct-paste/retest controls belonged to the earlier workflow; current Improve keeps those chats as a read-only archive.
-const archived: Session = {
-  id: "legacy-chats", revision: 2, event_cursor: 2, anonymous: true,
+// Historical recorded results inside a V1 project survive retirement. They use
+// the current Results pane, not the removed pre-V1 archive renderer.
+const project: Session = {
+  id: "recorded-project", revision: 2, event_cursor: 2, anonymous: true,
   document: {
+    format_version: 1, test_journey: true,
+    evaluation: { id: "recorded-project", chat_id: "recorded-project", door: "test" },
     models: defaultModels, requirements: [], evidence_sets: [original, updated], active_evidence_id: updated.id,
     artifacts: [{ id: artifactID, kind: "conversation_evaluation", title: "Return policy chat", agent_prompt: "Follow the 30-day return policy.", blueprint: {}, accepted: true, source_message_id: "request", conversation_evaluation: { evidence_set_id: original.id, expectations: [{ id: "rule", statement: "Use known purchase age and apply the policy." }] } }],
     messages: [
@@ -72,50 +75,51 @@ async function serve(page: Page) {
     if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { ...headers, "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS" } });
     if (request.method() !== "GET") {
       writes.push(`${request.method()} ${path}`);
-      return route.fulfill({ status: 405, headers, json: { error: { message: "Archived fixture is read-only" } } });
+      return route.fulfill({ status: 405, headers, json: { error: { message: "Reading history must not mutate the project" } } });
     }
     if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, two_door: true, defaults: defaultModels, models: [] } });
-    if (path.endsWith("/sessions")) return route.fulfill({ headers, json: [archived] });
-    if (path.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(archived)}\n\n` });
+    if (path.endsWith("/sessions")) return route.fulfill({ headers, json: [project] });
+    if (path.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(project)}\n\n` });
     if (path.endsWith("/case")) {
       const id = path.split("/operations/")[1]?.split("/")[0];
       const key = url.searchParams.get("key");
       caseReads.push(`${id}:${key}`);
-      const result = archived.operations.find(item => item.id === id)?.results.find(item => item.case_key === key);
+      const result = project.operations.find(item => item.id === id)?.results.find(item => item.case_key === key);
       return route.fulfill({ status: result ? 200 : 404, headers, json: result || { error: { message: "Case missing" } } });
     }
     if (path.endsWith("/saved-checks")) return route.fulfill({ headers, json: [] });
-    return route.fulfill({ headers, json: archived });
+    return route.fulfill({ headers, json: project });
   });
-  await page.goto("/vibe-evals?session=legacy-chats");
-  await expect(page.getByRole("heading", { name: "Saved conversation" })).toBeVisible({ timeout: 15_000 });
+  await page.goto("/vibe-evals?session=recorded-project&view=checks");
+  await expect(page.getByRole("combobox", { name: "Result history" })).toBeVisible({ timeout: 15_000 });
   return { writes, caseReads };
 }
 
-test("legacy saved chats retain both historical scorecards and evidence without writes", async ({ page }) => {
-  const before = structuredClone(archived);
+test("V1 recorded replies and historical result selection survive refresh without writes", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const before = structuredClone(project);
   const { writes, caseReads } = await serve(page);
-  await expect(page.getByText("This earlier conversation is read-only.", { exact: false })).toBeVisible();
-  await expect(page.getByText("Check our support agent against the 30-day policy.")).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "Message Vibe Evals" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Check the new answer" })).toHaveCount(0);
-  const scorecards = page.locator("details").filter({ has: page.locator("summary", { hasText: "Saved results · 1 passed · 1 failed" }) });
-  await expect(scorecards).toHaveCount(2);
-  await scorecards.nth(0).locator(":scope > summary").click();
-  await scorecards.nth(1).locator(":scope > summary").click();
-  await expect(scorecards.nth(0).getByText("Remember a purchase")).toBeVisible();
-  await expect(scorecards.nth(1).getByText("Outside the return window")).toBeVisible();
-  await scorecards.nth(0).locator(".vibe-result-row").first().locator("summary").click();
-  await scorecards.nth(1).locator(".vibe-result-row").nth(1).locator("summary").click();
-  await expect(scorecards.nth(0)).toContainText("Asks for a purchase age the customer already supplied.");
-  await expect(scorecards.nth(1)).toContainText("Allows a return after 45 days.");
-  await expect(scorecards.nth(0)).toContainText("When did you buy it?");
-  await expect(scorecards.nth(1)).toContainText("It is eligible.");
+  const history = page.getByRole("combobox", { name: "Result history" });
+  await expect(history).toHaveValue("recorded-2");
+  await history.selectOption("recorded-1");
+  await expect(page).toHaveURL(/run=recorded-1/);
+  await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("1 passed · 1 failed");
+  const row = page.locator(".vibe-result-row").first();
+  if (await row.getAttribute("open") === null) await row.locator("summary").click();
+  await expect(row.getByText("When did you buy it?", { exact: true }).first()).toBeVisible();
+  await history.selectOption("recorded-2");
+  if (await row.getAttribute("open") === null) await row.locator("summary").click();
+  await expect(row.getByText("It is eligible.", { exact: true }).first()).toBeVisible();
+  await history.selectOption("recorded-1");
+  await page.reload();
+  await expect(history).toHaveValue("recorded-1");
+  await expect(page).toHaveURL(/run=recorded-1/);
+  await page.getByRole("tab", { name: "Conversation", exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole("tab", { name: "Conversation", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
+  await expect(history).toHaveValue("recorded-1");
   expect(caseReads).toEqual(expect.arrayContaining(["recorded-1:chat-1", "recorded-2:chat-2"]));
   expect(writes).toEqual([]);
-  expect(archived).toEqual(before);
-  await page.reload();
-  await expect(page.getByRole("heading", { name: "Saved conversation" })).toBeVisible();
-  await expect(page.locator("details > summary").filter({ hasText: "Saved results · 1 passed · 1 failed" })).toHaveCount(2);
-  expect(writes).toEqual([]);
+  expect(project).toEqual(before);
 });

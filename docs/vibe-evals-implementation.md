@@ -30,7 +30,7 @@ Status: implemented; focused isolated PostgreSQL race tests passed.
 - Delete competing caches, direct replacements and child URL/run synchronization. Workspace receives typed display data and explicit callbacks. Keep content-bound submission IDs, uncertain admission and late-acknowledgement edit guards.
 - Acceptance: drafts survive switch/refresh; delayed responses cannot roll back progress; selecting result B survives refresh; production components stay below 1,000 lines.
 
-Status: implemented; 91 focused frontend tests passed. TypeScript passed. Browser checks are part of the final rollout gate.
+Status: implemented. Three controllers own snapshot reconciliation, atomic drafts and URL selection. Browser regression preserves historical result B and the chosen pane on refresh; restoring a run no longer forces Results. The main client/workspace owners are 448/898/928 lines.
 
 ### 3. Retire old chats and authoring pipelines
 
@@ -41,7 +41,9 @@ Status: implemented; 91 focused frontend tests passed. TypeScript passed. Browse
 - Preserve serialized requests/hashes/journals for retained contracts. New admissions use current policies; do not replay retired plans. Remove exclusively obsolete tests/config branches while retaining import, recorded-conversation, provenance and accounting coverage.
 - Acceptance: repeatable retirement; one current executor; request identities and spending limits unchanged.
 
-Status: implemented. Local inventory found 191 pre-V1 projects and 30 V1 projects, with zero pending retiring operations/outbox or running Vibe workflows. The administrative command retired the pre-V1 content and is safe to repeat. Current-project content and financial records remain. The backend race floor passed; request fingerprints for Improve 15 and Build 18/20 match the original PR head. Retired archive/executor-only fixtures were replaced by current-contract coverage. Every other deployment must pass its own inventory/drain before rollout.
+Status: implemented. Local inventory found 191 pre-V1 projects and 30 V1 projects, with zero pending retiring operations/outbox or running Vibe workflows. Retirement removed the old projects from use; 185 finished content cleanup, while six retain unresolved accounting/file-cleanup holds. All 30 V1 projects remain. Improve 15 and Build 18/20 request fingerprints match the original PR head. Archive/executor-only fixtures and the unused legacy API harness are removed. Every other deployment requires its own inventory/drain.
+
+Operator command: `go -C backend run ./cmd/vibe-retire` inventories the database selected by `DATABASE_URL` and defaults to local Temporal/default namespace. Set `--temporal` and `--namespace` for the target deployment. Add `--apply` only after its inventory shows zero pending execution; repeating it is safe. Physical file cleanup stays with the input worker.
 
 ### 4. Authorization separate from presentation
 
@@ -59,7 +61,7 @@ Status: implemented. File and contact endpoints use `access.Lookup`; file deleti
 - Reconciliation resolves the owner, locks in order and rechecks accounting. Remove the universal advisory lock only after all dependent invariants migrate.
 - Acceptance: unrelated projects can edit/cancel independently; no double charge, capacity breach or premature release of uncertain holds.
 
-Status: implemented. Project/operation/account locks replace the universal advisory lock; bounded contexts reach every transaction callback. Provider content and diagnostics recheck deletion under the parent lock. Race regressions cover independent edits/cancellation, exact settlement/grants, retained uncertain holds and cross-project capacity counting. Final browser/CI verification remains the rollout gate.
+Status: implemented. Project/operation/account locks replace the universal advisory lock; bounded contexts reach every transaction callback. Provider content and diagnostics recheck deletion under the parent lock. Race regressions cover independent edits/cancellation, exact settlement/grants, retained uncertain holds and cross-project capacity counting.
 
 ## Required verification and rollout
 
@@ -74,3 +76,11 @@ Use isolated migrated test databases and fake inference for the automated floor.
 - Run backend race tests, frontend tests, TypeScript and Playwright API/Temporal-worker journeys. Make the new regressions mandatory in CI; report failures explicitly.
 
 Make each phase a separate reviewable commit after its regression floor passes. Retirement requires inventory and drain on **each deployment target**; local retirement does not authorize skipping another target's gate. Content cleanup is an explicit operation, not a migration. Completion requires all seven review findings covered, current journeys passing, obsolete code removed, and net deletion of duplication.
+
+### Verification completed locally
+
+- Full backend race suite (`vibe`, `api`, `enquiries`, `vibe/inputs`), Go build and vet passed. The mandatory floor passed all 117 required tests without missing/skipped regressions; CI enforces it.
+- 210 frontend tests and TypeScript passed. CI includes controller tests and watches every `use-vibe-*` owner.
+- Playwright: 74 mocked-browser checks, 14 real API/PostgreSQL/Temporal-worker journeys, and three material journeys passed. Two optional local-cookie smoke tests were skipped; real worker journeys exercised guest persistence and authenticated saving. Inference was fake, so these results establish application behavior, not model accuracy.
+- Actual isolated PDF extraction, corrupted-PDF recovery, output/export/contact/deletion, Stop/retry, context isolation, drafts and fixed-baseline improvement passed. Screenshots and layout checks covered 1440×900, 390×844 and 360×800. Contact correctly reports unavailable delivery without configuration.
+- Each phase is committed separately. Net removal exceeds 4,000 lines. No remaining test failures; other deployments still require retirement inventory/drain before rollout.
