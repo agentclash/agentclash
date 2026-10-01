@@ -65,6 +65,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   await expect(page.getByRole("heading", { name: "3 tests are ready" })).toBeVisible();
   const sessionID = new URL(page.url()).searchParams.get("session");
   expect(sessionID).toBeTruthy();
+  await finished(page, sessionID!, 0);
   let state = await evidence(page, sessionID!);
   expect(state.session.document.messages.find(message => message.role === "user")?.content).toBe(original);
   const preparation = state.session.operations[0];

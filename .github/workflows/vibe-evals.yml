@@ -102,7 +102,7 @@ jobs:
       - name: Typecheck and safe Markdown tests
         run: |
           npx tsc --noEmit --incremental false
-          npx vitest run src/app/vibe-evals src/components/vibe src/lib/vibe.test.ts src/lib/vibe-controllers.test.tsx src/lib/use-vibe-inputs.test.tsx src/lib/vibe-request-recovery.test.ts
+          npx vitest run src/app/vibe-evals src/components/vibe src/lib/vibe.test.ts src/lib/vibe-controllers.test.tsx src/lib/vibe-build-analytics.test.ts src/lib/use-vibe-inputs.test.tsx src/lib/vibe-request-recovery.test.ts
   browser-worker-journey:
     runs-on: ubuntu-22.04
     timeout-minutes: 30

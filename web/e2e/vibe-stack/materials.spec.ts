@@ -61,6 +61,11 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   await expect(summary).not.toHaveValue(/Mira|Ana/);
   for(const viewport of [{width:1440,height:900},{width:390,height:844},{width:360,height:800}]) {
     await page.setViewportSize(viewport);
+    await expect.poll(async () => {
+      const box = await page.getByRole("dialog").boundingBox();
+      return !!box && box.x >= 15 && box.x + box.width <= viewport.width - 15 &&
+        box.y >= 15 && box.y + box.height <= viewport.height - 15;
+    }, { message: "Contact review fits after viewport resize" }).toBe(true);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await expect(page.getByLabel("Active evaluation")).toBeInViewport();
     await page.screenshot({path:info.outputPath(`${kind}-${viewport.width}.png`)});

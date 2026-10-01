@@ -10,45 +10,49 @@ Keep the progressive disclosure, compact conversation, usable output, checks and
 
 **Retire only pre-V1 sessions whose document format is not `1`.** Improve authoring version 15 is current V1 and must stay. Historical V1 results remain readable. Historical migrations remain.
 
-## Review-fix implementation (PR #1278)
+## Review-fix foundation (PR #1278)
 
-Keep the current UI and journeys. No new framework, historical-result rewrite, or replay of paid calls. Existing cleanup, session/draft/navigation ownership and scoped locking remain the foundation.
+Preserve retained authoring contracts **15/18/20/21**, frozen requests/stage keys, spending limits and historical results. No historical-result rewrite or replay of paid calls. Keep the existing session/draft/navigation owners and scoped database locks.
 
-| Phase | Change and acceptance | Status |
-| --- | --- | --- |
-| 1 | CI uses its migrated database directly; mandatory fake-inference regressions run from tracked files. | Passed: 137 required tests in a clean committed archive; no missing/skipped tests |
-| 2 | One artifact execution-context owner; regeneration preserves references. New material Build/manual review uses contract 21; retained 15/18/20 identities remain unchanged. | Passed: regeneration, material manual review and frozen-wire regression tests |
-| 3 | Current session owner authorizes claim/continuation/retry/regrade. Temporary admission failures back off without replay; deleted Builds finalize accounting without new content. | Passed: signup during preparation/inline extraction, capacity/rate/budget-guard recovery with one child, claimed retry/regrade, deletion finalization with uncertain holds |
-| 4 | Provider cost evidence does not finish a reply. Receipt/response orderings preserve output, settle once and quarantine conflicting costs. | Passed: both callback orders, concurrent duplicates/conflicts, interruption, recorded-response recovery, Stop and accounting/deletion races |
-| 5 | One immutable-request recovery owner; explicit proven rejection unlocks editing. Attachment selection is atomic across upload/attach/restore/polling. | Passed: immutable recovery, lost enquiry acknowledgement → 403 → same body/ID, PDF selection races and delayed restoration; typecheck |
-| 6 | PDF jobs/downloads/completion are bounded to 50/25/5 seconds; heartbeat/cleanup run independently. Expiry is independent of four-way, bounded provider reconciliation. | Passed: stalled reads/polls, independent heartbeat/expiry, fair receipt rotation, takeover/deletion/expiry publication guards and shutdown |
+| Area | Implemented responsibility and required protection |
+| --- | --- |
+| CI | Tracked runner uses the provisioned database directly; missing/skipped required regressions fail. |
+| Artifact context | One owner preserves instructions, reference bindings, input contract, capabilities and scope through regeneration. Material-enabled Build/manual review uses 21; previously admitted 15/18/20 retain their identities. |
+| Ownership/continuation | Current session owner authorizes claim, inline material, retry and regrade. Temporary admission failures wait for their retry deadline, then create one deterministic child. Deletion ends content updates while unresolved costs remain held. |
+| Accounting | Receipt evidence never completes an executing reply. Both arrival orders preserve output and settle once; conflicting costs freeze affected funding and preserve evidence. |
+| Request recovery | Immutable body/ID survives uncertain acknowledgement and later access failures. Proven rejection unlocks editing; upload/attach/restore/polling share atomic material selection. |
+| Workers | PDF job/download/completion bounds are 50/25/5 seconds, with independent heartbeat/cleanup. Real queue maintenance runs separately from bounded, rotating, four-way receipt polling. |
 
-### Verification
+## Test-audit cleanup
 
-Add desired-behavior regressions with each fix and require them in the committed baseline; missing/skipped required tests fail. Use isolated migrated PostgreSQL, fake inference and fake email transport. Run heavy checks through `agent-run`.
+Three reviewable commits on `codex/vibe-audit-fixes`; keep PR #1278 and its visual design. No new frameworks, migrations, public APIs or test-only production hooks.
 
-- Context: PDF/text references through regeneration and manual review; target and judge share the factual corpus; trial data/answer keys never become instructions.
-- Ownership/lifecycle: signup during preparation/inline material/continuation; retry/regrade after claim; former guest denied; transient gates recover once; deletion finalization repeats with uncertain holds.
-- Accounting: both receipt/response orders, duplicates/conflicts, cancellation/deletion, exact balances and concurrent settlement.
-- Frontend: lost acknowledgement then 403 retains the request ID; rejected stale material is editable; attachment races/restore/polling preserve newer selections, drafts and active contexts.
-- Workers: stalled blob/provider requests, lease takeover, maintenance deadlines and shutdown; no uncertain paid work released by TTL.
-- Product/browser: Build clear/vague/casual/text/PDF and Improve instructions/conversations/imports; fixed baselines, loading, Stop/retry, historical result refresh, export/contact. Desktop 1440×900; mobile 390×844 and 360×800.
+1. **Remove noise/dead paths.** Move full-policy rejection and the shared proposal fixture to retained 15; remove retired 12 replay success, 16 assertion tails and their unreachable decoder arms/constants. Delete the direct snapshot-helper test/export, random price simulation, unused reconciliation lookup and PDF wrapper. Keep actual protected-budget coverage. Reduce reviewer parsing to supported/veto cases with repair evidence; analytics asserts its envelope/deduplication, without claiming privacy from empty fixtures. Frozen prompt text remains untouched.
+2. **Prove real owner behavior.** Split polling/rotation/hold coverage from a test invoking the actual `ReconcileLoop`, using the production minute interval, a 90-second bound and fake transport. Hold the queued project's row until receipt polling starts, then require expiry before polling finishes and verify shutdown/uncertain holds. Extend admission recovery to call both continuation entry points before backdating. Test historical instruction selection in the mounted workspace; key its `PromptChange` by artifact ID, matching V1. Keep exact clipboard-content coverage separately.
+3. **Require and document proof.** Baseline requires the protected-allocation assertion, renamed reviewer/polling tests and actual-loop regression. CI selects the renamed economics test and Build analytics. Browser evidence waits for persisted completion and settled dialog bounds rather than early card visibility or a resize transition. Run focused checks, full suites, clean committed archive and browser journeys before pushing. Exclude unrelated work; do not merge or resolve `main` conflicts.
 
-### Verified results
+### Demonstrated regression failures
 
-Verified on 2026-09-30, through code commit `5f2dff49`:
+- Historical workspace: copy v2, select v3 in the same session. Before the key fix, the test failed because v2's copied feedback remained. Afterward, feedback resets and copying uses exact v3 instructions.
+- Worker scheduling: removing the maintenance launch **or** serializing expiry behind receipt polling makes the actual-loop test fail with queued work still reserved. Production scheduling passes while the receipt request remains blocked. The fixture does not launch maintenance itself.
+- Early continuation: removing `AdvanceBuild`'s deadline guard fails budget-guard, capacity and rate-limit cases before a retry is due. Production preserves provider-call/reservation counts and then admits exactly one child after the deadline.
 
-- Clean committed archive: **137 mandatory regressions passed**, with the ignored database wrapper and local secrets absent. The external fixture supplied an isolated migrated database; the committed runner executed directly. The runner's own 20 validation tests passed.
-- Full backend race suites passed for Vibe, API, enquiries, materials and interaction. Backend build/vet and shared provider/scoring/challenge-pack suites passed. Actual isolated PDF extraction and denial of secrets/network/writes/excess memory passed.
-- **219 frontend tests** and TypeScript passed. **74 mocked browser scenarios** and **17 real API/PostgreSQL/Temporal browser journeys** passed, including supplied text/PDF, Improve imports/conversations, recovery, fixed baselines, exports and fake contact delivery. Two opt-in cookie-smoke tests were skipped in the mocked suite; none of the required regression floor was skipped.
-- Desktop 1440×900 and mobile 390×844/360×800 were checked, with screenshot inspection of results, composer/context visibility and the contact dialog. Safari and a physical iOS keyboard remain unverified.
+## Verification recorded on 2026-10-01
 
-All twelve findings have automated coverage, including stalled downloads and provider polls. Tests use fake inference and establish application behavior, not model accuracy. No real enquiries were sent. GitHub-hosted CI remains outstanding: the PR conflicts with `main`, and the new workflow is not registered on the default branch. Passing local clean-checkout commands does not imply hosted CI passed.
+Through `agent-run`, with isolated migrated PostgreSQL, fake inference and fake email transport:
 
-### Rollout
+- **139 mandatory regressions passed**, none missing/skipped, from committed code `a589d5e7` archived without the ignored database wrapper or local secrets. Database provisioning is external; the tracked runner executes directly. **20 Python tooling tests** passed.
+- Full backend race suites passed for Vibe, API, enquiries, materials and interaction. Backend build/vet and shared provider/scoring/challenge-pack tests passed. Actual isolated PDF extraction/security tests ran with the pinned reader. A temporary-directory quota failure was resolved by using disk-backed test storage.
+- **220 frontend tests** passed; TypeScript passed. Retained wire-identity and admitted v15 edit/undo checks passed. Broader testing found and repaired the shared proposal fixture's remaining retired-13 assumption.
+- **74 mocked browser scenarios** and **17 real API/PostgreSQL/Temporal journeys** passed. Two opt-in local cookie-smoke tests were skipped in the mocked suite; no required baseline tests were skipped. Coverage includes Build/Improve, casual chat isolation, PDF/text and extraction failure, Stop/retry, context/draft/version selection, fixed-baseline improvements, exports and contact recovery. No real enquiry was sent.
+- Desktop **1440×900** and mobile **390×844/360×800** were checked; screenshots reviewed for results, composer/context visibility and contact. Browser assertions now await execution completion and dialog reflow before reading/capturing them.
 
-Deploy rejection metadata before the frontend recovery change. Missing metadata stays uncertain. Apply additive migration **00086** for reconciliation evidence, then coordinate worker replacement after active paid execution drains; never overlap old reconciliation with new attempt handling. Preserve V1 projects, original funding identities/holds and independent saved packs. Lost historical references require explicit reattachment; lost replies cannot be invented.
+The previous expiry test started maintenance itself and did not prove worker launch/shutdown. The new actual-loop test and its two failing controls replace that overstated claim. Reviewer parsing tests do not establish semantic model accuracy; synthetic economics is not a spend benchmark. No paid benchmark ran. Safari and a physical iOS keyboard remain unverified.
 
-Pre-V1 retirement remains an explicit per-deployment inventory/drain operation, not a migration: `go -C backend run ./cmd/vibe-retire` is dry-run by default; `--apply` requires zero pending retiring execution. The previous local run retired 191 pre-V1 projects, preserved 30 V1 projects, and left six cleanup holds requiring accounting/file resolution.
+GitHub-hosted CI must be reported separately from local proof. PR #1278 remains a draft and conflicts with `main`; this pass does not resolve those conflicts or merge it.
 
-Completion requires all twelve review findings covered (including two conditional timeout risks), passing clean-checkout-equivalent CI commands and current journeys, and separate reviewable phase commits. Report remaining failures and deployment drain/configuration requirements explicitly.
+## Rollout and deferred work
+
+Deploy rejection metadata before frontend recovery; absent metadata remains uncertain. Existing additive migration **00086** supplies reconciliation evidence. Replace workers only after active paid execution drains; do not mix old/new reconciliation behavior. Preserve funding identities, uncertain holds and independently saved packs. Missing historical references need explicit reattachment; missing replies cannot be invented.
+
+Pre-V1 retirement is an explicit inventory/drain operation per deployment, not a migration: `go -C backend run ./cmd/vibe-retire` is dry-run by default; `--apply` requires zero pending retiring execution. The previous local pilot retired 191 pre-V1 projects, preserved 30 V1 projects and left six cleanup holds needing accounting/file resolution. This test cleanup does not resolve those holds.
