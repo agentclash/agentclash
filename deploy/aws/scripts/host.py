@@ -134,6 +134,8 @@ def compose(*args, data=None, timeout=300):
 def fence(closed=True):
     edge = RUNTIME / "edge"
     edge.mkdir(mode=0o755, exist_ok=True)
+    # mkdir is masked by umask and does not repair an existing directory.
+    edge.chmod(0o755)
     target = edge / "fence.caddy"
     temp = edge / "fence.next"
     temp.write_bytes(

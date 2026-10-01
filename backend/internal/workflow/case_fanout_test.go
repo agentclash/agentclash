@@ -61,6 +61,9 @@ func TestNarrowExecutionContextToCase(t *testing.T) {
 	if narrowed.ChallengeInputSet.Cases[0].CaseKey != "b" {
 		t.Fatalf("case key = %q, want b", narrowed.ChallengeInputSet.Cases[0].CaseKey)
 	}
+	if narrowed.ExecutionCaseKey != "b" || base.ExecutionCaseKey != "" {
+		t.Fatalf("case scope: narrowed=%q base=%q", narrowed.ExecutionCaseKey, base.ExecutionCaseKey)
+	}
 	if _, err := narrowExecutionContextToCase(base, "missing"); err == nil {
 		t.Fatalf("expected error for missing case")
 	}
