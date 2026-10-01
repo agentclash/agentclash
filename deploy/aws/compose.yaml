@@ -166,7 +166,9 @@ networks:
   # Host firewall blocks IMDS and lateral edge->data traffic outside attached services.
   edge:
     ipam:
-      config: [{subnet: 172.30.72.0/24}]
+      # Keep dynamic clients outside Caddy's trusted static address, even when
+      # the proxy is stopped or another service is recreated first.
+      config: [{subnet: 172.30.72.0/24, ip_range: 172.30.72.128/25}]
   data:
     ipam:
       config: [{subnet: 172.30.73.0/24}]

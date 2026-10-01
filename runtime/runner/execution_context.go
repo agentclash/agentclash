@@ -21,6 +21,9 @@ type ExecutionContext struct {
 	ChallengePackVersion ChallengePackVersionExecutionContext
 	ChallengeInputSet    *ChallengeInputSetExecutionContext
 	Deployment           AgentDeploymentExecutionContext
+	// ExecutionCaseKey is set only when an activity narrows execution to a case.
+	// A normal run may also contain one case, but still owns run lifecycle events.
+	ExecutionCaseKey string `json:",omitempty"`
 }
 
 type ChallengePackVersionExecutionContext struct {

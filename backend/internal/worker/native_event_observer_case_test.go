@@ -17,6 +17,65 @@ type capturingRecorder struct {
 	events []runevents.Envelope
 }
 
+func TestNativeObserverSingleCaseKeepsRunLifecycle(t *testing.T) {
+	for _, failed := range []bool{false, true} {
+		name := "completed"
+		terminal := runevents.EventTypeSystemRunCompleted
+		if failed {
+			name = "failed"
+			terminal = runevents.EventTypeSystemRunFailed
+		}
+		t.Run(name, func(t *testing.T) {
+			recorder := &capturingRecorder{}
+			observer := &NativeRunEventObserver{
+				recorder: recorder,
+				executionContext: repository.RunAgentExecutionContext{
+					Run:      domain.Run{ID: uuid.New()},
+					RunAgent: domain.RunAgent{ID: uuid.New()},
+					ChallengeInputSet: &repository.ChallengeInputSetExecutionContext{
+						Cases: []repository.ChallengeCaseExecutionContext{{CaseKey: "only-case"}},
+					},
+				},
+			}
+			ctx := context.Background()
+			if err := observer.OnStepStart(ctx, 1); err != nil {
+				t.Fatal(err)
+			}
+			var err error
+			if failed {
+				err = observer.OnRunFailure(ctx, errors.New("test failure"))
+			} else {
+				err = observer.OnRunComplete(ctx, engine.Result{FinalOutput: "done", StopReason: engine.StopReasonCompleted})
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []runevents.Type{
+				runevents.EventTypeSystemRunStarted,
+				runevents.EventTypeSystemStepStarted,
+				terminal,
+			}
+			if len(recorder.events) != len(want) {
+				t.Fatalf("event count = %d, want %d", len(recorder.events), len(want))
+			}
+			for i, event := range recorder.events {
+				if event.EventType != want[i] {
+					t.Fatalf("event %d = %s, want %s", i, event.EventType, want[i])
+				}
+			}
+			if !failed {
+				var payload map[string]any
+				if err := json.Unmarshal(recorder.events[2].Payload, &payload); err != nil {
+					t.Fatal(err)
+				}
+				if payload["final_output"] != "done" {
+					t.Fatalf("final output = %v, want done", payload["final_output"])
+				}
+			}
+		})
+	}
+}
+
 func (c *capturingRecorder) RecordRunEvent(_ context.Context, params repository.RecordRunEventParams) (repository.RunEvent, error) {
 	c.events = append(c.events, params.Event)
 	return repository.RunEvent{
@@ -34,8 +93,9 @@ func TestNativeObserverSuppressesCaseScopedLifecycle(t *testing.T) {
 	observer := &NativeRunEventObserver{
 		recorder: recorder,
 		executionContext: repository.RunAgentExecutionContext{
-			Run:      domain.Run{ID: runID},
-			RunAgent: domain.RunAgent{ID: runAgentID, RunID: runID},
+			ExecutionCaseKey: "refund-1",
+			Run:              domain.Run{ID: runID},
+			RunAgent:         domain.RunAgent{ID: runAgentID, RunID: runID},
 			ChallengeInputSet: &repository.ChallengeInputSetExecutionContext{
 				Cases: []repository.ChallengeCaseExecutionContext{
 					{CaseKey: "refund-1", ItemKey: "refund-1"},
@@ -65,8 +125,9 @@ func TestNativeObserverEmbedsCaseKeyOnStepEvents(t *testing.T) {
 	observer := &NativeRunEventObserver{
 		recorder: recorder,
 		executionContext: repository.RunAgentExecutionContext{
-			Run:      domain.Run{ID: runID},
-			RunAgent: domain.RunAgent{ID: runAgentID, RunID: runID},
+			ExecutionCaseKey: "refund-1",
+			Run:              domain.Run{ID: runID},
+			RunAgent:         domain.RunAgent{ID: runAgentID, RunID: runID},
 			ChallengeInputSet: &repository.ChallengeInputSetExecutionContext{
 				Cases: []repository.ChallengeCaseExecutionContext{
 					{CaseKey: "refund-1", ItemKey: "refund-1"},

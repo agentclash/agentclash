@@ -120,6 +120,7 @@ func narrowExecutionContextToCase(executionContext repository.RunAgentExecutionC
 		return repository.RunAgentExecutionContext{}, fmt.Errorf("case %q not found in execution context", caseKey)
 	}
 	narrowed := executionContext
+	narrowed.ExecutionCaseKey = caseKey
 	inputSetCopy := *executionContext.ChallengeInputSet
 	inputSetCopy.Cases = []repository.ChallengeCaseExecutionContext{*matched}
 	// Items are the legacy parallel view; keep only the matching item when present.

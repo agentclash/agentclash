@@ -1,6 +1,8 @@
 import hashlib
 import io
+import ipaddress
 import json
+import os
 from pathlib import Path
 import sys
 import tarfile
@@ -17,6 +19,7 @@ from secret_store import validate, materialize
 from render import temporal_config, acl_config
 from restore import safe_extract
 from host import manifest_validate
+import host
 from release_contract import (
     canonical,
     sha256,
@@ -28,6 +31,40 @@ from release_contract import (
 
 
 class GuardTests(unittest.TestCase):
+    def test_fence_is_readable_after_restrictive_umask(self):
+        for existing in (False, True):
+            with self.subTest(existing=existing), tempfile.TemporaryDirectory() as temp:
+                runtime = Path(temp)
+                secrets = runtime / "secrets"
+                secrets.mkdir(mode=0o700)
+                edge = runtime / "edge"
+                if existing:
+                    edge.mkdir(mode=0o700)
+                previous = os.umask(0o077)
+                try:
+                    with patch.object(host, "RUNTIME", runtime), patch.object(
+                        host, "compose", return_value=b""
+                    ):
+                        host.fence()
+                finally:
+                    os.umask(previous)
+                self.assertEqual(edge.stat().st_mode & 0o777, 0o755)
+                self.assertEqual((edge / "fence.caddy").stat().st_mode & 0o777, 0o644)
+                self.assertEqual(secrets.stat().st_mode & 0o777, 0o700)
+
+    def test_dynamic_edge_addresses_cannot_claim_trusted_proxy_address(self):
+        compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
+        config = compose["networks"]["edge"]["ipam"]["config"][0]
+        self.assertIn("ip_range", config)
+        dynamic = ipaddress.ip_network(config["ip_range"])
+        subnet = ipaddress.ip_network(config["subnet"])
+        trusted = ipaddress.ip_address(
+            compose["services"]["caddy"]["networks"]["edge"]["ipv4_address"]
+        )
+        self.assertTrue(dynamic.subnet_of(subnet))
+        self.assertIn(trusted, subnet)
+        self.assertNotIn(trusted, dynamic)
+
     def test_production_tmpfs_mount_is_one_bounded_absolute_path(self):
         compose = yaml.safe_load((ROOT / "compose.yaml").read_text())
         for name, service in compose["services"].items():
