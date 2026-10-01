@@ -62,6 +62,11 @@ func TestExtractUp(t *testing.T) {
 		valid      bool
 	}{
 		{"normal", "-- +goose Up\nSELECT 1;\n-- +goose Down\nDROP TABLE anything;", true},
+		{"statement block", "-- +goose Up\n-- +goose StatementBegin\nCREATE FUNCTION f() RETURNS void LANGUAGE plpgsql AS $$ BEGIN PERFORM 1; END; $$;\n-- +goose StatementEnd\n-- +goose Down\nDROP FUNCTION f();", true},
+		{"nested block", "-- +goose Up\n-- +goose StatementBegin\n-- +goose StatementBegin\nSELECT 1;\n-- +goose StatementEnd\n-- +goose Down", false},
+		{"unclosed block", "-- +goose Up\n-- +goose StatementBegin\nSELECT 1;\n-- +goose Down", false},
+		{"unexpected block end", "-- +goose Up\n-- +goose StatementEnd\nSELECT 1;\n-- +goose Down", false},
+		{"block before up", "-- +goose StatementBegin\n-- +goose Up\nSELECT 1;\n-- +goose StatementEnd\n-- +goose Down", false},
 		{"crlf", "-- +goose Up\r\nSELECT 1;\r\n-- +goose Down\r\n", true},
 		{"missing up", "SELECT 1;\n-- +goose Down", false},
 		{"missing down", "-- +goose Up\nSELECT 1;", false},

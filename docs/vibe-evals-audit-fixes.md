@@ -1,0 +1,107 @@
+# Vibe Evals audit fixes
+
+Implementation and verification record, 10 September 2026. Branch: `codex/vibe-audit-fixes`, based on `104fb64e8c441821409d47b227d5350a5304f4b8`. The prior reliability changes remain in the base. This change improves the text preview, offline test plans and documented handoffs; it adds no customer endpoint, audio or telephony execution.
+
+| Finding | Implemented behavior |
+| --- | --- |
+| F01 | Authoring receives compact conversation context, stable active requirement IDs/status, accepted instructions, complete evaluation contracts and relevant evidence. Identical instructions and duplicate artifacts are represented once; administrative metadata and redundant schema prose are omitted. The conservative context count and one-repair limit remain unchanged. Oversize errors identify the largest section and preserve editing/export access. |
+| F02 / F06 | The starter choice persists idea/existing-agent intent before authoring. Journey context records reported stack and evidence. Existing-agent authoring asks for missing setup/evidence or creates a separate `test_plan`; its scoped response schema excludes executable drafts until explicit preview consent. |
+| F03 / F06 | A server-owned capability catalog supplies the assistant and UI with reviewed documentation. Plans receive a reviewed Python pytest template and concrete handoff steps from the server. The template requires a real invocation, local authentication and bounded timeouts; it cannot pass against hardcoded mock output. Supplied-text analysis, company discovery, mock tests and audio/telephony evidence remain distinct. `evaltest run` is documented as the smoke runner. |
+| F04 | Effective preview instructions prohibit claims of connected bookings, transfers, notifications or future follow-up. New authoring checks explicit action promises and unsupported criteria. Revision summaries describe committed artifact changes; ignored attempts to alter accepted tests cannot appear as successful edits. These checks do not constitute a complete semantic classifier. |
+| F05 | Add/replace/remove proposals reference stable requirement IDs, suppress whitespace-normalized duplicates and preserve revision history. Pending changes to confirmed rules need explicit confirmation. Reply, artifact, journey and requirement changes commit atomically. Product-support replies cannot create target-agent requirements. |
+| F07 | Design, customer trials and evaluation have separate labels. Trial controls appear before acceptance with their prerequisite. Trial messages retain operation/artifact links and a distinct origin. Test plans expose review, export and docs, with no target-model or scorecard controls. |
+| F08 | Drafts expose editable examples and the actual compiled criteria before acceptance, with requirement links and proposed assumptions identified. The current authoring contract requires positive, negative and insufficient-evidence inputs even on JSON-object routes. Evidence rules allow no qualifying recommendation. Test edits create a new contract; retests retain original cases, judges and evaluator. |
+
+The existing compiler/composition architecture, Geist typography, `builder-*` styling and ClashMark are retained. The new integration guide is [Test an existing agent from Vibe Evals](../web/content/docs/guides/vibe-evals-existing-agent.mdx). Its SDK reference is the [AgentClash pytest integration](https://github.com/agentclash/agentclash-evals/blob/main/docs/evaltest/pytest.md).
+
+## Compatibility and rollout
+
+All additions use existing JSON documents; there is no database migration. Missing artifact kinds remain readable as `agent_draft`, and legacy messages render as design conversation. Existing saved-model receipts, exports and immutable evaluation data remain readable.
+
+Queued operations retain their persisted authoring contract version. The backend supports legacy replies, version 2 replies and the current version 3 single-artifact contract. New version 3 operations reject legacy draft fields and missing example categories without weakening validation of old queued operations.
+
+Release the compatible worker/backend handling before enabling the updated UI. Upgrade workers before allowing new API submissions to use the new authoring version; let active operations settle during the transition. The UI uses catalog-provided code and next steps for historical test plans as well as new ones, while the stored original conversation remains unchanged. Recheck profile conformance when its existing verification expires. No deployment was performed for this audit.
+
+## Automated verification
+
+| Check | Result |
+| --- | --- |
+| Vibe and relevant API Go/PostgreSQL race suites | 109 top-level tests, 273 including subtests; all pass, no skips. Dedicated `vibe_test` database. |
+| Backend build and vet | Pass. |
+| Web suite | 656 pass, 3 skipped. The 40 VibeClient tests also pass after the last handoff regression update. |
+| Browser verification | 10 Playwright tests pass with mocked Vibe API responses; these use no model calls. Live UI, documentation, customer-trial labels and scorecard reload were also inspected. |
+| TypeScript and ESLint | Type check passes. ESLint has no errors and five pre-existing warnings in unchanged files. |
+| CLI and shared runtime | Build, vet and short race suites pass. |
+| Contributor lifecycle checks | All 8 pass. |
+| OpenAPI and patch checks | YAML parses with unique keys, all 1,501 local references resolve, and 209 operation IDs are unique. `git diff --check` passes. |
+
+The three skipped web tests are the opt-in generic backend integration smoke tests (`INTEGRATION_TESTS` was not enabled). Existing local dependencies were reused; dependency installation was not repeated and both lockfiles remain unchanged.
+
+The full repository check is **not green**. Five failures were reproduced against an untouched archive of `104fb64e`, using a separate `vibe_audit_repo_test` database:
+
+- `TestRepositoryOrganizationEntitlementGatesBlockWorkspaceAndSeatWrites`: expected billing gate error is absent.
+- `TestRepositoryListRunFailureReviewItemsBuildsPerCaseItems`: failure-class expectation differs.
+- `TestRepositoryPromoteFailureFreezesContextAndIsIdempotent`: frozen JSON payload comparison differs.
+- `TestRepositoryListRunRegressionCoverageCasesByRunID`: duplicate judge-result key in the fixture.
+- `TestRepositoryEvaluateRunAgentReturnsPartialWhenChallengeInputIsAmbiguous`: persisted JSON payload comparison differs.
+
+A Vibe normalized-reference test also timed out during the broad concurrent backend run; it subsequently passed in the isolated Vibe/API race runs. SQL generation was exercised, but unrelated generated-file drift from unchanged SQL inputs was discarded. The Vibe changes do not add or modify SQL query files.
+
+Sanitized versions of the four recorded conversations are in [the regression fixtures](../backend/internal/vibe/testdata/README.md). Their complete initial requests have these conservative bounds, including the response schema and verified framing allowance:
+
+| Recorded path | Initial bound | Initial and single repair fit 16,384 |
+| --- | ---: | --- |
+| Research idea | 15,198 | Yes |
+| Existing research agent | 13,634 | Yes |
+| Receptionist idea | 15,378 | Yes |
+| Existing voice agent | 15,993 | Yes |
+
+Tests reconstruct and compare every original evaluation field after compaction, exercise long repair diagnostics, and verify genuine overflow creates zero provider attempts while preserving accepted state. Further regressions cover concurrent requirement decisions, atomic rollback, legacy recovery, execution rejection for plans, immutable retests and the existing accounting/idempotency boundaries.
+
+## Capped live verification
+
+The trial used the previously conformed free route `dots-studio/dots-3-note-preview:free` on `atlas-cloud/fp8`. Configuration and ledger checks ran before every operation. No additional model-profile conformance request was needed. The cap was 24 AI requests, further constrained by retained prior usage. All original accounting records remain intact.
+
+The original anonymous browser cookie was unavailable. A new QA browser identity was used, with an external guard carrying forward the original trial's consumption and limiting this audit to its remaining **eight design submissions**. No quota rows or accounting history were reset. The final ledger contains **19 new provider attempts**, all settled at **$0**, with no uncertain outcomes or disabled profiles. No more live calls were made after the requested evaluation completed.
+
+| Path | Design submissions / AI requests | Observed outcome |
+| --- | --- | --- |
+| Research idea | 3 / 5 | The third turn continued without context overflow and produced a draft. The first two turns failed authoring validation after their repairs; the eventual fictional-company prototype had weak criteria. This is partial live coverage, not three successful revisions. Those observations led to the single-artifact response and explicit example categories. |
+| Existing research agent | 1 / 2 | Produced a separate non-runnable plan with the reported Python/FastAPI/LangGraph stack. Its original scenarios and generated mock-based Python handoff were inadequate. The server-owned handoff replaced that code in the displayed/exported plan; the original raw history remains intact. No additional clean design call was spent on this path. |
+| Receptionist idea | 1 / 1, then 1 trial and 6 evaluation requests | Produced a safe text draft with three editable examples. After review and acceptance, the customer trial truthfully declined booking, transfer and later texting. The persisted evaluation passed 3/3 cases and 6/6 checks; reload retained the scorecard and message links without another provider call. |
+| Existing voice agent | 2 / 2 | Asked one compact setup/evidence question, then produced a non-runnable plan with the reviewed local handoff. Scenario quality still needs review: a booking-timeout scenario suggested a retry without first establishing the outcome, and stack/evidence fields were imperfectly classified. |
+| Audit navigation mistake | 1 / 2 | A failed browser selector left the previous conversation selected and one research message was sent there. Both requests are counted, retained and excluded from the clean path results. Subsequent navigation used verified fresh-conversation controls. |
+
+The local API/worker processes stopped after the customer trial and before the evaluation. The guard rejected evaluation submission while configuration was unavailable; no provider attempt occurred during that interruption. Restarting the services preserved state, and the evaluation then completed normally.
+
+Final changes strengthened guidance on stack/evidence, separating scenario inputs from expected behavior, unknown-outcome retries, truthful revision summaries and server validation of all three example categories. Automated checks cover those changes. They were not given another live authoring trial because the retained design allowance was exhausted. The capped audit therefore does **not** establish that all four founder paths now produce consistently good plans.
+
+Real WorkOS saving remains separately unverified. API tests cover saving with test authentication; there was no real sign-in/save, connected customer system, audio execution or production deployment. Raw audit transcripts, provider journals, browser state and credentials remain outside the patch.
+
+## Starter UX follow-up
+
+Manual testing exposed a first-step failure: submitting the prefilled “Help me build an agent” label produced a generic draft before the user described a task. A heading-only intake was also too subtle. Selecting any starter now replaces the welcome screen with a visible chat exchange: the chosen starter followed by AgentClash's question. The composer is labeled “Your reply” and focused. “Change starting point” returns to the choices while preserving typed text.
+
+This opening exchange is local UI guidance, retained during the conversation in the current page. It creates no persisted session, operation, artifact or AI request. The actual brief carries journey intent to the server; saved conversation history begins with that brief. Reloading restores the saved conversation from the first submitted brief.
+
+The backend rejects a bare starter without task context with the existing `invalid_message` code before admission, rate counting or budget reservation. Cached clients already recognize this rejection, so they receive a clarification question and the composer stays editable. Previously admitted starter submissions retain their original idempotent receipt. The authoring guidance also explicitly asks one question when the job is unknown.
+
+The draft editor displays authored instructions first. The exact server-owned preview prefix appears in a collapsed, read-only “Preview rules” disclosure, supplied through the optional capability `instructions` field. The full prompt remains intact in state, edits and existing exports. Late config loading does not mark an accepted draft dirty, and legacy prompts without the prefix remain readable. Compatible backend handling was started locally before the updated UI.
+
+Follow-up verification: 113 top-level Go/PostgreSQL race tests, 294 including subtests, with no failures or skips; 47 VibeClient component tests; 13 Playwright tests, including desktop/mobile intake, preserved typed briefs, and effective prompt exports. Backend binaries build, backend vet, TypeScript, changed-file ESLint, OpenAPI validation and patch checks pass. Founder initial/repair context checks still pass; initial bounds are 15,233, 13,669, 15,413 and 16,028. The previously reported unrelated repository failures remain outside this follow-up. No additional live AI requests were used.
+
+To check manually, preserve any unsent message, open a new Vibe conversation, and select “Help me build an agent.” The welcome screen should become a chat showing your choice and AgentClash asking “What should your agent help with?” The composer is ready for your reply and there is no draft yet. Type a specific brief before sending. In a resulting draft, the editor should start with the agent's instructions; expand “Preview rules” to inspect the automatic rules.
+
+## Private-session connection follow-up
+
+A later frontend restart loaded `NEXT_PUBLIC_API_URL=http://localhost:55440` while the browser was on `http://127.0.0.1:53517`. Those are different cookie sites. Session creation returned 201, but the browser could not use the Strict SameSite private-session cookie for subsequent requests. The reported session contains no messages, artifacts or operations: its typed brief never reached the model.
+
+The Vibe API and event-stream clients now align the two supported loopback hostnames with the browser hostname, preserving the configured API port and all remote endpoints. Cookie security attributes are unchanged. Creation must pass an authenticated read before the UI adopts the session URL or submits the brief. Access failures stop automatic event-stream retries and offer explicit recovery. “Keep message in a new conversation” preserves the composer and requires a separate Send action; it does not delete or reassign the inaccessible session. Loaded conversations containing work retain their state and offer a connection retry.
+
+Verification: 61 component/library tests and 15 Playwright tests pass. Two browser tests use the real local API for cookie creation, session reads, SSE and reload, including recovery from an inaccessible URL. Every message/operation mutation is intercepted in those tests, so they use zero AI calls. They run with `VIBE_COOKIE_SMOKE=1`; without that flag, those two tests are explicitly skipped. The other 13 browser tests retain their mocked API coverage. TypeScript, changed-file ESLint and patch checks pass. Backend code and the previously reported repository-check limitations are unchanged.
+
+The free profile also expired during manual testing. Its exact endpoint was rechecked against the [OpenRouter endpoint catalog](https://openrouter.ai/api/v1/models/dots-studio/dots-3-note-preview%3Afree/endpoints), followed by two bounded streaming probes: strict structured output and plain text. Both pinned `atlas-cloud/fp8`, disabled provider fallback and reasoning, enforced zero price ceilings and a 2,048-token output cap, completed with valid usage, and reported $0. Their assembled input bounds were 15,681 and 15,258. The existing profile was then renewed until **11 September 2026, 14:46 UTC**; no other limits changed. This verifies the route protocol and accounting, not the quality of another founder conversation.
+
+The cumulative count is now **22 of the 24 authorized AI requests**: 19 from the original audit, one subsequent manual request and two journaled conformance probes. The probe journal is included in the retained budget guard; no accounting history was reset. There are no uncertain outcomes. The founder design allowance remains exhausted, so no further design conversation or evaluation was run for this connection fix.
+
+The local web, API and worker now run under the user services `agentclash-vibe-web`, `agentclash-vibe-api` and `agentclash-vibe-worker`, with restart-on-failure enabled. The API and worker were restarted while idle after the profile renewal. The frontend remains at `http://127.0.0.1:53517/vibe-evals`. These local service/env settings and private probe journals are outside the commit.

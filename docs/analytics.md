@@ -88,6 +88,17 @@ The existing anonymous tryout events remain:
 - `web.tryout.signup_cta_clicked`
 - `web.tryout.roi_cta_clicked`
 
+Vibe Build uses low-detail browser milestones: `web.vibe.build.entry_selected`,
+`message_admitted`, `clarification_viewed`, `demo_selected`, `result_viewed`,
+`example_viewed`, `action_clicked`, `trial_reply_viewed`, `recovery_clicked`,
+and `export_requested` (all with the `web.vibe.build.` prefix). They include
+pseudonymous session/run/artifact IDs, an allowlisted action or outcome, counts,
+case ordinal,
+sample status, and viewport class. They never include instructions, question
+text, input, output, email, title, or free-text errors. Viewed events are
+deduplicated per browser analytics session and saved entity; durable operations
+remain the source of truth for completion and spending.
+
 Lead events may retain a derived `email_domain`, but never raw email or company
 name.
 
@@ -191,3 +202,9 @@ Use a fresh browser after deploying API/worker first, then web, then dashboard:
 Accept only when there is one merged person timeline, exactly one canonical
 signup, one canonical completion per run, no signup on the returning login,
 sanitized properties, and confirmed web/API/worker configuration.
+
+Build material/contact events: `web.vibe.build.input_status` carries input ID,
+kind and terminal status; `enquiry_opened` carries project/version IDs;
+`enquiry_received` adds the durable enquiry ID; `email_draft_opened` records
+opening a mail draft, never a send. These respect the existing consent gate.
+No filenames, contact fields, document text, outputs or summaries are included.

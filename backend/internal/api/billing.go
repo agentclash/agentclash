@@ -60,6 +60,7 @@ type BillingRepository interface {
 }
 
 type BillingManager struct {
+	vibeCredits    *VibeCredits
 	orgAuthz       OrganizationAuthorizer
 	authorizer     WorkspaceAuthorizer
 	repo           BillingRepository
@@ -426,6 +427,9 @@ func (m *BillingManager) ProcessDodoWebhook(ctx context.Context, headers DodoWeb
 	if err != nil {
 		return ProcessDodoWebhookResult{}, err
 	}
+	if handled, err := m.applyVibeCreditWebhook(ctx, envelope, rawBody); handled {
+		return ProcessDodoWebhookResult{EventType: envelope.Type}, err
+	}
 	eventTime := envelope.EventTime()
 	payloadType := envelope.PayloadType()
 	eventInput := repository.BillingWebhookEventInput{
@@ -442,6 +446,11 @@ func (m *BillingManager) ProcessDodoWebhook(ctx context.Context, headers DodoWeb
 		duplicate, err = m.applySubscriptionWebhook(ctx, eventInput, envelope)
 	} else {
 		duplicate, err = m.repo.ApplyBillingWebhookEvent(ctx, eventInput, repository.BillingWebhookApplication{})
+	}
+	if err == nil || errors.Is(err, repository.ErrBillingWebhookAlreadyProcessed) {
+		if allowanceErr := m.applyVibeAllowance(ctx, envelope); allowanceErr != nil {
+			return ProcessDodoWebhookResult{}, allowanceErr
+		}
 	}
 	if errors.Is(err, repository.ErrBillingWebhookAlreadyProcessed) {
 		return ProcessDodoWebhookResult{Duplicate: true, EventType: envelope.Type}, nil

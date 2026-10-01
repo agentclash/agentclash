@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -49,6 +50,7 @@ const (
 var ErrInvalidConfig = errors.New("invalid api server config")
 
 type Config struct {
+	VibeHandler                          http.Handler
 	AppEnvironment                       string
 	AuthMode                             string // "dev" or "workos"
 	WorkOSClientID                       string // required when AuthMode is "workos"

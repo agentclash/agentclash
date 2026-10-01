@@ -64,6 +64,16 @@ type Request struct {
 	Messages            []Message
 	Tools               []ToolDefinition
 	Metadata            json.RawMessage
+	// Optional explicit controls. Zero values preserve existing callers.
+	MaxOutputTokens  int
+	Temperature      *float64
+	ResponseFormat   json.RawMessage
+	Reasoning        json.RawMessage
+	OpenRouterPolicy json.RawMessage
+	MaxResponseBytes int64
+	// Called before consuming a billed response. Failure stops reading; callers
+	// must retain their reservation because the provider may already have billed.
+	OnGeneration func(string) error
 }
 
 type Message struct {
@@ -103,12 +113,17 @@ type Response struct {
 	Streamed        bool
 	Timing          Timing
 	RawResponse     json.RawMessage
+	GenerationID    string
 }
 
 type Usage struct {
-	InputTokens  int64
-	OutputTokens int64
-	TotalTokens  int64
+	// Nil means the provider did not report prompt-cache usage.
+	CachedInputTokens *int64 `json:",omitempty"`
+	InputTokens       int64
+	OutputTokens      int64
+	TotalTokens       int64
+	// Nil is unknown, never zero. OpenRouter returns a USD decimal.
+	CostUSD *json.Number
 }
 
 type Failure struct {

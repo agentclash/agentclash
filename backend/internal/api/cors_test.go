@@ -3,8 +3,22 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
+
+func TestCORSMiddlewareVibeAllowsOwnedDeletionPreflight(t *testing.T) {
+	origin := "https://app.example.com"
+	h := newCORSMiddleware("workos", map[string]struct{}{origin: {}})(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { t.Fatal("preflight reached handler") }))
+	r := httptest.NewRequest(http.MethodOptions, "/v1/vibe/sessions/project", nil)
+	r.Header.Set("Origin", origin)
+	r.Header.Set("Access-Control-Request-Method", http.MethodDelete)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != http.StatusNoContent || !strings.Contains(w.Header().Get("Access-Control-Allow-Methods"), "DELETE") {
+		t.Fatal("browser cannot delete owned project", w.Code, w.Header())
+	}
+}
 
 func TestCORSMiddleware_DevDefaultsToWildcard(t *testing.T) {
 	handler := newCORSMiddleware("dev", nil)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

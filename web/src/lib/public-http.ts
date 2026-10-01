@@ -42,6 +42,7 @@ const PUBLIC_EXACT_PATHS = new Set([
   "/trace-to-dataset",
   "/try",
   "/tryouts",
+  "/vibe-evals",
   "/use-cases",
   "/why",
 ]);

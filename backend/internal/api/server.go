@@ -24,6 +24,7 @@ type Server struct {
 }
 
 type routerOptions struct {
+	vibeHandler                http.Handler
 	authMode                   string
 	corsAllowedOrigins         map[string]struct{}
 	logger                     *slog.Logger
@@ -109,6 +110,7 @@ func NewServer(
 ) *Server {
 	streamCtx, stopStreams := context.WithCancel(context.Background())
 	router := buildRouter(routerOptions{
+		vibeHandler:                cfg.VibeHandler,
 		authMode:                   cfg.AuthMode,
 		corsAllowedOrigins:         cfg.CORSAllowedOrigins,
 		logger:                     logger,
@@ -425,6 +427,9 @@ func buildRouter(opts routerOptions) http.Handler {
 	router.Route("/v1", func(r chi.Router) {
 		r.Use(rateLimiter.Middleware("default", extractWorkspaceID))
 		registerPublicAgentTryoutRoutes(r, logger, agentTryoutService)
+		if opts.vibeHandler != nil {
+			r.Mount("/vibe", opts.vibeHandler)
+		}
 		r.Group(func(r chi.Router) {
 			r.Use(requestAnalyticsSurface)
 			r.Use(authenticateRequest(logger, authenticator))
