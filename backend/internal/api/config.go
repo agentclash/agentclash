@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
@@ -15,6 +16,7 @@ import (
 
 	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/secrets"
+	"github.com/agentclash/agentclash/backend/internal/temporalutil"
 	"github.com/google/uuid"
 )
 
@@ -25,7 +27,8 @@ const (
 	defaultNamespace                            = "default"
 	defaultAppEnvironment                       = "development"
 	defaultAuthMode                             = "dev"
-	defaultShutdownTime                         = 10 * time.Second
+	defaultShutdownTime                         = 30 * time.Second
+	defaultSSEHeartbeatInterval                 = 15 * time.Second
 	defaultHostedRunCallbackSecret              = "agentclash-dev-hosted-callback-secret"
 	minArtifactSigningSecretLength              = 32
 	defaultArtifactStorageBackend               = "filesystem"
@@ -56,9 +59,11 @@ type Config struct {
 	DatabaseURL                          string
 	TemporalAddress                      string
 	TemporalNamespace                    string
+	TemporalConnection                   temporalutil.ConnectionConfig
 	HostedRunCallbackSecret              string
 	CORSAllowedOrigins                   map[string]struct{} // parsed from CORS_ALLOWED_ORIGINS; empty means wildcard in dev, deny in prod
 	ShutdownTimeout                      time.Duration
+	SSEHeartbeatInterval                 time.Duration
 	ArtifactStorageBackend               string
 	ArtifactStorageBucket                string
 	ArtifactFilesystemRoot               string
@@ -102,9 +107,19 @@ type Config struct {
 	// SSEConnectionGate optionally limits concurrent run-event SSE streams.
 	// Injected by the process main (not loaded from env).
 	SSEConnectionGate SSEConnectionGate
+	// RedisReadiness is injected only when Redis is configured.
+	RedisReadiness func(context.Context) error
 }
 
 func LoadConfigFromEnv() (Config, error) {
+	shutdownTimeout, err := positiveDurationEnv("API_SHUTDOWN_TIMEOUT", defaultShutdownTime)
+	if err != nil {
+		return Config{}, err
+	}
+	heartbeatInterval, err := positiveDurationEnv("SSE_HEARTBEAT_INTERVAL", defaultSSEHeartbeatInterval)
+	if err != nil {
+		return Config{}, err
+	}
 	appEnvironment, err := envOrDefault("APP_ENV", defaultAppEnvironment)
 	if err != nil {
 		return Config{}, err
@@ -267,7 +282,8 @@ func LoadConfigFromEnv() (Config, error) {
 		TemporalNamespace:                    temporalNamespace,
 		HostedRunCallbackSecret:              hostedRunCallbackSecret,
 		CORSAllowedOrigins:                   corsAllowedOrigins,
-		ShutdownTimeout:                      defaultShutdownTime,
+		ShutdownTimeout:                      shutdownTimeout,
+		SSEHeartbeatInterval:                 heartbeatInterval,
 		ArtifactStorageBackend:               artifactStorageBackend,
 		ArtifactStorageBucket:                artifactStorageBucket,
 		ArtifactFilesystemRoot:               artifactFilesystemRoot,
@@ -318,6 +334,10 @@ func LoadConfigFromEnv() (Config, error) {
 		return Config{}, err
 	}
 	cfg.SecretsCipher = secretsCipher
+	cfg.TemporalConnection, err = temporalutil.LoadConnectionConfigFromEnv(appEnvironment)
+	if err != nil {
+		return Config{}, fmt.Errorf("%w: %w", ErrInvalidConfig, err)
+	}
 
 	return cfg, nil
 }
@@ -524,4 +544,16 @@ func newDevelopmentSecretsMasterKey() (string, error) {
 		return "", fmt.Errorf("%w: generate development secrets master key: %v", ErrInvalidConfig, err)
 	}
 	return base64.StdEncoding.EncodeToString(key), nil
+}
+
+func positiveDurationEnv(key string, fallback time.Duration) (time.Duration, error) {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback, nil
+	}
+	d, err := time.ParseDuration(value)
+	if err != nil || d <= 0 {
+		return 0, fmt.Errorf("%w: %s must be a positive duration", ErrInvalidConfig, key)
+	}
+	return d, nil
 }

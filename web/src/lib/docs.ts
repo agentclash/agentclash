@@ -878,6 +878,7 @@ const CONFIG_DESCRIPTIONS: Record<string, string> = {
   ARTIFACT_STORAGE_S3_SECRET_ACCESS_KEY:
     "Secret key for S3-compatible artifact storage.",
   AUTH_MODE: "Select dev headers or WorkOS-backed authentication for the API.",
+  API_SHUTDOWN_TIMEOUT: "Deadline for in-flight API requests during shutdown.",
   CORS_ALLOWED_ORIGINS:
     "Allowed browser origins for the API in WorkOS mode.",
   DATABASE_URL: "Postgres connection string.",
@@ -895,11 +896,14 @@ const CONFIG_DESCRIPTIONS: Record<string, string> = {
   RESEND_FROM_EMAIL: "Sender address for invite emails.",
   SANDBOX_PROVIDER:
     "Choose unconfigured or e2b for native sandbox execution.",
+  SSE_HEARTBEAT_INTERVAL: "Interval between keepalive comments on quiet event streams.",
   TEMPORAL_HOST_PORT: "Temporal frontend address.",
   TEMPORAL_NAMESPACE: "Temporal namespace used by the API and worker.",
   WORKER_IDENTITY: "Logical worker identity label.",
+  WORKER_STOP_TIMEOUT: "Temporal SDK grace before cancelling activities.",
   WORKER_SHUTDOWN_TIMEOUT:
-    "Graceful shutdown timeout for the worker process.",
+    "Deadline for queue workers, activity cleanup and reapers to stop.",
+  WORKER_CLEANUP_TIMEOUT: "Additional deadline for idle sandbox pool cleanup.",
   WORKOS_CLIENT_ID: "WorkOS client ID used when the API is in workos auth mode.",
   WORKOS_ISSUER:
     "Optional WorkOS issuer override for JWT validation.",

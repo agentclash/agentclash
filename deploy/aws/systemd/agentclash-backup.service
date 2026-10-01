@@ -1,0 +1,8 @@
+[Unit]
+Description=Private consistent cache backup
+After=agentclash-platform.service
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3.12 /opt/agentclash/deploy/aws/scripts/backup.py cache
+TimeoutStartSec=15min

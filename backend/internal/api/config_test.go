@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/secrets"
+	"github.com/agentclash/agentclash/backend/internal/temporalutil"
 )
 
 func TestLoadConfigFromEnv_DefaultAuthModeDev(t *testing.T) {
@@ -91,6 +92,7 @@ func TestLoadConfigFromEnvGeneratesEphemeralSecretsKeyInDevelopment(t *testing.T
 }
 
 func TestLoadConfigFromEnvAcceptsValidSecretsKeyInProduction(t *testing.T) {
+	t.Setenv("TEMPORAL_API_KEY", "temporal-test-key")
 	key := make([]byte, secrets.MasterKeySize)
 	if _, err := rand.Read(key); err != nil {
 		t.Fatalf("generate key: %v", err)
@@ -219,6 +221,7 @@ func TestLoadConfigFromEnvRequiresDodoProductsWhenAPIKeyConfigured(t *testing.T)
 
 func setRequiredProductionConfig(t *testing.T) {
 	t.Helper()
+	t.Setenv("TEMPORAL_API_KEY", "temporal-test-key")
 	key := make([]byte, secrets.MasterKeySize)
 	if _, err := rand.Read(key); err != nil {
 		t.Fatalf("generate key: %v", err)
@@ -228,6 +231,40 @@ func setRequiredProductionConfig(t *testing.T) {
 	t.Setenv("ARTIFACT_SIGNING_SECRET", "01234567890123456789012345678901234567890123")
 	t.Setenv("ARTIFACT_STORAGE_BACKEND", "filesystem")
 	unsetDodoPaymentsEnv(t)
+}
+
+func TestLoadConfigFromEnvTemporalConnection(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		apiKey  string
+		tls     string
+		wantErr bool
+	}{
+		{name: "existing Cloud mode", apiKey: "temporal-test-key"},
+		{name: "reject plaintext production", wantErr: true},
+		{name: "reject unauthenticated production TLS", tls: "true", wantErr: true},
+		{name: "reject disabling Cloud TLS", apiKey: "temporal-test-key", tls: "false", wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			setRequiredProductionConfig(t)
+			for _, key := range []string{"TEMPORAL_TLS_ENABLED", "TEMPORAL_TLS_CA_FILE", "TEMPORAL_TLS_SERVER_NAME", "TEMPORAL_TLS_CERT_FILE", "TEMPORAL_TLS_KEY_FILE"} {
+				unsetEnv(t, key)
+			}
+			t.Setenv("AUTH_MODE", "dev")
+			t.Setenv("TEMPORAL_API_KEY", test.apiKey)
+			if test.tls != "" {
+				t.Setenv("TEMPORAL_TLS_ENABLED", test.tls)
+			}
+			_, err := LoadConfigFromEnv()
+			if test.wantErr {
+				if !errors.Is(err, ErrInvalidConfig) || !errors.Is(err, temporalutil.ErrInvalidConfig) {
+					t.Fatalf("expected wrapped Temporal configuration error, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }
 
 func unsetDodoPaymentsEnv(t *testing.T) {

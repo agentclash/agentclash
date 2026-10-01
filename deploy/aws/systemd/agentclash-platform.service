@@ -1,0 +1,16 @@
+[Unit]
+Description=AgentClash platform (operator prepares runtime after every host boot)
+Requires=docker.service run-agentclash.mount agentclash-firewall.service
+After=docker.service run-agentclash.mount agentclash-firewall.service
+RequiresMountsFor=/var/lib/agentclash/cache
+ConditionPathExists=/var/lib/agentclash/compose.env
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+UMask=0077
+ExecStart=/usr/bin/python3.12 /opt/agentclash/deploy/aws/scripts/host.py start-platform
+ExecStop=/usr/bin/python3.12 /opt/agentclash/deploy/aws/scripts/host.py stop-apps
+ExecStop=/usr/bin/python3.12 /opt/agentclash/deploy/aws/scripts/host.py stop-platform
+TimeoutStartSec=360
+TimeoutStopSec=720
+# No unattended app restart: reconcile E2B leases and durable limits after a crash.

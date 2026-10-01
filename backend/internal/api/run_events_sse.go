@@ -22,6 +22,13 @@ import (
 
 var runEventStreamPollInterval = 750 * time.Millisecond
 
+const runEventStreamWriteTimeout = 10 * time.Second
+
+type runEventStreamOptions struct {
+	heartbeatInterval time.Duration
+	shutdownContext   context.Context
+}
+
 // SSEConnectionGate limits concurrent SSE streams (Fleet 14). nil = unlimited.
 type SSEConnectionGate interface {
 	TryAcquire(ctx context.Context) bool
@@ -45,8 +52,9 @@ func registerEventStreamRoute(
 	runReadService RunReadService,
 	subscriber pubsub.EventSubscriber,
 	sseGate SSEConnectionGate,
+	options ...runEventStreamOptions,
 ) {
-	router.Get("/v1/runs/{runID}/events/stream", streamRunEventsHandler(logger, authenticator, runReadService, subscriber, sseGate))
+	router.Get("/v1/runs/{runID}/events/stream", streamRunEventsHandler(logger, authenticator, runReadService, subscriber, sseGate, options...))
 }
 
 func streamRunEventsHandler(
@@ -55,8 +63,23 @@ func streamRunEventsHandler(
 	runReadService RunReadService,
 	subscriber pubsub.EventSubscriber,
 	sseGate SSEConnectionGate,
+	options ...runEventStreamOptions,
 ) http.HandlerFunc {
+	var opts runEventStreamOptions
+	if len(options) > 0 {
+		opts = options[0]
+	}
+	if opts.heartbeatInterval <= 0 {
+		opts.heartbeatInterval = defaultSSEHeartbeatInterval
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithCancel(r.Context())
+		defer cancel()
+		if opts.shutdownContext != nil {
+			stop := context.AfterFunc(opts.shutdownContext, cancel)
+			defer stop()
+		}
+		r = r.WithContext(ctx)
 		streamService, ok := runReadService.(RunEventStreamService)
 		if !ok {
 			logger.Error("run read service does not implement run event streaming")
@@ -129,7 +152,9 @@ func streamRunEventsHandler(
 		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("X-Accel-Buffering", "no") // nginx compatibility
 		w.WriteHeader(http.StatusOK)
-		flusher.Flush()
+		if err := writeSSEBytes(w, nil); err != nil {
+			return
+		}
 
 		lastEventID := strings.TrimSpace(r.Header.Get("Last-Event-ID"))
 		startIndex := replayStartIndex(snapshot.Events, lastEventID)
@@ -141,6 +166,11 @@ func streamRunEventsHandler(
 		}
 
 		delivered := make(map[string]struct{}, len(snapshot.Events))
+		// Polling reads the full snapshot again. Seed the skipped prefix as
+		// delivered so a reconnect cursor remains effective on later polls.
+		for _, event := range snapshot.Events[:startIndex] {
+			delivered[persistedStreamEventID(event.RunAgentID, event.SequenceNumber)] = struct{}{}
+		}
 		if err := emitPersistedRunEvents(w, flusher, snapshot.Events[startIndex:], delivered); err != nil {
 			return
 		}
@@ -152,7 +182,7 @@ func streamRunEventsHandler(
 		// store remains the source of truth and catches up any missed pub/sub
 		// messages.
 		var eventCh <-chan []byte
-		if _, noop := subscriber.(pubsub.NoopSubscriber); !noop {
+		if _, noop := subscriber.(pubsub.NoopSubscriber); subscriber != nil && !noop {
 			ch, err := subscriber.Subscribe(r.Context(), runID)
 			if err != nil {
 				logger.Warn("failed to subscribe to live run events; falling back to persisted polling",
@@ -166,10 +196,16 @@ func streamRunEventsHandler(
 
 		ticker := time.NewTicker(runEventStreamPollInterval)
 		defer ticker.Stop()
+		heartbeat := time.NewTicker(opts.heartbeatInterval)
+		defer heartbeat.Stop()
 
 		// 7. Stream live events and periodically catch up from persisted storage.
 		for {
 			select {
+			case <-heartbeat.C:
+				if err := writeSSEBytes(w, []byte(": keepalive\n\n")); err != nil {
+					return
+				}
 			case data, ok := <-eventCh:
 				if !ok {
 					eventCh = nil
@@ -179,11 +215,16 @@ func streamRunEventsHandler(
 				if provider, ok := runReadService.(RunEventPayloadResolverProvider); ok {
 					payloadResolver = provider.RunEventPayloadResolver()
 				}
-				if err := emitLiveRunEvent(r.Context(), w, flusher, data, delivered, payloadResolver); err != nil {
+				liveCtx, liveCancel := context.WithTimeout(r.Context(), min(5*time.Second, opts.heartbeatInterval/2))
+				err := emitLiveRunEvent(liveCtx, w, flusher, data, delivered, payloadResolver)
+				liveCancel()
+				if err != nil {
 					return
 				}
 			case <-ticker.C:
-				snapshot, err := streamService.ListRunEventStream(r.Context(), caller, runID)
+				refreshCtx, refreshCancel := context.WithTimeout(r.Context(), min(5*time.Second, opts.heartbeatInterval/2))
+				snapshot, err := streamService.ListRunEventStream(refreshCtx, caller, runID)
+				refreshCancel()
 				if err != nil {
 					switch {
 					case errors.Is(err, repository.ErrRunNotFound), errors.Is(err, ErrForbidden):
@@ -284,8 +325,10 @@ func emitPersistedRunEvents(
 		if _, seen := delivered[streamEventID]; seen {
 			continue
 		}
+		if err := writeSSEFrame(w, flusher, streamEventID, data); err != nil {
+			return err
+		}
 		delivered[streamEventID] = struct{}{}
-		writeSSEFrame(w, flusher, streamEventID, data)
 	}
 	return nil
 }
@@ -322,8 +365,10 @@ func emitLiveRunEvent(
 	if _, seen := delivered[streamEventID]; seen {
 		return nil
 	}
+	if err := writeSSEFrame(w, flusher, streamEventID, hydrated); err != nil {
+		return err
+	}
 	delivered[streamEventID] = struct{}{}
-	writeSSEFrame(w, flusher, streamEventID, hydrated)
 	return nil
 }
 
@@ -382,11 +427,22 @@ func replayStartIndex(events []repository.RunEvent, lastEventID string) int {
 	return 0
 }
 
-func writeSSEFrame(w http.ResponseWriter, flusher http.Flusher, id string, data []byte) {
-	fmt.Fprintf(w, "id: %s\n", id)
-	fmt.Fprintf(w, "event: run_event\n")
-	fmt.Fprintf(w, "data: %s\n\n", data)
-	flusher.Flush()
+func writeSSEFrame(w http.ResponseWriter, _ http.Flusher, id string, data []byte) error {
+	return writeSSEBytes(w, []byte(fmt.Sprintf("id: %s\nevent: run_event\ndata: %s\n\n", id, data)))
+}
+
+func writeSSEBytes(w http.ResponseWriter, data []byte) error {
+	rc := http.NewResponseController(w)
+	if err := rc.SetWriteDeadline(time.Now().Add(runEventStreamWriteTimeout)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return err
+	}
+	defer rc.SetWriteDeadline(time.Time{})
+	if len(data) > 0 {
+		if _, err := w.Write(data); err != nil {
+			return err
+		}
+	}
+	return rc.Flush()
 }
 
 func persistedStreamEventID(runAgentID uuid.UUID, sequenceNumber int64) string {

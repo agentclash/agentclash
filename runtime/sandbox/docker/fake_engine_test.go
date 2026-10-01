@@ -11,7 +11,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 type fakeEngine struct {
@@ -43,9 +44,9 @@ type fakeEngine struct {
 	started       []string
 	stopped       []string
 	removed       []string
-	execCreates   []container.ExecOptions
+	execCreates   []client.ExecCreateOptions
 	files         map[string]map[string][]byte // containerID -> path -> content
-	execResults   map[string]container.ExecInspect
+	execResults   map[string]client.ExecInspectResult
 	execOutputs   map[string]struct{ stdout, stderr string }
 	nextContainer string
 	nextExecID    int
@@ -61,7 +62,7 @@ type fakeCreate struct {
 func newFakeEngine() *fakeEngine {
 	return &fakeEngine{
 		files:         map[string]map[string][]byte{},
-		execResults:   map[string]container.ExecInspect{},
+		execResults:   map[string]client.ExecInspectResult{},
 		execOutputs:   map[string]struct{ stdout, stderr string }{},
 		inspectLabels: map[string]map[string]string{},
 	}
@@ -186,7 +187,7 @@ func (f *fakeEngine) CopyFromContainer(_ context.Context, id, srcPath string) (i
 	return io.NopCloser(bytes.NewReader(data)), nil
 }
 
-func (f *fakeEngine) ContainerExecCreate(_ context.Context, id string, cfg container.ExecOptions) (string, error) {
+func (f *fakeEngine) ContainerExecCreate(_ context.Context, id string, cfg client.ExecCreateOptions) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.execCreates = append(f.execCreates, cfg)
@@ -198,12 +199,12 @@ func (f *fakeEngine) ContainerExecCreate(_ context.Context, id string, cfg conta
 		exitCode = *f.forceExitCode
 		f.forceExitCode = nil
 	}
-	f.execResults[execID] = container.ExecInspect{ExecID: execID, ExitCode: exitCode}
+	f.execResults[execID] = client.ExecInspectResult{ID: execID, ExitCode: exitCode}
 	f.execOutputs[execID] = struct{ stdout, stderr string }{stdout: stdout, stderr: stderr}
 	return execID, nil
 }
 
-func (f *fakeEngine) simulateExec(id string, cfg container.ExecOptions) (stdout, stderr string, exitCode int) {
+func (f *fakeEngine) simulateExec(id string, cfg client.ExecCreateOptions) (stdout, stderr string, exitCode int) {
 	if len(cfg.Cmd) == 0 {
 		return "", "empty command", 1
 	}
@@ -281,12 +282,12 @@ func frameStdcopy(stream byte, payload []byte) []byte {
 	return append(header, payload...)
 }
 
-func (f *fakeEngine) ContainerExecInspect(_ context.Context, execID string) (container.ExecInspect, error) {
+func (f *fakeEngine) ContainerExecInspect(_ context.Context, execID string) (client.ExecInspectResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	inspect, ok := f.execResults[execID]
 	if !ok {
-		return container.ExecInspect{}, fmt.Errorf("unknown exec %s", execID)
+		return client.ExecInspectResult{}, fmt.Errorf("unknown exec %s", execID)
 	}
 	return inspect, nil
 }
@@ -315,11 +316,11 @@ func (f *fakeEngine) lastCreate() fakeCreate {
 	return f.created[len(f.created)-1]
 }
 
-func (f *fakeEngine) lastExec() container.ExecOptions {
+func (f *fakeEngine) lastExec() client.ExecCreateOptions {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if len(f.execCreates) == 0 {
-		return container.ExecOptions{}
+		return client.ExecCreateOptions{}
 	}
 	return f.execCreates[len(f.execCreates)-1]
 }

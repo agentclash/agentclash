@@ -74,7 +74,9 @@ This issue does not introduce a full challenge workspace bundle system.
 - `WORKER_IDENTITY`: Temporal worker identity string. Default `agentclash-worker@<hostname>`
 - `HOSTED_RUN_CALLBACK_BASE_URL`: public API base URL used in hosted callback URLs. Default `http://localhost:8080`
 - `HOSTED_RUN_CALLBACK_SECRET`: shared secret used to sign hosted callback bearer tokens. Default `agentclash-dev-hosted-callback-secret`
-- `WORKER_SHUTDOWN_TIMEOUT`: graceful shutdown timeout duration. Default `10s`
+- `WORKER_STOP_TIMEOUT`: Temporal SDK stop grace. Default `30s`
+- `WORKER_SHUTDOWN_TIMEOUT`: worker/reaper and activity-cleanup deadline. Default `90s`; must exceed twice `WORKER_STOP_TIMEOUT`
+- `WORKER_CLEANUP_TIMEOUT`: additional idle sandbox pool cleanup deadline. Default `30s`
 - `SANDBOX_PROVIDER`: sandbox provider selector. Supported values: `unconfigured`, `e2b`. Default `unconfigured`
 - `E2B_API_KEY`: E2B API key. Required when `SANDBOX_PROVIDER=e2b`
 - `E2B_TEMPLATE_ID`: E2B template ID or alias for the AgentClash worker sandbox. Required when `SANDBOX_PROVIDER=e2b`
@@ -82,6 +84,9 @@ This issue does not introduce a full challenge workspace bundle system.
 - `E2B_REQUEST_TIMEOUT`: HTTP timeout for E2B API calls. Default `30s`
 
 ## Template Setup
+
+Before replacing workers, follow the [maintenance runbook](../deployment/maintenance.md).
+Shutdown grace does not make in-memory human-turn activities resumable.
 
 The repo-owned E2B template lives in `backend/e2b-template/`.
 

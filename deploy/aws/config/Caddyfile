@@ -1,0 +1,40 @@
+{
+  admin localhost:2019
+  persist_config off
+  email {$ACME_EMAIL}
+  servers {
+    protocols h1 h2
+  }
+  # Request/access logs are deliberately disabled: URLs contain session tokens.
+  log default {
+    level ERROR
+    output stderr
+    format filter {
+      wrap json
+      fields {
+        request delete
+      }
+    }
+  }
+}
+{$API_DOMAIN} {
+  import /run/edge/fence.caddy
+  reverse_proxy api:8080 {
+    stream_close_delay 5m
+    transport http {
+      dial_timeout 5s
+      response_header_timeout 60s
+    }
+  }
+}
+{$TERMINAL_DOMAIN} {
+  import /run/edge/fence.caddy
+  reverse_proxy terminal:3001 {
+    header_up X-Trycli-Client-IP {http.request.client_ip}
+    stream_close_delay 5m
+    transport http {
+      dial_timeout 5s
+      response_header_timeout 130s
+    }
+  }
+}

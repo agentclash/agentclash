@@ -1,0 +1,17 @@
+ARG BUILDER
+ARG UPSTREAM
+FROM ${BUILDER} AS build
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org
+WORKDIR /src
+COPY source/ .
+RUN go mod download && go mod verify
+# Keep the symbol table for downstream Go vulnerability/reachability tools.
+RUN go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" -o /out/program .
+COPY licenses.sh /licenses.sh
+RUN sh /licenses.sh /out/notices
+FROM ${UPSTREAM}
+USER root
+ARG BINARY
+ARG BINARY_PATH
+COPY --from=build /out/program ${BINARY_PATH}
+COPY --from=build /out/notices /usr/share/licenses/agentclash-platform/${BINARY}/

@@ -1,0 +1,17 @@
+**
+!backend/
+!backend/go.mod
+!backend/go.sum
+!backend/cmd/
+!backend/cmd/db-migrate/
+!backend/cmd/db-migrate/*.go
+!backend/internal/
+!backend/internal/dbmigrate/
+!backend/internal/dbmigrate/*.go
+!backend/db/
+!backend/db/migrations/
+!backend/db/migrations/*.sql
+!runtime/
+!runtime/go.mod
+!runtime/go.sum
+**/*_test.go

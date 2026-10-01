@@ -1,0 +1,129 @@
+# Keep every built-in detector. Each exception requires both an exact reviewed
+# non-secret fixture/public literal and its exact source path. This is not a
+# file-wide exclusion. Review this configuration as part of every source diff.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Development-only Dodo webhook default; decoded fixture, not a provider credential"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''(?s)^whsec_YWdlbnRjbGFzaC1kZXYtZG9kby13ZWJob29rLXNlY3JldA==$''']
+paths = [
+  '''(^|/)backend/internal/api/config\.go$''',
+]
+
+[[allowlists]]
+description = "Synthetic redaction or signed-webhook unit-test fixture"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''(?s)^wh_test_trial_432$''']
+paths = [
+  '''(^|/)backend/internal/api/billing_test\.go$''',
+]
+
+[[allowlists]]
+description = "Invalid PEM marker strings used to test or define redaction; no key material"
+targetRules = ["private-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''(?s)^-----BEGIN EC PRIVATE KEY-----\\nsecret\\n-----END EC PRIVATE KEY-----",\n\t\t"-----BEGIN ENCRYPTED PRIVATE KEY-----$''']
+paths = [
+  '''(^|/)backend/internal/api/public_shares_test\.go$''',
+]
+
+[[allowlists]]
+description = "Non-secret incident/case identifiers in fixtures or mock tool output"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''(?s)^prod-incident-123$''']
+paths = [
+  '''(^|/)backend/internal/api/regression_suites_test\.go$''',
+  '''(^|/)cli/cmd/cli_surface_gaps_test\.go$''',
+  '''(^|/)web/src/lib/api/__tests__/regression\.test\.ts$''',
+]
+
+[[allowlists]]
+description = "Synthetic redaction or signed-webhook unit-test fixture"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''(?s)^abc123def456$''']
+paths = [
+  '''(^|/)backend/internal/engine/primitive_http_request_test\.go$''',
+]
+
+[[allowlists]]
+description = "Synthetic redaction or signed-webhook unit-test fixture"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''(?s)^sk_live_abc123$''']
+paths = [
+  '''(^|/)backend/internal/securityscore/securityscore_test\.go$''',
+]
+
+[[allowlists]]
+description = "Non-secret incident/case identifiers in fixtures or mock tool output"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''(?s)^pd_123456789$''']
+paths = [
+  '''(^|/)backend/internal/toolspec/library\.go$''',
+]
+
+[[allowlists]]
+description = "Public IndexNow ownership key; identical to the public verification filename and body"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''(?s)^265a46be97a2ce1f8891dd452d243327$''']
+paths = [
+  '''(^|/)docs/frontend/seo-verification\.md$''',
+  '''(^|/)web/\.env\.local\.example$''',
+]
+
+[[allowlists]]
+description = "Non-secret incident/case identifiers in fixtures or mock tool output"
+targetRules = ["generic-api-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''(?s)^ambiguous-sev1$''']
+paths = [
+  '''(^|/)examples/challenge-packs/incident-response-llm-judge\.yaml$''',
+  '''(^|/)web/content/docs/challenge-packs/input-sets-and-cases\.mdx$''',
+]
+
+[[allowlists]]
+description = "Invalid PEM marker strings used to test or define redaction; no key material"
+targetRules = ["private-key"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''(?s)^-----BEGIN PRIVATE KEY-----'\n      severity: critical\n    - description: RSA private-key PEM header\n      substring: '-----BEGIN RSA PRIVATE KEY-----$''']
+paths = [
+  '''(^|/)examples/challenge-packs/infisical-agent-vault\.yaml$''',
+]
+
+[[allowlists]]
+description = "Explicit CANARY credential examples with no upstream account"
+targetRules = ["github-pat"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''(?s)^ghp_CANARY0123456789abcdef0123456789abcd$''']
+paths = [
+  '''(^|/)docs/evaluation/agent-vault-runtime\.md$''',
+]
+
+[[allowlists]]
+description = "Explicit CANARY credential examples with no upstream account"
+targetRules = ["stripe-access-token"]
+condition = "AND"
+regexTarget = "secret"
+regexes = ['''(?s)^sk_test_51AbcCANARY$''']
+paths = [
+  '''(^|/)docs/evaluation/agent-vault-runtime\.md$''',
+]

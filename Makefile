@@ -19,8 +19,9 @@ db-reset: ## destroy and recreate the database (drops volumes)
 	docker compose down -v
 	docker compose up -d postgres
 
-db-migrate: ## apply goose migrations to the dev database
-	./scripts/db/apply-goose-migrations.sh "$(DATABASE_URL)"
+db-migrate: export DATABASE_URL := $(DATABASE_URL)
+db-migrate: ## apply filename-ledger migrations to the dev database
+	./scripts/db/apply-goose-migrations.sh
 
 db-seed: ## load base dev rows (needs a psql client)
 	psql "$(DATABASE_URL)" -f scripts/db/seed-dev.sql

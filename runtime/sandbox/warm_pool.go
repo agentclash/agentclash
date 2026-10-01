@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"sync"
 	"time"
@@ -32,6 +33,8 @@ type WarmPoolConfig struct {
 // WarmPool is a Provider decorator that checks out pre-created sessions keyed by
 // (TemplateID, ToolPolicy hash) before falling through to the inner provider.
 type WarmPool struct {
+	fillCtx     context.Context
+	stopFill    context.CancelFunc
 	inner       Provider
 	size        int
 	ttl         time.Duration
@@ -40,11 +43,14 @@ type WarmPool struct {
 	logger      *slog.Logger
 	clock       func() time.Time
 
-	mu      sync.Mutex
-	pools   map[string][]*warmEntry
-	stopCh  chan struct{}
-	stopped bool
-	wg      sync.WaitGroup
+	mu         sync.Mutex
+	pools      map[string][]*warmEntry
+	stopCh     chan struct{}
+	stopped    bool
+	closeDone  chan struct{}
+	closeErr   error
+	cleanupErr error
+	wg         sync.WaitGroup
 }
 
 type warmEntry struct {
@@ -81,7 +87,10 @@ func WrapWarmPool(inner Provider, cfg WarmPoolConfig) *WarmPool {
 	if clock == nil {
 		clock = time.Now
 	}
+	fillCtx, stopFill := context.WithCancel(context.Background())
 	return &WarmPool{
+		fillCtx:     fillCtx,
+		stopFill:    stopFill,
 		inner:       inner,
 		size:        cfg.Size,
 		ttl:         ttl,
@@ -99,7 +108,13 @@ func (p *WarmPool) Start() {
 	if p == nil {
 		return
 	}
+	p.mu.Lock()
+	if p.stopped {
+		p.mu.Unlock()
+		return
+	}
 	p.wg.Add(1)
+	p.mu.Unlock()
 	go func() {
 		defer p.wg.Done()
 		ticker := time.NewTicker(30 * time.Second)
@@ -123,9 +138,11 @@ func (p *WarmPool) Close(ctx context.Context) error {
 	p.mu.Lock()
 	if p.stopped {
 		p.mu.Unlock()
-		return nil
+		return p.awaitClose(ctx)
 	}
+	p.closeDone = make(chan struct{})
 	p.stopped = true
+	p.stopFill()
 	close(p.stopCh)
 	entries := make([]*warmEntry, 0)
 	for key, list := range p.pools {
@@ -133,22 +150,55 @@ func (p *WarmPool) Close(ctx context.Context) error {
 		delete(p.pools, key)
 	}
 	p.mu.Unlock()
-	p.wg.Wait()
-
-	var firstErr error
-	for _, entry := range entries {
-		if err := entry.session.Destroy(ctx); err != nil && firstErr == nil {
-			firstErr = err
+	// Wait for tracked fills/expiry and destroy the idle sessions concurrently.
+	// The caller's deadline also bounds providers that ignore cancellation.
+	go func() {
+		var cleanup sync.WaitGroup
+		errs := make(chan error, len(entries))
+		for _, entry := range entries {
+			cleanup.Add(1)
+			go func() {
+				defer cleanup.Done()
+				errs <- entry.session.Destroy(ctx)
+				p.metrics.WarmPoolExpire()
+			}()
 		}
-		p.metrics.WarmPoolExpire()
+		cleanup.Wait()
+		p.wg.Wait()
+		close(errs)
+		var firstErr error
+		for err := range errs {
+			if err != nil && firstErr == nil {
+				firstErr = err
+			}
+		}
+		p.mu.Lock()
+		p.closeErr = errors.Join(firstErr, p.cleanupErr)
+		close(p.closeDone)
+		p.mu.Unlock()
+	}()
+	return p.awaitClose(ctx)
+}
+
+func (p *WarmPool) awaitClose(ctx context.Context) error {
+	select {
+	case <-p.closeDone:
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		return p.closeErr
+	case <-ctx.Done():
+		return ctx.Err()
 	}
-	return firstErr
 }
 
 func (p *WarmPool) Create(ctx context.Context, request CreateRequest) (Session, error) {
 	if p == nil {
 		return nil, ErrProviderNotConfigured
 	}
+	if !p.begin() {
+		return nil, errors.New("warm pool is closed")
+	}
+	defer p.wg.Done()
 	key := PoolKey(request)
 	if session, ok := p.checkout(key, request); ok {
 		p.metrics.WarmPoolHit()
@@ -169,6 +219,14 @@ func (p *WarmPool) EnsureWarm(ctx context.Context, request CreateRequest) {
 	if p == nil {
 		return
 	}
+	if !p.begin() {
+		return
+	}
+	defer p.wg.Done()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(p.fillCtx, cancel)
+	defer stop()
 	key := PoolKey(request)
 	for p.poolLen(key) < p.size {
 		if err := ctx.Err(); err != nil {
@@ -180,6 +238,16 @@ func (p *WarmPool) EnsureWarm(ctx context.Context, request CreateRequest) {
 	}
 }
 
+func (p *WarmPool) begin() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.stopped {
+		return false
+	}
+	p.wg.Add(1)
+	return true
+}
+
 func (p *WarmPool) checkout(key string, request CreateRequest) (Session, bool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -189,12 +257,12 @@ func (p *WarmPool) checkout(key string, request CreateRequest) (Session, bool) {
 		list = list[1:]
 		p.pools[key] = list
 		if p.clock().Sub(entry.createdAt) > p.ttl {
-			go p.destroyQuiet(entry.session)
+			p.destroyAsyncLocked(entry.session)
 			p.metrics.WarmPoolExpire()
 			continue
 		}
 		if !poolRequestsMatch(entry.request, request) {
-			go p.destroyQuiet(entry.session)
+			p.destroyAsyncLocked(entry.session)
 			p.metrics.WarmPoolExpire()
 			continue
 		}
@@ -209,12 +277,11 @@ func (p *WarmPool) scheduleFill(key string, request CreateRequest) {
 		p.mu.Unlock()
 		return
 	}
-	p.mu.Unlock()
-
 	p.wg.Add(1)
+	p.mu.Unlock()
 	go func() {
 		defer p.wg.Done()
-		ctx, cancel := context.WithTimeout(context.Background(), p.fillTimeout)
+		ctx, cancel := context.WithTimeout(p.fillCtx, p.fillTimeout)
 		defer cancel()
 		for p.poolLen(key) < p.size {
 			select {
@@ -236,15 +303,13 @@ func (p *WarmPool) fillOne(ctx context.Context, key string, request CreateReques
 		return false
 	}
 	p.mu.Lock()
+	if p.stopped || len(p.pools[key]) >= p.size {
+		p.mu.Unlock()
+		// Stay inside the tracked fill until a late-created session is destroyed.
+		p.destroyQuiet(session)
+		return false
+	}
 	defer p.mu.Unlock()
-	if p.stopped {
-		go p.destroyQuiet(session)
-		return false
-	}
-	if len(p.pools[key]) >= p.size {
-		go p.destroyQuiet(session)
-		return false
-	}
 	p.pools[key] = append(p.pools[key], &warmEntry{
 		session:   session,
 		request:   cloneCreateRequest(request),
@@ -286,13 +351,28 @@ func (p *WarmPool) expireIdle() {
 	}
 }
 
+// Called with mu held, so Close cannot race Wait against this Add.
+func (p *WarmPool) destroyAsyncLocked(session Session) {
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
+		p.destroyQuiet(session)
+	}()
+}
+
 func (p *WarmPool) destroyQuiet(session Session) {
 	if session == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	_ = session.Destroy(ctx)
+	if err := session.Destroy(ctx); err != nil {
+		p.mu.Lock()
+		if p.cleanupErr == nil {
+			p.cleanupErr = err
+		}
+		p.mu.Unlock()
+	}
 }
 
 type poolKeyPayload struct {

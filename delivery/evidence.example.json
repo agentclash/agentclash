@@ -1,0 +1,11 @@
+{
+  "kind": "rehearsal",
+  "release_sha256": "<exact-candidate-manifest-sha256>",
+  "environment": "staging",
+  "instance_id": "<isolated-rehearsal-instance>",
+  "isolated": false,
+  "checks_passed": false,
+  "verified_at": "<UTC-verification-time>",
+  "reviewed_checks": ["<checks-actually-performed-and-their-private-evidence-references>"],
+  "limitations": ["<unverified-paths-and-required-later-acceptance>"]
+}

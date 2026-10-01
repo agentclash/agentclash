@@ -1,0 +1,7 @@
+[Unit]
+Description=Platform health sampling
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+[Install]
+WantedBy=timers.target
