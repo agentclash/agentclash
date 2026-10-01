@@ -1,0 +1,61 @@
+package vibe
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
+)
+
+// Finalize may replay deterministic authoring work, but it never starts another
+// provider request. A committed receipt wins over a lost activity acknowledgement;
+// otherwise every required response must already be complete in the journal.
+func (r *Runner) Finalize(ctx context.Context, id uuid.UUID, issue *Fault) error {
+	if issue == nil || issue.Code != "worker_interrupted" {
+		return r.finishAndContinue(ctx, id, issue)
+	}
+	o, err := r.Service.Store.Operation(ctx, id)
+	if err != nil {
+		return err
+	}
+	if o.Completion == nil && o.State == Running && (o.Kind == "message" || o.Kind == "build") {
+		var p Plan
+		if json.Unmarshal(o.Input, &p) == nil && retainedAuthoring(p.AuthoringVersion) && p.Conversation != nil {
+			// Do not reuse the expired paid activity deadline. This finalizer has
+			// its own short deadline and can only read recorded provider output.
+			replay := context.WithValue(ctx, reliableReplayKey{}, true)
+			if err = r.converseInterpreted(replay, o, p); recoveryDatabaseError(err) {
+				// Infrastructure failures can be retried by Temporal. A missing,
+				// ambiguous or invalid stage preserves the original operation fault.
+				return err
+			}
+		}
+	}
+	return r.finishAndContinue(ctx, id, issue)
+}
+
+func (r *Runner) finishAndContinue(ctx context.Context, id uuid.UUID, issue *Fault) error {
+	if err := r.Service.Store.Finish(ctx, id, issue); err != nil {
+		return err
+	}
+	if err := r.Service.Store.syncBuildResult(ctx, id); err != nil {
+		return err
+	}
+	// A durable sweep also retries DB/admission failures here. This call never
+	// executes a provider; it only queues the already-authorized child check.
+	return r.Service.AdvanceBuild(ctx, id)
+}
+
+func recoveryDatabaseError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var database *pgconn.PgError
+	var connection *pgconn.ConnectError
+	var network net.Error
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+		errors.As(err, &database) || errors.As(err, &connection) || errors.As(err, &network) || pgconn.SafeToRetry(err)
+}

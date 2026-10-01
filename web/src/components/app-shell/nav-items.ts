@@ -34,6 +34,7 @@ export const navSections: NavSection[] = [
   {
     title: "Agents",
     items: [
+      ...(process.env.NEXT_PUBLIC_VIBE_EVALS_ENABLED === "true" ? [{ label: "Vibe Evals", href: (id: string) => `/vibe-evals?workspace=${id}`, icon: Bot }] : []),
       {
         label: "Builds",
         href: (id) => `/workspaces/${id}/builds`,

@@ -52,19 +52,30 @@ func load(dir string) ([]migration, error) {
 func extractUp(body string) (string, error) {
 	var up strings.Builder
 	section := 0
+	statementBlock := false
 	for _, line := range strings.Split(body, "\n") {
 		marker := strings.TrimSpace(line)
 		switch marker {
 		case "-- +goose Up":
-			if section != 0 {
+			if section != 0 || statementBlock {
 				return "", fmt.Errorf("duplicate or misplaced Up section")
 			}
 			section = 1
 		case "-- +goose Down":
-			if section != 1 {
+			if section != 1 || statementBlock {
 				return "", fmt.Errorf("duplicate or misplaced Down section")
 			}
 			section = 2
+		case "-- +goose StatementBegin":
+			if section == 0 || statementBlock {
+				return "", fmt.Errorf("duplicate or misplaced StatementBegin")
+			}
+			statementBlock = true
+		case "-- +goose StatementEnd":
+			if !statementBlock {
+				return "", fmt.Errorf("misplaced StatementEnd")
+			}
+			statementBlock = false
 		default:
 			if strings.HasPrefix(marker, "-- +goose") {
 				return "", fmt.Errorf("unsupported Goose directive")
@@ -75,7 +86,7 @@ func extractUp(body string) (string, error) {
 			}
 		}
 	}
-	if section != 2 {
+	if section != 2 || statementBlock {
 		return "", fmt.Errorf("exactly one Up and one Down section are required")
 	}
 	if err := validateSQL(up.String()); err != nil {

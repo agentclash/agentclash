@@ -10,6 +10,7 @@ const ALLOWED_RETURN_PATHS = new Set([
   DEFAULT_RETURN_TO,
   DEVICE_PATH,
   GITHUB_SETUP_PATH,
+  "/vibe-evals",
 ]);
 const PLAN_INTENT_PATTERN = /^(pro|team)$/;
 const RETURN_TO_BASE_URL = "http://agentclash.local";
@@ -41,6 +42,8 @@ export function sanitizeReturnTo(raw: string | null | undefined): string {
   if (!ALLOWED_RETURN_PATHS.has(parsed.pathname)) {
     return DEFAULT_RETURN_TO;
   }
+
+  if (parsed.pathname === "/vibe-evals") return buildVibeReturnTo(parsed.searchParams);
 
   if (parsed.pathname === DEVICE_PATH) {
     return buildDeviceReturnTo(parsed.searchParams.get("user_code"));
@@ -137,4 +140,18 @@ export function normalizeDeviceUserCode(
   }
 
   return `${normalized.slice(0, 4)}-${normalized.slice(4)}`;
+}
+
+// Preserve only Vibe's private object identities and view intent, never arbitrary
+// URLs, messages or model-generated redirect parameters.
+export function buildVibeReturnTo(input: URLSearchParams): string {
+  const params = new URLSearchParams();
+  for (const key of ["session", "agent", "workspace", "run", "thread", "keep_run"]) {
+    const value = input.get(key);
+    if (value && UUID_PATTERN.test(value)) params.set(key, value);
+  }
+  if (input.get("keep") === "1" && params.has("session") && params.has("agent")) params.set("keep", "1");
+  const view = input.get("view");
+  if (view && ["build", "try", "checks"].includes(view)) params.set("view", view);
+  return `/vibe-evals${params.size ? `?${params}` : ""}`;
 }

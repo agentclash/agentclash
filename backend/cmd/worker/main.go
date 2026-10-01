@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"github.com/agentclash/agentclash/backend/internal/enquiries"
+	"github.com/agentclash/agentclash/backend/internal/vibe/inputs"
 	"io"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/agentclash/agentclash/backend/internal/api"
 	"github.com/agentclash/agentclash/backend/internal/observability"
 	"github.com/agentclash/agentclash/backend/internal/posthog"
 	"github.com/agentclash/agentclash/backend/internal/productanalytics"
@@ -15,6 +18,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/backend/internal/temporalutil"
+	"github.com/agentclash/agentclash/backend/internal/vibe"
 	workerapp "github.com/agentclash/agentclash/backend/internal/worker"
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
 	"github.com/agentclash/agentclash/runtime/provider"
@@ -241,6 +245,36 @@ func run() (exitCode int) {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	vibeConfig, err := vibe.LoadConfig()
+	if err != nil {
+		logger.Error("invalid Vibe configuration", "error", err)
+		return 1
+	}
+	vibeStore := vibe.NewStore(db, vibeConfig)
+	vibeStore.Inputs.Blobs = artifactStore
+	if runtime := os.Getenv("VIBE_PDF_RUNTIME"); runtime != "" {
+		if parser, e := inputs.NewParser(ctx, runtime); e == nil {
+			vibeStore.Inputs.Parser = parser
+		} else {
+			logger.Warn("PDF reading disabled; isolation check failed", "error", e)
+		}
+	}
+	go vibeStore.Inputs.Run(ctx, logger)
+	go vibeStore.ProjectCleanupLoop(ctx, logger)
+	go enquiries.FromEnv(db).Run(ctx, logger)
+	vibeService := &vibe.Service{Store: vibeStore, Config: vibeConfig, Gate: vibe.Gate{Redis: redisClient}, Compiler: api.VibePackCompiler{}}
+	vibeRunner := &vibe.Runner{Service: vibeService, Gateway: &vibe.Gateway{Store: vibeStore, Config: vibeConfig, Gate: vibeService.Gate}}
+	if vibeConfig.Enabled {
+		vw := vibe.NewWorker(temporalClient, vibeRunner)
+		if err := vw.Start(); err != nil {
+			logger.Error("failed to start Vibe worker", "error", err)
+			return 1
+		}
+		defer vw.Stop()
+		go vibe.DispatchOutbox(ctx, temporalClient, vibeStore, logger, vibeService)
+	}
+	// Accounting recovery continues even when new Vibe execution is disabled.
+	go vibe.ReconcileLoop(ctx, vibeStore, vibeConfig, logger)
 
 	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, orphanRunReaper, agentTryoutRetentionReaper, stallReaper); err != nil {
 		logger.Error("worker stopped with error", "error", err)

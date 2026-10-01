@@ -33,3 +33,11 @@ func NormalizeGeminiFinishReason(reason string) string {
 		return reason
 	}
 }
+
+// OpenAI-compatible APIs call exhausted output budgets "length".
+func NormalizeOpenAIFinishReason(reason string) string {
+	if strings.TrimSpace(reason) == "length" {
+		return FinishReasonMaxTokens
+	}
+	return reason
+}

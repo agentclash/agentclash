@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -30,6 +31,28 @@ func newCORSMiddleware(authMode string, allowedOrigins map[string]struct{}) func
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
+			if strings.HasPrefix(r.URL.Path, "/v1/vibe/") && origin != "" {
+				_, allowed := allowedOrigins[origin]
+				if wildcard {
+					u, err := url.Parse(origin)
+					allowed = err == nil && u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1")
+				}
+				if !allowed {
+					http.Error(w, "origin is not allowed", http.StatusForbidden)
+					return
+				}
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+				w.Header().Add("Vary", "Origin")
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", allowedHeaders+", If-Match, Last-Event-ID")
+				if r.Method == http.MethodOptions {
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
+				next.ServeHTTP(w, r)
+				return
+			}
 
 			if wildcard {
 				w.Header().Set("Access-Control-Allow-Origin", "*")

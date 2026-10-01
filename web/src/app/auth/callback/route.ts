@@ -15,7 +15,13 @@ function logAuthCallbackError(error: unknown, request: NextRequest) {
   });
 }
 
+const configuredCallback = process.env.NEXT_PUBLIC_WORKOS_REDIRECT_URI;
+// Next's development request URL may normalize 127.0.0.1 to localhost. Use the
+// configured, trusted callback origin so the same browser cookies survive.
+const callbackOrigin = configuredCallback ? new URL(configuredCallback).origin : undefined;
+
 export const GET = handleAuth({
+  baseURL: callbackOrigin,
   returnPathname: "/dashboard",
   onSuccess: async () => {
     // Mark this browser as a returning visitor so logged-out marketing surfaces
@@ -46,7 +52,7 @@ export const GET = handleAuth({
   onError: ({ error, request }) => {
     logAuthCallbackError(error, request);
 
-    const loginUrl = new URL("/auth/login", request.url);
+    const loginUrl = new URL("/auth/login", callbackOrigin || request.url);
     loginUrl.searchParams.set("error", "callback_failed");
     return NextResponse.redirect(loginUrl);
   },

@@ -88,9 +88,21 @@ func (c OpenAICompatibleClient) StreamModel(ctx context.Context, request Request
 		return Response{}, classifyEndpointTransportError(request.ProviderKey, err)
 	}
 	defer resp.Body.Close()
+	reader := io.Reader(resp.Body)
+	var limited *io.LimitedReader
+	if request.MaxResponseBytes > 0 {
+		limited = &io.LimitedReader{R: resp.Body, N: request.MaxResponseBytes + 1}
+		reader = limited
+	}
+	generationID := resp.Header.Get("X-Generation-Id")
+	if generationID != "" && request.OnGeneration != nil {
+		if err := request.OnGeneration(generationID); err != nil {
+			return Response{}, err
+		}
+	}
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		raw, err := io.ReadAll(resp.Body)
+		raw, err := io.ReadAll(reader)
 		if err != nil {
 			return Response{}, NewFailure(request.ProviderKey, FailureCodeUnavailable, "read provider response", true, err)
 		}
@@ -98,11 +110,25 @@ func (c OpenAICompatibleClient) StreamModel(ctx context.Context, request Request
 	}
 
 	accumulator := NewStreamAccumulator(request.ProviderKey, startedAt)
-	if err := consumeOpenAIStream(resp.Body, request.ProviderKey, accumulator, onDelta); err != nil {
+	if err := consumeOpenAIStream(reader, request.ProviderKey, accumulator, onDelta, func(id string) error {
+		if id == "" || id == generationID {
+			return nil
+		}
+		generationID = id
+		if request.OnGeneration != nil {
+			return request.OnGeneration(id)
+		}
+		return nil
+	}); err != nil {
 		return Response{}, err
 	}
+	if limited != nil && limited.N == 0 {
+		return Response{}, NewFailure(request.ProviderKey, FailureCodeMalformedResponse, "provider response exceeded its byte limit", false, nil)
+	}
 
-	return accumulator.Finalize(time.Now().UTC())
+	result, err := accumulator.Finalize(time.Now().UTC())
+	result.GenerationID = generationID
+	return result, err
 }
 
 func buildOpenAIRequestBody(request Request, stream bool) (openAICompletionRequest, error) {
@@ -125,10 +151,15 @@ func buildOpenAIRequestBody(request Request, stream bool) (openAICompletionReque
 	}
 
 	return openAICompletionRequest{
-		Model:    request.Model,
-		Messages: messages,
-		Tools:    tools,
-		Stream:   stream,
+		MaxTokens:      request.MaxOutputTokens,
+		Temperature:    request.Temperature,
+		ResponseFormat: request.ResponseFormat,
+		Reasoning:      request.Reasoning,
+		Provider:       request.OpenRouterPolicy,
+		Model:          request.Model,
+		Messages:       messages,
+		Tools:          tools,
+		Stream:         stream,
 		StreamOptions: openAIStreamOptions{
 			IncludeUsage: stream,
 		},
@@ -229,11 +260,16 @@ func normalizeOpenAIToolCalls(providerKey string, toolCalls []openAIResponseTool
 }
 
 type openAICompletionRequest struct {
-	Model         string                 `json:"model"`
-	Messages      []openAIRequestMessage `json:"messages"`
-	Tools         []openAIRequestTool    `json:"tools,omitempty"`
-	Stream        bool                   `json:"stream,omitempty"`
-	StreamOptions openAIStreamOptions    `json:"stream_options,omitempty"`
+	MaxTokens      int                    `json:"max_tokens,omitempty"`
+	Temperature    *float64               `json:"temperature,omitempty"`
+	ResponseFormat json.RawMessage        `json:"response_format,omitempty"`
+	Reasoning      json.RawMessage        `json:"reasoning,omitempty"`
+	Provider       json.RawMessage        `json:"provider,omitempty"`
+	Model          string                 `json:"model"`
+	Messages       []openAIRequestMessage `json:"messages"`
+	Tools          []openAIRequestTool    `json:"tools,omitempty"`
+	Stream         bool                   `json:"stream,omitempty"`
+	StreamOptions  openAIStreamOptions    `json:"stream_options,omitempty"`
 }
 
 type openAIStreamOptions struct {
@@ -297,9 +333,13 @@ type openAICompletionChunk struct {
 		} `json:"delta"`
 	} `json:"choices"`
 	Usage *struct {
-		PromptTokens     int64 `json:"prompt_tokens"`
-		CompletionTokens int64 `json:"completion_tokens"`
-		TotalTokens      int64 `json:"total_tokens"`
+		PromptTokens        int64        `json:"prompt_tokens"`
+		CompletionTokens    int64        `json:"completion_tokens"`
+		TotalTokens         int64        `json:"total_tokens"`
+		Cost                *json.Number `json:"cost"`
+		PromptTokensDetails struct {
+			CachedTokens *int64 `json:"cached_tokens"`
+		} `json:"prompt_tokens_details"`
 	} `json:"usage,omitempty"`
 }
 
@@ -314,7 +354,9 @@ type openAIErrorEnvelope struct {
 	Error struct {
 		Message string `json:"message"`
 		Type    string `json:"type"`
-		Code    string `json:"code"`
+		// OpenAI uses strings; OpenRouter may return numeric HTTP codes.
+		// Classification below is based on the actual HTTP status.
+		Code json.RawMessage `json:"code"`
 	} `json:"error"`
 }
 
@@ -350,7 +392,7 @@ func normalizeOpenAIErrorResponse(providerKey string, statusCode int, header htt
 	}
 }
 
-func consumeOpenAIStream(body io.Reader, providerKey string, accumulator *StreamAccumulator, onDelta func(StreamDelta) error) error {
+func consumeOpenAIStream(body io.Reader, providerKey string, accumulator *StreamAccumulator, onDelta func(StreamDelta) error, onGeneration ...func(string) error) error {
 	reader := bufio.NewReader(body)
 	dataLines := make([]string, 0, 1)
 	eventsProcessed := false
@@ -362,6 +404,16 @@ func consumeOpenAIStream(body io.Reader, providerKey string, accumulator *Stream
 		data := strings.Join(dataLines, "\n")
 		dataLines = dataLines[:0]
 		eventsProcessed = true
+		if len(onGeneration) > 0 && data != "[DONE]" {
+			var frame struct {
+				ID string `json:"id"`
+			}
+			if json.Unmarshal([]byte(data), &frame) == nil && frame.ID != "" {
+				if err := onGeneration[0](frame.ID); err != nil {
+					return err
+				}
+			}
+		}
 		return processOpenAIStreamEvent(providerKey, []byte(data), accumulator, onDelta)
 	}
 
@@ -448,7 +500,7 @@ func processOpenAIStreamEvent(providerKey string, raw []byte, accumulator *Strea
 
 		if choice.FinishReason != nil {
 			terminal := StreamTerminal{
-				FinishReason:    *choice.FinishReason,
+				FinishReason:    NormalizeOpenAIFinishReason(*choice.FinishReason),
 				ProviderModelID: chunk.Model,
 				RawResponse:     raw,
 			}
@@ -469,9 +521,11 @@ func processOpenAIStreamEvent(providerKey string, raw []byte, accumulator *Strea
 			Terminal: StreamTerminal{
 				ProviderModelID: chunk.Model,
 				Usage: &Usage{
-					InputTokens:  chunk.Usage.PromptTokens,
-					OutputTokens: chunk.Usage.CompletionTokens,
-					TotalTokens:  chunk.Usage.TotalTokens,
+					InputTokens:       chunk.Usage.PromptTokens,
+					OutputTokens:      chunk.Usage.CompletionTokens,
+					TotalTokens:       chunk.Usage.TotalTokens,
+					CostUSD:           chunk.Usage.Cost,
+					CachedInputTokens: validCachedTokens(chunk.Usage.PromptTokensDetails.CachedTokens, chunk.Usage.PromptTokens),
 				},
 				RawResponse: raw,
 			},
@@ -497,4 +551,12 @@ func emitOpenAIStreamDelta(accumulator *StreamAccumulator, onDelta func(StreamDe
 		}
 	}
 	return nil
+}
+
+// Unknown or inconsistent cache metadata must not be reported as a cache miss.
+func validCachedTokens(cached *int64, input int64) *int64 {
+	if cached == nil || *cached < 0 || *cached > input {
+		return nil
+	}
+	return cached
 }

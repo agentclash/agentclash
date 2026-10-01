@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/agentclash/agentclash/backend/internal/enquiries"
 	"io"
 	"log/slog"
 	"os"
@@ -20,9 +21,11 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/backend/internal/temporalutil"
+	"github.com/agentclash/agentclash/backend/internal/vibe"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() { os.Exit(run()) }
@@ -72,7 +75,8 @@ func run() int {
 	}
 	defer temporalClient.Close()
 
-	// Redis pub/sub (optional).
+	// Redis pub/sub (optional for legacy routes; required for funded Vibe work).
+	var vibeRedis *redis.Client
 	var eventPublisher pubsub.EventPublisher = pubsub.NoopPublisher{}
 	var eventSubscriber pubsub.EventSubscriber = pubsub.NoopSubscriber{}
 	if redisCfg, ok := pubsub.LoadRedisConfigFromEnv(); ok {
@@ -82,6 +86,7 @@ func run() int {
 			return 1
 		}
 		defer redisClient.Close()
+		vibeRedis = redisClient
 		cfg.RedisReadiness = func(ctx context.Context) error { return redisClient.Ping(ctx).Err() }
 		eventPublisher = pubsub.NewRedisPublisher(redisClient)
 		eventSubscriber = pubsub.NewRedisSubscriber(redisClient, logger)
@@ -289,6 +294,18 @@ func run() int {
 		logger.Info("authentication mode: dev (development headers + cli tokens)")
 	}
 
+	vibeConfig, err := vibe.LoadConfig()
+	if err != nil {
+		logger.Error("invalid Vibe configuration", "error", err)
+		return 1
+	}
+	vibeService := &vibe.Service{Store: vibe.NewStore(db, vibeConfig), Config: vibeConfig, Gate: vibe.Gate{Redis: vibeRedis}, Compiler: api.VibePackCompiler{}}
+	vibeService.Store.Inputs.Blobs = artifactStore
+	if err := billingManager.WithVibeCredits(vibeService.Store, cfg.FrontendURL); err != nil {
+		logger.Error("invalid Vibe credit configuration", "error", err)
+		return 1
+	}
+	cfg.VibeHandler = (&api.VibeHandler{Enquiries: enquiries.FromEnv(db), Service: vibeService, Billing: billingManager, Auth: authenticator, CookieSecret: os.Getenv("VIBE_COOKIE_SECRET"), Secure: cfg.AppEnvironment != "development"}).Routes()
 	server := api.NewServer(
 		cfg,
 		logger,

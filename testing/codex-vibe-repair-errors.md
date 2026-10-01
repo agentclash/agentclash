@@ -1,0 +1,9 @@
+# Vibe draft repair and error reporting contract
+
+- A valid first response completes with one provider call. An invalid authoring response permits at most one additional call; no limits or trial counters are increased.
+- Vibe presents one compact output shape using the merged blueprint types and scoring allowlists. Prompt metadata is not part of that shape; unknown generated fields still fail strict validation.
+- A repair includes the invalid response only when the complete assembled request fits. Otherwise it regenerates from the original conversation, accepted requirements and validation error. If that also exceeds the same context bound, no additional provider call starts. Accepted evaluation criteria remain pinned by code.
+- Expected domain faults survive the Temporal activity boundary and reach persisted operation errors with their real code and safe message. Unknown worker failures remain generic; provider activities never retry. Old workflow histories retain the existing finalizer through versioning.
+- Unit tests cover large invalid outputs, retained requirements, full-context bounds, typed faults, unknown worker errors and old-history finalization. Real PostgreSQL integration tests verify the two-call correction and known zero-cost accounting.
+- Run existing safety/role/billing tests and the affected browser journeys. Verify a real free-model journey after restarting only idle local services. Preserve historical attempts and all uncertainty; do not reset trial limits or automatically rerun uncertain calls.
+- Live follow-up: generated packs with a semantic evaluator may not add literal phrase/regex requirements across every case, except the universal nonempty-output check. Reject these for the existing single repair; keep case-specific expected-value references and explicit imported pack behavior intact. Never silently remove the invalid check.

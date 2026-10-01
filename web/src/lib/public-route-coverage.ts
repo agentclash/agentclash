@@ -53,6 +53,10 @@ export const PUBLIC_PAGE_ROUTE_COVERAGE: PublicRouteCoverage[] = [
 
 export const REVIEWED_PUBLIC_PAGE_EXCLUSIONS = [
   {
+    route: "/vibe-evals",
+    reason: "Noindex application with private session conversations and evaluation evidence; not a public content adapter.",
+  },
+  {
     route: "/resources/eval-checklist/thank-you",
     reason: "Noindex conversion confirmation that contains no unique public content.",
   },
