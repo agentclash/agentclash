@@ -30,7 +30,7 @@ it("preserves five imported case identities and emits only changed fields", () =
   expect(suiteCases({ cases: [{ key: "structured", payload: { text: "custom" } }] })).toEqual([{ key: "structured", input: '{\n  "text": "custom"\n}', expected: "Uses the grading rules in your imported pack.", editable: false }]);
 });
 
-it("copies the complete updated policy and resets feedback on a new version", async () => {
+it("copies the complete updated policy", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const copy = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: copy } });
@@ -38,12 +38,10 @@ it("copies the complete updated policy and resets feedback on a new version", as
   const before = "Allow opened returns within 30 days. Never process refunds.";
   const after = before.replace("opened", "unopened");
   try {
-    await act(async () => root.render(<PromptChange key="one" before={before} after={after} />));
+    await act(async () => root.render(<PromptChange before={before} after={after} />));
     await act(async () => node.querySelector("button")!.click());
     expect(copy).toHaveBeenCalledWith(after);
     expect(node.textContent).toContain("Copied instructions");
-    await act(async () => root.render(<PromptChange key="two" before={after} after={after.replace("30", "45")} />));
-    expect(node.textContent).not.toContain("Copied instructions");
   } finally { await act(async () => root.unmount()); vi.unstubAllGlobals(); }
 });
 

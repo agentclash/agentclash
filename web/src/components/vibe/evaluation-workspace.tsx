@@ -794,6 +794,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   promptChanged &&
                   p.artifact && p.artifact.kind !== "test_suite" && (
                     <PromptChange
+                      key={`instructions:${p.artifact.id}`}
                       before={parent!.agent_prompt}
                       after={p.artifact.agent_prompt}
                     />

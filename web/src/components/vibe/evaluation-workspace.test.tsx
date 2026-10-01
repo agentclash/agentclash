@@ -151,6 +151,43 @@ async function type(input: HTMLTextAreaElement, value: string) {
   });
 }
 
+it("clears copied instruction feedback when the selected historical version changes", async () => {
+  const copy = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText: copy },
+  });
+  const base = {
+    id: "v1",
+    title: "Returns",
+    agent_prompt: "Allow opened returns within 30 days.",
+    blueprint: {},
+    accepted: true,
+    source_message_id: "brief",
+  };
+  const first = {
+    ...base,
+    id: "v2",
+    parent_id: base.id,
+    agent_prompt: "Allow unopened returns within 30 days.",
+  };
+  const second = {
+    ...first,
+    id: "v3",
+    agent_prompt: "Allow unopened returns within 45 days.",
+  };
+  const state = session([{ id: "brief", role: "user", content: "Returns agent" }]);
+  state.document.artifacts = [base, first, second];
+  await render({ session: state, artifact: first });
+  await act(async () => button("Copy updated instructions").click());
+  expect(copy).toHaveBeenCalledWith(first.agent_prompt);
+  expect(container.textContent).toContain("Copied instructions");
+  await render({ artifact: second });
+  expect(container.textContent).not.toContain("Copied instructions");
+  await act(async () => button("Copy updated instructions").click());
+  expect(copy).toHaveBeenLastCalledWith(second.agent_prompt);
+});
+
 it("keeps a failed request beside its turn after later chat and a prepared suite", async () => {
   const failed = {
     ...operation("failed-preparation"),

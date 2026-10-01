@@ -140,6 +140,30 @@ func temporaryBuildAdmission(t *testing.T, reason string) {
 			t.Fatal(e)
 		}
 	}
+	var reservationsBefore int
+	if e := s.Store.DB.QueryRow(ctx, `SELECT count(*) FROM vibe_reservations r JOIN vibe_operations o ON o.id=r.operation_id WHERE o.session_id=$1`, v.ID).Scan(&reservationsBefore); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.AdvanceBuild(ctx, o.ID); e != nil {
+		t.Fatal(e)
+	}
+	ResumeBuilds(ctx, s)
+	waiting, e := s.Store.GetSession(ctx, actor, v.ID)
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, operation := range waiting.Operations {
+		if operation.ID != o.ID {
+			t.Fatal("Build continued before its retry deadline", operation.Kind)
+		}
+	}
+	var reservationsAfter int
+	if e = s.Store.DB.QueryRow(ctx, `SELECT count(*) FROM vibe_reservations r JOIN vibe_operations o ON o.id=r.operation_id WHERE o.session_id=$1`, v.ID).Scan(&reservationsAfter); e != nil {
+		t.Fatal(e)
+	}
+	if calls != 3 || reservationsAfter != reservationsBefore || waiting.Document.Build.Phase != "ready" || waiting.Document.Build.Error == nil || waiting.Document.Build.Error.RetryAvailableAt == nil || !waiting.Document.Build.Error.RetryAvailableAt.Equal(*v.Document.Build.Error.RetryAvailableAt) {
+		t.Fatal("early continuation changed execution, funding or retry state")
+	}
 	if e := s.Store.Edit(ctx, actor, v.ID, v.Revision, func(v *Session) error {
 		past := timestamp().Add(-time.Second)
 		v.Document.Build.Error.RetryAvailableAt = &past
@@ -150,7 +174,7 @@ func temporaryBuildAdmission(t *testing.T, reason string) {
 	for i := 0; i < 2; i++ {
 		ResumeBuilds(ctx, s)
 	}
-	v, e := s.Store.GetSession(ctx, actor, v.ID)
+	v, e = s.Store.GetSession(ctx, actor, v.ID)
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -14,7 +14,7 @@ func displayedProposal(t *testing.T) (Document, Plan) {
 	t.Helper()
 	state := newConversationState(uuid.New())
 	o := Operation{ID: uuid.New()}
-	p := Plan{AuthoringVersion: 13, Conversation: &ConversationContext{State: state}, Submission: Submission{ClientID: uuid.New(), Content: "Show me an example", Revision: 1}}
+	p := Plan{AuthoringVersion: 15, Conversation: &ConversationContext{State: state}, Submission: Submission{ClientID: uuid.New(), Content: "Show me an example", Revision: 1}}
 	route := reliableRoute{Intent: "chat", Reply: "Example only: keep headings. Preserve tables.", Memory: &memoryUpdate{Suggestions: []memoryFact{{Kind: "rule", Quote: "keep headings."}, {Kind: "rule", Quote: "Preserve tables."}}, GuidanceKind: "example", GuidanceTopic: "pdf"}}
 	next, err := proposeConversationState(p, route, o)
 	if err != nil {
