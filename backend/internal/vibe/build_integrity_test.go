@@ -91,11 +91,6 @@ func TestBuildQuestionNeedsCorrectnessReason(t *testing.T) {
 	if _, err = decodeInterpretation(raw(v), p); err == nil {
 		t.Fatal("unjustified question accepted")
 	}
-	p.AuthoringVersion = legacyBuildAuthoringVersion
-	v.Action = raw(askAction{Kind: "ask", Text: "Which rules?", Purpose: "clarify_rule", Options: []string{}})
-	if _, err = decodeInterpretation(raw(v), p); err != nil {
-		t.Fatal("legacy question replay changed", err)
-	}
 }
 
 func TestBuildReadinessRequiresSeparateRuleEvidence(t *testing.T) {
@@ -115,10 +110,6 @@ func TestBuildReadinessRequiresSeparateRuleEvidence(t *testing.T) {
 	missing := interpretationFixture(buildAskAction{askAction: askAction{Kind: "ask", Text: "Which messages count as spam?", Purpose: "clarify_rule", Options: []string{}}, MissingFactType: "correctness_rule", WhyNeeded: "The classification needs a spam rule"}, factObservation{Kind: "job", Quote: job})
 	if r, err := decodeInterpretation(raw(missing), p); err != nil || r.Intent != "clarify" {
 		t.Fatal("a real missing rule still needs one question", err)
-	}
-	p.AuthoringVersion = legacyBuildAuthoringVersion
-	if r, err := decodeInterpretation(raw(compound), p); err != nil || r.Intent != "clarify" {
-		t.Fatal("legacy readiness replay changed", err)
 	}
 }
 

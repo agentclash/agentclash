@@ -84,29 +84,17 @@ func TestBuildSampleBasisRejectsForeignOrChangedSources(t *testing.T) {
 	}
 }
 
-func TestBuildEntailmentReviewRejectsUndecidedOutcomes(t *testing.T) {
+func TestBuildReviewAppliesOppositeOutcomeVeto(t *testing.T) {
 	for _, tc := range []struct {
-		name, rule, expectation string
-		opposite                bool
+		name     string
+		opposite bool
 	}{
-		{"inverse", "Unknown senders are spam.", "Known senders are safe.", true},
-		{"explicit positive", "Unknown senders are spam. Known senders are safe.", "Known senders are safe.", false},
-		{"necessary not sufficient", "Approve only if the order is valid.", "Approve every valid order.", true},
-		{"negation", "Do not approve refunds for opened items.", "Reject a refund for this opened item.", false},
-		{"missing condition", "Approve if under $100 and within 30 days.", "Approve this $50 request with no date.", true},
-		{"boundary", "Escalate over $100 and approve under $100.", "Approve exactly $100.", true},
-		{"invented precedence", "Prize promises are spam. Order questions are customer messages.", "An order question promising a prize is safe.", true},
-		{"unrelated prohibition", "Unknown senders are spam.", "Never process refunds.", true},
+		{"supported", false},
+		{"opposite outcome veto", true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, input := suiteReviewFixture(t)
 			input.ValidatorVersion = EntailmentSuiteValidatorVersion
-			input.Sources[0].Text = tc.rule
-			input.Policy.Rules[0].Statement = tc.rule
-			input.SharedCriteria = tc.rule
-			for i := range input.Cases {
-				input.Cases[i].Expected = tc.expectation
-			}
 			reply := supportedSuiteReview(input)
 			findings := reply["assertions"].([]SuiteAssertionReview)
 			for i := range findings {

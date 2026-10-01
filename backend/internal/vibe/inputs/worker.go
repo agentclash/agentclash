@@ -94,9 +94,6 @@ func (s *Repository) run(ctx context.Context, logger *slog.Logger, timing worker
 		}
 	}
 }
-func (s *Repository) processOne(ctx context.Context) error {
-	return s.processWithTiming(ctx, inputWorkerTiming)
-}
 func (s *Repository) processWithTiming(parent context.Context, timing workerTiming) error {
 	ctx, cancel := context.WithTimeout(parent, timing.Job)
 	defer cancel()

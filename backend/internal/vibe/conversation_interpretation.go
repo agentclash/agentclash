@@ -12,7 +12,7 @@ import (
 const interpretedAuthoringVersion = 15
 
 func (p Plan) interpreted() bool {
-	return p.AuthoringVersion == interpretedAuthoringVersion || (p.AuthoringVersion == legacyBuildAuthoringVersion || p.taskBuild())
+	return p.AuthoringVersion == interpretedAuthoringVersion || p.taskBuild()
 }
 
 // The model describes meaning. Database identifiers, revisions, source hashes

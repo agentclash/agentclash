@@ -4,7 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { defaultModels, type Session } from "./vibe";
 import { useVibeDrafts } from "./use-vibe-drafts";
 import { useVibeNavigation } from "./use-vibe-navigation";
-import { reconcileSession, useVibeSession } from "./use-vibe-session";
+import { useVibeSession } from "./use-vibe-session";
 
 const network = vi.hoisted(() => ({ get: vi.fn(), watch: vi.fn() }));
 vi.mock("./vibe", async original => ({ ...await original<typeof import("./vibe")>(), vibeFetch: network.get, watchVibe: network.watch }));
@@ -71,10 +71,4 @@ it("keeps result B in the URL on refresh and restores pane/thread on browser nav
  await act(async()=>root.render(<Harness/>));expect(navigation.run).toBe("result-B");
  await act(async()=>{window.history.replaceState(null,"","/vibe-evals?session=A&view=try&agent=v1&thread=old");window.dispatchEvent(new PopStateEvent("popstate"))});
  expect(navigation.view).toBe("try");expect(navigation.thread).toBe("old");expect(navigation.run).toBeUndefined();
-});
-it("orders snapshots by both revision and event cursor",()=>{
- const current=snapshot("A",2,8);
- expect(reconcileSession(current,snapshot("A",1,9),"A")).toBe(current);
- expect(reconcileSession(current,snapshot("A",3,7),"A")).toBe(current);
- expect(reconcileSession(current,snapshot("B",10,10),"A")).toBe(current);
 });

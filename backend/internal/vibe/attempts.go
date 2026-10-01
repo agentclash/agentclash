@@ -588,21 +588,3 @@ func issueFrom(err error) *Fault {
 	}
 	return &Fault{Code: "execution_error", Message: "The operation could not finish. Saved evidence is available; uncertain costs remain held."}
 }
-
-func (s *Store) AwaitingReconciliation(ctx context.Context) (map[uuid.UUID]string, error) {
-	rows, err := s.DB.Query(ctx, "SELECT id,generation_id FROM vibe_attempts WHERE actual_cost IS NULL AND generation_id IS NOT NULL AND created_at < now()-interval '90 seconds' AND created_at > now()-interval '24 hours' ORDER BY created_at LIMIT 100")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := map[uuid.UUID]string{}
-	for rows.Next() {
-		var id uuid.UUID
-		var generation string
-		if err = rows.Scan(&id, &generation); err != nil {
-			return nil, err
-		}
-		items[id] = generation
-	}
-	return items, rows.Err()
-}

@@ -7,7 +7,7 @@ export const sessionAccessLost = "This browser can’t access the saved session.
 export function isSessionAccessError(error: unknown) {
   return error instanceof VibeError && [401, 403, 404].includes(error.status || 0);
 }
-export function reconcileSession(current: Session | null, incoming: Session, activeID?: string): Session | null {
+function reconcileSession(current: Session | null, incoming: Session, activeID?: string): Session | null {
   if (incoming.id !== activeID) return current;
   if (current?.id === incoming.id && (current.revision > incoming.revision || (current.event_cursor || 0) > (incoming.event_cursor || 0))) return current;
   return incoming;

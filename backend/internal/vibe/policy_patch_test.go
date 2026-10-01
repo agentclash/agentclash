@@ -67,13 +67,8 @@ func TestVibePolicyPatchesRejectStaleAndReplacement(t *testing.T) {
 			}
 		})
 	}
-	p := Plan{AuthoringVersion: 13, Conversation: &ConversationContext{Policy: &base}}
+	p := Plan{AuthoringVersion: 15, Conversation: &ConversationContext{Policy: &base}}
 	if _, err := decodeEditCommand(raw(editSuiteCommand{Rules: base.Rules}), p); err == nil {
-		t.Fatal("v13 accepted full rules replacement")
-	}
-	p.AuthoringVersion = 12
-	cmd, err := decodeEditCommand(raw(editSuiteCommand{Rules: base.Rules}), p)
-	if err != nil || len(cmd.Rules) != 3 {
-		t.Fatal("v12 replay changed", err)
+		t.Fatal("v15 accepted full rules replacement")
 	}
 }

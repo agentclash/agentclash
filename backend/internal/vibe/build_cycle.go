@@ -12,7 +12,6 @@ import (
 	"time"
 )
 
-const legacyBuildAuthoringVersion = 16
 const assertionBuildAuthoringVersion = 17
 const buildAuthoringVersion = 18
 const materialBuildAuthoringVersion = 19

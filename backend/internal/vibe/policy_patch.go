@@ -7,9 +7,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/vibe/interaction"
 )
 
-const preciseAuthoringVersion = 13
-
-func (p Plan) precise() bool { return p.AuthoringVersion == preciseAuthoringVersion || p.guided() }
+func (p Plan) precise() bool { return p.guided() }
 
 // Policy IDs name immutable snapshots; their hash also binds source evidence.
 // Omitting a rule from a patch never removes it.
@@ -100,10 +98,6 @@ func applyPolicyPatch(base *PolicySnapshot, patch PolicyPatch) ([]PolicyRule, er
 
 func decodeEditCommand(output []byte, p Plan) (editSuiteCommand, error) {
 	var cmd editSuiteCommand
-	if !p.precise() {
-		err := Decode(output, p.limits(), &cmd)
-		return cmd, err
-	}
 	var patch preciseEditCommand
 	if err := Decode(output, p.limits(), &patch); err != nil {
 		return cmd, err
