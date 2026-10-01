@@ -125,9 +125,11 @@ def build(root, directory, run, gate):
     cache = directory / "platform-inputs"
     cache.mkdir(mode=0o700)
     for name, entry in lock["packages"].items():
+        print("Resolving pinned public package " + name, flush=True)
         path = cache / name.replace("/", "-")
         fetch(entry, path)
     gosu = cache / "gosu.tar.gz"
+    print("Resolving pinned gosu source", flush=True)
     fetch(lock["gosu"], gosu)
 
     def docker_build(context, filename, name, arguments):
