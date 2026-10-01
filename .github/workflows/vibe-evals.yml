@@ -140,6 +140,9 @@ jobs:
           sudo apt-get install -y bubblewrap python3-venv
           /usr/bin/python3 -m venv "$RUNNER_TEMP/vibe-pdf-runtime"
           "$RUNNER_TEMP/vibe-pdf-runtime/bin/pip" install -r backend/internal/vibe/inputs/requirements.txt
+      - name: Compile API fixture before the browser server startup deadline
+        working-directory: backend
+        run: go test -p 1 ./internal/api -run '^$' -count=1
       - name: Browser to real API, PostgreSQL and Temporal worker (fake inference)
         working-directory: web
         run: npx playwright test --config playwright.vibe-stack.config.ts interpretation.spec.ts journey.spec.ts two-door.spec.ts

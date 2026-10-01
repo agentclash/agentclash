@@ -25,7 +25,7 @@ afterEach(async()=>{await act(async()=>root.unmount());element.remove();vi.resto
 it("restores both drafts before writing B and preserves them across switching and refresh",async()=>{
  sessionStorage.setItem("vibe-build-drafts:B",JSON.stringify({version:1,guide:"B guide",trials:{"B:prototype:new:model":"precious B trial"}}));
  let drafts!:ReturnType<typeof useVibeDrafts>;
- function Harness(){drafts=useVibeDrafts("A");return <span>{drafts.content}</span>}
+ function Harness(){const value=useVibeDrafts("A");React.useEffect(()=>{drafts=value});return <span>{value.content}</span>}
  await act(async()=>root.render(<Harness/>));
  await act(async()=>{drafts.setContent("A guide");drafts.setTrialBuffers({"A:prototype:new:model":"A trial"})});
  await act(async()=>drafts.activate("B"));
@@ -33,14 +33,14 @@ it("restores both drafts before writing B and preserves them across switching an
  expect(JSON.parse(sessionStorage.getItem("vibe-build-drafts:B")!).trials["B:prototype:new:model"]).toBe("precious B trial");
  await act(async()=>drafts.activate("A"));expect(drafts.content).toBe("A guide");
  await act(async()=>root.unmount());root=createRoot(element);
- function Refresh(){drafts=useVibeDrafts("B");return null}
+ function Refresh(){const value=useVibeDrafts("B");React.useEffect(()=>{drafts=value});return null}
  await act(async()=>root.render(<Refresh/>));expect(drafts.content).toBe("B guide");expect(drafts.trialBuffers["B:prototype:new:model"]).toBe("precious B trial");
 });
 it("keeps typed drafts during repeated hydration and unavailable storage",async()=>{
  vi.spyOn(Storage.prototype,"getItem").mockImplementation(()=>{throw Error("blocked")});
  vi.spyOn(Storage.prototype,"setItem").mockImplementation(()=>{throw Error("blocked")});
  let drafts!:ReturnType<typeof useVibeDrafts>;
- function Harness(){drafts=useVibeDrafts("A");return null}
+ function Harness(){const value=useVibeDrafts("A");React.useEffect(()=>{drafts=value});return null}
  await act(async()=>root.render(<Harness/>));
  await act(async()=>drafts.setContent("typing while HTTP loads"));
  await act(async()=>drafts.activate("A"));expect(drafts.content).toBe("typing while HTTP loads");
@@ -50,7 +50,7 @@ it("rejects delayed GET and mutation/action snapshots after newer stream progres
  const first=deferred<Session>();network.get.mockReturnValueOnce(first.promise);
  let controller!:ReturnType<typeof useVibeSession>;let stream!:(s:Session)=>void;
  network.watch.mockImplementation((_id,_token,_signal,receive)=>{stream=receive;return new Promise(()=>{})});
- function Harness(){controller=useVibeSession("A",token,false,0);return null}
+ function Harness(){const value=useVibeSession("A",token,false,0);React.useEffect(()=>{controller=value});return null}
  await act(async()=>root.render(<Harness/>));
  await act(async()=>controller.accept(snapshot("A",3,9)));
  await act(async()=>stream(snapshot("A",4,10)));
@@ -63,7 +63,7 @@ it("rejects delayed GET and mutation/action snapshots after newer stream progres
 });
 it("keeps result B in the URL on refresh and restores pane/thread on browser navigation",async()=>{
  let navigation!:ReturnType<typeof useVibeNavigation>;
- function Harness(){navigation=useVibeNavigation();return null}
+ function Harness(){const value=useVibeNavigation();React.useEffect(()=>{navigation=value});return null}
  await act(async()=>root.render(<Harness/>));
  await act(async()=>navigation.update({view:"checks",run:"result-B",artifact:"v2",thread:"thread-B"}));
  expect(new URL(window.location.href).searchParams.get("run")).toBe("result-B");

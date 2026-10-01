@@ -42,7 +42,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	temporal, err := temporalutil.NewClient(*host, *namespace)
+	connection, err := temporalutil.LoadConnectionConfigFromEnv(os.Getenv("APP_ENV"))
+	if err != nil {
+		return fmt.Errorf("invalid Temporal connection: %w", err)
+	}
+	temporal, err := temporalutil.NewClient(*host, *namespace, connection)
 	if err != nil {
 		return fmt.Errorf("Temporal inventory unavailable: %w", err)
 	}

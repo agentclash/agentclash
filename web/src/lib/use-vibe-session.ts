@@ -53,7 +53,10 @@ export function useVibeSession(id: string | null, token: () => Promise<string | 
         }
         if (live) accept(incoming);
       } catch (error) {
-        if (live) isSessionAccessError(error) ? setConnection(sessionAccessLost) : setLoadError((error as Error).message);
+        if (live) {
+          if (isSessionAccessError(error)) setConnection(sessionAccessLost);
+          else setLoadError((error as Error).message);
+        }
       } finally { if (live) setLoading(false); }
     })();
     return () => { live = false; };

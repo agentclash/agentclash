@@ -11,7 +11,7 @@ const harness = vi.hoisted(() => ({
   watch: vi.fn(),
   me: vi.fn(),
 }));
-vi.mock("next/navigation", () => ({ useSearchParams: () => harness.params }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
 vi.mock("@workos-inc/authkit-nextjs/components", () => ({
   useAccessToken: () => ({ getAccessToken: harness.token }),
   useAuth: () => ({ loading: harness.authLoading, user: { id: "fixture-user" } }),
@@ -29,6 +29,8 @@ vi.mock("@/components/vibe/credits-dialog", () => ({
   ),
 }));
 
+const replaceBrowserURL = window.history.replaceState.bind(window.history);
+let routerQuery: string | undefined;
 let container: HTMLDivElement;
 let root: Root;
 let session: Session;
@@ -50,6 +52,13 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 async function render() {
+  // Simulate an external Next route change before mounting. In-app navigation
+  // uses the real browser URL, so a stale mock cannot overwrite its selection.
+  const query = harness.params.toString();
+  if (query !== routerQuery) {
+    replaceBrowserURL(null, "", `/vibe-evals?${query}`);
+    routerQuery = query;
+  }
   await act(async () => root.render(<VibeClient />));
 }
 function button(name: string) {
@@ -121,6 +130,7 @@ function posts() {
 }
 
 beforeEach(() => {
+  routerQuery = undefined;
   harness.authLoading = false;
   sessionStorage.clear();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -679,6 +689,7 @@ it("stops forbidden event retries and lets an empty inaccessible session keep it
   const timers = vi.spyOn(globalThis, "setTimeout");
   vi.spyOn(window.history, "replaceState").mockImplementation(
     (_state, _unused, url) => {
+      replaceBrowserURL(_state, _unused, url);
       harness.params = new URL(String(url), "http://localhost").searchParams;
     },
   );

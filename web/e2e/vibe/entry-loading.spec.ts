@@ -71,11 +71,18 @@ test("offline retry preserves a restored unsent draft and submits nothing", asyn
   } };
   await page.addInitScript(() => sessionStorage.setItem("vibe-build-drafts:draft-session", JSON.stringify({ version: 1, guide: "Keep this unsent draft.", trials: {} })));
   const writes: string[] = [];
+  const quotes: string[] = [];
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
   let configRequests = 0;
   await page.route("**/v1/vibe/**", async route => {
     const request = route.request(), path = new URL(request.url()).pathname;
     const headers = { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" };
     if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers });
+    if (path.endsWith("/build-quote")) {
+      quotes.push(path);
+      return route.fulfill({ headers, json: { id: "draft-quote", request: request.postDataJSON(), max_calls: 4, max_cost_nano_usd: 250000000, cases: 3, expires_at: new Date(Date.now() + 600000).toISOString() } });
+    }
     if (request.method() !== "GET") writes.push(path);
     if (path.endsWith("/config")) {
       if (++configRequests === 1) return route.fulfill({ status: 503, headers, json: { error: { message: "Offline" } } });
@@ -91,8 +98,12 @@ test("offline retry preserves a restored unsent draft and submits nothing", asyn
   await expect(composer).toHaveValue("Keep this unsent draft.");
   await expect(page.getByRole("alert").filter({ hasText: "Your message is still here." })).toBeVisible();
   expect(writes).toEqual([]);
+  expect(quotes).toEqual([]);
   await page.getByRole("button", { name: "Retry connection" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Couldn’t connect" })).toHaveCount(0);
   await expect(composer).toHaveValue("Keep this unsent draft.");
+  // Reconnection may price the unsent draft, but never submits or runs it.
+  await expect.poll(() => quotes.length).toBe(1);
   expect(writes).toEqual([]);
+  expect(errors).toEqual([]);
 });

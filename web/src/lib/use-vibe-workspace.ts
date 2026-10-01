@@ -347,7 +347,7 @@ export function useVibeWorkspace() {
   const continuingBuild = (session?.document.build?.phase === "clarifying" || session?.document.build?.phase === "waiting");
   const quoteMatches = !!buildQuote && buildQuote.request.content === content && JSON.stringify(buildQuote.request.inputs || []) === materialFingerprint && JSON.stringify(buildQuote.request.adopt_rules || []) === adoptionFingerprint && JSON.stringify(buildQuote.request.models) === JSON.stringify(models) && Date.parse(buildQuote.expires_at) > Date.now();
   useEffect(() => {
-    if (!buildStart || !sessionID || !content.trim()) { setBuildQuote(undefined); setQuoteError(""); return; }
+    if (!config || configError || !buildStart || !sessionID || !content.trim()) { setBuildQuote(undefined); setQuoteError(""); return; }
     let live = true;
     setQuoteError("");
     const timer = setTimeout(() => {
@@ -355,7 +355,7 @@ export function useVibeWorkspace() {
         .then(q => { if (live) setBuildQuote(q); }).catch(e => { if (live) setQuoteError(e.message); });
     }, 400);
     return () => { live = false; clearTimeout(timer); };
-  }, [buildStart, sessionID, content, models, token, materials.bindings, materials.adoptions]);
+  }, [config, configError, buildStart, sessionID, content, models, token, materials.bindings, materials.adoptions]);
   useEffect(() => {
     if (!config?.two_door) return;
     let live = true;
