@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.3.0](https://github.com/agentclash/agentclash/compare/v2.2.0...v2.3.0) (2026-09-22)
+
+
+### Features
+
+* **delivery:** activate protected AWS delivery preparation ([746ec4e](https://github.com/agentclash/agentclash/commit/746ec4ed9675b73dce76ee6d192ce16a2726451b))
+
+
+### Bug Fixes
+
+* patch AWS runtime images and supported dependencies ([de67575](https://github.com/agentclash/agentclash/commit/de6757524e6eed44499faceb03c1968a5bed199e))
+
 ## [2.2.0](https://github.com/agentclash/agentclash/compare/v2.1.2...v2.2.0) (2026-08-15)
 
 
