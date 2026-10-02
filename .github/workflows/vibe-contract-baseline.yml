@@ -31,12 +31,12 @@ jobs:
     env:
       VIBE_TEST_DATABASE_URL: postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test_phase1?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
       - name: Migrate isolated fixture
@@ -57,7 +57,7 @@ jobs:
           python3 scripts/vibe/quality.py
       - name: Required database and contract sequences (no paid calls)
         run: python3 scripts/vibe/run_baseline.py --report /tmp/vibe-conversation-baseline.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: vibe-conversation-regression-baseline
