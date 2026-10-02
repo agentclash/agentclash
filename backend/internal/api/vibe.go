@@ -84,6 +84,7 @@ func (h *VibeHandler) Routes() http.Handler {
 	r.Post("/sessions/{sessionID}/messages", h.submit)
 	r.Post("/sessions/{sessionID}/actions", h.interact)
 	r.Post("/sessions/{sessionID}/import", h.importFile)
+	r.Post("/sessions/{sessionID}/references", h.bindReference)
 	r.Post("/sessions/{sessionID}/evidence", h.addEvidence)
 	r.Patch("/sessions/{sessionID}", h.edit)
 	r.Post("/sessions/{sessionID}/claim", h.claim)
@@ -289,9 +290,13 @@ func (h *VibeHandler) config(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
 	pdfAvailable := h.Service.Config.MaterialBuild && h.Service.Store.Inputs.PDFAvailable(r.Context())
-	vibeJSON(w, 200, map[string]any{"contact": contact, "pdf_uploads": pdfAvailable, "two_door": h.Service.Config.TwoDoor, "capabilities": vibe.AvailableCapabilities(pdfAvailable), "enabled": h.Service.Config.Enabled, "interaction_actions": true, "grading_recheck": h.Service.Config.GroundedJudging, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget})
+	vibeJSON(w, 200, map[string]any{"contact": contact, "material_build": h.Service.Config.MaterialBuild, "pdf_uploads": pdfAvailable, "two_door": h.Service.Config.TwoDoor, "capabilities": vibe.AvailableCapabilities(pdfAvailable), "enabled": h.Service.Config.Enabled, "interaction_actions": true, "grading_recheck": h.Service.Config.GroundedJudging, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget})
 }
 func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
+	if !h.Service.Config.Enabled {
+		vibeError(w, mutation.Reject(&vibe.Fault{Code: "hosted_disabled", Message: "New evaluations are unavailable. Your existing work can still be read, saved or downloaded."}))
+		return
+	}
 	var input struct {
 		ID          uuid.UUID  `json:"id"`
 		Door        string     `json:"door,omitempty"`

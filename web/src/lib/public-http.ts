@@ -42,7 +42,6 @@ const PUBLIC_EXACT_PATHS = new Set([
   "/trace-to-dataset",
   "/try",
   "/tryouts",
-  "/vibe-evals",
   "/use-cases",
   "/why",
 ]);
@@ -73,6 +72,7 @@ const PRIVATE_PREFIXES = [
   "/orgs",
   "/share",
   "/workspaces",
+  "/vibe-evals",
 ] as const;
 
 const MACHINE_PATH_PREFIXES = [

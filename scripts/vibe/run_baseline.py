@@ -46,7 +46,7 @@ REQUIRED={
   "TestIntegrationCrashKeepsJournaledEvidenceWithoutReexecution",
   "TestIntegrationStopMidProviderAndNoRetry", 
   ],
- "github.com/agentclash/agentclash/backend/internal/api": ["TestVibeAdmissionMetadataRequiresProof", "TestVibeFileAndSnapshotQueriesAreBounded", "TestVibeBuildRecoveryHTTPKeepsTestsAndWorkingVersion", "TestVibeIntegrationTwoDoorImportsPreserveEvidence", "TestVibeExpiredAuthenticationHTTP", "TestVibeIntegrationSaveUsesSelectedModels", "TestVibeRetryCooldownHTTP", "TestVibeGroundedResultsAndRegrade", "TestVibeInteractionHTTPBoundary"],
+ "github.com/agentclash/agentclash/backend/internal/api": ["TestVibeAdmissionMetadataRequiresProof", "TestVibeFileAndSnapshotQueriesAreBounded", "TestVibeBuildRecoveryHTTPKeepsTestsAndWorkingVersion", "TestVibeIntegrationTwoDoorImportsPreserveEvidence", "TestVibeIntegrationDisabledAdmissionPreservesHistory", "TestVibeIntegrationPortableReferencesBindBeforeExecution", "TestVibeExpiredAuthenticationHTTP", "TestVibeIntegrationSaveUsesSelectedModels", "TestVibeRetryCooldownHTTP", "TestVibeGroundedResultsAndRegrade", "TestVibeInteractionHTTPBoundary"],
  "github.com/agentclash/agentclash/backend/internal/enquiries": ["TestEnquiryValidation", "TestEnquiryDeliveryRecoveryAndConfigDrift"],
  "github.com/agentclash/agentclash/backend/internal/vibe/inputs": ["TestTextBoundsDoNotTruncate", "TestPDFDownloadDeadlineDoesNotBlockHeartbeatOrNextJob", "TestPDFCompletionRequiresCurrentLeaseAndLiveProject"],
  "github.com/agentclash/agentclash/backend/internal/vibe/interaction": [

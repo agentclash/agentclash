@@ -22,8 +22,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 
 
-import { workingBuildArtifact } from "@/lib/vibe-build-timeline";
-import { evaluationIdentity } from "@/components/vibe/evaluation-navigation";
+import { evaluationIdentity, workingBuildArtifact } from "@/lib/vibe-build-timeline";
 
 
 
@@ -46,8 +45,11 @@ export function useVibeWorkspace() {
   const { loading: authLoading, user: authUser } = useAuth();
   const authUserID = authUser?.id;
   const token = useCallback(async () => {
-    if (authLoading || !authUserID) return undefined;
-    try { return await getAccessToken(); } catch { return undefined; }
+    if (authLoading) throw new Error("Your sign-in is still loading. Your message is still here.");
+    if (!authUserID) return undefined;
+    const accessToken = await getAccessToken();
+    if (!accessToken) throw new Error("Couldn’t verify your sign-in. Retry or sign in again. Your message is still here.");
+    return accessToken;
   }, [getAccessToken, authLoading, authUserID]);
   const snapshots = useVibeSession(requestedSessionID, token, authLoading, loadAttempt);
   const { session, accept, select, reload, activeSessionRef, loadingSession, connection, setConnection } = snapshots;
@@ -118,6 +120,7 @@ export function useVibeWorkspace() {
   const currentView = useRef(view);
   const submission = useRef<{
     sessionID: string;
+    authSubject?: string;
     body: string;
     composer: string | null;
     composerVersion: number;
@@ -286,6 +289,7 @@ export function useVibeWorkspace() {
         "Load this conversation before sending. No new conversation was created.",
       );
     if (session) return session;
+    if (!config?.enabled) throw new Error("New conversations are currently unavailable.");
     const id = crypto.randomUUID();
     const auth = await token();
     await vibeFetch<Session>("/sessions", auth, {
@@ -347,7 +351,7 @@ export function useVibeWorkspace() {
   const continuingBuild = (session?.document.build?.phase === "clarifying" || session?.document.build?.phase === "waiting");
   const quoteMatches = !!buildQuote && buildQuote.request.content === content && JSON.stringify(buildQuote.request.inputs || []) === materialFingerprint && JSON.stringify(buildQuote.request.adopt_rules || []) === adoptionFingerprint && JSON.stringify(buildQuote.request.models) === JSON.stringify(models) && Date.parse(buildQuote.expires_at) > Date.now();
   useEffect(() => {
-    if (!config || configError || !buildStart || !sessionID || !content.trim()) { setBuildQuote(undefined); setQuoteError(""); return; }
+    if (!config?.enabled || configError || !buildStart || !sessionID || !content.trim() || !!artifact?.missing_references?.length || (!!materials.bindings.length && !config.material_build)) { setBuildQuote(undefined); setQuoteError(""); return; }
     let live = true;
     setQuoteError("");
     const timer = setTimeout(() => {
@@ -355,7 +359,7 @@ export function useVibeWorkspace() {
         .then(q => { if (live) setBuildQuote(q); }).catch(e => { if (live) setQuoteError(e.message); });
     }, 400);
     return () => { live = false; clearTimeout(timer); };
-  }, [config, configError, buildStart, sessionID, content, models, token, materials.bindings, materials.adoptions]);
+  }, [config, configError, buildStart, sessionID, content, models, token, materials.bindings, materials.adoptions, artifact?.missing_references]);
   useEffect(() => {
     if (!config?.two_door) return;
     let live = true;
@@ -376,7 +380,7 @@ export function useVibeWorkspace() {
 
   }
   async function chooseDoor(door: "build" | "test") {
-    if (!config || sending.current || pending || uncertain || dirtyArtifact) return;
+    if (!config?.enabled || sending.current || pending || uncertain || dirtyArtifact) return;
     setPending(true);
     try {
       entryOrigin.current ||= sessionID;
@@ -446,7 +450,7 @@ export function useVibeWorkspace() {
     });
   }
   async function requestPreparation(text: string, count: number, artifactID: string) {
-    if (!session || busy) return;
+    if (!config?.enabled || !session || busy || artifacts.find(item => item.id === artifactID)?.missing_references?.length) return;
     quoteTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const clientID = crypto.randomUUID();
     const extra = { client_id: clientID, additional_examples: count, artifact_id: artifactID };
@@ -457,6 +461,8 @@ export function useVibeWorkspace() {
     } catch(e) { setError((e as Error).message); } finally {setPending(false);}
   }
   async function requestRun(baseline?: Operation, evidenceID?: string, purpose?: "regrade") {
+    if (!config?.enabled || artifact?.missing_references?.length) return;
+    if (materials.bindings.length && !config.material_build) { setError("Materials are unavailable. Remove the attachment explicitly before continuing."); return; }
     quoteTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const extra = { artifact_id: artifact?.id, ...(purpose ? {purpose} : {}), ...(evidenceID ? { evidence_set_id: evidenceID } : {}), ...(baseline?.source?.kind === "provided_conversations" ? { artifact_id: baseline.source.artifact_id } : {}) };
     const kind = baseline ? "retest" : "check";
@@ -489,7 +495,8 @@ export function useVibeWorkspace() {
       baseline_id?: string;
     } = {},
   ) {
-    if (sending.current || busy || submission.current) return;
+    if (!config?.enabled || artifact?.missing_references?.length || sending.current || busy || submission.current) return;
+    if (materials.bindings.length && !config.material_build) { setError("Materials are unavailable. Remove the attachment explicitly before continuing."); return; }
     if (kind === "message" && !text.trim()) return;
     if (
       dirtyArtifact ||
@@ -535,6 +542,7 @@ export function useVibeWorkspace() {
       const v = await ensureSession();
       submission.current = {
         sessionID: v.id,
+        authSubject: authUserID,
         uncertain: false,
         composer: kind === "playground" || kind === "message" && !extra.demo_id ? text : null,
         composerVersion,
@@ -597,6 +605,8 @@ export function useVibeWorkspace() {
   async function dispatchSubmission() {
     const request = submission.current;
     if (!request) return;
+    if (request.authSubject !== authUserID) throw new Error("Your account changed. Return to the original account to recover this pending request.");
+    if (!config?.enabled) throw new Error("Execution is currently unavailable. Your pending request is preserved.");
     let admitted: Operation;
     try {
       admitted = request.retryOperationID
@@ -732,6 +742,7 @@ export function useVibeWorkspace() {
     if (buildJourney) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_RECOVERY_CLICKED, { session_id: session.id, operation_id: id, artifact_id: operation.source?.artifact_id, action: assistantModel ? "alternate_assistant" : "retry", error_code: operation.error?.code });
     submission.current = {
       sessionID: session.id,
+      authSubject: authUserID,
       retryOperationID: id,
       body: JSON.stringify({ client_id: crypto.randomUUID(), revision: session.revision, ...(assistantModel ? { assistant_model: assistantModel } : {}) }),
       composer: null,
@@ -807,6 +818,7 @@ export function useVibeWorkspace() {
     }
   }
   async function operationAction(id: string, action: "stop" | "approve") {
+    if (action === "approve" && !config?.enabled) return;
     if (action === "stop" && buildJourney && session) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_RECOVERY_CLICKED, { session_id: session.id, operation_id: id, action: "stop" });
     setPending(true);
     setPendingAction(action === "stop" ? "Stopping…" : "Starting your check…");

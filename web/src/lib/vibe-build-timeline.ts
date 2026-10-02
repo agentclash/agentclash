@@ -101,3 +101,13 @@ export function buildRunSummary(operation: Operation) {
     return "Some examples could not be fully checked.";
   return score.total === 1 ? "It handled this situation as expected." : `It handled these ${score.total} situations as expected.`;
 }
+
+export function evaluationIdentity(session: Session) {
+  const artifacts = session.document.artifacts;
+  const artifact = session.document.evaluation?.door === "build" ? workingBuildArtifact(session) : artifacts.at(-1);
+  const title = artifact?.title || (session.document.evaluation?.door === "build" ? "New prototype" : "Your agent");
+  const version = artifact ? buildVersion(session, artifact) : 0;
+  const scope = artifact?.kind === "conversation_evaluation" ? "Saved conversations"
+    : artifact?.agent_prompt ? `${artifact.sample ? "Sample" : "Prototype"} v${version}` : "Setup";
+  return { title, scope };
+}

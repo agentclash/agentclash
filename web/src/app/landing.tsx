@@ -1,5 +1,7 @@
 "use client";
 
+import { MarketingNavigation } from "@/components/marketing/marketing-navigation";
+
 import type React from "react";
 import { useEffect, useRef } from "react";
 import Link from "next/link";
@@ -1453,42 +1455,7 @@ export default function HomePage({
             </span>
           </Link>
           <nav className="flex items-center gap-0.5 sm:gap-2 text-xs lg:text-sm">
-            <a
-              href="#features"
-              className="hidden sm:inline-flex px-3 py-1.5 lg:px-3.5 lg:py-2 text-white/55 hover:text-white/85 transition-colors"
-            >
-              Features
-            </a>
-            <Link
-              href="/why"
-              className="hidden sm:inline-flex px-3 py-1.5 lg:px-3.5 lg:py-2 text-white/55 hover:text-white/85 transition-colors"
-            >
-              Why we built this
-            </Link>
-            <Link
-              href="#pricing"
-              className="inline-flex px-2.5 sm:px-3 py-1.5 lg:px-3.5 lg:py-2 text-white/55 hover:text-white/85 transition-colors"
-            >
-              Pricing
-            </Link>
-            <Link
-              href="/docs"
-              className="inline-flex px-2.5 sm:px-3 py-1.5 lg:px-3.5 lg:py-2 text-white/55 hover:text-white/85 transition-colors"
-            >
-              Docs
-            </Link>
-            <Link
-              href="/benchmarks"
-              className="hidden sm:inline-flex px-3 py-1.5 lg:px-3.5 lg:py-2 text-white/55 hover:text-white/85 transition-colors"
-            >
-              Benchmarks
-            </Link>
-            <Link
-              href="/blog"
-              className="hidden sm:inline-flex px-3 py-1.5 lg:px-3.5 lg:py-2 text-white/55 hover:text-white/85 transition-colors"
-            >
-              Blog
-            </Link>
+            <MarketingNavigation />
             <a
               href="https://github.com/agentclash/agentclash"
               target="_blank"

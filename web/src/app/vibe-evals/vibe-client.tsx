@@ -3,6 +3,7 @@
 import { VibeConnection } from "@/lib/vibe-connection";
 
 
+import { MissingReferences } from "@/components/vibe/missing-references";
 import { TaskInput } from "@/components/vibe/task-input";
 
 
@@ -67,7 +68,7 @@ return (
         twoDoor={twoDoor}
         navigationToggle={navigationToggle}
         newEvaluation={newEvaluation}
-        contextNavigationBlocked={!config || pending || uncertain || dirtyArtifact}
+        contextNavigationBlocked={!config?.enabled || pending || uncertain || dirtyArtifact}
         onCancelNew={() => setNewEvaluation(false)}
         canChangeDoor={canChangeDoor}
         onChangeDoor={() => void changeDoor()}
@@ -80,8 +81,8 @@ return (
         buildStart={buildStart}
         onSample={() => sendMessage("I don’t know. Use a clearly labelled sample policy or a narrower sample demonstration.")}
         onDemo={id => sendMessage("Try a sample email assistant", undefined, id)}
-        materialInput={buildJourney && buildStart ? <TaskInput key={`${sessionID}:${materialScope}`} configure inputs={materials} pdfAvailable={!!config?.pdf_uploads} disabled={busy} /> : undefined}
-        sendBlocked={buildStart && (!quoteMatches || materials.blocked)}
+        materialInput={(config?.material_build || !!materials.items.length) && buildJourney && buildStart ? <TaskInput key={`${sessionID}:${materialScope}`} configure inputs={materials} pdfAvailable={!!config?.material_build && !!config?.pdf_uploads} disabled={busy || !config?.enabled || !config?.material_build} /> : undefined}
+        sendBlocked={!!artifact?.missing_references?.length || !config?.enabled || (!!materials.bindings.length && !config?.material_build) || (buildStart && (!quoteMatches || materials.blocked))}
         sendError={buildStart ? quoteError : undefined}
         testJourney={testJourney}
         interactionActions={config?.interaction_actions}
@@ -180,6 +181,8 @@ return (
         savedChecks={savedChecks}
         notice={
           <>
+            {session && artifact && !!artifact.missing_references?.length && <MissingReferences session={session} artifact={artifact} inputs={materials} busy={busy || dirtyArtifact} token={token} onBoundSession={(incoming, boundArtifactID) => { if (snapshots.accept(incoming)) setSelectedArtifactID(boundArtifactID); }} />}
+            {session && artifact && !!artifact.missing_references?.length && <TaskInput inputs={materials} pdfAvailable={!!config?.material_build && !!config?.pdf_uploads} disabled={busy || dirtyArtifact || !config?.enabled || !config?.material_build} />}
             {!config && !configError && <p className="vibe-connection-status" role="status">Connecting…</p>}
             {configError && (
               <div className="mb-3 space-y-2 text-sm">
@@ -316,8 +319,8 @@ return (
           </>
         }
         preview={
-          <PrototypeTrial inline={buildJourney} dock={buildJourney} title={artifact?.title} version={session && artifact ? buildVersion(session, artifact) : undefined} busy={busy || dirtyArtifact || materials.blocked} text={trialText} hasMaterial={materials.bindings.length > 0}
-            materialInput={buildJourney ? <TaskInput key={`${sessionID}:${materialScope}`} inputs={materials} pdfAvailable={!!config?.pdf_uploads} disabled={busy || dirtyArtifact} /> : undefined}
+          <PrototypeTrial inline={buildJourney} dock={buildJourney} title={artifact?.title} version={session && artifact ? buildVersion(session, artifact) : undefined} executionAvailable={!artifact?.missing_references?.length && !!config?.enabled && (!materials.bindings.length || !!config?.material_build)} busy={busy || dirtyArtifact || materials.blocked} text={trialText} hasMaterial={materials.bindings.length > 0}
+            materialInput={(config?.material_build || !!materials.items.length) && buildJourney ? <TaskInput key={`${sessionID}:${materialScope}`} inputs={materials} pdfAvailable={!!config?.material_build && !!config?.pdf_uploads} disabled={busy || dirtyArtifact || !config?.enabled || !config?.material_build} /> : undefined}
             onText={setTrialText} onSend={() => void submit("playground", trialText)}
             onBack={() => navigate("build")} onNew={newTrial} thread={threadID}
             history={trialHistory} messages={trialMessages}
@@ -333,7 +336,7 @@ return (
       />
       }
       </EvaluationNavigation></VibeConnection.Provider>
-      <AgentSettings open={settingsOpen} onOpenChange={setSettingsOpen}
+      <AgentSettings loadMaterials={materials.list} open={settingsOpen} onOpenChange={setSettingsOpen}
         config={config} session={session} artifact={artifact} artifacts={artifacts}
         models={models} busy={busy || dirtyArtifact} workspace={workspace}
         testJourney={testJourney} savedDraft={savedDraft} onModels={changeModels}
@@ -371,7 +374,7 @@ return (
           )}
           {saveAccess === "loading" ? <p role="status" className="text-sm vibe-muted">Loading your workspaces…</p>
             : saveAccess === "error" ? <Button onClick={() => setLoadAttempt(n => n + 1)}>Try again</Button>
-            : saveAccess === "ready" && !workspaces.length ? <p className="text-sm">You need a workspace you can save to. <Link className="underline" href="/dashboard">Open your workspace</Link>, or ask its owner for access. Your work is still here.</p>
+            : saveAccess === "ready" && !workspaces.length ? <p className="text-sm">You need a workspace you can save to. <Link className="underline" onClick={rememberSave} href={`/dashboard?${new URLSearchParams({ returnTo: keepReturnURL(sessionID || "", artifact?.id || "", workspace, saveBaseline) })}`}>Open your workspace</Link>, or ask its owner for access. Your work is still here.</p>
             : saveAccess === "ready" ? (
             <>
               <label className="text-sm">

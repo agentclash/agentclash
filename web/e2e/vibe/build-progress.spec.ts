@@ -18,7 +18,7 @@ async function conversation(page: Page, content: string) {
   await page.route("**/v1/vibe/**", async route => {
     const path = new URL(route.request().url()).pathname;
     const headers = { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" };
-    if (path.endsWith("/config")) return route.fulfill({ headers, json: { two_door: true, defaults: defaultModels, models: [] } });
+    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, two_door: true, defaults: defaultModels, models: [] } });
     if (path.endsWith("/saved-checks")) return route.fulfill({ headers, json: [] });
     if (path.endsWith("/sessions")) return route.fulfill({ headers, json: [state] });
     if (path.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(state)}\n\n` });

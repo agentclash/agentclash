@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 from common import Refused, account_guard, verify_blob, image_ref
 from secret_store import validate, materialize
+import secret_store
 from render import temporal_config, acl_config
 from restore import safe_extract
 from host import manifest_validate
@@ -31,6 +32,43 @@ from release_contract import (
 
 
 class GuardTests(unittest.TestCase):
+    def test_shared_vibe_settings_are_rejected_before_secret_generation(self):
+        # The fake SSM transport supplies separately valid service payloads.
+        # Exercise load(), which owns generation admission, not a validator seam.
+        common = {
+            "APP_ENV": "production", "TEMPORAL_TLS_ENABLED": "true",
+            "TEMPORAL_HOST_PORT": "temporal:7233", "TEMPORAL_NAMESPACE": "agentclash-prod", "TEMPORAL_TLS_SERVER_NAME": "temporal",
+            "TEMPORAL_TLS_CA_FILE": "/run/secrets/ca.pem", "TEMPORAL_TLS_CERT_FILE": "/run/secrets/client.crt", "TEMPORAL_TLS_KEY_FILE": "/run/secrets/client.key",
+            "DATABASE_URL": "postgres://app_runtime:fixture@postgres/agentclash?sslmode=verify-full&sslrootcert=/run/secrets/db-ca.pem&pool_max_conns=10",
+            "REDIS_TLS_CA_FILE": "/run/secrets/cache-ca.pem", "VIBE_ENABLED": "false",
+        }
+        files = dict.fromkeys(("ca.pem", "client.crt", "client.key", "db-ca.pem", "cache-ca.pem"), "synthetic fixture")
+        for problem in ("feature_mismatch", "provider_missing", "default_missing", "pdf_path_missing"):
+            with self.subTest(problem=problem), tempfile.TemporaryDirectory() as directory:
+                payloads = {role: {"env": dict(common, REDIS_URL="rediss://" + role + ":fixture@valkey:6379"), "files": files} for role in ("api", "worker")}
+                payloads["worker"]["env"].update(WORKER_MAX_CONCURRENT_ACTIVITIES="2", WORKER_MAX_CONCURRENT_WORKFLOW_TASKS="2", SANDBOX_WARM_POOL_SIZE="0")
+                if problem == "feature_mismatch":
+                    payloads["api"]["env"]["VIBE_MATERIAL_BUILD"] = "true"
+                    payloads["worker"]["env"]["VIBE_MATERIAL_BUILD"] = "false"
+                elif problem == "pdf_path_missing":
+                    payloads["worker"]["env"]["VIBE_PDF_REQUIRED"] = "true"
+                else:
+                    for role in payloads:
+                        payloads[role]["env"].update(VIBE_ENABLED="true", VIBE_DEFAULT_MODEL="fixture", VIBE_CAMPAIGN="fixture", VIBE_MODELS_JSON='[{"id":"fixture","conformed":true}]')
+                    payloads["api"]["env"]["VIBE_COOKIE_SECRET"] = "synthetic-cookie-key-with-32-bytes"
+                    if problem == "default_missing":
+                        for role in payloads:
+                            payloads[role]["env"].update(VIBE_OPENROUTER_KEY="synthetic-provider-key", VIBE_DEFAULT_MODEL="missing")
+                settings = {"account_id": "1" * 12, "region": "test-region", "database_endpoint": "postgres", "secrets": {role: {"arn": "arn:aws:secretsmanager:test-region:" + "1" * 12 + ":secret:" + role, "version_id": "a" * 32} for role in payloads}}
+                def provider(_settings, *args):
+                    role = args[args.index("--secret-id") + 1].rsplit(":", 1)[1]
+                    return json.dumps({"SecretString": json.dumps(payloads[role])}).encode()
+                original = Path.read_text
+                def read_text(path, *args, **kwargs):
+                    return "tmpfs " + directory + " tmpfs rw 0 0\n" if path == Path("/proc/mounts") else original(path, *args, **kwargs)
+                with patch.object(secret_store, "UIDS", {"api": 10001, "worker": 10001}), patch.object(secret_store, "account_guard"), patch.object(secret_store, "aws", side_effect=provider), patch.object(Path, "read_text", read_text), patch.object(secret_store.tempfile, "mkdtemp", wraps=secret_store.tempfile.mkdtemp) as create, patch.object(secret_store, "materialize"):
+                    with self.assertRaises(Refused): secret_store.load(settings, directory)
+                    create.assert_not_called()
     def test_fence_is_readable_after_restrictive_umask(self):
         for existing in (False, True):
             with self.subTest(existing=existing), tempfile.TemporaryDirectory() as temp:

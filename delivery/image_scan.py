@@ -58,6 +58,28 @@ def coverage(report, role):
             any(r.get("Type") == "node-pkg" and r.get("Packages") for r in results),
             "Terminal dependency coverage is missing",
         )
+    if role in ("worker", "pdf-runtime"):
+        python = {
+            package.get("Name", "").lower().replace("_", "-")
+            for result in results if result.get("Type") == "python-pkg"
+            for package in result.get("Packages", [])
+        }
+        require(
+            {"pdfplumber", "pdfminer.six", "pillow", "pypdfium2", "cryptography", "charset-normalizer", "cffi", "pycparser"} <= python,
+            "PDF reader Python dependency inventory is incomplete",
+        )
+        # Wheel distribution metadata is insufficient for bundled native code.
+        # In particular, Alpine libcrypto does not cover cryptography's static
+        # OpenSSL, and pypdfium2's version does not identify its PDFium binary.
+        native = {
+            package.get("Name", "").lower()
+            for result in results if result.get("Class") != "os-pkgs" and result.get("Type") != "python-pkg"
+            for package in result.get("Packages", []) if package.get("Version")
+        }
+        require(
+            {"pdfium", "openssl"} <= native,
+            "Bundled PDFium/OpenSSL native dependency coverage is missing; publication blocked",
+        )
 
 
 def reconcile(before, after):

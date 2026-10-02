@@ -705,7 +705,7 @@ test("draft editor exposes the full instructions and exports the user's exact re
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const downloadReady = page.waitForEvent("download");
   await page
-    .getByRole("button", { name: "Export agent and checks", exact: true })
+    .getByRole("button", { name: "Download agent instructions and tests", exact: true })
     .click();
   const download = await downloadReady;
   const exported = JSON.parse(await readFile((await download.path())!, "utf8"));

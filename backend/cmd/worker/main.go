@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/agentclash/agentclash/backend/internal/enquiries"
 	"github.com/agentclash/agentclash/backend/internal/vibe/inputs"
 	"io"
@@ -32,6 +33,13 @@ func main() { os.Exit(run()) }
 
 func run() (exitCode int) {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+	if len(os.Args) > 1 {
+		if len(os.Args) != 2 || os.Args[1] != "--check-vibe-runtime" {
+			logger.Error("unknown worker command")
+			return 1
+		}
+		return checkVibeRuntime()
+	}
 
 	cfg, err := workerapp.LoadConfigFromEnv()
 	if err != nil {
@@ -226,13 +234,6 @@ func run() (exitCode int) {
 		WithAssetLoader(workerapp.NewArtifactAssetLoader(repo, artifactStore).WithMaxBytes(cfg.ArtifactStorage.MaxDownloadBytes)).
 		WithStandingsStore(standingsStore).
 		WithHumanTurnStore(repository.NewMultiTurnHumanTurnStore(db))
-	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, providerRouter, sandboxProvider, githubClient, workflowpkg.FakeWorkHooks{
-		HostedRunStarter:   hostedRunClient,
-		NativeModelInvoker: nativeModelInvoker,
-		PromptEvalInvoker:  promptEvalInvoker,
-		ResponsesInvoker:   responsesInvoker,
-		MultiTurnInvoker:   multiTurnInvoker,
-	}, artifactStore, productAnalytics)
 	orphanRunReaper := workerapp.NewRepositoryOrphanRunReaper(repo, cfg.OrphanRunReaperInterval, cfg.OrphanRunReaperThreshold, logger)
 	agentTryoutRetentionReaper := workerapp.NewRepositoryAgentTryoutRetentionReaper(repo, cfg.AgentTryoutRetentionReaperInterval, logger)
 	stallReaper := observability.NewStallReaper(
@@ -259,26 +260,52 @@ func run() (exitCode int) {
 			logger.Warn("PDF reading disabled; isolation check failed", "error", e)
 		}
 	}
-	go vibeStore.Inputs.Run(ctx, logger)
-	go vibeStore.ProjectCleanupLoop(ctx, logger)
-	go enquiries.FromEnv(db).Run(ctx, logger)
-	vibeService := &vibe.Service{Store: vibeStore, Config: vibeConfig, Gate: vibe.Gate{Redis: redisClient}, Compiler: api.VibePackCompiler{}}
-	vibeRunner := &vibe.Runner{Service: vibeService, Gateway: &vibe.Gateway{Store: vibeStore, Config: vibeConfig, Gate: vibeService.Gate}}
-	if vibeConfig.Enabled {
-		vw := vibe.NewWorker(temporalClient, vibeRunner)
-		if err := vw.Start(); err != nil {
-			logger.Error("failed to start Vibe worker", "error", err)
-			return 1
-		}
-		defer vw.Stop()
-		go vibe.DispatchOutbox(ctx, temporalClient, vibeStore, logger, vibeService)
+	if os.Getenv("VIBE_PDF_REQUIRED") == "true" && vibeStore.Inputs.Parser == nil {
+		logger.Error("required PDF runtime did not pass its isolation self-check")
+		return 1
 	}
-	// Accounting recovery continues even when new Vibe execution is disabled.
-	go vibe.ReconcileLoop(ctx, vibeStore, vibeConfig, logger)
+	vibeService := &vibe.Service{Store: vibeStore, Config: vibeConfig, Gate: vibe.Gate{Redis: redisClient}, Compiler: api.VibePackCompiler{}}
+	background := []workerapp.OrphanRunReaper{
+		orphanRunReaper, agentTryoutRetentionReaper, stallReaper,
+		workerapp.BackgroundTask(func(ctx context.Context) { vibeStore.Inputs.Run(ctx, logger) }),
+		workerapp.BackgroundTask(func(ctx context.Context) { vibeStore.ProjectCleanupLoop(ctx, logger) }),
+		workerapp.BackgroundTask(func(ctx context.Context) { enquiries.FromEnv(db).Run(ctx, logger) }),
+		// Accounting recovery continues even when new Vibe execution is disabled.
+		workerapp.BackgroundTask(func(ctx context.Context) { vibe.ReconcileLoop(ctx, vibeStore, vibeConfig, logger) }),
+	}
+	var vibeRunner *vibe.Runner
+	if vibeConfig.Enabled {
+		vibeRunner = &vibe.Runner{Service: vibeService, Gateway: &vibe.Gateway{Store: vibeStore, Config: vibeConfig, Gate: vibeService.Gate}}
+		background = append(background, workerapp.BackgroundTask(func(ctx context.Context) { vibe.DispatchOutbox(ctx, temporalClient, vibeStore, logger, vibeService) }))
+	}
+	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, providerRouter, sandboxProvider, githubClient, workflowpkg.FakeWorkHooks{
+		HostedRunStarter: hostedRunClient, NativeModelInvoker: nativeModelInvoker,
+		PromptEvalInvoker: promptEvalInvoker, ResponsesInvoker: responsesInvoker, MultiTurnInvoker: multiTurnInvoker,
+	}, artifactStore, vibeRunner, productAnalytics)
 
-	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, orphanRunReaper, agentTryoutRetentionReaper, stallReaper); err != nil {
+	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, background...); err != nil {
 		logger.Error("worker stopped with error", "error", err)
 		return 1
 	}
+	return 0
+}
+
+// Release readiness uses the same config and isolated reader as worker startup.
+// The receipt contains no credentials, document text or infrastructure addresses.
+func checkVibeRuntime() int {
+	cfg, err := vibe.LoadConfig()
+	if err != nil {
+		return 1
+	}
+	available := false
+	if runtime := os.Getenv("VIBE_PDF_RUNTIME"); runtime != "" {
+		_, err = inputs.NewParser(context.Background(), runtime)
+		available = err == nil
+	}
+	required := os.Getenv("VIBE_PDF_REQUIRED") == "true"
+	if required && !available {
+		return 1
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(map[string]bool{"enabled": cfg.Enabled, "pdf_required": required, "pdf_available": available})
 	return 0
 }

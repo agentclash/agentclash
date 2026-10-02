@@ -48,7 +48,7 @@ test("clear Build goes through real worker to three results, scoped export and i
  }
  await page.setViewportSize({width:1280,height:900});
  await page.getByRole('button',{name:'Download / save',exact:true}).click();
- const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export / build it myself',exact:true}).click();await download;
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'Download agent instructions and tests',exact:true}).click();await download;
  await page.getByRole('button',{name:'Try it yourself',exact:true}).click();
  await expect(page.getByText(/business systems aren’t connected/).first()).toBeVisible();
  await page.getByRole('textbox',{name:'Message your agent',exact:true}).fill('My item is unopened and I bought it 10 days ago.');
@@ -64,6 +64,24 @@ test("clear Build goes through real worker to three results, scoped export and i
  await expect(page.getByRole('article',{name:'Prototype example results'})).toHaveCount(1);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
  expect((await evidence(page)).calls).toHaveLength(afterTrial.calls.length);
+ const firstThread = new URL(page.url()).searchParams.get('thread');
+ expect(firstThread).toBeTruthy();
+ await page.getByRole('button', {name:'New conversation',exact:true}).click();
+ await page.getByRole('textbox', {name:'Message your agent',exact:true}).fill('My item is unopened and I bought it 20 days ago.');
+ await page.getByRole('button', {name:'Send to prototype',exact:true}).click();
+ await expect.poll(async()=>{const v=await evidence(page);return v.session.operations.at(-1)?.state;}).toBe('COMPLETED');
+ const secondThread = new URL(page.url()).searchParams.get('thread');
+ expect(secondThread).toBeTruthy(); expect(secondThread).not.toBe(firstThread);
+ await page.getByLabel('Trial conversation', {exact:true}).selectOption(firstThread!);
+ await expect(page.locator('[data-build-entry]').filter({hasText:'My item is unopened and I bought it 10 days ago.'})).toBeVisible();
+ await page.getByRole('textbox', {name:'Message your agent',exact:true}).fill('A draft for the earlier conversation');
+ await page.getByLabel('Trial conversation', {exact:true}).selectOption(secondThread!);
+ await expect(page.getByRole('textbox', {name:'Message your agent',exact:true})).toHaveValue('');
+ await page.getByLabel('Trial conversation', {exact:true}).selectOption(firstThread!);
+ await expect(page.getByRole('textbox', {name:'Message your agent',exact:true})).toHaveValue('A draft for the earlier conversation');
+ await page.reload();
+ await expect(page.getByLabel('Trial conversation', {exact:true})).toHaveValue(firstThread!);
+ await expect(page.getByRole('textbox', {name:'Message your agent',exact:true})).toHaveValue('A draft for the earlier conversation');
 });
 
 test("mobile loading exposes Stop and cancelling does not restart the initial check",async({page},info)=>{
@@ -297,7 +315,7 @@ test("sample continuation retains its prototype through harder requests, chat, r
  expect(v.calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(callsBefore+11);
  await page.getByRole('tab',{name:'Conversation',exact:true}).click();
  await page.getByRole('button',{name:'Download / save',exact:true}).click();
- const download=page.waitForEvent('download'); await page.getByRole('button',{name:'Export / build it myself',exact:true}).click();await download;
+ const download=page.waitForEvent('download'); await page.getByRole('button',{name:'Download agent instructions and tests',exact:true}).click();await download;
  await page.screenshot({path:info.outputPath('sample-followup-real-policy.png'),fullPage:true});
 });
 

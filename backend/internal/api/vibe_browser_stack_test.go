@@ -98,19 +98,12 @@ func TestVibeBrowserStack(t *testing.T) {
 	if err := store.Grant(ctx, "org:a8000000-0000-4000-8000-000000000002", "fixture-auth-credit", vibe.NanoUSD); err != nil {
 		t.Fatal(err)
 	}
-	auth := browserDevelopmentAuth{}
-	router.Get("/v1/users/me", func(w http.ResponseWriter, r *http.Request) {
-		caller, err := auth.Authenticate(r)
-		if err != nil {
-			writeAuthzError(w, err)
-			return
-		}
-		result, err := NewUserManager(repository.New(db)).GetMe(r.Context(), caller)
-		if err != nil {
-			http.Error(w, "fixture user unavailable", 500)
-			return
-		}
-		browserFixtureJSON(w, result)
+	auth := browserDevelopmentAuth{db: db}
+	router.Group(func(r chi.Router) {
+		r.Use(authenticateRequest(slog.Default(), auth))
+		r.Get("/v1/auth/session", sessionHandler)
+		r.Get("/v1/users/me", getUserMeHandler(slog.Default(), NewUserManager(repository.New(db))))
+		r.Post("/v1/onboarding", onboardHandler(slog.Default(), NewOnboardingManager(repository.New(db))))
 	})
 	router.Mount("/v1/vibe", (&VibeHandler{Service: svc, Auth: auth, CookieSecret: uuid.NewString() + uuid.NewString()}).Routes())
 	router.Get("/__fixture/ready", func(w http.ResponseWriter, r *http.Request) {
@@ -702,9 +695,9 @@ func browserFixtureConsistencyPayload(ledger vibe.ConsistencyLedger, schemaName 
 
 // Only the opt-in localhost test server maps its local identity-provider token
 // into the production development authenticator's header contract.
-type browserDevelopmentAuth struct{}
+type browserDevelopmentAuth struct{ db *pgxpool.Pool }
 
-func (browserDevelopmentAuth) Authenticate(r *http.Request) (Caller, error) {
+func (a browserDevelopmentAuth) Authenticate(r *http.Request) (Caller, error) {
 	parts := strings.Split(strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), ".")
 	if len(parts) != 3 {
 		return Caller{}, ErrUnauthenticated
@@ -716,16 +709,38 @@ func (browserDevelopmentAuth) Authenticate(r *http.Request) (Caller, error) {
 	var claims struct {
 		Subject string `json:"sub"`
 	}
-	if json.Unmarshal(payload, &claims) != nil || claims.Subject != "a8000000-0000-4000-8000-000000000001" {
+	if json.Unmarshal(payload, &claims) != nil || (claims.Subject != "a8000000-0000-4000-8000-000000000001" && claims.Subject != "a8000000-0000-4000-8000-000000000004") {
 		return Caller{}, ErrUnauthenticated
 	}
 	copy := r.Clone(r.Context())
 	copy.Header.Set(headerUserID, claims.Subject)
-	return NewDevelopmentAuthenticator().Authenticate(copy)
+	caller, err := NewDevelopmentAuthenticator().Authenticate(copy)
+	if err != nil {
+		return Caller{}, err
+	}
+	// Identity is fake; membership, setup and save permissions come from the
+	// actual database, including memberships created during this browser flow.
+	repo := repository.New(a.db)
+	orgs, err := repo.GetActiveOrganizationMembershipsByUserID(r.Context(), caller.UserID)
+	if err != nil {
+		return Caller{}, err
+	}
+	for _, membership := range orgs {
+		caller.OrganizationMemberships[membership.OrganizationID] = OrganizationMembership{OrganizationID: membership.OrganizationID, Role: membership.Role}
+	}
+	workspaces, err := repo.GetActiveWorkspaceMembershipsByUserID(r.Context(), caller.UserID)
+	if err != nil {
+		return Caller{}, err
+	}
+	for _, membership := range workspaces {
+		caller.WorkspaceMemberships[membership.WorkspaceID] = WorkspaceMembership{WorkspaceID: membership.WorkspaceID, Role: membership.Role}
+	}
+	return caller, nil
 }
 func browserFixtureIdentity(t *testing.T, db *pgxpool.Pool) {
 	t.Helper()
 	for _, sql := range []string{
+		`INSERT INTO users(id,workos_user_id,email) VALUES('a8000000-0000-4000-8000-000000000004','a8000000-0000-4000-8000-000000000004','vibe-new-user@example.invalid')`,
 		`INSERT INTO users(id,workos_user_id,email) VALUES('a8000000-0000-4000-8000-000000000001','a8000000-0000-4000-8000-000000000001','vibe-browser@example.invalid')`,
 		`INSERT INTO organizations(id,name,slug) VALUES('a8000000-0000-4000-8000-000000000002','Browser tests','vibe-browser')`,
 		`INSERT INTO workspaces(id,organization_id,name,slug) VALUES('a8000000-0000-4000-8000-000000000003','a8000000-0000-4000-8000-000000000002','Browser workspace','vibe-browser')`,

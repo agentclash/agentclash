@@ -16,7 +16,7 @@ async function serve(page: Page, pdfAvailable = true) {
     const request = route.request(), path = new URL(request.url()).pathname;
     const headers = { "Access-Control-Allow-Origin": request.headers().origin || new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" };
     if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { ...headers, "Access-Control-Allow-Headers": "Content-Type,Authorization,If-Match", "Access-Control-Allow-Methods": "GET,POST,DELETE,OPTIONS" } });
-    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, two_door: true, pdf_uploads: pdfAvailable, defaults: defaultModels, models: [] } });
+    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, material_build: true, two_door: true, pdf_uploads: pdfAvailable, defaults: defaultModels, models: [] } });
     if (path.endsWith("/saved-checks")) return route.fulfill({ headers, json: [] });
     if (path.endsWith("/evaluations") || path.endsWith("/sessions")) return route.fulfill({ headers, json: [state] });
     if (path.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(state)}\n\n` });

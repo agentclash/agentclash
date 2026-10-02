@@ -14,6 +14,7 @@ import shlex
 import shutil
 import tempfile
 from urllib.parse import parse_qs, urlsplit
+from decimal import Decimal, InvalidOperation
 
 from common import account_guard, aws, require, write_private
 
@@ -275,6 +276,34 @@ def materialize(parent, service, payload, *, set_owner=True):
     return directory
 
 
+def validate_shared_vibe(payloads):
+    """Validate the pinned API/worker contract before any secret generation exists."""
+    api, worker = (payloads[role]["env"] for role in ("api", "worker"))
+    local = {"VIBE_COOKIE_SECRET", "VIBE_PDF_RUNTIME", "VIBE_PDF_REQUIRED"}
+    keys = {key for env in (api, worker) for key in env if key.startswith("VIBE_")} - local
+    require(all(api.get(key) == worker.get(key) for key in keys), "API/worker Vibe configuration differs")
+    require(not any(key in api for key in ("VIBE_PDF_RUNTIME", "VIBE_PDF_REQUIRED")), "PDF runtime configuration is worker-only")
+    require("VIBE_COOKIE_SECRET" not in worker, "Vibe cookie signing is API-only")
+    require(api.get("VIBE_LOCAL_TESTING") != "true", "Local Vibe testing is forbidden in production")
+    require(worker.get("VIBE_PDF_REQUIRED", "false") in ("true", "false"), "Invalid PDF readiness requirement")
+    require(worker.get("VIBE_PDF_REQUIRED") != "true" or worker.get("VIBE_PDF_RUNTIME") == "/opt/vibe-pdf-runtime", "Required PDF runtime is missing")
+    if api.get("VIBE_ENABLED") != "true":
+        return
+    require(api.get("VIBE_OPENROUTER_KEY") and len(api.get("VIBE_COOKIE_SECRET", "").encode()) >= 32, "Enabled Vibe requires provider and cookie credentials")
+    require(api.get("VIBE_DEFAULT_MODEL"), "Enabled Vibe requires a default model")
+    require(api.get("VIBE_FREE_ONLY") == "true" or api.get("VIBE_CAMPAIGN"), "Paid Vibe requires a funding campaign")
+    try:
+        profiles = json.loads(api.get("VIBE_MODELS_JSON", ""))
+        require(isinstance(profiles, list) and profiles, "Vibe model profiles are missing")
+        defaults = [profile for profile in profiles if isinstance(profile, dict) and profile.get("id") == api["VIBE_DEFAULT_MODEL"]]
+        require(len(defaults) == 1 and defaults[0].get("conformed") is True, "Vibe default model profile is missing or unverified")
+        for key in ("VIBE_ANON_DAILY_USD", "VIBE_ANON_CAMPAIGN_USD"):
+            amount = Decimal(api.get(key, "0"))
+            require(amount.is_finite() and amount >= 0 and amount * 1_000_000_000 <= 9_223_372_036_854_775_807, "Invalid Vibe guest funding")
+    except (ValueError, TypeError, InvalidOperation):
+        require(False, "Invalid Vibe model or funding configuration")
+
+
 def load(settings, parent="/run/agentclash"):
     account_guard(settings)
     refs = settings["secrets"]
@@ -329,6 +358,7 @@ def load(settings, parent="/run/agentclash"):
                 database_host == settings["database_endpoint"],
                 "Unapproved database endpoint",
             )
+    validate_shared_vibe(payloads)
     generation = Path(tempfile.mkdtemp(prefix="generation-", dir=root))
     try:
         # Parent execute-only permission permits container UIDs to traverse their mounts.

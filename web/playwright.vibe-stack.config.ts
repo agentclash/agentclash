@@ -47,6 +47,7 @@ export default defineConfig({
       env: {
         VIBE_BROWSER_WEB_PORT: port,
         NEXT_PUBLIC_API_URL: apiURL,
+        NEXT_PUBLIC_VIBE_EVALS_ENABLED: "true",
         NEXT_TELEMETRY_DISABLED: "1",
         WORKOS_API_HOSTNAME: "127.0.0.1",
         WORKOS_API_PORT: "55442",

@@ -44,6 +44,11 @@ def os_report(version="3.5.8-r0", vulnerable=False):
 
 
 class ImageGateTests(unittest.TestCase):
+    def test_python_wheel_inventory_cannot_cover_bundled_native_libraries(self):
+        value = os_report()
+        value["Results"].append({"Type": "python-pkg", "Target": "Python", "Class": "lang-pkgs", "Packages": [{"Name": name, "Version": "fixture"} for name in ("pdfplumber", "pdfminer.six", "pillow", "pypdfium2", "cryptography", "charset-normalizer", "cffi", "pycparser")]})
+        with self.assertRaisesRegex(Refused, "native dependency coverage"):
+            coverage(value, "pdf-runtime")
     def test_official_mirror_fallback_still_requires_exact_pinned_bytes(self):
         from contextlib import redirect_stdout
 

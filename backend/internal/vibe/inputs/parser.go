@@ -50,7 +50,7 @@ func NewParser(ctx context.Context, runtime string) (*IsolatedParser, error) {
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(string(out)) != "pdfplumber-0.11.7/v1" {
+	if strings.TrimSpace(string(out)) != "pdfplumber-0.11.10/v1" {
 		return nil, errors.New("PDF isolation self-check failed")
 	}
 	return p, nil

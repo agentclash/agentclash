@@ -12,8 +12,8 @@ resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
 import pdfplumber
 
-VERSION = "pdfplumber-0.11.7/v1"
-if pdfplumber.__version__ != "0.11.7":
+VERSION = "pdfplumber-0.11.10/v1"
+if pdfplumber.__version__ != "0.11.10":
     raise RuntimeError("Unexpected PDF runtime")
 if sys.argv[-1] == "--check":
     print(VERSION)

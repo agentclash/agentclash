@@ -104,6 +104,42 @@ def inspect(run, ref, expected_hash=None):
     return value
 
 
+def worker_runtime(root, directory, run, runtime_image):
+    """Build the worker-only reader from verified, offline Python/native inputs."""
+    root, directory = Path(root), Path(directory)
+    lock = json.loads((root / "deploy/aws/platform/pdf-runtime.lock.json").read_text())
+    require(lock["platform"] == "linux/amd64", "PDF runtime platform mismatch")
+    requirements = root / "backend/internal/vibe/inputs/requirements.txt"
+    require(hashlib.sha256(requirements.read_bytes()).hexdigest() == lock["requirements_sha256"], "PDF requirements differ from pinned runtime inputs")
+    normalized = lambda name: re.sub(r"[-_.]+", "-", name.lower())
+    expected = {normalized(name): version for name, version in (line.split("==") for line in requirements.read_text().splitlines() if line and not line.startswith("#"))}
+    pinned = {normalized(entry["name"]): entry["version"] for entry in lock["wheels"].values()}
+    require(pinned == expected and len(pinned) == len(lock["wheels"]), "PDF wheel inventory differs from the requirements contract")
+    context = directory / "pdf-runtime-context"
+    context.mkdir(mode=0o700)
+    for group in ("apks", "wheels"):
+        (context / group).mkdir(mode=0o700)
+        for filename, entry in lock[group].items():
+            require(Path(filename).name == filename, "Invalid PDF package filename")
+            fetch(entry, context / group / filename)
+    (context / "requirements.txt").write_text("".join(
+        entry["name"] + "==" + entry["version"] + " --hash=sha256:" + entry["sha256"] + "\n"
+        for entry in lock["wheels"].values()
+    ))
+    normalize_context(context)
+    run([
+        "docker", "build", "--platform", "linux/amd64", "--provenance=false",
+        "-f", str(root / "deploy/aws/platform/Dockerfile.worker-runtime"),
+        "--build-arg", "RUNTIME_IMAGE=" + local_base(run, runtime_image),
+        "--label", LABEL + "=" + recipe_hash(root),
+        "-t", "agentclash-pdf-runtime:verified-inputs", str(context),
+    ], timeout=2400)
+    detail = inspect(run, "agentclash-pdf-runtime:verified-inputs", recipe_hash(root))
+    record = directory / "pdf-runtime-inputs.json"
+    record.write_bytes(canonical({"inputs": lock, "image_id": detail["Id"]}))
+    return detail["Id"], record
+
+
 def build(root, directory, run, gate):
     """Only scanned patched bases are returned to application builds.
 

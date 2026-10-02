@@ -4,14 +4,15 @@
 import { createServer } from "node:http";
 import { createHash, generateKeyPairSync, randomUUID, sign } from "node:crypto";
 
+export const unonboardedUser = "a8000000-0000-4000-8000-000000000004";
 export const fixtureUser = "a8000000-0000-4000-8000-000000000001";
 export async function startAuthFixture(port, webOrigin) {
   const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const jwk = { ...publicKey.export({ format: "jwk" }), kid: "vibe-local", alg: "RS256", use: "sig" };
-  const accessToken = () => {
+  const accessToken = (user) => {
     const encode = value => Buffer.from(JSON.stringify(value)).toString("base64url");
     const now = Math.floor(Date.now() / 1000);
-    const unsigned = `${encode({ alg: "RS256", kid: "vibe-local" })}.${encode({ sub: fixtureUser, sid: "vibe-local-session", iat: now, exp: now + 3600 })}`;
+    const unsigned = `${encode({ alg: "RS256", kid: "vibe-local" })}.${encode({ sub: user, sid: "vibe-local-session", iat: now, exp: now + 3600 })}`;
     return `${unsigned}.${sign("RSA-SHA256", Buffer.from(unsigned), privateKey).toString("base64url")}`;
   };
   const codes = new Map();
@@ -23,18 +24,26 @@ export async function startAuthFixture(port, webOrigin) {
       if (url.pathname === "/user_management/authorize") {
         const redirect = new URL(url.searchParams.get("redirect_uri"));
         if (redirect.origin !== webOrigin || redirect.pathname !== "/auth/callback") return json(400, { error: "unknown callback" });
-        const code = randomUUID(); codes.set(code, url.searchParams.get("code_challenge"));
+        if ((req.headers.cookie || "").split("; ").includes("fixture-auth-failure=once")) {
+          redirect.searchParams.set("state", url.searchParams.get("state"));
+          redirect.searchParams.set("error", "access_denied");
+          res.writeHead(302, { Location: redirect.href, "Set-Cookie": "fixture-auth-failure=; Max-Age=0; Path=/; SameSite=Lax" });
+          return res.end();
+        }
+        const code = randomUUID(); codes.set(code, { challenge: url.searchParams.get("code_challenge"), user: (req.headers.cookie || "").split("; ").includes("fixture-identity=unonboarded") ? unonboardedUser : fixtureUser });
         redirect.searchParams.set("state", url.searchParams.get("state")); redirect.searchParams.set("code", code);
         res.writeHead(302, { Location: redirect.href }); return res.end();
       }
       if (url.pathname === "/user_management/authenticate" && req.method === "POST") {
         let raw=""; for await (const chunk of req) raw+=chunk;
         const body=JSON.parse(raw);
-        const challenge=codes.get(body.code); codes.delete(body.code);
+        const attempt=codes.get(body.code); codes.delete(body.code);
+        const challenge=attempt?.challenge;
         if (!challenge || createHash("sha256").update(body.code_verifier || "").digest("base64url") !== challenge) return json(400, { error: "invalid code verifier" });
-        const token=accessToken();
+        const user=attempt.user;
+        const token=accessToken(user);
         return json(200, { access_token:token, refresh_token:"local-test-only", authentication_method:"Password",
-          user:{ object:"user", id:fixtureUser, email:"vibe-browser@example.invalid", email_verified:true, first_name:"Browser", last_name:"Test", created_at:new Date().toISOString(), updated_at:new Date().toISOString() } });
+          user:{ object:"user", id:user, email:"vibe-browser@example.invalid", email_verified:true, first_name:"Browser", last_name:"Test", created_at:new Date().toISOString(), updated_at:new Date().toISOString() } });
       }
       json(404, { error:"unsupported fixture endpoint", path:url.pathname });
     } catch { json(500,{error:"identity fixture error"}); }

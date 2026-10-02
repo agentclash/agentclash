@@ -1,3 +1,4 @@
+import { MarketingNavigation } from "./marketing-navigation";
 import Link from "next/link";
 import { ArrowRight, Star } from "lucide-react";
 import { withAuth } from "@workos-inc/authkit-nextjs";
@@ -31,27 +32,7 @@ export async function MarketingHeader({ nav = DEFAULT_NAV }: Props) {
           </span>
         </Link>
         <nav className="flex items-center gap-0.5 sm:gap-2 text-xs lg:text-sm">
-          {nav.map((item) =>
-            item.external ? (
-              <a
-                key={item.href}
-                href={item.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hidden sm:inline-flex px-3 py-1.5 lg:px-3.5 lg:py-2 text-white/55 hover:text-white/85 transition-colors"
-              >
-                {item.label}
-              </a>
-            ) : (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="hidden md:inline-flex px-3 py-1.5 lg:px-3.5 lg:py-2 text-white/55 hover:text-white/85 transition-colors"
-              >
-                {item.label}
-              </Link>
-            ),
-          )}
+          <MarketingNavigation items={nav} />
           <a
             href="https://github.com/agentclash/agentclash"
             target="_blank"

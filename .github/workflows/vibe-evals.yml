@@ -3,11 +3,19 @@ on:
   pull_request:
     paths:
       - 'backend/internal/vibe/**'
+      - 'backend/internal/worker/**'
+      - 'backend/cmd/worker/**'
+      - 'backend/.env.example'
+      - 'deploy/aws/**'
+      - 'delivery/**'
       - 'backend/internal/enquiries/**'
       - 'backend/internal/email/**'
       - 'backend/internal/mutation/**'
       - 'backend/Dockerfile.worker'
       - 'backend/internal/api/vibe*'
+      - 'backend/internal/api/auth*'
+      - 'backend/internal/api/onboarding*'
+      - 'backend/internal/api/users*'
       - 'backend/internal/api/challenge_pack_generate_contract.go'
       - 'backend/internal/api/billing*'
       - 'backend/internal/api/config.go'
@@ -20,6 +28,17 @@ on:
       - 'runtime/scoring/**'
       - 'runtime/challengepack/**'
       - 'web/src/app/vibe-evals/**'
+      - 'web/src/app/auth/**'
+      - 'web/src/app/landing.tsx'
+      - 'web/src/app/page.tsx'
+      - 'web/src/app/dashboard/**'
+      - 'web/src/app/onboard/**'
+      - 'web/src/components/marketing/**'
+      - 'web/src/lib/auth/**'
+      - 'web/src/lib/marketing-nav.ts'
+      - 'web/src/components/app-shell/**'
+      - 'web/src/lib/public-http.ts'
+      - 'web/src/middleware*'
       - 'web/src/components/vibe/**'
       - 'web/src/lib/vibe*'
       - 'web/src/lib/use-vibe-*'
@@ -76,7 +95,7 @@ jobs:
           go vet ./...
       - name: Material and enquiry transaction regressions
         working-directory: backend
-        run: go test -race ./internal/enquiries ./internal/vibe/inputs -count=1
+        run: go test -race ./internal/enquiries ./internal/vibe/inputs ./internal/worker -count=1
       - name: Shared provider and scoring regressions
         working-directory: runtime
         run: go test ./provider ./scoring ./challengepack -count=1
@@ -102,7 +121,7 @@ jobs:
       - name: Typecheck and safe Markdown tests
         run: |
           npx tsc --noEmit --incremental false
-          npx vitest run src/app/vibe-evals src/components/vibe src/lib/vibe.test.ts src/lib/vibe-controllers.test.tsx src/lib/vibe-build-analytics.test.ts src/lib/use-vibe-inputs.test.tsx src/lib/vibe-request-recovery.test.ts
+          npx vitest run src/app/vibe-evals src/components/vibe src/lib/vibe.test.ts src/lib/vibe-controllers.test.tsx src/lib/vibe-build-analytics.test.ts src/lib/use-vibe-inputs.test.tsx src/lib/vibe-request-recovery.test.ts src/lib/vibe-export.test.ts src/lib/vibe-keep.test.ts src/lib/auth src/middleware.authkit.test.ts
   browser-worker-journey:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -145,7 +164,7 @@ jobs:
         run: go test -p 1 ./internal/api -run '^$' -count=1
       - name: Browser to real API, PostgreSQL and Temporal worker (fake inference)
         working-directory: web
-        run: npx playwright test --config playwright.vibe-stack.config.ts interpretation.spec.ts journey.spec.ts two-door.spec.ts
+        run: npx playwright test --config playwright.vibe-stack.config.ts interpretation.spec.ts journey.spec.ts two-door.spec.ts auth-save.spec.ts
       - name: Supplied-text output, recovery and contact journey (fake inference)
         working-directory: web
         env:

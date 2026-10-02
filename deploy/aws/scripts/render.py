@@ -124,8 +124,8 @@ def acl_config(env):
     lines = ["user default off"]
     # Separate users; administrative persistence operations are never available to applications.
     rules = {
-        "api": "~agentclash:* ~run:* ~rate:* ~cooldown:* ~provider:* &run:* -@all +@read +@write +@connection +@pubsub +@scripting +multi +exec +discard +watch +unwatch +time -flushall -flushdb",
-        "worker": "~agentclash:* ~run:* ~rate:* ~cooldown:* ~provider:* &run:* -@all +@read +@write +@connection +@pubsub +@scripting +multi +exec +discard +watch +unwatch +time -flushall -flushdb",
+        "api": "~agentclash:* ~run:* ~rate:* ~vibe:rate:* ~cooldown:* ~provider:* &run:* -@all +@read +@write +@connection +@pubsub +@scripting +multi +exec +discard +watch +unwatch +time -flushall -flushdb",
+        "worker": "~agentclash:* ~run:* ~rate:* ~vibe:rate:* ~cooldown:* ~provider:* &run:* -@all +@read +@write +@connection +@pubsub +@scripting +multi +exec +discard +watch +unwatch +time -flushall -flushdb",
         "terminal": "~trycli:* -@all +ping +info +client +get +set +del +expire +incrbyfloat +eval",
         "admin": "~* &* +@all",
     }

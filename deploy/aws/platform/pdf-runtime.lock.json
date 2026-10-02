@@ -1,0 +1,208 @@
+{
+  "apks": {
+    "bubblewrap-0.12.0-r0.apk": {
+      "name": "bubblewrap",
+      "sha256": "7755592c3f7c6de79a5c3c13554ada6302dbd98e520fe6dd8064f87ba77092e5",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/bubblewrap-0.12.0-r0.apk",
+      "version": "0.12.0-r0"
+    },
+    "gdbm-1.26-r0.apk": {
+      "name": "gdbm",
+      "sha256": "3278ccba30b241168ca4ab93c919be805411b918fdc062f06d3684d12dc33ae3",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/gdbm-1.26-r0.apk",
+      "version": "1.26-r0"
+    },
+    "libbz2-1.0.8-r6.apk": {
+      "name": "libbz2",
+      "sha256": "2737e2b23ed08d4911ee62cd0163b5f4bf0379cacf4dc35b23a00209584c98fd",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libbz2-1.0.8-r6.apk",
+      "version": "1.0.8-r6"
+    },
+    "libcap2-2.78-r0.apk": {
+      "name": "libcap2",
+      "sha256": "42886a7b4bcde26347c712925c8dc7db202b6029ef9b8c7ee81577ab7bdd8fad",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libcap2-2.78-r0.apk",
+      "version": "2.78-r0"
+    },
+    "libcrypto3-3.5.9-r0.apk": {
+      "name": "libcrypto3",
+      "sha256": "6632d758d8f5e9ea3b650fe966f23bbf9a202f8b8dceecac93da135dec5e3689",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libcrypto3-3.5.9-r0.apk",
+      "version": "3.5.9-r0"
+    },
+    "libexpat-2.8.5-r0.apk": {
+      "name": "libexpat",
+      "sha256": "2e56946bc495cbed9eb1ad70859a79cba9db6420016453e065a0628848b32c7e",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libexpat-2.8.5-r0.apk",
+      "version": "2.8.5-r0"
+    },
+    "libffi-3.5.2-r1.apk": {
+      "name": "libffi",
+      "sha256": "6da1a19313a40c56cac756fb11e2c4d5267831e1c22fc8323f24c943c94da6e0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libffi-3.5.2-r1.apk",
+      "version": "3.5.2-r1"
+    },
+    "libgcc-15.2.0-r5.apk": {
+      "name": "libgcc",
+      "sha256": "393dcd32629f06d7d85409c272d142d0c082772d10b87ef55ee82f47de3be637",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libgcc-15.2.0-r5.apk",
+      "version": "15.2.0-r5"
+    },
+    "libncursesw-6.6_p20260516-r0.apk": {
+      "name": "libncursesw",
+      "sha256": "cf8caa8a88bc4ce9d9e395567fefaf9ef7fbd55c50ae6155b35c1b58f3755023",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libncursesw-6.6_p20260516-r0.apk",
+      "version": "6.6_p20260516-r0"
+    },
+    "libpanelw-6.6_p20260516-r0.apk": {
+      "name": "libpanelw",
+      "sha256": "057be8b1b788580f4cb72c382a6dcc03467d15bd69700f32192bd709e7a57a12",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libpanelw-6.6_p20260516-r0.apk",
+      "version": "6.6_p20260516-r0"
+    },
+    "libssl3-3.5.9-r0.apk": {
+      "name": "libssl3",
+      "sha256": "05e3393fb95aa5751ca2f9d242f659f6cff82c1cc7767cc2df4a086f7ad01877",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libssl3-3.5.9-r0.apk",
+      "version": "3.5.9-r0"
+    },
+    "libstdc++-15.2.0-r5.apk": {
+      "name": "libstdc++",
+      "sha256": "14c987b556f5385a5db18376e788c75f37d85321b8dc1920d926ea7daac1d6f6",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libstdc++-15.2.0-r5.apk",
+      "version": "15.2.0-r5"
+    },
+    "mpdecimal-4.0.1-r0.apk": {
+      "name": "mpdecimal",
+      "sha256": "1278f374bbc8b4aad674244458cca5fc63e0780a921138eef400d5db64381a31",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/mpdecimal-4.0.1-r0.apk",
+      "version": "4.0.1-r0"
+    },
+    "musl-1.2.6-r2.apk": {
+      "name": "musl",
+      "sha256": "573712e2f49c15bfc20a2699f204acdfc74c772722b15e7353d768057fae0e71",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/musl-1.2.6-r2.apk",
+      "version": "1.2.6-r2"
+    },
+    "ncurses-terminfo-base-6.6_p20260516-r0.apk": {
+      "name": "ncurses-terminfo-base",
+      "sha256": "ce83be6d0bd10584a53c3a5868cc1595ce5f0f8e0b621f8f7f70b6144e521fc9",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/ncurses-terminfo-base-6.6_p20260516-r0.apk",
+      "version": "6.6_p20260516-r0"
+    },
+    "py3-pip-26.1.2-r0.apk": {
+      "name": "py3-pip",
+      "sha256": "8ab13441fd0abfd625ac4e91eed5648d90a6422359d45469307bd78ad4f1b223",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/py3-pip-26.1.2-r0.apk",
+      "version": "26.1.2-r0"
+    },
+    "py3-pip-pyc-26.1.2-r0.apk": {
+      "name": "py3-pip-pyc",
+      "sha256": "b7a66a9b68224468f9398220df4620f74747ee98e7526c2968c469c09a04cc37",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/py3-pip-pyc-26.1.2-r0.apk",
+      "version": "26.1.2-r0"
+    },
+    "pyc-3.14.8-r0.apk": {
+      "name": "pyc",
+      "sha256": "45894c74dcf5229c373b5693045df60b90c671639103fd43a37eaefb0961557f",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/pyc-3.14.8-r0.apk",
+      "version": "3.14.8-r0"
+    },
+    "python3-3.14.8-r0.apk": {
+      "name": "python3",
+      "sha256": "802caff00b3398c01bb227cd925c8f9e33585ff19f58f0f25295a761ff2509cd",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/python3-3.14.8-r0.apk",
+      "version": "3.14.8-r0"
+    },
+    "python3-pyc-3.14.8-r0.apk": {
+      "name": "python3-pyc",
+      "sha256": "f3784543adb738ac7e3816ab55bbab057f4301b545a83044ebfa21cc822fbf56",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/python3-pyc-3.14.8-r0.apk",
+      "version": "3.14.8-r0"
+    },
+    "python3-pycache-pyc0-3.14.8-r0.apk": {
+      "name": "python3-pycache-pyc0",
+      "sha256": "14fb0adaa0db1d73c6d925d05134571b5cd0d7be26fbe6ccec552b6dd613bf4b",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/python3-pycache-pyc0-3.14.8-r0.apk",
+      "version": "3.14.8-r0"
+    },
+    "readline-8.3.3-r1.apk": {
+      "name": "readline",
+      "sha256": "766911ecb986a6c5cf0841a6b556cd1e9dbbf22b3559726de32416486cd15c81",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/readline-8.3.3-r1.apk",
+      "version": "8.3.3-r1"
+    },
+    "sqlite-libs-3.53.4-r0.apk": {
+      "name": "sqlite-libs",
+      "sha256": "a8a216e53d22faa3f04d2e3650c1991af66f8d0b42fadff5afcdb9afb60b19e5",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/sqlite-libs-3.53.4-r0.apk",
+      "version": "3.53.4-r0"
+    },
+    "xz-libs-5.8.4-r0.apk": {
+      "name": "xz-libs",
+      "sha256": "ab362dd515ead04c31a6c302163248da7aa4813e283c971e6dd3f789b453a1d9",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/xz-libs-5.8.4-r0.apk",
+      "version": "5.8.4-r0"
+    },
+    "zlib-1.3.2-r0.apk": {
+      "name": "zlib",
+      "sha256": "b636306cbf8a0c15493b38de608ba11605fd8f11ade631f5ece6f7fdf5a1e09e",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/zlib-1.3.2-r0.apk",
+      "version": "1.3.2-r0"
+    }
+  },
+  "format": 1,
+  "platform": "linux/amd64",
+  "python": "3.14",
+  "requirements_sha256": "caf224a8aea5cd77c9af0417e815f13388e4ca7897f86179211e4f645f695bd5",
+  "wheels": {
+    "cffi-2.1.1-cp314-cp314-musllinux_1_2_x86_64.whl": {
+      "name": "cffi",
+      "sha256": "5c58fe613dc5e5336357eff555824a314d8e43282600435c8d1cb6a7a2fedd13",
+      "url": "https://files.pythonhosted.org/packages/81/10/5dc0e7bdd18e22107054288283380fc97a06ae3f1656a106908d666a3c88/cffi-2.1.1-cp314-cp314-musllinux_1_2_x86_64.whl",
+      "version": "2.1.1"
+    },
+    "charset_normalizer-3.5.1-cp314-cp314-musllinux_1_2_x86_64.whl": {
+      "name": "charset_normalizer",
+      "sha256": "9ac4444d8d4fd4c4bd08bf451ed3167aa9e7ec6cdb41b648794f1d1103652e36",
+      "url": "https://files.pythonhosted.org/packages/4f/ab/74a55fd803916a35ac461daf002708191aac19b546b80dc8cabfedc63d98/charset_normalizer-3.5.1-cp314-cp314-musllinux_1_2_x86_64.whl",
+      "version": "3.5.1"
+    },
+    "cryptography-50.0.1-cp311-abi3-musllinux_1_2_x86_64.whl": {
+      "name": "cryptography",
+      "sha256": "9ebcdd5519be9b652a46f507817a74591774fc3d6923ac364e4dfa64e36b291b",
+      "url": "https://files.pythonhosted.org/packages/7e/22/c3654cccc856e9d682817b04ac3ee79731cb09ca6f95996a95c904de2883/cryptography-50.0.1-cp311-abi3-musllinux_1_2_x86_64.whl",
+      "version": "50.0.1"
+    },
+    "pdfminer_six-20260107-py3-none-any.whl": {
+      "name": "pdfminer.six",
+      "sha256": "366585ba97e80dffa8f00cebe303d2f381884d8637af4ce422f1df3ef38111a9",
+      "url": "https://files.pythonhosted.org/packages/20/8b/28c4eaec9d6b036a52cb44720408f26b1a143ca9bce76cc19e8f5de00ab4/pdfminer_six-20260107-py3-none-any.whl",
+      "version": "20260107"
+    },
+    "pdfplumber-0.11.10-py3-none-any.whl": {
+      "name": "pdfplumber",
+      "sha256": "7741ea81bf165b474b153e6789d10d18e06b6ddcf3ec84289c3ef2fed6802580",
+      "url": "https://files.pythonhosted.org/packages/a2/9a/07d658e1e7fad860f1c541ab941348125dbdab773be3a0afaf32361866c7/pdfplumber-0.11.10-py3-none-any.whl",
+      "version": "0.11.10"
+    },
+    "pillow-12.3.0-cp314-cp314-musllinux_1_2_x86_64.whl": {
+      "name": "pillow",
+      "sha256": "23aceaa007d6172b02c277f0cd359c79492bbb14f7072b4ede9fbcaf20648130",
+      "url": "https://files.pythonhosted.org/packages/f0/f4/68c491844841ede6bed70189546b3ee9731cf9f2cbad396faff5e1ccba45/pillow-12.3.0-cp314-cp314-musllinux_1_2_x86_64.whl",
+      "version": "12.3.0"
+    },
+    "pycparser-3.0-py3-none-any.whl": {
+      "name": "pycparser",
+      "sha256": "b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992",
+      "url": "https://files.pythonhosted.org/packages/0c/c3/44f3fbbfa403ea2a7c779186dc20772604442dde72947e7d01069cbe98e3/pycparser-3.0-py3-none-any.whl",
+      "version": "3.0"
+    },
+    "pypdfium2-5.13.0-py3-none-musllinux_1_2_x86_64.whl": {
+      "name": "pypdfium2",
+      "sha256": "9c777edba28d1d5fd15435ed3a78ee2fdb93dd069be37cb53b559bc122793770",
+      "url": "https://files.pythonhosted.org/packages/7b/b6/cebacc1601ddfdcd1e6a1dc321533d215ceccf9b825fa9b91b11c6dc39fb/pypdfium2-5.13.0-py3-none-musllinux_1_2_x86_64.whl",
+      "version": "5.13.0"
+    }
+  }
+}

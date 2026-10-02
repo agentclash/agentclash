@@ -49,7 +49,9 @@ export type EvaluationProposal = {
   scenarios?: { input: string; expected: string }[];
   success_criteria: string;
 };
+export type ReferenceRequirement = { key: string; content_hash: string; usage: "reference"; name?: string; format?: "text" | "pdf"; page_count?: number };
 export type Artifact = {
+  missing_references?: ReferenceRequirement[];
   input_contract?: { version: number; formats: string[]; label: string };
   required_capabilities?: string[];
   reference_inputs?: import("./vibe-inputs").InputBinding[];
@@ -261,6 +263,7 @@ export type BuildQuote = { max_calls: number; id: string; request: { adopt_rules
 export type RunQuote = { id: string; max_cost_nano_usd: number; cases: number; calls: number; expires_at: string };
 
 export type VibeConfig = {
+ material_build?: boolean;
  pdf_uploads?: boolean;
  contact?: { email: string; available: boolean };
   two_door?: boolean;
@@ -392,21 +395,6 @@ export function caseInput(input: unknown): string {
     : JSON.stringify(input, null, 2);
 }
 
-export function exportAgent(artifact: Artifact, models: Models) {
-  downloadVibe(
-    "agentclash-agent.json",
-    JSON.stringify(
-      {
-        format: "agentclash-vibe-v1",
-        agent_prompt: artifact.agent_prompt,
-        evaluation: artifact.blueprint,
-        models,
-      },
-      null,
-      2,
-    ),
-  );
-}
 export function downloadVibe(
   name: string,
   text: string,

@@ -111,3 +111,31 @@ and maintenance work, without a new monthly compute instance.
 
 Publication, AWS provisioning, IAM/GitHub activation, cutover and the friend's
 Vercel handoff remain separate numbered approvals.
+
+## Vibe reader runtime
+
+The actual AWS worker uses a separate maintained Alpine Python runtime. API and
+schema images retain their smaller Alpine base. `pdf-runtime.lock.json` pins
+every APK and wheel by SHA256; the graph checks its exact requirements inventory
+and installs offline. Installed wheel notices and upstream SBOM files remain in
+the runtime. The compatible parser pair is pdfplumber 0.11.10 and pdfminer.six
+20260107, following [pdfplumber's dependency contract](https://github.com/jsvine/pdfplumber/blob/v0.11.10/requirements.txt).
+The former pdfminer.six 20250506 pin had HIGH CVE-2025-64512 and CVE-2025-70559;
+the updated pair removes those findings without rewriting historical extraction
+receipts. The reader's resource limits and isolation flags are unchanged.
+
+Publication currently remains blocked for this runtime. Trivy 0.74 inventories
+Alpine and all eight Python distributions, but its image report omits bundled
+PDFium and OpenSSL as separate native components. Scanning cryptography's own
+OpenSSL SBOM returns an empty result inventory. Neither a zero finding count nor
+the Python distribution version establishes native coverage; the image gate
+refuses that incomplete inventory. A reviewed scanner/build solution for the
+entire installed native graph is required before publication.
+
+The exact worker image must also pass the existing real extraction and isolation
+tests with production UID, read-only filesystem, tmpfs, default seccomp, dropped
+capabilities and no-new-privileges on the target kernel. The current local
+strict-container rehearsal cannot create bubblewrap's private user namespace.
+Optional PDF mode reports unavailable truthfully; `VIBE_PDF_REQUIRED=true` fails
+startup and promotion. Do not change namespace, capability or profile protections
+to make this check pass.
