@@ -40,6 +40,7 @@ func decode(row pgx.Row) (Record, error) {
 	if err = json.Unmarshal(pages, &r.Pages); err != nil {
 		return r, err
 	}
+	r.PageCount = len(r.Pages)
 	err = json.Unmarshal(warnings, &r.Warnings)
 	if r.ExpiresAt != nil && !time.Now().Before(*r.ExpiresAt) {
 		r.Status = "expired"

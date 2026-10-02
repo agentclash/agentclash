@@ -40,6 +40,11 @@ func (r *Runner) Execute(ctx context.Context, id uuid.UUID) error {
 	if err = validateBoundSources(ctx, r.Service.Store.DB, o.SessionID, p); err != nil {
 		return err
 	}
+	if p.Artifact != nil {
+		if err = artifactReady(*p.Artifact, true); err != nil {
+			return err
+		}
+	}
 	if p.Grading != nil && !gradingSupported(p.Grading) {
 		return fault("grading_changed", "This check needs its recorded grading version. Earlier results are preserved.")
 	}

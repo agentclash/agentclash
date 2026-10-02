@@ -84,6 +84,7 @@ func (h *VibeHandler) Routes() http.Handler {
 	r.Post("/sessions/{sessionID}/messages", h.submit)
 	r.Post("/sessions/{sessionID}/actions", h.interact)
 	r.Post("/sessions/{sessionID}/import", h.importFile)
+	r.Post("/sessions/{sessionID}/references", h.bindReference)
 	r.Post("/sessions/{sessionID}/evidence", h.addEvidence)
 	r.Patch("/sessions/{sessionID}", h.edit)
 	r.Post("/sessions/{sessionID}/claim", h.claim)
