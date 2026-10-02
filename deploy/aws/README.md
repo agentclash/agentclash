@@ -244,6 +244,7 @@ python3 deploy/aws/tests/rehearse.py --evidence-dir <private-directory> --images
 python3 deploy/aws/tests/rehearse-edge.py --evidence-dir <private-directory> --images <private-image-selection.json>
 python3 deploy/aws/tests/rehearse-terminal.py --evidence-dir <private-directory> --images <private-image-selection.json>
 python3 deploy/aws/tests/rehearse-compose.py --evidence-dir <private-directory> --images <private-image-selection.json>
+python3 deploy/aws/tests/rehearse-vibe-worker.py
 ```
 
 Install PyYAML for static tests; the host scripts otherwise use Python's standard
@@ -261,3 +262,30 @@ timers with `systemctl start agentclash-monitor.timer agentclash-backup.timer`.
 Health metrics are scoped to the specific host so rehearsal machines cannot hide
 a production outage. The friend performs Vercel
 changes only at Steps 13–14. No Vercel token is required for this infrastructure.
+
+Enabled Vibe shares the API/worker secret contract and has the narrow cache key
+permission `~vibe:rate:*`; the terminal identity has no Vibe access. Worker-only
+`VIBE_PDF_REQUIRED` defaults to false. Set it to true only for a reviewed PDF
+release; the canonical runtime path is `/opt/vibe-pdf-runtime`. Secret delivery
+rejects shared configuration mismatches and missing enabled credentials/default
+profiles before creating a generation.
+
+Readiness executes the candidate worker's safe `--check-vibe-runtime` command
+under its pinned configuration, checks fresh workflow and activity pollers for
+`vibe-evals` when enabled, and requires a new PDF-reader heartbeat when PDF is
+required. The common worker coordinator applies configured concurrency, identity
+and stop grace to Vibe and joins its maintenance loops before closing clients.
+The disposable worker rehearsal proves registration, a configured activity slot,
+grace completion/cancellation and DB-only replacement finalization with retained
+uncertain evidence and holds. It invokes no model provider and fails if selected
+without its required services.
+
+After fencing ingress and external starts, release drain checks both running
+Temporal work and `delivery/vibe-drain.sql`: runnable operations, queued outbox,
+continuations, unresolved attempts/holds, material work/leases, project/staging
+cleanup and enquiry delivery. Human input/approval waits without holds are not
+runnable work. A nonzero inventory blocks replacement; investigate and reconcile
+through existing product/operator flows. The query never clears holds or replays
+provider requests. Changes to the ACL, shared validator and readiness/inventory
+files require a separately reviewed bootstrap/secret generation, not an ordinary
+application-only restart.

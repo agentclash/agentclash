@@ -1,0 +1,15 @@
+# All APKs and wheels are fetched and SHA256-verified by the delivery graph.
+ARG RUNTIME_IMAGE
+FROM ${RUNTIME_IMAGE}
+USER root
+COPY apks /opt/pdf-inputs/apks
+COPY wheels /opt/pdf-inputs/wheels
+COPY requirements.txt /opt/pdf-inputs/requirements.txt
+RUN apk add --no-network --no-cache /opt/pdf-inputs/apks/*.apk \
+    && python3 -m venv /opt/vibe-pdf-runtime \
+    && /opt/vibe-pdf-runtime/bin/pip install --no-index --no-deps --require-hashes --find-links=/opt/pdf-inputs/wheels -r /opt/pdf-inputs/requirements.txt \
+    && /opt/vibe-pdf-runtime/bin/pip uninstall -y pip \
+    && apk del py3-pip \
+    && rm -rf /opt/pdf-inputs /root/.cache /var/log/apk.log
+ENV VIBE_PDF_RUNTIME=/opt/vibe-pdf-runtime
+USER 10001:10001

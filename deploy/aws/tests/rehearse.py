@@ -60,6 +60,7 @@ def main():
             "TMPDIR",
             "GOPATH",
             "GOCACHE",
+            "GOTMPDIR",
             "DOCKER_HOST",
             "DOCKER_CONTEXT",
         )
@@ -758,6 +759,13 @@ def main():
             ],
             child_env=pe,
         )
+        for role in ("api", "worker", "terminal"):
+            pe["PLATFORM_VIBE_" + role.upper() + "_REDIS_URL"] = (
+                "rediss://" + role + ":" + cache_passwords[role.upper() + "_PASSWORD"]
+                + "@127.0.0.1:" + port(cache, 6379)
+            )
+        run(["go", "test", "-race", "-count=1", "-tags=awsplatform", "-timeout=30s",
+             "-run", "^TestAWSVibeAdmissionACL$", "./internal/worker"], child_env=pe)
         # Exercise the actual Bun limit client and its narrow ACL, without providers.
         probe = work / "limits-probe.ts"
         probe.write_text(

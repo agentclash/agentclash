@@ -22,7 +22,7 @@ LOCAL_IMAGES = {
 
 
 def build_images(run, bases, revision=None):
-    require(set(bases) == {"go", "bun", "alpine"}, "Scanned build bases required")
+    require(set(bases) == {"go", "bun", "alpine", "worker-runtime"}, "Scanned build bases required")
     bases = {name: maintained.local_base(run, ref) for name, ref in bases.items()}
     for name, target in (
         ("api", "api-server"),
@@ -47,7 +47,7 @@ def build_images(run, bases, revision=None):
                 "--build-arg",
                 "GO_IMAGE=" + bases["go"],
                 "--build-arg",
-                "RUNTIME_IMAGE=" + bases["alpine"],
+                "RUNTIME_IMAGE=" + bases["worker-runtime" if name == "worker" else "alpine"],
             ]
         else:
             command += ["--build-arg", "BUN_IMAGE=" + bases["bun"]]
@@ -66,9 +66,9 @@ def build_graph(source, directory, run, revision=None):
     platform_images, recipe_sha = maintained.build(
         source, directory, run, scanner.platform
     )
-    build_images(
-        run, {name: platform_images[name] for name in ("go", "bun", "alpine")}, revision
-    )
+    pdf_runtime, pdf_record = maintained.worker_runtime(source, directory, run, platform_images["alpine"])
+    scanner.image("pdf-runtime", pdf_runtime, "pdf-runtime")
+    build_images(run, {**{name: platform_images[name] for name in ("go", "bun", "alpine")}, "worker-runtime": pdf_runtime}, revision)
     image_ids = {}
     for name, reference in LOCAL_IMAGES.items():
         detail = maintained.inspect(run, reference)
@@ -101,6 +101,7 @@ def build_graph(source, directory, run, revision=None):
             directory / "platform-inputs.json",
             directory / "platform-identities.json",
             selection,
+            pdf_record,
         ],
     }
 

@@ -54,8 +54,12 @@ func operationFailure(err error) *Fault {
 	}
 	return &Fault{Code: "worker_interrupted", Message: "Execution was interrupted. Saved evidence remains available; uncertain provider calls will not be repeated."}
 }
-func NewWorker(c client.Client, r *Runner) worker.Worker {
-	w := worker.New(c, TaskQueue, worker.Options{MaxConcurrentActivityExecutionSize: 32})
+func NewWorker(c client.Client, r *Runner, configured ...worker.Options) worker.Worker {
+	opts := worker.Options{MaxConcurrentActivityExecutionSize: 32}
+	if len(configured) > 0 {
+		opts = configured[0]
+	}
+	w := worker.New(c, TaskQueue, opts)
 	w.RegisterWorkflow(OperationWorkflow)
 	w.RegisterActivityWithOptions(func(ctx context.Context, id string) error {
 		uid, err := uuid.Parse(id)

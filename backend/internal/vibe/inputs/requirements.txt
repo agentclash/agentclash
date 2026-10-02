@@ -1,5 +1,5 @@
-pdfplumber==0.11.7
-pdfminer.six==20250506
+pdfplumber==0.11.10
+pdfminer.six==20260107
 Pillow==12.3.0
 pypdfium2==5.13.0
 charset-normalizer==3.5.1
