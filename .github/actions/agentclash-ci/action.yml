@@ -121,7 +121,7 @@ runs:
   steps:
     - name: Set up Go for source CLI fallback
       if: ${{ inputs.source-fallback == 'true' }}
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v7
       with:
         go-version: ${{ inputs.go-version }}
         cache: false
