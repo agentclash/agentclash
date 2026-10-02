@@ -1,6 +1,9 @@
 "use client";
 
-import { downloadJSON, exportRuns } from "@/lib/vibe-export";
+import { downloadJSON, exportAgent, exportRuns } from "@/lib/vibe-export";
+import { useVibeConnection } from "@/lib/vibe-connection";
+import { inputPath, type TaskMaterial } from "@/lib/vibe-inputs";
+import { vibeFetch } from "@/lib/vibe";
 import { useState } from "react";
 import type { Artifact, CaseResult, Operation, Session } from "@/lib/vibe";
 import { VibeButton } from "./vibe-button";
@@ -15,12 +18,19 @@ export function EvaluationOutcome({session, artifact, operation, busy, loadEvide
   loadEvidence: (operation: string,key: string) => Promise<CaseResult>;
   onTougher?: (request: string, count: number, artifactID: string) => void;
 }) {
+  const { token } = useVibeConnection();
   const [working,setWorking]=useState(false);
   const [error,setError]=useState("");
   const [tougher,setTougher]=useState(showTougher);
   const proposals=coverageProposal(session.rule_coverage?.[artifact.id] || []);
   if (!proposals.length && artifact.sample) proposals.push("A differently worded situation decided by the existing sample assumptions");
   const completed=operation.scorecard && operation.scorecard.passed+operation.scorecard.failed>0;
+  async function downloadDefinition() {
+    setWorking(true); setError("");
+    try { exportAgent(artifact, session.document.models, artifact.reference_inputs?.length ? await vibeFetch<TaskMaterial[]>(inputPath(session.id), await token()) : []); }
+    catch (issue) {setError(issue instanceof Error ? issue.message : "Could not download the definition.");}
+    finally {setWorking(false);}
+  }
   async function exportWork() {
     setWorking(true); setError("");
     try {
@@ -30,7 +40,8 @@ export function EvaluationOutcome({session, artifact, operation, busy, loadEvide
   }
   return <section className="mt-6 space-y-3" aria-label="Keep and extend your results">
     {!showTougher && <div className="flex flex-wrap gap-2">
-      <VibeButton disabled={busy || working} onClick={() => void exportWork()}>{working ? "Preparing…" : "Export / build it myself"}</VibeButton>
+      <VibeButton disabled={busy || working} onClick={() => void downloadDefinition()}>Download agent instructions and tests</VibeButton>
+      <VibeButton variant="quiet" disabled={busy || working} onClick={() => void exportWork()}>{working ? "Preparing…" : "Download conversation and results"}</VibeButton>
       {!showTougher && completed && artifact.kind === "test_suite" && proposals.length>0 && onTougher && <VibeButton disabled={busy || working} onClick={() => setTougher(!tougher)}>Try tougher situations</VibeButton>}
       {completed && !hideContact && <ProjectEnquiry key={artifact.id} session={session} artifact={artifact} operation={operation} />}
     </div>}

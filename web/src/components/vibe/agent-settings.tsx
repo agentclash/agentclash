@@ -1,10 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { useState } from "react";
+import type { TaskMaterial } from "@/lib/vibe-inputs";
 import { Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { exportAgent, type Artifact, type Models, type Session, type VibeConfig } from "@/lib/vibe";
+import { type Artifact, type Models, type Session, type VibeConfig } from "@/lib/vibe";
+import { exportAgent } from "@/lib/vibe-export";
 import { CreditsDialog } from "./credits-dialog";
 import { ModelSelect } from "./model-select";
 import { VibeButton } from "./vibe-button";
@@ -26,9 +29,19 @@ type Props = {
   onSave: () => void;
   onImport: () => void;
   onExportConversation: () => void;
+  loadMaterials?: () => Promise<TaskMaterial[]>;
 };
 
-export function AgentSettings({open, onOpenChange, config, session, artifact, artifacts, models, busy, workspace, testJourney, savedDraft, onModels, onVersion, onSave, onImport, onExportConversation}: Props) {
+export function AgentSettings({open, onOpenChange, config, session, artifact, artifacts, models, busy, workspace, testJourney, savedDraft, onModels, onVersion, onSave, onImport, onExportConversation, loadMaterials}: Props) {
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  async function downloadDefinition() {
+    if (!artifact || exporting) return;
+    setExporting(true); setExportError("");
+    try { exportAgent(artifact, models, artifact.reference_inputs?.length && loadMaterials ? await loadMaterials() : []); }
+    catch (issue) { setExportError(issue instanceof Error ? issue.message : "Could not download the definition. Try again."); }
+    finally { setExporting(false); }
+  }
   return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="vibe-workspace max-h-[85vh] overflow-y-auto">
@@ -55,7 +68,7 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
               className="text-sm underline"
               href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}
             >
-              Open saved evaluation
+              Open saved tests
             </Link>
           )}
           {(
@@ -138,16 +151,16 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
             artifact.kind !== "conversation_evaluation" && (
               <Button
                 variant="outline"
-                onClick={() => exportAgent(artifact, models)}
+                disabled={exporting}
+                onClick={() => void downloadDefinition()}
               >
-                {testJourney
-                  ? "Export tests and agent instructions"
-                  : "Export agent and checks"}
+                {exporting ? "Preparing download…" : "Download agent instructions and tests"}
               </Button>
             )}
+          {exportError && <p role="alert" className="text-sm text-builder-warn">{exportError}</p>}
           {session && (
             <Button variant="ghost" onClick={onExportConversation}>
-              Export conversation
+              Download conversation and results
             </Button>
           )}
           <details className="text-sm">

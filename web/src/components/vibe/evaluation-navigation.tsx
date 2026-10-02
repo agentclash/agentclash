@@ -1,24 +1,20 @@
 "use client";
 
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useAuth } from "@workos-inc/authkit-nextjs/components";
+import { UserMenu } from "@/components/app-shell/user-menu";
+import { sanitizeReturnTo } from "@/lib/auth/return-to";
 import { useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Archive, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Settings } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { ClashMark } from "@/components/marketing/clash-mark";
 import { terminal, type Session } from "@/lib/vibe";
-import { workingBuildArtifact, buildVersion } from "@/lib/vibe-build-timeline";
+import { evaluationIdentity } from "@/lib/vibe-build-timeline";
 import { DeleteProject } from "./delete-project";
 import { VibeButton } from "./vibe-button";
 
-export function evaluationIdentity(session: Session) {
-  const artifacts = session.document.artifacts;
-  const artifact = session.document.evaluation?.door === "build" ? workingBuildArtifact(session) : artifacts.at(-1);
-  const title = artifact?.title || (session.document.evaluation?.door === "build" ? "New prototype" : "Your agent");
-  const version = artifact ? buildVersion(session, artifact) : 0;
-  const scope = artifact?.kind === "conversation_evaluation" ? "Saved conversations"
-    : artifact?.agent_prompt ? `${artifact.sample ? "Sample" : "Prototype"} v${version}` : "Setup";
-  return { title, scope };
-}
 
 type Props = {
   enabled?: boolean;
@@ -36,6 +32,9 @@ type Props = {
 
 // Navigation consumes existing context data. It never creates a session or runs a model.
 export function EvaluationNavigation(p: Props) {
+  const { user, loading } = useAuth();
+  const params = useSearchParams();
+  const returnTo = sanitizeReturnTo(`/vibe-evals?${params}`);
   const [deleting, setDeleting] = useState<Session>();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -82,6 +81,8 @@ export function EvaluationNavigation(p: Props) {
       }) : <p className="vibe-sidebar-empty">Your work will appear here.</p>}
     </nav>
     <div className="vibe-sidebar-footer">
+      <Link href="/">Home</Link>
+      {user ? <><Link href="/dashboard">Dashboard</Link><UserMenu displayName={[user.firstName, user.lastName].filter(Boolean).join(" ")} email={user.email} avatarUrl={user.profilePictureUrl || undefined} /></> : !loading && <Link href={`/auth/login?${new URLSearchParams({ returnTo, mode: "signin" })}`}>Sign in</Link>}
       {p.session?.document.evaluation && p.onDeleted && <VibeButton variant="quiet" disabled={p.disabled} onClick={() => navigate(() => setDeleting(p.session!), mobile)}>Delete this project</VibeButton>}
       <VibeButton variant="quiet" onClick={() => navigate(p.onSavedWork, mobile)}><Archive />Saved work</VibeButton>
       <VibeButton variant="quiet" onClick={() => navigate(p.onSettings, mobile)}><Settings />Settings</VibeButton>

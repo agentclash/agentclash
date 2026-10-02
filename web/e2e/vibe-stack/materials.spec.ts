@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
@@ -95,4 +96,96 @@ test("bad PDF offers paste without creating an agent or silently shortening inpu
   await page.getByRole("button",{name:"Detach",exact:true}).click();
   await page.getByRole("tab",{name:"Paste text"}).click();
   await expect(page.getByRole("textbox",{name:"Text to work on",exact:true})).toBeEnabled();
+});
+
+
+test("authored reference definition downloads and reimports with matching pasted attachment", async ({ page }, info) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto("/vibe-evals");
+  await page.getByRole("button", { name: /Build an agent/ }).click();
+  await page.getByRole("button", { name: "Add a file or text", exact: true }).click();
+  await page.getByRole("tab", { name: "Paste text" }).click();
+  await page.getByRole("textbox", { name: "Text to work on" }).fill(notes);
+  const uploaded = page.waitForResponse(response => response.url().endsWith("/inputs") && response.request().method() === "POST");
+  await page.getByRole("button", { name: "Attach text", exact: true }).click();
+  const material = await (await uploaded).json();
+  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready");
+  await page.getByRole("button", { name: "Close material dialog", exact: true }).click();
+  await page.getByRole("textbox", { name: "Message Vibe Evals", exact: true }).fill(task);
+  await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeEnabled();
+  await page.getByRole("button", { name: "Send message", exact: true }).click();
+  await expect.poll(async () => (await saved(page)).session.document.build?.phase, { timeout: 90_000 }).toBe("results");
+  const initial = await saved(page);
+  const initialArtifact = initial.session.document.artifacts.at(-1);
+  // An authored portable manifest uses an actual compiled pack and actual uploaded hash.
+  // Import/binding remain production API transitions; no operation receipts are supplied.
+  const manifest = { format: "agentclash-vibe-v2", title: initialArtifact.title,
+    agent_prompt: initialArtifact.agent_prompt, evaluation: initialArtifact.blueprint,
+    input_contract: initialArtifact.input_contract, required_capabilities: initialArtifact.required_capabilities,
+    references: [{ key: "meeting-notes", content_hash: material.content_hash, usage: "reference", name: material.name, format: material.kind }] };
+  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+  await page.getByRole("button", { name: "Import a test pack", exact: true }).click();
+  await page.locator('input[type="file"][accept=".json,.yaml,.yml"]').setInputFiles({ name: "source-definition.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(manifest)) });
+  await expect(page.getByRole("region", { name: "Missing references", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Add a file or text", exact: true }).click();
+  await page.getByRole("tab", { name: "Paste text" }).click();
+  await page.getByRole("textbox", { name: "Text to work on" }).fill(notes);
+  await page.getByRole("button", { name: "Attach text", exact: true }).click();
+  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready");
+  await page.getByRole("button", { name: "Close material dialog", exact: true }).click();
+  await page.getByRole("region", { name: "Missing references", exact: true }).getByRole("button", { name: /^Attach / }).click();
+  await expect(page.getByRole("region", { name: "Missing references", exact: true })).not.toBeVisible();
+  const source = await saved(page);
+  const sourceArtifact = source.session.document.artifacts.at(-1);
+  expect(sourceArtifact.reference_inputs).toHaveLength(1);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const downloaded = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download agent instructions and tests", exact: true }).click();
+  const download = await downloaded;
+  const bytes = await readFile((await download.path())!);
+  const definition = JSON.parse(bytes.toString());
+  expect(definition.format).toBe("agentclash-vibe-v2");
+  expect(definition.references).toHaveLength(1);
+  expect(definition.references[0].content_hash).toBe(sourceArtifact.reference_inputs[0].content_hash);
+  expect(bytes.toString()).not.toContain(sourceArtifact.reference_inputs[0].input_id);
+  expect(bytes.toString()).not.toContain(notes);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+  await page.getByRole("button", { name: "Import a test pack", exact: true }).click();
+  await page.locator('input[type="file"][accept=".json,.yaml,.yml"]').setInputFiles({ name: "agent-definition.json", mimeType: "application/json", buffer: bytes });
+  await expect(page.getByRole("region", { name: "Missing references", exact: true })).toBeVisible();
+  const imported = await saved(page);
+  const importedArtifact = imported.session.document.artifacts.at(-1);
+  expect(importedArtifact.missing_references).toHaveLength(1);
+  expect(imported.session.operations).toHaveLength(0);
+  expect(imported.calls).toHaveLength(source.calls.length);
+  expect(imported.attempt_count).toBe(0);
+  await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeDisabled();
+  await page.getByRole("button", { name: "Add a file or text", exact: true }).click();
+  await page.getByRole("tab", { name: "Paste text" }).click();
+  await page.getByRole("textbox", { name: "Text to work on" }).fill(notes);
+  await page.getByRole("button", { name: "Attach text", exact: true }).click();
+  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready");
+  await page.getByRole("button", { name: "Close material dialog", exact: true }).click();
+  const bindingResponse = page.waitForResponse(response => response.url().endsWith(`/sessions/${imported.session.id}/references`) && response.request().method() === "POST");
+  await page.getByRole("region", { name: "Missing references", exact: true }).getByRole("button", { name: /^Attach / }).click();
+  const binding = await bindingResponse;
+  expect(binding.ok(), await binding.text()).toBeTruthy();
+  const bound = await saved(page);
+  const boundArtifact = bound.session.document.artifacts.at(-1);
+  expect(boundArtifact.parent_id).toBe(importedArtifact.id);
+  expect(boundArtifact.missing_references || []).toHaveLength(0);
+  expect(boundArtifact.blueprint).toEqual(importedArtifact.blueprint);
+  expect(boundArtifact.agent_prompt).toBe(importedArtifact.agent_prompt);
+  expect(boundArtifact.reference_inputs).toHaveLength(1);
+  expect(bound.session.operations).toHaveLength(0);
+  expect(bound.attempt_count).toBe(0);
+  expect(bound.calls).toHaveLength(source.calls.length);
+  expect(new URL(page.url()).searchParams.get("agent")).toBe(boundArtifact.id);
+  await page.screenshot({ path: info.outputPath("reattached-reference.png"), fullPage: true });
+  expect(errors).toEqual([]);
 });

@@ -1,3 +1,4 @@
+import { sanitizeReturnTo } from "@/lib/auth/return-to";
 import { withAuth } from "@workos-inc/authkit-nextjs";
 import { redirect } from "next/navigation";
 import { createApiClient } from "@/lib/api/client";
@@ -13,12 +14,12 @@ import type { SessionResponse, UserMeResponse } from "@/lib/api/types";
 export default async function DashboardPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ plan?: string }>;
+  searchParams?: Promise<{ plan?: string; returnTo?: string }>;
 }) {
   return DashboardRedirectPage({ searchParams: await searchParams });
 }
 
-function planIntent(searchParams?: { plan?: string }): "pro" | "team" | null {
+function planIntent(searchParams?: { plan?: string; returnTo?: string }): "pro" | "team" | null {
   return searchParams?.plan === "pro" || searchParams?.plan === "team"
     ? searchParams.plan
     : null;
@@ -27,11 +28,14 @@ function planIntent(searchParams?: { plan?: string }): "pro" | "team" | null {
 async function DashboardRedirectPage({
   searchParams,
 }: {
-  searchParams?: { plan?: string };
+  searchParams?: { plan?: string; returnTo?: string };
 }) {
   const { user, accessToken } = await withAuth();
-  if (!user) redirect("/auth/login");
   const requestedPlan = planIntent(searchParams);
+  const returnTo = sanitizeReturnTo(searchParams?.returnTo);
+  const continuation = returnTo.startsWith("/vibe-evals?") ? returnTo : null;
+  if (!user) redirect(`/auth/login?${new URLSearchParams({ returnTo: continuation || (requestedPlan ? `/dashboard?plan=${requestedPlan}` : "/dashboard") })}`);
+  const setupURL = `/onboard?${new URLSearchParams({ ...(requestedPlan ? { plan: requestedPlan } : {}), ...(continuation ? { returnTo: continuation } : {}) })}`;
 
   let session: SessionResponse | null = null;
   let errorMessage: string | null = null;
@@ -64,7 +68,7 @@ async function DashboardRedirectPage({
             {process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "unset"}
           </p>
           <a
-            href="/dashboard"
+            href={continuation ? `/dashboard?${new URLSearchParams({ returnTo: continuation })}` : "/dashboard"}
             className="text-sm text-foreground underline underline-offset-4"
           >
             Retry
@@ -76,8 +80,10 @@ async function DashboardRedirectPage({
 
   // Redirects must be outside try/catch — Next.js redirect() throws internally.
   if (session.organization_memberships.length === 0) {
-    redirect(requestedPlan ? `/onboard?plan=${requestedPlan}` : "/onboard");
+    redirect(setupURL);
   }
+
+  if (continuation) redirect(continuation);
 
   let billingRedirectTarget: string | null = null;
   if (requestedPlan) {
@@ -116,5 +122,5 @@ async function DashboardRedirectPage({
     redirect(orgRedirectTarget);
   }
 
-  redirect(requestedPlan ? `/onboard?plan=${requestedPlan}` : "/onboard");
+  redirect(setupURL);
 }

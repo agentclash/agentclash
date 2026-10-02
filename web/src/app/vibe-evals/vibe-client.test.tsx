@@ -7,6 +7,7 @@ import { VibeClient } from "./vibe-client";
 const harness = vi.hoisted(() => ({
   params: new URLSearchParams("session=session-one"),
   authLoading: false,
+  user: null as { id: string; email: string } | null,
   token: vi.fn(async () => undefined as string | undefined),
   watch: vi.fn(),
   me: vi.fn(),
@@ -14,7 +15,7 @@ const harness = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
 vi.mock("@workos-inc/authkit-nextjs/components", () => ({
   useAccessToken: () => ({ getAccessToken: harness.token }),
-  useAuth: () => ({ loading: harness.authLoading, user: { id: "fixture-user" } }),
+  useAuth: () => ({ loading: harness.authLoading, user: harness.user }),
 }));
 vi.mock("@/lib/vibe", async (original) => ({
   ...(await original<typeof import("@/lib/vibe")>()),
@@ -132,6 +133,7 @@ function posts() {
 beforeEach(() => {
   routerQuery = undefined;
   harness.authLoading = false;
+  harness.user = null;
   sessionStorage.clear();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   Element.prototype.scrollIntoView = vi.fn();
@@ -272,7 +274,7 @@ it.each([
     respond = async (path, options) => {
       if (!path.endsWith("/messages"))
         return path === "/config"
-          ? json({ defaults: defaultModels, models: [] })
+          ? json({ enabled: true, defaults: defaultModels, models: [] })
           : json(session);
       if (!accepted) {
         accepted = String(options.body);
@@ -338,12 +340,25 @@ it.each([
             409,
           );
     };
+    if (failure === "network") signedInWorkspace();
     await render();
     await type("Original request");
     await click("Send message");
     await act(async () => snapshot(structuredClone(session)));
     expect(posts()).toHaveLength(1);
     await type("My next request");
+    if (failure === "network") {
+      harness.user = { id: "another-account", email: "another@example.test" };
+      harness.token.mockResolvedValue("another-token");
+      await render();
+      await click("Retry submission");
+      expect(posts()).toHaveLength(1);
+      expect(executions).toBe(1);
+      expect(composer().value).toBe("My next request");
+      expect(container.textContent).toContain("Your account changed");
+      signedInWorkspace();
+      await render();
+    }
     await click("Retry submission");
     expect(posts()).toHaveLength(2);
     expect(posts()[1].body).toEqual(posts()[0].body);
@@ -380,7 +395,7 @@ it.each([
     respond = async (path, options) => {
       if (path === "/config")
         return json({
-          defaults: defaultModels,
+          enabled: true, defaults: defaultModels,
           models: [
             defaultModels.target,
             selected.assistant,
@@ -516,7 +531,7 @@ it.each(["A different next message", "Original request"])(
       path.endsWith("/messages")
         ? response.promise
         : path === "/config"
-          ? json({ defaults: defaultModels, models: [] })
+          ? json({ enabled: true, defaults: defaultModels, models: [] })
           : json(session);
     await render();
     await type("Original request");
@@ -537,7 +552,7 @@ it.each(["pending", "failed"])(
     const response = deferred<Response>();
     respond = async (path) =>
       path === "/config"
-        ? json({ defaults: defaultModels, models: [] })
+        ? json({ enabled: true, defaults: defaultModels, models: [] })
         : response.promise;
     await render();
     if (outcome === "failed")
@@ -558,7 +573,7 @@ it.each(["pending", "failed"])(
       expect(button("Send message").disabled).toBe(false);
     } else {
       expect(container.textContent).toContain("Cannot load this conversation");
-      respond = async () => json(session);
+      respond = async path => path === "/config" ? json({ enabled: true, defaults: defaultModels, models: [] }) : json(session);
       await click("Retry connection");
       expect(button("Send message").disabled).toBe(false);
       expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
@@ -571,7 +586,7 @@ it("shows the submitted message before admission and preserves a newer draft aft
   let retry = false;
   respond = async (path) =>
     path === "/config"
-      ? json({ defaults: defaultModels, models: [] })
+      ? json({ enabled: true, defaults: defaultModels, models: [] })
       : path.endsWith("/messages")
         ? retry
           ? json({ id: "accepted" }, 202)
@@ -633,7 +648,7 @@ it("keeps the composer editable after a definite intake rejection", async () => 
           400,
         )
       : path === "/config"
-        ? json({ defaults: defaultModels, models: [] })
+        ? json({ enabled: true, defaults: defaultModels, models: [] })
         : json(session);
   await render();
   await type("Help with a new project");
@@ -654,7 +669,7 @@ it("verifies a new session cookie before changing the URL, streaming or sending 
   const replace = vi.spyOn(window.history, "replaceState");
   respond = async (path, options) => {
     if (path === "/config")
-      return json({ defaults: defaultModels, models: [] });
+      return json({ enabled: true, defaults: defaultModels, models: [] });
     if (path === "/sessions" && options.method === "POST")
       return json(session, 201);
     return json(
@@ -745,6 +760,7 @@ it("keeps an inaccessible accepted draft available while offering an explicit co
 });
 
 function signedInWorkspace() {
+  harness.user = { id: "fixture-user", email: "fixture@example.test" };
   harness.token.mockResolvedValue("test-access-token");
   harness.me.mockResolvedValue({
     organizations: [
@@ -789,7 +805,7 @@ it.each([
     respond = async (path, options) => {
       if (path === "/config")
         return json({
-          defaults: defaultModels,
+          enabled: true, defaults: defaultModels,
           models: [
             { id: defaultModels.target, name: "Mini" },
             { id: "openai/gpt-4.1", name: "Full" },
@@ -865,7 +881,7 @@ it("Keep sends the independently selected models without an inference submission
   respond = async (path, options) => {
     if (path === "/config")
       return json({
-        defaults: defaultModels,
+        enabled: true, defaults: defaultModels,
         models: [
           { id: defaultModels.target, name: "Mini" },
           { id: "openai/gpt-4.1", name: "Full" },
@@ -1286,7 +1302,7 @@ it("retries a trial with its original thread and preserves text typed during an 
   let first = true;
   respond = async (path) => {
     if (path === "/config")
-      return json({ defaults: defaultModels, models: [] });
+      return json({ enabled: true, defaults: defaultModels, models: [] });
     if (path.endsWith("/messages") && first) {
       first = false;
       throw new TypeError("Lost acknowledgement");
@@ -1831,7 +1847,7 @@ it("cites exact chat messages and prepares a disputed rule without silently chan
     path.endsWith("/case")
       ? json(result)
       : path === "/config"
-        ? json({ defaults: defaultModels, models: [] })
+        ? json({ enabled: true, defaults: defaultModels, models: [] })
         : json(session);
   await render();
   const row = container.querySelector<HTMLDetailsElement>(".vibe-result-row")!;
@@ -1873,6 +1889,7 @@ it("requests a suggested change on demand with the selected evidence baseline", 
 
 it("saves a provided-chat check without creating a prompt or agent build", async () => {
   recordedResult();
+  harness.user = { id: "fixture-user", email: "fixture@example.test" };
   harness.token.mockResolvedValue("token");
   harness.me.mockResolvedValue({
     organizations: [
@@ -1886,7 +1903,7 @@ it("saves a provided-chat check without creating a prompt or agent build", async
   });
   respond = async (path) => {
     if (path === "/config")
-      return json({ defaults: defaultModels, models: [] });
+      return json({ enabled: true, defaults: defaultModels, models: [] });
     if (path === "/saved-checks") return json([]);
     if (path.endsWith("/save-check"))
       return json({
@@ -1924,7 +1941,7 @@ it("keeps the V1 entry visible while configuration loads, fails, and retries", a
   respond = async (path) => {
     if (path === "/config") {
       if (++configLoads === 1) return ready.promise;
-      return json({ two_door: true, defaults: defaultModels, models: [] });
+      return json({ enabled: true, two_door: true, defaults: defaultModels, models: [] });
     }
     return json([]);
   };
@@ -1963,7 +1980,7 @@ it("keeps a saved conversation's draft unsent until configuration loads and retr
     if (path === "/config") {
       configLoads++;
       if (configLoads === 1) return ready.promise;
-      return json({ defaults: selected, models: [] });
+      return json({ enabled: true, defaults: selected, models: [] });
     }
     return json(session);
   };
@@ -2046,4 +2063,62 @@ it("waits for auth loading before requesting a private saved session", async () 
   harness.authLoading=false;
   await render();
   expect(requests.some(r=>r.path==="/sessions/session-one")).toBe(true);
+});
+
+
+it("does not load a known user's private conversation as a guest when token retrieval fails", async () => {
+  harness.user = { id: "fixture-user", email: "fixture@example.test" };
+  harness.token.mockRejectedValue(new Error("Token refresh failed"));
+  await render();
+  expect(requests.filter(request => request.path.startsWith("/sessions"))).toHaveLength(0);
+  expect(container.textContent).toContain("Token refresh failed");
+  harness.token.mockResolvedValue("recovered-token");
+  await click("Retry connection");
+  expect(requests.filter(request => request.path === "/sessions/session-one")).toHaveLength(1);
+  expect(posts()).toHaveLength(0);
+});
+
+it("does not create a conversation when execution is disabled", async () => {
+  harness.params = new URLSearchParams();
+  respond = async path => path === "/config" ? json({ enabled: false, two_door: true, defaults: defaultModels, models: [] }) : json([]);
+  await render();
+  const door = [...container.querySelectorAll<HTMLButtonElement>("button")].find(button => /Build an agent/.test(button.textContent || ""));
+  expect(door).toBeTruthy();
+  await act(async () => door!.click());
+  expect(requests.filter(request => request.method === "POST")).toHaveLength(0);
+});
+
+it("keeps authorized historical saving available while disabled execution makes no inference requests", async () => {
+  acceptedDraft();
+  signedInWorkspace();
+  respond = async path => path === "/config"
+    ? json({ enabled: false, defaults: defaultModels, models: [] })
+    : path === "/saved-checks" ? json([]) : json(session);
+  await render();
+  await type("Preserve this unsent draft");
+  expect(button("Send message").disabled).toBe(true);
+  await click("Save agent");
+  expect(button("Save agent and checks").disabled).toBe(false);
+  await click("Save agent and checks");
+  expect(requests.some(request => request.path.endsWith("/save") && request.method === "POST")).toBe(true);
+  expect(requests.filter(request => /\/(messages|build-quote|run-quote)$/.test(request.path))).toHaveLength(0);
+  expect(composer().value).toBe("Preserve this unsent draft");
+});
+
+it("reports signed-in token failures for explicit Save and reference-definition download without guest requests", async () => {
+  acceptedDraft();
+  signedInWorkspace();
+  session.document.artifacts[0].reference_inputs = [{ input_id: "private-reference", content_hash: "a".repeat(64), usage: "reference" }];
+  await render();
+  await click("Save agent");
+  harness.token.mockRejectedValue(new Error("Token refresh failed"));
+  const requestCount = requests.length;
+  await click("Save agent and checks");
+  expect(container.textContent).toContain("Token refresh failed");
+  expect(requests).toHaveLength(requestCount);
+  await act(async () => window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+  await click("Settings");
+  await click("Download agent instructions and tests");
+  expect(container.textContent).toContain("Token refresh failed");
+  expect(requests).toHaveLength(requestCount);
 });

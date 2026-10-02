@@ -51,10 +51,9 @@ import { sendOnEnter } from "./composer-keyboard";
 import { VibeScorecard } from "./scorecard";
 import { TestSuitePanel, exampleAgentDescription } from "./test-suite-panel";
 import { EvaluationEntry } from "./evaluation-entry";
-import { evaluationIdentity } from "./evaluation-navigation";
 import { BuildWorkspace } from "./build-workspace";
 import { Message } from "./vibe-message";
-import { buildProgress } from "@/lib/vibe-build-timeline";
+import { evaluationIdentity, buildProgress } from "@/lib/vibe-build-timeline";
 import { WEB_EVENTS } from "@/lib/analytics/events";
 import { captureBuildEvent } from "@/lib/vibe-build-analytics";
 import "./workspace.css";
@@ -563,7 +562,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
           <div
             className={`vibe-column ${welcome ? "vibe-entry-page" : "py-8 sm:py-12"}`}
           >
-            {welcome && !intake && (entry ? <EvaluationEntry busy={p.busy} onDoor={p.onDoor} /> : <div className="vibe-welcome mb-7">
+            {welcome && !intake && (entry ? <EvaluationEntry busy={p.busy || !!p.sendBlocked} onDoor={p.onDoor} /> : <div className="vibe-welcome mb-7">
               <h1 className="vibe-entry-title">{door === "build" ? "What would you like help with?" : door === "test" ? "Improve an agent you already have." : p.testJourney ? "What should your agent do?" : "Check the AI in your app."}</h1>
               <p className="mt-4 max-w-[560px] vibe-muted">{door === "build" ? "Describe a repetitive task. We’ll make a prototype and try three situations to see what works." : door === "test" ? "Bring your agent’s instructions or a saved test pack." : p.testJourney ? "Describe its job and rules. We’ll check what works and what needs fixing." : "Tell us what it does, or paste an answer you want checked."}</p>
               {door === "test" && <><div className="vibe-source-options">

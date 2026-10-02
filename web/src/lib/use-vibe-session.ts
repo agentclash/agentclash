@@ -43,8 +43,9 @@ export function useVibeSession(id: string | null, token: () => Promise<string | 
     let live = true;
     setLoading(true);
     void (async () => {
-      const auth = await token();
+      let auth: string | undefined;
       try {
+        auth = await token();
         let incoming: Session;
         try { incoming = await vibeFetch<Session>(`/sessions/${id}`, auth); }
         catch (error) {
@@ -68,8 +69,9 @@ export function useVibeSession(id: string | null, token: () => Promise<string | 
     let timer: ReturnType<typeof setTimeout>;
     let claimed = false;
     const connect = async () => {
-      const auth = await token();
+      let auth: string | undefined;
       try {
+        auth = await token();
         await watchVibe(sessionID, auth, controller.signal, incoming => {
           if (!controller.signal.aborted && accept(incoming)) setConnection("");
         });

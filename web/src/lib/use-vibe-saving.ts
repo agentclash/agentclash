@@ -60,6 +60,8 @@ export function useVibeSaving(c: Context) {
         setSaveAccess(expired ? "signed_out" : "error");
         setError(expired ? "Sign in again to keep your work. Your tests are still here." : "Couldn’t load your workspaces. Try again.");
       }
+    }).catch(() => {
+      if (current) { setSaveAccess("error"); setError("Couldn’t verify your sign-in. Retry or sign in again. Your work is still here."); }
     });
     return () => { current = false; };
   }, [saveOpen, token, attachedWorkspace, loadAttempt, authLoading]);
