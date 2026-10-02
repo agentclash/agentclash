@@ -27,6 +27,10 @@ func inputError(w http.ResponseWriter, err error) {
 	vibeError(w, err)
 }
 func (h *VibeHandler) createInput(w http.ResponseWriter, r *http.Request) {
+	if !h.Service.Config.MaterialBuild {
+		vibeError(w, &vibe.Fault{Code: "hosted_disabled", Message: "Materials are unavailable. Existing files can still be read or deleted."})
+		return
+	}
 	v, err := h.authorizedSession(r, true)
 	if err != nil {
 		vibeError(w, err)

@@ -104,6 +104,9 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 		}
 		return *receipt, nil
 	}
+	if len(sub.Inputs) > 0 && !s.Config.MaterialBuild {
+		return Operation{}, fault("hosted_disabled", "Material-based execution is unavailable. Remove the selected materials explicitly to continue with instructions only.")
+	}
 	if len(sub.Inputs) > 0 && sub.Kind != "message" && sub.Kind != "playground" {
 		return Operation{}, fault("invalid_input", "Materials can be used for preparation or a prototype trial, not as replacement check inputs.")
 	}

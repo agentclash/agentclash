@@ -92,7 +92,10 @@ func LoadConfig() (Config, error) {
 	if c.Enabled && c.LocalTesting && !c.FreeOnly {
 		c.localProfiles = newLocalProfileVerifier()
 	}
-	if c.Enabled && (c.FreeOnly || c.DefaultModel != "") {
+	if c.Enabled && strings.TrimSpace(c.Credential) == "" {
+		return c, fmt.Errorf("VIBE_ENABLED requires VIBE_OPENROUTER_KEY")
+	}
+	if c.Enabled {
 		if err := c.ValidateModels(c.DefaultModels(), true); err != nil {
 			return c, fmt.Errorf("Vibe default models: %w", err)
 		}

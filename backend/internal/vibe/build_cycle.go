@@ -89,7 +89,7 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 	if err != nil {
 		return BuildQuote{}, err
 	}
-	if !s.Config.TwoDoor {
+	if !s.Config.Enabled || s.Config.Credential == "" || !s.Config.TwoDoor {
 		return BuildQuote{}, fault("hosted_disabled", "The new Build flow is not enabled.")
 	}
 	if request.AdditionalExamples == 0 && (v.Document.Evaluation == nil || v.Document.Evaluation.Door != "build" || len(v.Document.Artifacts) > 0 || v.Document.Build != nil) {
