@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/connection"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/toolspec"
 	"github.com/agentclash/agentclash/runtime/provider"
@@ -107,10 +108,7 @@ func (i *CreateProviderAccountInput) Validate() error {
 		}
 		i.BaseURL = normalized
 	}
-	if i.CredentialReference == "" && i.APIKey == "" {
-		return fmt.Errorf("either api_key or credential_reference is required")
-	}
-	return nil
+	return connection.ValidateCredentials(i.APIKey, i.CredentialReference)
 }
 
 type CreateToolInput struct {

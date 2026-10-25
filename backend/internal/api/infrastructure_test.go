@@ -635,3 +635,23 @@ func TestCreateProviderAccountMapsEndpointValidationToBadRequest(t *testing.T) {
 		t.Fatalf("status = %d, body = %s", recorder.Code, recorder.Body.String())
 	}
 }
+
+func TestProviderAccountCredentialInputContract(t *testing.T) {
+	for _, input := range []CreateProviderAccountInput{
+		{CredentialReference: "env://SYNTHETIC_KEY"},
+		{CredentialReference: "secret://synthetic"},
+		{CredentialReference: "workspace-secret://"},
+		{APIKey: "synthetic", CredentialReference: "workspace-secret://KEY"},
+		{APIKey: "   "}, {},
+	} {
+		input.Name = "synthetic"
+		input.ProviderKey = "openai"
+		if err := input.Validate(); err == nil {
+			t.Fatal("invalid credential input accepted")
+		}
+	}
+	input := CreateProviderAccountInput{Name: "synthetic", ProviderKey: "openai", CredentialReference: "workspace-secret://KEY"}
+	if err := input.Validate(); err != nil {
+		t.Fatal(err)
+	}
+}
