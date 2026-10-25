@@ -22,3 +22,6 @@ Existing login, native workflow, artifact, SSE and terminal acceptance remain ap
 
 ## Manual checks
 Use an authenticated workspace owner to submit an invalid reference and verify rejection. Store a key through the normal encrypted secret API, connect its vault reference, and list models. Keep actual deployment evidence outside this repository.
+
+## Build input availability
+If a pinned public package is unavailable upstream, a retained public copy may be used only after the existing SHA256 verification. Test successful recovery, changed-byte rejection and symlink rejection. Package versions and scanner gates stay unchanged.

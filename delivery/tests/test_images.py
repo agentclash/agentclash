@@ -73,6 +73,42 @@ class ImageGateTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), b"pinned")
             self.assertEqual(request.call_args_list[1].args[0].full_url, expected)
 
+    def test_retained_input_fallback_requires_exact_pinned_bytes(self):
+        from contextlib import redirect_stdout
+        original = "https://example.test/input"
+        for content, valid in [(b"pinned", True), (b"changed", False)]:
+            with self.subTest(valid=valid), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                cache = root / "cache"
+                cache.mkdir()
+                digest = hashlib.sha256(b"pinned").hexdigest()
+                (cache / digest).write_bytes(content)
+                destination = root / "input"
+                with (
+                    redirect_stdout(io.StringIO()),
+                    patch("maintained.PINNED_INPUTS", cache, create=True),
+                    patch("maintained.urllib.request.urlopen", side_effect=urllib.error.HTTPError(original,404,"unavailable",{},None)),
+                ):
+                    if valid:
+                        fetch({"url":original,"sha256":digest},destination)
+                        self.assertEqual(destination.read_bytes(),b"pinned")
+                    else:
+                        with self.assertRaises(Refused):
+                            fetch({"url":original,"sha256":digest},destination)
+                        self.assertFalse(destination.exists())
+
+    def test_retained_input_cannot_be_a_symlink(self):
+        from contextlib import redirect_stdout
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);cache=root/"cache";cache.mkdir()
+            digest=hashlib.sha256(b"pinned").hexdigest()
+            target=root/"outside";target.write_bytes(b"pinned")
+            (cache/digest).symlink_to(target)
+            with (redirect_stdout(io.StringIO()),patch("maintained.PINNED_INPUTS",cache,create=True),patch("maintained.urllib.request.urlopen",side_effect=urllib.error.HTTPError("https://example.test/input",404,"unavailable",{},None))):
+                with self.assertRaises(Refused):
+                    fetch({"url":"https://example.test/input","sha256":digest},root/"input")
+                self.assertFalse((root/"input").exists())
+
     def test_scanner_cannot_report_different_bytes_or_architecture_as_a_pass(self):
         for wrong in ("identity", "architecture"):
             with tempfile.TemporaryDirectory() as directory:

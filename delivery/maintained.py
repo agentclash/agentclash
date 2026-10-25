@@ -15,6 +15,7 @@ from common import require
 from release_contract import canonical, recipe_hash, DERIVED, UPSTREAM, PLATFORM
 
 LABEL = "io.agentclash.platform-build-sha256"
+PINNED_INPUTS = Path(__file__).resolve().parent / "pinned-inputs"
 
 
 def normalize_context(context):
@@ -81,6 +82,16 @@ def fetch(entry, destination):
             time.sleep(2**attempt)
         if content is not None:
             break
+    if content is None:
+        retained = PINNED_INPUTS / entry["sha256"]
+        if retained.is_file():
+            require(
+                not retained.is_symlink()
+                and retained.resolve().parent == PINNED_INPUTS.resolve(),
+                "Retained public input must be a regular local file",
+            )
+            content = retained.read_bytes()
+            print("Using retained pinned public input", flush=True)
     require(content is not None, "Pinned public build input unavailable")
     require(
         hashlib.sha256(content).hexdigest() == entry["sha256"], "Input hash mismatch"
