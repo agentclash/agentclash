@@ -1,9 +1,12 @@
 ARG BUILDER
 ARG UPSTREAM
-FROM ${BUILDER} AS build
+FROM ${BUILDER} AS base
 ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org
 WORKDIR /src
-COPY source/ .
+COPY licenses.sh /licenses.sh
+
+FROM base AS server-build
+COPY server/ .
 RUN go mod download && go mod verify
 # Build dependency packages so their original module versions stay in build info.
 # Preserve symbols for downstream Go vulnerability and reachability inspection.
@@ -12,15 +15,22 @@ RUN mkdir -p /out && \
     go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" -o /out/tdbg go.temporal.io/server/cmd/tools/tdbg && \
     go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" -o /out/temporal-sql-tool go.temporal.io/server/cmd/tools/sql && \
     go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" -o /out/temporal-cassandra-tool go.temporal.io/server/cmd/tools/cassandra && \
-    go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" -o /out/temporal-elasticsearch-tool go.temporal.io/server/cmd/tools/elasticsearch && \
-    go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" -o /out/temporal github.com/temporalio/cli/cmd/temporal
-COPY licenses.sh /licenses.sh
+    go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" -o /out/temporal-elasticsearch-tool go.temporal.io/server/cmd/tools/elasticsearch
+RUN sh /licenses.sh /out/notices
+
+FROM base AS cli-build
+COPY cli/ .
+RUN go mod download && go mod verify
+RUN mkdir -p /out && go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" \
+    -o /out/temporal github.com/temporalio/cli/cmd/temporal
 RUN sh /licenses.sh /out/notices
 
 FROM ${UPSTREAM} AS server
-COPY --from=build /out/temporal-server /usr/local/bin/temporal-server
-COPY --from=build /out/notices /usr/share/licenses/agentclash-platform/temporal/
+COPY --from=server-build /out/temporal-server /usr/local/bin/temporal-server
+COPY --from=server-build /out/notices /usr/share/licenses/agentclash-platform/temporal/
 
 FROM ${UPSTREAM} AS admin
-COPY --from=build /out/tdbg /out/temporal-sql-tool /out/temporal-cassandra-tool /out/temporal-elasticsearch-tool /out/temporal /usr/local/bin/
-COPY --from=build /out/notices /usr/share/licenses/agentclash-platform/temporal-admin/
+COPY --from=server-build /out/tdbg /out/temporal-sql-tool /out/temporal-cassandra-tool /out/temporal-elasticsearch-tool /usr/local/bin/
+COPY --from=cli-build /out/temporal /usr/local/bin/
+COPY --from=server-build /out/notices /usr/share/licenses/agentclash-platform/temporal-admin/server/
+COPY --from=cli-build /out/notices /usr/share/licenses/agentclash-platform/temporal-admin/cli/

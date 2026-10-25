@@ -192,7 +192,7 @@ def build(root, directory, run, gate):
             "v3.23",
             ("libcrypto3", "libssl3", "curl", "libcurl", "c-ares", "brotli-libs"),
         ),
-        "postgres": ("v3.24", ("libcrypto3", "libssl3", "libuuid")),
+        "postgres": ("v3.24", ("libcrypto3", "libssl3", "libuuid", "brotli-libs")),
     }
     for name in packages:
         context = directory / ("platform-context-" + name)
@@ -274,9 +274,13 @@ def build(root, directory, run, gate):
     # runtime identity, configuration and schema files. Go module checksums pin
     # original source versions; only the locked security dependencies change.
     context = directory / "platform-context-temporal"
-    (context / "source").mkdir(mode=0o700, parents=True)
-    for filename in ("go.mod", "go.sum"):
-        shutil.copyfile(recipe / "temporal" / filename, context / "source" / filename)
+    for component, source in (
+        ("server", recipe / "temporal"),
+        ("cli", recipe / "temporal/cli"),
+    ):
+        (context / component).mkdir(mode=0o700, parents=True)
+        for filename in ("go.mod", "go.sum"):
+            shutil.copyfile(source / filename, context / component / filename)
     shutil.copyfile(recipe / "licenses.sh", context / "licenses.sh")
     for name, target in (("temporal", "server"), ("temporal-admin", "admin")):
         detail = docker_build(
