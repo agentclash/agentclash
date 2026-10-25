@@ -1,0 +1,18 @@
+Upstream CA certificate package notices (source 20260909).
+The MIT permission and disclaimer text is also reproduced in c-ares-LICENSE.md.
+Corresponding source and MPL 2.0 are linked from ../README.md.
+
+/* c_rehash.c - Create hash symlinks for certificates
+ * C implementation based on the original Perl and shell versions
+ *
+ * Copyright (c) 2013-2014 Timo Teräs <timo.teras@iki.fi>
+ * All rights reserved.
+ *
+ * This software is licensed under the MIT License.
+ * Full license available at: http://opensource.org/licenses/MIT
+ */
+
+#
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.

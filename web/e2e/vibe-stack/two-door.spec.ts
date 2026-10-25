@@ -215,7 +215,8 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  if(await proposal.isVisible()) await proposal.click();
  await page.getByRole('button',{name:'Apply change and check again',exact:true}).click();
  await page.getByRole('button',{name:'Run 3 examples',exact:true}).click();
- await expect.poll(async()=> {const v=await evidence(page);return v.session.operations.at(-1)?.scorecard?.failed;}).toBe(1);
+ // Capture the immutable baseline only after the last case and operation finish.
+ await expect.poll(async()=> {const o=(await evidence(page)).session.operations.at(-1);return o?.state==='COMPLETED'?o.scorecard?.failed:null;}).toBe(1);
  const failed=await evidence(page), baseline=failed.session.operations.at(-1);
  await expect(page.getByRole('tab',{name:'Conversation',exact:true})).toHaveAttribute('aria-selected','true');
  const failedCard=page.locator(`[data-run-id="${baseline.id}"]`);
@@ -232,7 +233,7 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  await page.getByRole('button',{name:'Apply change and check again',exact:true}).click();
  await expect(page.getByRole('dialog')).toContainText('up to');
  await page.getByRole('button',{name:'Run 3 examples',exact:true}).click();
- await expect.poll(async()=> {const v=await evidence(page);return v.session.operations.at(-1)?.scorecard?.passed;}).toBe(3);
+ await expect.poll(async()=> {const o=(await evidence(page)).session.operations.at(-1);return o?.state==='COMPLETED'?o.scorecard?.passed:null;}).toBe(3);
  const final=await evidence(page), comparison=final.session.operations.at(-1);
  expect(comparison.baseline_id).toBe(baseline.id);expect(comparison.grading.hash).toBe(baseline.grading.hash);
  expect(final.session.document.artifacts.at(-1).blueprint).toEqual(target.blueprint);

@@ -105,6 +105,7 @@ func TestResolveJudgeTargetForwardsMatchingDeploymentEndpoint(t *testing.T) {
 	runAgentID := uuid.New()
 	executionContext := nativeExecutionContext(runID, runAgentID)
 	executionContext.Deployment.ProviderAccount.BaseURL = "https://judge.example.com/v1"
+	executionContext.Deployment.ProviderAccount.CredentialReference = "workspace-secret://OPENAI_API_KEY"
 
 	providerKey, accountID, credentialReference, baseURL, err := resolveJudgeTarget("gpt-4.1", executionContext)
 	if err != nil {
@@ -320,4 +321,14 @@ func containsAll(haystack string, needles ...string) bool {
 		}
 	}
 	return true
+}
+
+func TestJudgeTargetRejectsNonWorkspaceAccountCredentials(t *testing.T) {
+	for _, ref := range []string{"env://SYNTHETIC_KEY", "secret://synthetic", "workspace-secret://"} {
+		executionContext := repository.RunAgentExecutionContext{}
+		executionContext.Deployment.ProviderAccount = &repository.ProviderAccountExecutionContext{ID: uuid.New(), ProviderKey: "openai", CredentialReference: ref}
+		if _, _, _, _, err := resolveJudgeTarget("gpt-4.1", executionContext); err == nil {
+			t.Errorf("accepted account credential %q", ref)
+		}
+	}
 }

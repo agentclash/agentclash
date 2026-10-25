@@ -73,6 +73,90 @@ class ImageGateTests(unittest.TestCase):
             self.assertEqual(path.read_bytes(), b"pinned")
             self.assertEqual(request.call_args_list[1].args[0].full_url, expected)
 
+    def test_retained_input_fallback_requires_exact_pinned_bytes(self):
+        from contextlib import redirect_stdout
+
+        original = "https://example.test/input"
+        for content, valid in [(b"pinned", True), (b"changed", False)]:
+            with self.subTest(valid=valid), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                cache = root / "cache"
+                cache.mkdir()
+                digest = hashlib.sha256(b"pinned").hexdigest()
+                (cache / digest).write_bytes(content)
+                destination = root / "input"
+                with (
+                    redirect_stdout(io.StringIO()),
+                    patch("maintained.PINNED_INPUTS", cache, create=True),
+                    patch(
+                        "maintained.urllib.request.urlopen",
+                        side_effect=urllib.error.HTTPError(
+                            original, 404, "unavailable", {}, None
+                        ),
+                    ),
+                ):
+                    if valid:
+                        fetch({"url": original, "sha256": digest}, destination)
+                        self.assertEqual(destination.read_bytes(), b"pinned")
+                    else:
+                        with self.assertRaises(Refused):
+                            fetch({"url": original, "sha256": digest}, destination)
+                        self.assertFalse(destination.exists())
+
+    def test_retained_input_cannot_be_a_symlink(self):
+        from contextlib import redirect_stdout
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            cache = root / "cache"
+            cache.mkdir()
+            digest = hashlib.sha256(b"pinned").hexdigest()
+            target = root / "outside"
+            target.write_bytes(b"pinned")
+            (cache / digest).symlink_to(target)
+            with (
+                redirect_stdout(io.StringIO()),
+                patch("maintained.PINNED_INPUTS", cache, create=True),
+                patch(
+                    "maintained.urllib.request.urlopen",
+                    side_effect=urllib.error.HTTPError(
+                        "https://example.test/input", 404, "unavailable", {}, None
+                    ),
+                ),
+            ):
+                with self.assertRaises(Refused):
+                    fetch(
+                        {"url": "https://example.test/input", "sha256": digest},
+                        root / "input",
+                    )
+                self.assertFalse((root / "input").exists())
+
+    def test_temporal_consumed_images_require_scanned_private_derivatives(self):
+        ref = "registry.example.com/app@sha256:" + "a" * 64
+        lock = json.loads((ROOT / "deploy/aws/images.lock.json").read_text())
+        value = {
+            "images": {n: ref for n in APPLICATIONS},
+            "platform_images": {n: ref for n in PLATFORM},
+        }
+        value["platform_images"]["valkey"] = lock["images"]["valkey"]["image"]
+        validate_images(value, "registry.example.com/app", lock)
+        for name in ("temporal", "temporal-admin"):
+            changed = copy.deepcopy(value)
+            changed["platform_images"][name] = lock["images"][name]["image"]
+            with self.assertRaises(Refused):
+                validate_images(changed, "registry.example.com/app", lock)
+
+    def test_temporal_remediation_preserves_runtime_identity(self):
+        for key in ("User", "Cmd", "Entrypoint", "WorkingDir"):
+            with tempfile.TemporaryDirectory() as directory:
+                scanner = Scanner(Path(directory), lambda *_: None)
+                before, after = os_report(), os_report()
+                before["Metadata"]["ImageConfig"]["config"] = {key: "original"}
+                after["Metadata"]["ImageConfig"]["config"] = {key: "changed"}
+                with patch.object(scanner, "image", side_effect=[before, after]):
+                    with self.assertRaises(Refused):
+                        scanner.platform("temporal", "input", "output")
+
     def test_scanner_cannot_report_different_bytes_or_architecture_as_a_pass(self):
         for wrong in ("identity", "architecture"):
             with tempfile.TemporaryDirectory() as directory:

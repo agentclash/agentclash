@@ -675,7 +675,7 @@ func generateTestRepository(workspaceID uuid.UUID) *fakeGenerationRepository {
 		ID:                  generateTestProviderAccountID,
 		WorkspaceID:         &workspaceID,
 		ProviderKey:         "openai",
-		CredentialReference: "env://OPENAI_API_KEY",
+		CredentialReference: "workspace-secret://OPENAI_API_KEY",
 		Status:              "active",
 	}}
 }
@@ -688,7 +688,7 @@ func (f *fakeGenerationRepository) GetProviderAccountByID(_ context.Context, id 
 }
 
 func (f *fakeGenerationRepository) LoadWorkspaceSecrets(context.Context, uuid.UUID) (map[string]string, error) {
-	return map[string]string{}, nil
+	return map[string]string{"OPENAI_API_KEY": "synthetic-key"}, nil
 }
 
 func (f *fakeGenerationRepository) ListSpendPoliciesByWorkspaceID(context.Context, uuid.UUID) ([]repository.SpendPolicyRow, error) {

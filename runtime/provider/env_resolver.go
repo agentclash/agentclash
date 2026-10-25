@@ -13,13 +13,15 @@ type workspaceSecretsKey struct{}
 
 // WithWorkspaceSecrets injects decrypted workspace secrets into the context
 // so the credential resolver can access them for workspace-secret:// references.
+// A workspace-scoped context never falls back to process credentials, even
+// when its vault is nil or empty.
 func WithWorkspaceSecrets(ctx context.Context, secrets map[string]string) context.Context {
 	return context.WithValue(ctx, workspaceSecretsKey{}, secrets)
 }
 
 func PrepareCredentialContext(ctx context.Context, credentialReference string, loadWorkspaceSecrets func() (map[string]string, error)) (context.Context, error) {
-	if !strings.HasPrefix(credentialReference, "workspace-secret://") {
-		return ctx, nil
+	if err := ValidateWorkspaceCredentialReference(credentialReference); err != nil {
+		return nil, err
 	}
 	if loadWorkspaceSecrets == nil {
 		return nil, NewFailure(
@@ -48,8 +50,12 @@ func workspaceSecretsFromContext(ctx context.Context) map[string]string {
 type EnvCredentialResolver struct{}
 
 func (EnvCredentialResolver) Resolve(ctx context.Context, credentialReference string) (string, error) {
-	// workspace-secret:// resolves from workspace secrets stored in context.
-	if strings.HasPrefix(credentialReference, "workspace-secret://") {
+	// Workspace contexts are an exclusive credential boundary, not a fallback.
+	_, workspaceScoped := ctx.Value(workspaceSecretsKey{}).(map[string]string)
+	if workspaceScoped || strings.HasPrefix(credentialReference, "workspace-secret://") {
+		if err := ValidateWorkspaceCredentialReference(credentialReference); err != nil {
+			return "", err
+		}
 		key := strings.TrimPrefix(credentialReference, "workspace-secret://")
 		secrets := workspaceSecretsFromContext(ctx)
 		if secrets == nil {
@@ -135,3 +141,16 @@ func NormalizeSecretName(value string) string {
 }
 
 var nonAlnum = regexp.MustCompile(`[^A-Za-z0-9]+`)
+
+// ValidateWorkspaceCredentialReference accepts only a named workspace vault key.
+// Its key syntax matches the workspace secret API and database constraint.
+func ValidateWorkspaceCredentialReference(reference string) error {
+	const scheme = "workspace-secret://"
+	key := strings.TrimPrefix(reference, scheme)
+	if !strings.HasPrefix(reference, scheme) || len(key) == 0 || len(key) > 128 || !workspaceSecretName.MatchString(key) {
+		return NewFailure("", FailureCodeCredentialUnavailable, "a valid workspace-secret:// credential reference is required", false, ErrCredentialUnavailable)
+	}
+	return nil
+}
+
+var workspaceSecretName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

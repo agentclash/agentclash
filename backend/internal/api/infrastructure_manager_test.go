@@ -19,9 +19,9 @@ func TestCreateProviderAccountRecordsCanonicalMilestoneAfterSuccess(t *testing.T
 	mgr := NewInfrastructureManager(repo).WithProductAnalytics(analytics)
 
 	account, err := mgr.CreateProviderAccount(context.Background(), caller, workspaceID, CreateProviderAccountInput{
-		ProviderKey:         "openai",
-		Name:                "Primary",
-		CredentialReference: "env:OPENAI_API_KEY",
+		ProviderKey: "openai",
+		Name:        "Primary",
+		APIKey:      "synthetic-key",
 	})
 	if err != nil {
 		t.Fatalf("CreateProviderAccount returned error: %v", err)

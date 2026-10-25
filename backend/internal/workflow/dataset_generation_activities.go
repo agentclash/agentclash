@@ -133,13 +133,15 @@ func (a *DatasetGenerationActivities) ExecuteSyntheticDatasetGeneration(ctx cont
 		return wrapActivityError(fmt.Errorf("dataset must have at least one seed example for generation"))
 	}
 
+	var workspaceSecrets map[string]string
 	if a.secretsLookup != nil {
 		secrets, secretErr := a.secretsLookup.LoadWorkspaceSecrets(ctx, executionContext.Job.WorkspaceID)
 		if secretErr != nil {
 			return wrapActivityError(fmt.Errorf("load workspace secrets: %w", secretErr))
 		}
-		ctx = provider.WithWorkspaceSecrets(ctx, secrets)
+		workspaceSecrets = secrets
 	}
+	ctx = provider.WithWorkspaceSecrets(ctx, workspaceSecrets)
 
 	rng := rand.New(rand.NewSource(datasetGenerationRNGSeed(executionContext.Job.ID)))
 	acceptedHashes := make(map[string]struct{}, len(executionContext.ExistingInputs)+int(executionContext.Job.TargetCount))

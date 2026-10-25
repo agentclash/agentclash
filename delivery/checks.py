@@ -179,7 +179,7 @@ def check(group, evidence):
         for path in (ROOT / "deploy/aws").rglob("*.sh"):
             run(["bash", "-n", str(path)])
     elif group == "images":
-        from build import build_graph
+        from build import build_graph, prepare_bootstrap
 
         install("trivy", evidence / "trivy")
         print("Image scanner checksum verified", flush=True)
@@ -203,7 +203,8 @@ def check(group, evidence):
             require(result.returncode == 0, "Required image build or scan failed")
             return result.stdout
 
-        build_graph(ROOT, evidence, image_run)
+        graph = build_graph(ROOT, evidence, image_run)
+        prepare_bootstrap(ROOT, evidence, image_run, graph["platform_images"]["go"])
         selection = str(evidence / "image-selection.json")
         run(
             [

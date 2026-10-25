@@ -9,8 +9,8 @@ import time
 from common import digest, require, image_ref
 
 APPLICATIONS = ("api", "worker", "terminal", "app-schema")
-DERIVED = ("alpine", "go", "bun", "caddy", "postgres")
-UPSTREAM = ("temporal", "temporal-admin", "valkey")
+DERIVED = ("alpine", "go", "bun", "caddy", "postgres", "temporal", "temporal-admin")
+UPSTREAM = ("valkey",)
 PLATFORM = (*DERIVED, *UPSTREAM)
 
 
