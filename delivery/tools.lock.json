@@ -9,6 +9,9 @@
           "sha256": "db1889184726840f75c4f9c001048430d4f25b3be3cb084d3ddd762bc0aed576",
           "member": null
         }
+      },
+      "source_build": {
+        "linux_amd64_sha256": "37014a527eeffaa19405f9be51fd6bc1683809d906ab378c3ffadba9b4a6ebe1"
       }
     },
     "gitleaks": {

@@ -143,7 +143,7 @@ def build(root, directory, run, gate):
     print("Resolving pinned gosu source", flush=True)
     fetch(lock["gosu"], gosu)
 
-    def docker_build(context, filename, name, arguments):
+    def docker_build(context, filename, name, arguments, target=None):
         normalize_context(context)
         tag = "agentclash-platform-build:" + name
         archive = directory / (name + ".image.tar")
@@ -164,6 +164,8 @@ def build(root, directory, run, gate):
             "-t",
             tag,
         ]
+        if target is not None:
+            command += ["--target", target]
         for key, value in arguments.items():
             if key in ("BUILDER", "UPSTREAM") and value.startswith("sha256:"):
                 value = local_base(run, value)
@@ -186,10 +188,13 @@ def build(root, directory, run, gate):
         ),
         "go": ("v3.24", ("libcrypto3", "libssl3")),
         "bun": ("v3.22", ("libcrypto3", "libssl3")),
-        "caddy": ("v3.23", ("libcrypto3", "libssl3", "curl", "libcurl", "c-ares")),
+        "caddy": (
+            "v3.23",
+            ("libcrypto3", "libssl3", "curl", "libcurl", "c-ares", "brotli-libs"),
+        ),
         "postgres": ("v3.24", ("libcrypto3", "libssl3", "libuuid")),
     }
-    for name in DERIVED:
+    for name in packages:
         context = directory / ("platform-context-" + name)
         (context / "packages").mkdir(mode=0o700, parents=True)
         branch, names = packages[name]
@@ -265,6 +270,24 @@ def build(root, directory, run, gate):
             )
         gate(name, public[name]["image"], detail["Id"])
         output[name], identity[name] = detail["Id"], detail
+    # Rebuild the exact Temporal release binaries, retaining the upstream image's
+    # runtime identity, configuration and schema files. Go module checksums pin
+    # original source versions; only the locked security dependencies change.
+    context = directory / "platform-context-temporal"
+    (context / "source").mkdir(mode=0o700, parents=True)
+    for filename in ("go.mod", "go.sum"):
+        shutil.copyfile(recipe / "temporal" / filename, context / "source" / filename)
+    shutil.copyfile(recipe / "licenses.sh", context / "licenses.sh")
+    for name, target in (("temporal", "server"), ("temporal-admin", "admin")):
+        detail = docker_build(
+            context,
+            "Dockerfile.temporal",
+            name,
+            {"BUILDER": output["go"], "UPSTREAM": public[name]["image"]},
+            target=target,
+        )
+        gate(name, public[name]["image"], detail["Id"])
+        output[name], identity[name] = detail["Id"], detail
     for name in UPSTREAM:
         # These unchanged, immutable upstream runtimes already satisfy the same gate.
         output[name] = public[name]["image"]
@@ -300,3 +323,36 @@ def selection(path):
             "Rehearsals require exact image identities",
         )
     return images
+
+
+def build_compose(root, directory, run, builder):
+    """Export the same Compose release with locked security fixes and notices."""
+    root, directory = Path(root), Path(directory)
+    recipe = root / "deploy/aws/platform"
+    context = directory / "compose-build-context"
+    (context / "source").mkdir(mode=0o700, parents=True)
+    for name in ("go.mod", "go.sum"):
+        shutil.copyfile(recipe / "compose" / name, context / "source" / name)
+    shutil.copyfile(recipe / "licenses.sh", context / "licenses.sh")
+    normalize_context(context)
+    output = directory / "compose-build"
+    run(
+        [
+            "docker",
+            "build",
+            "--platform",
+            "linux/amd64",
+            "--provenance=false",
+            "--target",
+            "export",
+            "--build-arg",
+            "BUILDER=" + local_base(run, builder),
+            "--output",
+            "type=local,dest=" + str(output),
+            "-f",
+            str(recipe / "Dockerfile.compose"),
+            str(context),
+        ],
+        timeout=2400,
+    )
+    return output / "docker-compose", output / "notices"

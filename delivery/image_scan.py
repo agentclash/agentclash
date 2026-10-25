@@ -37,6 +37,14 @@ def coverage(report, role):
         "api": ("app",),
         "worker": ("app",),
         "app-schema": ("app",),
+        "temporal": ("usr/local/bin/temporal-server",),
+        "temporal-admin": (
+            "usr/local/bin/tdbg",
+            "usr/local/bin/temporal-sql-tool",
+            "usr/local/bin/temporal-cassandra-tool",
+            "usr/local/bin/temporal-elasticsearch-tool",
+            "usr/local/bin/temporal",
+        ),
     }
     for target in targets.get(role, ()):
         require(
@@ -47,11 +55,6 @@ def coverage(report, role):
                 for r in results
             ),
             "Required executable dependency inventory is missing",
-        )
-    if role in ("temporal", "temporal-admin"):
-        require(
-            any(r.get("Type") == "gobinary" and r.get("Packages") for r in results),
-            "Temporal executable coverage is missing",
         )
     if role == "terminal":
         require(
@@ -221,6 +224,16 @@ class Scanner:
             return
         before = self.image("input-" + name, input_ref, name, source_input=True)
         after = self.image("platform-" + name, output_id, name)
+        if name in ("temporal", "temporal-admin"):
+            original = before["Metadata"]["ImageConfig"].get("config", {})
+            consumed = after["Metadata"]["ImageConfig"].get("config", {})
+            require(
+                all(
+                    original.get(key) == consumed.get(key)
+                    for key in ("User", "Cmd", "Entrypoint", "WorkingDir")
+                ),
+                "Temporal runtime identity or startup behavior changed",
+            )
         report = self.directory / ("remediation-" + name + ".json")
         report.write_bytes(
             canonical(

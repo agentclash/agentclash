@@ -84,6 +84,11 @@
       "version": "2026d-r0",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/tzdata-2026d-r0.apk",
       "sha256": "e13f0f891c5e231bfb89727556bc05e9a44fce6389c6c1505f2772369da5a262"
+    },
+    "v3.23/brotli-libs": {
+      "version": "1.2.1-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/brotli-libs-1.2.1-r0.apk",
+      "sha256": "cf3dc08928958bb42fe71c07a179ca33adb9e2c341daa29d88777061956d84f5"
     }
   }
 }

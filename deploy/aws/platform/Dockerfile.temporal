@@ -1,0 +1,26 @@
+ARG BUILDER
+ARG UPSTREAM
+FROM ${BUILDER} AS build
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org
+WORKDIR /src
+COPY source/ .
+RUN go mod download && go mod verify
+# Build dependency packages so their original module versions stay in build info.
+# Preserve symbols for downstream Go vulnerability and reachability inspection.
+RUN mkdir -p /out && \
+    go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" -o /out/temporal-server go.temporal.io/server/cmd/server && \
+    go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" -o /out/tdbg go.temporal.io/server/cmd/tools/tdbg && \
+    go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" -o /out/temporal-sql-tool go.temporal.io/server/cmd/tools/sql && \
+    go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" -o /out/temporal-cassandra-tool go.temporal.io/server/cmd/tools/cassandra && \
+    go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" -o /out/temporal-elasticsearch-tool go.temporal.io/server/cmd/tools/elasticsearch && \
+    go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" -o /out/temporal github.com/temporalio/cli/cmd/temporal
+COPY licenses.sh /licenses.sh
+RUN sh /licenses.sh /out/notices
+
+FROM ${UPSTREAM} AS server
+COPY --from=build /out/temporal-server /usr/local/bin/temporal-server
+COPY --from=build /out/notices /usr/share/licenses/agentclash-platform/temporal/
+
+FROM ${UPSTREAM} AS admin
+COPY --from=build /out/tdbg /out/temporal-sql-tool /out/temporal-cassandra-tool /out/temporal-elasticsearch-tool /out/temporal /usr/local/bin/
+COPY --from=build /out/notices /usr/share/licenses/agentclash-platform/temporal-admin/

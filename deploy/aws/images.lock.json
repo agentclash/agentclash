@@ -5,13 +5,13 @@
       "tag": "temporalio/server:1.32.0",
       "image": "temporalio/server@sha256:c3e752127759616bb1615e0f9ba0e21635aeb5fdeb922de4f371c350955f46ae",
       "platform": "linux/amd64",
-      "usage": "immutable-runtime"
+      "usage": "remediation-source-only"
     },
     "temporal-admin": {
       "tag": "temporalio/admin-tools:1.32.0",
       "image": "temporalio/admin-tools@sha256:a9f84fb9a374b2374fe2e67c8efc0468ff3f1c66c8a0b14597ec86e349e62bca",
       "platform": "linux/amd64",
-      "usage": "immutable-runtime"
+      "usage": "remediation-source-only"
     },
     "valkey": {
       "tag": "valkey/valkey:8.1.10-alpine",
@@ -38,8 +38,8 @@
       "usage": "remediation-source-only"
     },
     "go": {
-      "tag": "golang:1.26.8-alpine3.24",
-      "image": "golang@sha256:ce864e7223ac17b1775e6fd0b4c0db580c2eb50e7953a427916379e4b92a1628",
+      "tag": "golang:1.26.10-alpine3.24",
+      "image": "golang@sha256:27f2d3b83cfc5803c8078f8e730af0f7c431bf067afaec8f60a36fb763187cba",
       "platform": "linux/amd64",
       "usage": "remediation-source-only"
     },
