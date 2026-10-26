@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowRight, ChevronRight, Copy, Pencil } from "lucide-react";
 import { useVibeEditorDraft } from "@/lib/use-vibe-editor-draft";
 import { editorSource } from "@/lib/vibe-build-drafts";
+import { downloadJSON } from "@/lib/vibe-export";
 import { type Artifact } from "@/lib/vibe";
 import { suiteCases, changedCases } from "./test-suite-cases";
 import { TestMeaning } from "./conversation-guidance";
@@ -31,7 +32,7 @@ export function TestSuitePanel({
   onRun,
   onEdit,
   onDirty,
-  onSave,
+  onSave, onOriginal,
   onSettings,
   modelLabel,
   pendingPolicy = false,
@@ -54,6 +55,7 @@ export function TestSuitePanel({
   onEdit: (fields: Record<string, unknown>) => Promise<boolean>;
   onDirty: (dirty: boolean) => void;
   onSave: () => void;
+  onOriginal?:()=>void;
   onSettings: () => void;
   modelLabel?: string;
   pendingPolicy?: boolean;
@@ -90,9 +92,7 @@ export function TestSuitePanel({
   const ready = !!artifact.agent_prompt.trim();
   const added = parent ? tests.filter(test => !suiteCases(parent.blueprint).some(old => old.key===test.key)).length : 0;
   const validationBlocked = !!artifact.validation && artifact.validation.status !== "supported";
-  if (artifact.unavailable_reason) return <section className="vibe-panel p-5 space-y-3"><h2 className="text-xl font-semibold">Pack kept · needs the advanced runner</h2><p className="text-sm vibe-muted">{artifact.unavailable_reason} Your original tests are intact; none were run.</p><VibeButton onClick={() => {const url=URL.createObjectURL(new Blob([JSON.stringify(artifact.blueprint,null,2)],{type:"application/json"}));const a=document.createElement("a");a.href=url;a.download="challenge-pack.json";a.click();setTimeout(() => URL.revokeObjectURL(url),1000)}}>Export original pack</VibeButton></section>;
-  if (!cases.length)
-    return <p>This pack needs the full pack builder to display its tests. Your original file is preserved.</p>;
+  if (artifact.unavailable_reason || !cases.length) return <section className="vibe-panel p-5 space-y-3"><h2 className="text-xl font-semibold">Pack kept · advanced editor needed</h2><p className="text-sm vibe-muted">{artifact.unavailable_reason || "These tests need the full pack builder."} No tests were removed or run.</p>{artifact.original&&onOriginal?<VibeButton onClick={onOriginal}>Download original {artifact.original.filename}</VibeButton>:<VibeButton onClick={()=>downloadJSON("pack-definition.json",artifact.blueprint)}>Download definition</VibeButton>}<VibeButton onClick={onSave}>Save and open advanced editor</VibeButton></section>;
 
   return (
     <section data-proposal-id={artifact.id} aria-label="Your tests" className="space-y-5">

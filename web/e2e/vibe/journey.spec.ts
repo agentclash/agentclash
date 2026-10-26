@@ -187,15 +187,17 @@ async function mockVibe(
           "Access-Control-Allow-Credentials": "true",
         },
       });
+    if(path.endsWith("/export")) {
+      const selection=request.postDataJSON(),artifacts=session.document.artifacts.filter(a=>a.id===selection.artifact_id);
+      const runs=session.operations.filter(o=>o.id===selection.result_id);
+      return send({format:"agentclash-evaluation-v2",session_id:session.id,title:session.title||"Fixture project",captured_at:new Date().toISOString(),artifact_id:selection.artifact_id,selection,artifacts,rules:[],runs,items:runs.flatMap(run=>run.results.map(c=>({kind:"case",id:`${run.id}:${c.case_key}`,operation_id:run.id,artifact_id:selection.artifact_id,case_key:c.case_key,hash:`fixture:${run.id}:${c.case_key}`}))),case_mappings:[],omissions:["Unselected history is omitted."]});
+    }
     if (path.endsWith("/case")) {
       const operation = session.operations.find(
         (o) => o.id === path.split("/").at(-2),
       );
-      return send(
-        operation?.results.find(
-          (r) => r.case_key === new URL(request.url()).searchParams.get("key"),
-        ),
-      );
+      const result=operation?.results.find(r=>r.case_key===new URL(request.url()).searchParams.get("key"));
+      return send(result?{...result,evidence_hash:`fixture:${operation!.id}:${result.case_key}`}:{});
     }
     if (path.endsWith("/stop")) {
       const operation = session.operations.find(
@@ -707,9 +709,12 @@ test("draft editor exposes the full instructions and exports the user's exact re
   await page
     .getByRole("button", { name: "Export agent and checks", exact: true })
     .click();
+  await page.getByRole("button",{name:"Download exact export",exact:true}).click();
   const download = await downloadReady;
   const exported = JSON.parse(await readFile((await download.path())!, "utf8"));
-  expect(exported.agent_prompt).toBe(effective);
+  expect(exported.artifacts.find((artifact:{id:string})=>artifact.id===exported.artifact_id).agent_prompt).toBe(effective);
+  expect(exported.manifest.completeness).toBe("exact");
+  expect(exported.selection.scope).toBe("selected");
   expect(mock.messageCount()).toBe(1);
   expect(mock.checkCount()).toBe(0);
 });

@@ -9,7 +9,7 @@ import { EvaluationOutcome } from "./evaluation-outcome";
 import { ProjectEnquiry } from "./project-enquiry";
 import { VibeButton } from "./vibe-button";
 
-export function BuildNextActions({ session, artifact, operation, hasOutput, busy, primary, onTry, onDetails, onGuide, onSave, onTougher, loadEvidence }: {
+export function BuildNextActions({ session, artifact, operation, hasOutput, busy, primary, onTry, onDetails, onGuide, onSave, onTougher, onExport, loadEvidence }: {
   session: Session;
   artifact: Artifact;
   operation?: Operation;
@@ -20,6 +20,7 @@ export function BuildNextActions({ session, artifact, operation, hasOutput, busy
   onDetails: (operation: Operation) => void;
   onGuide: () => void;
   onSave: (operation: Operation) => void;
+  onExport?: (artifact: Artifact, operation?: Operation) => void;
   onTougher?: (text: string, count: number, artifactID: string) => void;
   loadEvidence: (id: string, key: string) => Promise<CaseResult>;
 }) {
@@ -62,9 +63,9 @@ export function BuildNextActions({ session, artifact, operation, hasOutput, busy
         {hasOutput && <VibeButton variant="quiet" onClick={() => { action("try"); onTry(); }}>Try another input</VibeButton>}
         <details className="vibe-prototype-details"><summary>Rules used</summary><p>{artifact.scope_note || "Only supplied text was available."}</p>{artifact.sample && <p>These are sample rules, not your business policy.</p>}{rules.length > 0 && <ul className="vibe-scope-rules">{rules.map(rule => <li key={rule.id}>{rule.statement}</li>)}</ul>}</details>
         {operation && !hasOutput && allPass && firstSample && <><VibeButton variant="quiet" aria-expanded={sampleOpen} onClick={() => setSampleOpen(value => !value)}>Try a sample</VibeButton>{sampleOpen && <section aria-label="Saved sample demonstration"><p className="vibe-build-note">A made-up input and the saved reply from this check. Opening it does not run the model.</p><CaseEvidence summary={firstSample} exampleFirst concise compactPreview defaultOpen load={key => loadEvidence(operation.id, key)} /></section>}</>}
-        {operation && onTougher && <><VibeButton variant="quiet" aria-expanded={tougherOpen} onClick={() => { action("tougher"); setTougherOpen(value => !value); }}>Try tougher situations</VibeButton>{tougherOpen && <EvaluationOutcome key="extend" showTougher hideContact session={session} artifact={artifact} operation={operation} busy={busy} loadEvidence={loadEvidence} onTougher={onTougher} />}</>}
+        {operation && onTougher && <><VibeButton variant="quiet" aria-expanded={tougherOpen} onClick={() => { action("tougher"); setTougherOpen(value => !value); }}>Try tougher situations</VibeButton>{tougherOpen && <EvaluationOutcome onExport={onExport} key="extend" showTougher hideContact session={session} artifact={artifact} operation={operation} busy={busy} loadEvidence={loadEvidence} onTougher={onTougher} />}</>}
       </div>
     </details>}
-    {keepOpen && operation && <section aria-label="Download or save your work"><VibeButton disabled={busy} onClick={() => onSave(operation)}>Save to my account</VibeButton><EvaluationOutcome hideContact session={session} artifact={artifact} operation={operation} busy={busy} loadEvidence={loadEvidence} /></section>}
+    {keepOpen && operation && <section aria-label="Download or save your work"><VibeButton disabled={busy} onClick={() => onSave(operation)}>Save to my account</VibeButton><EvaluationOutcome onExport={onExport} hideContact session={session} artifact={artifact} operation={operation} busy={busy} loadEvidence={loadEvidence} /></section>}
   </section>;
 }

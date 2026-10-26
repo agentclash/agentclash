@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { vibeFetch, type Session } from "@/lib/vibe";
 import { useVibeConnection } from "@/lib/vibe-connection";
+import {projectTitle} from "@/lib/vibe-project";
 import { VibeButton } from "./vibe-button";
 
 export function DeleteProject({ session, onClose, onDeleted }: { session: Session; onClose: () => void; onDeleted: (id: string) => void }) {
@@ -30,7 +31,7 @@ export function DeleteProject({ session, onClose, onDeleted }: { session: Sessio
   }
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }}>
     <DialogContent className="vibe-workspace sm:max-w-lg">
-      <DialogTitle>{receipt ? "Project removed" : "Delete project and its data?"}</DialogTitle>
+      <DialogTitle className="[overflow-wrap:anywhere]">{receipt ? "Project removed" : `Delete “${projectTitle(session)}” and its data?`}</DialogTitle>
       <DialogDescription>{receipt
         ? "New access and runs are blocked. Stored files and remaining content are being removed."
         : "This removes this project’s files, conversation, versions and results, stops pending work and cancels unsent enquiries. It does not delete other projects."}</DialogDescription>

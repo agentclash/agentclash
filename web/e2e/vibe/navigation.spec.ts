@@ -37,6 +37,7 @@ async function serve(page: Page, many = false, prototypes = false) {
   const sessions = new Map([[first.id, first], [second.id, second]]);
   if (many) for (let index = 0; index < 30; index++) {
     const extra = evaluation(`older-${index}`);
+    extra.title=`Customer support for international returns and exchanges ${index}`;
     extra.document.artifacts.push({ id: `artifact-${index}`, kind: "test_suite", title: `Customer support for international returns and exchanges ${index}`,
       agent_prompt: "", blueprint: {}, accepted: false, source_message_id: "source" });
     sessions.set(extra.id, extra);
@@ -51,6 +52,15 @@ async function serve(page: Page, many = false, prototypes = false) {
       "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS" } });
     if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) } });
     if (path.endsWith("/saved-checks")) return route.fulfill({ headers, json: [] });
+    if(request.method()==="PATCH"&&path.endsWith("/metadata")){
+      const id=path.split("/sessions/")[1].split("/")[0],state=sessions.get(id)!;
+      const body=request.postDataJSON();posts.push({path,body});
+      if(body.revision!==state.revision)return route.fulfill({status:409,headers,json:{error:{message:"Reload the project"}}});
+      if(body.title!==undefined)state.title=body.title.trim();
+      if(body.archived!==undefined)state.archived_at=body.archived?new Date().toISOString():undefined;
+      state.revision++;state.event_cursor=state.revision;state.updated_at=new Date().toISOString();
+      return route.fulfill({headers,json:state});
+    }
     if (request.method() === "POST") {
       if (path.endsWith("/build-quote")) {
         posts.push({ path, body: request.postDataJSON() });
@@ -71,7 +81,7 @@ async function serve(page: Page, many = false, prototypes = false) {
       posts.push({ path, body: request.postDataJSON() });
       return route.fulfill({ status: 400, headers, json: { error: { message: "Unexpected mutation in navigation test" } } });
     }
-    if (path.endsWith("/sessions")) return route.fulfill({ headers, json: [...sessions.values()] });
+    if (path.endsWith("/sessions")) return route.fulfill({ headers, json: [...sessions.values()].filter(s=>{const mode=new URL(request.url()).searchParams.get("archived");return mode==="all"||(mode==="only"?!!s.archived_at:!s.archived_at)}) });
     const id = path.split("/sessions/")[1]?.split("/")[0];
     const state = sessions.get(id);
     if (path.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(state)}\n\n` });
@@ -491,4 +501,29 @@ test("Settings descendants retain readable scoped appearance including warning, 
   expect(control.posts).toHaveLength(0);expect(control.errors).toEqual([]);
   await writeFile(info.outputPath("descendant-contrast.json"),JSON.stringify(report,null,2));
   await info.attach("descendant-contrast",{body:JSON.stringify(report,null,2),contentType:"application/json"});
+});
+
+test("library search rename archive and sidebar preference preserve full touch and keyboard titles without running",async({page})=>{
+ const control=await serve(page,true);
+ await page.getByRole("searchbox",{name:"Search loaded projects"}).fill("exchanges 29");
+ await expect(page.locator("[data-evaluation-id]")).toHaveCount(1);
+ await page.locator('[data-evaluation-id="older-29"]').click();
+ await page.getByRole("button",{name:"Rename project",exact:true}).click();
+ const title="International customer support – returns, exchanges, warranty exceptions and multilingual delivery questions for the autumn project";
+ await page.getByRole("textbox",{name:"Project title",exact:true}).fill(title);
+ await page.getByRole("textbox",{name:"Project title",exact:true}).press("Enter");
+ await expect(page.getByRole("button",{name:"Rename project",exact:true})).toBeVisible();
+ await page.getByRole("searchbox",{name:"Search loaded projects"}).fill("autumn project");
+ const row=page.locator('[data-evaluation-id="older-29"]');await expect(row).toContainText(title);
+ await row.focus();expect(await row.locator('.vibe-project-full-title').evaluate(node=>node.scrollHeight<=node.clientHeight+1)).toBe(true);
+ await page.getByRole("button",{name:"Archive project",exact:true}).click();await expect(row).toHaveCount(0);
+ await page.getByLabel("Project archive filter").selectOption("only");await expect(row).toHaveCount(1);
+ await page.getByRole("button",{name:"Restore project",exact:true}).click();await expect(row).toHaveCount(0);
+ await page.getByLabel("Project archive filter").selectOption("exclude");await expect(row).toHaveCount(1);
+ await page.getByRole("button",{name:"Collapse sidebar",exact:true}).click();await page.reload();await expect(page.getByRole("button",{name:"Expand sidebar",exact:true})).toBeVisible();
+ await page.setViewportSize({width:390,height:844});if(await page.getByRole("button",{name:"Close Guide",exact:true}).isVisible())await page.getByRole("button",{name:"Close Guide",exact:true}).click();await page.getByRole("button",{name:"Open agents",exact:true}).click();
+ const mobile=page.getByRole("dialog");await expect(mobile.locator('[data-evaluation-id="older-29"]')).toContainText(title);
+ expect(await mobile.locator('[data-evaluation-id="older-29"] .vibe-project-full-title').evaluate(node=>node.scrollHeight<=node.clientHeight+1)).toBe(true);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ expect(control.posts.every(p=>p.path.endsWith('/metadata'))).toBe(true);expect(control.errors).toEqual([]);
 });

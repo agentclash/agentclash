@@ -50,6 +50,7 @@ export type EvaluationProposal = {
   success_criteria: string;
 };
 export type Artifact = {
+ original?:{id:string;artifact_id:string;filename:string;media_type:string;content_sha256:string;size_bytes:number};
   input_contract?: { version: number; formats: string[]; label: string };
   required_capabilities?: string[];
   reference_inputs?: import("./vibe-inputs").InputBinding[];
@@ -111,6 +112,7 @@ export type CaseResult = {
   error?: { code?: string; message: string };
 };
 export type Operation = {
+ created_at?:string;
   evidence_metadata?: import("./vibe-result-evidence").EvidenceMetadata;
   result_scope?: import("./vibe-result-evidence").ResultScope;
   progress?: { phase_started_at?: string; last_confirmed_at?: string; phase_elapsed_ms?: number; phase: string; completed_cases: number; total_cases: number };
@@ -175,6 +177,7 @@ export type Operation = {
 export type RuleCoverage = { rule_id: string; statement: string; case_keys: string[] };
 
 export type Session = {
+ title?:string;updated_at?:string;archived_at?:string;
   evidence_receipt?: {client_id:string;evidence_id:string;artifact_id:string};
   validation_reviews?: import("./vibe-result-evidence").ValidationReview[];
   rule_coverage?: Record<string, RuleCoverage[]>;
@@ -245,6 +248,7 @@ export type EvidenceSet = {
   conversations: { key: string; title: string; messages: EvidenceMessage[] }[];
 };
 export type SavedCheck = {
+ project_title?:string;
   kind?: "brief";
   models?: Models;
   draft_id?: string;
@@ -583,4 +587,11 @@ export async function watchVibe(
   } finally {
     reader.releaseLock();
   }
+}
+
+// Binary downloads must retain the server's exact bytes (including a UTF-8 BOM).
+export async function vibeBytes(path: string, token?: string | null): Promise<Uint8Array> {
+ const response=await fetch(`${baseURL()}/v1/vibe${path}`,{headers:token?{Authorization:`Bearer ${token}`}:{},credentials:"include",cache:"no-store"});
+ if(!response.ok){const value=await response.json().catch(()=>null);throw new VibeError(value?.error?.code||"request_failed",value?.error?.message||"Original file is unavailable.",response.status)}
+ const bytes=new Uint8Array(await response.arrayBuffer());if(bytes.length>4*1024*1024)throw new Error("Original file exceeds its download bound.");return bytes;
 }

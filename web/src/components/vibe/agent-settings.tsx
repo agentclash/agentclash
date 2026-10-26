@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import {advancedURL} from "@/lib/vibe-keep";
+import {projectTitle} from "@/lib/vibe-project";
 import { Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { exportAgent, type Artifact, type Models, type Session, type VibeConfig } from "@/lib/vibe";
+import { type Artifact, type Models, type Session, type VibeConfig } from "@/lib/vibe";
 import { CreditsDialog } from "./credits-dialog";
 import { ModelSelect } from "./model-select";
 import { VibeButton } from "./vibe-button";
@@ -20,6 +22,7 @@ type Props = {
   busy: boolean;
   workspace: string;
   testJourney: boolean;
+  projectReturnPath?:string;
   savedDraft?: { workspace_id: string; draft_id: string } | null;
   onModels: (models: Models) => void;
   onVersion: (id: string) => void;
@@ -28,7 +31,7 @@ type Props = {
   onExportConversation: () => void;
 };
 
-export function AgentSettings({open, onOpenChange, config, session, artifact, artifacts, models, busy, workspace, testJourney, savedDraft, onModels, onVersion, onSave, onImport, onExportConversation}: Props) {
+export function AgentSettings({open, onOpenChange, config, session, artifact, artifacts, models, busy, workspace, testJourney, projectReturnPath,savedDraft, onModels, onVersion, onSave, onImport, onExportConversation}: Props) {
   return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="vibe-workspace vibe-dialog">
@@ -54,7 +57,7 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
           {savedDraft && (
             <Link
               className="text-sm underline"
-              href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}
+              href={advancedURL(savedDraft.workspace_id,savedDraft.draft_id,projectReturnPath,session?projectTitle(session):undefined)}
             >
               Open saved evaluation
             </Link>
@@ -139,7 +142,7 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
             artifact.kind !== "conversation_evaluation" && (
               <Button
                 variant="outline"
-                onClick={() => exportAgent(artifact, models)}
+                onClick={onExportConversation}
               >
                 {testJourney
                   ? "Export tests and agent instructions"
@@ -148,7 +151,7 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
             )}
           {session && (
             <Button variant="ghost" onClick={onExportConversation}>
-              Export conversation
+              Export selected version / result
             </Button>
           )}
           <details className="text-sm">

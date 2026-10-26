@@ -624,3 +624,6 @@
   .vibe-dock-heading .vibe-context-label { flex-wrap:wrap; }
   .vibe-new-response { padding-inline:8px; }
 }
+
+.vibe-project-full-title { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; }
+.vibe-sidebar-footer details {font-size: .8rem;}

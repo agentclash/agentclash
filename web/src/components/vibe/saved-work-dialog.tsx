@@ -32,7 +32,7 @@ export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, h
                 className="rounded-lg border p-3 text-sm"
                 href={savedWorkURL(c)}
               >
-                {c.title}
+                <span className="block break-words">{c.project_title||c.title}</span><span className="block text-xs">{c.title} · {c.artifact_id.slice(0,8)}</span>
                 <span className="mt-1 block text-xs text-muted-foreground">
                   {c.kind === "brief" ? "Preparation brief · not run" : c.draft_id
                     ? "Saved tests"

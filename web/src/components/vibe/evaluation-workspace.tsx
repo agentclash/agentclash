@@ -131,6 +131,8 @@ export type EvaluationWorkspaceProps = {
   onEdit: (fields: Record<string, unknown>) => Promise<boolean>;
   onDirty: (dirty: boolean) => void;
   onSave: (operation?: Operation) => void;
+  onExport?: (artifact:Artifact,operation?:Operation)=>void;
+  onOriginal?: (artifact:Artifact)=>void;
   onImport: () => void;
   importNotice?: ReactNode;
   onSettings: () => void;
@@ -339,7 +341,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
         buildJourney={buildJourney}
         parent={parent}
         comparison={!!changeBaseline} onRun={() => startRun(changeBaseline)} onEdit={p.onEdit}
-        onDirty={p.onDirty} onSave={() => p.onSave()} onSettings={p.onSettings} modelLabel={p.modelLabel}
+        onDirty={p.onDirty} onOriginal={()=>p.artifact && p.onOriginal?.(p.artifact)} onSave={() => p.onSave()} onSettings={p.onSettings} modelLabel={p.modelLabel}
         checkingChanges={p.checkingTestChanges}
         rules={p.session?.document.policies?.find(policy => policy.id === p.artifact!.policy_id && ["spec-sources-v1", "spec-sources-v2"].includes(policy.source_version || ""))?.rules}
         pendingPolicy={p.session?.document.pending_policy_changes?.some(change => change.status === "pending" && (!change.artifact_id || change.artifact_id === p.artifact!.id))} />
@@ -630,7 +632,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   scroll.follow();
                   p.onMessage("Suggest a focused improvement to these agent instructions using the failed examples. Preserve the checks and expected behavior.", operation);
                 }}
-                onSave={p.onSave} onTougher={p.onTougher} loadEvidence={p.loadEvidence} />
+                onSave={p.onSave} onTougher={p.onTougher} onExport={p.onExport} loadEvidence={p.loadEvidence} />
             </div>}
             {p.view === "tests" ? (suiteContents || <p>No tests in this version yet. Ask Guide to prepare examples.</p>) : p.view === "try" ? (
               buildJourney ? null : p.preview
@@ -753,7 +755,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   }
                 />
                 {buildJourney && <VibeButton variant="quiet" onClick={() => askAboutRun(result)}>Ask about this result</VibeButton>}
-                {door && p.session && p.artifact && terminal(result.state) && <EvaluationOutcome key={`outcome:${result.id}`} hideContact={buildJourney} session={p.session} artifact={p.session.document.artifacts.find(a => a.id === result.source?.artifact_id) || p.artifact} operation={result} busy={p.busy || p.dirty} loadEvidence={p.loadEvidence} onTougher={buildJourney && result.source?.artifact_id !== p.artifact.id ? undefined : p.onTougher} />}
+                {door && p.session && p.artifact && terminal(result.state) && <EvaluationOutcome onExport={p.onExport} key={`outcome:${result.id}`} hideContact={buildJourney} session={p.session} artifact={p.session.document.artifacts.find(a => a.id === result.source?.artifact_id) || p.artifact} operation={result} busy={p.busy || p.dirty} loadEvidence={p.loadEvidence} onTougher={buildJourney && result.source?.artifact_id !== p.artifact.id ? undefined : p.onTougher} />}
                 {result.results.length > 0 && terminal(result.state) && (
                   <CoverageNote key={result.id} rows={p.session?.rule_coverage?.[result.source?.artifact_id || result.results[0]?.version] || []}
                     busy={p.busy || p.dirty || !!p.content.trim() || (buildJourney && result.source?.artifact_id !== p.artifact?.id)} onSuggest={rule => {

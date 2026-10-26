@@ -878,7 +878,7 @@ it.each([
     expect(button("Save agent").disabled).toBe(false);
     expect(container.textContent).not.toContain("Retry submission");
     await click("Save agent");
-    await click("Save agent and checks");
+    await click("Save and iterate");
     const save = requests.find((r) => r.path.endsWith("/save"))!;
     expect(save.body.models).toEqual({
       ...defaultModels,
@@ -888,7 +888,7 @@ it.each([
     expect(button("Saved").disabled).toBe(true);
     expect(
       container.querySelector(
-        'a[href="/workspaces/workspace-one/challenge-packs/builder/canonical-one"]',
+        'a[href^="/workspaces/workspace-one/challenge-packs/builder/canonical-one"]',
       ),
     ).not.toBeNull();
     expect(composer().value).toBe("Keep this message");
@@ -926,7 +926,7 @@ it("Keep sends the independently selected models without an inference submission
   await render();
   await selectModel("Agent", "openai/gpt-4.1");
   await click("Save agent");
-  await click("Save agent and checks");
+  await click("Save and iterate");
   const save = requests.find((r) => r.path.endsWith("/save"))!;
   expect(save.body.models).toEqual({
     ...defaultModels,
@@ -946,7 +946,7 @@ it.each([
   { name: "legacy null", receipt: { saved_models: null }, confirmed: false },
   { name: "legacy absent", receipt: {}, confirmed: false },
 ])(
-  "hydrates the $name saved artifact link from a session-only URL, clearing it for a new artifact",
+  "hydrates the $name saved artifact link from a session-only URL, pinning the open save summary while a new artifact arrives",
   async ({ receipt, confirmed }) => {
     acceptedDraft();
     signedInWorkspace();
@@ -957,13 +957,14 @@ it.each([
       saved_artifact_id: "artifact-one",
       ...receipt,
     });
+    session.operations=[{id:"original-default-run",kind:"check",state:"COMPLETED",billing:"SETTLED",models:defaultModels,max_cost_nano_usd:0,actual_cost_nano_usd:0,results:[],source:{kind:"prompt",artifact_id:"artifact-one"}}];
     await render();
     const href =
       "/workspaces/workspace-one/challenge-packs/builder/canonical-one";
-    expect(container.querySelector(`a[href="${href}"]`)).not.toBeNull();
+    expect(container.querySelector(`a[href^="${href}"]`)).not.toBeNull();
     expect(container.textContent).toContain("Credits for workspace-one");
     await click("Save agent");
-    expect(button(confirmed ? "Saved" : "Save agent and checks").disabled).toBe(
+    expect(button(confirmed ? "Saved" : "Save and iterate").disabled).toBe(
       confirmed,
     );
     session.document.artifacts.push({
@@ -972,19 +973,20 @@ it.each([
       accepted: true,
     });
     session.document.active_artifact_id = "artifact-two";
+    session.operations.push({...session.operations[0],id:"later-default-run"});
     session.revision++;
     session.event_cursor = session.revision;
     await act(async () => snapshot(structuredClone(session)));
-    expect(document.querySelector(`a[href="${href}"]`)).toBeNull();
-    expect(button("Save agent and checks").disabled).toBe(false);
+    expect(container.querySelector(`a[href^="${href}"]`)).toBeNull();
+    const returnLink=document.querySelector<HTMLAnchorElement>('[role="dialog"] a[href^="/workspaces/workspace-one/challenge-packs/builder/canonical-one"]')!;
+    const returnPath=new URL(returnLink.href).searchParams.get("return_to")!;
+    expect(new URL(returnPath,"http://localhost").searchParams.get("agent")).toBe("artifact-one");
+    expect(new URL(returnPath,"http://localhost").searchParams.get("run")).toBe("original-default-run");
+    expect(button(confirmed ? "Saved" : "Save and iterate").disabled).toBe(confirmed);
     expect(container.textContent).not.toContain(
       "Your agent and checks are saved.",
     );
-    expect(
-      [...document.querySelectorAll("button")].some(
-        (b) => b.textContent === "Saved",
-      ),
-    ).toBe(false);
+    expect([...document.querySelectorAll('[role="dialog"] button')].some(b=>b.textContent==="Saved")).toBe(confirmed);
     expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
   },
 );
@@ -1034,17 +1036,17 @@ it.each([
       "Your current model choices differ from those recorded when this agent was saved.",
     );
     await click("Save agent");
-    await click("Save agent and checks");
+    await click("Save and iterate");
     const dialog = document.querySelector('[role="dialog"]')!;
     expect(dialog.textContent).toContain(
       "Create a new draft before saving different models.",
     );
     expect(
       dialog.querySelector(
-        'a[href="/workspaces/workspace-one/challenge-packs/builder/canonical-one"]',
+        'a[href^="/workspaces/workspace-one/challenge-packs/builder/canonical-one"]',
       ),
     ).not.toBeNull();
-    expect(button("Save agent and checks").disabled).toBe(false);
+    expect(button("Save and iterate").disabled).toBe(false);
     expect(requests.filter((r) => r.path.endsWith("/save"))).toEqual([
       {
         path: "/sessions/session-one/save",
@@ -1125,8 +1127,9 @@ it.each([
       "/workspaces/workspace-one/challenge-packs/builder/canonical-one";
     const mutations = () => requests.filter((r) => r.method !== "GET");
     async function followLink(scope: ParentNode) {
-      const link = scope.querySelector<HTMLAnchorElement>(`a[href="${href}"]`);
+      const link = scope.querySelector<HTMLAnchorElement>(`a[href^="${href}"]`);
       expect(link, "known canonical draft remains navigable").not.toBeNull();
+      expect(new URL(link!.href).pathname).toBe(href);
       const before = structuredClone(requests);
       // JSDOM cannot navigate. Cancel only the browser default, not UI handlers.
       document.addEventListener("click", (event) => event.preventDefault(), {
@@ -1152,10 +1155,10 @@ it.each([
     ).toBe(false);
     await followLink(dialog);
     expect(mutations()).toHaveLength(0);
-    await click("Save agent and checks");
+    await click("Save and iterate");
     expect(dialog.textContent).toContain(conflict);
     expect(dialog.textContent).toContain(notice);
-    expect(button("Save agent and checks").disabled).toBe(false);
+    expect(button("Save and iterate").disabled).toBe(false);
     expect(
       [...dialog.querySelectorAll("button")].some(
         (b) => b.textContent === "Saved",
@@ -1818,7 +1821,7 @@ it.each([false, true])("keeps a generated suite without inference even when unav
   await act(async () => {
     const dialog = document.querySelector('[role="dialog"]')!;
     const save = [...dialog.querySelectorAll("button")].find(
-      (b) => b.textContent === "Keep these tests",
+      (b) => b.textContent === "Save and iterate",
     )!;
     save.click();
   });
@@ -1956,7 +1959,7 @@ it("saves a provided-chat check without creating a prompt or agent build", async
   await click("Save this check");
   await act(async () =>
     [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
-      .find((b) => b.textContent === "Save this check")!
+      .find((b) => b.textContent === "Save and iterate")!
       .click(),
   );
   const write = requests.find((r) => r.path.endsWith("/save-check"));
@@ -2137,7 +2140,7 @@ it.each(["build", "test"] as const)("blocks unavailable %s admission while retai
   await click("Back to your evaluation");
   expect(container.textContent).toContain("Previously saved question");
   await click("Settings");
-  expect(button("Export conversation").disabled).toBe(false);
+  expect(button("Export selected version / result").disabled).toBe(false);
   expect(posts()).toHaveLength(0);
 });
 
@@ -2578,4 +2581,16 @@ it.each([[false,false],[false,true],[true,false]])("collects new recorded replie
  expect(quotes[1].body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source"});
  await click("Run 1 examples");
  expect(requests.find(r=>r.path.endsWith("/messages"))?.body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source",run_quote_id:"new-source-quote"});
+});
+
+it("saves the frozen dialog version after a newer version arrives without substituting its tests",async()=>{
+ acceptedDraft();signedInWorkspace();
+ const original=structuredClone(session.document.artifacts[0]);
+ respond=async(path)=>path.endsWith('/save')?json({draft_id:'frozen-draft',workspace_id:'workspace-one'}):json(session);
+ await render();await click('Save agent');
+ session.document.artifacts.push({...original,id:'later-version',title:'Different later tests'});session.document.active_artifact_id='later-version';session.revision++;session.event_cursor=session.revision;
+ await act(async()=>snapshot(structuredClone(session)));
+ const dialog=document.querySelector('[role="dialog"]')!;expect(dialog.textContent).toContain(original.id.slice(0,8));expect(dialog.textContent).not.toContain('Different later tests');
+ await click('Save and iterate');
+ const write=requests.find(r=>r.path.endsWith('/save'));expect(write?.body.artifact_id).toBe(original.id);expect(write?.body.models).toEqual(defaultModels);expect(posts()).toHaveLength(0);
 });

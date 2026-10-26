@@ -48,7 +48,7 @@ test("clear Build goes through real worker to three results, scoped export and i
  }
  await page.setViewportSize({width:1280,height:900});
  await page.getByRole('button',{name:'Download / save',exact:true}).click();
- const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export / build it myself',exact:true}).click();await download;
+ const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export / build it myself',exact:true}).click();await page.getByRole('button',{name:'Download exact export',exact:true}).click();await download;await page.getByRole('button',{name:'Close',exact:true}).last().click();
  await page.getByRole('button',{name:'Try it yourself',exact:true}).click();
  await expect(page.getByText(/business systems aren’t connected/).first()).toBeVisible();
  await page.getByRole('textbox',{name:'Message your agent',exact:true}).fill('My item is unopened and I bought it 10 days ago.');
@@ -297,7 +297,7 @@ test("sample continuation retains its prototype through harder requests, chat, r
  expect(v.calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(callsBefore+11);
  await page.getByRole('tab',{name:'Conversation',exact:true}).click();
  await page.getByRole('button',{name:'Download / save',exact:true}).click();
- const download=page.waitForEvent('download'); await page.getByRole('button',{name:'Export / build it myself',exact:true}).click();await download;
+ const download=page.waitForEvent('download'); await page.getByRole('button',{name:'Export / build it myself',exact:true}).click();await page.getByRole('button',{name:'Download exact export',exact:true}).click();await download;await page.getByRole('button',{name:'Close',exact:true}).last().click();
  await page.screenshot({path:info.outputPath('sample-followup-real-policy.png'),fullPage:true});
 });
 
@@ -392,4 +392,24 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  for(const width of [390,1280]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)}
  await page.screenshot({path:info.outputPath('recorded-updated-results.png'),fullPage:true});
  expect(errors).toEqual([]);
+});
+
+test("library original bytes round-trip through browser upload and selected export without inference",async({page},info)=>{
+ await page.setViewportSize({width:1280,height:900});await page.goto('/vibe-evals');
+ await page.getByRole('button',{name:/Improve an existing agent/}).click();
+ // Unknown canonical extension is retained exactly and remains explicitly uneditable.
+ const original=Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from('{\r\n  "pack": {"name":"Escaped \\u0041 pack", "future_extension":true},\r\n  "version": {"version":"1.0.0"}\r\n}\r\n')]);
+ await page.getByLabel('Evaluation file',{exact:true}).setInputFiles({name:'original escaped.json',mimeType:'application/json',buffer:original});
+ await expect(page.getByRole('button',{name:'Download original original escaped.json',exact:true})).toBeVisible();
+ const sourceDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Download original original escaped.json',exact:true}).click();
+ const source=await sourceDownload;const {readFile}=await import('node:fs/promises');expect(await readFile((await source.path())!)).toEqual(original);
+ await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Export selected version / result',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Download exact export',exact:true})).toBeVisible();
+ const exportedDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Download exact export',exact:true}).click();
+ const exported=JSON.parse(await readFile((await (await exportedDownload).path())!,'utf8'));
+ expect(exported.format).toBe('agentclash-evaluation-v2');expect(exported.manifest.completeness).toBe('exact');expect(exported.selection.scope).toBe('selected');expect(exported.runs).toHaveLength(0);
+ expect(Buffer.from(exported.evidence.find((e:{reference:{kind:string}})=>e.reference.kind==='original').value.content,'base64')).toEqual(original);
+ await page.getByRole('button',{name:'Close',exact:true}).last().click();
+ for(const width of [320,390,1280]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await page.screenshot({path:info.outputPath(`original-${width}.png`),fullPage:true});}
+ expect((await evidence(page)).calls).toHaveLength(0);
 });

@@ -6,8 +6,9 @@ import { useVibeCollection } from "@/lib/use-vibe-collection";
 import { useVibeInputs } from "@/lib/use-vibe-inputs";
 import type { InputBinding } from "@/lib/vibe-inputs";
 
-import { downloadJSON, exportRuns } from "@/lib/vibe-export";
 
+import { useVibeExport } from "./use-vibe-export";
+import {pinVibeReturn} from "./vibe-keep";
 import { useVibeSaving } from "@/lib/use-vibe-saving";
 import { readEditorDraft, discardEditorDraft, type EditorDraft } from "@/lib/vibe-build-drafts";
 import { useVibeEditorDraft } from "./use-vibe-editor-draft";
@@ -161,8 +162,9 @@ export function useVibeWorkspace() {
     const previous = old.actor === workspaceActor ? old.value : "";
     return { actor: workspaceActor, value: typeof next === "function" ? next(previous) : next };
   }), [workspaceActor]);
-  const listScope = `${authUserID || "guest"}:${workspace}`;
-  const contextList = useVibeCollection<Session>(`/sessions${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`, listScope, token, !authLoading && !!config?.two_door, !!authUserID);
+  const [archiveMode,setArchiveMode]=useState<"exclude"|"only"|"all">("exclude");
+ const listScope = `${authUserID || "guest"}:${workspace}`;
+  const contextList = useVibeCollection<Session>(`/sessions?archived=${archiveMode}${workspace ? `&workspace=${encodeURIComponent(workspace)}` : ""}`, `${listScope}:${archiveMode}`, token, !authLoading && !!config?.two_door, !!authUserID);
   const savedList = useVibeCollection<SavedCheck>(`/saved-checks${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`, listScope, token, !authLoading, true);
   const { rows: contexts, setRows: setContexts } = contextList;
   const { rows: savedChecks, setRows: setSavedChecks } = savedList;
@@ -419,21 +421,15 @@ export function useVibeWorkspace() {
     navigation.writeURL(new URL(`/vibe-evals?session=${id}${workspace ? `&workspace=${workspace}` : ""}`, window.location.origin));
     return v;
   }
-  async function exportConversation() {
-    const scope = scopeRef.current;
-    if (!session || pending) return;
-    const snapshot = session;
-    setPending(true);
-    setError("");
-    try {
-      const auth = await token();
-      const operations = await exportRuns(snapshot, (id, key) => vibeFetch<CaseResult>(`/operations/${id}/case?key=${encodeURIComponent(key)}`, auth));
-      if (!ownsScope(scope)) return;
-      downloadJSON("agentclash-vibe-conversation.json", {format: "agentclash-vibe-conversation-v1", document: snapshot.document, operations, capabilities: config?.capabilities || []});
-      if (snapshot.document.evaluation?.door === "build") captureBuildEvent(WEB_EVENTS.VIBE_BUILD_EXPORT_REQUESTED, { session_id: snapshot.id, artifact_id: artifact?.id, sample: !!artifact?.sample, format: "json" });
-    } catch (e) { if (!ownsScope(scope)) return; setError((e as Error).message); }
-    finally { if (ownsScope(scope)) { setPending(false); } }
+  async function metadata(target:Session,patch:{title?:string;archived?:boolean}){
+    const captured=scopeRef.current;const auth=await token();if(!ownsScope(captured))return false;
+    const result=await vibeFetch<Session>(`/sessions/${target.id}/metadata`,auth,{method:"PATCH",body:JSON.stringify({revision:target.revision,...patch})});if(!ownsScope(captured))return false;
+    if(target.id===session?.id)accept(result);setContexts(old=>old.map(row=>row.id===result.id?result:row));contextList.retry();return true;
   }
+  const exporter=useVibeExport(workspaceActor,session,token);
+  const selectedExportRun=requestedRunID?session?.operations.find(o=>o.id===requestedRunID):session?.operations.findLast(o=>(o.kind==="check"||o.kind==="retest")&&(o.result_scope?.artifact_id||o.source?.artifact_id||o.results[0]?.version)===artifact?.id);
+  const projectReturnPath=session&&artifact?pinVibeReturn(`/vibe-evals?${params.toString()}`,session.id,artifact.id,selectedExportRun?.id):undefined;
+  function exportConversation(){if(!artifact)return;setSettingsOpen(false);void exporter.start(artifact,selectedExportRun)}
   function loadSavedCase(id: string, key: string): Promise<CaseResult> {
     const owner = session?.id;
     if (!owner || activeSessionRef.current !== owner)
@@ -1062,11 +1058,12 @@ export function useVibeWorkspace() {
               ? "application/json"
               : "application/yaml",
             "If-Match": String(v.revision),
+ "X-File-Name": encodeURIComponent(uploaded.name),
           },
           body: new Blob([uploaded]),
         },
       );
-      if (ownsScope(scope)) accept(result);
+      if (ownsScope(scope) && accept(result)) { const imported=result.document.artifacts.at(-1); if(imported) navigation.update({artifact:imported.id,run:undefined,view:"tests"}); }
     } catch (e) { if (!ownsScope(scope)) return;
       const message = e instanceof VibeError && (!e.status || e.status >= 500)
         ? "Couldn’t import this file. Choose another file, or try importing again."
@@ -1078,7 +1075,7 @@ export function useVibeWorkspace() {
       if (file.current) file.current.value = "";
     } }
   }
-  const { saveOpen,saveAccess,saveBaseline,saveTarget,savedCheck,workspaces,openSave,closeSave,rememberSave,save } = useVibeSaving({actorScope: authUserID || "guest",loadWorkspace: !!authUserID && (!requestedSessionID || newEvaluation),session,artifact,artifacts,content,models,workspace,token,authLoading,loadAttempt,setContent,setModels,setWorkspace,setError,setPending,setSavedChecks,setSelectedArtifactID,reload,writeURL:navigation.writeURL});
+  const { saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,saveOpen,saveAccess,saveBaseline,saveTarget,savedCheck,workspaces,openSave,closeSave,rememberSave,save } = useVibeSaving({actorScope: authUserID || "guest",loadWorkspace: !!authUserID && (!requestedSessionID || newEvaluation),session,artifact,artifacts,content,models,workspace,savedChecks,token,authLoading,loadAttempt,setContent,setModels,setWorkspace,setError,setPending,setSavedChecks,setSelectedArtifactID,reload,writeURL:navigation.writeURL});
   const activeContext = session?.document.evaluation ? evaluationIdentity(session) : null;
   const setTrialText = (text: string) => {
     const key = trialDraftKey;
@@ -1088,5 +1085,5 @@ export function useVibeWorkspace() {
   // New work uses the prospective account/workspace and approved defaults,
   // independently of the historical project's funding and retired models.
   const entryAvailable = !!config?.enabled && Object.values(config.defaults).every(id => config.models.some(model => model.id === id)) && config.availability?.[authUserID ? "workspace" : "guest"]?.available === true && (!authUserID || saveAccess === "ready" && workspaces.some(item => item.id === workspace));
-    return { recordedUpdate, startRecordedUpdate, closeRecordedUpdate, addRecordedEvidence, entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, runInferenceAvailable, unavailableReason, messageLimit, messageError, buildQuote, buildQuoteState, refreshBuildQuote, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, canChangeDoor, changeDoor, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, trialMaterials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces };
+    return { projectReturnPath,saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,archiveMode,setArchiveMode,metadata,exporter, recordedUpdate, startRecordedUpdate, closeRecordedUpdate, addRecordedEvidence, entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, runInferenceAvailable, unavailableReason, messageLimit, messageError, buildQuote, buildQuoteState, refreshBuildQuote, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, canChangeDoor, changeDoor, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, trialMaterials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces };
 }

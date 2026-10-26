@@ -7,8 +7,8 @@ import { useVibeDrafts } from "./use-vibe-drafts";
 import { useVibeNavigation } from "./use-vibe-navigation";
 import { useVibeSession } from "./use-vibe-session";
 
-const network = vi.hoisted(() => ({ get: vi.fn(), watch: vi.fn() }));
-vi.mock("./vibe", async original => ({ ...await original<typeof import("./vibe")>(), vibeFetch: network.get, watchVibe: network.watch }));
+const network = vi.hoisted(() => ({ get: vi.fn(), bytes: vi.fn(), watch: vi.fn() }));
+vi.mock("./vibe", async original => ({ ...await original<typeof import("./vibe")>(), vibeFetch: network.get, vibeBytes:network.bytes, watchVibe: network.watch }));
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
 let root: Root;
 let element: HTMLDivElement;
@@ -19,7 +19,7 @@ beforeEach(() => {
  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT",true);
  draftMemory.clear();sessionStorage.clear();window.history.replaceState(null,"","/vibe-evals?session=A");
  element=document.createElement("div");document.body.append(element);root=createRoot(element);
- network.get.mockReset();network.watch.mockReset();
+ network.get.mockReset();network.bytes.mockReset();network.watch.mockReset();
  network.watch.mockImplementation(()=>new Promise(()=>{}));
 });
 afterEach(async()=>{await act(async()=>root.unmount());element.remove();vi.restoreAllMocks();vi.unstubAllGlobals();});
@@ -112,4 +112,51 @@ it("canonicalizes legacy trial links and pushes deliberate navigation while corr
   expect(nav.view).toBe("agent"); expect(nav.section).toBe("trial"); expect(nav.thread).toBe("t");
   await act(async () => { history.forward(); await new Promise(resolve => setTimeout(resolve, 30)); });
   expect(nav.view).toBe("tests");
+});
+
+it("invalidates captured final downloads after closing an export intent, even for the same actor", async () => {
+  const {useVibeExport}=await import("./use-vibe-export");
+  const artifact={id:"version-a",kind:"test_suite",title:"Version A"} as Session["document"]["artifacts"][number];
+  const preparation={format:"agentclash-evaluation-v2",session_id:"A",title:"Original title",captured_at:"2026-10-26T12:00:00Z",artifact_id:artifact.id,selection:{scope:"selected",artifact_id:artifact.id},artifacts:[artifact],rules:[],runs:[],items:[],case_mappings:[],omissions:[]};
+  network.get.mockResolvedValue(preparation);
+  vi.stubGlobal("URL",Object.assign(URL,{createObjectURL:vi.fn(()=>"blob:test"),revokeObjectURL:vi.fn()}));
+  const click=vi.spyOn(HTMLAnchorElement.prototype,"click").mockImplementation(()=>{});
+  let c!:ReturnType<typeof useVibeExport>;
+  function Harness(){c=useVibeExport("actor",snapshot(),token);return null}
+  await act(async()=>root.render(<Harness/>));await act(async()=>c.start(artifact));
+  const obsoleteDownload=c.download;
+  await act(async()=>c.close());
+  obsoleteDownload();expect(click).not.toHaveBeenCalled();
+  await act(async()=>c.start(artifact));obsoleteDownload();expect(click).not.toHaveBeenCalled();
+  c.download();expect(click).toHaveBeenCalledTimes(1);
+});
+
+it("rejects a late private export body after actor A to B to A and pins the originally selected identity", async () => {
+  const {useVibeExport}=await import("./use-vibe-export");
+  const artifact={id:"version-a",kind:"test_suite",title:"Version A"} as Session["document"]["artifacts"][number];
+  const operation={id:"run-a",results:[],state:"COMPLETED"} as Session["operations"][number];
+  const body=deferred<unknown>();let actor="A";
+  const preparation={format:"agentclash-evaluation-v2",session_id:"A",title:"Original title",captured_at:"2026-10-26T12:00:00Z",artifact_id:artifact.id,selection:{scope:"selected",artifact_id:artifact.id,result_id:operation.id},artifacts:[artifact],rules:[],runs:[operation],items:[{kind:"case",id:"run-a:case",operation_id:operation.id,artifact_id:artifact.id,case_key:"case",hash:"frozen"}],case_mappings:[],omissions:[]};
+  network.get.mockImplementation((path:string)=>path.endsWith("/export")?Promise.resolve(preparation):body.promise);
+  let c!:ReturnType<typeof useVibeExport>;
+  function Harness(){c=useVibeExport(actor,snapshot(),token);return null}
+  await act(async()=>root.render(<Harness/>));let pending!:Promise<void>;
+  await act(async()=>{pending=c.start(artifact,operation);await Promise.resolve()});
+  expect(JSON.parse(network.get.mock.calls[0][2].body)).toEqual({scope:"selected",artifact_id:"version-a",result_id:"run-a"});
+  const obsoleteDownload=c.download;
+  actor="B";await act(async()=>root.render(<Harness/>));actor="A";await act(async()=>root.render(<Harness/>));
+  await act(async()=>{body.resolve({case_key:"case",version:"version-a",evidence_hash:"frozen",output:"private"});await pending});
+  expect(c.state).toBeUndefined();
+  const click=vi.spyOn(HTMLAnchorElement.prototype,"click").mockImplementation(()=>{});obsoleteDownload();expect(click).not.toHaveBeenCalled();
+});
+
+it("does not download retained original bytes when its actor changes during the fetch",async()=>{
+ const {useVibeExport}=await import('./use-vibe-export');let actor='A';let c!:ReturnType<typeof useVibeExport>;
+ const body=deferred<Uint8Array>();network.bytes.mockReturnValue(body.promise);
+ const artifact={id:'version',original:{filename:'exact.json',media_type:'application/json'}} as Session['document']['artifacts'][number];
+ function Harness(){c=useVibeExport(actor,snapshot(),token);return null}
+ await act(async()=>root.render(<Harness/>));let pending!:Promise<void>;await act(async()=>{pending=c.original(artifact);await Promise.resolve()});
+ actor='B';await act(async()=>root.render(<Harness/>));
+ const click=vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
+ await act(async()=>{body.resolve(new Uint8Array([0xef,0xbb,0xbf,123,125]));await pending});expect(click).not.toHaveBeenCalled();expect(c.state).toBeUndefined();
 });

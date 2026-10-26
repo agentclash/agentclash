@@ -16,7 +16,7 @@ import { BuildRunResult } from "./build-run-result";
 import { suiteCases } from "./test-suite-cases";
 import { PromptChange } from "./prompt-change";
 
-export function BuildConversation({ session, artifact, busy, primary, onPreviewOpen, onReviewArtifact, onGuide, proposal, pending, renderMessage, onDetails, onImprove, onSave, onTougher, loadEvidence }: {
+export function BuildConversation({ session, artifact, busy, primary, onPreviewOpen, onReviewArtifact, onGuide, proposal, pending, renderMessage, onDetails, onImprove, onSave, onTougher, onExport, loadEvidence }: {
   session: Session;
   artifact?: Artifact;
   busy: boolean;
@@ -30,6 +30,7 @@ export function BuildConversation({ session, artifact, busy, primary, onPreviewO
   onDetails: (operation: Operation) => void;
   onImprove: (operation: Operation) => void;
   onSave: (operation: Operation) => void;
+  onExport?: (artifact: Artifact, operation?: Operation) => void;
   onTougher?: (text: string, count: number, artifactID: string) => void;
   loadEvidence: (id: string, key: string) => Promise<CaseResult>;
 }) {
@@ -122,6 +123,6 @@ export function BuildConversation({ session, artifact, busy, primary, onPreviewO
     })}
     {pending}
     {active && <BuildNextActions key={`${session.id}:${active.id}`} session={session} artifact={active} operation={latestRun} hasOutput={hasOutput} busy={busy} primary={primary}
-      onTry={() => openTrial(active.id)} onDetails={onDetails} onGuide={onGuide} onSave={onSave} onTougher={onTougher} loadEvidence={loadEvidence} />}
+      onTry={() => openTrial(active.id)} onDetails={onDetails} onGuide={onGuide} onSave={onSave} onTougher={onTougher} onExport={onExport} loadEvidence={loadEvidence} />}
   </div>;
 }
