@@ -2540,3 +2540,42 @@ it("keeps untested version Results empty until explicit history pins the tested 
   expect(requests.find(request=>request.path.endsWith("/build-quote"))?.body.artifact_id).toBe("v1");
   expect(posts()).toHaveLength(0);
 });
+
+
+it.each([[false,false],[false,true],[true,false]])("collects new recorded replies against a completed baseline before quoting the exact new artifact (test journey: %s, lost acknowledgment: %s)",async(testJourney,lostAck)=>{
+ const oldArtifact={id:"old-recorded",kind:"conversation_evaluation",title:"Original replies",agent_prompt:"",blueprint:null,accepted:true,source_message_id:"",conversation_evaluation:{evidence_set_id:"old-source",expectations:[{id:"original-rule",statement:"Use the supplied facts."}]}};
+ const oldCase={case_key:"chat-1",version:oldArtifact.id,input:null,output:"Old reply",verdict:"FAIL" as const,checks:[{key:"original-rule",verdict:"FAIL" as const,evidence:"Unsupported claim"}]};
+ const baseline:Operation={id:"old-result",kind:"check",state:"COMPLETED",billing:"SETTLED",models:defaultModels,max_cost_nano_usd:0,actual_cost_nano_usd:0,results:[oldCase],source:{kind:"provided_conversations",artifact_id:oldArtifact.id,evidence_set_id:"old-source",label:"Original replies"},scorecard:{passed:0,failed:1,unknown:0,total:1,evaluated:1,pass_rate:0,coverage:1}};
+ session.document={...session.document,format_version:1,test_journey:testJourney,evaluation:{id:session.id,chat_id:session.id,door:"test"},artifacts:[oldArtifact],evidence_sets:[{id:"old-source",label:"Original replies",raw:"Customer: Question\nAgent: Old reply",conversations:[{key:"chat-1",title:"Chat 1",messages:[{id:"m1",role:"user",content:"Question"},{id:"m2",role:"assistant",content:"Old reply"}]}]}]};session.operations=[baseline];
+ const initial=respond;let intakeAttempts=0;
+ respond=async(path,options)=>{
+  if(path==="/config")return json({enabled:true,two_door:true,availability:{guest:{available:true},workspace:{available:true}},defaults:defaultModels,models:[...new Set(Object.values(defaultModels))].map(id=>({id,name:id}))});
+  if(path.endsWith("/grade-reviews"))return json([]);
+  if(path.includes("/case"))return json(oldCase);
+  if(path.endsWith("/evidence")){
+   const body=JSON.parse(String(options.body));
+   session={...session,revision:session.revision+1,event_cursor:session.event_cursor+1,document:{...session.document,artifacts:[oldArtifact,{...oldArtifact,id:"new-recorded",accepted:false,conversation_evaluation:{evidence_set_id:"new-source",expectations:body.expectations}}],evidence_sets:[...session.document.evidence_sets!,{id:"new-source",label:"Updated replies",raw:body.content,conversations:[{key:"chat-1",title:"Chat 1",messages:[{id:"m1",role:"user",content:"Question"},{id:"m2",role:"assistant",content:"Corrected reply"}]}]}]}};
+   intakeAttempts++;if(lostAck && intakeAttempts===1)throw new TypeError("Lost updated intake acknowledgment");
+   return json({...session,evidence_receipt:{client_id:body.client_id,evidence_id:"new-source",artifact_id:"new-recorded"}});
+  }
+  if(path.endsWith("/messages"))return json({...baseline,id:"updated-result",baseline_id:baseline.id,source:{...baseline.source,artifact_id:"new-recorded",evidence_set_id:"new-source"}});
+  if(path.endsWith("/run-quote"))return json({id:"new-source-quote",kind:"run",revision:session.revision,cases:1,calls:1,max_cost_nano_usd:0,expires_at:new Date(Date.now()+600000).toISOString()});
+  return initial(path,options);
+ };
+ await render();await click("Results");await click(testJourney?"Add new recorded replies":"Check the new answer");
+ expect(requests.some(r=>r.path.endsWith("/run-quote"))).toBe(false);
+ expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Recorded replies"]')!.value).toBe("");
+ await type("Customer: Question\nAgent: Corrected reply","Recorded replies");await type("Use the supplied facts.","Expected behavior");await click("Review recorded replies");
+ if(lostAck){await act(async()=>snapshot(session));await click("Retry saving these replies");const attempts=requests.filter(r=>r.path.endsWith("/evidence"));expect(attempts[1].body).toEqual(attempts[0].body);}
+ expect(requests.find(r=>r.path.endsWith("/evidence"))?.body.expectations).toEqual([{id:"original-rule",statement:"Use the supplied facts."}]);
+ expect(requests.some(r=>r.path.endsWith("/messages")||r.path.endsWith("/run-quote"))).toBe(false);
+ expect(session.document.artifacts[0]).toEqual(oldArtifact);
+ await act(async()=>root.render(<div/>));await render();await click("Tests");await click("Check these recorded replies");
+ expect(requests.find(r=>r.path.endsWith("/run-quote"))?.body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source"});
+ expect(requests.some(r=>r.path.endsWith("/messages"))).toBe(false);
+ await click("Refresh estimate");
+ const quotes=requests.filter(r=>r.path.endsWith("/run-quote"));expect(quotes).toHaveLength(2);
+ expect(quotes[1].body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source"});
+ await click("Run 1 examples");
+ expect(requests.find(r=>r.path.endsWith("/messages"))?.body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source",run_quote_id:"new-source-quote"});
+});

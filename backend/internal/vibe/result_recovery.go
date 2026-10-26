@@ -100,7 +100,13 @@ func readResultRecovery(ctx context.Context, q dbQuery, v Session, sub Submissio
 		if err = json.Unmarshal(data, &c); err != nil {
 			return ResultRecovery{}, err
 		}
-		if c.Error == nil && caseCompleted(c) && c.Verdict != Unknown {
+		unassessed := Aggregate([]CaseResult{c}).IncompleteCases > 0
+		for _, check := range c.Checks {
+			if check.Error != nil {
+				unassessed = true
+			}
+		}
+		if c.Error == nil && !unassessed && (c.Verdict == Pass || c.Verdict == Fail) {
 			return ResultRecovery{}, fault("case_resolved", "A completed passing or failing case is not an unresolved retry. Run all again to repeat it.")
 		}
 		cases = append(cases, c)

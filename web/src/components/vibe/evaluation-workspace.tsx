@@ -122,7 +122,10 @@ export type EvaluationWorkspaceProps = {
   onNavigate: (view: View, artifactID?: string) => void;
   onReloadEvidence?: () => void;
   onRetryCases?: (source: Operation, caseKeys: string[]) => void;
-  onRun: (baseline?: Operation, evidenceID?: string) => void;
+  onRun: (baseline?: Operation, evidenceID?: string, recordedArtifactID?: string) => void;
+  recordedUpdate?: { baseline: Operation; artifactID?: string };
+  onNewReplies?: (baseline: Operation) => void;
+  onCloseRecordedUpdate?: () => void;
   onSelectRun: (run: string) => void;
   onRecordedEvidence?: (request: RecordedIntakeRequest) => Promise<RecordedIntakeOutcome>;
   onEdit: (fields: Record<string, unknown>) => Promise<boolean>;

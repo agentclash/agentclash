@@ -29,4 +29,4 @@ export function compareResultEvidence(current: Operation, baseline: Operation) {
  const regraded=a?.origin==="regraded"||b?.origin==="regraded";
  return {changed,unknown,controlled:!regraded&&!unknown.length&&changed.every(key=>key==="build")};
 }
-export const unresolvedCase = (result: CaseResult) => result.verdict==="UNKNOWN" || !!result.error || (result.expected_checks ?? result.checks.length)>result.checks.length;
+export const unresolvedCase = (result: CaseResult) => result.verdict==="UNKNOWN" || !!result.error || result.checks.some(check => !!check.error || !["PASS","FAIL"].includes(check.verdict)) || (result.expected_checks ?? result.checks.length)>result.checks.length;

@@ -5,16 +5,16 @@ import type { RecordedIntakeRequest, RecordedIntakeOutcome } from "@/lib/vibe-re
 import { VibeDataUseNotice, VibeRedactionHint } from "./vibe-data-use";
 import { VibeButton } from "./vibe-button";
 
-export function RecordedIntake({project,revision,busy,onSave,onClose}:{project:string;revision:number;busy:boolean;onSave:(request:RecordedIntakeRequest)=>Promise<RecordedIntakeOutcome>;onClose:()=>void}){
+export function RecordedIntake({project,revision,busy,onSave,onClose,reviewedExpectations}:{project:string;revision:number;busy:boolean;reviewedExpectations?:{id:string;statement:string}[];onSave:(request:RecordedIntakeRequest)=>Promise<RecordedIntakeOutcome>;onClose:()=>void}){
  const content=useVibeEditorDraft(project,"intake","recorded-replies","recorded-v1","");
- const expectations=useVibeEditorDraft(project,"intake","recorded-expectations","recorded-v1","");
+ const expectations=useVibeEditorDraft(project,"intake","recorded-expectations","recorded-v1",reviewedExpectations?.map(rule=>rule.statement).join("\n") || "");
  const pending=useVibeEditorDraft(project,"intake","recorded-request","recorded-v1","");
  const [error,setError]=useState("");
  return <form className="space-y-4" aria-label="Recorded reply intake" onSubmit={async event=>{
   event.preventDefault();if(busy)return;
   const wasPending=!!pending.value;
   let request:RecordedIntakeRequest;
-  try{request=pending.value?JSON.parse(pending.value):{client_id:crypto.randomUUID(),revision,label:"App replies",content:content.value,expectations:expectations.value.split("\n").map(s=>s.trim()).filter(Boolean).map((statement,i)=>({id:`expectation-${i+1}`,statement}))};}catch{setError("The saved request could not be read. Your draft is preserved.");return;}
+  try{request=pending.value?JSON.parse(pending.value):{client_id:crypto.randomUUID(),revision,label:"App replies",content:content.value,expectations:expectations.value.split("\n").map(s=>s.trim()).filter(Boolean).map((statement,i)=>({id:reviewedExpectations?.[i]?.id || `expectation-${i+1}`,statement}))};}catch{setError("The saved request could not be read. Your draft is preserved.");return;}
   if(!request.content.trim()||!request.expectations.length){setError("Add actual replies and at least one expected behavior.");return;}
   pending.setValue(JSON.stringify(request));setError("");
   const outcome=await onSave(request);

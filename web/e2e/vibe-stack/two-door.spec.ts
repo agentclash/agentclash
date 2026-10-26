@@ -357,5 +357,39 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  await page.screenshot({path:info.outputPath('recorded-results.png'),fullPage:true});
  await page.reload();await expect(page.getByRole('button',{name:'Reload saved evidence',exact:true})).toBeVisible();
  await expect(page.getByText('The recorded reply needs a second human review.',{exact:true})).toBeVisible();
- expect((await evidence(page)).calls).toHaveLength(1);expect(errors).toEqual([]);
+ expect((await evidence(page)).calls).toHaveLength(1);
+ // Actual CreateAgent projects retain the testJourney headline; new intake is
+ // available independently of that headline and never quotes the old source.
+ const baseline=result.session.operations.at(-1);
+ await page.getByRole('button',{name:'Add new recorded replies',exact:true}).click();
+ await expect(page.getByLabel('Recorded replies',{exact:true})).toHaveValue('');
+ await expect(page.getByLabel('Expected behavior',{exact:true})).toHaveValue('Opened purchases are not eligible for refunds.');
+ await page.getByLabel('Recorded replies',{exact:true}).fill('Customer: I opened it.\nAgent: I can refund that now.');
+ await page.getByRole('button',{name:'Review recorded replies',exact:true}).click();
+ await expect(page.getByRole('region',{name:'Recorded reply tests'})).toBeVisible();
+ const updated=await evidence(page);expect(updated.calls).toHaveLength(1);
+ expect(updated.session.document.artifacts).toHaveLength(2);
+ const artifact=updated.session.document.artifacts.at(-1);
+ expect(artifact.id).not.toBe(baseline.source.artifact_id);
+ expect(artifact.conversation_evaluation.evidence_set_id).not.toBe(baseline.source.evidence_set_id);
+ await page.reload();await expect(page.getByRole('region',{name:'Recorded reply tests'})).toBeVisible();
+ const quoted=page.waitForRequest(request=>request.url().endsWith('/run-quote')&&request.method()==='POST');
+ await page.getByRole('button',{name:'Check these recorded replies',exact:true}).click();
+ expect((await quoted).postDataJSON()).toMatchObject({kind:'retest',baseline_id:baseline.id,artifact_id:artifact.id,evidence_set_id:artifact.conversation_evaluation.evidence_set_id});
+ await expect(page.getByRole('button',{name:'Run 1 examples',exact:true})).toBeEnabled();
+ expect((await evidence(page)).calls).toHaveLength(1);
+ await page.getByRole('button',{name:'Run 1 examples',exact:true}).click();
+ await expect.poll(async()=>{const e=await evidence(page);return e.session.operations.find((op:{source?:{artifact_id?:string}})=>op.source?.artifact_id===artifact.id)?.state;},{timeout:90000}).toBe('COMPLETED');
+ const final=await evidence(page);expect(final.calls.map((c:{role:string})=>c.role)).toEqual(['judge','judge']);
+ expect(final.session.operations.at(-1)).toMatchObject({baseline_id:baseline.id,source:{artifact_id:artifact.id,evidence_set_id:artifact.conversation_evaluation.evidence_set_id,comparison:'updated_replies'}});
+ expect(final.session.operations[0].source).toEqual(baseline.source);
+ await page.getByRole('tab',{name:'Results',exact:true}).click();
+ await page.getByRole('button',{name:'Reload saved evidence',exact:true}).click();
+ await expect(page.locator('.vibe-project-header')).toContainText('Run 2 (COMPLETED)');
+ await page.getByRole('button',{name:'Compare saved replies',exact:true}).click();
+ await expect(page.getByRole('region',{name:'Before',exact:true})).toContainText('I can refund that.');
+ await expect(page.getByRole('region',{name:'After',exact:true})).toContainText('I can refund that now.');
+ for(const width of [390,1280]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)}
+ await page.screenshot({path:info.outputPath('recorded-updated-results.png'),fullPage:true});
+ expect(errors).toEqual([]);
 });

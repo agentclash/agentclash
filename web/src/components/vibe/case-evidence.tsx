@@ -190,6 +190,7 @@ export function CaseEvidence({
                   {excerpt && " · excerpt"}
                 </p>
                 <SafeMarkdown>{visibleExplanation}</SafeMarkdown>
+                {excerpt && <details className="mt-2"><summary className="cursor-pointer text-sm">Read complete explanation</summary><SafeMarkdown>{explanation}</SafeMarkdown></details>}
               </div>
             )}
             {!exampleFirst && (verifiedFinding(evidence, finding) ? <GroundedFinding result={evidence} check={finding} /> : <PrimaryReply

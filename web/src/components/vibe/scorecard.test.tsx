@@ -2,6 +2,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { CaseResult, Operation } from "@/lib/vibe";
+import { ResultRecoveryControls } from "./result-recovery";
 import { GradeReviews } from "./grade-reviews";
 import { ResultComparison } from "./result-comparison";
 import { compareResultEvidence } from "@/lib/vibe-result-evidence";
@@ -584,4 +585,50 @@ it("recovers the same grade review receipt after a lost response and labels late
  changed=true;await draw(2);
  expect(container.textContent).toContain("This review retains the original evidence");
  expect(JSON.stringify(op)).toBe(before);
+});
+
+
+it("offers mixed failed and unassessed checks in the unresolved filter and exact retry selection", async()=>{
+ const mixed={...failure,case_key:"mixed",title:"Partially assessed",expected_checks:2,checks:[failure.checks[0],{key:"other",verdict:"UNKNOWN" as const,evidence:"",error:{message:"Judge unavailable"}}]};
+ const op=operation([failure,mixed,passing]);
+ await render(op);
+ const select=container.querySelector<HTMLSelectElement>('[aria-label="Filter cases"]')!;
+ await act(async()=>{select.value="unresolved";select.dispatchEvent(new Event("change",{bubbles:true}))});
+ expect(container.textContent).toContain("Partially assessed");
+ expect(container.textContent).not.toContain(failure.title);
+ const retry=vi.fn();
+ await act(async()=>root.render(<ResultRecoveryControls operation={op} busy={false} onReload={()=>{}} onRetry={retry} onFullRun={()=>{}}/>));
+ expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
+ await click("Retry unresolved");expect(retry).toHaveBeenCalledWith(["mixed"]);
+});
+
+it("starts a fresh review only after the stale request is authoritatively rejected without a receipt",async()=>{
+ const op=operation([failure]);let source={...failure,evidence_hash:"1".repeat(64)};
+ const requests:Record<string,unknown>[]=[];let rejection="transport";
+ vi.stubGlobal("fetch",vi.fn(async(_url:string,options:RequestInit={})=>{
+  if(options.method!=="POST")return new Response("[]",{headers:{"Content-Type":"application/json"}});
+  const body=JSON.parse(String(options.body));requests.push(body);
+  if(rejection==="transport")throw new TypeError("Disconnected before commit");
+  if(rejection==="auth")return new Response(JSON.stringify({error:{code:"unauthorized",message:"Sign in again"}}),{status:401});
+  if(rejection==="stale")return new Response(JSON.stringify({error:{code:"evidence_changed",message:"Evidence changed. Reload."}}),{status:409});
+  return new Response(JSON.stringify({...body,id:"new-review",created_at:"2026-10-26T00:00:00Z",evidence:source}),{status:201});
+ }));
+ const draw=()=>act(async()=>root.render(<GradeReviews sessionID="uncommitted-project" operation={op} load={async()=>source}/>));
+ await draw();await click("Review a grade");
+ const input=container.querySelector<HTMLTextAreaElement>('[aria-label="Grade review reason"]')!;
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(input,"Retain my reason.");input.dispatchEvent(new Event("input",{bubbles:true}))});
+ await click("Save grade review");
+ expect(container.textContent).not.toContain("Review updated evidence");
+ source={...source,evidence_hash:"2".repeat(64),output:"Late source reply"};
+ await act(async()=>root.render(<div/>));await draw();await click("Review a grade");
+ rejection="auth";await click("Retry saving this review");
+ expect(container.textContent).not.toContain("Review updated evidence");
+ rejection="stale";await click("Retry saving this review");
+ expect(requests[1]).toEqual(requests[0]);expect(requests[2]).toEqual(requests[0]);
+ await click("Review updated evidence");
+ expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Grade review reason"]')!.value).toBe("Retain my reason.");
+ expect(container.textContent).toContain("Late source reply");
+ rejection="success";await click("Save grade review");
+ expect(requests[3]).toMatchObject({source_evidence_hash:source.evidence_hash,reason:"Retain my reason.",case_key:failure.case_key});
+ expect(requests[3].client_id).not.toBe(requests[0].client_id);
 });
