@@ -2,7 +2,7 @@ import { draftMemory } from "@/lib/vibe-build-drafts";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import type { useVibeInputs } from "@/lib/use-vibe-inputs";
+import { useVibeInputs } from "@/lib/use-vibe-inputs";
 import type { TaskMaterial } from "@/lib/vibe-inputs";
 import { TaskInput } from "./task-input";
 import { TaskSources } from "./task-sources";
@@ -147,4 +147,62 @@ it("retains independent unattached pasted drafts for brief and trial recipients"
   await render(false); await click("Add a file or text");
   expect((document.querySelector("textarea") as HTMLTextAreaElement).value).toBe("Brief material draft");
   expect(add).not.toHaveBeenCalled();
+});
+
+const materialToken = async () => undefined;
+it("repairs named closed-composer blockers at their source fields without enabling another blocked source", async () => {
+  sessionStorage.setItem("vibe-materials:s:guide", JSON.stringify([
+    {id:"one",usage:"task_input",page:1,quote:"",acknowledged:false},
+    {id:"policy",usage:"rules",page:1,quote:"",acknowledged:false},
+  ]));
+  vi.mocked(vibeFetch).mockImplementation(async path => String(path).endsWith("policy")
+    ? {...ready,id:"policy",kind:"text",name:"Policy text"}
+    : {...ready,warnings:["Page 2 could not be read."]});
+  let owner!: ReturnType<typeof useVibeInputs>;
+  function Intake() { owner=useVibeInputs("s","guide",materialToken); return <TaskInput inputs={owner} configure pdfAvailable disabled={false}/>; }
+  await act(async()=>root.render(<Intake/>));
+  const named = (name: string) => document.querySelector(`[aria-label="${name}"]`) as HTMLButtonElement;
+  expect(node.textContent).toContain("Choose exact rule text from page 1");
+  expect(node.textContent).not.toContain("Adopted rules");
+  expect(owner.blocked).toBe(true);
+  await act(async()=>named(`Review partial text for ${ready.name}`).click());
+  const check = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
+  await vi.waitFor(()=>expect(document.activeElement).toBe(check));
+  await act(async()=>check.click());
+  expect(owner.blocked).toBe(true);
+  await click("Close");
+  await act(async()=>named("Choose rule text for Policy text").click());
+  let quote=document.querySelector('textarea[id$="-policy-quote"]') as HTMLTextAreaElement;
+  await vi.waitFor(()=>expect(document.activeElement).toBe(quote));
+  expect(quote.closest("details")?.open).toBe(true);
+  await change(quote,"Invented policy"); await click("Close");
+  expect(node.textContent).toContain("Rule text must match page 1 exactly");
+  await act(async()=>named("Repair rule text for Policy text").click());
+  quote=document.querySelector('textarea[id$="-policy-quote"]') as HTMLTextAreaElement;
+  await vi.waitFor(()=>expect(document.activeElement).toBe(quote));
+  await change(quote,"Approval is required.");
+  expect(owner.blocked).toBe(false);
+  expect(owner.adoptions).toEqual([{input_id:"policy",hash:"hash",page:1,exact_quote:"Approval is required."}]);
+  await click("Close");
+  await act(async()=>owner.configure("policy",{quote:""}));
+  await act(async()=>named("Detach Policy text and continue").click());
+  expect(owner.blocked).toBe(false);
+  expect(owner.items.map(item=>item.material.id)).toEqual(["one"]);
+  expect(vi.mocked(vibeFetch).mock.calls.every(call=>!call[2]?.method)).toBe(true);
+});
+
+it.each(["failed", "expired"] as const)("targets the %s source replacement and detaches only on explicit confirmation", async status => {
+  sessionStorage.setItem("vibe-materials:s:guide", JSON.stringify([{id:"one",usage:"task_input",page:1,quote:"",acknowledged:false}]));
+  vi.mocked(vibeFetch).mockResolvedValue({...ready,status});
+  let owner!: ReturnType<typeof useVibeInputs>;
+  function Intake() { owner=useVibeInputs("s","guide",materialToken); return <TaskInput inputs={owner} configure pdfAvailable disabled={false}/>; }
+  await act(async()=>root.render(<Intake/>));
+  expect(node.querySelector(".vibe-material-blockers")?.textContent).toContain(status === "expired" ? "This material has expired" : "Reading failed");
+  await act(async()=>(node.querySelector(`[aria-label="Replace material for ${ready.name}"]`) as HTMLButtonElement).click());
+  await vi.waitFor(()=>expect(document.activeElement).toBe(button("Detach and paste text instead")));
+  expect(owner.items).toHaveLength(1); expect(owner.blocked).toBe(true);
+  await click("Detach and paste text instead");
+  await vi.waitFor(()=>expect(document.activeElement).toBe(document.querySelector('textarea[id$="-paste"]')));
+  expect(owner.items).toEqual([]); expect(owner.blocked).toBe(false);
+  expect(vi.mocked(vibeFetch).mock.calls.every(call=>!call[2]?.method)).toBe(true);
 });

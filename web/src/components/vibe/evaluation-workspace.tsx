@@ -1,4 +1,5 @@
 "use client";
+import { VibeDataUseNotice, VibeRedactionHint } from "./vibe-data-use";
 
 import Link from "next/link";
 import { ProjectWorkspace } from "./project-workspace";
@@ -361,7 +362,8 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
             </VibeButton>
           )}
         </div>
-        {p.materialInput}
+        {p.materialInput || <VibeDataUseNotice />}
+        <VibeRedactionHint />
         {previewOpen ? p.preview : <>
         <div>
           {referencedRun && <div className="vibe-run-reference"><span>Asking about this saved result · {referencedRun.scorecard?.passed ?? 0} passed</span><button type="button" aria-label="Remove result reference" onClick={() => setReferencedRun(undefined)}>×</button></div>}
@@ -648,6 +650,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   <label className="sr-only" htmlFor="vibe-instructions-source">
                     Agent instructions to test
                   </label>
+                  <VibeDataUseNotice /><VibeRedactionHint />
                   <textarea
                     id="vibe-instructions-source"
                     value={instructionText}

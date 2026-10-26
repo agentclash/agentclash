@@ -8,6 +8,13 @@ import { captureBuildEvent } from "./vibe-build-analytics";
 import { vibeFetch } from "./vibe";
 
 type Selection = { material: TaskMaterial; acknowledged: boolean; usage: "task_input" | "reference" | "rules"; page: number; quote: string; readError?: string; waitingSince?: number };
+export type MaterialBlocker = {
+  inputID: string;
+  code: "reading" | "failed" | "unreadable" | "expired" | "deleted" | "partial" | "rules_missing" | "rules_invalid";
+  reason: string;
+  action: string;
+  field: "refresh" | "replacement" | "partial" | "quote";
+};
 type Draft = { items: Selection[]; busy: boolean; error: string };
 const empty: Draft = { items: [], busy: false, error: "" };
 
@@ -25,6 +32,27 @@ export function useVibeInputs(session: string, scope: string, token: () => Promi
   const restoring = useRef(new Set<string>());
   function update(k: string, change: (old: Draft) => Draft) { setDrafts(old => ({ ...old, [k]: change(old[k] || empty) })); }
   const bindings = useMemo<InputBinding[]>(() => current.items.flatMap(x => x.material.status === "ready" && x.usage !== "rules" ? [{ input_id: x.material.id, content_hash: x.material.content_hash, usage: x.usage, ...(x.acknowledged ? { accept_partial: true } : {}) }] : []), [current.items]);
+  const blockers = useMemo<MaterialBlocker[]>(() => current.items.flatMap(x => {
+    const { material } = x;
+    const source = { inputID: material.id };
+    if (material.status !== "ready") {
+      const code = material.status === "uploaded" || material.status === "extracting" ? "reading" : material.status;
+      const reasons = {
+        reading: "Reading is still in progress. Check again or detach this source to continue.",
+        failed: "Reading failed. Replace this source with readable text or another file.",
+        unreadable: "No readable text was found. Replace this source.",
+        expired: "This material has expired. Attach a new copy or paste its text.",
+        deleted: "This material was deleted. Attach a new copy or paste its text.",
+      };
+      const blocker: MaterialBlocker = { ...source, code, reason: x.readError || reasons[code], action: code === "reading" ? "Check reading status" : "Replace material", field: code === "reading" ? "refresh" : "replacement" };
+      return [blocker];
+    }
+    const result: MaterialBlocker[] = [];
+    if (material.warnings.length && !x.acknowledged) result.push({ ...source, code: "partial", reason: "Acknowledge the partial text before using this source.", action: "Review partial text", field: "partial" });
+    if (x.usage === "rules" && !x.quote.trim()) result.push({ ...source, code: "rules_missing", reason: `Choose exact rule text from page ${x.page}.`, action: "Choose rule text", field: "quote" });
+    else if (x.usage === "rules" && !material.pages?.find(page => page.number === x.page)?.text.includes(x.quote)) result.push({ ...source, code: "rules_invalid", reason: `Rule text must match page ${x.page} exactly.`, action: "Repair rule text", field: "quote" });
+    return result;
+  }), [current.items]);
   const adoptions = useMemo<DocumentSource[]>(() => current.items.filter(x => x.usage === "rules" && x.material.status === "ready").map(x => ({ input_id: x.material.id, hash: x.material.content_hash, page: x.page, exact_quote: x.quote })), [current.items]);
   useEffect(() => {
     if (!session || restored.current.has(key)) return;
@@ -109,7 +137,7 @@ export function useVibeInputs(session: string, scope: string, token: () => Promi
   return { projectID: project, recipient: scope, draftKey: key, ...current, canRetry: pending.current.has(key), refresh, bindings, adoptions, add, remove, attach, retry: () => add(),
     list: async () => vibeFetch<TaskMaterial[]>(inputPath(session), await token()),
     configure: (id: string, change: Partial<Pick<Selection, "usage" | "page" | "quote">>) => { edited.current.add(key); update(key, old => ({ ...old, items: old.items.map(x => x.material.id === id ? { ...x, ...change } : x) })); },
-    blocked: current.busy || reading || current.items.some(x => x.material.status !== "ready" || x.material.warnings.length > 0 && !x.acknowledged || x.usage === "rules" && (!x.quote.trim() || !x.material.pages?.find(p => p.number === x.page)?.text.includes(x.quote))),
+    blockers, blocked: current.busy || blockers.length > 0,
     acknowledge: (id: string, acknowledged: boolean) => update(key, old => ({ ...old, items: old.items.map(x => x.material.id === id ? { ...x, acknowledged } : x) })),
   };
 }

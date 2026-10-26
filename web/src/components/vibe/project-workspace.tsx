@@ -1,4 +1,5 @@
 "use client";
+import { VibeDataUseNotice, VibeRedactionHint } from "./vibe-data-use";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Tabs } from "@base-ui/react/tabs";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
@@ -45,7 +46,7 @@ function AgentEditor({ p, onDirty }: { p: EvaluationWorkspaceProps; onDirty: () 
         const retainedFocus = () => document.activeElement === trigger || trigger instanceof HTMLElement && !trigger.isConnected && document.activeElement === document.body;
         if (retainedFocus()) requestAnimationFrame(() => { if (retainedFocus()) (heading.current || document.querySelector<HTMLElement>('.vibe-project-main [aria-label="Agent instructions"] h2'))?.focus(); });
       }
-    }}><label>Agent instructions<textarea aria-label="Agent instructions" className="vibe-textarea" value={draft.value} onChange={event => { draft.setValue(event.target.value); onDirty(); }} /></label>
+    }}><VibeDataUseNotice /><VibeRedactionHint /><label>Agent instructions<textarea aria-label="Agent instructions" className="vibe-textarea" value={draft.value} onChange={event => { draft.setValue(event.target.value); onDirty(); }} /></label>
       <p className="vibe-muted">Uses {p.modelLabel || "the selected model"}. Your live tools and systems are not connected.</p>
       <VibeButton type="submit" disabled={p.busy || draft.conflict || !draft.value.trim()}>Use these instructions</VibeButton>
       <VibeButton onClick={() => { draft.discard(); setEditing(false); onDirty(); requestAnimationFrame(() => heading.current?.focus()); }}>Discard instruction changes</VibeButton></form>
@@ -113,6 +114,7 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
       </>}
     </div>
     {!initialBrief && <div className="vibe-guide-composer">
+      <VibeDataUseNotice /><VibeRedactionHint />
       {latestResponse && <VibeButton variant="quiet" onClick={latest}>{read === latestResponse.id ? "Latest" : "New response"}</VibeButton>}
       {selectedReference && <div aria-label="Guide reference" className="vibe-run-reference"><span>{selectedReference.title} · Read-only context</span><VibeButton aria-label="Remove Guide reference" onClick={() => setReference(undefined)}>Remove reference</VibeButton></div>}
       <form className="vibe-composer" onSubmit={event => { event.preventDefault(); send(); }}><label htmlFor="vibe-message">Message Guide</label><textarea ref={composer} id="vibe-message" aria-label="Message Vibe Evals" rows={3} value={p.content} onChange={event => p.onContent(event.target.value)} onKeyDown={event => sendOnEnter(event, send)} /><VibeButton type="submit" aria-label="Send message" disabled={p.busy || p.dirty || p.sendBlocked || !p.content.trim()}>Send</VibeButton></form>

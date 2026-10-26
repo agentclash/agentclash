@@ -99,3 +99,21 @@ it("keeps simultaneous Guide and trial material controllers separate across thre
  await renderRecipients(); expect(trial.bindings[0].input_id).toBe("trial-file");
  await renderRecipients("first","person-b"); expect(guide.bindings).toEqual([]); expect(trial.bindings).toEqual([]);
 });
+
+it.each(["uploaded", "extracting", "failed", "unreadable", "expired", "deleted"] as const)("keeps %s source blocked until refreshed or detached without deleting its sibling", async status => {
+ vi.mocked(vibeFetch).mockResolvedValueOnce({...material,status});
+ await render(); await act(async()=>state.attach("file-a"));
+ vi.mocked(vibeFetch).mockResolvedValueOnce({...material,id:"sibling",warnings:["Missing page"]});
+ await act(async()=>state.attach("sibling"));
+ expect(state.blockers).toEqual(expect.arrayContaining([expect.objectContaining({inputID:"file-a",code:status === "uploaded" || status === "extracting" ? "reading" : status})]));
+ vi.mocked(vibeFetch).mockRejectedValueOnce(Error("Connection lost"));
+ await act(async()=>state.refresh("file-a"));
+ expect(state.blocked).toBe(true);
+ expect(state.blockers.find(item=>item.inputID==="file-a")?.reason).toContain("Could not check this source");
+ await act(async()=>state.remove("file-a"));
+ expect(state.blocked).toBe(true);
+ expect(state.blockers.map(item=>item.inputID)).toEqual(["sibling"]);
+ await act(async()=>state.acknowledge("sibling",true));
+ expect(state.blocked).toBe(false);
+ expect(vi.mocked(vibeFetch).mock.calls.every(call=>!call[2]?.method)).toBe(true);
+});

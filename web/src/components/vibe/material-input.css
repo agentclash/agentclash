@@ -51,3 +51,9 @@
   .vibe-material-dialog-head > .vibe-button { min-width: 44px; padding-inline: 8px; }
   .vibe-material-chip-name { max-width: 38vw; }
 }
+
+.vibe-material-blockers { flex-basis: 100%; min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
+.vibe-material-blockers p { margin: 4px 0; }
+.vibe-material-chip-status { flex-shrink: 1; overflow-wrap: anywhere; }
+
+.vibe-material-blockers .vibe-button { min-height: 44px; font-size: 14px; }
