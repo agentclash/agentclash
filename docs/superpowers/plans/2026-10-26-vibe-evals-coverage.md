@@ -1,11 +1,21 @@
 # Vibe Evals audit coverage
 
-Primary ownership for all 76 raw findings. Overlapping findings share a repair; completion requires implementation and verification, not merely assignment. Product proposals D01–D07 are covered by Tasks 3, 2, 6–7, 8, 8, 9, 10 respectively.
+Primary ownership for all 76 raw findings. Overlapping findings share a repair; completion requires implementation and verification, not merely assignment. Product proposals D01–D07 have their own status table below; smaller finding closures do not imply those larger features are complete.
 
 
-Tasks 1–3 are implemented and independently reviewed through `21b0f913`, `8d92f2eb` and `589dc22c`. Outcomes mean verified local code/fixtures, not production restoration. Task 3 includes the persistent workspace, ten-width layout inspection, scoped portal appearance and measured descendant contrast, source-specific material remedies, and pretransfer data-use details. Its full 264-test frontend gate predates the last narrow fixes; final affected gates and serial typechecks are recorded separately (124 tests for version/contrast fixes, then 45 tests and four browser journeys for material fixes). Task 2 evidence includes its full 253-test gate before scoped recovery fixes, final 111-test affected gate, database workspace-query tests and split browser runs. The mandatory 139-test backend floor passed on a fresh fixture; Task 10 still owns the final integrated gates and fixture-isolation repair. Real Mac/physical-device/native-zoom and production authentication/provider/funding checks remain external.
+Tasks 1–4 are implemented and independently reviewed through `21b0f913`, `8d92f2eb`, `589dc22c` and `fb1e473b`. Outcomes describe verified local code and fixtures, not production restoration. Task 4 adds current-V1 recorded-reply intake and updates, immutable provenance and grade reviews, persisted validation findings, exact quoted subset recovery, full before/after evidence and consistent case counts/filters. Its real database/Temporal journey verifies separate recorded sources and evaluator-only execution, including reload and baseline retention. The original ten-width inspection and bounded updated-comparison inspection are distinct from the complete final matrix.
 
-E03 ownership is corrected to Tasks 3–4: a named recorded-reply intake requires a narrow current-V1 backend path as well as UI. E04/E05 and coherent library naming retain their later owners; main workspace presentation alone does not close them.
+Reported gates remain separate: Task 4's full 279-test frontend run preceded narrow fixes; covering and final affected owners (including 61 tests, then the final 29-test scorecard owner), backend/API races, serial typechecks and bounded browser inspections verify the amended paths. Task 3's full 264-test and Task 2's full 253-test runs likewise preceded their final focused fixes. The mandatory 139-test backend floor passed on a fresh fixture; Task 10 still owns final integrated gates and fixture isolation. Real Mac/physical-device/native-zoom and production authentication/provider/funding checks remain external.
+
+| Proposal | Improvement | Tasks | Status |
+|---|---|---|---|
+| D01 | Stable project workspace | 3 | Implemented and reviewed: persistent objects, explicit version/evidence, scoped utility and retained drafts. |
+| D02 | Useful sample before external execution | 2 | Implemented and reviewed: clearly fictional read-only example available without signup or model calls. |
+| D03 | Real-runtime adapter handoff | 6, 7 | Pending: immutable SDK intake and approved live connectors. |
+| D04 | Tool and retrieval evidence | 8 | Pending: observed evidence and capture completeness. |
+| D05 | Controlled comparisons and repeatability | 4, 8 | Partial: immutable comparison identities, changed variables and unknown-source labels are reviewed; repeated trials and sample-size analysis remain Task 8. |
+| D06 | Reviewable collaboration | 9 | Pending: selected immutable reports, annotations, scoped access and link lifecycle. |
+| D07 | Regression handoff to development workflow | 5, 10 | Pending: lossless advanced handoff, stable published case mapping and actual CI invocation round trip. |
 
 | Audit ID | Finding | Tasks | Verified outcome |
 |---|---|---|---|
@@ -30,27 +40,27 @@ E03 ownership is corrected to Tasks 3–4: a named recorded-reply intake require
 | BUILD-19 | Build trial hides reset and trial history controls | 2 | Trial dock exposes New and history, including during inference outages. |
 | BUILD-20 | Different trial threads blend into one unlabeled timeline | 2 | Interleaved trial threads have explicit boundaries. |
 | BUILD-21 | Prominent contact action leads to a copy-only dead end when contact is disabled | 1, 2 | Contact action follows configured form or mail capability. |
-| BUILD-22 | Cancellation removes all per-version next actions | 4 | Pending |
+| BUILD-22 | Cancellation removes all per-version next actions | 4 | Stopped versions retain prototype Try, completed evidence, save/export entry points and explicit recovery actions in the persistent workspace. Exact partial-export behavior remains Task 5. |
 | BUILD-23 | One missing source hides all otherwise readable material | 3 | Independent source reads/restores preserve readable siblings and show source-specific failure/retry. |
 | BUILD-24 | A single historic evidence failure blocks the entire session export | 5 | Pending |
 | E01 | Anonymous evaluation cannot start | 1, 2 | Guest availability is explicit; deterministic guest execution passes. Live funding/config is not asserted. |
 | E02 | Test edits disappear on a Results round trip | 2 | Drafts survive remount/reload; same-version history and async version selection are verified. |
-| E03 | Choose observed replies versus a text surrogate explicitly | 3, 4 | Pending Task 4: explicit recorded-reply intake and the current-V1 evidence/expectation producer; existing recorded history alone is insufficient. |
-| E04 | Keep the expectation visible before running a generated test | 3, 4 | Partial: Tests owns case input/expectation preview; Task 4 still owns full pre-run validation and targeted actions. |
-| E05 | Blocked test validation needs a reason and next action | 3, 4 | Partial: main Tests shows existing validation; persisted rejected findings and targeted recovery remain Task 4. |
-| E06 | Disclose target-model changes in evaluation comparisons | 4 | Pending |
+| E03 | Choose observed replies versus a text surrogate explicitly | 3, 4 | Named recorded-reply and saved-instruction choices reach actual current-V1 intake. Explicit expectations, immutable source receipts, new-reply updates and evaluator-only execution are verified. |
+| E04 | Keep the expectation visible before running a generated test | 3, 4 | Tests exposes case inputs, expected behavior and rules before Run; recorded expectations remain explicit and editable as a new version. |
+| E05 | Blocked test validation needs a reason and next action | 3, 4 | Rejected/unavailable validation findings persist with targeted recovery while the prior runnable suite remains available. No rejected candidate is executed. |
+| E06 | Disclose target-model changes in evaluation comparisons | 4 | Admitted model/build/test/judge/config identities remain frozen. Changed or unknown variables are shown; controlled comparison requires matching known settings and scope. |
 | E07 | Explain remote processing before pasting agent instructions | 3 | Instruction/brief/paste boundaries explain remote processing and link actual data-use detail with a redacted example. |
-| E08 | Progress should name the text prototype rather than the live agent | 4 | Pending |
-| E09 | Compare previous and revised evidence for each changed case | 4 | Pending |
-| E10 | Make unresolved work actionable without repeating every successful case | 4 | Pending |
-| E11 | Count failing examples rather than inferred fixes | 4 | Pending |
-| E12 | Expose failure and unresolved filters above collapsed results | 4 | Pending |
-| E13 | Keep a stable result heading when evidence arrives | 4 | Pending |
-| E14 | Separate a disputed grade from a changed business rule | 4 | Pending |
-| E15 | Provide a direct path from excerpt to full explanation | 4 | Pending |
+| E08 | Progress should name the text prototype rather than the live agent | 4 | Results and mounted Guide progress identify prototype, recorded and saved-output regrade sources from the operation. Missing historical source stays unverified. |
+| E09 | Compare previous and revised evidence for each changed case | 4 | Exact baseline/current replies and checks load independently by result, case and version, with separate failure/retry. Updated recorded sources retain their baseline through reload. |
+| E10 | Make unresolved work actionable without repeating every successful case | 4 | Reload, explicitly quoted selected unresolved retry and full rerun are distinct. Admission rechecks evidence and reconciliation; both runner paths execute only selected cases without merging results. |
+| E11 | Count failing examples rather than inferred fixes | 4 | Headlines count actual failing and newly failing chats/examples, including the compatibility view. They do not infer the number of causes or fixes. |
+| E12 | Expose failure and unresolved filters above collapsed results | 4 | All, failing, passing and unresolved filters preserve whole-run totals. Mixed failing/unassessed cases remain in both relevant filters; counts use unique case identities and explain overlap. |
+| E13 | Keep a stable result heading when evidence arrives | 4 | Outcome headings stay stable as detailed findings arrive; evidence-backed findings render separately. |
+| E14 | Separate a disputed grade from a changed business rule | 4 | Append-only reviews retain exact source hashes, original case/verdict context and supporting spans. Policy edits and regrades remain separate; uncertain receipts and changed evidence have explicit recovery. |
+| E15 | Provide a direct path from excerpt to full explanation | 4 | A nearby complete-explanation disclosure preserves the exact qualified text, alongside existing detailed evidence. |
 | E16 | Refresh expired run quotes before confirming | 2 | Run estimates expire on the server clock and refresh without execution. |
-| E17 | Make Stop consequences predictable | 4 | Pending |
-| E18 | Differentiate a provider wait from stale progress | 4 | Pending |
+| E17 | Make Stop consequences predictable | 4 | Stop retains completed evidence and explains that dispatched provider calls may settle later. Unknown billing and reconciliation-gated subset recovery remain explicit. |
+| E18 | Differentiate a provider wait from stale progress | 4 | Phase start and last-confirmed progress derive from committed execution events/attempts; accounting callbacks and stream receipt do not fabricate progress. Saved evidence can be reloaded safely. |
 | E19 | Name export contents and scope before downloading | 5 | Pending |
 | E20 | Connect preserved complex packs to an actionable next step | 5 | Pending |
 | A01 | Return submits instead of allowing touch users to compose multiline instructions | 2 | Touch/hybrid Return inserts a line; desktop, modifiers and composition have transport regressions. |
