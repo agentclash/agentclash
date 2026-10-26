@@ -23,10 +23,11 @@ type Compiler interface {
 	Compile(json.RawMessage, string, uuid.UUID, Limits) (Compiled, error)
 }
 type Service struct {
-	Store    *Store
-	Config   Config
-	Gate     Gate
-	Compiler Compiler
+	Readiness *Readiness
+	Store     *Store
+	Config    Config
+	Gate      Gate
+	Compiler  Compiler
 }
 
 func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub Submission) (result Operation, err error) {

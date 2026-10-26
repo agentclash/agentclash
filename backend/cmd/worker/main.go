@@ -268,7 +268,7 @@ func main() {
 		go vibe.DispatchOutbox(ctx, temporalClient, vibeStore, logger, vibeService)
 	}
 	// Accounting recovery continues even when new Vibe execution is disabled.
-	go vibe.ReconcileLoop(ctx, vibeStore, vibeConfig, logger)
+	go vibe.ReconcileLoop(ctx, vibeStore, vibeConfig, logger, vibeService.Gate)
 
 	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, orphanRunReaper, agentTryoutRetentionReaper, stallReaper); err != nil {
 		logger.Error("worker stopped with error", "error", err)

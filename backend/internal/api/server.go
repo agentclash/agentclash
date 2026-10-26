@@ -23,6 +23,7 @@ type Server struct {
 }
 
 type routerOptions struct {
+	dependencyReadiness        func(context.Context) map[string]string
 	vibeHandler                http.Handler
 	authMode                   string
 	corsAllowedOrigins         map[string]struct{}
@@ -107,6 +108,7 @@ func NewServer(
 ) *Server {
 	router := buildRouter(routerOptions{
 		vibeHandler:                cfg.VibeHandler,
+		dependencyReadiness:        cfg.DependencyReadiness,
 		authMode:                   cfg.AuthMode,
 		corsAllowedOrigins:         cfg.CORSAllowedOrigins,
 		logger:                     logger,
@@ -354,7 +356,11 @@ func buildRouter(opts routerOptions) http.Handler {
 	router.Use(requestLogger(logger))
 	router.Use(newCORSMiddleware(authMode, corsAllowedOrigins))
 	router.Get("/healthz", healthzHandler)
-	router.Get("/healthz/ready", healthzReadyHandler(opts.dbReadiness, opts.temporalReadiness))
+	if opts.dependencyReadiness != nil {
+		router.Get("/healthz/ready", healthzReadyHandler(opts.dbReadiness, opts.temporalReadiness, opts.dependencyReadiness))
+	} else {
+		router.Get("/healthz/ready", healthzReadyHandler(opts.dbReadiness, opts.temporalReadiness))
+	}
 	extractWorkspaceID := func(r *http.Request) (uuid.UUID, bool) {
 		// Try context first (set by authorizeWorkspaceAccess middleware).
 		if wsID, err := WorkspaceIDFromContext(r.Context()); err == nil {

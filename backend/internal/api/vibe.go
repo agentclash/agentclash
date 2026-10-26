@@ -276,20 +276,26 @@ func vibeID(r *http.Request, key string) (uuid.UUID, error) {
 	return id, nil
 }
 func (h *VibeHandler) config(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	// Catalog discovery never makes a local profile-verification HTTP request.
+	catalog := h.Service.Config
+	catalog.LocalTesting = false
 	models := []vibe.ModelProfile{}
 	for id := range h.Service.Config.Profiles {
-		if p, err := h.Service.Config.Profile(id); err == nil {
+		if p, err := catalog.Profile(id); err == nil {
 			models = append(models, p)
 		}
 	}
 	contact := map[string]any{"email": "", "available": false}
-	if h.Enquiries != nil {
+	if h.Enquiries.Available() {
 		contact["email"] = h.Enquiries.Recipient
 		contact["available"] = h.Enquiries.Available()
 	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
-	pdfAvailable := h.Service.Config.MaterialBuild && h.Service.Store.Inputs.PDFAvailable(r.Context())
-	vibeJSON(w, 200, map[string]any{"contact": contact, "pdf_uploads": pdfAvailable, "two_door": h.Service.Config.TwoDoor, "capabilities": vibe.AvailableCapabilities(pdfAvailable), "enabled": h.Service.Config.Enabled, "interaction_actions": true, "grading_recheck": h.Service.Config.GroundedJudging, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget})
+	pdfAvailable := h.Service.Config.MaterialBuild && h.Service.Store != nil && h.Service.Store.Inputs != nil && h.Service.Store.Inputs.PDFAvailable(ctx)
+	availability := h.Service.Availability(ctx, len(h.CookieSecret) >= 32)
+	vibeJSON(w, 200, map[string]any{"server_time": time.Now().UTC(), "availability": availability, "material_build": h.Service.Config.MaterialBuild, "contact": contact, "pdf_uploads": pdfAvailable, "two_door": h.Service.Config.TwoDoor, "capabilities": vibe.AvailableCapabilities(pdfAvailable), "enabled": h.Service.Config.Enabled, "interaction_actions": true, "grading_recheck": h.Service.Config.GroundedJudging, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget})
 }
 func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 	var input struct {

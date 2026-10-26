@@ -51,6 +51,11 @@ func TestVibeBrowserStack(t *testing.T) {
 	db := browserFixtureDatabase(t, ctx)
 	namespace := "vibe-browser-" + uuid.NewString()
 	temporalClient := browserFixtureTemporal(t, ctx, namespace)
+	// Accounting maintenance is real; any unexpected provider receipt remains
+	// unresolved through an offline transport, never a hosted HTTP request.
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = browserFixtureOfflineTransport{}
+	defer func() { http.DefaultTransport = originalTransport }()
 	mini := miniredis.RunT(t)
 	rc := redis.NewClient(&redis.Options{Addr: mini.Addr()})
 	defer rc.Close()
@@ -76,7 +81,7 @@ func TestVibeBrowserStack(t *testing.T) {
 		go store.Inputs.Run(ctx, slog.Default())
 		go store.ProjectCleanupLoop(ctx, slog.Default())
 	}
-	svc := &vibe.Service{Store: store, Config: cfg, Gate: vibe.Gate{Redis: rc}, Compiler: VibePackCompiler{}}
+	svc := &vibe.Service{Readiness: &vibe.Readiness{DB: db, Redis: rc, Temporal: temporalClient}, Store: store, Config: cfg, Gate: vibe.Gate{Redis: rc}, Compiler: VibePackCompiler{}}
 	fake := &browserFixtureProvider{}
 	runner := &vibe.Runner{Service: svc, Gateway: &vibe.Gateway{Store: store, Config: cfg, Gate: svc.Gate, Client: fake}}
 	worker := vibe.NewWorker(temporalClient, runner)
@@ -90,7 +95,12 @@ func TestVibeBrowserStack(t *testing.T) {
 		defer close(dispatched)
 		vibe.DispatchOutbox(dispatchCtx, temporalClient, store, slog.Default(), svc)
 	}()
-	defer func() { cancelDispatch(); <-dispatched }()
+	accountingDone := make(chan struct{})
+	go func() {
+		defer close(accountingDone)
+		vibe.ReconcileLoop(dispatchCtx, store, cfg, slog.Default(), svc.Gate)
+	}()
+	defer func() { cancelDispatch(); <-dispatched; <-accountingDone }()
 	router := chi.NewRouter()
 	origin := browserFixtureEnv("VIBE_BROWSER_WEB_ORIGIN", "http://127.0.0.1:53518")
 	router.Use(newCORSMiddleware("dev", map[string]struct{}{origin: {}}))
@@ -114,6 +124,10 @@ func TestVibeBrowserStack(t *testing.T) {
 	})
 	router.Mount("/v1/vibe", (&VibeHandler{Service: svc, Auth: auth, CookieSecret: uuid.NewString() + uuid.NewString()}).Routes())
 	router.Get("/__fixture/ready", func(w http.ResponseWriter, r *http.Request) {
+		if !svc.Availability(r.Context(), true)["guest"].Available {
+			http.Error(w, "fixture workers preparing", http.StatusServiceUnavailable)
+			return
+		}
 		browserFixtureJSON(w, map[string]any{"ready": true, "temporal_namespace": namespace, "provider": "in-process scripted fixture"})
 	})
 	router.Post("/__fixture/control", func(w http.ResponseWriter, r *http.Request) {
@@ -735,4 +749,11 @@ func browserFixtureIdentity(t *testing.T, db *pgxpool.Pool) {
 			t.Fatal(err)
 		}
 	}
+}
+
+// A fixture must never turn maintenance into an external provider probe.
+type browserFixtureOfflineTransport struct{}
+
+func (browserFixtureOfflineTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("HTTP provider networking disabled in browser fixture")
 }

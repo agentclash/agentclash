@@ -163,3 +163,107 @@ Broader checks are not claimed green: the first `make check` attempt incorrectly
 Local evidence logs are ignored under `testing/vibe-local/`. Do not interpret passing synthetic fixtures as a successful live cohort. Independent backend review approved the staged backend. The frontend review's remaining output-only evidence finding was fixed parent-side with observed RED→GREEN tests at the user's request, without another delegation cycle. Remote CI is reported separately from local execution.
 
 See [the reliability test contract](../testing/codex-vibe-reliability.md). Synthetic onboarding replies and fixture scorecards are test data, not measured live model outcomes.
+
+## Workspace readiness and safe operator handoff (26 October 2026)
+
+The earlier continuation above is historical evidence. For a new headless Linux
+setup, source/build/test processes run on **THINKBOOK**; open the forwarded browser
+on **MACBOOK**. Keep API and frontend listeners on `127.0.0.1` and forward them
+through SSH/VS Code. Container listeners inside a Kubernetes pod must be reachable
+by the pod probe; the Helm template sets the API listener to the service port.
+That does not authorize publishing a development port or deploying this change.
+
+There are three independent signals:
+
+- `GET /healthz` is cheap process liveness. It never calls a dependency or provider.
+- `GET /healthz/ready` checks PostgreSQL connectivity and the required migrated
+  Vibe/accounting columns, Temporal health, and usable Redis budget operations.
+  Redis must allow `EVAL`, `INCR`, `EXPIRE`, `GET`, `DEL`, and worker heartbeat
+  `SET` with expiry. A successful `PING` alone is insufficient. The response
+  uses fixed dependency statuses, never connection errors or credential values.
+  The Helm readiness probe uses this endpoint with a three-second timeout; its
+  separate liveness probe stays on `/healthz`.
+- `GET /v1/vibe/config` always describes inference separately. `enabled` remains
+  the configured feature flag. Additive `availability.guest` and
+  `availability.workspace` each contain `available` and an optional stable
+  `reason_code`: `hosted_disabled`, `provider_unavailable`, `pricing_unavailable`,
+  `dependencies_unavailable`, `worker_unavailable`, `outbox_unavailable`,
+  `accounting_unavailable`, `guest_not_configured`, or `trial_capacity_reached`.
+  Existing disabled global subsidy pools and exhausted paid pools report trial
+  capacity unavailable; active zero-cost free routes retain their existing
+  zero-cost admission semantics. No grants or accounts are created by discovery.
+  These are server capabilities; they grant no workspace membership, balance,
+  trial allowance, quota, or reserved capacity. Admission checks remain final.
+
+Inference discovery requires approved unexpired defaults, workflow **and**
+activity pollers for `vibe-evals`, and shared Redis heartbeat evidence from
+successful outbox and accounting maintenance passes. Heartbeats expire after
+two minutes and are keyed by the matching API/worker configuration (including
+provider credential hash and stable funding identity), not process memory.
+A newly started worker is unavailable until its real loops succeed; the outbox
+normally ticks every two seconds and accounting maintenance every minute.
+Stopping a worker can take up to two minutes to age out its last evidence.
+No provider request or paid smoke probe is performed by readiness/config.
+Discovery and dependency probes have a two-second context budget; configured
+Redis clients honor that deadline. PDF extraction remains independently gated
+by its existing real worker lease, blob store and configured material capability.
+
+Public config also supplies `server_time` (UTC RFC3339), `material_build`, and the
+same guest/workspace `max_message_bytes`/request/file/string limits enforced by
+the API. Limits count UTF-8 **bytes**, not JavaScript characters. Successful build
+and run quotes supply `server_time` alongside their expiry; their original
+30-minute and 10-minute lifetimes and every existing spend ceiling are unchanged.
+Model discovery excludes unsupported, unapproved or expired profiles without
+performing a local verification network call. Contact email is advertised only
+when the real recipient and sender are configured. Missing sender means contact
+is unavailable; it is not a successful enquiry delivery claim.
+
+An operator must supply or verify all of the following before enabling inference:
+
+1. A persisted, random `VIBE_COOKIE_SECRET` of at least 32 bytes, stored only in the
+   deployment secret manager or ignored restricted env file. Missing/short secrets
+   disable guest creation; they must not stop signed-in history or reconciliation.
+   Preserve the secret and previous accounting ledger across restarts; do not
+   rotate an identity or change databases to refill the trial.
+2. An authorized `VIBE_OPENROUTER_KEY`, exact `VIBE_DEFAULT_MODEL`, and
+   `VIBE_MODELS_JSON` profiles with operator-approved paid prices (or the exact
+   supported free routes), context/framing bounds, route flags and a verified
+   conformance expiry. Public catalog listings alone do not establish approval.
+   There are no shipped provider credentials, fresh conformance dates or guessed
+   priced models in the example. Expired/missing models make inference unavailable
+   while API history and worker maintenance still start.
+3. The existing stable `VIBE_CAMPAIGN`, restored ledger and authorized
+   `VIBE_ANON_DAILY_USD`/`VIBE_ANON_CAMPAIGN_USD` funding limits for guest execution.
+   Missing funding disables the guest capability; the $1 lifetime trial and
+   smaller exploration/build allocations remain unchanged. Signed-in work keeps
+   the existing organization credit policy and permission checks.
+4. Migrated PostgreSQL and matching API/worker `REDIS_URL`,
+   `TEMPORAL_HOST_PORT`/`TEMPORAL_NAMESPACE`, model settings and execution-policy
+   settings. Keep at least one Vibe worker process active; do not scale all
+   Vibe workers to zero based solely on the canonical execution queue. The
+   canonical Helm worker class scaler does not independently scale `vibe-evals`.
+   Apply all additive migrations before starting the additive API/worker.
+5. Production `APP_ENV`, WorkOS identity/auth configuration, CORS/frontend origins,
+   TLS and existing artifact/storage/signing and workspace secret encryption
+   settings. WorkOS development placeholders do not verify sign-in or saving.
+   For contact, supply a real `VIBE_ENQUIRY_EMAIL`, `RESEND_API_KEY`,
+   `RESEND_FROM_EMAIL`, and `VIBE_ENQUIRIES_ENABLED=true`. Enable PDF only with the
+   isolated worker runtime prerequisites already documented above.
+
+`VIBE_ENABLED=false` stops new model execution. Keep the worker and provider
+receipt credential running for expiry, settled-cost reconciliation, input/project
+cleanup and already retained evidence. Do not globally gate history, saves,
+exports, deletions or reconciliation on inference availability. Disabling
+`VIBE_MATERIAL_BUILD` blocks new material builds; keep compatible workers running
+for already admitted versioned work. Legacy `VIBE_TWO_DOOR` and
+`VIBE_INTERPRETED_AUTHORING` environment switches no longer control the current
+contract and have been removed from the sample. Invalid boolean syntax and
+unstable campaign identifiers are explicit configuration errors; missing runtime
+inference prerequisites remain truthful unavailable states.
+
+Roll out additive backend first, then a private preview, the existing server
+workspace flag and finally public UI. Rollback must preserve journals, quotes,
+accounting tables and compatible reconciliation workers; never reset balances or
+replay an unknown provider attempt. Production values, funded provider smoke,
+real identity/save verification and deployment require an authorized operator.
+None is implied by fixture tests or this runbook.

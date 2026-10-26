@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/hex"
@@ -47,6 +48,7 @@ const (
 var ErrInvalidConfig = errors.New("invalid api server config")
 
 type Config struct {
+	DependencyReadiness                  func(context.Context) map[string]string
 	VibeHandler                          http.Handler
 	AppEnvironment                       string
 	AuthMode                             string // "dev" or "workos"

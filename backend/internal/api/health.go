@@ -41,14 +41,14 @@ type readyResponse struct {
 }
 
 // healthzReadyHandler reports whether the API server's dependencies
-// (Postgres, Temporal) are reachable. Unlike healthzHandler, this touches
+// (Postgres, Temporal and configured schema/Redis checks) are usable. Unlike healthzHandler, this touches
 // the network on every call, so it's meant for load-balancer/orchestrator
 // readiness checks rather than a cheap liveness ping — the plain /healthz
 // stays untouched for that purpose.
 //
 // db or temporal may be nil (e.g. a test router built without them); that
 // is reported as "not configured" rather than a panic.
-func healthzReadyHandler(db dbPinger, temporal temporalHealthChecker) http.HandlerFunc {
+func healthzReadyHandler(db dbPinger, temporal temporalHealthChecker, additional ...func(context.Context) map[string]string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Bound the entire readiness check so a stalled dependency
 		// cannot leave the readiness request pending indefinitely.
@@ -76,6 +76,15 @@ func healthzReadyHandler(db dbPinger, temporal temporalHealthChecker) http.Handl
 			ready = false
 		} else {
 			checks["temporal"] = "ok"
+		}
+
+		for _, check := range additional {
+			for name, value := range check(ctx) {
+				checks[name] = value
+				if value != "ok" {
+					ready = false
+				}
+			}
 		}
 
 		status := http.StatusOK
