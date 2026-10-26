@@ -1,0 +1,54 @@
+# Vibe Evals workspace: approved product specification
+
+Approved in the audit/planning conversation, 26 October 2026. Implement the full staged roadmap. The Apple HIG skill review is supporting design evidence; this product specification governs scope.
+
+## Product decisions
+
+- Keep each existing session as a project. Make Agent, Tests, and Results persistent destinations; chat becomes a Guide, with a mutually exclusive Details utility surface.
+- Preserve the bounded $1 guest trial and existing workspace credit policy. Sign in to save and continue. The primary completion action is Save and iterate.
+- Implement SDK report import and live connectors in parallel after the workspace and reliability foundation. Reuse canonical runs, Temporal, eval sessions, public shares, and CI rather than creating another scheduler.
+- Raw sessions remain actor owned. Collaboration shares deliberately selected report snapshots, with role scoped annotations and existing expiry/revocation controls.
+
+## Release 1: readiness and continuity
+
+Separate liveness, dependency readiness, and inference availability. Validate configured cookie signing, approved priced models, stable campaign, provider configuration and worker availability without increasing budgets or guessing production values. Correct examples and deployment runbook, including readiness probes. Continue historical reads, saves, exports, deletes and reconciliation while new inference is unavailable. Public config must describe guest/workspace availability and real capabilities without secrets or balances.
+
+Provide truthful loading, unavailable and capacity states, a read only example, account identity, saved projects navigation, Help/home, and capability gated contact. Distinguish empty, signed out, forbidden and failed lists and retain successful rows on retry failure. Preserve editor drafts across sections, projects and reloads, including unavailable browser storage. Quotes show maximum platform price, funding and scope, preparation/current/expired/failure and refresh without execution; expose server time and keep existing 30 minute build and 10 minute run lifetimes. Trial New/history and clear thread boundaries must work in the dock. Enforce the same UTF-8 limits in client and API. Desktop Enter sends and Shift+Enter inserts a line; touch/hybrid Return inserts a line, explicit Send or Cmd/Ctrl+Enter sends; ignore IME composition. Track attempts and failures before admission. Explain verified data handling before estimates send draft content and before uploads or submissions.
+
+## Release 2: workspace, materials and accessibility
+
+The server journal is authoritative; use one session subscription and reject stale or foreign snapshots. Agent owns instructions, proposals, references and trials; Tests owns cases, expectations, source and validation; Results owns runs, evidence, comparisons and recovery. Keep project, version and evidence identity visible. Navigation never triggers model work or unsolicited tab switches. Guide references a removable case or run explicitly.
+
+Canonical URL parameters: session, view=agent|tests|results, agent, run, case, thread. Map legacy build to agent, checks to results, try to agent plus trial. Push meaningful navigation and replace hydration/corrections. Validate references within the project and pin selected runs to their tested version. Draft schema 2 migrates Guide/trial drafts, uses stable project+artifact+editor/recipient/thread keys, and stores base artifact hash/revision. Unrelated SSE revisions must not invalidate drafts; actual source changes need conflict review. Memory plus optional sessionStorage is sufficient; no promise of cross-device drafts. Save/discard restores focus. Attachments follow their recipient rather than the selected tab.
+
+Paste is the default if PDF is unavailable. Show material roles and actionable per-source blockers; support exact passage selection, explicit rule adoption and partial extraction acknowledgement. Deduplicate successful attachments and clear/mark submitted pasted drafts, while preserving unattached drafts. Stalled extraction has a remedy; one failed source must not hide all sources.
+
+Responsive widths: at least 1280, sidebar 252px + flexible main + utility rail 352px; 1024–1279 sidebar + utility sheet; 601–1023 project drawer + utility sheet; at most 600 one column with full height utility sheet. Dialogs have fixed headers, scrolling bodies, 44 CSS pixel close targets, 14–16px help and 16px inputs, wrapping labels and reduced motion at roots/backdrops. Add route scoped System/Light/Dark appearance including portals, default System, without changing the site's global theme. Fix invalid active-context semantics, uniquely named links, attachment announcements, latest-response reading focus, full titles and expandable replies in main flow. Safari/VoiceOver requires a real Mac test and must not be reported as verified on Linux.
+
+## Release 3: results, recovery, project library and saving
+
+Show input, expected behavior and rules before Run, and the existing validator's cases/rules/problems with supported/contradicted/unclear/unavailable states and targeted actions. Preserve a previous suite on failed edits. Results have stable outcome headings, failed-case counts, filters, full explanations and before/after responses. Distinguish prototype, recorded, imported, live and regraded provenance; retain immutable original model/build/test/judge fingerprints. Label comparisons with changed variables and call them controlled only when required fingerprints match. Grade disputes are append-only review records; a policy change or regrade is a separate artifact.
+
+Show last confirmed progress and phase elapsed time. Stop retains completed evidence; distinguish unknown billing. Offer reload evidence, retry unresolved, or full rerun. Quote subset retries with explicit case_keys only after reconciliation; make a new run and keep previous evidence separate. Never synthesize a new all-pass result by merging partial runs.
+
+Library: rename, archive, search, updated/run metadata, full titles, persisted sidebar preference. Archive affects discovery only, not deletion/cancellation. Save summarizes exact version, tests, baseline, workspace, visibility and future credits; preserve login and advanced-workspace return. Saving a pack/build does not deploy. Default export is selected version/run; full history is explicit. Export either exact chosen evidence or a user-confirmed partial manifest with missing items, progress/retry and useful filenames. Preserve original bytes on complex-pack advanced handoff. Deletion names the project and discloses independently retained copies. Help must match available controls.
+
+## Release 4: real application intake and connectors
+
+Add POST /v1/vibe/sessions/{id}/reports for existing v1 report/agent-result schemas inside an importer metadata envelope carrying application revision, fingerprints and capture scope. Validate schema, size, ownership and case identity. Original reports are immutable; imported judgments and hosted regrades stay separate. Do not claim imported scores were independently verified. Promoted expectations require review.
+
+Extend canonical deployments with native (default), http_json and hosted adapters. HTTP mapping is explicit JSON input plus response JSON pointer, HTTPS with Bearer/API-key workspace-secret references only. Admin approves connector and credential-to-target-origin binding; members may run approved connectors. Never accept process-wide env:// or secret:// fallback for connectors. Apply SSRF/private network/redirect restrictions, bounded sizes/deadlines, authenticated deduplicated persisted callbacks/dispatch and no automatic retry for unknown outcomes. Reuse hosted /agentclash/runs signed callback protocol. Canonical runs retain existing entitlements, spend controls and provider-account charging; Vibe work retains Vibe credit charging. Exclude external provider charges from any platform maximum; claim remote cancellation only when acknowledged. Guests remain text-only.
+
+## Release 5: richer evidence, experiments and collaboration
+
+Normalize existing run/replay events, SDK tool_calls and retrieval_context into observed evidence. Distinguish observed retrieval from reference corpus. Each capture scope is unknown, partial or complete; not instrumented differs from observed none. Reuse eval-session repetitions and Fleet for large sweeps: fixed cases, expectations, evaluator/config, explicit sample price/scope, size, variance and changed variables; expose seed only when acknowledged. Share selected workspace report snapshots with read access for viewers and append-only member/admin annotations; preserve original grades and actor-private raw sessions. Extend existing public sharing with default private, unindexed selected evidence and expiry/revocation; exclude raw data unless deliberately included.
+
+## Release 6: CI round trip
+
+Reuse pack compilation/publishing, canonical deployments, GitHub CI profiles and regression gates. Preserve IDs, expectations, validators, provenance and fingerprints through export/import. Show semantic diffs on reimport and require explicit publication/baseline promotion. Historical imported scores are not new runs. CLI evaltest is a clearly labelled smoke path; actual application evaluation uses documented pytest/SDK integration or canonical connected runtime. Verify reviewed test → CI run → evidence → regression → return to project.
+
+## Interfaces and verification
+
+Add config availability.guest/workspace and material_build compatibly. Session metadata mutation is PATCH /v1/vibe/sessions/{id}/metadata with revision/title?/archived?; expose existing title/updated_at and add archived_at. Result references identify vibe_operation, run, eval_session or sdk_report. Evidence records retain origin, immutable fingerprints and capture scope. New report, review, snapshot and annotation storage is additive. Export v2 supports selected/partial manifests while retaining v1 full import compatibility. Deployment adapters default to native.
+
+Use meaningful owner-boundary regressions with pre-fix failures for behavioral fixes. Preserve and run the current Vibe CI gates: backend API/vibe race and DB fixtures, backend build/vet, enquiries/inputs, runtime provider/scoring/challengepack, mandatory scripts/vibe/run_baseline.py, frontend typecheck/Vitest, mocked HTTP Playwright and real DB/Temporal fake-inference browser stack. Responsive matrix: 320,390,600,601,768,1023,1024,1279,1280,1440; zoom 200%, light/dark/system, reduced motion/forced colors. Deploy additive backend first, private preview, existing server workspace flag then public; rollback preserves data and reconciliation. Production configuration and a funded smoke probe require actual operator values/authorization; code must remain honest when those are absent.
