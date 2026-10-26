@@ -76,3 +76,12 @@ it("keeps a newer pasted source when an earlier file read finishes late",async()
  const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
  try{await act(async()=>root.render(<SDKReportImportForm {...props} onImported={()=>{}}/>));await change(node.querySelector('select[aria-label="SDK source format"]')!,"agent_result");const input=node.querySelector('input[type="file"]')!;Object.defineProperty(input,"files",{value:[file]});await act(async()=>input.dispatchEvent(new Event("change",{bubbles:true})));await change(node.querySelector("textarea")!,'{"input":"newer"}');await act(async()=>resolve(new TextEncoder().encode('{"input":"old"}').buffer));expect(node.querySelector("textarea")!.value).toBe('{"input":"newer"}');}finally{await act(async()=>root.unmount());node.remove()}
 });
+it("preserves the selected review draft while a session event refreshes report history",async()=>{
+ const selected={...report,cases:[{source_case_id:"local",case_key:"real"}]};let reads=0;let resolve!:(v:SDKReport[])=>void;
+ transport.fetch.mockImplementation(async(path:string)=>{if(path.endsWith("/reports")){if(++reads===1)return [selected];return new Promise<SDKReport[]>(r=>resolve=r)}if(path.includes("/case?"))return {case_key:"real",version:"a",verdict:"FAIL",output:"reply",checks:[],evidence_hash:"hash"};return []});
+ const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
+ try{await act(async()=>root.render(<SDKReports {...props} selectedResult={selected.binding} refresh={1}/>));await change(node.querySelector('select[aria-label="SDK detail source case"]')!,"local");await change(node.querySelector('textarea[aria-label="SDK grade review reason"]')!,"My unsent review");
+ await act(async()=>root.render(<SDKReports {...props} selectedResult={selected.binding} refresh={2}/>));expect(node.querySelector<HTMLTextAreaElement>('textarea[aria-label="SDK grade review reason"]')?.value).toBe("My unsent review");
+ await act(async()=>resolve([selected]));expect(node.querySelector<HTMLTextAreaElement>('textarea[aria-label="SDK grade review reason"]')?.value).toBe("My unsent review");
+ }finally{await act(async()=>root.unmount());node.remove()}
+});

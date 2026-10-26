@@ -14,6 +14,12 @@ export type SDKReport = {
 };
 export type PublishedCaseMapping = { artifact_id: string; draft_id: string; challenge_pack_version_id: string; published_case_id: string; input_set_key: string; challenge_key: string; case_key: string };
 export type ArtifactCaseMapping = { artifact_id: string; draft_id?: string; composition_hash?: string; cases: { case_key: string; input_set_key: string; challenge_key: string }[]; published: PublishedCaseMapping[]; status?: string; reason?: string };
+// Retained publication receipts outlive their editable advanced draft.
+export async function loadArtifactCaseMapping(sessionId: string, artifactId: string, token?: string | null): Promise<ArtifactCaseMapping[]> {
+  const rows = await vibeFetch<ArtifactCaseMapping[]>(`/sessions/${encodeURIComponent(sessionId)}/artifacts/${encodeURIComponent(artifactId)}/case-mapping`, token);
+  if (!Array.isArray(rows) || rows.some(row => !row || row.artifact_id !== artifactId || !Array.isArray(row.cases) || !Array.isArray(row.published))) throw Error("Case mapping could not be read.");
+  return rows;
+}
 export const reportBase = (sessionId: string) => `/sessions/${encodeURIComponent(sessionId)}/reports`;
 export function unknownCapture(): CaptureScope { return { messages: { scope: "unknown", instrumentation: "unknown" }, tools: { scope: "unknown", instrumentation: "unknown" }, retrieval: { scope: "unknown", instrumentation: "unknown" } }; }
 export const unknownFingerprints = (): Fingerprints => ({ model: null, build: null, test: null, judge: null, config: null });

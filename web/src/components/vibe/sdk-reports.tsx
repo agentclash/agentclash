@@ -15,7 +15,7 @@ export function SDKReports(props: SDKEvidenceContext & {
 }) {
   const {actorScope,sessionId,workspaceId,token,refresh,access:{canRead}} = props;
   const [attempt, setAttempt] = useState(0);
-  const life = useVibeEvidenceOwner(actorScope, sessionId, workspaceId, String(attempt), String(refresh));
+  const life = useVibeEvidenceOwner(actorScope, sessionId, workspaceId);
   const tokenRef = useRef(token);
   useEffect(() => { tokenRef.current = token; }, [token]);
   const [state, setState] = useState<{ owner: object; reports?: SDKReport[]; error?: string }>();
@@ -27,7 +27,7 @@ export function SDKReports(props: SDKEvidenceContext & {
       if (active && current()) setState({ owner: life.owner, reports });
     }).catch(e => { if (active && current()) setState({ owner: life.owner, error: e.message }); });
     return () => { active = false; };
-  }, [sessionId, workspaceId, canRead, life]);
+  }, [sessionId, workspaceId, canRead, life, attempt, refresh]);
   if (props.access.status === "signed_out") return <p>Sign in to read your private SDK reports.</p>;
   if (!props.workspaceId) return <p>Save to a workspace to keep imported reports here.</p>;
   if (!props.access.canRead) return <p>SDK reports are unavailable until access to this workspace is confirmed.</p>;

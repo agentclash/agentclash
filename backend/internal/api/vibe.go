@@ -48,6 +48,15 @@ func (h *VibeHandler) Routes() http.Handler {
 				if strings.HasSuffix(r.URL.Path, "/import") || strings.HasSuffix(r.URL.Path, "/evidence") {
 					limit = vibe.LimitsFor(false).FileBytes
 				}
+				// Match the registered route's exact method/path shape. Prefix
+				// mounts may add /v1/vibe; sibling report mutations keep 256KiB.
+				path := strings.TrimPrefix(r.URL.Path, "/v1/vibe")
+				parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+				if r.Method == http.MethodPost && len(parts) == 3 && parts[0] == "sessions" && parts[2] == "reports" {
+					if _, err := uuid.Parse(parts[1]); err == nil {
+						limit = vibe.SDKReportRequestBytes
+					}
+				}
 				if encoding := r.Header.Get("Content-Encoding"); encoding != "" && encoding != "identity" {
 					vibeError(w, &vibe.Fault{Code: "invalid_request", Message: "Compressed requests are not supported."})
 					return
@@ -64,6 +73,7 @@ func (h *VibeHandler) Routes() http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	})
+	h.RegisterSDKReports(r)
 	r.Get("/config", h.config)
 	r.Post("/sessions/{sessionID}/enquiries", h.createEnquiry)
 	r.Get("/sessions/{sessionID}/enquiries/{enquiryID}", h.getEnquiry)

@@ -72,3 +72,16 @@ it("keeps mixed unresolved counts and requires a separate explicit partial downl
     node.remove();
   }
 });
+
+it("keeps the SDK result when reconciling or expanding the frozen export",async()=>{
+ const resultRef={kind:"sdk_report" as const,id:"a1000000-0000-4000-8000-000000000001"};
+ const artifact={id:"tests"};const startResult=vi.fn();
+ const job=newExportJob({format:"agentclash-evaluation-v2",session_id:"project",title:"SDK export",captured_at:"2026-10-26T00:00:00Z",artifact_id:"tests",selection:{scope:"selected",artifact_id:"tests",result_ref:resultRef},artifacts:[],rules:[],runs:[],items:[],case_mappings:[],omissions:[]} as ExportPreparation);
+ const controller={state:{owner:{},open:true,busy:false,error:"",job,intent:{artifact,resultRef}},close:vi.fn(),download:vi.fn(),start:vi.fn(),startResult} as unknown as ReturnType<typeof useVibeExport>;
+ const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
+ const button=(label:string)=>Array.from(document.querySelectorAll("button")).find(b=>b.textContent===label)!;
+ try {await act(async()=>root.render(<ExportDialog controller={controller}/>));expect(document.body.textContent).toContain("SDK report a1000000");
+ await act(async()=>button("Reconcile and prepare selected evidence again").click());expect(startResult).toHaveBeenLastCalledWith(artifact,resultRef,"selected",undefined);
+ await act(async()=>button("Prepare full project history").click());expect(startResult).toHaveBeenLastCalledWith(artifact,resultRef,"history",undefined);
+ }finally{await act(async()=>root.unmount());node.remove()}
+});

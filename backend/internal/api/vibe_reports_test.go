@@ -523,3 +523,40 @@ func TestVibeSDKCountAndOriginalAllowanceAreAtomic(t *testing.T) {
 		t.Fatal("rejected quota left receipt", count, err)
 	}
 }
+
+func TestVibeSDKMountedTransportPreservesEscapedOriginal(t *testing.T) {
+	h, _, a := sdkHarness(t)
+	api := chi.NewRouter()
+	api.Mount("/v1/vibe", (&VibeHandler{Service: h.svc, Auth: NewDevelopmentAuthenticator()}).Routes())
+	base := "/v1/vibe/sessions/" + h.session.ID.String() + "/reports"
+	messages := make([]map[string]string, 20)
+	for i := range messages {
+		messages[i] = map[string]string{"role": "assistant", "content": strings.Repeat("\"\\\n", 5000)}
+	}
+	source := " \r\n" + string(mustJSON(t, map[string]any{"input": "hello", "output": "retained reply", "messages": messages})) + "\t\n"
+	in := vibe.SDKReportImport{EnvelopeVersion: 1, SourceKind: "agent_result", SourceSchemaVersion: 1, SourceJSON: source, Metadata: vibe.SDKImportMetadata{ArtifactID: a.ID, CaptureScope: vibe.UnknownCaptureScope(), Cases: []vibe.SDKCaseBinding{{SourceCaseID: "local", CaseKey: "eligible"}}}}
+	body := mustJSON(t, in)
+	if len(source) <= 256<<10 || len(source) > vibe.SDKReportSourceBytes || len(body) <= 1<<20 {
+		t.Fatal("fixture must exercise escaped transport", len(source), len(body))
+	}
+	w := sdkRequest(api, h.user, "POST", base, body)
+	if w.Code != 201 {
+		t.Fatalf("mounted SDK import: %d %s", w.Code, w.Body.String())
+	}
+	var report vibe.SDKReport
+	if err := json.Unmarshal(w.Body.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	w = sdkRequest(api, h.user, "GET", base+"/"+report.ID.String()+"/original", nil)
+	if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), []byte(source)) {
+		t.Fatal("mounted original changed", w.Code)
+	}
+	// Only the exact import route gets the expanded ceiling; sibling mutations
+	// still reject this large body before parsing/admission.
+	for _, path := range []string{"/v1/vibe/sessions/" + h.session.ID.String() + "/messages", base + "/" + report.ID.String() + "/promote", base + "/extra"} {
+		w = sdkRequest(api, h.user, "POST", path, body)
+		if w.Code != 413 {
+			t.Fatal("expanded unrelated mutation", path, w.Code, w.Body.String())
+		}
+	}
+}

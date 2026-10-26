@@ -27,7 +27,7 @@ export function ExportDialog({ controller: c }: { controller: ReturnType<typeof 
             <>
               <p>
                 Version {p.artifact_id.slice(0, 8)} ·{" "}
-                {p.selection.result_id ? `Run ${p.selection.result_id.slice(0, 8)}` : "Definition"}{" "}
+                {p.selection.result_ref?.kind === "sdk_report" ? `SDK report ${p.selection.result_ref.id.slice(0,8)}` : p.selection.result_id ? `Run ${p.selection.result_id.slice(0, 8)}` : "Definition"}{" "}
                 · {p.selection.scope === "history" ? "Full history" : "Selected evidence"}
               </p>
               <p>
@@ -82,7 +82,7 @@ export function ExportDialog({ controller: c }: { controller: ReturnType<typeof 
               <VibeButton
                 disabled={state.busy}
                 onClick={() =>
-                  void c.start(state.intent!.artifact, state.intent!.operation, "selected")
+                  void c.startResult(state.intent!.artifact, state.intent!.resultRef, "selected", state.intent!.operation)
                 }
               >
                 Reconcile and prepare selected evidence again
@@ -90,7 +90,7 @@ export function ExportDialog({ controller: c }: { controller: ReturnType<typeof 
               <VibeButton
                 disabled={state.busy}
                 onClick={() =>
-                  void c.start(state.intent!.artifact, state.intent!.operation, "history")
+                  void c.startResult(state.intent!.artifact, state.intent!.resultRef, "history", state.intent!.operation)
                 }
               >
                 Prepare full project history

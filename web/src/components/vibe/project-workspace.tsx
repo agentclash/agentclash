@@ -1,4 +1,5 @@
 "use client";
+import { parseResultSelection } from "@/lib/vibe-result-selection";
 import { VibeDataUseNotice, VibeRedactionHint } from "./vibe-data-use";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Tabs } from "@base-ui/react/tabs";
@@ -78,7 +79,7 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
   const candidate = p.requestedRunID ? runs.find(op => op.id === p.requestedRunID) : runs.findLast(op => testedArtifactID(op) === artifact?.id);
   // Canonical explicit history pins the selected artifact in the controller.
   // Until that agrees, never combine one version with another version's evidence.
-  const result = candidate && artifact && testedArtifactID(candidate) === artifact.id ? candidate : undefined;
+  const result = !p.selectedResult && candidate && artifact && testedArtifactID(candidate) === artifact.id ? candidate : undefined;
   const resultArtifact = result ? session.document.artifacts.find(item => item.id === testedArtifactID(result)) : undefined;
   const parent = session.document.artifacts.find(item => item.id === artifact?.parent_id);
   const active = session.operations.find(op => !terminal(op.state));
@@ -130,10 +131,10 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
       {p.sendError && <p role="alert">{p.sendError}</p>}
     </div>}
   </>;
-  const details = <div className="vibe-utility-scroll" aria-label="Project details"><h3>{evaluationIdentity(session).title}</h3><p>{evaluationIdentity(session).scope}</p><p>Version: {artifact ? `v${buildVersion(session, artifact)} · ${artifact.title}` : "Initial brief"}</p><p>Evidence: {result ? `Run ${runs.indexOf(result) + 1} · ${result.state}` : "No results for this version"}</p><AppearanceControl /><VibeButton onClick={p.onSettings}>Settings</VibeButton></div>;
+  const details = <div className="vibe-utility-scroll" aria-label="Project details"><h3>{evaluationIdentity(session).title}</h3><p>{evaluationIdentity(session).scope}</p><p>Version: {artifact ? `v${buildVersion(session, artifact)} · ${artifact.title}` : "Initial brief"}</p><p>Evidence: {result ? `Run ${runs.indexOf(result) + 1} · ${result.state}` : p.selectedResult ? "Imported SDK report" : "No results for this version"}</p><AppearanceControl /><VibeButton onClick={p.onSettings}>Settings</VibeButton></div>;
   const utilityContent = <><div className="vibe-utility-heading"><h2 ref={utilityHeading} tabIndex={-1}>{utility === "guide" ? "Guide" : "Details"}</h2><VibeButton aria-label={`Close ${utility === "guide" ? "Guide" : "Details"}`} onClick={close}>Close</VibeButton></div>{utility === "guide" ? guide : details}</>;
   return <>
-    <header className="vibe-project-header"><div className="vibe-project-identity">{p.navigationToggle}<div><h1>{evaluationIdentity(session).title}</h1><p>{artifact ? `v${buildVersion(session, artifact)} · ${artifact.title}` : "Initial brief"}{result ? ` · Evidence: Run ${runs.indexOf(result) + 1} (${result.state})` : artifact ? " · No results for this version" : " · No saved runs"}</p></div></div>
+    <header className="vibe-project-header"><div className="vibe-project-identity">{p.navigationToggle}<div><h1>{evaluationIdentity(session).title}</h1><p>{artifact ? `v${buildVersion(session, artifact)} · ${artifact.title}` : "Initial brief"}{result ? ` · Evidence: Run ${runs.indexOf(result) + 1} (${result.state})` : p.selectedResult ? " · Imported SDK report" : artifact ? " · No results for this version" : " · No saved runs"}</p></div></div>
       <div className="vibe-project-tools"><VibeButton aria-pressed={utility === "guide"} onClick={() => open("guide")}>Guide</VibeButton><VibeButton aria-pressed={utility === "details"} onClick={() => open("details")}>Details</VibeButton></div>
       <Tabs.Root value={view} onValueChange={next => p.onNavigate(next === "results" ? "checks" : next === "tests" ? "tests" : "build")}><Tabs.List aria-label="Workspace views" className="vibe-nav">{["agent", "tests", "results"].map(value => <Tabs.Tab className="vibe-button vibe-button-quiet" id={`vibe-tab-${value}`} aria-controls="vibe-workspace-panel" key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</Tabs.Tab>)}</Tabs.List></Tabs.Root>
     </header>
@@ -141,6 +142,7 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
       <div className="vibe-project-main" data-initial={view === "agent" && initialBrief || undefined} id="vibe-workspace-panel" role="tabpanel" aria-labelledby={`vibe-tab-${view}`}>
         {!initialBrief && !intakeOpen && p.onRecordedEvidence && <RecordedIntakeRecovery project={session.id} busy={p.busy} onSave={p.onRecordedEvidence} />}
         {view === "tests" && !!session.validation_reviews?.length && <ValidationHistory reviews={session.validation_reviews} onFix={text => { p.onContent(text); open("guide"); }} />}
+        {view === "results" && p.externalResults}
         {view === "results" && runs.length > 0 && <label>Result history<select aria-label="Result history" value={result?.id || ""} onChange={event => { if (event.target.value) p.onSelectRun(event.target.value); }}><option value="" disabled>Choose a saved run</option>{runs.map((run, i) => <option key={run.id} value={run.id}>Run {i + 1} · {run.state}</option>)}</select></label>}
         {intakeOpen && p.onRecordedEvidence ? <section aria-label="New recorded replies"><p>Compare with the selected saved run. Keep the customer messages and expectations the same; supply the actual new app replies. Review and enter the expectations explicitly before saving.</p><RecordedIntake reviewedExpectations={session.document.artifacts.find(item=>item.id===p.recordedUpdate?.baseline.source?.artifact_id)?.conversation_evaluation?.expectations} project={session.id} revision={session.revision} busy={p.busy} onSave={p.onRecordedEvidence} onClose={p.onCloseRecordedUpdate || (()=>{})}/></section> : view === "agent" ? initialBrief ? initial : <>
           <section aria-label="Version scope"><p>{artifact!.accepted ? "Saved version" : artifact!.dismissed ? "Earlier proposal" : "Proposed version"}{artifact!.sample ? " · Sample demonstration" : ""}</p><p className="vibe-muted">{artifact!.conversation_evaluation ? "Recorded app replies with your explicit expectations. Your app is not called." : artifact!.scope_note || "Runs here using what you supplied; your business systems are not connected."}</p>{artifact!.sample && <p>Sample rules are for this demonstration. Your real policy is still unspecified.</p>}</section>
@@ -163,7 +165,7 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
           {terminal(result.state) && !resultArtifact.conversation_evaluation && <BuildNextActions session={session} artifact={resultArtifact} operation={result} hasOutput={false} busy={p.busy || p.dirty} primary={false} onTry={() => p.onNavigate("try", resultArtifact.id)} onDetails={run => p.onSelectRun(run.id)} onGuide={() => open("guide")} onSave={p.onSave} onTougher={p.onTougher} onExport={p.onExport} loadEvidence={p.loadEvidence} />}
           {terminal(result.state) && <EvaluationOutcome onExport={p.onExport} session={session} artifact={resultArtifact} operation={result} busy={p.busy || p.dirty} loadEvidence={p.loadEvidence} onTougher={p.onTougher} />}
           {terminal(result.state) && <CoverageNote rows={session.rule_coverage?.[result.source?.artifact_id || ""] || []} busy={p.busy || p.dirty} onSuggest={rule => { p.onContent(`Prepare an extra test for review for this rule: ${rule}`); open("guide"); }} />}
-        </> : <p role="status">{p.requestedRunID || p.quickChecking ? "Waiting for your check…" : "No results for this version. Run its tests to collect evidence, or choose a saved run to view an earlier tested version."}</p>}
+        </> : p.selectedResult || (parseResultSelection(p.requestedRunID)?.kind && parseResultSelection(p.requestedRunID)?.kind !== "vibe_operation") ? null : <p role="status">{p.requestedRunID || p.quickChecking ? "Waiting for your check…" : "No results for this version. Run its tests to collect evidence, or choose a saved run to view an earlier tested version."}</p>}
         {!(view === "agent" && initialBrief) && <div className="vibe-notice">{p.notice}</div>}
       </div>
       {wide && utility && <aside className="vibe-utility" aria-label={`${utility === "guide" ? "Guide" : "Details"} utility`}>{utilityContent}</aside>}

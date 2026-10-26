@@ -177,3 +177,19 @@ it("invalidates captured explicit export downloads when the owner unmounts",asyn
  await act(async()=>root.render(null));
  captured();expect(click).not.toHaveBeenCalled();
 });
+
+it.each(["sdk_report","run","eval_session"] as const)("freezes a %s return selection without inventing a save baseline",async(kind)=>{
+ const {useVibeSaving}=await import("./use-vibe-saving");
+ const ref={kind,id:"a1000000-0000-4000-8000-000000000001"};
+ const artifact={id:"a1000000-0000-4000-8000-000000000002",kind:"test_suite" as const,title:"Pinned tests",agent_prompt:"",accepted:false,source_message_id:"",blueprint:{cases:[]}};
+ const project={...snapshot(),document:{...snapshot().document,artifacts:[artifact]}};
+ history.replaceState({},"",`/vibe-evals?session=A&agent=${artifact.id}&view=results&run=${kind}:${ref.id}&case=local&thread=retained`);
+ let saving!:ReturnType<typeof useVibeSaving>;
+ const noop=vi.fn();
+ function Harness(){saving=useVibeSaving({session:project,artifact,artifacts:[artifact],selectedResult:{session_id:"A",artifact_id:artifact.id,result_ref:ref},content:"",models:defaultModels,workspace:"",savedChecks:[],token,authLoading:false,loadAttempt:0,setContent:noop,setModels:noop,setWorkspace:noop,setError:noop,setPending:noop,setSavedChecks:noop,setSelectedArtifactID:noop,reload:async()=>project,writeURL:noop});return null}
+ await act(async()=>root.render(<Harness/>));await act(async()=>saving.openSave());
+ const captured=saving.saveReturnPath!;const url=new URL(captured,"https://local.invalid");
+ expect(url.searchParams.get("run")).toBe(`${kind}:${ref.id}`);expect(url.searchParams.get("agent")).toBe(artifact.id);
+ expect(url.searchParams.get("case")).toBe("local");expect(url.searchParams.get("thread")).toBe("retained");expect(saving.saveBaseline).toBeUndefined();
+ history.replaceState({},"","/vibe-evals?session=A&view=agent");await act(async()=>root.render(<Harness/>));expect(saving.saveReturnPath).toBe(captured);
+});

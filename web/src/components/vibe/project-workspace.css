@@ -82,3 +82,16 @@
 /* Shared outline buttons follow the route appearance even under html.dark. */
 .vibe-workspace [data-slot="button"][data-variant="outline"] { background: var(--vibe-surface); color: var(--vibe-fg); border-color: var(--vibe-control-border); }
 .vibe-workspace [data-slot="button"][data-variant="outline"]:hover { background: var(--vibe-hover); }
+
+/* Source reports share the Results pane and its scoped appearance tokens. */
+.vibe-sdk-results { min-width: 0; max-width: 100%; display: grid; gap: 24px; margin-block-end: 24px; overflow-wrap: anywhere; }
+.vibe-sdk-results :is(section, article, fieldset, details) { min-width: 0; }
+.vibe-sdk-results h3 { font-size: 18px; font-weight: 600; }
+.vibe-sdk-results h4 { font-weight: 600; }
+.vibe-sdk-results label { display: block; }
+.vibe-sdk-results :is(input:not([type="checkbox"]), select, textarea) { display: block; width: 100%; min-width: 0; max-width: 100%; margin-block: 6px 12px; border: 1px solid var(--vibe-control-border); border-radius: 8px; padding: 8px 10px; }
+.vibe-sdk-results input[type="checkbox"] { margin-inline-end: 8px; }
+.vibe-sdk-results pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 28rem; overflow: auto; padding: 12px; border: 1px solid var(--vibe-border); border-radius: 8px; background: var(--vibe-surface); }
+.vibe-sdk-results summary { cursor: pointer; min-height: 44px; padding-block: 10px; font-weight: 500; }
+.vibe-sdk-results ul { display: grid; gap: 8px; }
+.vibe-sdk-results :is(article[aria-label="Imported report detail"], details:has(> section[aria-label="Import SDK report"])) { border-block-start: 1px solid var(--vibe-border); padding-block-start: 16px; }

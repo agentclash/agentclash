@@ -142,7 +142,7 @@ jobs:
           "$RUNNER_TEMP/vibe-pdf-runtime/bin/pip" install -r backend/internal/vibe/inputs/requirements.txt
       - name: Browser to real API, PostgreSQL and Temporal worker (fake inference)
         working-directory: web
-        run: npx playwright test --config playwright.vibe-stack.config.ts interpretation.spec.ts journey.spec.ts two-door.spec.ts
+        run: npx playwright test --config playwright.vibe-stack.config.ts interpretation.spec.ts journey.spec.ts two-door.spec.ts sdk-reports.spec.ts
       - name: Supplied-text output, recovery and contact journey (fake inference)
         working-directory: web
         env:

@@ -108,6 +108,9 @@ export type EvaluationWorkspaceProps = {
   pendingLabel?: string;
   quickChecking?: boolean;
   requestedRunID?: string;
+  selectedResult?: import("@/lib/vibe-result-evidence").ProjectResultBinding;
+  onSelectResult?: (binding: import("@/lib/vibe-result-evidence").ProjectResultBinding, caseKey?: string) => void;
+  externalResults?: ReactNode;
   selectedCase?: string;
   onSelectCase?: (key?: string) => void;
   dirty: boolean;

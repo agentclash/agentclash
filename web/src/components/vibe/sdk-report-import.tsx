@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { vibeFetch } from "@/lib/vibe";
-import { reportBase, reportSourceCases, unknownCapture, unknownFingerprints, type ArtifactCaseMapping, type SDKReport, type SDKReportImport } from "@/lib/vibe-reports";
+import { loadArtifactCaseMapping, reportBase, reportSourceCases, unknownCapture, unknownFingerprints, type ArtifactCaseMapping, type SDKReport, type SDKReportImport } from "@/lib/vibe-reports";
 import type { ProjectResultBinding } from "@/lib/vibe-result-evidence";
 import type { WorkspaceEvidenceAccess } from "@/lib/use-vibe-workspace-access";
 import { useVibeEvidenceOwner } from "@/lib/use-vibe-evidence-owner";
@@ -35,8 +35,7 @@ function SDKImportFields({ sessionId, workspaceId, artifactId, actorScope, acces
   useEffect(() => {
     let live = true; const current = life.capture();
     if (!access.canRead || !workspaceId) return;
-    void tokenRef.current().then(auth => vibeFetch<ArtifactCaseMapping[]>(`/sessions/${sessionId}/artifacts/${artifactId}/case-mapping`, auth)).then(rows => {
-      if (!Array.isArray(rows) || rows.some(r => r.artifact_id !== artifactId || !Array.isArray(r.cases) || !Array.isArray(r.published))) throw Error("Case mapping could not be read.");
+    void tokenRef.current().then(auth => loadArtifactCaseMapping(sessionId, artifactId, auth)).then(rows => {
       if (live && current()) setMapping(rows);
     }).catch(e => { if (live && current()) setError(e.message); });
     return () => { live = false; };

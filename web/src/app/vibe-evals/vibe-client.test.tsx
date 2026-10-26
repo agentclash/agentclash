@@ -2594,3 +2594,52 @@ it("saves the frozen dialog version after a newer version arrives without substi
  await click('Save and iterate');
  const write=requests.find(r=>r.path.endsWith('/save'));expect(write?.body.artifact_id).toBe(original.id);expect(write?.body.models).toEqual(defaultModels);expect(posts()).toHaveLength(0);
 });
+
+function sdkProject() {
+ const id="a1000000-0000-4000-8000-000000000001";
+ const artifact={id:"a1000000-0000-4000-8000-000000000002",kind:"test_suite" as const,title:"Pinned SDK tests",agent_prompt:"",accepted:false,source_message_id:"",blueprint:{cases:[]}};
+ const newer={...artifact,id:"a1000000-0000-4000-8000-000000000003",title:"Newer tests"};
+ session.anonymous=false;session.workspace_id="workspace-sdk";
+ session.document.evaluation={id:session.id,chat_id:session.id,door:"test"};session.document.artifacts=[artifact,newer];
+ harness.user={id:"sdk-actor"};harness.token.mockResolvedValue("sdk-token");
+ harness.me.mockResolvedValue({organizations:[{role:"org_admin",workspaces:[{id:session.workspace_id,name:"SDK workspace",role:"workspace_admin"}]}]});
+ const report={id,external_report_id:"historical-sdk",source_kind:"agent_result",content_sha256:"hash",size_bytes:40,cases:[],binding:{session_id:session.id,artifact_id:artifact.id,result_ref:{kind:"sdk_report",id}},evidence_metadata:{origin:"imported",capture_scope:{},fingerprints:{}}};
+ const before=respond;
+ respond=async(path,options)=>path==="/config"?json({enabled:false,two_door:true,defaults:defaultModels,models:[],availability:{guest:{available:false},workspace:{available:false}}}):path.endsWith("/reports")?json([report]):path.endsWith("/reports/"+id)?json(report):path.endsWith("/case-mapping")||path.endsWith("/grade-reviews")?json([]):before(path,options);
+ return {id,artifact,newer,report};
+}
+it("resolves an SDK URL before pinning its version and keeps historical Results usable without inference or operations",async()=>{
+ const {id,artifact,newer,report}=sdkProject();
+ harness.params=new URLSearchParams(`session=${session.id}&view=results&agent=${newer.id}&run=sdk_report:${id}`);
+ const gate=deferred<Response>();const before=respond;respond=(path,options)=>path.endsWith("/reports/"+id)?gate.promise:before(path,options);
+ await render();
+ expect(new URL(location.href).searchParams.get("run")).toBe(`sdk_report:${id}`);
+ expect(container.textContent).toContain("Loading selected report");
+ await act(async()=>gate.resolve(json(report)));
+ expect(new URL(location.href).searchParams.get("agent")).toBe(artifact.id);
+ expect(container.querySelector('[aria-label="Imported report detail"]')).not.toBeNull();
+ expect(container.querySelector('[aria-label="SDK original JSON"]')).not.toBeNull();
+ expect(button("Estimate hosted regrade").disabled).toBe(true);
+ expect(posts()).toHaveLength(0);
+});
+it("retains an unavailable SDK selection for retry then clears a confirmed foreign report with an explanation",async()=>{
+ const {id}=sdkProject();harness.params=new URLSearchParams(`session=${session.id}&view=results&run=sdk_report:${id}`);
+ const before=respond;let count=0;respond=(path,options)=>path.endsWith("/reports/"+id)?Promise.resolve(++count===1?json({error:{code:"unavailable",message:"Temporary source failure"}},503):json({error:{code:"not_found",message:"Report unavailable"}},404)):before(path,options);
+ await render();expect(new URL(location.href).searchParams.get("run")).toBe(`sdk_report:${id}`);
+ await click("Retry selected result");expect(new URL(location.href).searchParams.get("run")).toBeNull();
+ expect(container.textContent).toContain("selected report is unavailable");expect(posts()).toHaveLength(0);
+});
+
+it("does not revive a prior actor's SDK lookup after an A to B to A transition",async()=>{
+ const {id,report}=sdkProject();harness.params=new URLSearchParams(`session=${session.id}&view=results&run=sdk_report:${id}`);
+ const old=deferred<Response>(),fresh=deferred<Response>();const before=respond;let reads=0;
+ respond=(path,options)=>path.endsWith("/reports/"+id)?(++reads===1?old.promise:fresh.promise.then(response=>response.clone())):before(path,options);
+ await render();harness.user={id:"other-sdk-actor"};await render();harness.user={id:"sdk-actor"};await render();
+ await act(async()=>old.resolve(json(report)));expect(container.querySelector('[aria-label="Imported report detail"]')).toBeNull();expect(container.textContent).toContain("Loading selected report");
+ await act(async()=>fresh.resolve(json(report)));expect(container.querySelector('[aria-label="Imported report detail"]')).not.toBeNull();expect(posts()).toHaveLength(0);
+});
+
+it("explains a malformed SDK selector without loading or executing it",async()=>{
+ sdkProject();harness.params=new URLSearchParams(`session=${session.id}&view=results&run=sdk_report:invalid`);await render();
+ expect(new URL(location.href).searchParams.get("run")).toBeNull();expect(container.textContent).toContain("selected result is unavailable");expect(requests.some(r=>r.path.endsWith("/reports/invalid"))).toBe(false);expect(posts()).toHaveLength(0);
+});

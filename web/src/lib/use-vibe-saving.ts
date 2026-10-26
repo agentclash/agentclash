@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useSearchParams } from "next/navigation";
+import type { ProjectResultBinding } from "./vibe-result-evidence";
+import { formatResultSelection, parseResultSelection } from "./vibe-result-selection";
 import {pinVibeReturn} from "./vibe-keep";
 import { createApiClient } from "@/lib/api/client";
 import type { UserMeResponse } from "@/lib/api/types";
@@ -15,6 +17,7 @@ import {
   type Models,
 } from "@/lib/vibe";
 type Context = {
+  selectedResult?: ProjectResultBinding;
   session: Session | null;
   artifact?: Artifact;
   artifacts: Artifact[];
@@ -108,7 +111,12 @@ export function useVibeSaving(c: Context) {
   function returnFor(exact:Artifact,operation?:Operation){
     const matches=(run:Operation)=>(run.kind==="check"||run.kind==="retest")&&(run.result_scope?.artifact_id||run.source?.artifact_id||run.results[0]?.version)===exact.id;
     const selectedRun=operation || (params.get("run")?session?.operations.find(run=>run.id===params.get("run")&&matches(run)):session?.operations.findLast(matches));
-    return pinVibeReturn(window.location.pathname+window.location.search,session!.id,exact.id,selectedRun?.id);
+    const selectedSource = !operation && c.selectedResult && c.selectedResult.session_id === session?.id && c.selectedResult.artifact_id === exact.id ? c.selectedResult.result_ref : undefined;
+    const requestedSource = parseResultSelection(new URL(window.location.href).searchParams.get("run"));
+    // Auth return may arrive before private source lookup. Preserve its typed
+    // selector in the frozen safe URL; it never becomes a save baseline.
+    const source = selectedSource || (!operation && params.get("keep") === "1" && requestedSource?.kind !== "vibe_operation" ? requestedSource : undefined);
+    return pinVibeReturn(window.location.pathname+window.location.search,session!.id,exact.id,source ? formatResultSelection(source) : selectedRun?.id);
   }
   async function openSave(operation?: Operation) {
     const selected =
