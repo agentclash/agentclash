@@ -3,9 +3,9 @@
 Primary ownership for all 76 raw findings. Overlapping findings share a repair; completion requires implementation and verification, not merely assignment. Product proposals D01–D07 have their own status table below; smaller finding closures do not imply those larger features are complete.
 
 
-Tasks 1–4 are implemented and independently reviewed through `21b0f913`, `8d92f2eb`, `589dc22c` and `fb1e473b`. Outcomes describe verified local code and fixtures, not production restoration. Task 4 adds current-V1 recorded-reply intake and updates, immutable provenance and grade reviews, persisted validation findings, exact quoted subset recovery, full before/after evidence and consistent case counts/filters. Its real database/Temporal journey verifies separate recorded sources and evaluator-only execution, including reload and baseline retention. The original ten-width inspection and bounded updated-comparison inspection are distinct from the complete final matrix.
+Tasks 1–5 are implemented and independently reviewed through `21b0f913`, `8d92f2eb`, `589dc22c`, `fb1e473b` and `1478ee09`. Outcomes describe verified local code and fixtures, not production restoration. Task 4 adds current-V1 recorded-reply intake and updates, immutable provenance and grade reviews, persisted validation findings, exact quoted subset recovery, full before/after evidence and consistent case counts/filters. Its real database/Temporal journey verifies separate recorded sources and evaluator-only execution, including reload and baseline retention. Task 5 adds persisted project names, library archive/search, frozen save/return intents, exact-byte originals, partial-consent exports and transactional published case mappings. Its fix review confirms canonical advanced-draft deletion retains immutable publication evidence, unmount invalidates downloads, and history includes unreferenced rule snapshots. One minor stale metadata-error display issue remains recorded for final review. The original ten-width inspection and bounded updated-comparison inspection are distinct from the complete final matrix.
 
-Reported gates remain separate: Task 4's full 279-test frontend run preceded narrow fixes; covering and final affected owners (including 61 tests, then the final 29-test scorecard owner), backend/API races, serial typechecks and bounded browser inspections verify the amended paths. Task 3's full 264-test and Task 2's full 253-test runs likewise preceded their final focused fixes. The mandatory 139-test backend floor passed on a fresh fixture; Task 10 still owns final integrated gates and fixture isolation. Real Mac/physical-device/native-zoom and production authentication/provider/funding checks remain external.
+Reported gates remain separate: Task 5's full 300-test frontend run preceded focused final return/consent fixes; final fix owners pass 21 tests, affected backend races and serial typecheck. Mock library/export and real database/Temporal exact-byte journeys passed.  Task 4's full 279-test frontend run preceded narrow fixes; covering and final affected owners (including 61 tests, then the final 29-test scorecard owner), backend/API races, serial typechecks and bounded browser inspections verify the amended paths. Task 3's full 264-test and Task 2's full 253-test runs likewise preceded their final focused fixes. The mandatory 139-test backend floor passed on a fresh fixture; Task 10 still owns final integrated gates and fixture isolation. Real Mac/physical-device/native-zoom and production authentication/provider/funding checks remain external.
 
 | Proposal | Improvement | Tasks | Status |
 |---|---|---|---|
@@ -15,7 +15,7 @@ Reported gates remain separate: Task 4's full 279-test frontend run preceded nar
 | D04 | Tool and retrieval evidence | 8 | Pending: observed evidence and capture completeness. |
 | D05 | Controlled comparisons and repeatability | 4, 8 | Partial: immutable comparison identities, changed variables and unknown-source labels are reviewed; repeated trials and sample-size analysis remain Task 8. |
 | D06 | Reviewable collaboration | 9 | Pending: selected immutable reports, annotations, scoped access and link lifecycle. |
-| D07 | Regression handoff to development workflow | 5, 10 | Pending: lossless advanced handoff, stable published case mapping and actual CI invocation round trip. |
+| D07 | Regression handoff to development workflow | 5, 10 | Partial: lossless advanced handoff, retained exact originals and actual published case UUID mapping are reviewed; actual CI invocation and regression return remain Task 10. |
 
 | Audit ID | Finding | Tasks | Verified outcome |
 |---|---|---|---|
@@ -40,9 +40,9 @@ Reported gates remain separate: Task 4's full 279-test frontend run preceded nar
 | BUILD-19 | Build trial hides reset and trial history controls | 2 | Trial dock exposes New and history, including during inference outages. |
 | BUILD-20 | Different trial threads blend into one unlabeled timeline | 2 | Interleaved trial threads have explicit boundaries. |
 | BUILD-21 | Prominent contact action leads to a copy-only dead end when contact is disabled | 1, 2 | Contact action follows configured form or mail capability. |
-| BUILD-22 | Cancellation removes all per-version next actions | 4 | Stopped versions retain prototype Try, completed evidence, save/export entry points and explicit recovery actions in the persistent workspace. Exact partial-export behavior remains Task 5. |
+| BUILD-22 | Cancellation removes all per-version next actions | 4 | Stopped versions retain prototype Try, completed evidence, save/export entry points and explicit recovery actions in the persistent workspace. Explicit exact/partial export with retained completed evidence is reviewed in Task 5. |
 | BUILD-23 | One missing source hides all otherwise readable material | 3 | Independent source reads/restores preserve readable siblings and show source-specific failure/retry. |
-| BUILD-24 | A single historic evidence failure blocks the entire session export | 5 | Pending |
+| BUILD-24 | A single historic evidence failure blocks the entire session export | 5 | Frozen preparation fetches items independently; progress, missing-only retry and explicitly confirmed partial manifests preserve readable evidence. |
 | E01 | Anonymous evaluation cannot start | 1, 2 | Guest availability is explicit; deterministic guest execution passes. Live funding/config is not asserted. |
 | E02 | Test edits disappear on a Results round trip | 2 | Drafts survive remount/reload; same-version history and async version selection are verified. |
 | E03 | Choose observed replies versus a text surrogate explicitly | 3, 4 | Named recorded-reply and saved-instruction choices reach actual current-V1 intake. Explicit expectations, immutable source receipts, new-reply updates and evaluator-only execution are verified. |
@@ -61,8 +61,8 @@ Reported gates remain separate: Task 4's full 279-test frontend run preceded nar
 | E16 | Refresh expired run quotes before confirming | 2 | Run estimates expire on the server clock and refresh without execution. |
 | E17 | Make Stop consequences predictable | 4 | Stop retains completed evidence and explains that dispatched provider calls may settle later. Unknown billing and reconciliation-gated subset recovery remain explicit. |
 | E18 | Differentiate a provider wait from stale progress | 4 | Phase start and last-confirmed progress derive from committed execution events/attempts; accounting callbacks and stream receipt do not fabricate progress. Saved evidence can be reloaded safely. |
-| E19 | Name export contents and scope before downloading | 5 | Pending |
-| E20 | Connect preserved complex packs to an actionable next step | 5 | Pending |
+| E19 | Name export contents and scope before downloading | 5 | Selected version/result is the default; explicit history scope, named omissions, expected/included/missing items, consent and useful filenames precede download. Exact source hashes and all persisted rule history are verified. |
+| E20 | Connect preserved complex packs to an actionable next step | 5 | Rich supported packs open an exact advanced canonical copy with a pinned project/version/result return path. Original bytes and transactional published case UUID mappings survive independently; unsupported fields receive an honest raw-only path. |
 | A01 | Return submits instead of allowing touch users to compose multiline instructions | 2 | Touch/hybrid Return inserts a line; desktop, modifiers and composition have transport regressions. |
 | A02 | Portaled dialog animation ignores Reduce Motion | 3 | Scoped Dialog/Sheet roots and backdrops honor reduced motion; computed zero-duration behavior inspected. |
 | A03 | Dialog close targets are smaller than other touch controls | 3 | Dialog/sheet close and new material remedy targets meet the 44 CSS pixel layout contract in bounded browser checks. |
@@ -74,7 +74,7 @@ Reported gates remain separate: Task 4's full 279-test frontend run preceded nar
 | A09 | Saving or cancelling a test edit removes the focused control without restoring task focus | 2, 3 | Save/Discard restore task focus, including immutable-artifact remounts; delayed completion preserves newer drafts and current Guide focus. |
 | A10 | Jump to New response moves keyboard focus back to the composer | 2, 3 | Explicit Latest focuses readable response content; arrival announces without moving focus. |
 | A11 | Long case replies create a second vertical scrolling region | 3 | Long responses expand in the main scroll flow; 320px JSON/table/text output checks retain complete content and downloads. |
-| A12 | Truncated agent titles rely on hover-only title attributes for their full name | 5 | Pending |
+| A12 | Truncated agent titles rely on hover-only title attributes for their full name | 5 | Persisted full project titles wrap in the library and remain readable at narrow widths without hover; keyboard rename and 390px title inspection pass. |
 | A13 | Attachment completion states have no explicit live announcement | 3 | Named attachment completion/detachment and action-required source states have status/alert announcements. |
 | A14 | Virtual keyboard visibility has not been validated for the fixed-height workspace | 3, 10 | External check pending: real iPhone Safari software-keyboard visibility and reachability. Dynamic viewport layout is implemented; Linux emulation does not prove this. |
 | A15 | Text growth can exceed generic dialog and nowrap action constraints | 3 | Wrapping controls and fixed headers/bodies support 320px reflow and Linux 200% text enlargement. Native browser/device text resizing remains external. |
@@ -84,14 +84,14 @@ Reported gates remain separate: Task 4's full 279-test frontend run preceded nar
 | R03 | History failures and authentication states look like empty work | 1, 2 | Signed-out, forbidden, empty and failed states differ; rows are actor/workspace scoped. |
 | R04 | Model selectors imply choices despite an empty model catalog | 1, 2 | Real inventory is required for selectable models. |
 | R05 | Capability documentation obscures availability | 1, 2 | Capability availability and uniquely named documentation are visible. |
-| R06 | Object names vary across navigation, saving and deletion | 3, 5 | Partial: persistent project/version/evidence header is implemented; canonical persisted titles across library/save/delete remain Task 5. |
+| R06 | Object names vary across navigation, saving and deletion | 3, 5 | One persisted project title is used across library, navigation, save summary and named deletion; immutable version labels remain distinct. |
 | R07 | Meaningful view changes replace browser history | 2 | Meaningful navigation pushes; hydration replaces; case/thread Back/Forward and request recovery verified. |
 | R08 | Entry shell lacks a visible help/account/home route | 1, 2 | Account, Home, Help and saved-project navigation are exposed. |
-| R09 | Collections do not scale beyond a few projects | 5 | Pending |
-| R10 | Sidebar collapse preference resets on reload | 5 | Pending |
+| R09 | Collections do not scale beyond a few projects | 5 | Search, archive filters, updated/last-run metadata and latest-100 scope disclosure support larger libraries; a 30-project browser fixture verifies keyboard rename/archive/restore. |
+| R10 | Sidebar collapse preference resets on reload | 5 | Sidebar collapse preference restores after reload in the desktop browser fixture. |
 | R11 | Journey analytics omit entry failure and the evaluation path | 1, 2 | Both doors track attempts and sanitized preadmission failures, including create/cookie/estimate failures. |
 | R12 | Sensitive-input processing facts are absent at the intake boundary | 3 | Before intake, verified data-use and deletion/retained-copy details are reachable; sign-in alone does not share raw projects. |
-| R13 | Save handoff needs an explicit object and destination summary | 5 | Pending |
-| R14 | Destructive dialog does not name the project | 5 | Pending |
-| R15 | Contextual docs use controls absent from current interface | 5 | Pending |
+| R13 | Save handoff needs an explicit object and destination summary | 5 | Save review freezes exact artifact/models and summarizes tests, baseline, workspace, visibility, future credits and no deployment. Authentication resumes review; advanced return preserves selected identities. |
+| R14 | Destructive dialog does not name the project | 5 | Deletion names the persisted project and explains independently retained workspace copies; private reads stop while authorized saved originals/publication history remain. |
+| R15 | Contextual docs use controls absent from current interface | 5 | Contextual Help matches persistent Agent/Tests/Results, library controls, save visibility and explicit export scope. |
 | R16 | Measure route cost before adding heavier UI | 10 | Pending |
