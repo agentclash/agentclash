@@ -23,13 +23,23 @@ func (s *Store) CreateAgent(ctx context.Context, actor string, ws *uuid.UUID, id
 // Historical evaluations remain in the same list; empty legacy containers do
 // not appear as duplicate chats. Each row is independently authorized on read.
 func (s *Store) AgentSessions(ctx context.Context, actor string, workspace ...uuid.UUID) ([]Session, error) {
+	return s.LibrarySessions(ctx, actor, "exclude", workspace...)
+}
+
+func (s *Store) LibrarySessions(ctx context.Context, actor, archived string, workspace ...uuid.UUID) ([]Session, error) {
+	if archived == "" {
+		archived = "exclude"
+	}
+	if archived != "exclude" && archived != "only" && archived != "all" {
+		return nil, fault("invalid_request", "Choose active, archived or all projects.")
+	}
 	var ws *uuid.UUID
 	if len(workspace) > 0 && workspace[0] != uuid.Nil {
 		ws = &workspace[0]
 	}
-	rows, err := s.DB.Query(ctx, `SELECT id FROM vibe_sessions WHERE actor=$1 AND deleted_at IS NULL AND ($2::uuid IS NULL OR workspace_id=$2) AND
+	rows, err := s.DB.Query(ctx, `SELECT id FROM vibe_sessions WHERE actor=$1 AND deleted_at IS NULL AND ($3='all' OR ($3='only' AND archived_at IS NOT NULL) OR ($3='exclude' AND archived_at IS NULL)) AND ($2::uuid IS NULL OR workspace_id=$2) AND
 	 (document ? 'evaluation' OR jsonb_array_length(COALESCE(document->'messages','[]'::jsonb))>0)
-	 ORDER BY updated_at DESC LIMIT 100`, actor, ws)
+	 ORDER BY updated_at DESC LIMIT 100`, actor, ws, archived)
 	if err != nil {
 		return nil, err
 	}

@@ -21,7 +21,7 @@ func (h *VibeHandler) listSessions(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	items, err := h.Service.Store.AgentSessions(r.Context(), actor, workspace)
+	items, err := h.Service.Store.LibrarySessions(r.Context(), actor, r.URL.Query().Get("archived"), workspace)
 	if err != nil {
 		vibeError(w, err)
 		return

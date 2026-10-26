@@ -19,6 +19,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -88,6 +89,13 @@ func (h *VibeHandler) Routes() http.Handler {
 	r.Post("/sessions/{sessionID}/grade-reviews", h.gradeReviews)
 	r.Get("/sessions/{sessionID}/grade-reviews", h.gradeReviews)
 	r.Patch("/sessions/{sessionID}", h.edit)
+	r.Patch("/sessions/{sessionID}/metadata", h.metadata)
+	r.Get("/sessions/{sessionID}/artifacts/{artifactID}/original", h.original)
+	r.Get("/sessions/{sessionID}/artifacts/{artifactID}/case-mapping", h.caseMapping)
+	r.Post("/sessions/{sessionID}/export", h.prepareExport)
+	r.Post("/sessions/{sessionID}/advanced", h.advanced)
+	r.Get("/saved-originals/{draftID}", h.savedOriginal)
+	r.Get("/sessions/{sessionID}/export/reviews/{reviewID}", h.exportReview)
 	r.Post("/sessions/{sessionID}/claim", h.claim)
 	r.Post("/sessions/{sessionID}/save", h.save)
 	r.Post("/sessions/{sessionID}/save-check", h.saveCheck)
@@ -123,6 +131,10 @@ func (h *VibeHandler) caseEvidence(w http.ResponseWriter, r *http.Request) {
 	result, err := h.Service.Store.GetCase(r.Context(), actor, id, key)
 	if err != nil {
 		vibeError(w, err)
+		return
+	}
+	if expected := r.URL.Query().Get("hash"); expected != "" && expected != result.EvidenceHash {
+		vibeError(w, &vibe.Fault{Code: "evidence_changed", Message: "The saved case changed after export preparation. Reconcile or export a partial copy."})
 		return
 	}
 	vibeJSON(w, 200, result)
@@ -420,7 +432,12 @@ func (h *VibeHandler) importFile(w http.ResponseWriter, r *http.Request) {
 	}
 	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, int64(l.FileBytes)))
 	if err == nil {
-		err = h.Service.Import(r.Context(), v.Actor, v.ID, revision, b)
+		name, e := url.PathUnescape(r.Header.Get("X-File-Name"))
+		if e != nil {
+			vibeError(w, &vibe.Fault{Code: "invalid_import", Message: "Invalid file name."})
+			return
+		}
+		err = h.Service.Import(r.Context(), v.Actor, v.ID, revision, b, vibe.ImportOriginal{Filename: name, MediaType: media})
 	}
 	if err != nil {
 		vibeError(w, err)

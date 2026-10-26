@@ -286,7 +286,7 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 	}
 	return s.Store.Submit(ctx, actor, id, sub, p, s.Config)
 }
-func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revision int64, content []byte) error {
+func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revision int64, content []byte, metadata ...ImportOriginal) error {
 	v, err := s.Store.GetSession(ctx, actor, id)
 	if err != nil {
 		return err
@@ -307,15 +307,23 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 	if err = json.Unmarshal(b, &envelope); err != nil {
 		return err
 	}
-	if string(envelope["format"]) == `"agentclash-evaluation-v1"` {
+	if string(envelope["format"]) == `"agentclash-evaluation-v1"` || string(envelope["format"]) == `"agentclash-evaluation-v2"` {
 		var exported struct {
-			Format     string          `json:"format"`
-			ArtifactID uuid.UUID       `json:"artifact_id"`
-			Artifacts  []Artifact      `json:"artifacts"`
-			Scope      string          `json:"scope"`
-			Sample     *string         `json:"sample"`
-			Rules      json.RawMessage `json:"rules"`
-			Runs       json.RawMessage `json:"runs"`
+			Format       string          `json:"format"`
+			SessionID    uuid.UUID       `json:"session_id,omitempty"`
+			Title        string          `json:"title,omitempty"`
+			CapturedAt   string          `json:"captured_at,omitempty"`
+			Selection    json.RawMessage `json:"selection,omitempty"`
+			Evidence     json.RawMessage `json:"evidence,omitempty"`
+			CaseMappings json.RawMessage `json:"case_mappings,omitempty"`
+			Omissions    json.RawMessage `json:"omissions,omitempty"`
+			Manifest     json.RawMessage `json:"manifest,omitempty"`
+			ArtifactID   uuid.UUID       `json:"artifact_id"`
+			Artifacts    []Artifact      `json:"artifacts"`
+			Scope        string          `json:"scope"`
+			Sample       *string         `json:"sample"`
+			Rules        json.RawMessage `json:"rules"`
+			Runs         json.RawMessage `json:"runs"`
 		}
 		if err = Decode(b, l, &exported); err != nil {
 			return err
@@ -351,10 +359,17 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 		agentPrompt, b = exported.AgentPrompt, exported.Evaluation
 	}
 	artifactID := uuid.New()
+	original, err := importOriginal(content, metadata, artifactID)
+	if err != nil {
+		return err
+	}
 	c, err := s.Compiler.Compile(b, v.Document.Models.Evaluator, artifactID, l)
 	if err != nil {
+		if strings.Contains(err.Error(), "unknown field") && envelope["pack"] != nil {
+			err = fault("unsupported_capability", "This source has fields the current editor cannot interpret. Its original bytes remain downloadable.")
+		}
 		if capability, ok := err.(*Fault); ok && capability.Code == "unsupported_capability" && v.Document.Evaluation != nil {
-			return s.Store.Edit(ctx, actor, id, revision, func(current *Session) error {
+			return s.Store.editOriginal(ctx, actor, id, revision, &original, func(current *Session) error {
 				total := len(b)
 				for _, saved := range current.Document.Artifacts {
 					total += len(saved.Blueprint)
@@ -363,7 +378,7 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 					return fault("attachment_limit", "This pack exceeds the attachment allowance.")
 				}
 				current.Document.AttachmentCount++
-				a := Artifact{ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: "Imported challenge pack", Blueprint: b, AgentPrompt: agentPrompt, CreatedAt: timestamp(), UnavailableReason: capability.Message}
+				a := Artifact{Original: &original, ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: "Imported challenge pack", Blueprint: b, AgentPrompt: agentPrompt, CreatedAt: timestamp(), UnavailableReason: capability.Message}
 				current.Document.Artifacts = append(current.Document.Artifacts, a)
 				current.Document.ActiveArtifactID = &a.ID
 				current.Document.TestJourney = true
@@ -373,7 +388,7 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 		}
 		return fault("invalid_pack", "This evaluation could not be imported without changing its coverage: "+err.Error())
 	}
-	return s.Store.Edit(ctx, actor, id, revision, func(v *Session) error {
+	return s.Store.editOriginal(ctx, actor, id, revision, &original, func(v *Session) error {
 		if !s.Config.TestingLocally() && v.Document.AttachmentCount >= l.Files {
 			return fault("attachment_limit", "This conversation has reached its import count limit. Save it and start another.")
 		}
@@ -389,7 +404,7 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 		v.Document.Messages = append(v.Document.Messages, msg)
 		replyID := uuid.New()
 		v.Document.TestJourney = true
-		v.Document.Artifacts = append(v.Document.Artifacts, Artifact{ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: c.Bundle.Pack.Name, Sample: sample, ScopeNote: prototypeScope, AgentPrompt: agentPrompt, Blueprint: b, SourceMessageID: msg.ID, ProposalMessageID: &replyID, CreatedAt: timestamp()})
+		v.Document.Artifacts = append(v.Document.Artifacts, Artifact{Original: &original, ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: c.Bundle.Pack.Name, Sample: sample, ScopeNote: prototypeScope, AgentPrompt: agentPrompt, Blueprint: b, SourceMessageID: msg.ID, ProposalMessageID: &replyID, CreatedAt: timestamp()})
 		v.Document.Messages = append(v.Document.Messages, Message{ID: replyID, Role: "assistant", Content: fmt.Sprintf("Your %d imported tests are ready to review.", len(c.Cases)), ArtifactID: &artifactID, CreatedAt: timestamp()})
 		return nil
 	})

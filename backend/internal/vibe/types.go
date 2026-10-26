@@ -112,6 +112,7 @@ type Requirement struct {
 	Change            string     `json:"change,omitempty"`
 }
 type Artifact struct {
+	Original               *ImportOriginal         `json:"original,omitempty"`
 	InputContract          *InputContract          `json:"input_contract,omitempty"`
 	RequiredCapabilities   []string                `json:"required_capabilities,omitempty"`
 	ReferenceInputs        []inputs.Binding        `json:"reference_inputs,omitempty"`
@@ -166,6 +167,7 @@ type Document struct {
 	ActiveArtifactID     *uuid.UUID            `json:"active_artifact_id,omitempty"`
 }
 type Session struct {
+	ArchivedAt        *time.Time                `json:"archived_at,omitempty"`
 	EvidenceReceipt   *EvidenceIntakeReceipt    `json:"evidence_receipt,omitempty"`
 	ValidationReviews []ValidationReview        `json:"validation_reviews,omitempty"`
 	RuleCoverage      map[string][]RuleCoverage `json:"rule_coverage,omitempty"`

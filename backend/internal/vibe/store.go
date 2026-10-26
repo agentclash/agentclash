@@ -75,12 +75,12 @@ func (s *Store) Authorize(ctx context.Context, session Session, write bool) erro
 	return authorize(ctx, s.DB, session.Actor, session.WorkspaceID, write)
 }
 
-const sessionSelect = `SELECT id,actor,workspace_id,workspace_id IS NULL,revision,title,document,updated_at,saved_draft_id FROM vibe_sessions WHERE id=$1 AND deleted_at IS NULL`
+const sessionSelect = `SELECT id,actor,workspace_id,workspace_id IS NULL,revision,title,document,updated_at,saved_draft_id,archived_at FROM vibe_sessions WHERE id=$1 AND deleted_at IS NULL`
 
 func scanSession(row pgx.Row) (Session, error) {
 	v := Session{Operations: []Operation{}}
 	var doc []byte
-	err := row.Scan(&v.ID, &v.Actor, &v.WorkspaceID, &v.Anonymous, &v.Revision, &v.Title, &doc, &v.UpdatedAt, &v.SavedDraftID)
+	err := row.Scan(&v.ID, &v.Actor, &v.WorkspaceID, &v.Anonymous, &v.Revision, &v.Title, &doc, &v.UpdatedAt, &v.SavedDraftID, &v.ArchivedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return v, fault("not_found", "Conversation is unavailable.")
 	}
@@ -150,7 +150,7 @@ func (s *Store) createSessionTx(ctx context.Context, tx pgx.Tx, actor string, ws
 		t := actor
 		trial = &t
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO vibe_sessions(id,actor,workspace_id,trial_key,document) VALUES($1,$2,$3,$4,$5)`, id, actor, ws, trial, raw(d)); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO vibe_sessions(id,actor,workspace_id,trial_key,document,title) VALUES($1,$2,$3,$4,$5,CASE WHEN $5::jsonb#>>'{evaluation,door}'='build' THEN 'New prototype ' ELSE 'New evaluation ' END||left($1::uuid::text,8))`, id, actor, ws, trial, raw(d)); err != nil {
 		return Session{}, err
 	}
 	return scanSession(tx.QueryRow(ctx, sessionSelect, id))
@@ -426,6 +426,9 @@ func (s *Store) updateDocument(ctx context.Context, tx pgx.Tx, v Session) error 
 	return err
 }
 func (s *Store) Edit(ctx context.Context, actor string, id uuid.UUID, revision int64, fn func(*Session) error) error {
+	return s.editOriginal(ctx, actor, id, revision, nil, fn)
+}
+func (s *Store) editOriginal(ctx context.Context, actor string, id uuid.UUID, revision int64, original *ImportOriginal, fn func(*Session) error) error {
 	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
 		if err != nil {
@@ -449,6 +452,11 @@ func (s *Store) Edit(ctx context.Context, actor string, id uuid.UUID, revision i
 		}
 		if err = fn(&v); err != nil {
 			return err
+		}
+		if original != nil {
+			if err = storeOriginal(ctx, tx, &v, *original); err != nil {
+				return err
+			}
 		}
 		if err = s.updateDocument(ctx, tx, v); err != nil {
 			return err
@@ -570,6 +578,9 @@ func (s *Store) saveDraft(ctx context.Context, actor string, id uuid.UUID, revis
 				return err
 			}
 			savedBuildID, savedVersionID = &buildID, &versionID
+		}
+		if err = packSource(ctx, tx, v, draftID, ws, artifact, composition, false); err != nil {
+			return err
 		}
 		// The canonical model_spec is editable. Record the selected roles only
 		// in Vibe's immutable save receipt, in the same transaction as the draft.

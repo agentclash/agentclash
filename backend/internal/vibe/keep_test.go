@@ -80,18 +80,19 @@ func TestIntegrationVibeKeepExactPackAndRun(t *testing.T) {
 		}
 		return id
 	}
+	compiled := json.RawMessage(`{"pack":{"slug":"saved-identity","name":"Imported identity","family":"test"},"version":{"number":1,"execution_mode":"prompt_eval"},"input_sets":[{"inline":{"key":"input","name":"Input","cases":[{"challenge_key":"task","case_key":"original-case","payload":{"question":"hello"}}]}}],"judges":[{"inline":{"key":"original-judge","mode":"assertion","model":"fixture","assertion":"Follow the rule"}}],"scorecard":{"name":"original-grading","dimensions":[]}}`)
 	baseline := run(a)
 	wrong := uuid.New()
-	if _, err := s.saveDraft(ctx, v.Actor, v.ID, v.Revision, *v.WorkspaceID, a, a.Blueprint, DefaultModels(), true, &wrong, true); err == nil {
+	if _, err := s.saveDraft(ctx, v.Actor, v.ID, v.Revision, *v.WorkspaceID, a, compiled, DefaultModels(), true, &wrong, true); err == nil {
 		t.Fatal("unknown baseline accepted")
 	}
-	draft, err := s.saveDraft(ctx, v.Actor, v.ID, v.Revision, *v.WorkspaceID, a, a.Blueprint, DefaultModels(), true, &baseline, true)
+	draft, err := s.saveDraft(ctx, v.Actor, v.ID, v.Revision, *v.WorkspaceID, a, compiled, DefaultModels(), true, &baseline, true)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.DB.Exec(ctx, "DELETE FROM vibe_saved_artifacts WHERE session_id=$1", v.ID) })
 	before, _ := s.GetSession(ctx, v.Actor, v.ID)
-	again, err := s.saveDraft(ctx, v.Actor, v.ID, v.Revision, *v.WorkspaceID, a, a.Blueprint, DefaultModels(), true, &baseline, true)
+	again, err := s.saveDraft(ctx, v.Actor, v.ID, v.Revision, *v.WorkspaceID, a, compiled, DefaultModels(), true, &baseline, true)
 	if err != nil || again != draft {
 		t.Fatal("duplicate save failed", err)
 	}
@@ -104,7 +105,7 @@ func TestIntegrationVibeKeepExactPackAndRun(t *testing.T) {
 	if err != nil || len(list) != 1 || list[0].BaselineID != baseline || list[0].ArtifactID != a.ID || *list[0].DraftID != draft {
 		t.Fatal("new run moved frozen saved link", err, list)
 	}
-	if _, err = s.saveDraft(ctx, v.Actor, v.ID, latest.Revision, *v.WorkspaceID, a, a.Blueprint, DefaultModels(), true, &newer, true); err == nil {
+	if _, err = s.saveDraft(ctx, v.Actor, v.ID, latest.Revision, *v.WorkspaceID, a, compiled, DefaultModels(), true, &newer, true); err == nil {
 		t.Fatal("different baseline silently overwrote saved run")
 	}
 	changed := DefaultModels()
@@ -116,7 +117,7 @@ func TestIntegrationVibeKeepExactPackAndRun(t *testing.T) {
 	if err = s.DB.QueryRow(ctx, "SELECT composition FROM challenge_pack_drafts WHERE id=$1", draft).Scan(&composition); err != nil {
 		t.Fatal(err)
 	}
-	want, _ := CanonicalJSONHash(a.Blueprint)
+	want, _ := CanonicalJSONHash(compiled)
 	got, _ := CanonicalJSONHash(composition)
 	if want != got {
 		t.Fatal("saved pack changed case or grading identities")

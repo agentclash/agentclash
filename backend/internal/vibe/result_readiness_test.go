@@ -36,6 +36,14 @@ func TestIntegrationResultEvidenceReadinessRequiresMigration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if r.DependencyChecks(ctx)["vibe_schema"] == "ok" {
+		t.Fatal("pre-library migration advertised ready")
+	}
+	for _, name := range []string{"vibe_import_originals", "vibe_pack_sources", "vibe_published_case_bindings"} {
+		if _, err = db.Exec(ctx, "CREATE TABLE "+name+" (LIKE public."+name+")"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if r.DependencyChecks(ctx)["vibe_schema"] != "ok" {
 		t.Fatal("migrated schema unavailable")
 	}

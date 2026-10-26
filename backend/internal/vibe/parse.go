@@ -142,6 +142,7 @@ func ImportJSON(raw []byte, l Limits) ([]byte, error) {
 	if len(raw) > l.FileBytes || !utf8.Valid(raw) {
 		return nil, fault("import_limit", "Import is too large or has invalid encoding.")
 	}
+	raw = bytes.TrimPrefix(raw, []byte{0xef, 0xbb, 0xbf}) // Parse without BOM; retention owns the unchanged upload bytes.
 	if strings.HasPrefix(strings.TrimSpace(string(raw)), "{") || strings.HasPrefix(strings.TrimSpace(string(raw)), "[") {
 		return raw, ValidateJSON(raw, l)
 	}

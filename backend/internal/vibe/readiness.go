@@ -89,9 +89,12 @@ func (r *Readiness) DependencyChecks(ctx context.Context) map[string]string {
 		rows, err := r.DB.Query(ctx, `SELECT s.id,o.state,b.delivered_at,a.reconciliation_evidence,c.balance,
    e.session_id,e.client_id,e.request_hash,e.evidence_id,e.artifact_id,
    g.id,g.session_id,g.client_id,g.request_hash,g.result_kind,g.result_id,g.body,g.created_at,
-   v.id,v.session_id,v.operation_id,v.stage_key,v.candidate_hash,v.policy_hash,v.body,v.created_at
+   v.id,v.session_id,v.operation_id,v.stage_key,v.candidate_hash,v.policy_hash,v.body,v.created_at,
+ s.archived_at,f.id,f.session_id,f.artifact_id,f.filename,f.media_type,f.content_sha256,f.content,
+ p.draft_id,p.session_id,p.artifact_id,p.workspace_id,p.composition_hash,p.case_keys,p.original_content,p.original_filename,p.original_media_type,p.original_hash,p.advanced,
+ k.draft_id,k.artifact_id,k.challenge_pack_version_id,k.case_key,k.input_set_key,k.challenge_key,k.published_case_id
    FROM vibe_sessions s,vibe_operations o,vibe_outbox b,vibe_attempts a,vibe_accounts c,
-   vibe_evidence_receipts e,vibe_grade_reviews g,vibe_validation_reviews v LIMIT 0`)
+   vibe_evidence_receipts e,vibe_grade_reviews g,vibe_validation_reviews v,vibe_import_originals f,vibe_pack_sources p,vibe_published_case_bindings k LIMIT 0`)
 		if err == nil {
 			rows.Close()
 			if rows.Err() == nil {
