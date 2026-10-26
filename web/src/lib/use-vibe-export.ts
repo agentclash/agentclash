@@ -1,5 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import type { ResultRef } from "./vibe-result-evidence";
+import { sdkExportValue, reportBase } from "./vibe-reports";
 import { vibeFetch, vibeBytes, type Session, type Artifact, type Operation } from "./vibe";
 import {
   newExportJob,
@@ -38,7 +40,7 @@ export function useVibeExport(
     busy: boolean;
     error: string;
     open: boolean;
-    intent?: { artifact: Artifact; operation?: Operation };
+    intent?: { artifact: Artifact; operation?: Operation; resultRef?: ResultRef };
   }>();
   const renderedGeneration = generation.current;
   const active = state?.owner === owner.current ? state : undefined;
@@ -46,17 +48,21 @@ export function useVibeExport(
     generation.current++;
     setState(undefined);
   }
-  async function start(
+  async function start(artifact: Artifact, operation?: Operation, scope: "selected" | "history" = "selected") {
+    return startResult(artifact, operation ? {kind:"vibe_operation",id:operation.id} : undefined, scope, operation);
+  }
+  async function startResult(
     artifact: Artifact,
-    operation?: Operation,
+    resultRef?: ResultRef,
     scope: "selected" | "history" = "selected",
+    operation?: Operation,
   ) {
     if (!live.current || !session) return;
     const captured = owner.current,
       attempt = ++generation.current;
     const current = () =>
       live.current && captured === owner.current && attempt === generation.current;
-    const intent = structuredClone({ artifact, operation });
+    const intent = structuredClone({ artifact, operation, resultRef });
     setState({ owner: captured, busy: true, error: "", open: true, intent });
     try {
       const auth = await token();
@@ -66,7 +72,7 @@ export function useVibeExport(
         body: JSON.stringify({
           scope,
           artifact_id: artifact.id,
-          ...(operation ? { result_id: operation.id } : {}),
+          ...(resultRef ? resultRef.kind === "vibe_operation" ? { result_id: resultRef.id } : { result_ref: resultRef } : {}),
         }),
       });
       if (!current()) return;
@@ -75,7 +81,8 @@ export function useVibeExport(
         p.artifact_id !== artifact.id ||
         p.selection.artifact_id !== artifact.id ||
         p.selection.scope !== scope ||
-        p.selection.result_id !== operation?.id
+        p.selection.result_id !== (resultRef?.kind === "vibe_operation" ? resultRef.id : undefined) ||
+        (resultRef?.kind !== "vibe_operation" && JSON.stringify(p.selection.result_ref) !== JSON.stringify(resultRef))
       )
         throw new Error("Export preparation changed the selected identity.");
       const job = newExportJob(p);
@@ -104,6 +111,10 @@ export function useVibeExport(
             `/operations/${item.operation_id}/case?key=${encodeURIComponent(item.case_key!)}&hash=${item.hash}`,
             auth,
           );
+        if (item.kind === "sdk_report") {
+          const bytes = await vibeBytes(`${reportBase(job.preparation.session_id)}/${encodeURIComponent(item.id)}/original?hash=${encodeURIComponent(item.hash || "")}`, auth);
+          return sdkExportValue(item, job.preparation.sdk_reports || [], bytes, job.preparation.session_id);
+        }
         if (item.kind === "original") {
           const bytes = await vibeBytes(`${base}/artifacts/${item.artifact_id}/original`, auth);
           const digest = await crypto.subtle.digest("SHA-256", new Uint8Array(bytes).buffer);
@@ -173,5 +184,5 @@ export function useVibeExport(
         setState({ owner: captured, open: true, busy: false, error: (e as Error).message });
     }
   }
-  return { state: active, start, close, retry, download, original };
+  return { state: active, start, startResult, close, retry, download, original };
 }

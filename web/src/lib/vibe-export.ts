@@ -1,3 +1,5 @@
+import type { ResultRef } from "./vibe-result-evidence";
+import type { SDKReport } from "./vibe-reports";
 import type { CaseResult, Session } from "./vibe";
 
 // Session snapshots intentionally omit full case bodies. Exports must retrieve
@@ -31,8 +33,9 @@ export function downloadJSON(name: string, value: unknown) {
 }
 
 export type ExportItem = {
-  kind: "case" | "original" | "grade_review" | "validation_review" | "scope";
+  kind: "sdk_report" | "case" | "original" | "grade_review" | "validation_review" | "scope";
   id: string;
+  result_ref?: ResultRef;
   hash?: string;
   operation_id?: string;
   artifact_id?: string;
@@ -46,10 +49,11 @@ export type ExportPreparation = {
   title: string;
   captured_at: string;
   artifact_id: string;
-  selection: { scope: "selected" | "history"; artifact_id: string; result_id?: string };
+  selection: { scope: "selected" | "history"; artifact_id: string; result_id?: string; result_ref?: ResultRef };
   artifacts: Session["document"]["artifacts"];
   rules: unknown[];
   runs: Session["operations"];
+  sdk_reports?: SDKReport[];
   items: ExportItem[];
   case_mappings: unknown[];
   omissions: string[];
@@ -146,7 +150,7 @@ export function exportDocument(job: ExportJob, confirmedPartial = false) {
 }
 export function exportFilename(p: ExportPreparation, partial: boolean) {
   const title = p.title.replace(/[^\p{L}\p{N}._-]+/gu, "-").slice(0, 80) || "project";
-  return `${title}-${p.artifact_id.slice(0, 8)}-${p.selection.scope === "history" ? "history" : p.selection.result_id?.slice(0, 8) || "definition"}${partial ? "-partial" : ""}.json`;
+  return `${title}-${p.artifact_id.slice(0, 8)}-${p.selection.scope === "history" ? "history" : (p.selection.result_ref?.id || p.selection.result_id)?.slice(0, 8) || "definition"}${partial ? "-partial" : ""}.json`;
 }
 export function downloadBytes(name: string, bytes: Uint8Array, type = "application/octet-stream") {
   const copy = new Uint8Array(bytes);
