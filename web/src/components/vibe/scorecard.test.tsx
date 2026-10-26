@@ -237,7 +237,7 @@ it("makes keeping tests the primary action for a passing first run", async () =>
 it("leads with one reply and keeps complete evidence behind a single accessible disclosure", async () => {
   const load = await render(operation([passing, failure]));
   const leading = container.querySelector('[aria-label="Leading finding"]')!;
-  expect(container.querySelector("h1")!.textContent).toBe("One thing to fix");
+  expect(container.querySelector("h1")!.textContent).toBe("1 chat failed");
   expect(leading.querySelector("details")!.open).toBe(true);
   expect(leading.textContent).toContain(failure.checks[0].evidence);
   const visibleQuotes = [...leading.querySelectorAll("blockquote")].filter(
@@ -420,7 +420,7 @@ it("prioritizes a new regression over an existing failure without hiding either"
   const next = { ...operation([failure, regressed]), id: "next", baseline_id: old.id };
   old.grading = next.grading = { version: 1, hash: "matching" } as Operation["grading"];
   await render(next, old);
-  expect(container.querySelector("h1")!.textContent).toContain("1 new issue");
+  expect(container.querySelector("h1")!.textContent).toContain("1 newly failing chat");
   expect(
     container.querySelector('[aria-label="Leading finding"] summary')!
       .textContent,
@@ -591,16 +591,29 @@ it("recovers the same grade review receipt after a lost response and labels late
 
 it("offers mixed failed and unassessed checks in the unresolved filter and exact retry selection", async()=>{
  const mixed={...failure,case_key:"mixed",title:"Partially assessed",expected_checks:2,checks:[failure.checks[0],{key:"other",verdict:"UNKNOWN" as const,evidence:"",error:{message:"Judge unavailable"}}]};
- const op=operation([failure,mixed,passing]);
+ const waiting={...failure,case_key:"waiting",title:"Awaiting assessment",verdict:"UNKNOWN" as const,expected_checks:1,checks:[{key:"pending",verdict:"UNKNOWN" as const,evidence:""}]};
+ const op=operation([failure,mixed,passing,waiting]);
+ op.scorecard={...op.scorecard!,incomplete_cases:2,checks_expected:5,checks_evaluated:3};
  await render(op);
+ expect(container.textContent).toContain("1 passed · 2 failed · 2 unresolved");
+ expect(container.querySelector("h1")!.textContent).toBe("2 chats failed");
+ expect(container.textContent).toContain("can also be counted as passed or failed");
  const select=container.querySelector<HTMLSelectElement>('[aria-label="Filter cases"]')!;
+ await act(async()=>{select.value="failing";select.dispatchEvent(new Event("change",{bubbles:true}))});
+ expect(container.textContent).toContain("Partially assessed");
+ expect(container.textContent).toContain(failure.title);
+ expect(container.textContent).not.toContain("Awaiting assessment");
+ expect(container.textContent).toContain("1 passed · 2 failed · 2 unresolved");
  await act(async()=>{select.value="unresolved";select.dispatchEvent(new Event("change",{bubbles:true}))});
  expect(container.textContent).toContain("Partially assessed");
  expect(container.textContent).not.toContain(failure.title);
+ expect(container.textContent).toContain("Awaiting assessment");
+ expect(container.querySelector("h1")!.textContent).toBe("2 chats failed");
+ expect(container.textContent).toContain("1 passed · 2 failed · 2 unresolved");
  const retry=vi.fn();
  await act(async()=>root.render(<ResultRecoveryControls operation={op} busy={false} onReload={()=>{}} onRetry={retry} onFullRun={()=>{}}/>));
- expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(1);
- await click("Retry unresolved");expect(retry).toHaveBeenCalledWith(["mixed"]);
+ expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(2);
+ await click("Retry unresolved");expect(retry).toHaveBeenCalledWith(["mixed","waiting"]);
 });
 
 it("starts a fresh review only after the stale request is authoritatively rejected without a receipt",async()=>{

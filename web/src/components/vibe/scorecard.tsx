@@ -91,7 +91,10 @@ export function VibeScorecard({
           result.verdict === "PASS" &&
           oldResults.get(result.case_key)?.verdict === "FAIL",
       ).length;
-  const incomplete = (score.incomplete_cases || 0) > 0 || score.unknown > 0;
+  const unresolved = operation.results.filter(unresolvedCase);
+  const unresolvedCount = unresolved.length;
+  const overlappingCounts = unresolved.some(result => result.verdict === "FAIL" || result.verdict === "PASS");
+  const incomplete = (score.incomplete_cases || 0) > 0 || score.unknown > 0 || unresolvedCount > 0;
   const stopped = ["CANCELLED", "EXPIRED", "FAILED"].includes(operation.state);
   const offerSave =
     !!onSave &&
@@ -105,7 +108,7 @@ export function VibeScorecard({
   const retryable = operation.results.some(
     (result) => !!result.error && result.error.code !== "not_evaluated",
   );
-  const visible=operation.results.filter(result => filter==="all" || filter==="unresolved" ? filter==="all" || unresolvedCase(result) : !unresolvedCase(result) && result.verdict===(filter==="passing"?"PASS":"FAIL"));
+  const visible=operation.results.filter(result => filter==="all" || (filter==="unresolved" ? unresolvedCase(result) : result.verdict===(filter==="passing"?"PASS":"FAIL")));
   const leading =
     done && !(testJourney && !score.failed && !incomplete && !stopped)
       ? (!rechecked && newFailures.find(result=>visible.includes(result))) ||
@@ -130,11 +133,9 @@ export function VibeScorecard({
         : rechecked
           ? regraded ? "Saved replies regraded" : "Same chats rechecked"
           : regressions
-            ? `${regressions} new ${regressions === 1 ? "issue" : "issues"} in this update`
+            ? `${regressions} newly failing ${provided ? regressions === 1 ? "chat" : "chats" : regressions === 1 ? "example" : "examples"} in this update`
             : score.failed
-              ? score.failed === 1
-                ? "One thing to fix"
-                : `${score.failed} things to fix`
+              ? `${score.failed} ${provided ? score.failed === 1 ? "chat" : "chats" : score.failed === 1 ? "example" : "examples"} failed`
               : incomplete
                 ? "Some replies still need a closer look"
                 : `No issues found in ${score.total === 1 ? `this ${unit}` : `these ${score.total} ${unit}`}`;
@@ -152,7 +153,8 @@ export function VibeScorecard({
             ? `${score.passed} of ${score.total} tests passed`
             : headline}
         </h1>
-        {done && <p className="mt-3 text-sm">{score.passed} passed · {score.failed} failed · {score.unknown} unresolved</p>}
+        {done && <p className="mt-3 text-sm">{score.passed} passed · {score.failed} failed · {unresolvedCount} unresolved</p>}
+        {done && overlappingCounts && <p className="mt-2 text-sm vibe-muted">Unresolved cases have unfinished checks and can also be counted as passed or failed.</p>}
         {findingFirst && concreteFinding?.id === operation.id && <p>{concreteFinding.text}</p>}
         {findingFirst && done && !stopped && score.total > 0 && !score.failed && !incomplete && <p className="mt-2 text-sm vibe-muted">All these examples passed. This does not prove reliability beyond these situations; live integrations and unseen inputs remain untested.</p>}
         <p className="mt-3 text-sm vibe-muted">
@@ -160,7 +162,7 @@ export function VibeScorecard({
             done && score.total === 0 ? (
               "No tests produced a result."
             ) : done ? (
-              `${score.failed ? `${score.failed} ${score.failed === 1 ? "needs" : "need"} attention.` : ""}${score.unknown ? ` ${score.unknown} couldn't be completed.` : score.failed ? "" : "These replies met the expectations."}`
+              `${score.failed ? `${score.failed} ${score.failed === 1 ? "needs" : "need"} attention.` : ""}${unresolvedCount ? ` ${unresolvedCount} couldn't be completed.` : score.failed ? "" : "These replies met the expectations."}`
             ) : (
               regraded ? "Rechecking grades using the saved replies…" : provided ? "Grading the recorded replies…" : "Generating prototype replies and checking them…"
             )
@@ -221,8 +223,8 @@ export function VibeScorecard({
         )}
         {done && incomplete && (
           <p className="mt-3 text-sm vibe-muted">
-            {score.unknown > 0
-              ? `${score.unknown} ${score.unknown === 1 ? "result is" : "results are"} unresolved. `
+            {unresolvedCount > 0
+              ? `${unresolvedCount} ${unresolvedCount === 1 ? "result is" : "results are"} unresolved. `
               : "Some checks are incomplete. "}
             An unfinished grade is not a failure by your agent. Completed results are kept.
           </p>
@@ -379,7 +381,7 @@ export function VibeScorecard({
         <div className="mt-2 space-y-3 leading-6">
           <p>
             {score.passed} passed · {score.failed}{" "}
-            {score.failed === 1 ? "needs" : "need"} attention · {score.unknown}{" "}
+            {score.failed === 1 ? "needs" : "need"} attention · {unresolvedCount}{" "}
             unresolved
             {(score.incomplete_cases || 0) > score.unknown
               ? ` · ${score.incomplete_cases} with incomplete coverage`
