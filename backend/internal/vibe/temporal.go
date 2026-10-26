@@ -153,6 +153,9 @@ func (s *Store) expire(ctx context.Context) error {
 		ids = append(ids, id)
 	}
 	rows.Close()
+	if err = rows.Err(); err != nil {
+		return err
+	}
 	for _, id := range ids {
 		if err = s.expireOne(ctx, id); err != nil {
 			return err

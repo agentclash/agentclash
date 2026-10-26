@@ -424,13 +424,12 @@ func (s *Service) SaveWithBaseline(ctx context.Context, actor string, id uuid.UU
 	if artifact.IsTestSuite() && !suppliedImport(v.Document, *artifact) && !verifiedSample && !s.currentArtifactPolicy(v.Document, *artifact) {
 		return uuid.Nil, fault("tests_not_ready", "These tests need a rule review before they can be saved. Run the existing tests to review them, or describe the intended rules to prepare an update.")
 	}
-	if selected != nil {
-		// Saving does not run a model. Explicit choices must still belong to the
-		// configured catalog, not user-controlled provider/routing overrides.
+	if selected != nil && *selected != v.Document.Models {
+		// Saving persisted identities does not execute a model or require fresh
+		// pricing. New explicit choices still need current catalog approval.
 		if err := s.Config.ValidateModels(*selected, false); err != nil {
 			return uuid.Nil, err
 		}
-		models = *selected
 	}
 	c, err := s.Compiler.Compile(artifact.Blueprint, models.Evaluator, artifactID, s.Config.Limits(v.Anonymous))
 	if err != nil {

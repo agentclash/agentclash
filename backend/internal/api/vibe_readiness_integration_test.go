@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"io"
@@ -15,6 +16,8 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/vibe"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 	enumspb "go.temporal.io/api/enums/v1"
 	taskqueuepb "go.temporal.io/api/taskqueue/v1"
@@ -145,6 +148,76 @@ func checkVibeWorkerLifecycle(t *testing.T, free bool) {
 	mr.FastForward(3 * time.Minute)
 	if a := getAvailability()["workspace"]; a.Available || a.ReasonCode != "outbox_unavailable" {
 		t.Fatalf("stopped worker evidence never expired: %+v", a)
+	}
+	if free {
+		t.Run("expiry failure cannot publish accounting readiness", func(t *testing.T) {
+			// Exec mode returns deferred PostgreSQL errors in Rows, without an earlier
+			// prepare/describe rejection masking the expiry owner's missing Err check.
+			poolConfig := db.Config()
+			poolConfig.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeExec
+			failedDB, err := pgxpool.NewWithConfig(context.Background(), poolConfig)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer failedDB.Close()
+			if _, err = db.Exec(context.Background(), `ALTER TABLE vibe_operations DROP COLUMN queued_at`); err != nil {
+				t.Fatal(err)
+			}
+			defer func() {
+				if _, err := db.Exec(context.Background(), `ALTER TABLE vibe_operations ADD COLUMN queued_at timestamptz`); err != nil {
+					t.Error(err)
+				}
+			}()
+			// Only expiry is broken: provider receipts and other dependency checks work.
+			receiptRows, err := failedDB.Query(context.Background(), `SELECT id,generation_id FROM vibe_attempts WHERE actual_cost IS NULL AND generation_id IS NOT NULL LIMIT 100`)
+			if err != nil {
+				t.Fatal("receipt query must succeed", err)
+			}
+			receiptRows.Close()
+			if err = receiptRows.Err(); err != nil {
+				t.Fatal("receipt query must succeed", err)
+			}
+			deferred, err := failedDB.Query(context.Background(), `SELECT queued_at FROM vibe_operations LIMIT 0`)
+			if err != nil {
+				t.Fatal("fixture needs a deferred row error, not immediate Query rejection", err)
+			}
+			deferred.Close()
+			if err = deferred.Err(); err == nil || !strings.Contains(err.Error(), "queued_at") {
+				t.Fatalf("missing deferred expiry-column failure: %v", err)
+			}
+			broken := *svc
+			broken.Store = vibe.NewStore(failedDB, cfg)
+			broken.Readiness = &vibe.Readiness{DB: failedDB, Redis: rc, Temporal: temporal}
+			for key, value := range broken.Readiness.DependencyChecks(context.Background()) {
+				if value != "ok" {
+					t.Fatalf("unrelated dependency %s=%s", key, value)
+				}
+			}
+			var logs bytes.Buffer
+			failedLogger := slog.New(slog.NewTextHandler(&logs, nil))
+			failedCtx, stopFailed := context.WithTimeout(context.Background(), 3*time.Second)
+			defer stopFailed()
+			var loops sync.WaitGroup
+			loops.Add(2)
+			go func() {
+				defer loops.Done()
+				vibe.DispatchOutbox(failedCtx, temporal, broken.Store, failedLogger, &broken)
+			}()
+			go func() {
+				defer loops.Done()
+				vibe.ReconcileLoop(failedCtx, broken.Store, cfg, failedLogger, broken.Gate)
+			}()
+			loops.Wait()
+			// Outbox has made a real successful pass while expiry has failed. The exact
+			// accounting reason prevents another missing dependency satisfying this test.
+			unavailable := broken.Availability(context.Background(), true)
+			if a := unavailable["workspace"]; a.Available || a.ReasonCode != "accounting_unavailable" {
+				t.Fatalf("failed expiry published accounting readiness: %+v; logs=%s", a, logs.String())
+			}
+			if !strings.Contains(logs.String(), "Vibe queue expiry unavailable") || !strings.Contains(logs.String(), "queued_at") {
+				t.Fatalf("expiry failure was not observed at its real loop boundary: %s", logs.String())
+			}
+		})
 	}
 	// Dependency readiness is still healthy when inference is disabled.
 	svc.Config.Enabled = false

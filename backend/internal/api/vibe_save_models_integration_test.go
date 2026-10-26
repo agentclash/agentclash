@@ -76,13 +76,13 @@ func TestVibeIntegrationSaveUsesSelectedModels(t *testing.T) {
 	handler := (&VibeHandler{Service: svc, Auth: NewDevelopmentAuthenticator()}).Routes()
 	selected := vibe.Models{Assistant: "openai/gpt-4o-mini", Target: "openai/gpt-4.1", Evaluator: "openai/gpt-4o-mini"}
 	payload := map[string]any{"revision": session.Revision, "artifact_id": artifact.ID, "workspace_id": ws, "models": selected}
-	post := func(body map[string]any) *httptest.ResponseRecorder {
+	postSession := func(sessionID uuid.UUID, body map[string]any) *httptest.ResponseRecorder {
 		t.Helper()
 		data, err := json.Marshal(body)
 		if err != nil {
 			t.Fatal(err)
 		}
-		r := httptest.NewRequest(http.MethodPost, "/sessions/"+session.ID.String()+"/save", bytes.NewReader(data))
+		r := httptest.NewRequest(http.MethodPost, "/sessions/"+sessionID.String()+"/save", bytes.NewReader(data))
 		r.Header.Set("Content-Type", "application/json")
 		r.Header.Set("Authorization", "Bearer development-fixture")
 		r.Header.Set(headerUserID, user.String())
@@ -90,6 +90,7 @@ func TestVibeIntegrationSaveUsesSelectedModels(t *testing.T) {
 		handler.ServeHTTP(w, r)
 		return w
 	}
+	post := func(body map[string]any) *httptest.ResponseRecorder { return postSession(session.ID, body) }
 	if response := post(payload); response.Code != http.StatusBadRequest {
 		t.Fatal("legacy save silently accepted unchecked instructions")
 	}
@@ -122,6 +123,52 @@ func TestVibeIntegrationSaveUsesSelectedModels(t *testing.T) {
 		after, err := store.GetSession(ctx, actor, session.ID)
 		if err != nil || before.Revision != after.Revision || before.EventCursor != after.EventCursor {
 			t.Fatal("save retry mutated conversation", err)
+		}
+	})
+	t.Run("first save preserves persisted choices during pricing outage", func(t *testing.T) {
+		for _, outage := range []string{"expired profiles", "missing catalog"} {
+			t.Run(outage, func(t *testing.T) {
+				fresh, err := store.CreateSession(ctx, actor, &ws, uuid.New(), selected)
+				if err != nil {
+					t.Fatal(err)
+				}
+				freshArtifact := artifact
+				freshArtifact.ID = uuid.New()
+				if err = store.Edit(ctx, actor, fresh.ID, fresh.Revision, func(v *vibe.Session) error { v.Document.Artifacts = []vibe.Artifact{freshArtifact}; return nil }); err != nil {
+					t.Fatal(err)
+				}
+				fresh, err = store.GetSession(ctx, actor, fresh.ID)
+				if err != nil {
+					t.Fatal(err)
+				}
+				availableConfig := svc.Config
+				svc.Config.Profiles = map[string]vibe.ModelProfile{}
+				defer func() { svc.Config = availableConfig }()
+				if outage == "expired profiles" {
+					for id, profile := range availableConfig.Profiles {
+						profile.ExpiresAt = time.Now().Add(-time.Hour)
+						svc.Config.Profiles[id] = profile
+					}
+				}
+				body := map[string]any{"revision": fresh.Revision, "artifact_id": freshArtifact.ID, "workspace_id": ws, "models": vibe.Models{Assistant: selected.Assistant, Target: "openai/gpt-4.1-mini", Evaluator: selected.Evaluator}, "approve_artifact": true}
+				changed := postSession(fresh.ID, body)
+				if changed.Code != http.StatusServiceUnavailable || !strings.Contains(changed.Body.String(), "pricing_unavailable") {
+					t.Fatalf("novel selection bypassed current approval: %d %s", changed.Code, changed.Body)
+				}
+				body["models"] = selected
+				first := postSession(fresh.ID, body)
+				if first.Code != http.StatusOK {
+					t.Fatalf("first save of persisted models failed during %s: %d %s", outage, first.Code, first.Body)
+				}
+				after, err := store.GetSession(ctx, actor, fresh.ID)
+				if err != nil || after.SavedModels == nil || *after.SavedModels != selected || after.Document.Models != selected || len(after.Operations) != 0 {
+					t.Fatalf("outage save changed model identity or dispatched inference: %+v %v", after, err)
+				}
+				var count int
+				if err = db.QueryRow(ctx, `SELECT count(*) FROM vibe_saved_artifacts WHERE session_id=$1`, fresh.ID).Scan(&count); err != nil || count != 1 {
+					t.Fatalf("first save must create one durable receipt: %d %v", count, err)
+				}
+			})
 		}
 	})
 	var target string
