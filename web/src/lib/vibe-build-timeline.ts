@@ -6,7 +6,7 @@ export function workingBuildArtifact(session: Session): Artifact | undefined {
 }
 
 export function buildVersion(session: Session, artifact: Artifact) {
-  return session.document.artifacts.filter(a => a.agent_prompt).findIndex(a => a.id === artifact.id) + 1;
+  return session.document.artifacts.filter(a => a.agent_prompt || a.conversation_evaluation).findIndex(a => a.id === artifact.id) + 1;
 }
 
 export function currentBuildAction(session: Session): { artifact: Artifact; operation?: Operation; hasOutput: boolean } | undefined {

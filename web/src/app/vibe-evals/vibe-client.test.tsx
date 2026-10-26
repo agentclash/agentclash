@@ -182,6 +182,44 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+it.each([[false,false],[true,false],[false,true]])("saves recorded replies through evidence intake before an explicit pinned quote (lost ack: %s, retired target: %s)", async (lostAck, retiredTarget) => {
+  session.document.format_version=1; session.document.evaluation={id:session.id,chat_id:session.id,door:"test"};
+  if(retiredTarget)session.document.models={...defaultModels,target:"retired/source-model"};
+  const initial=respond;
+  let evidencePosts=0;
+  respond=async(path,options)=>{
+    if(path==="/config") return json({enabled:true,two_door:true,availability:{guest:{available:true},workspace:{available:true}},defaults:defaultModels,models:[...new Set(Object.values(defaultModels))].map(id=>({id,name:id}))});
+    if(path.endsWith("/evidence")){
+      const body=JSON.parse(String(options.body));
+      session={...session,revision:2,event_cursor:2,document:{...session.document,artifacts:[{id:"recorded-version",kind:"conversation_evaluation",title:"App replies",agent_prompt:"",blueprint:null,accepted:false,source_message_id:"",conversation_evaluation:{evidence_set_id:"recorded-source",expectations:body.expectations}}],evidence_sets:[{id:"recorded-source",label:"App replies",raw:body.content,conversations:[{key:"chat-1",title:"Chat 1",messages:[{id:"c1-m1",role:"user",content:"Hello"},{id:"c1-m2",role:"assistant",content:"Exact reply"}]}]}]}};
+      evidencePosts++;if(lostAck&&evidencePosts===1)throw new TypeError("Connection closed after commit");
+      return json({...session,evidence_receipt:{client_id:body.client_id,evidence_id:"recorded-source",artifact_id:"recorded-version"}});
+    }
+    if(path.endsWith("/run-quote"))return json({id:"quote-recorded",kind:"run",revision:2,cases:1,calls:1,max_cost_nano_usd:0,expires_at:new Date(Date.now()+600000).toISOString()});
+    return initial(path,options);
+  };
+  await render();
+  await click("Check replies from my app");
+  expect(requests.filter(r=>r.method==="POST")).toHaveLength(0);
+  await type("Customer: Hello\nAgent: Exact reply","Recorded replies");
+  await type("Answer without inventing facts.","Expected behavior");
+  await click("Review recorded replies");
+  if(lostAck){
+    await act(async()=>snapshot(session));
+    await click("Retry saving these replies");
+    const attempts=requests.filter(r=>r.path.endsWith("/evidence"));
+    expect(attempts).toHaveLength(2);expect(attempts[1].body).toEqual(attempts[0].body);
+  }
+  const evidence=requests.find(r=>r.path.endsWith("/evidence"))!;
+  expect(evidence.body).toMatchObject({revision:1,content:"Customer: Hello\nAgent: Exact reply",expectations:[{id:"expectation-1",statement:"Answer without inventing facts."}]});
+  expect(typeof evidence.body.client_id).toBe("string");
+  expect(requests.some(r=>r.path.endsWith("/messages")||r.path.endsWith("/run-quote"))).toBe(false);
+  expect(container.textContent).toContain("Exact reply");
+  await click("Check these recorded replies");
+  expect(requests.find(r=>r.path.endsWith("/run-quote"))?.body).toMatchObject({artifact_id:"recorded-version",evidence_set_id:"recorded-source",kind:"check"});
+  expect(requests.some(r=>r.path.endsWith("/messages"))).toBe(false);
+});
+
 it.each([false, true])("paid local testing permits evaluator choice without sending a request: %s", async (freeOnly) => {
   const alternative = "deepseek/deepseek-v4.1-flash";
   respond = async (path) => path === "/config"

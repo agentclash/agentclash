@@ -1,4 +1,6 @@
 "use client";
+import { RecordedIntake } from "./recorded-intake";
+import type { RecordedIntakeRequest, RecordedIntakeOutcome } from "@/lib/vibe-result-evidence";
 import { VibeDataUseNotice, VibeRedactionHint } from "./vibe-data-use";
 
 import Link from "next/link";
@@ -92,6 +94,7 @@ export type EvaluationWorkspaceProps = {
   sendBlocked?: boolean;
   sendError?: string;
   inferenceUnavailable?: boolean;
+  runInferenceUnavailable?: boolean;
   interactionActions?: boolean;
   onChoice?: (action: ConversationAction) => Promise<void>;
   onReloadChoices?: () => Promise<void>;
@@ -117,8 +120,11 @@ export type EvaluationWorkspaceProps = {
     instructions?: string,
   ) => void;
   onNavigate: (view: View, artifactID?: string) => void;
+  onReloadEvidence?: () => void;
+  onRetryCases?: (source: Operation, caseKeys: string[]) => void;
   onRun: (baseline?: Operation, evidenceID?: string) => void;
   onSelectRun: (run: string) => void;
+  onRecordedEvidence?: (request: RecordedIntakeRequest) => Promise<RecordedIntakeOutcome>;
   onEdit: (fields: Record<string, unknown>) => Promise<boolean>;
   onDirty: (dirty: boolean) => void;
   onSave: (operation?: Operation) => void;
@@ -161,7 +167,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
       captureBuildEvent(WEB_EVENTS.VIBE_BUILD_CLARIFICATION_VIEWED, { session_id: p.session.id, question_id: activeBuildQuestion.id, clarification_count: p.session.document.build?.clarifications_used || 0 }, `${p.session.id}:${activeBuildQuestion.id}`);
   }, [buildJourney, p.session, activeBuildQuestion]);
   const reduced = useReducedMotion();
-  const [intake, setIntake] = useState<"instructions" | null>(null);
+  const [intake, setIntake] = useState<"instructions" | "recorded" | null>(null);
   const intakeDraft = useVibeEditorDraft(p.session?.id || "entry", "intake", "instructions", "intake-v1", "");
   const instructionText = intakeDraft.value;
   const setInstructionText = intakeDraft.setValue;
@@ -584,7 +590,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
           >
             {welcome && !intake && (entry ? <EvaluationEntry busy={p.busy || !!p.inferenceUnavailable} onDoor={p.onDoor} /> : <div className="vibe-welcome mb-7">
               <h1 className="vibe-entry-title">{door === "build" ? "What would you like help with?" : door === "test" ? "Improve an agent you already have." : p.testJourney ? "What should your agent do?" : "Check the AI in your app."}</h1>
-              <p className="mt-4 max-w-[560px] vibe-muted">{door === "build" ? "Describe a repetitive task. We’ll make a prototype and try three situations to see what works." : door === "test" ? "Bring your agent’s instructions or a saved test pack." : p.testJourney ? "Describe its job and rules. We’ll check what works and what needs fixing." : "Tell us what it does, or paste an answer you want checked."}</p>
+              <p className="mt-4 max-w-[560px] vibe-muted">{door === "build" ? "Describe a repetitive task. We’ll make a prototype and try three situations to see what works." : door === "test" ? "Bring actual replies, saved instructions or a test pack." : p.testJourney ? "Describe its job and rules. We’ll check what works and what needs fixing." : "Tell us what it does, or paste an answer you want checked."}</p>
               {door === "test" && <><div className="vibe-source-options">
                 <div className="vibe-source-option">
                   <VibeButton disabled={p.busy} onClick={p.onImport}><FileUp />Import a test pack</VibeButton>
@@ -595,13 +601,15 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                     </Tooltip>
                   </TooltipProvider>
                 </div>
-                <VibeButton disabled={p.busy} onClick={changeSource}><FileText />Paste agent instructions</VibeButton>
+                <VibeButton disabled={p.busy} onClick={() => setIntake("recorded")}>Check replies from my app</VibeButton>
+                <VibeButton disabled={p.busy} onClick={changeSource}><FileText />Try my saved instructions</VibeButton>
               </div><p className="vibe-source-note">Live connections aren’t available here yet. Instructions recreate behavior here; a pack supplies tests, not an agent.</p>
               <details className="vibe-source-help"><summary>What’s a test pack?</summary><p>A saved set of situations to try and what a good response should do. It is also called a challenge pack. Import one only if you already have it.</p></details>
               {p.canChangeDoor && <button type="button" className="vibe-door-switch" onClick={p.onChangeDoor}>Actually, I want to build an agent.</button>}</>}
               {door === "build" && p.canChangeDoor && <button type="button" className="vibe-door-switch" onClick={p.onChangeDoor}>Already have an agent? Improve it instead.</button>}
               {!door && p.testJourney && <p className="mt-3 text-sm vibe-muted">Already have an agent or challenge pack? Describe it here or <button type="button" className="underline underline-offset-4" disabled={p.busy} onClick={p.onImport}>import your pack</button>.</p>}
             </div>)}
+            {intake === "recorded" && p.session && p.onRecordedEvidence && <RecordedIntake project={p.session.id} revision={p.session.revision} busy={p.busy} onSave={p.onRecordedEvidence} onClose={() => setIntake(null)} />}
             {p.importNotice}
             {door && !buildJourney && p.artifact?.agent_prompt && <section aria-label="Prototype scope" className="mb-5 text-sm">
               <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-medium">Interactive prototype{p.artifact.sample ? " · Sample demonstration" : ""}</p><VibeButton variant="quiet" onClick={() => p.onNavigate("try")}>Talk to this prototype</VibeButton></div>

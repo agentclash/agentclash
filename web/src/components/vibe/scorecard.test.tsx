@@ -2,6 +2,9 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { CaseResult, Operation } from "@/lib/vibe";
+import { GradeReviews } from "./grade-reviews";
+import { ResultComparison } from "./result-comparison";
+import { compareResultEvidence } from "@/lib/vibe-result-evidence";
 import { VibeScorecard } from "./scorecard";
 
 let container: HTMLDivElement;
@@ -174,6 +177,18 @@ async function render(
   );
   return load;
 }
+
+it("filters result rows without changing the outcome or whole-run totals", async () => {
+ await render(operation([failure,passing]));
+ const heading=container.querySelector("h1")!.textContent;
+ const select=container.querySelector<HTMLSelectElement>('select[aria-label="Filter cases"]');
+ expect(select).not.toBeNull();
+ await act(async()=>{select!.value="passing";select!.dispatchEvent(new Event("change",{bubbles:true}));});
+ expect(container.querySelector("h1")!.textContent).toBe(heading);
+ expect(container.textContent).toContain("1 passed · 1 failed · 0 unresolved");
+ expect(container.textContent).not.toContain("The purchase age was asked twice");
+ expect(container.textContent).toContain("The return window was respected");
+});
 function button(label: string) {
   const found = [
     ...container.querySelectorAll<HTMLButtonElement>("button"),
@@ -519,3 +534,54 @@ it.each(["initial", "rechecked", "stopped", "incomplete", "empty", "failed"])(
     expect(save).not.toHaveBeenCalled();
   },
 );
+
+
+it("keeps before and after evidence independent when the baseline load fails",async()=>{
+ const baseline={...operation([failure]),id:"baseline"};const current={...operation([failure]),id:"current"};
+ let fail=true;
+ const load=vi.fn(async(id:string,key:string)=>{if(id==="baseline"&&fail)throw Error("Baseline temporarily unavailable");return {...failure,case_key:key,output:id==="baseline"?"Original reply":"Changed reply"}});
+ await act(async()=>root.render(<ResultComparison current={current} baseline={baseline} load={load}/>));
+ expect(container.textContent).toContain("Comparison with changed or unverified settings");
+ await click("Compare saved replies");
+ expect(container.querySelector('[aria-label="Before"]')?.textContent).toContain("Baseline temporarily unavailable");
+ expect(container.querySelector('[aria-label="After"]')?.textContent).toContain("Changed reply");
+ fail=false;await click("Reload before");
+ expect(container.querySelector('[aria-label="Before"]')?.textContent).toContain("Original reply");
+ expect(load.mock.calls.filter(([id])=>id==="current")).toHaveLength(1);
+ const capture={scope:"unknown" as const,instrumentation:"unknown" as const};
+ const metadata={result_ref:{kind:"vibe_operation" as const,id:"baseline"},origin:"prototype" as const,fingerprints:{model:"m",build:"b",test:"t",judge:"j",config:"c"},capture_scope:{messages:capture,tools:capture,retrieval:capture},application_revision:null};
+ baseline.evidence_metadata=metadata;current.evidence_metadata={...metadata,result_ref:{kind:"vibe_operation",id:"current"},fingerprints:{...metadata.fingerprints,build:"updated"}};
+ baseline.result_scope=current.result_scope={artifact_id:"rules-one",case_keys:["memory"]};
+ expect(compareResultEvidence(current,baseline).controlled).toBe(true);
+ current.evidence_metadata.fingerprints.config=null;
+ expect(compareResultEvidence(current,baseline).controlled).toBe(false);
+ current.evidence_metadata.fingerprints.config="c";current.result_scope={artifact_id:"rules-one",case_keys:["different"]};
+ expect(compareResultEvidence(current,baseline).controlled).toBe(false);
+});
+
+
+it("recovers the same grade review receipt after a lost response and labels later evidence",async()=>{
+ const op=operation([failure]);const source={...failure,evidence_hash:"e".repeat(64)};
+ const before=JSON.stringify(op);const requests:Record<string,unknown>[]=[];let changed=false;let saved:Record<string,unknown>|undefined;
+ vi.stubGlobal("fetch",vi.fn(async(_url:string,options:RequestInit={})=>{
+  if(options.method==="POST"){
+   const body=JSON.parse(String(options.body));requests.push(body);
+   saved={...body,id:"review-one",created_at:"2026-10-26T00:00:00Z",evidence_hash:source.evidence_hash,evidence:source};
+   if(requests.length===1)throw new TypeError("Reply lost after commit");
+   return new Response(JSON.stringify(saved),{status:201,headers:{"Content-Type":"application/json"}});
+  }
+  return new Response(JSON.stringify(saved?[{...saved,evidence_changed:changed}]:[]),{headers:{"Content-Type":"application/json"}});
+ }));
+ const load=async()=>source;
+ const draw=async(cursor:number)=>act(async()=>root.render(<GradeReviews sessionID="review-project" operation={op} eventCursor={cursor} load={load}/>));
+ await draw(1);await click("Review a grade");
+ const input=container.querySelector<HTMLTextAreaElement>('[aria-label="Grade review reason"]')!;
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(input,"The earlier reply satisfies the rule.");input.dispatchEvent(new Event("input",{bubbles:true}))});
+ await click("Save grade review");
+ expect(requests[0]).toMatchObject({source_evidence_hash:source.evidence_hash,result_ref:{kind:"vibe_operation",id:op.id},artifact_id:failure.version,case_key:failure.case_key});
+ await act(async()=>root.render(<div/>));await draw(1);await click("Review a grade");await click("Retry saving this review");
+ expect(requests).toHaveLength(2);expect(requests[1]).toEqual(requests[0]);
+ changed=true;await draw(2);
+ expect(container.textContent).toContain("This review retains the original evidence");
+ expect(JSON.stringify(op)).toBe(before);
+});

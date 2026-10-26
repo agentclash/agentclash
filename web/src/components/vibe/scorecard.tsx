@@ -5,6 +5,7 @@ import { ArrowRight, Bookmark, Copy, Lightbulb } from "lucide-react";
 import { dollars, terminal, type CaseResult, type Operation } from "@/lib/vibe";
 import { verifiedFinding } from "./grounded-finding";
 import { CaseEvidence } from "./case-evidence";
+import { unresolvedCase } from "@/lib/vibe-result-evidence";
 import { originalInputs } from "./result-prompts";
 import { recoveryMessage } from "./recovery-message";
 import { VibeButton } from "./vibe-button";
@@ -44,6 +45,7 @@ export function VibeScorecard({
   busy: boolean;
   testJourney?: boolean;
 }) {
+  const [filter,setFilter]=useState("all");
   const [copiedFinding, setCopiedFinding] = useState("");
   const [concreteFinding,setConcreteFinding]=useState<{id:string;text:string}>();
   const failedKey=operation.results.find(c => c.verdict==="FAIL")?.case_key;
@@ -103,19 +105,20 @@ export function VibeScorecard({
   const retryable = operation.results.some(
     (result) => !!result.error && result.error.code !== "not_evaluated",
   );
+  const visible=operation.results.filter(result => filter==="all" || filter==="unresolved" ? filter==="all" || unresolvedCase(result) : !unresolvedCase(result) && result.verdict===(filter==="passing"?"PASS":"FAIL"));
   const leading =
     done && !(testJourney && !score.failed && !incomplete && !stopped)
-      ? (!rechecked && newFailures[0]) ||
-        operation.results.find((result) => result.verdict === "FAIL") ||
-        operation.results.find(
+      ? (!rechecked && newFailures.find(result=>visible.includes(result))) ||
+        visible.find((result) => result.verdict === "FAIL") ||
+        visible.find(
           (result) =>
             result.verdict === "UNKNOWN" &&
             result.error?.code !== "not_evaluated",
         ) ||
-        operation.results.find((result) => result.verdict === "PASS") ||
-        operation.results[0]
+        visible.find((result) => result.verdict === "PASS") ||
+        visible[0]
       : undefined;
-  const remaining = operation.results.filter((result) => result !== leading);
+  const remaining = visible.filter((result) => result !== leading);
   const findingID = `${operation.id}:${leading?.case_key || ""}`;
   const copied = copiedFinding === findingID;
   const headline = stopped
@@ -139,16 +142,18 @@ export function VibeScorecard({
 
   return (
     <article aria-label="Evaluation scorecard" className="space-y-5">
+      <label>Show cases<select aria-label="Filter cases" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All</option><option value="failing">Failing</option><option value="unresolved">Unresolved</option><option value="passing">Passing</option></select></label>
       <div>
         <h1
           className="text-[28px] font-semibold leading-tight tracking-tight sm:text-[32px]"
           aria-live="polite"
         >
-          {findingFirst ? (concreteFinding?.id === operation.id ? concreteFinding.text : headline) : testJourney && done && !stopped && score.total > 0 && !regraded
+          {testJourney && done && !stopped && score.total > 0 && !regraded
             ? `${score.passed} of ${score.total} tests passed`
             : headline}
         </h1>
-        {findingFirst && done && <p className="mt-3 text-sm">{score.passed} passed · {score.failed} failed · {score.unknown} unassessed</p>}
+        {done && <p className="mt-3 text-sm">{score.passed} passed · {score.failed} failed · {score.unknown} unresolved</p>}
+        {findingFirst && concreteFinding?.id === operation.id && <p>{concreteFinding.text}</p>}
         {findingFirst && done && !stopped && score.total > 0 && !score.failed && !incomplete && <p className="mt-2 text-sm vibe-muted">All these examples passed. This does not prove reliability beyond these situations; live integrations and unseen inputs remain untested.</p>}
         <p className="mt-3 text-sm vibe-muted">
           {testJourney ? (
@@ -157,7 +162,7 @@ export function VibeScorecard({
             ) : done ? (
               `${score.failed ? `${score.failed} ${score.failed === 1 ? "needs" : "need"} attention.` : ""}${score.unknown ? ` ${score.unknown} couldn't be completed.` : score.failed ? "" : "These replies met the expectations."}`
             ) : (
-              regraded ? "Rechecking grades using the saved replies…" : "Sending each test to your agent and checking its reply…"
+              regraded ? "Rechecking grades using the saved replies…" : provided ? "Grading the recorded replies…" : "Generating prototype replies and checking them…"
             )
           ) : (
             <>
@@ -382,9 +387,14 @@ export function VibeScorecard({
           </p>
           <p>
             {regraded ? "Previously saved replies were graded again. The original replies, rules and results are unchanged." : provided
-              ? `${operation.source?.label || "Provided conversations"}. Every message in the provided chats was included. No replies were generated and no live agent was called.`
+              ? `${operation.source?.label || "Provided conversations"}. Every message in the selected chats was included. No replies were generated and no live agent was called.`
               : "New text replies generated here from the saved instructions. Each example starts fresh; tools, live data and preview chats are not included."}
           </p>
+          <details><summary>Saved source identities and capture</summary>
+            <p>Origin: {operation.evidence_metadata?.origin || "unverified"}. Application revision: {operation.evidence_metadata?.application_revision || "unknown"}.</p>
+            {(["model","build","test","judge","config"] as const).map(name=><p className="break-all" key={name}>{name}: {operation.evidence_metadata?.fingerprints[name] || "unknown — no verified original identity"}</p>)}
+            {(["messages","tools","retrieval"] as const).map(name=><p key={name}>{name}: {operation.evidence_metadata?.capture_scope[name].scope || "unknown"} · instrumentation {operation.evidence_metadata?.capture_scope[name].instrumentation || "unknown"}</p>)}
+          </details>
           <p>
             {score.checks_evaluated ?? score.evaluated} of{" "}
             {score.checks_expected ?? score.total} expectations evaluated.

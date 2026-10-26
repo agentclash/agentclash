@@ -60,16 +60,16 @@ it.each(["contradicted", "unclear", "unavailable"] as const)("does not offer an 
   expect(run).not.toHaveBeenCalled();
 });
 
-it("keeps the tested rules in a collapsed, optional disclosure", async () => {
+it("shows the tested rules before running while allowing a user to collapse them", async () => {
   await act(async () => root.render(<TestSuitePanel artifact={artifact} busy={false} blocked={false} comparison={false}
     rules={[{ id: "window", statement: "Only unopened purchases within 30 days qualify." }]}
     onRun={run} onEdit={vi.fn()} onDirty={vi.fn()} onSave={vi.fn()} onSettings={vi.fn()} />));
   const summary = [...node.querySelectorAll("summary")].find(item => item.textContent === "Rules being tested")!;
   expect(summary).toBeDefined();
   const disclosure = summary.closest("details")!;
-  expect(disclosure.open).toBe(false);
-  await act(async () => summary.click());
   expect(disclosure.open).toBe(true);
+  await act(async () => summary.click());
+  expect(disclosure.open).toBe(false);
   expect(disclosure.textContent).toContain("Only unopened purchases within 30 days qualify.");
 });
 

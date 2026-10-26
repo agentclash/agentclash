@@ -328,13 +328,13 @@ it("shows the pending message before session admission and preserves focus and t
   expect(container.querySelectorAll(".vibe-message-user")).toHaveLength(1);
 });
 
-it("offers instructions and packs without the retired conversation-upload workflow", async () => {
+it("offers distinct instructions and recorded-reply intake", async () => {
   const data = session([]);
   data.document.evaluation = { id: data.id, chat_id: data.id, door: "test" };
   data.document.format_version = 1;
   await render({ session: data, twoDoor: true });
   expect(container.textContent).not.toContain("Paste a real conversation");
-  await act(async () => button("Paste agent instructions").click());
+  await act(async () => button("Try my saved instructions").click());
   expect(container.querySelector('textarea[aria-label="Conversations to check"]')).toBeNull();
   const input = container.querySelector<HTMLTextAreaElement>('#vibe-instructions-source')!;
   await type(input, "Only unopened items qualify.");

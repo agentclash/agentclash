@@ -326,3 +326,36 @@ test("pasted instructions remain the exact target and run only after the disclos
  await page.reload();
  expect((await evidence(page)).session.operations.filter((o:{kind:string})=>o.kind==='check')).toHaveLength(1);
 });
+
+test("recorded replies intake uses an explicit quote and evaluator-only execution",async({page},info)=>{
+ const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.setViewportSize({width:390,height:844});
+ await page.goto('/vibe-evals');
+ await page.getByRole('button',{name:/Improve an existing agent/}).click();
+ await page.getByRole('button',{name:'Check replies from my app',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Review recorded replies',exact:true})).toBeVisible();
+ await page.getByLabel('Recorded replies',{exact:true}).fill('Customer: I opened it.\nAgent: I can refund that.');
+ await page.getByLabel('Expected behavior',{exact:true}).fill('Opened purchases are not eligible for refunds.');
+ await page.getByRole('button',{name:'Review recorded replies',exact:true}).click();
+ await expect(page.getByRole('region',{name:'Recorded reply tests'})).toBeVisible();
+ const saved=await evidence(page);expect(saved.calls).toHaveLength(0);expect(saved.session.document.artifacts).toHaveLength(1);
+ await page.getByRole('button',{name:'Check these recorded replies',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Run 1 examples',exact:true})).toBeEnabled();
+ expect((await evidence(page)).calls).toHaveLength(0);
+ await page.getByRole('button',{name:'Run 1 examples',exact:true}).click();
+ await expect.poll(async()=>{const e=await evidence(page);return e.session.operations.at(-1)?.state;},{timeout:90000}).toBe('COMPLETED');
+ const result=await evidence(page);expect(result.calls.map((c:{role:string})=>c.role)).toEqual(['judge']);
+ expect(result.session.operations.at(-1).evidence_metadata.origin).toBe('recorded');
+ await page.getByRole('tab',{name:'Results',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Reload saved evidence',exact:true})).toBeVisible();
+ await page.getByRole('button',{name:'Review a grade',exact:true}).click();
+ await page.getByLabel('Grade review reason',{exact:true}).fill('The recorded reply needs a second human review.');
+ await expect(page.getByRole('button',{name:'Save grade review',exact:true})).toBeEnabled();
+ await page.getByRole('button',{name:'Save grade review',exact:true}).click();
+ await expect(page.getByText('The recorded reply needs a second human review.',{exact:true})).toBeVisible();
+ for(const width of [320,390,600,601,768,1023,1024,1279,1280,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)}
+ await page.screenshot({path:info.outputPath('recorded-results.png'),fullPage:true});
+ await page.reload();await expect(page.getByRole('button',{name:'Reload saved evidence',exact:true})).toBeVisible();
+ await expect(page.getByText('The recorded reply needs a second human review.',{exact:true})).toBeVisible();
+ expect((await evidence(page)).calls).toHaveLength(1);expect(errors).toEqual([]);
+});

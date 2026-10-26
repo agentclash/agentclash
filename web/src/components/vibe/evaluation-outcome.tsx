@@ -30,7 +30,7 @@ export function EvaluationOutcome({session, artifact, operation, busy, loadEvide
   }
   return <section className="mt-6 space-y-3" aria-label="Keep and extend your results">
     {!showTougher && <div className="flex flex-wrap gap-2">
-      <VibeButton disabled={busy || working} onClick={() => void exportWork()}>{working ? "Preparing…" : "Export / build it myself"}</VibeButton>
+      <VibeButton disabled={busy || working} onClick={() => void exportWork()}>{working ? "Preparing…" : artifact.conversation_evaluation ? "Export recorded evaluation" : "Export / build it myself"}</VibeButton>
       {!showTougher && completed && artifact.kind === "test_suite" && proposals.length>0 && onTougher && <VibeButton disabled={busy || working} onClick={() => setTougher(!tougher)}>Try tougher situations</VibeButton>}
       {completed && !hideContact && <ProjectEnquiry key={artifact.id} session={session} artifact={artifact} operation={operation} />}
     </div>}

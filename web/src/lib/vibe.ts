@@ -58,12 +58,7 @@ export type Artifact = {
   scope_note?: string;
   unavailable_reason?: string;
   policy_id?: string;
-  validation?: {
-    status: "supported" | "contradicted" | "unclear" | "unavailable";
-    blueprint_hash: string;
-    policy_hash: string;
-    validator_version: string;
-  };
+  validation?: import("./vibe-result-evidence").SuiteValidation;
   dismissed?: boolean;
   proposal_message_id?: string;
   quick_check?: boolean;
@@ -87,6 +82,7 @@ export type Artifact = {
 };
 export type Verdict = "PASS" | "FAIL" | "UNKNOWN";
 export type CaseResult = {
+  evidence_hash?: string;
   expected_checks?: number;
   expectations?: Expectation[];
   title?: string;
@@ -115,7 +111,9 @@ export type CaseResult = {
   error?: { code?: string; message: string };
 };
 export type Operation = {
-  progress?: { phase: string; completed_cases: number; total_cases: number };
+  evidence_metadata?: import("./vibe-result-evidence").EvidenceMetadata;
+  result_scope?: import("./vibe-result-evidence").ResultScope;
+  progress?: { phase_started_at?: string; last_confirmed_at?: string; phase_elapsed_ms?: number; phase: string; completed_cases: number; total_cases: number };
   diagnostics?: { alternative_assistant?: string; stage_millis: Record<string, number>; retry_outcome?: string; unresolved_billing_since?: string; unresolved_billing_age_ms?: number };
   grading?: {
     version: number; hash: string; criteria_hash: string; tests_hash: string;
@@ -177,6 +175,8 @@ export type Operation = {
 export type RuleCoverage = { rule_id: string; statement: string; case_keys: string[] };
 
 export type Session = {
+  evidence_receipt?: {client_id:string;evidence_id:string;artifact_id:string};
+  validation_reviews?: import("./vibe-result-evidence").ValidationReview[];
   rule_coverage?: Record<string, RuleCoverage[]>;
   server_time?: string;
   diagnostics?: { first_useful_result_ms?: number; first_save_ms?: number };

@@ -7,6 +7,7 @@ import { editorSource } from "@/lib/vibe-build-drafts";
 import { type Artifact } from "@/lib/vibe";
 import { suiteCases, changedCases } from "./test-suite-cases";
 import { TestMeaning } from "./conversation-guidance";
+import { ValidationDetails } from "./validation-review";
 import { VibeButton } from "./vibe-button";
 
 export const exampleAgentDescription = `My agent helps customers with returns. Unopened items can be returned within 30 days. Opened items and purchases older than 30 days aren't eligible. It should ask for missing purchase age or item condition, and never claim it has processed a refund.`;
@@ -118,8 +119,9 @@ export function TestSuitePanel({
       </div>
       {added>0 && <p className="text-sm vibe-muted">{added} new examples · {cases.length-added} existing examples. Running this batch checks all {cases.length}; earlier results are kept separately.</p>}
       {!editing && !agentOpen && <TestMeaning />}
+      {artifact.validation && <ValidationDetails validation={artifact.validation} />}
       {rules.length > 0 && !editing && !agentOpen && (
-        <details className="text-sm vibe-muted">
+        <details open className="text-sm vibe-muted">
           <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4">
             Rules being tested
           </summary>
@@ -131,7 +133,7 @@ export function TestSuitePanel({
       {!agentOpen && !editing && (
         <div className="vibe-panel">
           {cases.map((test, i) => (
-            <details className="vibe-result-row" key={test.key}>
+            <details open className="vibe-result-row" key={test.key}>
               <summary>
                 <span className="w-5 shrink-0 text-xs vibe-muted">{i + 1}</span>
                 <span className="min-w-0 flex-1 text-sm leading-6">
