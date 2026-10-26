@@ -58,13 +58,13 @@ func (s *Store) GetOriginal(ctx context.Context, actor string, session, artifact
 	return o, err
 }
 func storeOriginal(ctx context.Context, tx pgx.Tx, v *Session, o ImportOriginal) error {
-	var used int
-	if err := tx.QueryRow(ctx, "SELECT COALESCE(sum(octet_length(content)),0) FROM vibe_import_originals WHERE session_id=$1", v.ID).Scan(&used); err != nil {
+	used, err := retainedSourceBytes(ctx, tx, v.ID)
+	if err != nil {
 		return err
 	}
 	if used+len(o.Content) > LimitsFor(v.Anonymous).StoredBytes {
 		return fault("attachment_limit", "The original-file allowance is full.")
 	}
-	_, err := tx.Exec(ctx, "INSERT INTO vibe_import_originals(id,session_id,artifact_id,filename,media_type,content_sha256,content) VALUES($1,$2,$3,$4,$5,$6,$7)", o.ID, v.ID, o.ArtifactID, o.Filename, o.MediaType, o.Hash, o.Content)
+	_, err = tx.Exec(ctx, "INSERT INTO vibe_import_originals(id,session_id,artifact_id,filename,media_type,content_sha256,content) VALUES($1,$2,$3,$4,$5,$6,$7)", o.ID, v.ID, o.ArtifactID, o.Filename, o.MediaType, o.Hash, o.Content)
 	return err
 }

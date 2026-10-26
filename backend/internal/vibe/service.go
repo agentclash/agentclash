@@ -61,8 +61,11 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 		return Operation{}, fault("quote_expired", "See the examples and maximum cost before running.")
 	}
 
-	if sub.Purpose != "" && !((sub.Purpose == "suggest_change" && sub.Kind == "message" || sub.Purpose == "regrade" && sub.Kind == "retest" && sub.Content == "" && sub.EvidenceSetID == nil && sub.Interaction == nil) && sub.BaselineID != nil && sub.Instructions == "") {
+	if sub.Purpose != "" && !((sub.Purpose == "suggest_change" && sub.Kind == "message" || sub.Purpose == "regrade" && sub.Kind == "retest" && sub.Content == "" && sub.EvidenceSetID == nil && sub.Interaction == nil) && (sub.BaselineID != nil || sub.Purpose == "regrade" && sub.RegradeSourceResultRef != nil) && sub.Instructions == "") {
 		return Operation{}, fault("invalid_message", "Choose a completed check for this action.")
+	}
+	if sub.RegradeSourceResultRef != nil && sub.Purpose != "regrade" || sub.SourceEvidenceHash != "" && sub.RegradeSourceResultRef == nil {
+		return Operation{}, fault("invalid_request", "SDK source selection is only supported for regrading.")
 	}
 	if sub.JourneyMode != "" && (sub.Kind != "message" || (sub.JourneyMode != "idea" && sub.JourneyMode != "existing" && sub.JourneyMode != "exploring")) {
 		return Operation{}, fault("invalid_message", "Choose idea, existing agent, or exploration for a design message.")
@@ -127,6 +130,9 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 	}
 	l = p.limits()
 	if sub.Purpose == "regrade" {
+		if sub.RegradeSourceResultRef != nil {
+			return s.prepareSDKRegrade(ctx, actor, v, sub, p)
+		}
 		return s.prepareRegrade(ctx, actor, v, sub, p)
 	}
 	if sub.Kind == "message" || sub.Kind == "build" {
@@ -324,6 +330,7 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 			Sample       *string         `json:"sample"`
 			Rules        json.RawMessage `json:"rules"`
 			Runs         json.RawMessage `json:"runs"`
+			SDKReports   json.RawMessage `json:"sdk_reports,omitempty"`
 		}
 		if err = Decode(b, l, &exported); err != nil {
 			return err

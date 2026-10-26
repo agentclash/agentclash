@@ -181,6 +181,8 @@ func (s *Store) CleanupProjects(ctx context.Context) error {
 			// Retain costs, hashes and funding identity for reconciliation and abuse
 			// limits. Content and inference results have no accounting purpose.
 			for _, sql := range []string{
+				`DELETE FROM vibe_sdk_promotions WHERE session_id=$1`,
+				`DELETE FROM vibe_sdk_reports WHERE session_id=$1`,
 				`DELETE FROM vibe_import_originals WHERE session_id=$1`,
 				`DELETE FROM vibe_validation_reviews WHERE session_id=$1`,
 				`DELETE FROM vibe_grade_reviews WHERE session_id=$1`,

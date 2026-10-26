@@ -12,11 +12,13 @@ import (
 )
 
 type ExportRequest struct {
+	ResultRef  *ResultRef `json:"result_ref,omitempty"`
 	Scope      string     `json:"scope"`
 	ArtifactID uuid.UUID  `json:"artifact_id"`
 	ResultID   *uuid.UUID `json:"result_id,omitempty"`
 }
 type ExportItem struct {
+	ResultRef       *ResultRef `json:"result_ref,omitempty"`
 	Kind            string     `json:"kind"`
 	ID              string     `json:"id"`
 	Hash            string     `json:"hash,omitempty"`
@@ -27,6 +29,7 @@ type ExportItem struct {
 	EvidenceChanged *bool      `json:"evidence_changed,omitempty"`
 }
 type ExportPreparation struct {
+	SDKReports   []SDKReport       `json:"sdk_reports"`
 	Format       string            `json:"format"`
 	SessionID    uuid.UUID         `json:"session_id"`
 	Title        string            `json:"title"`
@@ -44,7 +47,18 @@ type ExportPreparation struct {
 // Preparation freezes source summaries, expected IDs and hashes in one snapshot.
 // It allocates no job, charges no credits and never visits unrelated runs by default.
 func (s *Store) PrepareExport(ctx context.Context, actor string, id uuid.UUID, in ExportRequest) (ExportPreparation, error) {
-	out := ExportPreparation{Format: "agentclash-evaluation-v2", SessionID: id, ArtifactID: in.ArtifactID, Selection: in, Artifacts: []Artifact{}, Rules: []PolicySnapshot{}, Runs: []Operation{}, Items: []ExportItem{}, CaseMappings: []json.RawMessage{}, Omissions: []string{"Guide and trial conversations, source evidence sets, unsent local drafts and input material file bodies are omitted. This archive contains the chosen versions, rules, results, reviews and uploaded originals."}}
+	if in.ResultRef != nil {
+		if in.ResultRef.ID == uuid.Nil || (in.ResultRef.Kind != ResultVibeOperation && in.ResultRef.Kind != ResultSDKReport) {
+			return ExportPreparation{}, fault("invalid_request", "Choose a supported result reference.")
+		}
+		if in.ResultID != nil && (in.ResultRef.Kind != ResultVibeOperation || *in.ResultID != in.ResultRef.ID) {
+			return ExportPreparation{}, fault("invalid_request", "Conflicting result references.")
+		}
+		if in.ResultRef.Kind == ResultVibeOperation {
+			in.ResultID = &in.ResultRef.ID
+		}
+	}
+	out := ExportPreparation{SDKReports: []SDKReport{}, Format: "agentclash-evaluation-v2", SessionID: id, ArtifactID: in.ArtifactID, Selection: in, Artifacts: []Artifact{}, Rules: []PolicySnapshot{}, Runs: []Operation{}, Items: []ExportItem{}, CaseMappings: []json.RawMessage{}, Omissions: []string{"Guide and trial conversations, source evidence sets, unsent local drafts and input material file bodies are omitted. This archive contains the chosen versions, rules, results, reviews and uploaded originals."}}
 	if in.Scope != "selected" && in.Scope != "history" || in.ArtifactID == uuid.Nil {
 		return out, fault("invalid_request", "Choose an exact version and export scope.")
 	}
@@ -310,6 +324,9 @@ func (s *Store) PrepareExport(ctx context.Context, actor string, id uuid.UUID, i
 		if !known {
 			out.CaseMappings = append(out.CaseMappings, raw(map[string]any{"artifact_id": a.ID, "cases": declaredCaseMapping(a), "published": []any{}, "status": "unresolved", "reason": "No immutable publication binding is known for this version."}))
 		}
+	}
+	if err = appendSDKExport(ctx, tx, &out); err != nil {
+		return out, err
 	}
 	if len(out.Items) > 5000 {
 		return out, fault("export_limit", "This history exceeds one export. Export individual versions instead.")

@@ -28,20 +28,21 @@ func runFingerprint(p Plan) string {
 		return Hash(raw(p))
 	}
 	return Hash(raw(struct {
-		Cases    []string
-		Recovery *ResultRecovery
-		Kind     string
-		Purpose  string
-		Models   Models
-		Artifact *Artifact
-		Evidence *EvidenceSet
-		Baseline *uuid.UUID
-		Cost     int64
-		Calls    int
-		Grading  *GradingContract
-		Target   *TargetConfiguration
-		Limits   *Limits
-	}{p.Cases, p.Recovery, p.Submission.Kind, p.Submission.Purpose, p.Submission.Models, p.Artifact, p.Evidence, p.Submission.BaselineID, p.MaxCost, p.Calls, p.Grading, p.TargetConfig, p.ExecutionLimits}))
+		SDKSource *ResultRecovery `json:"SDKSource,omitempty"`
+		Cases     []string
+		Recovery  *ResultRecovery
+		Kind      string
+		Purpose   string
+		Models    Models
+		Artifact  *Artifact
+		Evidence  *EvidenceSet
+		Baseline  *uuid.UUID
+		Cost      int64
+		Calls     int
+		Grading   *GradingContract
+		Target    *TargetConfiguration
+		Limits    *Limits
+	}{p.RegradeSource, p.Cases, p.Recovery, p.Submission.Kind, p.Submission.Purpose, p.Submission.Models, p.Artifact, p.Evidence, p.Submission.BaselineID, p.MaxCost, p.Calls, p.Grading, p.TargetConfig, p.ExecutionLimits}))
 }
 func (s *Service) QuoteRun(ctx context.Context, actor string, id uuid.UUID, sub Submission) (RunQuote, error) {
 	if sub.Kind != "check" && sub.Kind != "retest" && !(sub.Kind == "message" && sub.AdditionalExamples > 0) {

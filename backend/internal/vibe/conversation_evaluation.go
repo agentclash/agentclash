@@ -44,7 +44,7 @@ func validateRoleModels(cfg Config, models Models, anonymous bool, role Role) er
 	return nil
 }
 func validatePlanModels(cfg Config, p Plan, models Models, anonymous bool) error {
-	if p.RegradeOf != nil {
+	if p.isRegrade() {
 		return validateRoleModels(cfg, models, anonymous, Evaluator)
 	}
 	if p.AuthoringVersion >= 5 {

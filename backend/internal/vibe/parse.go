@@ -14,6 +14,11 @@ import (
 // ValidateJSON walks tokens before typed decoding. No allocation proportional to
 // an attacker-declared array length, no duplicate fields, no recursive refs.
 func ValidateJSON(raw []byte, l Limits) error {
+	return validateJSON(raw, l, false)
+}
+
+// SDK instance dictionaries may contain inert reference keys; definition imports may not.
+func validateJSON(raw []byte, l Limits, dataInstance bool) error {
 	if len(raw) > l.FileBytes || !utf8.Valid(raw) {
 		return fault("invalid_import", "Content is too large or is not valid UTF-8.")
 	}
@@ -49,7 +54,7 @@ func ValidateJSON(raw []byte, l Limits) error {
 						return fault("import_limit", "Object keys must be unique and bounded.")
 					}
 					seen[k] = true
-					if k == "$ref" || k == "$dynamicRef" || k == "$recursiveRef" {
+					if !dataInstance && (k == "$ref" || k == "$dynamicRef" || k == "$recursiveRef") {
 						return fault("unsupported_schema", "Schema references are not supported by Vibe imports; inline the schema.")
 					}
 				} else if v != '[' || count > l.Array {

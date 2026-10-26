@@ -12,6 +12,7 @@ import (
 )
 
 type GradeReviewInput struct {
+	SourceCaseID       string       `json:"source_case_id,omitempty"`
 	SourceEvidenceHash string       `json:"source_evidence_hash"`
 	ClientID           uuid.UUID    `json:"client_id"`
 	ResultRef          ResultRef    `json:"result_ref"`
@@ -32,7 +33,7 @@ type GradeReview struct {
 
 func (s *Store) AddGradeReview(ctx context.Context, actor string, session uuid.UUID, in GradeReviewInput) (GradeReview, error) {
 	var review GradeReview
-	if in.ClientID == uuid.Nil || in.ResultRef.ID == uuid.Nil || in.ResultRef.Kind != "vibe_operation" || in.ArtifactID == uuid.Nil || len(in.CaseKey) == 0 || len(in.CaseKey) > MaxKeyBytes || len(in.CheckKey) > MaxKeyBytes || strings.TrimSpace(in.Reason) == "" || len(in.Reason) > 4096 || !utf8.ValidString(in.Reason) || len(in.Quotes) > 20 {
+	if len(in.SourceCaseID) > 256 || !utf8.ValidString(in.SourceCaseID) || in.ClientID == uuid.Nil || in.ResultRef.ID == uuid.Nil || (in.ResultRef.Kind != ResultVibeOperation && in.ResultRef.Kind != ResultSDKReport) || in.ArtifactID == uuid.Nil || len(in.CaseKey) == 0 || len(in.CaseKey) > MaxKeyBytes || len(in.CheckKey) > MaxKeyBytes || strings.TrimSpace(in.Reason) == "" || len(in.Reason) > 4096 || !utf8.ValidString(in.Reason) || len(in.Quotes) > 20 {
 		return review, fault("invalid_request", "Choose a saved case and describe the review in at most 4,096 bytes.")
 	}
 	requestHash := Hash(raw(in))
@@ -59,27 +60,44 @@ func (s *Store) AddGradeReview(ctx context.Context, actor string, session uuid.U
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		o, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1 FOR UPDATE", in.ResultRef.ID))
-		if err != nil || o.SessionID != session {
-			return fault("not_found", "The reviewed result is unavailable in this project.")
-		}
-		if !o.State.Terminal() {
-			return fault("invalid_request", "Wait for this result to finish before reviewing its grade.")
-		}
-		var plan Plan
-		if err = json.Unmarshal(o.Input, &plan); err != nil {
-			return err
-		}
-		if plan.Artifact == nil || plan.Artifact.ID != in.ArtifactID {
-			return fault("invalid_request", "Choose the exact tested version.")
-		}
-		if err = tx.QueryRow(ctx, "SELECT result FROM vibe_case_results WHERE operation_id=$1 AND case_key=$2 AND version=$3", o.ID, in.CaseKey, in.ArtifactID.String()).Scan(&data); err != nil {
-			return fault("not_found", "The reviewed case is unavailable.")
-		}
 		var c CaseResult
-		if err = json.Unmarshal(data, &c); err != nil {
-			return err
+		var operationID *uuid.UUID
+		if in.ResultRef.Kind == ResultSDKReport {
+			report, e := sdkReportTx(ctx, tx, session, in.ResultRef.ID)
+			if e != nil {
+				return e
+			}
+			if report.Binding.ArtifactID != in.ArtifactID {
+				return fault("invalid_request", "Choose the exact tested version.")
+			}
+			c, err = SDKReportCase(report, in.SourceCaseID, in.CaseKey)
+			if err != nil {
+				return err
+			}
+		} else {
+			o, err := scanOperation(tx.QueryRow(ctx, operationSelect+" WHERE id=$1 FOR UPDATE", in.ResultRef.ID))
+			if err != nil || o.SessionID != session {
+				return fault("not_found", "The reviewed result is unavailable in this project.")
+			}
+			if !o.State.Terminal() {
+				return fault("invalid_request", "Wait for this result to finish before reviewing its grade.")
+			}
+			var plan Plan
+			if err = json.Unmarshal(o.Input, &plan); err != nil {
+				return err
+			}
+			if plan.Artifact == nil || plan.Artifact.ID != in.ArtifactID {
+				return fault("invalid_request", "Choose the exact tested version.")
+			}
+			if err = tx.QueryRow(ctx, "SELECT result FROM vibe_case_results WHERE operation_id=$1 AND case_key=$2 AND version=$3", o.ID, in.CaseKey, in.ArtifactID.String()).Scan(&data); err != nil {
+				return fault("not_found", "The reviewed case is unavailable.")
+			}
+			if err = json.Unmarshal(data, &c); err != nil {
+				return err
+			}
+			operationID = &o.ID
 		}
+
 		if in.SourceEvidenceHash == "" || in.SourceEvidenceHash != Hash(raw(c)) {
 			return fault("evidence_changed", "The saved case changed after you opened it. Reload its evidence before submitting a new review.")
 		}
@@ -118,10 +136,15 @@ func (s *Store) AddGradeReview(ctx context.Context, actor string, session uuid.U
 		if len(raw(review)) > 768<<10 {
 			return fault("invalid_request", "This case exceeds the bounded review snapshot size.")
 		}
+		if in.ResultRef.Kind == ResultSDKReport {
+			if err = admitSDKProjection(ctx, tx, session, raw(review), len(requestHash)); err != nil {
+				return err
+			}
+		}
 		if _, err = tx.Exec(ctx, "INSERT INTO vibe_grade_reviews(id,session_id,client_id,request_hash,result_kind,result_id,body) VALUES($1,$2,$3,$4,$5,$6,$7)", review.ID, session, in.ClientID, requestHash, in.ResultRef.Kind, in.ResultRef.ID, raw(review)); err != nil {
 			return err
 		}
-		return event(ctx, tx, session, &o.ID, "grade.reviewed")
+		return event(ctx, tx, session, operationID, "grade.reviewed")
 	})
 	return review, err
 }
@@ -163,7 +186,24 @@ func (s *Store) GradeReviews(ctx context.Context, actor string, session uuid.UUI
 			}
 			out = append(out, r)
 		}
-		return rows.Err()
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		for i := range out {
+			if out[i].ResultRef.Kind != ResultSDKReport {
+				continue
+			}
+			report, e := sdkReportTx(ctx, tx, session, out[i].ResultRef.ID)
+			if e != nil {
+				out[i].EvidenceChanged = true
+				continue
+			}
+			c, e := SDKReportCase(report, out[i].SourceCaseID, out[i].CaseKey)
+			out[i].EvidenceChanged = e != nil || Hash(raw(c)) != out[i].EvidenceHash
+		}
+		return nil
 	})
 	return out, err
 }

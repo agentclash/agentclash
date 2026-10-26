@@ -1,0 +1,386 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentclash.dev/schemas/evaltest/eval-report.schema.json",
+  "title": "AgentClash Local Eval Report",
+  "description": "Versioned report emitted by Python/TypeScript SDKs and agentclash evaltest run.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "report_id",
+    "generated_at",
+    "runner",
+    "summary",
+    "cases",
+    "exit_code"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "report_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "runner": {
+      "$ref": "#/$defs/runner_info"
+    },
+    "summary": {
+      "$ref": "#/$defs/summary"
+    },
+    "cases": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/eval_case_result"
+      }
+    },
+    "failures": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/eval_failure"
+      }
+    },
+    "provider_errors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/provider_error"
+      }
+    },
+    "exit_code": {
+      "type": "integer",
+      "enum": [0, 1, 2, 3, 4]
+    },
+    "duration_ms": {
+      "type": "number",
+      "minimum": 0
+    },
+    "total_cost_usd": {
+      "type": "number",
+      "minimum": 0
+    }
+  },
+  "$defs": {
+    "runner_info": {
+      "type": "object",
+      "required": ["name", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "enum": ["agentclash-evals", "agentclash-evaltest", "@agentclash/evals"]
+        },
+        "version": {
+          "type": "string"
+        },
+        "language": {
+          "type": "string",
+          "enum": ["python", "typescript", "go"]
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": ["total", "passed", "failed", "skipped", "errored"],
+      "additionalProperties": false,
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "passed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "failed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "errored": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "metric_failures": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "total_cost_usd": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "eval_case": {
+      "type": "object",
+      "required": ["case_id", "name"],
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "input": {
+          "type": "string"
+        },
+        "expected": {
+          "description": "Optional expected behavior notes for promotion/debugging.",
+          "type": "string"
+        }
+      }
+    },
+    "eval_case_result": {
+      "type": "object",
+      "required": ["case", "status", "metrics"],
+      "additionalProperties": false,
+      "properties": {
+        "case": {
+          "$ref": "#/$defs/eval_case"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["passed", "failed", "skipped", "error"]
+        },
+        "agent_result": {
+          "$ref": "#/$defs/agent_result"
+        },
+        "metrics": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/metric_result"
+          }
+        },
+        "duration_ms": {
+          "type": "number",
+          "minimum": 0
+        },
+        "cost_usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "metric_result": {
+      "type": "object",
+      "required": ["key", "name", "passed"],
+      "additionalProperties": false,
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "score": {
+          "type": "number"
+        },
+        "threshold": {
+          "type": "number"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "judge_evidence": {
+          "$ref": "#/$defs/judge_evidence"
+        },
+        "error": {
+          "type": "string"
+        }
+      }
+    },
+    "judge_evidence": {
+      "type": "object",
+      "required": ["prompt_template_id", "verdict"],
+      "additionalProperties": false,
+      "properties": {
+        "prompt_template_id": {
+          "type": "string"
+        },
+        "prompt_template_version": {
+          "type": "string"
+        },
+        "raw_output": {
+          "type": "string"
+        },
+        "raw_output_redacted": {
+          "type": "string"
+        },
+        "parsed_verdict": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "verdict": {
+          "type": "string",
+          "enum": ["pass", "fail", "error"]
+        },
+        "retry_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "eval_failure": {
+      "type": "object",
+      "required": ["case_id", "metric_key", "reason"],
+      "additionalProperties": false,
+      "properties": {
+        "case_id": {
+          "type": "string"
+        },
+        "case_name": {
+          "type": "string"
+        },
+        "metric_key": {
+          "type": "string"
+        },
+        "metric_name": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "input": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        }
+      }
+    },
+    "provider_error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "retryable": {
+          "type": "boolean"
+        },
+        "case_id": {
+          "type": "string"
+        },
+        "metric_key": {
+          "type": "string"
+        }
+      }
+    },
+    "agent_result": {
+      "type": "object",
+      "required": ["input"],
+      "additionalProperties": false,
+      "properties": {
+        "input": {"type": "string"},
+        "output": {"type": "string"},
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["role", "content"],
+            "additionalProperties": false,
+            "properties": {
+              "role": {"type": "string", "enum": ["system", "user", "assistant", "tool"]},
+              "content": {"type": "string"},
+              "name": {"type": "string"},
+              "tool_call_id": {"type": "string"}
+            }
+          }
+        },
+        "tool_calls": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": false,
+            "properties": {
+              "name": {"type": "string", "minLength": 1},
+              "arguments": {"type": "object", "additionalProperties": true},
+              "arguments_json": {"type": "string"},
+              "turn_index": {"type": "integer", "minimum": 0},
+              "result": {"type": "string"}
+            }
+          }
+        },
+        "retrieval_context": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["content"],
+            "additionalProperties": false,
+            "properties": {
+              "content": {"type": "string"},
+              "source": {"type": "string"},
+              "score": {"type": "number"},
+              "metadata": {"type": "object", "additionalProperties": true}
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "model": {"type": "string"},
+            "provider": {"type": "string"},
+            "latency_ms": {"type": "number", "minimum": 0},
+            "cost_usd": {"type": "number", "minimum": 0},
+            "step_count": {"type": "integer", "minimum": 0},
+            "token_count": {"type": "integer", "minimum": 0},
+            "tags": {"type": "array", "items": {"type": "string"}},
+            "extra": {"type": "object", "additionalProperties": true}
+          }
+        }
+      }
+    }
+  }
+}

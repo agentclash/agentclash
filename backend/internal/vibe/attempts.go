@@ -127,7 +127,7 @@ func (s *Store) BeginAttempt(ctx context.Context, a Attempt) error {
 				return e
 			}
 		}
-		if plan.RegradeOf != nil && a.Role != Evaluator {
+		if plan.isRegrade() && a.Role != Evaluator {
 			return fault("operation_limit", "Rechecking saved grades can only call the evaluator.")
 		}
 		if retainedAuthoring(plan.AuthoringVersion) && (o.Kind == "message" || o.Kind == "build") {

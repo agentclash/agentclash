@@ -129,7 +129,7 @@ func (r *Runner) evaluate(ctx context.Context, o Operation, p Plan) error {
 		}
 		var response provider.Response
 		var e error
-		if p.RegradeOf != nil {
+		if p.isRegrade() {
 			response.OutputText, e = p.savedOutput(c.CaseKey)
 			if e != nil {
 				result.Error = &Fault{Code: "evidence_unavailable", Message: "No complete saved reply is available to recheck."}
