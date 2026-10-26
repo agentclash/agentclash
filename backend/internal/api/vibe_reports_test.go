@@ -296,7 +296,16 @@ func TestVibeSDKRegradeUsesQuotedRetainedOutput(t *testing.T) {
 	}
 }
 func TestVibeSDKPromotionRequiresReviewedExactSource(t *testing.T) {
-	h, _, _ := sdkHarness(t)
+	h, ws, initial := sdkHarness(t)
+	var createErr error
+	h.session, createErr = h.svc.Store.CreateAgent(h.ctx, h.actor, &ws, uuid.New(), "test", h.svc.Config.DefaultModels())
+	if createErr != nil {
+		t.Fatal(createErr)
+	}
+	if createErr = h.svc.Import(h.ctx, h.actor, h.session.ID, h.session.Revision, initial.Blueprint); createErr != nil {
+		t.Fatal(createErr)
+	}
+	h.reload()
 	bp, err := h.svc.Compiler.Draft(vibe.DraftProposal{TestsOnly: true, Title: "Policy", Summary: "Explicit expectations", Scenarios: []vibe.TestScenario{{Input: "Hello", Expected: "Say hello"}}, SuccessCriteria: "Follow the expected behavior."}, h.svc.Config.Limits(false))
 	if err != nil {
 		t.Fatal(err)
@@ -332,6 +341,20 @@ func TestVibeSDKPromotionRequiresReviewedExactSource(t *testing.T) {
 	original, err := h.svc.Store.SDKReport(h.ctx, h.actor, h.session.ID, report.ID)
 	if err != nil || original.SourceJSON != source {
 		t.Fatal("promotion changed source", err)
+	}
+	// Deletion must erase the retained original and promotion snapshot, not
+	// merely deny reads through the soft-deleted session.
+	if _, err = h.svc.Store.DeleteProject(h.ctx, h.actor, h.session.ID, h.session.Revision); err != nil {
+		t.Fatal(err)
+	}
+	if err = h.svc.Store.CleanupProjects(h.ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"vibe_sdk_reports", "vibe_sdk_promotions"} {
+		var retained int
+		if err = h.db.QueryRow(h.ctx, "SELECT count(*) FROM "+table+" WHERE session_id=$1", h.session.ID).Scan(&retained); err != nil || retained != 0 {
+			t.Fatal("private SDK content survived physical cleanup", table, retained, err)
+		}
 	}
 }
 
