@@ -9,17 +9,20 @@ CREATE TABLE vibe_import_originals (
  content bytea NOT NULL CHECK(octet_length(content)<=4194304), created_at timestamptz NOT NULL DEFAULT now(),
  UNIQUE(session_id,artifact_id)
 );
--- Workspace save receipts own an independent original copy, retained on private project deletion.
+-- Workspace receipts outlive both the private project and the editable canonical draft.
+-- draft_id is the immutable originating draft UUID, not a live draft foreign key.
 CREATE TABLE vibe_pack_sources (
- draft_id uuid PRIMARY KEY REFERENCES challenge_pack_drafts(id) ON DELETE CASCADE,
+ draft_id uuid PRIMARY KEY,
  session_id uuid NOT NULL REFERENCES vibe_sessions(id), artifact_id uuid NOT NULL, workspace_id uuid NOT NULL REFERENCES workspaces(id),
  composition_hash text NOT NULL, case_keys jsonb NOT NULL DEFAULT '[]',
  original_filename text, original_media_type text, original_hash text, original_content bytea CHECK(octet_length(original_content)<=4194304),
- advanced boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now(),
- UNIQUE(session_id,artifact_id,workspace_id,advanced)
+ advanced boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now()
 );
+-- Save idempotency is serialized by the session row lock and checks live drafts.
+-- A deleted draft can be saved again with a new independent receipt.
+CREATE INDEX vibe_pack_sources_session_idx ON vibe_pack_sources(session_id,artifact_id,workspace_id,advanced);
 CREATE TABLE vibe_published_case_bindings (
- -- A published binding protects its source receipt from later draft deletion.
+ -- Published mappings reference the retained receipt, not the deletable editor draft.
  draft_id uuid NOT NULL REFERENCES vibe_pack_sources(draft_id),
  artifact_id uuid NOT NULL, challenge_pack_version_id uuid NOT NULL REFERENCES challenge_pack_versions(id),
  case_key text NOT NULL, input_set_key text NOT NULL, challenge_key text NOT NULL,

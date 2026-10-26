@@ -2,12 +2,17 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/vibe"
 	"github.com/agentclash/agentclash/runtime/challengepack"
 	"github.com/agentclash/agentclash/runtime/scoring"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
@@ -111,8 +116,44 @@ func TestVibeLibraryOriginalBytesAndFrozenExport(t *testing.T) {
 		t.Fatal("edited draft claimed original IDs", count, err)
 	}
 
-	if err = repo.DeleteChallengePackDraft(h.ctx, receipt.DraftID); err == nil {
-		t.Fatal("published source receipt was deleted")
+	// Exercise the canonical HTTP deletion owner with real repository persistence.
+	builder := NewChallengePackBuilderManager(NewCallerWorkspaceAuthorizer(), repo, nil)
+	router := chi.NewRouter()
+	router.Delete("/workspaces/{workspaceID}/drafts/{draftID}", deleteChallengePackDraftHandler(slog.Default(), builder))
+	deletion := httptest.NewRequest(http.MethodDelete, "/workspaces/"+ws.String()+"/drafts/"+receipt.DraftID.String(), nil)
+	caller := Caller{UserID: h.user, WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{ws: {WorkspaceID: ws, Role: RoleWorkspaceAdmin}}}
+	deletion = deletion.WithContext(context.WithValue(deletion.Context(), callerContextKey{}, caller))
+	deleted := httptest.NewRecorder()
+	router.ServeHTTP(deleted, deletion)
+	if deleted.Code != http.StatusNoContent {
+		t.Fatalf("canonical draft delete: %d %s", deleted.Code, deleted.Body.String())
+	}
+	if _, err = repo.GetChallengePackDraftByID(h.ctx, receipt.DraftID); !errors.Is(err, repository.ErrChallengePackDraftNotFound) {
+		t.Fatal("editable draft retained", err)
+	}
+	w = request("GET", "/saved-originals/"+receipt.DraftID.String(), nil)
+	if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), original) {
+		t.Fatal("source original lost with deleted draft", w.Code)
+	}
+	// Re-saving creates a new editable copy, without reviving the deleted draft or overwriting its receipt.
+	h.reload()
+	advancedRequest := mustJSON(t, map[string]any{"revision": h.session.Revision, "artifact_id": a.ID, "workspace_id": ws})
+	w = request("POST", base+"/advanced", advancedRequest)
+	if w.Code != 200 {
+		t.Fatal("save after canonical deletion", w.Code, w.Body.String())
+	}
+	var replacement struct {
+		DraftID uuid.UUID `json:"draft_id"`
+	}
+	if err = json.Unmarshal(w.Body.Bytes(), &replacement); err != nil || replacement.DraftID == receipt.DraftID {
+		t.Fatal("deleted draft reused", err, w.Body.String())
+	}
+	if _, err = repo.GetChallengePackDraftByID(h.ctx, replacement.DraftID); err != nil {
+		t.Fatal("replacement draft missing", err)
+	}
+	w = request("POST", base+"/advanced", advancedRequest)
+	if w.Code != 200 || !bytes.Contains(w.Body.Bytes(), []byte(replacement.DraftID.String())) {
+		t.Fatal("replacement save not idempotent", w.Code, w.Body.String())
 	}
 	if err = h.db.QueryRow(h.ctx, "SELECT count(*) FROM vibe_published_case_bindings WHERE draft_id=$1 AND challenge_pack_version_id=$2", receipt.DraftID, published.ChallengePackVersionID).Scan(&count); err != nil || count != len(composed.InputSets[0].Cases) {
 		t.Fatal("earlier immutable mapping lost", count, err)
@@ -298,5 +339,34 @@ func TestVibeLibraryMetadataOwnershipConflictAndActiveArchive(t *testing.T) {
 	}
 	if w = request("PATCH", path, map[string]any{"revision": after.Revision, "archived": false}, h.user); w.Code != 200 {
 		t.Fatal("unarchive", w.Code, w.Body.String())
+	}
+}
+
+func TestVibeLibraryHistoryIncludesUnreferencedRules(t *testing.T) {
+	h := newVibeAPIHarness(t)
+	linked := vibe.PolicySnapshot{ID: uuid.New(), Rules: []vibe.PolicyRule{{ID: "linked", Statement: "Referenced policy"}}}
+	orphan := vibe.PolicySnapshot{ID: uuid.New(), Rules: []vibe.PolicyRule{{ID: "unreferenced", Statement: "Earlier persisted policy"}}}
+	artifact := vibe.Artifact{ID: uuid.New(), Kind: "test_suite", PolicyID: &linked.ID}
+	if err := h.svc.Store.Edit(h.ctx, h.actor, h.session.ID, h.session.Revision, func(v *vibe.Session) error {
+		v.Document.Artifacts = append(v.Document.Artifacts, artifact)
+		v.Document.Policies = []vibe.PolicySnapshot{linked, orphan}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []string{"selected", "history"} {
+		t.Run(scope, func(t *testing.T) {
+			p, err := h.svc.Store.PrepareExport(h.ctx, h.actor, h.session.ID, vibe.ExportRequest{Scope: scope, ArtifactID: artifact.ID})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := []vibe.PolicySnapshot{linked}
+			if scope == "history" {
+				want = append(want, orphan)
+			}
+			if !bytes.Equal(mustJSON(t, p.Rules), mustJSON(t, want)) {
+				t.Fatalf("%s lost or broadened rule history: got %s want %s", scope, mustJSON(t, p.Rules), mustJSON(t, want))
+			}
+		})
 	}
 }

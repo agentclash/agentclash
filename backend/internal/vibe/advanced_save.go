@@ -76,7 +76,7 @@ func (s *Service) SaveAdvanced(ctx context.Context, actor string, id uuid.UUID, 
 		if v.WorkspaceID != nil && *v.WorkspaceID != in.WorkspaceID {
 			return fault("workspace_conflict", "Choose this project's workspace.")
 		}
-		err = tx.QueryRow(ctx, "SELECT draft_id FROM vibe_pack_sources WHERE session_id=$1 AND artifact_id=$2 AND workspace_id=$3 AND advanced", id, in.ArtifactID, in.WorkspaceID).Scan(&draft)
+		err = tx.QueryRow(ctx, "SELECT p.draft_id FROM vibe_pack_sources p JOIN challenge_pack_drafts d ON d.id=p.draft_id WHERE p.session_id=$1 AND p.artifact_id=$2 AND p.workspace_id=$3 AND p.advanced", id, in.ArtifactID, in.WorkspaceID).Scan(&draft)
 		if err == nil {
 			return nil
 		}

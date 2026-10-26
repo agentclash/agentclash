@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { vibeFetch, vibeBytes, type Session, type Artifact, type Operation } from "./vibe";
 import {
   newExportJob,
@@ -23,6 +23,15 @@ export function useVibeExport(
   if (owner.current.actor !== actor || owner.current.session !== session?.id)
     owner.current = { actor, session: session?.id };
   const generation = useRef(0);
+  const live = useRef(false);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+      owner.current = { ...owner.current };
+      generation.current++;
+    };
+  }, []);
   const [state, setState] = useState<{
     owner: object;
     job?: ExportJob;
@@ -42,10 +51,11 @@ export function useVibeExport(
     operation?: Operation,
     scope: "selected" | "history" = "selected",
   ) {
-    if (!session) return;
+    if (!live.current || !session) return;
     const captured = owner.current,
       attempt = ++generation.current;
-    const current = () => captured === owner.current && attempt === generation.current;
+    const current = () =>
+      live.current && captured === owner.current && attempt === generation.current;
     const intent = structuredClone({ artifact, operation });
     setState({ owner: captured, busy: true, error: "", open: true, intent });
     try {
@@ -113,11 +123,12 @@ export function useVibeExport(
     );
   }
   async function retry() {
-    if (!active?.job || active.busy) return;
+    if (!live.current || !active?.job || active.busy) return;
     const captured = owner.current,
       attempt = generation.current,
       job = active.job;
-    const current = () => captured === owner.current && attempt === generation.current;
+    const current = () =>
+      live.current && captured === owner.current && attempt === generation.current;
     setState((old) => (old ? { ...old, busy: true } : old));
     try {
       const auth = await token();
@@ -133,6 +144,7 @@ export function useVibeExport(
   }
   function download(partial = false) {
     if (
+      !live.current ||
       !active?.job ||
       active.busy ||
       active.owner !== owner.current ||
@@ -145,19 +157,19 @@ export function useVibeExport(
     );
   }
   async function original(artifact: Artifact) {
-    if (!session || !artifact.original) return;
+    if (!live.current || !session || !artifact.original) return;
     const captured = owner.current;
     try {
       const auth = await token();
-      if (captured !== owner.current) return;
+      if (!live.current || captured !== owner.current) return;
       const bytes = await vibeBytes(
         `/sessions/${session.id}/artifacts/${artifact.id}/original`,
         auth,
       );
-      if (captured !== owner.current) return;
+      if (!live.current || captured !== owner.current) return;
       downloadBytes(artifact.original.filename, bytes, artifact.original.media_type);
     } catch (e) {
-      if (captured === owner.current)
+      if (live.current && captured === owner.current)
         setState({ owner: captured, open: true, busy: false, error: (e as Error).message });
     }
   }

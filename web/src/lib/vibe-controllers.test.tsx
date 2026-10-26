@@ -150,13 +150,30 @@ it("rejects a late private export body after actor A to B to A and pins the orig
   const click=vi.spyOn(HTMLAnchorElement.prototype,"click").mockImplementation(()=>{});obsoleteDownload();expect(click).not.toHaveBeenCalled();
 });
 
-it("does not download retained original bytes when its actor changes during the fetch",async()=>{
+it.each(["actor change", "unmount"])("does not download retained original bytes after %s during the fetch",async(lifetime)=>{
  const {useVibeExport}=await import('./use-vibe-export');let actor='A';let c!:ReturnType<typeof useVibeExport>;
  const body=deferred<Uint8Array>();network.bytes.mockReturnValue(body.promise);
  const artifact={id:'version',original:{filename:'exact.json',media_type:'application/json'}} as Session['document']['artifacts'][number];
  function Harness(){c=useVibeExport(actor,snapshot(),token);return null}
  await act(async()=>root.render(<Harness/>));let pending!:Promise<void>;await act(async()=>{pending=c.original(artifact);await Promise.resolve()});
- actor='B';await act(async()=>root.render(<Harness/>));
+ if(lifetime==='unmount')await act(async()=>root.render(null));else {actor='B';await act(async()=>root.render(<Harness/>));}
+ vi.stubGlobal('URL',Object.assign(URL,{createObjectURL:vi.fn(()=>'blob:original'),revokeObjectURL:vi.fn()}));
  const click=vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{});
  await act(async()=>{body.resolve(new Uint8Array([0xef,0xbb,0xbf,123,125]));await pending});expect(click).not.toHaveBeenCalled();expect(c.state).toBeUndefined();
+});
+
+it("invalidates captured explicit export downloads when the owner unmounts",async()=>{
+ const {useVibeExport}=await import("./use-vibe-export");
+ const artifact={id:"version",kind:"test_suite"} as Session["document"]["artifacts"][number];
+ network.get.mockResolvedValue({format:"agentclash-evaluation-v2",session_id:"A",title:"Frozen",captured_at:"now",artifact_id:artifact.id,selection:{scope:"selected",artifact_id:artifact.id},artifacts:[artifact],rules:[],runs:[],items:[],case_mappings:[],omissions:[]});
+ vi.stubGlobal("URL",Object.assign(URL,{createObjectURL:vi.fn(()=>"blob:export"),revokeObjectURL:vi.fn()}));
+ const click=vi.spyOn(HTMLAnchorElement.prototype,"click").mockImplementation(()=>{});
+ let c!:ReturnType<typeof useVibeExport>;
+ function Harness(){c=useVibeExport("actor",snapshot(),token);return null}
+ await act(async()=>root.render(<React.StrictMode><Harness/></React.StrictMode>));
+ await act(async()=>c.start(artifact));
+ c.download();expect(click).toHaveBeenCalledOnce();click.mockClear();
+ const captured=c.download;
+ await act(async()=>root.render(null));
+ captured();expect(click).not.toHaveBeenCalled();
 });

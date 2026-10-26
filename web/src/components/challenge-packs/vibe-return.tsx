@@ -1,5 +1,5 @@
 "use client";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAccessToken, useAuth } from "@workos-inc/authkit-nextjs/components";
 import { safeVibeReturn } from "@/lib/vibe-keep";
 import { vibeBytes, vibeFetch } from "@/lib/vibe";
@@ -16,29 +16,39 @@ export function VibeReturn({
   const owner = useRef({ user: user?.id, draft });
   if (owner.current.user !== user?.id || owner.current.draft !== draft)
     owner.current = { user: user?.id, draft };
+  const live = useRef(false);
+  useEffect(() => {
+    live.current = true;
+    return () => {
+      live.current = false;
+      owner.current = { ...owner.current };
+    };
+  }, []);
   const [state, setState] = useState<{ owner: object; error: string; busy: boolean }>();
   const active = state?.owner === owner.current ? state : undefined;
   const busy = !!active?.busy,
     error = active?.error;
   async function original() {
+    if (!live.current) return;
     const captured = owner.current;
     setState({ owner: captured, busy: true, error: "" });
     try {
       const auth = await getAccessToken();
-      if (captured !== owner.current || !auth) return;
+      if (!live.current || captured !== owner.current || !auth) return;
       const metadata = await vibeFetch<{ filename: string; media_type: string }>(
         `/saved-originals/${draft}?metadata=1`,
         auth,
       );
-      if (captured !== owner.current) return;
+      if (!live.current || captured !== owner.current) return;
       const bytes = await vibeBytes(`/saved-originals/${draft}`, auth);
-      if (captured !== owner.current) return;
+      if (!live.current || captured !== owner.current) return;
       downloadBytes(metadata.filename, bytes, metadata.media_type);
     } catch (e) {
-      if (captured === owner.current)
+      if (live.current && captured === owner.current)
         setState({ owner: captured, busy: false, error: (e as Error).message });
     } finally {
-      if (captured === owner.current) setState((old) => (old ? { ...old, busy: false } : old));
+      if (live.current && captured === owner.current)
+        setState((old) => (old ? { ...old, busy: false } : old));
     }
   }
   if (!safe) return null;

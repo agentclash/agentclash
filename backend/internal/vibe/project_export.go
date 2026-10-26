@@ -89,6 +89,10 @@ func (s *Store) PrepareExport(ctx context.Context, actor string, id uuid.UUID, i
 		return out, fault("not_found", "The chosen version is unavailable.")
 	}
 	for _, p := range v.Document.Policies {
+		if in.Scope == "history" {
+			out.Rules = append(out.Rules, p)
+			continue
+		}
 		for _, a := range out.Artifacts {
 			if a.PolicyID != nil && *a.PolicyID == p.ID {
 				out.Rules = append(out.Rules, p)
