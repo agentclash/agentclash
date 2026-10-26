@@ -7,15 +7,16 @@ import { WEB_EVENTS } from "./analytics/events";
 import { captureBuildEvent } from "./vibe-build-analytics";
 import { vibeFetch } from "./vibe";
 
-type Selection = { material: TaskMaterial; acknowledged: boolean; usage: "task_input" | "reference" | "rules"; page: number; quote: string };
+type Selection = { material: TaskMaterial; acknowledged: boolean; usage: "task_input" | "reference" | "rules"; page: number; quote: string; readError?: string; waitingSince?: number };
 type Draft = { items: Selection[]; busy: boolean; error: string };
 const empty: Draft = { items: [], busy: false, error: "" };
 
 // This hook owns attachment UI only. Paid submissions still belong to the
 // existing Vibe client. Every asynchronous write captures its original scope.
-export function useVibeInputs(session: string, scope: string, token: () => Promise<string | null | undefined>) {
+export function useVibeInputs(session: string, scope: string, token: () => Promise<string | null | undefined>, actor = "guest") {
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
-  const key = `${session}:${scope}`;
+  const project = actor === "guest" ? session : `${actor}:${session}`;
+  const key = `${project}:${scope}`;
   const current = drafts[key] || empty;
   const pending = useRef(new Map<string, { id: string; value: File | string }>());
   const inFlight = useRef(new Set<string>());
@@ -33,7 +34,12 @@ export function useVibeInputs(session: string, scope: string, token: () => Promi
     if (!selected.length) return;
     restoring.current.add(key);
     update(key, old => ({ ...old, busy: true }));
-    void token().then(auth => Promise.all(selected.map(async x => ({ ...x, material: await vibeFetch<TaskMaterial>(inputPath(session, x.id), auth) })))).then(items => { restoring.current.delete(key); update(key, old => ({ ...old, ...selectMaterials(old.items, edited.current.has(key) ? [] : items), busy: inFlight.current.has(key) })); }).catch(() => { restoring.current.delete(key); update(key, old => ({ ...old, busy: false, error: "Saved material could not be restored. Open Saved material to choose it again." })); });
+    void token().then(auth => Promise.allSettled(selected.map(async x => ({ ...x, material: await vibeFetch<TaskMaterial>(inputPath(session, x.id), auth) })))).then(results => {
+      restoring.current.delete(key);
+      const items = results.flatMap(result => result.status === "fulfilled" ? [result.value] : []);
+      const missing = results.flatMap((result, index) => result.status === "rejected" ? [selected[index].id] : []);
+      update(key, old => ({ ...old, ...selectMaterials(old.items, edited.current.has(key) ? [] : items), busy: inFlight.current.has(key), error: missing.length ? `Could not restore ${missing.join(", ")}. Open Saved material to choose it again.` : "" }));
+    }).catch(() => { restoring.current.delete(key); update(key, old => ({ ...old, busy: false, error: "Saved material could not be restored. Open Saved material to choose it again." })); });
   }, [key, session, token]);
   useEffect(() => {
     if (!session || !restored.current.has(key) || restoring.current.has(key) || current.busy) return;
@@ -50,14 +56,22 @@ export function useVibeInputs(session: string, scope: string, token: () => Promi
     async function poll() {
       try {
         const auth = await token();
-        const values = await Promise.all(current.items.map(async x => x.material.status === "uploaded" || x.material.status === "extracting" ? { ...x, material: await vibeFetch<TaskMaterial>(inputPath(session, x.material.id), auth) } : x));
-        if (live) update(key, old => ({ ...old, items: old.items.map(x => ({ ...x, material: values.find(v => v.material.id === x.material.id)?.material || x.material })), error: "" }));
+        const values = await Promise.all(current.items.map(async x => {
+          if (x.material.status !== "uploaded" && x.material.status !== "extracting") return x;
+          try { return { ...x, material: await vibeFetch<TaskMaterial>(inputPath(session, x.material.id), auth), readError: undefined, waitingSince: x.waitingSince || Date.now() }; }
+          catch { return { ...x, waitingSince: x.waitingSince || Date.now(), readError: "Reading status is unavailable. Check again or replace this source." }; }
+        }));
+        if (live) update(key, old => ({ ...old, items: old.items.map(x => { const value = values.find(v => v.material.id === x.material.id); return value ? { ...x, material: value.material, readError: value.readError, waitingSince: value.waitingSince } : x; }) }));
       } catch { if (live) update(key, old => ({ ...old, error: "Reading status is unavailable. We’ll reconnect; your file is saved." })); }
       if (live) timer = setTimeout(poll, 2000);
     }
     timer = setTimeout(poll, 1000);
     return () => { live = false; clearTimeout(timer); };
   }, [reading, session, key, current.items, token]);
+  async function refresh(id: string) {
+    try { const material = await vibeFetch<TaskMaterial>(inputPath(session, id), await token()); update(key, old => ({ ...old, items: old.items.map(x => x.material.id === id ? { ...x, material, readError: undefined } : x) })); }
+    catch { update(key, old => ({ ...old, items: old.items.map(x => x.material.id === id ? { ...x, readError: "Could not check this source. Detach it and paste the text instead." } : x) })); }
+  }
   async function add(value?: File | string) {
     if (!session || inFlight.current.has(key)) return;
     if (value instanceof File && value.size > 10_000_000) { update(key, old => ({ ...old, error: "Choose a PDF no larger than 10 MB." })); return; }
@@ -79,7 +93,8 @@ export function useVibeInputs(session: string, scope: string, token: () => Promi
     try {
       if (erase) await vibeFetch(inputPath(session, id), await token(), { method: "DELETE" });
       update(key, old => ({ ...old, items: old.items.filter(x => x.material.id !== id) }));
-    } catch (e) { update(key, old => ({ ...old, error: (e as Error).message })); }
+      return true;
+    } catch (e) { update(key, old => ({ ...old, error: (e as Error).message })); return false; }
   }
   async function attach(id: string) {
     if (!session || inFlight.current.has(key)) return;
@@ -91,7 +106,7 @@ export function useVibeInputs(session: string, scope: string, token: () => Promi
     } catch (e) { update(key, old => ({ ...old, error: (e as Error).message })); }
     finally { inFlight.current.delete(key); update(key, old => ({ ...old, busy: restoring.current.has(key) })); }
   }
-  return { projectID: session, recipient: scope, draftKey: key, ...current, canRetry: pending.current.has(key), bindings, adoptions, add, remove, attach, retry: () => add(),
+  return { projectID: project, recipient: scope, draftKey: key, ...current, canRetry: pending.current.has(key), refresh, bindings, adoptions, add, remove, attach, retry: () => add(),
     list: async () => vibeFetch<TaskMaterial[]>(inputPath(session), await token()),
     configure: (id: string, change: Partial<Pick<Selection, "usage" | "page" | "quote">>) => { edited.current.add(key); update(key, old => ({ ...old, items: old.items.map(x => x.material.id === id ? { ...x, ...change } : x) })); },
     blocked: current.busy || reading || current.items.some(x => x.material.status !== "ready" || x.material.warnings.length > 0 && !x.acknowledged || x.usage === "rules" && (!x.quote.trim() || !x.material.pages?.find(p => p.number === x.page)?.text.includes(x.quote))),

@@ -5,14 +5,15 @@ import { useSearchParams } from "next/navigation";
 
 export type VibePane = "agent" | "tests" | "results";
 export type LegacyVibePane = "build" | "try" | "checks" | "tests";
-type Selection = { session?: string; view: VibePane; utility?: "trial"; artifact: string | null; thread: string; run?: string; case?: string };
+type Selection = { session?: string; view: VibePane; section?: "trial"; artifact: string | null; thread: string; run?: string; case?: string };
 type Patch = Omit<Partial<Selection>, "view"> & { view?: VibePane | LegacyVibePane };
 function read(params: URLSearchParams): Selection {
   const view = params.get("view");
-  return { session: params.get("session") || undefined, view: view === "checks" || view === "results" ? "results" : view === "tests" ? "tests" : "agent", utility: view === "try" || params.get("utility") === "trial" ? "trial" : undefined, artifact: params.get("agent"), thread: params.get("thread") || "", run: params.get("run") || undefined, case: params.get("case") || undefined };
+  return { session: params.get("session") || undefined, view: view === "checks" || view === "results" ? "results" : view === "tests" ? "tests" : "agent", section: view === "try" || (params.get("section") === "trial" || params.get("utility") === "trial") ? "trial" : undefined, artifact: params.get("agent"), thread: params.get("thread") || "", run: params.get("run") || undefined, case: params.get("case") || undefined };
 }
 function serialize(url: URL, next: Selection) {
-  for (const [key, value] of Object.entries({ session: next.session, view: next.view, agent: next.artifact, thread: next.thread, run: next.run, case: next.case, utility: next.utility }))
+  url.searchParams.delete("utility");
+  for (const [key, value] of Object.entries({ session: next.session, view: next.view, agent: next.artifact, thread: next.thread, run: next.run, case: next.case, section: next.section }))
     value ? url.searchParams.set(key, value) : url.searchParams.delete(key);
   return url;
 }
@@ -33,12 +34,12 @@ export function useVibeNavigation() {
   const update = useCallback((patch: Patch, mode: "push" | "replace" = "push") => {
     const view = patch.view;
     const next: Selection = { ...current.current, ...patch, view: view === "build" || view === "try" ? "agent" : view === "checks" ? "results" : view || current.current.view,
-      ...(view === "try" ? { utility: "trial" as const } : Object.hasOwn(patch, "utility") ? { utility: patch.utility } : view === "build" || view === "agent" ? { utility: undefined } : {}) };
+      ...(view === "try" ? { section: "trial" as const } : Object.hasOwn(patch, "section") ? { section: patch.section } : view === "build" || view === "agent" ? { section: undefined } : {}) };
     writeURL(serialize(new URL(window.location.href), next), mode);
   }, [writeURL]);
   const selectSession = useCallback((session: string) => {
     if (current.current.session) remembered.current.set(current.current.session, current.current);
-    const next = remembered.current.get(session) || { session, view: "agent" as const, artifact: null, thread: "", run: undefined, case: undefined, utility: undefined };
+    const next = remembered.current.get(session) || { session, view: "agent" as const, artifact: null, thread: "", run: undefined, case: undefined, section: undefined };
     update(next);
     return next;
   }, [update]);
@@ -51,6 +52,6 @@ export function useVibeNavigation() {
     return () => window.removeEventListener("popstate", restore);
   }, [writeURL]);
   // The old renderer is a projection, never a second writable pane store.
-  const legacyView: LegacyVibePane = selection.utility === "trial" && selection.view === "agent" ? "try" : selection.view === "results" ? "checks" : selection.view === "tests" ? "tests" : "build";
+  const legacyView: LegacyVibePane = selection.section === "trial" && selection.view === "agent" ? "try" : selection.view === "results" ? "checks" : selection.view === "tests" ? "tests" : "build";
   return { ...selection, legacyView, update, writeURL, selectSession, current };
 }

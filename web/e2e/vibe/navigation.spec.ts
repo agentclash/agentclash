@@ -106,7 +106,7 @@ test("a stored trial in B survives opening A, switching, editing and refreshing"
   await expect(trial).toHaveValue("B's edited unsent trial");
   await page.reload();
   await expect(trial).toHaveValue("B's edited unsent trial");
-  await page.getByRole("button", { name: "Back to Vibe Evals" }).click();
+  await page.getByRole("tab", { name: "Agent", exact: true }).click();
   await expect(composer).toHaveValue("B's separate guide draft");
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
@@ -256,6 +256,7 @@ test("dismissing the extra-run quote restores focus without submitting a paid ru
   const control = await serve(page);
   control.sessions.set("build", buildEvaluation());
   await page.goto("/vibe-evals?session=build");
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
   const actions = page.getByRole("region", { name: "Next actions for this version" });
   await expect(actions).toBeVisible();
   await actions.locator("summary").filter({ hasText: "More ways to check" }).click();
@@ -267,7 +268,7 @@ test("dismissing the extra-run quote restores focus without submitting a paid ru
   expect(control.posts.map(post => post.path)).toEqual(["/v1/vibe/sessions/build/build-quote"]);
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
-  await expect(page.getByRole("textbox", { name: "Message Vibe Evals" })).toBeFocused();
+  await expect(actions.getByRole("button", { name: "See cost and continue" })).toBeFocused();
   expect(control.posts.map(post => post.path)).toEqual(["/v1/vibe/sessions/build/build-quote"]);
   expect(control.errors).toEqual([]);
 });
@@ -279,7 +280,7 @@ test("long evaluation titles scroll inside the sidebar and saved work stays acce
   await expect(list.locator("[data-evaluation-id]")).toHaveCount(32);
   expect(await list.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
   const title = list.locator(".vibe-sidebar-item-copy > span").last();
-  expect(await title.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+  expect(await title.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   await list.locator("button").last().scrollIntoViewIfNeeded();
   await expect(page.getByRole("button", { name: "Saved work", exact: true })).toBeInViewport();
   await page.screenshot({ path: info.outputPath("sidebar-history.png") });
@@ -333,4 +334,110 @@ test("same-artifact case Back and Forward restores the visible expectation witho
   await page.goForward(); await expect(expectation).toHaveCount(0);
   await page.goForward(); await expect(expectation).toHaveValue("Label as Billing.");
   expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
+});
+
+test("workspace geometry, scoped portal appearance and reading focus adapt at every specified boundary", async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  const control = await serve(page, false, true);
+  const report: unknown[] = [];
+  for (const width of [390, 600, 601, 1023, 1024, 1279, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    // Resize preserves the utility value; close the sheet to inspect main content.
+    const close = page.getByRole("button", { name: "Close Guide", exact: true });
+    if (width < 1280 && await close.isVisible()) await close.click();
+    await page.getByRole("button", { name: "Details", exact: true }).click();
+    const appearance = page.getByLabel("Appearance", { exact: true });
+    await appearance.selectOption("light");
+    const geometry = await page.evaluate(() => {
+      const sidebar = document.querySelector<HTMLElement>(".vibe-sidebar")!;
+      const utility = document.querySelector<HTMLElement>('[data-slot="sheet-content"], .vibe-utility')!;
+      const popup = getComputedStyle(utility);
+      const backdrop = document.querySelector<HTMLElement>('[data-slot="sheet-overlay"]');
+      return { width: innerWidth, sidebar: getComputedStyle(sidebar).display === "none" ? 0 : sidebar.getBoundingClientRect().width, utility: utility.getBoundingClientRect().width, height: utility.getBoundingClientRect().height, background: popup.backgroundColor, color: popup.color, transition: popup.transitionDuration, backdropMotion: backdrop ? getComputedStyle(backdrop).transitionDuration : null, overflow: document.documentElement.scrollWidth > innerWidth, globalTheme: document.documentElement.classList.contains("dark") };
+    });
+    expect(geometry.sidebar).toBe(width >= 1024 ? 252 : 0);
+    expect(geometry.utility).toBe(width >= 1280 ? 352 : width <= 600 ? width : 480);
+    if (width <= 600) expect(geometry.height).toBe(900);
+    expect(geometry.background).toBe("rgb(255, 255, 255)"); expect(geometry.color).toBe("rgb(37, 36, 31)");
+    expect(geometry.transition).toBe("0s"); if (width < 1280) expect(geometry.backdropMotion).toBe("0s");
+    expect(geometry.overflow).toBe(false); expect(geometry.globalTheme).toBe(true);
+    await appearance.selectOption("dark");
+    const utility = page.locator(width >= 1280 ? ".vibe-utility" : '[data-slot="sheet-content"]');
+    await expect(utility).toHaveCSS("background-color", "rgb(25, 25, 22)");
+    await appearance.selectOption("system");
+    await expect(utility).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    report.push(geometry);
+    await page.getByRole("button", { name: "Close Details", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Details", exact: true })).toBeFocused();
+    await page.screenshot({ path: info.outputPath(`workspace-${width}.png`) });
+  }
+  await page.getByRole("button", { name: "Guide", exact: true }).click();
+  await page.getByRole("button", { name: "New response", exact: true }).click();
+  await expect(page.getByLabel("Guide response", { exact: true })).toBeFocused();
+  await page.getByRole("tab", { name: "Tests", exact: true }).click();
+  await page.locator(".vibe-result-row summary").click();
+  await page.getByRole("button", { name: "Ask Guide about this test", exact: true }).click();
+  await expect(page.getByLabel("Guide reference", { exact: true })).toContainText("You won a prize.");
+  await expect(page.getByRole("textbox", { name: "Message Vibe Evals" })).toBeFocused();
+  expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
+  await info.attach("computed-workspace-matrix", { body: JSON.stringify(report, null, 2), contentType: "application/json" });
+});
+
+
+test("remaining 320 and 768 layouts retain contrast, scaled text and utility focus", async ({ page }, info) => {
+  await page.setViewportSize({width:320,height:900});
+  await page.emulateMedia({colorScheme:"dark",reducedMotion:"reduce"});
+  const control=await serve(page,false,true);
+  const report:unknown[]=[];
+  for(const width of [320,768]) {
+    await page.setViewportSize({width,height:900});
+    await page.getByRole("button",{name:"Details",exact:true}).click();
+    const popup=page.locator('[data-slot="sheet-content"]');
+    const appearance=page.getByLabel("Appearance",{exact:true});
+    await appearance.selectOption("system");
+    await expect(popup).toHaveCSS("background-color","rgb(25, 25, 22)");
+    await expect(popup).toHaveCSS("color","rgb(238, 236, 229)");
+    await appearance.selectOption("light");
+    await expect(popup).toHaveCSS("background-color","rgb(255, 255, 255)");
+    const geometry=await popup.evaluate(el=>({width:el.getBoundingClientRect().width,height:el.getBoundingClientRect().height,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color,transition:getComputedStyle(el).transitionDuration,overflow:document.documentElement.scrollWidth>innerWidth}));
+    expect(geometry.width).toBe(width<=600?width:480); expect(geometry.height).toBe(900); expect(geometry.overflow).toBe(false); expect(geometry.transition).toBe("0s");
+    report.push({viewport:width,...geometry});
+    await page.screenshot({path:info.outputPath(`utility-${width}-light.png`)});
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button",{name:"Details",exact:true})).toBeFocused();
+    await page.screenshot({path:info.outputPath(`workspace-${width}.png`)});
+  }
+  // Text-only enlargement doubles each element's computed font size; this is
+  // deterministic Linux coverage, not a claim about Safari or physical zoom.
+  await page.setViewportSize({width:768,height:900});
+  await page.evaluate(()=> { const elements=[...document.querySelectorAll<HTMLElement>(".vibe-workspace *")]; const sizes=elements.map(el=>parseFloat(getComputedStyle(el).fontSize)); elements.forEach((el,i)=>{el.style.fontSize=`${sizes[i]*2}px`;}); });
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:info.outputPath("workspace-200-percent-text.png")});
+  await page.emulateMedia({forcedColors:"active"});
+  await page.getByRole("button",{name:"Details",exact:true}).click();
+  const forced=await page.locator('[data-slot="sheet-content"]').evaluate(el=>({forced:matchMedia("(forced-colors: active)").matches,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));
+  expect(forced.forced).toBe(true); expect(forced.background).not.toBe(forced.color);
+  await page.keyboard.press("Escape"); await expect(page.getByRole("button",{name:"Details",exact:true})).toBeFocused();
+  await page.screenshot({path:info.outputPath("workspace-forced-colors.png")});
+  expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
+  await info.attach("remaining-layout-inspection",{body:JSON.stringify({report,forced,textMethod:"2x computed font size at768px"},null,2),contentType:"application/json"});
+});
+
+
+test("an explicit pre-run Guide reference submits only its identity and the user's question", async ({page}) => {
+ const control=await serve(page,false,true);
+ await page.getByRole("tab",{name:"Tests",exact:true}).click();
+ await page.locator(".vibe-result-row summary").click();
+ await page.getByRole("button",{name:"Ask Guide about this test",exact:true}).click();
+ expect(control.posts).toHaveLength(0);
+ await page.getByRole("textbox",{name:"Message Vibe Evals"}).fill("Explain this example.");
+ await page.getByRole("button",{name:"Send message",exact:true}).click();
+ await expect.poll(()=>control.posts.length).toBe(1);
+ expect(control.posts[0].body).toMatchObject({kind:"message",content:"Explain this example.",artifact_id:"prototype",viewed_case_key:"spam"});
+ expect(control.posts[0].body).not.toHaveProperty("baseline_id");
+ expect(JSON.stringify(control.posts[0].body)).not.toContain("Label as Spam.");
+ // The fake boundary rejects inference; request construction is the owner here.
+ await expect(page.getByRole("alert").filter({hasText:"Unexpected mutation in navigation test"}).first()).toBeVisible();
+ expect(control.errors).toEqual([]);
 });

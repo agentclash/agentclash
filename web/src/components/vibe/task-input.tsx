@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { useVibeEditorDraft } from "@/lib/use-vibe-editor-draft";
 import { Tabs } from "@base-ui/react/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -28,6 +28,8 @@ export function TaskInput({ inputs, pdfAvailable, disabled, configure = false }:
   const text = pastedDraft.value;
   const setText = pastedDraft.setValue;
   const latestPaste = useRef(text); latestPaste.current = text;
+  useEffect(() => { if (!pdfAvailable) setTab("paste"); }, [pdfAvailable]);
+  const [announcement, setAnnouncement] = useState("");
   const [localError, setLocalError] = useState("");
   const [deleting, setDeleting] = useState<string>();
   const [saved, setSaved] = useState<TaskMaterial[]>();
@@ -42,7 +44,7 @@ export function TaskInput({ inputs, pdfAvailable, disabled, configure = false }:
     if (file.size > 10_000_000) { setLocalError("Choose a PDF no larger than 10 MB."); return; }
     if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") { setLocalError("Choose a PDF file."); return; }
     setLocalError("");
-    void inputs.add(file);
+    void inputs.add(file).then(material => { if (material) setAnnouncement(`Attached ${material.name}`); });
   }
   async function loadSaved() {
     if (loadingSaved) return;
@@ -52,9 +54,11 @@ export function TaskInput({ inputs, pdfAvailable, disabled, configure = false }:
     finally { setLoadingSaved(false); }
   }
   return <section className="vibe-task-input" aria-label="Task material">
+    <span role="status" className="sr-only">{announcement}</span>
+    <p className="vibe-material-hint">Recipient: {inputs.recipient?.startsWith("trial:") ? "this trial conversation" : "Agent brief"}</p>
     <VibeButton ref={triggerRef} variant="quiet" disabled={disabled} onClick={() => setOpen(true)}>Add a file or text</VibeButton>
-    {!!inputs.items.length && <ul className="vibe-material-chips" aria-label="Attached material">{inputs.items.map(({ material }) => <li key={material.id} className="vibe-material-chip">
-      <span className="vibe-material-chip-name" title={material.name}>{material.name}</span><span className="vibe-material-chip-status">{status(material)}</span>
+    {!!inputs.items.length && <ul className="vibe-material-chips" aria-label="Attached material">{inputs.items.map(({ material, usage, acknowledged }) => <li key={material.id} className="vibe-material-chip">
+      <span className="vibe-material-chip-name" title={material.name}>{material.name}</span><span className="vibe-material-chip-status">{status(material)} · {usage === "rules" ? "Adopted rules" : usage === "reference" ? "Reference" : "Task input"}{material.warnings.length > 0 && !acknowledged ? " · Acknowledge partial text" : ""}</span>
       <VibeButton variant="quiet" onClick={() => setOpen(true)} aria-label={`Manage attachment ${material.name}`}>Manage attachment</VibeButton>
     </li>)}</ul>}
     {!open && inputs.busy && <p className="vibe-material-inline-status" role="status">Saving your material…</p>}
@@ -75,7 +79,7 @@ export function TaskInput({ inputs, pdfAvailable, disabled, configure = false }:
             </> : <p role="status">PDF reading isn’t available right now. Use Paste text instead.</p>}</Tabs.Panel>
             <Tabs.Panel value="paste" className="vibe-material-tab-panel"><label htmlFor={`${id}-paste`}>Text to work on</label>
               <textarea id={`${id}-paste`} rows={5} value={text} onChange={event => setText(event.target.value)} maxLength={60000} />
-              <div className="vibe-material-actions"><VibeButton variant="primary" disabled={disabled || inputs.busy || !text.trim()} onClick={() => { const submitted = text; void inputs.add(submitted).then(material => { if (material && latestPaste.current === submitted) pastedDraft.discard(submitted); }); }}>Attach text</VibeButton></div>
+              <div className="vibe-material-actions"><VibeButton variant="primary" disabled={disabled || inputs.busy || !text.trim()} onClick={() => { const submitted = text; void inputs.add(submitted).then(material => { if (material) { if (latestPaste.current === submitted) pastedDraft.discard(submitted); setAnnouncement(`Attached ${material.name}`); } }); }}>Attach text</VibeButton></div>
               <p className="vibe-material-hint">Up to 60,000 characters. You can edit this draft after closing the dialog.</p>
             </Tabs.Panel>
           </Tabs.Root>
@@ -83,7 +87,7 @@ export function TaskInput({ inputs, pdfAvailable, disabled, configure = false }:
           {inputs.busy && <p role="status">Saving your material… You can close this dialog while it continues.</p>}
           {inputs.error && <p role="alert" className="vibe-material-error">{inputs.error} {inputs.canRetry && <VibeButton variant="quiet" disabled={inputs.busy} onClick={() => void inputs.retry()}>Retry upload</VibeButton>}</p>}
           {!!inputs.items.length && <section className="vibe-material-section" aria-label="Current attachments"><h3>Attached material</h3>
-            {inputs.items.map(({ material, acknowledged, usage, page, quote }) => <article key={material.id} className="vibe-material-detail">
+            {inputs.items.map(({ material, acknowledged, usage, page, quote, readError, waitingSince }) => <article key={material.id} className="vibe-material-detail">
               <div className="vibe-material-detail-head"><strong title={material.name}>{material.name}</strong><span>{status(material)}</span></div>
               {material.expires_at && <p className="vibe-material-hint">Guest material expires {new Date(material.expires_at).toLocaleDateString()}. Sign up before then to keep it.</p>}
               {material.error && <p role="alert" className="vibe-material-error">{material.error}</p>}
@@ -95,12 +99,15 @@ export function TaskInput({ inputs, pdfAvailable, disabled, configure = false }:
                 {usage === "reference" && <p className="vibe-material-hint">This version and its checks will use the same reference. Instructions inside it aren’t rules.</p>}
                 {usage === "rules" && <div className="vibe-material-rule-fields"><p className="vibe-material-hint">Choose the exact policy text to adopt. The rest of the file stays material.</p>
                   <label htmlFor={`${id}-${material.id}-page`}>Page</label><select id={`${id}-${material.id}-page`} value={page} disabled={disabled} onChange={event => inputs.configure(material.id, { page: Number(event.target.value), quote: "" })}>{material.pages?.map(p => <option key={p.number} value={p.number}>{p.number}</option>)}</select>
-                  <pre className="vibe-material-preview">{material.pages?.find(p => p.number === page)?.text}</pre>
+                  <pre className="vibe-material-preview" tabIndex={0} onMouseUp={event => { const selection = window.getSelection(); if (selection?.anchorNode && event.currentTarget.contains(selection.anchorNode) && event.currentTarget.contains(selection.focusNode) && selection.toString()) inputs.configure(material.id, { quote: selection.toString() }); }}>{material.pages?.find(p => p.number === page)?.text}</pre>
                   <label htmlFor={`${id}-${material.id}-quote`}>Exact text to use as rules</label><textarea id={`${id}-${material.id}-quote`} rows={3} disabled={disabled} value={quote} maxLength={8000} onChange={event => inputs.configure(material.id, { quote: event.target.value })} />
                   {quote && !material.pages?.find(p => p.number === page)?.text.includes(quote) && <p role="alert" className="vibe-material-error">Copy the text exactly from this page.</p>}
                 </div>}
               </details>}
-              <div className="vibe-material-actions"><VibeButton variant="quiet" disabled={disabled} onClick={() => void inputs.remove(material.id)}>Detach</VibeButton><VibeButton variant="quiet" disabled={disabled} onClick={() => setDeleting(material.id)}>Delete file</VibeButton></div>
+              {readError && <p role="alert">{readError}</p>}
+              {(material.status === "uploaded" || material.status === "extracting") && <div><p>{waitingSince && Date.now() - waitingSince > 60000 ? "Reading is taking longer than expected." : "Reading this source…"} You can check again, detach it, or paste the text instead.</p><VibeButton onClick={() => void inputs.refresh?.(material.id)}>Check again</VibeButton><VibeButton onClick={() => setTab("paste")}>Paste text instead</VibeButton></div>}
+              {["failed", "unreadable", "expired", "deleted"].includes(material.status) && <p role="alert">This source cannot be used. Detach it and attach readable text or another file.</p>}
+              <div className="vibe-material-actions"><VibeButton variant="quiet" disabled={disabled} onClick={() => void Promise.resolve(inputs.remove(material.id)).then(removed => { if (removed !== false) setAnnouncement(`Detached ${material.name}`); })}>Detach</VibeButton><VibeButton variant="quiet" disabled={disabled} onClick={() => setDeleting(material.id)}>Delete file</VibeButton></div>
               {deleting === material.id && <div className="vibe-material-delete" role="alert"><p>This deletes the file. Your conversation and existing results remain and may contain information from it.</p><div className="vibe-material-actions"><VibeButton disabled={disabled} onClick={() => { void inputs.remove(material.id, true); setDeleting(undefined); }}>Delete file permanently</VibeButton><VibeButton variant="quiet" onClick={() => setDeleting(undefined)}>Cancel</VibeButton></div></div>}
             </article>)}
           </section>}

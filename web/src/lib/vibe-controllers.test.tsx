@@ -74,7 +74,7 @@ it("keeps result B in the URL on refresh and restores pane/thread on browser nav
  await act(async()=>root.unmount());root=createRoot(element);
  await act(async()=>root.render(<Harness/>));expect(navigation.run).toBe("result-B");
  await act(async()=>{window.history.replaceState(null,"","/vibe-evals?session=A&view=try&agent=v1&thread=old");window.dispatchEvent(new PopStateEvent("popstate"))});
- expect(navigation.view).toBe("agent");expect(navigation.utility).toBe("trial");expect(navigation.thread).toBe("old");expect(navigation.run).toBeUndefined();
+ expect(navigation.view).toBe("agent");expect(navigation.section).toBe("trial");expect(navigation.thread).toBe("old");expect(navigation.run).toBeUndefined();
 });
 
 it("rejects same-project late GET, SSE and captured mutation/action ingress from the prior actor", async () => {
@@ -101,7 +101,7 @@ it("canonicalizes legacy trial links and pushes deliberate navigation while corr
   let nav!: ReturnType<typeof useVibeNavigation>;
   function Harness() { nav = useVibeNavigation(); return null; }
   await act(async () => root.render(<Harness />));
-  expect(nav.view).toBe("agent"); expect(nav.utility).toBe("trial");
+  expect(nav.view).toBe("agent"); expect(nav.section).toBe("trial");
   expect(new URLSearchParams(location.search).get("view")).toBe("agent");
   const push = vi.spyOn(history, "pushState"); const replace = vi.spyOn(history, "replaceState");
   await act(async () => nav.update({ view: "tests", case: "case-one" }));
@@ -109,7 +109,7 @@ it("canonicalizes legacy trial links and pushes deliberate navigation while corr
   await act(async () => nav.update({ case: undefined }, "replace"));
   expect(replace).toHaveBeenCalledTimes(1);
   await act(async () => { history.back(); await new Promise(resolve => setTimeout(resolve, 30)); });
-  expect(nav.view).toBe("agent"); expect(nav.utility).toBe("trial"); expect(nav.thread).toBe("t");
+  expect(nav.view).toBe("agent"); expect(nav.section).toBe("trial"); expect(nav.thread).toBe("t");
   await act(async () => { history.forward(); await new Promise(resolve => setTimeout(resolve, 30)); });
   expect(nav.view).toBe("tests");
 });

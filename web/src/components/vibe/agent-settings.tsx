@@ -31,11 +31,12 @@ type Props = {
 export function AgentSettings({open, onOpenChange, config, session, artifact, artifacts, models, busy, workspace, testJourney, savedDraft, onModels, onVersion, onSave, onImport, onExportConversation}: Props) {
   return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="vibe-workspace max-h-[85vh] overflow-y-auto">
+        <DialogContent className="vibe-workspace vibe-dialog">
           <DialogTitle>Settings and details</DialogTitle>
           <DialogDescription>
             Choose models, review versions, or export your work.
           </DialogDescription>
+          <div className="vibe-dialog-body space-y-4">
           {workspace && <CreditsDialog workspace={workspace} />}
           {artifact &&
             artifact.kind !== "test_plan" &&
@@ -170,6 +171,7 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
               </p>
             ))}
           </details>
+          </div>
         </DialogContent>
       </Dialog>
   );

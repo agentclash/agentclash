@@ -5,6 +5,9 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { useVibeInputs } from "@/lib/use-vibe-inputs";
 import type { TaskMaterial } from "@/lib/vibe-inputs";
 import { TaskInput } from "./task-input";
+import { TaskSources } from "./task-sources";
+import { vibeFetch } from "@/lib/vibe";
+vi.mock("@/lib/vibe", async load => ({ ...await load<typeof import("@/lib/vibe")>(), vibeFetch: vi.fn() }));
 
 const ready: TaskMaterial = { id: "one", session_id: "s", client_id: "c", kind: "pdf", name: "quarterly-report-with-a-very-long-filename.pdf", status: "ready", content_hash: "hash", warnings: [], pages: [{number: 1, text: "Approval is required."}] };
 const selection = (material = ready) => ({ material, acknowledged: false, usage: "task_input" as const, page: 1, quote: "" });
@@ -74,7 +77,7 @@ it("shows PDF limits and availability, and keeps retry visible while the dialog 
 it("keeps partial acknowledgement and exact rule adoption in attachment management", async () => {
   inputs = { ...inputs, items: [selection({ ...ready, warnings: ["Page 2 could not be read."] })] };
   await render(true, true);
-  expect(document.querySelector(".vibe-material-chip-status")?.textContent).toBe("Partial text");
+  expect(document.querySelector(".vibe-material-chip-status")?.textContent).toContain("Partial text");
   await act(async () => (document.querySelector('[aria-label^="Manage attachment"]') as HTMLButtonElement).click());
   const check = document.querySelector('input[type="checkbox"]') as HTMLInputElement;
   await act(async () => { check.click(); });
@@ -115,4 +118,33 @@ it("preserves a newer pasted draft after an earlier attachment acknowledgement c
   await act(async () => root.unmount()); root = createRoot(node);
   await render(false); await click("Add a file or text");
   expect((document.querySelector("textarea") as HTMLTextAreaElement).value).toBe("A newer unattached draft");
+});
+
+
+it("keeps saved source evidence visible when another source fails and retries only that source", async () => {
+  vi.mocked(vibeFetch).mockImplementation(async path => { if (String(path).endsWith("missing")) throw Error("Source expired"); return ready; });
+  await act(async () => root.render(<TaskSources sessionID="s" bindings={[{input_id:"one",content_hash:"hash",usage:"task_input"},{input_id:"missing",content_hash:"hash",usage:"task_input"}]} />));
+  await act(async () => { const details = node.querySelector("details")!; details.open = true; details.dispatchEvent(new Event("toggle")); });
+  expect(node.textContent).toContain("Approval is required.");
+  expect(node.textContent).toContain("Source expired");
+  vi.mocked(vibeFetch).mockResolvedValue({...ready,id:"missing",name:"Recovered source"});
+  await click("Retry source missing");
+  expect(vi.mocked(vibeFetch).mock.calls.map(call => call[0])).toEqual(["/sessions/s/inputs/one","/sessions/s/inputs/missing","/sessions/s/inputs/missing"]);
+  expect(node.textContent).toContain("Recovered source");
+  expect(node.textContent).not.toContain("Source expired");
+});
+
+it("retains independent unattached pasted drafts for brief and trial recipients", async () => {
+  inputs = {...inputs,projectID:"s",recipient:"guide"};
+  await render(false); await click("Add a file or text");
+  await change(document.querySelector("textarea")!, "Brief material draft");
+  await click("Close");
+  inputs = {...inputs,recipient:"trial:v1:thread-a"};
+  await render(false); await click("Add a file or text");
+  expect((document.querySelector("textarea") as HTMLTextAreaElement).value).toBe("");
+  await change(document.querySelector("textarea")!, "Trial material draft");
+  await click("Close"); inputs = {...inputs,recipient:"guide"};
+  await render(false); await click("Add a file or text");
+  expect((document.querySelector("textarea") as HTMLTextAreaElement).value).toBe("Brief material draft");
+  expect(add).not.toHaveBeenCalled();
 });

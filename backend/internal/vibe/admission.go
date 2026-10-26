@@ -42,7 +42,16 @@ type Submission struct {
 	ArtifactID         *uuid.UUID          `json:"artifact_id,omitempty"`
 	BaselineID         *uuid.UUID          `json:"baseline_id,omitempty"`
 }
+
+// ReferencedTest is unexecuted evidence context, never a policy source or a result.
+type ReferencedTest struct {
+	ArtifactID uuid.UUID       `json:"artifact_id"`
+	CaseKey    string          `json:"case_key"`
+	Case       json.RawMessage `json:"case"`
+}
+
 type Plan struct {
+	ReferencedTest           *ReferencedTest      `json:"referenced_test,omitempty"`
 	InlineInput              *InlineInput         `json:"-"`
 	RequiredCapabilities     []string             `json:"-"`
 	Cycle                    *BuildCyclePlan      `json:"cycle,omitempty"`

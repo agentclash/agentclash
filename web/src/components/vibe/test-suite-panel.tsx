@@ -15,6 +15,7 @@ const instructionsHelp =
   "Show me the exact instructions used by the AI agent in my app, and which model it uses. Include its existing rules. Do not rewrite them. I want to test those instructions in Vibe Evals.";
 
 export function TestSuitePanel({
+  mode = "combined", onAgent, onAskCase,
   inferenceUnavailable = false,
   selectedCase,
   onSelectCase,
@@ -36,6 +37,7 @@ export function TestSuitePanel({
   checkingChanges = false,
   rules = [],
 }: {
+  mode?: "combined" | "tests"; onAgent?: () => void; onAskCase?: (key: string) => void;
   inferenceUnavailable?: boolean;
   selectedCase?: string;
   onSelectCase?: (key?: string) => void;
@@ -72,7 +74,8 @@ export function TestSuitePanel({
     setFocusedCase(selectedCase);
     setEditing(tests.some(test => test.key === selectedCase && test.editable));
   }, [selectedCase, tests]);
-  const [agentOpen, setAgentOpen] = useState(instructionDraft.dirty);
+  const [agentOpen, setAgentOpenState] = useState(mode !== "tests" && instructionDraft.dirty);
+  const setAgentOpen = (open: boolean) => { if (open && mode === "tests") onAgent?.(); else setAgentOpenState(open); };
   const instructions = instructionDraft.value;
   const setInstructions = instructionDraft.setValue;
   const draft = JSON.parse(casesDraft.value) as typeof tests;
@@ -91,7 +94,7 @@ export function TestSuitePanel({
     return <p>This pack needs the full pack builder to display its tests. Your original file is preserved.</p>;
 
   return (
-    <section aria-label="Your tests" className="space-y-5">
+    <section data-proposal-id={artifact.id} aria-label="Your tests" className="space-y-5">
       {(instructionDraft.conflict || casesDraft.conflict) && <div role="alert"><p>The saved source changed. Review your draft before applying it.</p><VibeButton onClick={() => { instructionDraft.preserve(); casesDraft.preserve(); }}>Keep my draft for this source</VibeButton><VibeButton onClick={() => { instructionDraft.discard(); casesDraft.discard(); restoreFocus(); }}>Discard my draft</VibeButton></div>}
       <div>
         <h2 ref={editorHeading} tabIndex={-1} className="text-2xl font-semibold tracking-tight">
@@ -139,6 +142,7 @@ export function TestSuitePanel({
               <div className="border-t border-[var(--vibe-border)] px-5 py-4 text-sm">
                 <p className="mb-1 text-xs vibe-muted">What should happen</p>
                 <p>{test.expected}</p>
+                {onAskCase && <VibeButton onClick={() => onAskCase(test.key)}>Ask Guide about this test</VibeButton>}
                 {test.editable && <VibeButton variant="quiet" className="mt-2 !px-0" disabled={busy} onClick={() => { setFocusedCase(test.key); setEditing(true); onSelectCase?.(test.key); }}>Edit this expectation</VibeButton>}
                 {!test.editable && <p className="mt-2 text-xs vibe-muted">To change custom grading rules, edit the original pack and import it again.</p>}
               </div>
@@ -180,13 +184,14 @@ export function TestSuitePanel({
                 )
               }
               onClick={async () => {
+                const trigger = document.activeElement;
                 if (
                   await onEdit({
                     artifact_id: artifact.id,
                     case_changes: changes,
                   })
                 ) {
-                  casesDraft.discard(); setEditing(false); onSelectCase?.(); restoreFocus();
+                  casesDraft.discard(); setEditing(false); onSelectCase?.(); if (document.activeElement === trigger) restoreFocus();
                   onDirty(false);
                 }
               }}

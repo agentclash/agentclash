@@ -14,7 +14,7 @@ export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, h
 }) {
   return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="vibe-workspace max-h-[85vh] overflow-y-auto">
+        <DialogContent className="vibe-workspace vibe-dialog">
           <DialogTitle>
             Your saved work
           </DialogTitle>
@@ -23,6 +23,7 @@ export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, h
               ? "Tests you can return to after your next change."
               : "Private checks you can return to and repeat."}
           </DialogDescription>
+          <div className="vibe-dialog-body space-y-4">
           <CollectionNotice hasRows={savedChecks.length > 0} status={status} retry={onRetry} />
           {savedChecks.length ? (
             savedChecks.map((c) => (
@@ -60,6 +61,7 @@ export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, h
               <ArrowRight />
             </VibeButton>
           )}
+          </div>
         </DialogContent>
       </Dialog>
   );

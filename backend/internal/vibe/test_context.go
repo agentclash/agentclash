@@ -66,7 +66,31 @@ func (s *Service) prepareTestConversation(ctx context.Context, actor string, v S
 		return Operation{}, fault("baseline_required", "Choose one result to discuss.")
 	}
 	if sub.ViewedCaseKey != "" && viewed == nil {
-		return Operation{}, fault("baseline_required", "Choose the result containing that test.")
+		// Require explicit version ownership; never resolve a case against an
+		// implicit latest artifact or promote its expected answer into policy.
+		if sub.ArtifactID == nil || p.Artifact == nil || p.Artifact.ID != *sub.ArtifactID {
+			return Operation{}, fault("artifact_required", "Choose the version containing that test.")
+		}
+		var blueprint struct {
+			Cases []json.RawMessage `json:"cases"`
+		}
+		if err := json.Unmarshal(p.Artifact.Blueprint, &blueprint); err != nil {
+			return Operation{}, fault("case_not_found", "That test is unavailable in this version.")
+		}
+		for _, item := range blueprint.Cases {
+			var identity struct {
+				Key string `json:"key"`
+			}
+			if json.Unmarshal(item, &identity) == nil && identity.Key == sub.ViewedCaseKey {
+				if p.ReferencedTest != nil {
+					return Operation{}, fault("case_not_found", "That test identity is ambiguous.")
+				}
+				p.ReferencedTest = &ReferencedTest{ArtifactID: p.Artifact.ID, CaseKey: identity.Key, Case: append(json.RawMessage(nil), item...)}
+			}
+		}
+		if p.ReferencedTest == nil {
+			return Operation{}, fault("case_not_found", "That test is not part of the selected version.")
+		}
 	}
 	if viewed != nil {
 		o, err := s.Store.Operation(ctx, *viewed)

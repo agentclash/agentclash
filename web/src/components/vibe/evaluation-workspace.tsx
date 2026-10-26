@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ProjectWorkspace } from "./project-workspace";
 import type { CollectionStatus } from "@/lib/use-vibe-collection";
 import { useVibeEditorDraft } from "@/lib/use-vibe-editor-draft";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -69,6 +70,7 @@ User: Plan a one-day Jaipur trip for two people with a total budget of ₹5,000,
 Assistant: Here’s your plan: transport ₹2,000, food ₹2,000, and activities ₹4,000. Total: ₹8,000. This fits within your ₹5,000 budget.`;
 
 export type EvaluationWorkspaceProps = {
+ embedded?: boolean;
  materialInput?: ReactNode;
   twoDoor?: boolean;
   onDoor?: (door: "build" | "test") => void;
@@ -107,7 +109,7 @@ export type EvaluationWorkspaceProps = {
   dirty: boolean;
   content: string;
   onContent: (value: string) => void;
-  onSend: (context?: { viewed_run_id: string }) => void;
+  onSend: (context?: { viewed_run_id?: string; viewed_case_key?: string; artifact_id?: string }) => void;
   onMessage: (
     text: string,
     operation?: Operation,
@@ -139,6 +141,11 @@ export type EvaluationWorkspaceProps = {
 };
 
 export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
+  if (p.twoDoor && p.session?.document.evaluation && !p.newEvaluation) return <ProjectWorkspace p={p} initial={<LegacyEvaluationWorkspace {...p} embedded view="build" />} />;
+  return <LegacyEvaluationWorkspace {...p} />;
+}
+
+function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
   const door = p.session?.document.evaluation?.door;
   const buildJourney = door === "build";
   const previewOpen = buildJourney && p.view === "try";
@@ -347,7 +354,8 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
           {(hasNewResponse || (buildJourney && !isNearBottom)) && (
             <VibeButton variant="quiet" className="vibe-new-response" onClick={() => {
               scroll.jumpToLatest();
-              composer.current?.focus({ preventScroll: true });
+              const response = scrollRegion.current?.querySelector<HTMLElement>('[data-message-id]:last-child');
+              if (response) { response.tabIndex = -1; response.focus({ preventScroll: true }); }
             }}>
               {hasNewResponse ? "New response" : "Latest"}<ArrowDown />
             </VibeButton>
@@ -430,7 +438,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
 
   return (
     <>
-      <header className="vibe-header">
+      {!p.embedded && <header className="vibe-header">
         {p.twoDoor ? <div className="vibe-header-identity">
           {p.navigationToggle}
           <span className="vibe-header-title">{p.newEvaluation || entry ? "New agent" : p.session ? evaluationIdentity(p.session).title : "Vibe Evals"}</span>
@@ -545,12 +553,12 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
               ))}
           </TooltipProvider>
         </div>}
-      </header>
+      </header>}
       {p.newEvaluation && <div className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto" ref={newEntry} tabIndex={-1}
-        aria-label="New agent choices" onKeyDown={event => { if (event.key === "Escape" && !p.contextNavigationBlocked) { p.onCancelNew?.(); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true })); } }}>
+        aria-label="New agent choices" onKeyDown={event => { if (event.key === "Escape" && !p.contextNavigationBlocked) { p.onCancelNew?.(); requestAnimationFrame(() => document.getElementById("vibe-message")?.focus({ preventScroll: true })); } }}>
         <div className="vibe-column vibe-entry-page">
           <VibeButton variant="quiet" className="vibe-back-button" disabled={p.contextNavigationBlocked} onClick={() => {
-            p.onCancelNew?.(); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true }));
+            p.onCancelNew?.(); requestAnimationFrame(() => document.getElementById("vibe-message")?.focus({ preventScroll: true }));
           }}><ArrowLeft />{p.session?.document.evaluation ? "Back to your evaluation" : "Back"}</VibeButton>
           <EvaluationEntry busy={!!p.contextNavigationBlocked || !!p.entryBlocked} onDoor={p.onDoor} />
           {p.pendingLabel && <ActivityStatus label={p.pendingLabel} working />}
@@ -565,9 +573,9 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
         onScroll={scroll.onScroll}
       >
         <div
-          id="vibe-workspace-panel"
-          role={p.session ? "tabpanel" : undefined}
-          aria-labelledby={p.session ? `vibe-tab-${currentPane}` : undefined}
+          id={p.embedded ? undefined : "vibe-workspace-panel"}
+          role={!p.embedded && p.session ? "tabpanel" : undefined}
+          aria-labelledby={!p.embedded && p.session ? `vibe-tab-${currentPane}` : undefined}
         >
           <div
             className={`vibe-column ${welcome ? "vibe-entry-page" : "py-8 sm:py-12"}`}
@@ -901,8 +909,8 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
         </div>
       </div>
       {composerDock}
-      <SavedWorkDialog status={p.savedListStatus} onRetry={p.onRetrySaved} open={historyOpen} onOpenChange={setHistoryOpen} testJourney={p.testJourney}
-        savedChecks={p.savedChecks} hasResults={runs.length > 0} onResults={() => switchView("checks")} />
+      {!p.embedded && <SavedWorkDialog status={p.savedListStatus} onRetry={p.onRetrySaved} open={historyOpen} onOpenChange={setHistoryOpen} testJourney={p.testJourney}
+        savedChecks={p.savedChecks} hasResults={runs.length > 0} onResults={() => switchView("checks")} />}
     </>
   );
 }

@@ -31,6 +31,7 @@ for (const size of [{ width: 320, height: 740 }, { width: 844, height: 390 }]) {
         return route.fulfill({ headers, json: state });
       });
       await page.goto("/vibe-evals?session=output-layout");
+      await page.getByLabel("Trial conversation", { exact: true }).selectOption("legacy:trial");
       const region = page.getByRole("region", { name: "Your agent’s output" });
       const expand = region.getByRole("button", { name: "Show full output" });
       await expect(expand).toBeVisible({ timeout: 15000 });

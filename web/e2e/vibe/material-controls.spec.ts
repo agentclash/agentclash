@@ -78,11 +78,11 @@ test("PDF extraction failure remains visible and never starts a model operation"
   const control = await serve(page);
   const dialog = await open(page);
   await dialog.getByLabel("Choose one PDF").setInputFiles({ name: "broken.pdf", mimeType: "application/pdf", buffer: Buffer.from("%PDF-broken") });
-  await expect(dialog.getByRole("alert")).toContainText("Paste its text instead");
+  await expect(dialog.getByRole("alert").filter({ hasText: "Paste its text instead" })).toBeVisible();
   await dialog.getByRole("button", { name: "Close material dialog" }).click();
-  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Reading failed");
+  await expect(page.locator(".vibe-material-chip-status")).toContainText("Reading failed");
   await page.getByRole("button", { name: /Manage attachment/ }).click();
-  await expect(page.getByRole("dialog").getByRole("alert")).toContainText("Paste its text instead");
+  await expect(page.getByRole("dialog").getByRole("alert").filter({ hasText: "Paste its text instead" })).toBeVisible();
   expect(control.writes).toEqual(["upload-input"]);
   expect(control.errors).toEqual([]);
 });

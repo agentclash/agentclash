@@ -570,3 +570,65 @@ it("announces prototype creation only after a confirmed build decision", async (
   expect(container.querySelector(".vibe-build-intro")?.textContent).toContain("I’m making a first version");
   expect(container.textContent).toContain("Creating your prototype…");
 });
+
+it("owns agent and test editors in main while Guide references a case without sending or rewriting the draft", async () => {
+  const state = session([{ id: "request", role: "user", content: "Help with returns" }]);
+  state.document.evaluation = { id: state.id, chat_id: state.id, door: "test" };
+  const artifact = { id: "suite", kind: "test_suite" as const, title: "Returns", agent_prompt: "Use our actual policy", accepted: true, source_message_id: "request", blueprint: { cases: [{ key: "return", payload: { question: "Return?" }, expectations: [{ key: "expected_behavior", kind: "text", value: "Expected observation, never policy" }] }] } };
+  state.document.artifacts = [artifact];
+  await render({ twoDoor: true, session: state, artifact, content: "My own question", preview: <section aria-label="Try your prototype">Trial owner</section> });
+  expect(container.querySelector('[aria-label="Agent instructions"]')).not.toBeNull();
+  expect(container.querySelector('[aria-label="Your tests"]')).toBeNull();
+  expect(container.querySelector('[aria-label="Try your prototype"]')).not.toBeNull();
+  await render({ view: "tests" });
+  expect(container.querySelector('[aria-label="Agent instructions"]')).toBeNull();
+  const tests = container.querySelector('[aria-label="Your tests"]')!;
+  expect(tests).not.toBeNull();
+  await act(async () => button("Ask Guide about this test").click());
+  expect(props.onSend).not.toHaveBeenCalled();
+  expect(props.onContent).not.toHaveBeenCalled();
+  expect(container.querySelector('[aria-label="Guide reference"]')?.textContent).toContain("Return?");
+  await act(async () => button("Send message").click());
+  expect(props.onSend).toHaveBeenCalledWith({ artifact_id: "suite", viewed_case_key: "return" });
+  await act(async () => button("Details").click());
+  expect(container.querySelector('[aria-label="Project details"]')).not.toBeNull();
+  expect(container.querySelector('#vibe-message')).toBeNull();
+});
+
+
+it("keeps Guide focus when an instruction save resolves and expands a full reply in flow", async () => {
+  const current = session([{id:"reply",role:"assistant",content:"Saved explanation. ".repeat(120)}]);
+  current.document.evaluation = {id:current.id,chat_id:current.id,door:"build"};
+  const artifact = {id:"suite",kind:"test_suite" as const,title:"Returns",agent_prompt:"Use supplied policy",accepted:true,source_message_id:"request",blueprint:{cases:[]}};
+  current.document.artifacts=[artifact];
+  let complete!:(value:boolean)=>void;
+  await render({twoDoor:true,session:current,artifact,onEdit:vi.fn(()=>new Promise(resolve=>{complete=resolve;}))});
+  await act(async()=>button("Change agent instructions").click());
+  await act(async()=>button("Use these instructions").click());
+  await act(async()=>button("Guide").click());
+  const composer=container.querySelector<HTMLTextAreaElement>("#vibe-message")!;
+  composer.focus();
+  await act(async()=>complete(true));
+  await act(async()=>new Promise(resolve=>setTimeout(resolve,30)));
+  expect(document.activeElement).toBe(composer);
+  await act(async()=>button("Show full reply").click());
+  expect(button("Show less reply").getAttribute("aria-expanded")).toBe("true");
+  expect(container.querySelector(".vibe-reply-body")?.textContent).toContain("Saved explanation. ".repeat(120).trim());
+  expect(props.onSend).not.toHaveBeenCalled();
+});
+
+
+it("restores instruction reading focus after saving creates a new version", async () => {
+ const current=session(); current.document.evaluation={id:current.id,chat_id:current.id,door:"build"};
+ const artifact={id:"old",kind:"test_suite" as const,title:"Returns",agent_prompt:"Policy",accepted:true,source_message_id:"request",blueprint:{cases:[]}};
+ const next={...artifact,id:"new",parent_id:"old"}; current.document.artifacts=[artifact];
+ let complete!:()=>void; const saved=new Promise<void>(resolve=>{complete=resolve;});
+ await render({twoDoor:true,session:current,artifact,onEdit:vi.fn(async()=>{await saved; await render({session:{...current,document:{...current.document,artifacts:[artifact,next]}},artifact:next}); return true;})});
+ await act(async()=>button("Change agent instructions").click());
+ await act(async()=>new Promise(resolve=>setTimeout(resolve,25)));
+ button("Use these instructions").focus();
+ await act(async()=>button("Use these instructions").click());
+ await act(async()=>complete());
+ await act(async()=>new Promise(resolve=>setTimeout(resolve,25)));
+ expect(document.activeElement).toBe(container.querySelector('[aria-label="Agent instructions"] h2'));
+});

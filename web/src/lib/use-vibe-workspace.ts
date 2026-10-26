@@ -420,8 +420,9 @@ export function useVibeWorkspace() {
     void request.then(forget, forget);
     return request;
   }
-  const materialScope = navigation.utility === "trial" ? `trial:${artifact?.id || ""}:${threadID}` : "guide";
-  const materials = useVibeInputs(sessionID || "", materialScope, token);
+  const materialScope = "guide";
+  const materials = useVibeInputs(sessionID || "", materialScope, token, workspaceActor);
+  const trialMaterials = useVibeInputs(sessionID || "", `trial:${artifact?.id || ""}:${threadID}`, token, workspaceActor);
   const materialFingerprint = JSON.stringify(materials.bindings);
   const adoptionFingerprint = JSON.stringify(materials.adoptions);
   const messageLimit = (session?.anonymous === false ? config?.signed_in_limits : config?.anonymous_limits)?.max_message_bytes || (session?.anonymous === false ? 65536 : 16384);
@@ -525,7 +526,7 @@ export function useVibeWorkspace() {
       setPending(false);
     } }
   }
-  function sendMessage(text = content, context?: { viewed_run_id: string }, demoID?: string) {
+  function sendMessage(text = content, context?: { viewed_run_id?: string; viewed_case_key?: string; artifact_id?: string }, demoID?: string) {
     if (buildStart && (!quoteMatches || Date.parse(buildQuote!.expires_at) <= Date.now() + serverOffset.current)) return;
     if (materials.blocked && buildStart) return;
     void submit("message", text, undefined, {
@@ -599,7 +600,7 @@ export function useVibeWorkspace() {
     let trialKey: string | undefined;
     let previewThread: string | undefined;
     if (kind === "playground") {
-      if ((!text.trim() && !materials.bindings.length) || materials.blocked || legacyTrial) return;
+      if ((!text.trim() && !trialMaterials.bindings.length) || trialMaterials.blocked || legacyTrial) return;
       previewThread = threadID || crypto.randomUUID();
       trialKey = `${trialPrefix}${previewThread}`;
       if (!threadID) {
@@ -617,7 +618,7 @@ export function useVibeWorkspace() {
       ? trialEdits.current[trialKey] || 0
       : composerEdits.current;
     const capturedAdoptions = kind === "message" && buildStart ? materials.adoptions : [];
-    const capturedInputs = (kind === "playground" || kind === "message" && buildStart) ? materials.bindings : [];
+    const capturedInputs = kind === "playground" ? trialMaterials.bindings : kind === "message" && buildStart ? materials.bindings : [];
     const clientID = extra.client_id || crypto.randomUUID();
     const attempt = {};
     recovery.attempt = attempt;
@@ -661,7 +662,7 @@ export function useVibeWorkspace() {
             : models,
           ...((kind === "message" && workingArtifact) ? { artifact_id: workingArtifact.id } : artifact ? { artifact_id: artifact.id } : {}),
           ...(baseline ? { baseline_id: baseline.id } : {}),
-          ...(kind === "message" &&
+          ...(kind === "message" && (!twoDoor || !extra.viewed_run_id && !extra.viewed_case_key) &&
           buildEvidence.current?.artifact === artifact?.id
             ? { baseline_id: buildEvidence.current?.operation }
             : {}),
@@ -840,7 +841,7 @@ export function useVibeWorkspace() {
     if (artifactID && session?.document.artifacts.some(item => item.id === artifactID)) {
       if (pendingEdit.draft && session) discardEditorDraft(session.id, pendingEdit.artifactID, "cases", pendingEdit.draft);
       navigation.update({ artifact: artifactID, run: undefined, case: undefined, thread: "" }, "replace");
-      if (currentView.current === "tests") requestAnimationFrame(() => document.querySelector<HTMLHeadingElement>(`[data-proposal-id="${CSS.escape(artifactID)}"] h2`)?.focus());
+      if (currentView.current === "tests" && document.activeElement?.closest(`[data-proposal-id="${CSS.escape(pendingEdit.artifactID)}"]`)) requestAnimationFrame(() => document.querySelector<HTMLHeadingElement>(`[data-proposal-id="${CSS.escape(artifactID)}"] h2`)?.focus());
       setChecksDirtyID(null);
       setPendingEdit(undefined);
     } else if (terminal(operation.state)) {
@@ -949,7 +950,7 @@ export function useVibeWorkspace() {
         const next = v.document.artifacts.at(-1);
         if (next) {
           setSelectedArtifactID(next.id);
-          navigate(view, next.id, "");
+          navigate(currentView.current, next.id, "");
         }
         setThreadID("");
         setDirtyArtifactID(null);
@@ -1032,5 +1033,5 @@ export function useVibeWorkspace() {
   // New work uses the prospective account/workspace and approved defaults,
   // independently of the historical project's funding and retired models.
   const entryAvailable = !!config?.enabled && Object.values(config.defaults).every(id => config.models.some(model => model.id === id)) && config.availability?.[authUserID ? "workspace" : "guest"]?.available === true && (!authUserID || saveAccess === "ready" && workspaces.some(item => item.id === workspace));
-    return { entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, unavailableReason, messageLimit, messageError, buildQuote, buildQuoteState, refreshBuildQuote, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, canChangeDoor, changeDoor, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces };
+    return { entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, unavailableReason, messageLimit, messageError, buildQuote, buildQuoteState, refreshBuildQuote, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, canChangeDoor, changeDoor, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, trialMaterials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces };
 }
