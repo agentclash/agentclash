@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { vibeFetch, type Artifact, type Models, type Operation } from "@/lib/vibe";
+import { VibeError, vibeFetch, type Artifact, type Models, type Operation } from "@/lib/vibe";
 import type { ProjectResultBinding } from "@/lib/vibe-result-evidence";
 import { reportBase, type SDKReport } from "@/lib/vibe-reports";
 import { useVibeEvidenceOwner } from "@/lib/use-vibe-evidence-owner";
@@ -13,21 +13,29 @@ export function SDKReports(props: SDKEvidenceContext & {
   onPromoted?: (artifact: Artifact) => void; onRegraded?: (operation: Operation) => void;
   onExport?: (report: SDKReport) => void;
 }) {
-  const {actorScope,sessionId,workspaceId,token,refresh,access:{canRead}} = props;
+  const {actorScope,sessionId,workspaceId,token,refresh,access:{canRead,status}} = props;
   const [attempt, setAttempt] = useState(0);
-  const life = useVibeEvidenceOwner(actorScope, sessionId, workspaceId);
+  const accessRevoked = status === "signed_out" || status === "ready" && !canRead;
+  const life = useVibeEvidenceOwner(actorScope, sessionId, workspaceId, accessRevoked ? "revoked" : "active");
   const tokenRef = useRef(token);
   useEffect(() => { tokenRef.current = token; }, [token]);
   const [state, setState] = useState<{ owner: object; reports?: SDKReport[]; error?: string }>();
+  if (state && state.owner !== life.owner) setState(undefined);
   useEffect(() => {
     let active = true; const current = life.capture();
     if (!canRead || !workspaceId) return;
     void tokenRef.current().then(auth => vibeFetch<SDKReport[]>(reportBase(sessionId), auth)).then(reports => {
       if (!Array.isArray(reports) || reports.some(r => r.binding.session_id !== sessionId || r.binding.result_ref.kind !== "sdk_report" || r.binding.result_ref.id !== r.id)) throw Error("Report identities could not be read.");
       if (active && current()) setState({ owner: life.owner, reports });
-    }).catch(e => { if (active && current()) setState({ owner: life.owner, error: e.message }); });
+    }).catch(e => {
+      if (!active || !current()) return;
+      // A failed history refresh must not unmount the current detail or lose an
+      // in-flight receipt. Authoritative access/project loss invalidates cache.
+      const revoked = e instanceof VibeError && (e.code === "forbidden" || e.code === "not_found");
+      setState(previous => ({ owner: life.owner, reports: !revoked && previous?.owner === life.owner ? previous.reports : undefined, error: e.message }));
+    });
     return () => { active = false; };
-  }, [sessionId, workspaceId, canRead, life, attempt, refresh]);
+  }, [sessionId, workspaceId, canRead, status, life, attempt, refresh]);
   if (props.access.status === "signed_out") return <p>Sign in to read your private SDK reports.</p>;
   if (!props.workspaceId) return <p>Save to a workspace to keep imported reports here.</p>;
   if (!props.access.canRead) return <p>SDK reports are unavailable until access to this workspace is confirmed.</p>;

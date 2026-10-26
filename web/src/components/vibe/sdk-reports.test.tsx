@@ -85,3 +85,104 @@ it("preserves the selected review draft while a session event refreshes report h
  await act(async()=>resolve([selected]));expect(node.querySelector<HTMLTextAreaElement>('textarea[aria-label="SDK grade review reason"]')?.value).toBe("My unsent review");
  }finally{await act(async()=>root.unmount());node.remove()}
 });
+
+it("retains unsent review and exact pending receipt through failed list refresh and successful retry",async()=>{
+ const selected={...report,cases:[{source_case_id:"local",case_key:"real"}]};let failList=false;let loseReview!:(e:Error)=>void;const writes:string[]=[];
+ transport.fetch.mockImplementation(async(path:string,_auth:unknown,init?:RequestInit)=>{
+  if(path.endsWith("/reports")){if(failList)throw new VibeError("unavailable","History temporarily unavailable",503);return [selected]}
+  if(path.includes("/case?"))return {case_key:"real",version:"a",verdict:"FAIL",output:"reply",checks:[],evidence_hash:"case-hash"};
+  if(init?.method==="POST"){writes.push(String(init.body));if(writes.length===1)return new Promise((_resolve,reject)=>{loseReview=reject});return {id:"recorded-review"}}
+  return [];
+ });
+ const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
+ const render=(refresh:number)=>root.render(<SDKReports {...props} selectedResult={selected.binding} refresh={refresh}/>);
+ const reason=()=>node.querySelector<HTMLTextAreaElement>('textarea[aria-label="SDK grade review reason"]');
+ try{
+  await act(async()=>render(1));await change(node.querySelector('select')!,"local");await change(reason()!,"Keep this exact review");
+  failList=true;await act(async()=>render(2));expect(node.textContent).toContain("History temporarily unavailable");expect(reason()?.value).toBe("Keep this exact review");
+  failList=false;await act(async()=>button(node,"Reload SDK reports").click());expect(reason()?.value).toBe("Keep this exact review");
+  await act(async()=>node.querySelector('form')!.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));expect(writes).toHaveLength(1);
+  failList=true;await act(async()=>render(3));expect(reason()?.value).toBe("Keep this exact review");expect(reason()?.disabled).toBe(true);
+  failList=false;await act(async()=>button(node,"Reload SDK reports").click());
+  await act(async()=>loseReview(new Error("Response lost after submission")));expect(reason()?.value).toBe("Keep this exact review");
+  await act(async()=>button(node,"Retry this grade review").click());expect(writes).toHaveLength(2);expect(writes[1]).toBe(writes[0]);expect(node.textContent).toContain("Review recorded");
+ }finally{await act(async()=>root.unmount());node.remove()}
+});
+
+it.each(["forbidden","not_found","missing-source","revoked-access"])("clears cached private report after authoritative %s",async(loss)=>{
+ const selected={...report,cases:[{source_case_id:"local",case_key:"real"}]};let reads=0;let restore!:(v:SDKReport[])=>void;
+ transport.fetch.mockImplementation(async(path:string)=>{
+  if(path.endsWith("/reports")){
+   if(++reads===1)return [selected];
+   if(loss==="revoked-access")return new Promise<SDKReport[]>(resolve=>restore=resolve);
+   if(loss==="missing-source")return [];
+   throw new VibeError(loss,"Report access lost",loss==="forbidden"?403:404);
+  }
+  return [];
+ });
+ const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
+ try{
+  await act(async()=>root.render(<SDKReports {...props} selectedResult={selected.binding} refresh={1}/>));expect(node.querySelector('article[aria-label="Imported report detail"]')).not.toBeNull();
+  if(loss==="revoked-access"){
+   await act(async()=>root.render(<SDKReports {...props} access={{...access,canRead:false,canWrite:false}} selectedResult={selected.binding} refresh={1}/>));
+   await act(async()=>root.render(<SDKReports {...props} selectedResult={selected.binding} refresh={1}/>));
+  }else await act(async()=>root.render(<SDKReports {...props} selectedResult={selected.binding} refresh={2}/>));
+  expect(node.querySelector('article[aria-label="Imported report detail"]')).toBeNull();
+  if(restore)await act(async()=>restore([]));
+ }finally{await act(async()=>root.unmount());node.remove()}
+});
+
+it.each(["unsupported_capability","revision_conflict"])("allows explicit review again after promotion %s without automatic resubmission",async(code)=>{
+ const {SDKReportDetail}=await import("./sdk-report-detail");const writes:Record<string,unknown>[]=[];
+ const selected={...report,cases:[{source_case_id:"local",case_key:"first"},{source_case_id:"other",case_key:"second"}]};
+ transport.fetch.mockImplementation(async(path:string,_auth:unknown,init?:RequestInit)=>{
+  if(path.includes("/case?")){const other=path.includes("source_case_id=other");return {case_key:other?"second":"first",version:"a",verdict:"FAIL",output:"reply",expected:other?"Other expectation":"First expectation",checks:[],evidence_hash:"case-hash"}}
+  if(path.endsWith("/promote")){writes.push(JSON.parse(String(init?.body)));if(writes.length===1)throw new VibeError(code,"Review again before retrying",code==="revision_conflict"?409:400);return {id:"new-version"}}
+  return [];
+ });
+ const node=document.createElement("div");document.body.append(node);const root=createRoot(node);const done=vi.fn();
+ const render=(revision:number)=>root.render(<SDKReportDetail {...props} report={selected} revision={revision} onPromoted={done}/>);
+ try{
+  await act(async()=>render(2));await change(node.querySelector('select')!,"local");await change(node.querySelector('textarea')!,"Draft stays with the source");
+  await act(async()=>node.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());await act(async()=>button(node,"Create version with this expectation").click());expect(done).not.toHaveBeenCalled();
+  await act(async()=>render(3));expect(writes).toHaveLength(1);
+  expect(button(node,"Review expectation again")).toBeDefined();await act(async()=>button(node,"Review expectation again").click());
+  expect(node.querySelector('textarea')!.value).toBe("Draft stays with the source");expect(node.querySelector('select')!.value).toBe("local");expect(writes).toHaveLength(1);
+  if(code==="unsupported_capability")await change(node.querySelector('select')!,"other");
+  expect(button(node,"Create version with this expectation").disabled).toBe(true);
+  await act(async()=>node.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());await act(async()=>button(node,"Create version with this expectation").click());
+  expect(writes).toHaveLength(2);expect(writes[1].client_id).not.toBe(writes[0].client_id);expect(writes[1]).toMatchObject({revision:3,source_case_id:code==="unsupported_capability"?"other":"local",expected:code==="unsupported_capability"?"Other expectation":"First expectation",reviewed:true});expect(done).toHaveBeenCalledWith({id:"new-version"});
+ }finally{await act(async()=>root.unmount());node.remove()}
+});
+
+it("lets a rejected grade review be corrected after fresh evidence without losing its text or source",async()=>{
+ const {SDKReportDetail}=await import("./sdk-report-detail");const writes:Record<string,unknown>[]=[];let caseReads=0;
+ const selected={...report,cases:[{source_case_id:"local",case_key:"real"}]};
+ transport.fetch.mockImplementation(async(path:string,_auth:unknown,init?:RequestInit)=>{
+  if(path.includes("/case?"))return {case_key:"real",version:"a",verdict:"FAIL",output:"reply",checks:[],evidence_hash:++caseReads===1?"stale":"fresh"};
+  if(init?.method==="POST"){writes.push(JSON.parse(String(init.body)));if(writes.length===1)throw new VibeError("evidence_changed","Reload the evidence",409);return {id:"recorded-review"}}
+  return [];
+ });
+ const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
+ try{
+  await act(async()=>root.render(<SDKReportDetail {...props} report={selected}/>));await change(node.querySelector('select')!,"local");await change(node.querySelector('textarea')!,"Original draft");await act(async()=>button(node,"Record grade review").click());
+  expect(button(node,"Edit rejected grade review")).toBeDefined();await act(async()=>button(node,"Edit rejected grade review").click());expect(writes).toHaveLength(1);expect(node.querySelector('textarea')!.value).toBe("Original draft");expect(node.querySelector('select')!.value).toBe("local");
+  await change(node.querySelector('textarea')!,"Corrected draft");await act(async()=>button(node,"Record grade review").click());expect(writes).toHaveLength(2);expect(writes[1].client_id).not.toBe(writes[0].client_id);expect(writes[1]).toMatchObject({reason:"Corrected draft",source_case_id:"local",source_evidence_hash:"fresh"});expect(node.textContent).toContain("Review recorded");
+ }finally{await act(async()=>root.unmount());node.remove()}
+});
+
+it.each([new Error("Response lost"),new VibeError("unauthenticated","Sign in again",401),new VibeError("idempotency_conflict","Receipt differs",409),new VibeError("request_failed","Unknown conflict",409)])("keeps the exact promotion request for uncertain outcome $message",async(failure)=>{
+ const {SDKReportDetail}=await import("./sdk-report-detail");const writes:string[]=[];
+ const selected={...report,cases:[{source_case_id:"local",case_key:"real"}]};
+ transport.fetch.mockImplementation(async(path:string,_auth:unknown,init?:RequestInit)=>{
+  if(path.includes("/case?"))return {case_key:"real",version:"a",verdict:"FAIL",output:"reply",expected:"Imported expectation",checks:[],evidence_hash:"case-hash"};
+  if(path.endsWith("/promote")){writes.push(String(init?.body));if(writes.length===1)throw failure;return {id:"already-created-version"}}
+  return [];
+ });
+ const node=document.createElement("div");document.body.append(node);const root=createRoot(node);const done=vi.fn();
+ try{
+  await act(async()=>root.render(<SDKReportDetail {...props} report={selected} revision={2} onPromoted={done}/>));await change(node.querySelector('select')!,"local");await act(async()=>node.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());await act(async()=>button(node,"Create version with this expectation").click());
+  await act(async()=>root.render(<SDKReportDetail {...props} report={selected} revision={9} onPromoted={done}/>));expect(button(node,"Review expectation again")).toBeUndefined();expect(node.querySelector('select')!.disabled).toBe(true);expect(writes).toHaveLength(1);
+  await act(async()=>button(node,"Retry expectation promotion").click());expect(writes).toHaveLength(2);expect(writes[1]).toBe(writes[0]);expect(done).toHaveBeenCalledWith({id:"already-created-version"});
+ }finally{await act(async()=>root.unmount());node.remove()}
+});
