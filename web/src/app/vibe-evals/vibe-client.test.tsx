@@ -2340,3 +2340,79 @@ it.each(["success", "failure"])("ignores a prior actor's late retry %s without c
   expect(document.querySelector<HTMLSelectElement>('select[aria-label="Assistant model"]')!.value).toBe(defaultModels.assistant);
   expect(composer().value).toBe("New actor next guide draft");
 });
+
+async function historyStep(direction: "back" | "forward") {
+  await act(async () => {
+    const moved = new Promise<void>(resolve => window.addEventListener("popstate", () => resolve(), { once: true }));
+    window.history[direction](); await moved;
+  });
+}
+function projectHistory() {
+  const other = { ...structuredClone(session), id: "session-b" };
+  other.document.artifacts[0].id = "artifact-b";
+  window.history.replaceState({}, "", "/vibe-evals?session=session-b");
+  window.history.pushState({}, "", "/vibe-evals?session=session-one");
+  const previous = respond;
+  respond = async (path, options) => path === "/sessions/session-b" ? json(other) : previous(path, options);
+}
+
+it("restores an uncertain project's immutable retry and pending content through browser Back/Forward without automatic transport", async () => {
+  scenarioAgent(); projectHistory();
+  const bodies: string[] = []; const previous = respond;
+  respond = async (path, options) => {
+    if (path.endsWith("/messages")) {
+      bodies.push(String(options.body));
+      if (bodies.length === 1) throw new TypeError("Lost A acknowledgement");
+      return json({ id: "acknowledged-a" });
+    }
+    return previous(path, options);
+  };
+  await render(); await type("Immutable A request"); await click("Send message");
+  await type("A typed ahead");
+  expect(button("Retry submission").disabled).toBe(false);
+  await historyStep("back"); await type("B unsent draft");
+  expect(container.textContent).not.toContain("Immutable A request");
+  expect(composer().value).toBe("B unsent draft");
+  await historyStep("forward");
+  expect(container.textContent).toContain("Immutable A request");
+  expect(composer().value).toBe("A typed ahead");
+  expect(button("Retry submission").disabled).toBe(false);
+  expect(bodies).toHaveLength(1);
+  await click("Retry submission");
+  expect(bodies).toHaveLength(2); expect(bodies[1]).toBe(bodies[0]);
+  expect(posts()[1].body.client_id).toBe(posts()[0].body.client_id);
+  expect(composer().value).toBe("A typed ahead");
+});
+
+it.each(["success", "failure"])("settles a late project A %s only in A while browser-history B owns a pending request", async outcome => {
+  scenarioAgent(); projectHistory();
+  const old = deferred<Response>(); const current = deferred<Response>(); const previous = respond;
+  const bodies: string[] = [];
+  respond = async (path, options) => {
+    if (path.endsWith("/messages")) {
+      bodies.push(String(options.body));
+      if (path === "/sessions/session-one/messages" && bodies.length === 1) return old.promise;
+      if (path === "/sessions/session-b/messages") return current.promise;
+      return json({ id: "recovered-a" });
+    }
+    return previous(path, options);
+  };
+  await render(); await type("A submitted request"); await click("Send message"); await type("A next draft");
+  await historyStep("back"); await type("B submitted request"); await click("Send message"); await type("B next draft");
+  expect(posts()).toHaveLength(2); const url = window.location.href;
+  await act(async () => { outcome === "success" ? old.resolve(json({ id: "a-admitted", models: defaultModels })) : old.reject(new TypeError("A lost acknowledgement")); });
+  expect(window.location.href).toBe(url); expect(composer().value).toBe("B next draft");
+  expect(button("Send message").disabled).toBe(true);
+  expect(container.textContent).not.toContain("A lost acknowledgement");
+  await historyStep("forward"); expect(composer().value).toBe("A next draft");
+  if (outcome === "failure") { expect(button("Retry submission").disabled).toBe(false); expect(container.textContent).toContain("A submitted request"); }
+  else { expect(container.textContent).not.toContain("Retry submission"); expect(button("Send message").disabled).toBe(false); }
+  expect(posts()).toHaveLength(2);
+  await historyStep("back"); expect(button("Send message").disabled).toBe(true); expect(composer().value).toBe("B next draft");
+  await act(async () => current.resolve(json({ id: "b-admitted", models: defaultModels })));
+  expect(button("Send message").disabled).toBe(false); expect(composer().value).toBe("B next draft");
+  if (outcome === "failure") {
+    await historyStep("forward"); await click("Retry submission");
+    expect(bodies[2]).toBe(bodies[0]); expect(composer().value).toBe("A next draft");
+  }
+});

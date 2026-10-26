@@ -39,6 +39,25 @@ import { editableEvaluation, defaultModels, terminal, retryVibeOperation, VibeEr
 
 
 type RequestScope = { actor: string; sessionID?: string };
+type PendingSubmission = {
+  scope: RequestScope;
+  sessionID: string;
+  readonly body: string;
+  composer: string | null;
+  composerVersion: number;
+  trialKey?: string;
+  retryOperationID?: string;
+  uncertain: boolean;
+};
+type SubmissionRecovery = {
+  submission: { current: PendingSubmission | null };
+  sending: { current: boolean };
+  retry: { current: (() => void) | undefined };
+  message?: { id: string; content: string };
+  error: string;
+};
+const recoveryKey = (scope: RequestScope) => JSON.stringify([scope.actor, scope.sessionID]);
+
 
 export function useVibeWorkspace() {
 
@@ -98,14 +117,14 @@ export function useVibeWorkspace() {
   const twoDoor = config === null ? true : config.two_door;
   const [models, setModels] = useState<Models>(defaultModels);
   const [pending, setPending] = useState(false);
-  const [pendingMessage, setPendingMessage] = useState<{
+  const [pendingMessage, renderPendingMessage] = useState<{
     id: string;
     content: string;
   }>();
   const [runPending, setRunPending] = useState(false);
   const requestedRunID = navigation.run;
   const [pendingAction, setPendingAction] = useState<string>();
-  const [error, setError] = useState("");
+  const [error, renderError] = useState("");
   const [importError, setImportError] = useState<{ sessionID?: string; message: string }>();
   const importNotice = useRef<HTMLDivElement>(null);
   const quoteTrigger = useRef<HTMLElement | null>(null);
@@ -145,29 +164,39 @@ export function useVibeWorkspace() {
   const { rows: contexts, setRows: setContexts } = contextList;
   const { rows: savedChecks, setRows: setSavedChecks } = savedList;
 
-  const sending = useRef(false);
   const currentView = useRef(view); currentView.current = view;
-  const submission = useRef<{
-    scope: RequestScope;
-    sessionID: string;
-    body: string;
-    composer: string | null;
-    composerVersion: number;
-    trialKey?: string;
-    retryOperationID?: string;
-    uncertain: boolean;
-  } | null>(null);
-  const retryUnsentMessage = useRef<(() => void) | undefined>(undefined);
   const [uncertain, setUncertain] = useState(false);
   const scopeRef = useRef<RequestScope>({ actor: workspaceActor, sessionID: requestedSessionID || undefined });
   if (scopeRef.current.actor !== workspaceActor || scopeRef.current.sessionID !== (requestedSessionID || undefined))
     scopeRef.current = { actor: workspaceActor, sessionID: requestedSessionID || undefined };
   const requestScope = scopeRef.current;
   const ownsScope = (scope: RequestScope) => scopeRef.current === scope;
+  // Request ownership survives navigation; only its visible projection changes.
+  // Each render's async closures retain their own actor/project record.
+  const recoveries = useRef(new Map<string, SubmissionRecovery>());
+  const key = recoveryKey(requestScope);
+  const retained = recoveries.current.get(key);
+  const recovery: SubmissionRecovery = retained || { submission: { current: null }, sending: { current: false }, retry: { current: undefined }, error: "" };
+  if (!retained) recoveries.current.set(key, recovery);
+  const visibleRecovery = useCallback(() => recoveries.current.get(recoveryKey(scopeRef.current)) === recovery, [recovery]);
+  const submission = recovery.submission;
+  const sending = recovery.sending;
+  const retryUnsentMessage = recovery.retry;
+  const setPendingMessage = useCallback((message?: { id: string; content: string }) => {
+    recovery.message = message;
+    if (visibleRecovery()) renderPendingMessage(message);
+  }, [recovery, visibleRecovery]);
+  const setError = useCallback((next: SetStateAction<string>) => {
+    recovery.error = typeof next === "function" ? next(recovery.error) : next;
+    if (visibleRecovery()) renderError(recovery.error);
+  }, [recovery, visibleRecovery]);
   useEffect(() => {
-    submission.current = null; sending.current = false; retryUnsentMessage.current = undefined; contextChoice.current = undefined;
-    setPending(false); setRunPending(false); setUncertain(false); setPendingMessage(undefined); setPendingAction(undefined);
-    setPendingEdit(undefined); setError(""); setRunQuote(undefined); setRunQuotePreparing(false); setRunQuoteError("");
+    const request = submission.current;
+    contextChoice.current = undefined;
+    setPending(sending.current); setRunPending(sending.current && ["check", "retest"].includes(request ? JSON.parse(request.body).kind : ""));
+    setUncertain(!!request?.uncertain); setPendingMessage(recovery.message);
+    setPendingAction(sending.current && request?.retryOperationID ? "Retrying your request…" : undefined);
+    setPendingEdit(undefined); setError(recovery.error); setRunQuote(undefined); setRunQuotePreparing(false); setRunQuoteError("");
   }, [requestScope]);
   const file = useRef<HTMLInputElement>(null);
   const active = session?.operations.find((o) => !terminal(o.state));
@@ -353,7 +382,9 @@ export function useVibeWorkspace() {
       throw e;
     }
     if (!ownsScope(scope)) throw new Error("The active account or project changed.");
+    recoveries.current.delete(recoveryKey(scope));
     scope.sessionID = v.id;
+    recoveries.current.set(recoveryKey(scope), recovery);
     select(v.id); if (!accept(v)) throw new Error("The active account changed. Reopen this project to continue."); drafts.activate(v.id);
     navigation.writeURL(new URL(`/vibe-evals?session=${id}${workspace ? `&workspace=${workspace}` : ""}`, window.location.origin));
     return v;
@@ -646,8 +677,8 @@ export function useVibeWorkspace() {
         navigation.writeURL(url);
       }
     } catch (e) {
-      if (!ownsScope(scope)) return;
       captureVibeAttempt(session?.document.evaluation?.door || "test", kind, sessionID, e instanceof VibeError ? e.code : "transport_failed");
+      if (!ownsScope(scope)) return;
       setError((e as Error).message);
       if (
         kind === "message" && !extra.demo_id &&
@@ -672,73 +703,93 @@ export function useVibeWorkspace() {
   }
   async function dispatchSubmission() {
     const request = submission.current;
-    if (!request || !ownsScope(request.scope)) return;
-    const ownsRequest = () => ownsScope(request.scope) && submission.current === request;
-    let admitted: Operation;
+    if (!request || !visibleRecovery()) return;
+    const ownsRequest = () => submission.current === request;
     try {
-      const auth = await token();
-      if (!ownsRequest()) return;
-      admitted = request.retryOperationID
-        ? await retryVibeOperation(request.sessionID, request.retryOperationID, JSON.parse(request.body), auth)
-        : await vibeFetch<Operation>(
-            `/sessions/${request.sessionID}/messages`,
-            auth,
-            { method: "POST", body: request.body },
-          );
-    } catch (e) {
-      if (!ownsRequest()) return;
-      // Auth/rate/profile checks precede idempotency lookup. A later rejection
-      // cannot disprove an earlier admission: retain every byte until acknowledged.
-      const rejected = recoverRequest(request, e) === "rejected";
-      if (rejected) submission.current = null;
-      setUncertain(!rejected);
-      if (e instanceof VibeError && (e.code === "revision_conflict" || (request.retryOperationID && rejected))) {
-        await reload(request.sessionID).catch(() => undefined);
+      let admitted: Operation;
+      try {
+        const auth = await token();
+        if (!ownsRequest()) return;
+        if (scopeRef.current.actor !== request.scope.actor) {
+          request.uncertain = true;
+          setError("The account changed before admission. Return to this account and retry your saved request.");
+          return;
+        }
+        admitted = request.retryOperationID
+          ? await retryVibeOperation(request.sessionID, request.retryOperationID, JSON.parse(request.body), auth)
+          : await vibeFetch<Operation>(`/sessions/${request.sessionID}/messages`, auth, { method: "POST", body: request.body });
+      } catch (e) {
+        if (!ownsRequest()) return;
+        // Settle only this actor/project's record, even when it is inactive.
+        const rejected = recoverRequest(request, e) === "rejected";
+        if (rejected) {
+          submission.current = null;
+          retryUnsentMessage.current = () => {
+            if (!visibleRecovery() || sending.current) return;
+            submission.current = request;
+            void retrySubmission();
+          };
+        }
+        setError((e as Error).message);
+        if (visibleRecovery()) {
+          setUncertain(!rejected);
+          if (e instanceof VibeError && (e.code === "revision_conflict" || (request.retryOperationID && rejected)))
+            await reload(request.sessionID).catch(() => undefined);
+        }
+        throw e;
       }
-      throw e;
-    }
-    if (!ownsRequest()) return;
-    submission.current = null;
-    setUncertain(false);
-    if (activeSessionRef.current !== request.sessionID) return;
-    if (request.retryOperationID && JSON.parse(request.body).assistant_model)
-      setModels(current => ({ ...current, assistant: admitted.models.assistant }));
-    const submitted = JSON.parse(request.body);
-    const requestKind = submitted.kind;
-    if (session?.document.evaluation?.door === "build" && (requestKind === "message" || requestKind === "playground")) {
-      const base = { session_id: request.sessionID, operation_id: admitted.id, artifact_id: submitted.artifact_id, sample: !!artifact?.sample };
-      captureBuildEvent(WEB_EVENTS.VIBE_BUILD_MESSAGE_ADMITTED, { ...base, recipient: requestKind === "playground" ? "prototype" : "guide" }, admitted.id);
-      if (submitted.demo_id) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_DEMO_SELECTED, { ...base, sample_id: "email" }, admitted.id);
-    }
-    if (requestKind === "check" || requestKind === "retest") {
-      navigation.update({ run: admitted.id }, "replace");
-    }
-    if (!request.trialKey && request.composer !== null)
-      buildEvidence.current = undefined;
-    if (request.trialKey) {
-      const key = request.trialKey;
-      if (request.composerVersion === (trialEdits.current[key] || 0))
-        setTrialBuffers((old) =>
-          old[key] === request.composer ? { ...old, [key]: "" } : old,
+      if (!ownsRequest()) return;
+      submission.current = null;
+      retryUnsentMessage.current = undefined;
+      setError("");
+      if (!visibleRecovery()) { setPendingMessage(undefined); return; }
+      setUncertain(false);
+      if (activeSessionRef.current !== request.sessionID) return;
+      if (request.retryOperationID && JSON.parse(request.body).assistant_model)
+        setModels(current => ({ ...current, assistant: admitted.models.assistant }));
+      const submitted = JSON.parse(request.body);
+      const requestKind = submitted.kind;
+      if (session?.document.evaluation?.door === "build" && (requestKind === "message" || requestKind === "playground")) {
+        const base = { session_id: request.sessionID, operation_id: admitted.id, artifact_id: submitted.artifact_id, sample: !!artifact?.sample };
+        captureBuildEvent(WEB_EVENTS.VIBE_BUILD_MESSAGE_ADMITTED, { ...base, recipient: requestKind === "playground" ? "prototype" : "guide" }, admitted.id);
+        if (submitted.demo_id) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_DEMO_SELECTED, { ...base, sample_id: "email" }, admitted.id);
+      }
+      if (requestKind === "check" || requestKind === "retest") {
+        navigation.update({ run: admitted.id }, "replace");
+      }
+      if (!request.trialKey && request.composer !== null)
+        buildEvidence.current = undefined;
+      if (request.trialKey) {
+        const key = request.trialKey;
+        if (request.composerVersion === (trialEdits.current[key] || 0))
+          setTrialBuffers((old) =>
+            old[key] === request.composer ? { ...old, [key]: "" } : old,
+          );
+      } else if (
+        request.composer !== null &&
+        request.composerVersion === composerEdits.current
+      ) {
+        setContent((current) => (current === request.composer ? "" : current));
+      }
+      // A failed refresh cannot turn an acknowledged send into an unsent draft.
+      // SSE can reconcile it; retain the visible pending message until then.
+      const fresh = await reload(request.sessionID).catch((error: unknown) => {
+        if (visibleRecovery() && activeSessionRef.current === request.sessionID) setConnection(
+          isSessionAccessError(error)
+            ? sessionAccessLost
+            : "Reconnecting to saved progress…",
         );
-    } else if (
-      request.composer !== null &&
-      request.composerVersion === composerEdits.current
-    ) {
-      setContent((current) => (current === request.composer ? "" : current));
+        return undefined;
+      });
+      if (visibleRecovery() && fresh && !request.trialKey && request.composer !== null)
+        setPendingMessage(undefined);
+    } finally {
+      // A late response must not release a newer request for this owner.
+      if (!submission.current || submission.current === request) {
+        sending.current = false;
+        if (visibleRecovery()) { setPending(false); setRunPending(false); setPendingAction(undefined); }
+      }
     }
-    // A failed refresh cannot turn an acknowledged send into an unsent draft.
-    // SSE can reconcile it; retain the visible pending message until then.
-    const fresh = await reload(request.sessionID).catch((error: unknown) => {
-      if (ownsScope(request.scope) && activeSessionRef.current === request.sessionID) setConnection(
-        isSessionAccessError(error)
-          ? sessionAccessLost
-          : "Reconnecting to saved progress…",
-      );
-      return undefined;
-    });
-    if (ownsScope(request.scope) && fresh && !request.trialKey && request.composer !== null)
-      setPendingMessage(undefined);
   }
 
   // Reconcile an SSE acknowledgement that can arrive before the POST returns.
@@ -756,7 +807,7 @@ export function useVibeWorkspace() {
   // retry in progress, even if its HTTP acknowledgement was lost.
   useEffect(() => {
     const request = submission.current;
-    if (!request?.uncertain || !ownsScope(request.scope) || !request.retryOperationID || session?.id !== request.sessionID) return;
+    if (!request?.uncertain || !visibleRecovery() || !request.retryOperationID || session?.id !== request.sessionID) return;
     const admitted = session.operations.find(operation => operation.retry_of_operation_id === request.retryOperationID);
     if (!admitted) return;
     if (JSON.parse(request.body).assistant_model)
@@ -795,8 +846,8 @@ export function useVibeWorkspace() {
     try {
       await dispatchSubmission();
     } catch (e) {
-      if (!ownsScope(scope)) return;
       captureVibeAttempt(session?.document.evaluation?.door || "test", "retry", sessionID, e instanceof VibeError ? e.code : "transport_failed");
+      if (!ownsScope(scope)) return;
       setError((e as Error).message);
     } finally {
       if (ownsScope(scope)) {
