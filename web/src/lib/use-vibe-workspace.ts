@@ -50,6 +50,7 @@ type PendingSubmission = {
   uncertain: boolean;
 };
 type SubmissionRecovery = {
+  attempt?: object;
   submission: { current: PendingSubmission | null };
   sending: { current: boolean };
   retry: { current: (() => void) | undefined };
@@ -352,7 +353,7 @@ export function useVibeWorkspace() {
       alive = false;
     };
   }, [requestedSessionID, loadAttempt]);
-  async function ensureSession(scope = scopeRef.current) {
+  async function ensureSession(scope = scopeRef.current, ownsAttempt = () => true) {
     if (requestedSessionID && session?.id !== requestedSessionID)
       throw new Error(
         "Load this conversation before sending. No new conversation was created.",
@@ -360,7 +361,7 @@ export function useVibeWorkspace() {
     if (session) return session;
     const id = crypto.randomUUID();
     const auth = await token();
-    if (!ownsScope(scope)) throw new Error("The active account or project changed.");
+    if (!ownsScope(scope) || !ownsAttempt()) throw new Error("The active account or project changed.");
     await vibeFetch<Session>("/sessions", auth, {
       method: "POST",
       body: JSON.stringify({
@@ -368,7 +369,7 @@ export function useVibeWorkspace() {
         ...(workspace ? { workspace_id: workspace } : {}),
       }),
     });
-    if (!ownsScope(scope)) throw new Error("The active account or project changed.");
+    if (!ownsScope(scope) || !ownsAttempt()) throw new Error("The active account or project changed.");
     // Verify the browser kept the private cookie before adopting the URL or
     // sending a message. A 201 alone does not prove subsequent ownership.
     let v: Session;
@@ -381,7 +382,7 @@ export function useVibeWorkspace() {
         );
       throw e;
     }
-    if (!ownsScope(scope)) throw new Error("The active account or project changed.");
+    if (!ownsScope(scope) || !ownsAttempt()) throw new Error("The active account or project changed.");
     recoveries.current.delete(recoveryKey(scope));
     scope.sessionID = v.id;
     recoveries.current.set(recoveryKey(scope), recovery);
@@ -618,6 +619,10 @@ export function useVibeWorkspace() {
     const capturedAdoptions = kind === "message" && buildStart ? materials.adoptions : [];
     const capturedInputs = (kind === "playground" || kind === "message" && buildStart) ? materials.bindings : [];
     const clientID = extra.client_id || crypto.randomUUID();
+    const attempt = {};
+    recovery.attempt = attempt;
+    const ownsAttempt = () => recovery.attempt === attempt;
+    let dispatched = false;
     if (kind === "message") {
       retryUnsentMessage.current = undefined;
       setPendingMessage({ id: clientID, content: text });
@@ -632,8 +637,9 @@ export function useVibeWorkspace() {
     setPending(true);
     setError("");
     try {
-      const v = await ensureSession(scope);
-      if (!ownsScope(scope)) return;
+      const v = await ensureSession(scope, ownsAttempt);
+      if (!ownsAttempt()) return;
+      if (!ownsScope(scope)) throw new Error("The active account or project changed.");
       submission.current = {
         scope,
         sessionID: v.id,
@@ -666,6 +672,7 @@ export function useVibeWorkspace() {
           ...extra,
         }),
       };
+      dispatched = true;
       await dispatchSubmission();
       if (!ownsScope(scope)) return;
       if (kind === "message" && currentView.current === "build") {
@@ -678,8 +685,15 @@ export function useVibeWorkspace() {
       }
     } catch (e) {
       captureVibeAttempt(session?.document.evaluation?.door || "test", kind, sessionID, e instanceof VibeError ? e.code : "transport_failed");
-      if (!ownsScope(scope)) return;
+      if (!ownsAttempt()) return;
+      // Preadmission failures belong to the retained owner even when inactive.
       setError((e as Error).message);
+      if (!dispatched && kind === "message" && !extra.demo_id) {
+        retryUnsentMessage.current = () => {
+          if (visibleRecovery() && !sending.current) void submit(kind, text, baseline, extra);
+        };
+      }
+      if (!visibleRecovery()) return;
       if (
         kind === "message" && !extra.demo_id &&
         !submission.current &&
@@ -694,17 +708,18 @@ export function useVibeWorkspace() {
         setPendingMessage(undefined);
       }
     } finally {
-      if (ownsScope(scope)) {
+      if (ownsAttempt()) {
         sending.current = false;
-        setPending(false);
-        setRunPending(false);
+        recovery.attempt = undefined;
+        if (visibleRecovery()) { setPending(false); setRunPending(false); }
       }
     }
   }
   async function dispatchSubmission() {
     const request = submission.current;
     if (!request || !visibleRecovery()) return;
-    const ownsRequest = () => submission.current === request;
+    const attempt = recovery.attempt;
+    const ownsRequest = () => recovery.attempt === attempt && submission.current === request;
     try {
       let admitted: Operation;
       try {
@@ -785,7 +800,7 @@ export function useVibeWorkspace() {
         setPendingMessage(undefined);
     } finally {
       // A late response must not release a newer request for this owner.
-      if (!submission.current || submission.current === request) {
+      if (recovery.attempt === attempt && (!submission.current || submission.current === request)) {
         sending.current = false;
         if (visibleRecovery()) { setPending(false); setRunPending(false); setPendingAction(undefined); }
       }
@@ -837,8 +852,10 @@ export function useVibeWorkspace() {
   }, [pendingEdit, session]);
 
   async function retrySubmission() {
-    const scope = scopeRef.current;
     if (sending.current || pending || !submission.current) return;
+    const attempt = {};
+    recovery.attempt = attempt;
+    const ownsAttempt = () => recovery.attempt === attempt;
     sending.current = true;
     setPending(true);
     if (submission.current.retryOperationID) setPendingAction("Retrying your request…");
@@ -847,13 +864,13 @@ export function useVibeWorkspace() {
       await dispatchSubmission();
     } catch (e) {
       captureVibeAttempt(session?.document.evaluation?.door || "test", "retry", sessionID, e instanceof VibeError ? e.code : "transport_failed");
-      if (!ownsScope(scope)) return;
+      if (!ownsAttempt() || !visibleRecovery()) return;
       setError((e as Error).message);
     } finally {
-      if (ownsScope(scope)) {
+      if (ownsAttempt()) {
         sending.current = false;
-        setPending(false);
-        setPendingAction(undefined);
+        recovery.attempt = undefined;
+        if (visibleRecovery()) { setPending(false); setPendingAction(undefined); }
       }
     }
   }

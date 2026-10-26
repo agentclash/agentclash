@@ -2416,3 +2416,62 @@ it.each(["success", "failure"])("settles a late project A %s only in A while bro
     expect(bodies[2]).toBe(bodies[0]); expect(composer().value).toBe("A next draft");
   }
 });
+
+it.each([
+  { phase: "creation", changeActor: false },
+  { phase: "cookie verification", changeActor: true },
+])("releases an inactive first-session $phase attempt and restores explicit content recovery without disturbing another project", async ({ phase, changeActor }) => {
+  scenarioAgent();
+  const other = { ...structuredClone(session), id: "session-b" };
+  other.document.artifacts[0].id = "artifact-b";
+  harness.params = new URLSearchParams();
+  window.history.replaceState({}, "", "/vibe-evals?session=session-b");
+  window.history.pushState({}, "", "/vibe-evals");
+  const gate = deferred<Response>(); const pendingB = deferred<Response>();
+  const created = new Map<string, Session>(); const previous = respond;
+  let firstID = ""; let cookieReads = 0;
+  respond = async (path, options) => {
+    if (path === "/sessions" && options.method === "POST") {
+      const id = JSON.parse(String(options.body)).id as string;
+      const project: Session = { ...structuredClone(session), id, document: { models: defaultModels, messages: [], requirements: [], artifacts: [] }, operations: [] };
+      created.set(id, project);
+      if (!firstID) { firstID = id; if (phase === "creation") return gate.promise; }
+      return json(project);
+    }
+    if (path === "/sessions/session-b") return json(other);
+    const project = created.get(path.replace("/sessions/", ""));
+    if (project) { if (project.id === firstID && phase === "cookie verification" && ++cookieReads === 1) return gate.promise; return json(project); }
+    if (path === "/sessions/session-b/messages") return pendingB.promise;
+    if (path.endsWith("/messages")) return json({ id: "first-message-admitted", models: defaultModels });
+    return previous(path, options);
+  };
+  await render(); await type("Recover this first project description"); await click("Send message");
+  expect(firstID).not.toBe(""); expect(posts()).toHaveLength(0);
+  if (changeActor) { harness.user = { id: "other-preflight-actor" }; harness.token.mockResolvedValue("other-token"); }
+  await historyStep("back");
+  await type("B's own pending request"); await click("Send message"); await type("B typed ahead");
+  expect(posts()).toHaveLength(1); const bURL = window.location.href;
+  await act(async () => gate.resolve(phase === "creation" ? json(created.get(firstID)) : json({ error: { code: "forbidden", message: "Cookie was not retained" } }, 403)));
+  expect(window.location.href).toBe(bURL); expect(composer().value).toBe("B typed ahead");
+  expect(button("Send message").disabled).toBe(true);
+  expect(container.textContent).not.toContain("Recover this first project description");
+  await historyStep("forward");
+  if (changeActor) { expect(container.textContent).not.toContain("Recover this first project description"); harness.user = undefined; await render(); }
+  expect(container.textContent).toContain("Recover this first project description");
+  expect(button("Retry unsent message").disabled).toBe(false);
+  expect(posts()).toHaveLength(1);
+  await historyStep("back");
+  if (changeActor) { harness.user = { id: "other-preflight-actor" }; await render(); }
+  expect(button("Send message").disabled).toBe(true); expect(composer().value).toBe("B typed ahead");
+  await act(async () => pendingB.resolve(json({ id: "b-admitted", models: defaultModels })));
+  expect(button("Send message").disabled).toBe(false); expect(composer().value).toBe("B typed ahead");
+  await historyStep("forward");
+  if (changeActor) { harness.user = undefined; await render(); }
+  expect(posts()).toHaveLength(1);
+  await click("Retry unsent message");
+  expect(posts()).toHaveLength(2);
+  expect(posts()[1].body.content).toBe("Recover this first project description");
+  expect(posts()[1].path).not.toBe("/sessions/session-b/messages");
+  expect(new URL(window.location.href).searchParams.get("session")).not.toBe(firstID);
+  expect(new URL(window.location.href).searchParams.get("session")).toBe(posts()[1].path.split("/")[2]);
+});
