@@ -24,6 +24,21 @@ func (h *VibeHandler) addEvidence(w http.ResponseWriter, r *http.Request) {
 		vibeError(w, err)
 		return
 	}
+	if v.Document.FormatVersion == 1 && input.ClientID != nil {
+		updated, e := h.Service.Store.GetSession(r.Context(), v.Actor, v.ID)
+		if e != nil {
+			vibeError(w, e)
+			return
+		}
+		receipt, e := h.Service.Store.RecordedEvidenceReceipt(r.Context(), v.Actor, v.ID, *input.ClientID)
+		if e != nil {
+			vibeError(w, e)
+			return
+		}
+		updated.EvidenceReceipt = &receipt
+		vibeJSON(w, 200, updated)
+		return
+	}
 	h.get(w, r)
 }
 

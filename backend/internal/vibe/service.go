@@ -118,6 +118,9 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 			}
 		}
 	}
+	if (sub.CaseKeys != nil || sub.RetrySourceResultRef != nil) && sub.Kind != "check" {
+		return Operation{}, fault("invalid_subset", "Only a quoted unresolved-case check accepts a subset.")
+	}
 	p := Plan{AuthoringVersion: 4, Submission: sub, Document: v.Document, Anonymous: v.Anonymous, Free: s.Config.FreeOnly, LocalTesting: s.Config.TestingLocally()}
 	if err = s.prepareBuildCycle(ctx, v, sub, &p); err != nil {
 		return Operation{}, err
@@ -141,6 +144,9 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 				p.Artifact = &copy
 				break
 			}
+		}
+		if err = s.prepareResultRecovery(ctx, v, &p); err != nil {
+			return Operation{}, err
 		}
 		if p.Artifact != nil && p.Artifact.IsConversationEvaluation() {
 			return s.prepareConversations(ctx, actor, v, sub, p)
@@ -231,6 +237,10 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 			compiled, e := s.Compiler.Compile(p.Artifact.Blueprint, sub.Models.Evaluator, p.Artifact.ID, l)
 			if e != nil {
 				return Operation{}, e
+			}
+			compiled.Cases, err = selectCompiledCases(compiled.Cases, sub.CaseKeys)
+			if err != nil {
+				return Operation{}, err
 			}
 			if len(compiled.Cases) > l.Cases {
 				return Operation{}, fault("case_limit", fmt.Sprintf("This evaluation has %d cases; the current limit is %d. Create an explicitly smaller draft to preview it.", len(compiled.Cases), l.Cases))

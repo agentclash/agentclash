@@ -86,8 +86,12 @@ func (r *Readiness) DependencyChecks(ctx context.Context) map[string]string {
 	if r.DB != nil {
 		// Resolve required columns as well as relations; a reachable but unmigrated
 		// database is not ready. This works with both supported migration runners.
-		rows, err := r.DB.Query(ctx, `SELECT s.id,o.state,b.delivered_at,a.reconciliation_evidence,c.balance
-   FROM vibe_sessions s,vibe_operations o,vibe_outbox b,vibe_attempts a,vibe_accounts c LIMIT 0`)
+		rows, err := r.DB.Query(ctx, `SELECT s.id,o.state,b.delivered_at,a.reconciliation_evidence,c.balance,
+   e.session_id,e.client_id,e.request_hash,e.evidence_id,e.artifact_id,
+   g.id,g.session_id,g.client_id,g.request_hash,g.result_kind,g.result_id,g.body,g.created_at,
+   v.id,v.session_id,v.operation_id,v.stage_key,v.candidate_hash,v.policy_hash,v.body,v.created_at
+   FROM vibe_sessions s,vibe_operations o,vibe_outbox b,vibe_attempts a,vibe_accounts c,
+   vibe_evidence_receipts e,vibe_grade_reviews g,vibe_validation_reviews v LIMIT 0`)
 		if err == nil {
 			rows.Close()
 			if rows.Err() == nil {

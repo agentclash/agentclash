@@ -170,6 +170,10 @@ func TestIntegrationBuildCleaningRequestRepairsAllInventedClauses(t *testing.T) 
 			if err != nil {
 				t.Fatal(err)
 			}
+			var reviews int
+			if err = s.Store.DB.QueryRow(ctx, "SELECT count(*) FROM vibe_validation_reviews WHERE operation_id=$1", o.ID).Scan(&reviews); err != nil || reviews != 2 {
+				t.Fatal("candidate review history unavailable after reload", reviews, err)
+			}
 			checks := 0
 			for _, op := range v.Operations {
 				if op.Kind == "check" {
@@ -244,5 +248,45 @@ func TestIntegrationBuildRetryUpgradesLegacyPreparationWithoutDuplicatingRequest
 	v, err = s.Store.GetSession(ctx, v.Actor, v.ID)
 	if err != nil || len(v.Document.Messages) != 1 || len(v.Operations) != 2 {
 		t.Fatal("retry duplicated the user message or operation", err)
+	}
+}
+
+func TestIntegrationUnavailableValidationRetainsCandidateReview(t *testing.T) {
+	s, v := materialService(t)
+	ctx := context.Background()
+	o, _ := startBuild(t, s, v, cleaningCompanyRequest)
+	calls := 0
+	r := Runner{Service: s, Gateway: &Gateway{Store: s.Store, Config: s.Config, Gate: s.Gate, Client: callFunc(func(_ context.Context, req provider.Request) (provider.Response, error) {
+		calls++
+		var out any
+		switch calls {
+		case 1:
+			out = interpretationFixture(prepareAction{Kind: "prepare_tests", Count: 3}, factObservation{Kind: "job", Quote: cleaningCompanyRequest})
+		case 2:
+			var input taskInput
+			if err := json.Unmarshal([]byte(req.Messages[1].Content), &input); err != nil {
+				t.Fatal(err)
+			}
+			id := input.CurrentRequest.ID
+			out = createSuiteCommand{Rules: []PolicyRule{{ID: "list", Statement: "List who needs what and when.", SourceBlockIDs: []string{id}, Evidence: []RuleEvidence{{SourceBlockID: id, Quote: cleaningCompanyRequest, Kind: "requirement"}}}}, Tests: testSuiteProposal{Title: "Cleaning", Summary: "List customer requests", Scenarios: []TestScenario{{Input: "Maria: Friday 2pm kitchen", Expected: "List Maria, kitchen, Friday 2pm."}, {Input: "Dan: Monday 10am bathroom", Expected: "List Dan, bathroom, Monday 10am."}, {Input: "Priya: Saturday 11am floors", Expected: "List Priya, floors, Saturday 11am."}}}}
+		default:
+			out = map[string]any{"broken": "review output"}
+		}
+		cost := json.Number("0.000001")
+		return provider.Response{OutputText: string(raw(out)), Usage: provider.Usage{CostUSD: &cost}}, nil
+	})}}
+	err := r.Execute(ctx, o.ID)
+	if err == nil {
+		t.Fatal("malformed validation accepted")
+	}
+	if err = r.Finalize(ctx, o.ID, issueFrom(err)); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := s.Store.GetSession(ctx, v.Actor, v.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(saved.Document.Artifacts) != 0 || len(saved.ValidationReviews) != 1 || saved.ValidationReviews[0].Validation.Status != SuiteUnavailable || len(saved.ValidationReviews[0].Cases) != 3 || len(saved.ValidationReviews[0].Validation.Cases) != 0 {
+		t.Fatal("unavailable review lost candidate or invented findings", saved.ValidationReviews)
 	}
 }

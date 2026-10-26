@@ -85,6 +85,8 @@ func (h *VibeHandler) Routes() http.Handler {
 	r.Post("/sessions/{sessionID}/actions", h.interact)
 	r.Post("/sessions/{sessionID}/import", h.importFile)
 	r.Post("/sessions/{sessionID}/evidence", h.addEvidence)
+	r.Post("/sessions/{sessionID}/grade-reviews", h.gradeReviews)
+	r.Get("/sessions/{sessionID}/grade-reviews", h.gradeReviews)
 	r.Patch("/sessions/{sessionID}", h.edit)
 	r.Post("/sessions/{sessionID}/claim", h.claim)
 	r.Post("/sessions/{sessionID}/save", h.save)
@@ -156,7 +158,7 @@ func vibeError(w http.ResponseWriter, err error) {
 			status = 401
 		case "forbidden":
 			status = 403
-		case "revision_conflict", "idempotency_conflict", "operation_running", "invalid_state", "saved_model_conflict", "saved_baseline_conflict", "retry_not_allowed", "retry_committed", "retry_running", "retry_uncertain", "retry_stale":
+		case "evidence_changed", "revision_conflict", "idempotency_conflict", "operation_running", "invalid_state", "saved_model_conflict", "saved_baseline_conflict", "retry_not_allowed", "retry_committed", "retry_running", "retry_uncertain", "retry_stale":
 			status = 409
 		case "retry_cooldown", "rate_limit", "capacity_limit", "trial_limit":
 			status = 429

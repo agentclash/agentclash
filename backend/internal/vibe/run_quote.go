@@ -28,6 +28,8 @@ func runFingerprint(p Plan) string {
 		return Hash(raw(p))
 	}
 	return Hash(raw(struct {
+		Cases    []string
+		Recovery *ResultRecovery
 		Kind     string
 		Purpose  string
 		Models   Models
@@ -39,7 +41,7 @@ func runFingerprint(p Plan) string {
 		Grading  *GradingContract
 		Target   *TargetConfiguration
 		Limits   *Limits
-	}{p.Submission.Kind, p.Submission.Purpose, p.Submission.Models, p.Artifact, p.Evidence, p.Submission.BaselineID, p.MaxCost, p.Calls, p.Grading, p.TargetConfig, p.ExecutionLimits}))
+	}{p.Cases, p.Recovery, p.Submission.Kind, p.Submission.Purpose, p.Submission.Models, p.Artifact, p.Evidence, p.Submission.BaselineID, p.MaxCost, p.Calls, p.Grading, p.TargetConfig, p.ExecutionLimits}))
 }
 func (s *Service) QuoteRun(ctx context.Context, actor string, id uuid.UUID, sub Submission) (RunQuote, error) {
 	if sub.Kind != "check" && sub.Kind != "retest" && !(sub.Kind == "message" && sub.AdditionalExamples > 0) {

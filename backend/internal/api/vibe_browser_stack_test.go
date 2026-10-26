@@ -363,6 +363,29 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 	case strings.HasPrefix(req.Messages[0].Content, "Write instructions for a bounded interactive"):
 		f.calls = append(f.calls, browserFixtureCall{Role: "prototype"})
 		return browserFixtureResponse(`{"instructions":"Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund."}`), nil
+	case strings.Contains(req.Messages[0].Content, "Judge every expectation exactly once across the complete conversation"):
+		name = "judge"
+		var input struct {
+			Expectations []vibe.Expectation        `json:"expectations"`
+			Conversation vibe.EvidenceConversation `json:"conversation"`
+		}
+		if err := json.Unmarshal([]byte(req.Messages[1].Content), &input); err != nil || len(input.Expectations) == 0 {
+			return provider.Response{}, fmt.Errorf("missing recorded expectations: %v", err)
+		}
+		var reply vibe.EvidenceMessage
+		for _, m := range input.Conversation.Messages {
+			if m.Role == "assistant" {
+				reply = m
+			}
+		}
+		if reply.Content == "" {
+			return provider.Response{}, fmt.Errorf("missing recorded reply")
+		}
+		checks := []any{}
+		for _, expectation := range input.Expectations {
+			checks = append(checks, map[string]any{"key": expectation.ID, "verdict": "FAIL", "evidence": "The recorded reply promises a refund despite the stated restriction.", "finding": map[string]any{"kind": "observed", "quotes": []any{map[string]any{"message_id": reply.ID, "text": reply.Content}}, "missing": "", "covered_message_ids": []string{}}})
+		}
+		output = map[string]any{"checks": checks}
 	case strings.Contains(req.Messages[0].Content, "Every finding has exactly"):
 		name = "judge"
 		var input struct {

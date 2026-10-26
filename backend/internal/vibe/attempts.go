@@ -249,6 +249,7 @@ func nullableJSON(v *Fault) []byte {
 	return raw(v)
 }
 func (s *Store) PutResult(ctx context.Context, id uuid.UUID, c CaseResult) error {
+	c.EvidenceHash = "" // Read receipt, never part of persisted inference evidence.
 	if c.Checks == nil {
 		c.Checks = []CheckResult{}
 	}
@@ -259,6 +260,19 @@ func (s *Store) PutResult(ctx context.Context, id uuid.UUID, c CaseResult) error
 		}
 		if _, err = scanSession(tx.QueryRow(ctx, sessionSelect, o.SessionID)); err != nil {
 			return err
+		}
+		var plan Plan
+		if err = json.Unmarshal(o.Input, &plan); err != nil {
+			return err
+		}
+		if plan.Provenance != nil && plan.Artifact != nil {
+			selected := false
+			for _, key := range plan.Cases {
+				selected = selected || key == c.CaseKey
+			}
+			if !selected || c.Version != plan.Artifact.ID.String() {
+				return fault("invalid_result", "The result is outside the admitted case and version scope.")
+			}
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO vibe_case_results(operation_id,case_key,version,result) VALUES($1,$2,$3,$4) ON CONFLICT(operation_id,case_key,version) DO UPDATE SET result=EXCLUDED.result`, id, c.CaseKey, c.Version, raw(c))
 		if err != nil {

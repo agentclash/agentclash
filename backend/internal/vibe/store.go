@@ -213,6 +213,9 @@ func (s *Store) GetSession(ctx context.Context, actor string, id uuid.UUID) (Ses
 		}
 	}
 	v.ServerTime = timestamp()
+	if err = populateValidationReviews(ctx, tx, &v); err != nil {
+		return v, err
+	}
 	if err = populateProgress(ctx, tx, &v); err != nil {
 		return v, err
 	}
@@ -228,7 +231,7 @@ func (s *Store) GetSession(ctx context.Context, actor string, id uuid.UUID) (Ses
 type scanner interface{ Scan(...any) error }
 
 const operationSelect = `SELECT id,session_id,actor,kind,state,billing,models,input,max_cost,actual_cost,model_calls,error,created_at,deadline,conversation_decision,completion_receipt FROM vibe_operations`
-const operationSummarySelect = `SELECT id,session_id,actor,kind,state,billing,models,jsonb_strip_nulls(jsonb_build_object('source',input->'source','grading',input->'grading','target_config',input->'target_config','authoring_version',input->'authoring_version','submission',jsonb_build_object('baseline_id',input#>'{submission,baseline_id}','retry_of',input#>'{submission,retry_of}'))),max_cost,actual_cost,model_calls,error,created_at,deadline,conversation_decision,completion_receipt FROM vibe_operations`
+const operationSummarySelect = `SELECT id,session_id,actor,kind,state,billing,models,jsonb_strip_nulls(jsonb_build_object('regrade_of',input->'regrade_of','evidence_provenance',input->'evidence_provenance','artifact',jsonb_build_object('id',input#>'{artifact,id}'),'case_keys',input->'case_keys','source',input->'source','grading',input->'grading','target_config',input->'target_config','authoring_version',input->'authoring_version','submission',jsonb_build_object('kind',kind,'retry_source_result_ref',input#>'{submission,retry_source_result_ref}','baseline_id',input#>'{submission,baseline_id}','retry_of',input#>'{submission,retry_of}'))),max_cost,actual_cost,model_calls,error,created_at,deadline,conversation_decision,completion_receipt FROM vibe_operations`
 
 func scanOperation(row scanner) (Operation, error) {
 	var o Operation
@@ -261,6 +264,7 @@ func scanOperation(row scanner) (Operation, error) {
 	o.RetryOfOperationID = p.Submission.RetryOf
 	o.Source = p.Source
 	o.Grading, o.TargetConfig = p.Grading, p.TargetConfig
+	populateResultEvidence(&o, p)
 	if len(issue) > 0 {
 		err = json.Unmarshal(issue, &o.Error)
 	}
@@ -341,6 +345,8 @@ func (s *Store) GetCase(ctx context.Context, actor string, id uuid.UUID, key str
 	if err = json.Unmarshal(data, &result); err != nil {
 		return result, err
 	}
+	result.EvidenceHash = ""
+	result.EvidenceHash = Hash(raw(result))
 	if result.Expected == "" {
 		// Older runs stored a shared rule, not per-case expectations. Recover
 		// only their frozen declaration; never use the currently edited agent.

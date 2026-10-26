@@ -246,11 +246,13 @@ func findEvidence(d Document, id *uuid.UUID) *EvidenceSet {
 }
 
 type EvidenceInput struct {
-	Revision int64             `json:"revision"`
-	Content  string            `json:"content"`
-	Label    string            `json:"label"`
-	ParentID *uuid.UUID        `json:"parent_id,omitempty"`
-	Roles    map[string]string `json:"roles,omitempty"`
+	ClientID     *uuid.UUID        `json:"client_id,omitempty"`
+	Expectations []Expectation     `json:"expectations,omitempty"`
+	Revision     int64             `json:"revision"`
+	Content      string            `json:"content"`
+	Label        string            `json:"label"`
+	ParentID     *uuid.UUID        `json:"parent_id,omitempty"`
+	Roles        map[string]string `json:"roles,omitempty"`
 }
 
 func (s *Service) AddEvidence(ctx context.Context, actor string, id uuid.UUID, in EvidenceInput) error {
@@ -259,7 +261,7 @@ func (s *Service) AddEvidence(ctx context.Context, actor string, id uuid.UUID, i
 		return err
 	}
 	if v.Document.FormatVersion == 1 {
-		return fault("unsupported_capability", "Use agent instructions or a challenge pack. Recorded-conversation grading is not available in V1.")
+		return s.addRecordedEvidence(ctx, actor, v, in)
 	}
 
 	l := s.Config.Limits(v.Anonymous)
