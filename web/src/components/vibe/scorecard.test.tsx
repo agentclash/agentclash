@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { CaseResult, Operation } from "@/lib/vibe";
 import { ResultRecoveryControls } from "./result-recovery";
+import { persistDrafts, emptyDrafts, editorDraftKey, readEditorDraft, discardDrafts } from "@/lib/vibe-build-drafts";
 import { GradeReviews } from "./grade-reviews";
 import { ResultComparison } from "./result-comparison";
 import { compareResultEvidence } from "@/lib/vibe-result-evidence";
@@ -610,6 +611,7 @@ it("starts a fresh review only after the stale request is authoritatively reject
   const body=JSON.parse(String(options.body));requests.push(body);
   if(rejection==="transport")throw new TypeError("Disconnected before commit");
   if(rejection==="auth")return new Response(JSON.stringify({error:{code:"unauthorized",message:"Sign in again"}}),{status:401});
+  if(rejection==="conflict")return new Response(JSON.stringify({error:{code:"idempotency_conflict",message:"Request identity conflicts"}}),{status:409});
   if(rejection==="stale")return new Response(JSON.stringify({error:{code:"evidence_changed",message:"Evidence changed. Reload."}}),{status:409});
   return new Response(JSON.stringify({...body,id:"new-review",created_at:"2026-10-26T00:00:00Z",evidence:source}),{status:201});
  }));
@@ -623,12 +625,63 @@ it("starts a fresh review only after the stale request is authoritatively reject
  await act(async()=>root.render(<div/>));await draw();await click("Review a grade");
  rejection="auth";await click("Retry saving this review");
  expect(container.textContent).not.toContain("Review updated evidence");
+ rejection="conflict";await click("Retry saving this review");
+ expect(container.textContent).not.toContain("Correct review reason");
+ expect(container.textContent).not.toContain("Review updated evidence");
  rejection="stale";await click("Retry saving this review");
- expect(requests[1]).toEqual(requests[0]);expect(requests[2]).toEqual(requests[0]);
+ expect(requests.slice(1)).toEqual([requests[0],requests[0],requests[0]]);
  await click("Review updated evidence");
  expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Grade review reason"]')!.value).toBe("Retain my reason.");
  expect(container.textContent).toContain("Late source reply");
  rejection="success";await click("Save grade review");
- expect(requests[3]).toMatchObject({source_evidence_hash:source.evidence_hash,reason:"Retain my reason.",case_key:failure.case_key});
- expect(requests[3].client_id).not.toBe(requests[0].client_id);
+ expect(requests[4]).toMatchObject({source_evidence_hash:source.evidence_hash,reason:"Retain my reason.",case_key:failure.case_key});
+ expect(requests[4].client_id).not.toBe(requests[0].client_id);
+});
+
+
+it.each(["new ASCII", "new multibyte", "persisted invalid"])("corrects an overlimit grade-review reason without trapping its receipt (%s)",async(mode)=>{
+ const project=`byte-limit-${mode}`;const op=operation([failure]);const source={...failure,evidence_hash:"2".repeat(64)};
+ const invalid=mode==="new ASCII"?"a".repeat(4097):"🙂".repeat(1025);
+ const valid=mode==="new ASCII"?"a".repeat(4096):"🙂".repeat(1024);
+ const previous={client_id:"previous-invalid-request",source_evidence_hash:"1".repeat(64),result_ref:{kind:"vibe_operation",id:op.id},artifact_id:failure.version,case_key:failure.case_key,reason:invalid};
+ const posts:Record<string,unknown>[]=[];
+ vi.stubGlobal("fetch",vi.fn(async(_url:string,options:RequestInit={})=>{
+  if(options.method!=="POST")return new Response("[]",{headers:{"Content-Type":"application/json"}});
+  const body=JSON.parse(String(options.body));posts.push(body);
+  return new Response(JSON.stringify({...body,id:"saved-review",created_at:"2026-10-26T00:00:00Z",evidence:source}),{status:201});
+ }));
+ if(mode==="persisted invalid"){
+  // Restore a request left by the prior UI after the API's pretransaction
+  // invalid_request rejection. It cannot have a receipt for this exact body.
+  const editors={
+   [editorDraftKey(project,op.id,"review-request")]:{artifact:op.id,source:"review-v1",value:JSON.stringify(previous)},
+   [editorDraftKey(project,op.id,`review:${failure.case_key}`)]:{artifact:op.id,source:"review-v1",value:invalid},
+  };
+  persistDrafts(project,{...emptyDrafts(),editors});
+ }
+ const draw=()=>act(async()=>root.render(<GradeReviews sessionID={project} operation={op} load={async()=>source}/>));
+ const typeReason=async(value:string)=>act(async()=>{const input=container.querySelector<HTMLTextAreaElement>('[aria-label="Grade review reason"]')!;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(input,value);input.dispatchEvent(new Event("input",{bubbles:true}))});
+ await draw();await click("Review a grade");
+ if(mode!=="persisted invalid"){
+  await typeReason(invalid);
+  expect(button("Save grade review").disabled).toBe(true);
+  // The submit owner must also reject Enter/programmatic form submission.
+  await act(async()=>container.querySelector('form')!.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));
+  expect(readEditorDraft(project,op.id,"review-request")).toBeUndefined();
+ }else{
+  expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Grade review reason"]')!.disabled).toBe(true);
+  await click("Correct review reason");
+  expect(readEditorDraft(project,op.id,"review-request")).toBeUndefined();
+ }
+ expect(posts).toHaveLength(0);
+ expect(container.textContent).toContain("4,096 UTF-8 bytes");
+ await act(async()=>root.render(<div/>));await draw();await click("Review a grade");
+ const input=container.querySelector<HTMLTextAreaElement>('[aria-label="Grade review reason"]')!;
+ expect(input.value).toBe(invalid);expect(input.disabled).toBe(false);
+ await typeReason(valid);expect(button("Save grade review").disabled).toBe(false);
+ await click("Save grade review");
+ expect(posts).toHaveLength(1);expect(posts[0]).toMatchObject({reason:valid,source_evidence_hash:source.evidence_hash,case_key:failure.case_key});
+ expect(posts[0].client_id).not.toBe(previous.client_id);
+ expect(readEditorDraft(project,op.id,"review-request")).toBeUndefined();
+ discardDrafts(project);
 });
