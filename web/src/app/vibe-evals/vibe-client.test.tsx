@@ -2475,3 +2475,30 @@ it.each([
   expect(new URL(window.location.href).searchParams.get("session")).not.toBe(firstID);
   expect(new URL(window.location.href).searchParams.get("session")).toBe(posts()[1].path.split("/")[2]);
 });
+
+it("keeps untested version Results empty until explicit history pins the tested version", async () => {
+  const v1 = {id:"v1",kind:"test_suite" as const,title:"Old policy",agent_prompt:"Old instructions",accepted:true,source_message_id:"request",blueprint:{cases:[]},sample:"email"};
+  const v2 = {...v1,id:"v2",title:"New policy",agent_prompt:"New instructions",parent_id:"v1"};
+  session.document.evaluation={id:session.id,chat_id:session.id,door:"build"};
+  session.document.artifacts=[v1,v2]; session.document.active_artifact_id="v2";
+  session.operations=[{id:"old-run",kind:"check",state:"COMPLETED",billing:"SETTLED",models:defaultModels,source:{kind:"prompt",artifact_id:"v1",label:"Old policy"},results:[],max_cost_nano_usd:0,actual_cost_nano_usd:0,scorecard:{total:1,passed:1,failed:0,unknown:0,evaluated:1,pass_rate:1,coverage:1}}];
+  harness.params=new URLSearchParams(`session=${session.id}&view=agent&agent=v2`);
+  const original=respond; respond=async(path,options)=>path==="/config"?json({enabled:true,two_door:true,defaults:defaultModels,models:[...new Set(Object.values(defaultModels))].map(id=>({id,name:id})),availability:{guest:{available:true},workspace:{available:true}}}):original(path,options);
+  await render(); await click("Results");
+  expect(new URL(location.href).searchParams.get("run")).toBeNull();
+  expect(container.querySelector(".vibe-project-header")?.textContent).toContain("v2 · New policy");
+  expect(container.querySelector(".vibe-project-main")?.textContent).toContain("No results for this version");
+  expect(container.querySelector('[aria-label="Keep and extend your results"]')).toBeNull();
+  expect(container.querySelector('[aria-label="Next actions for this version"]')).toBeNull();
+  const history=container.querySelector<HTMLSelectElement>('[aria-label="Result history"]')!;
+  await act(async()=>{history.value="old-run";history.dispatchEvent(new Event("change",{bubbles:true}));});
+  expect(new URL(location.href).searchParams.get("run")).toBe("old-run");
+  expect(new URL(location.href).searchParams.get("agent")).toBe("v1");
+  expect(container.querySelector(".vibe-project-header")?.textContent).toContain("v1 · Old policy");
+  expect(container.querySelector('[aria-label="Next actions for this version"]')?.getAttribute("data-artifact-id")).toBe("v1");
+  const followup=container.querySelector('[aria-label="Keep and extend your results"]')!;
+  await act(async()=>[...followup.querySelectorAll<HTMLButtonElement>("button")].find(button=>button.textContent==="Try tougher situations")!.click());
+  await click("See cost and continue");
+  expect(requests.find(request=>request.path.endsWith("/build-quote"))?.body.artifact_id).toBe("v1");
+  expect(posts()).toHaveLength(0);
+});

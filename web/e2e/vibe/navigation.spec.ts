@@ -1,3 +1,4 @@
+import { writeFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import { defaultModels, type Session } from "../../src/lib/vibe";
 
@@ -440,4 +441,54 @@ test("an explicit pre-run Guide reference submits only its identity and the user
  // The fake boundary rejects inference; request construction is the owner here.
  await expect(page.getByRole("alert").filter({hasText:"Unexpected mutation in navigation test"}).first()).toBeVisible();
  expect(control.errors).toEqual([]);
+});
+
+test("Settings descendants retain readable scoped appearance including warning, control and focus states", async ({page},info) => {
+  await page.setViewportSize({width:1440,height:900});
+  await page.emulateMedia({colorScheme:"light",reducedMotion:"reduce"});
+  const control=await serve(page,false,true);
+  await page.route("**/v1/vibe/config",route=>route.fulfill({headers:{"Access-Control-Allow-Origin":new URL(page.url()).origin,"Access-Control-Allow-Credentials":"true"},json:{enabled:true,two_door:true,local_testing:true,defaults:defaultModels,models:[...new Set([...Object.values(defaultModels),"fixture/alternative"])].map(id=>({id,name:id})),availability:{guest:{available:true},workspace:{available:true}}}}));
+  control.first.operations[1].state="FAILED";
+  control.first.operations[1].error={code:"provider_unavailable",message:"Fixture provider is unavailable."};
+  await page.reload(); await page.getByRole("tab",{name:"Results",exact:true}).click();
+  const globalBefore=await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue("--builder-fg-muted"));
+  await page.getByRole("button",{name:"Details",exact:true}).click();
+  const report:unknown[]=[];
+  for(const [appearance,system] of [["light","dark"],["dark","light"],["system","light"],["system","dark"]] as const) {
+    await page.emulateMedia({colorScheme:system,reducedMotion:"reduce"});
+    await page.getByLabel("Appearance",{exact:true}).selectOption(appearance);
+    await page.getByRole("complementary",{name:"Details utility"}).getByRole("button",{name:"Settings",exact:true}).click();
+    const dialog=page.getByRole("dialog",{name:"Settings and details"});
+    const model=dialog.getByLabel("Assistant model",{exact:true});
+    await model.focus(); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab");
+    const action=dialog.getByRole("button",{name:"Import a test pack",exact:true}); await action.hover();
+    const measurement=await dialog.evaluate(popup=> {
+      const canvas=document.createElement("canvas"), context=canvas.getContext("2d")!;
+      const rgba=(color:string)=>{context.clearRect(0,0,1,1);context.fillStyle=color;context.fillRect(0,0,1,1);return [...context.getImageData(0,0,1,1).data].map((v,i)=>i===3?v/255:v);};
+      const blend=(fg:number[],bg:number[])=>fg.slice(0,3).map((v,i)=>v*fg[3]+bg[i]*(1-fg[3]));
+      const background=(element:Element)=>{const layers:number[][]=[];for(let el:Element|null=element;el;el=el.parentElement){const c=rgba(getComputedStyle(el).backgroundColor);layers.push(c);if(c[3]===1)break;}return layers.reverse().reduce((bg,c)=>blend(c,bg),[255,255,255]);};
+      const luminance=(c:number[])=>c.map(v=>{const n=v/255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4;}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+      const ratio=(a:number[],b:number[])=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
+      const sample=(element:Element)=>{const style=getComputedStyle(element),bg=background(element),fg=blend(rgba(style.color),bg);return {text:element.textContent?.trim().slice(0,80),color:style.color,background:bg,contrast:ratio(fg,bg)};};
+      const select=popup.querySelector<HTMLSelectElement>('[aria-label="Assistant model"]')!, css=getComputedStyle(select), bg=background(select);
+      const help=[...popup.querySelectorAll("p")].filter(el=>/Plans the check|Generates replies|Grades replies|Model changes apply/.test(el.textContent||""));
+      const labels=[...popup.querySelectorAll("label")].filter(el=>el.querySelector('select[aria-label$=" model"]'));
+      const warning=[...document.querySelectorAll('[role="alert"]')].find(el=>el.textContent?.includes("Fixture provider is unavailable."))!;
+      const ringColor=[...css.boxShadow.matchAll(/(?:rgba?|oklch|color)\([^)]*\)/g)].map(match=>match[0]).filter(color=>rgba(color)[3]>0).at(-1);
+      const action=[...popup.querySelectorAll("button")].find(button=>button.textContent?.includes("Import a test pack"))!;
+      return {action:sample(action),actionBorderContrast:ratio(blend(rgba(getComputedStyle(action).borderTopColor),background(action)),background(action)),labels:labels.map(sample),help:help.map(sample),control:sample(select),warning:sample(warning),border:css.borderTopColor,borderContrast:ratio(blend(rgba(css.borderTopColor),bg),bg),focus:{visible:select.matches(":focus-visible"),shadow:css.boxShadow,contrast:ringColor?ratio(blend(rgba(ringColor),bg),bg):0}};
+    });
+    expect(measurement.labels.length).toBe(3); expect(measurement.help.length).toBe(4);
+    for(const row of [...measurement.labels,...measurement.help,measurement.control,measurement.warning,measurement.action]) expect(row.contrast,`${appearance}/${system}: ${row.text}`).toBeGreaterThanOrEqual(4.5);
+    expect(measurement.borderContrast).toBeGreaterThanOrEqual(3); expect(measurement.actionBorderContrast).toBeGreaterThanOrEqual(3);
+    expect(measurement.focus.visible).toBe(true); expect(measurement.focus.contrast).toBeGreaterThanOrEqual(3);
+    await expect(action).toBeVisible();
+    report.push({appearance,system,...measurement});
+    await page.screenshot({path:info.outputPath(`settings-${appearance}-${system}.png`)});
+    await dialog.getByRole("button",{name:"Close",exact:true}).click();
+  }
+  expect(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue("--builder-fg-muted"))).toBe(globalBefore);
+  expect(control.posts).toHaveLength(0);expect(control.errors).toEqual([]);
+  await writeFile(info.outputPath("descendant-contrast.json"),JSON.stringify(report,null,2));
+  await info.attach("descendant-contrast",{body:JSON.stringify(report,null,2),contentType:"application/json"});
 });

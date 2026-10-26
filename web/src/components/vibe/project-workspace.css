@@ -1,16 +1,24 @@
 /* Route and every portaled subtree share semantic appearance, never html state. */
 .vibe-workspace[data-appearance] {
   --vibe-bg: #faf9f6; --vibe-surface: #ffffff; --vibe-fg: #25241f; --vibe-muted: #656158; --vibe-border: #d8d4ca;
-  --vibe-hover: #eeece6; --vibe-accent: #343124; --vibe-on-accent: #fffdf5; --vibe-focus: #765820; --vibe-error: #a53424;
+  --vibe-control-border: #8c8678; --vibe-hover: #eeece6; --vibe-accent: #343124; --vibe-on-accent: #fffdf5; --vibe-focus: #765820; --vibe-error: #a53424;
   --background: var(--vibe-bg); --foreground: var(--vibe-fg); --popover: var(--vibe-surface); --popover-foreground: var(--vibe-fg);
-  --muted: var(--vibe-hover); --muted-foreground: var(--vibe-muted); --border: var(--vibe-border); --input: var(--vibe-border);
+  --muted: var(--vibe-hover); --muted-foreground: var(--vibe-muted); --border: var(--vibe-border); --input: var(--vibe-control-border);
   --card: var(--vibe-surface); --card-foreground: var(--vibe-fg); --primary: var(--vibe-accent); --primary-foreground: var(--vibe-on-accent);
   --secondary: var(--vibe-hover); --secondary-foreground: var(--vibe-fg); --accent: var(--vibe-hover); --accent-foreground: var(--vibe-fg);
+  /* Existing Vibe consumers also use the builder utilities. Keep their
+     complete palette local to this route and each scoped portal. */
+  --builder-fg: var(--vibe-fg); --builder-fg-muted: var(--vibe-muted);
+  --builder-fg-subtle: var(--vibe-muted); --builder-fg-faint: var(--vibe-muted);
+  --builder-surface: var(--vibe-hover); --builder-surface-hover: var(--vibe-hover); --builder-panel: var(--vibe-surface);
+  --builder-border: var(--vibe-control-border); --builder-border-strong: var(--vibe-focus);
+  --builder-warn: var(--vibe-error); --builder-warn-soft: color-mix(in srgb, var(--vibe-error) 12%, var(--vibe-surface));
+  --ring: var(--vibe-focus); --destructive: var(--vibe-error);
   color-scheme: light;
 }
 .vibe-workspace[data-appearance="dark"] {
   --vibe-bg: #0c0c0b; --vibe-surface: #191916; --vibe-fg: #eeece5; --vibe-muted: #b1ada4; --vibe-border: #403e37;
-  --vibe-hover: #292820; --vibe-accent: #eee9dc; --vibe-on-accent: #191814; --vibe-focus: #e3cb94; --vibe-error: #f0ad9f;
+  --vibe-control-border: #898477; --vibe-hover: #292820; --vibe-accent: #eee9dc; --vibe-on-accent: #191814; --vibe-focus: #e3cb94; --vibe-error: #f0ad9f;
   color-scheme: dark;
 }
 .vibe-portal { background: transparent; }
@@ -40,7 +48,7 @@
 .vibe-utility-sheet[data-slot="sheet-content"] { width: min(480px, 100vw); max-width: none; height: 100dvh; gap: 0; padding: 0; }
 .vibe-appearance { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-block: 16px; }
 .vibe-workspace :is(input:not([type="checkbox"]), textarea, select) { font-size: 16px; color: var(--vibe-fg); background-color: var(--vibe-surface); max-width: 100%; }
-.vibe-workspace select { border: 1px solid var(--vibe-border); border-radius: 8px; padding: 8px; }
+.vibe-workspace select { border: 1px solid var(--vibe-control-border); border-radius: 8px; padding: 8px; }
 .vibe-workspace :is(button, a, summary, select, textarea, input):focus-visible { outline-color: var(--vibe-focus); }
 .vibe-workspace .vibe-button { white-space: normal; overflow-wrap: anywhere; }
 .vibe-workspace [data-slot="dialog-close"], .vibe-workspace [data-slot="sheet-close"], .vibe-utility-heading button, .vibe-material-dialog-head > button { min-height: 44px; min-width: 44px; }
@@ -71,3 +79,6 @@
 .vibe-reply-body[data-collapsed="true"] { max-height: 24rem; overflow: hidden; }
 .vibe-project-main[data-initial] { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
 .vibe-workspace .vibe-sidebar-create .vibe-button { background: var(--vibe-hover); color: var(--vibe-fg); border-color: var(--vibe-border); }
+/* Shared outline buttons follow the route appearance even under html.dark. */
+.vibe-workspace [data-slot="button"][data-variant="outline"] { background: var(--vibe-surface); color: var(--vibe-fg); border-color: var(--vibe-control-border); }
+.vibe-workspace [data-slot="button"][data-variant="outline"]:hover { background: var(--vibe-hover); }
