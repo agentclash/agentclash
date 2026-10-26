@@ -162,6 +162,9 @@ func main() {
 		eventPublisher,
 		logger,
 	)
+	deliveryContext, stopDelivery := context.WithCancel(context.Background())
+	defer stopDelivery()
+	go hostedRunIngestionManager.RunDelivery(deliveryContext)
 	agentDeploymentReadManager := api.NewAgentDeploymentReadManager(repo)
 	agentHarnessManager := api.NewAgentHarnessManager(authorizer, repo, api.NewTemporalAgentHarnessExecutionWorkflowStarter(temporalClient))
 	githubIntegrationManager := api.NewGitHubIntegrationManager(authorizer, repo, api.GitHubIntegrationConfig{

@@ -45,6 +45,7 @@ type StartResponse struct {
 }
 
 type Event struct {
+	EventID       string          `json:"event_id,omitempty"`
 	RunAgentID    uuid.UUID       `json:"run_agent_id"`
 	ExternalRunID string          `json:"external_run_id"`
 	EventType     string          `json:"event_type"`
@@ -73,6 +74,9 @@ func (r StartRequest) Validate() error {
 }
 
 func (e Event) Validate() error {
+	if len(e.EventID) > 200 {
+		return errors.New("event_id exceeds 200 bytes")
+	}
 	switch e.EventType {
 	case EventTypeRunStarted, EventTypeFinalAnswer, EventTypeError, EventTypeRunFinished:
 	default:

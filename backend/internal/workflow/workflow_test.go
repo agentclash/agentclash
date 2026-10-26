@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -2631,5 +2632,46 @@ func TestExecuteNativeModelStepStepLimitIsNonRetryable(t *testing.T) {
 	}
 	if !appErr.NonRetryable() {
 		t.Fatalf("step limit error should be non-retryable")
+	}
+}
+
+func (r *fakeRunRepository) ClaimHostedRunDispatch(ctx context.Context, id uuid.UUID) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e := r.hostedExecutions[id]
+	if e.Status != "starting" {
+		return false, nil
+	}
+	e.Status = "unknown"
+	r.hostedExecutions[id] = e
+	return true, nil
+}
+func (r *fakeRunRepository) MarkHostedRunUnknown(ctx context.Context, id uuid.UUID) error { return nil }
+
+func (r *fakeRunRepository) GetHostedRunExecutionByRunAgentID(ctx context.Context, id uuid.UUID) (repository.HostedRunExecution, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	e, ok := r.hostedExecutions[id]
+	if !ok {
+		return e, repository.ErrHostedRunExecutionNotFound
+	}
+	return e, nil
+}
+
+func TestHostedTaskPayloadCarriesSelectedCases(t *testing.T) {
+	c := hostedExecutionContext(uuid.New(), uuid.New())
+	c.ChallengeInputSet = &repository.ChallengeInputSetExecutionContext{ID: uuid.New(), Cases: []repository.ChallengeCaseExecutionContext{{ID: uuid.New(), CaseKey: "published-case", Payload: json.RawMessage(`{"prompt":"selected input"}`)}}}
+	payload, err := buildHostedTaskPayload(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Cases []repository.ChallengeCaseExecutionContext `json:"cases"`
+	}
+	if err = json.Unmarshal(payload, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Cases) != 1 || got.Cases[0].ID != c.ChallengeInputSet.Cases[0].ID || string(got.Cases[0].Payload) != `{"prompt":"selected input"}` {
+		t.Fatalf("selected published cases missing: %s", payload)
 	}
 }

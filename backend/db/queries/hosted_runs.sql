@@ -16,19 +16,7 @@ VALUES (
     @deadline_at
 )
 ON CONFLICT (run_agent_id) DO UPDATE
-SET endpoint_url = EXCLUDED.endpoint_url,
-    trace_level = EXCLUDED.trace_level,
-    status = EXCLUDED.status,
-    external_run_id = NULL,
-    accepted_response = '{}'::jsonb,
-    last_event_type = NULL,
-    last_event_payload = '{}'::jsonb,
-    result_payload = '{}'::jsonb,
-    error_message = NULL,
-    deadline_at = EXCLUDED.deadline_at,
-    accepted_at = NULL,
-    started_at = NULL,
-    finished_at = NULL
+SET run_agent_id = EXCLUDED.run_agent_id
 RETURNING *;
 
 -- name: GetHostedRunExecutionByRunAgentID :one
@@ -40,10 +28,10 @@ LIMIT 1;
 -- name: MarkHostedRunExecutionAccepted :one
 UPDATE hosted_run_executions
 SET external_run_id = @external_run_id,
-    status = 'accepted',
+    status = CASE WHEN status IN ('starting','unknown') THEN 'accepted' ELSE status END,
     accepted_response = @accepted_response,
     accepted_at = COALESCE(accepted_at, now())
-WHERE run_agent_id = @run_agent_id
+WHERE run_agent_id = @run_agent_id AND (external_run_id IS NULL OR external_run_id = @external_run_id)
 RETURNING *;
 
 -- name: MarkHostedRunExecutionFailed :one
@@ -53,22 +41,22 @@ SET status = 'failed',
     finished_at = COALESCE(finished_at, now()),
     last_event_type = sqlc.narg('last_event_type'),
     last_event_payload = CASE
-        WHEN sqlc.narg('last_event_payload') IS NULL THEN last_event_payload
+        WHEN sqlc.narg('last_event_payload')::jsonb IS NULL THEN last_event_payload
         ELSE sqlc.narg('last_event_payload')
     END,
     result_payload = CASE
-        WHEN sqlc.narg('result_payload') IS NULL THEN result_payload
+        WHEN sqlc.narg('result_payload')::jsonb IS NULL THEN result_payload
         ELSE sqlc.narg('result_payload')
     END
-WHERE run_agent_id = @run_agent_id
+WHERE run_agent_id = @run_agent_id AND status IN ('starting','unknown')
 RETURNING *;
 
 -- name: MarkHostedRunExecutionTimedOut :one
 UPDATE hosted_run_executions
-SET status = 'timed_out',
+SET status = CASE WHEN status IN ('completed','failed') THEN status ELSE 'unknown' END,
     error_message = @error_message,
     finished_at = COALESCE(finished_at, now())
-WHERE run_agent_id = @run_agent_id
+WHERE run_agent_id = @run_agent_id AND status NOT IN ('completed','failed')
 RETURNING *;
 
 -- name: ApplyHostedRunEvent :one
@@ -78,7 +66,7 @@ SET status = @status,
     last_event_type = @last_event_type,
     last_event_payload = @last_event_payload,
     result_payload = CASE
-        WHEN sqlc.narg('result_payload') IS NULL THEN result_payload
+        WHEN sqlc.narg('result_payload')::jsonb IS NULL THEN result_payload
         ELSE sqlc.narg('result_payload')
     END,
     error_message = CASE

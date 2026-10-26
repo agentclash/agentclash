@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/billing"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
 )
@@ -125,6 +126,10 @@ func createEvalSessionHandler(logger *slog.Logger, service RunCreationService) h
 }
 
 func writeCreateEvalSessionError(logger *slog.Logger, w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, repository.ErrConnectorUnapproved) {
+		writeError(w, http.StatusConflict, "connector_approval_required", err.Error())
+		return
+	}
 	var gateErr billing.GateError
 	if errors.As(err, &gateErr) {
 		writeBillingGateError(w, gateErr.Decision)

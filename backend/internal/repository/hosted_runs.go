@@ -13,6 +13,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+var ErrHostedEventConflict = errors.New("hosted event identity conflicts with persisted evidence")
+
 type HostedRunExecution struct {
 	ID               uuid.UUID
 	RunID            uuid.UUID
@@ -124,7 +126,7 @@ func (r *Repository) MarkHostedRunExecutionFailed(ctx context.Context, params Ma
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return HostedRunExecution{}, ErrHostedRunExecutionNotFound
+			return r.GetHostedRunExecutionByRunAgentID(ctx, params.RunAgentID)
 		}
 		return HostedRunExecution{}, fmt.Errorf("mark hosted run execution failed: %w", err)
 	}
@@ -138,7 +140,7 @@ func (r *Repository) MarkHostedRunExecutionTimedOut(ctx context.Context, params 
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return HostedRunExecution{}, ErrHostedRunExecutionNotFound
+			return r.GetHostedRunExecutionByRunAgentID(ctx, params.RunAgentID)
 		}
 		return HostedRunExecution{}, fmt.Errorf("mark hosted run execution timed out: %w", err)
 	}

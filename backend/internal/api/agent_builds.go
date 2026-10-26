@@ -456,6 +456,7 @@ type createAgentBuildVersionRequest struct {
 }
 
 type createAgentDeploymentRequest struct {
+	Adapter           string          `json:"adapter,omitempty"`
 	Name              string          `json:"name"`
 	AgentBuildID      string          `json:"agent_build_id"`
 	BuildVersionID    string          `json:"build_version_id"`
@@ -560,6 +561,7 @@ type validateBuildVersionResponse struct {
 }
 
 type agentDeploymentCreateResponse struct {
+	Adapter               string    `json:"adapter"`
 	ID                    uuid.UUID `json:"id"`
 	WorkspaceID           uuid.UUID `json:"workspace_id"`
 	AgentBuildID          uuid.UUID `json:"agent_build_id"`
@@ -1150,6 +1152,7 @@ func buildAgentBuildVersionResponse(v repository.AgentBuildVersion) agentBuildVe
 
 func buildAgentDeploymentCreateResponse(dep repository.AgentDeploymentRow) agentDeploymentCreateResponse {
 	return agentDeploymentCreateResponse{
+		Adapter:               "native",
 		ID:                    dep.ID,
 		WorkspaceID:           dep.WorkspaceID,
 		AgentBuildID:          dep.AgentBuildID,
@@ -1187,6 +1190,9 @@ func decodeJSON(r *http.Request, dst any) error {
 }
 
 func decodeCreateAgentDeploymentInput(body createAgentDeploymentRequest) (CreateAgentDeploymentInput, error) {
+	if body.Adapter != "" && body.Adapter != "native" {
+		return CreateAgentDeploymentInput{}, AgentBuildValidationError{Code: "invalid_adapter", Message: "external adapters must use the admin connector configuration endpoint"}
+	}
 	if strings.TrimSpace(body.Name) == "" {
 		return CreateAgentDeploymentInput{}, AgentBuildValidationError{
 			Code:    "invalid_name",

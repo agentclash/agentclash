@@ -126,6 +126,11 @@ func (r *Repository) CreateEvalSessionWithQueuedRuns(
 			return CreateEvalSessionWithQueuedRunsResult{}, err
 		}
 
+		for _, agent := range runParams.RunAgents {
+			if err := validateConnectorAdmission(ctx, tx, runParams.WorkspaceID, agent.AgentDeploymentSnapshotID); err != nil {
+				return CreateEvalSessionWithQueuedRunsResult{}, err
+			}
+		}
 		result, err := createQueuedRunWithQueries(ctx, queries, runParams, queuedAt)
 		if err != nil {
 			return CreateEvalSessionWithQueuedRunsResult{}, fmt.Errorf("create queued child run %d: %w", idx+1, err)

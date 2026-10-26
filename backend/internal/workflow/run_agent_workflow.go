@@ -58,6 +58,18 @@ func runAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) erro
 		return err
 	}
 
+	if executionContext.Deployment.Connector != nil && executionContext.Deployment.Connector.Config.Adapter == "http_json" {
+		if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, stringPtr("HTTP connector execution started"), nil); err != nil {
+			return err
+		}
+		options := nativeModelActivityOptions(executionContext)
+		options.RetryPolicy.MaximumAttempts = 1
+		activityCtx := sdkworkflow.WithActivityOptions(ctx, withActivityTaskQueue(ctx, options, TaskQueueExecution))
+		if err := sdkworkflow.ExecuteActivity(activityCtx, executeNativeModelStepActivityName, input).Get(ctx, nil); err != nil {
+			return err
+		}
+		return transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("connector outputs recorded; parent scoring pending"), nil)
+	}
 	if executionContext.Deployment.DeploymentType == "hosted_external" {
 		return runHostedRunAgent(ctx, input, executionContext)
 	}
@@ -234,13 +246,18 @@ func runHostedRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, exe
 		return err
 	}
 
-	reason := fmt.Sprintf("hosted run accepted by external deployment as %s", startResult.ExternalRunID)
+	reason := "hosted dispatch recorded; waiting for authenticated completion"
+	if startResult.ExternalRunID != "" {
+		reason = fmt.Sprintf("hosted run accepted by external deployment as %s", startResult.ExternalRunID)
+	}
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusExecuting, &reason, nil); err != nil {
 		return err
 	}
 
-	if err := waitForHostedRunTerminalEvent(ctx, input, executionContext, startResult.ExternalRunID); err != nil {
-		return err
+	if !startResult.Completed {
+		if err := waitForHostedRunTerminalEvent(ctx, input, executionContext, startResult.ExternalRunID, startResult.DeadlineAt); err != nil {
+			return err
+		}
 	}
 
 	if err := transitionRunAgentStatus(ctx, input.RunAgentID, domain.RunAgentStatusEvaluating, stringPtr("hosted execution completed; parent scoring pending"), nil); err != nil {
@@ -250,8 +267,14 @@ func runHostedRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, exe
 	return nil
 }
 
-func waitForHostedRunTerminalEvent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext, externalRunID string) error {
+func waitForHostedRunTerminalEvent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext, externalRunID string, deadlineAt ...time.Time) error {
 	timeout := time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds) * time.Second
+	if len(deadlineAt) > 0 && !deadlineAt[0].IsZero() {
+		timeout = deadlineAt[0].Sub(sdkworkflow.Now(ctx))
+		if timeout < 0 {
+			timeout = 0
+		}
+	}
 	signalCh := sdkworkflow.GetSignalChannel(ctx, HostedRunEventSignal)
 	timer := sdkworkflow.NewTimer(ctx, timeout)
 
@@ -291,7 +314,7 @@ func waitForHostedRunTerminalEvent(ctx sdkworkflow.Context, input RunAgentWorkfl
 		if event.RunAgentID != input.RunAgentID {
 			return fmt.Errorf("hosted callback run_agent_id %s does not match workflow run_agent_id %s", event.RunAgentID, input.RunAgentID)
 		}
-		if event.ExternalRunID != externalRunID {
+		if externalRunID != "" && event.ExternalRunID != externalRunID {
 			return fmt.Errorf("hosted callback external_run_id %q does not match accepted external_run_id %q", event.ExternalRunID, externalRunID)
 		}
 
