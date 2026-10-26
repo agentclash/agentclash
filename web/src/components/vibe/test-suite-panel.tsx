@@ -65,6 +65,13 @@ export function TestSuitePanel({
   const casesDraft = useVibeEditorDraft(projectID, artifact.id, "cases", editorSource({ id: artifact.id, blueprint: artifact.blueprint }), JSON.stringify(tests));
   const editorHeading = useRef<HTMLHeadingElement>(null);
   const [editing, setEditing] = useState(casesDraft.dirty || tests.some(test => test.key === selectedCase && test.editable));
+  const previousCase = useRef(selectedCase);
+  useEffect(() => {
+    if (previousCase.current === selectedCase) return;
+    previousCase.current = selectedCase;
+    setFocusedCase(selectedCase);
+    setEditing(tests.some(test => test.key === selectedCase && test.editable));
+  }, [selectedCase, tests]);
   const [agentOpen, setAgentOpen] = useState(instructionDraft.dirty);
   const instructions = instructionDraft.value;
   const setInstructions = instructionDraft.setValue;
@@ -179,7 +186,7 @@ export function TestSuitePanel({
                     case_changes: changes,
                   })
                 ) {
-                  casesDraft.discard(); setEditing(false); restoreFocus();
+                  casesDraft.discard(); setEditing(false); onSelectCase?.(); restoreFocus();
                   onDirty(false);
                 }
               }}
@@ -191,7 +198,7 @@ export function TestSuitePanel({
               disabled={busy}
               onClick={() => {
                 casesDraft.discard();
-                setEditing(false); restoreFocus();
+                setEditing(false); onSelectCase?.(); restoreFocus();
                 onDirty(false);
               }}
             >
@@ -341,7 +348,7 @@ export function TestSuitePanel({
               {!(preparingOnly && !ready) && <VibeButton
                 variant="quiet"
                 onClick={onSave}
-                disabled={busy || blocked || validationBlocked || (inferenceUnavailable && (ready || !preparingOnly))}
+                disabled={busy || blocked || validationBlocked}
               >
                 Keep these tests
               </VibeButton>}

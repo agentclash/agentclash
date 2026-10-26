@@ -131,3 +131,22 @@ it("restores unsaved expectations after unmount and requires review only when th
   await act(async () => button("Cancel").click());
   expect(node.querySelector("textarea")).toBeNull();
 });
+
+
+it("reconciles same-artifact case history with the visible expectation while preserving drafts", async () => {
+  artifact.blueprint = { judges: [{ context_from: ["case.expectations.expected_behavior"] }], cases: [
+    { key: "a", payload: { question: "A input" }, expectations: [{ key: "expected_behavior", kind: "text", value: "A expectation" }] },
+    { key: "b", payload: { question: "B input" }, expectations: [{ key: "expected_behavior", kind: "text", value: "B expectation" }] },
+  ] };
+  const select = async (selectedCase?: string) => act(async () => root.render(<TestSuitePanel projectID="history-project" selectedCase={selectedCase} onSelectCase={vi.fn()} artifact={artifact} busy={false} blocked={false} comparison={false}
+    onRun={run} onEdit={vi.fn()} onDirty={vi.fn()} onSave={vi.fn()} onSettings={vi.fn()} />));
+  await select("a");
+  const area = node.querySelector("textarea")!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(area, "A unsent change"); area.dispatchEvent(new Event("input", { bubbles: true })); });
+  await select(undefined);
+  expect(node.querySelector("textarea")).toBeNull();
+  await select("b"); expect(node.querySelector("textarea")?.value).toBe("B expectation");
+  await select("a"); expect(node.querySelector("textarea")?.value).toBe("A unsent change");
+  await select("b"); expect(node.querySelector("textarea")?.value).toBe("B expectation");
+  expect(run).not.toHaveBeenCalled();
+});

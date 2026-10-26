@@ -330,7 +330,7 @@ return (
           </>
         }
         preview={
-          <PrototypeTrial error={new TextEncoder().encode(trialText).length > messageLimit ? `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.` : undefined} inline={buildJourney} dock={buildJourney} title={artifact?.title} version={session && artifact ? buildVersion(session, artifact) : undefined} busy={busy || !inferenceAvailable || dirtyArtifact || materials.blocked} text={trialText} hasMaterial={materials.bindings.length > 0}
+          <PrototypeTrial error={new TextEncoder().encode(trialText).length > messageLimit ? `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.` : undefined} inline={buildJourney} dock={buildJourney} title={artifact?.title} version={session && artifact ? buildVersion(session, artifact) : undefined} busy={busy} inferenceBlocked={!inferenceAvailable || dirtyArtifact || materials.blocked} text={trialText} hasMaterial={materials.bindings.length > 0}
             materialInput={config?.material_build && buildJourney ? <TaskInput key={`${sessionID}:${materialScope}`} inputs={materials} pdfAvailable={!!config?.pdf_uploads} disabled={busy || dirtyArtifact} /> : undefined}
             onText={setTrialText} onSend={() => void submit("playground", trialText)}
             onBack={() => navigate("build")} onNew={newTrial} thread={threadID}

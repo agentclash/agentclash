@@ -2,6 +2,7 @@ package api
 
 import (
 	"github.com/agentclash/agentclash/backend/internal/vibe"
+	"github.com/google/uuid"
 
 	"net/http"
 )
@@ -12,7 +13,15 @@ func (h *VibeHandler) listSessions(w http.ResponseWriter, r *http.Request) {
 		vibeError(w, err)
 		return
 	}
-	items, err := h.Service.Store.AgentSessions(r.Context(), actor)
+	workspace := uuid.Nil
+	if value := r.URL.Query().Get("workspace"); value != "" {
+		workspace, err = uuid.Parse(value)
+		if err != nil {
+			vibeError(w, &vibe.Fault{Code: "invalid_request", Message: "Choose a workspace."})
+			return
+		}
+	}
+	items, err := h.Service.Store.AgentSessions(r.Context(), actor, workspace)
 	if err != nil {
 		vibeError(w, err)
 		return

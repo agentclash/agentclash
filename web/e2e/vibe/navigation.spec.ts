@@ -312,3 +312,25 @@ test("canonical Tests preserves an unsaved case through results, project switchi
   await expect(page.getByRole("heading", { name: "1 test is ready", exact: true })).toBeFocused();
   expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
 });
+
+test("same-artifact case Back and Forward restores the visible expectation without inference", async ({ page }) => {
+  const control = await serve(page, false, true);
+  const artifact = control.first.document.artifacts[0];
+  const blueprint = artifact.blueprint as { cases: unknown[] };
+  blueprint.cases.push({ key: "invoice", payload: { question: "Invoice attached." }, expectations: [{ key: "expected_behavior", kind: "text", value: "Label as Billing." }] });
+  await page.reload();
+  await page.getByRole("tab", { name: "Tests", exact: true }).click();
+  await page.locator(".vibe-result-row summary").nth(0).click();
+  await page.getByRole("button", { name: "Edit this expectation", exact: true }).click();
+  const expectation = page.locator('[aria-label="Your tests"] textarea');
+  await expect(expectation).toHaveValue("Label as Spam.");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.locator(".vibe-result-row summary").nth(1).click();
+  await page.getByRole("button", { name: "Edit this expectation", exact: true }).click();
+  await expect(expectation).toHaveValue("Label as Billing.");
+  await page.goBack(); await expect(expectation).toHaveCount(0);
+  await page.goBack(); await expect(expectation).toHaveValue("Label as Spam.");
+  await page.goForward(); await expect(expectation).toHaveCount(0);
+  await page.goForward(); await expect(expectation).toHaveValue("Label as Billing.");
+  expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
+});

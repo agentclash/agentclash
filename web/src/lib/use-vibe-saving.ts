@@ -17,6 +17,10 @@ export function useVibeSaving(c: Context) {
  const { actorScope = "browser",loadWorkspace,session,artifact,artifacts,content,models,workspace,token,authLoading,loadAttempt,setContent,setModels,setWorkspace,setError,setPending,setSavedChecks,setSelectedArtifactID,reload,writeURL } = c;
  const params = useSearchParams();
  const attachedWorkspace = session?.workspace_id;
+ const scopeRef = useRef({ actor: actorScope, session: session?.id, workspace });
+ if (scopeRef.current.actor !== actorScope || scopeRef.current.session !== session?.id || scopeRef.current.workspace !== workspace)
+   scopeRef.current = { actor: actorScope, session: session?.id, workspace };
+
   const [saveOpen, setSaveOpen] = useState(false);
   const [saveAccess, setSaveAccess] = useState<"loading" | "signed_out" | "ready" | "error">("loading");
   const [saveBaseline, setSaveBaseline] = useState<string>();
@@ -52,9 +56,9 @@ export function useVibeSaving(c: Context) {
         const me = await createApiClient(auth).get<UserMeResponse>("/v1/users/me");
         if (!current) return;
         const available = me.organizations.flatMap(o => o.workspaces.filter(w =>
-          (["workspace_admin", "workspace_member"].includes(w.role) || o.role === "org_admin") && (!attachedWorkspace || w.id === attachedWorkspace)));
+          (["workspace_admin", "workspace_member"].includes(w.role) || o.role === "org_admin") && (!saveOpen || !attachedWorkspace || w.id === attachedWorkspace)));
         setWorkspaces(available);
-        setWorkspace(old => attachedWorkspace || (available.some(w => w.id === old) ? old : (saveOpen ? available[0]?.id : "") || ""));
+        setWorkspace(old => (saveOpen && attachedWorkspace) || (available.some(w => w.id === old) ? old : (saveOpen ? available[0]?.id : "") || ""));
         setSaveAccess("ready");
       } catch (e) {
         if (!current) return;
@@ -123,21 +127,26 @@ export function useVibeSaving(c: Context) {
 
   async function save() {
     if (!session || !artifact || !workspace) return;
+    const scope = scopeRef.current;
+    const current = () => scopeRef.current === scope;
     setPending(true);
     setError("");
     try {
       const auth = await token();
+      if (!current()) return;
       if (!auth) { setSaveAccess("signed_out"); return; }
       await vibeFetch(`/sessions/${session.id}/claim`, auth, {
         method: "POST",
         body: "{}",
       });
+      if (!current()) return;
       const latest = await reload();
-      if (!latest) return;
+      if (!current() || !latest) return;
       if (artifact.kind === "test_plan") {
         const receipt = await vibeFetch<SavedCheck>(`/sessions/${session.id}/save-brief`, auth, {
           method: "POST", body: JSON.stringify({ revision: latest.revision, artifact_id: artifact.id, workspace_id: workspace }),
         });
+        if (!current()) return;
         setSavedCheck(receipt);
         setSavedChecks(old => [receipt, ...old.filter(c => c.id !== receipt.id)]);
         await reload();
@@ -156,6 +165,7 @@ export function useVibeSaving(c: Context) {
             }),
           },
         );
+        if (!current()) return;
         setSavedCheck(receipt);
         setSavedChecks((old) => [
           receipt,
@@ -178,17 +188,21 @@ export function useVibeSaving(c: Context) {
           models,
         }),
       });
+      if (!current()) return;
       await reload();
-      const kept = await vibeFetch<SavedCheck[]>("/saved-checks", auth);
+      if (!current()) return;
+      const kept = await vibeFetch<SavedCheck[]>(`/saved-checks?workspace=${encodeURIComponent(workspace)}`, auth);
+      if (!current()) return;
       setSavedChecks(Array.isArray(kept) ? kept : []);
     } catch (e) {
+      if (!current()) return;
       if (e instanceof VibeError && e.status === 401) setSaveAccess("signed_out");
       if (e instanceof VibeError && e.status === 403) {
         setWorkspaces([]); setSaveAccess("ready");
         setError("Your workspace access changed. Ask its owner for permission to save here.");
       } else setError((e as Error).message);
     } finally {
-      setPending(false);
+      if (current()) setPending(false);
     }
   }
 

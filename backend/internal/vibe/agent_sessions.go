@@ -22,10 +22,14 @@ func (s *Store) CreateAgent(ctx context.Context, actor string, ws *uuid.UUID, id
 
 // Historical evaluations remain in the same list; empty legacy containers do
 // not appear as duplicate chats. Each row is independently authorized on read.
-func (s *Store) AgentSessions(ctx context.Context, actor string) ([]Session, error) {
-	rows, err := s.DB.Query(ctx, `SELECT id FROM vibe_sessions WHERE actor=$1 AND deleted_at IS NULL AND
+func (s *Store) AgentSessions(ctx context.Context, actor string, workspace ...uuid.UUID) ([]Session, error) {
+	var ws *uuid.UUID
+	if len(workspace) > 0 && workspace[0] != uuid.Nil {
+		ws = &workspace[0]
+	}
+	rows, err := s.DB.Query(ctx, `SELECT id FROM vibe_sessions WHERE actor=$1 AND deleted_at IS NULL AND ($2::uuid IS NULL OR workspace_id=$2) AND
 	 (document ? 'evaluation' OR jsonb_array_length(COALESCE(document->'messages','[]'::jsonb))>0)
-	 ORDER BY updated_at DESC LIMIT 100`, actor)
+	 ORDER BY updated_at DESC LIMIT 100`, actor, ws)
 	if err != nil {
 		return nil, err
 	}
