@@ -97,6 +97,7 @@ export function ProjectEnquiry({ session, artifact, operation, primary = false }
     catch { submitError("Status is temporarily unavailable. Your original enquiry is preserved."); }
   }
 
+  if (!available && !directEmail) return null;
   return <section className="vibe-project-enquiry">
     <VibeButton ref={triggerRef} variant={primary ? "primary" : "quiet"} onClick={() => {
       if (!opened.current) { refresh(); opened.current = true; }

@@ -156,7 +156,7 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
             </summary>
             {config?.capabilities?.map((c) => (
               <p key={c.id} className="mt-3 text-xs leading-5">
-                <strong>{c.label}:</strong> {c.description}{" "}
+                <strong>{c.label}{c.available === false ? " (unavailable)" : ""}:</strong> {c.description}{" "}
                 {c.url && (
                   <a
                     href={c.url}
@@ -164,7 +164,7 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
                     rel="noopener noreferrer"
                     className="underline"
                   >
-                    Documentation ↗
+                    {c.label} documentation ↗
                   </a>
                 )}
               </p>

@@ -92,7 +92,7 @@ for (const mobile of [false, true]) {
         });
       if (path.endsWith("/config"))
         return send({
-          enabled: true,
+          enabled: true, availability: { guest: { available: true }, workspace: { available: true } },
           free_only: true,
           defaults: models,
           models: [{ id: models.target, name: "Fixture (free)" }],

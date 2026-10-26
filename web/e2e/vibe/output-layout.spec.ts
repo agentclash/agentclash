@@ -25,7 +25,7 @@ for (const size of [{ width: 320, height: 740 }, { width: 844, height: 390 }]) {
         const path = new URL(route.request().url()).pathname;
         const headers = { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" };
         if (route.request().method() !== "GET") writes.push(path);
-        if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, two_door: true, defaults: defaultModels, models: [] } });
+        if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) } });
         if (path.endsWith("/sessions") || path.endsWith("/evaluations")) return route.fulfill({ headers, json: [state] });
         if (path.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: "event: connected\ndata: {}\n\n" });
         return route.fulfill({ headers, json: state });

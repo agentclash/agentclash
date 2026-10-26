@@ -27,19 +27,14 @@ async function click(label: string) {
 async function submit() { await act(async () => form().dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }))); }
 async function close() { await click("Close"); }
 
-it("opens a review dialog without sending and hides contact fields when no recipient exists", async () => {
-  await render(false); await click("Discuss this with AgentClash");
-  expect(popup()).toBeTruthy();
-  expect(popup()!.textContent).toContain("Contact isn’t set up yet");
-  expect(popup()!.querySelector('input[type="email"]')).toBeNull();
-  expect(popup()!.querySelector('button[type="submit"]')).toBeNull();
+it("hides the contact CTA when neither form nor recipient is configured", async () => {
+  await render(false);
+  expect(node.querySelector("button")).toBeNull();
+  expect(popup()).toBeNull();
   expect(vi.mocked(vibeFetch)).not.toHaveBeenCalled();
   const summary = projectSummary(session, artifact);
   expect(summary).not.toContain("PRIVATE CHAT"); expect(summary).not.toContain("PRIVATE CASE");
   expect(summary).toContain("Business systems are not connected");
-  await close();
-  expect(popup()).toBeNull();
-  expect(vi.mocked(vibeFetch)).not.toHaveBeenCalled();
 });
 
 it("offers direct email without collecting contact fields when the form is unavailable", async () => {

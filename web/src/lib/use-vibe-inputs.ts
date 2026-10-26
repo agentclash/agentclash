@@ -70,6 +70,7 @@ export function useVibeInputs(session: string, scope: string, token: () => Promi
       const material = await uploadMaterial(session, request.id, request.value, await token());
       update(key, old => ({ ...old, ...selectMaterials(old.items, [{ material, acknowledged: false, usage: "task_input" as const, page: 1, quote: "" }]) }));
       pending.current.delete(key);
+      return material;
     } catch (e) { update(key, old => ({ ...old, error: (e as Error).message })); }
     finally { inFlight.current.delete(key); update(key, old => ({ ...old, busy: false })); }
   }
@@ -90,7 +91,7 @@ export function useVibeInputs(session: string, scope: string, token: () => Promi
     } catch (e) { update(key, old => ({ ...old, error: (e as Error).message })); }
     finally { inFlight.current.delete(key); update(key, old => ({ ...old, busy: restoring.current.has(key) })); }
   }
-  return { ...current, canRetry: pending.current.has(key), bindings, adoptions, add, remove, attach, retry: () => add(),
+  return { projectID: session, recipient: scope, draftKey: key, ...current, canRetry: pending.current.has(key), bindings, adoptions, add, remove, attach, retry: () => add(),
     list: async () => vibeFetch<TaskMaterial[]>(inputPath(session), await token()),
     configure: (id: string, change: Partial<Pick<Selection, "usage" | "page" | "quote">>) => { edited.current.add(key); update(key, old => ({ ...old, items: old.items.map(x => x.material.id === id ? { ...x, ...change } : x) })); },
     blocked: current.busy || reading || current.items.some(x => x.material.status !== "ready" || x.material.warnings.length > 0 && !x.acknowledged || x.usage === "rules" && (!x.quote.trim() || !x.material.pages?.find(p => p.number === x.page)?.text.includes(x.quote))),

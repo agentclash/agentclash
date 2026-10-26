@@ -2,19 +2,23 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { defaultModels, VibeError, type Operation, type Session } from "@/lib/vibe";
+import { draftMemory } from "@/lib/vibe-build-drafts";
 import { VibeClient } from "./vibe-client";
 
 const harness = vi.hoisted(() => ({
   params: new URLSearchParams("session=session-one"),
   authLoading: false,
+  user: undefined as { id: string; email?: string } | undefined,
   token: vi.fn(async () => undefined as string | undefined),
   watch: vi.fn(),
   me: vi.fn(),
+  analytics: vi.fn(),
 }));
+vi.mock("@/lib/analytics/posthog-client", () => ({ captureWebEvent: harness.analytics, getPostHogSessionID: () => "fixture-analytics" }));
 vi.mock("next/navigation", () => ({ useSearchParams: () => harness.params }));
 vi.mock("@workos-inc/authkit-nextjs/components", () => ({
   useAccessToken: () => ({ getAccessToken: harness.token }),
-  useAuth: () => ({ loading: harness.authLoading, user: { id: "fixture-user" } }),
+  useAuth: () => ({ loading: harness.authLoading, user: harness.user }),
 }));
 vi.mock("@/lib/vibe", async (original) => ({
   ...(await original<typeof import("@/lib/vibe")>()),
@@ -70,7 +74,7 @@ function button(name: string) {
       b.textContent?.includes("Back to Vibe Evals"),
     )
       ? "← Back to Vibe Evals"
-      : "Conversation";
+      : "Agent";
 
   if (name === "Send message")
     return container.querySelector<HTMLButtonElement>(
@@ -86,7 +90,7 @@ function button(name: string) {
   return found!;
 }
 async function click(name: string) {
-  if (name === "Describe" && composer()) return;
+  if (name === "Describe" && container.querySelector('[role="tab"][data-active][id="vibe-tab-build"]')) return;
   await act(async () => button(name).click());
 }
 async function openChecks() {
@@ -121,8 +125,8 @@ function posts() {
 }
 
 beforeEach(() => {
-  harness.authLoading = false;
-  sessionStorage.clear();
+  harness.authLoading = false; harness.user = undefined;
+  sessionStorage.clear(); draftMemory.clear();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   Element.prototype.scrollIntoView = vi.fn();
   harness.params = new URLSearchParams("session=session-one");
@@ -148,10 +152,10 @@ beforeEach(() => {
     },
     operations: [],
   };
-  requests = [];
+  requests = []; harness.analytics.mockClear();
   respond = async (path) =>
     path === "/saved-checks" ? json([]) : path === "/config"
-      ? json({ enabled: true, defaults: defaultModels, models: [] })
+      ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) })
       : json(session);
   vi.stubGlobal(
     "fetch",
@@ -179,7 +183,7 @@ afterEach(async () => {
 it.each([false, true])("paid local testing permits evaluator choice without sending a request: %s", async (freeOnly) => {
   const alternative = "deepseek/deepseek-v4.1-flash";
   respond = async (path) => path === "/config"
-    ? json({ enabled: true, local_testing: true, free_only: freeOnly, defaults: defaultModels,
+    ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, local_testing: true, free_only: freeOnly, defaults: defaultModels,
       models: [{ id: defaultModels.assistant, name: "Original" }, { id: alternative, name: "DeepSeek V4.1 Flash" }] })
     : json(session);
   await render();
@@ -199,9 +203,10 @@ it.each([false, true])("paid local testing permits evaluator choice without send
   expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
 });
 
-it.each(["setup", "agent"])(
-  "sends the %s composer with Enter and preserves Shift+Enter and IME input",
-  async (mode) => {
+it.each(["setup", "agent"].flatMap(mode => [false, true].map(touch => ({ mode, touch }))))(
+  "sends the $mode composer with touch=$touch and preserves newlines and IME input",
+  async ({ mode, touch }) => {
+    vi.stubGlobal("matchMedia", vi.fn((query: string) => ({ matches: query === "(any-pointer: coarse)" && touch, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     if (mode === "agent") scenarioAgent();
     await render();
     if (mode === "agent") await click("Try a message");
@@ -215,6 +220,7 @@ it.each(["setup", "agent"])(
       { shiftKey: true },
       { isComposing: true },
       { keyCode: 229 },
+      ...(touch ? [{}] : []),
     ]) {
       const event = new KeyboardEvent("keydown", {
         key: "Enter",
@@ -229,6 +235,7 @@ it.each(["setup", "agent"])(
       expect(posts()).toHaveLength(0);
     }
     const event = new KeyboardEvent("keydown", {
+      ...(touch ? { ctrlKey: true } : {}),
       key: "Enter",
       bubbles: true,
       cancelable: true,
@@ -262,7 +269,7 @@ it.each([
     respond = async (path, options) => {
       if (!path.endsWith("/messages"))
         return path === "/config"
-          ? json({ defaults: defaultModels, models: [] })
+          ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) })
           : json(session);
       if (!accepted) {
         accepted = String(options.body);
@@ -370,7 +377,7 @@ it.each([
     respond = async (path, options) => {
       if (path === "/config")
         return json({
-          defaults: defaultModels,
+          enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels,
           models: [
             defaultModels.target,
             selected.assistant,
@@ -506,7 +513,7 @@ it.each(["A different next message", "Original request"])(
       path.endsWith("/messages")
         ? response.promise
         : path === "/config"
-          ? json({ defaults: defaultModels, models: [] })
+          ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) })
           : json(session);
     await render();
     await type("Original request");
@@ -527,7 +534,7 @@ it.each(["pending", "failed"])(
     const response = deferred<Response>();
     respond = async (path) =>
       path === "/config"
-        ? json({ defaults: defaultModels, models: [] })
+        ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) })
         : response.promise;
     await render();
     if (outcome === "failed")
@@ -548,7 +555,7 @@ it.each(["pending", "failed"])(
       expect(button("Send message").disabled).toBe(false);
     } else {
       expect(container.textContent).toContain("Cannot load this conversation");
-      respond = async () => json(session);
+      respond = async path => path === "/config" ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }] }) : json(session);
       await click("Retry connection");
       expect(button("Send message").disabled).toBe(false);
       expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
@@ -561,7 +568,7 @@ it("shows the submitted message before admission and preserves a newer draft aft
   let retry = false;
   respond = async (path) =>
     path === "/config"
-      ? json({ defaults: defaultModels, models: [] })
+      ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) })
       : path.endsWith("/messages")
         ? retry
           ? json({ id: "accepted" }, 202)
@@ -623,7 +630,7 @@ it("keeps the composer editable after a definite intake rejection", async () => 
           400,
         )
       : path === "/config"
-        ? json({ defaults: defaultModels, models: [] })
+        ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) })
         : json(session);
   await render();
   await type("Help with a new project");
@@ -644,7 +651,7 @@ it("verifies a new session cookie before changing the URL, streaming or sending 
   const replace = vi.spyOn(window.history, "replaceState");
   respond = async (path, options) => {
     if (path === "/config")
-      return json({ defaults: defaultModels, models: [] });
+      return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path === "/sessions" && options.method === "POST")
       return json(session, 201);
     return json(
@@ -667,7 +674,7 @@ it("verifies a new session cookie before changing the URL, streaming or sending 
   expect(composer().value).toBe(brief);
   expect(posts()).toHaveLength(0);
   expect(harness.watch).not.toHaveBeenCalled();
-  expect(replace).not.toHaveBeenCalled();
+  expect(replace.mock.calls.every(call => !String(call[2]).includes("session="))).toBe(true);
   expect(button("Send message").disabled).toBe(false);
   expect(container.textContent).not.toContain("Reconnecting to saved progress");
 });
@@ -734,6 +741,7 @@ it("keeps an inaccessible accepted draft available while offering an explicit co
 });
 
 function signedInWorkspace() {
+  harness.user = { id: "fixture-user" };
   harness.token.mockResolvedValue("test-access-token");
   harness.me.mockResolvedValue({
     organizations: [
@@ -778,7 +786,7 @@ it.each([
     respond = async (path, options) => {
       if (path === "/config")
         return json({
-          defaults: defaultModels,
+          enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels,
           models: [
             { id: defaultModels.target, name: "Mini" },
             { id: "openai/gpt-4.1", name: "Full" },
@@ -854,7 +862,7 @@ it("Keep sends the independently selected models without an inference submission
   respond = async (path, options) => {
     if (path === "/config")
       return json({
-        defaults: defaultModels,
+        enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels,
         models: [
           { id: defaultModels.target, name: "Mini" },
           { id: "openai/gpt-4.1", name: "Full" },
@@ -959,7 +967,7 @@ it.each([
     respond = async (path) =>
       path === "/config"
         ? json({
-            defaults: defaultModels,
+            enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels,
             models: [
               { id: defaultModels.target, name: "Mini" },
               { id: "openai/gpt-4.1", name: "Full" },
@@ -1061,7 +1069,7 @@ it.each([
     respond = async (path) =>
       path === "/config"
         ? json({
-            defaults: defaultModels,
+            enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels,
             models: [defaultModels.target, selected.target].map((id) => ({
               id,
               name: id,
@@ -1275,7 +1283,7 @@ it("retries a trial with its original thread and preserves text typed during an 
   let first = true;
   respond = async (path) => {
     if (path === "/config")
-      return json({ defaults: defaultModels, models: [] });
+      return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path.endsWith("/messages") && first) {
       first = false;
       throw new TypeError("Lost acknowledgement");
@@ -1341,6 +1349,8 @@ it("restores a trial's version and model from its URL and excludes Build from it
       results: [],
     },
   ];
+  const previous = respond;
+  respond = async (path, options) => path === "/config" ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set([...Object.values(defaultModels), "openai/gpt-4.1"])].map(id => ({ id, name: id })) }) : previous(path, options);
   await render();
   const history = container.querySelector(
     '[role="log"][aria-label="Trial conversation"]',
@@ -1480,7 +1490,7 @@ function recordedResult() {
 
 it("starts with one action and a read-only example before explicit use", async () => {
   await render();
-  expect(container.querySelectorAll('[role="tab"]')).toHaveLength(0);
+  expect([...container.querySelectorAll('[role="tab"]')].map(tab => tab.textContent)).toEqual(["Agent", "Tests", "Results"]);
   expect(container.querySelector("h1")?.textContent).toBe(
     "What should your agent do?",
   );
@@ -1529,7 +1539,7 @@ it("switches a failed request's assistant explicitly and recovers a lost acknowl
   const alternative = { id: "openai/gpt-5.4-mini", name: "GPT-5.4 Mini", input_nano_per_token: 750, output_nano_per_token: 3750 };
   let attempts = 0;
   respond = async path => {
-    if (path === "/config") return json({ enabled: true, defaults: defaultModels, models: [alternative] });
+    if (path === "/config") return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [alternative] });
     if (path.endsWith("/retry")) {
       if (++attempts === 1) throw new TypeError("Lost acknowledgement");
       return json({ ...failed, id: "retry-switched", models: { ...defaultModels, assistant: alternative.id }, retry_of_operation_id: failed.id, state: "QUEUED", error: undefined, retryable: false });
@@ -1560,7 +1570,7 @@ it("retries an acknowledged failure once without resending a message or clearing
   const acknowledgement = deferred<Response>();
   const retry = { ...failed, id: "retry-operation", retry_of_operation_id: failed.id, state: "QUEUED", error: undefined, retryable: false };
   respond = async (path) => {
-    if (path === "/config") return json({ enabled: true, defaults: defaultModels, models: [] });
+    if (path === "/config") return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path.endsWith("/retry")) return acknowledgement.promise;
     return json(session);
   };
@@ -1585,7 +1595,7 @@ it("retries an uncertain recovery with its original request after the session re
   const failed = failedPreparation();
   let attempts = 0;
   respond = async (path) => {
-    if (path === "/config") return json({ enabled: true, defaults: defaultModels, models: [] });
+    if (path === "/config") return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path.endsWith("/retry")) {
       if (++attempts === 1) throw new TypeError("Connection closed before acknowledgement.");
       const retry = { ...failed, id: "retry-operation", retry_of_operation_id: failed.id, state: "QUEUED", error: undefined, retryable: false };
@@ -1613,7 +1623,7 @@ it("retries an uncertain recovery with its original request after the session re
 it("recovers a lost retry acknowledgement from a persisted child operation without another POST", async () => {
   const failed = failedPreparation();
   respond = async (path) => {
-    if (path === "/config") return json({ enabled: true, defaults: defaultModels, models: [] });
+    if (path === "/config") return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path.endsWith("/retry")) throw new TypeError("Connection closed.");
     return json(session);
   };
@@ -1639,7 +1649,7 @@ it.each(["completed", "failed"])("keeps an asynchronous test edit draft until it
     max_cost_nano_usd: 0, actual_cost_nano_usd: null, results: [],
   };
   respond = async (path, options) => {
-    if (path === "/config") return json({ enabled: true, defaults: defaultModels, models: [] });
+    if (path === "/config") return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (options.method === "PATCH") {
       session = { ...session, revision: 2, event_cursor: 2, operations: [editOperation],
         document: { ...session.document, messages: [...session.document.messages,
@@ -1658,6 +1668,7 @@ it.each(["completed", "failed"])("keeps an asynchronous test edit draft until it
   expect(container.textContent).toContain("Checking these test changes…");
   expect(container.querySelectorAll<HTMLTextAreaElement>('[aria-label="Your tests"] textarea')[1].value).toBe("Decline returns after the new deadline.");
   expect(button("Save test changes").disabled).toBe(true);
+  await type("My next guide question");
   if (outcome === "completed") {
     const updated = { ...suite, id: "updated-tests", parent_id: suite.id, source_message_id: "manual-edit-source" };
     session = { ...session, revision: 3, event_cursor: 3, document: { ...session.document, artifacts: [...session.document.artifacts, updated] },
@@ -1670,6 +1681,9 @@ it.each(["completed", "failed"])("keeps an asynchronous test edit draft until it
   if (outcome === "completed") {
     expect(container.querySelector('[data-proposal-id="updated-tests"]')).toBeTruthy();
     expect(container.querySelector('[aria-label="Your tests"] textarea')).toBeNull();
+    harness.params = new URLSearchParams(`session=${session.id}&agent=${suite.id}`); await render();
+    expect(container.querySelector('[aria-label="Your tests"] textarea')).toBeNull();
+    expect(composer().value).toBe("My next guide question");
   } else {
     expect(container.querySelectorAll<HTMLTextAreaElement>('[aria-label="Your tests"] textarea')[1].value).toBe("Decline returns after the new deadline.");
     expect(container.textContent).toContain("The expectation contradicts the rule.");
@@ -1685,7 +1699,7 @@ it("prepares tests before collecting actual instructions and preserves the suite
   const blueprint = structuredClone(suite.blueprint);
   respond = async (path, options) => {
     if (path === "/config")
-      return json({ enabled: true, defaults: defaultModels, models: [] });
+      return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (options.method === "PATCH") {
       const body = JSON.parse(String(options.body));
       const bound = {
@@ -1734,7 +1748,7 @@ it("keeps a generated suite in the canonical pack system without creating an age
   signedInWorkspace();
   respond = async (path, options) => {
     if (path === "/config")
-      return json({ enabled: true, defaults: defaultModels, models: [] });
+      return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path === "/saved-checks") return json([]);
     if (path.endsWith("/save")) {
       const body = JSON.parse(String(options.body));
@@ -1768,7 +1782,7 @@ it("keeps a generated suite in the canonical pack system without creating an age
     (a) => a.textContent === "Open saved tests",
   )!;
   expect(reopen.getAttribute("href")).toBe(
-    `/vibe-evals?session=${session.id}&agent=${suite.id}&workspace=workspace-one`,
+    `/vibe-evals?session=${session.id}&agent=${suite.id}&workspace=workspace-one&view=agent`,
   );
   expect(posts()).toHaveLength(0);
 });
@@ -1794,7 +1808,7 @@ it("keeps optional instruction testing behind More options without a source-sele
   expect(
     container.querySelector('article[aria-label="Evaluation scorecard"]'),
   ).toBeNull();
-  expect(container.querySelectorAll('[role="tab"]')).toHaveLength(0);
+  expect([...container.querySelectorAll('[role="tab"]')].map(tab => tab.textContent)).toEqual(["Agent", "Tests", "Results"]);
   await click("Try instructions instead");
   await act(async () => {
     const field = container.querySelector<HTMLTextAreaElement>(
@@ -1820,7 +1834,7 @@ it("cites exact chat messages and prepares a disputed rule without silently chan
     path.endsWith("/case")
       ? json(result)
       : path === "/config"
-        ? json({ defaults: defaultModels, models: [] })
+        ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) })
         : json(session);
   await render();
   const row = container.querySelector<HTMLDetailsElement>(".vibe-result-row")!;
@@ -1862,6 +1876,7 @@ it("requests a suggested change on demand with the selected evidence baseline", 
 
 it("saves a provided-chat check without creating a prompt or agent build", async () => {
   recordedResult();
+  harness.user = { id: "fixture-user" };
   harness.token.mockResolvedValue("token");
   harness.me.mockResolvedValue({
     organizations: [
@@ -1875,7 +1890,7 @@ it("saves a provided-chat check without creating a prompt or agent build", async
   });
   respond = async (path) => {
     if (path === "/config")
-      return json({ defaults: defaultModels, models: [] });
+      return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path === "/saved-checks") return json([]);
     if (path.endsWith("/save-check"))
       return json({
@@ -1913,7 +1928,7 @@ it("keeps the V1 entry visible while configuration loads, fails, and retries", a
   respond = async (path) => {
     if (path === "/config") {
       if (++configLoads === 1) return ready.promise;
-      return json({ two_door: true, defaults: defaultModels, models: [] });
+      return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     }
     return json([]);
   };
@@ -1952,7 +1967,7 @@ it("keeps a saved conversation's draft unsent until configuration loads and retr
     if (path === "/config") {
       configLoads++;
       if (configLoads === 1) return ready.promise;
-      return json({ defaults: selected, models: [] });
+      return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: selected, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     }
     return json(session);
   };
@@ -2035,4 +2050,145 @@ it("waits for auth loading before requesting a private saved session", async () 
   harness.authLoading=false;
   await render();
   expect(requests.some(r=>r.path==="/sessions/session-one")).toBe(true);
+});
+
+it("keeps last successful project rows after a refresh failure, distinguishes forbidden, and hides rows on actor change", async () => {
+  session.document.evaluation = { id: session.id, chat_id: "chat", door: "test" };
+  let result: "success" | "failure" | "forbidden" = "success";
+  const earlier = { ...structuredClone(session), id: "earlier-project", document: { ...structuredClone(session.document), artifacts: [{ id: "earlier-artifact", title: "Earlier saved project", accepted: true, source_message_id: "m", agent_prompt: "x", blueprint: {} }] } };
+  respond = async path => {
+    if (path === "/config") return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }] });
+    if (path === "/sessions") return result === "success" ? json([earlier]) : json({ error: { code: result, message: result } }, result === "forbidden" ? 403 : 503);
+    return json(session);
+  };
+  await render(); expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeTruthy();
+  result = "failure"; await click("Refresh projects");
+  expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeTruthy();
+  expect(container.textContent).toContain("Couldn’t refresh saved work");
+  result = "forbidden"; await click("Refresh projects");
+  expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeNull();
+  expect(container.textContent).toContain("don’t have access");
+  result = "success"; await click("Refresh projects");
+  expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeTruthy();
+  harness.user = { id: "other-actor" }; harness.token.mockResolvedValue(undefined);
+  await render();
+  expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeNull();
+  expect(container.textContent).toContain("Sign in to load saved work");
+});
+
+it.each(["build", "test"] as const)("blocks unavailable %s admission while retaining readable history and exports", async door => {
+  session.document.evaluation = { id: session.id, chat_id: "chat", door };
+  session.document.messages = [{ id: "saved", role: "user", content: "Previously saved question" }];
+  respond = async path => path === "/config" ? json({ enabled: true, two_door: true, defaults: defaultModels, models: [], availability: { guest: { available: false, reason_code: "worker_unavailable" }, workspace: { available: true } } }) : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render(); await type("Keep this unsent question");
+  expect(button("Send message").disabled).toBe(true);
+  expect(container.textContent).toContain("Previously saved question");
+  expect(container.textContent).toContain("No approved models");
+  await click("New agent");
+  expect(button("Back to your evaluation").disabled).toBe(false);
+  await click("Back to your evaluation");
+  expect(container.textContent).toContain("Previously saved question");
+  await click("Settings");
+  expect(button("Export conversation").disabled).toBe(false);
+  expect(posts()).toHaveLength(0);
+});
+
+it("uses server time to expire a run quote and refreshes its estimate without dispatching inference", async () => {
+  const suite = scenarioAgent(); suite.kind = "test_suite";
+  session.document.artifacts.push({ ...suite, id: "other-version", title: "Other version" });
+  harness.params = new URLSearchParams(`session=${session.id}&agent=${suite.id}`);
+  session.document.evaluation = { id: session.id, chat_id: "chat", door: "test" };
+  let clientNow = Date.now(); vi.spyOn(Date, "now").mockImplementation(() => clientNow);
+  const now = clientNow + 86400000;
+  let quotes = 0;
+  respond = async path => {
+    if (path === "/config") return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }], server_time: new Date(now).toISOString() });
+    if (path.endsWith("/run-quote")) { quotes++; return json({ id: `quote-${quotes}`, cases: 3, calls: 6, max_cost_nano_usd: 250000000, server_time: new Date(now).toISOString(), expires_at: new Date(now + (quotes === 1 ? -1 : 600000)).toISOString() }); }
+    return json(session);
+  };
+  await render(); await click("Run 3 tests");
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("estimate expired");
+  expect(button("Run 3 examples").disabled).toBe(true);
+  await click("Refresh estimate");
+  expect(quotes).toBe(2); expect(button("Run 3 examples").disabled).toBe(false);
+  harness.params = new URLSearchParams(`session=${session.id}&agent=other-version`); await render();
+  expect(button("Run 3 examples").disabled).toBe(true);
+  harness.params = new URLSearchParams(`session=${session.id}&agent=${suite.id}`); await render();
+  expect(button("Run 3 examples").disabled).toBe(false);
+  clientNow += 600001;
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)); });
+  expect(button("Run 3 examples").disabled).toBe(true);
+  expect(posts()).toHaveLength(0);
+});
+
+it.each(["guide", "trial"])("enforces the advertised UTF-8 limit in the %s composer before transport and admits the exact multibyte boundary", async recipient => {
+  if (recipient === "trial") scenarioAgent();
+  respond = async path => path === "/config" ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }], anonymous_limits: { max_message_bytes: 8 } }) : path.endsWith("/messages") ? json({ id: "admitted", kind: "message", state: "QUEUED", models: defaultModels, results: [] }) : json(session);
+  await render(); if (recipient === "trial") await click("Try a message");
+  const label = recipient === "trial" ? "Message your agent" : "Message Vibe Evals";
+  const send = recipient === "trial" ? "Send to agent" : "Send message";
+  await type("🙂🙂x", label); await click(send);
+  expect(posts()).toHaveLength(0); expect(container.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${label}"]`)!.value).toBe("🙂🙂x");
+  expect(container.textContent).toContain("8 byte UTF-8 limit");
+  await type("🙂🙂", label); await click(send);
+  expect(posts()).toHaveLength(1); expect(posts()[0].body.content).toBe("🙂🙂");
+});
+
+it("never falls back to guest ownership or displays the previous actor’s snapshot when account authentication fails", async () => {
+  session.document.messages = [{ id: "private", role: "user", content: "FIRST ACTOR PRIVATE HISTORY" }];
+  await render(); expect(container.textContent).toContain("FIRST ACTOR PRIVATE HISTORY");
+  const requestsBefore = requests.length;
+  harness.user = { id: "expired-user" }; harness.token.mockRejectedValue(new Error("expired token"));
+  await render();
+  expect(container.textContent).not.toContain("FIRST ACTOR PRIVATE HISTORY");
+  expect(container.textContent).toContain("Sign in again");
+  expect(requests.slice(requestsBefore).some(request => request.path === "/sessions/session-one")).toBe(false);
+});
+
+it.each(["build", "test"] as const)("records the %s admission attempt before a transport failure without draft content", async door => {
+  scenarioAgent();
+  session.document.evaluation = { id: session.id, chat_id: "chat", door };
+  session.document.messages = [{ id: "earlier", role: "user", content: "Existing work" }];
+  const previous = respond;
+  respond = async (path, options) => {
+    if (path.endsWith("/messages")) {
+      expect(harness.analytics).toHaveBeenCalledWith("web.vibe.attempt", { schema_version: 1, door, action: "message", session_id: session.id });
+      throw new TypeError("Offline");
+    }
+    return previous(path, options);
+  };
+  await render(); await type("PRIVATE DRAFT CONTENT"); await click("Send message");
+  expect(harness.analytics).toHaveBeenCalledWith("web.vibe.failure", { schema_version: 1, door, action: "message", session_id: session.id, error_code: "transport_failed" });
+  expect(JSON.stringify(harness.analytics.mock.calls)).not.toContain("PRIVATE DRAFT CONTENT");
+  expect(posts()).toHaveLength(1);
+});
+
+it.each([
+  { anonymous: true, workspaceID: undefined, blocked: true },
+  { anonymous: false, workspaceID: "workspace-one", blocked: false },
+  { anonymous: false, workspaceID: undefined, blocked: true },
+])("uses persisted session funding for anonymous=$anonymous workspace=$workspaceID rather than treating sign-in as workspace funding", async ({ anonymous, workspaceID, blocked }) => {
+  scenarioAgent(); signedInWorkspace();
+  session.anonymous = anonymous; session.workspace_id = workspaceID;
+  respond = async path => path === "/config" ? json({ enabled: true, availability: { guest: { available: false, reason_code: "trial_capacity_reached" }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }] }) : json(session);
+  await render(); await type("A question for this saved project");
+  expect(button("Send message").disabled).toBe(blocked);
+  expect(posts()).toHaveLength(0);
+});
+
+it("lets a signed-in user explicitly choose a workspace before either new-project door without dispatching inference", async () => {
+  signedInWorkspace(); harness.params = new URLSearchParams();
+  respond = async path => path === "/config" ? json({ enabled: true, two_door: true, availability: { guest: { available: false }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }] }) : json([]);
+  await render();
+  const choice = container.querySelector<HTMLSelectElement>('select[aria-label="Workspace for new projects"]')!;
+  expect(choice.value).toBe("");
+  const doors = [...container.querySelectorAll<HTMLButtonElement>("button")].filter(button => /Build an agent|Improve an existing agent/.test(button.textContent || ""));
+  expect(doors.every(button => button.disabled)).toBe(true);
+  await act(async () => { choice.value = "workspace-one"; choice.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(doors.every(button => !button.disabled)).toBe(true);
+  harness.user = { id: "second-workspace-actor" }; await render();
+  const nextChoice = container.querySelector<HTMLSelectElement>('select[aria-label="Workspace for new projects"]')!;
+  expect(nextChoice.value).toBe("");
+  expect(doors.every(button => button.disabled)).toBe(true);
+  expect(requests.filter(request => request.method === "POST")).toHaveLength(0);
 });

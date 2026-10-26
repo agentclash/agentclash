@@ -68,7 +68,7 @@ test("new conversations use the server's free model defaults", async ({
         "Access-Control-Allow-Credentials": "true",
       },
       body: JSON.stringify({
-        enabled: true,
+        enabled: true, availability: { guest: { available: true }, workspace: { available: true } },
         free_only: true,
         defaults: { assistant: id, target: id, evaluator: id },
         models: [
@@ -156,7 +156,7 @@ async function mockVibe(
       });
     if (path.endsWith("/config"))
       return send({
-        enabled: true,
+        enabled: true, availability: { guest: { available: true }, workspace: { available: true } },
         defaults: models,
         capabilities: options.previewRules
           ? [

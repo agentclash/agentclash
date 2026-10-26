@@ -33,7 +33,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
           await delayedConfig;
           return route.fulfill({ status: 503, headers, json: { error: { message: "Offline" } } });
         }
-        return route.fulfill({ headers, json: { enabled: true, two_door: true, defaults: defaultModels, models: [] } });
+        return route.fulfill({ headers, json: { enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) } });
       }
       return route.fulfill({ headers, json: [] });
     });
@@ -79,7 +79,7 @@ test("offline retry preserves a restored unsent draft and submits nothing", asyn
     if (request.method() !== "GET") writes.push(path);
     if (path.endsWith("/config")) {
       if (++configRequests === 1) return route.fulfill({ status: 503, headers, json: { error: { message: "Offline" } } });
-      return route.fulfill({ headers, json: { enabled: true, two_door: true, defaults: defaultModels, models: [] } });
+      return route.fulfill({ headers, json: { enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) } });
     }
     if (path.endsWith("/sessions")) return route.fulfill({ headers, json: [session] });
     if (path.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: ": connected\n\n" });

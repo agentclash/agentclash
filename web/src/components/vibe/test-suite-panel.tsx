@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, ChevronRight, Copy, Pencil } from "lucide-react";
+import { useVibeEditorDraft } from "@/lib/use-vibe-editor-draft";
+import { editorSource } from "@/lib/vibe-build-drafts";
 import { type Artifact } from "@/lib/vibe";
 import { suiteCases, changedCases } from "./test-suite-cases";
 import { TestMeaning } from "./conversation-guidance";
@@ -13,6 +15,10 @@ const instructionsHelp =
   "Show me the exact instructions used by the AI agent in my app, and which model it uses. Include its existing rules. Do not rewrite them. I want to test those instructions in Vibe Evals.";
 
 export function TestSuitePanel({
+  inferenceUnavailable = false,
+  selectedCase,
+  onSelectCase,
+  projectID = "unsaved",
   buildJourney = false,
   parent,
   primary = true,
@@ -30,6 +36,10 @@ export function TestSuitePanel({
   checkingChanges = false,
   rules = [],
 }: {
+  inferenceUnavailable?: boolean;
+  selectedCase?: string;
+  onSelectCase?: (key?: string) => void;
+  projectID?: string;
   buildJourney?: boolean;
   parent?: Artifact;
   primary?: boolean;
@@ -50,11 +60,18 @@ export function TestSuitePanel({
   const tests = suiteCases(artifact.blueprint);
   const [prototypeMode,setPrototypeMode]=useState(false);
   const [preparingOnly, setPreparingOnly] = useState(false);
-  const [focusedCase, setFocusedCase] = useState<string>();
-  const [editing, setEditing] = useState(false);
-  const [agentOpen, setAgentOpen] = useState(false);
-  const [instructions, setInstructions] = useState(artifact.agent_prompt);
-  const [draft, setDraft] = useState(tests);
+  const [focusedCase, setFocusedCase] = useState<string | undefined>(selectedCase);
+  const instructionDraft = useVibeEditorDraft(projectID, artifact.id, "instructions", editorSource({ id: artifact.id, agent_prompt: artifact.agent_prompt }), artifact.agent_prompt);
+  const casesDraft = useVibeEditorDraft(projectID, artifact.id, "cases", editorSource({ id: artifact.id, blueprint: artifact.blueprint }), JSON.stringify(tests));
+  const editorHeading = useRef<HTMLHeadingElement>(null);
+  const [editing, setEditing] = useState(casesDraft.dirty || tests.some(test => test.key === selectedCase && test.editable));
+  const [agentOpen, setAgentOpen] = useState(instructionDraft.dirty);
+  const instructions = instructionDraft.value;
+  const setInstructions = instructionDraft.setValue;
+  const draft = JSON.parse(casesDraft.value) as typeof tests;
+  const setDraft = (next: typeof tests | ((old: typeof tests) => typeof tests)) => casesDraft.setValue(JSON.stringify(typeof next === "function" ? next(draft) : next));
+  useEffect(() => { onDirty(instructionDraft.dirty || casesDraft.dirty); }, [instructionDraft.dirty, casesDraft.dirty]);
+  const restoreFocus = () => requestAnimationFrame(() => editorHeading.current?.focus());
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
   const cases = tests;
@@ -68,8 +85,9 @@ export function TestSuitePanel({
 
   return (
     <section aria-label="Your tests" className="space-y-5">
+      {(instructionDraft.conflict || casesDraft.conflict) && <div role="alert"><p>The saved source changed. Review your draft before applying it.</p><VibeButton onClick={() => { instructionDraft.preserve(); casesDraft.preserve(); }}>Keep my draft for this source</VibeButton><VibeButton onClick={() => { instructionDraft.discard(); casesDraft.discard(); restoreFocus(); }}>Discard my draft</VibeButton></div>}
       <div>
-        <h2 className="text-2xl font-semibold tracking-tight">
+        <h2 ref={editorHeading} tabIndex={-1} className="text-2xl font-semibold tracking-tight">
           {validationBlocked
             ? `${cases.length} ${cases.length === 1 ? "test needs" : "tests need"} checking`
             : pendingPolicy
@@ -114,7 +132,7 @@ export function TestSuitePanel({
               <div className="border-t border-[var(--vibe-border)] px-5 py-4 text-sm">
                 <p className="mb-1 text-xs vibe-muted">What should happen</p>
                 <p>{test.expected}</p>
-                {test.editable && <VibeButton variant="quiet" className="mt-2 !px-0" disabled={busy} onClick={() => { setFocusedCase(test.key); setEditing(true); }}>Edit this expectation</VibeButton>}
+                {test.editable && <VibeButton variant="quiet" className="mt-2 !px-0" disabled={busy} onClick={() => { setFocusedCase(test.key); setEditing(true); onSelectCase?.(test.key); }}>Edit this expectation</VibeButton>}
                 {!test.editable && <p className="mt-2 text-xs vibe-muted">To change custom grading rules, edit the original pack and import it again.</p>}
               </div>
             </details>
@@ -150,7 +168,7 @@ export function TestSuitePanel({
               variant={primary ? "primary" : "secondary"}
               disabled={
                 busy ||
-                !changes.length || draft.some(
+                casesDraft.conflict || !changes.length || draft.some(
                   (t) => !t.input.trim() || !t.expected.trim(),
                 )
               }
@@ -161,7 +179,7 @@ export function TestSuitePanel({
                     case_changes: changes,
                   })
                 ) {
-                  setEditing(false);
+                  casesDraft.discard(); setEditing(false); restoreFocus();
                   onDirty(false);
                 }
               }}
@@ -172,8 +190,8 @@ export function TestSuitePanel({
               variant="quiet"
               disabled={busy}
               onClick={() => {
-                setDraft(tests);
-                setEditing(false);
+                casesDraft.discard();
+                setEditing(false); restoreFocus();
                 onDirty(false);
               }}
             >
@@ -187,14 +205,14 @@ export function TestSuitePanel({
           className="vibe-panel space-y-4 p-5"
           onSubmit={async (e) => {
             e.preventDefault();
-            if (busy || !instructions.trim()) return;
+            if (busy || instructionDraft.conflict || !instructions.trim()) return;
             if (
               await onEdit({
                 artifact_id: artifact.id,
                 agent_prompt: instructions,
               })
             ) {
-              setAgentOpen(false);
+              instructionDraft.discard(); setAgentOpen(false); restoreFocus();
               onDirty(false);
             }
           }}
@@ -225,7 +243,7 @@ export function TestSuitePanel({
             <VibeButton
               variant={primary ? "primary" : "secondary"}
               type="submit"
-              disabled={busy || !instructions.trim()}
+              disabled={busy || instructionDraft.conflict || !instructions.trim()}
             >
               {prototypeMode ? "Create interactive prototype" : "Use these instructions"} <ArrowRight />
             </VibeButton>
@@ -234,7 +252,7 @@ export function TestSuitePanel({
               disabled={busy}
               onClick={() => {
                 setAgentOpen(false);
-                setInstructions(artifact.agent_prompt);
+                instructionDraft.discard(); restoreFocus();
                 onDirty(false);
               }}
             >
@@ -276,7 +294,7 @@ export function TestSuitePanel({
           <div className="flex flex-wrap items-center gap-2">
             <VibeButton
               variant={primary ? "primary" : "secondary"}
-              disabled={busy || blocked || validationBlocked}
+              disabled={busy || blocked || validationBlocked || (inferenceUnavailable && (ready || !preparingOnly))}
               onClick={() => (preparingOnly && !ready ? onSave() : ready ? onRun() : buildJourney && rules.length ? void onEdit({ artifact_id: artifact.id, build_from_policy: true }) : setAgentOpen(true))}
             >
               {ready
@@ -291,7 +309,7 @@ export function TestSuitePanel({
             {tests.some(t => t.editable) && <VibeButton
               variant="quiet"
               disabled={busy}
-              onClick={() => { setFocusedCase(undefined); setEditing(true); }}
+              onClick={() => { setFocusedCase(undefined); setEditing(true); onSelectCase?.(); }}
             >
               <Pencil />
               Edit tests
@@ -323,7 +341,7 @@ export function TestSuitePanel({
               {!(preparingOnly && !ready) && <VibeButton
                 variant="quiet"
                 onClick={onSave}
-                disabled={busy || blocked || validationBlocked}
+                disabled={busy || blocked || validationBlocked || (inferenceUnavailable && (ready || !preparingOnly))}
               >
                 Keep these tests
               </VibeButton>}

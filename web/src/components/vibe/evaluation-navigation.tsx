@@ -1,5 +1,8 @@
 "use client";
 
+import Link from "next/link";
+import type { CollectionStatus } from "@/lib/use-vibe-collection";
+import { CollectionNotice } from "./collection-notice";
 import { useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { Archive, MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Settings } from "lucide-react";
@@ -21,6 +24,10 @@ export function evaluationIdentity(session: Session) {
 }
 
 type Props = {
+  accountControl?: ReactNode;
+  accountLabel?: string;
+  listStatus?: CollectionStatus;
+  onRetryList?: () => void;
   enabled?: boolean;
   contexts: Session[];
   session: Session | null;
@@ -67,6 +74,8 @@ export function EvaluationNavigation(p: Props) {
     </div>
     <nav aria-label="Your agents" className="vibe-sidebar-list">
       <p className="vibe-sidebar-label">Your agents</p>
+      {p.onRetryList && <VibeButton variant="quiet" disabled={p.listStatus === "loading"} onClick={p.onRetryList}>Refresh projects</VibeButton>}
+      <CollectionNotice hasRows={contexts.length > 0} status={p.listStatus} retry={p.onRetryList} />
       {contexts.length ? contexts.map(context => {
         const { title, scope } = evaluationIdentity(context);
         const running = context.operations.some(operation => !terminal(operation.state));
@@ -79,9 +88,12 @@ export function EvaluationNavigation(p: Props) {
           {selected && <motion.span className="vibe-sidebar-selected" layoutId={mobile ? "vibe-mobile-selection" : "vibe-desktop-selection"}
             transition={{ duration: reduced ? 0 : 0.18 }} />}
         </button>;
-      }) : <p className="vibe-sidebar-empty">Your work will appear here.</p>}
+      }) : (!p.listStatus || p.listStatus === "ready") && <p className="vibe-sidebar-empty">Your work will appear here.</p>}
     </nav>
     <div className="vibe-sidebar-footer">
+      {p.accountControl}
+      <p className="text-sm vibe-muted">{p.accountLabel || "Guest · private to this browser"}</p>
+      <Link href="/">Home</Link><Link href="/docs">Help</Link>
       {p.session?.document.evaluation && p.onDeleted && <VibeButton variant="quiet" disabled={p.disabled} onClick={() => navigate(() => setDeleting(p.session!), mobile)}>Delete this project</VibeButton>}
       <VibeButton variant="quiet" onClick={() => navigate(p.onSavedWork, mobile)}><Archive />Saved work</VibeButton>
       <VibeButton variant="quiet" onClick={() => navigate(p.onSettings, mobile)}><Settings />Settings</VibeButton>

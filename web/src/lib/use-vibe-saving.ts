@@ -6,13 +6,15 @@ import type { UserMeResponse } from "@/lib/api/types";
 import { vibeFetch, VibeError, terminal, type Session, type Artifact, type Operation, type SavedCheck, type Models } from "@/lib/vibe";
 type Context = {
  session: Session | null; artifact?: Artifact; artifacts: Artifact[]; content: string; models: Models; workspace: string;
+ actorScope?: string;
+ loadWorkspace?: boolean;
  token: () => Promise<string | undefined>; authLoading: boolean; loadAttempt: number;
  setContent: Dispatch<SetStateAction<string>>; setModels: Dispatch<SetStateAction<Models>>; setWorkspace: Dispatch<SetStateAction<string>>;
  setError: Dispatch<SetStateAction<string>>; setPending: Dispatch<SetStateAction<boolean>>; setSavedChecks: Dispatch<SetStateAction<SavedCheck[]>>;
  setSelectedArtifactID: (id: string | null) => void; reload: () => Promise<Session | undefined>; writeURL: (url: URL) => void;
 };
 export function useVibeSaving(c: Context) {
- const { session,artifact,artifacts,content,models,workspace,token,authLoading,loadAttempt,setContent,setModels,setWorkspace,setError,setPending,setSavedChecks,setSelectedArtifactID,reload,writeURL } = c;
+ const { actorScope = "browser",loadWorkspace,session,artifact,artifacts,content,models,workspace,token,authLoading,loadAttempt,setContent,setModels,setWorkspace,setError,setPending,setSavedChecks,setSelectedArtifactID,reload,writeURL } = c;
  const params = useSearchParams();
  const attachedWorkspace = session?.workspace_id;
   const [saveOpen, setSaveOpen] = useState(false);
@@ -21,9 +23,9 @@ export function useVibeSaving(c: Context) {
   const saveResumed = useRef(false);
   const [saveTarget, setSaveTarget] = useState<Operation>();
   const [savedCheck, setSavedCheck] = useState<SavedCheck>();
-  const [workspaces, setWorkspaces] = useState<{ id: string; name: string }[]>(
-    [],
-  );
+  const [workspaceRows, setWorkspaceRows] = useState<{ owner: string; items: { id: string; name: string }[] }>({ owner: actorScope, items: [] });
+  const workspaces = workspaceRows.owner === actorScope ? workspaceRows.items : [];
+  const setWorkspaces = (items: { id: string; name: string }[]) => setWorkspaceRows({ owner: actorScope, items });
   async function openSave(operation?: Operation) {
     const selected =
       operation &&
@@ -40,7 +42,7 @@ export function useVibeSaving(c: Context) {
     setSaveOpen(true);
   }
   useEffect(() => {
-    if (!saveOpen || authLoading) return;
+    if ((!saveOpen && !loadWorkspace) || authLoading) return;
     let current = true;
     setSaveAccess("loading");
     void token().then(async auth => {
@@ -52,7 +54,7 @@ export function useVibeSaving(c: Context) {
         const available = me.organizations.flatMap(o => o.workspaces.filter(w =>
           (["workspace_admin", "workspace_member"].includes(w.role) || o.role === "org_admin") && (!attachedWorkspace || w.id === attachedWorkspace)));
         setWorkspaces(available);
-        setWorkspace(old => attachedWorkspace || (available.some(w => w.id === old) ? old : available[0]?.id || ""));
+        setWorkspace(old => attachedWorkspace || (available.some(w => w.id === old) ? old : (saveOpen ? available[0]?.id : "") || ""));
         setSaveAccess("ready");
       } catch (e) {
         if (!current) return;
@@ -60,9 +62,13 @@ export function useVibeSaving(c: Context) {
         setSaveAccess(expired ? "signed_out" : "error");
         setError(expired ? "Sign in again to keep your work. Your tests are still here." : "Couldn’t load your workspaces. Try again.");
       }
+    }).catch(error => {
+      if (!current) return;
+      setWorkspaces([]); setSaveAccess("signed_out");
+      setError(error instanceof Error ? error.message : "Sign in again to load workspaces.");
     });
     return () => { current = false; };
-  }, [saveOpen, token, attachedWorkspace, loadAttempt, authLoading]);
+  }, [saveOpen, token, attachedWorkspace, loadAttempt, authLoading, loadWorkspace, actorScope]);
   useEffect(() => {
     if (!session || saveResumed.current) return;
     if (params.get("keep") !== "1") {

@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import type { CollectionStatus } from "@/lib/use-vibe-collection";
+import { useVibeEditorDraft } from "@/lib/use-vibe-editor-draft";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
@@ -59,7 +61,7 @@ import { WEB_EVENTS } from "@/lib/analytics/events";
 import { captureBuildEvent } from "@/lib/vibe-build-analytics";
 import "./workspace.css";
 
-type View = "build" | "try" | "checks";
+type View = "build" | "try" | "checks" | "tests";
 
 export const exampleAnswer = `Check this answer from my trip-planning app. It should respect the total budget, including every listed cost.
 
@@ -74,6 +76,7 @@ export type EvaluationWorkspaceProps = {
   navigationToggle?: ReactNode;
   newEvaluation?: boolean;
   contextNavigationBlocked?: boolean;
+  entryBlocked?: boolean;
   onCancelNew?: () => void;
   canChangeDoor?: boolean;
   onChangeDoor?: () => void;
@@ -85,6 +88,7 @@ export type EvaluationWorkspaceProps = {
   onTougher?: (text: string, count: number, artifactID: string) => void;
   sendBlocked?: boolean;
   sendError?: string;
+  inferenceUnavailable?: boolean;
   interactionActions?: boolean;
   onChoice?: (action: ConversationAction) => Promise<void>;
   onReloadChoices?: () => Promise<void>;
@@ -98,6 +102,8 @@ export type EvaluationWorkspaceProps = {
   pendingLabel?: string;
   quickChecking?: boolean;
   requestedRunID?: string;
+  selectedCase?: string;
+  onSelectCase?: (key?: string) => void;
   dirty: boolean;
   content: string;
   onContent: (value: string) => void;
@@ -128,6 +134,8 @@ export type EvaluationWorkspaceProps = {
   notice: ReactNode;
   preview: ReactNode;
   savedChecks: SavedCheck[];
+  savedListStatus?: CollectionStatus;
+  onRetrySaved?: () => void;
 };
 
 export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
@@ -146,7 +154,9 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
   }, [buildJourney, p.session, activeBuildQuestion]);
   const reduced = useReducedMotion();
   const [intake, setIntake] = useState<"instructions" | null>(null);
-  const [instructionText, setInstructionText] = useState("");
+  const intakeDraft = useVibeEditorDraft(p.session?.id || "entry", "intake", "instructions", "intake-v1", "");
+  const instructionText = intakeDraft.value;
+  const setInstructionText = intakeDraft.setValue;
   const [welcomeExample, setWelcomeExample] = useState(false);
   const [localHistoryOpen, setLocalHistoryOpen] = useState(false);
   const historyOpen = p.savedWorkOpen ?? localHistoryOpen;
@@ -283,7 +293,6 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
   const send = () => {
     if (p.busy || p.dirty || p.sendBlocked || !p.content.trim()) return;
     scroll.follow();
-    if (p.view !== "build") p.onNavigate("build");
     const context = buildJourney ? referencedRun : result;
     p.onSend(context && terminal(context.state) ? { viewed_run_id: context.id } : undefined);
     setReferencedRun(undefined);
@@ -309,7 +318,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
   const suiteContents = p.artifact?.kind === "test_suite" ? (
     <div className="space-y-5" data-proposal-id={p.artifact.id}>
       {promptChanged && <PromptChange key={`instructions:${p.artifact.id}`} before={parent!.agent_prompt} after={p.artifact.agent_prompt} defaultOpen={buildJourney} />}
-      <TestSuitePanel primary={primary === "tests"} key={`tests:${p.artifact.id}`} artifact={p.artifact} busy={p.busy} blocked={p.dirty}
+      <TestSuitePanel inferenceUnavailable={p.inferenceUnavailable} selectedCase={p.selectedCase} onSelectCase={p.onSelectCase} projectID={p.session?.id} primary={primary === "tests"} key={`tests:${p.artifact.id}`} artifact={p.artifact} busy={p.busy} blocked={p.dirty}
         buildJourney={buildJourney}
         parent={parent}
         comparison={!!changeBaseline} onRun={() => startRun(changeBaseline)} onEdit={p.onEdit}
@@ -367,7 +376,6 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
               aria-label="Message Vibe Evals"
               value={p.content}
               onChange={(e) => p.onContent(e.target.value)}
-              maxLength={p.session?.anonymous === false ? 65536 : 16384}
               placeholder={
                 welcome
                   ? door === "test" ? "Or describe your agent and what you want to check…" : door === "build" ? "We spend hours answering customer questions about returns…" : p.testJourney
@@ -437,7 +445,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
         )}
         <div className="vibe-header-nav justify-self-center">
           <AnimatePresence initial={false}>
-            {hasResults && !p.newEvaluation && (
+            {p.session && !p.newEvaluation && (
               <motion.div
                 layout="position"
                 key="navigation"
@@ -461,9 +469,10 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                         [
                           [
                             "build",
-                            "Conversation",
+                            "Agent",
                             "Discuss what matters, ask about findings, or change the rules.",
                           ],
+                          ["tests", "Tests", "Edit cases and expectations for this version."],
                           [
                             "checks",
                             "Results",
@@ -543,7 +552,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
           <VibeButton variant="quiet" className="vibe-back-button" disabled={p.contextNavigationBlocked} onClick={() => {
             p.onCancelNew?.(); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true }));
           }}><ArrowLeft />{p.session?.document.evaluation ? "Back to your evaluation" : "Back"}</VibeButton>
-          <EvaluationEntry busy={!!p.contextNavigationBlocked} onDoor={p.onDoor} />
+          <EvaluationEntry busy={!!p.contextNavigationBlocked || !!p.entryBlocked} onDoor={p.onDoor} />
           {p.pendingLabel && <ActivityStatus label={p.pendingLabel} working />}
           {p.notice}
         </div>
@@ -557,13 +566,13 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
       >
         <div
           id="vibe-workspace-panel"
-          role={hasResults ? "tabpanel" : undefined}
-          aria-labelledby={hasResults ? `vibe-tab-${currentPane}` : undefined}
+          role={p.session ? "tabpanel" : undefined}
+          aria-labelledby={p.session ? `vibe-tab-${currentPane}` : undefined}
         >
           <div
             className={`vibe-column ${welcome ? "vibe-entry-page" : "py-8 sm:py-12"}`}
           >
-            {welcome && !intake && (entry ? <EvaluationEntry busy={p.busy} onDoor={p.onDoor} /> : <div className="vibe-welcome mb-7">
+            {welcome && !intake && (entry ? <EvaluationEntry busy={p.busy || !!p.inferenceUnavailable} onDoor={p.onDoor} /> : <div className="vibe-welcome mb-7">
               <h1 className="vibe-entry-title">{door === "build" ? "What would you like help with?" : door === "test" ? "Improve an agent you already have." : p.testJourney ? "What should your agent do?" : "Check the AI in your app."}</h1>
               <p className="mt-4 max-w-[560px] vibe-muted">{door === "build" ? "Describe a repetitive task. We’ll make a prototype and try three situations to see what works." : door === "test" ? "Bring your agent’s instructions or a saved test pack." : p.testJourney ? "Describe its job and rules. We’ll check what works and what needs fixing." : "Tell us what it does, or paste an answer you want checked."}</p>
               {door === "test" && <><div className="vibe-source-options">
@@ -592,7 +601,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
             {buildJourney && p.session && !welcome && <div hidden={(p.view !== "build" && p.view !== "try") || !!intake}>
               <BuildWorkspace session={p.session} artifact={p.artifact} busy={p.busy || p.dirty} primary={buildPrimary}
                 onPreviewOpen={(open, id) => p.onNavigate(open ? "try" : "build", id || p.artifact?.id)} onReviewArtifact={id => p.onNavigate("build", id)}
-                proposal={active ? null : suiteCard}
+                proposal={active || p.view === "tests" ? null : suiteCard}
                 pendingMessage={pendingMessage} recovery={{ primary: primary === "recovery", pendingID: p.retryPendingOperationID, uncertainID:p.retryUncertainOperationID, onRetry:p.onRetry, retryModels:p.retryModels }}
                 onDetails={inspectRun}
                 onGuide={() => { p.onNavigate("build"); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true })); }}
@@ -602,7 +611,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
                 }}
                 onSave={p.onSave} onTougher={p.onTougher} loadEvidence={p.loadEvidence} />
             </div>}
-            {p.view === "try" ? (
+            {p.view === "tests" ? (suiteContents || <p>No tests in this version yet. Ask Guide to prepare examples.</p>) : p.view === "try" ? (
               buildJourney ? null : p.preview
             ) : intake === "instructions" ? (
               <section className="space-y-5">
@@ -892,7 +901,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
         </div>
       </div>
       {composerDock}
-      <SavedWorkDialog open={historyOpen} onOpenChange={setHistoryOpen} testJourney={p.testJourney}
+      <SavedWorkDialog status={p.savedListStatus} onRetry={p.onRetrySaved} open={historyOpen} onOpenChange={setHistoryOpen} testJourney={p.testJourney}
         savedChecks={p.savedChecks} hasResults={runs.length > 0} onResults={() => switchView("checks")} />
     </>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
+import { useVibeEditorDraft } from "@/lib/use-vibe-editor-draft";
 import { Tabs } from "@base-ui/react/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import type { useVibeInputs } from "@/lib/use-vibe-inputs";
@@ -22,8 +23,11 @@ function status(material: TaskMaterial) {
 
 export function TaskInput({ inputs, pdfAvailable, disabled, configure = false }: Props) {
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"upload" | "paste">("upload");
-  const [text, setText] = useState("");
+  const [tab, setTab] = useState<"upload" | "paste">(pdfAvailable ? "upload" : "paste");
+  const pastedDraft = useVibeEditorDraft(inputs.projectID || "material", "material:" + (inputs.recipient || "default"), "paste", "paste-v1", "");
+  const text = pastedDraft.value;
+  const setText = pastedDraft.setValue;
+  const latestPaste = useRef(text); latestPaste.current = text;
   const [localError, setLocalError] = useState("");
   const [deleting, setDeleting] = useState<string>();
   const [saved, setSaved] = useState<TaskMaterial[]>();
@@ -59,9 +63,10 @@ export function TaskInput({ inputs, pdfAvailable, disabled, configure = false }:
       <DialogContent className="vibe-workspace vibe-dialog vibe-material-dialog" showCloseButton={false} initialFocus={titleRef} finalFocus={triggerRef}>
         <div className="vibe-material-dialog-head"><div className="vibe-material-dialog-heading">
           <DialogTitle ref={titleRef} tabIndex={-1}>Add material</DialogTitle>
-          <DialogDescription>Choose a PDF or paste text for this task. Adding material does not run the agent or change its rules.</DialogDescription>
+          <DialogDescription>Choose a PDF or paste text for this task. Uploading stores material and extracts text before execution. Running sends selected material to configured model providers. Deleting prevents future source use; existing conversation/results may retain information.</DialogDescription>
         </div><VibeButton variant="quiet" onClick={() => setOpen(false)} aria-label="Close material dialog">Close</VibeButton></div>
         <div className="vibe-dialog-body vibe-material-dialog-body">
+          {!pdfAvailable && <p role="status">PDF reading isn’t available right now. Paste text instead.</p>}
           <Tabs.Root value={tab} onValueChange={value => setTab(value as typeof tab)}>
             <Tabs.List className="vibe-material-tabs" aria-label="Material type"><Tabs.Tab value="upload" className="vibe-material-tab">Upload PDF</Tabs.Tab><Tabs.Tab value="paste" className="vibe-material-tab">Paste text</Tabs.Tab></Tabs.List>
             <Tabs.Panel value="upload" className="vibe-material-tab-panel">{pdfAvailable ? <>
@@ -70,7 +75,7 @@ export function TaskInput({ inputs, pdfAvailable, disabled, configure = false }:
             </> : <p role="status">PDF reading isn’t available right now. Use Paste text instead.</p>}</Tabs.Panel>
             <Tabs.Panel value="paste" className="vibe-material-tab-panel"><label htmlFor={`${id}-paste`}>Text to work on</label>
               <textarea id={`${id}-paste`} rows={5} value={text} onChange={event => setText(event.target.value)} maxLength={60000} />
-              <div className="vibe-material-actions"><VibeButton variant="primary" disabled={disabled || inputs.busy || !text.trim()} onClick={() => void inputs.add(text)}>Attach text</VibeButton></div>
+              <div className="vibe-material-actions"><VibeButton variant="primary" disabled={disabled || inputs.busy || !text.trim()} onClick={() => { const submitted = text; void inputs.add(submitted).then(material => { if (material && latestPaste.current === submitted) pastedDraft.discard(submitted); }); }}>Attach text</VibeButton></div>
               <p className="vibe-material-hint">Up to 60,000 characters. You can edit this draft after closing the dialog.</p>
             </Tabs.Panel>
           </Tabs.Root>

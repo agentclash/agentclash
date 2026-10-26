@@ -257,10 +257,13 @@ export type SavedCheck = {
   source: Operation["source"];
   created_at: string;
 };
-export type BuildQuote = { max_calls: number; id: string; request: { adopt_rules?: import("./vibe-inputs").DocumentSource[]; inputs?: import("./vibe-inputs").InputBinding[]; content: string; models: Models }; max_cost_nano_usd: number; cases: number; expires_at: string };
-export type RunQuote = { id: string; max_cost_nano_usd: number; cases: number; calls: number; expires_at: string };
+export type BuildQuote = { server_time?: string; max_calls: number; id: string; request: { adopt_rules?: import("./vibe-inputs").DocumentSource[]; inputs?: import("./vibe-inputs").InputBinding[]; content: string; models: Models }; max_cost_nano_usd: number; cases: number; expires_at: string };
+export type RunQuote = { server_time?: string; id: string; max_cost_nano_usd: number; cases: number; calls: number; expires_at: string };
 
 export type VibeConfig = {
+ server_time?: string;
+ material_build?: boolean;
+ availability?: { guest: { available: boolean; reason_code?: string }; workspace: { available: boolean; reason_code?: string } };
  pdf_uploads?: boolean;
  contact?: { email: string; available: boolean };
   two_door?: boolean;

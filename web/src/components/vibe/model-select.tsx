@@ -28,12 +28,12 @@ export function ModelSelect({
       <select
         aria-label={`${label} model`}
         value={value}
-        disabled={disabled}
+        disabled={disabled || !models.length}
         onChange={(e) => onChange(e.target.value)}
         className="max-w-48 rounded-md border border-builder-border bg-builder-panel px-2 py-1.5 text-builder-fg outline-none focus-visible:ring-2 focus-visible:ring-builder-border-strong"
       >
         {!models.some((m) => m.id === value) && (
-          <option value={value}>{value.split("/").pop()}</option>
+          <option value={value} disabled>{models.length ? `${value.split("/").pop()} (unavailable)` : "No approved models available"}</option>
         )}
         {models.map((m) => (
           <option key={m.id} value={m.id}>

@@ -1,14 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
-import { readBuildDrafts, writeBuildDrafts, type BuildDrafts } from "./vibe-build-drafts";
+import { readBuildDrafts, writeBuildDrafts, discardDrafts, draftMemory, emptyDrafts, type BuildDrafts } from "./vibe-build-drafts";
 
-const empty = (): BuildDrafts => ({ version: 1, guide: "", trials: {} });
+const empty = emptyDrafts;
 // One atomic row owns both composers. Hydration cannot persist half a row or
 // replace edits made while HTTP is loading. Storage is only an optional mirror.
 export function useVibeDrafts(initialID?: string) {
-  const [draft, setDraft] = useState(() => ({ id: initialID, value: initialID ? readBuildDrafts(initialID) || empty() : empty() }));
-  const rows = useRef(new Map<string, BuildDrafts>());
+  const [draft, setDraft] = useState(() => ({ id: initialID, value: initialID ? draftMemory.get(initialID) || readBuildDrafts(initialID) || empty() : empty() }));
+  const rows = useRef(draftMemory);
+  const [storageAvailable, setStorageAvailable] = useState(true);
   const active = useRef(initialID);
   const composerEdits = useRef(0);
   const trialEdits = useRef<Record<string, number>>({});
@@ -17,7 +18,7 @@ export function useVibeDrafts(initialID?: string) {
     active.current = id;
     setDraft(old => {
       if (old.id === id) return old;
-      if (old.id) rows.current.set(old.id, old.value);
+      if (old.id) writeBuildDrafts(old.id, old.value.guide, old.value.trials);
       return { id, value: id ? rows.current.get(id) || readBuildDrafts(id) || empty() : empty() };
     });
   }, []);
@@ -29,12 +30,10 @@ export function useVibeDrafts(initialID?: string) {
   }, []);
   useEffect(() => {
     if (!draft.id) return;
-    rows.current.set(draft.id, draft.value);
-    writeBuildDrafts(draft.id, draft.value.guide, draft.value.trials);
+    setStorageAvailable(writeBuildDrafts(draft.id, draft.value.guide, draft.value.trials));
   }, [draft]);
   const discard = useCallback((id: string) => {
-    rows.current.delete(id);
-    try { sessionStorage.removeItem("vibe-build-drafts:"+id); } catch { /* Optional storage. */ }
+    discardDrafts(id);
   }, []);
-  return { content: draft.value.guide, trialBuffers: draft.value.trials, setContent, setTrialBuffers, composerEdits, trialEdits, activate, discard };
+  return { storageAvailable, content: draft.value.guide, trialBuffers: draft.value.trials, setContent, setTrialBuffers, composerEdits, trialEdits, activate, discard };
 }

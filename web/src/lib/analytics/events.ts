@@ -26,6 +26,8 @@ export const WEB_EVENTS = {
   /** User promoted a run failure to a regression case. */
   REGRESSION_CASE_PROMOTED: "web.regression.case_promoted",
 
+  VIBE_ATTEMPT: "web.vibe.attempt",
+  VIBE_FAILURE: "web.vibe.failure",
   VIBE_BUILD_ENTRY_SELECTED: "web.vibe.build.entry_selected",
   VIBE_BUILD_MESSAGE_ADMITTED: "web.vibe.build.message_admitted",
   VIBE_BUILD_CLARIFICATION_VIEWED: "web.vibe.build.clarification_viewed",
@@ -77,6 +79,8 @@ export type VibeBuildEventBase = {
 };
 
 export interface WebEventPayloads {
+  [WEB_EVENTS.VIBE_ATTEMPT]: { schema_version: 1; door: "build" | "test"; action: string; session_id?: string };
+  [WEB_EVENTS.VIBE_FAILURE]: { schema_version: 1; door: "build" | "test"; action: string; session_id?: string; error_code: string };
   [WEB_EVENTS.VIBE_BUILD_INPUT_STATUS]: VibeBuildEventBase & { input_id: string; kind: "pdf" | "text"; status: string };
   [WEB_EVENTS.VIBE_BUILD_ENQUIRY_OPENED]: VibeBuildEventBase;
   [WEB_EVENTS.VIBE_BUILD_ENQUIRY_RECEIVED]: VibeBuildEventBase & { enquiry_id: string };

@@ -1,3 +1,4 @@
+import { draftMemory } from "@/lib/vibe-build-drafts";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -78,11 +79,12 @@ function operation(id: string): Operation {
 }
 
 beforeEach(() => {
+  draftMemory.clear(); sessionStorage.clear();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal(
     "matchMedia",
-    vi.fn(() => ({
-      matches: true,
+    vi.fn((query: string) => ({
+      matches: query !== "(any-pointer: coarse)",
       addListener: vi.fn(),
       removeListener: vi.fn(),
       addEventListener: vi.fn(),

@@ -10,7 +10,7 @@ function evaluation(id: string): Session {
 function buildEvaluation(): Session {
   const build = evaluation("build");
   build.document.evaluation!.door = "build";
-  build.document.artifacts = [{ id: "prototype", kind: "test_suite", title: "Customer email sorter", agent_prompt: "Suggest a label for each email.", accepted: true, source_message_id: "request", proposal_message_id: "prepared", scope_note: "Suggests labels using supplied text.", blueprint: { cases: [{ key: "spam", payload: { question: "You won a prize." }, expectations: [{ key: "expected_behavior", kind: "text", value: "Label as Spam." }] }] } }];
+  build.document.artifacts = [{ id: "prototype", kind: "test_suite", title: "Customer email sorter", agent_prompt: "Suggest a label for each email.", accepted: true, source_message_id: "request", proposal_message_id: "prepared", scope_note: "Suggests labels using supplied text.", blueprint: { judges: [{ context_from: ["case.expectations.expected_behavior"] }], cases: [{ key: "spam", payload: { question: "You won a prize." }, expectations: [{ key: "expected_behavior", kind: "text", value: "Label as Spam." }] }] } }];
   build.document.active_artifact_id = "prototype";
   build.document.messages = [{ id: "request", role: "user", content: "Sort customer emails.", operation_id: "prepare" }, { id: "prepared", role: "assistant", content: "", operation_id: "prepare", artifact_id: "prototype" }];
   build.document.build = { cycle_id: "cycle", phase: "results", clarifications_used: 0, artifact_id: "prototype", check_id: "check" };
@@ -48,7 +48,7 @@ async function serve(page: Page, many = false, prototypes = false) {
     const headers = { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" };
     if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { ...headers,
       "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS" } });
-    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, two_door: true, defaults: defaultModels, models: [] } });
+    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) } });
     if (path.endsWith("/saved-checks")) return route.fulfill({ headers, json: [] });
     if (request.method() === "POST") {
       if (path.endsWith("/build-quote")) {
@@ -276,7 +276,7 @@ test("long evaluation titles scroll inside the sidebar and saved work stays acce
   await page.setViewportSize({ width: 1280, height: 720 });
   const control = await serve(page, true);
   const list = page.getByRole("navigation", { name: "Your agents" });
-  await expect(list.locator("button")).toHaveCount(32);
+  await expect(list.locator("[data-evaluation-id]")).toHaveCount(32);
   expect(await list.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
   const title = list.locator(".vibe-sidebar-item-copy > span").last();
   expect(await title.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
@@ -289,4 +289,26 @@ test("long evaluation titles scroll inside the sidebar and saved work stays acce
   await expect(page.locator('[data-evaluation-id="first"]')).toHaveAttribute("aria-current", "page");
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
+});
+
+
+test("canonical Tests preserves an unsaved case through results, project switching and reload, with Back restoring the view", async ({ page }) => {
+  const control = await serve(page, false, true);
+  await page.getByRole("tab", { name: "Tests", exact: true }).click();
+  await expect(page).toHaveURL(/view=tests/);
+  await page.getByRole("button", { name: "Edit tests", exact: true }).click();
+  const expectation = page.getByRole("textbox", { name: "What should happen", exact: true });
+  await expectation.fill("Keep this unsaved expectation.");
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
+  await expect(page).toHaveURL(/view=results/);
+  await page.goBack(); await expect(page).toHaveURL(/view=tests/);
+  await expect(expectation).toHaveValue("Keep this unsaved expectation.");
+  await page.locator('[data-evaluation-id="second"]').click();
+  await page.locator('[data-evaluation-id="first"]').click();
+  await expect(page).toHaveURL(/view=tests/);
+  await expect(expectation).toHaveValue("Keep this unsaved expectation.");
+  await page.reload(); await expect(expectation).toHaveValue("Keep this unsaved expectation.");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "1 test is ready", exact: true })).toBeFocused();
+  expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
 });

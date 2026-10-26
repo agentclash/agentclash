@@ -1,3 +1,4 @@
+import { draftMemory } from "@/lib/vibe-build-drafts";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -10,6 +11,7 @@ let artifact: Artifact;
 const run = vi.fn();
 
 beforeEach(() => {
+  draftMemory.clear(); sessionStorage.clear();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   node = document.createElement("div");
   root = createRoot(node);
@@ -102,4 +104,30 @@ it("edits one expectation through its stable case key, preserving other inputs a
   await act(async () => button("Save test changes").click());
   expect(edit).toHaveBeenCalledWith({ artifact_id: "tests", case_changes: [{ action: "update", case_key: "first", expected: "Updated expectation" }] });
   expect(artifact).toEqual(before); expect(run).not.toHaveBeenCalled();
+});
+
+it("restores unsaved expectations after unmount and requires review only when their actual source changes", async () => {
+  artifact.blueprint = { judges: [{ context_from: ["case.expectations.expected_behavior"] }], cases: [{ key: "boundary", payload: { question: "Opened item?" }, expectations: [{ key: "expected_behavior", kind: "text", value: "Decline." }] }] };
+  await render(); await act(async () => button("Edit tests").click());
+  const expected = node.querySelectorAll("textarea")[1];
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(expected, "Explain the policy.");
+    expected.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => root.unmount()); root = createRoot(node); await render();
+  expect(node.querySelectorAll("textarea")[1].value).toBe("Explain the policy.");
+  artifact = { ...artifact, validation: { status: "supported", blueprint_hash: "validation-only", policy_hash: "policy", validator_version: "v2" } };
+  await render(); expect(node.querySelector('[role="alert"]')).toBeNull();
+  const oldSource = artifact.blueprint as { judges: unknown; cases: unknown };
+  artifact = { ...artifact, blueprint: { cases: oldSource.cases, judges: oldSource.judges } };
+  await render(); expect(node.querySelector('[role="alert"]')).toBeNull();
+  artifact = { ...artifact, blueprint: { judges: [{ context_from: ["case.expectations.expected_behavior"] }], cases: [{ key: "boundary", payload: { question: "Opened item?" }, expectations: [{ key: "expected_behavior", kind: "text", value: "Ask purchase age." }] }] } };
+  await render();
+  expect(node.querySelector('[role="alert"]')?.textContent).toContain("saved source changed");
+  expect(button("Save test changes").disabled).toBe(true);
+  await act(async () => button("Keep my draft for this source").click());
+  expect(button("Save test changes").disabled).toBe(false);
+  expect(node.querySelectorAll("textarea")[1].value).toBe("Explain the policy.");
+  await act(async () => button("Cancel").click());
+  expect(node.querySelector("textarea")).toBeNull();
 });

@@ -2,7 +2,7 @@
 
 import "./build-output.css";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { WEB_EVENTS } from "@/lib/analytics/events";
 import { captureBuildEvent } from "@/lib/vibe-build-analytics";
@@ -62,19 +62,23 @@ export function BuildConversation({ session, artifact, busy, primary, onPreviewO
     requestAnimationFrame(() => document.getElementById("vibe-trial-message")?.focus({ preventScroll: false }));
   }
   return <div className="vibe-build-timeline" role="log" aria-label="Conversation with Vibe Evals" aria-live="polite" aria-relevant="additions">
-    {entries.map(entry => {
+    {entries.map((entry, index) => {
       const entrance = { initial: reduced || initialEntries.has(entry.id) ? false as const : { opacity: 0, y: 4 }, animate: { opacity: 1, y: 0 }, transition: { duration: reduced ? 0 : .18 } };
       if (entry.kind === "message") {
         const trial = entry.message.origin === "playground";
         const target = trial ? session.document.artifacts.find(a => a.id === entry.message.artifact_id) : undefined;
         return <motion.div {...entrance} key={entry.id} data-message-id={entry.message.id} data-build-entry={entry.id}>
-          {trial ? <div className={`vibe-message ${entry.message.role === "user" ? "vibe-message-user" : ""}`}>
+          {trial && (index === 0 || entries[index - 1].kind !== "message" || (() => {
+            const previous = (entries[index - 1] as { message?: BuildMessage }).message;
+            return previous?.origin !== "playground" || previous.artifact_id !== entry.message.artifact_id || (previous.preview_thread_id || `legacy:${previous.operation_id}`) !== (entry.message.preview_thread_id || `legacy:${entry.message.operation_id}`);
+          })()) && <h3 key="thread-boundary" className="vibe-build-eyebrow mt-6">{entry.message.preview_thread_id ? "Trial conversation" : "Earlier trial"} · {entry.message.preview_thread_id ? session.document.messages.filter(message => message.origin === "playground").map(message => message.preview_thread_id || `legacy:${message.operation_id}`).filter((id, i, ids) => ids.indexOf(id) === i).indexOf(entry.message.preview_thread_id) + 1 : entry.message.operation_id}</h3>}
+          {trial ? <div key="trial-message" className={`vibe-message ${entry.message.role === "user" ? "vibe-message-user" : ""}`}>
             <p className="vibe-build-eyebrow">{entry.message.role === "user" ? "You → " : ""}{target?.title || "Saved prototype"}{target ? ` · trial v${buildVersion(session, target)}` : ""}{target?.sample ? " · Sample demonstration" : ""}</p>
             {entry.message.role === "assistant" ? <>
               <TaskOutput text={entry.message.content} sessionID={session.id} materials={entry.message.materials} />
               <p className="vibe-build-note">Runs here using what you supplied; your business systems aren’t connected.</p>
             </> : <AgentReply>{entry.message.content}</AgentReply>}
-          </div> : renderMessage(entry.message)}
+          </div> : <Fragment key="guide-message">{renderMessage(entry.message)}</Fragment>}
         </motion.div>;
       }
       if (entry.kind === "prototype") {

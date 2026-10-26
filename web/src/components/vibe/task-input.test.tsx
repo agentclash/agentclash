@@ -1,3 +1,4 @@
+import { draftMemory } from "@/lib/vibe-build-drafts";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -10,7 +11,7 @@ const selection = (material = ready) => ({ material, acknowledged: false, usage:
 let node: HTMLDivElement;
 let root: Root;
 let inputs: ReturnType<typeof useVibeInputs>;
-const add = vi.fn();
+const add = vi.fn(async () => undefined as TaskMaterial | undefined);
 const list = vi.fn();
 const attach = vi.fn();
 const remove = vi.fn();
@@ -20,7 +21,7 @@ const retry = vi.fn();
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  vi.clearAllMocks();
+  vi.clearAllMocks(); add.mockResolvedValue(undefined); draftMemory.clear(); sessionStorage.clear();
   node = document.createElement("div"); document.body.append(node); root = createRoot(node);
   inputs = { items: [], busy: false, error: "", canRetry: false, blocked: false, bindings: [], adoptions: [], add, list, attach, remove, configure, acknowledge, retry } as unknown as ReturnType<typeof useVibeInputs>;
 });
@@ -48,10 +49,12 @@ it("keeps pasted draft after close and uses one explicit attach action", async (
   await render(); await click("Add a file or text"); await click("Paste text");
   const area = document.querySelector("textarea")!;
   await change(area, "Source text for the task");
-  await click("Close"); await click("Add a file or text");
+  await click("Close"); await act(async () => root.unmount()); root = createRoot(node);
+  await render(); await click("Add a file or text"); await click("Paste text");
   expect((document.querySelector("textarea") as HTMLTextAreaElement).value).toBe("Source text for the task");
   expect(add).not.toHaveBeenCalled();
-  await click("Attach text");
+  add.mockResolvedValue(ready); await click("Attach text");
+  expect((document.querySelector("textarea") as HTMLTextAreaElement).value).toBe("");
   expect(add).toHaveBeenCalledTimes(1);
   expect(add).toHaveBeenCalledWith("Source text for the task");
 });
@@ -63,7 +66,7 @@ it("shows PDF limits and availability, and keeps retry visible while the dialog 
   await click("Close");
   await click("Retry upload");
   expect(retry).toHaveBeenCalledTimes(1);
-  await render(true); await click("Add a file or text");
+  await render(true); await click("Add a file or text"); await click("Upload PDF");
   expect(document.querySelector('[role="dialog"]')?.textContent).toContain("Maximum 30 pages and 10 MB");
   expect(document.querySelector('input[type="file"]')).not.toBeNull();
 });
@@ -98,4 +101,18 @@ it("loads saved material only after opening its disclosure", async () => {
   expect(document.querySelector('[aria-label="Saved material"]')?.textContent).toContain(ready.name);
   await click("Attach");
   expect(attach).toHaveBeenCalledWith("saved");
+});
+
+it("preserves a newer pasted draft after an earlier attachment acknowledgement crosses owner unmounts", async () => {
+  let finish!: (material: TaskMaterial) => void;
+  add.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  await render(false); await click("Add a file or text");
+  await change(document.querySelector("textarea")!, "First submitted text"); await click("Attach text");
+  await act(async () => root.unmount()); root = createRoot(node);
+  await render(false); await click("Add a file or text");
+  await change(document.querySelector("textarea")!, "A newer unattached draft");
+  await act(async () => finish({ ...ready, kind: "text" }));
+  await act(async () => root.unmount()); root = createRoot(node);
+  await render(false); await click("Add a file or text");
+  expect((document.querySelector("textarea") as HTMLTextAreaElement).value).toBe("A newer unattached draft");
 });

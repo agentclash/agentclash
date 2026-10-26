@@ -1,11 +1,14 @@
 "use client";
+import { CollectionNotice } from "./collection-notice";
+import type { CollectionStatus } from "@/lib/use-vibe-collection";
 import { ArrowRight } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { savedWorkURL } from "@/lib/vibe-keep";
 import type { SavedCheck } from "@/lib/vibe";
 import { VibeButton } from "./vibe-button";
 
-export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, hasResults, onResults}: {
+export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, hasResults, onResults, status, onRetry}: {
+  status?: CollectionStatus; onRetry?: () => void;
   open: boolean; onOpenChange: (open: boolean) => void; testJourney?: boolean;
   savedChecks: SavedCheck[]; hasResults: boolean; onResults: () => void;
 }) {
@@ -20,6 +23,7 @@ export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, h
               ? "Tests you can return to after your next change."
               : "Private checks you can return to and repeat."}
           </DialogDescription>
+          <CollectionNotice hasRows={savedChecks.length > 0} status={status} retry={onRetry} />
           {savedChecks.length ? (
             savedChecks.map((c) => (
               <a
@@ -37,7 +41,7 @@ export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, h
                 </span>
               </a>
             ))
-          ) : (
+          ) : (!status || status === "ready") && (
             <p className="text-sm text-muted-foreground">
               {testJourney
                 ? "Choose “Keep these tests” to find them here next time."
