@@ -87,7 +87,7 @@ jobs:
           --health-cmd "pg_isready -U vibe_test -d vibe_test"
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
-      VIBE_BROWSER_OWNERSHIP_LOG: ${{ runner.temp }}/vibe-ownership.jsonl
+      VIBE_BROWSER_OWNERSHIP_LOG: /tmp/vibe-ownership.jsonl
       VIBE_TEST_DATABASE_URL: postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
@@ -116,11 +116,11 @@ jobs:
         with:
           name: vibe-backend-ownership
           path: |
-            ${{ runner.temp }}/vibe-ownership.jsonl
+            ${{ env.VIBE_BROWSER_OWNERSHIP_LOG }}
   browser-journeys:
     runs-on: ubuntu-latest
     env:
-      VIBE_BROWSER_OWNERSHIP_LOG: ${{ runner.temp }}/vibe-ownership.jsonl
+      VIBE_BROWSER_OWNERSHIP_LOG: /tmp/vibe-ownership.jsonl
     timeout-minutes: 20
     defaults:
       run:
@@ -146,7 +146,7 @@ jobs:
           name: vibe-mock-browser-evidence
           path: |
             web/test-results/vibe
-            ${{ runner.temp }}/vibe-ownership.jsonl
+            ${{ env.VIBE_BROWSER_OWNERSHIP_LOG }}
   browser-worker-journey:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -162,7 +162,7 @@ jobs:
           --health-cmd "pg_isready -U vibe_test -d vibe_test"
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
-      VIBE_BROWSER_OWNERSHIP_LOG: ${{ runner.temp }}/vibe-ownership.jsonl
+      VIBE_BROWSER_OWNERSHIP_LOG: /tmp/vibe-ownership.jsonl
       VIBE_TEST_DATABASE_URL: postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
@@ -209,7 +209,7 @@ jobs:
           name: vibe-browser-worker-evidence
           path: |
             web/test-results/vibe-stack
-            ${{ runner.temp }}/vibe-ownership.jsonl
+            ${{ env.VIBE_BROWSER_OWNERSHIP_LOG }}
           if-no-files-found: ignore
   isolated-pdf-reader:
     runs-on: ubuntu-22.04
