@@ -360,7 +360,7 @@ test("same-artifact case Back and Forward restores the visible expectation witho
   expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
 });
 
-test("compact text roles stay consistent across viewport sizes and portaled settings", async ({ page }) => {
+test("compact text roles stay consistent across viewport sizes and portaled dialogs", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   const control = await serve(page, false, true);
   const check = control.first.operations.find(operation => operation.kind === "check")!;
@@ -368,6 +368,11 @@ test("compact text roles stay consistent across viewport sizes and portaled sett
     headers: { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" },
     json: check.results[0],
   }));
+  await page.route(/\/v1\/vibe\/credits\?/, route => route.fulfill({
+    headers: { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" },
+    json: { under_review: false, balance_nano_usd: 0, held_nano_usd: 0, available_nano_usd: 0, products: [] },
+  }));
+  await page.goto("/vibe-evals?session=first&workspace=a8000000-0000-4000-8000-000000000003");
   await page.getByRole("tab", { name: "Results", exact: true }).click();
   await page.getByText("Test results · 1", { exact: true }).click();
   await openCase(page);
@@ -386,7 +391,12 @@ test("compact text roles stay consistent across viewport sizes and portaled sett
     const navigation = width < 1024 ? page.getByRole("dialog", { name: "Your agents", exact: true }) : page.getByRole("complementary", { name: "Agent sidebar", exact: true });
     await expect(navigation.locator('[data-evaluation-id="first"] .vibe-project-full-title')).toHaveCSS("font-size", "13px");
     await expect(navigation.locator('[data-evaluation-id="first"] small')).toHaveCSS("font-size", "12px");
-    if (width < 1024) await page.keyboard.press("Escape");
+    const actions = navigation.locator(".vibe-project-actions");
+    if (!(await actions.evaluate(element => (element as HTMLDetailsElement).open))) await actions.locator("summary").click();
+    await actions.getByRole("button", { name: "Delete this project", exact: true }).click();
+    const deletion = page.getByRole("dialog", { name: /^Delete / });
+    await expect.soft(deletion.locator('[data-slot="dialog-title"]')).toHaveCSS("font-size", "20px");
+    await deletion.getByRole("button", { name: "Cancel", exact: true }).click();
     await page.getByRole("button", { name: "Details", exact: true }).click();
     const details = width < 1280 ? page.getByRole("dialog", { name: "Details", exact: true }) : page.getByRole("complementary", { name: "Details utility", exact: true });
     await expect(details.getByLabel("Appearance", { exact: true })).toHaveCSS("font-size", "16px");
@@ -396,6 +406,10 @@ test("compact text roles stay consistent across viewport sizes and portaled sett
     await expect(dialog.getByRole("heading", { name: "Settings and details", exact: true })).toHaveCSS("font-size", "20px");
     await expect(dialog.locator('[data-slot="dialog-description"]')).toHaveCSS("font-size", "14px");
     await expect(dialog.getByRole("button", { name: "Import a test pack", exact: true })).toHaveCSS("font-size", "14px");
+    await dialog.getByRole("button", { name: "Credits", exact: true }).click();
+    const credits = page.getByRole("dialog", { name: "Workspace AI credits", exact: true });
+    await expect.soft(credits.locator('[data-slot="dialog-title"]')).toHaveCSS("font-size", "20px");
+    await credits.getByRole("button", { name: "Close", exact: true }).click();
     await dialog.getByRole("button", { name: "Close", exact: true }).click();
     await page.getByRole("button", { name: "Close Details", exact: true }).click();
   }

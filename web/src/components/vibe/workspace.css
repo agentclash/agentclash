@@ -673,7 +673,8 @@
   background:var(--vibe-surface);
   color:var(--vibe-fg);
 }
-.vibe-dialog [data-slot="dialog-title"] { padding-right:32px; font-size:var(--vibe-font-title); font-weight:600; line-height: 1.35; }
+.vibe-workspace [data-slot="dialog-title"] { font-size:var(--vibe-font-title); font-weight:600; line-height:1.35; }
+.vibe-dialog [data-slot="dialog-title"] { padding-right:32px; }
 .vibe-dialog-body { overflow:auto; min-height:0; min-width:0; overscroll-behavior:contain; }
 .vibe-dialog-body > [data-slot="dialog-description"] { margin-bottom:16px; }
 .vibe-dialog :is(input:not([type="checkbox"]), textarea, select) { font-size: var(--vibe-font-input); line-height: 1.5; }
