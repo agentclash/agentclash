@@ -147,7 +147,7 @@ export function VibeScorecard({
     <article aria-label="Evaluation scorecard" className="space-y-5">
       <div>
         <h2
-          className="vibe-results-outcome text-[28px] font-semibold leading-tight tracking-tight sm:text-[32px]"
+          className="vibe-results-outcome font-semibold leading-tight tracking-tight"
           aria-live="polite"
         >
           {testJourney && done && !stopped && score.total > 0 && !regraded

@@ -2142,7 +2142,7 @@ it("keeps last successful project rows after a refresh failure, distinguishes fo
   harness.user = { id: "other-actor" }; harness.token.mockResolvedValue(undefined);
   await render();
   expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeNull();
-  expect(container.textContent).toContain("Sign in to load saved work");
+  expect(container.textContent).toContain("Sign in to load your projects");
 });
 
 it.each(["build", "test"] as const)("blocks unavailable %s admission while retaining readable history and exports", async door => {

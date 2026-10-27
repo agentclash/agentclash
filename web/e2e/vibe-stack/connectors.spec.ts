@@ -16,7 +16,16 @@ test("approved application executes canonical cases through Temporal and exports
  const savedBinding=await saveResponse.json();const contract=page.getByRole("region",{name:"Selected connector contract",exact:true});
  await expect(contract).toContainText("https://example.com/invoke");await expect(contract).toContainText(savedBinding.snapshot_id);await expect(contract).toContainText("Bearer token");await expect(contract).toContainText('"question": "/question"');await expect(contract).toContainText("/answer");await expect(contract).toContainText("60 seconds");
  await page.locator("summary").filter({hasText:/^Configure a new connector$/}).click();
- for(const width of [390,1440]){await page.setViewportSize({width,height:1000});await page.getByRole("combobox",{name:"Application source",exact:true}).selectOption("http_json");await page.getByRole("combobox",{name:"Saved connector",exact:true}).selectOption(savedBinding.snapshot_id);await publication.selectOption({index:1});await contract.scrollIntoViewIfNeeded();expect(await contract.evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true)}
+ for(const width of [390,1440]){
+  await page.setViewportSize({width,height:1000});
+  // Resizing replaces the sheet with an inline utility, or vice versa.
+  const details=width<1280?page.getByRole("dialog",{name:"Details",exact:true}):page.getByRole("complementary",{name:"Details utility",exact:true});
+  await expect(details).toBeVisible();
+  await details.getByRole("combobox",{name:"Application source",exact:true}).selectOption("http_json");
+  await details.getByRole("combobox",{name:"Saved connector",exact:true}).selectOption(savedBinding.snapshot_id);
+  await details.getByLabel("Published tests",{exact:true}).selectOption({index:1});
+  await contract.scrollIntoViewIfNeeded();expect(await contract.evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true);
+ }
  await page.setViewportSize({width:1440,height:900});
  await page.getByRole("checkbox",{name:/I approve sending/}).check();await page.getByRole("button",{name:"Approve connector",exact:true}).click();await expect(page.getByRole("button",{name:"Run published tests",exact:true})).toBeEnabled();expect((await(await page.request.get(`${api}/__fixture/connector-evidence`)).json()).calls).toBe(0);
  const admitted=page.waitForResponse(r=>r.url().endsWith("/v1/runs")&&r.request().method()==="POST");await page.getByRole("button",{name:"Run published tests",exact:true}).click();const admission=await admitted;expect(admission.ok(),await admission.text()).toBe(true);const run=await admission.json();await expect.poll(()=>new URL(page.url()).searchParams.get("run")).toBe(`run:${run.id}`);await page.getByRole("button",{name:"Close Details",exact:true}).click();

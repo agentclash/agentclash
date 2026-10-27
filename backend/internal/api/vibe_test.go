@@ -106,6 +106,46 @@ func TestVibeCapabilityRequired(t *testing.T) {
 	}
 }
 
+func TestVibeSessionListWithoutGuestIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name, query, cookie, authorization string
+		status                             int
+	}{
+		{name: "first visit", status: http.StatusOK},
+		{name: "active", query: "?archived=exclude", status: http.StatusOK},
+		{name: "archived", query: "?archived=only", status: http.StatusOK},
+		{name: "all", query: "?archived=all", status: http.StatusOK},
+		{name: "invalid cookie", cookie: "vibe_trial=forged.identity", status: http.StatusForbidden},
+		{name: "empty cookie", cookie: "vibe_trial=", status: http.StatusForbidden},
+		{name: "invalid authentication", authorization: "Bearer invalid", status: http.StatusUnauthorized},
+		{name: "workspace requires identity", query: "?workspace=" + uuid.NewString(), status: http.StatusForbidden},
+		{name: "invalid archive is not an empty library", query: "?archived=invalid", status: http.StatusForbidden},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// Identity-less reads must not touch a store or issue a trial cookie.
+			h := (&VibeHandler{CookieSecret: strings.Repeat("s", 32), Auth: NewDevelopmentAuthenticator()}).Routes()
+			r := httptest.NewRequest(http.MethodGet, "/sessions"+tc.query, nil)
+			if tc.cookie != "" {
+				r.Header.Set("Cookie", tc.cookie)
+			}
+			if tc.authorization != "" {
+				r.Header.Set("Authorization", tc.authorization)
+			}
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			if w.Code != tc.status {
+				t.Fatalf("status %d, want %d: %s", w.Code, tc.status, w.Body.String())
+			}
+			if tc.status == http.StatusOK && strings.TrimSpace(w.Body.String()) != "[]" {
+				t.Fatalf("fresh guest library must be an empty array: %s", w.Body.String())
+			}
+			if len(w.Result().Cookies()) != 0 {
+				t.Fatal("listing projects created a guest identity")
+			}
+		})
+	}
+}
+
 func TestVibeTransportLimitBeforeSessionLoad(t *testing.T) {
 	h := (&VibeHandler{}).Routes() // nil services must never be touched
 	r := httptest.NewRequest("POST", "/sessions/anything/messages", strings.NewReader(strings.Repeat("x", 257<<10)))

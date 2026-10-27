@@ -205,7 +205,8 @@ export function EvaluationNavigation(p: Props) {
           </>
         )}
         <CollectionNotice
-          guestProjects={guest}
+          collection="projects"
+          guest={guest}
           hasRows={contexts.length > 0}
           status={p.listStatus}
           retry={p.onRetryList}
@@ -253,7 +254,7 @@ export function EvaluationNavigation(p: Props) {
                 );
               })
           : (!p.listStatus || p.listStatus === "ready") && (
-              <p className="vibe-sidebar-empty">Your work will appear here.</p>
+              <p className="vibe-sidebar-empty">No projects yet.</p>
             )}
       </nav>
       <div className="vibe-sidebar-footer">
