@@ -7,7 +7,7 @@ export function workingBuildArtifact(session: Session): Artifact | undefined {
 
 // Reuse the terminal parent result only for an instruction-only proposal.
 // Request admission still validates the selected artifact and frozen grading.
-export function instructionChangeBaseline(session?: Session, artifact?: Artifact): Operation | undefined {
+export function instructionChangeBaseline(session?: Session | null, artifact?: Artifact): Operation | undefined {
   const parent = session?.document.artifacts.find(item => item.id === artifact?.parent_id);
   if (!session || !artifact || !parent?.agent_prompt.trim() || !artifact.agent_prompt ||
       parent.agent_prompt === artifact.agent_prompt ||
