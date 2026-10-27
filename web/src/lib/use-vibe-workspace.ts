@@ -1025,6 +1025,7 @@ export function useVibeWorkspace() {
     const scope=scopeRef.current;
     if(!session || pending || busy) return "uncertain";
     const id=session.id;
+    const submittedIntake = readEditorDraft(id, "intake", "recorded-request");
     // Bind the baseline before transport; a lost acknowledgment retries this receipt.
     const intakeBinding = recordedBinding && !recordedBinding.artifact_id ? { ...recordedBinding, client_id: request.client_id } : undefined;
     if (intakeBinding) recordedUpdateDraft.setValue(JSON.stringify(intakeBinding));
@@ -1035,6 +1036,8 @@ export function useVibeWorkspace() {
       const receipt=next.evidence_receipt;
       if(!receipt || receipt.client_id!==request.client_id || !next.document.artifacts.some(item=>item.id===receipt.artifact_id && item.conversation_evaluation?.evidence_set_id===receipt.evidence_id))throw Error("The exact saved reply receipt is unavailable. Retry the same request.");
       if(!accept(next))return "uncertain";
+      // Clear only this acknowledged request before URL subscribers render its saved version.
+      if (submittedIntake?.value === JSON.stringify(request)) discardEditorDraft(id, "intake", "recorded-request", submittedIntake);
       if(intakeBinding) recordedUpdateDraft.setValue(JSON.stringify({...intakeBinding,artifact_id:receipt.artifact_id}));
       setSelectedArtifactID(receipt.artifact_id);navigate("tests",receipt.artifact_id,"");return "saved";
     } catch(e) {
