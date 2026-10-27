@@ -1,24 +1,34 @@
 "use client";
+import {loadCanonicalResult, type CanonicalResult} from "./vibe-canonical";
+import type { RecordedIntakeRequest, RecordedIntakeOutcome, ResultRef, ProjectResultBinding } from "./vibe-result-evidence";
 
 
+import { useVibeCollection } from "@/lib/use-vibe-collection";
 import { useVibeInputs } from "@/lib/use-vibe-inputs";
 import type { InputBinding } from "@/lib/vibe-inputs";
 
-import { downloadJSON, exportRuns } from "@/lib/vibe-export";
 
+import { parseResultSelection, formatResultSelection } from "./vibe-result-selection";
+import { useVibeWorkspaceAccess } from "./use-vibe-workspace-access";
+import { useVibeEvidenceOwner } from "./use-vibe-evidence-owner";
+import { reportBase, type SDKReport } from "./vibe-reports";
+import { useVibeExport } from "./use-vibe-export";
+import {pinVibeReturn} from "./vibe-keep";
 import { useVibeSaving } from "@/lib/use-vibe-saving";
+import { readEditorDraft, discardEditorDraft, type EditorDraft } from "@/lib/vibe-build-drafts";
+import { useVibeEditorDraft } from "./use-vibe-editor-draft";
 import { useVibeDrafts } from "@/lib/use-vibe-drafts";
 import { useVibeNavigation } from "@/lib/use-vibe-navigation";
 import { useVibeSession, sessionAccessLost, isSessionAccessError } from "@/lib/use-vibe-session";
 import { WEB_EVENTS } from "@/lib/analytics/events";
-import { captureBuildEvent } from "@/lib/vibe-build-analytics";
+import { captureBuildEvent, captureVibeAttempt } from "@/lib/vibe-build-analytics";
 
 import type { ConversationAction } from "@/lib/vibe-conversation";
 
 
 import { useSearchParams } from "next/navigation";
 import { useAccessToken, useAuth } from "@workos-inc/authkit-nextjs/components";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
 
 
 
@@ -36,6 +46,28 @@ import { editableEvaluation, defaultModels, terminal, retryVibeOperation, VibeEr
 
 
 
+type RequestScope = { actor: string; sessionID?: string };
+type PendingSubmission = {
+  scope: RequestScope;
+  sessionID: string;
+  readonly body: string;
+  composer: string | null;
+  composerVersion: number;
+  trialKey?: string;
+  retryOperationID?: string;
+  uncertain: boolean;
+};
+type SubmissionRecovery = {
+  attempt?: object;
+  submission: { current: PendingSubmission | null };
+  sending: { current: boolean };
+  retry: { current: (() => void) | undefined };
+  message?: { id: string; content: string };
+  error: string;
+};
+const recoveryKey = (scope: RequestScope) => JSON.stringify([scope.actor, scope.sessionID]);
+
+
 export function useVibeWorkspace() {
 
   const params = useSearchParams();
@@ -47,47 +79,61 @@ export function useVibeWorkspace() {
   const authUserID = authUser?.id;
   const token = useCallback(async () => {
     if (authLoading || !authUserID) return undefined;
-    try { return await getAccessToken(); } catch { return undefined; }
+    try { const auth = await getAccessToken(); if (auth) return auth; } catch { /* Report authentication failure without falling back to guest cookies. */ }
+    throw new VibeError("unauthorized", "Sign in again to access this account. Your unsent drafts are still here.", 401);
   }, [getAccessToken, authLoading, authUserID]);
-  const snapshots = useVibeSession(requestedSessionID, token, authLoading, loadAttempt);
+  const snapshots = useVibeSession(requestedSessionID, token, authLoading, loadAttempt, authUserID || "guest");
   const { session, accept, select, reload, activeSessionRef, loadingSession, connection, setConnection } = snapshots;
   const drafts = useVibeDrafts(requestedSessionID || undefined);
   const { content, setContent, trialBuffers, setTrialBuffers, composerEdits, trialEdits } = drafts;
   useEffect(() => { drafts.activate(requestedSessionID || undefined); }, [requestedSessionID, drafts.activate]);
-  const initializedModels = useRef<string | undefined>(undefined);
+  const initializedModels = useRef<{ session: string; thread: string | null } | undefined>(undefined);
   useEffect(() => {
-    if (!session || initializedModels.current === session.id) return;
-    initializedModels.current = session.id;
-    const message = session.document.messages.find(m => m.preview_thread_id === navigation.thread);
+    if (!session) return;
+    const identity = `${authUserID || "guest"}:${session.id}`;
+    const previous = initializedModels.current;
+    if (previous?.session === identity && previous.thread === navigation.thread) return;
+    initializedModels.current = { session: identity, thread: navigation.thread };
+    const message = session.document.messages.find(m => m.origin === "playground" && (m.preview_thread_id === navigation.thread || `legacy:${m.operation_id}` === navigation.thread));
     const trial = message && session.operations.find(o => o.id === message.operation_id);
-    setModels(trial ? { ...session.document.models, target: trial.models.target } : session.document.models);
-  }, [session, navigation.thread]);
+    if (previous?.session !== identity) setModels(trial ? { ...session.document.models, target: trial.models.target } : session.document.models);
+    else if (trial) setModels(current => ({ ...current, target: trial.models.target }));
+  }, [session, navigation.thread, authUserID]);
   const contextChoice = useRef<{ door: "build" | "test"; id: string } | undefined>(undefined);
   // Choosing the wrong door is reversible until a context has any saved work.
   // The server intentionally keeps context creation append-only; hide the empty
   // abandoned child locally instead of deleting history or changing its API.
   const entryOrigin = useRef<string | undefined>(undefined);
   const discardedContextIDs = useRef(new Set<string>());
-  const [contexts, setContexts] = useState<Session[]>([]);
+
   const [newEvaluation, setNewEvaluation] = useState(false);
   const [savedWorkOpen, setSavedWorkOpen] = useState(false);
   const [buildQuote, setBuildQuote] = useState<BuildQuote>();
   const [quoteError, setQuoteError] = useState("");
-  const [runQuote, setRunQuote] = useState<{ quote: RunQuote; kind: string; baseline?: Operation; extra: { client_id?: string; cycle_id?: string; additional_examples?: number; evidence_set_id?: string; artifact_id?: string; purpose?: "regrade" }; content?: string; sessionID: string; revision: number }>();
+  const [quoteAttempt, setQuoteAttempt] = useState(0);
+  const [quotePreparing, setQuotePreparing] = useState(false);
+  const [clock, setClock] = useState(Date.now());
+  const serverOffset = useRef(0);
+  const syncClock = (value?: string) => { if (value && Number.isFinite(Date.parse(value))) serverOffset.current = Date.parse(value) - Date.now(); };
+  useEffect(() => { const timer = setInterval(() => setClock(Date.now()), 1000); return () => clearInterval(timer); }, []);
+  const serverNow = clock + serverOffset.current;
+  const [runQuotePreparing, setRunQuotePreparing] = useState(false);
+  const [runQuoteError, setRunQuoteError] = useState("");
+  const [runQuote, setRunQuote] = useState<{ quote: RunQuote; recordedArtifactID?: string; selectionArtifact?: string; requestModels: Models; kind: string; baseline?: Operation; extra: { case_keys?: string[]; retry_source_result_ref?: ResultRef; client_id?: string; cycle_id?: string; additional_examples?: number; evidence_set_id?: string; artifact_id?: string; purpose?: "regrade" }; content?: string; sessionID: string; revision: number }>();
   const [config, setConfig] = useState<VibeConfig | null>(null);
   const [configError, setConfigError] = useState(false);
   // Loading configuration must not render the legacy entry before the V1 shell.
   const twoDoor = config === null ? true : config.two_door;
   const [models, setModels] = useState<Models>(defaultModels);
   const [pending, setPending] = useState(false);
-  const [pendingMessage, setPendingMessage] = useState<{
+  const [pendingMessage, renderPendingMessage] = useState<{
     id: string;
     content: string;
   }>();
   const [runPending, setRunPending] = useState(false);
   const requestedRunID = navigation.run;
   const [pendingAction, setPendingAction] = useState<string>();
-  const [error, setError] = useState("");
+  const [error, renderError] = useState("");
   const [importError, setImportError] = useState<{ sessionID?: string; message: string }>();
   const importNotice = useRef<HTMLDivElement>(null);
   const quoteTrigger = useRef<HTMLElement | null>(null);
@@ -98,39 +144,79 @@ export function useVibeWorkspace() {
       importNotice.current?.scrollIntoView?.({ block: "nearest" });
     }
   }, [importError, newEvaluation]);
-  const view = navigation.view;
+  const view = navigation.legacyView;
   const selectedArtifactID = navigation.artifact;
-  const setSelectedArtifactID = (artifact: string | null) => navigation.update({ artifact });
-  const threadID = navigation.thread;
-  const setThreadID = (thread: string) => navigation.update({ thread });
+  const setSelectedArtifactID = (artifact: string | null) => navigation.update({ artifact }, "replace");
+  const threadID = navigation.thread || "";
+  const setThreadID = (thread: string) => navigation.update({ thread }, "replace");
   const buildEvidence = useRef<
     { operation: string; artifact: string } | undefined
   >(undefined);
   const savedCaseReads = useRef(new Map<string, Promise<CaseResult>>());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [checksDirtyID, setChecksDirtyID] = useState<string | null>(null);
-  const [pendingEdit, setPendingEdit] = useState<{ operationID: string; artifactID: string }>();
+  const [pendingEdit, setPendingEdit] = useState<{ operationID: string; artifactID: string; draft?: EditorDraft }>();
   const [dirtyArtifactID, setDirtyArtifactID] = useState<string | null>(null);
-  const [savedChecks, setSavedChecks] = useState<SavedCheck[]>([]);
-  const [workspace, setWorkspace] = useState(params.get("workspace") || "");
 
-  const sending = useRef(false);
-  const currentView = useRef(view);
-  const submission = useRef<{
-    sessionID: string;
-    body: string;
-    composer: string | null;
-    composerVersion: number;
-    trialKey?: string;
-    retryOperationID?: string;
-    uncertain: boolean;
-  } | null>(null);
-  const retryUnsentMessage = useRef<(() => void) | undefined>(undefined);
+  const workspaceActor = authUserID || "guest";
+  const workspaceActorRef = useRef(workspaceActor); workspaceActorRef.current = workspaceActor;
+  const [workspaceRow, setWorkspaceRow] = useState({ actor: workspaceActor, value: params.get("workspace") || "" });
+  const workspace = workspaceRow.actor === workspaceActor ? workspaceRow.value : "";
+  const setWorkspace = useCallback((next: SetStateAction<string>) => setWorkspaceRow(old => {
+    if (workspaceActorRef.current !== workspaceActor) return old;
+    const previous = old.actor === workspaceActor ? old.value : "";
+    return { actor: workspaceActor, value: typeof next === "function" ? next(previous) : next };
+  }), [workspaceActor]);
+  const [archiveMode,setArchiveMode]=useState<"exclude"|"only"|"all">("exclude");
+ const listScope = `${authUserID || "guest"}:${workspace}`;
+  const contextList = useVibeCollection<Session>(`/sessions?archived=${archiveMode}${workspace ? `&workspace=${encodeURIComponent(workspace)}` : ""}`, `${listScope}:${archiveMode}`, token, !authLoading && !!config?.two_door, !!authUserID);
+  const savedList = useVibeCollection<SavedCheck>(`/saved-checks${workspace ? `?workspace=${encodeURIComponent(workspace)}` : ""}`, listScope, token, !authLoading, true);
+  const { rows: contexts, setRows: setContexts } = contextList;
+  const { rows: savedChecks, setRows: setSavedChecks } = savedList;
+
+  const currentView = useRef(view); currentView.current = view;
   const [uncertain, setUncertain] = useState(false);
+  const scopeRef = useRef<RequestScope>({ actor: workspaceActor, sessionID: requestedSessionID || undefined });
+  if (scopeRef.current.actor !== workspaceActor || scopeRef.current.sessionID !== (requestedSessionID || undefined))
+    scopeRef.current = { actor: workspaceActor, sessionID: requestedSessionID || undefined };
+  const requestScope = scopeRef.current;
+  const ownsScope = (scope: RequestScope) => scopeRef.current === scope;
+  // Request ownership survives navigation; only its visible projection changes.
+  // Each render's async closures retain their own actor/project record.
+  const recoveries = useRef(new Map<string, SubmissionRecovery>());
+  const key = recoveryKey(requestScope);
+  const retained = recoveries.current.get(key);
+  const recovery: SubmissionRecovery = retained || { submission: { current: null }, sending: { current: false }, retry: { current: undefined }, error: "" };
+  if (!retained) recoveries.current.set(key, recovery);
+  const visibleRecovery = useCallback(() => recoveries.current.get(recoveryKey(scopeRef.current)) === recovery, [recovery]);
+  const submission = recovery.submission;
+  const sending = recovery.sending;
+  const retryUnsentMessage = recovery.retry;
+  const setPendingMessage = useCallback((message?: { id: string; content: string }) => {
+    recovery.message = message;
+    if (visibleRecovery()) renderPendingMessage(message);
+  }, [recovery, visibleRecovery]);
+  const setError = useCallback((next: SetStateAction<string>) => {
+    recovery.error = typeof next === "function" ? next(recovery.error) : next;
+    if (visibleRecovery()) renderError(recovery.error);
+  }, [recovery, visibleRecovery]);
+  useEffect(() => {
+    const request = submission.current;
+    contextChoice.current = undefined;
+    setPending(sending.current); setRunPending(sending.current && ["check", "retest"].includes(request ? JSON.parse(request.body).kind : ""));
+    setUncertain(!!request?.uncertain); setPendingMessage(recovery.message);
+    setPendingAction(sending.current && request?.retryOperationID ? "Retrying your request…" : undefined);
+    setPendingEdit(undefined); setError(recovery.error); setRunQuote(undefined); setRunQuotePreparing(false); setRunQuoteError("");
+  }, [requestScope]);
   const file = useRef<HTMLInputElement>(null);
   const active = session?.operations.find((o) => !terminal(o.state));
   const sessionUnavailable =
     !!requestedSessionID && session?.id !== requestedSessionID;
+  const funding = config?.local_testing && !config.free_only ? "Local operator budget" : session ? session.anonymous ? "Guest trial allowance" : session.workspace_id ? "Workspace credits" : "Workspace required" : authUserID ? workspace ? "Workspace credits" : "Workspace required" : "Guest trial allowance";
+  const fundingKey = session ? session.anonymous ? "guest" : "workspace" : authUserID ? "workspace" : "guest";
+  const inferenceReady = !!config?.enabled && !!config.models?.length && config.availability?.[fundingKey]?.available === true && funding !== "Workspace required";
+  const inferenceAvailable = inferenceReady && Object.values(models).every(id => config!.models.some(model => model.id === id));
+  const unavailableReason = !config ? "Connecting…" : !config.models?.length ? "No approved models are available." : funding === "Workspace required" ? "Choose a workspace to use its credits." : config.availability?.[fundingKey]?.reason_code === "trial_capacity_reached" ? "Guest inference capacity is currently reached. Your saved work remains available." : config.availability?.[fundingKey]?.reason_code === "guest_not_configured" ? "Guest inference isn’t configured here. Your saved work remains available." : config.availability?.[fundingKey]?.reason_code === "worker_unavailable" ? "Inference is temporarily unavailable while workers reconnect." : "New inference is unavailable. You can still review and export saved work.";
   const busy =
     !config ||
     pending ||
@@ -156,10 +242,89 @@ export function useVibeWorkspace() {
     ) || [];
   const latestArtifact = artifacts.at(-1);
   const workingArtifact = session?.document.evaluation?.door === "build" ? workingBuildArtifact(session) : undefined;
-  const artifact = selectedArtifactID ? artifacts.find((a) => a.id === selectedArtifactID) : session?.document.evaluation?.door === "build" ? workingArtifact : latestArtifact;
+  const requestedResult = parseResultSelection(requestedRunID);
+  const evidenceAccess = useVibeWorkspaceAccess(workspaceActor, session?.workspace_id, token, authLoading, loadAttempt);
+  const [resultAttempt, setResultAttempt] = useState(0);
+  const resultLife = useVibeEvidenceOwner(workspaceActor, requestedSessionID || undefined, session?.workspace_id, requestedRunID, requestedResult?.kind === "run" || requestedResult?.kind === "eval_session" ? navigation.artifact || undefined : undefined, String(resultAttempt), evidenceAccess.access.canRead ? "read" : evidenceAccess.access.status);
+  const [sourceSelection, setSourceSelection] = useState<{owner:object;value?:CanonicalResult | SDKReport;error?:string;invalid?:boolean}>();
+  const externalKind = requestedResult && requestedResult.kind !== "vibe_operation" ? requestedResult.kind : undefined;
+  const externalID = externalKind ? requestedResult?.id : undefined;
+  useEffect(() => {
+    if (!externalID || !session || session.id !== requestedSessionID || authLoading || !evidenceAccess.access.canRead) return;
+    const captured = resultLife.capture();
+    let live = true;
+    const current = () => live && captured();
+    let timer: ReturnType<typeof setTimeout>;
+    async function load() {
+      try {
+        const auth = await token();
+        if (!current()) return;
+        const value = externalKind === "run" || externalKind === "eval_session"
+          ? await loadCanonicalResult(session!.id, { kind: externalKind, id: externalID! }, auth, navigation.artifact || undefined)
+          : await vibeFetch<SDKReport>(`${reportBase(session!.id)}/${externalID}`, auth);
+        if (!current()) return;
+        if (value.binding.session_id !== session!.id || value.binding.result_ref.kind !== externalKind || value.binding.result_ref.id !== externalID ||
+            (externalKind === "sdk_report" && (value as SDKReport).id !== externalID))
+          throw new VibeError("not_found", "The selected result is unavailable in this project.", 404);
+        setSourceSelection({ owner: resultLife.owner, value });
+        if (externalKind !== "sdk_report" && ["queued", "running", "provisioning", "scoring", "aggregating", "pending"].includes((value as CanonicalResult).status))
+          timer = setTimeout(load, 3000);
+      } catch (e) {
+        if (!current()) return;
+        const invalid = e instanceof VibeError && (e.status === 404 || e.code === "invalid_request");
+        const denied = invalid || e instanceof VibeError && (e.status === 401 || e.status === 403);
+        setSourceSelection(old => ({ owner: resultLife.owner, value: !denied && old?.owner === resultLife.owner ? old.value : undefined,
+          error: invalid ? "The selected result is unavailable in this project." : (e as Error).message, invalid }));
+      }
+    }
+    void load();
+    return () => { live = false; clearTimeout(timer); };
+  }, [externalID, externalKind, session?.id, requestedSessionID, authLoading, token, resultLife, evidenceAccess.access.canRead]);
+  const sourceState = sourceSelection?.owner === resultLife.owner ? sourceSelection : undefined;
+  const selectedResult = sourceState?.value?.binding;
+  const selectedCanonical = selectedResult?.result_ref.kind === "run" || selectedResult?.result_ref.kind === "eval_session" ? sourceState?.value as CanonicalResult : undefined;
+  const selectedSDKReport = selectedResult?.result_ref.kind === "sdk_report" ? sourceState?.value as SDKReport : undefined;
+  const selectedResultLoading = !!externalKind && !sourceState && (evidenceAccess.access.status === "loading" || evidenceAccess.access.canRead);
+  const selectedResultError = sourceState?.error || (externalKind && evidenceAccess.access.status !== "loading" && !evidenceAccess.access.canRead
+    ? evidenceAccess.access.status === "signed_out" ? "Sign in to read this result." : "Workspace access could not be confirmed." : undefined);
+  const retrySelectedResult = () => evidenceAccess.access.canRead ? setResultAttempt(n => n + 1) : evidenceAccess.retry();
+  const pinnedRun = session?.operations.find(item => item.id === (requestedResult?.kind === "vibe_operation" ? requestedResult.id : requestedRunID));
+  const pinnedArtifactID = selectedResult?.artifact_id || pinnedRun?.result_scope?.artifact_id || pinnedRun?.source?.artifact_id || pinnedRun?.results[0]?.version;
+  const artifact = pinnedArtifactID ? artifacts.find(item => item.id === pinnedArtifactID) : selectedArtifactID ? artifacts.find((a) => a.id === selectedArtifactID) : session?.document.evaluation?.door === "build" ? workingArtifact : latestArtifact;
+  const selectionLife = useVibeEvidenceOwner(workspaceActor, requestedSessionID || undefined, session?.workspace_id, artifact?.id, requestedRunID);
+  function onSelectResult(binding: ProjectResultBinding, caseKey?: string) {
+    if (!selectionLife.current() || !session || session.id !== requestedSessionID || binding.session_id !== session.id || !session.workspace_id || !artifacts.some(a => a.id === binding.artifact_id)) return;
+    const ref = parseResultSelection(formatResultSelection(binding.result_ref));
+    if (!ref) return;
+    navigation.update({view:"results",artifact:binding.artifact_id,run:formatResultSelection(ref),case:caseKey});
+  }
+  async function onSDKPromoted(promoted: import("./vibe").Artifact) {
+    const current = selectionLife.capture();
+    try {
+      const fresh = await reload();
+      if (current() && fresh?.document.artifacts.some(a => a.id === promoted.id)) navigation.update({view:"tests",artifact:promoted.id,run:undefined,case:undefined});
+    } catch(e) { if (current()) setError((e as Error).message); }
+  }
+  async function onSDKRegraded(operation: Operation) {
+    const current = selectionLife.capture();
+    try {
+      const fresh = await reload();
+      if (current() && fresh?.operations.some(o => o.id === operation.id)) navigation.update({view:"results",artifact:artifact?.id || null,run:operation.id,case:undefined});
+    } catch(e) { if (current()) setError((e as Error).message); }
+  }
+  function evaluationAvailable(baseline?: Operation, purpose?: string) {
+    if (purpose === "regrade" || baseline?.source?.kind === "provided_conversations" || artifact?.conversation_evaluation) {
+      return inferenceReady && !!config?.models.some(model=>model.id===(baseline?.models.evaluator||models.evaluator));
+    }
+    return inferenceAvailable;
+  }
+  const runInferenceAvailable = evaluationAvailable(runQuote?.baseline, runQuote?.extra.purpose);
   const dirtyArtifact =
     !!artifact &&
-    (dirtyArtifactID === artifact.id || checksDirtyID === artifact.id);
+    (!!readEditorDraft(session!.id,"intake","recorded-request")?.value || dirtyArtifactID === artifact.id || checksDirtyID === artifact.id || !!artifact.conversation_evaluation && (() => {
+      const draft = readEditorDraft(session!.id, artifact.id, "recorded-expectations");
+      return !!draft && draft.value !== artifact.conversation_evaluation.expectations.map(rule=>rule.statement).join("\n");
+    })());
   const evaluation = artifact ? editableEvaluation(artifact.blueprint) : null;
   const scenarioCount =
     artifact?.test_plan?.scenarios.length ||
@@ -192,6 +357,25 @@ export function useVibeWorkspace() {
         }),
     ).values(),
   ];
+  useEffect(() => {
+    if (!session || session.id !== requestedSessionID) return;
+    const patch: Parameters<typeof navigation.update>[0] = {};
+    if (navigation.artifact && !session.document.artifacts.some(item => item.id === navigation.artifact)) patch.artifact = null;
+    const run = session.operations.find(item => item.id === (requestedResult?.kind === "vibe_operation" ? requestedResult.id : navigation.run) && (item.kind === "check" || item.kind === "retest"));
+    if (navigation.run && !run && !externalKind) { patch.run = undefined; patch.case = undefined; setError("The selected result is unavailable in this project."); }
+    if (run && requestedResult?.kind === "vibe_operation" && navigation.run !== run.id) patch.run = formatResultSelection(requestedResult);
+    if (sourceState?.invalid || selectedResult && !artifacts.some(a => a.id === selectedResult.artifact_id)) {
+      patch.run = undefined; patch.case = undefined; setError("The selected result is unavailable in this project.");
+    }
+    if (selectedResult && artifacts.some(a => a.id === selectedResult.artifact_id) && navigation.artifact !== selectedResult.artifact_id) patch.artifact = selectedResult.artifact_id;
+    const tested = run?.source?.artifact_id || run?.results[0]?.version;
+    if (tested && session.document.artifacts.some(item => item.id === tested) && navigation.artifact !== tested) patch.artifact = tested;
+    const cases = (artifact?.blueprint as { cases?: { key?: string }[] } | undefined)?.cases || [];
+    if (!externalKind && navigation.case && !cases.some(item => item.key === navigation.case) && !run?.results.some(item => item.case_key === navigation.case)) patch.case = undefined;
+    if (navigation.thread === null && !sending.current && trialHistory.length) patch.thread = trialHistory.at(-1)!.id;
+    if (threadID && !sending.current && !trialHistory.some(item => item.id === threadID) && !Object.hasOwn(trialBuffers, trialDraftKey) && !submission.current?.trialKey?.endsWith(`:${threadID}`)) patch.thread = null;
+    if (Object.keys(patch).length) navigation.update(patch, "replace");
+  }, [session, requestedSessionID, navigation.artifact, navigation.run, navigation.case, navigation.thread, threadID, artifact, sourceState, selectedResult, externalKind]);
   const legacyTrial = threadID.startsWith("legacy:");
   const trialMessages =
     session?.document.messages.filter(
@@ -204,13 +388,11 @@ export function useVibeWorkspace() {
   function navigate(
     next: typeof view,
     agent = artifact?.id,
-    thread = threadID,
+    thread = navigation.thread,
   ) {
-    currentView.current = next;
-    navigation.update({ view: next, artifact: agent && !(buildJourney && next === "checks") ? agent : null, thread });
+    navigation.update({ view: next, artifact: agent || null, thread, ...(agent && agent !== artifact?.id ? { run: undefined, case: undefined } : {}) });
   }
   function newTrial() {
-    setThreadID("");
     setTrialBuffers((old) => ({ ...old, [emptyTrialKey]: "" }));
     navigate(buildJourney && view !== "try" ? "build" : "try", artifact?.id, "");
   }
@@ -242,26 +424,26 @@ export function useVibeWorkspace() {
     ? "Your current model choices differ from those recorded when this agent was saved."
     : "Saved model choices are unknown. Your current model choices are not confirmed as saved.";
   const sessionID = session?.id;
+  const recordedUpdateDraft = useVibeEditorDraft(sessionID || "", "intake", "recorded-baseline", "recorded-v1", "");
+  let recordedBinding: { baseline_id: string; client_id?: string; artifact_id?: string } | undefined;
+  try { if (recordedUpdateDraft.value) recordedBinding = JSON.parse(recordedUpdateDraft.value); } catch { /* Preserve an unreadable draft; never guess its baseline. */ }
+  const recordedBaseline = session?.operations.find(op => op.id === recordedBinding?.baseline_id && terminal(op.state) && op.source?.kind === "provided_conversations");
+  const recordedUpdate = recordedBaseline ? { baseline: recordedBaseline, artifactID: recordedBinding?.artifact_id } : undefined;
+  function startRecordedUpdate(baseline: Operation) {
+    if (!session || busy || dirtyArtifact || !terminal(baseline.state) || baseline.source?.kind !== "provided_conversations") return;
+    recordedUpdateDraft.setValue(JSON.stringify({ baseline_id: baseline.id }));
+    setRunQuote(undefined);
+  }
+  function closeRecordedUpdate() {
+    // A successful intake keeps its baseline binding for the explicit quote.
+    const latest = readEditorDraft(sessionID || "", "intake", "recorded-baseline");
+    if (readEditorDraft(sessionID || "", "intake", "recorded-request")?.value) return;
+    try { if (latest && !JSON.parse(latest.value).artifact_id) recordedUpdateDraft.discard(latest.value); } catch { /* Retain the unreadable draft. */ }
+  }
   const attachedWorkspace = session?.workspace_id;
   useEffect(() => {
     if (attachedWorkspace) setWorkspace(attachedWorkspace);
   }, [attachedWorkspace]);
-  useEffect(() => {
-    let current = true;
-    void token()
-      .then(async (auth) => {
-        if (!auth) return;
-        const items = await vibeFetch<SavedCheck[]>(
-          `/saved-checks${workspace ? `?workspace=${workspace}` : ""}`,
-          auth,
-        );
-        if (current) setSavedChecks(Array.isArray(items) ? items : []);
-      })
-      .catch(() => undefined);
-    return () => {
-      current = false;
-    };
-  }, [token, workspace]);
 
   useEffect(() => {
     let alive = true;
@@ -269,7 +451,7 @@ export function useVibeWorkspace() {
     vibeFetch<VibeConfig>("/config")
       .then((c) => {
         if (alive) {
-          setConfig(c);
+          syncClock(c.server_time); setConfig(c);
           if (!requestedSessionID) setModels(c.defaults);
         }
       })
@@ -280,7 +462,7 @@ export function useVibeWorkspace() {
       alive = false;
     };
   }, [requestedSessionID, loadAttempt]);
-  async function ensureSession() {
+  async function ensureSession(scope = scopeRef.current, ownsAttempt = () => true) {
     if (requestedSessionID && session?.id !== requestedSessionID)
       throw new Error(
         "Load this conversation before sending. No new conversation was created.",
@@ -288,6 +470,7 @@ export function useVibeWorkspace() {
     if (session) return session;
     const id = crypto.randomUUID();
     const auth = await token();
+    if (!ownsScope(scope) || !ownsAttempt()) throw new Error("The active account or project changed.");
     await vibeFetch<Session>("/sessions", auth, {
       method: "POST",
       body: JSON.stringify({
@@ -295,6 +478,7 @@ export function useVibeWorkspace() {
         ...(workspace ? { workspace_id: workspace } : {}),
       }),
     });
+    if (!ownsScope(scope) || !ownsAttempt()) throw new Error("The active account or project changed.");
     // Verify the browser kept the private cookie before adopting the URL or
     // sending a message. A 201 alone does not prove subsequent ownership.
     let v: Session;
@@ -307,28 +491,28 @@ export function useVibeWorkspace() {
         );
       throw e;
     }
-    select(v.id); drafts.activate(v.id); accept(v);
+    if (!ownsScope(scope) || !ownsAttempt()) throw new Error("The active account or project changed.");
+    recoveries.current.delete(recoveryKey(scope));
+    scope.sessionID = v.id;
+    recoveries.current.set(recoveryKey(scope), recovery);
+    select(v.id); if (!accept(v)) throw new Error("The active account changed. Reopen this project to continue."); drafts.activate(v.id);
     navigation.writeURL(new URL(`/vibe-evals?session=${id}${workspace ? `&workspace=${workspace}` : ""}`, window.location.origin));
     return v;
   }
-  async function exportConversation() {
-    if (!session || pending) return;
-    const snapshot = session;
-    setPending(true);
-    setError("");
-    try {
-      const auth = await token();
-      const operations = await exportRuns(snapshot, (id, key) => vibeFetch<CaseResult>(`/operations/${id}/case?key=${encodeURIComponent(key)}`, auth));
-      downloadJSON("agentclash-vibe-conversation.json", {format: "agentclash-vibe-conversation-v1", document: snapshot.document, operations, capabilities: config?.capabilities || []});
-      if (snapshot.document.evaluation?.door === "build") captureBuildEvent(WEB_EVENTS.VIBE_BUILD_EXPORT_REQUESTED, { session_id: snapshot.id, artifact_id: artifact?.id, sample: !!artifact?.sample, format: "json" });
-    } catch (e) { setError((e as Error).message); }
-    finally { setPending(false); }
+  async function metadata(target:Session,patch:{title?:string;archived?:boolean}){
+    const captured=scopeRef.current;const auth=await token();if(!ownsScope(captured))return false;
+    const result=await vibeFetch<Session>(`/sessions/${target.id}/metadata`,auth,{method:"PATCH",body:JSON.stringify({revision:target.revision,...patch})});if(!ownsScope(captured))return false;
+    if(target.id===session?.id)accept(result);setContexts(old=>old.map(row=>row.id===result.id?result:row));contextList.retry();return true;
   }
+  const exporter=useVibeExport(workspaceActor,session,token);
+  const selectedExportRun=requestedRunID?session?.operations.find(o=>o.id===requestedRunID):session?.operations.findLast(o=>(o.kind==="check"||o.kind==="retest")&&(o.result_scope?.artifact_id||o.source?.artifact_id||o.results[0]?.version)===artifact?.id);
+  const projectReturnPath=session&&artifact?pinVibeReturn(window.location.pathname+window.location.search,session.id,artifact.id,selectedResult ? formatResultSelection(selectedResult.result_ref) : selectedExportRun?.id):undefined;
+  function exportConversation(){if(!artifact)return;setSettingsOpen(false);void exporter.startResult(artifact,selectedResult?.result_ref || (selectedExportRun ? {kind:"vibe_operation",id:selectedExportRun.id} : undefined),"selected",selectedExportRun)}
   function loadSavedCase(id: string, key: string): Promise<CaseResult> {
     const owner = session?.id;
     if (!owner || activeSessionRef.current !== owner)
       return Promise.reject(new Error("This conversation changed. Reopen its saved checks."));
-    const cacheKey = JSON.stringify([owner, id, key]);
+    const cacheKey = JSON.stringify([workspaceActor, owner, id, key]);
     const existing = savedCaseReads.current.get(cacheKey);
     if (existing) return existing;
     const request = token().then(auth => vibeFetch<CaseResult>(`/operations/${id}/case?key=${encodeURIComponent(key)}`, auth));
@@ -339,69 +523,77 @@ export function useVibeWorkspace() {
     void request.then(forget, forget);
     return request;
   }
-  const materialScope = view === "try" ? `trial:${artifact?.id || ""}:${threadID}` : "guide";
-  const materials = useVibeInputs(sessionID || "", materialScope, token);
+  const materialScope = "guide";
+  const materials = useVibeInputs(sessionID || "", materialScope, token, workspaceActor);
+  const trialMaterials = useVibeInputs(sessionID || "", `trial:${artifact?.id || ""}:${threadID}`, token, workspaceActor);
   const materialFingerprint = JSON.stringify(materials.bindings);
   const adoptionFingerprint = JSON.stringify(materials.adoptions);
+  const messageLimit = (session?.anonymous === false ? config?.signed_in_limits : config?.anonymous_limits)?.max_message_bytes || (session?.anonymous === false ? 65536 : 16384);
+  const messageError = new TextEncoder().encode(content).length > messageLimit ? `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.` : "";
   const buildStart = session?.document.evaluation?.door === "build" && !session.document.build && !session.document.artifacts.length;
   const continuingBuild = (session?.document.build?.phase === "clarifying" || session?.document.build?.phase === "waiting");
-  const quoteMatches = !!buildQuote && buildQuote.request.content === content && JSON.stringify(buildQuote.request.inputs || []) === materialFingerprint && JSON.stringify(buildQuote.request.adopt_rules || []) === adoptionFingerprint && JSON.stringify(buildQuote.request.models) === JSON.stringify(models) && Date.parse(buildQuote.expires_at) > Date.now();
+  const quoteMatches = !!buildQuote && buildQuote.request.content === content && JSON.stringify(buildQuote.request.inputs || []) === materialFingerprint && JSON.stringify(buildQuote.request.adopt_rules || []) === adoptionFingerprint && JSON.stringify(buildQuote.request.models) === JSON.stringify(models) && Date.parse(buildQuote.expires_at) > serverNow;
   useEffect(() => {
-    if (!config || configError || !buildStart || !sessionID || !content.trim()) { setBuildQuote(undefined); setQuoteError(""); return; }
+    if (!config || configError || !inferenceAvailable || !buildStart || !sessionID || !content.trim() || new TextEncoder().encode(content).length > messageLimit) { setBuildQuote(undefined); setQuoteError(""); return; }
     let live = true;
-    setQuoteError("");
+    setQuoteError(""); setQuotePreparing(true);
     const timer = setTimeout(() => {
+      captureVibeAttempt("build", "estimate", sessionID);
       void token().then(auth => vibeFetch<BuildQuote>(`/sessions/${sessionID}/build-quote`, auth, { method: "POST", body: JSON.stringify({ content, models, ...(materials.bindings.length ? { inputs: materials.bindings } : {}), ...(materials.adoptions.length ? { adopt_rules: materials.adoptions } : {}) }) }))
-        .then(q => { if (live) setBuildQuote(q); }).catch(e => { if (live) setQuoteError(e.message); });
+        .then(q => { if (live) { syncClock(q.server_time); setClock(Date.now()); setBuildQuote(q); } }).catch(e => { captureVibeAttempt("build", "estimate", sessionID, e instanceof VibeError ? e.code : "transport_failed"); if (live) setQuoteError(e.message); }).finally(() => { if (live) setQuotePreparing(false); });
     }, 400);
     return () => { live = false; clearTimeout(timer); };
-  }, [config, configError, buildStart, sessionID, content, models, token, materials.bindings, materials.adoptions]);
-  useEffect(() => {
-    if (!config?.two_door) return;
-    let live = true;
-    void token().then(auth => vibeFetch<Session[]>("/sessions", auth))
-      .then(items => { if (live) setContexts(items); }).catch(() => undefined);
-    return () => { live = false; };
-  }, [sessionID, session?.event_cursor, token, config?.two_door]);
+  }, [config, configError, buildStart, sessionID, content, models, token, materialFingerprint, adoptionFingerprint, quoteAttempt, inferenceAvailable]);
+  const buildQuoteState = quoteError ? "failure" : quotePreparing || !buildQuote ? "preparation" : !quoteMatches ? "expired" : "current";
+  const refreshBuildQuote = () => setQuoteAttempt(attempt => attempt + 1);
+  const quoteScopeMatches = !!runQuote && runQuote.selectionArtifact === artifact?.id && JSON.stringify(runQuote.requestModels) === JSON.stringify(runQuote.baseline ? { ...models, evaluator: runQuote.baseline.models.evaluator } : models);
+  const isRunQuoteCurrent = () => !!runQuote && quoteScopeMatches && !runQuoteError && !runQuotePreparing && runQuote.sessionID === activeSessionRef.current && runQuote.revision === session?.revision && Date.parse(runQuote.quote.expires_at) > Date.now() + serverOffset.current;
+  const runQuoteCurrent = !!runQuote && quoteScopeMatches && !runQuoteError && !runQuotePreparing && runQuote.sessionID === sessionID && runQuote.revision === session?.revision && Date.parse(runQuote.quote.expires_at) > serverNow;
+  const runQuoteState = runQuotePreparing ? "preparation" : runQuoteError ? "failure" : runQuote ? runQuoteCurrent ? "current" : "expired" : undefined;
   function adoptContext(v: Session) {
     setNewEvaluation(false);
     select(v.id);
-    drafts.activate(v.id);
-    accept(v); setModels(v.document.models);
+    if (!accept(v)) return;
+    drafts.activate(v.id); contextList.retry(); setModels(v.document.models);
     const selected = navigation.selectSession(v.id);
-    currentView.current = selected.view;
     setError(""); setImportError(undefined); setConnection(""); setPendingMessage(undefined); setPendingEdit(undefined);
     setChecksDirtyID(null); setDirtyArtifactID(null); setBuildQuote(undefined); setRunQuote(undefined);
     buildEvidence.current = undefined;
 
   }
   async function chooseDoor(door: "build" | "test") {
-    if (!config || sending.current || pending || uncertain || dirtyArtifact) return;
+    const scope = scopeRef.current;
+    captureVibeAttempt(door, "entry", sessionID);
+    if (!entryAvailable || sending.current || pending || uncertain) return;
     setPending(true);
     try {
       entryOrigin.current ||= sessionID;
       if (!contextChoice.current || contextChoice.current.door !== door)
         contextChoice.current = { door, id: crypto.randomUUID() };
       const auth = await token();
-      const id = contextChoice.current.id;
+      if (!ownsScope(scope)) return;
+      const id = contextChoice.current!.id;
       await vibeFetch<Session>("/sessions", auth, { method: "POST", body: JSON.stringify({ id, door, ...(workspace ? { workspace_id: workspace } : {}) }) });
+      if (!ownsScope(scope)) return;
       // Confirm that private-cookie ownership survived before adopting the URL.
       const agent = await vibeFetch<Session>(`/sessions/${id}`, auth);
+      if (!ownsScope(scope)) return;
       const draft = canChangeDoor ? content : "";
       if (canChangeDoor && sessionID) discardedContextIDs.current.add(sessionID);
       adoptContext(agent);
       setContent(draft);
       contextChoice.current = undefined;
       if (door === "build") captureBuildEvent(WEB_EVENTS.VIBE_BUILD_ENTRY_SELECTED, { session_id: agent.id, entry_source: "two_door" }, agent.id);
-    } catch (e) { setError((e as Error).message); }
-    finally { setPending(false); }
+    } catch (e) { if (!ownsScope(scope)) return; captureVibeAttempt(door, "entry", sessionID, e instanceof VibeError ? e.code : "transport_failed"); setError((e as Error).message); }
+    finally { if (ownsScope(scope)) { setPending(false); } }
   }
   async function switchContext(id: string) {
-    if (id === sessionID || pending || uncertain || dirtyArtifact) return;
+    const scope = scopeRef.current;
+    if (id === sessionID || pending || uncertain) return;
     setPending(true);
-    try { adoptContext(await vibeFetch<Session>(`/sessions/${id}`, await token())); }
-    catch (e) { setError((e as Error).message); }
-    finally { setPending(false); }
+    try { const next = await vibeFetch<Session>(`/sessions/${id}`, await token()); if (ownsScope(scope)) adoptContext(next); }
+    catch (e) { if (!ownsScope(scope)) return; setError((e as Error).message); }
+    finally { if (ownsScope(scope)) { setPending(false); } }
   }
   function openNewEvaluation() {
     setImportError(undefined);
@@ -416,6 +608,7 @@ export function useVibeWorkspace() {
     !session.document.build &&
     !pending && !uncertain && !dirtyArtifact;
   async function changeDoor() {
+    const scope = scopeRef.current;
     if (!canChangeDoor || !sessionID) return;
     const origin = entryOrigin.current;
     if (!origin || origin === sessionID) {
@@ -426,17 +619,18 @@ export function useVibeWorkspace() {
     setPending(true);
     try {
       const previous = await vibeFetch<Session>(`/sessions/${origin}`, await token());
+      if (!ownsScope(scope)) return;
       discardedContextIDs.current.add(sessionID);
       adoptContext(previous);
       setNewEvaluation(true);
-    } catch (e) {
+    } catch (e) { if (!ownsScope(scope)) return;
       setError((e as Error).message);
-    } finally {
+    } finally { if (ownsScope(scope)) {
       setPending(false);
-    }
+    } }
   }
-  function sendMessage(text = content, context?: { viewed_run_id: string }, demoID?: string) {
-    if (buildStart && !quoteMatches) return;
+  function sendMessage(text = content, context?: { viewed_run_id?: string; viewed_case_key?: string; artifact_id?: string }, demoID?: string) {
+    if (buildStart && (!quoteMatches || Date.parse(buildQuote!.expires_at) <= Date.now() + serverOffset.current)) return;
     if (materials.blocked && buildStart) return;
     void submit("message", text, undefined, {
       ...context,
@@ -446,33 +640,45 @@ export function useVibeWorkspace() {
     });
   }
   async function requestPreparation(text: string, count: number, artifactID: string) {
-    if (!session || busy) return;
+    const scope = scopeRef.current;
+    if (!session || busy || !inferenceAvailable) return;
     quoteTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const clientID = crypto.randomUUID();
     const extra = { client_id: clientID, additional_examples: count, artifact_id: artifactID };
-    setPending(true); setError("");
+    setPending(true); setError(""); setRunQuotePreparing(true); setRunQuoteError("");
+    captureVibeAttempt(session.document.evaluation?.door || "test", "estimate", session.id);
     try {
       const quote = await vibeFetch<BuildQuote>(`/sessions/${session.id}/build-quote`, await token(), {method:"POST", body:JSON.stringify({ content:text, models, artifact_id:artifactID, additional_examples:count })});
-      setRunQuote({quote: {...quote, calls: quote.max_calls}, kind:"message", content:text, extra: {...extra, cycle_id:quote.id}, sessionID:session.id, revision:session.revision});
-    } catch(e) { setError((e as Error).message); } finally {setPending(false);}
+      if (!ownsScope(scope)) return;
+      syncClock(quote.server_time); setClock(Date.now());
+      setRunQuote({selectionArtifact: artifact?.id, requestModels: models, quote: {...quote, calls: quote.max_calls}, kind:"message", content:text, extra: {...extra, cycle_id:quote.id}, sessionID:session.id, revision:session.revision});
+    } catch(e) { if (!ownsScope(scope)) return; setRunQuoteError((e as Error).message); setError((e as Error).message); captureVibeAttempt(session.document.evaluation?.door || "test", "estimate", session.id, e instanceof VibeError ? e.code : "transport_failed"); } finally { if (ownsScope(scope)) {setPending(false); setRunQuotePreparing(false);} }
   }
-  async function requestRun(baseline?: Operation, evidenceID?: string, purpose?: "regrade") {
+  async function requestRun(baseline?: Operation, evidenceID?: string, purpose?: "regrade", selection?: { case_keys: string[]; retry_source_result_ref: ResultRef; artifact_id: string }, recordedArtifactID?: string) {
+    const scope = scopeRef.current;
+    if (!evaluationAvailable(baseline,purpose) || dirtyArtifact) return;
+    if (recordedArtifactID && (!baseline || recordedUpdate?.baseline.id !== baseline.id || recordedUpdate.artifactID !== recordedArtifactID || artifact?.id !== recordedArtifactID || artifact.conversation_evaluation?.evidence_set_id !== evidenceID)) return;
     quoteTrigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const extra = { artifact_id: artifact?.id, ...(purpose ? {purpose} : {}), ...(evidenceID ? { evidence_set_id: evidenceID } : {}), ...(baseline?.source?.kind === "provided_conversations" ? { artifact_id: baseline.source.artifact_id } : {}) };
+    const extra = { ...selection, artifact_id: selection?.artifact_id || artifact?.id, ...(purpose ? {purpose} : {}), ...(evidenceID ? { evidence_set_id: evidenceID } : {}), ...(baseline?.source?.kind === "provided_conversations" ? { artifact_id: recordedArtifactID || baseline.source.artifact_id } : {}) };
     const kind = baseline ? "retest" : "check";
     if (!session?.document.evaluation) { void submit(kind, "", baseline, extra); return; }
-    setPending(true);
+    setPending(true); setRunQuotePreparing(true); setRunQuoteError("");
+    captureVibeAttempt(session.document.evaluation?.door || "test", "estimate", session.id);
     try {
       const q = await vibeFetch<RunQuote>(`/sessions/${session.id}/run-quote`, await token(), { method: "POST", body: JSON.stringify({ client_id: crypto.randomUUID(), revision: session.revision, kind, models: baseline ? {...models, evaluator: baseline.models.evaluator} : models, baseline_id: baseline?.id, approve_artifact: true, ...extra }) });
-      setRunQuote({ quote: q, kind, baseline, extra, sessionID: session.id, revision: session.revision });
-    } catch (e) { setError((e as Error).message); }
-    finally { setPending(false); }
+      if (!ownsScope(scope)) return;
+      syncClock(q.server_time); setClock(Date.now());
+      setRunQuote({ recordedArtifactID, selectionArtifact: artifact?.id, requestModels: baseline ? { ...models, evaluator: baseline.models.evaluator } : models, quote: q, kind, baseline, extra, sessionID: session.id, revision: session.revision });
+    } catch (e) { if (!ownsScope(scope)) return; setRunQuoteError((e as Error).message); setError((e as Error).message); captureVibeAttempt(session.document.evaluation?.door || "test", "estimate", session.id, e instanceof VibeError ? e.code : "transport_failed"); }
+    finally { if (ownsScope(scope)) { setPending(false); setRunQuotePreparing(false); } }
   }
   async function submit(
     kind = "message",
     text = content,
     baseline?: Operation,
     extra: {
+      case_keys?: string[];
+      retry_source_result_ref?: ResultRef;
       inputs?: InputBinding[];
       client_id?: string;
       cycle_id?: string;
@@ -489,7 +695,8 @@ export function useVibeWorkspace() {
       baseline_id?: string;
     } = {},
   ) {
-    if (sending.current || busy || submission.current) return;
+    if (sending.current || busy || submission.current || !(["check","retest"].includes(kind) ? evaluationAvailable(baseline,extra.purpose) : inferenceAvailable)) return;
+    if (new TextEncoder().encode(text).length > messageLimit) { setError(`Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.`); return; }
     if (kind === "message" && !text.trim()) return;
     if (
       dirtyArtifact ||
@@ -499,7 +706,7 @@ export function useVibeWorkspace() {
     let trialKey: string | undefined;
     let previewThread: string | undefined;
     if (kind === "playground") {
-      if ((!text.trim() && !materials.bindings.length) || materials.blocked || legacyTrial) return;
+      if ((!text.trim() && !trialMaterials.bindings.length) || trialMaterials.blocked || legacyTrial) return;
       previewThread = threadID || crypto.randomUUID();
       trialKey = `${trialPrefix}${previewThread}`;
       if (!threadID) {
@@ -510,16 +717,19 @@ export function useVibeWorkspace() {
           [trialKey!]: text,
           [emptyTrialKey]: "",
         }));
-        setThreadID(previewThread);
-        navigate(buildJourney && view !== "try" ? "build" : "try", artifact?.id, previewThread);
+        navigation.update({ thread: previewThread }, "replace");
       }
     }
     const composerVersion = trialKey
       ? trialEdits.current[trialKey] || 0
       : composerEdits.current;
     const capturedAdoptions = kind === "message" && buildStart ? materials.adoptions : [];
-    const capturedInputs = (kind === "playground" || kind === "message" && buildStart) ? materials.bindings : [];
+    const capturedInputs = kind === "playground" ? trialMaterials.bindings : kind === "message" && buildStart ? materials.bindings : [];
     const clientID = extra.client_id || crypto.randomUUID();
+    const attempt = {};
+    recovery.attempt = attempt;
+    const ownsAttempt = () => recovery.attempt === attempt;
+    let dispatched = false;
     if (kind === "message") {
       retryUnsentMessage.current = undefined;
       setPendingMessage({ id: clientID, content: text });
@@ -527,13 +737,18 @@ export function useVibeWorkspace() {
       // check below protects anything the user types while admission is pending.
       if (!extra.demo_id) setContent((current) => (current === text ? "" : current));
     }
+    const scope = scopeRef.current;
+    captureVibeAttempt(session?.document.evaluation?.door || "test", kind, sessionID);
     sending.current = true;
     if (kind === "check" || kind === "retest") setRunPending(true);
     setPending(true);
     setError("");
     try {
-      const v = await ensureSession();
+      const v = await ensureSession(scope, ownsAttempt);
+      if (!ownsAttempt()) return;
+      if (!ownsScope(scope)) throw new Error("The active account or project changed.");
       submission.current = {
+        scope,
         sessionID: v.id,
         uncertain: false,
         composer: kind === "playground" || kind === "message" && !extra.demo_id ? text : null,
@@ -553,7 +768,7 @@ export function useVibeWorkspace() {
             : models,
           ...((kind === "message" && workingArtifact) ? { artifact_id: workingArtifact.id } : artifact ? { artifact_id: artifact.id } : {}),
           ...(baseline ? { baseline_id: baseline.id } : {}),
-          ...(kind === "message" &&
+          ...(kind === "message" && (!twoDoor || !extra.viewed_run_id && !extra.viewed_case_key) &&
           buildEvidence.current?.artifact === artifact?.id
             ? { baseline_id: buildEvidence.current?.operation }
             : {}),
@@ -564,7 +779,9 @@ export function useVibeWorkspace() {
           ...extra,
         }),
       };
+      dispatched = true;
       await dispatchSubmission();
+      if (!ownsScope(scope)) return;
       if (kind === "message" && currentView.current === "build") {
         setSelectedArtifactID(null);
         setThreadID("");
@@ -574,7 +791,16 @@ export function useVibeWorkspace() {
         navigation.writeURL(url);
       }
     } catch (e) {
+      captureVibeAttempt(session?.document.evaluation?.door || "test", kind, sessionID, e instanceof VibeError ? e.code : "transport_failed");
+      if (!ownsAttempt()) return;
+      // Preadmission failures belong to the retained owner even when inactive.
       setError((e as Error).message);
+      if (!dispatched && kind === "message" && !extra.demo_id) {
+        retryUnsentMessage.current = () => {
+          if (visibleRecovery() && !sending.current) void submit(kind, text, baseline, extra);
+        };
+      }
+      if (!visibleRecovery()) return;
       if (
         kind === "message" && !extra.demo_id &&
         !submission.current &&
@@ -589,77 +815,103 @@ export function useVibeWorkspace() {
         setPendingMessage(undefined);
       }
     } finally {
-      sending.current = false;
-      setPending(false);
-      setRunPending(false);
+      if (ownsAttempt()) {
+        sending.current = false;
+        recovery.attempt = undefined;
+        if (visibleRecovery()) { setPending(false); setRunPending(false); }
+      }
     }
   }
   async function dispatchSubmission() {
     const request = submission.current;
-    if (!request) return;
-    let admitted: Operation;
+    if (!request || !visibleRecovery()) return;
+    const attempt = recovery.attempt;
+    const ownsRequest = () => recovery.attempt === attempt && submission.current === request;
     try {
-      admitted = request.retryOperationID
-        ? await retryVibeOperation(request.sessionID, request.retryOperationID, JSON.parse(request.body), await token())
-        : await vibeFetch<Operation>(
-            `/sessions/${request.sessionID}/messages`,
-            await token(),
-            { method: "POST", body: request.body },
-          );
-    } catch (e) {
-      // Auth/rate/profile checks precede idempotency lookup. A later rejection
-      // cannot disprove an earlier admission: retain every byte until acknowledged.
-      const rejected = recoverRequest(request, e) === "rejected";
-      if (rejected) submission.current = null;
-      setUncertain(!rejected);
-      if (e instanceof VibeError && (e.code === "revision_conflict" || (request.retryOperationID && rejected))) {
-        await reload(request.sessionID).catch(() => undefined);
+      let admitted: Operation;
+      try {
+        const auth = await token();
+        if (!ownsRequest()) return;
+        if (scopeRef.current.actor !== request.scope.actor) {
+          request.uncertain = true;
+          setError("The account changed before admission. Return to this account and retry your saved request.");
+          return;
+        }
+        admitted = request.retryOperationID
+          ? await retryVibeOperation(request.sessionID, request.retryOperationID, JSON.parse(request.body), auth)
+          : await vibeFetch<Operation>(`/sessions/${request.sessionID}/messages`, auth, { method: "POST", body: request.body });
+      } catch (e) {
+        if (!ownsRequest()) return;
+        // Settle only this actor/project's record, even when it is inactive.
+        const rejected = recoverRequest(request, e) === "rejected";
+        if (rejected) {
+          submission.current = null;
+          retryUnsentMessage.current = () => {
+            if (!visibleRecovery() || sending.current) return;
+            submission.current = request;
+            void retrySubmission();
+          };
+        }
+        setError((e as Error).message);
+        if (visibleRecovery()) {
+          setUncertain(!rejected);
+          if (e instanceof VibeError && (e.code === "revision_conflict" || (request.retryOperationID && rejected)))
+            await reload(request.sessionID).catch(() => undefined);
+        }
+        throw e;
       }
-      throw e;
-    }
-    submission.current = null;
-    setUncertain(false);
-    if (activeSessionRef.current !== request.sessionID) return;
-    if (request.retryOperationID && JSON.parse(request.body).assistant_model)
-      setModels(current => ({ ...current, assistant: admitted.models.assistant }));
-    const submitted = JSON.parse(request.body);
-    const requestKind = submitted.kind;
-    if (session?.document.evaluation?.door === "build" && (requestKind === "message" || requestKind === "playground")) {
-      const base = { session_id: request.sessionID, operation_id: admitted.id, artifact_id: submitted.artifact_id, sample: !!artifact?.sample };
-      captureBuildEvent(WEB_EVENTS.VIBE_BUILD_MESSAGE_ADMITTED, { ...base, recipient: requestKind === "playground" ? "prototype" : "guide" }, admitted.id);
-      if (submitted.demo_id) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_DEMO_SELECTED, { ...base, sample_id: "email" }, admitted.id);
-    }
-    if (requestKind === "check" || requestKind === "retest") {
-      const checksView = session?.document.evaluation?.door === "build" ? view : "checks";
-      navigation.update({ run: admitted.id, view: checksView, artifact: admitted.source?.artifact_id || null });
-      currentView.current = checksView;
-    }
-    if (!request.trialKey && request.composer !== null)
-      buildEvidence.current = undefined;
-    if (request.trialKey) {
-      const key = request.trialKey;
-      if (request.composerVersion === (trialEdits.current[key] || 0))
-        setTrialBuffers((old) =>
-          old[key] === request.composer ? { ...old, [key]: "" } : old,
+      if (!ownsRequest()) return;
+      submission.current = null;
+      retryUnsentMessage.current = undefined;
+      setError("");
+      if (!visibleRecovery()) { setPendingMessage(undefined); return; }
+      setUncertain(false);
+      if (activeSessionRef.current !== request.sessionID) return;
+      if (request.retryOperationID && JSON.parse(request.body).assistant_model)
+        setModels(current => ({ ...current, assistant: admitted.models.assistant }));
+      const submitted = JSON.parse(request.body);
+      const requestKind = submitted.kind;
+      if (session?.document.evaluation?.door === "build" && (requestKind === "message" || requestKind === "playground")) {
+        const base = { session_id: request.sessionID, operation_id: admitted.id, artifact_id: submitted.artifact_id, sample: !!artifact?.sample };
+        captureBuildEvent(WEB_EVENTS.VIBE_BUILD_MESSAGE_ADMITTED, { ...base, recipient: requestKind === "playground" ? "prototype" : "guide" }, admitted.id);
+        if (submitted.demo_id) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_DEMO_SELECTED, { ...base, sample_id: "email" }, admitted.id);
+      }
+      if (requestKind === "check" || requestKind === "retest") {
+        navigation.update({ run: admitted.id }, "replace");
+      }
+      if (!request.trialKey && request.composer !== null)
+        buildEvidence.current = undefined;
+      if (request.trialKey) {
+        const key = request.trialKey;
+        if (request.composerVersion === (trialEdits.current[key] || 0))
+          setTrialBuffers((old) =>
+            old[key] === request.composer ? { ...old, [key]: "" } : old,
+          );
+      } else if (
+        request.composer !== null &&
+        request.composerVersion === composerEdits.current
+      ) {
+        setContent((current) => (current === request.composer ? "" : current));
+      }
+      // A failed refresh cannot turn an acknowledged send into an unsent draft.
+      // SSE can reconcile it; retain the visible pending message until then.
+      const fresh = await reload(request.sessionID).catch((error: unknown) => {
+        if (visibleRecovery() && activeSessionRef.current === request.sessionID) setConnection(
+          isSessionAccessError(error)
+            ? sessionAccessLost
+            : "Reconnecting to saved progress…",
         );
-    } else if (
-      request.composer !== null &&
-      request.composerVersion === composerEdits.current
-    ) {
-      setContent((current) => (current === request.composer ? "" : current));
+        return undefined;
+      });
+      if (visibleRecovery() && fresh && !request.trialKey && request.composer !== null)
+        setPendingMessage(undefined);
+    } finally {
+      // A late response must not release a newer request for this owner.
+      if (recovery.attempt === attempt && (!submission.current || submission.current === request)) {
+        sending.current = false;
+        if (visibleRecovery()) { setPending(false); setRunPending(false); setPendingAction(undefined); }
+      }
     }
-    // A failed refresh cannot turn an acknowledged send into an unsent draft.
-    // SSE can reconcile it; retain the visible pending message until then.
-    const fresh = await reload(request.sessionID).catch((error: unknown) => {
-      if (activeSessionRef.current === request.sessionID) setConnection(
-        isSessionAccessError(error)
-          ? sessionAccessLost
-          : "Reconnecting to saved progress…",
-      );
-      return undefined;
-    });
-    if (fresh && !request.trialKey && request.composer !== null)
-      setPendingMessage(undefined);
   }
 
   // Reconcile an SSE acknowledgement that can arrive before the POST returns.
@@ -677,7 +929,7 @@ export function useVibeWorkspace() {
   // retry in progress, even if its HTTP acknowledgement was lost.
   useEffect(() => {
     const request = submission.current;
-    if (!request?.uncertain || !request.retryOperationID || session?.id !== request.sessionID) return;
+    if (!request?.uncertain || !visibleRecovery() || !request.retryOperationID || session?.id !== request.sessionID) return;
     const admitted = session.operations.find(operation => operation.retry_of_operation_id === request.retryOperationID);
     if (!admitted) return;
     if (JSON.parse(request.body).assistant_model)
@@ -693,8 +945,9 @@ export function useVibeWorkspace() {
     if (!operation) return;
     const artifactID = operation.completion_receipt?.artifact_id;
     if (artifactID && session?.document.artifacts.some(item => item.id === artifactID)) {
-      setSelectedArtifactID(artifactID);
-      navigate("build", artifactID, "");
+      if (pendingEdit.draft && session) discardEditorDraft(session.id, pendingEdit.artifactID, "cases", pendingEdit.draft);
+      navigation.update({ artifact: artifactID, run: undefined, case: undefined, thread: "" }, "replace");
+      if (currentView.current === "tests" && document.activeElement?.closest(`[data-proposal-id="${CSS.escape(pendingEdit.artifactID)}"]`)) requestAnimationFrame(() => document.querySelector<HTMLHeadingElement>(`[data-proposal-id="${CSS.escape(artifactID)}"] h2`)?.focus());
       setChecksDirtyID(null);
       setPendingEdit(undefined);
     } else if (terminal(operation.state)) {
@@ -707,6 +960,9 @@ export function useVibeWorkspace() {
 
   async function retrySubmission() {
     if (sending.current || pending || !submission.current) return;
+    const attempt = {};
+    recovery.attempt = attempt;
+    const ownsAttempt = () => recovery.attempt === attempt;
     sending.current = true;
     setPending(true);
     if (submission.current.retryOperationID) setPendingAction("Retrying your request…");
@@ -714,11 +970,15 @@ export function useVibeWorkspace() {
     try {
       await dispatchSubmission();
     } catch (e) {
+      captureVibeAttempt(session?.document.evaluation?.door || "test", "retry", sessionID, e instanceof VibeError ? e.code : "transport_failed");
+      if (!ownsAttempt() || !visibleRecovery()) return;
       setError((e as Error).message);
     } finally {
-      sending.current = false;
-      setPending(false);
-      setPendingAction(undefined);
+      if (ownsAttempt()) {
+        sending.current = false;
+        recovery.attempt = undefined;
+        if (visibleRecovery()) { setPending(false); setPendingAction(undefined); }
+      }
     }
   }
   async function retryOperation(id: string, assistantModel?: string) {
@@ -731,6 +991,7 @@ export function useVibeWorkspace() {
     if (!operation?.retryable || operation.completion_receipt) return;
     if (buildJourney) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_RECOVERY_CLICKED, { session_id: session.id, operation_id: id, artifact_id: operation.source?.artifact_id, action: assistantModel ? "alternate_assistant" : "retry", error_code: operation.error?.code });
     submission.current = {
+      scope: scopeRef.current,
       sessionID: session.id,
       retryOperationID: id,
       body: JSON.stringify({ client_id: crypto.randomUUID(), revision: session.revision, ...(assistantModel ? { assistant_model: assistantModel } : {}) }),
@@ -741,26 +1002,56 @@ export function useVibeWorkspace() {
     await retrySubmission();
   }
   async function applyChoice(action: ConversationAction) {
+    const scope = scopeRef.current;
     if (!session) return;
     setPending(true);
     try {
       const next = await vibeFetch<Session>(`/sessions/${session.id}/actions`, await token(), {
         method: "POST", body: JSON.stringify({ version: 1, kind: "action", payload: action }),
       });
-      if (!accept(next)) return;
+      if (!ownsScope(scope) || !accept(next)) return;
       const restored = next.document.artifacts.at(-1);
       if (action.kind === "undo" && restored) {
         setSelectedArtifactID(restored.id);
         navigate("build", restored.id);
       }
-    } finally { setPending(false); }
+    } finally { if (ownsScope(scope)) { setPending(false); } }
   }
   async function reloadChoices() {
     if (session) await reload(session.id);
   }
 
+  async function addRecordedEvidence(request: RecordedIntakeRequest): Promise<RecordedIntakeOutcome> {
+    const scope=scopeRef.current;
+    if(!session || pending || busy) return "uncertain";
+    const id=session.id;
+    const submittedIntake = readEditorDraft(id, "intake", "recorded-request");
+    // Bind the baseline before transport; a lost acknowledgment retries this receipt.
+    const intakeBinding = recordedBinding && !recordedBinding.artifact_id ? { ...recordedBinding, client_id: request.client_id } : undefined;
+    if (intakeBinding) recordedUpdateDraft.setValue(JSON.stringify(intakeBinding));
+    setPending(true);setError("");
+    try {
+      const next=await vibeFetch<Session>(`/sessions/${id}/evidence`,await token(),{method:"POST",body:JSON.stringify(request)});
+      if(!ownsScope(scope))return "uncertain";
+      const receipt=next.evidence_receipt;
+      if(!receipt || receipt.client_id!==request.client_id || !next.document.artifacts.some(item=>item.id===receipt.artifact_id && item.conversation_evaluation?.evidence_set_id===receipt.evidence_id))throw Error("The exact saved reply receipt is unavailable. Retry the same request.");
+      if(!accept(next))return "uncertain";
+      // Clear only this acknowledged request before URL subscribers render its saved version.
+      if (submittedIntake?.value === JSON.stringify(request)) discardEditorDraft(id, "intake", "recorded-request", submittedIntake);
+      if(intakeBinding) recordedUpdateDraft.setValue(JSON.stringify({...intakeBinding,artifact_id:receipt.artifact_id}));
+      setSelectedArtifactID(receipt.artifact_id);navigate("tests",receipt.artifact_id,"");return "saved";
+    } catch(e) {
+      if(!ownsScope(scope))return "uncertain";
+      setError((e as Error).message);
+      return e instanceof VibeError && !!e.status && e.status>=400 && e.status<500 ? "rejected" : "uncertain";
+    } finally { if(ownsScope(scope))setPending(false); }
+  }
+
   async function edit(fields: Record<string, unknown>) {
+    const scope = scopeRef.current;
     if (!session) return false;
+    const submittedDraft = fields.case_changes !== undefined ? readEditorDraft(session.id, String(fields.artifact_id || artifact?.id || ""), "cases") : undefined;
+    if (!inferenceAvailable && (fields.case_changes !== undefined || fields.build_from_policy === true)) { setError(unavailableReason); return false; }
     setPending(true);
     setError("");
     try {
@@ -772,11 +1063,11 @@ export function useVibeWorkspace() {
           body: JSON.stringify({ revision: session.revision, ...fields }),
         },
       );
-      if (!accept(v)) return false;
+      if (!ownsScope(scope) || !accept(v)) return false;
       const suiteChange = fields.case_changes !== undefined || fields.criteria !== undefined || fields.evaluation !== undefined;
       const admittedEdit = suiteChange && v.operations.find(operation => !session.operations.some(previous => previous.id === operation.id));
       if (admittedEdit && !admittedEdit.completion_receipt) {
-        setPendingEdit({ operationID: admittedEdit.id, artifactID: String(fields.artifact_id || artifact?.id || "") });
+        setPendingEdit({ operationID: admittedEdit.id, artifactID: String(fields.artifact_id || artifact?.id || ""), draft: submittedDraft });
         return false;
       }
       if (
@@ -791,22 +1082,23 @@ export function useVibeWorkspace() {
         const next = v.document.artifacts.at(-1);
         if (next) {
           setSelectedArtifactID(next.id);
-          navigate(view, next.id, "");
+          navigate(currentView.current, next.id, "");
         }
         setThreadID("");
         setDirtyArtifactID(null);
         setChecksDirtyID(null);
       }
       return true;
-    } catch (e) {
+    } catch (e) { if (!ownsScope(scope)) return false;
       setError((e as Error).message);
       await reload();
       return false;
-    } finally {
+    } finally { if (ownsScope(scope)) {
       setPending(false);
-    }
+    } }
   }
   async function operationAction(id: string, action: "stop" | "approve") {
+    const scope = scopeRef.current;
     if (action === "stop" && buildJourney && session) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_RECOVERY_CLICKED, { session_id: session.id, operation_id: id, action: "stop" });
     setPending(true);
     setPendingAction(action === "stop" ? "Stopping…" : "Starting your check…");
@@ -816,21 +1108,24 @@ export function useVibeWorkspace() {
         method: "POST",
         body: "{}",
       });
+      if (!ownsScope(scope)) return;
       await reload();
-    } catch (e) {
+    } catch (e) { if (!ownsScope(scope)) return;
       setError((e as Error).message);
-    } finally {
+    } finally { if (ownsScope(scope)) {
       setPending(false);
       setPendingAction(undefined);
-    }
+    } }
   }
   async function upload(uploaded?: File) {
+    const scope = scopeRef.current;
     if (!uploaded || busy) return;
     setPending(true);
     setImportError(undefined);
     let importSessionID = sessionID;
     try {
-      const v = await ensureSession();
+      const v = await ensureSession(scope);
+      if (!ownsScope(scope)) return;
       importSessionID = v.id;
       if (uploaded.size > (v.anonymous ? 256 * 1024 : 1024 * 1024))
         throw new Error("This file exceeds the import size limit.");
@@ -844,28 +1139,32 @@ export function useVibeWorkspace() {
               ? "application/json"
               : "application/yaml",
             "If-Match": String(v.revision),
+ "X-File-Name": encodeURIComponent(uploaded.name),
           },
           body: new Blob([uploaded]),
         },
       );
-      accept(result);
-    } catch (e) {
+      if (ownsScope(scope) && accept(result)) { const imported=result.document.artifacts.at(-1); if(imported) navigation.update({artifact:imported.id,run:undefined,view:"tests"}); }
+    } catch (e) { if (!ownsScope(scope)) return;
       const message = e instanceof VibeError && (!e.status || e.status >= 500)
         ? "Couldn’t import this file. Choose another file, or try importing again."
         : (e as Error).message;
       setImportError({ sessionID: importSessionID, message });
       setSettingsOpen(false);
-    } finally {
+    } finally { if (ownsScope(scope)) {
       setPending(false);
       if (file.current) file.current.value = "";
-    }
+    } }
   }
-  const { saveOpen,saveAccess,saveBaseline,saveTarget,savedCheck,workspaces,openSave,closeSave,rememberSave,save } = useVibeSaving({session,artifact,artifacts,content,models,workspace,token,authLoading,loadAttempt,setContent,setModels,setWorkspace,setError,setPending,setSavedChecks,setSelectedArtifactID,reload,writeURL:navigation.writeURL});
+  const { saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,saveOpen,saveAccess,saveBaseline,saveTarget,savedCheck,workspaces,openSave,closeSave,rememberSave,save } = useVibeSaving({actorScope: authUserID || "guest",selectedResult,account:evidenceAccess,session,artifact,artifacts,content,models,workspace,savedChecks,token,setContent,setModels,setWorkspace,setError,setPending,setSavedChecks,setSelectedArtifactID,reload,writeURL:navigation.writeURL});
   const activeContext = session?.document.evaluation ? evaluationIdentity(session) : null;
   const setTrialText = (text: string) => {
     const key = trialDraftKey;
     trialEdits.current[key] = (trialEdits.current[key] || 0) + 1;
     setTrialBuffers(old => ({ ...old, [key]: text }));
   };
-    return { accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, canChangeDoor, changeDoor, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces };
+  // New work uses the prospective account/workspace and approved defaults,
+  // independently of the historical project's funding and retired models.
+  const entryAvailable = !!config?.enabled && Object.values(config.defaults).every(id => config.models.some(model => model.id === id)) && config.availability?.[authUserID ? "workspace" : "guest"]?.available === true && (!authUserID || saveAccess === "ready" && workspaces.some(item => item.id === workspace));
+    return { evidenceResult:selectedResult || (pinnedRun?.result_scope&&session?{session_id:session.id,artifact_id:pinnedRun.result_scope.artifact_id,result_ref:{kind:"vibe_operation" as const,id:pinnedRun.id}}:undefined), selectedCanonical,selectedSDKReport,selectedResult,selectedResultLoading,selectedResultError,retrySelectedResult,onSelectResult,onSDKPromoted,onSDKRegraded,evidenceAccess, sdkInferenceAvailable:inferenceReady && !busy && !!config?.models.some(m=>m.id===models.evaluator), projectReturnPath,saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,archiveMode,setArchiveMode,metadata,exporter, recordedUpdate, startRecordedUpdate, closeRecordedUpdate, addRecordedEvidence, entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, runInferenceAvailable, unavailableReason, messageLimit, messageError, buildQuote, buildQuoteState, refreshBuildQuote, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, canChangeDoor, changeDoor, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, trialMaterials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces };
 }

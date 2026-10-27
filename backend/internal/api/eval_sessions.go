@@ -13,11 +13,15 @@ import (
 	"time"
 
 	"github.com/agentclash/agentclash/backend/internal/billing"
+	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/google/uuid"
 )
 
 type createEvalSessionRequest struct {
+	AdmissionRequestID   uuid.UUID   `json:"admission_request_id,omitempty"`
+	ChallengeIdentityIDs []uuid.UUID `json:"challenge_identity_ids,omitempty"`
+
 	WorkspaceID            string                         `json:"workspace_id"`
 	ChallengePackVersionID string                         `json:"challenge_pack_version_id"`
 	ChallengeInputSetID    *string                        `json:"challenge_input_set_id,omitempty"`
@@ -125,6 +129,15 @@ func createEvalSessionHandler(logger *slog.Logger, service RunCreationService) h
 }
 
 func writeCreateEvalSessionError(logger *slog.Logger, w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, repository.ErrEvalSessionAdmissionConflict) {
+		writeError(w, http.StatusConflict, "admission_conflict", err.Error())
+		return
+	}
+
+	if errors.Is(err, repository.ErrConnectorUnapproved) {
+		writeError(w, http.StatusConflict, "connector_approval_required", err.Error())
+		return
+	}
 	var gateErr billing.GateError
 	if errors.As(err, &gateErr) {
 		writeBillingGateError(w, gateErr.Decision)
@@ -300,6 +313,7 @@ func decodeCreateEvalSessionRequest(_ context.Context, r *http.Request) (CreateE
 	}
 
 	return CreateEvalSessionInput{
+		AdmissionRequestID: body.AdmissionRequestID, ChallengeIdentityIDs: body.ChallengeIdentityIDs,
 		WorkspaceID:            workspaceID,
 		ChallengePackVersionID: challengePackVersionID,
 		ChallengeInputSetID:    challengeInputSetID,

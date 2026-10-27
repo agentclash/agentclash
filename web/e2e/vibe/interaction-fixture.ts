@@ -1,7 +1,7 @@
 import type { Session } from "../../src/lib/vibe";
 
 export const actionModels = { assistant: "openai/gpt-4.1-mini", target: "openai/gpt-4.1-mini", evaluator: "openai/gpt-4.1-mini" };
-export const actionConfig = { enabled: true, interaction_actions: true, defaults: actionModels, models: [{ id: actionModels.assistant, name: "Fixture model" }] };
+export const actionConfig = { enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, interaction_actions: true, defaults: actionModels, models: [{ id: actionModels.assistant, name: "Fixture model" }] };
 export const actionSession: Session = {
   id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", revision: 4, anonymous: true,
   operations: [], document: { models: actionModels, requirements: [], artifacts: [], messages: [

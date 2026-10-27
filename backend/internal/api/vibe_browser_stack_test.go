@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/enquiries"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/backend/internal/vibe"
@@ -50,7 +51,13 @@ func TestVibeBrowserStack(t *testing.T) {
 	defer stop()
 	db := browserFixtureDatabase(t, ctx)
 	namespace := "vibe-browser-" + uuid.NewString()
+	recordBrowserOwnership(t, "temporal_namespace", namespace)
 	temporalClient := browserFixtureTemporal(t, ctx, namespace)
+	// Accounting maintenance is real; any unexpected provider receipt remains
+	// unresolved through an offline transport, never a hosted HTTP request.
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = browserFixtureOfflineTransport{}
+	defer func() { http.DefaultTransport = originalTransport }()
 	mini := miniredis.RunT(t)
 	rc := redis.NewClient(&redis.Options{Addr: mini.Addr()})
 	defer rc.Close()
@@ -76,7 +83,7 @@ func TestVibeBrowserStack(t *testing.T) {
 		go store.Inputs.Run(ctx, slog.Default())
 		go store.ProjectCleanupLoop(ctx, slog.Default())
 	}
-	svc := &vibe.Service{Store: store, Config: cfg, Gate: vibe.Gate{Redis: rc}, Compiler: VibePackCompiler{}}
+	svc := &vibe.Service{Readiness: &vibe.Readiness{DB: db, Redis: rc, Temporal: temporalClient}, Store: store, Config: cfg, Gate: vibe.Gate{Redis: rc}, Compiler: VibePackCompiler{}}
 	fake := &browserFixtureProvider{}
 	runner := &vibe.Runner{Service: svc, Gateway: &vibe.Gateway{Store: store, Config: cfg, Gate: svc.Gate, Client: fake}}
 	worker := vibe.NewWorker(temporalClient, runner)
@@ -90,7 +97,12 @@ func TestVibeBrowserStack(t *testing.T) {
 		defer close(dispatched)
 		vibe.DispatchOutbox(dispatchCtx, temporalClient, store, slog.Default(), svc)
 	}()
-	defer func() { cancelDispatch(); <-dispatched }()
+	accountingDone := make(chan struct{})
+	go func() {
+		defer close(accountingDone)
+		vibe.ReconcileLoop(dispatchCtx, store, cfg, slog.Default(), svc.Gate)
+	}()
+	defer func() { cancelDispatch(); <-dispatched; <-accountingDone }()
 	router := chi.NewRouter()
 	origin := browserFixtureEnv("VIBE_BROWSER_WEB_ORIGIN", "http://127.0.0.1:53518")
 	router.Use(newCORSMiddleware("dev", map[string]struct{}{origin: {}}))
@@ -99,6 +111,8 @@ func TestVibeBrowserStack(t *testing.T) {
 		t.Fatal(err)
 	}
 	auth := browserDevelopmentAuth{}
+	mountBrowserConnectors(t, router, db, svc, temporalClient, auth)
+	mountBrowserReportSnapshots(t, router, db, store, auth)
 	router.Get("/v1/users/me", func(w http.ResponseWriter, r *http.Request) {
 		caller, err := auth.Authenticate(r)
 		if err != nil {
@@ -112,8 +126,16 @@ func TestVibeBrowserStack(t *testing.T) {
 		}
 		browserFixtureJSON(w, result)
 	})
-	router.Mount("/v1/vibe", (&VibeHandler{Service: svc, Auth: auth, CookieSecret: uuid.NewString() + uuid.NewString()}).Routes())
+	handler := &VibeHandler{FrontendURL: os.Getenv("VIBE_BROWSER_WEB_ORIGIN"), Service: svc, Auth: auth, CookieSecret: uuid.NewString() + uuid.NewString()}
+	if cfg.MaterialBuild {
+		handler.Enquiries = &enquiries.Store{DB: db, Recipient: "team@example.test", Sender: &testEnquirySender{}}
+	}
+	router.Mount("/v1/vibe", handler.Routes())
 	router.Get("/__fixture/ready", func(w http.ResponseWriter, r *http.Request) {
+		if !svc.Availability(r.Context(), true)["guest"].Available {
+			http.Error(w, "fixture workers preparing", http.StatusServiceUnavailable)
+			return
+		}
 		browserFixtureJSON(w, map[string]any{"ready": true, "temporal_namespace": namespace, "provider": "in-process scripted fixture"})
 	})
 	router.Post("/__fixture/control", func(w http.ResponseWriter, r *http.Request) {
@@ -228,22 +250,38 @@ func browserFixtureDatabase(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	if config.ConnConfig.Database != "vibe_test" && !strings.HasPrefix(config.ConnConfig.Database, "vibe_test_") {
 		t.Fatal("refusing a non-test database URL")
 	}
+	if config.ConnConfig.Host != "127.0.0.1" && config.ConnConfig.Host != "localhost" && config.ConnConfig.Host != "::1" {
+		t.Fatal("fixture database must be loopback")
+	}
 	admin, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(admin.Close)
 	name := "vibe_test_browser_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	recordBrowserOwnership(t, "database", name)
 	identifier := pgx.Identifier{name}.Sanitize()
 	if _, err = admin.Exec(ctx, "CREATE DATABASE "+identifier); err != nil {
 		t.Fatal(err)
 	}
+	var oid string
+	if err = admin.QueryRow(ctx, "SELECT oid::text FROM pg_database WHERE datname=$1", name).Scan(&oid); err != nil {
+		t.Fatal(err)
+	}
+	recordBrowserOwnership(t, "database", name, map[string]any{"phase": "created", "oid": oid})
 	t.Cleanup(func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if _, err := admin.Exec(cleanupCtx, "DROP DATABASE "+identifier+" WITH (FORCE)"); err != nil {
 			t.Errorf("remove fixture database %s: %v", name, err)
+			return
 		}
+		var exists bool
+		if err := admin.QueryRow(cleanupCtx, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname=$1)", name).Scan(&exists); err != nil || exists {
+			t.Errorf("fixture database absence could not be verified: %s", name)
+			return
+		}
+		recordBrowserOwnership(t, "database", name, map[string]any{"phase": "absent", "oid": oid})
 	})
 	isolated := config.Copy()
 	isolated.ConnConfig.Database = name
@@ -272,10 +310,12 @@ func browserFixtureTemporal(t *testing.T, ctx context.Context, namespace string)
 	t.Helper()
 	address := os.Getenv("VIBE_BROWSER_TEMPORAL_ADDRESS")
 	if address == "" {
+		recordBrowserOwnership(t, "temporal_devserver", namespace, map[string]any{"phase": "intent", "process_group": os.Getpid(), "directory": os.TempDir(), "storage": "ephemeral"})
 		server, err := testsuite.StartDevServer(ctx, testsuite.DevServerOptions{ExistingPath: os.Getenv("VIBE_BROWSER_TEMPORAL_CLI"), ClientOptions: &client.Options{Namespace: namespace}, LogLevel: "error"})
 		if err != nil {
 			t.Fatal(err)
 		}
+		recordBrowserOwnership(t, "temporal_devserver", namespace, map[string]any{"phase": "started", "process_group": os.Getpid(), "address": server.FrontendHostPort(), "storage": "ephemeral"})
 		t.Cleanup(func() {
 			if err := server.Stop(); err != nil {
 				t.Logf("Temporal shutdown: %v", err)
@@ -291,6 +331,7 @@ func browserFixtureTemporal(t *testing.T, ctx context.Context, namespace string)
 	if err = ns.Register(ctx, &workflowservice.RegisterNamespaceRequest{Namespace: namespace, WorkflowExecutionRetentionPeriod: durationpb.New(24 * time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
+	recordBrowserOwnership(t, "temporal_namespace", namespace, map[string]any{"phase": "registered", "workflow_retention_hours": 24, "metadata": "retained"})
 	c, err := client.Dial(client.Options{HostPort: address, Namespace: namespace})
 	if err != nil {
 		t.Fatal(err)
@@ -349,6 +390,29 @@ func (f *browserFixtureProvider) InvokeModel(_ context.Context, req provider.Req
 	case strings.HasPrefix(req.Messages[0].Content, "Write instructions for a bounded interactive"):
 		f.calls = append(f.calls, browserFixtureCall{Role: "prototype"})
 		return browserFixtureResponse(`{"instructions":"Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund."}`), nil
+	case strings.Contains(req.Messages[0].Content, "Judge every expectation exactly once across the complete conversation"):
+		name = "judge"
+		var input struct {
+			Expectations []vibe.Expectation        `json:"expectations"`
+			Conversation vibe.EvidenceConversation `json:"conversation"`
+		}
+		if err := json.Unmarshal([]byte(req.Messages[1].Content), &input); err != nil || len(input.Expectations) == 0 {
+			return provider.Response{}, fmt.Errorf("missing recorded expectations: %v", err)
+		}
+		var reply vibe.EvidenceMessage
+		for _, m := range input.Conversation.Messages {
+			if m.Role == "assistant" {
+				reply = m
+			}
+		}
+		if reply.Content == "" {
+			return provider.Response{}, fmt.Errorf("missing recorded reply")
+		}
+		checks := []any{}
+		for _, expectation := range input.Expectations {
+			checks = append(checks, map[string]any{"key": expectation.ID, "verdict": "FAIL", "evidence": "The recorded reply promises a refund despite the stated restriction.", "finding": map[string]any{"kind": "observed", "quotes": []any{map[string]any{"message_id": reply.ID, "text": reply.Content}}, "missing": "", "covered_message_ids": []string{}}})
+		}
+		output = map[string]any{"checks": checks}
 	case strings.Contains(req.Messages[0].Content, "Every finding has exactly"):
 		name = "judge"
 		var input struct {
@@ -716,7 +780,7 @@ func (browserDevelopmentAuth) Authenticate(r *http.Request) (Caller, error) {
 	var claims struct {
 		Subject string `json:"sub"`
 	}
-	if json.Unmarshal(payload, &claims) != nil || claims.Subject != "a8000000-0000-4000-8000-000000000001" {
+	if json.Unmarshal(payload, &claims) != nil || (claims.Subject != "a8000000-0000-4000-8000-000000000001" && claims.Subject != "a8000000-0000-4000-8000-000000000004" && claims.Subject != "a8000000-0000-4000-8000-000000000005") {
 		return Caller{}, ErrUnauthenticated
 	}
 	copy := r.Clone(r.Context())
@@ -734,5 +798,39 @@ func browserFixtureIdentity(t *testing.T, db *pgxpool.Pool) {
 		if _, err := db.Exec(context.Background(), sql); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// A fixture must never turn maintenance into an external provider probe.
+type browserFixtureOfflineTransport struct{}
+
+func (browserFixtureOfflineTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, errors.New("HTTP provider networking disabled in browser fixture")
+}
+
+// Optional durable local inventory is written before resource creation, including
+// failed startup attempts. It grants cleanup ownership only for these names.
+func recordBrowserOwnership(t *testing.T, kind, name string, details ...map[string]any) {
+	t.Helper()
+	path := os.Getenv("VIBE_BROWSER_OWNERSHIP_LOG")
+	if path == "" {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	row := map[string]any{"kind": kind, "name": name, "pid": os.Getpid(), "time": time.Now().UTC(), "phase": "intent"}
+	for _, fields := range details {
+		for key, value := range fields {
+			row[key] = value
+		}
+	}
+	if err = json.NewEncoder(f).Encode(row); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Sync(); err != nil {
+		t.Fatal(err)
 	}
 }

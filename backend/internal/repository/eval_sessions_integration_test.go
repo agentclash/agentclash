@@ -233,6 +233,7 @@ func TestRepositoryAttachRunToEvalSessionAndGetWithRuns(t *testing.T) {
 	repo := repository.New(db)
 
 	session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		WorkspaceID:            fixture.workspaceID,
 		Repetitions:            2,
 		AggregationConfig:      []byte(`{"schema_version":1,"aggregation":"mean"}`),
 		SuccessThresholdConfig: []byte(`{"schema_version":1,"min_pass_rate":0.5}`),
@@ -290,6 +291,7 @@ func TestRepositoryAttachRunToEvalSessionIsIdempotentForSameSession(t *testing.T
 	repo := repository.New(db)
 
 	session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		WorkspaceID:   fixture.workspaceID,
 		Repetitions:   1,
 		SchemaVersion: 1,
 	})
@@ -321,6 +323,7 @@ func TestRepositoryAttachRunToEvalSessionRejectsDifferentExistingSession(t *test
 	repo := repository.New(db)
 
 	firstSession, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		WorkspaceID:   fixture.workspaceID,
 		Repetitions:   1,
 		SchemaVersion: 1,
 	})
@@ -328,6 +331,7 @@ func TestRepositoryAttachRunToEvalSessionRejectsDifferentExistingSession(t *test
 		t.Fatalf("CreateEvalSession(first) returned error: %v", err)
 	}
 	secondSession, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		WorkspaceID:   fixture.workspaceID,
 		Repetitions:   1,
 		SchemaVersion: 1,
 	})
@@ -532,6 +536,7 @@ func TestRepositorySupportsSingleRepetitionEvalSession(t *testing.T) {
 	repo := repository.New(db)
 
 	session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		WorkspaceID:            fixture.workspaceID,
 		Repetitions:            1,
 		AggregationConfig:      []byte(`{"schema_version":1,"aggregation":"single"}`),
 		SuccessThresholdConfig: []byte(`{"schema_version":1,"min_pass_rate":1}`),
@@ -567,6 +572,7 @@ func TestRepositoryCreateEvalSessionWithQueuedRunsCreatesAttachedChildren(t *tes
 
 	result, err := repo.CreateEvalSessionWithQueuedRuns(ctx, repository.CreateEvalSessionWithQueuedRunsParams{
 		Session: repository.CreateEvalSessionParams{
+			WorkspaceID:            fixture.workspaceID,
 			Repetitions:            2,
 			AggregationConfig:      []byte(`{"schema_version":1,"method":"mean","report_variance":true,"confidence_interval":0.95}`),
 			SuccessThresholdConfig: []byte(`{"schema_version":1}`),
@@ -664,6 +670,7 @@ func TestRepositoryCreateEvalSessionWithQueuedRunsRollsBackOnInvalidChildRun(t *
 
 	_, err := repo.CreateEvalSessionWithQueuedRuns(ctx, repository.CreateEvalSessionWithQueuedRunsParams{
 		Session: repository.CreateEvalSessionParams{
+			WorkspaceID:            fixture.workspaceID,
 			Repetitions:            2,
 			AggregationConfig:      []byte(`{"schema_version":1,"method":"mean","report_variance":true,"confidence_interval":0.95}`),
 			SuccessThresholdConfig: []byte(`{"schema_version":1}`),

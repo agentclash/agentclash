@@ -322,6 +322,9 @@ func ciRunSummaryLinks(result ciRunResult, scorecard, comparison, releaseGate ma
 		{label: "Comparison", raw: mapString(comparison, "url", "web_url", "comparison_url")},
 		{label: "Release gate", raw: mapString(releaseGate, "url", "web_url")},
 	}
+	for _, projectURL := range result.ProjectURLs {
+		candidates = append(candidates, link{label: "Return to Vibe project", raw: projectURL})
+	}
 	links := make([]string, 0, len(candidates))
 	for _, candidate := range candidates {
 		if safe := ciMarkdownURL(candidate.raw); safe != "" {

@@ -19,11 +19,19 @@ export default defineConfig({
   webServer: process.env.VIBE_TEST_BASE_URL
     ? undefined
     : {
-        command: "npm run dev -- --hostname 127.0.0.1 --port 53517",
+        command: "node e2e/vibe-stack/start-web.mjs",
         url: `${baseURL}/vibe-evals`,
-        reuseExistingServer: true,
+        reuseExistingServer: false,
+        gracefulShutdown: { signal: "SIGTERM", timeout: 20_000 },
         timeout: 120_000,
         env: {
+          VIBE_BROWSER_WEB_PORT: "53517",
+          WORKOS_API_HOSTNAME: "127.0.0.1",
+          WORKOS_API_PORT: "55442",
+          WORKOS_API_HTTPS: "false",
+          NEXT_TELEMETRY_DISABLED: "1",
+          NEXT_PUBLIC_POSTHOG_KEY: "",
+          ANALYTICS_REQUIRED: "false",
           NEXT_PUBLIC_API_URL: "http://127.0.0.1:55440",
           WORKOS_CLIENT_ID: "client_test_vibe",
           WORKOS_API_KEY: "sk_test_not_a_real_key",

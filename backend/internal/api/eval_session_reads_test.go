@@ -30,6 +30,7 @@ func TestRunReadManagerGetEvalSessionReturnsAuthorizedSession(t *testing.T) {
 	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
 		evalSession: repository.EvalSessionWithRuns{
 			Session: domain.EvalSession{
+				WorkspaceID: workspaceID,
 				ID:          sessionID,
 				Status:      domain.EvalSessionStatusQueued,
 				Repetitions: 2,
@@ -76,6 +77,7 @@ func TestRunReadManagerGetEvalSessionReturnsStoredAggregateResult(t *testing.T) 
 	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
 		evalSession: repository.EvalSessionWithRuns{
 			Session: domain.EvalSession{
+				WorkspaceID: workspaceID,
 				ID:          sessionID,
 				Status:      domain.EvalSessionStatusCompleted,
 				Repetitions: 1,
@@ -134,6 +136,7 @@ func TestRunReadManagerGetEvalSessionReturnsStoredNoisyComparisonAggregateAsIs(t
 	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
 		evalSession: repository.EvalSessionWithRuns{
 			Session: domain.EvalSession{
+				WorkspaceID: workspaceID,
 				ID:          sessionID,
 				Status:      domain.EvalSessionStatusCompleted,
 				Repetitions: 3,
@@ -168,34 +171,46 @@ func TestRunReadManagerGetEvalSessionReturnsStoredNoisyComparisonAggregateAsIs(t
 	}
 }
 
-func TestRunReadManagerGetEvalSessionAllowsZeroRunSession(t *testing.T) {
+// A source with no children still needs an authoritative workspace owner.
+func TestRunReadManagerGetEvalSessionRejectsUnownedZeroRunSession(t *testing.T) {
 	sessionID := uuid.New()
 	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
-		evalSession: repository.EvalSessionWithRuns{
-			Session: domain.EvalSession{
-				ID:          sessionID,
-				Status:      domain.EvalSessionStatusQueued,
-				Repetitions: 1,
-			},
-			Runs: nil,
-		},
+		evalSession: repository.EvalSessionWithRuns{Session: domain.EvalSession{ID: sessionID, Status: domain.EvalSessionStatusQueued, Repetitions: 1}},
 	})
+	_, err := manager.GetEvalSession(context.Background(), Caller{UserID: uuid.New(), WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{}}, sessionID)
+	if !errors.Is(err, ErrForbidden) {
+		t.Fatalf("unowned empty source read error = %v, want forbidden", err)
+	}
+}
 
-	result, err := manager.GetEvalSession(context.Background(), Caller{
-		UserID:               uuid.New(),
-		WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{},
-	}, sessionID)
-	if err != nil {
-		t.Fatalf("GetEvalSession returned error: %v", err)
-	}
-	if result.Session.ID != sessionID {
-		t.Fatalf("session id = %s, want %s", result.Session.ID, sessionID)
-	}
-	if result.Summary.RunCounts.Total != 0 {
-		t.Fatalf("total run count = %d, want 0", result.Summary.RunCounts.Total)
-	}
-	if !slices.Contains(result.EvidenceWarnings, "no child runs are attached to this eval session") {
-		t.Fatalf("evidence warnings = %v, want missing child run warning", result.EvidenceWarnings)
+func TestRunReadManagerGetEvalSessionOwnedEmptyAndMixedChildren(t *testing.T) {
+	workspace, foreign := uuid.New(), uuid.New()
+	for _, tc := range []struct {
+		name       string
+		owner      uuid.UUID
+		membership uuid.UUID
+		runs       []domain.Run
+		denied     bool
+	}{
+		{name: "owned empty", owner: workspace, membership: workspace},
+		{name: "foreign empty", owner: foreign, membership: workspace, denied: true},
+		{name: "unowned with membership", membership: workspace, denied: true},
+		{name: "mixed children", owner: workspace, membership: workspace, runs: []domain.Run{{WorkspaceID: workspace}, {WorkspaceID: foreign}}, denied: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			id := uuid.New()
+			manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{evalSession: repository.EvalSessionWithRuns{Session: domain.EvalSession{ID: id, WorkspaceID: tc.owner, Status: domain.EvalSessionStatusQueued, Repetitions: 1}, Runs: tc.runs}})
+			result, err := manager.GetEvalSession(context.Background(), Caller{UserID: uuid.New(), WorkspaceMemberships: map[uuid.UUID]WorkspaceMembership{tc.membership: {WorkspaceID: tc.membership, Role: "workspace_viewer"}}}, id)
+			if tc.denied {
+				if !errors.Is(err, ErrForbidden) {
+					t.Fatalf("error=%v, want forbidden", err)
+				}
+				return
+			}
+			if err != nil || result.Session.ID != id || result.Summary.RunCounts.Total != 0 {
+				t.Fatalf("owned empty read: %+v, %v", result, err)
+			}
+		})
 	}
 }
 
@@ -204,6 +219,7 @@ func TestRunReadManagerGetEvalSessionRejectsForbiddenWorkspaceAccess(t *testing.
 	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
 		evalSession: repository.EvalSessionWithRuns{
 			Session: domain.EvalSession{
+				WorkspaceID: workspaceID,
 				ID:          uuid.New(),
 				Status:      domain.EvalSessionStatusQueued,
 				Repetitions: 1,
@@ -233,8 +249,8 @@ func TestRunReadManagerListEvalSessionsUsesListedSessionsWithoutRefetching(t *te
 	secondSessionID := uuid.New()
 	manager := NewRunReadManager(NewCallerWorkspaceAuthorizer(), &fakeRunReadRepository{
 		evalSessions: []domain.EvalSession{
-			{ID: firstSessionID, Status: domain.EvalSessionStatusQueued, Repetitions: 1},
-			{ID: secondSessionID, Status: domain.EvalSessionStatusQueued, Repetitions: 2},
+			{WorkspaceID: workspaceID, ID: firstSessionID, Status: domain.EvalSessionStatusQueued, Repetitions: 1},
+			{WorkspaceID: workspaceID, ID: secondSessionID, Status: domain.EvalSessionStatusQueued, Repetitions: 2},
 		},
 		evalSessionRuns: map[uuid.UUID][]domain.Run{
 			firstSessionID: {
@@ -293,6 +309,7 @@ func TestGetEvalSessionEndpointReturnsDetail(t *testing.T) {
 		&fakeRunReadService{
 			getEvalSessionResult: GetEvalSessionResult{
 				Session: domain.EvalSession{
+					WorkspaceID: workspaceID,
 					ID:          sessionID,
 					Status:      domain.EvalSessionStatusQueued,
 					Repetitions: 2,
@@ -386,6 +403,7 @@ func TestGetEvalSessionEndpointReturnsStoredAggregateResult(t *testing.T) {
 		&fakeRunReadService{
 			getEvalSessionResult: GetEvalSessionResult{
 				Session: domain.EvalSession{
+					WorkspaceID: workspaceID,
 					ID:          sessionID,
 					Status:      domain.EvalSessionStatusCompleted,
 					Repetitions: 1,
@@ -452,6 +470,7 @@ func TestGetEvalSessionEndpointNormalizesEmptyEvidenceWarnings(t *testing.T) {
 		&fakeRunReadService{
 			getEvalSessionResult: GetEvalSessionResult{
 				Session: domain.EvalSession{
+					WorkspaceID: workspaceID,
 					ID:          sessionID,
 					Status:      domain.EvalSessionStatusCompleted,
 					Repetitions: 1,
@@ -549,6 +568,7 @@ func TestListEvalSessionsEndpointReturnsItems(t *testing.T) {
 				Items: []GetEvalSessionResult{
 					{
 						Session: domain.EvalSession{
+							WorkspaceID: workspaceID,
 							ID:          sessionID,
 							Status:      domain.EvalSessionStatusQueued,
 							Repetitions: 3,
@@ -621,6 +641,7 @@ func TestListEvalSessionsEndpointNormalizesEmptyEvidenceWarnings(t *testing.T) {
 				Items: []GetEvalSessionResult{
 					{
 						Session: domain.EvalSession{
+							WorkspaceID: workspaceID,
 							ID:          sessionID,
 							Status:      domain.EvalSessionStatusQueued,
 							Repetitions: 1,

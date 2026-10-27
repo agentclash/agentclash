@@ -14,6 +14,11 @@ import (
 // ValidateJSON walks tokens before typed decoding. No allocation proportional to
 // an attacker-declared array length, no duplicate fields, no recursive refs.
 func ValidateJSON(raw []byte, l Limits) error {
+	return validateJSON(raw, l, false)
+}
+
+// SDK instance dictionaries may contain inert reference keys; definition imports may not.
+func validateJSON(raw []byte, l Limits, dataInstance bool) error {
 	if len(raw) > l.FileBytes || !utf8.Valid(raw) {
 		return fault("invalid_import", "Content is too large or is not valid UTF-8.")
 	}
@@ -49,7 +54,7 @@ func ValidateJSON(raw []byte, l Limits) error {
 						return fault("import_limit", "Object keys must be unique and bounded.")
 					}
 					seen[k] = true
-					if k == "$ref" || k == "$dynamicRef" || k == "$recursiveRef" {
+					if !dataInstance && (k == "$ref" || k == "$dynamicRef" || k == "$recursiveRef") {
 						return fault("unsupported_schema", "Schema references are not supported by Vibe imports; inline the schema.")
 					}
 				} else if v != '[' || count > l.Array {
@@ -142,6 +147,7 @@ func ImportJSON(raw []byte, l Limits) ([]byte, error) {
 	if len(raw) > l.FileBytes || !utf8.Valid(raw) {
 		return nil, fault("import_limit", "Import is too large or has invalid encoding.")
 	}
+	raw = bytes.TrimPrefix(raw, []byte{0xef, 0xbb, 0xbf}) // Parse without BOM; retention owns the unchanged upload bytes.
 	if strings.HasPrefix(strings.TrimSpace(string(raw)), "{") || strings.HasPrefix(strings.TrimSpace(string(raw)), "[") {
 		return raw, ValidateJSON(raw, l)
 	}

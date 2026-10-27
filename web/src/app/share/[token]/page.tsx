@@ -68,7 +68,7 @@ async function loadPublicShare(token: string): Promise<PublicShareResponse> {
   const api = createApiClient();
   try {
     return await api.get<PublicShareResponse>(
-      `/public/shares/${encodeURIComponent(token)}`,
+      `/public/shares/${encodeURIComponent(token)}`, { cache: "no-store" },
     );
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
@@ -80,6 +80,7 @@ async function loadPublicShare(token: string): Promise<PublicShareResponse> {
 
 function publicTitle(share: PublicShareResponse) {
   const resource = share.resource;
+  if (resource.type === "report_snapshot") return "Selected workspace report";
   if (resource.type === "challenge_pack_version") {
     const pack = resource.pack as { name?: string } | undefined;
     const version = resource.version as { version_number?: number } | undefined;

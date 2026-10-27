@@ -2,6 +2,8 @@
 
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
 
+import { usePortalScope } from "./portal-scope"
+
 import { cn } from "@/lib/utils"
 
 function TooltipProvider({
@@ -39,7 +41,7 @@ function TooltipContent({
     "align" | "alignOffset" | "side" | "sideOffset"
   >) {
   return (
-    <TooltipPrimitive.Portal>
+    <TooltipPrimitive.Portal {...usePortalScope()}>
       <TooltipPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}

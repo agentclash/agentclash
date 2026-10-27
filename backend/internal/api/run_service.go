@@ -230,6 +230,12 @@ func (m *RunCreationManager) CreateRun(ctx context.Context, caller Caller, input
 	for _, deployment := range deployments {
 		deploymentByID[deployment.ID] = deployment
 	}
+	for deploymentID, snapshotID := range input.DeploymentSnapshotIDs {
+		deployment, ok := deploymentByID[deploymentID]
+		if !ok || deployment.AgentDeploymentSnapshotID != snapshotID {
+			return CreateRunResult{}, RunCreationValidationError{Code: "stale_deployment_snapshot", Message: "selected deployment snapshot is no longer current; review the connector again"}
+		}
+	}
 	organizationID := deployments[0].OrganizationID
 	for _, deployment := range deployments[1:] {
 		if deployment.OrganizationID != organizationID {

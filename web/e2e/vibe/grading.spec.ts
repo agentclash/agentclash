@@ -21,7 +21,7 @@ for (const width of [320, 390, 768, 1280, 1440]) {
       const request = route.request(), url = new URL(request.url());
       const send = (body: unknown) => route.fulfill({ contentType: "application/json", body: JSON.stringify(body) });
       if (request.method() === "OPTIONS") return route.fulfill({ status: 204 });
-      if (url.pathname.endsWith("/config")) return send({ enabled: true, grading_recheck: true, defaults: models, models: [] });
+      if (url.pathname.endsWith("/config")) return send({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, grading_recheck: true, defaults: models, models: [...new Set(Object.values(models))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
       if (url.pathname.endsWith("/events")) return route.fulfill({ contentType: "text/event-stream", body: ": connected\n\n" });
       if (url.pathname.endsWith("/case")) return send(result);
       if (request.method() === "POST") {

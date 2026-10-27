@@ -15,7 +15,13 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+type PackPublicationSource struct {
+	DraftID     uuid.UUID
+	Composition json.RawMessage
+}
+
 type PublishChallengePackBundleParams struct {
+	Source         *PackPublicationSource
 	OrganizationID uuid.UUID
 	WorkspaceID    uuid.UUID
 	Bundle         challengepack.Bundle
@@ -146,6 +152,10 @@ func (r *Repository) PublishChallengePackBundle(ctx context.Context, params Publ
 		return PublishedChallengePack{}, fmt.Errorf("insert evaluation spec: %w", err)
 	}
 
+	sourceArtifact, sourceValid, err := publicationSource(ctx, tx, params)
+	if err != nil {
+		return PublishedChallengePack{}, err
+	}
 	challengeIdentityByKey := make(map[string]uuid.UUID, len(params.Bundle.Challenges))
 	for index, challenge := range params.Bundle.Challenges {
 		challengeIdentityID, resolveErr := resolveOrCreateChallengeIdentity(ctx, tx, packID, challenge)
@@ -211,6 +221,7 @@ func (r *Repository) PublishChallengePackBundle(ctx context.Context, params Publ
 				return PublishedChallengePack{}, fmt.Errorf("missing challenge identity for key %s during publish", item.ChallengeKey)
 			}
 
+			caseID := uuid.New()
 			if _, err := tx.Exec(ctx, `
 				INSERT INTO challenge_input_items (
 					id,
@@ -221,8 +232,13 @@ func (r *Repository) PublishChallengePackBundle(ctx context.Context, params Publ
 					payload
 				)
 				VALUES ($1, $2, $3, $4, $5, $6)
-			`, uuid.New(), inputSetID, versionID, challengeIdentityID, item.EffectiveKey(), payloadJSON); err != nil {
+			`, caseID, inputSetID, versionID, challengeIdentityID, item.EffectiveKey(), payloadJSON); err != nil {
 				return PublishedChallengePack{}, fmt.Errorf("insert challenge input item %s/%s: %w", item.ChallengeKey, item.EffectiveKey(), err)
+			}
+			if sourceValid {
+				if _, err := tx.Exec(ctx, `INSERT INTO vibe_published_case_bindings(draft_id,artifact_id,challenge_pack_version_id,case_key,input_set_key,challenge_key,published_case_id) VALUES($1,$2,$3,$4,$5,$6,$7)`, params.Source.DraftID, sourceArtifact, versionID, item.EffectiveKey(), inputSet.Key, item.ChallengeKey, caseID); err != nil {
+					return PublishedChallengePack{}, err
+				}
 			}
 		}
 	}
@@ -409,4 +425,61 @@ func resolveOrCreateChallengeIdentity(ctx context.Context, tx pgx.Tx, challengeP
 func checksum(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
+}
+
+// Trusted builder callers supply the exact frozen composition they published.
+// Changed drafts publish normally, but never claim the original Vibe case mapping.
+func publicationSource(ctx context.Context, tx pgx.Tx, p PublishChallengePackBundleParams) (uuid.UUID, bool, error) {
+	if p.Source == nil {
+		return uuid.Nil, false, nil
+	}
+	var artifact uuid.UUID
+	var hash string
+	err := tx.QueryRow(ctx, "SELECT artifact_id,composition_hash FROM vibe_pack_sources WHERE draft_id=$1 AND workspace_id=$2", p.Source.DraftID, p.WorkspaceID).Scan(&artifact, &hash)
+	if err == pgx.ErrNoRows {
+		return uuid.Nil, false, nil
+	}
+	if err != nil {
+		return uuid.Nil, false, err
+	}
+	var source any
+	if err = json.Unmarshal(p.Source.Composition, &source); err != nil {
+		return uuid.Nil, false, err
+	}
+	canonical, _ := json.Marshal(source)
+	if checksum(canonical) != hash {
+		return uuid.Nil, false, nil
+	}
+	var composition challengepack.Composition
+	if err = json.Unmarshal(p.Source.Composition, &composition); err != nil {
+		return uuid.Nil, false, err
+	}
+	bundle, err := challengepack.ComposeBundle(composition, challengepack.ResolvedPieces{})
+	if err != nil {
+		return uuid.Nil, false, err
+	}
+	// Normalize both through the canonical parser, allowing only its declared defaults.
+	normalize := func(b challengepack.Bundle) ([]byte, error) {
+		y, e := challengepack.BundleYAML(b)
+		if e != nil {
+			return nil, e
+		}
+		parsed, e := challengepack.ParseYAML(y)
+		if e != nil {
+			return nil, e
+		}
+		return challengepack.ManifestJSON(parsed)
+	}
+	a, err := normalize(bundle)
+	if err != nil {
+		return uuid.Nil, false, err
+	}
+	b, err := normalize(p.Bundle)
+	if err != nil {
+		return uuid.Nil, false, err
+	}
+	if checksum(a) != checksum(b) {
+		return uuid.Nil, false, nil
+	}
+	return artifact, true, nil
 }

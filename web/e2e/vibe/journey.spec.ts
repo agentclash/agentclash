@@ -68,7 +68,7 @@ test("new conversations use the server's free model defaults", async ({
         "Access-Control-Allow-Credentials": "true",
       },
       body: JSON.stringify({
-        enabled: true,
+        enabled: true, availability: { guest: { available: true }, workspace: { available: true } },
         free_only: true,
         defaults: { assistant: id, target: id, evaluator: id },
         models: [
@@ -156,7 +156,7 @@ async function mockVibe(
       });
     if (path.endsWith("/config"))
       return send({
-        enabled: true,
+        enabled: true, availability: { guest: { available: true }, workspace: { available: true } },
         defaults: models,
         capabilities: options.previewRules
           ? [
@@ -187,15 +187,17 @@ async function mockVibe(
           "Access-Control-Allow-Credentials": "true",
         },
       });
+    if(path.endsWith("/export")) {
+      const selection=request.postDataJSON(),artifacts=session.document.artifacts.filter(a=>a.id===selection.artifact_id);
+      const runs=session.operations.filter(o=>o.id===selection.result_id);
+      return send({format:"agentclash-evaluation-v2",session_id:session.id,title:session.title||"Fixture project",captured_at:new Date().toISOString(),artifact_id:selection.artifact_id,selection,artifacts,rules:[],runs,items:runs.flatMap(run=>run.results.map(c=>({kind:"case",id:`${run.id}:${c.case_key}`,operation_id:run.id,artifact_id:selection.artifact_id,case_key:c.case_key,hash:`fixture:${run.id}:${c.case_key}`}))),case_mappings:[],omissions:["Unselected history is omitted."]});
+    }
     if (path.endsWith("/case")) {
       const operation = session.operations.find(
         (o) => o.id === path.split("/").at(-2),
       );
-      return send(
-        operation?.results.find(
-          (r) => r.case_key === new URL(request.url()).searchParams.get("key"),
-        ),
-      );
+      const result=operation?.results.find(r=>r.case_key===new URL(request.url()).searchParams.get("key"));
+      return send(result?{...result,evidence_hash:`fixture:${operation!.id}:${result.case_key}`}:{});
     }
     if (path.endsWith("/stop")) {
       const operation = session.operations.find(
@@ -585,6 +587,7 @@ test("describe, review, independently select agent, check, inspect unknowns and 
   ).toHaveValue(models.assistant);
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Run 3 tests" }).click();
+  await page.getByRole("button", {name:"View latest results",exact:true}).click();
   await expect(
     page.getByRole("article", { name: "Evaluation scorecard" }),
   ).toContainText("1 passed · 0 need attention · 2 unresolved");
@@ -655,6 +658,7 @@ for (const viewport of [
     expect(mock.messageCount()).toBe(0);
     await page.getByRole("button", { name: "Send message", exact: true }).click();
     await page.getByRole("button", { name: "Run 3 tests" }).click();
+  await page.getByRole("button", {name:"View latest results",exact:true}).click();
     await expect(page.getByRole("tab", { name: "Results" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -707,9 +711,12 @@ test("draft editor exposes the full instructions and exports the user's exact re
   await page
     .getByRole("button", { name: "Export agent and checks", exact: true })
     .click();
+  await page.getByRole("button",{name:"Download exact export",exact:true}).click();
   const download = await downloadReady;
   const exported = JSON.parse(await readFile((await download.path())!, "utf8"));
-  expect(exported.agent_prompt).toBe(effective);
+  expect(exported.artifacts.find((artifact:{id:string})=>artifact.id===exported.artifact_id).agent_prompt).toBe(effective);
+  expect(exported.manifest.completeness).toBe("exact");
+  expect(exported.selection.scope).toBe("selected");
   expect(mock.messageCount()).toBe(1);
   expect(mock.checkCount()).toBe(0);
 });
@@ -725,6 +732,7 @@ async function createAndCheck(page: Page) {
   await page
     .getByRole("button", { name: "Run 3 tests", exact: true })
     .click();
+  await page.getByRole("tab", {name:"Results",exact:true}).click();
 }
 
 test("Try keeps followups separate from Build and starts fresh on reset", async ({
@@ -893,6 +901,7 @@ test("unapplied instructions cannot run checks; applying creates a ready-to-try 
   expect(mock.checkCount()).toBe(0);
   await page.getByRole("button", { name: "Use these instructions" }).click();
   await page.getByRole("button", { name: "Run 3 tests" }).click();
+  await page.getByRole("button", {name:"View latest results",exact:true}).click();
   await expect(
     page.getByRole("article", { name: "Evaluation scorecard" }),
   ).toBeVisible();

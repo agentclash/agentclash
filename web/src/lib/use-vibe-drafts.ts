@@ -1,40 +1,42 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type SetStateAction } from "react";
-import { readBuildDrafts, writeBuildDrafts, type BuildDrafts } from "./vibe-build-drafts";
+import { useCallback, useRef, useState, type SetStateAction } from "react";
+import { readBuildDrafts, writeBuildDrafts, discardDrafts, draftMemory, emptyDrafts, type BuildDrafts } from "./vibe-build-drafts";
 
-const empty = (): BuildDrafts => ({ version: 1, guide: "", trials: {} });
+const empty = emptyDrafts;
 // One atomic row owns both composers. Hydration cannot persist half a row or
 // replace edits made while HTTP is loading. Storage is only an optional mirror.
 export function useVibeDrafts(initialID?: string) {
-  const [draft, setDraft] = useState(() => ({ id: initialID, value: initialID ? readBuildDrafts(initialID) || empty() : empty() }));
-  const rows = useRef(new Map<string, BuildDrafts>());
-  const active = useRef(initialID);
+  const [draft, setDraft] = useState(() => ({ id: initialID, value: initialID ? draftMemory.get(initialID) || readBuildDrafts(initialID) || empty() : empty() }));
+  const current = useRef(draft);
+  const [storageAvailable, setStorageAvailable] = useState(() => {
+    try { if (typeof sessionStorage !== "undefined") sessionStorage.getItem("vibe-build-drafts:" + (initialID || "")); return true; }
+    catch { return false; }
+  });
   const composerEdits = useRef(0);
   const trialEdits = useRef<Record<string, number>>({});
+  const publish = useCallback((next: { id: string | undefined; value: BuildDrafts }) => {
+    current.current = next;
+    if (next.id) setStorageAvailable(writeBuildDrafts(next.id, next.value.guide, next.value.trials));
+    setDraft(next);
+  }, []);
   const activate = useCallback((id?: string) => {
-    if (active.current !== id) composerEdits.current++;
-    active.current = id;
-    setDraft(old => {
-      if (old.id === id) return old;
-      if (old.id) rows.current.set(old.id, old.value);
-      return { id, value: id ? rows.current.get(id) || readBuildDrafts(id) || empty() : empty() };
-    });
-  }, []);
+    const previous = current.current;
+    if (previous.id === id) return;
+    composerEdits.current++;
+    if (previous.id) writeBuildDrafts(previous.id, previous.value.guide, previous.value.trials);
+    publish({ id, value: id ? draftMemory.get(id) || readBuildDrafts(id) || empty() : empty() });
+  }, [publish]);
   const setContent = useCallback((next: SetStateAction<string>) => {
-    setDraft(old => ({ ...old, value: { ...old.value, guide: typeof next === "function" ? next(old.value.guide) : next } }));
-  }, []);
+    const previous = current.current;
+    publish({ ...previous, value: { ...previous.value, guide: typeof next === "function" ? next(previous.value.guide) : next } });
+  }, [publish]);
   const setTrialBuffers = useCallback((next: SetStateAction<Record<string,string>>) => {
-    setDraft(old => ({ ...old, value: { ...old.value, trials: typeof next === "function" ? next(old.value.trials) : next } }));
-  }, []);
-  useEffect(() => {
-    if (!draft.id) return;
-    rows.current.set(draft.id, draft.value);
-    writeBuildDrafts(draft.id, draft.value.guide, draft.value.trials);
-  }, [draft]);
+    const previous = current.current;
+    publish({ ...previous, value: { ...previous.value, trials: typeof next === "function" ? next(previous.value.trials) : next } });
+  }, [publish]);
   const discard = useCallback((id: string) => {
-    rows.current.delete(id);
-    try { sessionStorage.removeItem("vibe-build-drafts:"+id); } catch { /* Optional storage. */ }
+    discardDrafts(id);
   }, []);
-  return { content: draft.value.guide, trialBuffers: draft.value.trials, setContent, setTrialBuffers, composerEdits, trialEdits, activate, discard };
+  return { storageAvailable, content: draft.value.guide, trialBuffers: draft.value.trials, setContent, setTrialBuffers, composerEdits, trialEdits, activate, discard };
 }

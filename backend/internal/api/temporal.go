@@ -10,6 +10,7 @@ import (
 	"github.com/agentclash/agentclash/runtime/domain"
 	"github.com/agentclash/agentclash/runtime/hostedruns"
 	"github.com/google/uuid"
+	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
 	temporalsdk "go.temporal.io/sdk/client"
 )
@@ -81,11 +82,16 @@ func NewTemporalEvalSessionWorkflowStarter(client TemporalClient) TemporalEvalSe
 func (s TemporalEvalSessionWorkflowStarter) StartEvalSessionWorkflow(ctx context.Context, evalSessionID uuid.UUID) error {
 	workflowID := fmt.Sprintf("%s/%s", workflow.EvalSessionWorkflowName, evalSessionID)
 	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
-		ID:        workflowID,
-		TaskQueue: workflow.WorkflowTaskQueue,
+		ID:                    workflowID,
+		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
+		TaskQueue:             workflow.WorkflowTaskQueue,
 	}, workflow.EvalSessionWorkflowName, workflow.EvalSessionWorkflowInput{
 		EvalSessionID: evalSessionID,
 	})
+	var already *serviceerror.WorkflowExecutionAlreadyStarted
+	if errors.As(err, &already) {
+		return nil
+	}
 	return err
 }
 
@@ -100,11 +106,16 @@ func NewTemporalEvalSetWorkflowStarter(client TemporalClient) TemporalEvalSetWor
 func (s TemporalEvalSetWorkflowStarter) StartEvalSetWorkflow(ctx context.Context, evalSetID uuid.UUID) error {
 	workflowID := fmt.Sprintf("%s/%s", workflow.EvalSetWorkflowName, evalSetID)
 	_, err := s.client.ExecuteWorkflow(ctx, temporalsdk.StartWorkflowOptions{
-		ID:        workflowID,
-		TaskQueue: workflow.WorkflowTaskQueue,
+		ID:                    workflowID,
+		WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE,
+		TaskQueue:             workflow.WorkflowTaskQueue,
 	}, workflow.EvalSetWorkflowName, workflow.EvalSetWorkflowInput{
 		EvalSetID: evalSetID,
 	})
+	var already *serviceerror.WorkflowExecutionAlreadyStarted
+	if errors.As(err, &already) {
+		return nil
+	}
 	return err
 }
 

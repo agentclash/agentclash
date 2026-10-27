@@ -1,3 +1,4 @@
+import { draftMemory } from "@/lib/vibe-build-drafts";
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -10,6 +11,7 @@ let artifact: Artifact;
 const run = vi.fn();
 
 beforeEach(() => {
+  draftMemory.clear(); sessionStorage.clear();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   node = document.createElement("div");
   root = createRoot(node);
@@ -58,16 +60,16 @@ it.each(["contradicted", "unclear", "unavailable"] as const)("does not offer an 
   expect(run).not.toHaveBeenCalled();
 });
 
-it("keeps the tested rules in a collapsed, optional disclosure", async () => {
+it("shows the tested rules before running while allowing a user to collapse them", async () => {
   await act(async () => root.render(<TestSuitePanel artifact={artifact} busy={false} blocked={false} comparison={false}
     rules={[{ id: "window", statement: "Only unopened purchases within 30 days qualify." }]}
     onRun={run} onEdit={vi.fn()} onDirty={vi.fn()} onSave={vi.fn()} onSettings={vi.fn()} />));
   const summary = [...node.querySelectorAll("summary")].find(item => item.textContent === "Rules being tested")!;
   expect(summary).toBeDefined();
   const disclosure = summary.closest("details")!;
-  expect(disclosure.open).toBe(false);
-  await act(async () => summary.click());
   expect(disclosure.open).toBe(true);
+  await act(async () => summary.click());
+  expect(disclosure.open).toBe(false);
   expect(disclosure.textContent).toContain("Only unopened purchases within 30 days qualify.");
 });
 
@@ -102,4 +104,49 @@ it("edits one expectation through its stable case key, preserving other inputs a
   await act(async () => button("Save test changes").click());
   expect(edit).toHaveBeenCalledWith({ artifact_id: "tests", case_changes: [{ action: "update", case_key: "first", expected: "Updated expectation" }] });
   expect(artifact).toEqual(before); expect(run).not.toHaveBeenCalled();
+});
+
+it("restores unsaved expectations after unmount and requires review only when their actual source changes", async () => {
+  artifact.blueprint = { judges: [{ context_from: ["case.expectations.expected_behavior"] }], cases: [{ key: "boundary", payload: { question: "Opened item?" }, expectations: [{ key: "expected_behavior", kind: "text", value: "Decline." }] }] };
+  await render(); await act(async () => button("Edit tests").click());
+  const expected = node.querySelectorAll("textarea")[1];
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(expected, "Explain the policy.");
+    expected.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(async () => root.unmount()); root = createRoot(node); await render();
+  expect(node.querySelectorAll("textarea")[1].value).toBe("Explain the policy.");
+  artifact = { ...artifact, validation: { status: "supported", blueprint_hash: "validation-only", policy_hash: "policy", validator_version: "v2" } };
+  await render(); expect(node.querySelector('[role="alert"]')).toBeNull();
+  const oldSource = artifact.blueprint as { judges: unknown; cases: unknown };
+  artifact = { ...artifact, blueprint: { cases: oldSource.cases, judges: oldSource.judges } };
+  await render(); expect(node.querySelector('[role="alert"]')).toBeNull();
+  artifact = { ...artifact, blueprint: { judges: [{ context_from: ["case.expectations.expected_behavior"] }], cases: [{ key: "boundary", payload: { question: "Opened item?" }, expectations: [{ key: "expected_behavior", kind: "text", value: "Ask purchase age." }] }] } };
+  await render();
+  expect(node.querySelector('[role="alert"]')?.textContent).toContain("saved source changed");
+  expect(button("Save test changes").disabled).toBe(true);
+  await act(async () => button("Keep my draft for this source").click());
+  expect(button("Save test changes").disabled).toBe(false);
+  expect(node.querySelectorAll("textarea")[1].value).toBe("Explain the policy.");
+  await act(async () => button("Cancel").click());
+  expect(node.querySelector("textarea")).toBeNull();
+});
+
+
+it("reconciles same-artifact case history with the visible expectation while preserving drafts", async () => {
+  artifact.blueprint = { judges: [{ context_from: ["case.expectations.expected_behavior"] }], cases: [
+    { key: "a", payload: { question: "A input" }, expectations: [{ key: "expected_behavior", kind: "text", value: "A expectation" }] },
+    { key: "b", payload: { question: "B input" }, expectations: [{ key: "expected_behavior", kind: "text", value: "B expectation" }] },
+  ] };
+  const select = async (selectedCase?: string) => act(async () => root.render(<TestSuitePanel projectID="history-project" selectedCase={selectedCase} onSelectCase={vi.fn()} artifact={artifact} busy={false} blocked={false} comparison={false}
+    onRun={run} onEdit={vi.fn()} onDirty={vi.fn()} onSave={vi.fn()} onSettings={vi.fn()} />));
+  await select("a");
+  const area = node.querySelector("textarea")!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(area, "A unsent change"); area.dispatchEvent(new Event("input", { bubbles: true })); });
+  await select(undefined);
+  expect(node.querySelector("textarea")).toBeNull();
+  await select("b"); expect(node.querySelector("textarea")?.value).toBe("B expectation");
+  await select("a"); expect(node.querySelector("textarea")?.value).toBe("A unsent change");
+  await select("b"); expect(node.querySelector("textarea")?.value).toBe("B expectation");
+  expect(run).not.toHaveBeenCalled();
 });

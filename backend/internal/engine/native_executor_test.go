@@ -23,6 +23,9 @@ func TestNativeExecutorHappyPathWritesFileThenSubmits(t *testing.T) {
 		steps: []providerStep{
 			{
 				validate: func(t *testing.T, request provider.Request) {
+					if request.Temperature != nil || request.MaxOutputTokens != 0 || request.Model != "gpt-4.1" || request.StepTimeout != time.Second {
+						t.Fatal("unexpected provider model, timeout, or sampling controls", request)
+					}
 					if request.BaseURL != "https://models.example.com/v1" {
 						t.Fatalf("base URL = %q", request.BaseURL)
 					}
@@ -81,7 +84,9 @@ func TestNativeExecutorHappyPathWritesFileThenSubmits(t *testing.T) {
 	}
 
 	executor := NewNativeExecutor(client, &sandbox.FakeProvider{NextSession: session}, NoopObserver{})
-	result, err := executor.Execute(context.Background(), nativeExecutionContext())
+	executionContext := nativeExecutionContext()
+	executionContext.Deployment.AgentBuildVersion.ModelSpec = []byte(`{"temperature":0.2,"max_output_tokens":7}`)
+	result, err := executor.Execute(context.Background(), executionContext)
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}

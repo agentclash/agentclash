@@ -7,6 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 from urllib.parse import urlparse
+from fixture import database, deterministic_env, parent_env, run_owned
 
 ROOT=Path(__file__).resolve().parents[2]
 REQUIRED={
@@ -72,26 +73,33 @@ def main():
     parsed=urlparse(dsn)
     if not dsn or parsed.scheme not in {"postgres","postgresql"} or parsed.hostname not in {"127.0.0.1","localhost","::1"} or not parsed.path.lstrip("/").startswith("vibe_test"):
         p.error("VIBE_TEST_DATABASE_URL must name an isolated, migrated local vibe_test database")
+    parent_env(dsn)
     # Do not silently replace a previous result or accidentally run paid tests.
     with args.report.open("x") as output:
         os.chmod(args.report,0o600)
         regex="^("+"|".join(name for names in REQUIRED.values() for name in names)+")$"
-        env=dict(os.environ)
-        for k in list(env):
-            if k.startswith("VIBE_LIVE_"): env.pop(k)
-        process=subprocess.run(["go","test","-p","1","-race","-json","-count=1","-timeout=8m","./internal/vibe","./internal/api","./internal/vibe/interaction","./internal/enquiries","./internal/vibe/inputs","-run",regex],cwd=ROOT/"backend",env=env,capture_output=True,text=True)
+        env=deterministic_env()
+        process=None
+        fixture_problem=None
+        try:
+            with database(dsn, "floor") as child:
+                env["VIBE_TEST_DATABASE_URL"]=child
+                process=run_owned(["go","test","-p","1","-race","-json","-count=1","-timeout=8m","./internal/vibe","./internal/api","./internal/vibe/interaction","./internal/enquiries","./internal/vibe/inputs","-run",regex],name="mandatory-floor",cwd=ROOT/"backend",env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
+        except Exception as error:
+            fixture_problem="owned fixture setup/cleanup failed: " + type(error).__name__
         events=[]
-        for line in process.stdout.splitlines():
+        for line in (process.stdout if process else "").splitlines():
             try: events.append(json.loads(line))
             except ValueError: pass
-        problems=check_events(events,process.returncode)
+        problems=check_events(events,process.returncode if process else 1)
+        if fixture_problem: problems.append(fixture_problem)
         report={"version":1,"mode":"deterministic fake inference; no model accuracy claim","required_tests":sum(map(len,REQUIRED.values())),"passed":not problems,"problems":problems,
                 "events":[{k:e[k] for k in ("Action","Package","Test","Elapsed") if k in e} for e in events if e.get("Action") in {"pass","fail","skip"}]}
         json.dump(report,output,indent=2);output.write("\n")
     print(json.dumps({k:report[k] for k in ("required_tests","passed","problems")},indent=2))
     if problems:
         # Toolchain failures need a diagnostic; do not echo DB passwords/DSNs.
-        diagnostic=process.stderr.replace(dsn,"[database]")
+        diagnostic=(process.stderr if process else "No test process completed; inspect ownership receipts.").replace(dsn,"[database]")
         if parsed.password: diagnostic=diagnostic.replace(parsed.password,"[redacted]")
         print(diagnostic[-4000:],file=sys.stderr)
         raise SystemExit(1)

@@ -21,6 +21,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/vibe"
 	workerapp "github.com/agentclash/agentclash/backend/internal/worker"
 	workflowpkg "github.com/agentclash/agentclash/backend/internal/workflow"
+	"github.com/agentclash/agentclash/runtime/connectors"
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/provider/throttle"
 	"github.com/agentclash/agentclash/runtime/runevents"
@@ -162,7 +163,7 @@ func run() (exitCode int) {
 	}
 
 	httpClient := provider.NewDefaultHTTPClient()
-	hostedRunClient := workerapp.NewHostedRunClient(httpClient, cfg.HostedCallbackBaseURL, cfg.HostedCallbackSecret)
+	hostedRunClient := workerapp.NewHostedRunClient(httpClient, cfg.HostedCallbackBaseURL, cfg.HostedCallbackSecret).WithConnectorRepository(repo)
 	providerRouter := provider.NewDefaultRouter(httpClient, provider.EnvCredentialResolver{})
 	if len(cfg.ProviderThrottle.LimitsByProvider) > 0 {
 		var lim throttle.Limiter
@@ -227,6 +228,7 @@ func run() (exitCode int) {
 		WithStandingsStore(standingsStore).
 		WithHumanTurnStore(repository.NewMultiTurnHumanTurnStore(db))
 	temporalWorker := workerapp.NewTemporalWorker(temporalClient, cfg, repo, providerRouter, sandboxProvider, githubClient, workflowpkg.FakeWorkHooks{
+		ConnectorInvoker:   workerapp.HTTPJSONInvoker{Repository: repo, Client: connectors.Client{HTTP: httpClient}},
 		HostedRunStarter:   hostedRunClient,
 		NativeModelInvoker: nativeModelInvoker,
 		PromptEvalInvoker:  promptEvalInvoker,
@@ -274,7 +276,7 @@ func run() (exitCode int) {
 		go vibe.DispatchOutbox(ctx, temporalClient, vibeStore, logger, vibeService)
 	}
 	// Accounting recovery continues even when new Vibe execution is disabled.
-	go vibe.ReconcileLoop(ctx, vibeStore, vibeConfig, logger)
+	go vibe.ReconcileLoop(ctx, vibeStore, vibeConfig, logger, vibeService.Gate)
 
 	if err := workerapp.RunWithReaper(ctx, cfg, temporalWorker, logger, orphanRunReaper, agentTryoutRetentionReaper, stallReaper); err != nil {
 		logger.Error("worker stopped with error", "error", err)

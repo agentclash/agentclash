@@ -52,18 +52,28 @@ func TestVibeIntegrationTwoDoorImportsPreserveEvidence(t *testing.T) {
 	// A portable export restores only the chosen target/tests, never historical scores.
 	a := vibe.Artifact{ID: uuid.New(), Kind: "test_suite", Title: "Returns", AgentPrompt: "Only unopened items qualify.", Blueprint: json.RawMessage(vibeBlueprint)}
 	exported := map[string]any{"format": "agentclash-evaluation-v1", "artifact_id": a.ID, "artifacts": []vibe.Artifact{a}, "scope": "recreation", "sample": nil, "rules": []any{}, "runs": []any{map[string]any{"state": "COMPLETED", "scorecard": map[string]any{"passed": 999}}}}
-	next, err := store.CreateEvaluation(ctx, root.Actor, root.ID, uuid.New(), "test")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = svc.Import(ctx, next.Actor, next.ID, next.Revision, vibeReliabilityJSON(t, exported)); err != nil {
-		t.Fatal(err)
-	}
-	next, _ = store.GetSession(ctx, next.Actor, next.ID)
-	if len(next.Operations) != 0 || next.Document.Artifacts[0].AgentPrompt != a.AgentPrompt {
-		t.Fatal("import invented a run or changed instructions")
-	}
-	if len(next.Document.Policies) != 0 || len(next.Document.Requirements) != 0 {
-		t.Fatal("unrelated imported claims became requirements")
+	for _, format := range []string{"agentclash-evaluation-v1", "agentclash-evaluation-v2"} {
+		exported["format"] = format
+		if format == "agentclash-evaluation-v2" {
+			exported["manifest"] = map[string]any{"version": 2, "completeness": "partial", "partial_confirmed": true, "missing": []any{map[string]any{"kind": "case", "id": "missing"}}}
+			exported["selection"] = map[string]any{"scope": "selected", "artifact_id": a.ID}
+			exported["evidence"] = []any{}
+			exported["case_mappings"] = []any{}
+			exported["captured_at"] = "2026-10-26T00:00:00Z"
+		}
+		next, err := store.CreateEvaluation(ctx, root.Actor, root.ID, uuid.New(), "test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err = svc.Import(ctx, next.Actor, next.ID, next.Revision, vibeReliabilityJSON(t, exported)); err != nil {
+			t.Fatal(err)
+		}
+		next, _ = store.GetSession(ctx, next.Actor, next.ID)
+		if len(next.Operations) != 0 || next.Document.Artifacts[0].AgentPrompt != a.AgentPrompt {
+			t.Fatal("import invented a run or changed instructions")
+		}
+		if len(next.Document.Policies) != 0 || len(next.Document.Requirements) != 0 {
+			t.Fatal("unrelated imported claims became requirements")
+		}
 	}
 }

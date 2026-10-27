@@ -10,7 +10,7 @@ function evaluation(id: string): Session {
 function buildEvaluation(): Session {
   const build = evaluation("build");
   build.document.evaluation!.door = "build";
-  build.document.artifacts = [{ id: "prototype", kind: "test_suite", title: "Customer email sorter", agent_prompt: "Suggest a label for each email.", accepted: true, source_message_id: "request", proposal_message_id: "prepared", scope_note: "Suggests labels using supplied text.", blueprint: { cases: [{ key: "spam", payload: { question: "You won a prize." }, expectations: [{ key: "expected_behavior", kind: "text", value: "Label as Spam." }] }] } }];
+  build.document.artifacts = [{ id: "prototype", kind: "test_suite", title: "Customer email sorter", agent_prompt: "Suggest a label for each email.", accepted: true, source_message_id: "request", proposal_message_id: "prepared", scope_note: "Suggests labels using supplied text.", blueprint: { judges: [{ context_from: ["case.expectations.expected_behavior"] }], cases: [{ key: "spam", payload: { question: "You won a prize." }, expectations: [{ key: "expected_behavior", kind: "text", value: "Label as Spam." }] }] } }];
   build.document.active_artifact_id = "prototype";
   build.document.messages = [{ id: "request", role: "user", content: "Sort customer emails.", operation_id: "prepare" }, { id: "prepared", role: "assistant", content: "", operation_id: "prepare", artifact_id: "prototype" }];
   build.document.build = { cycle_id: "cycle", phase: "results", clarifications_used: 0, artifact_id: "prototype", check_id: "check" };
@@ -36,6 +36,7 @@ async function serve(page: Page, many = false, prototypes = false) {
   const sessions = new Map([[first.id, first], [second.id, second]]);
   if (many) for (let index = 0; index < 30; index++) {
     const extra = evaluation(`older-${index}`);
+    extra.title=`Customer support for international returns and exchanges ${index}`;
     extra.document.artifacts.push({ id: `artifact-${index}`, kind: "test_suite", title: `Customer support for international returns and exchanges ${index}`,
       agent_prompt: "", blueprint: {}, accepted: false, source_message_id: "source" });
     sessions.set(extra.id, extra);
@@ -48,8 +49,17 @@ async function serve(page: Page, many = false, prototypes = false) {
     const headers = { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" };
     if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { ...headers,
       "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS" } });
-    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, two_door: true, defaults: defaultModels, models: [] } });
+    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) } });
     if (path.endsWith("/saved-checks")) return route.fulfill({ headers, json: [] });
+    if(request.method()==="PATCH"&&path.endsWith("/metadata")){
+      const id=path.split("/sessions/")[1].split("/")[0],state=sessions.get(id)!;
+      const body=request.postDataJSON();posts.push({path,body});
+      if(body.revision!==state.revision)return route.fulfill({status:409,headers,json:{error:{message:"Reload the project"}}});
+      if(body.title!==undefined)state.title=body.title.trim();
+      if(body.archived!==undefined)state.archived_at=body.archived?new Date().toISOString():undefined;
+      state.revision++;state.event_cursor=state.revision;state.updated_at=new Date().toISOString();
+      return route.fulfill({headers,json:state});
+    }
     if (request.method() === "POST") {
       if (path.endsWith("/build-quote")) {
         posts.push({ path, body: request.postDataJSON() });
@@ -70,7 +80,7 @@ async function serve(page: Page, many = false, prototypes = false) {
       posts.push({ path, body: request.postDataJSON() });
       return route.fulfill({ status: 400, headers, json: { error: { message: "Unexpected mutation in navigation test" } } });
     }
-    if (path.endsWith("/sessions")) return route.fulfill({ headers, json: [...sessions.values()] });
+    if (path.endsWith("/sessions")) return route.fulfill({ headers, json: [...sessions.values()].filter(s=>{const mode=new URL(request.url()).searchParams.get("archived");return mode==="all"||(mode==="only"?!!s.archived_at:!s.archived_at)}) });
     const id = path.split("/sessions/")[1]?.split("/")[0];
     const state = sessions.get(id);
     if (path.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(state)}\n\n` });
@@ -81,6 +91,12 @@ async function serve(page: Page, many = false, prototypes = false) {
   if (prototypes) await expect(page.getByRole("button", { name: "Try it yourself", exact: true })).toBeVisible({ timeout: 15_000 });
   else await expect(page.getByRole("heading", { name: "Improve an agent you already have." })).toBeVisible({ timeout: 15_000 });
   return { first, second, sessions, posts, errors };
+}
+
+async function openCase(page: Page, index = 0) {
+  const row = page.locator(".vibe-result-row").nth(index);
+  if (!(await row.evaluate(element => (element as HTMLDetailsElement).open))) await row.locator("summary").click();
+  return row;
 }
 
 test("a stored trial in B survives opening A, switching, editing and refreshing", async ({ page }) => {
@@ -106,7 +122,7 @@ test("a stored trial in B survives opening A, switching, editing and refreshing"
   await expect(trial).toHaveValue("B's edited unsent trial");
   await page.reload();
   await expect(trial).toHaveValue("B's edited unsent trial");
-  await page.getByRole("button", { name: "Back to Vibe Evals" }).click();
+  await page.getByRole("tab", { name: "Agent", exact: true }).click();
   await expect(composer).toHaveValue("B's separate guide draft");
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
@@ -161,7 +177,7 @@ test("navigation preserves active context while another evaluation completes", a
   expect(control.errors).toEqual([]);
 });
 
-test("drawer supports keyboard dismissal, focus return and source selection on small screens", async ({ page }, info) => {
+test("drawer supports keyboard dismissal, focus return and source selection on small screens", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   const control = await serve(page);
@@ -170,7 +186,6 @@ test("drawer supports keyboard dismissal, focus return and source selection on s
   const drawer = page.getByRole("dialog", { name: "Your agents" });
   await expect(drawer).toBeVisible();
   await expect(drawer).toHaveCSS("opacity", "1");
-  await page.screenshot({ path: info.outputPath("sidebar-mobile.png") });
   await page.keyboard.press("Escape");
   await expect(drawer).toBeHidden();
   await expect(trigger).toBeFocused();
@@ -179,29 +194,30 @@ test("drawer supports keyboard dismissal, focus return and source selection on s
   await expect(drawer).toBeHidden();
   await expect(page.getByLabel("New agent choices", { exact: true })).toBeFocused();
   await page.getByRole("button", { name: "Back to your evaluation" }).click();
-  await page.getByRole("button", { name: "Paste agent instructions", exact: true }).click();
+  await page.getByRole("button", { name: "Try my saved instructions", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Improve an agent you already have." })).toBeHidden();
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
 });
 
-test("entry, context label and composer fit mobile, desktop and zoom-sized layouts", async ({ page }, info) => {
+test("entry, context label and composer fit mobile, desktop and zoom-sized layouts", async ({ page }) => {
   const control = await serve(page);
   for (const width of [320, 390, 640, 768, 1280, 1440]) {
     await page.setViewportSize({ width, height: width === 640 ? 450 : 900 });
-    await expect(page.getByLabel("Active evaluation", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Paste agent instructions", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", {name:"Improve an agent you already have.",exact:true})).toBeVisible();
+    await expect(page.getByRole("button", { name: "Try my saved instructions", exact: true })).toBeVisible();
     const dock = page.getByTestId("vibe-composer-dock");
     await expect(dock).toBeVisible();
-    const dockBox = await dock.boundingBox();
-    expect(dockBox!.y + dockBox!.height).toBeLessThanOrEqual((await page.evaluate(() => innerHeight)) + 1);
+    await expect.poll(async () => {
+      const box = await dock.boundingBox();
+      return box ? box.y + box.height - await page.evaluate(() => innerHeight) : Infinity;
+    }).toBeLessThanOrEqual(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const input = page.getByRole("textbox", { name: "Message Vibe Evals" });
     await input.fill("A long description ".repeat(120));
     await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeVisible();
     expect((await input.boundingBox())!.height).toBeLessThanOrEqual(240);
     await input.fill("");
-    await page.screenshot({ path: info.outputPath(`entry-${width}.png`), fullPage: true });
   }
   await page.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
   await expect(page.getByRole("button", { name: "Expand sidebar", exact: true })).toBeVisible();
@@ -256,6 +272,7 @@ test("dismissing the extra-run quote restores focus without submitting a paid ru
   const control = await serve(page);
   control.sessions.set("build", buildEvaluation());
   await page.goto("/vibe-evals?session=build");
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
   const actions = page.getByRole("region", { name: "Next actions for this version" });
   await expect(actions).toBeVisible();
   await actions.locator("summary").filter({ hasText: "More ways to check" }).click();
@@ -267,26 +284,244 @@ test("dismissing the extra-run quote restores focus without submitting a paid ru
   expect(control.posts.map(post => post.path)).toEqual(["/v1/vibe/sessions/build/build-quote"]);
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
-  await expect(page.getByRole("textbox", { name: "Message Vibe Evals" })).toBeFocused();
+  await expect(actions.getByRole("button", { name: "See cost and continue" })).toBeFocused();
   expect(control.posts.map(post => post.path)).toEqual(["/v1/vibe/sessions/build/build-quote"]);
   expect(control.errors).toEqual([]);
 });
 
-test("long evaluation titles scroll inside the sidebar and saved work stays accessible", async ({ page }, info) => {
+test("long evaluation titles scroll inside the sidebar and saved work stays accessible", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   const control = await serve(page, true);
   const list = page.getByRole("navigation", { name: "Your agents" });
-  await expect(list.locator("button")).toHaveCount(32);
+  await expect(list.locator("[data-evaluation-id]")).toHaveCount(32);
   expect(await list.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
   const title = list.locator(".vibe-sidebar-item-copy > span").last();
-  expect(await title.evaluate(element => element.scrollWidth > element.clientWidth)).toBe(true);
+  expect(await title.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   await list.locator("button").last().scrollIntoViewIfNeeded();
   await expect(page.getByRole("button", { name: "Saved work", exact: true })).toBeInViewport();
-  await page.screenshot({ path: info.outputPath("sidebar-history.png") });
   await page.getByRole("button", { name: "Saved work", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Your saved work" })).toBeVisible();
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.locator('[data-evaluation-id="first"]')).toHaveAttribute("aria-current", "page");
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
+});
+
+
+test("canonical Tests preserves an unsaved case through results, project switching and reload, with Back restoring the view", async ({ page }) => {
+  const control = await serve(page, false, true);
+  await page.getByRole("tab", { name: "Tests", exact: true }).click();
+  await expect(page).toHaveURL(/view=tests/);
+  await page.getByRole("button", { name: "Edit tests", exact: true }).click();
+  const expectation = page.getByRole("textbox", { name: "What should happen", exact: true });
+  await expectation.fill("Keep this unsaved expectation.");
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
+  await expect(page).toHaveURL(/view=results/);
+  await page.goBack(); await expect(page).toHaveURL(/view=tests/);
+  await expect(expectation).toHaveValue("Keep this unsaved expectation.");
+  await page.locator('[data-evaluation-id="second"]').click();
+  await page.locator('[data-evaluation-id="first"]').click();
+  await expect(page).toHaveURL(/view=tests/);
+  await expect(expectation).toHaveValue("Keep this unsaved expectation.");
+  await page.reload(); await expect(expectation).toHaveValue("Keep this unsaved expectation.");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "1 test is ready", exact: true })).toBeFocused();
+  expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
+});
+
+test("same-artifact case Back and Forward restores the visible expectation without inference", async ({ page }) => {
+  const control = await serve(page, false, true);
+  const artifact = control.first.document.artifacts[0];
+  const blueprint = artifact.blueprint as { cases: unknown[] };
+  blueprint.cases.push({ key: "invoice", payload: { question: "Invoice attached." }, expectations: [{ key: "expected_behavior", kind: "text", value: "Label as Billing." }] });
+  await page.reload();
+  await page.getByRole("tab", { name: "Tests", exact: true }).click();
+  await (await openCase(page, 0)).getByRole("button", {name:"Edit this expectation",exact:true}).click();
+  const expectation = page.locator('[aria-label="Your tests"] textarea');
+  await expect(expectation).toHaveValue("Label as Spam.");
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await (await openCase(page, 1)).getByRole("button", {name:"Edit this expectation",exact:true}).click();
+  await expect(expectation).toHaveValue("Label as Billing.");
+  await page.goBack(); await expect(expectation).toHaveCount(0);
+  await page.goBack(); await expect(expectation).toHaveValue("Label as Spam.");
+  await page.goForward(); await expect(expectation).toHaveCount(0);
+  await page.goForward(); await expect(expectation).toHaveValue("Label as Billing.");
+  expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
+});
+
+test("workspace geometry, scoped portal appearance and reading focus adapt at every specified boundary", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+  const control = await serve(page, false, true);
+  for (const width of [390, 600, 601, 1023, 1024, 1279, 1280, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    // Resize preserves the utility value; close the sheet to inspect main content.
+    const close = page.getByRole("button", { name: "Close Guide", exact: true });
+    if (width < 1280 && await close.isVisible()) await close.click();
+    await page.getByRole("button", { name: "Details", exact: true }).click();
+    const appearance = page.getByLabel("Appearance", { exact: true });
+    await appearance.selectOption("light");
+    const geometry = await page.evaluate(() => {
+      const sidebar = document.querySelector<HTMLElement>(".vibe-sidebar")!;
+      const utility = document.querySelector<HTMLElement>('[data-slot="sheet-content"], .vibe-utility')!;
+      const popup = getComputedStyle(utility);
+      const backdrop = document.querySelector<HTMLElement>('[data-slot="sheet-overlay"]');
+      return { width: innerWidth, sidebar: getComputedStyle(sidebar).display === "none" ? 0 : sidebar.getBoundingClientRect().width, utility: utility.getBoundingClientRect().width, height: utility.getBoundingClientRect().height, background: popup.backgroundColor, color: popup.color, transition: popup.transitionDuration, backdropMotion: backdrop ? getComputedStyle(backdrop).transitionDuration : null, overflow: document.documentElement.scrollWidth > innerWidth, globalTheme: document.documentElement.classList.contains("dark") };
+    });
+    expect(geometry.sidebar).toBe(width >= 1024 ? 252 : 0);
+    expect(geometry.utility).toBe(width >= 1280 ? 352 : width <= 600 ? width : 480);
+    if (width <= 600) expect(geometry.height).toBe(900);
+    expect(geometry.background).toBe("rgb(255, 255, 255)"); expect(geometry.color).toBe("rgb(37, 36, 31)");
+    expect(geometry.transition).toBe("0s"); if (width < 1280) expect(geometry.backdropMotion).toBe("0s");
+    expect(geometry.overflow).toBe(false); expect(geometry.globalTheme).toBe(true);
+    await appearance.selectOption("dark");
+    const utility = page.locator(width >= 1280 ? ".vibe-utility" : '[data-slot="sheet-content"]');
+    await expect(utility).toHaveCSS("background-color", "rgb(25, 25, 22)");
+    await appearance.selectOption("system");
+    await expect(utility).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    await page.getByRole("button", { name: "Close Details", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Details", exact: true })).toBeFocused();
+  }
+  await page.getByRole("button", { name: "Guide", exact: true }).click();
+  await page.getByRole("button", { name: "New response", exact: true }).click();
+  await expect(page.getByLabel("Guide response", { exact: true })).toBeFocused();
+  await page.getByRole("tab", { name: "Tests", exact: true }).click();
+  await openCase(page);
+  await page.getByRole("button", { name: "Ask Guide about this test", exact: true }).click();
+  await expect(page.getByLabel("Guide reference", { exact: true })).toContainText("You won a prize.");
+  await expect(page.getByRole("textbox", { name: "Message Vibe Evals" })).toBeFocused();
+  expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
+});
+
+
+test("remaining 320 and 768 layouts retain contrast, scaled text and utility focus", async ({ page }) => {
+  await page.setViewportSize({width:320,height:900});
+  await page.emulateMedia({colorScheme:"dark",reducedMotion:"reduce"});
+  const control=await serve(page,false,true);
+  for(const width of [320,768]) {
+    await page.setViewportSize({width,height:900});
+    await page.getByRole("button",{name:"Details",exact:true}).click();
+    const popup=page.locator('[data-slot="sheet-content"]');
+    const appearance=page.getByLabel("Appearance",{exact:true});
+    await appearance.selectOption("system");
+    await expect(popup).toHaveCSS("background-color","rgb(25, 25, 22)");
+    await expect(popup).toHaveCSS("color","rgb(238, 236, 229)");
+    await appearance.selectOption("light");
+    await expect(popup).toHaveCSS("background-color","rgb(255, 255, 255)");
+    const geometry=await popup.evaluate(el=>({width:el.getBoundingClientRect().width,height:el.getBoundingClientRect().height,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color,transition:getComputedStyle(el).transitionDuration,overflow:document.documentElement.scrollWidth>innerWidth}));
+    expect(geometry.width).toBe(width<=600?width:480); expect(geometry.height).toBe(900); expect(geometry.overflow).toBe(false); expect(geometry.transition).toBe("0s");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button",{name:"Details",exact:true})).toBeFocused();
+  }
+  // Text-only enlargement doubles each element's computed font size; this is
+  // deterministic Linux coverage, not a claim about Safari or physical zoom.
+  await page.setViewportSize({width:768,height:900});
+  await page.evaluate(()=> { const elements=[...document.querySelectorAll<HTMLElement>(".vibe-workspace *")]; const sizes=elements.map(el=>parseFloat(getComputedStyle(el).fontSize)); elements.forEach((el,i)=>{el.style.fontSize=`${sizes[i]*2}px`;}); });
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.emulateMedia({forcedColors:"active"});
+  await page.getByRole("button",{name:"Details",exact:true}).click();
+  const forced=await page.locator('[data-slot="sheet-content"]').evaluate(el=>({forced:matchMedia("(forced-colors: active)").matches,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));
+  expect(forced.forced).toBe(true); expect(forced.background).not.toBe(forced.color);
+  await page.keyboard.press("Escape"); await expect(page.getByRole("button",{name:"Details",exact:true})).toBeFocused();
+  expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
+});
+
+
+test("an explicit pre-run Guide reference submits only its identity and the user's question", async ({page}) => {
+ const control=await serve(page,false,true);
+ await page.getByRole("tab",{name:"Tests",exact:true}).click();
+ await openCase(page);
+ await page.getByRole("button",{name:"Ask Guide about this test",exact:true}).click();
+ expect(control.posts).toHaveLength(0);
+ await page.getByRole("textbox",{name:"Message Vibe Evals"}).fill("Explain this example.");
+ await page.getByRole("button",{name:"Send message",exact:true}).click();
+ await expect.poll(()=>control.posts.length).toBe(1);
+ expect(control.posts[0].body).toMatchObject({kind:"message",content:"Explain this example.",artifact_id:"prototype",viewed_case_key:"spam"});
+ expect(control.posts[0].body).not.toHaveProperty("baseline_id");
+ expect(JSON.stringify(control.posts[0].body)).not.toContain("Label as Spam.");
+ // The fake boundary rejects inference; request construction is the owner here.
+ await expect(page.getByRole("alert").filter({hasText:"Unexpected mutation in navigation test"}).first()).toBeVisible();
+ expect(control.errors).toEqual([]);
+});
+
+test("Settings descendants retain readable scoped appearance including warning, control and focus states", async ({page}) => {
+  await page.setViewportSize({width:1440,height:900});
+  await page.emulateMedia({colorScheme:"light",reducedMotion:"reduce"});
+  const control=await serve(page,false,true);
+  await page.route("**/v1/vibe/config",route=>route.fulfill({headers:{"Access-Control-Allow-Origin":new URL(page.url()).origin,"Access-Control-Allow-Credentials":"true"},json:{enabled:true,two_door:true,local_testing:true,defaults:defaultModels,models:[...new Set([...Object.values(defaultModels),"fixture/alternative"])].map(id=>({id,name:id})),availability:{guest:{available:true},workspace:{available:true}}}}));
+  control.first.operations[1].state="FAILED";
+  control.first.operations[1].error={code:"provider_unavailable",message:"Fixture provider is unavailable."};
+  await page.reload(); await page.getByRole("tab",{name:"Results",exact:true}).click();
+  const globalBefore=await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue("--builder-fg-muted"));
+  await page.getByRole("button",{name:"Details",exact:true}).click();
+  for(const [appearance,system] of [["light","dark"],["dark","light"],["system","light"],["system","dark"]] as const) {
+    await page.emulateMedia({colorScheme:system,reducedMotion:"reduce"});
+    await page.getByLabel("Appearance",{exact:true}).selectOption(appearance);
+    await page.getByRole("complementary",{name:"Details utility"}).getByRole("button",{name:"Settings",exact:true}).click();
+    const dialog=page.getByRole("dialog",{name:"Settings and details"});
+    const model=dialog.getByLabel("Assistant model",{exact:true});
+    await model.focus(); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab");
+    const action=dialog.getByRole("button",{name:"Import a test pack",exact:true}); await action.hover();
+    const measurement=await dialog.evaluate(popup=> {
+      const canvas=document.createElement("canvas"), context=canvas.getContext("2d")!;
+      const rgba=(color:string)=>{context.clearRect(0,0,1,1);context.fillStyle=color;context.fillRect(0,0,1,1);return [...context.getImageData(0,0,1,1).data].map((v,i)=>i===3?v/255:v);};
+      const blend=(fg:number[],bg:number[])=>fg.slice(0,3).map((v,i)=>v*fg[3]+bg[i]*(1-fg[3]));
+      const background=(element:Element)=>{const layers:number[][]=[];for(let el:Element|null=element;el;el=el.parentElement){const c=rgba(getComputedStyle(el).backgroundColor);layers.push(c);if(c[3]===1)break;}return layers.reverse().reduce((bg,c)=>blend(c,bg),[255,255,255]);};
+      const luminance=(c:number[])=>c.map(v=>{const n=v/255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4;}).reduce((sum,v,i)=>sum+v*[.2126,.7152,.0722][i],0);
+      const ratio=(a:number[],b:number[])=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
+      const sample=(element:Element)=>{const style=getComputedStyle(element),bg=background(element),fg=blend(rgba(style.color),bg);return {text:element.textContent?.trim().slice(0,80),color:style.color,background:bg,contrast:ratio(fg,bg)};};
+      const select=popup.querySelector<HTMLSelectElement>('[aria-label="Assistant model"]')!, css=getComputedStyle(select), bg=background(select);
+      const help=[...popup.querySelectorAll("p")].filter(el=>/Plans the check|Generates replies|Grades replies|Model changes apply/.test(el.textContent||""));
+      const labels=[...popup.querySelectorAll("label")].filter(el=>el.querySelector('select[aria-label$=" model"]'));
+      const warning=[...document.querySelectorAll('[role="alert"]')].find(el=>el.textContent?.includes("Fixture provider is unavailable."))!;
+      const ringColor=[...css.boxShadow.matchAll(/(?:rgba?|oklch|color)\([^)]*\)/g)].map(match=>match[0]).filter(color=>rgba(color)[3]>0).at(-1);
+      const action=[...popup.querySelectorAll("button")].find(button=>button.textContent?.includes("Import a test pack"))!;
+      return {action:sample(action),actionBorderContrast:ratio(blend(rgba(getComputedStyle(action).borderTopColor),background(action)),background(action)),labels:labels.map(sample),help:help.map(sample),control:sample(select),warning:sample(warning),border:css.borderTopColor,borderContrast:ratio(blend(rgba(css.borderTopColor),bg),bg),focus:{visible:select.matches(":focus-visible"),shadow:css.boxShadow,contrast:ringColor?ratio(blend(rgba(ringColor),bg),bg):0}};
+    });
+    expect(measurement.labels.length).toBe(3); expect(measurement.help.length).toBe(4);
+    for(const row of [...measurement.labels,...measurement.help,measurement.control,measurement.warning,measurement.action]) expect(row.contrast,`${appearance}/${system}: ${row.text}`).toBeGreaterThanOrEqual(4.5);
+    expect(measurement.borderContrast).toBeGreaterThanOrEqual(3); expect(measurement.actionBorderContrast).toBeGreaterThanOrEqual(3);
+    expect(measurement.focus.visible).toBe(true); expect(measurement.focus.contrast).toBeGreaterThanOrEqual(3);
+    await expect(action).toBeVisible();
+    await dialog.getByRole("button",{name:"Close",exact:true}).click();
+  }
+  expect(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue("--builder-fg-muted"))).toBe(globalBefore);
+  expect(control.posts).toHaveLength(0);expect(control.errors).toEqual([]);
+});
+
+test("library search rename archive and sidebar preference preserve full touch and keyboard titles without running",async({page})=>{
+ const control=await serve(page,true);
+ const search = page.getByRole("searchbox",{name:"Search loaded projects"});
+ const assertSearchAffordance = async () => {
+   const control = await search.evaluate(input => {
+     const style=getComputedStyle(input), rgb=(value:string)=>value.match(/[\d.]+/g)!.slice(0,3).map(Number);
+     const luminance=(value:string)=>rgb(value).map(v=>{const n=v/255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4;}).reduce((total,v,i)=>total+v*[.2126,.7152,.0722][i],0);
+     const border=luminance(style.borderTopColor), background=luminance(style.backgroundColor);
+     return {height:input.getBoundingClientRect().height,border:parseFloat(style.borderTopWidth),contrast:(Math.max(border,background)+.05)/(Math.min(border,background)+.05)};
+   });
+   expect(control.height).toBeGreaterThanOrEqual(44); expect(control.border).toBeGreaterThanOrEqual(1); expect(control.contrast).toBeGreaterThanOrEqual(3);
+ };
+ await assertSearchAffordance();
+ await search.fill("exchanges 29");
+ await expect(page.locator("[data-evaluation-id]")).toHaveCount(1);
+ await page.locator('[data-evaluation-id="older-29"]').click();
+ await page.getByRole("button",{name:"Rename project",exact:true}).click();
+ const title="International customer support – returns, exchanges, warranty exceptions and multilingual delivery questions for the autumn project";
+ await page.getByRole("textbox",{name:"Project title",exact:true}).fill(title);
+ await page.getByRole("textbox",{name:"Project title",exact:true}).press("Enter");
+ await expect(page.getByRole("button",{name:"Rename project",exact:true})).toBeVisible();
+ await page.getByRole("searchbox",{name:"Search loaded projects"}).fill("autumn project");
+ const row=page.locator('[data-evaluation-id="older-29"]');await expect(row).toContainText(title);
+ await row.focus();expect(await row.locator('.vibe-project-full-title').evaluate(node=>node.scrollHeight<=node.clientHeight+1)).toBe(true);
+ await page.getByRole("button",{name:"Archive project",exact:true}).click();await expect(row).toHaveCount(0);
+ await page.getByLabel("Project archive filter").selectOption("only");await expect(row).toHaveCount(1);
+ await page.getByRole("button",{name:"Restore project",exact:true}).click();await expect(row).toHaveCount(0);
+ await page.getByLabel("Project archive filter").selectOption("exclude");await expect(row).toHaveCount(1);
+ await page.getByRole("button",{name:"Collapse sidebar",exact:true}).click();await page.reload();await expect(page.getByRole("button",{name:"Expand sidebar",exact:true})).toBeVisible();
+ await page.setViewportSize({width:390,height:844});if(await page.getByRole("button",{name:"Close Guide",exact:true}).isVisible())await page.getByRole("button",{name:"Close Guide",exact:true}).click();await page.getByRole("button",{name:"Open agents",exact:true}).click();
+ const mobile=page.getByRole("dialog");await expect(mobile.locator('[data-evaluation-id="older-29"]')).toContainText(title);
+ await assertSearchAffordance();
+ expect(await mobile.locator('[data-evaluation-id="older-29"] .vibe-project-full-title').evaluate(node=>node.scrollHeight<=node.clientHeight+1)).toBe(true);
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+ expect(control.posts.every(p=>p.path.endsWith('/metadata'))).toBe(true);expect(control.errors).toEqual([]);
 });

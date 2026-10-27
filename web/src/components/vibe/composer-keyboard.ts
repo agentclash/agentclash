@@ -11,6 +11,8 @@ export function sendOnEnter(
     event.keyCode === 229
   )
     return;
+  const touch = typeof window.matchMedia === "function" && window.matchMedia("(any-pointer: coarse)").matches;
+  if (touch && !event.metaKey && !event.ctrlKey) return;
   event.preventDefault();
   send();
 }

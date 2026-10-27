@@ -60,6 +60,7 @@ type BuildQuoteRequest struct {
 	Models             Models           `json:"models"`
 }
 type BuildQuote struct {
+	ServerTime    time.Time         `json:"server_time,omitempty"`
 	TokenBound    int               `json:"token_bound,omitempty"`
 	Version       int               `json:"version,omitempty"`
 	ID            uuid.UUID         `json:"id"`
@@ -113,7 +114,8 @@ func (s *Service) QuoteBuild(ctx context.Context, actor string, id uuid.UUID, re
 		}
 	}
 	buildPolicy, _ := authoringPolicyFor(buildAuthoringVersion)
-	quote := BuildQuote{Version: 1, ID: uuid.New(), Request: request, Cases: 3, MaxCalls: 2*buildPolicy.Calls + 6, ExpiresAt: timestamp().Add(30 * time.Minute), Profiles: map[string]string{}}
+	now := timestamp()
+	quote := BuildQuote{ServerTime: now, Version: 1, ID: uuid.New(), Request: request, Cases: 3, MaxCalls: 2*buildPolicy.Calls + 6, ExpiresAt: now.Add(30 * time.Minute), Profiles: map[string]string{}}
 	if s.Config.MaterialBuild {
 		quote.Version = 2
 	}

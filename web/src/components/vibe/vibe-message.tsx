@@ -1,4 +1,6 @@
 "use client";
+import { useId, useState } from "react";
+import { VibeButton } from "./vibe-button";
 import { motion, useReducedMotion } from "framer-motion";
 import { ClashMark } from "@/components/marketing/clash-mark";
 import type { Session } from "@/lib/vibe";
@@ -14,6 +16,9 @@ export function Message({
   animate?: boolean;
 }) {
   const reduced = useReducedMotion();
+  const [expanded, setExpanded] = useState(false);
+  const id = useId();
+  const long = message.content.length > 1600;
   return (
     <motion.div
       className={`vibe-message ${message.role === "user" ? "vibe-message-user" : ""}`}
@@ -28,7 +33,8 @@ export function Message({
           Vibe Evals
         </p>
       )}
-      <SafeMarkdown>{message.content}</SafeMarkdown>
+      <div id={id} className="vibe-reply-body" data-collapsed={long && !expanded || undefined} onFocusCapture={() => setExpanded(true)}><SafeMarkdown>{message.content}</SafeMarkdown></div>
+      {long && <VibeButton aria-controls={id} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>{expanded ? "Show less reply" : "Show full reply"}</VibeButton>}
     </motion.div>
   );
 }

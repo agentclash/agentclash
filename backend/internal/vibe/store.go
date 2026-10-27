@@ -75,12 +75,12 @@ func (s *Store) Authorize(ctx context.Context, session Session, write bool) erro
 	return authorize(ctx, s.DB, session.Actor, session.WorkspaceID, write)
 }
 
-const sessionSelect = `SELECT id,actor,workspace_id,workspace_id IS NULL,revision,title,document,updated_at,saved_draft_id FROM vibe_sessions WHERE id=$1 AND deleted_at IS NULL`
+const sessionSelect = `SELECT id,actor,workspace_id,workspace_id IS NULL,revision,title,document,updated_at,saved_draft_id,archived_at FROM vibe_sessions WHERE id=$1 AND deleted_at IS NULL`
 
 func scanSession(row pgx.Row) (Session, error) {
 	v := Session{Operations: []Operation{}}
 	var doc []byte
-	err := row.Scan(&v.ID, &v.Actor, &v.WorkspaceID, &v.Anonymous, &v.Revision, &v.Title, &doc, &v.UpdatedAt, &v.SavedDraftID)
+	err := row.Scan(&v.ID, &v.Actor, &v.WorkspaceID, &v.Anonymous, &v.Revision, &v.Title, &doc, &v.UpdatedAt, &v.SavedDraftID, &v.ArchivedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return v, fault("not_found", "Conversation is unavailable.")
 	}
@@ -150,7 +150,7 @@ func (s *Store) createSessionTx(ctx context.Context, tx pgx.Tx, actor string, ws
 		t := actor
 		trial = &t
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO vibe_sessions(id,actor,workspace_id,trial_key,document) VALUES($1,$2,$3,$4,$5)`, id, actor, ws, trial, raw(d)); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO vibe_sessions(id,actor,workspace_id,trial_key,document,title) VALUES($1,$2,$3,$4,$5,CASE WHEN $5::jsonb#>>'{evaluation,door}'='build' THEN 'New prototype ' ELSE 'New evaluation ' END||left($1::uuid::text,8))`, id, actor, ws, trial, raw(d)); err != nil {
 		return Session{}, err
 	}
 	return scanSession(tx.QueryRow(ctx, sessionSelect, id))
@@ -213,13 +213,13 @@ func (s *Store) GetSession(ctx context.Context, actor string, id uuid.UUID) (Ses
 		}
 	}
 	v.ServerTime = timestamp()
+	if err = populateValidationReviews(ctx, tx, &v); err != nil {
+		return v, err
+	}
 	if err = populateProgress(ctx, tx, &v); err != nil {
 		return v, err
 	}
 	if err = s.populateRetryEligibility(ctx, tx, &v); err != nil {
-		return v, err
-	}
-	if err = tx.QueryRow(ctx, "SELECT COALESCE(max(id),0) FROM vibe_events WHERE session_id=$1", id).Scan(&v.EventCursor); err != nil {
 		return v, err
 	}
 	return v, tx.Commit(ctx)
@@ -228,7 +228,7 @@ func (s *Store) GetSession(ctx context.Context, actor string, id uuid.UUID) (Ses
 type scanner interface{ Scan(...any) error }
 
 const operationSelect = `SELECT id,session_id,actor,kind,state,billing,models,input,max_cost,actual_cost,model_calls,error,created_at,deadline,conversation_decision,completion_receipt FROM vibe_operations`
-const operationSummarySelect = `SELECT id,session_id,actor,kind,state,billing,models,jsonb_strip_nulls(jsonb_build_object('source',input->'source','grading',input->'grading','target_config',input->'target_config','authoring_version',input->'authoring_version','submission',jsonb_build_object('baseline_id',input#>'{submission,baseline_id}','retry_of',input#>'{submission,retry_of}'))),max_cost,actual_cost,model_calls,error,created_at,deadline,conversation_decision,completion_receipt FROM vibe_operations`
+const operationSummarySelect = `SELECT id,session_id,actor,kind,state,billing,models,jsonb_strip_nulls(jsonb_build_object('regrade_source',input->'regrade_source','regrade_of',input->'regrade_of','evidence_provenance',input->'evidence_provenance','artifact',jsonb_build_object('id',input#>'{artifact,id}'),'case_keys',input->'case_keys','source',input->'source','grading',input->'grading','target_config',input->'target_config','authoring_version',input->'authoring_version','submission',jsonb_build_object('kind',kind,'retry_source_result_ref',input#>'{submission,retry_source_result_ref}','baseline_id',input#>'{submission,baseline_id}','retry_of',input#>'{submission,retry_of}'))),max_cost,actual_cost,model_calls,error,created_at,deadline,conversation_decision,completion_receipt FROM vibe_operations`
 
 func scanOperation(row scanner) (Operation, error) {
 	var o Operation
@@ -261,6 +261,7 @@ func scanOperation(row scanner) (Operation, error) {
 	o.RetryOfOperationID = p.Submission.RetryOf
 	o.Source = p.Source
 	o.Grading, o.TargetConfig = p.Grading, p.TargetConfig
+	populateResultEvidence(&o, p)
 	if len(issue) > 0 {
 		err = json.Unmarshal(issue, &o.Error)
 	}
@@ -341,6 +342,8 @@ func (s *Store) GetCase(ctx context.Context, actor string, id uuid.UUID, key str
 	if err = json.Unmarshal(data, &result); err != nil {
 		return result, err
 	}
+	result.EvidenceHash = ""
+	result.EvidenceHash = Hash(raw(result))
 	if result.Expected == "" {
 		// Older runs stored a shared rule, not per-case expectations. Recover
 		// only their frozen declaration; never use the currently edited agent.
@@ -420,6 +423,9 @@ func (s *Store) updateDocument(ctx context.Context, tx pgx.Tx, v Session) error 
 	return err
 }
 func (s *Store) Edit(ctx context.Context, actor string, id uuid.UUID, revision int64, fn func(*Session) error) error {
+	return s.editOriginal(ctx, actor, id, revision, nil, fn)
+}
+func (s *Store) editOriginal(ctx context.Context, actor string, id uuid.UUID, revision int64, original *ImportOriginal, fn func(*Session) error) error {
 	return s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		v, err := scanSession(tx.QueryRow(ctx, sessionSelect+" FOR UPDATE", id))
 		if err != nil {
@@ -443,6 +449,11 @@ func (s *Store) Edit(ctx context.Context, actor string, id uuid.UUID, revision i
 		}
 		if err = fn(&v); err != nil {
 			return err
+		}
+		if original != nil {
+			if err = storeOriginal(ctx, tx, &v, *original); err != nil {
+				return err
+			}
 		}
 		if err = s.updateDocument(ctx, tx, v); err != nil {
 			return err
@@ -564,6 +575,9 @@ func (s *Store) saveDraft(ctx context.Context, actor string, id uuid.UUID, revis
 				return err
 			}
 			savedBuildID, savedVersionID = &buildID, &versionID
+		}
+		if err = packSource(ctx, tx, v, draftID, ws, artifact, composition, false); err != nil {
+			return err
 		}
 		// The canonical model_spec is editable. Record the selected roles only
 		// in Vibe's immutable save receipt, in the same transaction as the draft.

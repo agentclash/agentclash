@@ -14,9 +14,12 @@ import (
 // All progress is reconstructed from committed records. A reconnect or worker
 // restart cannot advance it, reset it, or start another provider request.
 type Progress struct {
-	Phase          string `json:"phase"`
-	CompletedCases int    `json:"completed_cases"`
-	TotalCases     int    `json:"total_cases"`
+	PhaseStartedAt     *time.Time `json:"phase_started_at,omitempty"`
+	LastConfirmedAt    *time.Time `json:"last_confirmed_at,omitempty"`
+	PhaseElapsedMillis int64      `json:"phase_elapsed_ms"`
+	Phase              string     `json:"phase"`
+	CompletedCases     int        `json:"completed_cases"`
+	TotalCases         int        `json:"total_cases"`
 }
 
 type OperationDiagnostics struct {
@@ -94,6 +97,8 @@ func populateProgress(ctx context.Context, tx pgx.Tx, v *Session) error {
 	for i := range v.Operations {
 		o := &v.Operations[i]
 		o.Progress = &Progress{Phase: strings.ToLower(string(o.State)), TotalCases: len(o.Results)}
+		o.Progress.PhaseStartedAt = &o.CreatedAt
+		o.Progress.LastConfirmedAt = &o.CreatedAt
 		for _, c := range o.Results {
 			if caseCompleted(c) {
 				o.Progress.CompletedCases++
@@ -154,6 +159,10 @@ func populateProgress(ctx context.Context, tx pgx.Tx, v *Session) error {
 			o.Diagnostics.AlternativeAssistant = model
 		}
 		if o.State == Running {
+			if o.Progress.Phase != phase {
+				started := start
+				o.Progress.PhaseStartedAt = &started
+			}
 			o.Progress.Phase = phase
 		}
 		// Cost reconciliation after a worker crash cannot tell us when the
@@ -171,6 +180,47 @@ func populateProgress(ctx context.Context, tx pgx.Tx, v *Session) error {
 		return err
 	}
 	rows.Close()
+	// Journal time is execution evidence. Billing callbacks and review comments
+	// cannot advance it, and a reconnect cannot restart a phase clock.
+	progressRows, err := tx.Query(ctx, `SELECT o.id,
+	 max(e.created_at) FILTER(WHERE e.kind LIKE 'state.%' OR e.kind IN ('case.updated','attempt.started','attempt.finished')),
+	 min(e.created_at) FILTER(WHERE e.kind='state.'||o.state),o.completed_at
+	 FROM vibe_operations o LEFT JOIN vibe_events e ON e.operation_id=o.id WHERE o.session_id=$1 GROUP BY o.id`, v.ID)
+	if err != nil {
+		return err
+	}
+	for progressRows.Next() {
+		var id uuid.UUID
+		var confirmed, stateStart, completed *time.Time
+		if err = progressRows.Scan(&id, &confirmed, &stateStart, &completed); err != nil {
+			progressRows.Close()
+			return err
+		}
+		if o := byID[id]; o != nil {
+			if confirmed != nil {
+				o.Progress.LastConfirmedAt = confirmed
+			}
+			if o.State != Running && stateStart != nil {
+				o.Progress.PhaseStartedAt = stateStart
+			}
+			end := v.ServerTime
+			if o.State.Terminal() {
+				if completed != nil {
+					end = *completed
+				} else if confirmed != nil {
+					end = *confirmed
+				}
+			}
+			if o.Progress.PhaseStartedAt != nil {
+				o.Progress.PhaseElapsedMillis = max(end.Sub(*o.Progress.PhaseStartedAt).Milliseconds(), 0)
+			}
+		}
+	}
+	if err = progressRows.Err(); err != nil {
+		progressRows.Close()
+		return err
+	}
+	progressRows.Close()
 	return tx.QueryRow(ctx, `SELECT
 	 (EXTRACT(EPOCH FROM (min(e.created_at) FILTER (WHERE e.kind='result.useful')-s.created_at))*1000)::bigint,
 	 (EXTRACT(EPOCH FROM (min(e.created_at) FILTER (WHERE e.kind IN ('draft.saved','check.saved'))-s.created_at))*1000)::bigint

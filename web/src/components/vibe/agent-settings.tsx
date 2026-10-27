@@ -1,15 +1,19 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
+import {advancedURL} from "@/lib/vibe-keep";
+import {projectTitle} from "@/lib/vibe-project";
 import { Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { exportAgent, type Artifact, type Models, type Session, type VibeConfig } from "@/lib/vibe";
+import { type Artifact, type Models, type Session, type VibeConfig } from "@/lib/vibe";
 import { CreditsDialog } from "./credits-dialog";
 import { ModelSelect } from "./model-select";
 import { VibeButton } from "./vibe-button";
 
 type Props = {
+  reimport?: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   config: VibeConfig | null;
@@ -20,6 +24,7 @@ type Props = {
   busy: boolean;
   workspace: string;
   testJourney: boolean;
+  projectReturnPath?:string;
   savedDraft?: { workspace_id: string; draft_id: string } | null;
   onModels: (models: Models) => void;
   onVersion: (id: string) => void;
@@ -28,14 +33,15 @@ type Props = {
   onExportConversation: () => void;
 };
 
-export function AgentSettings({open, onOpenChange, config, session, artifact, artifacts, models, busy, workspace, testJourney, savedDraft, onModels, onVersion, onSave, onImport, onExportConversation}: Props) {
+export function AgentSettings({reimport,open, onOpenChange, config, session, artifact, artifacts, models, busy, workspace, testJourney, projectReturnPath,savedDraft, onModels, onVersion, onSave, onImport, onExportConversation}: Props) {
   return (
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="vibe-workspace max-h-[85vh] overflow-y-auto">
+        <DialogContent className="vibe-workspace vibe-dialog">
           <DialogTitle>Settings and details</DialogTitle>
           <DialogDescription>
             Choose models, review versions, or export your work.
           </DialogDescription>
+          <div className="vibe-dialog-body space-y-4">
           {workspace && <CreditsDialog workspace={workspace} />}
           {artifact &&
             artifact.kind !== "test_plan" &&
@@ -53,7 +59,7 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
           {savedDraft && (
             <Link
               className="text-sm underline"
-              href={`/workspaces/${savedDraft.workspace_id}/challenge-packs/builder/${savedDraft.draft_id}`}
+              href={advancedURL(savedDraft.workspace_id,savedDraft.draft_id,projectReturnPath,session?projectTitle(session):undefined)}
             >
               Open saved evaluation
             </Link>
@@ -133,12 +139,13 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
           >
             <Paperclip size={16} /> Import a test pack
           </Button>
+          {reimport}
           {artifact &&
             artifact.kind !== "test_plan" &&
             artifact.kind !== "conversation_evaluation" && (
               <Button
                 variant="outline"
-                onClick={() => exportAgent(artifact, models)}
+                onClick={onExportConversation}
               >
                 {testJourney
                   ? "Export tests and agent instructions"
@@ -147,7 +154,7 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
             )}
           {session && (
             <Button variant="ghost" onClick={onExportConversation}>
-              Export conversation
+              Export selected version / result
             </Button>
           )}
           <details className="text-sm">
@@ -156,7 +163,7 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
             </summary>
             {config?.capabilities?.map((c) => (
               <p key={c.id} className="mt-3 text-xs leading-5">
-                <strong>{c.label}:</strong> {c.description}{" "}
+                <strong>{c.label}{c.available === false ? " (unavailable)" : ""}:</strong> {c.description}{" "}
                 {c.url && (
                   <a
                     href={c.url}
@@ -164,12 +171,13 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
                     rel="noopener noreferrer"
                     className="underline"
                   >
-                    Documentation ↗
+                    {c.label} documentation ↗
                   </a>
                 )}
               </p>
             ))}
           </details>
+          </div>
         </DialogContent>
       </Dialog>
   );

@@ -15,36 +15,42 @@ function reconcileSession(current: Session | null, incoming: Session, activeID?:
 
 // All network snapshots enter here. Selection is explicit; a response cannot
 // select its own context, and HTTP and streaming share the same ordering rule.
-export function useVibeSession(id: string | null, token: () => Promise<string | undefined>, authLoading: boolean, attempt: number) {
-  const [session, render] = useState<Session | null>(null);
+export function useVibeSession(id: string | null, token: () => Promise<string | undefined>, authLoading: boolean, attempt: number, actorScope = "browser") {
+  const [record, render] = useState<{ actor: string; value: Session | null }>({ actor: actorScope, value: null });
+  const activeActorRef = useRef(actorScope); activeActorRef.current = actorScope;
+  const snapshotActorRef = useRef(actorScope);
+  const session = record.actor === actorScope ? record.value : null;
   const snapshot = useRef<Session | null>(null);
   const activeSessionRef = useRef<string | undefined>(id || undefined);
   const [loadingSession, setLoading] = useState(!!id);
   const [connection, setConnection] = useState("");
   const [loadError, setLoadError] = useState("");
   const accept = useCallback((incoming: Session) => {
+    if (activeActorRef.current !== actorScope) return false;
+    if (snapshotActorRef.current !== actorScope) { snapshot.current = null; snapshotActorRef.current = actorScope; }
     const next = reconcileSession(snapshot.current, incoming, activeSessionRef.current);
     if (next !== incoming) return false;
-    snapshot.current = next; render(next); return true;
-  }, []);
+    snapshot.current = next; render({ actor: actorScope, value: next }); return true;
+  }, [actorScope]);
   const select = useCallback((next?: string) => {
+    if (activeActorRef.current !== actorScope) return;
     activeSessionRef.current = next;
-    if (snapshot.current?.id !== next) { snapshot.current = null; render(null); }
+    if (snapshotActorRef.current !== actorScope || snapshot.current?.id !== next) { snapshot.current = null; snapshotActorRef.current = actorScope; render({ actor: actorScope, value: null }); }
     setConnection(""); setLoadError("");
-  }, []);
+  }, [actorScope]);
   const reload = useCallback(async (next = activeSessionRef.current) => {
-    if (!next) return;
+    if (!next || activeActorRef.current !== actorScope) return;
     const incoming = await vibeFetch<Session>(`/sessions/${next}`, await token());
-    return accept(incoming) ? incoming : snapshot.current?.id === next ? snapshot.current : undefined;
-  }, [token, accept]);
+    return activeActorRef.current !== actorScope ? undefined : accept(incoming) ? incoming : snapshot.current?.id === next ? snapshot.current : undefined;
+  }, [token, accept, actorScope]);
   useEffect(() => {
     select(id || undefined);
     if (!id || authLoading) { setLoading(!!id); return; }
     let live = true;
     setLoading(true);
     void (async () => {
-      const auth = await token();
       try {
+        const auth = await token();
         let incoming: Session;
         try { incoming = await vibeFetch<Session>(`/sessions/${id}`, auth); }
         catch (error) {
@@ -54,7 +60,7 @@ export function useVibeSession(id: string | null, token: () => Promise<string | 
         if (live) accept(incoming);
       } catch (error) {
         if (live) {
-          if (isSessionAccessError(error)) setConnection(sessionAccessLost);
+          if (isSessionAccessError(error)) { setConnection(sessionAccessLost); if (error instanceof VibeError && error.status === 401) setLoadError(error.message); }
           else setLoadError((error as Error).message);
         }
       } finally { if (live) setLoading(false); }
@@ -68,8 +74,9 @@ export function useVibeSession(id: string | null, token: () => Promise<string | 
     let timer: ReturnType<typeof setTimeout>;
     let claimed = false;
     const connect = async () => {
-      const auth = await token();
+      let auth: string | undefined;
       try {
+        auth = await token();
         await watchVibe(sessionID, auth, controller.signal, incoming => {
           if (!controller.signal.aborted && accept(incoming)) setConnection("");
         });
@@ -83,7 +90,7 @@ export function useVibeSession(id: string | null, token: () => Promise<string | 
             return;
           } catch { /* Membership or ownership loss stays inaccessible. */ }
         }
-        if (isSessionAccessError(error)) { setConnection(sessionAccessLost); return; }
+        if (isSessionAccessError(error)) { setConnection(sessionAccessLost); if (error instanceof VibeError && error.status === 401) setLoadError(error.message); return; }
         setConnection("Reconnecting to saved progress…");
       }
       if (!controller.signal.aborted) timer = setTimeout(connect, 2000);

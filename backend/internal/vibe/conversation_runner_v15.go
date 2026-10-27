@@ -240,10 +240,16 @@ func (r *Runner) converseInterpreted(ctx context.Context, o Operation, p Plan) e
 			}
 		}
 		if e != nil {
+			if saveErr := r.Service.Store.persistValidationReview(ctx, o, reviewStep, candidate, input, nil, e); saveErr != nil {
+				return saveErr
+			}
 			return e
 		}
 		validation.Model = actualProfile.ID
 		validation.ProfileHash = Hash(raw(actualProfile))
+		if e = r.Service.Store.persistValidationReview(ctx, o, reviewStep, candidate, input, validation, nil); e != nil {
+			return e
+		}
 		candidate.Validation = validation
 		if validation.Status == SuiteSupported {
 			break

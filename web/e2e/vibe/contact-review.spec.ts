@@ -13,7 +13,7 @@ async function installFixture(page: Page, mode: ContactMode, posts: string[]) {
     const req = route.request(), url = new URL(req.url()), pathname = url.pathname;
     const headers = { "Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true" };
     if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { ...headers, "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS" } });
-    if (pathname.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, two_door: true, defaults: models, models: [{ id: "fixture/a", name: "Fixture model" }], contact: { available: mode === "configured", email: mode === "unconfigured" ? "" : "fixture@example.test" } } });
+    if (pathname.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: models, models: [{ id: "fixture/a", name: "Fixture model" }], contact: { available: mode === "configured", email: mode === "unconfigured" ? "" : "fixture@example.test" } } });
     if (pathname.endsWith("/saved-checks") || pathname.endsWith("/inputs")) return route.fulfill({ headers, json: [] });
     if (pathname.endsWith("/sessions") || pathname.endsWith("/evaluations")) return route.fulfill({ headers, json: [session] });
     if (pathname.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(session)}\n\n` });
@@ -34,7 +34,8 @@ async function installFixture(page: Page, mode: ContactMode, posts: string[]) {
 
 async function openContact(page: Page) {
   await page.goto("/vibe-evals?session=contact-fixture");
-  await page.locator('[data-message-id="request"]').waitFor();
+  await page.getByRole("tab", {name:"Results", exact:true}).click();
+  await expect(page.getByRole("combobox", {name:"Result history"})).toHaveValue("check");
   const opener = page.getByRole("button", { name: "Discuss this with AgentClash" }).first();
   await opener.scrollIntoViewIfNeeded();
   await opener.click();
@@ -48,13 +49,19 @@ test("unconfigured and direct-email modes do not collect contact details or send
     const posts: string[] = [];
     await installFixture(page, mode, posts);
     await page.setViewportSize({ width: 320, height: 740 });
+    if (mode === "unconfigured") {
+      await page.goto("/vibe-evals?session=contact-fixture");
+      await page.getByRole("tab", {name:"Results", exact:true}).click();
+  await expect(page.getByRole("combobox", {name:"Result history"})).toHaveValue("check");
+      await expect(page.getByRole("button", { name: "Discuss this with AgentClash" })).toHaveCount(0);
+      expect(posts).toHaveLength(0); await page.unrouteAll(); continue;
+    }
     const { opener, dialog } = await openContact(page);
     await expect(dialog.getByLabel("Your email")).toHaveCount(0);
     await expect(dialog.getByLabel("Name (optional)")).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Send enquiry" })).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: "Copy summary" })).toBeVisible();
-    if (mode === "email-only") await expect(dialog.getByRole("link", { name: "Prefer email? Email us directly" })).toHaveAttribute("href", /^mailto:/);
-    else await expect(dialog.getByRole("status")).toContainText("Contact isn’t set up yet");
+    await expect(dialog.getByRole("link", { name: "Prefer email? Email us directly" })).toHaveAttribute("href", /^mailto:/);
     await page.keyboard.press("Escape");
     await expect(dialog).toBeHidden();
     await expect(opener).toBeFocused();
@@ -108,7 +115,12 @@ test("an open review dialog refits after desktop-to-phone resize", async ({ page
   await page.setViewportSize({ width: 1440, height: 900 });
   const { dialog } = await openContact(page);
   await expect(dialog).toBeVisible();
+  const email = dialog.getByLabel("Your email");
+  await email.fill("retained@example.test");
   await page.setViewportSize({ width: 320, height: 740 });
+  await expect(email).toHaveValue("retained@example.test");
+  await expect(email).toBeFocused();
+  await expect(page.getByRole("dialog")).toHaveCount(1);
   await expect.poll(async () => {
     const rect = await dialog.boundingBox();
     if (!rect) return null;

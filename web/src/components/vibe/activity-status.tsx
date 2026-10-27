@@ -5,11 +5,16 @@ import { useSyncExternalStore } from "react";
 import type { Operation } from "@/lib/vibe";
 
 export function conversationActivity(operation: Operation, testJourney?: boolean) {
-  if (operation.state === "AWAITING_APPROVAL") return "Review the cost before continuing.";
-  if (operation.state === "CANCELLING") return "Stopping…";
-  if (operation.state === "QUEUED") return "Waiting to start…";
-  if (operation.state === "AWAITING_INPUT") return "One detail is needed to continue.";
-  if (operation.state === "FINALIZING") return "Saving your results…";
+  const origin = operation.source?.comparison === "regraded" ? "regraded" : operation.evidence_metadata?.origin ||
+    (operation.source?.kind === "provided_conversations" ? "recorded" : operation.source?.kind === "prompt" ? "prototype" : undefined);
+  const sourceLabel = origin === "prototype" ? "Text prototype" : origin === "recorded" ? "Recorded app replies" : origin === "regraded" ? "Saved replies · Regrade" : "Source unverified";
+  const describe = (label: string) => ["check", "retest", "playground"].includes(operation.kind) ? `${sourceLabel} · ${label}` : label;
+  const grading = origin === "prototype" ? "Grading the generated reply…" : origin === "recorded" ? "Grading the recorded replies…" : origin === "regraded" ? "Regrading the saved replies…" : "Checking the reply…";
+  if (operation.state === "AWAITING_APPROVAL") return describe("Review the cost before continuing.");
+  if (operation.state === "CANCELLING") return describe("Stopping…");
+  if (operation.state === "QUEUED") return describe("Waiting to start…");
+  if (operation.state === "AWAITING_INPUT") return describe("One detail is needed to continue.");
+  if (operation.state === "FINALIZING") return describe("Saving your results…");
   const progress = operation.progress;
   if (progress && operation.state === "RUNNING") {
     const count = progress.total_cases > 0 ? `${progress.completed_cases} of ${progress.total_cases} results saved · ` : "";
@@ -20,10 +25,10 @@ export function conversationActivity(operation: Operation, testJourney?: boolean
       reviewing: "Checking the tests against your rules…",
       repairing: "Adjusting the tests to match your rules…",
       switching_assistant: "Trying another model…",
-      running_agent: "Waiting for your agent’s reply…",
-      grading: "Checking the reply…",
+      running_agent: origin === "prototype" ? "Generating a text reply from these instructions…" : origin === "recorded" || origin === "regraded" ? grading : "Processing the reply…",
+      grading,
     };
-    if (label[progress.phase]) return count + label[progress.phase];
+    if (label[progress.phase]) return describe(count + label[progress.phase]);
   }
   if (operation.kind === "message" || operation.kind === "build") {
     if (!testJourney) return "Preparing your next step…";
@@ -34,8 +39,8 @@ export function conversationActivity(operation: Operation, testJourney?: boolean
     return "Thinking…";
   }
   if (operation.scorecard && operation.scorecard.evaluated > 0)
-    return `${operation.scorecard.evaluated} of ${operation.scorecard.total} tests checked`;
-  return "Running your tests…";
+    return describe(`${operation.scorecard.evaluated} of ${operation.scorecard.total} tests checked`);
+  return describe("Running your tests…");
 }
 
 let fallbackPaused = false;

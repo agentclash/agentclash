@@ -123,6 +123,11 @@ func TestIntegrationVibeDurableProgressAndDiagnostics(t *testing.T) {
 	if got.Progress.CompletedCases != 2 || got.Progress.TotalCases != 4 || Aggregate(got.Results).Evaluated != 1 {
 		t.Fatalf("progress fabricated grades: %+v", got)
 	}
+	var projected map[string]any
+	_ = json.Unmarshal(raw(got.Progress), &projected)
+	if projected["last_confirmed_at"] == nil || projected["phase_started_at"] == nil {
+		t.Fatal("committed progress timestamps missing", projected)
+	}
 	d := got.Diagnostics
 	if d.StageMillis["understanding"] < 9000 || d.UnresolvedBillingAgeMillis == nil || *d.UnresolvedBillingAgeMillis < 9000 || current.Diagnostics.FirstUsefulResultMillis == nil {
 		t.Fatalf("diagnostics missing: %+v %+v", d, current.Diagnostics)
@@ -140,6 +145,9 @@ func TestIntegrationVibeDurableProgressAndDiagnostics(t *testing.T) {
 	}
 	if after.Operations[0].Diagnostics.StageMillis["understanding"] != d.StageMillis["understanding"] || after.Operations[0].Diagnostics.UnresolvedBillingSince != nil {
 		t.Fatal("reconciliation rewrote runtime or retained unresolved cost")
+	}
+	if !after.Operations[0].Progress.LastConfirmedAt.Equal(*got.Progress.LastConfirmedAt) || !after.Operations[0].Progress.PhaseStartedAt.Equal(*got.Progress.PhaseStartedAt) || after.Operations[0].Progress.PhaseElapsedMillis != got.Progress.PhaseElapsedMillis {
+		t.Fatal("billing reconciliation advanced execution progress or restarted the terminal phase clock")
 	}
 	var milestones int
 	if err = s.DB.QueryRow(ctx, "SELECT count(*) FROM vibe_events WHERE session_id=$1 AND kind='result.useful'", v.ID).Scan(&milestones); err != nil || milestones != 1 {

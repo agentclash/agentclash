@@ -54,6 +54,17 @@ func (r *Repository) GetRunAgentExecutionContextByID(ctx context.Context, runAge
 		return RunAgentExecutionContext{}, err
 	}
 	executionContext.RunAgents = runAgents
+	if executionContext.Deployment.DeploymentType == "hosted_external" {
+		binding, err := r.GetConnector(ctx, executionContext.Run.WorkspaceID, executionContext.Deployment.AgentDeploymentSnapshotID)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return RunAgentExecutionContext{}, err
+		}
+		if err == nil {
+			executionContext.Deployment.Connector = &binding
+			executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds = int32(binding.Config.TimeoutSeconds)
+			executionContext.Deployment.RuntimeProfile.StepTimeoutSeconds = int32(binding.Config.TimeoutSeconds)
+		}
+	}
 
 	return executionContext, nil
 }

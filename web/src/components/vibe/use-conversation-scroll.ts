@@ -54,7 +54,13 @@ export function useConversationScroll({ sessionID, view, stamp, build, anchor, r
   function jumpToLatest() {
     follow();
     markRead();
-    end.current?.scrollIntoView?.({ behavior, block: "nearest" });
+    const element = region.current;
+    const target = build && anchor ? Array.from(element?.querySelectorAll<HTMLElement>("[data-build-entry], [data-pending-message]") || [])
+      .find(node => node.dataset.buildEntry === anchor || node.dataset.pendingMessage === anchor) : undefined;
+    if (element && target) {
+      const top = target.getBoundingClientRect().top - element.getBoundingClientRect().top + element.scrollTop;
+      element.scrollTo?.({ top: Math.min(top, element.scrollHeight - element.clientHeight), behavior });
+    } else end.current?.scrollIntoView?.({ behavior, block: "nearest" });
   }
   function onScroll(event: UIEvent<HTMLDivElement>) {
     if (build) remember();

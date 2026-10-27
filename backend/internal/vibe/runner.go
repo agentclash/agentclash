@@ -106,6 +106,10 @@ func (r *Runner) evaluate(ctx context.Context, o Operation, p Plan) error {
 			return fault("grading_changed", "The saved grading rules no longer compile to the same settings. Start a new check.")
 		}
 	}
+	compiled.Cases, err = selectCompiledCases(compiled.Cases, p.Cases)
+	if err != nil {
+		return err
+	}
 	version := p.Artifact.ID.String()
 	// Persist every planned case as UNKNOWN before the first paid call. A worker
 	// crash, cancellation, budget limit or provider outage cannot shrink totals.
@@ -125,7 +129,7 @@ func (r *Runner) evaluate(ctx context.Context, o Operation, p Plan) error {
 		}
 		var response provider.Response
 		var e error
-		if p.RegradeOf != nil {
+		if p.isRegrade() {
 			response.OutputText, e = p.savedOutput(c.CaseKey)
 			if e != nil {
 				result.Error = &Fault{Code: "evidence_unavailable", Message: "No complete saved reply is available to recheck."}

@@ -22,7 +22,7 @@ test("responsive input, draft preservation and truthful shining status", async (
   await page.route("**/v1/vibe/**", async route => {
     const path = new URL(route.request().url()).pathname;
     const headers = { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" };
-    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, free_only: true, defaults: models, models: [{ id: models.target, name: "Fixture (free)" }] } });
+    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, free_only: true, defaults: models, models: [{ id: models.target, name: "Fixture (free)" }] } });
     if (path.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(state)}\n\n` });
     return route.fulfill({ headers, json: state });
   });

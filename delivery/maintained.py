@@ -192,7 +192,10 @@ def build(root, directory, run, gate):
             "v3.23",
             ("libcrypto3", "libssl3", "curl", "libcurl", "c-ares", "brotli-libs"),
         ),
-        "postgres": ("v3.24", ("libcrypto3", "libssl3", "libuuid", "brotli-libs")),
+        "postgres": (
+            "v3.24",
+            ("libcrypto3", "libssl3", "libuuid", "brotli-libs", "libcurl"),
+        ),
     }
     for name in packages:
         context = directory / ("platform-context-" + name)

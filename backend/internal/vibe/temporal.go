@@ -112,7 +112,12 @@ func DispatchOutbox(ctx context.Context, c client.Client, s *Store, logger *slog
 			}
 			ids = append(ids, id)
 		}
+		rowsErr := rows.Err()
 		rows.Close()
+		if err != nil || rowsErr != nil {
+			continue
+		}
+		delivered := true
 		for _, id := range ids {
 			_, err = c.ExecuteWorkflow(ctx, client.StartWorkflowOptions{ID: "vibe/" + id.String(), TaskQueue: TaskQueue, WorkflowExecutionTimeout: 48 * time.Hour, WorkflowIDReusePolicy: enumspb.WORKFLOW_ID_REUSE_POLICY_REJECT_DUPLICATE}, OperationWorkflow, id.String())
 			var duplicate *serviceerror.WorkflowExecutionAlreadyStarted
@@ -120,8 +125,12 @@ func DispatchOutbox(ctx context.Context, c client.Client, s *Store, logger *slog
 				_, err = s.DB.Exec(ctx, "UPDATE vibe_outbox SET delivered_at=now() WHERE operation_id=$1", id)
 			}
 			if err != nil {
+				delivered = false
 				logger.Warn("vibe operation delivery pending", "operation_id", id, "error", err)
 			}
+		}
+		if delivered && len(services) > 0 {
+			reportWorkerReady(ctx, services[0].Gate.Redis, services[0].Config, "outbox")
 		}
 	}
 }
@@ -144,6 +153,9 @@ func (s *Store) expire(ctx context.Context) error {
 		ids = append(ids, id)
 	}
 	rows.Close()
+	if err = rows.Err(); err != nil {
+		return err
+	}
 	for _, id := range ids {
 		if err = s.expireOne(ctx, id); err != nil {
 			return err

@@ -19,6 +19,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -26,6 +27,7 @@ import (
 )
 
 type VibeHandler struct {
+	FrontendURL  string
 	Enquiries    *enquiries.Store
 	Billing      *BillingManager
 	Service      *vibe.Service
@@ -47,6 +49,18 @@ func (h *VibeHandler) Routes() http.Handler {
 				if strings.HasSuffix(r.URL.Path, "/import") || strings.HasSuffix(r.URL.Path, "/evidence") {
 					limit = vibe.LimitsFor(false).FileBytes
 				}
+				if strings.HasSuffix(r.URL.Path, "/reimport") {
+					limit = 6*vibe.LimitsFor(false).FileBytes + 4096
+				}
+				// Match the registered route's exact method/path shape. Prefix
+				// mounts may add /v1/vibe; sibling report mutations keep 256KiB.
+				path := strings.TrimPrefix(r.URL.Path, "/v1/vibe")
+				parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+				if r.Method == http.MethodPost && len(parts) == 3 && parts[0] == "sessions" && parts[2] == "reports" {
+					if _, err := uuid.Parse(parts[1]); err == nil {
+						limit = vibe.SDKReportRequestBytes
+					}
+				}
 				if encoding := r.Header.Get("Content-Encoding"); encoding != "" && encoding != "identity" {
 					vibeError(w, &vibe.Fault{Code: "invalid_request", Message: "Compressed requests are not supported."})
 					return
@@ -63,6 +77,9 @@ func (h *VibeHandler) Routes() http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	})
+	h.RegisterSDKReports(r)
+	h.registerReportSnapshots(r)
+	h.registerCanonicalResults(r)
 	r.Get("/config", h.config)
 	r.Post("/sessions/{sessionID}/enquiries", h.createEnquiry)
 	r.Get("/sessions/{sessionID}/enquiries/{enquiryID}", h.getEnquiry)
@@ -84,8 +101,18 @@ func (h *VibeHandler) Routes() http.Handler {
 	r.Post("/sessions/{sessionID}/messages", h.submit)
 	r.Post("/sessions/{sessionID}/actions", h.interact)
 	r.Post("/sessions/{sessionID}/import", h.importFile)
+	r.Post("/sessions/{sessionID}/reimport", h.reimport)
 	r.Post("/sessions/{sessionID}/evidence", h.addEvidence)
+	r.Post("/sessions/{sessionID}/grade-reviews", h.gradeReviews)
+	r.Get("/sessions/{sessionID}/grade-reviews", h.gradeReviews)
 	r.Patch("/sessions/{sessionID}", h.edit)
+	r.Patch("/sessions/{sessionID}/metadata", h.metadata)
+	r.Get("/sessions/{sessionID}/artifacts/{artifactID}/original", h.original)
+	r.Get("/sessions/{sessionID}/artifacts/{artifactID}/case-mapping", h.caseMapping)
+	r.Post("/sessions/{sessionID}/export", h.prepareExport)
+	r.Post("/sessions/{sessionID}/advanced", h.advanced)
+	r.Get("/saved-originals/{draftID}", h.savedOriginal)
+	r.Get("/sessions/{sessionID}/export/reviews/{reviewID}", h.exportReview)
 	r.Post("/sessions/{sessionID}/claim", h.claim)
 	r.Post("/sessions/{sessionID}/save", h.save)
 	r.Post("/sessions/{sessionID}/save-check", h.saveCheck)
@@ -123,6 +150,10 @@ func (h *VibeHandler) caseEvidence(w http.ResponseWriter, r *http.Request) {
 		vibeError(w, err)
 		return
 	}
+	if expected := r.URL.Query().Get("hash"); expected != "" && expected != result.EvidenceHash {
+		vibeError(w, &vibe.Fault{Code: "evidence_changed", Message: "The saved case changed after export preparation. Reconcile or export a partial copy."})
+		return
+	}
 	vibeJSON(w, 200, result)
 }
 func vibeJSON(w http.ResponseWriter, status int, v any) {
@@ -156,7 +187,7 @@ func vibeError(w http.ResponseWriter, err error) {
 			status = 401
 		case "forbidden":
 			status = 403
-		case "revision_conflict", "idempotency_conflict", "operation_running", "invalid_state", "saved_model_conflict", "saved_baseline_conflict", "retry_not_allowed", "retry_committed", "retry_running", "retry_uncertain", "retry_stale":
+		case "evidence_changed", "revision_conflict", "idempotency_conflict", "operation_running", "invalid_state", "saved_model_conflict", "saved_baseline_conflict", "retry_not_allowed", "retry_committed", "retry_running", "retry_uncertain", "retry_stale":
 			status = 409
 		case "retry_cooldown", "rate_limit", "capacity_limit", "trial_limit":
 			status = 429
@@ -276,20 +307,26 @@ func vibeID(r *http.Request, key string) (uuid.UUID, error) {
 	return id, nil
 }
 func (h *VibeHandler) config(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	// Catalog discovery never makes a local profile-verification HTTP request.
+	catalog := h.Service.Config
+	catalog.LocalTesting = false
 	models := []vibe.ModelProfile{}
 	for id := range h.Service.Config.Profiles {
-		if p, err := h.Service.Config.Profile(id); err == nil {
+		if p, err := catalog.Profile(id); err == nil {
 			models = append(models, p)
 		}
 	}
 	contact := map[string]any{"email": "", "available": false}
-	if h.Enquiries != nil {
+	if h.Enquiries.Available() {
 		contact["email"] = h.Enquiries.Recipient
 		contact["available"] = h.Enquiries.Available()
 	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
-	pdfAvailable := h.Service.Config.MaterialBuild && h.Service.Store.Inputs.PDFAvailable(r.Context())
-	vibeJSON(w, 200, map[string]any{"contact": contact, "pdf_uploads": pdfAvailable, "two_door": h.Service.Config.TwoDoor, "capabilities": vibe.AvailableCapabilities(pdfAvailable), "enabled": h.Service.Config.Enabled, "interaction_actions": true, "grading_recheck": h.Service.Config.GroundedJudging, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget})
+	pdfAvailable := h.Service.Config.MaterialBuild && h.Service.Store != nil && h.Service.Store.Inputs != nil && h.Service.Store.Inputs.PDFAvailable(ctx)
+	availability := h.Service.Availability(ctx, len(h.CookieSecret) >= 32)
+	vibeJSON(w, 200, map[string]any{"server_time": time.Now().UTC(), "availability": availability, "material_build": h.Service.Config.MaterialBuild, "contact": contact, "pdf_uploads": pdfAvailable, "two_door": h.Service.Config.TwoDoor, "capabilities": vibe.AvailableCapabilities(pdfAvailable), "enabled": h.Service.Config.Enabled, "interaction_actions": true, "grading_recheck": h.Service.Config.GroundedJudging, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget})
 }
 func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 	var input struct {
@@ -412,7 +449,12 @@ func (h *VibeHandler) importFile(w http.ResponseWriter, r *http.Request) {
 	}
 	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, int64(l.FileBytes)))
 	if err == nil {
-		err = h.Service.Import(r.Context(), v.Actor, v.ID, revision, b)
+		name, e := url.PathUnescape(r.Header.Get("X-File-Name"))
+		if e != nil {
+			vibeError(w, &vibe.Fault{Code: "invalid_import", Message: "Invalid file name."})
+			return
+		}
+		err = h.Service.Import(r.Context(), v.Actor, v.ID, revision, b, vibe.ImportOriginal{Filename: name, MediaType: media})
 	}
 	if err != nil {
 		vibeError(w, err)

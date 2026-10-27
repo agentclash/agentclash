@@ -50,6 +50,12 @@ type Config struct {
 }
 
 func LoadConfig() (Config, error) {
+	// Reject spelling mistakes instead of silently enabling/disabling a safety control.
+	for _, key := range []string{"VIBE_ENABLED", "VIBE_FREE_ONLY", "VIBE_GROUNDED_JUDGING", "VIBE_ASSISTANT_FALLBACK", "VIBE_LOCAL_TESTING", "VIBE_MATERIAL_BUILD"} {
+		if value := os.Getenv(key); value != "" && value != "true" && value != "false" {
+			return Config{}, fmt.Errorf("%s must be true or false", key)
+		}
+	}
 	c := Config{Enabled: os.Getenv("VIBE_ENABLED") == "true", Credential: os.Getenv("VIBE_OPENROUTER_KEY"), Profiles: map[string]ModelProfile{}, Campaign: os.Getenv("VIBE_CAMPAIGN")}
 	c.FreeOnly = os.Getenv("VIBE_FREE_ONLY") == "true"
 	// One supported authoring contract for new application requests. Older
@@ -92,11 +98,12 @@ func LoadConfig() (Config, error) {
 	if c.Enabled && c.LocalTesting && !c.FreeOnly {
 		c.localProfiles = newLocalProfileVerifier()
 	}
-	if c.Enabled && (c.FreeOnly || c.DefaultModel != "") {
-		if err := c.ValidateModels(c.DefaultModels(), true); err != nil {
-			return c, fmt.Errorf("Vibe default models: %w", err)
-		}
+	// Stable identity is shared across restarts; never mint a replacement campaign.
+	if c.Campaign != "" && (len(c.Campaign) > 128 || strings.TrimSpace(c.Campaign) != c.Campaign || strings.ContainsAny(c.Campaign, " \t\r\n:")) {
+		return c, fmt.Errorf("VIBE_CAMPAIGN must be a stable identifier of at most 128 bytes without whitespace or colons")
 	}
+	// Expired/missing provider profiles are runtime unavailability. They must not
+	// stop database reads, saving, deletion, or accounting recovery at startup.
 	return c, nil
 }
 

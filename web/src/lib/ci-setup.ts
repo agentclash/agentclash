@@ -11,6 +11,7 @@ export interface CISetupConfig {
   agentSpecPath: string;
   triggerPaths: string[];
   triggerLabels: string[];
+  candidateDeploymentId?: string;
   agentBuildId: string;
   runtimeProfileId: string;
   deploymentName: string;
@@ -75,9 +76,11 @@ export function ciSetupReadiness(config: CISetupConfig): CISetupReadiness {
 
   requireValue(config.manifestPath, "Choose where .agentclash/ci.yaml will live.");
   requireValue(config.workflowPath, "Choose where the GitHub workflow will live.");
+  if (!config.candidateDeploymentId) {
   requireValue(config.agentSpecPath, "Choose the candidate agent spec file path.");
   requireValue(config.agentBuildId, "Select an agent build for candidate versions.");
   requireValue(config.runtimeProfileId, "Select a runtime profile for CI deployments.");
+  }
   requireValue(
     config.challengePackVersionId,
     "Select a runnable challenge pack version.",
@@ -117,6 +120,9 @@ export function generateAgentClashCIManifest(config: CISetupConfig): string {
     lines.push(...labels.map((label) => `    - ${yamlScalar(label)}`));
   }
 
+  if (config.candidateDeploymentId) {
+    lines.push("candidate:", "  deployment:", `    id: ${yamlScalar(config.candidateDeploymentId)}`);
+  } else {
   lines.push(
     "candidate:",
     "  build:",
@@ -136,6 +142,8 @@ export function generateAgentClashCIManifest(config: CISetupConfig): string {
   }
   if (config.model?.trim()) {
     lines.push(`    model: ${yamlScalar(config.model)}`);
+  }
+
   }
 
   lines.push(

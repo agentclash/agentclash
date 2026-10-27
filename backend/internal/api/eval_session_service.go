@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -58,7 +60,14 @@ type CreateEvalSessionConfigInput struct {
 	SchemaVersion       int32
 }
 
+type evalSessionAdmissionRecovery interface {
+	RecoverEvalSessionAdmission(context.Context, uuid.UUID, uuid.UUID, string) (repository.CreateEvalSessionWithQueuedRunsResult, bool, error)
+}
+
 type CreateEvalSessionInput struct {
+	AdmissionRequestID   uuid.UUID
+	ChallengeIdentityIDs []uuid.UUID
+
 	WorkspaceID            uuid.UUID
 	ChallengePackVersionID uuid.UUID
 	ChallengeInputSetID    *uuid.UUID
@@ -103,6 +112,22 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		return CreateEvalSessionResult{}, err
 	}
 
+	requestBody, _ := json.Marshal(input)
+	digest := sha256.Sum256(requestBody)
+	requestHash := hex.EncodeToString(digest[:])
+	if input.AdmissionRequestID != uuid.Nil {
+		if recovery, ok := m.repo.(evalSessionAdmissionRecovery); ok {
+			saved, found, err := recovery.RecoverEvalSessionAdmission(ctx, input.WorkspaceID, input.AdmissionRequestID, requestHash)
+			if err != nil {
+				return CreateEvalSessionResult{}, err
+			}
+			if found {
+				return m.finishEvalSessionAdmission(ctx, saved, input.SkipWorkflowStart, input.EvalSession)
+			}
+		} else {
+			return CreateEvalSessionResult{}, fmt.Errorf("durable admission unavailable")
+		}
+	}
 	hasRunMatrix := len(input.EvalSession.RunMatrix) > 0
 	if input.EvalSession.Repetitions < 1 {
 		return CreateEvalSessionResult{}, RunCreationValidationError{
@@ -438,6 +463,26 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		return CreateEvalSessionResult{}, fmt.Errorf("list official challenge identities: %w", err)
 	}
 
+	if len(input.ChallengeIdentityIDs) > 0 {
+		allowed := map[uuid.UUID]bool{}
+		for _, id := range challengeIdentityIDs {
+			allowed[id] = true
+		}
+		selected := map[uuid.UUID]bool{}
+		for _, id := range input.ChallengeIdentityIDs {
+			if !allowed[id] || selected[id] {
+				return CreateEvalSessionResult{}, RunCreationValidationError{Code: "invalid_cases", Message: "selected challenges must be unique members of the published version"}
+			}
+			selected[id] = true
+		}
+		retained := []uuid.UUID{}
+		for _, id := range challengeIdentityIDs {
+			if selected[id] {
+				retained = append(retained, id)
+			}
+		}
+		challengeIdentityIDs = retained
+	}
 	caseSelections := make([]repository.CreateQueuedRunCaseSelectionParams, 0, len(challengeIdentityIDs))
 	for index, challengeIdentityID := range challengeIdentityIDs {
 		caseSelections = append(caseSelections, repository.CreateQueuedRunCaseSelectionParams{
@@ -496,7 +541,9 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 	}
 
 	createResult, err := m.repo.CreateEvalSessionWithQueuedRuns(ctx, repository.CreateEvalSessionWithQueuedRunsParams{
+		RequestID: input.AdmissionRequestID, RequestHash: requestHash,
 		Session: repository.CreateEvalSessionParams{
+			WorkspaceID:            input.WorkspaceID,
 			Repetitions:            input.EvalSession.Repetitions,
 			AggregationConfig:      buildAggregationSnapshot(input.EvalSession),
 			SuccessThresholdConfig: buildSuccessThresholdSnapshot(input.EvalSession),
@@ -509,15 +556,18 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 	if err != nil {
 		return CreateEvalSessionResult{}, fmt.Errorf("create eval session with queued runs: %w", err)
 	}
-	if !input.SkipWorkflowStart {
+	return m.finishEvalSessionAdmission(ctx, createResult, input.SkipWorkflowStart, input.EvalSession)
+}
+func (m *RunCreationManager) finishEvalSessionAdmission(ctx context.Context, createResult repository.CreateEvalSessionWithQueuedRunsResult, skipWorkflowStart bool, config CreateEvalSessionConfigInput) (CreateEvalSessionResult, error) {
+	if !skipWorkflowStart {
 		if err := m.evalSessionWorkflowStarter.StartEvalSessionWorkflow(ctx, createResult.Session.ID); err != nil {
 			return CreateEvalSessionResult{}, fmt.Errorf("start eval session workflow for session %s: %w", createResult.Session.ID, err)
 		}
 	}
 
 	runIDs := make([]uuid.UUID, 0, len(createResult.Runs))
-	seededRuns := make([]EvalSessionSeededRun, 0, len(input.EvalSession.SeedFanout))
-	seriesRuns := make([]EvalSessionSeriesRun, 0, len(input.EvalSession.RunMatrix))
+	seededRuns := make([]EvalSessionSeededRun, 0, len(config.SeedFanout))
+	seriesRuns := make([]EvalSessionSeriesRun, 0, len(config.RunMatrix))
 	for _, run := range createResult.Runs {
 		runIDs = append(runIDs, run.ID)
 		if seed := evalSessionChildRunSeed(run.ExecutionPlan); seed != nil {
@@ -527,7 +577,7 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 			})
 		}
 	}
-	if hasRunMatrix {
+	if len(config.RunMatrix) > 0 {
 		for _, run := range createResult.Runs {
 			series := evalSessionChildRunSeries(run.ExecutionPlan)
 			seriesRuns = append(seriesRuns, EvalSessionSeriesRun{

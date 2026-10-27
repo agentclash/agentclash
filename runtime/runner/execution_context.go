@@ -2,6 +2,7 @@ package runner
 
 import (
 	"encoding/json"
+	"github.com/agentclash/agentclash/runtime/connectors"
 	"time"
 
 	"github.com/agentclash/agentclash/runtime/challengepack"
@@ -83,6 +84,7 @@ type ChallengeInputItemExecutionContext struct {
 }
 
 type AgentDeploymentExecutionContext struct {
+	Connector                 *connectors.Binding
 	AgentDeploymentID         uuid.UUID
 	AgentDeploymentSnapshotID uuid.UUID
 	AgentBuildID              uuid.UUID

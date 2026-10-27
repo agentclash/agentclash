@@ -23,7 +23,7 @@ it("keeps passing evidence closed and opens the full checks only on request", as
   await render({ ...op, results: [...op.results, second], scorecard: { ...op.scorecard!, total: 2, evaluated: 2, passed: 2 } });
   expect(node.querySelectorAll(".vibe-result-row")).toHaveLength(0);
   expect(node.querySelectorAll(".vibe-build-next-actions")).toHaveLength(1);
-  expect(node.querySelectorAll(".vibe-project-enquiry")).toHaveLength(1);
+  expect(node.querySelectorAll(".vibe-project-enquiry")).toHaveLength(0);
   expect(load).not.toHaveBeenCalled();
   await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent?.includes("See 2 checks"))!.click());
   expect(details).toHaveBeenCalledTimes(1);

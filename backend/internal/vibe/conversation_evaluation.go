@@ -44,7 +44,7 @@ func validateRoleModels(cfg Config, models Models, anonymous bool, role Role) er
 	return nil
 }
 func validatePlanModels(cfg Config, p Plan, models Models, anonymous bool) error {
-	if p.RegradeOf != nil {
+	if p.isRegrade() {
 		return validateRoleModels(cfg, models, anonymous, Evaluator)
 	}
 	if p.AuthoringVersion >= 5 {
@@ -112,7 +112,11 @@ func (s *Service) prepareConversations(ctx context.Context, actor string, v Sess
 		}
 		p.Document = Document{}
 		p.ChecksPerCase = len(p.Artifact.ConversationEvaluation.Expectations)
-		p.Calls = len(p.Evidence.Conversations) // exactly one evaluator call per chat; zero target calls
+		selected, selectionErr := selectConversations(p.Evidence.Conversations, sub.CaseKeys)
+		if selectionErr != nil {
+			return Operation{}, selectionErr
+		}
+		p.Calls = len(selected) // exactly one evaluator call per chat; zero target calls
 		profile, err := s.Config.Profile(sub.Models.Evaluator)
 		if err != nil {
 			return Operation{}, err
@@ -128,7 +132,7 @@ func (s *Service) prepareConversations(ctx context.Context, actor string, v Sess
 		if err = s.verifyComparison(ctx, p); err != nil {
 			return Operation{}, err
 		}
-		for _, c := range p.Evidence.Conversations {
+		for _, c := range selected {
 			messages := conversationJudgeMessagesForPlan(p, c)
 			if _, err = CountContext(provider.Request{Messages: messages, ResponseFormat: jsonFormat, MaxOutputTokens: l.OutputTokens}, profile, l); err != nil {
 				return Operation{}, err
@@ -262,7 +266,11 @@ func (r *Runner) evaluateConversations(ctx context.Context, o Operation, p Plan)
 	if err := p.Evidence.ValidateReady(); err != nil {
 		return err
 	}
-	for _, c := range p.Evidence.Conversations {
+	selected, selectionErr := selectConversations(p.Evidence.Conversations, p.Cases)
+	if selectionErr != nil {
+		return selectionErr
+	}
+	for _, c := range selected {
 		result := conversationResult(p, c)
 		response, err := r.Gateway.Call(ctx, o, "conversation-judge:"+c.Key, Evaluator, conversationJudgeMessagesForPlan(p, c), jsonFormat)
 		if err == nil {

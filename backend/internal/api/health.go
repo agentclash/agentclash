@@ -41,6 +41,7 @@ type readyResponse struct {
 }
 
 type readinessOptions struct {
+	dependencies    func(context.Context) map[string]string
 	redis           func(context.Context) error
 	shutdownContext context.Context
 }
@@ -61,7 +62,7 @@ func shutdownIngress(ctx context.Context) func(http.Handler) http.Handler {
 	}
 }
 
-// healthzReadyHandler checks Postgres, Temporal and configured Redis. The
+// healthzReadyHandler checks Postgres, Temporal, Redis and configured schemas. The
 // shared deadline bounds network probes; absent required dependencies or a
 // draining process are unavailable. Disabled Redis is supported for local use.
 func healthzReadyHandler(db dbPinger, temporal temporalHealthChecker, options ...readinessOptions) http.HandlerFunc {
@@ -109,6 +110,18 @@ func healthzReadyHandler(db dbPinger, temporal temporalHealthChecker, options ..
 			ready = false
 		} else {
 			checks["redis"] = "ok"
+		}
+		if opts.dependencies != nil {
+			for name, value := range opts.dependencies(ctx) {
+				// Vibe checks Redis capabilities beyond PING; neither probe may
+				// hide a failure reported by the other.
+				if current := checks[name]; current == "" || current == "ok" || current == "disabled" {
+					checks[name] = value
+				}
+				if value != "ok" {
+					ready = false
+				}
+			}
 		}
 		if isDraining(opts.shutdownContext) {
 			checks["lifecycle"] = "draining"

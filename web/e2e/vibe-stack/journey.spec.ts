@@ -33,8 +33,7 @@ async function finished(page: Page, session: string, previousCount: number): Pro
 }
 
 async function openTests(page: Page) {
-  const conversation = page.getByRole("tab", { name: "Conversation", exact: true });
-  if (await conversation.count()) await conversation.click();
+  await page.getByRole("tab", { name: "Tests", exact: true }).click();
   const summary = page.locator("summary").filter({ hasText: /^Review (your tests|the suggested fix)$/ }).last();
   if (await summary.count() && !(await summary.evaluate(node => (node.parentElement as HTMLDetailsElement).open))) await summary.click();
 }
@@ -62,6 +61,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   await composer.fill(original);
   await composer.press("Enter");
+  await openTests(page);
   await expect(page.getByRole("heading", { name: "3 tests are ready" })).toBeVisible();
   const sessionID = new URL(page.url()).searchParams.get("session");
   expect(sessionID).toBeTruthy();
@@ -81,11 +81,13 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   await openTests(page);
   const tests = page.getByRole("region", { name: "Your tests", exact: true }).last();
   await tests.getByRole("button", { name: "Add your agent", exact: true }).click();
-  await tests.getByRole("textbox", { name: "Agent instructions", exact: true }).fill("Opened items are eligible. Unopened items within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.");
-  await tests.getByRole("button", { name: "Use these instructions" }).click();
+  await page.getByRole("textbox", { name: "Agent instructions", exact: true }).fill("Opened items are eligible. Unopened items within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.");
+  await page.getByRole("button", { name: "Use these instructions" }).click();
+  await openTests(page);
   await tests.getByRole("button", { name: "Run 3 tests", exact: true }).click();
   await page.getByRole("button", { name: "Run 3 examples", exact: true }).click();
-  await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("2 passed · 1 failed · 0 unassessed");
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
+  await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("2 passed · 1 failed · 0 unresolved");
   state = await evidence(page, sessionID!);
   const baseline = state.session.operations.at(-1)!;
   expect(baseline.state).toBe("COMPLETED");
@@ -94,14 +96,20 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   expect(originalHashes).toEqual(state.hashes[prepared.id]);
 
   await page.getByRole("button", { name: "Help me fix this", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Ready to test the fix" })).toBeVisible();
+  const proposed = await finished(page, sessionID!, state.session.operations.length);
+  expect(proposed.completion_receipt?.action).toBe("suggest_fix");
   state = await evidence(page, sessionID!);
-  const fix = state.session.document.artifacts.at(-1)!;
+  const fix = state.session.document.artifacts.find(artifact => artifact.id === proposed.completion_receipt?.artifact_id)!;
+  expect(fix).toBeDefined();
   expect(state.hashes[fix.id]).toEqual(originalHashes);
   expect(fix.agent_prompt).toBe(baselineArtifact.agent_prompt.replace("Opened items are eligible.", "Only unopened items are eligible."));
+  await expect(page.getByRole("region", { name: "Agent instructions", exact: true })).toContainText(fix.agent_prompt!);
+  await openTests(page);
+  await expect(page.getByRole("region", { name: "Your tests", exact: true })).toHaveAttribute("data-proposal-id", fix.id);
   await page.getByRole("button", { name: "Improve and rerun", exact: true }).click();
   await page.getByRole("button", { name: "Run 3 examples", exact: true }).click();
-  await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("3 passed · 0 failed · 0 unassessed");
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
+  await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("3 passed · 0 failed · 0 unresolved");
   state = await evidence(page, sessionID!);
   const rerun = state.session.operations.at(-1)!;
   expect(rerun.baseline_id).toBe(baseline.id);
@@ -114,7 +122,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   // A grade dispute reuses replies. It cannot call the target or edit the suite.
   const beforeRegrade = state;
   const passedResults = page.locator("summary").filter({ hasText: /^Test results/ });
-  await passedResults.click();
+  if (!(await passedResults.evaluate(node => (node.parentElement as HTMLDetailsElement).open))) await passedResults.click();
   await page.locator('[aria-label="Individual results"] summary').first().click();
   await expect(page.getByRole("region", { name: "Evidence for this grade" }).first()).toBeVisible();
   await page.getByRole("button", { name: "Recheck saved grades", exact: true }).first().click();
@@ -153,6 +161,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   expect(control.ok()).toBeTruthy();
   const addRequest = 'Add a test using this exact message: "Can you recommend a vodka cocktail?" Expected: politely bring the customer back to shop returns.';
   const beforeEdit = state.session.operations.length;
+  await page.getByRole("button", { name: "Guide", exact: true }).click();
   await composer.fill(addRequest);
   await composer.press("Enter");
   const failed = await finished(page, sessionID!, beforeEdit);
@@ -234,7 +243,9 @@ test("provider cooldown crosses the real worker and API and retry creates one ne
   await retry.click();
   const completed = await finished(page, sessionID, 1);
   expect(completed.state, JSON.stringify(completed.error)).toBe("COMPLETED");
+  await openTests(page);
   await expect(page.getByRole("heading", { name: "3 tests are ready" })).toBeVisible();
+  await page.getByRole("button", { name: "Guide", exact: true }).click();
   await expect(composer).toHaveValue("Keep my next message.");
   state = await evidence(page, sessionID);
   expect(state.session.operations).toHaveLength(2);
@@ -253,6 +264,7 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   await page.getByRole("button", { name: /Improve an existing agent/ }).click();
   await page.getByRole("textbox",{name:"Message Vibe Evals"}).fill(original);
   await page.getByRole("textbox",{name:"Message Vibe Evals"}).press("Enter");
+  await openTests(page);
   await expect(page.getByRole("heading",{name:"3 tests are ready"})).toBeVisible();
   const id=new URL(page.url()).searchParams.get("session")!;
   const before=await evidence(page,id); const artifact=before.session.document.artifacts.at(-1)!;
@@ -264,6 +276,7 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   await expect(page.getByRole("button",{name:"Continue with AgentClash"})).toBeVisible();
   // Cancel once: the original anonymous cookie and preparation remain valid.
   await page.goBack();
+  await openTests(page);
   await expect(page.getByRole("heading",{name:"3 tests are ready"})).toBeVisible();
   await page.getByRole("button",{name:"Keep for later",exact:true}).click();
   await page.getByRole("button",{name:"Keep these tests",exact:true}).click();
@@ -271,13 +284,13 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   await page.getByRole("button",{name:"Continue with AgentClash"}).click();
   await expect(page).toHaveURL(/vibe-evals\?.*keep=1/);
   await expect(page.getByRole("dialog").getByLabel("Save workspace")).toHaveValue("a8000000-0000-4000-8000-000000000003");
-  await expect(page.getByRole("dialog").getByRole("button",{name:"Keep these tests",exact:true})).toBeEnabled();
+  await expect(page.getByRole("dialog").getByRole("button",{name:"Save and iterate",exact:true})).toBeEnabled();
   const returned=await evidence(page,id);
   expect(returned.calls.length).toBe(before.calls.length);
   expect(returned.session.operations).toHaveLength(before.session.operations.length);
   expect(returned.hashes[artifact.id]).toEqual(before.hashes[artifact.id]);
   const savedResponse=page.waitForResponse(r=>r.url().endsWith(`/sessions/${id}/save`) && r.request().method()==="POST");
-  await page.getByRole("dialog").getByRole("button",{name:"Keep these tests",exact:true}).click();
+  await page.getByRole("dialog").getByRole("button",{name:"Save and iterate",exact:true}).click();
   const response=await savedResponse;expect(response.ok(),await response.text()).toBeTruthy();
   const receipt=await response.json();
   await expect(page.getByRole("dialog").getByRole("button",{name:"Saved",exact:true})).toBeDisabled();
@@ -295,15 +308,18 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   const full=page.getByRole("link",{name:"Open in full pack builder"});
   expect(await full.getAttribute("href")).toContain(receipt.draft_id);
   await page.getByRole("link",{name:"Open saved tests",exact:true}).click();
+  await openTests(page);
   await expect(page.getByRole("heading",{name:"3 tests are ready"})).toBeVisible();
   expect(new URL(page.url()).searchParams.get("agent")).toBe(artifact.id);
   const tests=page.getByRole("region",{name:"Your tests",exact:true}).last();
   await tests.getByRole("button",{name:"Add your agent",exact:true}).click();
-  await tests.getByRole("textbox",{name:"Agent instructions",exact:true}).fill("Only unopened items within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.");
-  await tests.getByRole("button",{name:"Use these instructions"}).click();
+  await page.getByRole("textbox",{name:"Agent instructions",exact:true}).fill("Only unopened items within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.");
+  await page.getByRole("button",{name:"Use these instructions"}).click();
+  await openTests(page);
   await tests.getByRole("button",{name:"Run 3 tests",exact:true}).click();
   await page.getByRole("button", { name: "Run 3 examples", exact: true }).click();
-  await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("3 passed · 0 failed · 0 unassessed");
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
+  await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("3 passed · 0 failed · 0 unresolved");
   const ran=await evidence(page,id);
   expect(ran.hashes[ran.session.document.artifacts.at(-1)!.id]).toEqual(before.hashes[artifact.id]);
   expect(ran.session.operations.filter(o=>o.kind==="check")).toHaveLength(1);

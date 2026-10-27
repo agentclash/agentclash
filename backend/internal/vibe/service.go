@@ -23,10 +23,11 @@ type Compiler interface {
 	Compile(json.RawMessage, string, uuid.UUID, Limits) (Compiled, error)
 }
 type Service struct {
-	Store    *Store
-	Config   Config
-	Gate     Gate
-	Compiler Compiler
+	Readiness *Readiness
+	Store     *Store
+	Config    Config
+	Gate      Gate
+	Compiler  Compiler
 }
 
 func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub Submission) (result Operation, err error) {
@@ -60,8 +61,11 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 		return Operation{}, fault("quote_expired", "See the examples and maximum cost before running.")
 	}
 
-	if sub.Purpose != "" && !((sub.Purpose == "suggest_change" && sub.Kind == "message" || sub.Purpose == "regrade" && sub.Kind == "retest" && sub.Content == "" && sub.EvidenceSetID == nil && sub.Interaction == nil) && sub.BaselineID != nil && sub.Instructions == "") {
+	if sub.Purpose != "" && !((sub.Purpose == "suggest_change" && sub.Kind == "message" || sub.Purpose == "regrade" && sub.Kind == "retest" && sub.Content == "" && sub.EvidenceSetID == nil && sub.Interaction == nil) && (sub.BaselineID != nil || sub.Purpose == "regrade" && sub.RegradeSourceResultRef != nil) && sub.Instructions == "") {
 		return Operation{}, fault("invalid_message", "Choose a completed check for this action.")
+	}
+	if sub.RegradeSourceResultRef != nil && sub.Purpose != "regrade" || sub.SourceEvidenceHash != "" && sub.RegradeSourceResultRef == nil {
+		return Operation{}, fault("invalid_request", "SDK source selection is only supported for regrading.")
 	}
 	if sub.JourneyMode != "" && (sub.Kind != "message" || (sub.JourneyMode != "idea" && sub.JourneyMode != "existing" && sub.JourneyMode != "exploring")) {
 		return Operation{}, fault("invalid_message", "Choose idea, existing agent, or exploration for a design message.")
@@ -117,12 +121,18 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 			}
 		}
 	}
+	if (sub.CaseKeys != nil || sub.RetrySourceResultRef != nil) && sub.Kind != "check" {
+		return Operation{}, fault("invalid_subset", "Only a quoted unresolved-case check accepts a subset.")
+	}
 	p := Plan{AuthoringVersion: 4, Submission: sub, Document: v.Document, Anonymous: v.Anonymous, Free: s.Config.FreeOnly, LocalTesting: s.Config.TestingLocally()}
 	if err = s.prepareBuildCycle(ctx, v, sub, &p); err != nil {
 		return Operation{}, err
 	}
 	l = p.limits()
 	if sub.Purpose == "regrade" {
+		if sub.RegradeSourceResultRef != nil {
+			return s.prepareSDKRegrade(ctx, actor, v, sub, p)
+		}
 		return s.prepareRegrade(ctx, actor, v, sub, p)
 	}
 	if sub.Kind == "message" || sub.Kind == "build" {
@@ -140,6 +150,9 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 				p.Artifact = &copy
 				break
 			}
+		}
+		if err = s.prepareResultRecovery(ctx, v, &p); err != nil {
+			return Operation{}, err
 		}
 		if p.Artifact != nil && p.Artifact.IsConversationEvaluation() {
 			return s.prepareConversations(ctx, actor, v, sub, p)
@@ -231,6 +244,10 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 			if e != nil {
 				return Operation{}, e
 			}
+			compiled.Cases, err = selectCompiledCases(compiled.Cases, sub.CaseKeys)
+			if err != nil {
+				return Operation{}, err
+			}
 			if len(compiled.Cases) > l.Cases {
 				return Operation{}, fault("case_limit", fmt.Sprintf("This evaluation has %d cases; the current limit is %d. Create an explicitly smaller draft to preview it.", len(compiled.Cases), l.Cases))
 			}
@@ -275,7 +292,10 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 	}
 	return s.Store.Submit(ctx, actor, id, sub, p, s.Config)
 }
-func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revision int64, content []byte) error {
+func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revision int64, content []byte, metadata ...ImportOriginal) error {
+	return s.importVersion(ctx, actor, id, revision, content, nil, metadata...)
+}
+func (s *Service) importVersion(ctx context.Context, actor string, id uuid.UUID, revision int64, content []byte, parent *uuid.UUID, metadata ...ImportOriginal) error {
 	v, err := s.Store.GetSession(ctx, actor, id)
 	if err != nil {
 		return err
@@ -284,66 +304,24 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 	if err = s.Gate.Check(ctx, actor, l); err != nil {
 		return err
 	}
-	b, err := ImportJSON(content, l)
+	b, agentPrompt, sample, err := importDefinition(content, l)
 	if err != nil {
 		return err
 	}
-	// Round-trip our explicitly versioned export. Model preferences are data;
-	// importing a file cannot change the active model policy or start execution.
-	agentPrompt := ""
-	sample := ""
 	var envelope map[string]json.RawMessage
-	if err = json.Unmarshal(b, &envelope); err != nil {
+	_ = json.Unmarshal(b, &envelope)
+	artifactID := uuid.New()
+	original, err := importOriginal(content, metadata, artifactID)
+	if err != nil {
 		return err
 	}
-	if string(envelope["format"]) == `"agentclash-evaluation-v1"` {
-		var exported struct {
-			Format     string          `json:"format"`
-			ArtifactID uuid.UUID       `json:"artifact_id"`
-			Artifacts  []Artifact      `json:"artifacts"`
-			Scope      string          `json:"scope"`
-			Sample     *string         `json:"sample"`
-			Rules      json.RawMessage `json:"rules"`
-			Runs       json.RawMessage `json:"runs"`
-		}
-		if err = Decode(b, l, &exported); err != nil {
-			return err
-		}
-		found := false
-		for _, a := range exported.Artifacts {
-			if a.ID == exported.ArtifactID {
-				b, agentPrompt, sample = a.Blueprint, a.AgentPrompt, a.Sample
-				found = true
-				break
-			}
-		}
-		if !found || len(agentPrompt) > l.MessageBytes {
-			return fault("invalid_pack", "The export does not identify a bounded agent version.")
-		}
-		// Historical scores and source claims are evidence, never imported as
-		// new successful runs or automatically accepted business requirements.
-		envelope = map[string]json.RawMessage{}
-	}
-	if _, ok := envelope["format"]; ok {
-		var exported struct {
-			Format      string          `json:"format"`
-			AgentPrompt string          `json:"agent_prompt"`
-			Evaluation  json.RawMessage `json:"evaluation"`
-			Models      Models          `json:"models"`
-		}
-		if err = Decode(b, l, &exported); err != nil {
-			return err
-		}
-		if exported.Format != "agentclash-vibe-v1" || strings.TrimSpace(exported.AgentPrompt) == "" || len(exported.AgentPrompt) > l.MessageBytes {
-			return fault("invalid_pack", "The agent export format or instructions are invalid.")
-		}
-		agentPrompt, b = exported.AgentPrompt, exported.Evaluation
-	}
-	artifactID := uuid.New()
 	c, err := s.Compiler.Compile(b, v.Document.Models.Evaluator, artifactID, l)
 	if err != nil {
+		if strings.Contains(err.Error(), "unknown field") && envelope["pack"] != nil {
+			err = fault("unsupported_capability", "This source has fields the current editor cannot interpret. Its original bytes remain downloadable.")
+		}
 		if capability, ok := err.(*Fault); ok && capability.Code == "unsupported_capability" && v.Document.Evaluation != nil {
-			return s.Store.Edit(ctx, actor, id, revision, func(current *Session) error {
+			return s.Store.editOriginal(ctx, actor, id, revision, &original, func(current *Session) error {
 				total := len(b)
 				for _, saved := range current.Document.Artifacts {
 					total += len(saved.Blueprint)
@@ -352,7 +330,7 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 					return fault("attachment_limit", "This pack exceeds the attachment allowance.")
 				}
 				current.Document.AttachmentCount++
-				a := Artifact{ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: "Imported challenge pack", Blueprint: b, AgentPrompt: agentPrompt, CreatedAt: timestamp(), UnavailableReason: capability.Message}
+				a := Artifact{ParentID: parent, Original: &original, ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: "Imported challenge pack", Blueprint: b, AgentPrompt: agentPrompt, CreatedAt: timestamp(), UnavailableReason: capability.Message}
 				current.Document.Artifacts = append(current.Document.Artifacts, a)
 				current.Document.ActiveArtifactID = &a.ID
 				current.Document.TestJourney = true
@@ -362,7 +340,7 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 		}
 		return fault("invalid_pack", "This evaluation could not be imported without changing its coverage: "+err.Error())
 	}
-	return s.Store.Edit(ctx, actor, id, revision, func(v *Session) error {
+	return s.Store.editOriginal(ctx, actor, id, revision, &original, func(v *Session) error {
 		if !s.Config.TestingLocally() && v.Document.AttachmentCount >= l.Files {
 			return fault("attachment_limit", "This conversation has reached its import count limit. Save it and start another.")
 		}
@@ -378,7 +356,7 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 		v.Document.Messages = append(v.Document.Messages, msg)
 		replyID := uuid.New()
 		v.Document.TestJourney = true
-		v.Document.Artifacts = append(v.Document.Artifacts, Artifact{ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: c.Bundle.Pack.Name, Sample: sample, ScopeNote: prototypeScope, AgentPrompt: agentPrompt, Blueprint: b, SourceMessageID: msg.ID, ProposalMessageID: &replyID, CreatedAt: timestamp()})
+		v.Document.Artifacts = append(v.Document.Artifacts, Artifact{ParentID: parent, Original: &original, ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: c.Bundle.Pack.Name, Sample: sample, ScopeNote: prototypeScope, AgentPrompt: agentPrompt, Blueprint: b, SourceMessageID: msg.ID, ProposalMessageID: &replyID, CreatedAt: timestamp()})
 		v.Document.Messages = append(v.Document.Messages, Message{ID: replyID, Role: "assistant", Content: fmt.Sprintf("Your %d imported tests are ready to review.", len(c.Cases)), ArtifactID: &artifactID, CreatedAt: timestamp()})
 		return nil
 	})
@@ -423,17 +401,85 @@ func (s *Service) SaveWithBaseline(ctx context.Context, actor string, id uuid.UU
 	if artifact.IsTestSuite() && !suppliedImport(v.Document, *artifact) && !verifiedSample && !s.currentArtifactPolicy(v.Document, *artifact) {
 		return uuid.Nil, fault("tests_not_ready", "These tests need a rule review before they can be saved. Run the existing tests to review them, or describe the intended rules to prepare an update.")
 	}
-	if selected != nil {
-		// Saving does not run a model. Explicit choices must still belong to the
-		// configured catalog, not user-controlled provider/routing overrides.
+	if selected != nil && *selected != v.Document.Models {
+		// Saving persisted identities does not execute a model or require fresh
+		// pricing. New explicit choices still need current catalog approval.
 		if err := s.Config.ValidateModels(*selected, false); err != nil {
 			return uuid.Nil, err
 		}
-		models = *selected
 	}
 	c, err := s.Compiler.Compile(artifact.Blueprint, models.Evaluator, artifactID, s.Config.Limits(v.Anonymous))
 	if err != nil {
 		return uuid.Nil, err
 	}
 	return s.Store.saveDraft(ctx, actor, id, revision, ws, *artifact, c.Composition, models, selected != nil, baseline, approve...)
+}
+
+func importDefinition(content []byte, l Limits) (json.RawMessage, string, string, error) {
+	b, err := ImportJSON(content, l)
+	if err != nil {
+		return nil, "", "", err
+	}
+	// Round-trip our explicitly versioned export. Model preferences are data;
+	// importing a file cannot change the active model policy or start execution.
+	agentPrompt := ""
+	sample := ""
+	var envelope map[string]json.RawMessage
+	if err = json.Unmarshal(b, &envelope); err != nil {
+		return nil, "", "", err
+	}
+	if string(envelope["format"]) == `"agentclash-evaluation-v1"` || string(envelope["format"]) == `"agentclash-evaluation-v2"` {
+		var exported struct {
+			Format           string          `json:"format"`
+			SessionID        uuid.UUID       `json:"session_id,omitempty"`
+			Title            string          `json:"title,omitempty"`
+			CapturedAt       string          `json:"captured_at,omitempty"`
+			Selection        json.RawMessage `json:"selection,omitempty"`
+			Evidence         json.RawMessage `json:"evidence,omitempty"`
+			CaseMappings     json.RawMessage `json:"case_mappings,omitempty"`
+			Omissions        json.RawMessage `json:"omissions,omitempty"`
+			Manifest         json.RawMessage `json:"manifest,omitempty"`
+			ArtifactID       uuid.UUID       `json:"artifact_id"`
+			Artifacts        []Artifact      `json:"artifacts"`
+			Scope            string          `json:"scope"`
+			Sample           *string         `json:"sample"`
+			Rules            json.RawMessage `json:"rules"`
+			Runs             json.RawMessage `json:"runs"`
+			SDKReports       json.RawMessage `json:"sdk_reports,omitempty"`
+			CanonicalResults json.RawMessage `json:"canonical_results,omitempty"`
+		}
+		if err = Decode(b, l, &exported); err != nil {
+			return nil, "", "", err
+		}
+		found := false
+		for _, a := range exported.Artifacts {
+			if a.ID == exported.ArtifactID {
+				b, agentPrompt, sample = a.Blueprint, a.AgentPrompt, a.Sample
+				found = true
+				break
+			}
+		}
+		if !found || len(agentPrompt) > l.MessageBytes {
+			return nil, "", "", fault("invalid_pack", "The export does not identify a bounded agent version.")
+		}
+		// Historical scores and source claims are evidence, never imported as
+		// new successful runs or automatically accepted business requirements.
+		envelope = map[string]json.RawMessage{}
+	}
+	if _, ok := envelope["format"]; ok {
+		var exported struct {
+			Format      string          `json:"format"`
+			AgentPrompt string          `json:"agent_prompt"`
+			Evaluation  json.RawMessage `json:"evaluation"`
+			Models      Models          `json:"models"`
+		}
+		if err = Decode(b, l, &exported); err != nil {
+			return nil, "", "", err
+		}
+		if exported.Format != "agentclash-vibe-v1" || strings.TrimSpace(exported.AgentPrompt) == "" || len(exported.AgentPrompt) > l.MessageBytes {
+			return nil, "", "", fault("invalid_pack", "The agent export format or instructions are invalid.")
+		}
+		agentPrompt, b = exported.AgentPrompt, exported.Evaluation
+	}
+	return b, agentPrompt, sample, nil
 }

@@ -173,3 +173,17 @@ it.each(["RUNNING", "CANCELLED"])(
     expect(retest).not.toHaveBeenCalled();
   },
 );
+
+
+it("opens the complete exact explanation beside its concise excerpt",async()=>{
+ const explanation="The reply appears inconsistent with the policy. ".repeat(8)+"However, the quoted exception explicitly allows this customer's request.";
+ const evidence={...result("FAIL"),checks:[{key:"policy",verdict:"FAIL" as const,evidence:explanation}]};
+ await act(async()=>root.render(<CaseEvidence summary={evidence} concise load={async()=>evidence}/>));
+ await open();
+ const summary=[...container.querySelectorAll("summary")].find(node=>node.textContent==="Read complete explanation");
+ expect(summary).toBeTruthy();
+ const disclosure=summary!.parentElement as HTMLDetailsElement;
+ await act(async()=>{disclosure.open=true;disclosure.dispatchEvent(new Event("toggle"))});
+ expect(disclosure.textContent).toContain(explanation);
+ expect(disclosure.parentElement?.textContent).toContain("excerpt");
+});

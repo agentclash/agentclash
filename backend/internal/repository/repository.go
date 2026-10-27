@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -494,6 +493,9 @@ func (r *Repository) ListRunnableDeploymentsWithLatestSnapshot(
 
 	deployments := make([]RunnableDeployment, 0, len(rows))
 	for _, row := range rows {
+		if err := validateConnectorAdmission(ctx, r.db, workspaceID, row.AgentDeploymentSnapshotID); err != nil {
+			return nil, err
+		}
 		deployments = append(deployments, RunnableDeployment{
 			ID:                        row.ID,
 			OrganizationID:            row.OrganizationID,
@@ -521,6 +523,12 @@ func (r *Repository) CreateQueuedRun(ctx context.Context, params CreateQueuedRun
 
 	if params.EntitlementGate != nil {
 		if err := enforceRunEntitlementGate(ctx, tx, params.WorkspaceID, params.EntitlementGate); err != nil {
+			return CreateQueuedRunResult{}, err
+		}
+	}
+
+	for _, agent := range params.RunAgents {
+		if err := validateConnectorAdmission(ctx, tx, params.WorkspaceID, agent.AgentDeploymentSnapshotID); err != nil {
 			return CreateQueuedRunResult{}, err
 		}
 	}
@@ -1739,20 +1747,50 @@ func (r *Repository) RecordHostedRunEvent(ctx context.Context, params RecordHost
 	}
 	defer rollback(ctx, tx)
 
+	replay, err := r.recordHostedRunEventTx(ctx, tx, params)
+	if err != nil {
+		return RunAgentReplay{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return RunAgentReplay{}, err
+	}
+	return replay, nil
+}
+
+func (r *Repository) recordHostedRunEventTx(ctx context.Context, tx pgx.Tx, params RecordHostedRunEventParams) (RunAgentReplay, error) {
+	// Serialize with all callback receipts before assigning canonical event sequences.
+	if _, err := tx.Exec(ctx, "SELECT id FROM run_agents WHERE id=$1 FOR UPDATE", params.Event.RunAgentID); err != nil {
+		return RunAgentReplay{}, err
+	}
 	queries := r.queries.WithTx(tx)
 	eventsToInsert := append([]runevents.Envelope{params.Event}, params.AdditionalEvents...)
-	sort.SliceStable(eventsToInsert, func(i, j int) bool {
-		if eventsToInsert[i].OccurredAt.Equal(eventsToInsert[j].OccurredAt) {
-			return eventsToInsert[i].EventID < eventsToInsert[j].EventID
+	for _, event := range eventsToInsert {
+		if err := event.ValidatePending(); err != nil {
+			return RunAgentReplay{}, err
 		}
-		return eventsToInsert[i].OccurredAt.Before(eventsToInsert[j].OccurredAt)
-	})
-	for idx, event := range eventsToInsert {
-		if _, insertErr := insertCanonicalRunEventTx(ctx, queries, event); insertErr != nil {
-			if idx == 0 {
-				return RunAgentReplay{}, fmt.Errorf("insert hosted run event: %w", insertErr)
+		encoded, err := json.Marshal(event)
+		if err != nil {
+			return RunAgentReplay{}, err
+		}
+		digest := sha256.Sum256(encoded)
+		hash := hex.EncodeToString(digest[:])
+		var previous string
+		err = tx.QueryRow(ctx, "SELECT payload_hash FROM hosted_event_receipts WHERE run_agent_id=$1 AND source_event_id=$2", event.RunAgentID, event.EventID).Scan(&previous)
+		if err == nil {
+			if previous != hash {
+				return RunAgentReplay{}, ErrHostedEventConflict
 			}
-			return RunAgentReplay{}, fmt.Errorf("insert hosted structured trace event: %w", insertErr)
+			continue
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return RunAgentReplay{}, err
+		}
+		inserted, err := insertCanonicalRunEventTx(ctx, queries, event)
+		if err != nil {
+			return RunAgentReplay{}, err
+		}
+		if _, err = tx.Exec(ctx, "INSERT INTO hosted_event_receipts(run_agent_id,source_event_id,payload_hash,original_event,sequence_number) VALUES($1,$2,$3,$4,$5)", event.RunAgentID, event.EventID, hash, encoded, inserted.SequenceNumber); err != nil {
+			return RunAgentReplay{}, err
 		}
 	}
 
@@ -1796,9 +1834,6 @@ func (r *Repository) RecordHostedRunEvent(ctx context.Context, params RecordHost
 	replay, err := mapRunAgentReplay(replayRow)
 	if err != nil {
 		return RunAgentReplay{}, fmt.Errorf("map run-agent replay: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return RunAgentReplay{}, fmt.Errorf("commit hosted run event: %w", err)
 	}
 	return replay, nil
 }
@@ -2966,6 +3001,7 @@ func (r *Repository) CountRunsByWorkspaceID(ctx context.Context, workspaceID uui
 }
 
 type AgentDeploymentSummary struct {
+	Adapter               string
 	ID                    uuid.UUID
 	OrganizationID        uuid.UUID
 	WorkspaceID           uuid.UUID
@@ -2998,7 +3034,12 @@ func (r *Repository) ListActiveAgentDeploymentsByWorkspaceID(ctx context.Context
 			return nil, err
 		}
 
+		var adapter string
+		if err := r.db.QueryRow(ctx, `SELECT CASE WHEN d.deployment_type='native' THEN 'native' ELSE COALESCE(c.adapter,'hosted') END FROM agent_deployments d LEFT JOIN connector_snapshots c ON c.snapshot_id=$2 WHERE d.id=$1`, row.ID, row.LatestSnapshotID).Scan(&adapter); err != nil {
+			return nil, err
+		}
 		deployments = append(deployments, AgentDeploymentSummary{
+			Adapter:               adapter,
 			ID:                    row.ID,
 			OrganizationID:        row.OrganizationID,
 			WorkspaceID:           row.WorkspaceID,

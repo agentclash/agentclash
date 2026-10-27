@@ -326,3 +326,66 @@ func (VibePackCompiler) Compile(content json.RawMessage, evaluator string, id uu
 	}
 	return out, nil
 }
+
+// Advanced preserves canonical rich capabilities; it never weakens Compile.
+func (VibePackCompiler) Advanced(content json.RawMessage, l vibe.Limits) (json.RawMessage, error) {
+	var bundle challengepack.Bundle
+	if err := vibe.Decode(content, l, &bundle); err != nil {
+		return nil, err
+	}
+	composition, err := challengepack.BundleToComposition(bundle)
+	if err != nil {
+		return nil, err
+	}
+	composed, err := challengepack.ComposeBundle(composition, challengepack.ResolvedPieces{})
+	if err != nil {
+		return nil, err
+	}
+	// Conversion must retain all canonical fields, including advanced passthrough.
+	if bundle.Version.EvaluationSpec.JudgeMode == "" {
+		bundle.Version.EvaluationSpec.JudgeMode = composed.Version.EvaluationSpec.JudgeMode
+	}
+	before, _ := json.Marshal(bundle)
+	after, _ := json.Marshal(composed)
+	var a, b any
+	_ = json.Unmarshal(before, &a)
+	_ = json.Unmarshal(after, &b)
+	// Defaults may be added, but every explicitly represented source value must survive.
+	var preserves func(any, any) bool
+	preserves = func(source, target any) bool {
+		if source == nil {
+			return true
+		}
+		switch x := source.(type) {
+		case map[string]any:
+			y, ok := target.(map[string]any)
+			if !ok {
+				return false
+			}
+			for k, v := range x {
+				if !preserves(v, y[k]) {
+					return false
+				}
+			}
+			return true
+		case []any:
+			y, ok := target.([]any)
+			if !ok || len(x) != len(y) {
+				return false
+			}
+			for i, v := range x {
+				if !preserves(v, y[i]) {
+					return false
+				}
+			}
+			return true
+		default:
+			return reflect.DeepEqual(source, target)
+		}
+	}
+	if !preserves(a, b) {
+		return nil, fmt.Errorf("advanced conversion changes explicitly supplied canonical fields")
+	}
+
+	return json.Marshal(composition)
+}

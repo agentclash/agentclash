@@ -418,7 +418,14 @@ func (m *ChallengePackBuilderManager) PublishDraft(ctx context.Context, caller C
 
 	// Reuse the raw-YAML publish path: it re-validates, stores the bundle
 	// artifact, and writes the immutable manifest in one transaction.
-	resp, err := m.authoring.PublishBundle(productanalytics.WithPath(ctx, "draft"), workspaceID, bundleYAML)
+	var resp PublishChallengePackResponse
+	if sourcePublisher, ok := m.authoring.(interface {
+		PublishBundleFromDraft(context.Context, uuid.UUID, []byte, repository.PackPublicationSource) (PublishChallengePackResponse, error)
+	}); ok {
+		resp, err = sourcePublisher.PublishBundleFromDraft(productanalytics.WithPath(ctx, "draft"), workspaceID, bundleYAML, repository.PackPublicationSource{DraftID: draft.ID, Composition: draft.Composition})
+	} else {
+		resp, err = m.authoring.PublishBundle(productanalytics.WithPath(ctx, "draft"), workspaceID, bundleYAML)
+	}
 	if err != nil {
 		return PublishChallengePackResponse{}, err
 	}

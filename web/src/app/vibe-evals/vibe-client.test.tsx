@@ -2,19 +2,23 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { defaultModels, VibeError, type Operation, type Session } from "@/lib/vibe";
+import { draftMemory } from "@/lib/vibe-build-drafts";
 import { VibeClient } from "./vibe-client";
 
 const harness = vi.hoisted(() => ({
   params: new URLSearchParams("session=session-one"),
   authLoading: false,
+  user: undefined as { id: string; email?: string } | undefined,
   token: vi.fn(async () => undefined as string | undefined),
   watch: vi.fn(),
   me: vi.fn(),
+  analytics: vi.fn(),
 }));
+vi.mock("@/lib/analytics/posthog-client", () => ({ captureWebEvent: harness.analytics, getPostHogSessionID: () => "fixture-analytics" }));
 vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(window.location.search) }));
 vi.mock("@workos-inc/authkit-nextjs/components", () => ({
   useAccessToken: () => ({ getAccessToken: harness.token }),
-  useAuth: () => ({ loading: harness.authLoading, user: { id: "fixture-user" } }),
+  useAuth: () => ({ loading: harness.authLoading, user: harness.user }),
 }));
 vi.mock("@/lib/vibe", async (original) => ({
   ...(await original<typeof import("@/lib/vibe")>()),
@@ -35,7 +39,7 @@ let container: HTMLDivElement;
 let root: Root;
 let session: Session;
 let snapshot: (value: Session) => void;
-let requests: { path: string; method: string; body: Record<string, unknown> }[];
+let requests: { path: string; query?: string; method: string; body: Record<string, unknown> }[];
 let respond: (path: string, options: RequestInit) => Promise<Response>;
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -79,7 +83,7 @@ function button(name: string) {
       b.textContent?.includes("Back to Vibe Evals"),
     )
       ? "← Back to Vibe Evals"
-      : "Conversation";
+      : "Agent";
 
   if (name === "Send message")
     return container.querySelector<HTMLButtonElement>(
@@ -95,7 +99,7 @@ function button(name: string) {
   return found!;
 }
 async function click(name: string) {
-  if (name === "Describe" && composer()) return;
+  if (name === "Describe" && container.querySelector('[role="tab"][data-active][id="vibe-tab-build"]')) return;
   await act(async () => button(name).click());
 }
 async function openChecks() {
@@ -131,10 +135,11 @@ function posts() {
 
 beforeEach(() => {
   routerQuery = undefined;
-  harness.authLoading = false;
-  sessionStorage.clear();
+  harness.authLoading = false; harness.user = undefined;
+  sessionStorage.clear(); draftMemory.clear();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   Element.prototype.scrollIntoView = vi.fn();
+  vi.stubGlobal("CSS", { escape: (value: string) => value });
   harness.params = new URLSearchParams("session=session-one");
   harness.token.mockResolvedValue(undefined);
   harness.watch.mockImplementation(
@@ -158,10 +163,10 @@ beforeEach(() => {
     },
     operations: [],
   };
-  requests = [];
+  requests = []; harness.analytics.mockClear();
   respond = async (path) =>
     path === "/saved-checks" ? json([]) : path === "/config"
-      ? json({ enabled: true, defaults: defaultModels, models: [] })
+      ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) })
       : json(session);
   vi.stubGlobal(
     "fetch",
@@ -169,6 +174,7 @@ beforeEach(() => {
       const path = new URL(url).pathname.replace("/v1/vibe", "");
       requests.push({
         path,
+        ...(new URL(url).search ? { query: new URL(url).search } : {}),
         method: options.method || "GET",
         body: options.body ? JSON.parse(String(options.body)) : {},
       });
@@ -186,10 +192,48 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
+it.each([[false,false],[true,false],[false,true]])("saves recorded replies through evidence intake before an explicit pinned quote (lost ack: %s, retired target: %s)", async (lostAck, retiredTarget) => {
+  session.document.format_version=1; session.document.evaluation={id:session.id,chat_id:session.id,door:"test"};
+  if(retiredTarget)session.document.models={...defaultModels,target:"retired/source-model"};
+  const initial=respond;
+  let evidencePosts=0;
+  respond=async(path,options)=>{
+    if(path==="/config") return json({enabled:true,two_door:true,availability:{guest:{available:true},workspace:{available:true}},defaults:defaultModels,models:[...new Set(Object.values(defaultModels))].map(id=>({id,name:id}))});
+    if(path.endsWith("/evidence")){
+      const body=JSON.parse(String(options.body));
+      session={...session,revision:2,event_cursor:2,document:{...session.document,artifacts:[{id:"recorded-version",kind:"conversation_evaluation",title:"App replies",agent_prompt:"",blueprint:null,accepted:false,source_message_id:"",conversation_evaluation:{evidence_set_id:"recorded-source",expectations:body.expectations}}],evidence_sets:[{id:"recorded-source",label:"App replies",raw:body.content,conversations:[{key:"chat-1",title:"Chat 1",messages:[{id:"c1-m1",role:"user",content:"Hello"},{id:"c1-m2",role:"assistant",content:"Exact reply"}]}]}]}};
+      evidencePosts++;if(lostAck&&evidencePosts===1)throw new TypeError("Connection closed after commit");
+      return json({...session,evidence_receipt:{client_id:body.client_id,evidence_id:"recorded-source",artifact_id:"recorded-version"}});
+    }
+    if(path.endsWith("/run-quote"))return json({id:"quote-recorded",kind:"run",revision:2,cases:1,calls:1,max_cost_nano_usd:0,expires_at:new Date(Date.now()+600000).toISOString()});
+    return initial(path,options);
+  };
+  await render();
+  await click("Check replies from my app");
+  expect(requests.filter(r=>r.method==="POST")).toHaveLength(0);
+  await type("Customer: Hello\nAgent: Exact reply","Recorded replies");
+  await type("Answer without inventing facts.","Expected behavior");
+  await click("Review recorded replies");
+  if(lostAck){
+    await act(async()=>snapshot(session));
+    await click("Retry saving these replies");
+    const attempts=requests.filter(r=>r.path.endsWith("/evidence"));
+    expect(attempts).toHaveLength(2);expect(attempts[1].body).toEqual(attempts[0].body);
+  }
+  const evidence=requests.find(r=>r.path.endsWith("/evidence"))!;
+  expect(evidence.body).toMatchObject({revision:1,content:"Customer: Hello\nAgent: Exact reply",expectations:[{id:"expectation-1",statement:"Answer without inventing facts."}]});
+  expect(typeof evidence.body.client_id).toBe("string");
+  expect(requests.some(r=>r.path.endsWith("/messages")||r.path.endsWith("/run-quote"))).toBe(false);
+  expect(container.textContent).toContain("Exact reply");
+  await click("Check these recorded replies");
+  expect(requests.find(r=>r.path.endsWith("/run-quote"))?.body).toMatchObject({artifact_id:"recorded-version",evidence_set_id:"recorded-source",kind:"check"});
+  expect(requests.some(r=>r.path.endsWith("/messages"))).toBe(false);
+});
+
 it.each([false, true])("paid local testing permits evaluator choice without sending a request: %s", async (freeOnly) => {
   const alternative = "deepseek/deepseek-v4.1-flash";
   respond = async (path) => path === "/config"
-    ? json({ enabled: true, local_testing: true, free_only: freeOnly, defaults: defaultModels,
+    ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, local_testing: true, free_only: freeOnly, defaults: defaultModels,
       models: [{ id: defaultModels.assistant, name: "Original" }, { id: alternative, name: "DeepSeek V4.1 Flash" }] })
     : json(session);
   await render();
@@ -209,9 +253,10 @@ it.each([false, true])("paid local testing permits evaluator choice without send
   expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
 });
 
-it.each(["setup", "agent"])(
-  "sends the %s composer with Enter and preserves Shift+Enter and IME input",
-  async (mode) => {
+it.each(["setup", "agent"].flatMap(mode => [false, true].map(touch => ({ mode, touch }))))(
+  "sends the $mode composer with touch=$touch and preserves newlines and IME input",
+  async ({ mode, touch }) => {
+    vi.stubGlobal("matchMedia", vi.fn((query: string) => ({ matches: query === "(any-pointer: coarse)" && touch, addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() })));
     if (mode === "agent") scenarioAgent();
     await render();
     if (mode === "agent") await click("Try a message");
@@ -225,6 +270,7 @@ it.each(["setup", "agent"])(
       { shiftKey: true },
       { isComposing: true },
       { keyCode: 229 },
+      ...(touch ? [{}] : []),
     ]) {
       const event = new KeyboardEvent("keydown", {
         key: "Enter",
@@ -239,6 +285,7 @@ it.each(["setup", "agent"])(
       expect(posts()).toHaveLength(0);
     }
     const event = new KeyboardEvent("keydown", {
+      ...(touch ? { ctrlKey: true } : {}),
       key: "Enter",
       bubbles: true,
       cancelable: true,
@@ -272,7 +319,7 @@ it.each([
     respond = async (path, options) => {
       if (!path.endsWith("/messages"))
         return path === "/config"
-          ? json({ defaults: defaultModels, models: [] })
+          ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) })
           : json(session);
       if (!accepted) {
         accepted = String(options.body);
@@ -380,7 +427,7 @@ it.each([
     respond = async (path, options) => {
       if (path === "/config")
         return json({
-          defaults: defaultModels,
+          enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels,
           models: [
             defaultModels.target,
             selected.assistant,
@@ -516,7 +563,7 @@ it.each(["A different next message", "Original request"])(
       path.endsWith("/messages")
         ? response.promise
         : path === "/config"
-          ? json({ defaults: defaultModels, models: [] })
+          ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) })
           : json(session);
     await render();
     await type("Original request");
@@ -537,7 +584,7 @@ it.each(["pending", "failed"])(
     const response = deferred<Response>();
     respond = async (path) =>
       path === "/config"
-        ? json({ defaults: defaultModels, models: [] })
+        ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) })
         : response.promise;
     await render();
     if (outcome === "failed")
@@ -558,7 +605,7 @@ it.each(["pending", "failed"])(
       expect(button("Send message").disabled).toBe(false);
     } else {
       expect(container.textContent).toContain("Cannot load this conversation");
-      respond = async () => json(session);
+      respond = async path => path === "/config" ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }] }) : json(session);
       await click("Retry connection");
       expect(button("Send message").disabled).toBe(false);
       expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
@@ -571,7 +618,7 @@ it("shows the submitted message before admission and preserves a newer draft aft
   let retry = false;
   respond = async (path) =>
     path === "/config"
-      ? json({ defaults: defaultModels, models: [] })
+      ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) })
       : path.endsWith("/messages")
         ? retry
           ? json({ id: "accepted" }, 202)
@@ -633,7 +680,7 @@ it("keeps the composer editable after a definite intake rejection", async () => 
           400,
         )
       : path === "/config"
-        ? json({ defaults: defaultModels, models: [] })
+        ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) })
         : json(session);
   await render();
   await type("Help with a new project");
@@ -654,7 +701,7 @@ it("verifies a new session cookie before changing the URL, streaming or sending 
   const replace = vi.spyOn(window.history, "replaceState");
   respond = async (path, options) => {
     if (path === "/config")
-      return json({ defaults: defaultModels, models: [] });
+      return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path === "/sessions" && options.method === "POST")
       return json(session, 201);
     return json(
@@ -677,7 +724,7 @@ it("verifies a new session cookie before changing the URL, streaming or sending 
   expect(composer().value).toBe(brief);
   expect(posts()).toHaveLength(0);
   expect(harness.watch).not.toHaveBeenCalled();
-  expect(replace).not.toHaveBeenCalled();
+  expect(replace.mock.calls.every(call => !String(call[2]).includes("session="))).toBe(true);
   expect(button("Send message").disabled).toBe(false);
   expect(container.textContent).not.toContain("Reconnecting to saved progress");
 });
@@ -745,6 +792,7 @@ it("keeps an inaccessible accepted draft available while offering an explicit co
 });
 
 function signedInWorkspace() {
+  harness.user = { id: "fixture-user" };
   harness.token.mockResolvedValue("test-access-token");
   harness.me.mockResolvedValue({
     organizations: [
@@ -789,7 +837,7 @@ it.each([
     respond = async (path, options) => {
       if (path === "/config")
         return json({
-          defaults: defaultModels,
+          enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels,
           models: [
             { id: defaultModels.target, name: "Mini" },
             { id: "openai/gpt-4.1", name: "Full" },
@@ -841,7 +889,7 @@ it.each([
     expect(button("Save agent").disabled).toBe(false);
     expect(container.textContent).not.toContain("Retry submission");
     await click("Save agent");
-    await click("Save agent and checks");
+    await click("Save and iterate");
     const save = requests.find((r) => r.path.endsWith("/save"))!;
     expect(save.body.models).toEqual({
       ...defaultModels,
@@ -851,7 +899,7 @@ it.each([
     expect(button("Saved").disabled).toBe(true);
     expect(
       container.querySelector(
-        'a[href="/workspaces/workspace-one/challenge-packs/builder/canonical-one"]',
+        'a[href^="/workspaces/workspace-one/challenge-packs/builder/canonical-one"]',
       ),
     ).not.toBeNull();
     expect(composer().value).toBe("Keep this message");
@@ -865,7 +913,7 @@ it("Keep sends the independently selected models without an inference submission
   respond = async (path, options) => {
     if (path === "/config")
       return json({
-        defaults: defaultModels,
+        enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels,
         models: [
           { id: defaultModels.target, name: "Mini" },
           { id: "openai/gpt-4.1", name: "Full" },
@@ -889,7 +937,7 @@ it("Keep sends the independently selected models without an inference submission
   await render();
   await selectModel("Agent", "openai/gpt-4.1");
   await click("Save agent");
-  await click("Save agent and checks");
+  await click("Save and iterate");
   const save = requests.find((r) => r.path.endsWith("/save"))!;
   expect(save.body.models).toEqual({
     ...defaultModels,
@@ -909,7 +957,7 @@ it.each([
   { name: "legacy null", receipt: { saved_models: null }, confirmed: false },
   { name: "legacy absent", receipt: {}, confirmed: false },
 ])(
-  "hydrates the $name saved artifact link from a session-only URL, clearing it for a new artifact",
+  "hydrates the $name saved artifact link from a session-only URL, pinning the open save summary while a new artifact arrives",
   async ({ receipt, confirmed }) => {
     acceptedDraft();
     signedInWorkspace();
@@ -920,13 +968,14 @@ it.each([
       saved_artifact_id: "artifact-one",
       ...receipt,
     });
+    session.operations=[{id:"original-default-run",kind:"check",state:"COMPLETED",billing:"SETTLED",models:defaultModels,max_cost_nano_usd:0,actual_cost_nano_usd:0,results:[],source:{kind:"prompt",artifact_id:"artifact-one"}}];
     await render();
     const href =
       "/workspaces/workspace-one/challenge-packs/builder/canonical-one";
-    expect(container.querySelector(`a[href="${href}"]`)).not.toBeNull();
+    expect(container.querySelector(`a[href^="${href}"]`)).not.toBeNull();
     expect(container.textContent).toContain("Credits for workspace-one");
     await click("Save agent");
-    expect(button(confirmed ? "Saved" : "Save agent and checks").disabled).toBe(
+    expect(button(confirmed ? "Saved" : "Save and iterate").disabled).toBe(
       confirmed,
     );
     session.document.artifacts.push({
@@ -935,19 +984,20 @@ it.each([
       accepted: true,
     });
     session.document.active_artifact_id = "artifact-two";
+    session.operations.push({...session.operations[0],id:"later-default-run"});
     session.revision++;
     session.event_cursor = session.revision;
     await act(async () => snapshot(structuredClone(session)));
-    expect(document.querySelector(`a[href="${href}"]`)).toBeNull();
-    expect(button("Save agent and checks").disabled).toBe(false);
+    expect(container.querySelector(`a[href^="${href}"]`)).toBeNull();
+    const returnLink=document.querySelector<HTMLAnchorElement>('[role="dialog"] a[href^="/workspaces/workspace-one/challenge-packs/builder/canonical-one"]')!;
+    const returnPath=new URL(returnLink.href).searchParams.get("return_to")!;
+    expect(new URL(returnPath,"http://localhost").searchParams.get("agent")).toBe("artifact-one");
+    expect(new URL(returnPath,"http://localhost").searchParams.get("run")).toBe("original-default-run");
+    expect(button(confirmed ? "Saved" : "Save and iterate").disabled).toBe(confirmed);
     expect(container.textContent).not.toContain(
       "Your agent and checks are saved.",
     );
-    expect(
-      [...document.querySelectorAll("button")].some(
-        (b) => b.textContent === "Saved",
-      ),
-    ).toBe(false);
+    expect([...document.querySelectorAll('[role="dialog"] button')].some(b=>b.textContent==="Saved")).toBe(confirmed);
     expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
   },
 );
@@ -970,7 +1020,7 @@ it.each([
     respond = async (path) =>
       path === "/config"
         ? json({
-            defaults: defaultModels,
+            enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels,
             models: [
               { id: defaultModels.target, name: "Mini" },
               { id: "openai/gpt-4.1", name: "Full" },
@@ -997,17 +1047,17 @@ it.each([
       "Your current model choices differ from those recorded when this agent was saved.",
     );
     await click("Save agent");
-    await click("Save agent and checks");
+    await click("Save and iterate");
     const dialog = document.querySelector('[role="dialog"]')!;
     expect(dialog.textContent).toContain(
       "Create a new draft before saving different models.",
     );
     expect(
       dialog.querySelector(
-        'a[href="/workspaces/workspace-one/challenge-packs/builder/canonical-one"]',
+        'a[href^="/workspaces/workspace-one/challenge-packs/builder/canonical-one"]',
       ),
     ).not.toBeNull();
-    expect(button("Save agent and checks").disabled).toBe(false);
+    expect(button("Save and iterate").disabled).toBe(false);
     expect(requests.filter((r) => r.path.endsWith("/save"))).toEqual([
       {
         path: "/sessions/session-one/save",
@@ -1072,7 +1122,7 @@ it.each([
     respond = async (path) =>
       path === "/config"
         ? json({
-            defaults: defaultModels,
+            enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels,
             models: [defaultModels.target, selected.target].map((id) => ({
               id,
               name: id,
@@ -1088,8 +1138,9 @@ it.each([
       "/workspaces/workspace-one/challenge-packs/builder/canonical-one";
     const mutations = () => requests.filter((r) => r.method !== "GET");
     async function followLink(scope: ParentNode) {
-      const link = scope.querySelector<HTMLAnchorElement>(`a[href="${href}"]`);
+      const link = scope.querySelector<HTMLAnchorElement>(`a[href^="${href}"]`);
       expect(link, "known canonical draft remains navigable").not.toBeNull();
+      expect(new URL(link!.href).pathname).toBe(href);
       const before = structuredClone(requests);
       // JSDOM cannot navigate. Cancel only the browser default, not UI handlers.
       document.addEventListener("click", (event) => event.preventDefault(), {
@@ -1115,10 +1166,10 @@ it.each([
     ).toBe(false);
     await followLink(dialog);
     expect(mutations()).toHaveLength(0);
-    await click("Save agent and checks");
+    await click("Save and iterate");
     expect(dialog.textContent).toContain(conflict);
     expect(dialog.textContent).toContain(notice);
-    expect(button("Save agent and checks").disabled).toBe(false);
+    expect(button("Save and iterate").disabled).toBe(false);
     expect(
       [...dialog.querySelectorAll("button")].some(
         (b) => b.textContent === "Saved",
@@ -1286,7 +1337,7 @@ it("retries a trial with its original thread and preserves text typed during an 
   let first = true;
   respond = async (path) => {
     if (path === "/config")
-      return json({ defaults: defaultModels, models: [] });
+      return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path.endsWith("/messages") && first) {
       first = false;
       throw new TypeError("Lost acknowledgement");
@@ -1309,10 +1360,10 @@ it("retries a trial with its original thread and preserves text typed during an 
   ).toBe("My next trial");
 });
 
-it("restores a trial's version and model from its URL and excludes Build from its history", async () => {
+it("opens the retained trial without a thread selector and preserves explicit New across refresh", async () => {
   scenarioAgent();
   harness.params = new URLSearchParams(
-    "session=session-one&view=try&agent=artifact-one&thread=thread-one",
+    "session=session-one&view=try&agent=artifact-one",
   );
   session.document.messages = [
     {
@@ -1352,10 +1403,13 @@ it("restores a trial's version and model from its URL and excludes Build from it
       results: [],
     },
   ];
+  const previous = respond;
+  respond = async (path, options) => path === "/config" ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set([...Object.values(defaultModels), "openai/gpt-4.1"])].map(id => ({ id, name: id })) }) : previous(path, options);
   await render();
   const history = container.querySelector(
     '[role="log"][aria-label="Trial conversation"]',
   )!;
+  expect(new URL(location.href).searchParams.get("thread")).toBe("thread-one");
   expect(history.textContent).toContain("Is it unopened?");
   expect(history.textContent).not.toContain("Private build instructions");
   await type("It is unopened", "Message your agent");
@@ -1368,6 +1422,12 @@ it("restores a trial's version and model from its URL and excludes Build from it
   });
   await click("New conversation");
   expect(history.textContent).toBe("");
+  expect(new URL(location.href).searchParams.has("thread")).toBe(true);
+  expect(new URL(location.href).searchParams.get("thread")).toBe("");
+  harness.params = new URLSearchParams(location.search);
+  await act(async () => root.unmount()); root = createRoot(container);
+  await render();
+  expect(container.querySelector('[role="log"][aria-label="Trial conversation"]')?.textContent).toBe("");
   expect(posts()).toHaveLength(1);
 });
 
@@ -1491,7 +1551,7 @@ function recordedResult() {
 
 it("starts with one action and a read-only example before explicit use", async () => {
   await render();
-  expect(container.querySelectorAll('[role="tab"]')).toHaveLength(0);
+  expect([...container.querySelectorAll('[role="tab"]')].map(tab => tab.textContent)).toEqual(["Agent", "Tests", "Results"]);
   expect(container.querySelector("h1")?.textContent).toBe(
     "What should your agent do?",
   );
@@ -1540,7 +1600,7 @@ it("switches a failed request's assistant explicitly and recovers a lost acknowl
   const alternative = { id: "openai/gpt-5.4-mini", name: "GPT-5.4 Mini", input_nano_per_token: 750, output_nano_per_token: 3750 };
   let attempts = 0;
   respond = async path => {
-    if (path === "/config") return json({ enabled: true, defaults: defaultModels, models: [alternative] });
+    if (path === "/config") return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [alternative] });
     if (path.endsWith("/retry")) {
       if (++attempts === 1) throw new TypeError("Lost acknowledgement");
       return json({ ...failed, id: "retry-switched", models: { ...defaultModels, assistant: alternative.id }, retry_of_operation_id: failed.id, state: "QUEUED", error: undefined, retryable: false });
@@ -1571,7 +1631,7 @@ it("retries an acknowledged failure once without resending a message or clearing
   const acknowledgement = deferred<Response>();
   const retry = { ...failed, id: "retry-operation", retry_of_operation_id: failed.id, state: "QUEUED", error: undefined, retryable: false };
   respond = async (path) => {
-    if (path === "/config") return json({ enabled: true, defaults: defaultModels, models: [] });
+    if (path === "/config") return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path.endsWith("/retry")) return acknowledgement.promise;
     return json(session);
   };
@@ -1596,7 +1656,7 @@ it("retries an uncertain recovery with its original request after the session re
   const failed = failedPreparation();
   let attempts = 0;
   respond = async (path) => {
-    if (path === "/config") return json({ enabled: true, defaults: defaultModels, models: [] });
+    if (path === "/config") return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path.endsWith("/retry")) {
       if (++attempts === 1) throw new TypeError("Connection closed before acknowledgement.");
       const retry = { ...failed, id: "retry-operation", retry_of_operation_id: failed.id, state: "QUEUED", error: undefined, retryable: false };
@@ -1624,7 +1684,7 @@ it("retries an uncertain recovery with its original request after the session re
 it("recovers a lost retry acknowledgement from a persisted child operation without another POST", async () => {
   const failed = failedPreparation();
   respond = async (path) => {
-    if (path === "/config") return json({ enabled: true, defaults: defaultModels, models: [] });
+    if (path === "/config") return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path.endsWith("/retry")) throw new TypeError("Connection closed.");
     return json(session);
   };
@@ -1641,24 +1701,28 @@ it("recovers a lost retry acknowledgement from a persisted child operation witho
   expect(requests.filter(request => request.path.endsWith("/retry"))).toHaveLength(1);
 });
 
-it.each(["completed", "failed"])("keeps an asynchronous test edit draft until its %s outcome", async outcome => {
+it.each(["completed", "failed", "completed from pinned run"])("keeps an asynchronous test edit draft until its %s outcome", async outcome => {
+  const pinned = outcome === "completed from pinned run";
   const suite = scenarioAgent("Returns tests");
   suite.kind = "test_suite";
   session.document.test_journey = true;
+  const historical: Operation = { id: "historical-run", kind: "check", state: "COMPLETED", billing: "RELEASED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [], source: { kind: "generated", artifact_id: suite.id } };
+  if (pinned) { session.operations = [historical]; harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${historical.id}&agent=${suite.id}`); }
   const editOperation: Operation = {
     id: "manual-edit", kind: "message", state: "QUEUED", billing: "RESERVED", models: defaultModels,
     max_cost_nano_usd: 0, actual_cost_nano_usd: null, results: [],
   };
   respond = async (path, options) => {
-    if (path === "/config") return json({ enabled: true, defaults: defaultModels, models: [] });
+    if (path === "/config") return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (options.method === "PATCH") {
-      session = { ...session, revision: 2, event_cursor: 2, operations: [editOperation],
+      session = { ...session, revision: 2, event_cursor: 2, operations: [...(pinned ? [historical] : []), editOperation],
         document: { ...session.document, messages: [...session.document.messages,
           { id: "manual-edit-source", role: "user", content: "Update these test expectations.", operation_id: editOperation.id }] } };
     }
     return json(session);
   };
   await render();
+  if (pinned) await click("Tests");
   await click("Edit tests");
   const expectation = container.querySelectorAll<HTMLTextAreaElement>('[aria-label="Your tests"] textarea')[1];
   await act(async () => {
@@ -1669,18 +1733,23 @@ it.each(["completed", "failed"])("keeps an asynchronous test edit draft until it
   expect(container.textContent).toContain("Checking these test changes…");
   expect(container.querySelectorAll<HTMLTextAreaElement>('[aria-label="Your tests"] textarea')[1].value).toBe("Decline returns after the new deadline.");
   expect(button("Save test changes").disabled).toBe(true);
-  if (outcome === "completed") {
+  if (!pinned) await type("My next guide question");
+  if (outcome !== "failed") {
     const updated = { ...suite, id: "updated-tests", parent_id: suite.id, source_message_id: "manual-edit-source" };
     session = { ...session, revision: 3, event_cursor: 3, document: { ...session.document, artifacts: [...session.document.artifacts, updated] },
-      operations: [{ ...editOperation, state: "COMPLETED", completion_receipt: { action: "edit_tests", source_message_id: "manual-edit-source", artifact_id: updated.id, case_count: 3, changed_case_count: 1 } }] };
+      operations: [...(pinned ? [historical] : []), { ...editOperation, state: "COMPLETED", completion_receipt: { action: "edit_tests", source_message_id: "manual-edit-source", artifact_id: updated.id, case_count: 3, changed_case_count: 1 } }] };
   } else {
     session = { ...session, revision: 3, event_cursor: 3, operations: [{ ...editOperation, state: "FAILED", error: { code: "test_policy_conflict", message: "The expectation contradicts the rule." } }] };
   }
   await act(async () => snapshot(structuredClone(session)));
   expect(container.textContent).not.toContain("Checking these test changes…");
-  if (outcome === "completed") {
+  if (outcome !== "failed") {
     expect(container.querySelector('[data-proposal-id="updated-tests"]')).toBeTruthy();
     expect(container.querySelector('[aria-label="Your tests"] textarea')).toBeNull();
+    if (pinned) { expect(new URL(window.location.href).searchParams.get("run")).toBeNull(); expect(new URL(window.location.href).searchParams.get("view")).toBe("tests"); return; }
+    harness.params = new URLSearchParams(`session=${session.id}&agent=${suite.id}`); await render();
+    expect(container.querySelector('[aria-label="Your tests"] textarea')).toBeNull();
+    expect(composer().value).toBe("My next guide question");
   } else {
     expect(container.querySelectorAll<HTMLTextAreaElement>('[aria-label="Your tests"] textarea')[1].value).toBe("Decline returns after the new deadline.");
     expect(container.textContent).toContain("The expectation contradicts the rule.");
@@ -1696,7 +1765,7 @@ it("prepares tests before collecting actual instructions and preserves the suite
   const blueprint = structuredClone(suite.blueprint);
   respond = async (path, options) => {
     if (path === "/config")
-      return json({ enabled: true, defaults: defaultModels, models: [] });
+      return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (options.method === "PATCH") {
       const body = JSON.parse(String(options.body));
       const bound = {
@@ -1737,15 +1806,16 @@ it("prepares tests before collecting actual instructions and preserves the suite
   });
 });
 
-it("keeps a generated suite in the canonical pack system without creating an agent or running inference", async () => {
+it.each([false, true])("keeps a generated suite without inference even when unavailable=%s and refreshes only its workspace", async unavailable => {
   const suite = scenarioAgent("Returns tests");
   suite.kind = "test_suite";
-  suite.agent_prompt = "";
+  suite.agent_prompt = unavailable ? "Follow the saved policy." : "";
   session.document.test_journey = true;
   signedInWorkspace();
+  harness.params.set("workspace", "workspace-one");
   respond = async (path, options) => {
     if (path === "/config")
-      return json({ enabled: true, defaults: defaultModels, models: [] });
+      return json({ enabled: true, availability: { guest: { available: !unavailable }, workspace: { available: !unavailable } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path === "/saved-checks") return json([]);
     if (path.endsWith("/save")) {
       const body = JSON.parse(String(options.body));
@@ -1764,11 +1834,12 @@ it("keeps a generated suite in the canonical pack system without creating an age
     return json(session);
   };
   await render();
+  if (unavailable) expect(button("Run 3 tests").disabled).toBe(true);
   await click("Keep these tests");
   await act(async () => {
     const dialog = document.querySelector('[role="dialog"]')!;
     const save = [...dialog.querySelectorAll("button")].find(
-      (b) => b.textContent === "Keep these tests",
+      (b) => b.textContent === "Save and iterate",
     )!;
     save.click();
   });
@@ -1779,8 +1850,9 @@ it("keeps a generated suite in the canonical pack system without creating an age
     (a) => a.textContent === "Open saved tests",
   )!;
   expect(reopen.getAttribute("href")).toBe(
-    `/vibe-evals?session=${session.id}&agent=${suite.id}&workspace=workspace-one`,
+    `/vibe-evals?session=${session.id}&agent=${suite.id}&workspace=workspace-one&view=agent`,
   );
+  expect(requests.filter(r => r.path === "/saved-checks").every(r => r.query === "?workspace=workspace-one")).toBe(true);
   expect(posts()).toHaveLength(0);
 });
 
@@ -1805,7 +1877,7 @@ it("keeps optional instruction testing behind More options without a source-sele
   expect(
     container.querySelector('article[aria-label="Evaluation scorecard"]'),
   ).toBeNull();
-  expect(container.querySelectorAll('[role="tab"]')).toHaveLength(0);
+  expect([...container.querySelectorAll('[role="tab"]')].map(tab => tab.textContent)).toEqual(["Agent", "Tests", "Results"]);
   await click("Try instructions instead");
   await act(async () => {
     const field = container.querySelector<HTMLTextAreaElement>(
@@ -1831,7 +1903,7 @@ it("cites exact chat messages and prepares a disputed rule without silently chan
     path.endsWith("/case")
       ? json(result)
       : path === "/config"
-        ? json({ defaults: defaultModels, models: [] })
+        ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) })
         : json(session);
   await render();
   const row = container.querySelector<HTMLDetailsElement>(".vibe-result-row")!;
@@ -1873,6 +1945,7 @@ it("requests a suggested change on demand with the selected evidence baseline", 
 
 it("saves a provided-chat check without creating a prompt or agent build", async () => {
   recordedResult();
+  harness.user = { id: "fixture-user" };
   harness.token.mockResolvedValue("token");
   harness.me.mockResolvedValue({
     organizations: [
@@ -1886,7 +1959,7 @@ it("saves a provided-chat check without creating a prompt or agent build", async
   });
   respond = async (path) => {
     if (path === "/config")
-      return json({ defaults: defaultModels, models: [] });
+      return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     if (path === "/saved-checks") return json([]);
     if (path.endsWith("/save-check"))
       return json({
@@ -1904,7 +1977,7 @@ it("saves a provided-chat check without creating a prompt or agent build", async
   await click("Save this check");
   await act(async () =>
     [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
-      .find((b) => b.textContent === "Save this check")!
+      .find((b) => b.textContent === "Save and iterate")!
       .click(),
   );
   const write = requests.find((r) => r.path.endsWith("/save-check"));
@@ -1924,7 +1997,7 @@ it("keeps the V1 entry visible while configuration loads, fails, and retries", a
   respond = async (path) => {
     if (path === "/config") {
       if (++configLoads === 1) return ready.promise;
-      return json({ two_door: true, defaults: defaultModels, models: [] });
+      return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     }
     return json([]);
   };
@@ -1963,7 +2036,7 @@ it("keeps a saved conversation's draft unsent until configuration loads and retr
     if (path === "/config") {
       configLoads++;
       if (configLoads === 1) return ready.promise;
-      return json({ defaults: selected, models: [] });
+      return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: selected, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
     }
     return json(session);
   };
@@ -2046,4 +2119,564 @@ it("waits for auth loading before requesting a private saved session", async () 
   harness.authLoading=false;
   await render();
   expect(requests.some(r=>r.path==="/sessions/session-one")).toBe(true);
+});
+
+it("keeps last successful project rows after a refresh failure, distinguishes forbidden, and hides rows on actor change", async () => {
+  session.document.evaluation = { id: session.id, chat_id: "chat", door: "test" };
+  let result: "success" | "failure" | "forbidden" = "success";
+  const earlier = { ...structuredClone(session), id: "earlier-project", document: { ...structuredClone(session.document), artifacts: [{ id: "earlier-artifact", title: "Earlier saved project", accepted: true, source_message_id: "m", agent_prompt: "x", blueprint: {} }] } };
+  respond = async path => {
+    if (path === "/config") return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }] });
+    if (path === "/sessions") return result === "success" ? json([earlier]) : json({ error: { code: result, message: result } }, result === "forbidden" ? 403 : 503);
+    return json(session);
+  };
+  await render(); expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeTruthy();
+  result = "failure"; await click("Refresh projects");
+  expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeTruthy();
+  expect(container.textContent).toContain("Couldn’t refresh saved work");
+  result = "forbidden"; await click("Refresh projects");
+  expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeNull();
+  expect(container.textContent).toContain("don’t have access");
+  result = "success"; await click("Refresh projects");
+  expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeTruthy();
+  harness.user = { id: "other-actor" }; harness.token.mockResolvedValue(undefined);
+  await render();
+  expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeNull();
+  expect(container.textContent).toContain("Sign in to load saved work");
+});
+
+it.each(["build", "test"] as const)("blocks unavailable %s admission while retaining readable history and exports", async door => {
+  session.document.evaluation = { id: session.id, chat_id: "chat", door };
+  session.document.messages = [{ id: "saved", role: "user", content: "Previously saved question" }];
+  respond = async path => path === "/config" ? json({ enabled: true, two_door: true, defaults: defaultModels, models: [], availability: { guest: { available: false, reason_code: "worker_unavailable" }, workspace: { available: true } } }) : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render(); await type("Keep this unsent question");
+  expect(button("Send message").disabled).toBe(true);
+  expect(container.textContent).toContain("Previously saved question");
+  expect(container.textContent).toContain("No approved models");
+  await click("New agent");
+  expect(button("Back to your evaluation").disabled).toBe(false);
+  await click("Back to your evaluation");
+  expect(container.textContent).toContain("Previously saved question");
+  await click("Settings");
+  expect(button("Export selected version / result").disabled).toBe(false);
+  expect(posts()).toHaveLength(0);
+});
+
+it("uses server time to expire a run quote and refreshes its estimate without dispatching inference", async () => {
+  const suite = scenarioAgent(); suite.kind = "test_suite";
+  session.document.artifacts.push({ ...suite, id: "other-version", title: "Other version" });
+  harness.params = new URLSearchParams(`session=${session.id}&agent=${suite.id}`);
+  session.document.evaluation = { id: session.id, chat_id: "chat", door: "test" };
+  let clientNow = Date.now(); vi.spyOn(Date, "now").mockImplementation(() => clientNow);
+  const now = clientNow + 86400000;
+  let quotes = 0;
+  respond = async path => {
+    if (path === "/config") return json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }], server_time: new Date(now).toISOString() });
+    if (path.endsWith("/run-quote")) { quotes++; return json({ id: `quote-${quotes}`, cases: 3, calls: 6, max_cost_nano_usd: 250000000, server_time: new Date(now).toISOString(), expires_at: new Date(now + (quotes === 1 ? -1 : 600000)).toISOString() }); }
+    return json(session);
+  };
+  await render(); await click("Run 3 tests");
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain("estimate expired");
+  expect(button("Run 3 examples").disabled).toBe(true);
+  await click("Refresh estimate");
+  expect(quotes).toBe(2); expect(button("Run 3 examples").disabled).toBe(false);
+  harness.params = new URLSearchParams(`session=${session.id}&agent=other-version`); await render();
+  expect(button("Run 3 examples").disabled).toBe(true);
+  harness.params = new URLSearchParams(`session=${session.id}&agent=${suite.id}`); await render();
+  expect(button("Run 3 examples").disabled).toBe(false);
+  clientNow += 600001;
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)); });
+  expect(button("Run 3 examples").disabled).toBe(true);
+  expect(posts()).toHaveLength(0);
+});
+
+it.each(["guide", "trial"])("enforces the advertised UTF-8 limit in the %s composer before transport and admits the exact multibyte boundary", async recipient => {
+  if (recipient === "trial") scenarioAgent();
+  respond = async path => path === "/config" ? json({ enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }], anonymous_limits: { max_message_bytes: 8 } }) : path.endsWith("/messages") ? json({ id: "admitted", kind: "message", state: "QUEUED", models: defaultModels, results: [] }) : json(session);
+  await render(); if (recipient === "trial") await click("Try a message");
+  const label = recipient === "trial" ? "Message your agent" : "Message Vibe Evals";
+  const send = recipient === "trial" ? "Send to agent" : "Send message";
+  await type("🙂🙂x", label); await click(send);
+  expect(posts()).toHaveLength(0); expect(container.querySelector<HTMLTextAreaElement>(`textarea[aria-label="${label}"]`)!.value).toBe("🙂🙂x");
+  expect(container.textContent).toContain("8 byte UTF-8 limit");
+  await type("🙂🙂", label); await click(send);
+  expect(posts()).toHaveLength(1); expect(posts()[0].body.content).toBe("🙂🙂");
+});
+
+it("never falls back to guest ownership or displays the previous actor’s snapshot when account authentication fails", async () => {
+  session.document.messages = [{ id: "private", role: "user", content: "FIRST ACTOR PRIVATE HISTORY" }];
+  await render(); expect(container.textContent).toContain("FIRST ACTOR PRIVATE HISTORY");
+  const requestsBefore = requests.length;
+  harness.user = { id: "expired-user" }; harness.token.mockRejectedValue(new Error("expired token"));
+  await render();
+  expect(container.textContent).not.toContain("FIRST ACTOR PRIVATE HISTORY");
+  expect(container.textContent).toContain("Sign in again");
+  expect(requests.slice(requestsBefore).some(request => request.path === "/sessions/session-one")).toBe(false);
+});
+
+it.each(["build", "test"] as const)("records the %s admission attempt before a transport failure without draft content", async door => {
+  scenarioAgent();
+  session.document.evaluation = { id: session.id, chat_id: "chat", door };
+  session.document.messages = [{ id: "earlier", role: "user", content: "Existing work" }];
+  const previous = respond;
+  respond = async (path, options) => {
+    if (path.endsWith("/messages")) {
+      expect(harness.analytics).toHaveBeenCalledWith("web.vibe.attempt", { schema_version: 1, door, action: "message", session_id: session.id });
+      throw new TypeError("Offline");
+    }
+    return previous(path, options);
+  };
+  await render(); await type("PRIVATE DRAFT CONTENT"); await click("Send message");
+  expect(harness.analytics).toHaveBeenCalledWith("web.vibe.failure", { schema_version: 1, door, action: "message", session_id: session.id, error_code: "transport_failed" });
+  expect(JSON.stringify(harness.analytics.mock.calls)).not.toContain("PRIVATE DRAFT CONTENT");
+  expect(posts()).toHaveLength(1);
+});
+
+it.each([
+  { anonymous: true, workspaceID: undefined, blocked: true },
+  { anonymous: false, workspaceID: "workspace-one", blocked: false },
+  { anonymous: false, workspaceID: undefined, blocked: true },
+])("uses persisted session funding for anonymous=$anonymous workspace=$workspaceID rather than treating sign-in as workspace funding", async ({ anonymous, workspaceID, blocked }) => {
+  scenarioAgent(); signedInWorkspace();
+  session.anonymous = anonymous; session.workspace_id = workspaceID;
+  respond = async path => path === "/config" ? json({ enabled: true, availability: { guest: { available: false, reason_code: "trial_capacity_reached" }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }] }) : json(session);
+  await render(); await type("A question for this saved project");
+  expect(button("Send message").disabled).toBe(blocked);
+  expect(posts()).toHaveLength(0);
+});
+
+it("lets a signed-in user explicitly choose a workspace before either new-project door without dispatching inference", async () => {
+  signedInWorkspace(); harness.params = new URLSearchParams();
+  respond = async path => path === "/config" ? json({ enabled: true, two_door: true, availability: { guest: { available: false }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }] }) : json([]);
+  await render();
+  const choice = container.querySelector<HTMLSelectElement>('select[aria-label="Workspace for new projects"]')!;
+  expect(choice.value).toBe("");
+  const doors = [...container.querySelectorAll<HTMLButtonElement>("button")].filter(button => /Build an agent|Improve an existing agent/.test(button.textContent || ""));
+  expect(doors.every(button => button.disabled)).toBe(true);
+  await act(async () => { choice.value = "workspace-one"; choice.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(doors.every(button => !button.disabled)).toBe(true);
+  harness.user = { id: "second-workspace-actor" }; await render();
+  const nextChoice = container.querySelector<HTMLSelectElement>('select[aria-label="Workspace for new projects"]')!;
+  expect(nextChoice.value).toBe("");
+  expect(doors.every(button => button.disabled)).toBe(true);
+  expect(requests.filter(request => request.method === "POST")).toHaveLength(0);
+});
+
+
+it("keeps trial history selectable during an inference outage without sending requests", async () => {
+  scenarioAgent();
+  session.document.messages = ["one", "two"].map(thread => ({ id: thread, role: "assistant" as const, origin: "playground" as const, content: `Saved reply ${thread}`, artifact_id: "artifact-one", preview_thread_id: thread }));
+  const previous = respond;
+  respond = async (path, options) => path === "/config" ? json({ enabled: true, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Unavailable" }], availability: { guest: { available: false }, workspace: { available: false } } }) : previous(path, options);
+  await render(); await click("Try a message");
+  const history = container.querySelector<HTMLSelectElement>('select[aria-label="Trial conversation"]')!;
+  expect(history.disabled).toBe(false);
+  expect(history.value).toBe("two");
+  expect(container.querySelector('[role="log"]')?.textContent).toContain("Saved reply two");
+  await act(async () => { history.value = "one"; history.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(container.querySelector('[role="log"]')?.textContent).toContain("Saved reply one");
+  expect(container.querySelector('[role="log"]')?.textContent).not.toContain("Saved reply two");
+  expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
+});
+
+it.each(["guest", "workspace-a"])("starts a new workspace project independently of the historical %s funding", async source => {
+  scenarioAgent(); signedInWorkspace();
+  session.document.evaluation = { id: session.id, chat_id: session.id, door: "test" };
+  session.anonymous = source === "guest"; session.workspace_id = source === "guest" ? undefined : "workspace-a";
+  session.document.models = { ...defaultModels, target: "retired-model" };
+  harness.me.mockResolvedValue({ organizations: [{ role: "org_admin", workspaces: [{ id: "workspace-a", name: "A" }, { id: "workspace-b", name: "B" }] }] });
+  const previous = respond;
+  respond = async (path, options) => {
+    if (path === "/config") return json({ enabled: true, two_door: true, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Approved" }], availability: { guest: { available: false, reason_code: "trial_capacity_reached" }, workspace: { available: true } } });
+    if (path === "/sessions" && options.method !== "POST") return json([]);
+    if (path === "/sessions" && options.method === "POST") return json({});
+    if (path.startsWith("/sessions/") && path !== `/sessions/${session.id}`) return json({ ...session, id: path.split("/").at(-1), anonymous: false, workspace_id: "workspace-b", document: { ...session.document, models: defaultModels, artifacts: [], messages: [], evaluation: { id: path.split("/").at(-1), door: "build" } } });
+    return previous(path, options);
+  };
+  await render(); await click("New agent");
+  const choice = container.querySelector<HTMLSelectElement>('select[aria-label="Workspace for new projects"]')!;
+  expect([...choice.options].some(o => o.value === "workspace-b")).toBe(true);
+  await act(async () => { choice.value = "workspace-b"; choice.dispatchEvent(new Event("change", { bubbles: true })); });
+  const door = [...container.querySelectorAll<HTMLButtonElement>("button")].find(b => b.textContent?.includes("Build an agent"))!;
+  expect(door.disabled).toBe(false);
+  await act(async () => door.click());
+  expect(requests.find(r => r.path === "/sessions" && r.method === "POST")?.body).toMatchObject({ door: "build", workspace_id: "workspace-b" });
+  expect(posts()).toHaveLength(0);
+});
+
+it.each(["create", "cookie"])("records exactly one sanitized failure when session %s fails before message transport", async failure => {
+  harness.params = new URLSearchParams();
+  const previous = respond;
+  respond = async (path, options) => {
+    if (path === "/sessions" && options.method === "POST") return failure === "create" ? json({ error: { code: "unavailable", message: "Unavailable" } }, 503) : json({});
+    if (path.startsWith("/sessions/")) return json({ error: { code: "not_found", message: "Cookie missing" } }, 404);
+    return previous(path, options);
+  };
+  await render(); await type("PRIVATE INITIAL REQUEST"); await click("Send message");
+  expect(harness.analytics.mock.calls.filter(([event]) => event === "web.vibe.attempt")).toHaveLength(1);
+  expect(harness.analytics.mock.calls.filter(([event]) => event === "web.vibe.failure")).toHaveLength(1);
+  expect(JSON.stringify(harness.analytics.mock.calls)).not.toContain("PRIVATE INITIAL REQUEST");
+  expect(posts()).toHaveLength(0);
+});
+
+it("records automatic build estimate attempts and failures before admission without duplicating them", async () => {
+  session.document.evaluation = { id: session.id, chat_id: session.id, door: "build" };
+  const previous = respond;
+  respond = async (path, options) => path.endsWith("/build-quote") ? json({ error: { code: "unavailable", message: "Estimate unavailable" } }, 503) : previous(path, options);
+  await render(); await type("PRIVATE BUILD DESCRIPTION");
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 450)); });
+  expect(harness.analytics.mock.calls.filter(([event]) => event === "web.vibe.attempt")).toEqual([["web.vibe.attempt", { schema_version: 1, door: "build", action: "estimate", session_id: session.id }]]);
+  expect(harness.analytics.mock.calls.filter(([event]) => event === "web.vibe.failure")).toEqual([["web.vibe.failure", { schema_version: 1, door: "build", action: "estimate", session_id: session.id, error_code: "unavailable" }]]);
+  expect(JSON.stringify(harness.analytics.mock.calls)).not.toContain("PRIVATE BUILD DESCRIPTION");
+  expect(posts()).toHaveLength(0);
+});
+
+it("restores persisted thread models on Back/Forward without resetting a new conversation's chosen model", async () => {
+  scenarioAgent();
+  const alternate = "openai/gpt-4.1";
+  session.document.messages = ["a", "b"].map(thread => ({ id: thread, role: "assistant" as const, origin: "playground" as const, content: `Reply ${thread}`, artifact_id: "artifact-one", operation_id: `op-${thread}`, preview_thread_id: thread }));
+  session.operations = ["a", "b"].map(thread => ({ id: `op-${thread}`, kind: "playground", state: "COMPLETED", billing: "RELEASED", models: { ...defaultModels, target: thread === "a" ? defaultModels.target : alternate }, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] }));
+  harness.params = new URLSearchParams("session=session-one&view=try&agent=artifact-one&thread=a");
+  const previous = respond;
+  respond = async (path, options) => path === "/config" ? json({ enabled: true, defaults: defaultModels, models: [defaultModels.target, alternate].map(id => ({ id, name: id })), availability: { guest: { available: true }, workspace: { available: true } } }) : previous(path, options);
+  await render();
+  const restore = async (thread: string) => act(async () => {
+    const url = new URL(window.location.href); thread ? url.searchParams.set("thread", thread) : url.searchParams.delete("thread");
+    window.history.replaceState({}, "", url); window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await restore("b"); await restore("a"); await restore("b");
+  expect(container.querySelector('[role="log"]')?.textContent).toContain("Reply b");
+  await type("Continue B", "Message your agent"); await click("Send to agent");
+  expect(posts().at(-1)?.body).toMatchObject({ preview_thread_id: "b", models: { target: alternate } });
+  await restore("a"); await type("Continue A", "Message your agent"); await click("Send to agent");
+  expect(posts().at(-1)?.body).toMatchObject({ preview_thread_id: "a", models: { target: defaultModels.target } });
+  await click("New conversation"); await selectModel("Agent", alternate);
+  await act(async () => snapshot({ ...structuredClone(session), revision: 2, event_cursor: 2 }));
+  await type("New selected model", "Message your agent"); await click("Send to agent");
+  expect(posts().at(-1)?.body).toMatchObject({ models: { target: alternate } });
+});
+
+it.each(["success", "failure"])("ignores a prior actor's late message %s while preserving a newer same-session submission", async outcome => {
+  scenarioAgent(); signedInWorkspace(); session.anonymous = false; session.workspace_id = "workspace-one";
+  harness.params = new URLSearchParams("session=session-one&view=try&agent=artifact-one&thread=shared-thread");
+  session.document.messages = [{ id: "prior", role: "assistant", origin: "playground", content: "Saved conversation", artifact_id: "artifact-one", preview_thread_id: "shared-thread" }];
+  const old = deferred<Response>(); const current = deferred<Response>(); let sends = 0;
+  const previous = respond;
+  respond = async (path, options) => path.endsWith("/messages") ? (++sends === 1 ? old.promise : current.promise) : previous(path, options);
+  await render(); await type("Old actor request", "Message your agent"); await click("Send to agent");
+  expect(posts()).toHaveLength(1);
+  harness.user = { id: "new-actor" }; await render();
+  await type("New actor request", "Message your agent"); await click("Send to agent");
+  expect(posts()).toHaveLength(2);
+  await type("New actor typed ahead", "Message your agent");
+  const url = window.location.href;
+  await act(async () => old.resolve(outcome === "success" ? json({ id: "old-admission", models: defaultModels }) : json({ error: { code: "revision_conflict", message: "OLD ACTOR ERROR" } }, 409)));
+  expect(window.location.href).toBe(url);
+  expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message your agent"]')?.value).toBe("New actor typed ahead");
+  expect(button("Send to agent").disabled).toBe(true);
+  expect(container.textContent).not.toContain("OLD ACTOR ERROR");
+  await act(async () => current.resolve(json({ id: "new-admission", models: defaultModels })));
+  expect(button("Send to agent").disabled).toBe(false);
+  expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message your agent"]')?.value).toBe("New actor typed ahead");
+});
+
+it.each(["success", "failure"])("ignores a prior actor's late retry %s without changing the newer retry or model", async outcome => {
+  const failed = failedPreparation(); signedInWorkspace(); session.anonymous = false; session.workspace_id = "workspace-one";
+  const old = deferred<Response>(); const current = deferred<Response>(); let retries = 0;
+  const alternate = "openai/gpt-4.1";
+  const previous = respond;
+  respond = async (path, options) => path.endsWith("/retry") ? (++retries === 1 ? old.promise : current.promise) : path === "/config" ? json({ enabled: true, defaults: defaultModels, local_testing: true, models: [defaultModels.target, alternate].map(id => ({ id, name: id })), availability: { guest: { available: true }, workspace: { available: true } } }) : previous(path, options);
+  await render();
+  await click("Retry with another model"); await click(alternate);
+  expect(retries).toBe(1);
+  harness.user = { id: "new-retry-actor" }; await render();
+  await click("Retry"); expect(retries).toBe(2);
+  await type("New actor next guide draft"); const url = window.location.href;
+  await act(async () => old.resolve(outcome === "success" ? json({ ...failed, id: "old-retry", models: { ...defaultModels, assistant: alternate } }) : json({ error: { code: "revision_conflict", message: "OLD RETRY ERROR" } }, 409)));
+  expect(window.location.href).toBe(url); expect(composer().value).toBe("New actor next guide draft");
+  expect(container.textContent).not.toContain("OLD RETRY ERROR");
+  expect(button("Retry").disabled).toBe(true);
+  await act(async () => current.resolve(json({ ...failed, id: "new-retry", models: defaultModels })));
+  await openSettings();
+  expect(document.querySelector<HTMLSelectElement>('select[aria-label="Assistant model"]')!.value).toBe(defaultModels.assistant);
+  expect(composer().value).toBe("New actor next guide draft");
+});
+
+async function historyStep(direction: "back" | "forward") {
+  await act(async () => {
+    const moved = new Promise<void>(resolve => window.addEventListener("popstate", () => resolve(), { once: true }));
+    window.history[direction](); await moved;
+  });
+}
+function projectHistory() {
+  const other = { ...structuredClone(session), id: "session-b" };
+  other.document.artifacts[0].id = "artifact-b";
+  window.history.replaceState({}, "", "/vibe-evals?session=session-b");
+  window.history.pushState({}, "", "/vibe-evals?session=session-one");
+  const previous = respond;
+  respond = async (path, options) => path === "/sessions/session-b" ? json(other) : previous(path, options);
+}
+
+it("restores an uncertain project's immutable retry and pending content through browser Back/Forward without automatic transport", async () => {
+  scenarioAgent(); projectHistory();
+  const bodies: string[] = []; const previous = respond;
+  respond = async (path, options) => {
+    if (path.endsWith("/messages")) {
+      bodies.push(String(options.body));
+      if (bodies.length === 1) throw new TypeError("Lost A acknowledgement");
+      return json({ id: "acknowledged-a" });
+    }
+    return previous(path, options);
+  };
+  await render(); await type("Immutable A request"); await click("Send message");
+  await type("A typed ahead");
+  expect(button("Retry submission").disabled).toBe(false);
+  await historyStep("back"); await type("B unsent draft");
+  expect(container.textContent).not.toContain("Immutable A request");
+  expect(composer().value).toBe("B unsent draft");
+  await historyStep("forward");
+  expect(container.textContent).toContain("Immutable A request");
+  expect(composer().value).toBe("A typed ahead");
+  expect(button("Retry submission").disabled).toBe(false);
+  expect(bodies).toHaveLength(1);
+  await click("Retry submission");
+  expect(bodies).toHaveLength(2); expect(bodies[1]).toBe(bodies[0]);
+  expect(posts()[1].body.client_id).toBe(posts()[0].body.client_id);
+  expect(composer().value).toBe("A typed ahead");
+});
+
+it.each(["success", "failure"])("settles a late project A %s only in A while browser-history B owns a pending request", async outcome => {
+  scenarioAgent(); projectHistory();
+  const old = deferred<Response>(); const current = deferred<Response>(); const previous = respond;
+  const bodies: string[] = [];
+  respond = async (path, options) => {
+    if (path.endsWith("/messages")) {
+      bodies.push(String(options.body));
+      if (path === "/sessions/session-one/messages" && bodies.length === 1) return old.promise;
+      if (path === "/sessions/session-b/messages") return current.promise;
+      return json({ id: "recovered-a" });
+    }
+    return previous(path, options);
+  };
+  await render(); await type("A submitted request"); await click("Send message"); await type("A next draft");
+  await historyStep("back"); await type("B submitted request"); await click("Send message"); await type("B next draft");
+  expect(posts()).toHaveLength(2); const url = window.location.href;
+  await act(async () => { outcome === "success" ? old.resolve(json({ id: "a-admitted", models: defaultModels })) : old.reject(new TypeError("A lost acknowledgement")); });
+  expect(window.location.href).toBe(url); expect(composer().value).toBe("B next draft");
+  expect(button("Send message").disabled).toBe(true);
+  expect(container.textContent).not.toContain("A lost acknowledgement");
+  await historyStep("forward"); expect(composer().value).toBe("A next draft");
+  if (outcome === "failure") { expect(button("Retry submission").disabled).toBe(false); expect(container.textContent).toContain("A submitted request"); }
+  else { expect(container.textContent).not.toContain("Retry submission"); expect(button("Send message").disabled).toBe(false); }
+  expect(posts()).toHaveLength(2);
+  await historyStep("back"); expect(button("Send message").disabled).toBe(true); expect(composer().value).toBe("B next draft");
+  await act(async () => current.resolve(json({ id: "b-admitted", models: defaultModels })));
+  expect(button("Send message").disabled).toBe(false); expect(composer().value).toBe("B next draft");
+  if (outcome === "failure") {
+    await historyStep("forward"); await click("Retry submission");
+    expect(bodies[2]).toBe(bodies[0]); expect(composer().value).toBe("A next draft");
+  }
+});
+
+it.each([
+  { phase: "creation", changeActor: false },
+  { phase: "cookie verification", changeActor: true },
+])("releases an inactive first-session $phase attempt and restores explicit content recovery without disturbing another project", async ({ phase, changeActor }) => {
+  scenarioAgent();
+  const other = { ...structuredClone(session), id: "session-b" };
+  other.document.artifacts[0].id = "artifact-b";
+  harness.params = new URLSearchParams();
+  window.history.replaceState({}, "", "/vibe-evals?session=session-b");
+  window.history.pushState({}, "", "/vibe-evals");
+  const gate = deferred<Response>(); const pendingB = deferred<Response>();
+  const created = new Map<string, Session>(); const previous = respond;
+  let firstID = ""; let cookieReads = 0;
+  respond = async (path, options) => {
+    if (path === "/sessions" && options.method === "POST") {
+      const id = JSON.parse(String(options.body)).id as string;
+      const project: Session = { ...structuredClone(session), id, document: { models: defaultModels, messages: [], requirements: [], artifacts: [] }, operations: [] };
+      created.set(id, project);
+      if (!firstID) { firstID = id; if (phase === "creation") return gate.promise; }
+      return json(project);
+    }
+    if (path === "/sessions/session-b") return json(other);
+    const project = created.get(path.replace("/sessions/", ""));
+    if (project) { if (project.id === firstID && phase === "cookie verification" && ++cookieReads === 1) return gate.promise; return json(project); }
+    if (path === "/sessions/session-b/messages") return pendingB.promise;
+    if (path.endsWith("/messages")) return json({ id: "first-message-admitted", models: defaultModels });
+    return previous(path, options);
+  };
+  await render(); await type("Recover this first project description"); await click("Send message");
+  expect(firstID).not.toBe(""); expect(posts()).toHaveLength(0);
+  if (changeActor) { harness.user = { id: "other-preflight-actor" }; harness.token.mockResolvedValue("other-token"); }
+  await historyStep("back");
+  await type("B's own pending request"); await click("Send message"); await type("B typed ahead");
+  expect(posts()).toHaveLength(1); const bURL = window.location.href;
+  await act(async () => gate.resolve(phase === "creation" ? json(created.get(firstID)) : json({ error: { code: "forbidden", message: "Cookie was not retained" } }, 403)));
+  expect(window.location.href).toBe(bURL); expect(composer().value).toBe("B typed ahead");
+  expect(button("Send message").disabled).toBe(true);
+  expect(container.textContent).not.toContain("Recover this first project description");
+  await historyStep("forward");
+  if (changeActor) { expect(container.textContent).not.toContain("Recover this first project description"); harness.user = undefined; await render(); }
+  expect(container.textContent).toContain("Recover this first project description");
+  expect(button("Retry unsent message").disabled).toBe(false);
+  expect(posts()).toHaveLength(1);
+  await historyStep("back");
+  if (changeActor) { harness.user = { id: "other-preflight-actor" }; await render(); }
+  expect(button("Send message").disabled).toBe(true); expect(composer().value).toBe("B typed ahead");
+  await act(async () => pendingB.resolve(json({ id: "b-admitted", models: defaultModels })));
+  expect(button("Send message").disabled).toBe(false); expect(composer().value).toBe("B typed ahead");
+  await historyStep("forward");
+  if (changeActor) { harness.user = undefined; await render(); }
+  expect(posts()).toHaveLength(1);
+  await click("Retry unsent message");
+  expect(posts()).toHaveLength(2);
+  expect(posts()[1].body.content).toBe("Recover this first project description");
+  expect(posts()[1].path).not.toBe("/sessions/session-b/messages");
+  expect(new URL(window.location.href).searchParams.get("session")).not.toBe(firstID);
+  expect(new URL(window.location.href).searchParams.get("session")).toBe(posts()[1].path.split("/")[2]);
+});
+
+it("keeps untested version Results empty until explicit history pins the tested version", async () => {
+  const v1 = {id:"v1",kind:"test_suite" as const,title:"Old policy",agent_prompt:"Old instructions",accepted:true,source_message_id:"request",blueprint:{cases:[]},sample:"email"};
+  const v2 = {...v1,id:"v2",title:"New policy",agent_prompt:"New instructions",parent_id:"v1"};
+  session.document.evaluation={id:session.id,chat_id:session.id,door:"build"};
+  session.document.artifacts=[v1,v2]; session.document.active_artifact_id="v2";
+  session.operations=[{id:"old-run",kind:"check",state:"COMPLETED",billing:"SETTLED",models:defaultModels,source:{kind:"prompt",artifact_id:"v1",label:"Old policy"},results:[],max_cost_nano_usd:0,actual_cost_nano_usd:0,scorecard:{total:1,passed:1,failed:0,unknown:0,evaluated:1,pass_rate:1,coverage:1}}];
+  harness.params=new URLSearchParams(`session=${session.id}&view=agent&agent=v2`);
+  const original=respond; respond=async(path,options)=>path==="/config"?json({enabled:true,two_door:true,defaults:defaultModels,models:[...new Set(Object.values(defaultModels))].map(id=>({id,name:id})),availability:{guest:{available:true},workspace:{available:true}}}):original(path,options);
+  await render(); await click("Results");
+  expect(new URL(location.href).searchParams.get("run")).toBeNull();
+  expect(container.querySelector(".vibe-project-header")?.textContent).toContain("v2 · New policy");
+  expect(container.querySelector(".vibe-project-main")?.textContent).toContain("No results for this version");
+  expect(container.querySelector('[aria-label="Keep and extend your results"]')).toBeNull();
+  expect(container.querySelector('[aria-label="Next actions for this version"]')).toBeNull();
+  const history=container.querySelector<HTMLSelectElement>('[aria-label="Result history"]')!;
+  await act(async()=>{history.value="old-run";history.dispatchEvent(new Event("change",{bubbles:true}));});
+  expect(new URL(location.href).searchParams.get("run")).toBe("old-run");
+  expect(new URL(location.href).searchParams.get("agent")).toBe("v1");
+  expect(container.querySelector(".vibe-project-header")?.textContent).toContain("v1 · Old policy");
+  expect(container.querySelector('[aria-label="Next actions for this version"]')?.getAttribute("data-artifact-id")).toBe("v1");
+  const followup=container.querySelector('[aria-label="Next actions for this version"]')!;
+  await act(async()=>[...followup.querySelectorAll("summary")].find(summary=>summary.textContent==="More ways to check")!.click());
+  await act(async()=>[...followup.querySelectorAll<HTMLButtonElement>("button")].find(button=>button.textContent==="Try tougher situations")!.click());
+  await click("See cost and continue");
+  expect(requests.find(request=>request.path.endsWith("/build-quote"))?.body.artifact_id).toBe("v1");
+  expect(posts()).toHaveLength(0);
+});
+
+
+it.each([[false,false],[false,true],[true,false]])("collects new recorded replies against a completed baseline before quoting the exact new artifact (test journey: %s, lost acknowledgment: %s)",async(testJourney,lostAck)=>{
+ const oldArtifact={id:"old-recorded",kind:"conversation_evaluation",title:"Original replies",agent_prompt:"",blueprint:null,accepted:true,source_message_id:"",conversation_evaluation:{evidence_set_id:"old-source",expectations:[{id:"original-rule",statement:"Use the supplied facts."}]}};
+ const oldCase={case_key:"chat-1",version:oldArtifact.id,input:null,output:"Old reply",verdict:"FAIL" as const,checks:[{key:"original-rule",verdict:"FAIL" as const,evidence:"Unsupported claim"}]};
+ const baseline:Operation={id:"old-result",kind:"check",state:"COMPLETED",billing:"SETTLED",models:defaultModels,max_cost_nano_usd:0,actual_cost_nano_usd:0,results:[oldCase],source:{kind:"provided_conversations",artifact_id:oldArtifact.id,evidence_set_id:"old-source",label:"Original replies"},scorecard:{passed:0,failed:1,unknown:0,total:1,evaluated:1,pass_rate:0,coverage:1}};
+ session.document={...session.document,format_version:1,test_journey:testJourney,evaluation:{id:session.id,chat_id:session.id,door:"test"},artifacts:[oldArtifact],evidence_sets:[{id:"old-source",label:"Original replies",raw:"Customer: Question\nAgent: Old reply",conversations:[{key:"chat-1",title:"Chat 1",messages:[{id:"m1",role:"user",content:"Question"},{id:"m2",role:"assistant",content:"Old reply"}]}]}]};session.operations=[baseline];
+ const initial=respond;let intakeAttempts=0;
+ respond=async(path,options)=>{
+  if(path==="/config")return json({enabled:true,two_door:true,availability:{guest:{available:true},workspace:{available:true}},defaults:defaultModels,models:[...new Set(Object.values(defaultModels))].map(id=>({id,name:id}))});
+  if(path.endsWith("/grade-reviews"))return json([]);
+  if(path.includes("/case"))return json(oldCase);
+  if(path.endsWith("/evidence")){
+   const body=JSON.parse(String(options.body));
+   session={...session,revision:session.revision+1,event_cursor:session.event_cursor+1,document:{...session.document,artifacts:[oldArtifact,{...oldArtifact,id:"new-recorded",accepted:false,conversation_evaluation:{evidence_set_id:"new-source",expectations:body.expectations}}],evidence_sets:[...session.document.evidence_sets!,{id:"new-source",label:"Updated replies",raw:body.content,conversations:[{key:"chat-1",title:"Chat 1",messages:[{id:"m1",role:"user",content:"Question"},{id:"m2",role:"assistant",content:"Corrected reply"}]}]}]}};
+   intakeAttempts++;if(lostAck && intakeAttempts===1)throw new TypeError("Lost updated intake acknowledgment");
+   return json({...session,evidence_receipt:{client_id:body.client_id,evidence_id:"new-source",artifact_id:"new-recorded"}});
+  }
+  if(path.endsWith("/messages"))return json({...baseline,id:"updated-result",baseline_id:baseline.id,source:{...baseline.source,artifact_id:"new-recorded",evidence_set_id:"new-source"}});
+  if(path.endsWith("/run-quote"))return json({id:"new-source-quote",kind:"run",revision:session.revision,cases:1,calls:1,max_cost_nano_usd:0,expires_at:new Date(Date.now()+600000).toISOString()});
+  return initial(path,options);
+ };
+ await render();await click("Results");await click(testJourney?"Add new recorded replies":"Check the new answer");
+ expect(requests.some(r=>r.path.endsWith("/run-quote"))).toBe(false);
+ expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Recorded replies"]')!.value).toBe("");
+ await type("Customer: Question\nAgent: Corrected reply","Recorded replies");await type("Use the supplied facts.","Expected behavior");await click("Review recorded replies");
+ if(lostAck){await act(async()=>snapshot(session));await click("Retry saving these replies");const attempts=requests.filter(r=>r.path.endsWith("/evidence"));expect(attempts[1].body).toEqual(attempts[0].body);}
+ expect(requests.find(r=>r.path.endsWith("/evidence"))?.body.expectations).toEqual([{id:"original-rule",statement:"Use the supplied facts."}]);
+ expect(requests.some(r=>r.path.endsWith("/messages")||r.path.endsWith("/run-quote"))).toBe(false);
+ expect(session.document.artifacts[0]).toEqual(oldArtifact);
+ await act(async()=>root.render(<div/>));await render();await click("Tests");await click("Check these recorded replies");
+ expect(requests.find(r=>r.path.endsWith("/run-quote"))?.body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source"});
+ expect(requests.some(r=>r.path.endsWith("/messages"))).toBe(false);
+ await click("Refresh estimate");
+ const quotes=requests.filter(r=>r.path.endsWith("/run-quote"));expect(quotes).toHaveLength(2);
+ expect(quotes[1].body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source"});
+ await click("Run 1 examples");
+ expect(requests.find(r=>r.path.endsWith("/messages"))?.body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source",run_quote_id:"new-source-quote"});
+});
+
+it("saves the frozen dialog version after a newer version arrives without substituting its tests",async()=>{
+ acceptedDraft();signedInWorkspace();
+ const original=structuredClone(session.document.artifacts[0]);
+ respond=async(path)=>path.endsWith('/save')?json({draft_id:'frozen-draft',workspace_id:'workspace-one'}):json(session);
+ await render();await click('Save agent');
+ session.document.artifacts.push({...original,id:'later-version',title:'Different later tests'});session.document.active_artifact_id='later-version';session.revision++;session.event_cursor=session.revision;
+ await act(async()=>snapshot(structuredClone(session)));
+ const dialog=document.querySelector('[role="dialog"]')!;expect(dialog.textContent).toContain(original.id.slice(0,8));expect(dialog.textContent).not.toContain('Different later tests');
+ await click('Save and iterate');
+ const write=requests.find(r=>r.path.endsWith('/save'));expect(write?.body.artifact_id).toBe(original.id);expect(write?.body.models).toEqual(defaultModels);expect(posts()).toHaveLength(0);
+});
+
+function sdkProject() {
+ const id="a1000000-0000-4000-8000-000000000001";
+ const artifact={id:"a1000000-0000-4000-8000-000000000002",kind:"test_suite" as const,title:"Pinned SDK tests",agent_prompt:"",accepted:false,source_message_id:"",blueprint:{cases:[]}};
+ const newer={...artifact,id:"a1000000-0000-4000-8000-000000000003",title:"Newer tests"};
+ session.anonymous=false;session.workspace_id="workspace-sdk";
+ session.document.evaluation={id:session.id,chat_id:session.id,door:"test"};session.document.artifacts=[artifact,newer];
+ harness.user={id:"sdk-actor"};harness.token.mockResolvedValue("sdk-token");
+ harness.me.mockResolvedValue({organizations:[{role:"org_admin",workspaces:[{id:session.workspace_id,name:"SDK workspace",role:"workspace_admin"}]}]});
+ const report={id,external_report_id:"historical-sdk",source_kind:"agent_result",content_sha256:"hash",size_bytes:40,cases:[],binding:{session_id:session.id,artifact_id:artifact.id,result_ref:{kind:"sdk_report",id}},evidence_metadata:{origin:"imported",capture_scope:{},fingerprints:{}}};
+ const before=respond;
+ respond=async(path,options)=>path==="/config"?json({enabled:false,two_door:true,defaults:defaultModels,models:[],availability:{guest:{available:false},workspace:{available:false}}}):path.endsWith("/reports")?json([report]):path.endsWith("/reports/"+id)?json(report):path.endsWith("/case-mapping")||path.endsWith("/grade-reviews")?json([]):before(path,options);
+ return {id,artifact,newer,report};
+}
+it("resolves an SDK URL before pinning its version and keeps historical Results usable without inference or operations",async()=>{
+ const {id,artifact,newer,report}=sdkProject();
+ harness.params=new URLSearchParams(`session=${session.id}&view=results&agent=${newer.id}&run=sdk_report:${id}`);
+ const gate=deferred<Response>();const before=respond;respond=(path,options)=>path.endsWith("/reports/"+id)?gate.promise:before(path,options);
+ await render();
+ expect(new URL(location.href).searchParams.get("run")).toBe(`sdk_report:${id}`);
+ expect(container.textContent).toContain("Loading selected result");
+ await act(async()=>gate.resolve(json(report)));
+ expect(new URL(location.href).searchParams.get("agent")).toBe(artifact.id);
+ expect(container.querySelector('[aria-label="Imported report detail"]')).not.toBeNull();
+ expect(container.querySelector('[aria-label="SDK original JSON"]')).not.toBeNull();
+ expect(button("Estimate hosted regrade").disabled).toBe(true);
+ expect(requests.filter(request=>request.path.endsWith("/reports/"+id))).toHaveLength(1);
+ expect(posts()).toHaveLength(0);
+});
+it("retains an unavailable SDK selection for retry then clears a confirmed foreign report with an explanation",async()=>{
+ const {id}=sdkProject();harness.params=new URLSearchParams(`session=${session.id}&view=results&run=sdk_report:${id}`);
+ const before=respond;let count=0;respond=(path,options)=>path.endsWith("/reports/"+id)?Promise.resolve(++count===1?json({error:{code:"unavailable",message:"Temporary source failure"}},503):json({error:{code:"not_found",message:"Report unavailable"}},404)):before(path,options);
+ await render();expect(new URL(location.href).searchParams.get("run")).toBe(`sdk_report:${id}`);
+ await click("Retry selected result");expect(new URL(location.href).searchParams.get("run")).toBeNull();
+ expect(container.textContent).toContain("selected result is unavailable");expect(posts()).toHaveLength(0);
+});
+
+it("does not revive a prior actor's SDK lookup after an A to B to A transition",async()=>{
+ const {id,report}=sdkProject();harness.params=new URLSearchParams(`session=${session.id}&view=results&run=sdk_report:${id}`);
+ const old=deferred<Response>(),fresh=deferred<Response>();const before=respond;let reads=0;
+ respond=(path,options)=>path.endsWith("/reports/"+id)?(++reads===1?old.promise:fresh.promise.then(response=>response.clone())):before(path,options);
+ await render();harness.user={id:"other-sdk-actor"};await render();harness.user={id:"sdk-actor"};await render();
+ await act(async()=>old.resolve(json(report)));expect(container.querySelector('[aria-label="Imported report detail"]')).toBeNull();expect(container.textContent).toContain("Loading selected result");
+ await act(async()=>fresh.resolve(json(report)));expect(container.querySelector('[aria-label="Imported report detail"]')).not.toBeNull();expect(posts()).toHaveLength(0);
+});
+
+it("explains a malformed SDK selector without loading or executing it",async()=>{
+ sdkProject();harness.params=new URLSearchParams(`session=${session.id}&view=results&run=sdk_report:invalid`);await render();
+ expect(new URL(location.href).searchParams.get("run")).toBeNull();expect(container.textContent).toContain("selected result is unavailable");expect(requests.some(r=>r.path.endsWith("/reports/invalid"))).toBe(false);expect(posts()).toHaveLength(0);
+});
+
+it("loads canonical source-qualified Results once, pins its artifact and stops terminal polling",async()=>{
+ vi.useFakeTimers();
+ try {
+ const {id,artifact,report}=sdkProject();const result={binding:{...report.binding,result_ref:{kind:"run",id}},evidence_metadata:{...report.evidence_metadata,result_ref:{kind:"run",id}},name:"Approved application",status:"completed",created_at:"2026-10-26T00:00:00Z",participants:[],evidence_hash:"canonical-hash",omissions:["Raw canonical event bodies omitted."]};
+ harness.params=new URLSearchParams(`session=${session.id}&view=results&agent=${artifact.id}&run=run:${id}`);const before=respond;respond=async(path,options)=>path.endsWith("/canonical-results")?json([result]):path.includes("/canonical-results/run/")?json(result):before(path,options);
+ await render();expect(container.querySelector('[aria-label="Canonical result detail"]')).not.toBeNull();expect(container.textContent).toContain("Canonical run");expect(requests.filter(request=>request.path.includes("/canonical-results/run/"))).toHaveLength(1);expect(new URL(location.href).searchParams.get("run")).toBe(`run:${id}`);expect(posts()).toHaveLength(0);
+ await act(async()=>vi.advanceTimersByTime(9000));
+ expect(requests.filter(request=>request.path.includes("/canonical-results/run/"))).toHaveLength(1);
+ expect(requests.filter(request=>request.path.endsWith("/canonical-results"))).toHaveLength(1);
+ } finally { vi.useRealTimers(); }
+});
+it("retains canonical source uncertainty and retries an authorized lookup without dispatch",async()=>{
+ const {id,artifact,report}=sdkProject();const result={binding:{...report.binding,result_ref:{kind:"run",id}},evidence_metadata:{},name:"Application",status:"completed",created_at:"",participants:[],evidence_hash:"hash",omissions:[]};harness.params=new URLSearchParams(`session=${session.id}&view=results&agent=${artifact.id}&run=run:${id}`);const before=respond;let calls=0;respond=async(path,options)=>path.endsWith("/canonical-results")?json([result]):path.includes("/canonical-results/run/")?(++calls===1?json({error:{code:"unavailable",message:"Canonical temporarily unavailable"}},503):json(result)):before(path,options);await render();expect(new URL(location.href).searchParams.get("run")).toBe(`run:${id}`);await click("Retry selected result");expect(container.querySelector('[aria-label="Canonical result detail"]')).not.toBeNull();expect(posts()).toHaveLength(0);
 });

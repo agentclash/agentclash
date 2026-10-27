@@ -10,14 +10,14 @@ const operation = { kind: "check", state: "RUNNING", progress: { phase: "grading
 afterEach(() => vi.useRealTimers());
 
 it("uses the provider stage and saved count without treating UNKNOWN as a pass", () => {
-  expect(conversationActivity(operation)).toBe("1 of 3 results saved · Checking the reply…");
-  expect(conversationActivity({ ...operation, state: "CANCELLING" })).toBe("Stopping…");
-  expect(conversationActivity({ ...operation, state: "FINALIZING" })).toBe("Saving your results…");
-  expect(conversationActivity({ ...operation, state: "AWAITING_INPUT" })).toBe("One detail is needed to continue.");
+  expect(conversationActivity(operation)).toBe("Source unverified · 1 of 3 results saved · Checking the reply…");
+  expect(conversationActivity({ ...operation, state: "CANCELLING" })).toBe("Source unverified · Stopping…");
+  expect(conversationActivity({ ...operation, state: "FINALIZING" })).toBe("Source unverified · Saving your results…");
+  expect(conversationActivity({ ...operation, state: "AWAITING_INPUT" })).toBe("Source unverified · One detail is needed to continue.");
   expect(conversationActivity({ ...operation, kind: "message", progress: { phase: "reviewing", completed_cases: 0, total_cases: 0 } })).toBe("Checking the tests against your rules…");
   expect(conversationActivity({ ...operation, kind: "message", progress: { phase: "advisory_understanding", completed_cases: 0, total_cases: 0 } })).toBe("Understanding your request…");
   expect(conversationActivity({ ...operation, kind: "message", progress: { phase: "switching_assistant", completed_cases: 0, total_cases: 0 } })).toBe("Trying another model…");
-  expect(conversationActivity({ ...operation, state: "CANCELLING", progress: { phase: "switching_assistant", completed_cases: 0, total_cases: 0 } })).toBe("Stopping…");
+  expect(conversationActivity({ ...operation, state: "CANCELLING", progress: { phase: "switching_assistant", completed_cases: 0, total_cases: 0 } })).toBe("Source unverified · Stopping…");
 });
 
 it("counts down on the server clock without auto-submitting and keeps focus", async () => {

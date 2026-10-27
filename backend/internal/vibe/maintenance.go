@@ -13,12 +13,19 @@ import (
 )
 
 // Expiry is database maintenance, independent of provider receipt availability.
-func runMaintenance(ctx context.Context, s *Store, logger *slog.Logger, interval time.Duration) {
+func runMaintenance(ctx context.Context, s *Store, logger *slog.Logger, interval time.Duration, cfg Config, gates ...Gate) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
 		if err := s.expire(ctx); err != nil && ctx.Err() == nil {
 			logger.Warn("Vibe queue expiry unavailable", "error", err)
+		} else if len(gates) > 0 {
+			// A receipt query plus completed expiry proves the accounting tables are
+			// usable, including when new inference is disabled. Provider availability
+			// never determines whether this maintenance loop runs.
+			if _, err := s.pendingReceipts(ctx, uuid.Nil); err == nil {
+				reportWorkerReady(ctx, gates[0].Redis, cfg, "accounting")
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -27,11 +34,11 @@ func runMaintenance(ctx context.Context, s *Store, logger *slog.Logger, interval
 		}
 	}
 }
-func ReconcileLoop(ctx context.Context, s *Store, cfg Config, logger *slog.Logger) {
+func ReconcileLoop(ctx context.Context, s *Store, cfg Config, logger *slog.Logger, gates ...Gate) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	done := make(chan struct{})
-	go func() { defer close(done); runMaintenance(ctx, s, logger, time.Minute) }()
+	go func() { defer close(done); runMaintenance(ctx, s, logger, time.Minute, cfg, gates...) }()
 	defer func() { cancel(); <-done }()
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()

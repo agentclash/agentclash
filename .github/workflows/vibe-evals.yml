@@ -8,6 +8,30 @@ on:
       - 'backend/internal/mutation/**'
       - 'backend/Dockerfile.worker'
       - 'backend/internal/api/vibe*'
+      - 'backend/internal/api/runs*'
+      - 'web/src/app/(workspace)/workspaces/*/runs/**'
+      - 'backend/internal/api/regression*'
+      - 'backend/internal/api/release_gate*'
+      - 'backend/internal/api/github_integrations*'
+      - 'backend/internal/api/routes.go'
+      - 'backend/internal/repository/regression*'
+      - 'backend/internal/repository/run*'
+      - 'cli/cmd/ci*'
+      - 'cli/cmd/evaltest*'
+      - 'cli/go.*'
+      - 'web/src/lib/ci-setup*'
+      - 'web/src/app/(workspace)/workspaces/*/ci-setup/**'
+      - 'web/src/components/challenge-packs/vibe-return*'
+      - 'backend/internal/api/eval_session*'
+      - 'backend/internal/api/eval_sets*'
+      - 'backend/internal/repository/eval_session*'
+      - 'backend/internal/engine/**'
+      - 'runtime/runner/**'
+      - 'runtime/domain/eval_session.go'
+      - 'backend/internal/api/connectors*'
+      - 'backend/internal/repository/connector*'
+      - 'backend/internal/worker/**'
+      - 'backend/internal/workflow/**'
       - 'backend/internal/api/challenge_pack_generate_contract.go'
       - 'backend/internal/api/billing*'
       - 'backend/internal/api/config.go'
@@ -17,11 +41,22 @@ on:
       - 'backend/cmd/**'
       - 'backend/db/migrations/**'
       - 'runtime/provider/**'
+      - 'runtime/connectors/**'
       - 'runtime/scoring/**'
       - 'runtime/challengepack/**'
       - 'web/src/app/vibe-evals/**'
       - 'web/src/components/vibe/**'
+      - 'web/src/components/share/**'
+      - 'web/src/components/app-shell/top-bar.tsx'
+      - 'web/src/components/app-shell/nav-items.ts'
+      - 'web/src/app/share/**'
+      - 'web/src/app/(workspace)/workspaces/*/reports/**'
+      - 'web/src/lib/report-snapshots.ts'
+      - 'backend/internal/api/public_shares*'
+      - 'backend/internal/repository/public_share*'
+      - 'backend/internal/repository/report_snapshots*'
       - 'web/src/lib/vibe*'
+      - 'web/src/lib/connector-client.ts'
       - 'web/src/lib/use-vibe-*'
       - 'web/e2e/vibe/**'
       - 'web/e2e/vibe-stack/**'
@@ -52,6 +87,7 @@ jobs:
           --health-cmd "pg_isready -U vibe_test -d vibe_test"
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
+      VIBE_BROWSER_OWNERSHIP_LOG: /tmp/vibe-ownership.jsonl
       VIBE_TEST_DATABASE_URL: postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
@@ -59,31 +95,32 @@ jobs:
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
-      - name: Apply migrations to isolated fixture database
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import os, subprocess
-          for path in sorted(Path('backend/db/migrations').glob('*.sql')):
-              up = path.read_text().split('-- +goose Down')[0]
-              subprocess.run(['psql', os.environ['VIBE_TEST_DATABASE_URL'], '-v', 'ON_ERROR_STOP=1'], input=up, text=True, check=True)
-          PY
       - name: Failure injection and database concurrency (no provider calls)
-        working-directory: backend
         run: |
-          go test -p 1 -race ./internal/vibe ./internal/api -run 'Test(Vibe|Suite|Consistency|Integration|Structured|YAML|Fanout|Money|FullContext|Unknown|Coverage|RunQuote|SampleIdentity|Requirement|StateMachine|MissingPricing|TrialProtectedAllocation|PaidTemporal|InvalidJudge|CORSMiddleware|BillingManager.*Webhook|AgentTryoutPromot|Generate|Evidence|Conversation|AuthoringPolicies|RetainedAuthoring)' -count=1
-          go build ./...
-          go vet ./...
+          python3 scripts/vibe/fixture.py -- go -C backend test -p 1 -race ./internal/vibe ./internal/api -run 'Test(Vibe|Observed|PublicShare|Publication|GitHubIntegration|Regression|ReleaseGate|RunComparison|Suite|Consistency|Integration|Structured|YAML|Fanout|Money|FullContext|Unknown|Coverage|RunQuote|SampleIdentity|Requirement|StateMachine|MissingPricing|TrialProtectedAllocation|PaidTemporal|InvalidJudge|CORSMiddleware|BillingManager.*Webhook|AgentTryoutPromot|Generate|Evidence|Conversation|AuthoringPolicies|RetainedAuthoring)' -count=1
+          go -C backend build ./...
+          go -C backend vet ./...
       - name: Material and enquiry transaction regressions
-        working-directory: backend
-        run: go test -race ./internal/enquiries ./internal/vibe/inputs -count=1
+        run: python3 scripts/vibe/fixture.py -- go -C backend test -race ./internal/enquiries ./internal/vibe/inputs -count=1
+      - name: Canonical connector and native owners on an owned child database
+        run: |
+          python3 scripts/vibe/fixture.py --database-env DATABASE_URL --label task7 -- go -C backend test -race ./internal/repository -run 'EvalSession|TestConnector|GetRunAgentExecutionContext|WorkspaceSecret|CreateQueuedRun|CreateEvalSessionWithQueuedRuns|ListActiveAgentDeployments|Regression|ReleaseGate|CIProfile' -count=1
+          python3 scripts/vibe/fixture.py -- go -C backend test -race ./internal/api ./internal/engine ./internal/workflow ./internal/worker -run 'EvalSession|EvalSet|EvaluateLLMJudges|PromptEval|NativeExecutor|Connector|Hosted|RunCreation|CreateRun|AgentBuild|AgentDeployment|AuthorizeWorkspaceAction|WorkspaceSecret|Healthz|NativeModel|QuickCreateAgent|ExecuteNative' -count=1
       - name: Shared provider and scoring regressions
         working-directory: runtime
-        run: go test ./provider ./scoring ./challengepack -count=1
-      - name: Mandatory current-contract regression floor (no missing or skipped tests)
-        run: python3 scripts/vibe/run_baseline.py --report "$RUNNER_TEMP/vibe-floor.json"
+        run: go test ./connectors ./provider ./scoring ./challengepack ./runner -count=1
+      - name: CLI canonical CI contracts
+        run: go -C cli test -race ./cmd -run 'TestCI|TestEvalTest' -count=1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vibe-backend-ownership
+          path: |
+            ${{ env.VIBE_BROWSER_OWNERSHIP_LOG }}
   browser-journeys:
     runs-on: ubuntu-latest
+    env:
+      VIBE_BROWSER_OWNERSHIP_LOG: /tmp/vibe-ownership.jsonl
     timeout-minutes: 20
     defaults:
       run:
@@ -102,7 +139,14 @@ jobs:
       - name: Typecheck and safe Markdown tests
         run: |
           npx tsc --noEmit --incremental false
-          npx vitest run src/app/vibe-evals src/components/vibe src/lib/vibe.test.ts src/lib/vibe-controllers.test.tsx src/lib/vibe-build-analytics.test.ts src/lib/use-vibe-inputs.test.tsx src/lib/vibe-request-recovery.test.ts
+          npx vitest run "src/app/(workspace)/workspaces/[workspaceId]/runs/[runId]/run-detail-client.test.tsx" src/lib/ci-setup.test.ts "src/app/(workspace)/workspaces/[workspaceId]/ci-setup/ci-setup-client.test.tsx" src/components/share/report-snapshot.test.tsx src/components/share/workspace-reports.test.tsx src/app/vibe-evals src/components/vibe src/lib/vibe.test.ts src/lib/vibe-controllers.test.tsx src/lib/vibe-export.test.ts src/lib/vibe-reports.test.ts src/components/challenge-packs/vibe-return.test.tsx src/lib/vibe-build-analytics.test.ts src/lib/use-vibe-inputs.test.tsx src/lib/vibe-request-recovery.test.ts
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vibe-mock-browser-evidence
+          path: |
+            web/test-results/vibe
+            ${{ env.VIBE_BROWSER_OWNERSHIP_LOG }}
   browser-worker-journey:
     runs-on: ubuntu-22.04
     timeout-minutes: 30
@@ -118,6 +162,7 @@ jobs:
           --health-cmd "pg_isready -U vibe_test -d vibe_test"
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
+      VIBE_BROWSER_OWNERSHIP_LOG: /tmp/vibe-ownership.jsonl
       VIBE_TEST_DATABASE_URL: postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test?sslmode=disable
     steps:
       - uses: actions/checkout@v4
@@ -143,9 +188,14 @@ jobs:
       - name: Compile API fixture before the browser server startup deadline
         working-directory: backend
         run: go test -p 1 ./internal/api -run '^$' -count=1
+      - name: Owned SDK fixture failure, child-loss and interruption cleanup
+        run: |
+          python3 scripts/vibe/verify_lifecycle.py failure
+          python3 scripts/vibe/verify_lifecycle.py child-loss
+          python3 scripts/vibe/verify_lifecycle.py interrupt
       - name: Browser to real API, PostgreSQL and Temporal worker (fake inference)
         working-directory: web
-        run: npx playwright test --config playwright.vibe-stack.config.ts interpretation.spec.ts journey.spec.ts two-door.spec.ts
+        run: npx playwright test --config playwright.vibe-stack.config.ts interpretation.spec.ts journey.spec.ts two-door.spec.ts sdk-reports.spec.ts connectors.spec.ts report-snapshots.spec.ts roundtrip.spec.ts
       - name: Supplied-text output, recovery and contact journey (fake inference)
         working-directory: web
         env:
@@ -157,7 +207,9 @@ jobs:
         if: always()
         with:
           name: vibe-browser-worker-evidence
-          path: web/test-results/vibe-stack
+          path: |
+            web/test-results/vibe-stack
+            ${{ env.VIBE_BROWSER_OWNERSHIP_LOG }}
           if-no-files-found: ignore
   isolated-pdf-reader:
     runs-on: ubuntu-22.04

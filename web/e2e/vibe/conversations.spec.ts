@@ -77,7 +77,7 @@ async function serve(page: Page) {
       writes.push(`${request.method()} ${path}`);
       return route.fulfill({ status: 405, headers, json: { error: { message: "Reading history must not mutate the project" } } });
     }
-    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, two_door: true, defaults: defaultModels, models: [] } });
+    if (path.endsWith("/config")) return route.fulfill({ headers, json: { enabled: true, availability: { guest: { available: true }, workspace: { available: true } }, two_door: true, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) } });
     if (path.endsWith("/sessions")) return route.fulfill({ headers, json: [project] });
     if (path.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(project)}\n\n` });
     if (path.endsWith("/case")) {
@@ -114,9 +114,9 @@ test("V1 recorded replies and historical result selection survive refresh withou
   await page.reload();
   await expect(history).toHaveValue("recorded-1");
   await expect(page).toHaveURL(/run=recorded-1/);
-  await page.getByRole("tab", { name: "Conversation", exact: true }).click();
+  await page.getByRole("tab", { name: "Agent", exact: true }).click();
   await page.reload();
-  await expect(page.getByRole("tab", { name: "Conversation", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Agent", exact: true })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("tab", { name: "Results", exact: true }).click();
   await expect(history).toHaveValue("recorded-1");
   expect(caseReads).toEqual(expect.arrayContaining(["recorded-1:chat-1", "recorded-2:chat-2"]));

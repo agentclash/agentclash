@@ -27,11 +27,11 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: "go -C ../backend test -p 1 ./internal/api -run '^TestVibeBrowserStack$' -count=1 -timeout=12m -v",
+      command: "python3 ../scripts/vibe/browser_stack.py",
       url: `${apiURL}/__fixture/ready`,
       reuseExistingServer: false,
       timeout: 180_000,
-      gracefulShutdown: { signal: "SIGTERM", timeout: 20_000 },
+      gracefulShutdown: { signal: "SIGTERM", timeout: 45_000 },
       env: {
         VIBE_BROWSER_STACK: "1",
         VIBE_BROWSER_API_ADDRESS: `127.0.0.1:${apiPort}`,

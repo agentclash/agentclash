@@ -2,6 +2,11 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { CaseResult, Operation } from "@/lib/vibe";
+import { ResultRecoveryControls } from "./result-recovery";
+import { persistDrafts, emptyDrafts, editorDraftKey, readEditorDraft, discardDrafts } from "@/lib/vibe-build-drafts";
+import { GradeReviews } from "./grade-reviews";
+import { ResultComparison } from "./result-comparison";
+import { compareResultEvidence } from "@/lib/vibe-result-evidence";
 import { VibeScorecard } from "./scorecard";
 
 let container: HTMLDivElement;
@@ -174,6 +179,18 @@ async function render(
   );
   return load;
 }
+
+it("filters result rows without changing the outcome or whole-run totals", async () => {
+ await render(operation([failure,passing]));
+ const heading=container.querySelector("h1")!.textContent;
+ const select=container.querySelector<HTMLSelectElement>('select[aria-label="Filter cases"]');
+ expect(select).not.toBeNull();
+ await act(async()=>{select!.value="passing";select!.dispatchEvent(new Event("change",{bubbles:true}));});
+ expect(container.querySelector("h1")!.textContent).toBe(heading);
+ expect(container.textContent).toContain("1 passed · 1 failed · 0 unresolved");
+ expect(container.textContent).not.toContain("The purchase age was asked twice");
+ expect(container.textContent).toContain("The return window was respected");
+});
 function button(label: string) {
   const found = [
     ...container.querySelectorAll<HTMLButtonElement>("button"),
@@ -220,7 +237,7 @@ it("makes keeping tests the primary action for a passing first run", async () =>
 it("leads with one reply and keeps complete evidence behind a single accessible disclosure", async () => {
   const load = await render(operation([passing, failure]));
   const leading = container.querySelector('[aria-label="Leading finding"]')!;
-  expect(container.querySelector("h1")!.textContent).toBe("One thing to fix");
+  expect(container.querySelector("h1")!.textContent).toBe("1 chat failed");
   expect(leading.querySelector("details")!.open).toBe(true);
   expect(leading.textContent).toContain(failure.checks[0].evidence);
   const visibleQuotes = [...leading.querySelectorAll("blockquote")].filter(
@@ -403,7 +420,7 @@ it("prioritizes a new regression over an existing failure without hiding either"
   const next = { ...operation([failure, regressed]), id: "next", baseline_id: old.id };
   old.grading = next.grading = { version: 1, hash: "matching" } as Operation["grading"];
   await render(next, old);
-  expect(container.querySelector("h1")!.textContent).toContain("1 new issue");
+  expect(container.querySelector("h1")!.textContent).toContain("1 newly failing chat");
   expect(
     container.querySelector('[aria-label="Leading finding"] summary')!
       .textContent,
@@ -519,3 +536,165 @@ it.each(["initial", "rechecked", "stopped", "incomplete", "empty", "failed"])(
     expect(save).not.toHaveBeenCalled();
   },
 );
+
+
+it("keeps before and after evidence independent when the baseline load fails",async()=>{
+ const baseline={...operation([failure]),id:"baseline"};const current={...operation([failure]),id:"current"};
+ let fail=true;
+ const load=vi.fn(async(id:string,key:string)=>{if(id==="baseline"&&fail)throw Error("Baseline temporarily unavailable");return {...failure,case_key:key,output:id==="baseline"?"Original reply":"Changed reply"}});
+ await act(async()=>root.render(<ResultComparison current={current} baseline={baseline} load={load}/>));
+ expect(container.textContent).toContain("Comparison with changed or unverified settings");
+ await click("Compare saved replies");
+ expect(container.querySelector('[aria-label="Before"]')?.textContent).toContain("Baseline temporarily unavailable");
+ expect(container.querySelector('[aria-label="After"]')?.textContent).toContain("Changed reply");
+ fail=false;await click("Reload before");
+ expect(container.querySelector('[aria-label="Before"]')?.textContent).toContain("Original reply");
+ expect(load.mock.calls.filter(([id])=>id==="current")).toHaveLength(1);
+ const capture={scope:"unknown" as const,instrumentation:"unknown" as const};
+ const metadata={result_ref:{kind:"vibe_operation" as const,id:"baseline"},origin:"prototype" as const,fingerprints:{model:"m",build:"b",test:"t",judge:"j",config:"c"},capture_scope:{messages:capture,tools:capture,retrieval:capture},application_revision:null};
+ baseline.evidence_metadata=metadata;current.evidence_metadata={...metadata,result_ref:{kind:"vibe_operation",id:"current"},fingerprints:{...metadata.fingerprints,build:"updated"}};
+ baseline.result_scope=current.result_scope={artifact_id:"rules-one",case_keys:["memory"]};
+ expect(compareResultEvidence(current,baseline).controlled).toBe(true);
+ current.evidence_metadata.fingerprints.config=null;
+ expect(compareResultEvidence(current,baseline).controlled).toBe(false);
+ current.evidence_metadata.fingerprints.config="c";current.result_scope={artifact_id:"rules-one",case_keys:["different"]};
+ expect(compareResultEvidence(current,baseline).controlled).toBe(false);
+});
+
+
+it("recovers the same grade review receipt after a lost response and labels later evidence",async()=>{
+ const op=operation([failure]);const source={...failure,evidence_hash:"e".repeat(64)};
+ const before=JSON.stringify(op);const requests:Record<string,unknown>[]=[];let changed=false;let saved:Record<string,unknown>|undefined;
+ vi.stubGlobal("fetch",vi.fn(async(_url:string,options:RequestInit={})=>{
+  if(options.method==="POST"){
+   const body=JSON.parse(String(options.body));requests.push(body);
+   saved={...body,id:"review-one",created_at:"2026-10-26T00:00:00Z",evidence_hash:source.evidence_hash,evidence:source};
+   if(requests.length===1)throw new TypeError("Reply lost after commit");
+   return new Response(JSON.stringify(saved),{status:201,headers:{"Content-Type":"application/json"}});
+  }
+  return new Response(JSON.stringify(saved?[{...saved,evidence_changed:changed}]:[]),{headers:{"Content-Type":"application/json"}});
+ }));
+ const load=async()=>source;
+ const draw=async(cursor:number)=>act(async()=>root.render(<GradeReviews sessionID="review-project" operation={op} eventCursor={cursor} load={load}/>));
+ await draw(1);await click("Review a grade");
+ const input=container.querySelector<HTMLTextAreaElement>('[aria-label="Grade review reason"]')!;
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(input,"The earlier reply satisfies the rule.");input.dispatchEvent(new Event("input",{bubbles:true}))});
+ await click("Save grade review");
+ expect(requests[0]).toMatchObject({source_evidence_hash:source.evidence_hash,result_ref:{kind:"vibe_operation",id:op.id},artifact_id:failure.version,case_key:failure.case_key});
+ await act(async()=>root.render(<div/>));await draw(1);await click("Review a grade");await click("Retry saving this review");
+ expect(requests).toHaveLength(2);expect(requests[1]).toEqual(requests[0]);
+ changed=true;await draw(2);
+ expect(container.textContent).toContain("This review retains the original evidence");
+ expect(JSON.stringify(op)).toBe(before);
+});
+
+
+it("offers mixed failed and unassessed checks in the unresolved filter and exact retry selection", async()=>{
+ const mixed={...failure,case_key:"mixed",title:"Partially assessed",expected_checks:2,checks:[failure.checks[0],{key:"other",verdict:"UNKNOWN" as const,evidence:"",error:{message:"Judge unavailable"}}]};
+ const waiting={...failure,case_key:"waiting",title:"Awaiting assessment",verdict:"UNKNOWN" as const,expected_checks:1,checks:[{key:"pending",verdict:"UNKNOWN" as const,evidence:""}]};
+ const op=operation([failure,mixed,passing,waiting]);
+ op.scorecard={...op.scorecard!,incomplete_cases:2,checks_expected:5,checks_evaluated:3};
+ await render(op);
+ expect(container.textContent).toContain("1 passed · 2 failed · 2 unresolved");
+ expect(container.querySelector("h1")!.textContent).toBe("2 chats failed");
+ expect(container.textContent).toContain("can also be counted as passed or failed");
+ const select=container.querySelector<HTMLSelectElement>('[aria-label="Filter cases"]')!;
+ await act(async()=>{select.value="failing";select.dispatchEvent(new Event("change",{bubbles:true}))});
+ expect(container.textContent).toContain("Partially assessed");
+ expect(container.textContent).toContain(failure.title);
+ expect(container.textContent).not.toContain("Awaiting assessment");
+ expect(container.textContent).toContain("1 passed · 2 failed · 2 unresolved");
+ await act(async()=>{select.value="unresolved";select.dispatchEvent(new Event("change",{bubbles:true}))});
+ expect(container.textContent).toContain("Partially assessed");
+ expect(container.textContent).not.toContain(failure.title);
+ expect(container.textContent).toContain("Awaiting assessment");
+ expect(container.querySelector("h1")!.textContent).toBe("2 chats failed");
+ expect(container.textContent).toContain("1 passed · 2 failed · 2 unresolved");
+ const retry=vi.fn();
+ await act(async()=>root.render(<ResultRecoveryControls operation={op} busy={false} onReload={()=>{}} onRetry={retry} onFullRun={()=>{}}/>));
+ expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(2);
+ await click("Retry unresolved");expect(retry).toHaveBeenCalledWith(["mixed","waiting"]);
+});
+
+it("starts a fresh review only after the stale request is authoritatively rejected without a receipt",async()=>{
+ const op=operation([failure]);let source={...failure,evidence_hash:"1".repeat(64)};
+ const requests:Record<string,unknown>[]=[];let rejection="transport";
+ vi.stubGlobal("fetch",vi.fn(async(_url:string,options:RequestInit={})=>{
+  if(options.method!=="POST")return new Response("[]",{headers:{"Content-Type":"application/json"}});
+  const body=JSON.parse(String(options.body));requests.push(body);
+  if(rejection==="transport")throw new TypeError("Disconnected before commit");
+  if(rejection==="auth")return new Response(JSON.stringify({error:{code:"unauthorized",message:"Sign in again"}}),{status:401});
+  if(rejection==="conflict")return new Response(JSON.stringify({error:{code:"idempotency_conflict",message:"Request identity conflicts"}}),{status:409});
+  if(rejection==="stale")return new Response(JSON.stringify({error:{code:"evidence_changed",message:"Evidence changed. Reload."}}),{status:409});
+  return new Response(JSON.stringify({...body,id:"new-review",created_at:"2026-10-26T00:00:00Z",evidence:source}),{status:201});
+ }));
+ const draw=()=>act(async()=>root.render(<GradeReviews sessionID="uncommitted-project" operation={op} load={async()=>source}/>));
+ await draw();await click("Review a grade");
+ const input=container.querySelector<HTMLTextAreaElement>('[aria-label="Grade review reason"]')!;
+ await act(async()=>{Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(input,"Retain my reason.");input.dispatchEvent(new Event("input",{bubbles:true}))});
+ await click("Save grade review");
+ expect(container.textContent).not.toContain("Review updated evidence");
+ source={...source,evidence_hash:"2".repeat(64),output:"Late source reply"};
+ await act(async()=>root.render(<div/>));await draw();await click("Review a grade");
+ rejection="auth";await click("Retry saving this review");
+ expect(container.textContent).not.toContain("Review updated evidence");
+ rejection="conflict";await click("Retry saving this review");
+ expect(container.textContent).not.toContain("Correct review reason");
+ expect(container.textContent).not.toContain("Review updated evidence");
+ rejection="stale";await click("Retry saving this review");
+ expect(requests.slice(1)).toEqual([requests[0],requests[0],requests[0]]);
+ await click("Review updated evidence");
+ expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Grade review reason"]')!.value).toBe("Retain my reason.");
+ expect(container.textContent).toContain("Late source reply");
+ rejection="success";await click("Save grade review");
+ expect(requests[4]).toMatchObject({source_evidence_hash:source.evidence_hash,reason:"Retain my reason.",case_key:failure.case_key});
+ expect(requests[4].client_id).not.toBe(requests[0].client_id);
+});
+
+
+it.each(["new ASCII", "new multibyte", "persisted invalid"])("corrects an overlimit grade-review reason without trapping its receipt (%s)",async(mode)=>{
+ const project=`byte-limit-${mode}`;const op=operation([failure]);const source={...failure,evidence_hash:"2".repeat(64)};
+ const invalid=mode==="new ASCII"?"a".repeat(4097):"🙂".repeat(1025);
+ const valid=mode==="new ASCII"?"a".repeat(4096):"🙂".repeat(1024);
+ const previous={client_id:"previous-invalid-request",source_evidence_hash:"1".repeat(64),result_ref:{kind:"vibe_operation",id:op.id},artifact_id:failure.version,case_key:failure.case_key,reason:invalid};
+ const posts:Record<string,unknown>[]=[];
+ vi.stubGlobal("fetch",vi.fn(async(_url:string,options:RequestInit={})=>{
+  if(options.method!=="POST")return new Response("[]",{headers:{"Content-Type":"application/json"}});
+  const body=JSON.parse(String(options.body));posts.push(body);
+  return new Response(JSON.stringify({...body,id:"saved-review",created_at:"2026-10-26T00:00:00Z",evidence:source}),{status:201});
+ }));
+ if(mode==="persisted invalid"){
+  // Restore a request left by the prior UI after the API's pretransaction
+  // invalid_request rejection. It cannot have a receipt for this exact body.
+  const editors={
+   [editorDraftKey(project,op.id,"review-request")]:{artifact:op.id,source:"review-v1",value:JSON.stringify(previous)},
+   [editorDraftKey(project,op.id,`review:${failure.case_key}`)]:{artifact:op.id,source:"review-v1",value:invalid},
+  };
+  persistDrafts(project,{...emptyDrafts(),editors});
+ }
+ const draw=()=>act(async()=>root.render(<GradeReviews sessionID={project} operation={op} load={async()=>source}/>));
+ const typeReason=async(value:string)=>act(async()=>{const input=container.querySelector<HTMLTextAreaElement>('[aria-label="Grade review reason"]')!;Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,"value")!.set!.call(input,value);input.dispatchEvent(new Event("input",{bubbles:true}))});
+ await draw();await click("Review a grade");
+ if(mode!=="persisted invalid"){
+  await typeReason(invalid);
+  expect(button("Save grade review").disabled).toBe(true);
+  // The submit owner must also reject Enter/programmatic form submission.
+  await act(async()=>container.querySelector('form')!.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));
+  expect(readEditorDraft(project,op.id,"review-request")).toBeUndefined();
+ }else{
+  expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Grade review reason"]')!.disabled).toBe(true);
+  await click("Correct review reason");
+  expect(readEditorDraft(project,op.id,"review-request")).toBeUndefined();
+ }
+ expect(posts).toHaveLength(0);
+ expect(container.textContent).toContain("4,096 UTF-8 bytes");
+ await act(async()=>root.render(<div/>));await draw();await click("Review a grade");
+ const input=container.querySelector<HTMLTextAreaElement>('[aria-label="Grade review reason"]')!;
+ expect(input.value).toBe(invalid);expect(input.disabled).toBe(false);
+ await typeReason(valid);expect(button("Save grade review").disabled).toBe(false);
+ await click("Save grade review");
+ expect(posts).toHaveLength(1);expect(posts[0]).toMatchObject({reason:valid,source_evidence_hash:source.evidence_hash,case_key:failure.case_key});
+ expect(posts[0].client_id).not.toBe(previous.client_id);
+ expect(readEditorDraft(project,op.id,"review-request")).toBeUndefined();
+ discardDrafts(project);
+});

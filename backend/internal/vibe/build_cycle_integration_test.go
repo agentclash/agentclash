@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRunQuoteBindsPurposeAndExecution(t *testing.T) {
@@ -398,6 +399,16 @@ func TestIntegrationVibeBuildQuoteIsBoundAndCannotResetQuestionBudget(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
+	var clock struct {
+		ServerTime time.Time `json:"server_time"`
+	}
+	if err := json.Unmarshal(raw(q), &clock); err != nil {
+		t.Fatal(err)
+	}
+	if clock.ServerTime.IsZero() || time.Since(clock.ServerTime) > time.Second || q.ExpiresAt.Sub(clock.ServerTime) != 30*time.Minute {
+		t.Fatalf("quote needs server clock and unchanged 30 minute lifetime: %s %s", clock.ServerTime, q.ExpiresAt)
+	}
+
 	spare, err := s.QuoteBuild(ctx, v.Actor, v.ID, request)
 	if err != nil {
 		t.Fatal(err)
@@ -435,6 +446,16 @@ func TestIntegrationVibeRunQuoteDoesNotExecuteAndBindsVersion(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	var clock struct {
+		ServerTime time.Time `json:"server_time"`
+	}
+	if err := json.Unmarshal(raw(q), &clock); err != nil {
+		t.Fatal(err)
+	}
+	if clock.ServerTime.IsZero() || time.Since(clock.ServerTime) > time.Second || q.ExpiresAt.Sub(clock.ServerTime) != 10*time.Minute {
+		t.Fatalf("quote needs server clock and unchanged 10 minute lifetime: %s %s", clock.ServerTime, q.ExpiresAt)
+	}
+
 	before, _ := s.Store.GetSession(ctx, v.Actor, v.ID)
 	if len(before.Operations) > 0 || before.Revision != v.Revision {
 		t.Fatal("quote changed state or ran work")

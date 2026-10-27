@@ -33,15 +33,15 @@
     },
     "v3.23/curl": {
       "name": "curl",
-      "version": "8.22.0-r0",
-      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/curl-8.22.0-r0.apk",
-      "sha256": "78829ae535239009c2dd615d0d2f58ecc0abd07855e38c1eea389fc68993f5b1"
+      "version": "8.23.0-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/curl-8.23.0-r0.apk",
+      "sha256": "3fa0d88bff24906e311fdc0ea6e8e6400c2181ecef17eb4f51ee191902afbf8d"
     },
     "v3.23/libcurl": {
       "name": "libcurl",
-      "version": "8.22.0-r0",
-      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libcurl-8.22.0-r0.apk",
-      "sha256": "f4070c2bce6aeb660a96f767f5a0eb6876d6c8421b51334d24678e0039720507"
+      "version": "8.23.0-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.23/main/x86_64/libcurl-8.23.0-r0.apk",
+      "sha256": "d35e08ce3bafbcaf1a68512ac31483bd93e795ad5e8d8bfd76ada3106d81b569"
     },
     "v3.23/c-ares": {
       "name": "c-ares",
@@ -66,6 +66,12 @@
       "version": "2.42.3-r1",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libuuid-2.42.3-r1.apk",
       "sha256": "8306e5bb577696c9069fe1dfd9e1dcc39d2d481c6a1b0e707fd03c3e21aa6aa2"
+    },
+    "v3.24/libcurl": {
+      "name": "libcurl",
+      "version": "8.23.0-r0",
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/libcurl-8.23.0-r0.apk",
+      "sha256": "1f70ca404818805a6465b615bbfe84ef861488a963d7e630108ebd7fbaa51665"
     },
     "v3.24/ca-certificates": {
       "name": "ca-certificates",

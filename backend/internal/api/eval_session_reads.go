@@ -105,14 +105,8 @@ func (m *RunReadManager) GetEvalSession(ctx context.Context, caller Caller, eval
 		return GetEvalSessionResult{}, err
 	}
 
-	if len(value.Runs) > 0 {
-		workspaceID, err := evalSessionWorkspaceID(value.Runs)
-		if err != nil {
-			return GetEvalSessionResult{}, err
-		}
-		if err := m.authorizer.AuthorizeWorkspace(ctx, caller, workspaceID); err != nil {
-			return GetEvalSessionResult{}, err
-		}
+	if err := authorizeEvalSessionOwner(ctx, m.authorizer, caller, value.Session, value.Runs); err != nil {
+		return GetEvalSessionResult{}, err
 	}
 
 	aggregateResult, err := loadEvalSessionAggregateResult(ctx, m.repo, evalSessionID)
@@ -138,6 +132,9 @@ func (m *RunReadManager) ListEvalSessions(ctx context.Context, caller Caller, in
 		runs, runErr := m.repo.ListRunsByEvalSessionID(ctx, session.ID)
 		if runErr != nil {
 			return ListEvalSessionsResult{}, fmt.Errorf("load runs for eval session %s: %w", session.ID, runErr)
+		}
+		if err := authorizeEvalSessionOwner(ctx, m.authorizer, caller, session, runs); err != nil {
+			return ListEvalSessionsResult{}, err
 		}
 		aggregateResult, aggregateErr := loadEvalSessionAggregateResult(ctx, m.repo, session.ID)
 		if aggregateErr != nil {
@@ -263,18 +260,16 @@ func cloneEvalSessionWarnings(warnings []string) []string {
 	return append([]string(nil), warnings...)
 }
 
-func evalSessionWorkspaceID(runs []domain.Run) (uuid.UUID, error) {
-	if len(runs) == 0 {
-		return uuid.Nil, fmt.Errorf("eval session has no child runs")
+func authorizeEvalSessionOwner(ctx context.Context, authorizer WorkspaceAuthorizer, caller Caller, session domain.EvalSession, runs []domain.Run) error {
+	if session.WorkspaceID == uuid.Nil {
+		return ErrForbidden
 	}
-
-	workspaceID := runs[0].WorkspaceID
-	for _, run := range runs[1:] {
-		if run.WorkspaceID != workspaceID {
-			return uuid.Nil, fmt.Errorf("eval session child runs span multiple workspaces")
+	for _, run := range runs {
+		if run.WorkspaceID != session.WorkspaceID {
+			return ErrForbidden
 		}
 	}
-	return workspaceID, nil
+	return authorizer.AuthorizeWorkspace(ctx, caller, session.WorkspaceID)
 }
 
 func getEvalSessionHandler(logger *slog.Logger, service RunReadService) http.HandlerFunc {

@@ -45,7 +45,7 @@ func newCORSMiddleware(authMode string, allowedOrigins map[string]struct{}) func
 				w.Header().Set("Access-Control-Allow-Credentials", "true")
 				w.Header().Add("Vary", "Origin")
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", allowedHeaders+", If-Match, Last-Event-ID")
+				w.Header().Set("Access-Control-Allow-Headers", allowedHeaders+", If-Match, Last-Event-ID, X-File-Name")
 				if r.Method == http.MethodOptions {
 					w.WriteHeader(http.StatusNoContent)
 					return
