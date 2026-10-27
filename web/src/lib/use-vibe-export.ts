@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { ResultRef } from "./vibe-result-evidence";
+import {loadObservedEvidence,observedExportValue} from "./vibe-observed";
 import {canonicalExportValue,loadCanonicalResult} from "./vibe-canonical";
 import { sdkExportValue, reportBase } from "./vibe-reports";
 import { vibeFetch, vibeBytes, type Session, type Artifact, type Operation } from "./vibe";
@@ -41,7 +42,7 @@ export function useVibeExport(
     busy: boolean;
     error: string;
     open: boolean;
-    intent?: { artifact: Artifact; operation?: Operation; resultRef?: ResultRef };
+    intent?: { artifact: Artifact; operation?: Operation; resultRef?: ResultRef; includeObserved?:boolean };
   }>();
   const renderedGeneration = generation.current;
   const active = state?.owner === owner.current ? state : undefined;
@@ -57,13 +58,14 @@ export function useVibeExport(
     resultRef?: ResultRef,
     scope: "selected" | "history" = "selected",
     operation?: Operation,
+    includeObserved=false,
   ) {
     if (!live.current || !session) return;
     const captured = owner.current,
       attempt = ++generation.current;
     const current = () =>
       live.current && captured === owner.current && attempt === generation.current;
-    const intent = structuredClone({ artifact, operation, resultRef });
+    const intent = structuredClone({ artifact, operation, resultRef, includeObserved });
     setState({ owner: captured, busy: true, error: "", open: true, intent });
     try {
       const auth = await token();
@@ -72,12 +74,14 @@ export function useVibeExport(
         method: "POST",
         body: JSON.stringify({
           scope,
+          ...(includeObserved ? {include_observed:true} : {}),
           artifact_id: artifact.id,
           ...(resultRef ? resultRef.kind === "vibe_operation" ? { result_id: resultRef.id } : { result_ref: resultRef } : {}),
         }),
       });
       if (!current()) return;
       if (
+        !!p.selection.include_observed !== includeObserved ||
         p.session_id !== session.id ||
         p.artifact_id !== artifact.id ||
         p.selection.artifact_id !== artifact.id ||
@@ -112,6 +116,11 @@ export function useVibeExport(
             `/operations/${item.operation_id}/case?key=${encodeURIComponent(item.case_key!)}&hash=${item.hash}`,
             auth,
           );
+        if(item.kind === "observed_evidence"){
+          if(!item.result_ref||!item.artifact_id)throw Error("Observed source reference is missing.");
+          await loadObservedEvidence({session_id:job.preparation.session_id,artifact_id:item.artifact_id,result_ref:item.result_ref},auth,item.hash);
+          return observedExportValue(item,job.preparation.observed_evidence||[],job.preparation.session_id);
+        }
         if(item.kind === "canonical_result"){
           if(!item.result_ref)throw Error("Canonical result reference is missing.");
           await loadCanonicalResult(job.preparation.session_id,item.result_ref,auth,item.artifact_id,item.hash);

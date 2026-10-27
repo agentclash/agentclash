@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/budget"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/secrets"
@@ -95,7 +96,7 @@ func mountBrowserConnectors(t *testing.T, router chi.Router, db *pgxpool.Pool, s
 	}))
 	t.Cleanup(target.Close)
 	invoker := workerapp.HTTPJSONInvoker{Repository: repo, Client: connectors.Client{HTTP: target.Client(), Resolver: browserConnectorResolver{}, Dialer: browserConnectorDialer{target.Listener.Addr().String()}}}
-	activities := workflowapp.NewActivities(repo, workflowapp.FakeWorkHooks{ConnectorInvoker: invoker})
+	activities := workflowapp.NewActivities(repo, workflowapp.FakeWorkHooks{ConnectorInvoker: invoker}).WithEvalSetRepository(repo).WithEvalSetBudgetRepository(repo).WithWorkspaceRunCounter(repo)
 	for _, queue := range []string{workflowapp.TaskQueueExecution, workflowapp.TaskQueueScoring} {
 		w := sdkworker.New(tc, queue, sdkworker.Options{})
 		workflowapp.RegisterForTaskQueue(w, activities, queue)
@@ -104,7 +105,7 @@ func mountBrowserConnectors(t *testing.T, router chi.Router, db *pgxpool.Pool, s
 		}
 		t.Cleanup(w.Stop)
 	}
-	manager := NewRunCreationManager(authorizer, repo, NewTemporalRunWorkflowStarter(tc, repo), budget.NewChecker(repository.NewBudgetRepositoryAdapter(repo))).WithEntitlementGateService(NewBillingManager(NewCallerOrganizationAuthorizer(), authorizer, repo, BillingManagerConfig{}))
+	manager := NewRunCreationManager(authorizer, repo, NewTemporalRunWorkflowStarter(tc, repo), budget.NewChecker(repository.NewBudgetRepositoryAdapter(repo))).WithEvalSessionWorkflowStarter(NewTemporalEvalSessionWorkflowStarter(tc)).WithEntitlementGateService(NewBillingManager(NewCallerOrganizationAuthorizer(), authorizer, repo, BillingManagerConfig{}))
 	router.Route("/v1/workspaces/{workspaceID}/challenge-pack-versions/{versionID}", func(r chi.Router) {
 		r.Use(authenticateRequest(slog.Default(), auth))
 		r.With(authorizeWorkspaceAccess(slog.Default(), authorizer, workspaceIDFromURLParam("workspaceID"))).Get("/input-sets", listChallengeInputSetsHandler(slog.Default(), NewChallengePackReadManager(repo)))
@@ -114,6 +115,9 @@ func mountBrowserConnectors(t *testing.T, router chi.Router, db *pgxpool.Pool, s
 		r.Route("/v1", func(r chi.Router) {
 			MountConnectorRoutes(r, repo, authorizer, browserConnectorResolver{})
 			r.Post("/runs", createRunHandler(slog.Default(), manager))
+			r.Post("/eval-sessions", createEvalSessionHandler(slog.Default(), manager))
+			r.Post("/eval-sessions/preview", createEvalSessionHandler(slog.Default(), manager))
+			registerEvalSetRoutes(r, slog.Default(), NewEvalSetManager(authorizer).WithPersistence(repo, manager, NewTemporalEvalSetWorkflowStarter(tc)))
 		})
 	})
 	router.Post("/__fixture/connector-bundle", func(w http.ResponseWriter, r *http.Request) {
@@ -163,6 +167,12 @@ func mountBrowserConnectors(t *testing.T, router chi.Router, db *pgxpool.Pool, s
 			http.Error(w, e.Error(), 500)
 			return
 		}
+		// Local-only paid-plan fixture allows the three-child canonical gate;
+		// the production entitlement checker remains enabled for every request.
+		if e = repo.UpsertOrganizationEntitlements(r.Context(), org, billing.MaterializeEntitlements(billing.MustPlan(billing.PlanPro), billing.PeriodMonthly, 1, billing.EntitlementStatusActive), nil, nil); e != nil {
+			http.Error(w, e.Error(), 500)
+			return
+		}
 		var comp challengepack.Composition
 		if e = json.Unmarshal(composition, &comp); e != nil {
 			http.Error(w, e.Error(), 500)
@@ -185,11 +195,14 @@ func mountBrowserConnectors(t *testing.T, router chi.Router, db *pgxpool.Pool, s
 		writeJSON(w, 200, pub)
 	})
 	router.Get("/__fixture/connector-evidence", func(w http.ResponseWriter, r *http.Request) {
-		var dispatches, events int
+		var dispatches, events, receipts, validated, sessions, sets int
 		var states []byte
 		_ = db.QueryRow(r.Context(), `SELECT count(*) FROM connector_dispatches`).Scan(&dispatches)
 		_ = db.QueryRow(r.Context(), `SELECT count(*) FROM hosted_event_receipts`).Scan(&events)
 		_ = db.QueryRow(r.Context(), `SELECT COALESCE(jsonb_agg(jsonb_build_object('id',id,'status',status,'temporal_workflow_id',temporal_workflow_id)),'[]') FROM runs`).Scan(&states)
-		writeJSON(w, 200, map[string]any{"calls": calls.Load(), "dispatches": dispatches, "events": events, "runs": json.RawMessage(states)})
+		_ = db.QueryRow(r.Context(), `SELECT count(*),count(*) FILTER(WHERE dispatch_validated_at IS NOT NULL AND dispatch_guard_version=1) FROM run_agent_controlled_settings`).Scan(&receipts, &validated)
+		_ = db.QueryRow(r.Context(), `SELECT count(*) FROM eval_sessions`).Scan(&sessions)
+		_ = db.QueryRow(r.Context(), `SELECT count(*) FROM eval_sets`).Scan(&sets)
+		writeJSON(w, 200, map[string]any{"controlled_receipts": receipts, "validated_dispatches": validated, "eval_sessions": sessions, "eval_sets": sets, "calls": calls.Load(), "dispatches": dispatches, "events": events, "runs": json.RawMessage(states)})
 	})
 }

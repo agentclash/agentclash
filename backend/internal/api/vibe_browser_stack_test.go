@@ -50,6 +50,7 @@ func TestVibeBrowserStack(t *testing.T) {
 	defer stop()
 	db := browserFixtureDatabase(t, ctx)
 	namespace := "vibe-browser-" + uuid.NewString()
+	recordBrowserOwnership(t, "temporal_namespace", namespace)
 	temporalClient := browserFixtureTemporal(t, ctx, namespace)
 	// Accounting maintenance is real; any unexpected provider receipt remains
 	// unresolved through an offline transport, never a hosted HTTP request.
@@ -249,6 +250,7 @@ func browserFixtureDatabase(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	}
 	t.Cleanup(admin.Close)
 	name := "vibe_test_browser_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+	recordBrowserOwnership(t, "database", name)
 	identifier := pgx.Identifier{name}.Sanitize()
 	if _, err = admin.Exec(ctx, "CREATE DATABASE "+identifier); err != nil {
 		t.Fatal(err)
@@ -780,4 +782,25 @@ type browserFixtureOfflineTransport struct{}
 
 func (browserFixtureOfflineTransport) RoundTrip(*http.Request) (*http.Response, error) {
 	return nil, errors.New("HTTP provider networking disabled in browser fixture")
+}
+
+// Optional durable local inventory is written before resource creation, including
+// failed startup attempts. It grants cleanup ownership only for these names.
+func recordBrowserOwnership(t *testing.T, kind, name string) {
+	t.Helper()
+	path := os.Getenv("VIBE_BROWSER_OWNERSHIP_LOG")
+	if path == "" {
+		return
+	}
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err = json.NewEncoder(f).Encode(map[string]any{"kind": kind, "name": name, "pid": os.Getpid(), "time": time.Now().UTC()}); err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Sync(); err != nil {
+		t.Fatal(err)
+	}
 }

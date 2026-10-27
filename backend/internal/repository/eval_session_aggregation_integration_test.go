@@ -52,6 +52,7 @@ func TestRepositoryAggregateEvalSessionPersistsAndUpsertsSingleRow(t *testing.T)
 	repo := repository.New(db)
 
 	session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		WorkspaceID:            fixture.workspaceID,
 		Repetitions:            1,
 		AggregationConfig:      []byte(`{"schema_version":1,"reliability_weight":0.85}`),
 		SuccessThresholdConfig: []byte(`{"schema_version":1,"min_pass_rate":0.8}`),
@@ -175,6 +176,7 @@ func TestRepositoryAggregateEvalSessionPersistsComparisonSemantics(t *testing.T)
 	repo := repository.New(db)
 
 	session, err := repo.CreateEvalSession(ctx, repository.CreateEvalSessionParams{
+		WorkspaceID:            fixture.workspaceID,
 		Repetitions:            3,
 		AggregationConfig:      []byte(`{"schema_version":1,"reliability_weight":0.6}`),
 		SuccessThresholdConfig: []byte(`{"schema_version":1,"min_pass_rate":0.8}`),

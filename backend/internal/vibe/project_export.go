@@ -12,10 +12,11 @@ import (
 )
 
 type ExportRequest struct {
-	ResultRef  *ResultRef `json:"result_ref,omitempty"`
-	Scope      string     `json:"scope"`
-	ArtifactID uuid.UUID  `json:"artifact_id"`
-	ResultID   *uuid.UUID `json:"result_id,omitempty"`
+	IncludeObserved bool       `json:"include_observed,omitempty"`
+	ResultRef       *ResultRef `json:"result_ref,omitempty"`
+	Scope           string     `json:"scope"`
+	ArtifactID      uuid.UUID  `json:"artifact_id"`
+	ResultID        *uuid.UUID `json:"result_id,omitempty"`
 }
 type ExportItem struct {
 	ResultRef       *ResultRef `json:"result_ref,omitempty"`
@@ -29,20 +30,21 @@ type ExportItem struct {
 	EvidenceChanged *bool      `json:"evidence_changed,omitempty"`
 }
 type ExportPreparation struct {
-	CanonicalResults []CanonicalResult `json:"canonical_results"`
-	SDKReports       []SDKReport       `json:"sdk_reports"`
-	Format           string            `json:"format"`
-	SessionID        uuid.UUID         `json:"session_id"`
-	Title            string            `json:"title"`
-	CapturedAt       time.Time         `json:"captured_at"`
-	Selection        ExportRequest     `json:"selection"`
-	ArtifactID       uuid.UUID         `json:"artifact_id"`
-	Artifacts        []Artifact        `json:"artifacts"`
-	Rules            []PolicySnapshot  `json:"rules"`
-	Runs             []Operation       `json:"runs"`
-	Items            []ExportItem      `json:"items"`
-	CaseMappings     []json.RawMessage `json:"case_mappings"`
-	Omissions        []string          `json:"omissions"`
+	ObservedEvidence []ObservedEvidence `json:"observed_evidence,omitempty"`
+	CanonicalResults []CanonicalResult  `json:"canonical_results"`
+	SDKReports       []SDKReport        `json:"sdk_reports"`
+	Format           string             `json:"format"`
+	SessionID        uuid.UUID          `json:"session_id"`
+	Title            string             `json:"title"`
+	CapturedAt       time.Time          `json:"captured_at"`
+	Selection        ExportRequest      `json:"selection"`
+	ArtifactID       uuid.UUID          `json:"artifact_id"`
+	Artifacts        []Artifact         `json:"artifacts"`
+	Rules            []PolicySnapshot   `json:"rules"`
+	Runs             []Operation        `json:"runs"`
+	Items            []ExportItem       `json:"items"`
+	CaseMappings     []json.RawMessage  `json:"case_mappings"`
+	Omissions        []string           `json:"omissions"`
 }
 
 // Preparation freezes source summaries, expected IDs and hashes in one snapshot.
@@ -331,6 +333,22 @@ func (s *Store) PrepareExport(ctx context.Context, actor string, id uuid.UUID, i
 	}
 	if err = appendSDKExport(ctx, tx, &out); err != nil {
 		return out, err
+	}
+	if in.IncludeObserved {
+		ref := in.ResultRef
+		if ref == nil && in.ResultID != nil {
+			ref = &ResultRef{Kind: ResultVibeOperation, ID: *in.ResultID}
+		}
+		if in.Scope != "selected" || ref == nil {
+			return out, fault("invalid_request", "Choose one result to include observed evidence.")
+		}
+		observed, e := observedEvidenceTx(ctx, tx, v, *ref, &in.ArtifactID)
+		if e != nil {
+			return out, e
+		}
+		out.ObservedEvidence = []ObservedEvidence{observed}
+		out.Items = append(out.Items, ExportItem{Kind: "observed_evidence", ID: string(ref.Kind) + ":" + ref.ID.String() + ":" + in.ArtifactID.String(), ResultRef: ref, ArtifactID: &in.ArtifactID, Hash: observed.EvidenceHash})
+		out.Omissions = append(out.Omissions, observed.Omissions...)
 	}
 	if len(out.Items) > 5000 {
 		return out, fault("export_limit", "This history exceeds one export. Export individual versions instead.")

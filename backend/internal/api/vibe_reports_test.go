@@ -146,6 +146,17 @@ func TestVibeSDKReviewAndExportKeepSourceSeparate(t *testing.T) {
 	}
 	base := "/sessions/" + h.session.ID.String()
 	detail := base + "/reports/" + r.ID.String()
+	observed := sdkRequest(api, h.user, "GET", base+"/results/sdk_report/"+r.ID.String()+"/observed-evidence?artifact_id="+a.ID.String(), nil)
+	if observed.Code != 200 {
+		t.Fatal("original normalized SDK", observed.Code, observed.Body.String())
+	}
+	var normalized vibe.ObservedEvidence
+	if err = json.Unmarshal(observed.Body.Bytes(), &normalized); err != nil {
+		t.Fatal(err)
+	}
+	if len(normalized.Cases) != 1 || normalized.Cases[0].Status != "failed" || !strings.Contains(normalized.Cases[0].Entries[0].ValueJSON, `"score":0.25`) || normalized.Cases[0].Entries[0].EntryID == "" {
+		t.Fatal("SDK original score/status lost", observed.Body.String())
+	}
 	w := sdkRequest(api, h.user, "GET", detail+"/case?source_case_id=python_test", nil)
 	if w.Code != 200 {
 		t.Fatalf("case: %d %s", w.Code, w.Body.String())

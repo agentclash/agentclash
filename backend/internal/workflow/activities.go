@@ -738,6 +738,8 @@ func wrapActivityError(err error) error {
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryRunNotFoundErrorType, err)
 	case errors.Is(err, repository.ErrRunAgentNotFound):
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryRunAgentNotFoundErrorType, err)
+	case errors.Is(err, repository.ErrControlledSettingsChanged), errors.Is(err, repository.ErrControlledModeUnsupported):
+		return temporal.NewNonRetryableApplicationError(err.Error(), "controlled_settings_changed", err)
 	case errors.Is(err, repository.ErrFrozenExecutionContext):
 		return temporal.NewNonRetryableApplicationError(err.Error(), repositoryFrozenExecutionContextType, err)
 	case errors.Is(err, repository.ErrTemporalIDConflict):

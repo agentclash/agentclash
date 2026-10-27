@@ -1,8 +1,8 @@
 import {vibeFetch} from "./vibe";
 import type {CaseEvidenceBinding,EvidenceMetadata,Fingerprints,ProjectResultBinding,ResultRef} from "./vibe-result-evidence";
 import type {ExportItem} from "./vibe-export";
-export type CanonicalParticipant={run_id:string;run_agent_id:string;snapshot_id:string;deployment_id:string;adapter:string;status:string;label:string;challenge_input_set_id:string;cases:(CaseEvidenceBinding&{challenge_key:string;input_set_key:string})[];fingerprints:Fingerprints;events:{id:string;source_event_id?:string;sequence:number;type:string;normalized_payload_sha256:string}[]};
-export type CanonicalResult={binding:ProjectResultBinding;evidence_metadata:EvidenceMetadata;name:string;status:string;created_at:string;participants:CanonicalParticipant[];evidence_hash:string;omissions:string[]};
+export type CanonicalParticipant={dispatch_validated_at?:string;dispatch_guard_version?:number;run_id:string;run_agent_id:string;snapshot_id:string;deployment_id:string;adapter:string;status:string;label:string;challenge_input_set_id:string;cases:(CaseEvidenceBinding&{challenge_key:string;input_set_key:string;challenge_identity_id:string})[];fingerprints:Fingerprints;events:{id:string;source_event_id?:string;sequence:number;type:string;normalized_payload_sha256:string}[]};
+export type CanonicalResult={fleet?:{id:string;status:string;eval_session_ids:string[]};experiment?:{requested:number;completed:number;failed:number;pending:number;scored:number;aggregate?:{overall?:{n:number;mean:number;std_dev:number};participants?:{label:string;overall?:{n:number;mean:number;std_dev:number}}[]};warnings:string[]};binding:ProjectResultBinding;evidence_metadata:EvidenceMetadata;name:string;status:string;created_at:string;participants:CanonicalParticipant[];evidence_hash:string;omissions:string[]};
 export const canonicalBase=(session:string)=>`/sessions/${encodeURIComponent(session)}/canonical-results`;
 export async function loadCanonicalResult(session:string,ref:ResultRef,token?:string|null,artifact?:string,hash?:string){
  if(ref.kind!=="run"&&ref.kind!=="eval_session")throw Error("Choose a canonical result.");

@@ -1,6 +1,7 @@
 package workflow
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -45,6 +46,20 @@ func (a *Activities) executeRunAgentEvaluation(ctx context.Context, runAgentID u
 			return scoring.RunAgentEvaluation{}, fmt.Errorf("decode persisted evaluation spec: %w; additionally failed to record scoring failure: %v", err, emitErr)
 		}
 		return scoring.RunAgentEvaluation{}, fmt.Errorf("decode persisted evaluation spec: %w", err)
+	}
+
+	if executionContext.ValidateControlledDispatch != nil {
+		expected, e := scoring.MarshalDefinition(manifestSpec)
+		if e != nil {
+			return scoring.RunAgentEvaluation{}, e
+		}
+		actual, e := scoring.MarshalDefinition(persistedSpec)
+		if e != nil {
+			return scoring.RunAgentEvaluation{}, e
+		}
+		if !bytes.Equal(expected, actual) {
+			return scoring.RunAgentEvaluation{}, repository.ErrControlledSettingsChanged
+		}
 	}
 
 	events, err := a.repo.ListRunEventsByRunAgentID(ctx, runAgentID)

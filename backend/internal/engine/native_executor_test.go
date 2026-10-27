@@ -23,6 +23,9 @@ func TestNativeExecutorHappyPathWritesFileThenSubmits(t *testing.T) {
 		steps: []providerStep{
 			{
 				validate: func(t *testing.T, request provider.Request) {
+					if request.Temperature != nil || request.MaxOutputTokens != 0 || request.ValidateBeforeDispatch == nil || request.OnDispatchValidated == nil || request.Model != "gpt-4.1" || request.StepTimeout != time.Second {
+						t.Fatal("unsupported saved sampling knobs applied or dispatch guard lost", request)
+					}
 					if request.BaseURL != "https://models.example.com/v1" {
 						t.Fatalf("base URL = %q", request.BaseURL)
 					}
@@ -81,7 +84,11 @@ func TestNativeExecutorHappyPathWritesFileThenSubmits(t *testing.T) {
 	}
 
 	executor := NewNativeExecutor(client, &sandbox.FakeProvider{NextSession: session}, NoopObserver{})
-	result, err := executor.Execute(context.Background(), nativeExecutionContext())
+	executionContext := nativeExecutionContext()
+	executionContext.Deployment.AgentBuildVersion.ModelSpec = []byte(`{"temperature":0.2,"max_output_tokens":7}`)
+	executionContext.ValidateControlledDispatch = func(context.Context) error { return nil }
+	executionContext.AcknowledgeControlledDispatch = func(context.Context) error { return nil }
+	result, err := executor.Execute(context.Background(), executionContext)
 	if err != nil {
 		t.Fatalf("Execute returned error: %v", err)
 	}

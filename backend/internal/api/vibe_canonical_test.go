@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/vibe"
 	"github.com/agentclash/agentclash/runtime/challengepack"
@@ -117,6 +118,9 @@ func TestVibeCanonicalProjectACLAndCompleteEvalBinding(t *testing.T) {
 		t.Fatal("unowned empty eval", code)
 	}
 	if _, e := h.db.Exec(h.ctx, `UPDATE runs SET eval_session_id=$2 WHERE id=$1`, run, eval); e != nil {
+		t.Fatal(e)
+	}
+	if _, e := h.db.Exec(h.ctx, `UPDATE eval_sessions SET workspace_id=$2 WHERE id=$1`, eval, ws); e != nil {
 		t.Fatal(e)
 	}
 	if code := get(h.user, "eval_session", eval, a.ID); code != 200 {
@@ -242,5 +246,157 @@ func TestVibeCanonicalMountedReadinessRejectsPartialConnectorSchema(t *testing.T
 		if w.Code != want {
 			t.Fatalf("readiness=%d want=%d %s", w.Code, want, w.Body)
 		}
+	}
+}
+
+func TestVibeObservedCanonicalAuthorizedFrozenExport(t *testing.T) {
+	h, _, a, run, agent := canonicalHarness(t)
+	_, err := repository.New(h.db).RecordHostedRunEvent(h.ctx, repository.RecordHostedRunEventParams{Event: runevents.Envelope{EventID: "observed-remote", SchemaVersion: runevents.SchemaVersionV1, RunID: run, RunAgentID: agent, EventType: runevents.EventTypeSystemOutputFinalized, Source: runevents.SourceHostedExternal, OccurredAt: time.Now().UTC(), Payload: json.RawMessage(`{"output":"private mapped answer","tool_calls":[{"name":"not a typed execution"}]}`)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	api := (&VibeHandler{Service: h.svc, Auth: NewDevelopmentAuthenticator()}).Routes()
+	base := "/sessions/" + h.session.ID.String()
+	url := base + "/results/run/" + run.String() + "/observed-evidence?artifact_id=" + a.ID.String()
+	w := sdkRequest(api, h.user, "GET", url, nil)
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var got vibe.ObservedEvidence
+	if err = json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	var output *vibe.ObservedEntry
+	for _, c := range got.Cases {
+		for _, e := range c.Entries {
+			if e.Kind == "tool_execution" {
+				t.Fatal("arbitrary mapped output upgraded to tool execution")
+			}
+			if e.Kind == "output" {
+				v := e
+				output = &v
+			}
+		}
+	}
+	if output == nil || output.EventID == "" || output.SourceEventID == nil || *output.SourceEventID != "observed-remote" || output.PayloadHash == "" || output.ValueJSON != `"private mapped answer"` {
+		t.Fatalf("source identity/body lost: %+v", output)
+	}
+	if w = sdkRequest(api, uuid.New(), "GET", url, nil); w.Code < 400 {
+		t.Fatal("foreign actor evidence read")
+	}
+	if w = sdkRequest(api, h.user, "GET", url+"&hash=changed", nil); w.Code < 400 {
+		t.Fatal("stale evidence hash accepted")
+	}
+	for _, include := range []bool{false, true} {
+		w = sdkRequest(api, h.user, "POST", base+"/export", mustJSON(t, map[string]any{"scope": "selected", "artifact_id": a.ID, "result_ref": got.Binding.ResultRef, "include_observed": include}))
+		if w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		var p vibe.ExportPreparation
+		if err = json.Unmarshal(w.Body.Bytes(), &p); err != nil {
+			t.Fatal(err)
+		}
+		if include {
+			if len(p.ObservedEvidence) != 1 || p.ObservedEvidence[0].EvidenceHash != got.EvidenceHash {
+				t.Fatal("frozen observed export mismatch")
+			}
+		} else if len(p.ObservedEvidence) != 0 || strings.Contains(w.Body.String(), "private mapped answer") {
+			t.Fatal("raw observed body included without selection")
+		}
+	}
+}
+
+func TestVibeCanonicalControlledAssuranceRequiresCompatibleDispatchGuard(t *testing.T) {
+	h, ws, a, run, agent := canonicalHarness(t)
+	useDeterministicCanonicalEvaluator(t, h, run)
+	repo := repository.New(h.db)
+	var snapshot, pack uuid.UUID
+	if err := h.db.QueryRow(h.ctx, `SELECT a.agent_deployment_snapshot_id,r.challenge_pack_version_id FROM run_agents a JOIN runs r ON r.id=a.run_id WHERE a.id=$1`, agent).Scan(&snapshot, &pack); err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := repo.PreviewControlledSettings(h.ctx, ws, snapshot, pack, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = h.db.Exec(h.ctx, `INSERT INTO run_agent_controlled_settings(run_agent_id,snapshot_id,settings_hash,settings) VALUES($1,$2,$3,$4)`, agent, snapshot, receipt.Hash, receipt.Settings); err != nil {
+		t.Fatal(err)
+	}
+	for _, version := range []int{0, 99, 1} {
+		if version > 0 {
+			if _, err = h.db.Exec(h.ctx, `UPDATE run_agent_controlled_settings SET dispatch_validated_at=now(),dispatch_guard_version=$2 WHERE run_agent_id=$1`, agent, version); err != nil {
+				t.Fatal(err)
+			}
+		}
+		v, err := h.svc.Store.CanonicalResult(h.ctx, h.actor, h.session.ID, vibe.ResultRef{Kind: vibe.ResultRun, ID: run}, &a.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (v.Participants[0].Fingerprints.Config != nil) != (version == 1) {
+			t.Fatalf("version %d fabricated controlled configuration %+v", version, v.Participants[0])
+		}
+	}
+}
+
+func useDeterministicCanonicalEvaluator(t *testing.T, h *vibeAPIHarness, run uuid.UUID) {
+	t.Helper()
+	_, err := h.db.Exec(h.ctx, `UPDATE challenge_pack_versions SET manifest=jsonb_set(manifest,'{evaluation_spec}','{"name":"controlled","version_number":1,"judge_mode":"deterministic","validators":[{"key":"answer","type":"regex_match","target":"final_output","expected_from":"literal:.+"}],"scorecard":{"dimensions":[{"key":"output_present","source":"validators","validators":["answer"]}]}}'::jsonb) WHERE id=(SELECT challenge_pack_version_id FROM runs WHERE id=$1)`, run)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestVibeCanonicalMountedReadinessRejectsPartialExperimentSchema(t *testing.T) {
+	h := newVibeAPIHarness(t)
+	for _, missing := range []struct{ table, column string }{{"eval_sessions", "workspace_id"}, {"run_agent_controlled_settings", "dispatch_guard_version"}, {"eval_set_admissions", "request_hash"}, {"eval_session_admissions", "request_hash"}} {
+		t.Run(missing.table+"."+missing.column, func(t *testing.T) {
+			schema := "experiment_ready_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+			if _, e := h.db.Exec(h.ctx, "CREATE SCHEMA "+schema); e != nil {
+				t.Fatal(e)
+			}
+			defer h.db.Exec(h.ctx, "DROP SCHEMA "+schema+" CASCADE")
+			if _, e := h.db.Exec(h.ctx, "CREATE TABLE "+schema+"."+missing.table+" AS SELECT * FROM "+missing.table+" WITH NO DATA"); e != nil {
+				t.Fatal(e)
+			}
+			if _, e := h.db.Exec(h.ctx, "ALTER TABLE "+schema+"."+missing.table+" DROP COLUMN "+missing.column); e != nil {
+				t.Fatal(e)
+			}
+			cfg := h.db.Config().Copy()
+			cfg.ConnConfig.RuntimeParams["search_path"] = schema + ",public"
+			partial, e := pgxpool.NewWithConfig(h.ctx, cfg)
+			if e != nil {
+				t.Fatal(e)
+			}
+			defer partial.Close()
+			check := WithConnectorReadiness(func(context.Context) map[string]string { return map[string]string{"vibe_schema": "ok", "redis": "ok"} }, repository.New(partial))
+			router := buildRouter(routerOptions{logger: slog.Default(), dbReadiness: partial, temporalReadiness: fakeTemporalHealthChecker{}, dependencyReadiness: check})
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, httptest.NewRequest("GET", "/healthz/ready", nil))
+			if w.Code != 503 || !strings.Contains(w.Body.String(), `"experiment_schema":"unavailable"`) {
+				t.Fatalf("missing required field ready: %d %s", w.Code, w.Body)
+			}
+		})
+	}
+}
+
+func TestControlledPreviewRejectsUnfixedEvaluatorInputs(t *testing.T) {
+	h, ws, _, run, agent := canonicalHarness(t)
+	repo := repository.New(h.db)
+	var snapshot, pack uuid.UUID
+	if err := h.db.QueryRow(h.ctx, `SELECT a.agent_deployment_snapshot_id,r.challenge_pack_version_id FROM run_agents a JOIN runs r ON r.id=a.run_id WHERE a.id=$1`, agent).Scan(&snapshot, &pack); err != nil {
+		t.Fatal(err)
+	}
+	// This fixture's original fuzzy evaluator uses a process-default account.
+	if _, err := repo.PreviewControlledSettings(h.ctx, ws, snapshot, pack, nil); !errors.Is(err, repository.ErrControlledModeUnsupported) {
+		t.Fatal("external judge route represented as fixed", err)
+	}
+	useDeterministicCanonicalEvaluator(t, h, run)
+	if _, err := repo.PreviewControlledSettings(h.ctx, ws, snapshot, pack, nil); err != nil {
+		t.Fatal("deterministic evaluator unavailable", err)
+	}
+	if _, err := h.db.Exec(h.ctx, `UPDATE challenge_pack_versions SET manifest=jsonb_set(manifest,'{evaluation_spec,scorecard,dimensions}','[{"key":"human","source":"human_preference"}]'::jsonb) WHERE id=$1`, pack); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.PreviewControlledSettings(h.ctx, ws, snapshot, pack, nil); !errors.Is(err, repository.ErrControlledModeUnsupported) {
+		t.Fatal("live human preference represented as fixed", err)
 	}
 }

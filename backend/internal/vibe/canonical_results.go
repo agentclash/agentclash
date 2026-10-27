@@ -11,6 +11,7 @@ import (
 
 // Canonical metadata is an authorized projection, not an Operation or a raw-wire archive.
 type CanonicalCase struct {
+	ChallengeIdentityID uuid.UUID `json:"challenge_identity_id"`
 	CaseEvidenceBinding
 	ChallengeKey string `json:"challenge_key"`
 	InputSetKey  string `json:"input_set_key"`
@@ -23,19 +24,38 @@ type CanonicalEvent struct {
 	PayloadHash string  `json:"normalized_payload_sha256"`
 }
 type CanonicalParticipant struct {
-	RunID        uuid.UUID        `json:"run_id"`
-	RunAgentID   uuid.UUID        `json:"run_agent_id"`
-	SnapshotID   uuid.UUID        `json:"snapshot_id"`
-	DeploymentID uuid.UUID        `json:"deployment_id"`
-	Adapter      string           `json:"adapter"`
-	Status       string           `json:"status"`
-	Label        string           `json:"label"`
-	InputSetID   uuid.UUID        `json:"challenge_input_set_id"`
-	Cases        []CanonicalCase  `json:"cases"`
-	Fingerprints Fingerprints     `json:"fingerprints"`
-	Events       []CanonicalEvent `json:"events"`
+	DispatchValidatedAt  *time.Time       `json:"dispatch_validated_at,omitempty"`
+	DispatchGuardVersion *int             `json:"dispatch_guard_version,omitempty"`
+	RunID                uuid.UUID        `json:"run_id"`
+	RunAgentID           uuid.UUID        `json:"run_agent_id"`
+	SnapshotID           uuid.UUID        `json:"snapshot_id"`
+	DeploymentID         uuid.UUID        `json:"deployment_id"`
+	Adapter              string           `json:"adapter"`
+	Status               string           `json:"status"`
+	Label                string           `json:"label"`
+	InputSetID           uuid.UUID        `json:"challenge_input_set_id"`
+	Cases                []CanonicalCase  `json:"cases"`
+	Fingerprints         Fingerprints     `json:"fingerprints"`
+	Events               []CanonicalEvent `json:"events"`
+}
+type CanonicalExperiment struct {
+	Requested int             `json:"requested"`
+	Completed int             `json:"completed"`
+	Failed    int             `json:"failed"`
+	Pending   int             `json:"pending"`
+	Scored    int             `json:"scored"`
+	Aggregate json.RawMessage `json:"aggregate,omitempty"`
+	Warnings  []string        `json:"warnings"`
+}
+type CanonicalFleet struct {
+	ID         uuid.UUID   `json:"id"`
+	Status     string      `json:"status"`
+	SessionIDs []uuid.UUID `json:"eval_session_ids"`
 }
 type CanonicalResult struct {
+	Fleet      *CanonicalFleet      `json:"fleet,omitempty"`
+	Experiment *CanonicalExperiment `json:"experiment,omitempty"`
+
 	Binding          ProjectResultBinding   `json:"binding"`
 	EvidenceMetadata EvidenceMetadata       `json:"evidence_metadata"`
 	Name             string                 `json:"name"`
@@ -227,10 +247,49 @@ func canonicalResultTx(ctx context.Context, tx pgx.Tx, v Session, ref ResultRef,
 		if count != len(runs) {
 			return unavailable()
 		}
-		if err = tx.QueryRow(ctx, `SELECT status,created_at FROM eval_sessions WHERE id=$1`, ref.ID).Scan(&out.Status, &out.CreatedAt); err != nil {
+		// Controlled Vibe Fleet guarantees one exact fixed-scope child. Only
+		// project-bound children may expose the parent; never publish unverified
+		// siblings from a legacy or altered multi-group set.
+		var fleet CanonicalFleet
+		fe := tx.QueryRow(ctx, `SELECT e.id,e.status FROM eval_sets e JOIN eval_set_admissions a ON a.eval_set_id=e.id JOIN eval_set_sessions x ON x.eval_set_id=e.id WHERE x.eval_session_id=$1 AND e.workspace_id=$2 AND a.workspace_id=$2 AND (SELECT count(*) FROM eval_set_sessions WHERE eval_set_id=e.id)=1`, ref.ID, v.WorkspaceID).Scan(&fleet.ID, &fleet.Status)
+		if fe == nil {
+			fleet.SessionIDs = []uuid.UUID{ref.ID}
+			out.Fleet = &fleet
+		} else if !errors.Is(fe, pgx.ErrNoRows) {
+			return out, fe
+		}
+		if err = tx.QueryRow(ctx, `SELECT status,created_at FROM eval_sessions WHERE id=$1 AND workspace_id=$2`, ref.ID, v.WorkspaceID).Scan(&out.Status, &out.CreatedAt); err != nil {
 			return unavailable()
 		}
 		out.Name = "Evaluation session"
+		out.Experiment = &CanonicalExperiment{Warnings: []string{}}
+		if err = tx.QueryRow(ctx, `SELECT repetitions FROM eval_sessions WHERE id=$1`, ref.ID).Scan(&out.Experiment.Requested); err != nil {
+			return out, err
+		}
+		for _, run := range runs {
+			switch run.status {
+			case "completed":
+				out.Experiment.Completed++
+			case "failed", "cancelled":
+				out.Experiment.Failed++
+			default:
+				out.Experiment.Pending++
+			}
+		}
+		var evidence []byte
+		err = tx.QueryRow(ctx, `SELECT scored_child_count,aggregate,evidence FROM eval_session_results WHERE eval_session_id=$1`, ref.ID).Scan(&out.Experiment.Scored, &out.Experiment.Aggregate, &evidence)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return out, err
+		}
+		var warnings struct {
+			Warnings []string `json:"warnings"`
+		}
+		_ = json.Unmarshal(evidence, &warnings)
+		out.Experiment.Warnings = append(out.Experiment.Warnings, warnings.Warnings...)
+		if out.Experiment.Scored < out.Experiment.Requested {
+			out.Experiment.Warnings = append(out.Experiment.Warnings, "Statistics cover only scored samples; pending, failed or unavailable samples are not passing results.")
+		}
+
 	} else {
 		out.Status = runs[0].status
 		out.Name = runs[0].name
@@ -255,16 +314,17 @@ func canonicalResultTx(ctx context.Context, tx pgx.Tx, v Session, ref ResultRef,
 		}
 		type caseRow struct {
 			id             uuid.UUID
+			identity       uuid.UUID
 			key, challenge string
 		}
 		cases := []caseRow{}
-		cr, e := tx.Query(ctx, `SELECT i.id,i.item_key,ci.challenge_key FROM challenge_input_items i JOIN challenge_pack_version_challenges c ON c.challenge_pack_version_id=i.challenge_pack_version_id AND c.challenge_identity_id=i.challenge_identity_id JOIN challenge_identities ci ON ci.id=i.challenge_identity_id WHERE i.challenge_input_set_id=$1 AND (NOT EXISTS(SELECT 1 FROM run_case_selections WHERE run_id=$2) OR EXISTS(SELECT 1 FROM run_case_selections WHERE run_id=$2 AND challenge_identity_id=i.challenge_identity_id)) ORDER BY c.execution_order,i.item_key`, r.input, r.id)
+		cr, e := tx.Query(ctx, `SELECT i.id,i.item_key,ci.challenge_key,i.challenge_identity_id FROM challenge_input_items i JOIN challenge_pack_version_challenges c ON c.challenge_pack_version_id=i.challenge_pack_version_id AND c.challenge_identity_id=i.challenge_identity_id JOIN challenge_identities ci ON ci.id=i.challenge_identity_id WHERE i.challenge_input_set_id=$1 AND (NOT EXISTS(SELECT 1 FROM run_case_selections WHERE run_id=$2) OR EXISTS(SELECT 1 FROM run_case_selections WHERE run_id=$2 AND challenge_identity_id=i.challenge_identity_id)) ORDER BY c.execution_order,i.item_key`, r.input, r.id)
 		if e != nil {
 			return out, e
 		}
 		for cr.Next() {
 			var c caseRow
-			if e = cr.Scan(&c.id, &c.key, &c.challenge); e != nil {
+			if e = cr.Scan(&c.id, &c.key, &c.challenge, &c.identity); e != nil {
 				break
 			}
 			cases = append(cases, c)
@@ -339,7 +399,7 @@ func canonicalResultTx(ctx context.Context, tx pgx.Tx, v Session, ref ResultRef,
 			p.Events = []CanonicalEvent{}
 			for _, c := range cases {
 				id := p.RunAgentID
-				p.Cases = append(p.Cases, CanonicalCase{CaseEvidenceBinding: CaseEvidenceBinding{CaseKey: c.key, SourceCaseID: c.id.String(), RunAgentID: &id}, ChallengeKey: c.challenge, InputSetKey: r.inputKey})
+				p.Cases = append(p.Cases, CanonicalCase{ChallengeIdentityID: c.identity, CaseEvidenceBinding: CaseEvidenceBinding{CaseKey: c.key, SourceCaseID: c.id.String(), RunAgentID: &id}, ChallengeKey: c.challenge, InputSetKey: r.inputKey})
 			}
 			p.Fingerprints.Test = canonicalFingerprint("tests", canonicalTestsIdentity{r.version, r.input, r.checksum, r.inputChecksum, ids})
 			var manifest struct {
@@ -365,6 +425,31 @@ func canonicalResultTx(ctx context.Context, tx pgx.Tx, v Session, ref ResultRef,
 					// Connector run/step limits come from the frozen binding timeout.
 					// Keep historical config unknown pending a complete versioned execution identity;
 					// SnapshotID separately retains the known frozen mapping/auth identity.
+				}
+			}
+			var admitted []byte
+			e = tx.QueryRow(ctx, `SELECT settings,dispatch_validated_at,dispatch_guard_version FROM run_agent_controlled_settings WHERE run_agent_id=$1`, p.RunAgentID).Scan(&admitted, &p.DispatchValidatedAt, &p.DispatchGuardVersion)
+			if e != nil && !errors.Is(e, pgx.ErrNoRows) {
+				return out, e
+			}
+			if e == nil && p.DispatchValidatedAt != nil && p.DispatchGuardVersion != nil && *p.DispatchGuardVersion == 1 {
+				var settings struct {
+					Version  int             `json:"version"`
+					Model    string          `json:"requested_model"`
+					Provider json.RawMessage `json:"provider"`
+				}
+				if json.Unmarshal(admitted, &settings) == nil && settings.Version == 1 {
+					p.Fingerprints.Config = canonicalFingerprint("execution-config", struct {
+						Version  int
+						Settings json.RawMessage
+					}{1, admitted})
+					if p.Adapter == "native" && settings.Model != "" {
+						p.Fingerprints.Model = canonicalFingerprint("model-execution", struct {
+							Version  int
+							Model    string
+							Provider json.RawMessage
+						}{1, settings.Model, settings.Provider})
+					}
 				}
 			}
 			er, e := tx.Query(ctx, `SELECT e.id::text,h.source_event_id,e.sequence_number,e.event_type,e.payload FROM run_events e LEFT JOIN hosted_event_receipts h ON h.run_agent_id=e.run_agent_id AND h.sequence_number=e.sequence_number WHERE e.run_agent_id=$1 ORDER BY e.sequence_number LIMIT 5001`, p.RunAgentID)

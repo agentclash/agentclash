@@ -8,6 +8,13 @@ on:
       - 'backend/internal/mutation/**'
       - 'backend/Dockerfile.worker'
       - 'backend/internal/api/vibe*'
+      - 'backend/internal/api/eval_session*'
+      - 'backend/internal/api/eval_sets*'
+      - 'backend/internal/repository/controlled*'
+      - 'backend/internal/repository/eval_session*'
+      - 'backend/internal/engine/**'
+      - 'runtime/runner/**'
+      - 'runtime/domain/eval_session.go'
       - 'backend/internal/api/connectors*'
       - 'backend/internal/repository/connector*'
       - 'backend/internal/worker/**'
@@ -77,7 +84,7 @@ jobs:
       - name: Failure injection and database concurrency (no provider calls)
         working-directory: backend
         run: |
-          go test -p 1 -race ./internal/vibe ./internal/api -run 'Test(Vibe|Suite|Consistency|Integration|Structured|YAML|Fanout|Money|FullContext|Unknown|Coverage|RunQuote|SampleIdentity|Requirement|StateMachine|MissingPricing|TrialProtectedAllocation|PaidTemporal|InvalidJudge|CORSMiddleware|BillingManager.*Webhook|AgentTryoutPromot|Generate|Evidence|Conversation|AuthoringPolicies|RetainedAuthoring)' -count=1
+          go test -p 1 -race ./internal/vibe ./internal/api -run 'Test(Vibe|Observed|ControlledPreview|ControlledFleet|Suite|Consistency|Integration|Structured|YAML|Fanout|Money|FullContext|Unknown|Coverage|RunQuote|SampleIdentity|Requirement|StateMachine|MissingPricing|TrialProtectedAllocation|PaidTemporal|InvalidJudge|CORSMiddleware|BillingManager.*Webhook|AgentTryoutPromot|Generate|Evidence|Conversation|AuthoringPolicies|RetainedAuthoring)' -count=1
           go build ./...
           go vet ./...
       - name: Material and enquiry transaction regressions
@@ -88,8 +95,8 @@ jobs:
           psql 'postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test?sslmode=disable' -v ON_ERROR_STOP=1 -c 'CREATE DATABASE vibe_test_task7_ci'
           trap "psql 'postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test?sslmode=disable' -v ON_ERROR_STOP=1 -c 'DROP DATABASE vibe_test_task7_ci'" EXIT
           scripts/db/apply-goose-migrations.sh 'postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test_task7_ci?sslmode=disable'
-          DATABASE_URL='postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test_task7_ci?sslmode=disable' go -C backend test -race ./internal/repository -run '^TestConnector|GetRunAgentExecutionContext|WorkspaceSecret|CreateQueuedRun|CreateEvalSessionWithQueuedRuns|ListActiveAgentDeployments' -count=1
-          go -C backend test -race ./internal/api ./internal/workflow ./internal/worker -run 'Connector|Hosted|RunCreation|CreateRun|AgentBuild|AgentDeployment|AuthorizeWorkspaceAction|WorkspaceSecret|Healthz|NativeModel|QuickCreateAgent|ExecuteNative' -count=1
+          DATABASE_URL='postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test_task7_ci?sslmode=disable' go -C backend test -race ./internal/repository -run '^TestControlled|EvalSession|TestConnector|GetRunAgentExecutionContext|WorkspaceSecret|CreateQueuedRun|CreateEvalSessionWithQueuedRuns|ListActiveAgentDeployments' -count=1
+          go -C backend test -race ./internal/api ./internal/engine ./internal/workflow ./internal/worker -run 'EvalSession|EvalSet|ControlledScoring|EvaluateLLMJudges|PromptEval|NativeExecutor|Connector|Hosted|RunCreation|CreateRun|AgentBuild|AgentDeployment|AuthorizeWorkspaceAction|WorkspaceSecret|Healthz|NativeModel|QuickCreateAgent|ExecuteNative' -count=1
       - name: Shared provider and scoring regressions
         working-directory: runtime
         run: go test ./connectors ./provider ./scoring ./challengepack -count=1

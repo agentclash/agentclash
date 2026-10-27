@@ -78,6 +78,7 @@ type EvalSessionSnapshot struct {
 }
 
 type EvalSession struct {
+	WorkspaceID            uuid.UUID
 	ID                     uuid.UUID
 	Status                 EvalSessionStatus
 	Repetitions            int32

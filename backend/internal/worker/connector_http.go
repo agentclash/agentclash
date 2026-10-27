@@ -29,6 +29,11 @@ func (i HTTPJSONInvoker) InvokeConnector(ctx context.Context, e repository.RunAg
 	if e.ChallengeInputSet == nil || len(e.ChallengeInputSet.Cases) == 0 {
 		return errors.New("http_json requires explicitly selected canonical cases")
 	}
+	if e.ValidateControlledDispatch != nil {
+		if err := e.ValidateControlledDispatch(ctx); err != nil {
+			return err
+		}
+	}
 	// One run deadline bounds every case, including network and response parsing.
 	deadline, err := i.Repository.ConnectorDeadline(ctx, e.RunAgent.ID, time.Now().Add(time.Duration(e.Deployment.RuntimeProfile.RunTimeoutSeconds)*time.Second))
 	if err != nil {
@@ -66,7 +71,13 @@ func (i HTTPJSONInvoker) InvokeConnector(ctx context.Context, e repository.RunAg
 			return repository.ErrConnectorOutcomeUnknown
 		}
 		transport := i.Client
+		transport.BeforeSend = e.AcknowledgeControlledDispatch
 		transport.ResolveSecret = func(ctx context.Context) (string, error) {
+			if e.ValidateControlledDispatch != nil {
+				if err := e.ValidateControlledDispatch(ctx); err != nil {
+					return "", err
+				}
+			}
 			_, secret, err := i.Repository.ResolveApprovedConnector(ctx, e.Deployment.AgentDeploymentSnapshotID, e.Run.WorkspaceID)
 			return secret, err
 		}

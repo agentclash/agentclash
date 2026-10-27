@@ -88,7 +88,13 @@ func (c HostedRunClient) Start(ctx context.Context, input workflowpkg.HostedRunS
 		deadline = bound
 	}
 	transport := c.transport
+	transport.BeforeSend = input.ExecutionContext.AcknowledgeControlledDispatch
 	transport.ResolveSecret = func(ctx context.Context) (string, error) {
+		if input.ExecutionContext.ValidateControlledDispatch != nil {
+			if err := input.ExecutionContext.ValidateControlledDispatch(ctx); err != nil {
+				return "", err
+			}
+		}
 		_, secret, err := c.credentials.ResolveApprovedConnector(ctx, input.ExecutionContext.Deployment.AgentDeploymentSnapshotID, input.ExecutionContext.Run.WorkspaceID)
 		return secret, err
 	}

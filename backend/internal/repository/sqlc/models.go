@@ -450,6 +450,7 @@ type EvalSession struct {
 	StartedAt              pgtype.Timestamptz
 	FinishedAt             pgtype.Timestamptz
 	UpdatedAt              pgtype.Timestamptz
+	WorkspaceID            *uuid.UUID
 }
 
 type EvalSessionResult struct {

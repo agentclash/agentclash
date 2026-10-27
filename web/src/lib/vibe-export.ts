@@ -1,3 +1,4 @@
+import type {ObservedEvidence} from "./vibe-observed";
 import type {CanonicalResult} from "./vibe-canonical";
 import type { ResultRef } from "./vibe-result-evidence";
 import type { SDKReport } from "./vibe-reports";
@@ -34,7 +35,7 @@ export function downloadJSON(name: string, value: unknown) {
 }
 
 export type ExportItem = {
-  kind: "canonical_result" | "sdk_report" | "case" | "original" | "grade_review" | "validation_review" | "scope";
+  kind: "observed_evidence" | "canonical_result" | "sdk_report" | "case" | "original" | "grade_review" | "validation_review" | "scope";
   id: string;
   result_ref?: ResultRef;
   hash?: string;
@@ -50,12 +51,13 @@ export type ExportPreparation = {
   title: string;
   captured_at: string;
   artifact_id: string;
-  selection: { scope: "selected" | "history"; artifact_id: string; result_id?: string; result_ref?: ResultRef };
+  selection: { include_observed?:boolean; scope: "selected" | "history"; artifact_id: string; result_id?: string; result_ref?: ResultRef };
   artifacts: Session["document"]["artifacts"];
   rules: unknown[];
   runs: Session["operations"];
   sdk_reports?: SDKReport[];
   canonical_results?: CanonicalResult[];
+  observed_evidence?: ObservedEvidence[];
   items: ExportItem[];
   case_mappings: unknown[];
   omissions: string[];
@@ -122,6 +124,7 @@ export function exportDocument(job: ExportJob, confirmedPartial = false) {
   return {
     ...p,
     items: undefined,
+    observed_evidence: undefined,
     runs: p.runs.map((run) => ({
       ...run,
       results: p.items

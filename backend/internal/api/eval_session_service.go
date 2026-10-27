@@ -2,6 +2,8 @@ package api
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -59,6 +61,12 @@ type CreateEvalSessionConfigInput struct {
 }
 
 type CreateEvalSessionInput struct {
+	AdmissionRequestID    uuid.UUID
+	DeploymentSnapshotIDs map[uuid.UUID]uuid.UUID
+	ControlledSettings    map[uuid.UUID]string
+	ChallengeIdentityIDs  []uuid.UUID
+	PreviewOnly           bool
+
 	WorkspaceID            uuid.UUID
 	ChallengePackVersionID uuid.UUID
 	ChallengeInputSetID    *uuid.UUID
@@ -70,6 +78,8 @@ type CreateEvalSessionInput struct {
 	// SkipWorkflowStart leaves the session queued so a parent workflow
 	// (e.g. EvalSetWorkflow) can launch EvalSessionWorkflow as a child.
 	SkipWorkflowStart bool
+	// ControlledParentEvalSetID is set only by the canonical Fleet manager, never decoded from HTTP.
+	ControlledParentEvalSetID uuid.UUID
 }
 
 type EvalSessionRunMatrixEntryInput struct {
@@ -92,6 +102,7 @@ type EvalSessionSeriesRun struct {
 }
 
 type CreateEvalSessionResult struct {
+	Preview    *EvalSessionPreview
 	Session    domain.EvalSession
 	RunIDs     []uuid.UUID
 	SeededRuns []EvalSessionSeededRun
@@ -103,8 +114,27 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		return CreateEvalSessionResult{}, err
 	}
 
+	requestBody, _ := json.Marshal(input)
+	digest := sha256.Sum256(requestBody)
+	requestHash := hex.EncodeToString(digest[:])
+	if input.AdmissionRequestID != uuid.Nil && !input.PreviewOnly {
+		if recovery, ok := m.repo.(evalSessionAdmissionRecovery); ok {
+			saved, found, err := recovery.RecoverEvalSessionAdmission(ctx, input.WorkspaceID, input.AdmissionRequestID, requestHash)
+			if err != nil {
+				return CreateEvalSessionResult{}, err
+			}
+			if found {
+				return m.finishEvalSessionAdmission(ctx, saved, input.SkipWorkflowStart, input.EvalSession)
+			}
+		} else {
+			return CreateEvalSessionResult{}, fmt.Errorf("durable admission unavailable")
+		}
+	}
+	if len(input.ControlledSettings) > 0 && input.AdmissionRequestID == uuid.Nil {
+		return CreateEvalSessionResult{}, RunCreationValidationError{Code: "admission_id_required", Message: "controlled repetitions require a durable admission request id"}
+	}
 	hasRunMatrix := len(input.EvalSession.RunMatrix) > 0
-	if input.EvalSession.Repetitions < 1 {
+	if input.EvalSession.Repetitions < 1 || ((input.PreviewOnly || len(input.ControlledSettings) > 0) && input.EvalSession.Repetitions > 100) {
 		return CreateEvalSessionResult{}, RunCreationValidationError{
 			Code:    "invalid_eval_session",
 			Message: "eval_session.repetitions must be at least 1",
@@ -438,6 +468,26 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		return CreateEvalSessionResult{}, fmt.Errorf("list official challenge identities: %w", err)
 	}
 
+	if len(input.ChallengeIdentityIDs) > 0 {
+		allowed := map[uuid.UUID]bool{}
+		for _, id := range challengeIdentityIDs {
+			allowed[id] = true
+		}
+		selected := map[uuid.UUID]bool{}
+		for _, id := range input.ChallengeIdentityIDs {
+			if !allowed[id] || selected[id] {
+				return CreateEvalSessionResult{}, RunCreationValidationError{Code: "invalid_cases", Message: "selected challenges must be unique members of the published version"}
+			}
+			selected[id] = true
+		}
+		retained := []uuid.UUID{}
+		for _, id := range challengeIdentityIDs {
+			if selected[id] {
+				retained = append(retained, id)
+			}
+		}
+		challengeIdentityIDs = retained
+	}
 	caseSelections := make([]repository.CreateQueuedRunCaseSelectionParams, 0, len(challengeIdentityIDs))
 	for index, challengeIdentityID := range challengeIdentityIDs {
 		caseSelections = append(caseSelections, repository.CreateQueuedRunCaseSelectionParams{
@@ -473,20 +523,33 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 			return CreateEvalSessionResult{}, fmt.Errorf("build execution plan: %w", err)
 		}
 		childRuns = append(childRuns, repository.CreateQueuedRunParams{
-			OrganizationID:         organizationID,
-			WorkspaceID:            input.WorkspaceID,
-			ChallengePackVersionID: input.ChallengePackVersionID,
-			ChallengeInputSetID:    input.ChallengeInputSetID,
-			OfficialPackMode:       domain.OfficialPackModeFull,
-			CreatedByUserID:        &caller.UserID,
-			Name:                   evalSessionRunName(baseName, int32(repetition), input.EvalSession.Repetitions),
-			ExecutionMode:          executionMode,
-			ExecutionPlan:          executionPlan,
-			RunAgents:              specRunAgents,
-			CaseSelections:         caseSelections,
+			ExpectedDeploymentSnapshots: input.DeploymentSnapshotIDs,
+			ExpectedSettings:            input.ControlledSettings,
+			OrganizationID:              organizationID,
+			WorkspaceID:                 input.WorkspaceID,
+			ChallengePackVersionID:      input.ChallengePackVersionID,
+			ChallengeInputSetID:         input.ChallengeInputSetID,
+			OfficialPackMode:            domain.OfficialPackModeFull,
+			CreatedByUserID:             &caller.UserID,
+			Name:                        evalSessionRunName(baseName, int32(repetition), input.EvalSession.Repetitions),
+			ExecutionMode:               executionMode,
+			ExecutionPlan:               executionPlan,
+			RunAgents:                   specRunAgents,
+			CaseSelections:              caseSelections,
 		})
 	}
 
+	if input.PreviewOnly || len(input.ControlledSettings) > 0 {
+		// Match the existing canonical evidence owner: every accepted controlled
+		// result must fit one complete participant view, including repetitions.
+		samples := 0
+		for _, run := range childRuns {
+			samples += len(run.RunAgents)
+		}
+		if samples > 100 {
+			return CreateEvalSessionResult{}, RunCreationValidationError{Code: "experiment_scope_limit", Message: "controlled experiments support at most 100 participant samples across all repetitions; reduce repetitions or deployments"}
+		}
+	}
 	var entitlementGate *repository.RunEntitlementGate
 	if m.entitlementGate != nil {
 		entitlementGate, err = m.entitlementGate.BuildRunGate(ctx, input.WorkspaceID, maxParticipantCount, len(childRuns))
@@ -495,8 +558,25 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 		}
 	}
 
+	if input.PreviewOnly {
+		preview, err := m.previewControlledChildren(ctx, input, childRuns)
+		if err == nil && entitlementGate != nil {
+			e := entitlementGate.Entitlements
+			if e.ConcurrentRaces != nil {
+				preview.Limits = append(preview.Limits, fmt.Sprintf("Current %s plan permits %d concurrent runs; this admission reserves %d. Capacity is rechecked transactionally.", e.PlanKey, *e.ConcurrentRaces, len(childRuns)))
+			}
+			if e.RacesPerWorkspaceMonth != nil {
+				preview.Limits = append(preview.Limits, fmt.Sprintf("Workspace monthly quota: %d runs. This batch consumes %d canonical run admissions.", *e.RacesPerWorkspaceMonth, len(childRuns)))
+			}
+		}
+		return CreateEvalSessionResult{Preview: preview}, err
+	}
+
 	createResult, err := m.repo.CreateEvalSessionWithQueuedRuns(ctx, repository.CreateEvalSessionWithQueuedRunsParams{
+		RequestID: input.AdmissionRequestID, RequestHash: requestHash,
+		ControlledParentEvalSetID: input.ControlledParentEvalSetID,
 		Session: repository.CreateEvalSessionParams{
+			WorkspaceID:            input.WorkspaceID,
 			Repetitions:            input.EvalSession.Repetitions,
 			AggregationConfig:      buildAggregationSnapshot(input.EvalSession),
 			SuccessThresholdConfig: buildSuccessThresholdSnapshot(input.EvalSession),
@@ -509,15 +589,18 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 	if err != nil {
 		return CreateEvalSessionResult{}, fmt.Errorf("create eval session with queued runs: %w", err)
 	}
-	if !input.SkipWorkflowStart {
+	return m.finishEvalSessionAdmission(ctx, createResult, input.SkipWorkflowStart, input.EvalSession)
+}
+func (m *RunCreationManager) finishEvalSessionAdmission(ctx context.Context, createResult repository.CreateEvalSessionWithQueuedRunsResult, skipWorkflowStart bool, config CreateEvalSessionConfigInput) (CreateEvalSessionResult, error) {
+	if !skipWorkflowStart {
 		if err := m.evalSessionWorkflowStarter.StartEvalSessionWorkflow(ctx, createResult.Session.ID); err != nil {
 			return CreateEvalSessionResult{}, fmt.Errorf("start eval session workflow for session %s: %w", createResult.Session.ID, err)
 		}
 	}
 
 	runIDs := make([]uuid.UUID, 0, len(createResult.Runs))
-	seededRuns := make([]EvalSessionSeededRun, 0, len(input.EvalSession.SeedFanout))
-	seriesRuns := make([]EvalSessionSeriesRun, 0, len(input.EvalSession.RunMatrix))
+	seededRuns := make([]EvalSessionSeededRun, 0, len(config.SeedFanout))
+	seriesRuns := make([]EvalSessionSeriesRun, 0, len(config.RunMatrix))
 	for _, run := range createResult.Runs {
 		runIDs = append(runIDs, run.ID)
 		if seed := evalSessionChildRunSeed(run.ExecutionPlan); seed != nil {
@@ -527,7 +610,7 @@ func (m *RunCreationManager) CreateEvalSession(ctx context.Context, caller Calle
 			})
 		}
 	}
-	if hasRunMatrix {
+	if len(config.RunMatrix) > 0 {
 		for _, run := range createResult.Runs {
 			series := evalSessionChildRunSeries(run.ExecutionPlan)
 			seriesRuns = append(seriesRuns, EvalSessionSeriesRun{

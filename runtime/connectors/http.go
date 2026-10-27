@@ -16,6 +16,7 @@ import (
 // Client holds network capabilities only. Secrets must be resolved and approval
 // checked by the canonical owner immediately before invoking DoJSON.
 type Client struct {
+	BeforeSend    func(context.Context) error
 	ResolveSecret func(context.Context) (string, error)
 	HTTP          *http.Client
 	Resolver      provider.EndpointResolver
@@ -59,6 +60,11 @@ func (c Client) DoJSON(ctx context.Context, endpoint, auth, secret string, paylo
 		req.Header.Set("X-API-Key", secret)
 	default:
 		return nil, errors.New("unsupported connector authentication")
+	}
+	if c.BeforeSend != nil {
+		if err := c.BeforeSend(ctx); err != nil {
+			return nil, err
+		}
 	}
 	response, err := client.Do(req)
 	if err != nil {

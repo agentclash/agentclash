@@ -31,7 +31,7 @@ export function ExportDialog({ controller: c }: { controller: ReturnType<typeof 
                 · {p.selection.scope === "history" ? "Full history" : "Selected evidence"}
               </p>
               <p>
-                Captured {new Date(p.captured_at).toLocaleString()}.{" "}
+                Captured {new Date(p.captured_at).toLocaleString()}. {p.selection.include_observed ? "Includes selected observed messages, output, tools and retrieval." : ""}{" "}
                 {p.runs
                   .map(
                     (run) =>
@@ -82,7 +82,7 @@ export function ExportDialog({ controller: c }: { controller: ReturnType<typeof 
               <VibeButton
                 disabled={state.busy}
                 onClick={() =>
-                  void c.startResult(state.intent!.artifact, state.intent!.resultRef, "selected", state.intent!.operation)
+                  void (state.intent!.includeObserved ? c.startResult(state.intent!.artifact, state.intent!.resultRef, "selected", state.intent!.operation,true) : c.startResult(state.intent!.artifact, state.intent!.resultRef, "selected", state.intent!.operation))
                 }
               >
                 Reconcile and prepare selected evidence again

@@ -114,16 +114,18 @@ func (e PromptEvalExecutor) Execute(ctx context.Context, executionContext runner
 	}
 
 	request := provider.Request{
-		ProviderKey:         executionContext.Deployment.ProviderAccount.ProviderKey,
-		ProviderAccountID:   executionContext.Deployment.ProviderAccount.ID.String(),
-		CredentialReference: executionContext.Deployment.ProviderAccount.CredentialReference,
-		BaseURL:             executionContext.Deployment.ProviderAccount.BaseURL,
-		Model:               executionContext.Deployment.ModelID,
-		TraceMode:           executionContext.Deployment.RuntimeProfile.TraceMode,
-		StepTimeout:         stepTimeout(executionContext),
-		Messages:            messages,
-		Tools:               nil,
-		Metadata:            metadata,
+		ValidateBeforeDispatch: executionContext.ValidateControlledDispatch,
+		OnDispatchValidated:    executionContext.AcknowledgeControlledDispatch,
+		ProviderKey:            executionContext.Deployment.ProviderAccount.ProviderKey,
+		ProviderAccountID:      executionContext.Deployment.ProviderAccount.ID.String(),
+		CredentialReference:    executionContext.Deployment.ProviderAccount.CredentialReference,
+		BaseURL:                executionContext.Deployment.ProviderAccount.BaseURL,
+		Model:                  executionContext.Deployment.ModelID,
+		TraceMode:              executionContext.Deployment.RuntimeProfile.TraceMode,
+		StepTimeout:            stepTimeout(executionContext),
+		Messages:               messages,
+		Tools:                  nil,
+		Metadata:               metadata,
 	}
 
 	if observerErr := e.observer.OnProviderCall(runCtx, request); observerErr != nil {

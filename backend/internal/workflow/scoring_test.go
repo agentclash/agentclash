@@ -1,7 +1,11 @@
 package workflow
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"github.com/agentclash/agentclash/runtime/domain"
+	"github.com/agentclash/agentclash/runtime/scoring"
 	"testing"
 
 	"github.com/agentclash/agentclash/backend/internal/repository"
@@ -58,5 +62,34 @@ func TestMapChallengeInputs_PreservesCanonicalCaseContext(t *testing.T) {
 	}
 	if mapped[0].Artifacts["workspace"].Path != "fixtures/workspace.zip" {
 		t.Fatalf("artifact path = %q, want fixtures/workspace.zip", mapped[0].Artifacts["workspace"].Path)
+	}
+}
+
+func TestControlledScoringRejectsChangedPersistedEvaluator(t *testing.T) {
+	runID, agentID := uuid.New(), uuid.New()
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusRunning), fixtureRunAgent(runID, agentID, 0))
+	execution := nativeExecutionContext(runID, agentID)
+	execution.ValidateControlledDispatch = func(context.Context) error { return nil }
+	repo.setExecutionContext(agentID, execution)
+	spec, err := scoring.LoadEvaluationSpec(execution.ChallengePackVersion.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := spec
+	changed.Name = spec.Name + " changed definition"
+	definition, err := scoring.MarshalDefinition(changed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = repo.CreateEvaluationSpec(context.Background(), repository.CreateEvaluationSpecParams{ChallengePackVersionID: execution.ChallengePackVersion.ID, Name: spec.Name, VersionNumber: spec.VersionNumber, JudgeMode: string(spec.JudgeMode), Definition: definition})
+	if err != nil {
+		t.Fatal(err)
+	}
+	activities := NewActivities(repo, FakeWorkHooks{})
+	if _, err = activities.executeRunAgentEvaluation(context.Background(), agentID); !errors.Is(err, repository.ErrControlledSettingsChanged) {
+		t.Fatalf("changed evaluator accepted: %v", err)
+	}
+	if len(repo.evaluations) != 0 {
+		t.Fatal("changed evaluator produced a persisted grade")
 	}
 }
