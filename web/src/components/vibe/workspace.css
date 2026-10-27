@@ -1,4 +1,5 @@
 .vibe-workspace {
+  --vibe-gutter: clamp(1rem, 2dvw, 2rem);
   --vibe-bg: #0c0c0b;
   --vibe-surface: #141412;
   --vibe-fg: #eeece5;
@@ -17,6 +18,9 @@
   font-size: 16px;
   line-height: 1.6;
   color-scheme: dark;
+}
+.vibe-route {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 .vibe-workspace * {
   box-sizing: border-box;
@@ -101,9 +105,9 @@
 }
 .vibe-column {
   width: 100%;
-  max-width: 808px;
+  max-width: 50.5rem;
   margin-inline: auto;
-  padding-inline: 24px;
+  padding-inline: var(--vibe-gutter);
 }
 .vibe-scroll-region {
   scrollbar-gutter: stable;
@@ -387,9 +391,6 @@
     grid-column: 2;
     grid-row: 1;
   }
-  .vibe-column {
-    padding-inline: 20px;
-  }
   .vibe-message > div {
     font-size: 16px;
   }
@@ -503,14 +504,14 @@
 .vibe-header-title { white-space:nowrap; text-overflow:ellipsis; overflow:hidden; font-size:13px; font-weight:500; color:var(--vibe-muted); }
 .vibe-shell .vibe-header { min-height:68px; padding:12px 24px; }
 .vibe-mobile-toggle.vibe-button { display:none; }
-.vibe-sidebar-sheet[data-slot="sheet-content"] { width:min(290px,calc(100vw - 32px)); max-width:none; gap:0; background:#11110f; border-color:var(--vibe-border); padding-bottom:env(safe-area-inset-bottom); }
+.vibe-sidebar-sheet[data-slot="sheet-content"] { width:min(18.125rem,calc(100dvw - 2rem)); max-width:none; height:100dvh; gap:0; background:#11110f; border-color:var(--vibe-border); padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 .vibe-sidebar-sheet .vibe-sidebar-brand { padding-right:60px; }
 @media(prefers-reduced-motion:reduce) {
   .vibe-sidebar-sheet[data-slot="sheet-content"] { transition:none !important; translate:none !important; }
 }
-.vibe-entry-page { padding-top:clamp(32px,8vh,76px); padding-bottom:48px; }
+.vibe-entry-page { padding-top:clamp(1rem,6dvh,4.75rem); padding-bottom:clamp(1rem,4dvh,3rem); }
 .vibe-entry-page .vibe-active-context { margin-top:4px; }
-.vibe-entry-title { font-size:clamp(26px,3vw,34px); font-weight:600; line-height:1.2; letter-spacing:-0.035em; text-wrap:balance; }
+.vibe-entry-title { font-size:clamp(1.625rem,1.25rem + 1dvw,2.125rem); font-weight:600; line-height:1.2; letter-spacing:-0.035em; text-wrap:balance; }
 .vibe-entry-availability { display:flex; flex-wrap:wrap; align-items:center; gap:8px 16px; margin-top:24px; padding:12px 16px; border:1px solid var(--vibe-border); border-radius:12px; background:var(--vibe-surface); }
 .vibe-entry-availability p { flex:1; min-width:180px; font-size:14px; line-height:1.5; }
 .vibe-entry-page > .vibe-notice { color:var(--vibe-muted); font-size:14px; }
@@ -628,8 +629,6 @@
   .vibe-shell .vibe-header { padding:10px 12px; min-height:60px; }
   .vibe-source-options { grid-template-columns:1fr; gap:8px; margin-top:24px; }
   .vibe-source-options .vibe-button { justify-content:flex-start; min-height:44px; }
-  .vibe-entry-page { padding-top:32px; padding-bottom:24px; }
-  .vibe-column { padding-inline:16px; }
   .vibe-composer { padding:14px; }
   .vibe-composer-compact { padding:10px 12px; }
   .vibe-composer-dock { padding-top:8px; }
@@ -637,9 +636,9 @@
 
 /* Portaled Vibe dialogs share viewport sizing without affecting other routes. */
 .vibe-dialog[data-slot="dialog-content"] {
-  width:min(560px, calc(100vw - 32px));
-  max-width:calc(100vw - 32px);
-  max-height:calc(100dvh - 32px);
+  width:min(35rem, calc(100dvw - 2rem));
+  max-width:calc(100dvw - 2rem);
+  max-height:calc(100dvh - max(1rem, env(safe-area-inset-top)) - max(1rem, env(safe-area-inset-bottom)));
   min-width:0;
   grid-template-rows:auto minmax(0, 1fr);
   gap:16px;

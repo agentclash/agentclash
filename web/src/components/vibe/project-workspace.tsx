@@ -142,10 +142,14 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
       </>}
     </div>
     {!initialBrief && <div className="vibe-guide-composer">
-      <VibeDataUseNotice /><VibeRedactionHint />
-      {latestResponse && <VibeButton variant="quiet" onClick={latest}>{read === latestResponse.id ? "Latest" : "New response"}</VibeButton>}
+      <div className="vibe-guide-context">
+      <div className="vibe-guide-tools">
+        <details className="vibe-guide-data-use"><summary>Data use</summary><VibeDataUseNotice /><VibeRedactionHint /></details>
+        {latestResponse && <VibeButton variant="quiet" onClick={latest}>{read === latestResponse.id ? "Latest" : "New response"}</VibeButton>}
+      </div>
       {selectedReference && <div aria-label="Guide reference" className="vibe-run-reference"><span>{selectedReference.title} · Read-only context</span><VibeButton aria-label="Remove Guide reference" onClick={() => setReference(undefined)}>Remove reference</VibeButton></div>}
-      <form className="vibe-composer" onSubmit={event => { event.preventDefault(); send(); }}><label htmlFor="vibe-message">Message Guide</label><textarea ref={composer} id="vibe-message" aria-label="Message Vibe Evals" rows={3} value={p.content} onChange={event => p.onContent(event.target.value)} onKeyDown={event => sendOnEnter(event, send)} /><VibeButton type="submit" aria-label="Send message" disabled={p.busy || p.dirty || p.sendBlocked || !p.content.trim()}>Send</VibeButton></form>
+      </div>
+      <form className="vibe-composer vibe-composer-compact" onSubmit={event => { event.preventDefault(); send(); }}><label htmlFor="vibe-message" className="sr-only">Message Guide</label><textarea ref={composer} id="vibe-message" aria-label="Message Vibe Evals" placeholder="Message Guide…" rows={2} value={p.content} onChange={event => p.onContent(event.target.value)} onKeyDown={event => sendOnEnter(event, send)} /><VibeButton type="submit" aria-label="Send message" disabled={p.busy || p.dirty || p.sendBlocked || !p.content.trim()}>Send</VibeButton></form>
       {p.sendError && <p role="alert">{p.sendError}</p>}
     </div>}
   </>;

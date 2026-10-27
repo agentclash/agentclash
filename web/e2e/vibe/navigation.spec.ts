@@ -360,11 +360,44 @@ test("same-artifact case Back and Forward restores the visible expectation witho
   expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
 });
 
+test("Guide keeps its composer in view through short-window resizing without losing a draft", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const control = await serve(page, false, true);
+  await page.getByRole("tab", { name: "Tests", exact: true }).click();
+  await openCase(page);
+  await page.getByRole("button", { name: "Ask Guide about this test", exact: true }).click();
+  const input = page.getByRole("textbox", { name: "Message Vibe Evals", exact: true });
+  const draft = "Keep this unsent question while I resize the window.";
+  await input.fill(draft);
+  for (const size of [
+    { width: 320, height: 568 }, { width: 844, height: 390 },
+    { width: 390, height: 300 }, { width: 1280, height: 300 }, { width: 1280, height: 600 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(size);
+    await expect(input).toHaveValue(draft);
+    await expect(page.getByLabel("Guide reference", { exact: true })).toContainText("You won a prize.");
+    for (const control of [input, page.getByRole("button", { name: "Send message", exact: true })]) {
+      await expect.poll(async () => {
+        const box = await control.boundingBox();
+        return !!box && box.y >= 0 && box.y + box.height <= size.height &&
+          box.x >= 0 && box.x + box.width <= size.width;
+      }, { message: `Guide input and Send fit ${size.width}×${size.height} before scrolling` }).toBe(true);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  await page.getByText("Data use", { exact: true }).click();
+  await expect(page.getByText(/Guest uploads expire after seven days/)).toBeVisible();
+  await page.getByText("Data use", { exact: true }).click();
+  expect(control.posts).toHaveLength(0);
+  expect(control.errors).toEqual([]);
+});
+
 test("workspace geometry, scoped portal appearance and reading focus adapt at every specified boundary", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
   const control = await serve(page, false, true);
-  for (const width of [390, 600, 601, 1023, 1024, 1279, 1280, 1440]) {
+  for (const width of [390, 600, 601, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
     await page.setViewportSize({ width, height: 900 });
     // Resize preserves the utility value; close the sheet to inspect main content.
     const close = page.getByRole("button", { name: "Close Guide", exact: true });
@@ -380,7 +413,11 @@ test("workspace geometry, scoped portal appearance and reading focus adapt at ev
       return { width: innerWidth, sidebar: getComputedStyle(sidebar).display === "none" ? 0 : sidebar.getBoundingClientRect().width, utility: utility.getBoundingClientRect().width, height: utility.getBoundingClientRect().height, background: popup.backgroundColor, color: popup.color, transition: popup.transitionDuration, backdropMotion: backdrop ? getComputedStyle(backdrop).transitionDuration : null, overflow: document.documentElement.scrollWidth > innerWidth, globalTheme: document.documentElement.classList.contains("dark") };
     });
     expect(geometry.sidebar).toBe(width >= 1024 ? 252 : 0);
-    expect(geometry.utility).toBe(width >= 1280 ? 352 : width <= 600 ? width : 480);
+    if (width >= 1280) {
+      expect(geometry.utility).toBeGreaterThanOrEqual(320);
+      expect(geometry.utility).toBeLessThanOrEqual(480);
+      expect(geometry.utility).toBeLessThan((width - geometry.sidebar) / 2);
+    } else expect(geometry.utility).toBe(width <= 600 ? width : 480);
     if (width <= 600) expect(geometry.height).toBe(900);
     expect(geometry.background).toBe("rgb(255, 255, 255)"); expect(geometry.color).toBe("rgb(37, 36, 31)");
     expect(geometry.transition).toBe("0s"); if (width < 1280) expect(geometry.backdropMotion).toBe("0s");
@@ -437,7 +474,15 @@ test("remaining 320 and 768 layouts retain contrast, scaled text and utility foc
   // deterministic Linux coverage, not a claim about Safari or physical zoom.
   await page.setViewportSize({width:768,height:900});
   await page.evaluate(()=> { const elements=[...document.querySelectorAll<HTMLElement>(".vibe-workspace *")]; const sizes=elements.map(el=>parseFloat(getComputedStyle(el).fontSize)); elements.forEach((el,i)=>{el.style.fontSize=`${sizes[i]*2}px`;}); });
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  for (const width of [320, 768]) {
+    await page.setViewportSize({ width, height: 900 });
+    const results = (await page.getByRole("tab", { name: "Results", exact: true }).boundingBox())!;
+    const guide = (await page.getByRole("button", { name: "Guide", exact: true }).boundingBox())!;
+    const overlaps = results.x < guide.x + guide.width && results.x + results.width > guide.x &&
+      results.y < guide.y + guide.height && results.y + results.height > guide.y;
+    expect(overlaps, `Results and Guide remain separate with 200% text at ${width}px`).toBe(false);
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  }
   await page.emulateMedia({forcedColors:"active"});
   await page.getByRole("button",{name:"Details",exact:true}).click();
   const forced=await page.locator('[data-slot="sheet-content"]').evaluate(el=>({forced:matchMedia("(forced-colors: active)").matches,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));
