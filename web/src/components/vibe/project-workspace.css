@@ -52,6 +52,8 @@
 .vibe-project-main .vibe-results-outcome { font-size: clamp(24px, 2.5vw, 32px); line-height: 1.2; font-variant-numeric: tabular-nums; }
 .vibe-results-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 14px; color: var(--vibe-muted); }
 .vibe-results-filter select { min-width: 128px; }
+.vibe-test-review > summary, .vibe-test-review-history > summary { min-height: 44px; padding-block: 10px; color: var(--vibe-muted); font-size: 14px; cursor: pointer; }
+.vibe-test-review-history { margin-top: 28px; border-top: 1px solid var(--vibe-border); padding-top: 8px; }
 .vibe-project-content > label:has(> select[aria-label="Result history"]) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 20px; font-size: 14px; color: var(--vibe-muted); }
 .vibe-project-main .vibe-instructions-text { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: var(--vibe-surface); border: 1px solid var(--vibe-border); border-radius: 10px; padding: 16px; }
 .vibe-utility, .vibe-utility-sheet { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--vibe-surface); color: var(--vibe-fg); }

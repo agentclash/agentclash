@@ -151,7 +151,7 @@ export function TestSuitePanel({
       </div>
       {added>0 && <p className="text-sm vibe-muted">{added} new examples · {cases.length-added} existing examples. Running this batch checks all {cases.length}; earlier results are kept separately.</p>}
       {!editing && !agentOpen && <TestMeaning />}
-      {artifact.validation && <ValidationDetails validation={artifact.validation} />}
+      {artifact.validation && <details className="vibe-test-review" open={validationBlocked}><summary>Test review: {validationBlocked ? "Needs attention" : "Ready"}</summary><ValidationDetails validation={artifact.validation} /></details>}
       {rules.length > 0 && !editing && !agentOpen && (
         <details open={validationBlocked || pendingPolicy} className="text-sm vibe-muted">
           <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4">
