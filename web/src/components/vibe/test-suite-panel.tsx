@@ -96,7 +96,8 @@ export function TestSuitePanel({
   return (
     <section data-proposal-id={artifact.id} aria-label="Your tests" className="space-y-5">
       {(instructionDraft.conflict || casesDraft.conflict) && <div role="alert"><p>The saved source changed. Review your draft before applying it.</p><VibeButton onClick={() => { instructionDraft.preserve(); casesDraft.preserve(); }}>Keep my draft for this source</VibeButton><VibeButton onClick={() => { instructionDraft.discard(); casesDraft.discard(); restoreFocus(); }}>Discard my draft</VibeButton></div>}
-      <div>
+      <div className="vibe-tests-header">
+        <div>
         <h2 ref={editorHeading} tabIndex={-1} className="text-2xl font-semibold tracking-tight">
           {validationBlocked
             ? `${cases.length} ${cases.length === 1 ? "test needs" : "tests need"} checking`
@@ -115,12 +116,44 @@ export function TestSuitePanel({
             ? "Same requests. Same rules. We'll see what changed."
             : artifact.summary}
         </p>
+        </div>
+        {!agentOpen && !editing && <div className="vibe-tests-actions">
+          <div className="flex flex-wrap items-center gap-2">
+            <VibeButton
+              variant={primary ? "primary" : "secondary"}
+              disabled={busy || blocked || validationBlocked || (inferenceUnavailable && (ready || !preparingOnly))}
+              onClick={() => (preparingOnly && !ready ? onSave() : ready ? onRun() : buildJourney && rules.length ? void onEdit({ artifact_id: artifact.id, build_from_policy: true }) : setAgentOpen(true))}
+            >
+              {ready
+                ? pendingPolicy
+                  ? "Run previous tests"
+                  : comparison
+                  ? buildJourney ? "Apply change and check again" : "Improve and rerun"
+                  : buildJourney && parent ? "Update and check" : `Run ${cases.length} ${cases.length === 1 ? "test" : "tests"}`
+                : preparingOnly ? "Keep these tests" : buildJourney && rules.length ? "Build from saved rules" : "Add your agent"}
+              <ArrowRight />
+            </VibeButton>
+            {tests.some(t => t.editable) && <VibeButton
+              variant="quiet"
+              disabled={busy}
+              onClick={() => { setFocusedCase(undefined); setEditing(true); onSelectCase?.(); }}
+            >
+              <Pencil />
+              Edit tests
+            </VibeButton>}
+          </div>
+          {ready && (
+            <p className="text-xs vibe-muted">
+              Text test here · {modelLabel || "Selected model"}. Your live app is not called.
+            </p>
+          )}
+        </div>}
       </div>
       {added>0 && <p className="text-sm vibe-muted">{added} new examples · {cases.length-added} existing examples. Running this batch checks all {cases.length}; earlier results are kept separately.</p>}
       {!editing && !agentOpen && <TestMeaning />}
       {artifact.validation && <ValidationDetails validation={artifact.validation} />}
       {rules.length > 0 && !editing && !agentOpen && (
-        <details open className="text-sm vibe-muted">
+        <details open={validationBlocked || pendingPolicy} className="text-sm vibe-muted">
           <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4">
             Rules being tested
           </summary>
@@ -132,7 +165,7 @@ export function TestSuitePanel({
       {!agentOpen && !editing && (
         <div className="vibe-panel">
           {cases.map((test, i) => (
-            <details open className="vibe-result-row" key={test.key}>
+            <details className="vibe-result-row" key={test.key}>
               <summary>
                 <span className="w-5 shrink-0 text-xs vibe-muted">{i + 1}</span>
                 <span className="min-w-0 flex-1 text-sm leading-6">
@@ -304,39 +337,10 @@ export function TestSuitePanel({
       )}
       {!agentOpen && !editing && (
         <>
-          <div className="flex flex-wrap items-center gap-2">
-            <VibeButton
-              variant={primary ? "primary" : "secondary"}
-              disabled={busy || blocked || validationBlocked || (inferenceUnavailable && (ready || !preparingOnly))}
-              onClick={() => (preparingOnly && !ready ? onSave() : ready ? onRun() : buildJourney && rules.length ? void onEdit({ artifact_id: artifact.id, build_from_policy: true }) : setAgentOpen(true))}
-            >
-              {ready
-                ? pendingPolicy
-                  ? "Run previous tests"
-                  : comparison
-                  ? buildJourney ? "Apply change and check again" : "Improve and rerun"
-                  : buildJourney && parent ? "Update and check" : `Run ${cases.length} ${cases.length === 1 ? "test" : "tests"}`
-                : preparingOnly ? "Keep these tests" : buildJourney && rules.length ? "Build from saved rules" : "Add your agent"}
-              <ArrowRight />
-            </VibeButton>
-            {tests.some(t => t.editable) && <VibeButton
-              variant="quiet"
-              disabled={busy}
-              onClick={() => { setFocusedCase(undefined); setEditing(true); onSelectCase?.(); }}
-            >
-              <Pencil />
-              Edit tests
-            </VibeButton>}
-          </div>
           {!ready && <div className="text-sm vibe-muted">
             {preparingOnly ? <><p>Keep these examples for your team. Add an agent when you’re ready to run them.</p><VibeButton variant="quiet" className="!px-0" disabled={busy} onClick={() => setAgentOpen(true)}>Add an agent later</VibeButton></>
               : <><p>{buildJourney && rules.length ? "Use your saved requirements to create a version you can try. We’ll check these saved expectations before running; no answers are copied into its instructions." : "A pack supplies examples and expectations. Add an agent to get actual replies."}</p><VibeButton variant="quiet" className="!px-0" disabled={busy} onClick={() => {setPrototypeMode(true);setAgentOpen(true)}}>Create a prototype</VibeButton><VibeButton variant="quiet" disabled={busy} onClick={() => setPreparingOnly(true)}>Keep for later</VibeButton></>}
           </div>}
-          {ready && (
-            <p className="text-xs vibe-muted">
-              Text test here · {modelLabel || "Selected model"}. Your live app is not called.
-            </p>
-          )}
           <details className="text-sm vibe-muted">
             <summary className="w-fit cursor-pointer py-1">
               More options
