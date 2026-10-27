@@ -96,14 +96,17 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   expect(originalHashes).toEqual(state.hashes[prepared.id]);
 
   await page.getByRole("button", { name: "Help me fix this", exact: true }).click();
-  await finished(page, sessionID!, state.session.operations.length);
-  await openTests(page);
-  await expect(page.getByRole("region", { name: "Your tests", exact: true })).toBeVisible();
+  const proposed = await finished(page, sessionID!, state.session.operations.length);
+  expect(proposed.completion_receipt?.action).toBe("suggest_fix");
   state = await evidence(page, sessionID!);
-  const fix = state.session.document.artifacts.at(-1)!;
+  const fix = state.session.document.artifacts.find(artifact => artifact.id === proposed.completion_receipt?.artifact_id)!;
+  expect(fix).toBeDefined();
   expect(state.hashes[fix.id]).toEqual(originalHashes);
   expect(fix.agent_prompt).toBe(baselineArtifact.agent_prompt.replace("Opened items are eligible.", "Only unopened items are eligible."));
-  await page.getByRole("button", { name: /^(Improve and rerun|Run 3 tests)$/ }).click();
+  await expect(page.getByRole("region", { name: "Agent instructions", exact: true })).toContainText(fix.agent_prompt!);
+  await openTests(page);
+  await expect(page.getByRole("region", { name: "Your tests", exact: true })).toHaveAttribute("data-proposal-id", fix.id);
+  await page.getByRole("button", { name: "Improve and rerun", exact: true }).click();
   await page.getByRole("button", { name: "Run 3 examples", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();
   await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("3 passed · 0 failed · 0 unresolved");

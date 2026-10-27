@@ -91,7 +91,7 @@ test("mobile loading exposes Stop and cancelling does not restart the initial ch
  await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('checking');
- await openView(page,'Results');
+ await openGuide(page);
  await expect(page.locator('.vibe-status-shine')).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:info.outputPath('loading-mobile.png'),fullPage:true});
@@ -126,8 +126,8 @@ test("entry and context controls fit desktop and mobile",async({page},info)=>{
   await page.screenshot({path:info.outputPath(`entry-${viewport.width}.png`),fullPage:true});
  }
  await page.getByRole('button',{name:/Improve an existing agent/}).click();
- for(const name of ['Import a test pack','Paste agent instructions']) await expect(page.getByRole('button',{name,exact:true})).toBeVisible();
- await expect(page.getByRole('button',{name:'Connect my application',exact:true})).toBeVisible();
+ for(const name of ['Import a test pack','Try my saved instructions']) await expect(page.getByRole('button',{name,exact:true})).toBeVisible();
+ await expect(page.getByText('Live connections aren’t available',{exact:false})).toBeVisible();
 });
 
 test("switching while a run completes keeps messages and draft attached to the selected evaluation",async({page})=>{
@@ -340,7 +340,7 @@ test("pasted instructions remain the exact target and run only after the disclos
  await page.getByRole('button',{name:/Improve an existing agent/}).click();
  await expect.poll(()=>new URL(page.url()).searchParams.get('session')).toBeTruthy();
  const callsBefore=(await evidence(page)).calls.filter((c:{role:string})=>c.role==='target').length;
- await page.getByRole('button',{name:'Paste agent instructions',exact:true}).click();
+ await page.getByRole('button',{name:'Try my saved instructions',exact:true}).click();
  const instructions='Answer shop return questions. Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.';
  await page.getByRole('textbox',{name:'Agent instructions to test',exact:true}).fill(instructions);
  await page.getByRole('button',{name:'Prepare examples',exact:true}).click();
