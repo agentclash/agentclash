@@ -2537,7 +2537,8 @@ it("keeps untested version Results empty until explicit history pins the tested 
   expect(new URL(location.href).searchParams.get("agent")).toBe("v1");
   expect(container.querySelector(".vibe-project-header")?.textContent).toContain("v1 · Old policy");
   expect(container.querySelector('[aria-label="Next actions for this version"]')?.getAttribute("data-artifact-id")).toBe("v1");
-  const followup=container.querySelector('[aria-label="Keep and extend your results"]')!;
+  const followup=container.querySelector('[aria-label="Next actions for this version"]')!;
+  await act(async()=>[...followup.querySelectorAll("summary")].find(summary=>summary.textContent==="More ways to check")!.click());
   await act(async()=>[...followup.querySelectorAll<HTMLButtonElement>("button")].find(button=>button.textContent==="Try tougher situations")!.click());
   await click("See cost and continue");
   expect(requests.find(request=>request.path.endsWith("/build-quote"))?.body.artifact_id).toBe("v1");
