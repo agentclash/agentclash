@@ -585,7 +585,7 @@ func resolveCIRunCandidateAgent(cmd *cobra.Command, rc *RunContext, runID, deplo
 	return runAgentWorkflowSummary{}, fmt.Errorf("candidate run %s has no agent for deployment %s", runID, deploymentID)
 }
 
-func evaluateCIRunReleaseGate(cmd *cobra.Command, rc *RunContext, baselineRunID, candidateRunID, baselineAgentID, candidateAgentID string, policies ...map[string]any) (map[string]any, releaseGateVerdict, error) {
+func evaluateCIRunReleaseGate(cmd *cobra.Command, rc *RunContext, baselineRunID, candidateRunID, baselineAgentID, candidateAgentID string, policy map[string]any) (map[string]any, releaseGateVerdict, error) {
 	body := map[string]any{
 		"baseline_run_id":  baselineRunID,
 		"candidate_run_id": candidateRunID,
@@ -596,8 +596,8 @@ func evaluateCIRunReleaseGate(cmd *cobra.Command, rc *RunContext, baselineRunID,
 	if candidateAgentID != "" {
 		body["candidate_run_agent_id"] = candidateAgentID
 	}
-	if len(policies) > 0 && policies[0] != nil {
-		body["policy"] = policies[0]
+	if policy != nil {
+		body["policy"] = policy
 	}
 	resp, err := rc.Client.Post(cmd.Context(), "/v1/release-gates/evaluate", body)
 	if err != nil {
