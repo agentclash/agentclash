@@ -35,10 +35,10 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   } else {
     await page.getByLabel("Choose one PDF").setInputFiles({name:"notes.pdf", mimeType:"application/pdf", buffer:pdf()});
   }
-  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready");
+  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready · Task input");
   await page.getByRole("button", {name:"Close material dialog",exact:true}).click();
   await page.reload();
-  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready");
+  await expect(page.locator(".vibe-material-chip-status")).toHaveText("Ready · Task input");
   await page.getByRole("textbox", {name:"Message Vibe Evals",exact:true}).fill(task);
   await expect(page.getByRole("button", {name:"Send message",exact:true})).toBeEnabled();
   await page.getByRole("button", {name:"Send message",exact:true}).click();
@@ -56,7 +56,7 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   expect(state.session.document.artifacts[0].agent_prompt).not.toContain("Mira");
   await expect(page.locator(".vibe-result-row")).toHaveCount(0);
   await page.getByRole("tab",{name:"Results",exact:true}).click();
-  await page.getByRole("button",{name:"Discuss this with AgentClash",exact:true}).first().click();
+  await page.getByRole("button",{name:"Discuss this with AgentClash",exact:true}).click();
   await expect(page.getByRole("dialog")).toContainText("Contact isn’t set up yet. You can copy your summary.");
   const summary=page.getByRole("textbox",{name:"Project summary",exact:true});
   await expect(summary).not.toHaveValue(/Mira|Ana/);
