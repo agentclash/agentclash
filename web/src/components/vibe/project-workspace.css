@@ -62,9 +62,14 @@
 .vibe-utility-heading h2 { font-size: 18px; font-weight: 600; }
 .vibe-utility-scroll { min-height: 0; flex: 1; overflow: auto; padding: 16px; overscroll-behavior: contain; overflow-wrap: anywhere; }
 .vibe-utility-scroll > [data-message-id] { margin-bottom: 24px; }
-.vibe-guide-composer { flex: none; padding: 12px 16px max(16px, env(safe-area-inset-bottom)); border-top: 1px solid var(--vibe-border); max-height: 55dvh; overflow: auto; }
-.vibe-guide-composer .vibe-composer { padding: 12px; }
-.vibe-guide-composer textarea { min-height: 72px; max-height: 160px; resize: vertical; }
+.vibe-guide-composer { display: flex; flex-direction: column; gap: 8px; flex: none; min-height: 0; padding: 12px 16px max(16px, env(safe-area-inset-bottom)); border-top: 1px solid var(--vibe-border); max-height: 55dvh; }
+.vibe-guide-context { min-height: 0; overflow: auto; overscroll-behavior: contain; }
+.vibe-guide-tools { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.vibe-guide-data-use { flex: 1; min-width: 0; font-size: 14px; color: var(--vibe-muted); }
+.vibe-guide-data-use > summary { width: fit-content; min-height: 44px; padding-block: 10px; cursor: pointer; }
+.vibe-guide-data-use[open] { flex-basis: 100%; }
+.vibe-guide-composer .vibe-composer { flex: none; padding: 12px; }
+.vibe-guide-composer textarea { height: clamp(2.75rem, 12dvh, 6rem); min-height: 44px; max-height: min(10rem, 24dvh); resize: vertical; }
 .vibe-utility-sheet[data-slot="sheet-content"] { width: min(480px, 100vw); max-width: none; height: 100dvh; gap: 0; padding: 0; }
 .vibe-appearance { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-block: 16px; }
 .vibe-workspace :is(input:not([type="checkbox"]), textarea, select) { font-size: 16px; color: var(--vibe-fg); background-color: var(--vibe-surface); max-width: 100%; }

@@ -360,6 +360,39 @@ test("same-artifact case Back and Forward restores the visible expectation witho
   expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
 });
 
+test("Guide keeps its composer in view through short-window resizing without losing a draft", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const control = await serve(page, false, true);
+  await page.getByRole("tab", { name: "Tests", exact: true }).click();
+  await openCase(page);
+  await page.getByRole("button", { name: "Ask Guide about this test", exact: true }).click();
+  const input = page.getByRole("textbox", { name: "Message Vibe Evals", exact: true });
+  const draft = "Keep this unsent question while I resize the window.";
+  await input.fill(draft);
+  for (const size of [
+    { width: 320, height: 568 }, { width: 844, height: 390 },
+    { width: 390, height: 300 }, { width: 1280, height: 600 },
+    { width: 1920, height: 1080 },
+  ]) {
+    await page.setViewportSize(size);
+    await expect(input).toHaveValue(draft);
+    await expect(page.getByLabel("Guide reference", { exact: true })).toContainText("You won a prize.");
+    for (const control of [input, page.getByRole("button", { name: "Send message", exact: true })]) {
+      await expect.poll(async () => {
+        const box = await control.boundingBox();
+        return !!box && box.y >= 0 && box.y + box.height <= size.height &&
+          box.x >= 0 && box.x + box.width <= size.width;
+      }, { message: `Guide input and Send fit ${size.width}×${size.height} before scrolling` }).toBe(true);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
+  await page.getByText("Data use", { exact: true }).click();
+  await expect(page.getByText(/Guest uploads expire after seven days/)).toBeVisible();
+  await page.getByText("Data use", { exact: true }).click();
+  expect(control.posts).toHaveLength(0);
+  expect(control.errors).toEqual([]);
+});
+
 test("workspace geometry, scoped portal appearance and reading focus adapt at every specified boundary", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
