@@ -534,7 +534,7 @@ export function useVibeWorkspace() {
   const continuingBuild = (session?.document.build?.phase === "clarifying" || session?.document.build?.phase === "waiting");
   const quoteMatches = !!buildQuote && buildQuote.request.content === content && JSON.stringify(buildQuote.request.inputs || []) === materialFingerprint && JSON.stringify(buildQuote.request.adopt_rules || []) === adoptionFingerprint && JSON.stringify(buildQuote.request.models) === JSON.stringify(models) && Date.parse(buildQuote.expires_at) > serverNow;
   useEffect(() => {
-    if (!inferenceAvailable || !buildStart || !sessionID || !content.trim() || new TextEncoder().encode(content).length > messageLimit) { setBuildQuote(undefined); setQuoteError(""); return; }
+    if (!config || configError || !inferenceAvailable || !buildStart || !sessionID || !content.trim() || new TextEncoder().encode(content).length > messageLimit) { setBuildQuote(undefined); setQuoteError(""); return; }
     let live = true;
     setQuoteError(""); setQuotePreparing(true);
     const timer = setTimeout(() => {
@@ -543,7 +543,7 @@ export function useVibeWorkspace() {
         .then(q => { if (live) { syncClock(q.server_time); setClock(Date.now()); setBuildQuote(q); } }).catch(e => { captureVibeAttempt("build", "estimate", sessionID, e instanceof VibeError ? e.code : "transport_failed"); if (live) setQuoteError(e.message); }).finally(() => { if (live) setQuotePreparing(false); });
     }, 400);
     return () => { live = false; clearTimeout(timer); };
-  }, [buildStart, sessionID, content, models, token, materialFingerprint, adoptionFingerprint, quoteAttempt, inferenceAvailable]);
+  }, [config, configError, buildStart, sessionID, content, models, token, materialFingerprint, adoptionFingerprint, quoteAttempt, inferenceAvailable]);
   const buildQuoteState = quoteError ? "failure" : quotePreparing || !buildQuote ? "preparation" : !quoteMatches ? "expired" : "current";
   const refreshBuildQuote = () => setQuoteAttempt(attempt => attempt + 1);
   const quoteScopeMatches = !!runQuote && runQuote.selectionArtifact === artifact?.id && JSON.stringify(runQuote.requestModels) === JSON.stringify(runQuote.baseline ? { ...models, evaluator: runQuote.baseline.models.evaluator } : models);

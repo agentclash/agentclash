@@ -50,7 +50,7 @@ four for you.
 
 What you need depends on what you're changing (see the tiers below). The full set is:
 
-- Go 1.25+
+- Go 1.26.8+
 - Node.js 22 and `pnpm` (`corepack enable` provides it) — pinned in `.nvmrc` and
   `.tool-versions`, and matched by CI
 - Docker (for Postgres, Redis, and Temporal in the full local stack)
@@ -79,7 +79,7 @@ the smallest tier that covers your change:
 | Tier | You're changing… | You need | Run |
 | --- | --- | --- | --- |
 | **0** | docs, web, marketing, content | Node 22 & `pnpm` | `cp web/.env.local.example web/.env.local` then `cd web && pnpm install && pnpm dev` → http://localhost:3000 |
-| **1** | the CLI | Go 1.25+ | `export AGENTCLASH_API_URL=https://api.agentclash.dev` then `cd cli && go run . --help` |
+| **1** | the CLI | Go 1.26.8+ | `export AGENTCLASH_API_URL=https://api.agentclash.dev` then `cd cli && go run . --help` |
 | **2** | backend / full stack | Go, Docker, `psql` | `make setup && make start` |
 
 Tier 1 runs the CLI against the hosted API, so no local backend is required.
@@ -182,7 +182,7 @@ logged instead of sent. Everything else works for local development.
 | `pnpm: command not found` | `corepack enable` (or `npm i -g pnpm`). |
 | Homepage 500s under `pnpm dev` | Missing `web/.env.local` — the WorkOS middleware runs on nearly every route. See [Tier 0](#tier-0-the-webenvlocal-step-is-not-optional). |
 | Frontend CI fails after a `web/` dependency change | `web/` carries **both** lockfiles: local dev uses `pnpm` (`pnpm-lock.yaml`) but CI (`.github/workflows/frontend.yml`) runs `npm ci` against `package-lock.json`. Any dependency change must update **both** — run `cd web && pnpm install && npm install --package-lock-only` and commit both lockfiles. |
-| Wrong Go version | This repo pins **Go 1.25.5** (`.tool-versions`); install a matching toolchain. |
+| Wrong Go version | This repo pins **Go 1.26.8** (`.tool-versions`); install a matching toolchain. |
 | Windows | Use **WSL2** — the scripts assume a POSIX shell, `make`, and Docker. |
 | Apple Silicon | Fully supported; the images are multi-arch. |
 

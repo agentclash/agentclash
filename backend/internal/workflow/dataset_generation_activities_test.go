@@ -387,3 +387,34 @@ func containsTag(tags []string, target string) bool {
 	}
 	return false
 }
+
+// A missing vault dependency must still retain the workspace credential boundary.
+func TestDatasetGenerationWithoutVaultCannotUseProcessCredentials(t *testing.T) {
+	t.Setenv("AGENTCLASH_SECRET_CHALLENGER", "synthetic-process-value")
+	fixture := newDatasetGenerationActivityFixture(t, []provider.Response{
+		{OutputText: `{"input":{"q":"candidate"},"expected":{"a":"ok"}}`},
+		{OutputText: `{"verdict":"accept","quality_verdict":"high","weak_score":0.4,"strong_score":0.8,"gap":0.4}`},
+	})
+	probe := &workspaceScopeProbe{t: t, next: fixture.client}
+	fixture.activities.client = probe
+	fixture.activities.secretsLookup = nil
+	_ = fixture.activities.ExecuteSyntheticDatasetGeneration(context.Background(), ExecuteSyntheticDatasetGenerationInput{JobID: fixture.jobID})
+	if probe.calls == 0 {
+		t.Fatal("credential boundary was not exercised")
+	}
+}
+
+type workspaceScopeProbe struct {
+	t     *testing.T
+	next  provider.Client
+	calls int
+}
+
+func (p *workspaceScopeProbe) InvokeModel(ctx context.Context, req provider.Request) (provider.Response, error) {
+	p.calls++
+	value, err := (provider.EnvCredentialResolver{}).Resolve(ctx, req.CredentialReference)
+	if err == nil || value != "" {
+		p.t.Fatal("workspace generation resolved a process credential")
+	}
+	return p.next.InvokeModel(ctx, req)
+}

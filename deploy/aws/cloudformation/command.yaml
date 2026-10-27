@@ -1,0 +1,54 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Constrained immutable application release command; no arbitrary shell input.
+Resources:
+  DeployCommand:
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: Command
+      DocumentFormat: YAML
+      UpdateMethod: NewVersion
+      Content:
+        schemaVersion: '2.2'
+        description: Deploy one approved manifest through installed, host-serialized tooling
+        parameters:
+          ReleaseSha256:
+            type: String
+            allowedPattern: '^[a-f0-9]{64}$'
+            interpolationType: ENV_VAR
+        mainSteps:
+          - action: aws:runShellScript
+            name: DeployReviewedRelease
+            precondition: {StringEquals: [platformType, Linux]}
+            inputs:
+              timeoutSeconds: '10800'
+              runCommand:
+                - 'set -eu'
+                - 'test -n "${SSM_ReleaseSha256:-}"'
+                - 'exec /usr/bin/python3.12 /opt/agentclash/deploy/aws/scripts/host.py deploy "$SSM_ReleaseSha256"'
+  PromoteCommand:
+    Type: AWS::SSM::Document
+    Properties:
+      DocumentType: Command
+      DocumentFormat: YAML
+      UpdateMethod: NewVersion
+      Content:
+        schemaVersion: '2.2'
+        description: Promote the same verified candidate using a separate private approval
+        parameters:
+          ReleaseSha256:
+            type: String
+            allowedPattern: '^[a-f0-9]{64}$'
+            interpolationType: ENV_VAR
+        mainSteps:
+          - action: aws:runShellScript
+            name: PromoteReviewedRelease
+            precondition: {StringEquals: [platformType, Linux]}
+            inputs:
+              timeoutSeconds: '900'
+              runCommand:
+                - 'set -eu'
+                - 'test -n "${SSM_ReleaseSha256:-}"'
+                - 'exec /usr/bin/python3.12 /opt/agentclash/deploy/aws/scripts/host.py promote "$SSM_ReleaseSha256"'
+Outputs:
+  DocumentName: {Value: !Ref DeployCommand}
+  PromoteDocumentName: {Value: !Ref PromoteCommand}

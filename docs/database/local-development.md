@@ -12,7 +12,16 @@ make db-migrate
 make db-psql
 ```
 
-`make db-migrate` is incremental. The local runner records applied versions in `schema_migrations`, so rerunning it only applies new files.
+`make db-migrate` uses the Go application migrator and is incremental. It records
+complete filenames (without `.sql`) in `schema_migrations`, preserving files
+that share numeric prefixes. A session lock serializes concurrent invocations,
+and each migration commits with its ledger entry. Go is required; psql is only
+needed for commands such as `make db-psql` and `make db-seed`.
+
+Supply custom connections through the `DATABASE_URL` environment variable; the
+script no longer accepts a connection string as an argument. See the
+[application migration guide](../deployment/application-migrations.md) for
+timeouts, failure recovery, the one-off image and isolated PostgreSQL tests.
 
 To reset the local database volume and start clean:
 

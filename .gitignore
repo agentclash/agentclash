@@ -64,3 +64,11 @@ testing/*
 !testing/codex-vibe-free-local.md
 !testing/codex-vibe-repair-errors.md
 !testing/codex-vibe-simple-authoring.md
+!testing/codex-aws-migration-step-4-temporal-tls.md
+!testing/codex-aws-migration-step-5-migrator.md
+!testing/codex-aws-migration-step-6-maintenance.md
+!testing/codex-aws-migration-step-7-terminal.md
+!testing/codex-aws-migration-step-8-infrastructure.md
+!testing/codex-aws-migration-step-9-cicd.md
+!testing/codex-aws-migration-step-9-1-patches.md
+!testing/codex-aws-migration-step-9-2-platform-images.md

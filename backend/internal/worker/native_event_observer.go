@@ -441,21 +441,10 @@ func (o *NativeRunEventObserver) recordEventAt(ctx context.Context, occurredAt t
 	return nil
 }
 
-// caseKey returns the sole case key when this observer was created for a
-// case-scoped execution context (Fleet case fan-out). Empty for legacy
-// multi-case mega-activities so we do not invent a case identity.
+// caseKey identifies explicit case fan-out activities. Case count cannot
+// distinguish those activities from an ordinary run containing one case.
 func (o *NativeRunEventObserver) caseKey() string {
-	if o.executionContext.ChallengeInputSet == nil {
-		return ""
-	}
-	cases := o.executionContext.ChallengeInputSet.Cases
-	if len(cases) != 1 {
-		return ""
-	}
-	if key := cases[0].CaseKey; key != "" {
-		return key
-	}
-	return cases[0].ItemKey
+	return o.executionContext.ExecutionCaseKey
 }
 
 func normalizeJSON(value json.RawMessage) json.RawMessage {

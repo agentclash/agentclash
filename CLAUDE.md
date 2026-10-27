@@ -91,7 +91,7 @@ make db-psql                       # Open psql shell
 ./scripts/dev/start-local-stack.sh  # Starts Postgres, Temporal, API, worker
 ```
 
-Requires: Go 1.25+, Docker, Temporal CLI (`brew install temporal`).
+Requires: Go 1.26.8+, Docker, Temporal CLI (`brew install temporal`).
 
 ## Architecture
 

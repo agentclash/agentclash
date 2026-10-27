@@ -10,12 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/errdefs"
-	"github.com/docker/docker/pkg/jsonmessage"
+	"github.com/containerd/errdefs"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
+	"github.com/moby/moby/client/pkg/jsonmessage"
 )
 
 // engine is the subset of Docker Engine API used by the provider. Tests inject fakes.
@@ -28,9 +26,9 @@ type engine interface {
 	ContainerRemove(ctx context.Context, id string, force bool) error
 	CopyToContainer(ctx context.Context, id, destPath string, content io.Reader) error
 	CopyFromContainer(ctx context.Context, id, srcPath string) (io.ReadCloser, error)
-	ContainerExecCreate(ctx context.Context, id string, cfg container.ExecOptions) (string, error)
+	ContainerExecCreate(ctx context.Context, id string, cfg client.ExecCreateOptions) (string, error)
 	ContainerExecAttach(ctx context.Context, execID string) (execAttach, error)
-	ContainerExecInspect(ctx context.Context, execID string) (container.ExecInspect, error)
+	ContainerExecInspect(ctx context.Context, execID string) (client.ExecInspectResult, error)
 	ContainerInspectLabels(ctx context.Context, ref string) (map[string]string, error)
 	Close() error
 }
@@ -45,11 +43,11 @@ type dockerEngine struct {
 }
 
 func newDockerEngine(host string) (*dockerEngine, error) {
-	opts := []client.Opt{client.FromEnv, client.WithAPIVersionNegotiation()}
+	opts := []client.Opt{client.FromEnv}
 	if strings.TrimSpace(host) != "" {
 		opts = append(opts, client.WithHost(strings.TrimSpace(host)))
 	}
-	cli, err := client.NewClientWithOpts(opts...)
+	cli, err := client.New(opts...)
 	if err != nil {
 		return nil, wrapDockerUnavailable(err)
 	}
@@ -57,7 +55,7 @@ func newDockerEngine(host string) (*dockerEngine, error) {
 }
 
 func (e *dockerEngine) Ping(ctx context.Context) error {
-	_, err := e.cli.Ping(ctx)
+	_, err := e.cli.Ping(ctx, client.PingOptions{})
 	if err != nil {
 		if isDaemonUnavailable(err) {
 			return wrapDockerUnavailable(err)
@@ -68,7 +66,7 @@ func (e *dockerEngine) Ping(ctx context.Context) error {
 }
 
 func (e *dockerEngine) ImagePull(ctx context.Context, ref string) error {
-	reader, err := e.cli.ImagePull(ctx, ref, image.PullOptions{})
+	reader, err := e.cli.ImagePull(ctx, ref, client.ImagePullOptions{})
 	if err != nil {
 		if isDaemonUnavailable(err) {
 			return wrapDockerUnavailable(err)
@@ -90,7 +88,7 @@ func consumePullStream(r io.Reader) error {
 }
 
 func (e *dockerEngine) ContainerCreate(ctx context.Context, cfg container.Config, hostCfg container.HostConfig, name string) (string, error) {
-	resp, err := e.cli.ContainerCreate(ctx, &cfg, &hostCfg, nil, nil, name)
+	resp, err := e.cli.ContainerCreate(ctx, client.ContainerCreateOptions{Config: &cfg, HostConfig: &hostCfg, Name: name})
 	if err != nil {
 		if isDaemonUnavailable(err) {
 			return "", wrapDockerUnavailable(err)
@@ -101,7 +99,7 @@ func (e *dockerEngine) ContainerCreate(ctx context.Context, cfg container.Config
 }
 
 func (e *dockerEngine) ContainerStart(ctx context.Context, id string) error {
-	if err := e.cli.ContainerStart(ctx, id, container.StartOptions{}); err != nil {
+	if _, err := e.cli.ContainerStart(ctx, id, client.ContainerStartOptions{}); err != nil {
 		if isDaemonUnavailable(err) {
 			return wrapDockerUnavailable(err)
 		}
@@ -111,7 +109,7 @@ func (e *dockerEngine) ContainerStart(ctx context.Context, id string) error {
 }
 
 func (e *dockerEngine) ContainerStop(ctx context.Context, id string, timeout *time.Duration) error {
-	opts := container.StopOptions{}
+	opts := client.ContainerStopOptions{}
 	if timeout != nil {
 		seconds := int(timeout.Round(time.Second) / time.Second)
 		if seconds < 1 {
@@ -120,7 +118,7 @@ func (e *dockerEngine) ContainerStop(ctx context.Context, id string, timeout *ti
 		}
 		opts.Timeout = &seconds
 	}
-	if err := e.cli.ContainerStop(ctx, id, opts); err != nil {
+	if _, err := e.cli.ContainerStop(ctx, id, opts); err != nil {
 		if isDaemonUnavailable(err) {
 			return wrapDockerUnavailable(err)
 		}
@@ -133,7 +131,7 @@ func (e *dockerEngine) ContainerStop(ctx context.Context, id string, timeout *ti
 }
 
 func (e *dockerEngine) ContainerRemove(ctx context.Context, id string, force bool) error {
-	if err := e.cli.ContainerRemove(ctx, id, container.RemoveOptions{Force: force}); err != nil {
+	if _, err := e.cli.ContainerRemove(ctx, id, client.ContainerRemoveOptions{Force: force}); err != nil {
 		if isDaemonUnavailable(err) {
 			return wrapDockerUnavailable(err)
 		}
@@ -146,7 +144,7 @@ func (e *dockerEngine) ContainerRemove(ctx context.Context, id string, force boo
 }
 
 func (e *dockerEngine) CopyToContainer(ctx context.Context, id, destPath string, content io.Reader) error {
-	if err := e.cli.CopyToContainer(ctx, id, destPath, content, container.CopyToContainerOptions{}); err != nil {
+	if _, err := e.cli.CopyToContainer(ctx, id, client.CopyToContainerOptions{DestinationPath: destPath, Content: content}); err != nil {
 		if isDaemonUnavailable(err) {
 			return wrapDockerUnavailable(err)
 		}
@@ -156,18 +154,18 @@ func (e *dockerEngine) CopyToContainer(ctx context.Context, id, destPath string,
 }
 
 func (e *dockerEngine) CopyFromContainer(ctx context.Context, id, srcPath string) (io.ReadCloser, error) {
-	reader, _, err := e.cli.CopyFromContainer(ctx, id, srcPath)
+	result, err := e.cli.CopyFromContainer(ctx, id, client.CopyFromContainerOptions{SourcePath: srcPath})
 	if err != nil {
 		if isDaemonUnavailable(err) {
 			return nil, wrapDockerUnavailable(err)
 		}
 		return nil, err
 	}
-	return reader, nil
+	return result.Content, nil
 }
 
-func (e *dockerEngine) ContainerExecCreate(ctx context.Context, id string, cfg container.ExecOptions) (string, error) {
-	resp, err := e.cli.ContainerExecCreate(ctx, id, cfg)
+func (e *dockerEngine) ContainerExecCreate(ctx context.Context, id string, cfg client.ExecCreateOptions) (string, error) {
+	resp, err := e.cli.ExecCreate(ctx, id, cfg)
 	if err != nil {
 		if isDaemonUnavailable(err) {
 			return "", wrapDockerUnavailable(err)
@@ -178,7 +176,7 @@ func (e *dockerEngine) ContainerExecCreate(ctx context.Context, id string, cfg c
 }
 
 type dockerExecAttach struct {
-	hijacked types.HijackedResponse
+	hijacked client.ExecAttachResult
 }
 
 func (a dockerExecAttach) Reader() io.Reader { return a.hijacked.Reader }
@@ -188,7 +186,7 @@ func (a dockerExecAttach) Close() error {
 }
 
 func (e *dockerEngine) ContainerExecAttach(ctx context.Context, execID string) (execAttach, error) {
-	hijacked, err := e.cli.ContainerExecAttach(ctx, execID, container.ExecAttachOptions{})
+	hijacked, err := e.cli.ExecAttach(ctx, execID, client.ExecAttachOptions{})
 	if err != nil {
 		if isDaemonUnavailable(err) {
 			return nil, wrapDockerUnavailable(err)
@@ -198,29 +196,29 @@ func (e *dockerEngine) ContainerExecAttach(ctx context.Context, execID string) (
 	return dockerExecAttach{hijacked: hijacked}, nil
 }
 
-func (e *dockerEngine) ContainerExecInspect(ctx context.Context, execID string) (container.ExecInspect, error) {
-	inspect, err := e.cli.ContainerExecInspect(ctx, execID)
+func (e *dockerEngine) ContainerExecInspect(ctx context.Context, execID string) (client.ExecInspectResult, error) {
+	inspect, err := e.cli.ExecInspect(ctx, execID, client.ExecInspectOptions{})
 	if err != nil {
 		if isDaemonUnavailable(err) {
-			return container.ExecInspect{}, wrapDockerUnavailable(err)
+			return client.ExecInspectResult{}, wrapDockerUnavailable(err)
 		}
-		return container.ExecInspect{}, fmt.Errorf("exec inspect %s: %w", execID, err)
+		return client.ExecInspectResult{}, fmt.Errorf("exec inspect %s: %w", execID, err)
 	}
 	return inspect, nil
 }
 
 func (e *dockerEngine) ContainerInspectLabels(ctx context.Context, ref string) (map[string]string, error) {
-	inspect, err := e.cli.ContainerInspect(ctx, ref)
+	inspect, err := e.cli.ContainerInspect(ctx, ref, client.ContainerInspectOptions{})
 	if err != nil {
 		if isDaemonUnavailable(err) {
 			return nil, wrapDockerUnavailable(err)
 		}
 		return nil, fmt.Errorf("inspect container %s: %w", ref, err)
 	}
-	if inspect.Config == nil {
+	if inspect.Container.Config == nil {
 		return map[string]string{}, nil
 	}
-	return inspect.Config.Labels, nil
+	return inspect.Container.Config.Labels, nil
 }
 
 func (e *dockerEngine) Close() error {

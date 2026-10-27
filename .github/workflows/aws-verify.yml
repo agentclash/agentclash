@@ -1,0 +1,33 @@
+name: Verify protected AWS delivery
+'on':
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Environment whose privately approved activation checks will run
+        type: choice
+        options: [build, production]
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: aws-activation-${{ inputs.target }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: aws-${{ inputs.target }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        persist-credentials: false
+    - name: Verify the privately approved activation phase
+      env:
+        AWS_ACTIVATION_CONFIG: ${{ secrets.AWS_ACTIVATION_CONFIG }}
+        GITHUB_TOKEN: ${{ github.token }}
+        ACTIVATION_KIND: ${{ inputs.target }}
+      run: python3 delivery/activation.py

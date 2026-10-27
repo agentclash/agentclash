@@ -4,6 +4,7 @@ package docker
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -19,7 +20,10 @@ func TestDockerSmokeLifecycle(t *testing.T) {
 	}
 
 	provider, err := NewProvider(Config{
-		Image: "python:3.12-slim",
+		Image:       "python:3.12-slim",
+		Host:        os.Getenv("AGENTCLASH_DOCKER_SMOKE_HOST"),
+		MemoryBytes: 256 * 1024 * 1024,
+		NanoCPUs:    250_000_000,
 	})
 	if err != nil {
 		t.Fatalf("NewProvider: %v", err)
@@ -36,7 +40,7 @@ func TestDockerSmokeLifecycle(t *testing.T) {
 		EnvVars:    map[string]string{"SMOKE": "1"},
 		ToolPolicy: sandbox.ToolPolicy{
 			AllowShell:   true,
-			AllowNetwork: true, // needed if image must be pulled
+			AllowNetwork: false,
 		},
 		Filesystem: sandbox.FilesystemSpec{
 			WorkingDirectory: "/workspace",
@@ -87,11 +91,30 @@ func TestDockerSmokeLifecycle(t *testing.T) {
 		t.Fatalf("Exec stdout = %q, want ok", result.Stdout)
 	}
 
+	failed, err := session.Exec(ctx, sandbox.ExecRequest{
+		Command: []string{"sh", "-c", "printf out; printf err >&2; exit 7"},
+		Timeout: 30 * time.Second,
+	})
+	if err != nil || failed.ExitCode != 7 || failed.Stdout != "out" || failed.Stderr != "err" {
+		t.Fatalf("Exec failure lost output/status: %#v, %v", failed, err)
+	}
+	if _, err := session.Exec(ctx, sandbox.ExecRequest{
+		Command: []string{"sleep", "10"}, Timeout: time.Second,
+	}); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Exec timeout = %v, want deadline exceeded", err)
+	}
+
 	files, err := session.ListFiles(ctx, "/workspace")
 	if err != nil {
 		t.Fatalf("ListFiles: %v", err)
 	}
 	if len(files) == 0 {
 		t.Fatal("ListFiles returned no files")
+	}
+	if err := session.Destroy(ctx); err != nil {
+		t.Fatalf("Destroy: %v", err)
+	}
+	if _, err := provider.engine.ContainerInspectLabels(ctx, session.ID()); !isNotFoundErr(err) {
+		t.Fatalf("container still inspectable after removal: %v", err)
 	}
 }

@@ -58,8 +58,16 @@ func TestIntegrationCleanupSkipsBlockedProjectsBeforeBatchLimit(t *testing.T) {
 	s := integrationStore(t)
 	ctx := context.Background()
 	var eligible Session
+	var ids []uuid.UUID
 	for i := 0; i < 21; i++ {
-		v := anonSession(t, s)
+		// These deliberately unresolved fixtures must stay unresolved. The
+		// ordinary session helper finishes synthetic operations during cleanup,
+		// making them eligible and polluting a later run's 20-row batch.
+		v, err := s.CreateSession(ctx, "anon:"+uuid.NewString(), nil, uuid.New())
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, v.ID)
 		if _, err := s.DB.Exec(ctx, `UPDATE vibe_sessions SET deleted_at=now()-interval '1 day'+$2*interval '1 second',document='{}' WHERE id=$1`, v.ID, i); err != nil {
 			t.Fatal(err)
 		}
@@ -67,7 +75,7 @@ func TestIntegrationCleanupSkipsBlockedProjectsBeforeBatchLimit(t *testing.T) {
 			eligible = v
 			continue
 		}
-		_, err := s.DB.Exec(ctx, `INSERT INTO vibe_operations(id,session_id,actor,client_id,request_hash,kind,state,billing,models,input,max_cost,deadline) VALUES($1,$2,$3,$4,'blocked','message','CANCELLED','RECONCILING','{}','{}',1,now())`, uuid.New(), v.ID, v.Actor, uuid.New())
+		_, err = s.DB.Exec(ctx, `INSERT INTO vibe_operations(id,session_id,actor,client_id,request_hash,kind,state,billing,models,input,max_cost,deadline) VALUES($1,$2,$3,$4,'blocked','message','CANCELLED','RECONCILING','{}','{}',1,now())`, uuid.New(), v.ID, v.Actor, uuid.New())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -80,7 +88,7 @@ func TestIntegrationCleanupSkipsBlockedProjectsBeforeBatchLimit(t *testing.T) {
 		t.Fatalf("eligible project starved: %+v %v", r, err)
 	}
 	var blocked int
-	if err = s.DB.QueryRow(ctx, `SELECT count(*) FROM vibe_sessions s JOIN vibe_operations o ON o.session_id=s.id WHERE o.request_hash='blocked' AND s.cleanup_finished_at IS NOT NULL`).Scan(&blocked); err != nil {
+	if err = s.DB.QueryRow(ctx, `SELECT count(*) FROM vibe_sessions s JOIN vibe_operations o ON o.session_id=s.id WHERE s.id=ANY($1) AND o.request_hash='blocked' AND s.cleanup_finished_at IS NOT NULL`, ids).Scan(&blocked); err != nil {
 		t.Fatal(err)
 	}
 	if blocked != 0 {

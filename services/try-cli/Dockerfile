@@ -14,4 +14,4 @@ COPY try-cli/demos /app/try-cli/demos
 ENV NODE_ENV=production
 ENV PORT=3001
 EXPOSE 3001
-CMD ["bun", "run", "server/index.ts"]
+CMD ["bun", "--no-env-file", "--preserve-symlinks", "run", "server/index.ts"]

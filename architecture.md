@@ -138,7 +138,7 @@ Why:
 
 ## 5.2 Backend
 
-- `Go 1.25+`
+- `Go 1.26.8+`
 - `chi` for HTTP routing
 - `pgx` + `sqlc` for database access
 - `goose` for migrations

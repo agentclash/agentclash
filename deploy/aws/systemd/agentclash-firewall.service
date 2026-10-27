@@ -1,0 +1,11 @@
+[Unit]
+Description=Block container instance metadata access
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /opt/agentclash/deploy/aws/scripts/firewall.sh
+RemainAfterExit=yes
+[Install]
+WantedBy=docker.service

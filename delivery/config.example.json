@@ -1,0 +1,24 @@
+{
+  "enabled": false,
+  "kind": "production",
+  "account_id": "<approved-member-account>",
+  "region": "ap-southeast-1",
+  "artifact_bucket": "<private-artifact-bucket>",
+  "repository": "<private-ecr-repository-uri>",
+  "role_arn": "<exact-production-oidc-role-arn>",
+  "instance_id": "<approved-production-instance>",
+  "documents": {
+    "deploy": {"name": "<approved-document>", "version": "<numeric-version>", "sha256": "<document-content-sha256>"},
+    "promote": {"name": "<approved-promotion-document>", "version": "<numeric-version>", "sha256": "<document-content-sha256>"}
+  },
+  "github": {
+    "repository": "<owner/repository>",
+    "operator_login": "<approved-personal-github-login-for-snapshot-only>",
+    "environment": "aws-production",
+    "oidc_subject": "<exact-observed-subject-including-any-immutable-ID-format>",
+    "protection_sha256": "<hash-of-verified-live-protection-snapshot>",
+    "admin_bypass_verified_disabled": false
+  },
+  "profile": "<approved-human-sso-profile-for-local-fallback-only>",
+  "operator": "<confirmed-maintenance-owner-for-local-fallback-only>"
+}

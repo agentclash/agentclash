@@ -1,0 +1,254 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Separately activated delivery roles for exact reviewed OIDC subjects and hosts. Configure GitHub
+  protections first; optionally create a missing provider and enable staging only after its temporary target
+  exists.
+Parameters:
+  RepositoryArn:
+    Type: String
+  ArtifactBucket:
+    Type: String
+  BuildSubject:
+    Type: String
+    NoEcho: true
+    AllowedPattern: repo:[^*?]+
+    Description: Exact observed GitHub OIDC subject after protection review; no inferred or wildcard subject
+  StagingSubject:
+    Type: String
+    NoEcho: true
+    AllowedPattern: (|repo:[^*?]+)
+    Description: Exact observed GitHub OIDC subject after protection review; no inferred or wildcard subject
+    Default: ''
+  ProductionSubject:
+    Type: String
+    NoEcho: true
+    AllowedPattern: repo:[^*?]+
+    Description: Exact observed GitHub OIDC subject after protection review; no inferred or wildcard subject
+  StagingInstanceId:
+    Type: String
+    AllowedPattern: (|i-[a-f0-9]{8,17})
+    Default: ''
+  ProductionInstanceId:
+    Type: String
+    AllowedPattern: i-[a-f0-9]{8,17}
+  DeployDocumentName:
+    Type: String
+  PromoteDocumentName:
+    Type: String
+  CreateOidcProvider:
+    Type: String
+    AllowedValues:
+    - 'true'
+    - 'false'
+    Default: 'false'
+    Description: Set true only when the approved account has no existing GitHub OIDC provider
+Resources:
+  BuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Federated:
+              Fn::If:
+              - CreateProvider
+              - Ref: GitHubOidcProvider
+              - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+          Action: sts:AssumeRoleWithWebIdentity
+          Condition:
+            StringEquals:
+              token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              token.actions.githubusercontent.com:sub:
+                Ref: BuildSubject
+      Policies:
+      - PolicyName: ScopedDelivery
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: ecr:GetAuthorizationToken
+            Resource: '*'
+          - Effect: Allow
+            Action:
+            - ecr:BatchCheckLayerAvailability
+            - ecr:InitiateLayerUpload
+            - ecr:UploadLayerPart
+            - ecr:CompleteLayerUpload
+            - ecr:PutImage
+            - ecr:BatchGetImage
+            - ecr:GetDownloadUrlForLayer
+            Resource:
+              Ref: RepositoryArn
+          - Effect: Allow
+            Action:
+            - s3:GetObject
+            - s3:PutObject
+            Resource:
+            - Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactBucket}/releases/*
+            - Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactBucket}/build-evidence/*
+            - Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactBucket}/bundles/*
+  StagingDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Federated:
+              Fn::If:
+              - CreateProvider
+              - Ref: GitHubOidcProvider
+              - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+          Action: sts:AssumeRoleWithWebIdentity
+          Condition:
+            StringEquals:
+              token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              token.actions.githubusercontent.com:sub:
+                Ref: StagingSubject
+      Policies:
+      - PolicyName: ScopedDelivery
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: s3:GetObject
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactBucket}/releases/*
+          - Effect: Allow
+            Action: ssm:SendCommand
+            Resource:
+            - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/${DeployDocumentName}
+            - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/${PromoteDocumentName}
+          - Effect: Allow
+            Action: ssm:SendCommand
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${StagingInstanceId}
+            Condition:
+              StringEquals:
+                ssm:resourceTag/Service: agentclash
+                ssm:resourceTag/Environment: staging
+          - Effect: Allow
+            Action: ssm:GetCommandInvocation
+            Resource: '*'
+    Condition: EnableStaging
+  ProductionDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Federated:
+              Fn::If:
+              - CreateProvider
+              - Ref: GitHubOidcProvider
+              - Fn::Sub: arn:${AWS::Partition}:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com
+          Action: sts:AssumeRoleWithWebIdentity
+          Condition:
+            StringEquals:
+              token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              token.actions.githubusercontent.com:sub:
+                Ref: ProductionSubject
+      Policies:
+      - PolicyName: ScopedDelivery
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Effect: Allow
+            Action: s3:GetObject
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactBucket}/releases/*
+          - Effect: Allow
+            Action: ssm:SendCommand
+            Resource:
+            - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/${DeployDocumentName}
+            - Fn::Sub: arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:document/${PromoteDocumentName}
+          - Effect: Allow
+            Action: ssm:SendCommand
+            Resource:
+              Fn::Sub: arn:${AWS::Partition}:ec2:${AWS::Region}:${AWS::AccountId}:instance/${ProductionInstanceId}
+            Condition:
+              StringEquals:
+                ssm:resourceTag/Service: agentclash
+                ssm:resourceTag/Environment: production
+          - Effect: Allow
+            Action: ssm:GetCommandInvocation
+            Resource: '*'
+  OperatorEvidencePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Attach only to the reviewed human SSO permission path; never to CI roles
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - s3:PutObject
+          - s3:GetObject
+          Resource:
+          - Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactBucket}/approvals/*
+          - Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactBucket}/evidence/operator/*
+        - Effect: Allow
+          Action: s3:GetObject
+          Resource:
+          - Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactBucket}/releases/*
+          - Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactBucket}/build-evidence/*
+          - Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactBucket}/backups/manifests/*
+          - Fn::Sub: arn:${AWS::Partition}:s3:::${ArtifactBucket}/deployments/*
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: CreateProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+      - sts.amazonaws.com
+Outputs:
+  BuildRoleArn:
+    Value:
+      Fn::GetAtt:
+      - BuildRole
+      - Arn
+  StagingDeployRoleArn:
+    Value:
+      Fn::GetAtt:
+      - StagingDeployRole
+      - Arn
+    Condition: EnableStaging
+  ProductionDeployRoleArn:
+    Value:
+      Fn::GetAtt:
+      - ProductionDeployRole
+      - Arn
+  OperatorEvidencePolicyArn:
+    Value:
+      Ref: OperatorEvidencePolicy
+Conditions:
+  CreateProvider:
+    Fn::Equals:
+    - Ref: CreateOidcProvider
+    - 'true'
+  EnableStaging:
+    Fn::Not:
+    - Fn::Equals:
+      - Ref: StagingInstanceId
+      - ''
+Rules:
+  StagingRequiresSubject:
+    RuleCondition:
+      Fn::Not:
+      - Fn::Equals:
+        - Ref: StagingInstanceId
+        - ''
+    Assertions:
+    - Assert:
+        Fn::Not:
+        - Fn::Equals:
+          - Ref: StagingSubject
+          - ''
+      AssertDescription: A temporary target requires its exact verified subject

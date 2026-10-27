@@ -1,0 +1,7 @@
+[Unit]
+Description=Platform health, backups, capacity and certificate expiry
+[Service]
+Type=oneshot
+UMask=0077
+ExecStart=/usr/bin/python3.12 /opt/agentclash/deploy/aws/scripts/monitor.py
+TimeoutStartSec=180

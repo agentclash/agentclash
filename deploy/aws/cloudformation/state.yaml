@@ -1,0 +1,184 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Retained encrypted state, private RDS and immutable release storage. Enable stack termination protection separately.
+Parameters:
+  AvailabilityZone:
+    Type: AWS::EC2::AvailabilityZone::Name
+  DatabaseSubnetId:
+    Type: AWS::EC2::Subnet::Id
+  SecondDatabaseSubnetId:
+    Type: AWS::EC2::Subnet::Id
+  DatabaseSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+  PostgresVersion:
+    Type: String
+    Description: Exact source-compatible RDS PostgreSQL 18 minor verified in the selected region
+    AllowedPattern: '18\.[0-9]+'
+  Operator:
+    Type: String
+    NoEcho: true
+    MinLength: 1
+    Description: Privately confirmed host/platform operator handle, not a contact email
+  AlarmTopicArn:
+    Type: String
+    Description: Existing owner-visible SNS topic; confirm subscription outside the template
+Resources:
+  DatabaseSubnets:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Private subnets in two distinct AZs
+      SubnetIds: [!Ref DatabaseSubnetId, !Ref SecondDatabaseSubnetId]
+  DatabaseParameters:
+    Type: AWS::RDS::DBParameterGroup
+    Properties:
+      Description: TLS required and bounded shared database connections
+      Family: postgres18
+      Parameters:
+        rds.force_ssl: '1'
+        max_connections: '160'
+        log_statement: none
+        log_min_error_statement: panic
+  Database:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Engine: postgres
+      EngineVersion: !Ref PostgresVersion
+      DBInstanceClass: db.t4g.medium
+      AvailabilityZone: !Ref AvailabilityZone
+      MultiAZ: false
+      PubliclyAccessible: false
+      DBSubnetGroupName: !Ref DatabaseSubnets
+      VPCSecurityGroups: [!Ref DatabaseSecurityGroupId]
+      DBParameterGroupName: !Ref DatabaseParameters
+      AllocatedStorage: '20'
+      MaxAllocatedStorage: 100
+      StorageType: gp3
+      StorageEncrypted: true
+      MasterUsername: platform_admin
+      ManageMasterUserPassword: true
+      BackupRetentionPeriod: 14
+      CopyTagsToSnapshot: true
+      DeleteAutomatedBackups: false
+      DeletionProtection: true
+      AllowMajorVersionUpgrade: false
+      AutoMinorVersionUpgrade: false
+      PreferredBackupWindow: '18:00-19:00'
+      PreferredMaintenanceWindow: 'sun:19:00-sun:20:00'
+      Tags:
+        - {Key: Service, Value: agentclash}
+        - {Key: Operator, Value: !Ref Operator}
+  CacheVolume:
+    Type: AWS::EC2::Volume
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      AvailabilityZone: !Ref AvailabilityZone
+      Encrypted: true
+      Size: 10
+      VolumeType: gp3
+      Tags:
+        - {Key: Service, Value: agentclash}
+        - {Key: Purpose, Value: durable-cache}
+  PrivateArtifacts:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      VersioningConfiguration: {Status: Enabled}
+      OwnershipControls:
+        Rules: [{ObjectOwnership: BucketOwnerEnforced}]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      LifecycleConfiguration:
+        Rules:
+          - Id: BoundBackups
+            Status: Enabled
+            Prefix: backups/
+            ExpirationInDays: 90
+            NoncurrentVersionExpiration: {NoncurrentDays: 30}
+            AbortIncompleteMultipartUpload: {DaysAfterInitiation: 1}
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref PrivateArtifacts
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource: [!GetAtt PrivateArtifacts.Arn, !Sub '${PrivateArtifacts.Arn}/*']
+            Condition: {Bool: {'aws:SecureTransport': 'false'}}
+          - Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource:
+              - !Sub '${PrivateArtifacts.Arn}/releases/*'
+              - !Sub '${PrivateArtifacts.Arn}/bundles/*'
+              - !Sub '${PrivateArtifacts.Arn}/build-evidence/*'
+              - !Sub '${PrivateArtifacts.Arn}/evidence/operator/*'
+              - !Sub '${PrivateArtifacts.Arn}/deployments/*'
+            Condition:
+              'Null': {'s3:if-none-match': 'true'}
+              Bool: {'s3:ObjectCreationOperation': 'true'}
+  Images:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      ImageTagMutability: IMMUTABLE
+      ImageScanningConfiguration: {ScanOnPush: true}
+      EncryptionConfiguration: {EncryptionType: AES256}
+      LifecyclePolicy:
+        LifecyclePolicyText: '{"rules":[{"rulePriority":1,"description":"Remove only untagged images after seven days","selection":{"tagStatus":"untagged","countType":"sinceImagePushed","countUnit":"days","countNumber":7},"action":{"type":"expire"}}]}'
+  DatabaseDiskAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      Namespace: AWS/RDS
+      MetricName: FreeStorageSpace
+      Dimensions: [{Name: DBInstanceIdentifier, Value: !Ref Database}]
+      Statistic: Minimum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5368709120
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopicArn]
+  DatabaseConnectionsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      Namespace: AWS/RDS
+      MetricName: DatabaseConnections
+      Dimensions: [{Name: DBInstanceIdentifier, Value: !Ref Database}]
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 125
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions: [!Ref AlarmTopicArn]
+  DatabaseCreditAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      Namespace: AWS/RDS
+      MetricName: CPUSurplusCreditBalance
+      Dimensions: [{Name: DBInstanceIdentifier, Value: !Ref Database}]
+      Statistic: Maximum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions: [!Ref AlarmTopicArn]
+Outputs:
+  DatabaseEndpoint: {Value: !GetAtt Database.Endpoint.Address}
+  DatabaseMasterSecretArn: {Value: !GetAtt Database.MasterUserSecret.SecretArn}
+  CacheVolumeId: {Value: !Ref CacheVolume}
+  ArtifactBucket: {Value: !Ref PrivateArtifacts}
+  RepositoryUri: {Value: !GetAtt Images.RepositoryUri}
+  RepositoryArn: {Value: !GetAtt Images.Arn}

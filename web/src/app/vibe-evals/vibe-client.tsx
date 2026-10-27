@@ -40,7 +40,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 
 
-import { vibeFetch, type CaseResult, dollars, type Session } from "@/lib/vibe";
+import { dollars } from "@/lib/vibe";
 
 import { keepReturnURL, savedWorkURL, advancedURL } from "@/lib/vibe-keep";
 

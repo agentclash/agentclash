@@ -1,0 +1,2 @@
+# A full write fence runs before routing/auth and includes GET, HEAD and OPTIONS.
+respond "Maintenance" 503

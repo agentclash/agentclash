@@ -32,6 +32,12 @@ func TestRefreshEvalSetSpendReconcilesCaseCosts(t *testing.T) {
 	if !result.Allowed {
 		t.Fatal("should allow under budget")
 	}
+	for range 3 {
+		replayed, err := acts.RefreshEvalSetSpend(context.Background(), RefreshEvalSetSpendInput{EvalSetID: setID})
+		if err != nil || replayed.SpentUSD != 3.5 {
+			t.Fatalf("replayed reconciliation: spent=%v err=%v", replayed.SpentUSD, err)
+		}
+	}
 	check, err := acts.CheckEvalSetBudget(context.Background(), CheckEvalSetBudgetInput{EvalSetID: setID})
 	if err != nil {
 		t.Fatal(err)
