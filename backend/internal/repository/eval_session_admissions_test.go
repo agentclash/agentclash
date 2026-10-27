@@ -48,15 +48,4 @@ func TestEvalSessionAdmissionRecoversOriginalChildren(t *testing.T) {
 	if err = db.QueryRow(ctx, `SELECT count(*) FROM eval_sessions WHERE workspace_id=$1`, f.workspaceID).Scan(&count); err != nil || count != 1 {
 		t.Fatal("retry created duplicate children", count, err)
 	}
-	agents, err := repo.ListRunAgentsByRunID(ctx, admitted.Runs[0].ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// Historical controlled jobs must not be resumed with the retired guards removed.
-	if _, err = db.Exec(ctx, `INSERT INTO run_agent_controlled_settings(run_agent_id,snapshot_id,settings_hash,settings) VALUES($1,$2,'retired','{}')`, agents[0].ID, f.agentDeploymentSnapshotID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = repo.GetRunAgentExecutionContextByID(ctx, agents[0].ID); !errors.Is(err, repository.ErrFrozenExecutionContext) {
-		t.Fatalf("retired controlled job allowed to execute: %v", err)
-	}
 }

@@ -17,7 +17,7 @@ func (r *Repository) ConnectorDependencyChecks(ctx context.Context) map[string]s
 			checks["connector_schema"] = "ok"
 		}
 	}
-	rows, err = r.db.Query(ctx, `SELECT s.workspace_id,a.workspace_id,a.request_id,a.request_hash,a.eval_session_id,c.run_agent_id FROM eval_sessions s,eval_session_admissions a,run_agent_controlled_settings c LIMIT 0`)
+	rows, err = r.db.Query(ctx, `SELECT s.workspace_id,a.workspace_id,a.request_id,a.request_hash,a.eval_session_id FROM eval_sessions s,eval_session_admissions a LIMIT 0`)
 	checks["eval_session_schema"] = "unavailable"
 	if err == nil {
 		rows.Close()

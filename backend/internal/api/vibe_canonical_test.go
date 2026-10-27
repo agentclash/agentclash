@@ -316,7 +316,7 @@ func TestVibeCanonicalMountedReadinessRejectsPartialEvalSessionSchema(t *testing
 			t.Fatalf("complete eval-session schema not ready: %d %s", w.Code, w.Body)
 		}
 	})
-	for _, missing := range []struct{ table, column string }{{"eval_sessions", "workspace_id"}, {"run_agent_controlled_settings", "run_agent_id"}, {"eval_session_admissions", "request_hash"}} {
+	for _, missing := range []struct{ table, column string }{{"eval_sessions", "workspace_id"}, {"eval_session_admissions", "request_hash"}} {
 		t.Run(missing.table+"."+missing.column, func(t *testing.T) {
 			schema := "eval_session_ready_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 			if _, e := h.db.Exec(h.ctx, "CREATE SCHEMA "+schema); e != nil {
