@@ -435,7 +435,9 @@ test("library original bytes round-trip through browser upload and selected expo
  await page.getByRole('button',{name:/Improve an existing agent/}).click();
  // Unknown canonical extension is retained exactly and remains explicitly uneditable.
  const original=Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from('{\r\n  "pack": {"name":"Escaped \\u0041 pack", "future_extension":true},\r\n  "version": {"version":"1.0.0"}\r\n}\r\n')]);
- await page.getByLabel('Evaluation file',{exact:true}).setInputFiles({name:'original escaped.json',mimeType:'application/json',buffer:original});
+ const chooser=page.waitForEvent('filechooser');
+ await page.getByRole('button',{name:'Import a test pack',exact:true}).click();
+ await (await chooser).setFiles({name:'original escaped.json',mimeType:'application/json',buffer:original});
  await expect(page.getByRole('button',{name:'Download original original escaped.json',exact:true})).toBeVisible();
  const sourceDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Download original original escaped.json',exact:true}).click();
  const source=await sourceDownload;const {readFile}=await import('node:fs/promises');expect(await readFile((await source.path())!)).toEqual(original);
