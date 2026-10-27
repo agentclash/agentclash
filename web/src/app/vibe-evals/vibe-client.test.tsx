@@ -2002,7 +2002,7 @@ it("keeps the V1 entry visible while configuration loads, fails, and retries", a
     return json([]);
   };
   const entry = () => {
-    expect(container.textContent).toContain("What would you like AI to handle?");
+    expect(container.textContent).toContain("What would you like to evaluate?");
     expect(container.textContent).not.toContain("What should your agent do?");
     expect(container.querySelector('[aria-label="Agent sidebar"]')).not.toBeNull();
     expect(composer()).toBeNull();
@@ -2133,10 +2133,10 @@ it("keeps last successful project rows after a refresh failure, distinguishes fo
   await render(); expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeTruthy();
   result = "failure"; await click("Refresh projects");
   expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeTruthy();
-  expect(container.textContent).toContain("Couldn’t refresh saved work");
+  expect(container.textContent).toContain("Couldn’t refresh your projects");
   result = "forbidden"; await click("Refresh projects");
   expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeNull();
-  expect(container.textContent).toContain("don’t have access");
+  expect(container.textContent).toContain("Couldn’t load your projects");
   result = "success"; await click("Refresh projects");
   expect(container.querySelector('[data-evaluation-id="earlier-project"]')).toBeTruthy();
   harness.user = { id: "other-actor" }; harness.token.mockResolvedValue(undefined);
@@ -2153,7 +2153,7 @@ it.each(["build", "test"] as const)("blocks unavailable %s admission while retai
   expect(button("Send message").disabled).toBe(true);
   expect(container.textContent).toContain("Previously saved question");
   expect(container.textContent).toContain("No approved models");
-  await click("New agent");
+  await click("New evaluation");
   expect(button("Back to your evaluation").disabled).toBe(false);
   await click("Back to your evaluation");
   expect(container.textContent).toContain("Previously saved question");
@@ -2293,7 +2293,7 @@ it.each(["guest", "workspace-a"])("starts a new workspace project independently 
     if (path.startsWith("/sessions/") && path !== `/sessions/${session.id}`) return json({ ...session, id: path.split("/").at(-1), anonymous: false, workspace_id: "workspace-b", document: { ...session.document, models: defaultModels, artifacts: [], messages: [], evaluation: { id: path.split("/").at(-1), door: "build" } } });
     return previous(path, options);
   };
-  await render(); await click("New agent");
+  await render(); await click("New evaluation");
   const choice = container.querySelector<HTMLSelectElement>('select[aria-label="Workspace for new projects"]')!;
   expect([...choice.options].some(o => o.value === "workspace-b")).toBe(true);
   await act(async () => { choice.value = "workspace-b"; choice.dispatchEvent(new Event("change", { bubbles: true })); });
@@ -2679,4 +2679,18 @@ it("loads canonical source-qualified Results once, pins its artifact and stops t
 });
 it("retains canonical source uncertainty and retries an authorized lookup without dispatch",async()=>{
  const {id,artifact,report}=sdkProject();const result={binding:{...report.binding,result_ref:{kind:"run",id}},evidence_metadata:{},name:"Application",status:"completed",created_at:"",participants:[],evidence_hash:"hash",omissions:[]};harness.params=new URLSearchParams(`session=${session.id}&view=results&agent=${artifact.id}&run=run:${id}`);const before=respond;let calls=0;respond=async(path,options)=>path.endsWith("/canonical-results")?json([result]):path.includes("/canonical-results/run/")?(++calls===1?json({error:{code:"unavailable",message:"Canonical temporarily unavailable"}},503):json(result)):before(path,options);await render();expect(new URL(location.href).searchParams.get("run")).toBe(`run:${id}`);await click("Retry selected result");expect(container.querySelector('[aria-label="Canonical result detail"]')).not.toBeNull();expect(posts()).toHaveLength(0);
+});
+
+
+it("explains unavailable evaluation entry before its disabled choices while keeping the sample readable", async () => {
+  harness.params = new URLSearchParams();
+  respond = async path => path === "/config" ? json({ enabled: true, two_door: true, defaults: defaultModels, models: [], availability: { guest: { available: false }, workspace: { available: false } } }) : json([]);
+  await render();
+  const reason = [...container.querySelectorAll('[role="status"]')].find(node => node.textContent === "No approved models are available.")!;
+  const choices = container.querySelector(".vibe-entry-doors")!;
+  expect(reason).toBeTruthy();
+  expect(reason.compareDocumentPosition(choices) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect([...choices.querySelectorAll("button")].every(button => button.disabled)).toBe(true);
+  expect([...container.querySelectorAll("summary")].some(node => node.textContent === "Read a sample evaluation")).toBe(true);
+  expect(requests.filter(request => request.method === "POST")).toHaveLength(0);
 });

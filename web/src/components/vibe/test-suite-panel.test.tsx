@@ -42,6 +42,20 @@ it("counts the retained cases and leaves legacy imported tests available without
   expect(run).toHaveBeenCalledOnce();
 });
 
+it("offers running and model context before a long list of tests", async () => {
+  artifact.blueprint = { cases: Array.from({ length: 50 }, (_, index) => ({ key: `case-${index}`, payload: { question: `Question ${index}?` } })) };
+  await act(async () => root.render(<TestSuitePanel artifact={artifact} busy={false} blocked={false} comparison={false}
+    modelLabel="Returns model" onRun={run} onEdit={vi.fn()} onDirty={vi.fn()} onSave={vi.fn()} onSettings={vi.fn()} />));
+  const firstCase = node.querySelector(".vibe-result-row summary")!;
+  const runButton = button("Run 50 tests");
+  const scope = [...node.querySelectorAll("p")].find(item => item.textContent?.includes("Returns model"))!;
+  expect(runButton.disabled).toBe(false);
+  expect(runButton.compareDocumentPosition(firstCase) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(scope.compareDocumentPosition(firstCase) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(scope.textContent).toContain("Your live app is not called.");
+  expect(run).not.toHaveBeenCalled();
+});
+
 it("labels a failed policy update as unapplied and makes running the previous tests explicit", async () => {
   await render(true);
   expect(node.querySelector("h2")?.textContent).toBe("5 tests from your previous policy");
@@ -60,17 +74,19 @@ it.each(["contradicted", "unclear", "unavailable"] as const)("does not offer an 
   expect(run).not.toHaveBeenCalled();
 });
 
-it("shows the tested rules before running while allowing a user to collapse them", async () => {
+it.each([false, true])("keeps rules available and expands them only when policy needs attention (%s)", async pendingPolicy => {
   await act(async () => root.render(<TestSuitePanel artifact={artifact} busy={false} blocked={false} comparison={false}
+    pendingPolicy={pendingPolicy}
     rules={[{ id: "window", statement: "Only unopened purchases within 30 days qualify." }]}
     onRun={run} onEdit={vi.fn()} onDirty={vi.fn()} onSave={vi.fn()} onSettings={vi.fn()} />));
   const summary = [...node.querySelectorAll("summary")].find(item => item.textContent === "Rules being tested")!;
   expect(summary).toBeDefined();
   const disclosure = summary.closest("details")!;
-  expect(disclosure.open).toBe(true);
+  expect(disclosure.open).toBe(pendingPolicy);
   await act(async () => summary.click());
-  expect(disclosure.open).toBe(false);
+  expect(disclosure.open).toBe(!pendingPolicy);
   expect(disclosure.textContent).toContain("Only unopened purchases within 30 days qualify.");
+  expect(run).not.toHaveBeenCalled();
 });
 
 it("lets someone without an agent keep prepared tests without offering a fabricated run", async () => {
@@ -91,10 +107,18 @@ it("edits one expectation through its stable case key, preserving other inputs a
     { key: "first", payload: { question: "First input" }, expectations: [{ key: "expected_behavior", kind: "text", value: "First expectation" }] },
     { key: "custom", payload: { question: "Keep custom grading" }, expectations: [{ key: "custom_rule", kind: "regex", value: "^safe$" }] },
   ] };
-  const before = structuredClone(artifact); const edit = vi.fn().mockResolvedValue(true);
+  const before = structuredClone(artifact); const edit = vi.fn().mockResolvedValue(true); const select = vi.fn();
   await act(async () => root.render(<TestSuitePanel artifact={artifact} busy={false} blocked={false} comparison={false}
+    onSelectCase={select}
     onRun={run} onEdit={edit} onDirty={vi.fn()} onSave={vi.fn()} onSettings={vi.fn()} />));
+  const firstCase = node.querySelector<HTMLDetailsElement>(".vibe-result-row")!;
+  expect(firstCase.open).toBe(false);
+  await act(async () => firstCase.querySelector("summary")!.click());
+  expect(firstCase.open).toBe(true);
+  expect(node.querySelector("textarea")).toBeNull();
+  expect(select).not.toHaveBeenCalled(); expect(edit).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
   await act(async () => button("Edit this expectation").click());
+  expect(select).toHaveBeenCalledWith("first");
   expect(node.querySelectorAll("textarea")).toHaveLength(1);
   const area = node.querySelector("textarea")!;
   await act(async () => {

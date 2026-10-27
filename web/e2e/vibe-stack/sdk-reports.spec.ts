@@ -22,6 +22,7 @@ test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrad
  await expect.poll(async()=>((await evidence(page,id)).session.document.artifacts || []).length).toBe(1);
  const initial=await evidence(page,id);const artifact=initial.session.document.artifacts[0];expect(initial.session.operations).toHaveLength(0);
  await page.getByRole("tab",{name:"Results",exact:true}).click();
+ await page.getByLabel("SDK report history",{exact:true}).locator("summary").click();
  await expect(page.getByText("No imported reports yet.",{exact:false})).toBeVisible();
  await page.locator("summary").filter({hasText:/^Import SDK report$/}).click();
  const source=" \r\n"+JSON.stringify({schema_version:1,report_id:"python-local-original",generated_at:"2026-10-26T12:00:00Z",runner:{name:"agentclash-evals",version:"1"},summary:{total:1,passed:0,failed:1,skipped:0,errored:0},cases:[{case:{case_id:"local arbitrary id",name:"Retained answer",expected:"Confirm eligibility without claiming that a refund was processed."},status:"failed",metrics:[{key:"uploaded-rule",name:"Uploaded rule",passed:false,score:0.2,reason:"Original uploaded judgment"}],agent_result:{input:"Can I return my unopened item bought 10 days ago?",output:"Your unopened item bought 10 days ago is eligible under the 30-day policy. I cannot process a refund."}}],exit_code:1},null,2)+"\t\n";
@@ -58,6 +59,7 @@ test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrad
  await expect.poll(async()=>{const v=await evidence(page,id);return v.session.operations.at(-1)?.state;}).toBe("COMPLETED");
  const graded=await evidence(page,id);expect(graded.session.operations).toHaveLength(1);expect(graded.session.operations[0].evidence_metadata.source_result_ref).toEqual({kind:"sdk_report",id:report.id});expect(graded.session.operations[0].evidence_metadata.origin).toBe("regraded");expect(graded.calls.slice(callsBefore)).toHaveLength(1);expect(graded.calls.slice(callsBefore).every((c:{role:string})=>c.role==="judge")).toBe(true);
  await expect.poll(()=>new URL(page.url()).searchParams.get("run")).toBe(graded.session.operations[0].id);
+ await page.getByLabel("SDK report history",{exact:true}).locator("summary").click();
  await page.getByRole("button",{name:"Open report python-local-original",exact:true}).click();await expect(page).toHaveURL(sourceURL);
  await page.getByLabel("SDK detail source case").selectOption("local arbitrary id");const promote=page.getByRole("button",{name:"Create version with this expectation",exact:true});await expect(promote).toBeDisabled();
  await page.getByRole("checkbox",{name:"I reviewed this expectation for the selected test case."}).check();await promote.click();

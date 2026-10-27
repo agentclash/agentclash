@@ -9,13 +9,14 @@ import { EvaluationOutcome } from "./evaluation-outcome";
 import { ProjectEnquiry } from "./project-enquiry";
 import { VibeButton } from "./vibe-button";
 
-export function BuildNextActions({ session, artifact, operation, hasOutput, busy, primary, onTry, onDetails, onGuide, onSave, onTougher, onExport, loadEvidence }: {
+export function BuildNextActions({ session, artifact, operation, hasOutput, busy, primary, onTry, onDetails, onGuide, onSave, onTougher, onExport, loadEvidence, showResultLink = true }: {
   session: Session;
   artifact: Artifact;
   operation?: Operation;
   hasOutput: boolean;
   busy: boolean;
   primary: boolean;
+  showResultLink?: boolean;
   onTry: () => void;
   onDetails: (operation: Operation) => void;
   onGuide: () => void;
@@ -47,14 +48,14 @@ export function BuildNextActions({ session, artifact, operation, hasOutput, busy
   return <section className="vibe-build-next-actions" aria-label="Next actions for this version" data-artifact-id={artifact.id} hidden={!available}>
     <div className="vibe-build-next-primary">
       {brief ? <VibeButton variant={primary ? "primary" : "secondary"} onClick={() => { action("change"); onGuide(); }}>Add missing information</VibeButton>
-        : operation && !allPass ? <VibeButton variant={primary ? "primary" : "secondary"} onClick={() => { action(score?.failed ? "review_problem" : "checks"); onDetails(operation); }}>{score?.failed ? "Review the problem" : "See what happened"}</VibeButton>
+        : operation && !allPass ? showResultLink && <VibeButton variant={primary ? "primary" : "secondary"} onClick={() => { action(score?.failed ? "review_problem" : "checks"); onDetails(operation); }}>{score?.failed ? "Review the problem" : "See what happened"}</VibeButton>
           : !hasOutput ? <VibeButton variant={primary ? "primary" : "secondary"} onClick={() => { action("try"); onTry(); }}>Try it yourself</VibeButton>
             : null}
       <div hidden={!contactEligible}><ProjectEnquiry key={`${session.id}:${artifact.id}`} session={session} artifact={artifact} operation={operation} primary={hasOutput && (allPass || !operation)} /></div>
     </div>
     {!brief && <div className="vibe-build-next-secondary">
       {!hasOutput && operation && !allPass && <VibeButton variant="quiet" onClick={() => { action("try"); onTry(); }}>Try it yourself</VibeButton>}
-      {operation && allPass && <VibeButton variant="quiet" onClick={() => { action("checks"); onDetails(operation); }}>See {operation.results.length} {operation.results.length === 1 ? "check" : "checks"}</VibeButton>}
+      {showResultLink && operation && allPass && <VibeButton variant="quiet" onClick={() => { action("checks"); onDetails(operation); }}>See {operation.results.length} {operation.results.length === 1 ? "check" : "checks"}</VibeButton>}
       {hasOutput && <VibeButton variant="quiet" onClick={() => { action("change"); onGuide(); }}>Change how it works</VibeButton>}
       {operation && <VibeButton variant="quiet" aria-expanded={keepOpen} onClick={() => { action("save"); setKeepOpen(value => !value); }}>Download / save</VibeButton>}
     </div>}

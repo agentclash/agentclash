@@ -180,13 +180,14 @@ async function render(
   return load;
 }
 
-it("filters result rows without changing the outcome or whole-run totals", async () => {
+it("shows the outcome before filtering result rows without changing whole-run totals", async () => {
  await render(operation([failure,passing]));
- const heading=container.querySelector("h1")!.textContent;
+ const heading=container.querySelector("h2")!.textContent;
  const select=container.querySelector<HTMLSelectElement>('select[aria-label="Filter cases"]');
  expect(select).not.toBeNull();
+ expect(container.querySelector("h2")!.compareDocumentPosition(select!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
  await act(async()=>{select!.value="passing";select!.dispatchEvent(new Event("change",{bubbles:true}));});
- expect(container.querySelector("h1")!.textContent).toBe(heading);
+ expect(container.querySelector("h2")!.textContent).toBe(heading);
  expect(container.textContent).toContain("1 passed · 1 failed · 0 unresolved");
  expect(container.textContent).not.toContain("The purchase age was asked twice");
  expect(container.textContent).toContain("The return window was respected");
@@ -210,7 +211,7 @@ it("makes fixing, rerunning and keeping tests direct actions for the core journe
     label: "Agent instructions",
   };
   await render(op, undefined, true, true);
-  expect(container.querySelector("h1")!.textContent).toBe(
+  expect(container.querySelector("h2")!.textContent).toBe(
     "1 of 2 tests passed",
   );
   expect(container.textContent).not.toContain("Check the new answer");
@@ -237,7 +238,7 @@ it("makes keeping tests the primary action for a passing first run", async () =>
 it("leads with one reply and keeps complete evidence behind a single accessible disclosure", async () => {
   const load = await render(operation([passing, failure]));
   const leading = container.querySelector('[aria-label="Leading finding"]')!;
-  expect(container.querySelector("h1")!.textContent).toBe("1 chat failed");
+  expect(container.querySelector("h2")!.textContent).toBe("1 chat failed");
   expect(leading.querySelector("details")!.open).toBe(true);
   expect(leading.textContent).toContain(failure.checks[0].evidence);
   const visibleQuotes = [...leading.querySelectorAll("blockquote")].filter(
@@ -420,7 +421,7 @@ it("prioritizes a new regression over an existing failure without hiding either"
   const next = { ...operation([failure, regressed]), id: "next", baseline_id: old.id };
   old.grading = next.grading = { version: 1, hash: "matching" } as Operation["grading"];
   await render(next, old);
-  expect(container.querySelector("h1")!.textContent).toContain("1 newly failing chat");
+  expect(container.querySelector("h2")!.textContent).toContain("1 newly failing chat");
   expect(
     container.querySelector('[aria-label="Leading finding"] summary')!
       .textContent,
@@ -437,7 +438,7 @@ it("does not turn regrading unchanged replies into an improvement claim", async 
   const op = operation([passing]);
   op.source!.comparison = "rechecked";
   await render(op, operation([{ ...passing, verdict: "FAIL" }]));
-  expect(container.querySelector("h1")!.textContent).toBe(
+  expect(container.querySelector("h2")!.textContent).toBe(
     "Same chats rechecked",
   );
   expect(container.textContent).toContain(
@@ -478,7 +479,7 @@ it.each(["PARTIAL", "CANCELLED"])(
     ).toBe(true);
     expect(container.textContent).not.toContain("Copy fix prompt");
     if (state === "CANCELLED")
-      expect(container.querySelector("h1")!.textContent).toContain(
+      expect(container.querySelector("h2")!.textContent).toContain(
         "Check stopped",
       );
   },
@@ -486,7 +487,7 @@ it.each(["PARTIAL", "CANCELLED"])(
 
 it("keeps an all-pass outcome scoped to its tested examples and offers no repair prompt", async () => {
   await render(operation([passing]));
-  expect(container.querySelector("h1")!.textContent).toBe(
+  expect(container.querySelector("h2")!.textContent).toBe(
     "No issues found in this chat",
   );
   expect(container.textContent).toContain(
@@ -596,7 +597,7 @@ it("offers mixed failed and unassessed checks in the unresolved filter and exact
  op.scorecard={...op.scorecard!,incomplete_cases:2,checks_expected:5,checks_evaluated:3};
  await render(op);
  expect(container.textContent).toContain("1 passed · 2 failed · 2 unresolved");
- expect(container.querySelector("h1")!.textContent).toBe("2 chats failed");
+ expect(container.querySelector("h2")!.textContent).toBe("2 chats failed");
  expect(container.textContent).toContain("can also be counted as passed or failed");
  const select=container.querySelector<HTMLSelectElement>('[aria-label="Filter cases"]')!;
  await act(async()=>{select.value="failing";select.dispatchEvent(new Event("change",{bubbles:true}))});
@@ -608,7 +609,7 @@ it("offers mixed failed and unassessed checks in the unresolved filter and exact
  expect(container.textContent).toContain("Partially assessed");
  expect(container.textContent).not.toContain(failure.title);
  expect(container.textContent).toContain("Awaiting assessment");
- expect(container.querySelector("h1")!.textContent).toBe("2 chats failed");
+ expect(container.querySelector("h2")!.textContent).toBe("2 chats failed");
  expect(container.textContent).toContain("1 passed · 2 failed · 2 unresolved");
  const retry=vi.fn();
  await act(async()=>root.render(<ResultRecoveryControls operation={op} busy={false} onReload={()=>{}} onRetry={retry} onFullRun={()=>{}}/>));
@@ -697,4 +698,14 @@ it.each(["new ASCII", "new multibyte", "persisted invalid"])("corrects an overli
  expect(posts[0].client_id).not.toBe(previous.client_id);
  expect(readEditorDraft(project,op.id,"review-request")).toBeUndefined();
  discardDrafts(project);
+});
+
+
+it("opens Guide for the chosen case even when its evidence cannot load", async () => {
+  const ask = vi.fn();
+  await act(async () => root.render(<VibeScorecard operation={redacted(operation([failure]))} loadEvidence={async () => { throw Error("Saved evidence offline"); }} onImprove={improve} onRetest={retest} onAskCase={ask} busy={false} />));
+  await click("Ask Guide about this case");
+  expect(ask).toHaveBeenCalledExactlyOnceWith("memory");
+  expect(retest).not.toHaveBeenCalled();
+  expect(improve).not.toHaveBeenCalled();
 });

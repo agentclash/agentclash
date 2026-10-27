@@ -623,12 +623,49 @@ it("restores instruction reading focus after saving creates a new version", asyn
  const artifact={id:"old",kind:"test_suite" as const,title:"Returns",agent_prompt:"Policy",accepted:true,source_message_id:"request",blueprint:{cases:[]}};
  const next={...artifact,id:"new",parent_id:"old"}; current.document.artifacts=[artifact];
  let complete!:()=>void; const saved=new Promise<void>(resolve=>{complete=resolve;});
- await render({twoDoor:true,session:current,artifact,onEdit:vi.fn(async()=>{await saved; await render({session:{...current,document:{...current.document,artifacts:[artifact,next]}},artifact:next}); return true;})});
+ await render({twoDoor:true,session:current,artifact,onEdit:vi.fn(async()=>{await saved; return true;})});
  await act(async()=>button("Change agent instructions").click());
  await act(async()=>new Promise(resolve=>setTimeout(resolve,25)));
  button("Use these instructions").focus();
  await act(async()=>button("Use these instructions").click());
- await act(async()=>complete());
+ await act(async()=>{
+   complete();
+   props={...props,session:{...current,document:{...current.document,artifacts:[artifact,next]}},artifact:next};
+   root.render(<EvaluationWorkspace {...props}/>);
+ });
  await act(async()=>new Promise(resolve=>setTimeout(resolve,25)));
  expect(document.activeElement).toBe(container.querySelector('[aria-label="Agent instructions"] h2'));
+});
+
+it("keeps Guide closed as responses and run attention arrive and preserves the draft on explicit open", async () => {
+  const current = session([{ id: "request", role: "user", content: "Help with returns" }]);
+  current.document.evaluation = { id: current.id, chat_id: current.id, door: "build" };
+  const artifact = { id: "suite", kind: "test_suite" as const, title: "Returns", agent_prompt: "Use supplied policy", accepted: true, source_message_id: "request", blueprint: { cases: [] } };
+  current.document.artifacts = [artifact];
+  await render({ twoDoor: true, session: current, artifact, content: "Keep my question" });
+  expect(container.querySelector('[aria-label="Guide utility"]')).toBeNull();
+  expect(button("Guide").getAttribute("aria-pressed")).toBe("false");
+
+  await render({ session: { ...current, document: { ...current.document, messages: [...current.document.messages, { id: "answer", role: "assistant", content: "Review the proposed examples." }] } } });
+  expect(container.querySelector('[aria-label="Guide utility"]')).toBeNull();
+  expect(button("Guide").textContent).toContain("New response");
+
+  const active = { ...operation("active"), kind: "message", state: "AWAITING_APPROVAL" };
+  await render({ session: { ...props.session!, operations: [active] } });
+  expect(button("Guide").textContent).toContain("Approval needed");
+  expect(container.querySelector('[aria-label="Guide utility"]')).toBeNull();
+  await render({ session: { ...props.session!, operations: [{ ...active, state: "RUNNING" }] } });
+  expect(button("Guide").textContent).toContain("Running");
+  await render({ session: { ...props.session!, operations: [{ ...active, state: "FAILED", retryable: true }] } });
+  expect(button("Guide").textContent).toContain("Needs attention");
+
+  await act(async () => button("Guide").click());
+  expect(container.querySelector('[aria-label="Guide utility"]')).not.toBeNull();
+  expect(container.querySelector<HTMLTextAreaElement>('#vibe-message')?.value).toBe("Keep my question");
+  await act(async () => button("Close Guide").click());
+  expect(container.querySelector('[aria-label="Guide utility"]')).toBeNull();
+  await act(async () => button("Guide").click());
+  expect(container.querySelector<HTMLTextAreaElement>('#vibe-message')?.value).toBe("Keep my question");
+  expect(props.onContent).not.toHaveBeenCalled();
+  expect(props.onSend).not.toHaveBeenCalled();
 });

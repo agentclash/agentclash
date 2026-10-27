@@ -79,6 +79,7 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   const download=page.waitForEvent("download"); await page.getByRole("button",{name:"Markdown (.md)"}).click(); await download;
   await page.reload();
   expect((await saved(page)).session.operations).toHaveLength(3);
+  await page.getByText("Project actions",{exact:true}).click();
   await page.getByRole("button",{name:"Delete this project",exact:true}).click();
   await expect(page.getByRole("dialog")).toContainText("Separate workspace saves");
   await page.getByRole("button",{name:"Delete project permanently",exact:true}).click();
