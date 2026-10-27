@@ -531,7 +531,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   "New check",
                   Plus,
                   () => {
-                    window.location.href = "/vibe-evals";
+                    window.location.assign("/vibe-evals");
                   },
                 ],
                 ["History", History, () => setHistoryOpen(true)],
