@@ -89,6 +89,9 @@ type PublicRunAgentReplaySnapshot struct {
 }
 
 func (r *Repository) CreatePublicShareLink(ctx context.Context, params CreatePublicShareLinkParams) (PublicShareLink, error) {
+	if params.ResourceType == PublicShareResourceReportSnapshot {
+		params.SearchIndexing = false
+	}
 	row := r.db.QueryRow(ctx, `
 		INSERT INTO public_share_links (
 			key,
@@ -104,6 +107,7 @@ func (r *Repository) CreatePublicShareLink(ctx context.Context, params CreatePub
 		ON CONFLICT (resource_type, resource_id) WHERE is_active
 		DO UPDATE SET
 			search_indexing = CASE
+				WHEN EXCLUDED.resource_type = 'report_snapshot' THEN false
 				WHEN public_share_links.expires_at IS NOT NULL AND public_share_links.expires_at <= now()
 				THEN EXCLUDED.search_indexing
 				ELSE public_share_links.search_indexing OR EXCLUDED.search_indexing

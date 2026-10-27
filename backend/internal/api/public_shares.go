@@ -175,6 +175,9 @@ func (m *PublicShareManager) CreateShareLink(ctx context.Context, caller Caller,
 		return CreateShareLinkResult{}, err
 	}
 
+	if share.ResourceType == repository.PublicShareResourceReportSnapshot {
+		share.SearchIndexing = false
+	}
 	result := CreateShareLinkResult{
 		Share: share,
 		Token: share.Key,

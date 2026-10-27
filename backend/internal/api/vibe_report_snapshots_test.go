@@ -257,18 +257,47 @@ func TestVibeReportSnapshotIndependentSelection(t *testing.T) {
 	if public, readErr := manager.GetPublicShare(h.ctx, link.Token, ""); readErr != nil || public.Share.SearchIndexing {
 		t.Fatal("report capability advertises indexing", readErr)
 	}
-	if _, err = manager.GetPublication(h.ctx, link.Share.ID); err == nil {
-		t.Fatal("forged publication indexed")
+	assertNotPublished := func() {
+		t.Helper()
+		if _, err = manager.GetPublication(h.ctx, link.Share.ID); err == nil {
+			t.Fatal("forged publication indexed")
+		}
+		publications, err := manager.ListPublications(h.ctx, nil, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range publications.Items {
+			if p.Publication.ID == link.Share.ID {
+				t.Fatal("publication list leak")
+			}
+		}
 	}
-	publications, err := manager.ListPublications(h.ctx, nil, 100)
+	assertNotPublished()
+	// Active dedup must repair a forged indexing bit without replacing the
+	// capability or extending its original expiry, even when asked for longer.
+	dedupBody := mustJSON(t, map[string]any{"resource_type": "report_snapshot", "resource_id": id, "search_indexing": false, "expires_at": expiry.Add(time.Hour)})
+	dedup := request(memberCaller, "POST", "/v1/share-links", dedupBody)
+	if dedup.Code != http.StatusCreated {
+		t.Fatal("generic report dedup", dedup.Code, dedup.Body.String())
+	}
+	var dedupResult createShareLinkResponse
+	if err := json.Unmarshal(dedup.Body.Bytes(), &dedupResult); err != nil {
+		t.Fatal(err)
+	}
+	if dedupResult.Share.SearchIndexing || strings.Contains(dedup.Body.String(), `"publication_url"`) {
+		t.Error("deduplicated report advertises indexing or publication", dedup.Body.String())
+	}
+	if dedupResult.Token != link.Token || dedupResult.Share.ID != link.Share.ID || dedupResult.Share.ExpiresAt == nil || !dedupResult.Share.ExpiresAt.Equal(*link.Share.ExpiresAt) {
+		t.Error("dedup changed active token or persisted expiry", dedup.Body.String())
+	}
+	persisted, err := repo.GetPublicShareLinkByID(h.ctx, link.Share.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, p := range publications.Items {
-		if p.Publication.ID == link.Share.ID {
-			t.Fatal("publication list leak")
-		}
+	if persisted.SearchIndexing || persisted.Key != link.Token || persisted.ExpiresAt == nil || !persisted.ExpiresAt.Equal(*link.Share.ExpiresAt) {
+		t.Error("dedup did not reconcile indexing while preserving capability", persisted)
 	}
+	assertNotPublished()
 	if _, err = h.db.Exec(h.ctx, "UPDATE public_share_links SET expires_at=now()-interval '1 second' WHERE id=$1", link.Share.ID); err != nil {
 		t.Fatal(err)
 	}
