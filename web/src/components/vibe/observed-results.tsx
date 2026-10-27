@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { VibeError } from "@/lib/vibe";
+import { terminal, VibeError } from "@/lib/vibe";
 import { loadObservedEvidence, type ObservedEvidence, type ObservedEntry } from "@/lib/vibe-observed";
 import type { DimensionCapture, ProjectResultBinding } from "@/lib/vibe-result-evidence";
 import type { WorkspaceEvidenceAccess } from "@/lib/use-vibe-workspace-access";
@@ -48,7 +48,7 @@ export function ObservedResults(p: {
         if (!live || !current())
             return;
         setState({ owner: life.owner, value });
-        if (["queued", "running", "provisioning", "scoring", "aggregating"].includes(value.status))
+        if (ref.kind === "vibe_operation" ? !terminal(value.status) : ["queued", "running", "provisioning", "scoring", "aggregating"].includes(value.status))
             timer = setTimeout(load, 3000);
     }
     catch (e) {

@@ -347,7 +347,16 @@ func useDeterministicCanonicalEvaluator(t *testing.T, h *vibeAPIHarness, run uui
 
 func TestVibeCanonicalMountedReadinessRejectsPartialExperimentSchema(t *testing.T) {
 	h := newVibeAPIHarness(t)
-	for _, missing := range []struct{ table, column string }{{"eval_sessions", "workspace_id"}, {"run_agent_controlled_settings", "dispatch_guard_version"}, {"eval_set_admissions", "request_hash"}, {"eval_session_admissions", "request_hash"}} {
+	t.Run("complete_schema", func(t *testing.T) {
+		check := WithConnectorReadiness(func(context.Context) map[string]string { return map[string]string{"vibe_schema": "ok", "redis": "ok"} }, repository.New(h.db))
+		router := buildRouter(routerOptions{logger: slog.Default(), dbReadiness: h.db, temporalReadiness: fakeTemporalHealthChecker{}, dependencyReadiness: check})
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("GET", "/healthz/ready", nil))
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"experiment_schema":"ok"`) {
+			t.Fatalf("complete experiment schema not ready: %d %s", w.Code, w.Body)
+		}
+	})
+	for _, missing := range []struct{ table, column string }{{"eval_sessions", "workspace_id"}, {"run_agent_controlled_settings", "dispatch_guard_version"}, {"eval_set_admissions", "request_hash"}, {"eval_set_admissions", "workspace_id"}, {"eval_session_admissions", "request_hash"}} {
 		t.Run(missing.table+"."+missing.column, func(t *testing.T) {
 			schema := "experiment_ready_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 			if _, e := h.db.Exec(h.ctx, "CREATE SCHEMA "+schema); e != nil {
