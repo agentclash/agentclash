@@ -5,7 +5,7 @@ test.describe("before hydration", () => {
   test.use({ javaScriptEnabled: false });
   test("server HTML already shows the V1 entry", async ({ page }) => {
     await page.goto("/vibe-evals");
-    await expect(page.getByRole("heading", { name: "What would you like AI to handle?" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "What would you like to evaluate?" })).toBeVisible();
     await expect(page.getByRole("button", { name: /Build an agent/ })).toBeDisabled();
     await expect(page.getByText("What should your agent do?", { exact: true })).toHaveCount(0);
   });
@@ -38,7 +38,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       return route.fulfill({ headers, json: [] });
     });
     await page.goto("/vibe-evals");
-    const heading = page.getByRole("heading", { name: "What would you like AI to handle?" });
+    const heading = page.getByRole("heading", { name: "What would you like to evaluate?" });
     const build = page.getByRole("button", { name: /Build an agent/ });
     const improve = page.getByRole("button", { name: /Improve an existing agent/ });
     await expect(heading).toBeVisible();
