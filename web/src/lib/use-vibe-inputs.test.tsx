@@ -88,7 +88,7 @@ it("restores successful sources when a sibling source cannot be read", async () 
 it("keeps simultaneous Guide and trial material controllers separate across thread and actor changes", async () => {
  let guide!:ReturnType<typeof useVibeInputs>, trial!:ReturnType<typeof useVibeInputs>;
  function Recipients({thread,actor}:{thread:string;actor:string}) {
-  guide=useVibeInputs("a","guide",token,actor); trial=useVibeInputs("a",`trial:v1:${thread}`,token,actor); return null;
+  const guideValue=useVibeInputs("a","guide",token,actor), trialValue=useVibeInputs("a",`trial:v1:${thread}`,token,actor); React.useEffect(()=>{guide=guideValue;trial=trialValue}); return null;
  }
  const renderRecipients=async(thread="first",actor="person-a")=>act(async()=>root.render(<Recipients thread={thread} actor={actor}/>));
  vi.mocked(uploadMaterial).mockResolvedValueOnce(material).mockResolvedValueOnce({...material,id:"trial-file"});

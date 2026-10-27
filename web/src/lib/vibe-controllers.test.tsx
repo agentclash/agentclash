@@ -88,7 +88,7 @@ it("rejects same-project late GET, SSE and captured mutation/action ingress from
   let controller!: ReturnType<typeof useVibeSession>;
   let receive!: (value: Session) => void;
   network.watch.mockImplementation((_id, _token, _signal, callback) => { receive = callback; return new Promise(() => {}); });
-  function Harness() { controller = useVibeSession("A", token, false, 0, actor); return null; }
+  function Harness() { const value = useVibeSession("A", token, false, 0, actor); React.useEffect(() => { controller = value; }); return null; }
   await act(async () => root.render(<Harness />));
   await act(async () => controller.accept({ ...snapshot(), title: "First actor" }));
   const oldSSE = receive; const oldMutation = controller.accept;
@@ -103,7 +103,7 @@ it("canonicalizes legacy trial links and pushes deliberate navigation while corr
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   history.replaceState({}, "", "/vibe-evals?session=p&view=try&agent=a&thread=t");
   let nav!: ReturnType<typeof useVibeNavigation>;
-  function Harness() { nav = useVibeNavigation(); return null; }
+  function Harness() { const value = useVibeNavigation(); React.useEffect(() => { nav = value; }); return null; }
   await act(async () => root.render(<Harness />));
   expect(nav.view).toBe("agent"); expect(nav.section).toBe("trial");
   expect(new URLSearchParams(location.search).get("view")).toBe("agent");
@@ -126,7 +126,7 @@ it("invalidates captured final downloads after closing an export intent, even fo
   vi.stubGlobal("URL",Object.assign(URL,{createObjectURL:vi.fn(()=>"blob:test"),revokeObjectURL:vi.fn()}));
   const click=vi.spyOn(HTMLAnchorElement.prototype,"click").mockImplementation(()=>{});
   let c!:ReturnType<typeof useVibeExport>;
-  function Harness(){c=useVibeExport("actor",snapshot(),token);return null}
+  function Harness(){const value=useVibeExport("actor",snapshot(),token);React.useEffect(()=>{c=value});return null}
   await act(async()=>root.render(<Harness/>));await act(async()=>c.start(artifact));
   const obsoleteDownload=c.download;
   await act(async()=>c.close());
@@ -143,7 +143,7 @@ it("rejects a late private export body after actor A to B to A and pins the orig
   const preparation={format:"agentclash-evaluation-v2",session_id:"A",title:"Original title",captured_at:"2026-10-26T12:00:00Z",artifact_id:artifact.id,selection:{scope:"selected",artifact_id:artifact.id,result_id:operation.id},artifacts:[artifact],rules:[],runs:[operation],items:[{kind:"case",id:"run-a:case",operation_id:operation.id,artifact_id:artifact.id,case_key:"case",hash:"frozen"}],case_mappings:[],omissions:[]};
   network.get.mockImplementation((path:string)=>path.endsWith("/export")?Promise.resolve(preparation):body.promise);
   let c!:ReturnType<typeof useVibeExport>;
-  function Harness(){c=useVibeExport(actor,snapshot(),token);return null}
+  function Harness(){const value=useVibeExport(actor,snapshot(),token);React.useEffect(()=>{c=value});return null}
   await act(async()=>root.render(<Harness/>));let pending!:Promise<void>;
   await act(async()=>{pending=c.start(artifact,operation);await Promise.resolve()});
   expect(JSON.parse(network.get.mock.calls[0][2].body)).toEqual({scope:"selected",artifact_id:"version-a",result_id:"run-a"});
@@ -158,7 +158,7 @@ it.each(["actor change", "unmount"])("does not download retained original bytes 
  const {useVibeExport}=await import('./use-vibe-export');let actor='A';let c!:ReturnType<typeof useVibeExport>;
  const body=deferred<Uint8Array>();network.bytes.mockReturnValue(body.promise);
  const artifact={id:'version',original:{filename:'exact.json',media_type:'application/json'}} as Session['document']['artifacts'][number];
- function Harness(){c=useVibeExport(actor,snapshot(),token);return null}
+ function Harness(){const value=useVibeExport(actor,snapshot(),token);React.useEffect(()=>{c=value});return null}
  await act(async()=>root.render(<Harness/>));let pending!:Promise<void>;await act(async()=>{pending=c.original(artifact);await Promise.resolve()});
  if(lifetime==='unmount')await act(async()=>root.render(null));else {actor='B';await act(async()=>root.render(<Harness/>));}
  vi.stubGlobal('URL',Object.assign(URL,{createObjectURL:vi.fn(()=>'blob:original'),revokeObjectURL:vi.fn()}));
@@ -173,7 +173,7 @@ it("invalidates captured explicit export downloads when the owner unmounts",asyn
  vi.stubGlobal("URL",Object.assign(URL,{createObjectURL:vi.fn(()=>"blob:export"),revokeObjectURL:vi.fn()}));
  const click=vi.spyOn(HTMLAnchorElement.prototype,"click").mockImplementation(()=>{});
  let c!:ReturnType<typeof useVibeExport>;
- function Harness(){c=useVibeExport("actor",snapshot(),token);return null}
+ function Harness(){const value=useVibeExport("actor",snapshot(),token);React.useEffect(()=>{c=value});return null}
  await act(async()=>root.render(<React.StrictMode><Harness/></React.StrictMode>));
  await act(async()=>c.start(artifact));
  c.download();expect(click).toHaveBeenCalledOnce();click.mockClear();
@@ -190,7 +190,7 @@ it.each(["sdk_report","run","eval_session"] as const)("freezes a %s return selec
  history.replaceState({},"",`/vibe-evals?session=A&agent=${artifact.id}&view=results&run=${kind}:${ref.id}&case=local&thread=retained`);
  let saving!:ReturnType<typeof useVibeSaving>;
  const noop=vi.fn();
- function Harness(){saving=useVibeSaving({session:project,artifact,artifacts:[artifact],selectedResult:{session_id:"A",artifact_id:artifact.id,result_ref:ref},content:"",models:defaultModels,workspace:"",savedChecks:[],token,account:{status:"signed_out",workspaces:[],access:{status:"signed_out",canRead:false,canWrite:false,canAdmin:false},retry:noop},setContent:noop,setModels:noop,setWorkspace:noop,setError:noop,setPending:noop,setSavedChecks:noop,setSelectedArtifactID:noop,reload:async()=>project,writeURL:noop});return null}
+ function Harness(){const value=useVibeSaving({session:project,artifact,artifacts:[artifact],selectedResult:{session_id:"A",artifact_id:artifact.id,result_ref:ref},content:"",models:defaultModels,workspace:"",savedChecks:[],token,account:{status:"signed_out",workspaces:[],access:{status:"signed_out",canRead:false,canWrite:false,canAdmin:false},retry:noop},setContent:noop,setModels:noop,setWorkspace:noop,setError:noop,setPending:noop,setSavedChecks:noop,setSelectedArtifactID:noop,reload:async()=>project,writeURL:noop});React.useEffect(()=>{saving=value});return null}
  await act(async()=>root.render(<Harness/>));await act(async()=>saving.openSave());
  const captured=saving.saveReturnPath!;const url=new URL(captured,"https://local.invalid");
  expect(url.searchParams.get("run")).toBe(`${kind}:${ref.id}`);expect(url.searchParams.get("agent")).toBe(artifact.id);

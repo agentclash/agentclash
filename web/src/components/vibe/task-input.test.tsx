@@ -159,7 +159,7 @@ it("repairs named closed-composer blockers at their source fields without enabli
     ? {...ready,id:"policy",kind:"text",name:"Policy text"}
     : {...ready,warnings:["Page 2 could not be read."]});
   let owner!: ReturnType<typeof useVibeInputs>;
-  function Intake() { owner=useVibeInputs("s","guide",materialToken); return <TaskInput inputs={owner} configure pdfAvailable disabled={false}/>; }
+  function Intake() { const value=useVibeInputs("s","guide",materialToken); React.useEffect(()=>{owner=value}); return <TaskInput inputs={value} configure pdfAvailable disabled={false}/>; }
   await act(async()=>root.render(<Intake/>));
   const named = (name: string) => document.querySelector(`[aria-label="${name}"]`) as HTMLButtonElement;
   expect(node.textContent).toContain("Choose exact rule text from page 1");
@@ -195,7 +195,7 @@ it.each(["failed", "expired"] as const)("targets the %s source replacement and d
   sessionStorage.setItem("vibe-materials:s:guide", JSON.stringify([{id:"one",usage:"task_input",page:1,quote:"",acknowledged:false}]));
   vi.mocked(vibeFetch).mockResolvedValue({...ready,status});
   let owner!: ReturnType<typeof useVibeInputs>;
-  function Intake() { owner=useVibeInputs("s","guide",materialToken); return <TaskInput inputs={owner} configure pdfAvailable disabled={false}/>; }
+  function Intake() { const value=useVibeInputs("s","guide",materialToken); React.useEffect(()=>{owner=value}); return <TaskInput inputs={value} configure pdfAvailable disabled={false}/>; }
   await act(async()=>root.render(<Intake/>));
   expect(node.querySelector(".vibe-material-blockers")?.textContent).toContain(status === "expired" ? "This material has expired" : "Reading failed");
   await act(async()=>(node.querySelector(`[aria-label="Replace material for ${ready.name}"]`) as HTMLButtonElement).click());
