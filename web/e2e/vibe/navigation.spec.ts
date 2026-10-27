@@ -360,6 +360,36 @@ test("same-artifact case Back and Forward restores the visible expectation witho
   expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
 });
 
+test("compact text roles stay consistent across viewport sizes and portaled settings", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const control = await serve(page, false, true);
+  for (const width of [390, 1440, 2560]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect(page.locator(".vibe-project-identity h1")).toHaveCSS("font-size", "20px");
+    await expect(page.getByRole("heading", { name: "Agent instructions", exact: true })).toHaveCSS("font-size", "18px");
+    await expect(page.locator(".vibe-instructions-text")).toHaveCSS("font-size", "15px");
+    await expect(page.getByRole("textbox", { name: "Message your agent", exact: true })).toHaveCSS("font-size", "16px");
+    await expect(page.getByRole("tab", { name: "Agent", exact: true })).toHaveCSS("font-size", "14px");
+    if (width < 1024) await page.getByRole("button", { name: "Open agents", exact: true }).click();
+    const navigation = width < 1024 ? page.getByRole("dialog", { name: "Your agents", exact: true }) : page.getByRole("complementary", { name: "Agent sidebar", exact: true });
+    await expect(navigation.locator('[data-evaluation-id="first"] .vibe-project-full-title')).toHaveCSS("font-size", "13px");
+    await expect(navigation.locator('[data-evaluation-id="first"] small')).toHaveCSS("font-size", "12px");
+    if (width < 1024) await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Details", exact: true }).click();
+    const details = width < 1280 ? page.getByRole("dialog", { name: "Details", exact: true }) : page.getByRole("complementary", { name: "Details utility", exact: true });
+    await expect(details.getByLabel("Appearance", { exact: true })).toHaveCSS("font-size", "16px");
+    await details.getByRole("button", { name: "Settings", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Settings and details", exact: true });
+    await expect(dialog.getByRole("heading", { name: "Settings and details", exact: true })).toHaveCSS("font-size", "20px");
+    await expect(dialog.locator('[data-slot="dialog-description"]')).toHaveCSS("font-size", "14px");
+    await expect(dialog.getByRole("button", { name: "Import a test pack", exact: true })).toHaveCSS("font-size", "14px");
+    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    await page.getByRole("button", { name: "Close Details", exact: true }).click();
+  }
+  expect(control.posts).toHaveLength(0);
+  expect(control.errors).toEqual([]);
+});
+
 test("Guide keeps its composer in view through short-window resizing without losing a draft", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   const control = await serve(page, false, true);

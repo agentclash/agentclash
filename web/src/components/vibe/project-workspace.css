@@ -35,44 +35,44 @@
 .vibe-project-header { flex: none; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px 16px; padding: clamp(.5rem, 1.5dvh, 1rem) var(--vibe-gutter) 10px; border-bottom: 1px solid var(--vibe-border); background: var(--vibe-bg); }
 .vibe-project-tabs { grid-row: 2; grid-column: 1; min-width: 0; }
 .vibe-project-header .vibe-nav { flex-wrap: wrap; margin: 0; gap: 4px; border: 0; }
-.vibe-project-header .vibe-button { min-height: 44px; padding: 8px 12px; font-size: 14px; }
+.vibe-project-header .vibe-button { min-height: 44px; padding: 8px 12px; font-size: var(--vibe-font-control); line-height: 1.45; }
 .vibe-project-identity { grid-column: 1/-1; display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
-.vibe-project-identity h1 { font-size: 19px; line-height: 1.4; font-weight: 600; overflow-wrap: anywhere; }
-.vibe-project-identity p { font-size: 14px; color: var(--vibe-muted); overflow-wrap: anywhere; }
+.vibe-project-identity h1 { font-size: var(--vibe-font-title); line-height: 1.35; font-weight: 600; overflow-wrap: anywhere; }
+.vibe-project-identity p { font-size: var(--vibe-font-control); color: var(--vibe-muted); overflow-wrap: anywhere; line-height: 1.45; }
 .vibe-project-tools { grid-row: 2; grid-column: 2; align-self: start; display: flex; gap: 4px; align-items: center; }
 .vibe-project-tools > button { display: flex; flex-direction: column; justify-content: center; gap: 0; }
 .vibe-project-tools .vibe-project-tool-icon { display: none; }
-.vibe-guide-attention { font-size: 11px; line-height: 1.3; font-weight: 500; color: var(--vibe-muted); }
+.vibe-guide-attention { font-size: var(--vibe-font-caption); line-height: 1.45; font-weight: 500; color: var(--vibe-muted); }
 .vibe-project-header [data-active], .vibe-project-tools [aria-pressed="true"] { color: var(--vibe-fg); background: var(--vibe-hover); }
 .vibe-project-body { display: grid; grid-template-columns: minmax(0,1fr); min-height: 0; flex: 1; }
 .vibe-project-main { min-width: 0; overflow: auto; padding: clamp(1rem, 3dvh, 2rem) var(--vibe-gutter); overscroll-behavior: contain; }
 .vibe-project-content { width: 100%; max-width: 60rem; min-width: 0; margin-inline: auto; }
 .vibe-project-content > section, .vibe-project-content > .vibe-notice { margin-block-end: 28px; }
-.vibe-project-main h2 { font-size: 21px; line-height: 1.4; font-weight: 600; }
-.vibe-project-main .vibe-results-outcome { font-size: clamp(1.5rem, 1.25rem + 1dvw, 2rem); line-height: 1.2; font-variant-numeric: tabular-nums; }
-.vibe-results-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 14px; color: var(--vibe-muted); }
+.vibe-project-main h2 { font-size: var(--vibe-font-section); line-height: 1.35; font-weight: 600; }
+.vibe-workspace .vibe-results-outcome { font-size: var(--vibe-font-summary); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.vibe-results-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: var(--vibe-font-control); color: var(--vibe-muted); line-height: 1.45; }
 .vibe-results-filter select { min-width: 128px; }
-.vibe-test-review > summary, .vibe-test-review-history > summary { min-height: 44px; padding-block: 10px; color: var(--vibe-muted); font-size: 14px; cursor: pointer; }
+.vibe-test-review > summary, .vibe-test-review-history > summary { min-height: 44px; padding-block: 10px; color: var(--vibe-muted); font-size: var(--vibe-font-control); cursor: pointer; line-height: 1.45; }
 .vibe-test-review-history { margin-top: 28px; border-top: 1px solid var(--vibe-border); padding-top: 8px; }
-.vibe-project-content > label:has(> select[aria-label="Result history"]) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 20px; font-size: 14px; color: var(--vibe-muted); }
+.vibe-project-content > label:has(> select[aria-label="Result history"]) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 20px; font-size: var(--vibe-font-control); color: var(--vibe-muted); line-height: 1.45; }
 .vibe-project-main .vibe-instructions-text { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: var(--vibe-surface); border: 1px solid var(--vibe-border); border-radius: 10px; padding: 16px; }
 .vibe-utility, .vibe-utility-sheet { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--vibe-surface); color: var(--vibe-fg); }
 .vibe-utility { border-left: 1px solid var(--vibe-border); }
 .vibe-utility-heading { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; padding: clamp(.5rem, 2dvh, 1rem) 16px; border-bottom: 1px solid var(--vibe-border); }
-.vibe-utility-heading h2 { font-size: 18px; font-weight: 600; }
+.vibe-utility-heading h2 { font-size: var(--vibe-font-title); font-weight: 600; line-height: 1.35; }
 .vibe-utility-scroll { min-height: 0; flex: 1; overflow: auto; padding: clamp(.5rem, 2dvh, 1rem) 16px; overscroll-behavior: contain; overflow-wrap: anywhere; }
 .vibe-utility-scroll > [data-message-id] { margin-bottom: 24px; }
 .vibe-guide-composer { display: flex; flex-direction: column; gap: 8px; flex: 0 1 auto; min-height: 0; padding: clamp(.5rem, 2dvh, .75rem) 16px max(clamp(.5rem, 2dvh, 1rem), env(safe-area-inset-bottom)); border-top: 1px solid var(--vibe-border); max-height: 55dvh; }
 .vibe-guide-context { min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .vibe-guide-tools { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
-.vibe-guide-data-use { flex: 1; min-width: 0; font-size: 14px; color: var(--vibe-muted); }
+.vibe-guide-data-use { flex: 1; min-width: 0; font-size: var(--vibe-font-control); color: var(--vibe-muted); line-height: 1.45; }
 .vibe-guide-data-use > summary { width: fit-content; min-height: 44px; padding-block: 10px; cursor: pointer; }
 .vibe-guide-data-use[open] { flex-basis: 100%; }
 .vibe-guide-composer .vibe-composer { flex: none; padding: 12px; }
 .vibe-guide-composer textarea { height: clamp(2.75rem, 12dvh, 6rem); min-height: 44px; max-height: min(10rem, 24dvh); resize: vertical; }
 .vibe-utility-sheet[data-slot="sheet-content"] { width: min(30rem, 100dvw); max-width: none; height: 100dvh; gap: 0; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
 .vibe-appearance { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-block: 16px; }
-.vibe-workspace :is(input:not([type="checkbox"]), textarea, select) { font-size: 16px; color: var(--vibe-fg); background-color: var(--vibe-surface); max-width: 100%; }
+.vibe-workspace :is(input:not([type="checkbox"]), textarea, select) { font-size: var(--vibe-font-input); color: var(--vibe-fg); background-color: var(--vibe-surface); max-width: 100%; line-height: 1.5; }
 .vibe-workspace select { border: 1px solid var(--vibe-control-border); border-radius: 8px; padding: 8px; }
 .vibe-workspace .vibe-input { display: block; min-height: 44px; margin-block: 4px 8px; padding: 8px 10px; border: 1px solid var(--vibe-control-border); border-radius: 8px; }
 .vibe-workspace :is(button, a, summary, select, textarea, input):focus-visible { outline-color: var(--vibe-focus); }
@@ -81,7 +81,8 @@
 .vibe-workspace .vibe-dialog { display: flex; flex-direction: column; max-height: calc(100dvh - max(1rem, env(safe-area-inset-top)) - max(1rem, env(safe-area-inset-bottom))); gap: 16px; }
 .vibe-workspace .vibe-dialog > :not(.vibe-dialog-body) { flex: none; }
 .vibe-workspace .vibe-dialog-body { flex: 1; min-height: 0; overflow: auto; }
-.vibe-workspace .vibe-dialog :is(p,label,small,[data-slot="dialog-description"]), .vibe-workspace .vibe-material-hint { font-size: 14px; line-height: 1.5; }
+.vibe-workspace .vibe-dialog :is(label,[data-slot="dialog-description"]), .vibe-workspace .vibe-material-hint { font-size: var(--vibe-font-control); line-height: 1.45; }
+.vibe-workspace .vibe-dialog small { font-size: var(--vibe-font-caption); line-height: 1.45; }
 .vibe-workspace .vibe-context-title, .vibe-workspace .vibe-sidebar-item-copy > span, .vibe-workspace .vibe-material-chip-name, .vibe-workspace .vibe-header-title { white-space: normal; overflow: visible; text-overflow: clip; max-width: none; overflow-wrap: anywhere; }
 .vibe-workspace .vibe-sidebar, .vibe-workspace .vibe-sidebar-sheet, .vibe-workspace .vibe-composer, .vibe-workspace .vibe-material-tabs, .vibe-workspace .vibe-trial-recipient, .vibe-workspace .vibe-prototype-card { background: var(--vibe-surface); color: var(--vibe-fg); border-color: var(--vibe-border); }
 .vibe-workspace .vibe-sidebar-selected, .vibe-workspace .vibe-button-secondary:hover, .vibe-workspace .vibe-button-quiet:hover, .vibe-workspace .vibe-sidebar-item:hover { background: var(--vibe-hover); border-color: var(--vibe-border); color: var(--vibe-fg); }
@@ -100,12 +101,11 @@
 @media (max-width: 600px) {
   .vibe-project-header { padding: 12px; gap: 8px 4px; }
   .vibe-project-header .vibe-nav { gap: 0; }
-  .vibe-project-header .vibe-button { padding-inline: 8px; font-size: 13px; }
+  .vibe-project-header .vibe-button { padding-inline: 8px; }
   .vibe-project-tools > button { position: relative; width: 44px; height: 44px; padding: 0; }
   .vibe-project-tools .vibe-project-tool-icon { display: block; width: 18px; height: 18px; }
   .vibe-project-tool-label { display: none; }
   .vibe-project-tools .vibe-guide-attention { position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; overflow: hidden; border-radius: 50%; font-size: 0; background: var(--vibe-fg); }
-  .vibe-project-identity h1 { font-size: 18px; }
   .vibe-utility-sheet[data-slot="sheet-content"] { width: 100%; border: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -124,7 +124,7 @@
 /* Source reports share the Results pane and its scoped appearance tokens. */
 .vibe-sdk-results { min-width: 0; max-width: 100%; display: grid; gap: 24px; margin-block-end: 24px; overflow-wrap: anywhere; }
 .vibe-sdk-results :is(section, article, fieldset, details) { min-width: 0; }
-.vibe-sdk-results h3 { font-size: 18px; font-weight: 600; }
+.vibe-sdk-results h3 { font-size: var(--vibe-font-section); font-weight: 600; line-height: 1.35; }
 .vibe-sdk-results h4 { font-weight: 600; }
 .vibe-sdk-results label { display: block; }
 .vibe-sdk-results :is(input:not([type="checkbox"]), select, textarea) { display: block; width: 100%; min-width: 0; max-width: 100%; margin-block: 6px 12px; border: 1px solid var(--vibe-control-border); border-radius: 8px; padding: 8px 10px; }
