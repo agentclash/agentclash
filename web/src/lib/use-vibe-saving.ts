@@ -144,11 +144,12 @@ export function useVibeSaving(c: Context) {
     if (account.status === "loading") setSaveFailure(undefined);
     if (account.status !== "ready") {
       if (saveOpen && account.status === "unavailable") setError("Couldn’t load your workspaces. Try again.");
+      if (saveOpen && account.status === "signed_out" && actorScope !== "guest") setError("Sign in again to keep your work. Your tests are still here.");
       return;
     }
     setWorkspace(old => (saveOpen && attachedWorkspace) ||
       (account.workspaces.some(item => item.id === old) ? old : (saveOpen ? account.workspaces[0]?.id : "") || ""));
-  }, [account.status, account.workspaces, saveOpen, attachedWorkspace, setWorkspace, setError]);
+  }, [account.status, account.workspaces, saveOpen, attachedWorkspace, setWorkspace, setError, actorScope]);
   useEffect(() => {
     if (!session || saveResumed.current) return;
     if (params.get("keep") !== "1") {
