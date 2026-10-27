@@ -239,15 +239,33 @@ func observedCanonicalTx(ctx context.Context, tx pgx.Tx, v Session, ref ResultRe
 			out.Cases = append(out.Cases, ObservedCase{CaseEvidenceBinding: binding.CaseEvidenceBinding, EntryID: observedID(ref, participant.RunAgentID.String(), "/cases/"+binding.SourceCaseID), SourceIndex: i, Status: "unknown", CaptureScope: UnknownCaptureScope(), CaptureAssurance: "platform observations; coverage unknown", Entries: []ObservedEntry{}})
 		}
 		unbound := ObservedCase{CaseEvidenceBinding: CaseEvidenceBinding{RunAgentID: &participant.RunAgentID}, EntryID: observedID(ref, participant.RunAgentID.String(), "/unbound"), SourceIndex: -1, Status: participant.Status, CaptureScope: UnknownCaptureScope(), CaptureAssurance: "unbound participant observations", Entries: []ObservedEntry{}}
-		// Metadata already bounds these identities. Read exactly those owned events,
-		// in the same transaction; never use caller-supplied event IDs as authority.
+		// Metadata already authorizes and bounds these identities. Stream their
+		// payloads in the same order and transaction, without a query per event.
+		eventIDs := make([]string, len(participant.Events))
+		for i, event := range participant.Events {
+			eventIDs[i] = event.ID
+		}
+		events, err := tx.Query(ctx, `SELECT e.payload FROM unnest($2::text[]) WITH ORDINALITY AS selected(id,position) JOIN run_events e ON e.id=selected.id::bigint AND e.run_agent_id=$1 ORDER BY selected.position`, participant.RunAgentID, eventIDs)
+		if err != nil {
+			return out, err
+		}
 		for _, event := range participant.Events {
+			if !events.Next() {
+				err = events.Err()
+				events.Close()
+				if err == nil {
+					err = pgx.ErrNoRows
+				}
+				return out, err
+			}
 			var payload []byte
-			if err = tx.QueryRow(ctx, `SELECT payload FROM run_events WHERE run_agent_id=$1 AND id::text=$2`, participant.RunAgentID, event.ID).Scan(&payload); err != nil {
+			if err = events.Scan(&payload); err != nil {
+				events.Close()
 				return out, err
 			}
 			retainedBytes += len(payload)
 			if retainedBytes > canonicalMetadataMaxBytes {
+				events.Close()
 				return out, fault("export_limit", "Selected observed payloads exceed 8 MiB.")
 			}
 			entries := normalizeCanonicalEvent(ref, participant.RunAgentID, event, payload)
@@ -287,6 +305,10 @@ func observedCanonicalTx(ctx context.Context, tx pgx.Tx, v Session, ref ResultRe
 					target.CaptureScope.Tools = DimensionCapture{Scope: "partial", Instrumentation: "instrumented"}
 				}
 			}
+		}
+		events.Close()
+		if err = events.Err(); err != nil {
+			return out, err
 		}
 		// Warehouse grades use local keys. Bind only an unambiguous key, keeping
 		// ambiguous grades participant-scoped rather than claiming another case.
