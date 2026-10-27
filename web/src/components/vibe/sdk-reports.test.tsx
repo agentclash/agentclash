@@ -33,7 +33,16 @@ it("imports exact bytes with explicit mapping and recovers the same retry withou
 });
 it("shows imported results with zero operations and selects the server binding only on request",async()=>{
  transport.fetch.mockResolvedValue([report]);const node=document.createElement("div");document.body.append(node);const root=createRoot(node);const select=vi.fn();
- try{await act(async()=>root.render(<SDKReports {...props} onSelectResult={select}/>));expect(node.textContent).toContain("Imported, unverified");expect(node.textContent).toContain("local");expect(select).not.toHaveBeenCalled();await act(async()=>button(node,"Open report local").click());expect(select).toHaveBeenCalledWith(report.binding);}finally{await act(async()=>root.unmount());node.remove()}
+ try{await act(async()=>root.render(<SDKReports {...props} onSelectResult={select}/>));expect(node.textContent).toContain("Imported, unverified");expect(node.textContent).toContain("local");expect(select).not.toHaveBeenCalled();
+ const history=node.querySelector<HTMLDetailsElement>('details[aria-label="SDK report history"]');expect(history).not.toBeNull();expect(history!.open).toBe(false);await act(async()=>history!.querySelector("summary")!.click());expect(history!.open).toBe(true);
+ await act(async()=>button(node,"Open report local").click());expect(select).toHaveBeenCalledWith(report.binding);}finally{await act(async()=>root.unmount());node.remove()}
+});
+it.each(["signed-out","no-workspace"])("keeps %s SDK report guidance inside optional history",async(state)=>{
+ const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
+ try{
+  await act(async()=>root.render(<SDKReports {...props} selectedReport={report} workspaceId={state==="no-workspace"?undefined:props.workspaceId} access={{...access,status:state==="signed-out"?"signed_out":"ready",canRead:false,canWrite:false}}/>));
+  const history=node.querySelector<HTMLDetailsElement>('details[aria-label="SDK report history"]');expect(history).not.toBeNull();expect(history!.open).toBe(false);expect(history!.textContent).toContain(state==="signed-out"?"Sign in to read":"Save to a workspace");expect(node.querySelector('article[aria-label="Imported report detail"]')).toBeNull();
+ }finally{await act(async()=>root.unmount());node.remove()}
 });
 it("drops an old actor's late report list after A to B to A",async()=>{
  let resolve!:(v:SDKReport[])=>void;const pending=new Promise<SDKReport[]>(r=>resolve=r);transport.fetch.mockReturnValueOnce(pending).mockResolvedValue([]);
@@ -98,12 +107,18 @@ it("retains unsent review and exact pending receipt through failed list refresh 
  const render=(refresh:number)=>root.render(<SDKReports {...props} selectedReport={selected} refresh={refresh}/>);
  const reason=()=>node.querySelector<HTMLTextAreaElement>('textarea[aria-label="SDK grade review reason"]');
  try{
-  await act(async()=>render(1));await change(node.querySelector('select')!,"local");await change(reason()!,"Keep this exact review");
+  await act(async()=>render(1));
+  const detail=node.querySelector('article[aria-label="Imported report detail"]')!,history=node.querySelector<HTMLDetailsElement>('details[aria-label="SDK report history"]');
+  expect(history).not.toBeNull();expect(history!.open).toBe(false);expect(detail.closest("details")).toBeNull();expect(detail.compareDocumentPosition(history!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  await change(node.querySelector('select')!,"local");await change(reason()!,"Keep this exact review");const retainedReason=reason();
+  await act(async()=>history!.querySelector("summary")!.click());expect(history!.open).toBe(true);await act(async()=>history!.querySelector("summary")!.click());expect(history!.open).toBe(false);expect(reason()).toBe(retainedReason);
   failList=true;await act(async()=>render(2));expect(node.textContent).toContain("History temporarily unavailable");expect(reason()?.value).toBe("Keep this exact review");
-  failList=false;await act(async()=>button(node,"Reload SDK reports").click());expect(reason()?.value).toBe("Keep this exact review");
+  expect(node.querySelector('[role="alert"]')!.closest('details[aria-label="SDK report history"]')).toBeNull();
+  await act(async()=>history!.querySelector("summary")!.click());failList=false;await act(async()=>button(node,"Reload SDK reports").click());expect(reason()?.value).toBe("Keep this exact review");
   await act(async()=>node.querySelector('form')!.dispatchEvent(new Event("submit",{bubbles:true,cancelable:true})));expect(writes).toHaveLength(1);
+  await act(async()=>history!.querySelector("summary")!.click());expect(history!.open).toBe(false);expect(reason()).toBe(retainedReason);
   failList=true;await act(async()=>render(3));expect(reason()?.value).toBe("Keep this exact review");expect(reason()?.disabled).toBe(true);
-  failList=false;await act(async()=>button(node,"Reload SDK reports").click());
+  await act(async()=>history!.querySelector("summary")!.click());failList=false;await act(async()=>button(node,"Reload SDK reports").click());await act(async()=>history!.querySelector("summary")!.click());expect(history!.open).toBe(false);expect(reason()).toBe(retainedReason);
   await act(async()=>loseReview(new Error("Response lost after submission")));expect(reason()?.value).toBe("Keep this exact review");
   await act(async()=>button(node,"Retry this grade review").click());expect(writes).toHaveLength(2);expect(writes[1]).toBe(writes[0]);expect(node.textContent).toContain("Review recorded");
  }finally{await act(async()=>root.unmount());node.remove()}

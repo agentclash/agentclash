@@ -12,7 +12,12 @@ const props=()=>({sessionId:"project",workspaceId:"workspace",actorScope:"actor"
 afterEach(()=>{vi.clearAllMocks();vi.unstubAllGlobals()});
 async function render(){vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT",true);const node=document.createElement("div"),root=createRoot(node),p=props();document.body.append(node);await act(async()=>root.render(<CanonicalResults {...p}/>));return {node,root,p,close:async()=>{await act(async()=>root.unmount());node.remove()}}}
 it("reads an exact selected result even when bounded history cannot load",async()=>{
- mocks.fetch.mockRejectedValue(new Error("Choose an exact result"));const view=await render();try{expect(view.node.textContent).toContain("Canonical status: completed");expect(mocks.fetch).toHaveBeenCalledOnce();expect(mocks.fetch).toHaveBeenCalledWith("/sessions/project/canonical-results","token")}finally{await view.close()}
+ mocks.fetch.mockRejectedValue(new Error("Choose an exact result"));const view=await render();try{
+  expect(view.node.textContent).toContain("Canonical status: completed");expect(mocks.fetch).toHaveBeenCalledOnce();expect(mocks.fetch).toHaveBeenCalledWith("/sessions/project/canonical-results","token");
+  const detail=view.node.querySelector('article[aria-label="Canonical result detail"]')!,history=view.node.querySelector<HTMLDetailsElement>('details[aria-label="Application run history"]');
+  expect(history).not.toBeNull();expect(history!.open).toBe(false);expect(detail.closest("details")).toBeNull();expect(detail.compareDocumentPosition(history!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(view.node.querySelector('[role="alert"]')!.closest("details")).toBeNull();
+ }finally{await view.close()}
 });
 it("retains same-owner metadata on transient refresh but clears definitive revocation",async()=>{
  mocks.fetch.mockResolvedValue([result]);const view=await render();

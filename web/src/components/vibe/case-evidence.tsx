@@ -21,6 +21,7 @@ export function CaseEvidence({
   load,
   evidenceVersion,
   onImprove,
+  onAsk,
   busy,
   onDispute,
   onRegrade,
@@ -40,6 +41,7 @@ export function CaseEvidence({
   load: (key: string) => Promise<CaseResult>;
   evidenceVersion?: string;
   onImprove?: (result: CaseResult) => void;
+  onAsk?: () => void;
   busy?: boolean;
   onDispute?: (rule: string, result: CaseResult) => void;
   onRegrade?: () => void;
@@ -157,6 +159,7 @@ export function CaseEvidence({
         />
       </summary>
       <div className="space-y-4 border-t border-[var(--vibe-border)] p-5">
+        {onAsk && <VibeButton variant="quiet" onClick={onAsk}>Ask Guide about this case</VibeButton>}
         {loading && (
           <p role="status" className="text-xs vibe-muted">
             Loading saved evidence…

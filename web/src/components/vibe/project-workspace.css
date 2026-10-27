@@ -48,6 +48,10 @@
 .vibe-project-content { width: 100%; max-width: 960px; min-width: 0; margin-inline: auto; }
 .vibe-project-content > section, .vibe-project-content > .vibe-notice { margin-block-end: 28px; }
 .vibe-project-main h2 { font-size: 21px; line-height: 1.4; font-weight: 600; }
+.vibe-project-main .vibe-results-outcome { font-size: clamp(24px, 2.5vw, 32px); line-height: 1.2; font-variant-numeric: tabular-nums; }
+.vibe-results-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: 14px; color: var(--vibe-muted); }
+.vibe-results-filter select { min-width: 128px; }
+.vibe-project-content > label:has(> select[aria-label="Result history"]) { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 20px; font-size: 14px; color: var(--vibe-muted); }
 .vibe-project-main .vibe-instructions-text { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: var(--vibe-surface); border: 1px solid var(--vibe-border); border-radius: 10px; padding: 16px; }
 .vibe-utility, .vibe-utility-sheet { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--vibe-surface); color: var(--vibe-fg); }
 .vibe-utility { border-left: 1px solid var(--vibe-border); }

@@ -25,6 +25,7 @@ export function VibeScorecard({
   onNewCheck,
   onSave,
   onRecheck,
+  onAskCase,
   busy,
   testJourney = false,
 }: {
@@ -42,6 +43,7 @@ export function VibeScorecard({
   onRegrade?: () => void;
   onNewCheck?: () => void;
   onRecheck?: () => void;
+  onAskCase?: (caseKey: string) => void;
   busy: boolean;
   testJourney?: boolean;
 }) {
@@ -143,16 +145,15 @@ export function VibeScorecard({
 
   return (
     <article aria-label="Evaluation scorecard" className="space-y-5">
-      <label>Show cases<select aria-label="Filter cases" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All</option><option value="failing">Failing</option><option value="unresolved">Unresolved</option><option value="passing">Passing</option></select></label>
       <div>
-        <h1
-          className="text-[28px] font-semibold leading-tight tracking-tight sm:text-[32px]"
+        <h2
+          className="vibe-results-outcome text-[28px] font-semibold leading-tight tracking-tight sm:text-[32px]"
           aria-live="polite"
         >
           {testJourney && done && !stopped && score.total > 0 && !regraded
             ? `${score.passed} of ${score.total} tests passed`
             : headline}
-        </h1>
+        </h2>
         {done && <p className="mt-3 text-sm">{score.passed} passed · {score.failed} failed · {unresolvedCount} unresolved</p>}
         {done && overlappingCounts && <p className="mt-2 text-sm vibe-muted">Unresolved cases have unfinished checks and can also be counted as passed or failed.</p>}
         {findingFirst && concreteFinding?.id === operation.id && <p>{concreteFinding.text}</p>}
@@ -231,6 +232,7 @@ export function VibeScorecard({
         )}
       </div>
 
+      <label className="vibe-results-filter">Show cases<select aria-label="Filter cases" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All</option><option value="failing">Failing</option><option value="unresolved">Unresolved</option><option value="passing">Passing</option></select></label>
       {done && operation.error && <p role="alert" className="text-sm text-builder-warn">{recoveryMessage(operation)}</p>}
 
       {leading && (
@@ -238,6 +240,7 @@ export function VibeScorecard({
           <CaseEvidence
             key={findingID}
             summary={leading}
+            onAsk={onAskCase ? () => onAskCase(leading.case_key) : undefined}
             concise={testJourney}
             evidenceVersion={evidenceVersion}
             load={loadEvidence}
@@ -346,6 +349,7 @@ export function VibeScorecard({
                 <CaseEvidence
                   key={`${operation.id}:${result.case_key}`}
                   summary={result}
+                  onAsk={onAskCase ? () => onAskCase(result.case_key) : undefined}
                   concise={testJourney}
                   evidenceVersion={evidenceVersion}
                   load={loadEvidence}
@@ -364,6 +368,7 @@ export function VibeScorecard({
               <CaseEvidence
                 key={`${operation.id}:${result.case_key}`}
                 summary={result}
+                onAsk={onAskCase ? () => onAskCase(result.case_key) : undefined}
                 concise={testJourney}
                 evidenceVersion={evidenceVersion}
                 load={loadEvidence}

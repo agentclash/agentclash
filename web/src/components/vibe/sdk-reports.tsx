@@ -36,21 +36,26 @@ export function SDKReports(props: SDKEvidenceContext & {
     });
     return () => { active = false; };
   }, [sessionId, workspaceId, canRead, status, life, attempt, refresh]);
-  if (props.access.status === "signed_out") return <p>Sign in to read your private SDK reports.</p>;
-  if (!props.workspaceId) return <p>Save to a workspace to keep imported reports here.</p>;
-  if (!props.access.canRead) return <p>SDK reports are unavailable until access to this workspace is confirmed.</p>;
-  const active = state?.owner === life.owner ? state : undefined;
-  const selected = !active?.denied && props.selectedReport?.binding.session_id === sessionId && props.selectedReport.binding.result_ref.kind === "sdk_report" && props.selectedReport.id === props.selectedReport.binding.result_ref.id && props.selectedReport.binding.artifact_id === props.artifactId ? props.selectedReport : undefined;
+  const unavailable = status === "signed_out" ? "Sign in to read your private SDK reports."
+    : !workspaceId ? "Save to a workspace to keep imported reports here."
+    : !canRead ? "SDK reports are unavailable until access to this workspace is confirmed." : undefined;
+  const active = !unavailable && state?.owner === life.owner ? state : undefined;
+  const selected = !unavailable && !active?.denied && props.selectedReport?.binding.session_id === sessionId && props.selectedReport.binding.result_ref.kind === "sdk_report" && props.selectedReport.id === props.selectedReport.binding.result_ref.id && props.selectedReport.binding.artifact_id === props.artifactId ? props.selectedReport : undefined;
   return <section aria-label="SDK reports" className="space-y-4">
-    <h3>SDK reports</h3><p>Imported, unverified application execution. Source grades remain separate from hosted checks and reviews.</p>
-    {!active?.reports && !active?.error && <p role="status">Loading SDK reports…</p>}
-    {active?.error && <p role="alert">{active.error}</p>}
-    <VibeButton onClick={() => setAttempt(n => n + 1)}>Reload SDK reports</VibeButton>
-    {active?.reports?.length === 0 && <p>No imported reports yet. Import historical evidence without running a check.</p>}
-    <ul>{active?.reports?.map(report => <li key={report.id}>
-      <VibeButton onClick={() => { if (life.current()) props.onSelectResult?.(report.binding); }}>Open report {report.external_report_id}</VibeButton>
-      <span> · {report.cases.length} cases · {report.source_kind === "agent_result" ? "No imported grade" : "Imported grades"}</span>
-    </li>)}</ul>
     {selected && <SDKReportDetail key={`${props.actorScope}:${props.sessionId}:${selected.id}`} {...props} report={selected} />}
+    {active?.error && <p role="alert">{active.error}</p>}
+    <details aria-label="SDK report history" className="space-y-3">
+      <summary>SDK report history</summary>
+      {unavailable ? <p>{unavailable}</p> : <>
+        <p>Imported, unverified application execution. Source grades remain separate from hosted checks and reviews.</p>
+        {!active?.reports && !active?.error && <p role="status">Loading SDK reports…</p>}
+        <VibeButton onClick={() => setAttempt(n => n + 1)}>Reload SDK reports</VibeButton>
+        {active?.reports?.length === 0 && <p>No imported reports yet. Import historical evidence without running a check.</p>}
+        <ul>{active?.reports?.map(report => <li key={report.id}>
+          <VibeButton onClick={() => { if (life.current()) props.onSelectResult?.(report.binding); }}>Open report {report.external_report_id}</VibeButton>
+          <span> · {report.cases.length} cases · {report.source_kind === "agent_result" ? "No imported grade" : "Imported grades"}</span>
+        </li>)}</ul>
+      </>}
+    </details>
   </section>;
 }
