@@ -57,7 +57,8 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   await expect(page.locator(".vibe-result-row")).toHaveCount(0);
   await page.getByRole("tab",{name:"Results",exact:true}).click();
   await page.getByRole("button",{name:"Discuss this with AgentClash",exact:true}).click();
-  await expect(page.getByRole("dialog")).toContainText("Contact isn’t set up yet. You can copy your summary.");
+  await expect(page.getByRole("dialog")).toContainText("Review what you’ll share. Files, raw replies and chat history are not attached.");
+  await expect(page.getByRole("textbox",{name:"Your email",exact:true})).toBeVisible();
   const summary=page.getByRole("textbox",{name:"Project summary",exact:true});
   await expect(summary).not.toHaveValue(/Mira|Ana/);
   for(const viewport of [{width:1440,height:900},{width:390,height:844},{width:360,height:800}]) {

@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agentclash/agentclash/backend/internal/enquiries"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/storage"
 	"github.com/agentclash/agentclash/backend/internal/vibe"
@@ -125,7 +126,11 @@ func TestVibeBrowserStack(t *testing.T) {
 		}
 		browserFixtureJSON(w, result)
 	})
-	router.Mount("/v1/vibe", (&VibeHandler{FrontendURL: os.Getenv("VIBE_BROWSER_WEB_ORIGIN"), Service: svc, Auth: auth, CookieSecret: uuid.NewString() + uuid.NewString()}).Routes())
+	handler := &VibeHandler{FrontendURL: os.Getenv("VIBE_BROWSER_WEB_ORIGIN"), Service: svc, Auth: auth, CookieSecret: uuid.NewString() + uuid.NewString()}
+	if cfg.MaterialBuild {
+		handler.Enquiries = &enquiries.Store{DB: db, Recipient: "team@example.test", Sender: &testEnquirySender{}}
+	}
+	router.Mount("/v1/vibe", handler.Routes())
 	router.Get("/__fixture/ready", func(w http.ResponseWriter, r *http.Request) {
 		if !svc.Availability(r.Context(), true)["guest"].Available {
 			http.Error(w, "fixture workers preparing", http.StatusServiceUnavailable)
