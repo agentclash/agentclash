@@ -133,16 +133,16 @@ test("sidebar creation and cancellation preserve the draft and never start a run
   const control = await serve(page);
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   await composer.fill("Keep this unsent description.");
-  await page.getByRole("button", { name: "New agent", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "What would you like AI to handle?" })).toBeVisible();
+  await page.getByRole("button", { name: "New evaluation", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "What would you like to evaluate?" })).toBeVisible();
   await page.getByRole("button", { name: "Back to your evaluation" }).click();
   await expect(composer).toHaveValue("Keep this unsent description.");
   await expect(composer).toBeFocused();
-  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  await page.getByRole("button", { name: "New evaluation", exact: true }).click();
   await page.keyboard.press("Escape");
   await expect(composer).toBeFocused();
   expect(control.posts).toHaveLength(0);
-  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  await page.getByRole("button", { name: "New evaluation", exact: true }).click();
   await page.getByRole("button", { name: /Improve an existing agent/ }).click();
   const created = control.posts[0].body.id as string;
   await expect(page.locator(`[data-evaluation-id="${created}"]`)).toHaveAttribute("aria-current", "page");
@@ -159,7 +159,7 @@ test("navigation preserves active context while another evaluation completes", a
   await composer.fill("First draft");
   await page.locator('[data-evaluation-id="second"]').click();
   await expect(page.locator('[data-evaluation-id="second"]')).toContainText("Running");
-  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  await page.getByRole("button", { name: "New evaluation", exact: true }).click();
   await expect(page.getByRole("button", { name: /Improve an existing agent/ })).toBeEnabled();
   await page.getByRole("button", { name: "Back to your evaluation" }).click();
   await composer.fill("Second draft");
@@ -190,9 +190,9 @@ test("drawer supports keyboard dismissal, focus return and source selection on s
   await expect(drawer).toBeHidden();
   await expect(trigger).toBeFocused();
   await trigger.click();
-  await drawer.getByRole("button", { name: "New agent", exact: true }).click();
+  await drawer.getByRole("button", { name: "New evaluation", exact: true }).click();
   await expect(drawer).toBeHidden();
-  await expect(page.getByLabel("New agent choices", { exact: true })).toBeFocused();
+  await expect(page.getByLabel("New evaluation choices", { exact: true })).toBeFocused();
   await page.getByRole("button", { name: "Back to your evaluation" }).click();
   await page.getByRole("button", { name: "Try my saved instructions", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Improve an agent you already have." })).toBeHidden();
@@ -222,9 +222,9 @@ test("entry, context label and composer fit mobile, desktop and zoom-sized layou
   await page.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
   await expect(page.getByRole("button", { name: "Expand sidebar", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Expand sidebar", exact: true })).toBeFocused();
-  await expect(page.getByRole("button", { name: "New agent", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "New evaluation", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Expand sidebar", exact: true }).click();
-  await expect(page.getByRole("button", { name: "New agent", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New evaluation", exact: true })).toBeVisible();
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
 });
@@ -232,7 +232,7 @@ test("entry, context label and composer fit mobile, desktop and zoom-sized layou
 test("plain-language source choices explain test packs and let an empty choice change doors", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   const control = await serve(page);
-  await page.getByRole("button", { name: "New agent", exact: true }).click();
+  await page.getByRole("button", { name: "New evaluation", exact: true }).click();
   await page.getByRole("button", { name: /Improve an existing agent/ }).click();
   await expect(page.getByRole("heading", { name: "Improve an agent you already have." })).toBeVisible();
   const help = page.getByLabel("What is a test pack?", { exact: true });
@@ -244,7 +244,7 @@ test("plain-language source choices explain test packs and let an empty choice c
   await help.focus();
   await expect(tooltip).toContainText("Import one only if you already have it");
   await page.getByRole("button", { name: "Actually, I want to build an agent.", exact: true }).click();
-  await expect(page.getByLabel("New agent choices", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("New evaluation choices", { exact: true })).toBeVisible();
   expect(control.posts).toHaveLength(1);
   await page.getByRole("button", { name: /Build an agent/ }).click();
   await expect(page.getByRole("heading", { name: "What would you like help with?" })).toBeVisible();
@@ -261,7 +261,7 @@ test("a failed import stays in Improve and clears when returning to the chooser"
   await page.locator('input[type="file"]').setInputFiles({ name: "broken.json", mimeType: "application/json", buffer: Buffer.from("{") });
   await expect(page.getByRole("alert").filter({ hasText: "Couldn’t import this file" })).toBeVisible();
   await page.getByRole("button", { name: "Actually, I want to build an agent." }).click();
-  await expect(page.getByLabel("New agent choices")).toBeVisible();
+  await expect(page.getByLabel("New evaluation choices")).toBeVisible();
   await expect(page.getByRole("alert").filter({ hasText: "Couldn’t import this file" })).toHaveCount(0);
   expect(control.posts.map(post => post.path)).toEqual(["/v1/vibe/sessions/first/import"]);
   expect(control.errors).toEqual([]);
@@ -505,6 +505,7 @@ test("library search rename archive and sidebar preference preserve full touch a
  await search.fill("exchanges 29");
  await expect(page.locator("[data-evaluation-id]")).toHaveCount(1);
  await page.locator('[data-evaluation-id="older-29"]').click();
+ await page.getByText("Project actions",{exact:true}).click();
  await page.getByRole("button",{name:"Rename project",exact:true}).click();
  const title="International customer support – returns, exchanges, warranty exceptions and multilingual delivery questions for the autumn project";
  await page.getByRole("textbox",{name:"Project title",exact:true}).fill(title);

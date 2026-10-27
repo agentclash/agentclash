@@ -78,6 +78,8 @@ export function EvaluationNavigation(p: Props) {
   const [titleDraft, setTitleDraft] = useState("");
   const [metadataBusy, setMetadataBusy] = useState(false);
   const [metadataError, setMetadataError] = useState("");
+  const desktopActions = useRef<HTMLDetailsElement>(null);
+  const mobileActions = useRef<HTMLDetailsElement>(null);
   async function metadata(patch: { title?: string; archived?: boolean }) {
     if (!p.session || !p.onMetadata) return;
     const current = life.capture();
@@ -86,7 +88,12 @@ export function EvaluationNavigation(p: Props) {
     try {
       if (await p.onMetadata(p.session, patch) && current()) setRenaming(false);
     } catch (e) {
-      if (current()) setMetadataError((e as Error).message);
+      if (current()) {
+        setMetadataError((e as Error).message);
+        for (const details of [desktopActions.current, mobileActions.current]) {
+          if (details) details.open = true;
+        }
+      }
     } finally {
       if (current()) setMetadataBusy(false);
     }
@@ -118,6 +125,9 @@ export function EvaluationNavigation(p: Props) {
     !contexts.some((item) => item.id === p.session!.id)
   )
     contexts.push(p.session);
+  const guest = !p.actorScope || p.actorScope === "guest";
+  const hasProjects = p.contexts.length > 0 || !!p.session?.document.evaluation;
+  const showListTools = !guest || hasProjects || (p.archiveMode && p.archiveMode !== "exclude");
   const navigate = (action: () => void, mobile: boolean) => {
     if (!mobile) {
       action();
@@ -154,43 +164,48 @@ export function EvaluationNavigation(p: Props) {
       <div className="vibe-sidebar-create">
         <VibeButton disabled={p.disabled} onClick={() => navigate(p.onNew, mobile)}>
           <Plus />
-          New agent
+          New evaluation
         </VibeButton>
       </div>
       <nav aria-label="Your agents" className="vibe-sidebar-list">
         <p className="vibe-sidebar-label">Your projects</p>
-        <label className="text-sm">
-          Search loaded projects
-          <input
-            type="search"
-            aria-label="Search loaded projects"
-            placeholder="Filter by title"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="vibe-input w-full"
-          />
-        </label>
-        <p className="text-xs vibe-muted">Search this loaded list. The server returns the latest 100 projects.</p>
-        {p.onArchiveMode && (
-          <label className="text-sm">
-            Show
-            <select
-              aria-label="Project archive filter"
-              value={p.archiveMode || "exclude"}
-              onChange={(e) => p.onArchiveMode?.(e.target.value as "exclude" | "only" | "all")}
-            >
-              <option value="exclude">Active projects</option>
-              <option value="only">Archived projects</option>
-              <option value="all">All projects</option>
-            </select>
-          </label>
-        )}
-        {p.onRetryList && (
-          <VibeButton variant="quiet" disabled={p.listStatus === "loading"} onClick={p.onRetryList}>
-            Refresh projects
-          </VibeButton>
+        {showListTools && (
+          <>
+            <label className="text-sm">
+              Search loaded projects
+              <input
+                type="search"
+                aria-label="Search loaded projects"
+                placeholder="Filter by title"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="vibe-input w-full"
+              />
+            </label>
+            <p className="text-xs vibe-muted">Search this loaded list. The server returns the latest 100 projects.</p>
+            {p.onArchiveMode && (
+              <label className="text-sm">
+                Show
+                <select
+                  aria-label="Project archive filter"
+                  value={p.archiveMode || "exclude"}
+                  onChange={(e) => p.onArchiveMode?.(e.target.value as "exclude" | "only" | "all")}
+                >
+                  <option value="exclude">Active projects</option>
+                  <option value="only">Archived projects</option>
+                  <option value="all">All projects</option>
+                </select>
+              </label>
+            )}
+            {p.onRetryList && (
+              <VibeButton variant="quiet" disabled={p.listStatus === "loading"} onClick={p.onRetryList}>
+                Refresh projects
+              </VibeButton>
+            )}
+          </>
         )}
         <CollectionNotice
+          guestProjects={guest}
           hasRows={contexts.length > 0}
           status={p.listStatus}
           retry={p.onRetryList}
@@ -207,6 +222,10 @@ export function EvaluationNavigation(p: Props) {
                 );
                 const running = context.operations.some((operation) => !terminal(operation.state));
                 const selected = context.id === p.session?.id && !p.choosing;
+                const status = running ? "Running"
+                  : latestRun?.state === "COMPLETED" ? "Checked"
+                  : latestRun?.state === "FAILED" ? "Check failed"
+                  : latestRun ? "Check incomplete" : scope;
                 return (
                   <button
                     key={context.id}
@@ -221,18 +240,7 @@ export function EvaluationNavigation(p: Props) {
                     <MessageSquare size={16} aria-hidden="true" />
                     <span className="vibe-sidebar-item-copy">
                       <span className="vibe-project-full-title">{title}</span>
-                      <small>
-                        {scope}
-                        {running && " · Running"}
-                      </small>
-                      <small>
-                        {latestRun
-                          ? `Last prototype check: ${latestRun.state} · ${latestRun.created_at ? new Date(latestRun.created_at).toLocaleDateString() : "time unavailable"}`
-                          : "No prototype checks"}
-                      </small>
-                      {context.updated_at && (
-                        <small>Updated {new Date(context.updated_at).toLocaleString()}</small>
-                      )}
+                      <small>{status}</small>
                     </span>
                     {selected && (
                       <motion.span
@@ -266,60 +274,67 @@ export function EvaluationNavigation(p: Props) {
             keep the original download.
           </p>
         </details>
-        {p.session && p.onMetadata && (
-          <div className="space-y-2">
-            <p className="vibe-project-full-title">{projectTitle(p.session)}</p>
-            {renaming ? (
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void metadata({ title: titleDraft });
-                }}
-              >
-                <label>
-                  Project title
-                  <input
-                    aria-label="Project title"
-                    value={titleDraft}
-                    onChange={(e) => setTitleDraft(e.target.value)}
-                    className="vibe-input w-full"
-                  />
-                </label>
-                <VibeButton type="submit" disabled={metadataBusy || !titleDraft.trim()}>
-                  Save title
+        {p.session && (p.onMetadata || (p.session.document.evaluation && p.onDeleted)) && (
+          <details className="vibe-project-actions" key={p.session.id} ref={mobile ? mobileActions : desktopActions}>
+            <summary>Project actions</summary>
+            <div className="space-y-2">
+              {p.onMetadata && (
+                <>
+                  <p className="vibe-project-full-title">{projectTitle(p.session)}</p>
+                  {renaming ? (
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void metadata({ title: titleDraft });
+                      }}
+                    >
+                      <label>
+                        Project title
+                        <input
+                          aria-label="Project title"
+                          value={titleDraft}
+                          onChange={(e) => setTitleDraft(e.target.value)}
+                          className="vibe-input w-full"
+                        />
+                      </label>
+                      <VibeButton type="submit" disabled={metadataBusy || !titleDraft.trim()}>
+                        Save title
+                      </VibeButton>
+                      <VibeButton type="button" variant="quiet" onClick={() => setRenaming(false)}>
+                        Cancel rename
+                      </VibeButton>
+                    </form>
+                  ) : (
+                    <VibeButton
+                      disabled={metadataBusy}
+                      onClick={() => {
+                        setTitleDraft(projectTitle(p.session!));
+                        setRenaming(true);
+                      }}
+                    >
+                      Rename project
+                    </VibeButton>
+                  )}
+                  <VibeButton
+                    disabled={metadataBusy}
+                    onClick={() => void metadata({ archived: !p.session!.archived_at })}
+                  >
+                    {p.session.archived_at ? "Restore project" : "Archive project"}
+                  </VibeButton>
+                  {metadataError && <p role="alert">{metadataError}</p>}
+                </>
+              )}
+              {p.session.document.evaluation && p.onDeleted && (
+                <VibeButton
+                  variant="quiet"
+                  disabled={p.disabled}
+                  onClick={() => navigate(() => setDeleting(p.session!), mobile)}
+                >
+                  Delete this project
                 </VibeButton>
-                <VibeButton type="button" variant="quiet" onClick={() => setRenaming(false)}>
-                  Cancel rename
-                </VibeButton>
-              </form>
-            ) : (
-              <VibeButton
-                disabled={metadataBusy}
-                onClick={() => {
-                  setTitleDraft(projectTitle(p.session!));
-                  setRenaming(true);
-                }}
-              >
-                Rename project
-              </VibeButton>
-            )}
-            <VibeButton
-              disabled={metadataBusy}
-              onClick={() => void metadata({ archived: !p.session!.archived_at })}
-            >
-              {p.session.archived_at ? "Restore project" : "Archive project"}
-            </VibeButton>
-            {metadataError && <p role="alert">{metadataError}</p>}
-          </div>
-        )}
-        {p.session?.document.evaluation && p.onDeleted && (
-          <VibeButton
-            variant="quiet"
-            disabled={p.disabled}
-            onClick={() => navigate(() => setDeleting(p.session!), mobile)}
-          >
-            Delete this project
-          </VibeButton>
+              )}
+            </div>
+          </details>
         )}
         <VibeButton variant="quiet" onClick={() => navigate(p.onSavedWork, mobile)}>
           <Archive />

@@ -82,6 +82,7 @@ export type EvaluationWorkspaceProps = {
   newEvaluation?: boolean;
   contextNavigationBlocked?: boolean;
   entryBlocked?: boolean;
+  entryNotice?: ReactNode;
   onCancelNew?: () => void;
   canChangeDoor?: boolean;
   onChangeDoor?: () => void;
@@ -449,7 +450,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
       {!p.embedded && <header className="vibe-header">
         {p.twoDoor ? <div className="vibe-header-identity">
           {p.navigationToggle}
-          <span className="vibe-header-title">{p.newEvaluation || entry ? "New agent" : p.session ? evaluationIdentity(p.session).title : "Vibe Evals"}</span>
+          <span className="vibe-header-title">{p.newEvaluation || entry ? "New evaluation" : p.session ? evaluationIdentity(p.session).title : "Vibe Evals"}</span>
         </div> : (
         <Link
           href="/vibe-evals"
@@ -563,12 +564,12 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
         </div>}
       </header>}
       {p.newEvaluation && <div className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto" ref={newEntry} tabIndex={-1}
-        aria-label="New agent choices" onKeyDown={event => { if (event.key === "Escape" && !p.contextNavigationBlocked) { p.onCancelNew?.(); requestAnimationFrame(() => document.getElementById("vibe-message")?.focus({ preventScroll: true })); } }}>
+        aria-label="New evaluation choices" onKeyDown={event => { if (event.key === "Escape" && !p.contextNavigationBlocked) { p.onCancelNew?.(); requestAnimationFrame(() => document.getElementById("vibe-message")?.focus({ preventScroll: true })); } }}>
         <div className="vibe-column vibe-entry-page">
           <VibeButton variant="quiet" className="vibe-back-button" disabled={p.contextNavigationBlocked} onClick={() => {
             p.onCancelNew?.(); requestAnimationFrame(() => document.getElementById("vibe-message")?.focus({ preventScroll: true }));
           }}><ArrowLeft />{p.session?.document.evaluation ? "Back to your evaluation" : "Back"}</VibeButton>
-          <EvaluationEntry busy={!!p.contextNavigationBlocked || !!p.entryBlocked} onDoor={p.onDoor} />
+          <EvaluationEntry busy={!!p.contextNavigationBlocked || !!p.entryBlocked} onDoor={p.onDoor} notice={p.entryNotice} />
           {p.pendingLabel && <ActivityStatus label={p.pendingLabel} working />}
           {p.notice}
         </div>
@@ -588,7 +589,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
           <div
             className={`vibe-column ${welcome ? "vibe-entry-page" : "py-8 sm:py-12"}`}
           >
-            {welcome && !intake && (entry ? <EvaluationEntry busy={p.busy || !!p.inferenceUnavailable} onDoor={p.onDoor} /> : <div className="vibe-welcome mb-7">
+            {welcome && !intake && (entry ? <EvaluationEntry busy={p.busy || !!p.inferenceUnavailable} onDoor={p.onDoor} notice={p.entryNotice} /> : <div className="vibe-welcome mb-7">
               <h1 className="vibe-entry-title">{door === "build" ? "What would you like help with?" : door === "test" ? "Improve an agent you already have." : p.testJourney ? "What should your agent do?" : "Check the AI in your app."}</h1>
               <p className="mt-4 max-w-[560px] vibe-muted">{door === "build" ? "Describe a repetitive task. We’ll make a prototype and try three situations to see what works." : door === "test" ? "Bring actual replies, saved instructions or a test pack." : p.testJourney ? "Describe its job and rules. We’ll check what works and what needs fixing." : "Tell us what it does, or paste an answer you want checked."}</p>
               {door === "test" && <><div className="vibe-source-options">
@@ -878,7 +879,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
             {p.session?.document.build?.phase === "error" && !activityLabel && !operations.some(operation => operation.error && operation.id === p.session?.operations.at(-1)?.id) && (
               <p role="alert" className="mt-4 text-sm text-builder-warn">
                 {p.session.document.build.error?.message || "This Build cycle stopped. Your work is saved."}{" "}
-                {p.session.document.artifacts.length ? "You can edit this prototype and use Run tests for a fresh estimate." : "Use New agent to start another prototype."}
+                {p.session.document.artifacts.length ? "You can edit this prototype and use Run tests for a fresh estimate." : "Use New evaluation to start another prototype."}
               </p>
             )}
             {awaitingBuildAnswer && p.session?.document.conversation_state?.pending_question?.purpose !== "clarify_job" && !p.busy && <div className="mt-4"><VibeButton onClick={p.onSample}>Use a sample policy</VibeButton><p className="mt-2 text-xs vibe-muted">A labelled demonstration. Your real policy stays unspecified.</p></div>}

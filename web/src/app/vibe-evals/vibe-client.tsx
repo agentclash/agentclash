@@ -48,6 +48,7 @@ import { useVibeWorkspace } from "@/lib/use-vibe-workspace";
 
 export function VibeClient() {
   const { evidenceResult,selectedCanonical,selectedSDKReport,selectedResult,selectedResultLoading,selectedResultError,retrySelectedResult,onSelectResult,onSDKPromoted,onSDKRegraded,evidenceAccess,sdkInferenceAvailable,projectReturnPath,saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,archiveMode,setArchiveMode,metadata,exporter, recordedUpdate, startRecordedUpdate, closeRecordedUpdate, addRecordedEvidence, entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, runInferenceAvailable, unavailableReason, messageLimit, messageError, buildQuote, buildQuoteState, refreshBuildQuote, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, canChangeDoor, changeDoor, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, trialMaterials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces } = useVibeWorkspace();
+  const choosingEntry = twoDoor && (!session || newEvaluation);
 return (
     <VibeAppearance>
  <ExportDialog controller={exporter}/>
@@ -86,6 +87,11 @@ return (
         newEvaluation={newEvaluation}
         contextNavigationBlocked={!config || pending || uncertain}
         entryBlocked={!entryAvailable}
+        entryNotice={!entryAvailable && <div className="vibe-entry-availability">
+          <p role={configError ? "alert" : "status"}>{configError ? "Couldn’t connect. Try again." : unavailableReason}</p>
+          {configError ? <VibeButton variant="quiet" onClick={() => setLoadAttempt(attempt => attempt + 1)}>Retry connection</VibeButton>
+            : config && <VibeButton variant="quiet" onClick={() => setSettingsOpen(true)}>Review settings</VibeButton>}
+        </div>}
         onCancelNew={() => setNewEvaluation(false)}
         canChangeDoor={canChangeDoor}
         onChangeDoor={() => void changeDoor()}
@@ -221,7 +227,7 @@ return (
             <p className="text-sm vibe-muted">Vibe checks use selected instructions and materials with configured model providers. Application runs separately send selected tests to an approved connection and store canonical results.</p>
             {runQuoteState === "preparation" && <p role="status">Preparing estimate…</p>}
             {runQuoteState === "failure" && <p role="alert">Estimate failed: {runQuoteError}. Use Run tests to request a new estimate; nothing ran.</p>}
-            {config && !inferenceAvailable && <p role="status">{unavailableReason}</p>}
+            {config && !inferenceAvailable && !choosingEntry && <p role="status">{unavailableReason}</p>}
             {buildStart && <section aria-label="Build estimate"><p>Requesting an estimate sends your draft to AgentClash to calculate and store the estimate. It does not run model inference.</p><p role="status">Estimate: {buildQuoteState}{buildQuote && ` · up to ${dollars(buildQuote.max_cost_nano_usd)} · ${buildQuote.cases} cases · up to ${buildQuote.max_calls} model calls`} · {funding}.</p><p>Includes preparation, review, bounded repairs and the first batch.</p><VibeButton disabled={busy || !content.trim() || !inferenceAvailable} onClick={refreshBuildQuote}>Refresh build estimate</VibeButton></section>}
             {!config && !configError && <p className="vibe-connection-status" role="status">Connecting…</p>}
             {configError && (

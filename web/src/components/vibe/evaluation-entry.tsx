@@ -1,11 +1,13 @@
 "use client";
 
 import { ArrowRight, FlaskConical, Sparkles } from "lucide-react";
+import type { ReactNode } from "react";
 
-export function EvaluationEntry({ busy, onDoor }: { busy: boolean; onDoor?: (door: "build" | "test") => void }) {
+export function EvaluationEntry({ busy, onDoor, notice }: { busy: boolean; onDoor?: (door: "build" | "test") => void; notice?: ReactNode }) {
   return <section className="vibe-welcome mb-7">
-    <h1 className="vibe-entry-title">What would you like AI to handle?</h1>
-    <p className="mt-4 vibe-muted">Try an idea, or find out what your existing agent gets right and wrong.</p>
+    <h1 className="vibe-entry-title">What would you like to evaluate?</h1>
+    <p className="mt-4 vibe-muted">Build an agent to try an idea, or improve one you already have.</p>
+    {notice}
     <div className="vibe-entry-doors mt-7">
       <button type="button" disabled={busy} onClick={() => onDoor?.("build")}>
         <Sparkles className="vibe-door-icon" size={20} aria-hidden="true" />
