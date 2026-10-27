@@ -108,21 +108,32 @@ test("a stored trial in B survives opening A, switching, editing and refreshing"
       }));
   }, defaultModels.target);
   const control = await serve(page, false, true);
+  const openGuide = async (id: string) => {
+    await expect(page.locator(`[data-evaluation-id="${id}"]`)).toHaveAttribute("aria-current", "page");
+    const button = page.getByRole("button", { name: "Guide", exact: true });
+    if (await button.getAttribute("aria-pressed") !== "true") await button.click();
+  };
+  await expect(page.getByRole("button", { name: "Guide", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await openGuide("first");
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   await composer.fill("A's unsent guide");
   await page.locator('[data-evaluation-id="second"]').click();
+  await openGuide("second");
   await expect(composer).toHaveValue("B's separate guide draft");
   await page.getByRole("button", { name: "Try it yourself", exact: true }).click();
   const trial = page.getByRole("textbox", { name: "Message your agent", exact: true });
   await expect(trial).toHaveValue("B's unsent trial");
   await trial.fill("B's edited unsent trial");
   await page.locator('[data-evaluation-id="first"]').click();
+  await openGuide("first");
   await expect(composer).toHaveValue("A's unsent guide");
   await page.locator('[data-evaluation-id="second"]').click();
+  await openGuide("second");
   await expect(trial).toHaveValue("B's edited unsent trial");
   await page.reload();
   await expect(trial).toHaveValue("B's edited unsent trial");
   await page.getByRole("tab", { name: "Agent", exact: true }).click();
+  await openGuide("second");
   await expect(composer).toHaveValue("B's separate guide draft");
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
@@ -400,6 +411,15 @@ test("remaining 320 and 768 layouts retain contrast, scaled text and utility foc
   const control=await serve(page,false,true);
   for(const width of [320,768]) {
     await page.setViewportSize({width,height:900});
+    const results=(await page.getByRole("tab",{name:"Results",exact:true}).boundingBox())!;
+    const guide=(await page.getByRole("button",{name:"Guide",exact:true}).boundingBox())!;
+    const details=(await page.getByRole("button",{name:"Details",exact:true}).boundingBox())!;
+    expect(results.x+results.width).toBeLessThanOrEqual(guide.x);
+    expect(guide.x+guide.width).toBeLessThanOrEqual(details.x);
+    for(const box of [results,guide,details]) {
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
     await page.getByRole("button",{name:"Details",exact:true}).click();
     const popup=page.locator('[data-slot="sheet-content"]');
     const appearance=page.getByLabel("Appearance",{exact:true});

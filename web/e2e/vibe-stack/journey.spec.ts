@@ -177,6 +177,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   await composer.press("Enter");
   await finished(page, sessionID!, state.session.operations.length);
   await page.reload();
+  await page.getByRole("button", { name: "Guide", exact: true }).click();
   await expect(failedTurn.getByRole("alert")).toBeVisible();
   await expect(failedTurn.getByRole("button", { name: "Retry", exact: true })).toHaveCount(1);
   const draft = "A separate question that must stay in the composer.";
@@ -204,6 +205,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   expect(pageErrors).toEqual([]);
   await page.screenshot({ path: info.outputPath("recovered-operation.png") });
   await page.reload();
+  await page.getByRole("button", { name: "Guide", exact: true }).click();
   await expect(failedTurn.getByRole("status")).toHaveText("Completed on retry.");
 });
 

@@ -87,6 +87,7 @@ test("Guide retains the full thread and draft while Results uses explicit eviden
   await expect.poll(()=>control.posts.length).toBe(2);
   expect(control.posts[1]).not.toHaveProperty("viewed_run_id");
   await page.reload();
+  await page.getByRole("button", { name: "Guide", exact: true }).click();
   await expect(page.locator('[data-message-id="chat-0"]')).toHaveCount(1);
   expect(control.errors).toEqual([]);
   await page.screenshot({path:info.outputPath("workspace-guide-results.png")});
@@ -110,6 +111,7 @@ test("prototype messages stay separate from Guide and both drafts survive naviga
   await page.getByRole("tab",{name:"Tests",exact:true}).click();await page.getByRole("tab",{name:"Agent",exact:true}).click();
   await expect(trial).toHaveValue("Another unsent email");
   await page.reload();
+  await page.getByRole("button", { name: "Guide", exact: true }).click();
   await expect(trial).toHaveValue("Another unsent email");await expect(composer).toHaveValue("My separate setup draft");
   expect(control.posts).toHaveLength(1);expect(control.errors).toEqual([]);
   await page.screenshot({path:info.outputPath("workspace-independent-composers.png")});

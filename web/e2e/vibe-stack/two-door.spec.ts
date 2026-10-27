@@ -138,7 +138,7 @@ test("switching while a run completes keeps messages and draft attached to the s
  await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('checking');
- await page.getByRole('button',{name:'New agent',exact:true}).click();
+ await page.getByRole('button',{name:'New evaluation',exact:true}).click();
  await page.getByRole('button',{name:/Improve an existing agent/}).click();
  await expect(page.getByRole('heading',{name:'Improve an agent you already have.'})).toBeVisible();
  const second=new URL(page.url()).searchParams.get('session');expect(second).not.toBe(first);
@@ -161,7 +161,7 @@ test("imported tests need independent target instructions and keep identical gra
  await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('results');
  const original=(await evidence(page)).session.document.artifacts[0].blueprint;
- await page.getByRole('button',{name:'New agent',exact:true}).click();await page.getByRole('button',{name:/Improve an existing agent/}).click();
+ await page.getByRole('button',{name:'New evaluation',exact:true}).click();await page.getByRole('button',{name:/Improve an existing agent/}).click();
  await page.locator('input[type=file]').setInputFiles({name:'returns.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(original))});
  await openView(page,'Tests');
  await expect(page.getByRole('button',{name:'Add your agent',exact:true})).toBeVisible();
