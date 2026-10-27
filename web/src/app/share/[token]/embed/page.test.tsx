@@ -30,7 +30,7 @@ describe("/share/[token]/embed", () => {
     });
     const html = renderToStaticMarkup(page);
 
-    expect(get).toHaveBeenCalledWith("/public/shares/share%20token");
+    expect(get).toHaveBeenCalledWith("/public/shares/share%20token", { cache: "no-store" });
     expect(html).toContain('data-agentclash-embed="scorecard"');
     expect(html).toContain("Quarterly support run");
     expect(html).toContain("Careful agent");
