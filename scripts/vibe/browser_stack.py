@@ -10,7 +10,7 @@ import tempfile
 import time
 import uuid
 
-from fixture import ROOT, deterministic_env, parent_env, record, reconcile, run_owned
+from fixture import ROOT, deterministic_env, parent_env, record, reconcile, run_owned, adopt_fixture_descendants, reap_fixture_descendants
 
 
 def main():
@@ -21,6 +21,7 @@ def main():
     record("fixture_directory", str(directory), phase="intent")
     directory.mkdir(mode=0o700)
     record("fixture_directory", str(directory), phase="created")
+    adopt_fixture_descendants()
     child = None
     stopping = None
 
@@ -41,7 +42,9 @@ def main():
         if build.returncode or stopping is not None:
             return build.returncode or 130
         record("process", "browser-api", phase="intent")
-        child = subprocess.Popen([binary, "-test.run=^TestVibeBrowserStack$", "-test.count=1", "-test.timeout=12m", "-test.v"], cwd=ROOT / "backend/internal/api", env=deterministic_env(), start_new_session=True)
+        child_env = deterministic_env()
+        child_env["TMPDIR"] = str(directory)
+        child = subprocess.Popen([binary, "-test.run=^TestVibeBrowserStack$", "-test.count=1", "-test.timeout=12m", "-test.v"], cwd=ROOT / "backend/internal/api", env=child_env, start_new_session=True)
         record("process", "browser-api", phase="started", child_pid=child.pid, process_group=child.pid)
         while child.poll() is None:
             if stopping is not None and time.monotonic() - stopping > 10:
@@ -58,6 +61,7 @@ def main():
                 child.wait()
             # Descendants of this fresh session include only the fixture's
             # optional Temporal dev server. Shared Temporal is never a child.
+            reap_fixture_descendants()
             try:
                 os.killpg(child.pid, signal.SIGTERM)
                 deadline = time.monotonic() + 5
@@ -70,6 +74,7 @@ def main():
                         # Do not claim group absence without observation.
                         break
                     time.sleep(0.1)
+                    reap_fixture_descendants()
                     os.killpg(child.pid, 0)
             except ProcessLookupError:
                 record("process_group", str(child.pid), phase="absent")

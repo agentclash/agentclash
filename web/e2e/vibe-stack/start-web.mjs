@@ -14,6 +14,7 @@ const web = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const staging = path.join(tmpdir(), `agentclash-vibe-browser-${randomUUID()}`);
 await recordOwned("frontend_directory",staging);
 await mkdir(staging);
+await recordOwned("frontend_directory", staging, {phase:"created"});
 let child;
 let closeAuth;
 let stopping = false;
@@ -44,7 +45,7 @@ try {
   closeAuth = await startAuthFixture(Number(process.env.WORKOS_API_PORT || "55442"), `http://127.0.0.1:${process.env.VIBE_BROWSER_WEB_PORT ?? "53518"}`);
   if (stopping) throw new Error("Frontend startup interrupted");
   await Promise.all([
-    ...["src", "public", "package.json", "tsconfig.json", "next.config.ts", "postcss.config.mjs"].map(
+    ...["src", "public", "content", "package.json", "tsconfig.json", "next.config.ts", "postcss.config.mjs"].map(
       entry => cp(path.join(web, entry), path.join(staging, entry), { recursive: true }),
     ),
     symlink(path.join(web, "node_modules"), path.join(staging, "node_modules"), "dir"),

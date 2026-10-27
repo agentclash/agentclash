@@ -91,7 +91,13 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
   const selectedReference = reference?.project === session.id && (!reference.artifact_id || session.document.artifacts.some(item => item.id === reference.artifact_id)) && (!reference.viewed_run_id || runs.some(run => run.id === reference.viewed_run_id)) ? reference : undefined;
   useEffect(() => {
     if (typeof matchMedia !== "function") return;
-    const media = matchMedia("(min-width: 1280px)"); const update = () => setWide(media.matches);
+    const media = matchMedia("(min-width: 1280px)");
+    const update = () => {
+      // A desktop utility must not become a new modal above an active dialog.
+      // Its draft stays in the controller and can be reopened explicitly.
+      if (!media.matches && document.querySelector(".vibe-dialog[data-open]")) setUtility(null);
+      setWide(media.matches);
+    };
     media.addEventListener("change", update); return () => media.removeEventListener("change", update);
   }, []);
   const open = (next: "guide" | "details") => { const trigger = document.activeElement as HTMLElement; utilityTrigger.current = trigger; setUtility(next); if (wide) requestAnimationFrame(() => { if (document.activeElement === trigger) utilityHeading.current?.focus(); }); };

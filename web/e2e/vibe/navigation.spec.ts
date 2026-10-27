@@ -94,6 +94,12 @@ async function serve(page: Page, many = false, prototypes = false) {
   return { first, second, sessions, posts, errors };
 }
 
+async function openCase(page: Page, index = 0) {
+  const row = page.locator(".vibe-result-row").nth(index);
+  if (!(await row.evaluate(element => (element as HTMLDetailsElement).open))) await row.locator("summary").click();
+  return row;
+}
+
 test("a stored trial in B survives opening A, switching, editing and refreshing", async ({ page }) => {
   await page.addInitScript(model => {
     if (!sessionStorage.getItem("vibe-build-drafts:second"))
@@ -190,7 +196,7 @@ test("drawer supports keyboard dismissal, focus return and source selection on s
   await expect(drawer).toBeHidden();
   await expect(page.getByLabel("New agent choices", { exact: true })).toBeFocused();
   await page.getByRole("button", { name: "Back to your evaluation" }).click();
-  await page.getByRole("button", { name: "Paste agent instructions", exact: true }).click();
+  await page.getByRole("button", { name: "Try my saved instructions", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Improve an agent you already have." })).toBeHidden();
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
@@ -200,12 +206,14 @@ test("entry, context label and composer fit mobile, desktop and zoom-sized layou
   const control = await serve(page);
   for (const width of [320, 390, 640, 768, 1280, 1440]) {
     await page.setViewportSize({ width, height: width === 640 ? 450 : 900 });
-    await expect(page.getByLabel("Active evaluation", { exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Paste agent instructions", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", {name:"Improve an agent you already have.",exact:true})).toBeVisible();
+    await expect(page.getByRole("button", { name: "Try my saved instructions", exact: true })).toBeVisible();
     const dock = page.getByTestId("vibe-composer-dock");
     await expect(dock).toBeVisible();
-    const dockBox = await dock.boundingBox();
-    expect(dockBox!.y + dockBox!.height).toBeLessThanOrEqual((await page.evaluate(() => innerHeight)) + 1);
+    await expect.poll(async () => {
+      const box = await dock.boundingBox();
+      return box ? box.y + box.height - await page.evaluate(() => innerHeight) : Infinity;
+    }).toBeLessThanOrEqual(1);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const input = page.getByRole("textbox", { name: "Message Vibe Evals" });
     await input.fill("A long description ".repeat(120));
@@ -332,13 +340,11 @@ test("same-artifact case Back and Forward restores the visible expectation witho
   blueprint.cases.push({ key: "invoice", payload: { question: "Invoice attached." }, expectations: [{ key: "expected_behavior", kind: "text", value: "Label as Billing." }] });
   await page.reload();
   await page.getByRole("tab", { name: "Tests", exact: true }).click();
-  await page.locator(".vibe-result-row summary").nth(0).click();
-  await page.getByRole("button", { name: "Edit this expectation", exact: true }).click();
+  await (await openCase(page, 0)).getByRole("button", {name:"Edit this expectation",exact:true}).click();
   const expectation = page.locator('[aria-label="Your tests"] textarea');
   await expect(expectation).toHaveValue("Label as Spam.");
   await page.getByRole("button", { name: "Cancel", exact: true }).click();
-  await page.locator(".vibe-result-row summary").nth(1).click();
-  await page.getByRole("button", { name: "Edit this expectation", exact: true }).click();
+  await (await openCase(page, 1)).getByRole("button", {name:"Edit this expectation",exact:true}).click();
   await expect(expectation).toHaveValue("Label as Billing.");
   await page.goBack(); await expect(expectation).toHaveCount(0);
   await page.goBack(); await expect(expectation).toHaveValue("Label as Spam.");
@@ -387,7 +393,7 @@ test("workspace geometry, scoped portal appearance and reading focus adapt at ev
   await page.getByRole("button", { name: "New response", exact: true }).click();
   await expect(page.getByLabel("Guide response", { exact: true })).toBeFocused();
   await page.getByRole("tab", { name: "Tests", exact: true }).click();
-  await page.locator(".vibe-result-row summary").click();
+  await openCase(page);
   await page.getByRole("button", { name: "Ask Guide about this test", exact: true }).click();
   await expect(page.getByLabel("Guide reference", { exact: true })).toContainText("You won a prize.");
   await expect(page.getByRole("textbox", { name: "Message Vibe Evals" })).toBeFocused();
@@ -439,7 +445,7 @@ test("remaining 320 and 768 layouts retain contrast, scaled text and utility foc
 test("an explicit pre-run Guide reference submits only its identity and the user's question", async ({page}) => {
  const control=await serve(page,false,true);
  await page.getByRole("tab",{name:"Tests",exact:true}).click();
- await page.locator(".vibe-result-row summary").click();
+ await openCase(page);
  await page.getByRole("button",{name:"Ask Guide about this test",exact:true}).click();
  expect(control.posts).toHaveLength(0);
  await page.getByRole("textbox",{name:"Message Vibe Evals"}).fill("Explain this example.");

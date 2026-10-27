@@ -78,6 +78,7 @@
 @media (prefers-contrast: more) { .vibe-workspace[data-appearance] { --vibe-muted: var(--vibe-fg); --vibe-border: var(--vibe-fg); } }
 .vibe-reply-body[data-collapsed="true"] { max-height: 24rem; overflow: hidden; }
 .vibe-project-main[data-initial] { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.vibe-project-main[data-initial] > .vibe-composer-dock { flex-shrink: 1; min-height: 0; max-height: 100%; overflow-y: auto; }
 .vibe-workspace .vibe-sidebar-create .vibe-button { background: var(--vibe-hover); color: var(--vibe-fg); border-color: var(--vibe-border); }
 /* Shared outline buttons follow the route appearance even under html.dark. */
 .vibe-workspace [data-slot="button"][data-variant="outline"] { background: var(--vibe-surface); color: var(--vibe-fg); border-color: var(--vibe-control-border); }

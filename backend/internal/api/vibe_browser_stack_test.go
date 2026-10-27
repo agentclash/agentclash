@@ -305,10 +305,12 @@ func browserFixtureTemporal(t *testing.T, ctx context.Context, namespace string)
 	t.Helper()
 	address := os.Getenv("VIBE_BROWSER_TEMPORAL_ADDRESS")
 	if address == "" {
+		recordBrowserOwnership(t, "temporal_devserver", namespace, map[string]any{"phase": "intent", "process_group": os.Getpid(), "directory": os.TempDir(), "storage": "ephemeral"})
 		server, err := testsuite.StartDevServer(ctx, testsuite.DevServerOptions{ExistingPath: os.Getenv("VIBE_BROWSER_TEMPORAL_CLI"), ClientOptions: &client.Options{Namespace: namespace}, LogLevel: "error"})
 		if err != nil {
 			t.Fatal(err)
 		}
+		recordBrowserOwnership(t, "temporal_devserver", namespace, map[string]any{"phase": "started", "process_group": os.Getpid(), "address": server.FrontendHostPort(), "storage": "ephemeral"})
 		t.Cleanup(func() {
 			if err := server.Stop(); err != nil {
 				t.Logf("Temporal shutdown: %v", err)

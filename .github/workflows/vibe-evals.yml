@@ -9,7 +9,7 @@ on:
       - 'backend/Dockerfile.worker'
       - 'backend/internal/api/vibe*'
       - 'backend/internal/api/runs*'
-      - 'web/src/app/(workspace)/workspaces/[workspaceId]/runs/**'
+      - 'web/src/app/(workspace)/workspaces/*/runs/**'
       - 'backend/internal/api/regression*'
       - 'backend/internal/api/release_gate*'
       - 'backend/internal/api/github_integrations*'
@@ -20,7 +20,7 @@ on:
       - 'cli/cmd/evaltest*'
       - 'cli/go.*'
       - 'web/src/lib/ci-setup*'
-      - 'web/src/app/(workspace)/workspaces/[workspaceId]/ci-setup/**'
+      - 'web/src/app/(workspace)/workspaces/*/ci-setup/**'
       - 'web/src/components/challenge-packs/vibe-return*'
       - 'backend/internal/api/eval_session*'
       - 'backend/internal/api/eval_sets*'
@@ -51,7 +51,7 @@ on:
       - 'web/src/components/app-shell/top-bar.tsx'
       - 'web/src/components/app-shell/nav-items.ts'
       - 'web/src/app/share/**'
-      - 'web/src/app/(workspace)/workspaces/[workspaceId]/reports/**'
+      - 'web/src/app/(workspace)/workspaces/*/reports/**'
       - 'web/src/lib/report-snapshots.ts'
       - 'backend/internal/api/public_shares*'
       - 'backend/internal/repository/public_share*'
@@ -189,6 +189,11 @@ jobs:
           sudo apt-get install -y bubblewrap python3-venv
           /usr/bin/python3 -m venv "$RUNNER_TEMP/vibe-pdf-runtime"
           "$RUNNER_TEMP/vibe-pdf-runtime/bin/pip" install -r backend/internal/vibe/inputs/requirements.txt
+      - name: Owned SDK fixture failure, child-loss and interruption cleanup
+        run: |
+          python3 scripts/vibe/verify_lifecycle.py failure
+          python3 scripts/vibe/verify_lifecycle.py child-loss
+          python3 scripts/vibe/verify_lifecycle.py interrupt
       - name: Browser to real API, PostgreSQL and Temporal worker (fake inference)
         working-directory: web
         run: npx playwright test --config playwright.vibe-stack.config.ts interpretation.spec.ts journey.spec.ts two-door.spec.ts sdk-reports.spec.ts connectors.spec.ts report-snapshots.spec.ts roundtrip.spec.ts

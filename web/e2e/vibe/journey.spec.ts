@@ -587,6 +587,7 @@ test("describe, review, independently select agent, check, inspect unknowns and 
   ).toHaveValue(models.assistant);
   await page.getByRole("button", { name: "Close", exact: true }).click();
   await page.getByRole("button", { name: "Run 3 tests" }).click();
+  await page.getByRole("button", {name:"View latest results",exact:true}).click();
   await expect(
     page.getByRole("article", { name: "Evaluation scorecard" }),
   ).toContainText("1 passed · 0 need attention · 2 unresolved");
@@ -657,6 +658,7 @@ for (const viewport of [
     expect(mock.messageCount()).toBe(0);
     await page.getByRole("button", { name: "Send message", exact: true }).click();
     await page.getByRole("button", { name: "Run 3 tests" }).click();
+  await page.getByRole("button", {name:"View latest results",exact:true}).click();
     await expect(page.getByRole("tab", { name: "Results" })).toHaveAttribute(
       "aria-selected",
       "true",
@@ -730,6 +732,7 @@ async function createAndCheck(page: Page) {
   await page
     .getByRole("button", { name: "Run 3 tests", exact: true })
     .click();
+  await page.getByRole("tab", {name:"Results",exact:true}).click();
 }
 
 test("Try keeps followups separate from Build and starts fresh on reset", async ({
@@ -898,6 +901,7 @@ test("unapplied instructions cannot run checks; applying creates a ready-to-try 
   expect(mock.checkCount()).toBe(0);
   await page.getByRole("button", { name: "Use these instructions" }).click();
   await page.getByRole("button", { name: "Run 3 tests" }).click();
+  await page.getByRole("button", {name:"View latest results",exact:true}).click();
   await expect(
     page.getByRole("article", { name: "Evaluation scorecard" }),
   ).toBeVisible();

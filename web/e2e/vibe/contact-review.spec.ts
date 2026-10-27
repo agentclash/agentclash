@@ -34,7 +34,8 @@ async function installFixture(page: Page, mode: ContactMode, posts: string[]) {
 
 async function openContact(page: Page) {
   await page.goto("/vibe-evals?session=contact-fixture");
-  await page.locator('[data-message-id="request"]').waitFor();
+  await page.getByRole("tab", {name:"Results", exact:true}).click();
+  await expect(page.getByRole("combobox", {name:"Result history"})).toHaveValue("check");
   const opener = page.getByRole("button", { name: "Discuss this with AgentClash" }).first();
   await opener.scrollIntoViewIfNeeded();
   await opener.click();
@@ -50,7 +51,8 @@ test("unconfigured and direct-email modes do not collect contact details or send
     await page.setViewportSize({ width: 320, height: 740 });
     if (mode === "unconfigured") {
       await page.goto("/vibe-evals?session=contact-fixture");
-      await page.locator('[data-message-id="request"]').waitFor();
+      await page.getByRole("tab", {name:"Results", exact:true}).click();
+  await expect(page.getByRole("combobox", {name:"Result history"})).toHaveValue("check");
       await expect(page.getByRole("button", { name: "Discuss this with AgentClash" })).toHaveCount(0);
       expect(posts).toHaveLength(0); await page.unrouteAll(); continue;
     }
@@ -113,7 +115,12 @@ test("an open review dialog refits after desktop-to-phone resize", async ({ page
   await page.setViewportSize({ width: 1440, height: 900 });
   const { dialog } = await openContact(page);
   await expect(dialog).toBeVisible();
+  const email = dialog.getByLabel("Your email");
+  await email.fill("retained@example.test");
   await page.setViewportSize({ width: 320, height: 740 });
+  await expect(email).toHaveValue("retained@example.test");
+  await expect(email).toBeFocused();
+  await expect(page.getByRole("dialog")).toHaveCount(1);
   await expect.poll(async () => {
     const rect = await dialog.boundingBox();
     if (!rect) return null;

@@ -143,6 +143,29 @@ def run_owned(command, *, name, **kwargs):
             signal.signal(sig, handler)
 
 
+def adopt_fixture_descendants():
+    """Linux fixture supervisor: keep orphaned SDK children waitable here."""
+    import ctypes
+    if not sys.platform.startswith("linux"):
+        raise RuntimeError("owned Temporal lifecycle verification requires Linux")
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
+        raise OSError(ctypes.get_errno(), "cannot supervise owned fixture descendants")
+
+
+def reap_fixture_descendants():
+    # waitpid can return only children of this dedicated fixture supervisor.
+    # The direct API child has already been waited; these are adopted children.
+    while True:
+        try:
+            pid, status = os.waitpid(-1, os.WNOHANG)
+        except ChildProcessError:
+            return
+        if not pid:
+            return
+        record("fixture_descendant", str(pid), phase="reaped", exit_status=status)
+
+
 def reconcile(dsn, log, owner_pid):
     """Only successful creation receipts from this exact child process qualify."""
     env = parent_env(dsn)

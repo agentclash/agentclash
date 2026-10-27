@@ -275,7 +275,8 @@ for (const mobile of [false, true]) {
       page.getByRole("textbox", { name: "Agent instructions", exact: true }),
     ).toHaveCount(0);
     const tests = page.getByRole("region", { name: "Your tests", exact: true });
-    await tests.locator("summary").filter({ hasText: inputs[0] }).click();
+    const firstCase = tests.locator("summary").filter({ hasText: inputs[0] });
+    if (!(await firstCase.evaluate(node => (node.parentElement as HTMLDetailsElement).open))) await firstCase.click();
     await expect(tests.getByText(expected[0], { exact: true })).toBeVisible();
     await tests
       .getByRole("button", { name: "Add your agent", exact: true })
@@ -289,6 +290,7 @@ for (const mobile of [false, true]) {
     await tests.getByRole("button", { name: "Use these instructions" }).click();
     expect(requests).toHaveLength(1);
     await tests.getByRole("button", { name: "Run 3 tests" }).click();
+    await page.getByRole("button", { name: "View latest results", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "2 of 3 tests passed" }),
     ).toBeVisible();
@@ -319,14 +321,16 @@ for (const mobile of [false, true]) {
     await composer.scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("casual-chat.png") });
     await page.locator("summary").filter({ hasText: /^Review the suggested fix$/ }).click();
-    const proposal = page.locator('[data-proposal-id="fixed"]');
+    const proposal = page.getByRole("region", {name:"Your tests",exact:true});
     await expect(proposal).toBeVisible();
+    await expect(proposal).toHaveAttribute("data-proposal-id", "fixed");
     const owner = page.locator('[data-message-id="reply-fixed"]');
     await expect(owner).not.toContainText("Taking a break?");
     await page.locator("summary").filter({ hasText: /^Review the instruction change$/ }).click();
     await page.getByLabel("Instruction changes").scrollIntoViewIfNeeded();
     await page.screenshot({ path: info.outputPath("instruction-diff.png") });
     await page.getByRole("button", { name: "Improve and rerun", exact: true }).click();
+    await page.getByRole("tab", { name: "Results", exact: true }).click();
     await expect(
       page.getByRole("heading", { name: "3 of 3 tests passed" }),
     ).toBeVisible();

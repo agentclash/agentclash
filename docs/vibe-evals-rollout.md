@@ -14,8 +14,11 @@ required before presenting guarded config/model fingerprints. Missing or unknown
 guard versions remain unknown. Platform validation does not acknowledge an
 upstream seed, external model revision or application source build.
 
-Use a private preview and the existing server workspace availability flag before
-public availability. Keep guest/workspace admission and material-build capability
+Use a private preview before public availability. The existing server switch is
+`VIBE_ENABLED`; `/v1/vibe/config` reports `availability.workspace` and
+`availability.guest` from readiness and guest capacity. There is no independent
+workspace-only environment flag in this implementation. Apply preview access at
+the existing authenticated workspace boundary. Keep guest/workspace admission and material-build capability
 checks authoritative on the backend. Do not implement preview by changing the
 full execution-config fingerprint independently of workers: that can disable
 compatible API/worker readiness. Enable the existing public entry only after the
@@ -43,5 +46,7 @@ reconciliation and audit rather than overwriting them.
 
 Local verification uses disposable child databases with exact-name/OID creation
 receipts, isolated process sessions and durable JSONL ownership records. Shared
-PostgreSQL parents and Temporal services are not reset. Temporal workflow-history
-retention does not delete namespace metadata; local namespaces remain retained.
+PostgreSQL parents and shared Temporal services are not reset. Temporal workflow-history
+retention does not delete shared-service namespace metadata; those namespaces remain
+retained. The browser fixture can instead own the existing SDK in-memory Temporal
+devserver; its process and files are stopped and removed with that exact fixture.

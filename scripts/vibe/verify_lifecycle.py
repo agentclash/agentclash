@@ -10,7 +10,7 @@ import sys
 import time
 from urllib.request import urlopen
 
-from fixture import ROOT, deterministic_env, identity, parent_env, record
+from fixture import ROOT, deterministic_env, identity, parent_env, record, adopt_fixture_descendants, reap_fixture_descendants
 
 
 def main():
@@ -23,9 +23,9 @@ def main():
     address = env["VIBE_BROWSER_API_ADDRESS"]
     if args.mode == "failure":
         env["VIBE_BROWSER_API_ADDRESS"] = "invalid-fixture-listener"
-    # Shared Temporal must be explicitly selected; never provision a service.
-    if not env.get("VIBE_BROWSER_TEMPORAL_ADDRESS"):
-        parser.error("VIBE_BROWSER_TEMPORAL_ADDRESS is required")
+    # With no external address, the existing SDK fixture owns its dev server.
+    # Keep any orphan from a failing supervisor waitable by this proof process.
+    adopt_fixture_descendants()
     admin = parent_env(env["VIBE_TEST_DATABASE_URL"])
     ledger = Path(env["VIBE_BROWSER_OWNERSHIP_LOG"])
     record("process", "lifecycle-" + args.mode, phase="intent")
@@ -78,11 +78,20 @@ def main():
         for row in rows():
             if row.get("pid") == supervisor.pid and row.get("kind") == "fixture_directory" and row.get("phase") == "created" and Path(row["name"]).exists():
                 raise RuntimeError("owned fixture directory remains")
+        group = [r for r in rows() if r.get("pid") == supervisor.pid and r.get("kind") == "process_group" and r.get("name") == str(api_pid)]
+        if not any(r.get("phase") == "absent" for r in group):
+            raise RuntimeError("owned API/Temporal process group has no absence receipt")
         print(json.dumps({"mode": args.mode, "fixture_exit": code, "databases_absent": [r["name"] for r in created], "passed": True}))
     finally:
         if supervisor.poll() is None:
             supervisor.terminate()
             supervisor.wait(timeout=60)
+        reap_fixture_descendants()
+        if api_pid:
+            try:
+                os.killpg(api_pid, 0)
+            except ProcessLookupError:
+                record("process_group", str(api_pid), phase="absence_verified_by_lifecycle_test")
 
 
 if __name__ == "__main__":
