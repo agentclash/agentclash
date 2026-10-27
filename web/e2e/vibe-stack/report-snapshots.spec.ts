@@ -14,11 +14,15 @@ test("selected copy survives private cleanup with independent member/viewer navi
     await login(page);
     await page.getByLabel("Workspace for new projects").selectOption(workspace);
     await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+    await expect(page).toHaveURL(/session=/);
+    const session = new URL(page.url()).searchParams.get("session")!;
+    // Compare the complete fixture journal across this action window: earlier serial
+    // journeys may have calls, but imports/report sharing must append none.
+    const before = await (await page.request.get(`${api}/__fixture/evidence?session=${session}`)).json();
     const choose = page.waitForEvent("filechooser");
     await page.getByRole("button", { name: "Import a test pack", exact: true }).click();
     await (await choose).setFiles({ name: "tests.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(blueprint)) });
     await expect(page.getByRole("tab", { name: "Tests", exact: true })).toBeVisible();
-    const session = new URL(page.url()).searchParams.get("session")!;
     await page.getByRole("tab", { name: "Results", exact: true }).click();
     await page.locator("summary").filter({ hasText: /^Import SDK report$/ }).click();
     const source = JSON.stringify({ schema_version: 1, report_id: "PRIVATE_REPORT", generated_at: "2026-10-26T12:00:00Z", runner: { name: "agentclash-evals", version: "1" }, summary: { total: 1, passed: 0, failed: 1, skipped: 0, errored: 0 }, cases: [{ case: { case_id: "PRIVATE_CASE", name: "PRIVATE_LABEL" }, status: "failed", metrics: [{ key: "PRIVATE_METRIC", name: "PRIVATE_NAME", passed: false, score: 0.2, reason: "PRIVATE_REASON" }], agent_result: { input: "PRIVATE_INPUT", output: "PRIVATE_OUTPUT" } }], exit_code: 1 }).replace('"score":0.2', '"score":0.12345678901234567890123456789');
@@ -83,7 +87,7 @@ test("selected copy survives private cleanup with independent member/viewer navi
             expect(await publicPage.locator('meta[name="robots"]').getAttribute("content")).toContain("noindex");
             // Production delete admission followed by actual cleanup, then reload both independent routes.
             const activity = await (await page.request.get(`${api}/__fixture/evidence?session=${session}`)).json();
-            expect(activity.calls || []).toHaveLength(0);
+            expect(activity.calls || []).toEqual(before.calls || []);
             expect(activity.session.operations).toHaveLength(0);
             const current = await (await page.request.get(`${api}/v1/vibe/sessions/${session}`, { headers: { Authorization: ownerToken } })).json();
             const deleted = await page.request.delete(`${api}/v1/vibe/sessions/${session}?revision=${current.revision}`, { headers: { Authorization: ownerToken } });
@@ -116,7 +120,7 @@ test("selected copy survives private cleanup with independent member/viewer navi
                 expect(await viewer.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
                 await viewer.screenshot({ path: info.outputPath(`report-viewer-${width}.png`), fullPage: true });
             }
-            await writeFile(info.outputPath("report-evidence.json"), JSON.stringify({ session, rawReport: rawReport.id, snapshot, publicPath, replacement, cleanup: await cleanup.json(), inferenceCalls: (activity.calls || []).length, operations: activity.session.operations.length, errors }, null, 2));
+            await writeFile(info.outputPath("report-evidence.json"), JSON.stringify({ session, rawReport: rawReport.id, snapshot, publicPath, replacement, cleanup: await cleanup.json(), inferenceCalls: (activity.calls || []).length - (before.calls || []).length, operations: activity.session.operations.length, errors }, null, 2));
         }
         finally {
             await publicPage.close();

@@ -5,6 +5,18 @@ export function workingBuildArtifact(session: Session): Artifact | undefined {
   return session.document.artifacts.find(a => a.id === id && !!a.agent_prompt);
 }
 
+// Reuse the terminal parent result only for an instruction-only proposal.
+// Request admission still validates the selected artifact and frozen grading.
+export function instructionChangeBaseline(session?: Session, artifact?: Artifact): Operation | undefined {
+  const parent = session?.document.artifacts.find(item => item.id === artifact?.parent_id);
+  if (!session || !artifact || !parent?.agent_prompt.trim() || !artifact.agent_prompt ||
+      parent.agent_prompt === artifact.agent_prompt ||
+      JSON.stringify(parent.blueprint) !== JSON.stringify(artifact.blueprint)) return undefined;
+  return session.operations.findLast(operation =>
+    (operation.kind === "check" || operation.kind === "retest") &&
+    operation.results.some(result => result.version === parent.id) && terminal(operation.state));
+}
+
 export function buildVersion(session: Session, artifact: Artifact) {
   return session.document.artifacts.filter(a => a.agent_prompt || a.conversation_evaluation).findIndex(a => a.id === artifact.id) + 1;
 }

@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { writeFile, readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
+import { cpus, totalmem } from "node:os";
 import { recordOwned } from "../../web/e2e/vibe-stack/ownership.mjs";
 const require = createRequire(path.resolve("web/package.json"));
 const { chromium } = require("playwright");
@@ -22,6 +23,7 @@ await recordOwned("performance_browser",`${commit}:${base}`,{phase:"started",chi
 const browserStart = browserPID ? await readFile(`/proc/${browserPID}/stat`, "utf8") : null;
 await recordOwned("performance_samples",output);
 const samples=[];
+const startedAt = new Date().toISOString();
 try {
  for(const width of [1440,390]) for(let sample=1;sample<=5;sample++) {
   const context=await browser.newContext({viewport:{width,height:900},colorScheme:"dark",reducedMotion:"reduce"});
@@ -64,7 +66,7 @@ try {
   samples.push({width,sample,readyMS,keyboardMS,...metrics,blockedExternal:blocked});
   await context.close();
  }
- await writeFile(output,JSON.stringify({version:1,commit,base,fixtureSHA256,method:{build:"production",browser:browser.version(),platform:process.platform,viewportHeight:900,coldContextPerSample:true,cacheDisabled:true,cpuRate:4,latencyMS:150,downloadBytesPerSecond:200000,uploadBytesPerSecond:93750,cases:100,messages:62,theme:"dark",reducedMotion:true,claim:"Local lab rendering and typing only; no model/network application accuracy or physical Mac claim"},samples},null,2),{flag:"wx"});
+ await writeFile(output,JSON.stringify({version:1,commit,base,fixtureSHA256,method:{build:"production",startedAt,node:process.version,cpu:cpus()[0]?.model,logicalCPUs:cpus().length,memoryBytes:totalmem(),browser:browser.version(),platform:process.platform,viewportHeight:900,coldContextPerSample:true,cacheDisabled:true,cpuRate:4,latencyMS:150,downloadBytesPerSecond:200000,uploadBytesPerSecond:93750,cases:100,messages:62,theme:"dark",reducedMotion:true,claim:"Local lab rendering and typing only; no model/network application accuracy or physical Mac claim"},samples},null,2),{flag:"wx"});
 } finally {
  await browser.close();
  let absence = false;

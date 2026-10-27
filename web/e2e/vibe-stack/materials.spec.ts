@@ -55,7 +55,8 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   expect(state.session.document.artifacts[0].agent_prompt).not.toContain("Ana");
   expect(state.session.document.artifacts[0].agent_prompt).not.toContain("Mira");
   await expect(page.locator(".vibe-result-row")).toHaveCount(0);
-  await page.getByRole("button",{name:"Discuss this with AgentClash",exact:true}).click();
+  await page.getByRole("tab",{name:"Results",exact:true}).click();
+  await page.getByRole("button",{name:"Discuss this with AgentClash",exact:true}).first().click();
   await expect(page.getByRole("dialog")).toContainText("Contact isn’t set up yet. You can copy your summary.");
   const summary=page.getByRole("textbox",{name:"Project summary",exact:true});
   await expect(summary).not.toHaveValue(/Mira|Ana/);
@@ -67,11 +68,12 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
         box.y >= 15 && box.y + box.height <= viewport.height - 15;
     }, { message: "Contact review fits after viewport resize" }).toBe(true);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await expect(page.getByLabel("Active evaluation")).toBeInViewport();
+    await expect(page.locator(".vibe-project-header")).toBeInViewport();
     await page.screenshot({path:info.outputPath(`${kind}-${viewport.width}.png`)});
   }
   await page.setViewportSize({width:1440,height:900});
   await page.getByRole("dialog").getByRole("button",{name:"Close",exact:true}).click();
+  await page.getByRole("tab",{name:"Agent",exact:true}).click();
   await page.locator(".vibe-output-download summary").click();
   const download=page.waitForEvent("download"); await page.getByRole("button",{name:"Markdown (.md)"}).click(); await download;
   await page.reload();

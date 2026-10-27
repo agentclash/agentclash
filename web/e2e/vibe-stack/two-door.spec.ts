@@ -1,4 +1,4 @@
-import {expect,test} from "@playwright/test";
+import {expect,test,type Page} from "@playwright/test";
 import {writeFile} from "node:fs/promises";
 const api=`http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const description="Answer shop return questions. Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund. Prepare exactly three tests.";
@@ -14,6 +14,20 @@ async function evidence(page: import("@playwright/test").Page) {
  const id=new URL(page.url()).searchParams.get("session");
  const result=await (await page.request.get(`${api}/__fixture/evidence?session=${id}`)).json();
  return {...result,calls:result.calls || []};
+}
+async function openGuide(page: Page) {
+ const button=page.getByRole('button',{name:'Guide',exact:true});
+ if(await button.getAttribute('aria-pressed')!=='true') await button.click();
+}
+async function openView(page: Page, name: 'Agent'|'Tests'|'Results') {
+ const sheet=page.getByRole('dialog').filter({has:page.getByRole('button',{name:'Close Guide',exact:true})});
+ if(await sheet.isVisible()) await sheet.getByRole('button',{name:'Close Guide',exact:true}).click();
+ await page.getByRole('tab',{name,exact:true}).click();
+}
+async function reviewLatest(page: Page) {
+ const latest=(await evidence(page)).session.document.artifacts.at(-1).id;
+ if(new URL(page.url()).searchParams.get('agent')!==latest) await page.getByRole('button',{name:'Review latest version',exact:true}).click();
+ await expect.poll(()=>new URL(page.url()).searchParams.get('agent')).toBe(latest);
 }
 test("clear Build goes through real worker to three results, scoped export and interactive prototype",async({page},info)=>{
  await page.setViewportSize({width:1440,height:900});
@@ -32,25 +46,26 @@ test("clear Build goes through real worker to three results, scoped export and i
  expect(v.session.operations.filter((o:{kind:string})=>o.kind==='check')).toHaveLength(1);
  expect(v.session.operations.at(-1).results).toHaveLength(3);
  expect(v.calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(3);
- await expect(page.getByRole('article',{name:'Prototype example results'})).toBeVisible();
- await expect(page.getByRole('tab',{name:'Conversation',exact:true})).toHaveAttribute('aria-selected','true');
+ await expect(page.getByRole('tab',{name:'Agent',exact:true})).toHaveAttribute('aria-selected','true');
+ await openGuide(page);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
- await expect(page.getByRole('status').filter({hasText:'All 3 checks matched your rules.'})).toBeVisible();
- await expect(page.locator('.vibe-result-row')).toHaveCount(0);
- await expect(page.getByLabel('Active evaluation')).toBeVisible();
+ await openView(page,'Results');
+ await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText('3 passed · 0 failed · 0 unresolved');
+ await expect(page.getByLabel('Result history').locator('option:not([disabled])')).toHaveCount(1);
+ await expect(page.locator('.vibe-project-header')).toContainText('Run 1 (COMPLETED)');
  await page.screenshot({path:info.outputPath('results-desktop.png'),fullPage:true});
  for(const viewport of [{width:360,height:800},{width:390,height:844}]) {
   await page.setViewportSize(viewport);
-  await page.getByLabel('Active evaluation').scrollIntoViewIfNeeded();
+  await page.locator('.vibe-project-header').scrollIntoViewIfNeeded();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await expect(page.getByLabel('Active evaluation')).toBeInViewport();
+  await expect(page.locator('.vibe-project-header')).toBeInViewport();
   await page.screenshot({path:info.outputPath(`results-${viewport.width}.png`),fullPage:true});
  }
  await page.setViewportSize({width:1280,height:900});
  await page.getByRole('button',{name:'Download / save',exact:true}).click();
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export / build it myself',exact:true}).click();await page.getByRole('button',{name:'Download exact export',exact:true}).click();await download;await page.getByRole('button',{name:'Close',exact:true}).last().click();
  await page.getByRole('button',{name:'Try it yourself',exact:true}).click();
- await expect(page.getByText(/business systems aren’t connected/).first()).toBeVisible();
+ await expect(page.getByRole('region',{name:'Version scope'})).toContainText(/business systems (?:are not|aren’t) connected/);
  await page.getByRole('textbox',{name:'Message your agent',exact:true}).fill('My item is unopened and I bought it 10 days ago.');
  await page.getByRole('button',{name:'Send to prototype',exact:true}).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.operations.at(-1)?.state;}).toBe('COMPLETED');
@@ -61,8 +76,10 @@ test("clear Build goes through real worker to three results, scoped export and i
  expect(afterTrial.calls.filter((c:{role:string})=>c.role==='evaluator')).toHaveLength(v.calls.filter((c:{role:string})=>c.role==='evaluator').length);
  await page.screenshot({path:info.outputPath('interactive-prototype.png'),fullPage:true});
  await page.reload();
- await expect(page.getByRole('article',{name:'Prototype example results'})).toHaveCount(1);
+ await openGuide(page);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
+ await openView(page,'Results');
+ await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText('3 passed · 0 failed · 0 unresolved');
  expect((await evidence(page)).calls).toHaveLength(afterTrial.calls.length);
 });
 
@@ -74,6 +91,7 @@ test("mobile loading exposes Stop and cancelling does not restart the initial ch
  await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('checking');
+ await openView(page,'Results');
  await expect(page.locator('.vibe-status-shine')).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:info.outputPath('loading-mobile.png'),fullPage:true});
@@ -96,7 +114,8 @@ test("one question then unknown produces a labelled sample, with no invented req
  const v=await evidence(page);expect(v.session.document.build.clarifications_used).toBe(1);
  expect(v.session.document.artifacts[0].sample).toBe('returns');
  expect(v.session.document.policies || []).toHaveLength(0);
- await expect(page.getByText(/These results check the sample/)).toBeVisible();
+ await openView(page,'Agent');
+ await expect(page.getByRole('region',{name:'Version scope'})).toContainText('Your real policy is still unspecified.');
  await page.screenshot({path:info.outputPath('sample-results.png'),fullPage:true});
 });
 test("entry and context controls fit desktop and mobile",async({page},info)=>{
@@ -108,7 +127,7 @@ test("entry and context controls fit desktop and mobile",async({page},info)=>{
  }
  await page.getByRole('button',{name:/Improve an existing agent/}).click();
  for(const name of ['Import a test pack','Paste agent instructions']) await expect(page.getByRole('button',{name,exact:true})).toBeVisible();
- await expect(page.getByText(/Live connections aren’t available/)).toBeVisible();
+ await expect(page.getByRole('button',{name:'Connect my application',exact:true})).toBeVisible();
 });
 
 test("switching while a run completes keeps messages and draft attached to the selected evaluation",async({page})=>{
@@ -144,11 +163,13 @@ test("imported tests need independent target instructions and keep identical gra
  const original=(await evidence(page)).session.document.artifacts[0].blueprint;
  await page.getByRole('button',{name:'New agent',exact:true}).click();await page.getByRole('button',{name:/Improve an existing agent/}).click();
  await page.locator('input[type=file]').setInputFiles({name:'returns.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(original))});
+ await openView(page,'Tests');
  await expect(page.getByRole('button',{name:'Add your agent',exact:true})).toBeVisible();
  let state=await evidence(page);expect(state.session.operations).toHaveLength(0);expect(state.session.document.artifacts.at(-1).blueprint).toEqual(original);
  await page.getByRole('button',{name:'Create a prototype',exact:true}).click();
- await page.getByRole('textbox',{name:'Its job and your rules',exact:true}).fill('Opened items are eligible. Unopened items within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.');
- await page.getByRole('button',{name:'Create interactive prototype',exact:true}).click();
+ await page.getByRole('textbox',{name:'Agent instructions',exact:true}).fill('Opened items are eligible. Unopened items within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.');
+ await page.getByRole('button',{name:'Use these instructions',exact:true}).click();
+ await openView(page,'Tests');
  await page.getByRole('button',{name:'Run 3 tests',exact:true}).click();
  await expect(page.getByRole('dialog')).toContainText('up to');
  expect((await evidence(page)).session.operations).toHaveLength(0);
@@ -160,14 +181,14 @@ test("imported tests need independent target instructions and keep identical gra
  const patch=await page.request.patch(`${api}/v1/vibe/sessions/${state.session.id}`,{data:{revision:state.session.revision,artifact_id:target.id,agent_prompt:target.agent_prompt.replace('Opened items are eligible.','Only unopened items are eligible.')}});expect(patch.ok(),await patch.text()).toBe(true);
  const updated=await patch.json();
  await page.goto(`/vibe-evals?session=${state.session.id}&agent=${updated.document.artifacts.at(-1).id}&view=build`);
- const conversation=page.getByRole('tab',{name:'Conversation',exact:true});if(await conversation.count()) await conversation.click();
- const review=page.locator('summary').filter({hasText:'Review the suggested fix'});if(await review.isVisible()) await review.click();
+ await openView(page,'Tests');
  await page.getByRole('button',{name:'Improve and rerun',exact:true}).click();
  await page.getByRole('button',{name:'Run 3 examples',exact:true}).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.operations.length===2 && v.session.operations.at(-1)?.state==='COMPLETED';}).toBe(true);
  state=await evidence(page);const rerun=state.session.operations.at(-1);
  expect(rerun.baseline_id).toBe(baseline.id);expect(rerun.grading.hash).toBe(baseline.grading.hash);
  expect(rerun.scorecard.passed).toBe(3);expect(state.session.document.artifacts.at(-1).blueprint).toEqual(original);
+ await openView(page,'Results');
  await expect(page.getByText('1 fixed · 0 new failures. Same tests and evaluator.')).toBeVisible();
  await page.screenshot({path:info.outputPath('same-tests-improvement.png'),fullPage:true});
 });
@@ -178,6 +199,7 @@ test("tougher situations prepare and run one authorized batch while preserving t
  await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('results');
  const before=await evidence(page), baseline=before.session.document.artifacts.at(-1);
+ await openView(page,'Results');
  await page.locator('.vibe-build-next-actions:not([hidden]) .vibe-build-more > summary').click();
  await page.getByRole('button',{name:'Try tougher situations',exact:true}).click();
  await expect(page.getByText('Prepare 2 additional examples.',{exact:false})).toBeVisible();
@@ -199,7 +221,7 @@ test("tougher situations prepare and run one authorized batch while preserving t
 
 });
 
-test("Build keeps the failed reply, proposed fix and authorized same-test improvement in one thread",async({page},info)=>{
+test("Build keeps the failed reply, proposed fix and authorized same-test improvement in project history",async({page},info)=>{
  await page.goto('/vibe-evals');await page.getByRole('button',{name:/Build an agent/}).click();
  const composer=page.getByRole('textbox',{name:'Message Vibe Evals'});
  await composer.fill(description);await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();await composer.press('Enter');
@@ -211,24 +233,25 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  expect(patch.ok(),await patch.text()).toBe(true);
  const updated=await patch.json();
  await page.goto(`/vibe-evals?session=${original.session.id}&agent=${updated.document.artifacts.at(-1).id}&view=build`);
- const proposal=page.locator('summary').filter({hasText:'Review the suggested fix'}).last();
- if(await proposal.isVisible()) await proposal.click();
+ await openView(page,'Tests');
  await page.getByRole('button',{name:'Apply change and check again',exact:true}).click();
  await page.getByRole('button',{name:'Run 3 examples',exact:true}).click();
  await expect.poll(async()=> {const v=await evidence(page);return v.session.operations.at(-1)?.scorecard?.failed;}).toBe(1);
  const failed=await evidence(page), baseline=failed.session.operations.at(-1);
- await expect(page.getByRole('tab',{name:'Conversation',exact:true})).toHaveAttribute('aria-selected','true');
- const failedCard=page.locator(`[data-run-id="${baseline.id}"]`);
- await failedCard.locator('.vibe-build-examples summary').filter({hasText:'Issue found'}).click();
-
+ await openView(page,'Results');
+ const failedCard=page.getByRole('article',{name:'Evaluation scorecard'});
  await expect(failedCard.getByText('Opened items are eligible.',{exact:true}).first()).toBeVisible();
- await failedCard.getByRole('button',{name:'Review a fix',exact:true}).click();
+ await failedCard.getByRole('button',{name:'Help me fix this',exact:true}).click();
  await expect.poll(async()=> (await evidence(page)).session.document.artifacts.length).toBe(3);
  const proposed=await evidence(page);
  expect(proposed.session.operations.filter((o:{kind:string})=>o.kind==='check'||o.kind==='retest')).toHaveLength(2);
- await expect(page.getByLabel('Instruction changes',{exact:true}).last()).toBeVisible();
+ await reviewLatest(page);
+ const changes=page.getByLabel('Instruction changes',{exact:true}).last();
+ const changeSummary=page.locator('summary').filter({hasText:'Review the instruction change'});
+ if(!(await changeSummary.evaluate(node=>(node.parentElement as HTMLDetailsElement).open))) await changeSummary.click();
+ await expect(changes).toBeVisible();
  await expect(page.getByLabel('Instruction changes',{exact:true}).last()).toContainText('Only unopened');
- await page.getByRole('button',{name:'Review update',exact:true}).click();
+ await openView(page,'Tests');
  await page.getByRole('button',{name:'Apply change and check again',exact:true}).click();
  await expect(page.getByRole('dialog')).toContainText('up to');
  await page.getByRole('button',{name:'Run 3 examples',exact:true}).click();
@@ -237,8 +260,16 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  expect(comparison.baseline_id).toBe(baseline.id);expect(comparison.grading.hash).toBe(baseline.grading.hash);
  expect(final.session.document.artifacts.at(-1).blueprint).toEqual(target.blueprint);
  expect(final.session.operations.find((o:{id:string})=>o.id===baseline.id).results).toEqual(baseline.results);
- await expect(page.getByText('Same examples and grading · 1 improved · 0 regressed. Earlier results are kept.',{exact:true})).toBeVisible();
- await expect(page.getByRole('article',{name:'Prototype example results'})).toHaveCount(3);
+ await openView(page,'Results');
+ await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText(/1 (?:fixed · 0 new failures|previously failing example now passes · 0 new failures)/);
+ await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText(/Same (?:tests|expectations) and evaluator/);
+ const history=page.getByLabel('Result history');
+ await expect(history.locator('option:not([disabled])')).toHaveCount(3);
+ await history.selectOption(baseline.id);
+ await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText('2 passed · 1 failed · 0 unresolved');
+ await history.selectOption(comparison.id);
+ await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText('3 passed · 0 failed · 0 unresolved');
+ await openGuide(page);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
  await page.screenshot({path:info.outputPath('build-same-test-improvement.png')});
 });
@@ -251,6 +282,7 @@ test("sample continuation retains its prototype through harder requests, chat, r
  async function send(text:string){
   await expect.poll(()=>new URL(page.url()).searchParams.get('session')).toBeTruthy();
   const before=(await evidence(page)).session.operations.length;
+  if((await evidence(page)).session.document.artifacts.length) await openGuide(page);
   await composer.fill(text);await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();await composer.press('Enter');
   await expect.poll(async()=>{const x=(await evidence(page)).session;return x.operations.length>before && ['COMPLETED','FAILED'].includes(x.operations.at(-1)?.state)?x.operations.at(-1)?.state:'waiting';},{timeout:60000}).toBe('COMPLETED');
  }
@@ -259,7 +291,7 @@ test("sample continuation retains its prototype through harder requests, chat, r
  await expect.poll(async()=>(await evidence(page)).session.document.build.phase,{timeout:60000}).toBe('results');
  let v=await evidence(page);const base=v.session.document.artifacts[0];
  expect(base.sample_basis.sample_basis).toBe('email_sorting');
- await expect(page.getByLabel('Active evaluation',{exact:true})).toContainText('Sample v1');
+ await expect(page.getByRole('region',{name:'Version scope'})).toContainText('Sample demonstration');
  await page.reload();await send('harden these tests bro');
  v=await evidence(page);const harder=v.session.document.artifacts.at(-1);
  expect(harder.id).not.toBe(base.id);expect(harder.blueprint.cases).toHaveLength(5);
@@ -267,7 +299,8 @@ test("sample continuation retains its prototype through harder requests, chat, r
  expect(harder.agent_prompt).toBe(base.agent_prompt);
  expect(v.session.document.active_artifact_id).toBe(base.id);
  await expect(page.getByRole('button',{name:'Try it yourself',exact:true})).toBeVisible();
- await page.getByRole('button',{name:'Review update',exact:true}).click();
+ await reviewLatest(page);
+ await openView(page,'Tests');
  await page.getByRole('button',{name:'Update and check',exact:true}).click();
  await expect(page.getByRole('dialog')).toContainText('5 examples');
  expect((await evidence(page)).session.operations.filter((o:{kind:string})=>o.kind==='check')).toHaveLength(1);
@@ -288,14 +321,15 @@ test("sample continuation retains its prototype through harder requests, chat, r
  expect(JSON.stringify(actual.blueprint)).not.toContain('Known senders are safe');
  expect(v.session.document.active_artifact_id).toBe(harder.id);
  expect(v.session.document.build.clarifications_used).toBe(0);
- await page.locator(`[data-build-entry="prototype:${actual.id}"]`).getByRole('button',{name:'Review update',exact:true}).click();
+ await reviewLatest(page);
+ await openView(page,'Tests');
  await page.getByRole('button',{name:'Update and check',exact:true}).click();
  await page.getByRole('button',{name:'Run 3 examples',exact:true}).click();
  await expect.poll(async()=>(await evidence(page)).session.operations.some((o:{state:string,source?:{artifact_id:string}})=>o.source?.artifact_id===actual.id && o.state==='COMPLETED')).toBe(true);
  v=await evidence(page);expect(v.session.document.active_artifact_id).toBe(actual.id);
  expect(v.session.operations.at(-1).scorecard.total).toBe(3);
  expect(v.calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(callsBefore+11);
- await page.getByRole('tab',{name:'Conversation',exact:true}).click();
+ await openView(page,'Results');
  await page.getByRole('button',{name:'Download / save',exact:true}).click();
  const download=page.waitForEvent('download'); await page.getByRole('button',{name:'Export / build it myself',exact:true}).click();await page.getByRole('button',{name:'Download exact export',exact:true}).click();await download;await page.getByRole('button',{name:'Close',exact:true}).last().click();
  await page.screenshot({path:info.outputPath('sample-followup-real-policy.png'),fullPage:true});
@@ -314,6 +348,7 @@ test("pasted instructions remain the exact target and run only after the disclos
  let v=await evidence(page);
  expect(v.session.document.artifacts[0].agent_prompt).toBe(instructions);
  expect(v.calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(callsBefore);
+ await openView(page,'Tests');
  await page.getByRole('button',{name:'Run 3 tests',exact:true}).click();
  await expect(page.getByRole('dialog')).toContainText('up to');
  expect((await evidence(page)).calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(callsBefore);

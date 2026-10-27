@@ -60,7 +60,7 @@ import { EvaluationEntry } from "./evaluation-entry";
 import { evaluationIdentity } from "./evaluation-navigation";
 import { BuildWorkspace } from "./build-workspace";
 import { Message } from "./vibe-message";
-import { buildProgress } from "@/lib/vibe-build-timeline";
+import { buildProgress, instructionChangeBaseline } from "@/lib/vibe-build-timeline";
 import { WEB_EVENTS } from "@/lib/analytics/events";
 import { captureBuildEvent } from "@/lib/vibe-build-analytics";
 import "./workspace.css";
@@ -197,16 +197,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
     !!parent.agent_prompt.trim() &&
     !!p.artifact?.agent_prompt &&
     parent.agent_prompt !== p.artifact.agent_prompt;
-  const changeBaseline =
-    promptChanged &&
-    JSON.stringify(parent.blueprint) === JSON.stringify(p.artifact?.blueprint)
-      ? p.session?.operations.findLast(
-          (o) =>
-            (o.kind === "check" || o.kind === "retest") &&
-            o.results.some((c) => c.version === parent.id) &&
-            terminal(o.state),
-        )
-      : undefined;
+  const changeBaseline = instructionChangeBaseline(p.session, p.artifact);
   const runs =
     p.session?.operations.filter(
       (o) => o.kind === "check" || o.kind === "retest",
