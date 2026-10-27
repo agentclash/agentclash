@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -42,6 +43,9 @@ func (c *readinessTemporal) DescribeTaskQueue(_ context.Context, _ string, kind 
 }
 
 func TestVibeReadinessTracksSharedWorkerLifecycle(t *testing.T) {
+	if os.Getenv("VIBE_TEST_DATABASE_URL") == "" {
+		t.Skip("requires isolated VIBE_TEST_DATABASE_URL")
+	}
 	for _, free := range []bool{true, false} {
 		name := "paid"
 		if free {
