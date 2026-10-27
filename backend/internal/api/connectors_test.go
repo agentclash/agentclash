@@ -7,6 +7,7 @@ import (
 	"github.com/agentclash/agentclash/runtime/connectors"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -103,5 +104,24 @@ func TestConnectorRunAdmissionRejectsStaleSnapshot(t *testing.T) {
 	}
 	if repo.createParams != nil {
 		t.Fatal("stale selection reached queued-run persistence")
+	}
+}
+
+func TestConnectorMountedAuthenticationAndReadiness(t *testing.T) {
+	fixture := &connectorAPIFixture{binding: connectors.Binding{WorkspaceID: uuid.New()}}
+	router := buildRouter(routerOptions{logger: slog.Default(), authMode: "dev", authenticator: NewDevelopmentAuthenticator(), authorizer: NewCallerWorkspaceAuthorizer(), connectorRepository: fixture, connectorResolver: connectorAPIResolver{}})
+	path := "/v1/workspaces/" + fixture.binding.WorkspaceID.String() + "/connectors"
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest("GET", path, nil))
+	if rec.Code != 401 || fixture.reads != 0 {
+		t.Fatalf("authentication bypass %d", rec.Code)
+	}
+	req := httptest.NewRequest("GET", path, nil)
+	req.Header.Set(headerUserID, uuid.NewString())
+	req.Header.Set(headerWorkspaceMemberships, fixture.binding.WorkspaceID.String()+":"+RoleWorkspaceAdmin)
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != 200 || fixture.reads != 1 {
+		t.Fatalf("mounted=%d %s", rec.Code, rec.Body)
 	}
 }

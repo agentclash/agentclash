@@ -111,6 +111,7 @@ export type EvaluationWorkspaceProps = {
   selectedResult?: import("@/lib/vibe-result-evidence").ProjectResultBinding;
   onSelectResult?: (binding: import("@/lib/vibe-result-evidence").ProjectResultBinding, caseKey?: string) => void;
   externalResults?: ReactNode;
+  connectorSettings?: ReactNode;
   selectedCase?: string;
   onSelectCase?: (key?: string) => void;
   dirty: boolean;

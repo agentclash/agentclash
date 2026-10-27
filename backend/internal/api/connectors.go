@@ -144,3 +144,22 @@ func decodeConnectorBody(w http.ResponseWriter, r *http.Request, target any) err
 	}
 	return nil
 }
+
+// WithConnectorReadiness composes the actual canonical dependency owner with the
+// established API checks; inference configuration and liveness are unchanged.
+func WithConnectorReadiness(existing func(context.Context) map[string]string, repo interface {
+	ConnectorDependencyChecks(context.Context) map[string]string
+}) func(context.Context) map[string]string {
+	return func(ctx context.Context) map[string]string {
+		out := map[string]string{}
+		if existing != nil {
+			for key, value := range existing(ctx) {
+				out[key] = value
+			}
+		}
+		for key, value := range repo.ConnectorDependencyChecks(ctx) {
+			out[key] = value
+		}
+		return out
+	}
+}

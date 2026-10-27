@@ -16,6 +16,7 @@ import (
 
 	billingpkg "github.com/agentclash/agentclash/backend/internal/billing"
 	"github.com/agentclash/agentclash/backend/internal/secrets"
+	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/google/uuid"
 )
 
@@ -48,6 +49,8 @@ const (
 var ErrInvalidConfig = errors.New("invalid api server config")
 
 type Config struct {
+	ConnectorRepository                  ConnectorRepository
+	ConnectorResolver                    provider.EndpointResolver
 	DependencyReadiness                  func(context.Context) map[string]string
 	VibeHandler                          http.Handler
 	AppEnvironment                       string

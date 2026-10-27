@@ -1,3 +1,4 @@
+import type {CanonicalResult} from "./vibe-canonical";
 import type { ResultRef } from "./vibe-result-evidence";
 import type { SDKReport } from "./vibe-reports";
 import type { CaseResult, Session } from "./vibe";
@@ -33,7 +34,7 @@ export function downloadJSON(name: string, value: unknown) {
 }
 
 export type ExportItem = {
-  kind: "sdk_report" | "case" | "original" | "grade_review" | "validation_review" | "scope";
+  kind: "canonical_result" | "sdk_report" | "case" | "original" | "grade_review" | "validation_review" | "scope";
   id: string;
   result_ref?: ResultRef;
   hash?: string;
@@ -54,6 +55,7 @@ export type ExportPreparation = {
   rules: unknown[];
   runs: Session["operations"];
   sdk_reports?: SDKReport[];
+  canonical_results?: CanonicalResult[];
   items: ExportItem[];
   case_mappings: unknown[];
   omissions: string[];

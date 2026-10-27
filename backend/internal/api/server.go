@@ -13,6 +13,7 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/pubsub"
 	"github.com/agentclash/agentclash/backend/internal/ratelimit"
 	"github.com/agentclash/agentclash/backend/internal/repository"
+	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -23,6 +24,8 @@ type Server struct {
 }
 
 type routerOptions struct {
+	connectorRepository        ConnectorRepository
+	connectorResolver          provider.EndpointResolver
 	dependencyReadiness        func(context.Context) map[string]string
 	vibeHandler                http.Handler
 	authMode                   string
@@ -107,6 +110,7 @@ func NewServer(
 	cliAuthServices ...CLIAuthService,
 ) *Server {
 	router := buildRouter(routerOptions{
+		connectorRepository: cfg.ConnectorRepository, connectorResolver: cfg.ConnectorResolver,
 		vibeHandler:                cfg.VibeHandler,
 		dependencyReadiness:        cfg.DependencyReadiness,
 		authMode:                   cfg.AuthMode,
@@ -417,6 +421,9 @@ func buildRouter(opts routerOptions) http.Handler {
 			r.Use(requestAnalyticsSurface)
 			r.Use(authenticateRequest(logger, authenticator))
 			r.Use(trackUsage(logger, opts.posthogClient))
+			if opts.connectorRepository != nil {
+				MountConnectorRoutes(r, opts.connectorRepository, authorizer, opts.connectorResolver)
+			}
 			registerProtectedRoutes(r, logger, authorizer, artifactService, artifactMaxUploadBytes, runCreationService, runReadService, replayReadService, compareReadService, releaseGateService, regressionService, datasetService, agentDeploymentReadService, agentHarnessService, githubIntegrationService, challengePackReadService, challengePackAuthoringService, challengePackBuilderService, agentBuildService, userService, orgService, wsService, orgMembershipService, wsMembershipService, onboardingService, infraService, workspaceSecretsService, cliAuthService, publicShareService, agentTryoutService, billingService, multiTurnService)
 		})
 	})

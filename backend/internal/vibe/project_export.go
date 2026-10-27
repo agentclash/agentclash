@@ -29,26 +29,27 @@ type ExportItem struct {
 	EvidenceChanged *bool      `json:"evidence_changed,omitempty"`
 }
 type ExportPreparation struct {
-	SDKReports   []SDKReport       `json:"sdk_reports"`
-	Format       string            `json:"format"`
-	SessionID    uuid.UUID         `json:"session_id"`
-	Title        string            `json:"title"`
-	CapturedAt   time.Time         `json:"captured_at"`
-	Selection    ExportRequest     `json:"selection"`
-	ArtifactID   uuid.UUID         `json:"artifact_id"`
-	Artifacts    []Artifact        `json:"artifacts"`
-	Rules        []PolicySnapshot  `json:"rules"`
-	Runs         []Operation       `json:"runs"`
-	Items        []ExportItem      `json:"items"`
-	CaseMappings []json.RawMessage `json:"case_mappings"`
-	Omissions    []string          `json:"omissions"`
+	CanonicalResults []CanonicalResult `json:"canonical_results"`
+	SDKReports       []SDKReport       `json:"sdk_reports"`
+	Format           string            `json:"format"`
+	SessionID        uuid.UUID         `json:"session_id"`
+	Title            string            `json:"title"`
+	CapturedAt       time.Time         `json:"captured_at"`
+	Selection        ExportRequest     `json:"selection"`
+	ArtifactID       uuid.UUID         `json:"artifact_id"`
+	Artifacts        []Artifact        `json:"artifacts"`
+	Rules            []PolicySnapshot  `json:"rules"`
+	Runs             []Operation       `json:"runs"`
+	Items            []ExportItem      `json:"items"`
+	CaseMappings     []json.RawMessage `json:"case_mappings"`
+	Omissions        []string          `json:"omissions"`
 }
 
 // Preparation freezes source summaries, expected IDs and hashes in one snapshot.
 // It allocates no job, charges no credits and never visits unrelated runs by default.
 func (s *Store) PrepareExport(ctx context.Context, actor string, id uuid.UUID, in ExportRequest) (ExportPreparation, error) {
 	if in.ResultRef != nil {
-		if in.ResultRef.ID == uuid.Nil || (in.ResultRef.Kind != ResultVibeOperation && in.ResultRef.Kind != ResultSDKReport) {
+		if in.ResultRef.ID == uuid.Nil || (in.ResultRef.Kind != ResultVibeOperation && in.ResultRef.Kind != ResultSDKReport && in.ResultRef.Kind != ResultRun && in.ResultRef.Kind != ResultEvalSession) {
 			return ExportPreparation{}, fault("invalid_request", "Choose a supported result reference.")
 		}
 		if in.ResultID != nil && (in.ResultRef.Kind != ResultVibeOperation || *in.ResultID != in.ResultRef.ID) {
@@ -58,7 +59,7 @@ func (s *Store) PrepareExport(ctx context.Context, actor string, id uuid.UUID, i
 			in.ResultID = &in.ResultRef.ID
 		}
 	}
-	out := ExportPreparation{SDKReports: []SDKReport{}, Format: "agentclash-evaluation-v2", SessionID: id, ArtifactID: in.ArtifactID, Selection: in, Artifacts: []Artifact{}, Rules: []PolicySnapshot{}, Runs: []Operation{}, Items: []ExportItem{}, CaseMappings: []json.RawMessage{}, Omissions: []string{"Guide and trial conversations, source evidence sets, unsent local drafts and input material file bodies are omitted. This archive contains the chosen versions, rules, results, reviews and uploaded originals."}}
+	out := ExportPreparation{CanonicalResults: []CanonicalResult{}, SDKReports: []SDKReport{}, Format: "agentclash-evaluation-v2", SessionID: id, ArtifactID: in.ArtifactID, Selection: in, Artifacts: []Artifact{}, Rules: []PolicySnapshot{}, Runs: []Operation{}, Items: []ExportItem{}, CaseMappings: []json.RawMessage{}, Omissions: []string{"Guide and trial conversations, source evidence sets, unsent local drafts and input material file bodies are omitted. This archive contains the chosen versions, rules, results, reviews and uploaded originals."}}
 	if in.Scope != "selected" && in.Scope != "history" || in.ArtifactID == uuid.Nil {
 		return out, fault("invalid_request", "Choose an exact version and export scope.")
 	}
@@ -324,6 +325,9 @@ func (s *Store) PrepareExport(ctx context.Context, actor string, id uuid.UUID, i
 		if !known {
 			out.CaseMappings = append(out.CaseMappings, raw(map[string]any{"artifact_id": a.ID, "cases": declaredCaseMapping(a), "published": []any{}, "status": "unresolved", "reason": "No immutable publication binding is known for this version."}))
 		}
+	}
+	if err = appendCanonicalExport(ctx, tx, v, &out); err != nil {
+		return out, err
 	}
 	if err = appendSDKExport(ctx, tx, &out); err != nil {
 		return out, err

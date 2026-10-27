@@ -27,7 +27,7 @@ export function ExportDialog({ controller: c }: { controller: ReturnType<typeof 
             <>
               <p>
                 Version {p.artifact_id.slice(0, 8)} ·{" "}
-                {p.selection.result_ref?.kind === "sdk_report" ? `SDK report ${p.selection.result_ref.id.slice(0,8)}` : p.selection.result_id ? `Run ${p.selection.result_id.slice(0, 8)}` : "Definition"}{" "}
+                {p.selection.result_ref?.kind === "run" || p.selection.result_ref?.kind === "eval_session" ? `Canonical ${p.selection.result_ref.kind === "run" ? "run" : "evaluation"} ${p.selection.result_ref.id.slice(0,8)}` : p.selection.result_ref?.kind === "sdk_report" ? `SDK report ${p.selection.result_ref.id.slice(0,8)}` : p.selection.result_id ? `Run ${p.selection.result_id.slice(0, 8)}` : "Definition"}{" "}
                 · {p.selection.scope === "history" ? "Full history" : "Selected evidence"}
               </p>
               <p>

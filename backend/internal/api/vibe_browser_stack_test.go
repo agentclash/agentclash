@@ -109,6 +109,7 @@ func TestVibeBrowserStack(t *testing.T) {
 		t.Fatal(err)
 	}
 	auth := browserDevelopmentAuth{}
+	mountBrowserConnectors(t, router, db, svc, temporalClient, auth)
 	router.Get("/v1/users/me", func(w http.ResponseWriter, r *http.Request) {
 		caller, err := auth.Authenticate(r)
 		if err != nil {

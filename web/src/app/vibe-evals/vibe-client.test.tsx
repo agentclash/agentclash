@@ -2614,7 +2614,7 @@ it("resolves an SDK URL before pinning its version and keeps historical Results 
  const gate=deferred<Response>();const before=respond;respond=(path,options)=>path.endsWith("/reports/"+id)?gate.promise:before(path,options);
  await render();
  expect(new URL(location.href).searchParams.get("run")).toBe(`sdk_report:${id}`);
- expect(container.textContent).toContain("Loading selected report");
+ expect(container.textContent).toContain("Loading selected result");
  await act(async()=>gate.resolve(json(report)));
  expect(new URL(location.href).searchParams.get("agent")).toBe(artifact.id);
  expect(container.querySelector('[aria-label="Imported report detail"]')).not.toBeNull();
@@ -2627,7 +2627,7 @@ it("retains an unavailable SDK selection for retry then clears a confirmed forei
  const before=respond;let count=0;respond=(path,options)=>path.endsWith("/reports/"+id)?Promise.resolve(++count===1?json({error:{code:"unavailable",message:"Temporary source failure"}},503):json({error:{code:"not_found",message:"Report unavailable"}},404)):before(path,options);
  await render();expect(new URL(location.href).searchParams.get("run")).toBe(`sdk_report:${id}`);
  await click("Retry selected result");expect(new URL(location.href).searchParams.get("run")).toBeNull();
- expect(container.textContent).toContain("selected report is unavailable");expect(posts()).toHaveLength(0);
+ expect(container.textContent).toContain("selected result is unavailable");expect(posts()).toHaveLength(0);
 });
 
 it("does not revive a prior actor's SDK lookup after an A to B to A transition",async()=>{
@@ -2635,11 +2635,20 @@ it("does not revive a prior actor's SDK lookup after an A to B to A transition",
  const old=deferred<Response>(),fresh=deferred<Response>();const before=respond;let reads=0;
  respond=(path,options)=>path.endsWith("/reports/"+id)?(++reads===1?old.promise:fresh.promise.then(response=>response.clone())):before(path,options);
  await render();harness.user={id:"other-sdk-actor"};await render();harness.user={id:"sdk-actor"};await render();
- await act(async()=>old.resolve(json(report)));expect(container.querySelector('[aria-label="Imported report detail"]')).toBeNull();expect(container.textContent).toContain("Loading selected report");
+ await act(async()=>old.resolve(json(report)));expect(container.querySelector('[aria-label="Imported report detail"]')).toBeNull();expect(container.textContent).toContain("Loading selected result");
  await act(async()=>fresh.resolve(json(report)));expect(container.querySelector('[aria-label="Imported report detail"]')).not.toBeNull();expect(posts()).toHaveLength(0);
 });
 
 it("explains a malformed SDK selector without loading or executing it",async()=>{
  sdkProject();harness.params=new URLSearchParams(`session=${session.id}&view=results&run=sdk_report:invalid`);await render();
  expect(new URL(location.href).searchParams.get("run")).toBeNull();expect(container.textContent).toContain("selected result is unavailable");expect(requests.some(r=>r.path.endsWith("/reports/invalid"))).toBe(false);expect(posts()).toHaveLength(0);
+});
+
+it("loads canonical source-qualified Results without Vibe inference and pins its artifact",async()=>{
+ const {id,artifact,report}=sdkProject();const result={binding:{...report.binding,result_ref:{kind:"run",id}},evidence_metadata:{...report.evidence_metadata,result_ref:{kind:"run",id}},name:"Approved application",status:"completed",created_at:"2026-10-26T00:00:00Z",participants:[],evidence_hash:"canonical-hash",omissions:["Raw canonical event bodies omitted."]};
+ harness.params=new URLSearchParams(`session=${session.id}&view=results&agent=${artifact.id}&run=run:${id}`);const before=respond;respond=async(path,options)=>path.endsWith("/canonical-results")?json([result]):path.includes("/canonical-results/run/")?json(result):before(path,options);
+ await render();expect(container.querySelector('[aria-label="Canonical result detail"]')).not.toBeNull();expect(container.textContent).toContain("Canonical run");expect(new URL(location.href).searchParams.get("run")).toBe(`run:${id}`);expect(posts()).toHaveLength(0);
+});
+it("retains canonical source uncertainty and retries an authorized lookup without dispatch",async()=>{
+ const {id,artifact,report}=sdkProject();const result={binding:{...report.binding,result_ref:{kind:"run",id}},evidence_metadata:{},name:"Application",status:"completed",created_at:"",participants:[],evidence_hash:"hash",omissions:[]};harness.params=new URLSearchParams(`session=${session.id}&view=results&agent=${artifact.id}&run=run:${id}`);const before=respond;let calls=0;respond=async(path,options)=>path.endsWith("/canonical-results")?json([result]):path.includes("/canonical-results/run/")?(++calls===1?json({error:{code:"unavailable",message:"Canonical temporarily unavailable"}},503):json(result)):before(path,options);await render();expect(new URL(location.href).searchParams.get("run")).toBe(`run:${id}`);await click("Retry selected result");expect(container.querySelector('[aria-label="Canonical result detail"]')).not.toBeNull();expect(posts()).toHaveLength(0);
 });

@@ -299,7 +299,8 @@ func main() {
 		os.Exit(1)
 	}
 	readiness := &vibe.Readiness{DB: db, Redis: vibeRedis, Temporal: temporalClient}
-	cfg.DependencyReadiness = readiness.DependencyChecks
+	cfg.DependencyReadiness = api.WithConnectorReadiness(readiness.DependencyChecks, repo)
+	cfg.ConnectorRepository = repo
 	vibeService := &vibe.Service{Readiness: readiness, Store: vibe.NewStore(db, vibeConfig), Config: vibeConfig, Gate: vibe.Gate{Redis: vibeRedis}, Compiler: api.VibePackCompiler{}}
 	vibeService.Store.Inputs.Blobs = artifactStore
 	if err := billingManager.WithVibeCredits(vibeService.Store, cfg.FrontendURL); err != nil {

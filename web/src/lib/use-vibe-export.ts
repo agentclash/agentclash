@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import type { ResultRef } from "./vibe-result-evidence";
+import {canonicalExportValue,loadCanonicalResult} from "./vibe-canonical";
 import { sdkExportValue, reportBase } from "./vibe-reports";
 import { vibeFetch, vibeBytes, type Session, type Artifact, type Operation } from "./vibe";
 import {
@@ -111,6 +112,11 @@ export function useVibeExport(
             `/operations/${item.operation_id}/case?key=${encodeURIComponent(item.case_key!)}&hash=${item.hash}`,
             auth,
           );
+        if(item.kind === "canonical_result"){
+          if(!item.result_ref)throw Error("Canonical result reference is missing.");
+          await loadCanonicalResult(job.preparation.session_id,item.result_ref,auth,item.artifact_id,item.hash);
+          return canonicalExportValue(item,job.preparation.canonical_results || [],job.preparation.session_id);
+        }
         if (item.kind === "sdk_report") {
           const bytes = await vibeBytes(`${reportBase(job.preparation.session_id)}/${encodeURIComponent(item.id)}/original?hash=${encodeURIComponent(item.hash || "")}`, auth);
           return sdkExportValue(item, job.preparation.sdk_reports || [], bytes, job.preparation.session_id);

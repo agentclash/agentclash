@@ -8,6 +8,10 @@ on:
       - 'backend/internal/mutation/**'
       - 'backend/Dockerfile.worker'
       - 'backend/internal/api/vibe*'
+      - 'backend/internal/api/connectors*'
+      - 'backend/internal/repository/connector*'
+      - 'backend/internal/worker/**'
+      - 'backend/internal/workflow/**'
       - 'backend/internal/api/challenge_pack_generate_contract.go'
       - 'backend/internal/api/billing*'
       - 'backend/internal/api/config.go'
@@ -17,11 +21,13 @@ on:
       - 'backend/cmd/**'
       - 'backend/db/migrations/**'
       - 'runtime/provider/**'
+      - 'runtime/connectors/**'
       - 'runtime/scoring/**'
       - 'runtime/challengepack/**'
       - 'web/src/app/vibe-evals/**'
       - 'web/src/components/vibe/**'
       - 'web/src/lib/vibe*'
+      - 'web/src/lib/connector-client.ts'
       - 'web/src/lib/use-vibe-*'
       - 'web/e2e/vibe/**'
       - 'web/e2e/vibe-stack/**'
@@ -77,9 +83,16 @@ jobs:
       - name: Material and enquiry transaction regressions
         working-directory: backend
         run: go test -race ./internal/enquiries ./internal/vibe/inputs -count=1
+      - name: Canonical connector and native owners on an owned child database
+        run: |
+          psql 'postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test?sslmode=disable' -v ON_ERROR_STOP=1 -c 'CREATE DATABASE vibe_test_task7_ci'
+          trap "psql 'postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test?sslmode=disable' -v ON_ERROR_STOP=1 -c 'DROP DATABASE vibe_test_task7_ci'" EXIT
+          scripts/db/apply-goose-migrations.sh 'postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test_task7_ci?sslmode=disable'
+          DATABASE_URL='postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test_task7_ci?sslmode=disable' go -C backend test -race ./internal/repository -run '^TestConnector|GetRunAgentExecutionContext|WorkspaceSecret|CreateQueuedRun|CreateEvalSessionWithQueuedRuns|ListActiveAgentDeployments' -count=1
+          go -C backend test -race ./internal/api ./internal/workflow ./internal/worker -run 'Connector|Hosted|RunCreation|CreateRun|AgentBuild|AgentDeployment|AuthorizeWorkspaceAction|WorkspaceSecret|Healthz|NativeModel|QuickCreateAgent|ExecuteNative' -count=1
       - name: Shared provider and scoring regressions
         working-directory: runtime
-        run: go test ./provider ./scoring ./challengepack -count=1
+        run: go test ./connectors ./provider ./scoring ./challengepack -count=1
       - name: Mandatory current-contract regression floor (no missing or skipped tests)
         run: python3 scripts/vibe/run_baseline.py --report "$RUNNER_TEMP/vibe-floor.json"
   browser-journeys:
@@ -142,7 +155,7 @@ jobs:
           "$RUNNER_TEMP/vibe-pdf-runtime/bin/pip" install -r backend/internal/vibe/inputs/requirements.txt
       - name: Browser to real API, PostgreSQL and Temporal worker (fake inference)
         working-directory: web
-        run: npx playwright test --config playwright.vibe-stack.config.ts interpretation.spec.ts journey.spec.ts two-door.spec.ts sdk-reports.spec.ts
+        run: npx playwright test --config playwright.vibe-stack.config.ts interpretation.spec.ts journey.spec.ts two-door.spec.ts sdk-reports.spec.ts connectors.spec.ts
       - name: Supplied-text output, recovery and contact journey (fake inference)
         working-directory: web
         env:

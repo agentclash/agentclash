@@ -315,22 +315,23 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 	}
 	if string(envelope["format"]) == `"agentclash-evaluation-v1"` || string(envelope["format"]) == `"agentclash-evaluation-v2"` {
 		var exported struct {
-			Format       string          `json:"format"`
-			SessionID    uuid.UUID       `json:"session_id,omitempty"`
-			Title        string          `json:"title,omitempty"`
-			CapturedAt   string          `json:"captured_at,omitempty"`
-			Selection    json.RawMessage `json:"selection,omitempty"`
-			Evidence     json.RawMessage `json:"evidence,omitempty"`
-			CaseMappings json.RawMessage `json:"case_mappings,omitempty"`
-			Omissions    json.RawMessage `json:"omissions,omitempty"`
-			Manifest     json.RawMessage `json:"manifest,omitempty"`
-			ArtifactID   uuid.UUID       `json:"artifact_id"`
-			Artifacts    []Artifact      `json:"artifacts"`
-			Scope        string          `json:"scope"`
-			Sample       *string         `json:"sample"`
-			Rules        json.RawMessage `json:"rules"`
-			Runs         json.RawMessage `json:"runs"`
-			SDKReports   json.RawMessage `json:"sdk_reports,omitempty"`
+			Format           string          `json:"format"`
+			SessionID        uuid.UUID       `json:"session_id,omitempty"`
+			Title            string          `json:"title,omitempty"`
+			CapturedAt       string          `json:"captured_at,omitempty"`
+			Selection        json.RawMessage `json:"selection,omitempty"`
+			Evidence         json.RawMessage `json:"evidence,omitempty"`
+			CaseMappings     json.RawMessage `json:"case_mappings,omitempty"`
+			Omissions        json.RawMessage `json:"omissions,omitempty"`
+			Manifest         json.RawMessage `json:"manifest,omitempty"`
+			ArtifactID       uuid.UUID       `json:"artifact_id"`
+			Artifacts        []Artifact      `json:"artifacts"`
+			Scope            string          `json:"scope"`
+			Sample           *string         `json:"sample"`
+			Rules            json.RawMessage `json:"rules"`
+			Runs             json.RawMessage `json:"runs"`
+			SDKReports       json.RawMessage `json:"sdk_reports,omitempty"`
+			CanonicalResults json.RawMessage `json:"canonical_results,omitempty"`
 		}
 		if err = Decode(b, l, &exported); err != nil {
 			return err
