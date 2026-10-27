@@ -1,20 +1,26 @@
 "use client";
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, useSyncExternalStore, type ReactNode } from "react";
 import { PortalScope } from "@/components/ui/portal-scope";
 import "./workspace.css";
 import "./project-workspace.css";
 type Appearance = "system" | "light" | "dark";
 const AppearanceContext = createContext<{ value: Appearance; setValue: (value: Appearance) => void }>({ value: "system", setValue: () => {} });
+const preferenceQuery = "(prefers-color-scheme: dark)";
+function readAppearance(): Appearance {
+  try { const value = localStorage.getItem("vibe-appearance"); if (value === "light" || value === "dark") return value; } catch { /* Optional preference storage. */ }
+  return "system";
+}
+function subscribeAppearance(notify: () => void) { window.addEventListener("storage", notify); return () => window.removeEventListener("storage", notify); }
+function subscribeSystem(notify: () => void) {
+  if (typeof matchMedia !== "function") return () => {};
+  const media = matchMedia(preferenceQuery); media.addEventListener("change", notify);
+  return () => media.removeEventListener("change", notify);
+}
 export function VibeAppearance({ children }: { children: ReactNode }) {
-  const [value, setValue] = useState<Appearance>("system");
-  const [systemDark, setSystemDark] = useState(false);
-  useEffect(() => {
-    try { const saved = localStorage.getItem("vibe-appearance"); if (saved === "light" || saved === "dark" || saved === "system") setValue(saved); } catch { /* Optional preference storage. */ }
-    if (typeof matchMedia !== "function") return;
-    const media = matchMedia("(prefers-color-scheme: dark)");
-    const update = () => setSystemDark(media.matches); update(); media.addEventListener("change", update);
-    return () => media.removeEventListener("change", update);
-  }, []);
+  const saved = useSyncExternalStore(subscribeAppearance, readAppearance, () => "system" as Appearance);
+  const [choice, setValue] = useState<Appearance>();
+  const value = choice || saved;
+  const systemDark = useSyncExternalStore(subscribeSystem, () => typeof matchMedia === "function" && matchMedia(preferenceQuery).matches, () => false);
   const resolved = value === "system" ? systemDark ? "dark" : "light" : value;
   const change = (next: Appearance) => { setValue(next); try { localStorage.setItem("vibe-appearance", next); } catch { /* Remains effective in this page. */ } };
   return <AppearanceContext.Provider value={{ value, setValue: change }}><PortalScope.Provider value={{ className: "vibe-workspace vibe-portal", "data-appearance": resolved }}><main data-appearance={resolved} className="vibe-workspace vibe-route flex h-dvh flex-col overflow-hidden font-sans">{children}</main></PortalScope.Provider></AppearanceContext.Provider>;
