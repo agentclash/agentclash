@@ -27,6 +27,7 @@ import (
 )
 
 type VibeHandler struct {
+	FrontendURL  string
 	Enquiries    *enquiries.Store
 	Billing      *BillingManager
 	Service      *vibe.Service
@@ -47,6 +48,9 @@ func (h *VibeHandler) Routes() http.Handler {
 				limit := vibe.LimitsFor(false).RequestBytes
 				if strings.HasSuffix(r.URL.Path, "/import") || strings.HasSuffix(r.URL.Path, "/evidence") {
 					limit = vibe.LimitsFor(false).FileBytes
+				}
+				if strings.HasSuffix(r.URL.Path, "/reimport") {
+					limit = 6*vibe.LimitsFor(false).FileBytes + 4096
 				}
 				// Match the registered route's exact method/path shape. Prefix
 				// mounts may add /v1/vibe; sibling report mutations keep 256KiB.
@@ -74,8 +78,8 @@ func (h *VibeHandler) Routes() http.Handler {
 		})
 	})
 	h.RegisterSDKReports(r)
- h.registerReportSnapshots(r)
- h.registerCanonicalResults(r)
+	h.registerReportSnapshots(r)
+	h.registerCanonicalResults(r)
 	r.Get("/config", h.config)
 	r.Post("/sessions/{sessionID}/enquiries", h.createEnquiry)
 	r.Get("/sessions/{sessionID}/enquiries/{enquiryID}", h.getEnquiry)
@@ -97,6 +101,7 @@ func (h *VibeHandler) Routes() http.Handler {
 	r.Post("/sessions/{sessionID}/messages", h.submit)
 	r.Post("/sessions/{sessionID}/actions", h.interact)
 	r.Post("/sessions/{sessionID}/import", h.importFile)
+	r.Post("/sessions/{sessionID}/reimport", h.reimport)
 	r.Post("/sessions/{sessionID}/evidence", h.addEvidence)
 	r.Post("/sessions/{sessionID}/grade-reviews", h.gradeReviews)
 	r.Get("/sessions/{sessionID}/grade-reviews", h.gradeReviews)

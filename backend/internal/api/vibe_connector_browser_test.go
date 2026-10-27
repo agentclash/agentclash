@@ -81,6 +81,7 @@ func mountBrowserConnectors(t *testing.T, router chi.Router, db *pgxpool.Pool, s
 	auth = browserConnectorAuth{identity: auth, repo: repo}
 	authorizer := NewCallerWorkspaceAuthorizer(repo)
 	var calls atomic.Int32
+	var regressed atomic.Bool
 	target := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer local-connector-fixture" {
 			http.Error(w, "fixture auth", 401)
@@ -92,6 +93,10 @@ func mountBrowserConnectors(t *testing.T, router chi.Router, db *pgxpool.Pool, s
 			return
 		}
 		calls.Add(1)
+		if regressed.Load() {
+			writeJSON(w, 200, map[string]string{"answer": "All refunds are denied."})
+			return
+		}
 		writeJSON(w, 200, map[string]string{"answer": "Your unopened item bought 10 days ago is eligible under the 30-day policy. I cannot process a refund."})
 	}))
 	t.Cleanup(target.Close)
@@ -114,11 +119,43 @@ func mountBrowserConnectors(t *testing.T, router chi.Router, db *pgxpool.Pool, s
 		r.Use(authenticateRequest(slog.Default(), auth))
 		r.Route("/v1", func(r chi.Router) {
 			MountConnectorRoutes(r, repo, authorizer, browserConnectorResolver{})
+			reads := NewRunReadManager(authorizer, repo)
+			replay := NewReplayReadManager(authorizer, repo)
+			ci := NewGitHubIntegrationManager(authorizer, repo, GitHubIntegrationConfig{})
+			regression := NewRegressionManager(authorizer, repo)
+			r.Get("/runs/{runID}", getRunHandler(slog.Default(), reads))
+			r.Get("/runs/{runID}/agents", listRunAgentsHandler(slog.Default(), reads))
+			r.Get("/scorecards/{runAgentID}", getRunAgentScorecardHandler(slog.Default(), replay))
+			r.Get("/compare", getRunComparisonHandler(slog.Default(), NewCompareReadManager(authorizer, repo)))
+			r.Post("/release-gates/evaluate", evaluateReleaseGateHandler(slog.Default(), NewReleaseGateManager(authorizer, repo)))
+			r.Get("/release-gates", listReleaseGatesHandler(slog.Default(), NewReleaseGateManager(authorizer, repo)))
+			r.Get("/workspaces/{workspaceID}/runs/{runID}/failures", listRunFailuresHandler(slog.Default(), reads))
+			r.Post("/workspaces/{workspaceID}/runs/{runID}/failures/{challengeIdentityID}/promote", promoteFailureHandler(slog.Default(), regression))
+			r.Get("/workspaces/{workspaceID}/regression-suites", listRegressionSuitesHandler(slog.Default(), regression))
+			r.Post("/workspaces/{workspaceID}/regression-suites", createRegressionSuiteHandler(slog.Default(), regression))
+			r.Get("/workspaces/{workspaceID}/regression-suites/{suiteID}/cases", listRegressionCasesHandler(slog.Default(), regression))
+			r.With(authorizeWorkspaceAccess(slog.Default(), authorizer, workspaceIDFromURLParam("workspaceID"))).Get("/workspaces/{workspaceID}/ci-profiles", listCIProfilesHandler(slog.Default(), ci))
+			r.With(authorizeWorkspaceAccess(slog.Default(), authorizer, workspaceIDFromURLParam("workspaceID"))).Post("/workspaces/{workspaceID}/ci-profiles", createCIProfileHandler(slog.Default(), ci))
+			r.With(authorizeWorkspaceAccess(slog.Default(), authorizer, workspaceIDFromURLParam("workspaceID"))).Patch("/workspaces/{workspaceID}/ci-profiles/{profileID}", updateCIProfileHandler(slog.Default(), ci))
+			r.With(authorizeWorkspaceAccess(slog.Default(), authorizer, workspaceIDFromURLParam("workspaceID"))).Get("/workspaces/{workspaceID}/agent-deployments", listAgentDeploymentsHandler(slog.Default(), NewAgentDeploymentReadManager(repo)))
+			r.With(authorizeWorkspaceAccess(slog.Default(), authorizer, workspaceIDFromURLParam("workspaceID"))).Get("/workspaces/{workspaceID}/challenge-packs", listChallengePacksHandler(slog.Default(), NewChallengePackReadManager(repo)))
+
 			r.Post("/runs", createRunHandler(slog.Default(), manager))
 			r.Post("/eval-sessions", createEvalSessionHandler(slog.Default(), manager))
 			r.Post("/eval-sessions/preview", createEvalSessionHandler(slog.Default(), manager))
 			registerEvalSetRoutes(r, slog.Default(), NewEvalSetManager(authorizer).WithPersistence(repo, manager, NewTemporalEvalSetWorkflowStarter(tc)))
 		})
+	})
+	router.Post("/__fixture/connector-output", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Regressed bool `json:"regressed"`
+		}
+		if json.NewDecoder(r.Body).Decode(&in) != nil {
+			http.Error(w, "invalid", 400)
+			return
+		}
+		regressed.Store(in.Regressed)
+		writeJSON(w, 200, map[string]bool{"ok": true})
 	})
 	router.Post("/__fixture/connector-bundle", func(w http.ResponseWriter, r *http.Request) {
 		var blueprint generatedPackBlueprint
@@ -152,9 +189,24 @@ func mountBrowserConnectors(t *testing.T, router chi.Router, db *pgxpool.Pool, s
 			http.Error(w, "missing actor", 400)
 			return
 		}
-		if e = repo.UpsertWorkspaceSecret(r.Context(), repository.UpsertWorkspaceSecretParams{WorkspaceID: *session.WorkspaceID, Key: "APP_TOKEN", Value: "local-connector-fixture", ActorUserID: &user}); e != nil {
+		// Publishing a second version is not a credential rotation. Seed the
+		// fixture's secret once so real connector approvals retain their revision.
+		metadata, e := repo.ListWorkspaceSecrets(r.Context(), *session.WorkspaceID)
+		if e != nil {
 			http.Error(w, e.Error(), 500)
 			return
+		}
+		present := false
+		for _, secret := range metadata {
+			if secret.Key == "APP_TOKEN" {
+				present = true
+			}
+		}
+		if !present {
+			if e = repo.UpsertWorkspaceSecret(r.Context(), repository.UpsertWorkspaceSecretParams{WorkspaceID: *session.WorkspaceID, Key: "APP_TOKEN", Value: "local-connector-fixture", ActorUserID: &user}); e != nil {
+				http.Error(w, e.Error(), 500)
+				return
+			}
 		}
 		draft, e := svc.SaveAdvanced(r.Context(), actor, in.SessionID, vibe.AdvancedRequest{Revision: session.Revision, ArtifactID: in.ArtifactID, WorkspaceID: *session.WorkspaceID})
 		if e != nil {

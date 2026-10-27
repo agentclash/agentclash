@@ -307,7 +307,7 @@ func main() {
 		logger.Error("invalid Vibe credit configuration", "error", err)
 		os.Exit(1)
 	}
-	cfg.VibeHandler = (&api.VibeHandler{Enquiries: enquiries.FromEnv(db), Service: vibeService, Billing: billingManager, Auth: authenticator, CookieSecret: os.Getenv("VIBE_COOKIE_SECRET"), Secure: cfg.AppEnvironment != "development"}).Routes()
+	cfg.VibeHandler = (&api.VibeHandler{FrontendURL: cfg.FrontendURL, Enquiries: enquiries.FromEnv(db), Service: vibeService, Billing: billingManager, Auth: authenticator, CookieSecret: os.Getenv("VIBE_COOKIE_SECRET"), Secure: cfg.AppEnvironment != "development"}).Routes()
 	server := api.NewServer(
 		cfg,
 		logger,

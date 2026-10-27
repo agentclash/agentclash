@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReactNode } from "react";
 import {advancedURL} from "@/lib/vibe-keep";
 import {projectTitle} from "@/lib/vibe-project";
 import { Paperclip } from "lucide-react";
@@ -12,6 +13,7 @@ import { ModelSelect } from "./model-select";
 import { VibeButton } from "./vibe-button";
 
 type Props = {
+  reimport?: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   config: VibeConfig | null;
@@ -31,7 +33,7 @@ type Props = {
   onExportConversation: () => void;
 };
 
-export function AgentSettings({open, onOpenChange, config, session, artifact, artifacts, models, busy, workspace, testJourney, projectReturnPath,savedDraft, onModels, onVersion, onSave, onImport, onExportConversation}: Props) {
+export function AgentSettings({reimport,open, onOpenChange, config, session, artifact, artifacts, models, busy, workspace, testJourney, projectReturnPath,savedDraft, onModels, onVersion, onSave, onImport, onExportConversation}: Props) {
   return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="vibe-workspace vibe-dialog">
@@ -137,6 +139,7 @@ export function AgentSettings({open, onOpenChange, config, session, artifact, ar
           >
             <Paperclip size={16} /> Import a test pack
           </Button>
+          {reimport}
           {artifact &&
             artifact.kind !== "test_plan" &&
             artifact.kind !== "conversation_evaluation" && (

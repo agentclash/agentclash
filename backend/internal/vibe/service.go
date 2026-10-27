@@ -293,6 +293,9 @@ func (s *Service) Prepare(ctx context.Context, actor string, id uuid.UUID, sub S
 	return s.Store.Submit(ctx, actor, id, sub, p, s.Config)
 }
 func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revision int64, content []byte, metadata ...ImportOriginal) error {
+	return s.importVersion(ctx, actor, id, revision, content, nil, metadata...)
+}
+func (s *Service) importVersion(ctx context.Context, actor string, id uuid.UUID, revision int64, content []byte, parent *uuid.UUID, metadata ...ImportOriginal) error {
 	v, err := s.Store.GetSession(ctx, actor, id)
 	if err != nil {
 		return err
@@ -301,71 +304,12 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 	if err = s.Gate.Check(ctx, actor, l); err != nil {
 		return err
 	}
-	b, err := ImportJSON(content, l)
+	b, agentPrompt, sample, err := importDefinition(content, l)
 	if err != nil {
 		return err
 	}
-	// Round-trip our explicitly versioned export. Model preferences are data;
-	// importing a file cannot change the active model policy or start execution.
-	agentPrompt := ""
-	sample := ""
 	var envelope map[string]json.RawMessage
-	if err = json.Unmarshal(b, &envelope); err != nil {
-		return err
-	}
-	if string(envelope["format"]) == `"agentclash-evaluation-v1"` || string(envelope["format"]) == `"agentclash-evaluation-v2"` {
-		var exported struct {
-			Format           string          `json:"format"`
-			SessionID        uuid.UUID       `json:"session_id,omitempty"`
-			Title            string          `json:"title,omitempty"`
-			CapturedAt       string          `json:"captured_at,omitempty"`
-			Selection        json.RawMessage `json:"selection,omitempty"`
-			Evidence         json.RawMessage `json:"evidence,omitempty"`
-			CaseMappings     json.RawMessage `json:"case_mappings,omitempty"`
-			Omissions        json.RawMessage `json:"omissions,omitempty"`
-			Manifest         json.RawMessage `json:"manifest,omitempty"`
-			ArtifactID       uuid.UUID       `json:"artifact_id"`
-			Artifacts        []Artifact      `json:"artifacts"`
-			Scope            string          `json:"scope"`
-			Sample           *string         `json:"sample"`
-			Rules            json.RawMessage `json:"rules"`
-			Runs             json.RawMessage `json:"runs"`
-			SDKReports       json.RawMessage `json:"sdk_reports,omitempty"`
-			CanonicalResults json.RawMessage `json:"canonical_results,omitempty"`
-		}
-		if err = Decode(b, l, &exported); err != nil {
-			return err
-		}
-		found := false
-		for _, a := range exported.Artifacts {
-			if a.ID == exported.ArtifactID {
-				b, agentPrompt, sample = a.Blueprint, a.AgentPrompt, a.Sample
-				found = true
-				break
-			}
-		}
-		if !found || len(agentPrompt) > l.MessageBytes {
-			return fault("invalid_pack", "The export does not identify a bounded agent version.")
-		}
-		// Historical scores and source claims are evidence, never imported as
-		// new successful runs or automatically accepted business requirements.
-		envelope = map[string]json.RawMessage{}
-	}
-	if _, ok := envelope["format"]; ok {
-		var exported struct {
-			Format      string          `json:"format"`
-			AgentPrompt string          `json:"agent_prompt"`
-			Evaluation  json.RawMessage `json:"evaluation"`
-			Models      Models          `json:"models"`
-		}
-		if err = Decode(b, l, &exported); err != nil {
-			return err
-		}
-		if exported.Format != "agentclash-vibe-v1" || strings.TrimSpace(exported.AgentPrompt) == "" || len(exported.AgentPrompt) > l.MessageBytes {
-			return fault("invalid_pack", "The agent export format or instructions are invalid.")
-		}
-		agentPrompt, b = exported.AgentPrompt, exported.Evaluation
-	}
+	_ = json.Unmarshal(b, &envelope)
 	artifactID := uuid.New()
 	original, err := importOriginal(content, metadata, artifactID)
 	if err != nil {
@@ -386,7 +330,7 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 					return fault("attachment_limit", "This pack exceeds the attachment allowance.")
 				}
 				current.Document.AttachmentCount++
-				a := Artifact{Original: &original, ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: "Imported challenge pack", Blueprint: b, AgentPrompt: agentPrompt, CreatedAt: timestamp(), UnavailableReason: capability.Message}
+				a := Artifact{ParentID: parent, Original: &original, ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: "Imported challenge pack", Blueprint: b, AgentPrompt: agentPrompt, CreatedAt: timestamp(), UnavailableReason: capability.Message}
 				current.Document.Artifacts = append(current.Document.Artifacts, a)
 				current.Document.ActiveArtifactID = &a.ID
 				current.Document.TestJourney = true
@@ -412,7 +356,7 @@ func (s *Service) Import(ctx context.Context, actor string, id uuid.UUID, revisi
 		v.Document.Messages = append(v.Document.Messages, msg)
 		replyID := uuid.New()
 		v.Document.TestJourney = true
-		v.Document.Artifacts = append(v.Document.Artifacts, Artifact{Original: &original, ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: c.Bundle.Pack.Name, Sample: sample, ScopeNote: prototypeScope, AgentPrompt: agentPrompt, Blueprint: b, SourceMessageID: msg.ID, ProposalMessageID: &replyID, CreatedAt: timestamp()})
+		v.Document.Artifacts = append(v.Document.Artifacts, Artifact{ParentID: parent, Original: &original, ID: artifactID, Kind: "test_suite", Provenance: "imported", Title: c.Bundle.Pack.Name, Sample: sample, ScopeNote: prototypeScope, AgentPrompt: agentPrompt, Blueprint: b, SourceMessageID: msg.ID, ProposalMessageID: &replyID, CreatedAt: timestamp()})
 		v.Document.Messages = append(v.Document.Messages, Message{ID: replyID, Role: "assistant", Content: fmt.Sprintf("Your %d imported tests are ready to review.", len(c.Cases)), ArtifactID: &artifactID, CreatedAt: timestamp()})
 		return nil
 	})
@@ -469,4 +413,73 @@ func (s *Service) SaveWithBaseline(ctx context.Context, actor string, id uuid.UU
 		return uuid.Nil, err
 	}
 	return s.Store.saveDraft(ctx, actor, id, revision, ws, *artifact, c.Composition, models, selected != nil, baseline, approve...)
+}
+
+func importDefinition(content []byte, l Limits) (json.RawMessage, string, string, error) {
+	b, err := ImportJSON(content, l)
+	if err != nil {
+		return nil, "", "", err
+	}
+	// Round-trip our explicitly versioned export. Model preferences are data;
+	// importing a file cannot change the active model policy or start execution.
+	agentPrompt := ""
+	sample := ""
+	var envelope map[string]json.RawMessage
+	if err = json.Unmarshal(b, &envelope); err != nil {
+		return nil, "", "", err
+	}
+	if string(envelope["format"]) == `"agentclash-evaluation-v1"` || string(envelope["format"]) == `"agentclash-evaluation-v2"` {
+		var exported struct {
+			Format           string          `json:"format"`
+			SessionID        uuid.UUID       `json:"session_id,omitempty"`
+			Title            string          `json:"title,omitempty"`
+			CapturedAt       string          `json:"captured_at,omitempty"`
+			Selection        json.RawMessage `json:"selection,omitempty"`
+			Evidence         json.RawMessage `json:"evidence,omitempty"`
+			CaseMappings     json.RawMessage `json:"case_mappings,omitempty"`
+			Omissions        json.RawMessage `json:"omissions,omitempty"`
+			Manifest         json.RawMessage `json:"manifest,omitempty"`
+			ArtifactID       uuid.UUID       `json:"artifact_id"`
+			Artifacts        []Artifact      `json:"artifacts"`
+			Scope            string          `json:"scope"`
+			Sample           *string         `json:"sample"`
+			Rules            json.RawMessage `json:"rules"`
+			Runs             json.RawMessage `json:"runs"`
+			SDKReports       json.RawMessage `json:"sdk_reports,omitempty"`
+			CanonicalResults json.RawMessage `json:"canonical_results,omitempty"`
+		}
+		if err = Decode(b, l, &exported); err != nil {
+			return nil, "", "", err
+		}
+		found := false
+		for _, a := range exported.Artifacts {
+			if a.ID == exported.ArtifactID {
+				b, agentPrompt, sample = a.Blueprint, a.AgentPrompt, a.Sample
+				found = true
+				break
+			}
+		}
+		if !found || len(agentPrompt) > l.MessageBytes {
+			return nil, "", "", fault("invalid_pack", "The export does not identify a bounded agent version.")
+		}
+		// Historical scores and source claims are evidence, never imported as
+		// new successful runs or automatically accepted business requirements.
+		envelope = map[string]json.RawMessage{}
+	}
+	if _, ok := envelope["format"]; ok {
+		var exported struct {
+			Format      string          `json:"format"`
+			AgentPrompt string          `json:"agent_prompt"`
+			Evaluation  json.RawMessage `json:"evaluation"`
+			Models      Models          `json:"models"`
+		}
+		if err = Decode(b, l, &exported); err != nil {
+			return nil, "", "", err
+		}
+		if exported.Format != "agentclash-vibe-v1" || strings.TrimSpace(exported.AgentPrompt) == "" || len(exported.AgentPrompt) > l.MessageBytes {
+			return nil, "", "", fault("invalid_pack", "The agent export format or instructions are invalid.")
+		}
+		agentPrompt, b = exported.AgentPrompt, exported.Evaluation
+	}
+	return b, agentPrompt, sample, nil
 }

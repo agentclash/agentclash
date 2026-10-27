@@ -31,6 +31,8 @@ it("previews exact scope and recovers the same Fleet admission after lost respon
         await act(async () => root.unmount());
         root = createRoot(node);
         await act(async () => root.render(<RepeatedExperiment {...props}/>));
+        expect(node.querySelector("select")!.value).toBe("fleet");
+        expect(node.querySelector("input")!.value).toBe("3");
         expect(calls.post).toHaveBeenCalledTimes(2);
         expect(node.textContent).toContain("Retry batch admission");
         calls.post.mockResolvedValueOnce({ eval_set: { id: "fleet" }, eval_session_ids: ["child"] });

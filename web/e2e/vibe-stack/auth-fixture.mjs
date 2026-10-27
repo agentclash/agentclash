@@ -45,5 +45,5 @@ export async function startAuthFixture(port, webOrigin) {
     } catch { json(500,{error:"identity fixture error"}); }
   });
   await new Promise((resolve,reject)=>{server.once("error",reject);server.listen(port,"127.0.0.1",resolve);});
-  return () => new Promise(resolve=>server.close(resolve));
+  return () => new Promise(resolve=>{server.close(resolve);server.closeAllConnections();});
 }

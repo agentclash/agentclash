@@ -535,3 +535,63 @@ func appendCanonicalExport(ctx context.Context, tx pgx.Tx, v Session, out *Expor
 	}
 	return nil
 }
+
+// CanonicalProjects reverses the retained publication receipt for CI return
+// navigation. Canonical run access never grants discovery of another actor's
+// private project. The existing evidence owners validate membership and every
+// exact published case before any binding is returned.
+func (s *Store) CanonicalProjects(ctx context.Context, actor string, ref ResultRef) ([]ProjectResultBinding, error) {
+	out := []ProjectResultBinding{}
+	if ref.Kind != ResultRun && ref.Kind != ResultEvalSession {
+		return out, fault("invalid_request", "Choose a canonical result.")
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	tx, err := s.DB.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return out, err
+	}
+	defer tx.Rollback(ctx)
+	rows, err := tx.Query(ctx, `SELECT DISTINCT p.session_id,p.artifact_id FROM runs r JOIN vibe_published_case_bindings b ON b.challenge_pack_version_id=r.challenge_pack_version_id JOIN vibe_pack_sources p ON p.draft_id=b.draft_id AND p.artifact_id=b.artifact_id AND p.workspace_id=r.workspace_id JOIN vibe_sessions v ON v.id=p.session_id AND v.actor=$3 WHERE ($1='run' AND r.id=$2) OR ($1='eval_session' AND r.eval_session_id=$2) ORDER BY p.session_id,p.artifact_id LIMIT 21`, ref.Kind, ref.ID, actor)
+	if err != nil {
+		return out, err
+	}
+	type source struct{ session, artifact uuid.UUID }
+	sources := []source{}
+	for rows.Next() {
+		var source source
+		if err = rows.Scan(&source.session, &source.artifact); err != nil {
+			rows.Close()
+			return out, err
+		}
+		sources = append(sources, source)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return out, err
+	}
+	if len(sources) > 20 {
+		return out, fault("source_unavailable", "Open the originating project to select an exact result.")
+	}
+	for _, source := range sources {
+		v, e := sdkAccess(ctx, tx, actor, source.session, false)
+		if e != nil {
+			var f *Fault
+			if errors.As(e, &f) && (f.Code == "forbidden" || f.Code == "not_found") {
+				continue
+			}
+			return out, e
+		}
+		result, e := canonicalResultTx(ctx, tx, v, ref, &source.artifact)
+		if e != nil {
+			var f *Fault
+			if errors.As(e, &f) && f.Code == "not_found" {
+				continue
+			}
+			return out, e
+		}
+		out = append(out, result.Binding)
+	}
+	return out, tx.Commit(ctx)
+}

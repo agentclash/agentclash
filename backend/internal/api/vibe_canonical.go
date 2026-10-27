@@ -5,9 +5,11 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"net/http"
+	"net/url"
 )
 
 func (h *VibeHandler) registerCanonicalResults(r chi.Router) {
+	r.Get("/canonical-results/{kind}/{resultID}/projects", h.canonicalProjects)
 	r.Get("/sessions/{sessionID}/canonical-results", h.listCanonicalResults)
 	r.Get("/sessions/{sessionID}/results/{kind}/{resultID}/observed-evidence", h.getObservedEvidence)
 	r.Get("/sessions/{sessionID}/canonical-results/{kind}/{resultID}", h.getCanonicalResult)
@@ -86,4 +88,38 @@ func (h *VibeHandler) getObservedEvidence(w http.ResponseWriter, r *http.Request
 		return
 	}
 	vibeJSON(w, http.StatusOK, out)
+}
+
+func (h *VibeHandler) canonicalProjects(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "private, no-store")
+	actor, err := h.actor(r)
+	if err != nil {
+		vibeError(w, err)
+		return
+	}
+	id, err := vibeID(r, "resultID")
+	if err != nil {
+		vibeError(w, err)
+		return
+	}
+	rows, err := h.Service.Store.CanonicalProjects(r.Context(), actor, vibe.ResultRef{Kind: vibe.ResultKind(chi.URLParam(r, "kind")), ID: id})
+	if err != nil {
+		vibeError(w, err)
+		return
+	}
+	links := []struct {
+		Binding vibe.ProjectResultBinding `json:"binding"`
+		URL     string                    `json:"url"`
+	}{}
+	for _, binding := range rows {
+		target := &url.URL{Path: "/vibe-evals", RawQuery: url.Values{"session": {binding.SessionID.String()}, "agent": {binding.ArtifactID.String()}, "view": {"results"}, "run": {string(binding.ResultRef.Kind) + ":" + binding.ResultRef.ID.String()}}.Encode()}
+		if base, e := url.Parse(h.FrontendURL); e == nil && (base.Scheme == "http" || base.Scheme == "https") && base.Host != "" {
+			target = base.ResolveReference(target)
+		}
+		links = append(links, struct {
+			Binding vibe.ProjectResultBinding `json:"binding"`
+			URL     string                    `json:"url"`
+		}{binding, target.String()})
+	}
+	vibeJSON(w, 200, links)
 }

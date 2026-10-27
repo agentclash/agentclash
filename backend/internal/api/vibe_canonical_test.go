@@ -409,3 +409,47 @@ func TestControlledPreviewRejectsUnfixedEvaluatorInputs(t *testing.T) {
 		t.Fatal("live human preference represented as fixed", err)
 	}
 }
+
+func TestVibeCanonicalCIReturnUsesPrivateExactPublication(t *testing.T) {
+	h, ws, a, run, _ := canonicalHarness(t)
+	api := (&VibeHandler{Service: h.svc, Auth: NewDevelopmentAuthenticator()}).Routes()
+	path := "/canonical-results/run/" + run.String() + "/projects"
+	w := sdkRequest(api, h.user, "GET", path, nil)
+	if w.Code != 200 {
+		t.Fatalf("return lookup: %d %s", w.Code, w.Body)
+	}
+	var links []struct {
+		Binding vibe.ProjectResultBinding `json:"binding"`
+		URL     string                    `json:"url"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &links); err != nil {
+		t.Fatal(err)
+	}
+	if len(links) != 1 || links[0].Binding.SessionID != h.session.ID || links[0].Binding.ArtifactID != a.ID || links[0].Binding.ResultRef.ID != run || links[0].Binding.ResultRef.Kind != vibe.ResultRun || !strings.Contains(links[0].URL, "run=run%3A"+run.String()) {
+		t.Fatalf("wrong exact return: %s", w.Body)
+	}
+	// Being another workspace member does not make someone else's private
+	// project origin discoverable through a canonical run.
+	other := uuid.New()
+	if _, err := h.db.Exec(h.ctx, `INSERT INTO users(id,email,workos_user_id) VALUES($1,$2,$3)`, other, other.String()+"@example.invalid", "fixture-"+other.String()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.db.Exec(h.ctx, `INSERT INTO organization_memberships(organization_id,user_id,role,membership_status) SELECT organization_id,$2,'org_admin','active' FROM workspaces WHERE id=$1`, ws, other); err != nil {
+		t.Fatal(err)
+	}
+	w = sdkRequest(api, other, "GET", path, nil)
+	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Fatalf("private origin leaked: %d %s", w.Code, w.Body)
+	}
+	if _, err := h.db.Exec(h.ctx, `DELETE FROM organization_memberships WHERE user_id=$1`, h.user); err != nil {
+		t.Fatal(err)
+	}
+	w = sdkRequest(api, h.user, "GET", path, nil)
+	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Fatalf("revoked origin leaked: %d %s", w.Code, w.Body)
+	}
+	w = sdkRequest(api, h.user, "GET", "/canonical-results/run/"+uuid.NewString()+"/projects", nil)
+	if w.Code != 200 || strings.TrimSpace(w.Body.String()) != "[]" {
+		t.Fatalf("unknown source: %d %s", w.Code, w.Body)
+	}
+}

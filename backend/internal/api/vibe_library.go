@@ -1,10 +1,35 @@
 package api
 
 import (
+	"encoding/json"
 	"github.com/agentclash/agentclash/backend/internal/vibe"
+	"io"
 	"mime"
 	"net/http"
 )
+
+func (h *VibeHandler) reimport(w http.ResponseWriter, r *http.Request) {
+	v, err := h.authorizedSession(r, true)
+	if err != nil {
+		vibeError(w, err)
+		return
+	}
+	var in vibe.ReimportRequest
+	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 6*int64(vibe.LimitsFor(v.Anonymous).FileBytes)+4096))
+	if err == nil {
+		err = json.Unmarshal(b, &in)
+	}
+	if err != nil {
+		vibeError(w, &vibe.Fault{Code: "invalid_import", Message: "Upload a bounded JSON evaluation export."})
+		return
+	}
+	out, err := h.Service.Reimport(r.Context(), v.Actor, v.ID, in)
+	if err != nil {
+		vibeError(w, err)
+		return
+	}
+	vibeJSON(w, 200, out)
+}
 
 func (h *VibeHandler) metadata(w http.ResponseWriter, r *http.Request) {
 	v, err := h.authorizedSession(r, false)

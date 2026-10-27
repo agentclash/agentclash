@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -87,6 +89,8 @@ still receive a machine-readable envelope.`,
 }
 
 type ciRunResult struct {
+	ProjectURLs          []string                          `json:"project_urls,omitempty" yaml:"project_urls,omitempty"`
+	ProjectLinksStatus   string                            `json:"project_links_status,omitempty" yaml:"project_links_status,omitempty"`
 	ManifestPath         string                            `json:"manifest_path" yaml:"manifest_path"`
 	WorkspaceID          string                            `json:"workspace_id" yaml:"workspace_id"`
 	RemoteValidation     *ciManifestRemoteValidationResult `json:"remote_validation,omitempty" yaml:"remote_validation,omitempty"`
@@ -149,9 +153,38 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 		return result, &ExitCodeError{Code: ciRunExitInvalidManifest, Message: err.Error()}
 	}
 	manifest := *validation.Manifest
+	var gatePolicy map[string]any
+	if manifest.Gate.PolicyFile != "" {
+		var policy []byte
+		file, policyErr := os.Open(manifest.Gate.PolicyFile)
+		if policyErr == nil {
+			policy, policyErr = io.ReadAll(io.LimitReader(file, (1<<20)+1))
+			closeErr := file.Close()
+			if policyErr == nil {
+				policyErr = closeErr
+			}
+		}
+		if policyErr == nil && len(policy) > 1<<20 {
+			policyErr = fmt.Errorf("gate.policy_file exceeds 1 MiB")
+		}
+		if policyErr == nil {
+			policyErr = json.Unmarshal(policy, &gatePolicy)
+			if gatePolicy == nil && policyErr == nil {
+				policyErr = fmt.Errorf("gate.policy_file must contain a JSON object")
+			}
+		}
+		if policyErr != nil {
+			result.ExitCode = ciRunExitInvalidManifest
+			result.Errors = append(result.Errors, "invalid gate.policy_file: "+policyErr.Error())
+			return result, &ExitCodeError{Code: ciRunExitInvalidManifest, Message: result.Errors[0]}
+		}
+	}
 	result.Candidate.AgentBuildID = manifest.Candidate.Build.AgentBuildID
 	result.Candidate.DeploymentName = ciRunDeploymentName(manifest)
 	finishWithReports := func(err error, createdRun, completedRun, scorecard, comparison, gateEnvelope map[string]any) (ciRunResult, error) {
+		if result.Candidate.RunID != "" {
+			result.ProjectURLs, result.ProjectLinksStatus = ciProjectReturns(cmd, rc, result.Candidate.RunID)
+		}
 		reports, reportErr := writeCIRunReports(cmd, result, manifest, createdRun, completedRun, scorecard, comparison, gateEnvelope)
 		if reports != nil {
 			result.Reports = reports
@@ -180,36 +213,41 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 		return finishWithReports(&ExitCodeError{Code: ciRunExitInvalidManifest, Message: "ci manifest remote validation failed"}, nil, nil, nil, nil, nil)
 	}
 
-	buildVersion, err := createCIBuildVersion(cmd, rc, manifest)
-	if err != nil {
-		result.ExitCode = ciRunExitAPI
-		if ciRunIsSpecError(err) {
-			result.ExitCode = ciRunExitInvalidManifest
+	if manifest.Candidate.Deployment.ID != "" {
+		result.Candidate.DeploymentID = manifest.Candidate.Deployment.ID
+	} else {
+		buildVersion, err := createCIBuildVersion(cmd, rc, manifest)
+		if err != nil {
+			result.ExitCode = ciRunExitAPI
+			if ciRunIsSpecError(err) {
+				result.ExitCode = ciRunExitInvalidManifest
+			}
+			result.Errors = append(result.Errors, err.Error())
+			return finishWithReports(&ExitCodeError{Code: result.ExitCode, Message: err.Error()}, nil, nil, nil, nil, nil)
 		}
-		result.Errors = append(result.Errors, err.Error())
-		return finishWithReports(&ExitCodeError{Code: result.ExitCode, Message: err.Error()}, nil, nil, nil, nil, nil)
-	}
-	result.Candidate.BuildVersionID = mapString(buildVersion, "id")
+		result.Candidate.BuildVersionID = mapString(buildVersion, "id")
 
-	readyVersion, err := markCIBuildVersionReady(cmd, rc, result.Candidate.BuildVersionID)
-	if err != nil {
-		result.ExitCode = ciRunExitAPI
-		result.Errors = append(result.Errors, err.Error())
-		return finishWithReports(err, nil, nil, nil, nil, nil)
-	}
-	if id := mapString(readyVersion, "id"); id != "" {
-		result.Candidate.BuildVersionID = id
-	}
+		readyVersion, err := markCIBuildVersionReady(cmd, rc, result.Candidate.BuildVersionID)
+		if err != nil {
+			result.ExitCode = ciRunExitAPI
+			result.Errors = append(result.Errors, err.Error())
+			return finishWithReports(err, nil, nil, nil, nil, nil)
+		}
+		if id := mapString(readyVersion, "id"); id != "" {
+			result.Candidate.BuildVersionID = id
+		}
 
-	deployment, err := createCIDeployment(cmd, rc, workspaceID, manifest, result.Candidate.BuildVersionID)
-	if err != nil {
-		result.ExitCode = ciRunExitAPI
-		result.Errors = append(result.Errors, err.Error())
-		return finishWithReports(err, nil, nil, nil, nil, nil)
-	}
-	result.Candidate.DeploymentID = mapString(deployment, "id")
-	if name := mapString(deployment, "name"); name != "" {
-		result.Candidate.DeploymentName = name
+		deployment, err := createCIDeployment(cmd, rc, workspaceID, manifest, result.Candidate.BuildVersionID)
+		if err != nil {
+			result.ExitCode = ciRunExitAPI
+			result.Errors = append(result.Errors, err.Error())
+			return finishWithReports(err, nil, nil, nil, nil, nil)
+		}
+		result.Candidate.DeploymentID = mapString(deployment, "id")
+		if name := mapString(deployment, "name"); name != "" {
+			result.Candidate.DeploymentName = name
+		}
+
 	}
 
 	baseline, err := resolveCIManifestBaseline(cmd, rc, workspaceID, manifestPath, manifest, time.Now().UTC())
@@ -289,7 +327,7 @@ func executeCIRun(cmd *cobra.Command, rc *RunContext) (ciRunResult, error) {
 		}
 	}
 
-	gateEnvelope, gateVerdict, err := evaluateCIRunReleaseGate(cmd, rc, result.Baseline.RunID, result.Candidate.RunID, result.Baseline.RunAgentID, result.Candidate.RunAgentID)
+	gateEnvelope, gateVerdict, err := evaluateCIRunReleaseGate(cmd, rc, result.Baseline.RunID, result.Candidate.RunID, result.Baseline.RunAgentID, result.Candidate.RunAgentID, gatePolicy)
 	if err != nil {
 		result.ExitCode = ciRunExitAPI
 		result.Errors = append(result.Errors, err.Error())
@@ -547,7 +585,7 @@ func resolveCIRunCandidateAgent(cmd *cobra.Command, rc *RunContext, runID, deplo
 	return runAgentWorkflowSummary{}, fmt.Errorf("candidate run %s has no agent for deployment %s", runID, deploymentID)
 }
 
-func evaluateCIRunReleaseGate(cmd *cobra.Command, rc *RunContext, baselineRunID, candidateRunID, baselineAgentID, candidateAgentID string) (map[string]any, releaseGateVerdict, error) {
+func evaluateCIRunReleaseGate(cmd *cobra.Command, rc *RunContext, baselineRunID, candidateRunID, baselineAgentID, candidateAgentID string, policies ...map[string]any) (map[string]any, releaseGateVerdict, error) {
 	body := map[string]any{
 		"baseline_run_id":  baselineRunID,
 		"candidate_run_id": candidateRunID,
@@ -557,6 +595,9 @@ func evaluateCIRunReleaseGate(cmd *cobra.Command, rc *RunContext, baselineRunID,
 	}
 	if candidateAgentID != "" {
 		body["candidate_run_agent_id"] = candidateAgentID
+	}
+	if len(policies) > 0 && policies[0] != nil {
+		body["policy"] = policies[0]
 	}
 	resp, err := rc.Client.Post(cmd.Context(), "/v1/release-gates/evaluate", body)
 	if err != nil {
@@ -669,4 +710,40 @@ func renderCIRunRegressionPromotions(rc *RunContext, promotions *ciRunRegression
 	if len(promotions.Blocked) > 0 {
 		rc.Output.PrintDetail("Regression Promotion Blocked", promotions.Blocked[0].Message)
 	}
+}
+
+// Optional navigation metadata never turns an otherwise completed gate into a
+// success/failure. Older servers and unavailable private sources remain explicit.
+func ciProjectReturns(cmd *cobra.Command, rc *RunContext, runID string) ([]string, string) {
+	resp, err := rc.Client.Get(cmd.Context(), "/v1/vibe/canonical-results/run/"+url.PathEscape(runID)+"/projects", nil)
+	if err != nil || resp.ParseError() != nil {
+		return nil, "unavailable"
+	}
+	var rows []struct {
+		Binding struct {
+			Session  string `json:"session_id"`
+			Artifact string `json:"artifact_id"`
+			Ref      struct {
+				Kind string `json:"kind"`
+				ID   string `json:"id"`
+			} `json:"result_ref"`
+		} `json:"binding"`
+		URL string `json:"url"`
+	}
+	if resp.DecodeJSON(&rows) != nil || len(rows) > 20 {
+		return nil, "unavailable"
+	}
+	links := []string{}
+	for _, row := range rows {
+		u, e := url.Parse(row.URL)
+		if e != nil || ciSafeHTTPURL(row.URL) == "" || u.User != nil || u.Path != "/vibe-evals" || u.Fragment != "" || row.Binding.Session == "" || row.Binding.Artifact == "" || row.Binding.Ref.Kind != "run" || row.Binding.Ref.ID != runID {
+			continue
+		}
+		q := u.Query()
+		if q.Get("session") != row.Binding.Session || q.Get("agent") != row.Binding.Artifact || q.Get("run") != "run:"+runID || q.Get("view") != "results" {
+			continue
+		}
+		links = append(links, row.URL)
+	}
+	return links, "available"
 }

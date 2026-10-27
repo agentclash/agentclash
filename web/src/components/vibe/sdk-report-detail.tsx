@@ -66,7 +66,7 @@ export function SDKReportDetail({ report, sessionId, actorScope, workspaceId, ac
     <p>Imported source · {report.source_kind === "agent_result" ? "No grade supplied" : "Original SDK judgments"} · {report.size_bytes} bytes</p>
     <p>Importing does not verify execution, change expectations, or replace a hosted result. Capture and application settings are uploader claims.</p>
     {report.diagnostics?.map(text => <p key={text}>{text}</p>)}
-    {report.summary !== undefined && <details open><summary>Original summary</summary><pre className="whitespace-pre-wrap break-words">{JSON.stringify(report.summary, null, 2)}</pre></details>}
+    {report.summary !== undefined && <details><summary>Original summary · unverified imported claims</summary><pre className="whitespace-pre-wrap break-words">{JSON.stringify(report.summary, null, 2)}</pre></details>}
     <details><summary>Identity, fingerprints and capture claims</summary><pre className="whitespace-pre-wrap break-words">{JSON.stringify({ binding: report.binding, content_sha256: report.content_sha256, evidence: report.evidence_metadata, cases: report.cases }, null, 2)}</pre></details>
     <div className="flex flex-wrap gap-2">
       <VibeButton disabled={busy} onClick={() => action(async (auth, current) => { const bytes = await original(auth); if (current()) downloadBytes(`sdk-report-${report.id}.json`, bytes, "application/json"); })}>Download exact original</VibeButton>

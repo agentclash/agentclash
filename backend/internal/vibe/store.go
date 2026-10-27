@@ -222,9 +222,6 @@ func (s *Store) GetSession(ctx context.Context, actor string, id uuid.UUID) (Ses
 	if err = s.populateRetryEligibility(ctx, tx, &v); err != nil {
 		return v, err
 	}
-	if err = tx.QueryRow(ctx, "SELECT COALESCE(max(id),0) FROM vibe_events WHERE session_id=$1", id).Scan(&v.EventCursor); err != nil {
-		return v, err
-	}
 	return v, tx.Commit(ctx)
 }
 

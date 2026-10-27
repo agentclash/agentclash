@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useVibeEvidenceOwner } from "@/lib/use-vibe-evidence-owner";
 import { projectTitle, sidebarPreference, setSidebarPreference } from "@/lib/vibe-project";
 import type { CollectionStatus } from "@/lib/use-vibe-collection";
 import { CollectionNotice } from "./collection-notice";
@@ -40,11 +41,12 @@ export function evaluationIdentity(session: Session) {
       ? "Saved conversations"
       : artifact?.agent_prompt
         ? `${artifact.sample ? "Sample" : "Prototype"} v${version}`
-        : "Setup";
+        : artifact ? `Tests v${version}` : "Setup";
   return { title, scope };
 }
 
 type Props = {
+  actorScope?: string;
   archiveMode?: "exclude" | "only" | "all";
   onArchiveMode?: (mode: "exclude" | "only" | "all") => void;
   onMetadata?: (target: Session, patch: { title?: string; archived?: boolean }) => Promise<boolean>;
@@ -67,6 +69,7 @@ type Props = {
 
 // Navigation consumes existing context data. It never creates a session or runs a model.
 export function EvaluationNavigation(p: Props) {
+  const life = useVibeEvidenceOwner(p.actorScope, p.session?.id);
   const [deleting, setDeleting] = useState<Session>();
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => setCollapsed(sidebarPreference()), []);
@@ -77,21 +80,23 @@ export function EvaluationNavigation(p: Props) {
   const [metadataError, setMetadataError] = useState("");
   async function metadata(patch: { title?: string; archived?: boolean }) {
     if (!p.session || !p.onMetadata) return;
+    const current = life.capture();
     setMetadataBusy(true);
     setMetadataError("");
     try {
-      if (await p.onMetadata(p.session, patch)) setRenaming(false);
+      if (await p.onMetadata(p.session, patch) && current()) setRenaming(false);
     } catch (e) {
-      setMetadataError((e as Error).message);
+      if (current()) setMetadataError((e as Error).message);
     } finally {
-      setMetadataBusy(false);
+      if (current()) setMetadataBusy(false);
     }
   }
   useEffect(() => {
     setRenaming(false);
     setTitleDraft("");
     setMetadataError("");
-  }, [p.session?.id]);
+    setMetadataBusy(false);
+  }, [life]);
   const [mobileOpen, setMobileOpen] = useState(false);
   const expandButton = useRef<HTMLButtonElement>(null);
   const collapseButton = useRef<HTMLButtonElement>(null);
@@ -221,8 +226,8 @@ export function EvaluationNavigation(p: Props) {
                       </small>
                       <small>
                         {latestRun
-                          ? `Last run: ${latestRun.state} · ${latestRun.created_at ? new Date(latestRun.created_at).toLocaleDateString() : "time unavailable"}`
-                          : "No saved runs"}
+                          ? `Last prototype check: ${latestRun.state} · ${latestRun.created_at ? new Date(latestRun.created_at).toLocaleDateString() : "time unavailable"}`
+                          : "No prototype checks"}
                       </small>
                       {context.updated_at && (
                         <small>Updated {new Date(context.updated_at).toLocaleString()}</small>

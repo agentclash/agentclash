@@ -91,6 +91,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
   );
   const [repositoryFullName, setRepositoryFullName] = useState("");
   const [defaultBranch, setDefaultBranch] = useState("main");
+  const [candidateDeploymentId, setCandidateDeploymentId] = useState("");
   const [agentBuildId, setAgentBuildId] = useState("");
   const [runtimeProfileId, setRuntimeProfileId] = useState("");
   const [providerAccountId, setProviderAccountId] = useState("");
@@ -420,6 +421,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
     agentSpecPath,
     triggerPaths: splitLines(triggerPathsText),
     triggerLabels: splitLines(triggerLabelsText),
+    candidateDeploymentId,
     agentBuildId,
     runtimeProfileId,
     deploymentName,
@@ -554,7 +556,8 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
           agentSpecPath,
           repositoryFullName,
           defaultBranch,
-          agentBuildId,
+          candidateDeploymentId,
+    agentBuildId,
           runtimeProfileId,
           providerAccountId,
           model,
@@ -621,6 +624,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
       stringValue(stored.repositoryFullName, profile.repository_full_name),
     );
     setDefaultBranch(stringValue(stored.defaultBranch, profile.default_branch));
+    setCandidateDeploymentId(stringValue(stored.candidateDeploymentId, ""));
     setAgentBuildId(stringValue(stored.agentBuildId, ""));
     setRuntimeProfileId(stringValue(stored.runtimeProfileId, ""));
     setProviderAccountId(stringValue(stored.providerAccountId, ""));
@@ -875,7 +879,14 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
             title="Candidate"
             meta={activeBuilds.length ? `${activeBuilds.length} active builds` : "No builds"}
           >
-            <div className="grid gap-4 md:grid-cols-2">
+            <Field label="Existing application deployment">
+              <select aria-label="Existing application deployment" className={selectClass} value={candidateDeploymentId} onChange={event => setCandidateDeploymentId(event.target.value)}>
+                <option value="">Create a native candidate from a build</option>
+                {(deployments.data?.items || []).filter(deployment => deployment.status === "active").map(deployment => <option key={deployment.id} value={deployment.id}>{deployment.name}</option>)}
+              </select>
+              <p className="text-sm text-muted-foreground">Runs the approved application deployment. Admission freezes its current snapshot; application code and upstream model revisions remain external claims.</p>
+            </Field>
+            {!candidateDeploymentId && <div className="grid gap-4 md:grid-cols-2">
               <Field label="Agent build">
                 <select
                   value={agentBuildId}
@@ -952,7 +963,7 @@ export function CISetupClient({ workspaceId }: CISetupClientProps) {
                   />
                 )}
               </Field>
-            </div>
+            </div>}
           </Section>
 
           <Section
@@ -1568,6 +1579,7 @@ type StoredCIProfileConfig = {
   agentSpecPath?: unknown;
   repositoryFullName?: unknown;
   defaultBranch?: unknown;
+  candidateDeploymentId?: unknown;
   agentBuildId?: unknown;
   runtimeProfileId?: unknown;
   providerAccountId?: unknown;
@@ -1597,6 +1609,7 @@ function buildProfileConfig(config: {
   agentSpecPath: string;
   repositoryFullName: string;
   defaultBranch: string;
+  candidateDeploymentId: string;
   agentBuildId: string;
   runtimeProfileId: string;
   providerAccountId: string;
@@ -1626,6 +1639,7 @@ function buildProfileConfig(config: {
     agentSpecPath: config.agentSpecPath,
     repositoryFullName: config.repositoryFullName,
     defaultBranch: config.defaultBranch,
+    candidateDeploymentId: config.candidateDeploymentId,
     agentBuildId: config.agentBuildId,
     runtimeProfileId: config.runtimeProfileId,
     providerAccountId: config.providerAccountId,

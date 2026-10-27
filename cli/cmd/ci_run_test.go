@@ -55,6 +55,52 @@ func TestCIRunCreatesCandidateRunAndEvaluatesPassingGate(t *testing.T) {
 	}
 }
 
+func TestCIRunUsesExistingConnectedDeploymentWithoutCreatingNativeCandidate(t *testing.T) {
+	target := writeCIRunManifestWith(t, func(manifest string) string {
+		start, end := strings.Index(manifest, "candidate:\n"), strings.Index(manifest, "evaluation:\n")
+		return manifest[:start] + "candidate:\n  deployment:\n    id: dep-candidate\n" + manifest[end:]
+	})
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, map[string]http.HandlerFunc{
+		"GET /v1/workspaces/ws-1/agent-deployments": jsonHandler(200, map[string]any{"items": []any{map[string]any{"id": "dep-candidate", "workspace_id": "ws-1", "status": "active", "execution_adapter": "http_target", "name": "Reviewed application"}}}),
+	}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+	result, err, _ := runCIRunJSON(t, []string{"ci", "run", "--manifest", target, "-w", "ws-1", "--json", "--poll-interval", "1ms", "--timeout", "1s"}, srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Candidate.DeploymentID != "dep-candidate" || result.Candidate.BuildVersionID != "" || captures.BuildVersionBody != nil || captures.DeploymentBody != nil {
+		t.Fatal("connected CI created/replaced the reviewed application", result, captures)
+	}
+	if deployments, ok := captures.RunBody["agent_deployment_ids"].([]any); !ok || len(deployments) != 1 || deployments[0] != "dep-candidate" {
+		t.Fatal("CI lost exact deployment", captures.RunBody)
+	}
+	if result.BaselineResolution.Refresh.Mode != "manual" || captures.GateBody["baseline_run_id"] != "00000000-0000-0000-0000-000000000008" {
+		t.Fatal("CI changed the explicit baseline")
+	}
+}
+
+func TestCIRunForwardsConfiguredGatePolicy(t *testing.T) {
+	policy := filepath.Join(t.TempDir(), "policy.json")
+	if err := os.WriteFile(policy, []byte(`{"policy_key":"application","policy_version":1,"require_scorecard_pass":true}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	target := writeCIRunManifestWith(t, func(s string) string { return strings.Replace(s, "gate:\n", "gate:\n  policy_file: "+policy+"\n", 1) })
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, nil))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+	_, err, _ := runCIRunJSON(t, []string{"ci", "run", "--manifest", target, "-w", "ws-1", "--json", "--poll-interval", "1ms", "--timeout", "1s"}, srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	policyBody, ok := captures.GateBody["policy"].(map[string]any)
+	if !ok || policyBody["require_scorecard_pass"] != true || policyBody["policy_key"] != "application" {
+		t.Fatal("configured gate policy was ignored", captures.GateBody)
+	}
+}
+
 func TestCIRunPropagatesTextSimEvaluationMode(t *testing.T) {
 	target := writeCIRunManifestWith(t, func(manifest string) string {
 		return strings.Replace(
@@ -1340,5 +1386,31 @@ func TestCIRunMarkdownSummarySanitizesServerStrings(t *testing.T) {
 	}
 	if strings.Contains(summary, "Candidate run") {
 		t.Fatalf("unsafe candidate link rendered\n---\n%s", summary)
+	}
+}
+
+func TestCIRunEmitsAuthorizedProjectReturnInOutputAndSummary(t *testing.T) {
+	target := writeCIRunManifestWith(t, func(s string) string { return s })
+	projectURL := "https://www.agentclash.dev/vibe-evals?agent=artifact&run=run%3Arun-candidate&session=project&view=results"
+	binding := map[string]any{"session_id": "project", "artifact_id": "artifact", "result_ref": map[string]any{"kind": "run", "id": "run-candidate"}}
+	captures := &ciRunRouteCaptures{}
+	srv := fakeAPI(t, ciRunRoutes(t, captures, map[string]http.HandlerFunc{"GET /v1/vibe/canonical-results/run/run-candidate/projects": jsonHandler(200, []any{map[string]any{"binding": binding, "url": projectURL}, map[string]any{"binding": binding, "url": "javascript:alert(1)"}, map[string]any{"binding": binding, "url": strings.Replace(projectURL, "session=project", "session=foreign", 1)}})}))
+	defer srv.Close()
+	t.Setenv("AGENTCLASH_TOKEN", "test-token")
+	summary := filepath.Join(t.TempDir(), "summary.md")
+	_, err, output := runCIRunJSON(t, []string{"ci", "run", "--manifest", target, "-w", "ws-1", "--json", "--poll-interval", "1ms", "--timeout", "1s", "--summary-file", summary}, srv.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var value map[string]any
+	if err = json.Unmarshal([]byte(output), &value); err != nil {
+		t.Fatal(err)
+	}
+	links, ok := value["project_urls"].([]any)
+	if !ok || len(links) != 1 || links[0] != projectURL {
+		t.Fatalf("missing or unsafe project returns: %s", output)
+	}
+	if !strings.Contains(readTextFile(t, summary), "[Return to Vibe project]("+projectURL+")") {
+		t.Fatal("summary lost product return link")
 	}
 }

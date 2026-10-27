@@ -84,21 +84,15 @@ func (s *Store) persistValidationReview(ctx context.Context, o Operation, stage 
 
 func populateValidationReviews(ctx context.Context, tx pgx.Tx, v *Session) error {
 	v.ValidationReviews = []ValidationReview{}
-	rows, err := tx.Query(ctx, "SELECT body FROM vibe_validation_reviews WHERE session_id=$1 ORDER BY created_at DESC,id DESC LIMIT 10", v.ID)
+	// Both values belong to this repeatable-read snapshot. Read its cursor with
+	// the bounded review list, including sessions with no reviews or events.
+	var data []byte
+	err := tx.QueryRow(ctx, `SELECT
+ (SELECT COALESCE(max(id),0) FROM vibe_events WHERE session_id=$1),
+ COALESCE((SELECT jsonb_agg(body ORDER BY created_at DESC,id DESC) FROM
+   (SELECT body,created_at,id FROM vibe_validation_reviews WHERE session_id=$1 ORDER BY created_at DESC,id DESC LIMIT 10) reviews),'[]'::jsonb)`, v.ID).Scan(&v.EventCursor, &data)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var data []byte
-		if err = rows.Scan(&data); err != nil {
-			return err
-		}
-		var review ValidationReview
-		if err = json.Unmarshal(data, &review); err != nil {
-			return err
-		}
-		v.ValidationReviews = append(v.ValidationReviews, review)
-	}
-	return rows.Err()
+	return json.Unmarshal(data, &v.ValidationReviews)
 }

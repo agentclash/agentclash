@@ -1,4 +1,5 @@
 "use client";
+import { ReimportReview } from "@/components/vibe/reimport-review";
 import {ObservedResults} from "@/components/vibe/observed-results";
 import {ConnectorSetup} from "@/components/vibe/connector-setup";
 import {CanonicalResults} from "@/components/vibe/canonical-results";
@@ -67,7 +68,7 @@ return (
           <VibeButton variant="quiet" onClick={() => setRunQuote(undefined)}>Cancel</VibeButton>
         </div></DialogContent>
       </Dialog>
-      <VibeConnection.Provider value={{ token, contact: config?.contact }}><EvaluationNavigation archiveMode={archiveMode} onArchiveMode={setArchiveMode} onMetadata={metadata} accountControl={authUser && (!navigation.session || newEvaluation) && <label className="text-sm">Workspace for new projects<select aria-label="Workspace for new projects" value={workspace} disabled={pending || saveAccess === "loading"} onChange={event => setWorkspace(event.target.value)} className="w-full min-w-0"><option value="">Choose a workspace</option>{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>{saveAccess === "loading" && <span>Loading workspaces…</span>}</label>} accountLabel={authLoading ? "Loading account…" : authUser ? authUser.email || "Signed in account" : "Guest · private to this browser"} listStatus={contextList.status} onRetryList={contextList.retry} enabled={twoDoor} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
+      <VibeConnection.Provider value={{ token, contact: config?.contact }}><EvaluationNavigation actorScope={authUser?.id || "guest"} archiveMode={archiveMode} onArchiveMode={setArchiveMode} onMetadata={metadata} accountControl={authUser && (!navigation.session || newEvaluation) && <label className="text-sm">Workspace for new projects<select aria-label="Workspace for new projects" value={workspace} disabled={pending || saveAccess === "loading"} onChange={event => setWorkspace(event.target.value)} className="w-full min-w-0"><option value="">Choose a workspace</option>{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>{saveAccess === "loading" && <span>Loading workspaces…</span>}</label>} accountLabel={authLoading ? "Loading account…" : authUser ? authUser.email || "Signed in account" : "Guest · private to this browser"} listStatus={contextList.status} onRetryList={contextList.retry} enabled={twoDoor} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
         choosing={newEvaluation} disabled={!config || pending || uncertain}
         onDeleted={id => {
           discardedContextIDs.current.add(id);
@@ -375,7 +376,7 @@ return (
       />
       }
       </EvaluationNavigation></VibeConnection.Provider>
-      <AgentSettings open={settingsOpen} onOpenChange={setSettingsOpen}
+      <AgentSettings reimport={session && artifact && artifact.kind !== "test_plan" ? <ReimportReview key={`${authUser?.id}:${session.id}:${artifact.id}`} actor={authUser?.id || "guest"} session={session} artifact={artifact} token={token} disabled={busy || dirtyArtifact} onApplied={updated => { if (accept(updated)) { const next = updated.document.artifacts.at(-1); if (next) navigate("tests", next.id, ""); setSettingsOpen(false); } }} /> : undefined} open={settingsOpen} onOpenChange={setSettingsOpen}
         config={config} session={session} artifact={artifact} artifacts={artifacts}
         models={models} busy={busy || dirtyArtifact} workspace={workspace}
         testJourney={testJourney} projectReturnPath={projectReturnPath} savedDraft={savedDraft} onModels={changeModels}

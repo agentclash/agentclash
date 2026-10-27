@@ -146,6 +146,15 @@ describe("generateAgentClashGitHubWorkflow", () => {
 });
 
 describe("ciSetupReadiness", () => {
+  it("generates connected deployment CI without unrelated native build requirements", () => {
+    const config = { ...completeConfig, candidateDeploymentId: "connected-app", agentBuildId: "", runtimeProfileId: "", agentSpecFile: "" };
+    expect(ciSetupReadiness(config).ready).toBe(true);
+    const manifest = generateAgentClashCIManifest(config);
+    expect(manifest).toContain('id: "connected-app"');
+    expect(manifest).not.toContain("spec_file:");
+    expect(manifest).not.toContain("runtime_profile_id:");
+    expect(manifest).toContain('run_id: "baseline-run-1"');
+  });
   it("passes complete configuration", () => {
     expect(ciSetupReadiness(completeConfig)).toEqual({
       ready: true,

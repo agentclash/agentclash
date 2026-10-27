@@ -54,8 +54,12 @@ export function RepeatedExperiment(p: {
         const saved = localStorage.getItem(key);
         if (saved) {
             const value = JSON.parse(saved) as Admission;
-            if (typeof value.request?.admission_request_id === "string" && value.request.workspace_id === p.workspaceId)
+            if (typeof value.request?.admission_request_id === "string" && value.request.workspace_id === p.workspaceId) {
                 setPending({ owner: life.owner, value });
+                if (value.mode === "fleet" || value.mode === "session") setMode(value.mode);
+                const repetitions = (value.request.eval_session as { repetitions?: unknown } | undefined)?.repetitions;
+                if (typeof repetitions === "number" && Number.isInteger(repetitions) && repetitions >= 2 && repetitions <= 100) setCount(repetitions);
+            }
         }
     }
     catch {

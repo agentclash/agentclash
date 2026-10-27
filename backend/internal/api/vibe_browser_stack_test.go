@@ -125,7 +125,7 @@ func TestVibeBrowserStack(t *testing.T) {
 		}
 		browserFixtureJSON(w, result)
 	})
-	router.Mount("/v1/vibe", (&VibeHandler{Service: svc, Auth: auth, CookieSecret: uuid.NewString() + uuid.NewString()}).Routes())
+	router.Mount("/v1/vibe", (&VibeHandler{FrontendURL: os.Getenv("VIBE_BROWSER_WEB_ORIGIN"), Service: svc, Auth: auth, CookieSecret: uuid.NewString() + uuid.NewString()}).Routes())
 	router.Get("/__fixture/ready", func(w http.ResponseWriter, r *http.Request) {
 		if !svc.Availability(r.Context(), true)["guest"].Available {
 			http.Error(w, "fixture workers preparing", http.StatusServiceUnavailable)
@@ -245,6 +245,9 @@ func browserFixtureDatabase(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	if config.ConnConfig.Database != "vibe_test" && !strings.HasPrefix(config.ConnConfig.Database, "vibe_test_") {
 		t.Fatal("refusing a non-test database URL")
 	}
+	if config.ConnConfig.Host != "127.0.0.1" && config.ConnConfig.Host != "localhost" && config.ConnConfig.Host != "::1" {
+		t.Fatal("fixture database must be loopback")
+	}
 	admin, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
 		t.Fatal(err)
@@ -256,12 +259,24 @@ func browserFixtureDatabase(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	if _, err = admin.Exec(ctx, "CREATE DATABASE "+identifier); err != nil {
 		t.Fatal(err)
 	}
+	var oid string
+	if err = admin.QueryRow(ctx, "SELECT oid::text FROM pg_database WHERE datname=$1", name).Scan(&oid); err != nil {
+		t.Fatal(err)
+	}
+	recordBrowserOwnership(t, "database", name, map[string]any{"phase": "created", "oid": oid})
 	t.Cleanup(func() {
 		cleanupCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		if _, err := admin.Exec(cleanupCtx, "DROP DATABASE "+identifier+" WITH (FORCE)"); err != nil {
 			t.Errorf("remove fixture database %s: %v", name, err)
+			return
 		}
+		var exists bool
+		if err := admin.QueryRow(cleanupCtx, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname=$1)", name).Scan(&exists); err != nil || exists {
+			t.Errorf("fixture database absence could not be verified: %s", name)
+			return
+		}
+		recordBrowserOwnership(t, "database", name, map[string]any{"phase": "absent", "oid": oid})
 	})
 	isolated := config.Copy()
 	isolated.ConnConfig.Database = name
@@ -309,6 +324,7 @@ func browserFixtureTemporal(t *testing.T, ctx context.Context, namespace string)
 	if err = ns.Register(ctx, &workflowservice.RegisterNamespaceRequest{Namespace: namespace, WorkflowExecutionRetentionPeriod: durationpb.New(24 * time.Hour)}); err != nil {
 		t.Fatal(err)
 	}
+	recordBrowserOwnership(t, "temporal_namespace", namespace, map[string]any{"phase": "registered", "workflow_retention_hours": 24, "metadata": "retained"})
 	c, err := client.Dial(client.Options{HostPort: address, Namespace: namespace})
 	if err != nil {
 		t.Fatal(err)
@@ -787,7 +803,7 @@ func (browserFixtureOfflineTransport) RoundTrip(*http.Request) (*http.Response, 
 
 // Optional durable local inventory is written before resource creation, including
 // failed startup attempts. It grants cleanup ownership only for these names.
-func recordBrowserOwnership(t *testing.T, kind, name string) {
+func recordBrowserOwnership(t *testing.T, kind, name string, details ...map[string]any) {
 	t.Helper()
 	path := os.Getenv("VIBE_BROWSER_OWNERSHIP_LOG")
 	if path == "" {
@@ -798,7 +814,13 @@ func recordBrowserOwnership(t *testing.T, kind, name string) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	if err = json.NewEncoder(f).Encode(map[string]any{"kind": kind, "name": name, "pid": os.Getpid(), "time": time.Now().UTC()}); err != nil {
+	row := map[string]any{"kind": kind, "name": name, "pid": os.Getpid(), "time": time.Now().UTC(), "phase": "intent"}
+	for _, fields := range details {
+		for key, value := range fields {
+			row[key] = value
+		}
+	}
+	if err = json.NewEncoder(f).Encode(row); err != nil {
 		t.Fatal(err)
 	}
 	if err = f.Sync(); err != nil {
