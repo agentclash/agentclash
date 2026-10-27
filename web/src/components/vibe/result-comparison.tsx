@@ -5,8 +5,11 @@ import { compareResultEvidence } from "@/lib/vibe-result-evidence";
 import { VibeButton } from "./vibe-button";
 
 function SavedReply({label,operation,caseKey,version,load}:{label:string;operation:string;caseKey:string;version?:string;load:(operation:string,key:string)=>Promise<CaseResult>}){
- const [result,setResult]=useState<CaseResult>();const [error,setError]=useState("");const [attempt,setAttempt]=useState(0);
- useEffect(()=>{let live=true;setResult(undefined);setError("");void load(operation,caseKey).then(c=>{if(live){if(c.case_key!==caseKey||(version&&c.version!==version))throw Error("The saved case identity changed.");setResult(c)}}).catch(e=>{if(live)setError(e.message)});return()=>{live=false}},[operation,caseKey,version,attempt]);
+ const [attempt,setAttempt]=useState(0);
+ const identity=JSON.stringify([operation,caseKey,version,attempt]);
+ const [state,setState]=useState<{identity:string;result?:CaseResult;error?:string}>();
+ const result=state?.identity===identity?state.result:undefined,error=state?.identity===identity?state.error:undefined;
+ useEffect(()=>{let live=true;void load(operation,caseKey).then(c=>{if(live){if(c.case_key!==caseKey||(version&&c.version!==version))throw Error("The saved case identity changed.");setState({identity,result:c})}}).catch(e=>{if(live)setState({identity,error:e.message})});return()=>{live=false}},[operation,caseKey,version,attempt,identity]);
  return <section aria-label={label}><h4>{label}</h4>{result?<><p>{result.verdict}</p><pre className="whitespace-pre-wrap break-words">{result.output||result.messages?.filter(m=>m.role==="assistant").map(m=>m.content).join("\n\n")||"No completed reply is saved."}</pre>{result.checks.map(c=><p key={c.key}>{c.key}: {c.evidence||c.error?.message||"Unassessed"}</p>)}</>:error?<><p role="alert">{error}</p><VibeButton onClick={()=>setAttempt(a=>a+1)}>Reload {label.toLowerCase()}</VibeButton></>:<p>Loading saved reply…</p>}</section>;
 }
 export function ResultComparison({current,baseline,load}:{current:Operation;baseline:Operation;load:(operation:string,key:string)=>Promise<CaseResult>}){

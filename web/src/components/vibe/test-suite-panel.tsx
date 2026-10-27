@@ -70,13 +70,12 @@ export function TestSuitePanel({
   const casesDraft = useVibeEditorDraft(projectID, artifact.id, "cases", editorSource({ id: artifact.id, blueprint: artifact.blueprint }), JSON.stringify(tests));
   const editorHeading = useRef<HTMLHeadingElement>(null);
   const [editing, setEditing] = useState(casesDraft.dirty || tests.some(test => test.key === selectedCase && test.editable));
-  const previousCase = useRef(selectedCase);
-  useEffect(() => {
-    if (previousCase.current === selectedCase) return;
-    previousCase.current = selectedCase;
+  const [previousCase, setPreviousCase] = useState(selectedCase);
+  if (previousCase !== selectedCase) {
+    setPreviousCase(selectedCase);
     setFocusedCase(selectedCase);
     setEditing(tests.some(test => test.key === selectedCase && test.editable));
-  }, [selectedCase, tests]);
+  }
   const [agentOpen, setAgentOpenState] = useState(mode !== "tests" && instructionDraft.dirty);
   const setAgentOpen = (open: boolean) => { if (open && mode === "tests") onAgent?.(); else setAgentOpenState(open); };
   const instructions = instructionDraft.value;
