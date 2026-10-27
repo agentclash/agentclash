@@ -1,4 +1,3 @@
-import { writeFile } from "node:fs/promises";
 import { expect, test, type Page } from "@playwright/test";
 import { defaultModels, type Session } from "../../src/lib/vibe";
 
@@ -178,7 +177,7 @@ test("navigation preserves active context while another evaluation completes", a
   expect(control.errors).toEqual([]);
 });
 
-test("drawer supports keyboard dismissal, focus return and source selection on small screens", async ({ page }, info) => {
+test("drawer supports keyboard dismissal, focus return and source selection on small screens", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   const control = await serve(page);
@@ -187,7 +186,6 @@ test("drawer supports keyboard dismissal, focus return and source selection on s
   const drawer = page.getByRole("dialog", { name: "Your agents" });
   await expect(drawer).toBeVisible();
   await expect(drawer).toHaveCSS("opacity", "1");
-  await page.screenshot({ path: info.outputPath("sidebar-mobile.png") });
   await page.keyboard.press("Escape");
   await expect(drawer).toBeHidden();
   await expect(trigger).toBeFocused();
@@ -202,7 +200,7 @@ test("drawer supports keyboard dismissal, focus return and source selection on s
   expect(control.errors).toEqual([]);
 });
 
-test("entry, context label and composer fit mobile, desktop and zoom-sized layouts", async ({ page }, info) => {
+test("entry, context label and composer fit mobile, desktop and zoom-sized layouts", async ({ page }) => {
   const control = await serve(page);
   for (const width of [320, 390, 640, 768, 1280, 1440]) {
     await page.setViewportSize({ width, height: width === 640 ? 450 : 900 });
@@ -220,7 +218,6 @@ test("entry, context label and composer fit mobile, desktop and zoom-sized layou
     await expect(page.getByRole("button", { name: "Send message", exact: true })).toBeVisible();
     expect((await input.boundingBox())!.height).toBeLessThanOrEqual(240);
     await input.fill("");
-    await page.screenshot({ path: info.outputPath(`entry-${width}.png`), fullPage: true });
   }
   await page.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
   await expect(page.getByRole("button", { name: "Expand sidebar", exact: true })).toBeVisible();
@@ -292,7 +289,7 @@ test("dismissing the extra-run quote restores focus without submitting a paid ru
   expect(control.errors).toEqual([]);
 });
 
-test("long evaluation titles scroll inside the sidebar and saved work stays accessible", async ({ page }, info) => {
+test("long evaluation titles scroll inside the sidebar and saved work stays accessible", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   const control = await serve(page, true);
   const list = page.getByRole("navigation", { name: "Your agents" });
@@ -302,7 +299,6 @@ test("long evaluation titles scroll inside the sidebar and saved work stays acce
   expect(await title.evaluate(element => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
   await list.locator("button").last().scrollIntoViewIfNeeded();
   await expect(page.getByRole("button", { name: "Saved work", exact: true })).toBeInViewport();
-  await page.screenshot({ path: info.outputPath("sidebar-history.png") });
   await page.getByRole("button", { name: "Saved work", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Your saved work" })).toBeVisible();
   await page.getByRole("button", { name: "Close", exact: true }).click();
@@ -353,11 +349,10 @@ test("same-artifact case Back and Forward restores the visible expectation witho
   expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
 });
 
-test("workspace geometry, scoped portal appearance and reading focus adapt at every specified boundary", async ({ page }, info) => {
+test("workspace geometry, scoped portal appearance and reading focus adapt at every specified boundary", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
   const control = await serve(page, false, true);
-  const report: unknown[] = [];
   for (const width of [390, 600, 601, 1023, 1024, 1279, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     // Resize preserves the utility value; close the sheet to inspect main content.
@@ -384,10 +379,8 @@ test("workspace geometry, scoped portal appearance and reading focus adapt at ev
     await expect(utility).toHaveCSS("background-color", "rgb(25, 25, 22)");
     await appearance.selectOption("system");
     await expect(utility).toHaveCSS("background-color", "rgb(255, 255, 255)");
-    report.push(geometry);
     await page.getByRole("button", { name: "Close Details", exact: true }).click();
     await expect(page.getByRole("button", { name: "Details", exact: true })).toBeFocused();
-    await page.screenshot({ path: info.outputPath(`workspace-${width}.png`) });
   }
   await page.getByRole("button", { name: "Guide", exact: true }).click();
   await page.getByRole("button", { name: "New response", exact: true }).click();
@@ -398,15 +391,13 @@ test("workspace geometry, scoped portal appearance and reading focus adapt at ev
   await expect(page.getByLabel("Guide reference", { exact: true })).toContainText("You won a prize.");
   await expect(page.getByRole("textbox", { name: "Message Vibe Evals" })).toBeFocused();
   expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
-  await info.attach("computed-workspace-matrix", { body: JSON.stringify(report, null, 2), contentType: "application/json" });
 });
 
 
-test("remaining 320 and 768 layouts retain contrast, scaled text and utility focus", async ({ page }, info) => {
+test("remaining 320 and 768 layouts retain contrast, scaled text and utility focus", async ({ page }) => {
   await page.setViewportSize({width:320,height:900});
   await page.emulateMedia({colorScheme:"dark",reducedMotion:"reduce"});
   const control=await serve(page,false,true);
-  const report:unknown[]=[];
   for(const width of [320,768]) {
     await page.setViewportSize({width,height:900});
     await page.getByRole("button",{name:"Details",exact:true}).click();
@@ -419,26 +410,20 @@ test("remaining 320 and 768 layouts retain contrast, scaled text and utility foc
     await expect(popup).toHaveCSS("background-color","rgb(255, 255, 255)");
     const geometry=await popup.evaluate(el=>({width:el.getBoundingClientRect().width,height:el.getBoundingClientRect().height,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color,transition:getComputedStyle(el).transitionDuration,overflow:document.documentElement.scrollWidth>innerWidth}));
     expect(geometry.width).toBe(width<=600?width:480); expect(geometry.height).toBe(900); expect(geometry.overflow).toBe(false); expect(geometry.transition).toBe("0s");
-    report.push({viewport:width,...geometry});
-    await page.screenshot({path:info.outputPath(`utility-${width}-light.png`)});
     await page.keyboard.press("Escape");
     await expect(page.getByRole("button",{name:"Details",exact:true})).toBeFocused();
-    await page.screenshot({path:info.outputPath(`workspace-${width}.png`)});
   }
   // Text-only enlargement doubles each element's computed font size; this is
   // deterministic Linux coverage, not a claim about Safari or physical zoom.
   await page.setViewportSize({width:768,height:900});
   await page.evaluate(()=> { const elements=[...document.querySelectorAll<HTMLElement>(".vibe-workspace *")]; const sizes=elements.map(el=>parseFloat(getComputedStyle(el).fontSize)); elements.forEach((el,i)=>{el.style.fontSize=`${sizes[i]*2}px`;}); });
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
-  await page.screenshot({path:info.outputPath("workspace-200-percent-text.png")});
   await page.emulateMedia({forcedColors:"active"});
   await page.getByRole("button",{name:"Details",exact:true}).click();
   const forced=await page.locator('[data-slot="sheet-content"]').evaluate(el=>({forced:matchMedia("(forced-colors: active)").matches,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color}));
   expect(forced.forced).toBe(true); expect(forced.background).not.toBe(forced.color);
   await page.keyboard.press("Escape"); await expect(page.getByRole("button",{name:"Details",exact:true})).toBeFocused();
-  await page.screenshot({path:info.outputPath("workspace-forced-colors.png")});
   expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
-  await info.attach("remaining-layout-inspection",{body:JSON.stringify({report,forced,textMethod:"2x computed font size at768px"},null,2),contentType:"application/json"});
 });
 
 
@@ -459,7 +444,7 @@ test("an explicit pre-run Guide reference submits only its identity and the user
  expect(control.errors).toEqual([]);
 });
 
-test("Settings descendants retain readable scoped appearance including warning, control and focus states", async ({page},info) => {
+test("Settings descendants retain readable scoped appearance including warning, control and focus states", async ({page}) => {
   await page.setViewportSize({width:1440,height:900});
   await page.emulateMedia({colorScheme:"light",reducedMotion:"reduce"});
   const control=await serve(page,false,true);
@@ -469,7 +454,6 @@ test("Settings descendants retain readable scoped appearance including warning, 
   await page.reload(); await page.getByRole("tab",{name:"Results",exact:true}).click();
   const globalBefore=await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue("--builder-fg-muted"));
   await page.getByRole("button",{name:"Details",exact:true}).click();
-  const report:unknown[]=[];
   for(const [appearance,system] of [["light","dark"],["dark","light"],["system","light"],["system","dark"]] as const) {
     await page.emulateMedia({colorScheme:system,reducedMotion:"reduce"});
     await page.getByLabel("Appearance",{exact:true}).selectOption(appearance);
@@ -499,14 +483,10 @@ test("Settings descendants retain readable scoped appearance including warning, 
     expect(measurement.borderContrast).toBeGreaterThanOrEqual(3); expect(measurement.actionBorderContrast).toBeGreaterThanOrEqual(3);
     expect(measurement.focus.visible).toBe(true); expect(measurement.focus.contrast).toBeGreaterThanOrEqual(3);
     await expect(action).toBeVisible();
-    report.push({appearance,system,...measurement});
-    await page.screenshot({path:info.outputPath(`settings-${appearance}-${system}.png`)});
     await dialog.getByRole("button",{name:"Close",exact:true}).click();
   }
   expect(await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue("--builder-fg-muted"))).toBe(globalBefore);
   expect(control.posts).toHaveLength(0);expect(control.errors).toEqual([]);
-  await writeFile(info.outputPath("descendant-contrast.json"),JSON.stringify(report,null,2));
-  await info.attach("descendant-contrast",{body:JSON.stringify(report,null,2),contentType:"application/json"});
 });
 
 test("library search rename archive and sidebar preference preserve full touch and keyboard titles without running",async({page})=>{

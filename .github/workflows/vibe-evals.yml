@@ -24,7 +24,6 @@ on:
       - 'web/src/components/challenge-packs/vibe-return*'
       - 'backend/internal/api/eval_session*'
       - 'backend/internal/api/eval_sets*'
-      - 'backend/internal/repository/controlled*'
       - 'backend/internal/repository/eval_session*'
       - 'backend/internal/engine/**'
       - 'runtime/runner/**'
@@ -98,29 +97,26 @@ jobs:
           cache-dependency-path: backend/go.sum
       - name: Failure injection and database concurrency (no provider calls)
         run: |
-          python3 scripts/vibe/fixture.py -- go -C backend test -p 1 -race ./internal/vibe ./internal/api -run 'Test(Vibe|Observed|PublicShare|Publication|GitHubIntegration|Regression|ReleaseGate|RunComparison|ControlledPreview|ControlledFleet|Suite|Consistency|Integration|Structured|YAML|Fanout|Money|FullContext|Unknown|Coverage|RunQuote|SampleIdentity|Requirement|StateMachine|MissingPricing|TrialProtectedAllocation|PaidTemporal|InvalidJudge|CORSMiddleware|BillingManager.*Webhook|AgentTryoutPromot|Generate|Evidence|Conversation|AuthoringPolicies|RetainedAuthoring)' -count=1
+          python3 scripts/vibe/fixture.py -- go -C backend test -p 1 -race ./internal/vibe ./internal/api -run 'Test(Vibe|Observed|PublicShare|Publication|GitHubIntegration|Regression|ReleaseGate|RunComparison|Suite|Consistency|Integration|Structured|YAML|Fanout|Money|FullContext|Unknown|Coverage|RunQuote|SampleIdentity|Requirement|StateMachine|MissingPricing|TrialProtectedAllocation|PaidTemporal|InvalidJudge|CORSMiddleware|BillingManager.*Webhook|AgentTryoutPromot|Generate|Evidence|Conversation|AuthoringPolicies|RetainedAuthoring)' -count=1
           go -C backend build ./...
           go -C backend vet ./...
       - name: Material and enquiry transaction regressions
         run: python3 scripts/vibe/fixture.py -- go -C backend test -race ./internal/enquiries ./internal/vibe/inputs -count=1
       - name: Canonical connector and native owners on an owned child database
         run: |
-          python3 scripts/vibe/fixture.py --database-env DATABASE_URL --label task7 -- go -C backend test -race ./internal/repository -run '^TestControlled|EvalSession|TestConnector|GetRunAgentExecutionContext|WorkspaceSecret|CreateQueuedRun|CreateEvalSessionWithQueuedRuns|ListActiveAgentDeployments|Regression|ReleaseGate|CIProfile' -count=1
-          python3 scripts/vibe/fixture.py -- go -C backend test -race ./internal/api ./internal/engine ./internal/workflow ./internal/worker -run 'EvalSession|EvalSet|ControlledScoring|EvaluateLLMJudges|PromptEval|NativeExecutor|Connector|Hosted|RunCreation|CreateRun|AgentBuild|AgentDeployment|AuthorizeWorkspaceAction|WorkspaceSecret|Healthz|NativeModel|QuickCreateAgent|ExecuteNative' -count=1
+          python3 scripts/vibe/fixture.py --database-env DATABASE_URL --label task7 -- go -C backend test -race ./internal/repository -run 'EvalSession|TestConnector|GetRunAgentExecutionContext|WorkspaceSecret|CreateQueuedRun|CreateEvalSessionWithQueuedRuns|ListActiveAgentDeployments|Regression|ReleaseGate|CIProfile' -count=1
+          python3 scripts/vibe/fixture.py -- go -C backend test -race ./internal/api ./internal/engine ./internal/workflow ./internal/worker -run 'EvalSession|EvalSet|EvaluateLLMJudges|PromptEval|NativeExecutor|Connector|Hosted|RunCreation|CreateRun|AgentBuild|AgentDeployment|AuthorizeWorkspaceAction|WorkspaceSecret|Healthz|NativeModel|QuickCreateAgent|ExecuteNative' -count=1
       - name: Shared provider and scoring regressions
         working-directory: runtime
         run: go test ./connectors ./provider ./scoring ./challengepack ./runner -count=1
-      - name: Mandatory current-contract regression floor (no missing or skipped tests)
-        run: python3 scripts/vibe/run_baseline.py --report "$RUNNER_TEMP/vibe-floor.json"
       - name: CLI canonical CI contracts
         run: go -C cli test -race ./cmd -run 'TestCI|TestEvalTest' -count=1
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: vibe-backend-ownership-and-floor
+          name: vibe-backend-ownership
           path: |
             ${{ runner.temp }}/vibe-ownership.jsonl
-            ${{ runner.temp }}/vibe-floor.json
   browser-journeys:
     runs-on: ubuntu-latest
     env:

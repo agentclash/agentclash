@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT || "55441"}`;
 const workspace = "a8000000-0000-4000-8000-000000000003";
 const blueprint = {
@@ -10,7 +10,7 @@ const blueprint = {
  dimensions:[{key:"output_present",source:"validators",validators:["has_answer"]},{key:"behavior_correctness",source:"llm_judge",judge_key:"behavior"}],
 };
 async function evidence(page:Page,id:string){const value=await (await page.request.get(`${api}/__fixture/evidence?session=${id}`)).json();return {...value,calls:value.calls || []}}
-test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrade and reviewed promotion",async({page},info)=>{
+test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrade and reviewed promotion",async({page})=>{
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
  await page.goto("/auth/login?returnTo=%2Fvibe-evals");await page.getByRole("button",{name:"Continue with AgentClash"}).click();
  await expect(page.getByLabel("Workspace for new projects")).toBeVisible();await page.getByLabel("Workspace for new projects").selectOption(workspace);
@@ -72,7 +72,6 @@ test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrad
   await expect(page.getByRole("article",{name:"Imported report detail"})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   expect(await page.locator(".vibe-project-main").evaluate(node=>node.scrollWidth<=node.clientWidth)).toBe(true);
-  await page.screenshot({path:info.outputPath(`sdk-report-${width}.png`),fullPage:true,animations:"disabled"});
  }
- await writeFile(info.outputPath("sdk-evidence.json"),JSON.stringify({report,archive,graded,promoted},null,2));expect(errors).toEqual([]);
+ expect(errors).toEqual([]);
 });

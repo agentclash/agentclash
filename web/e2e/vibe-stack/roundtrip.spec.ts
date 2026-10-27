@@ -151,6 +151,5 @@ test("reviewed tests execute application CI, retain a real regression, and retur
   const promotion = await page.request.patch(`${api}/v1/workspaces/${workspace}/ci-profiles/${profile.id}`, { headers: { authorization }, data: { ...profileBody, config: promotedConfig } });
   expect(promotion.ok(), await promotion.text()).toBe(true);
   expect((await get(`/v1/workspaces/${workspace}/ci-profiles`)).items.find((row: { id: string }) => row.id === profile.id).config.baselineRunId).toBe(admitted.id);
-  await writeFile(info.outputPath("roundtrip-evidence.json"), JSON.stringify({ session, artifact: artifact.id, baseline: baseline.id, candidate, publication, nextArtifact: next.id, nextPublication, regression, promotedBaseline: admitted.id, profile: profile.id, ci, observed, returnURL: returnURL.pathname + returnURL.search }, null, 2));
   await post("/__fixture/connector-output", { regressed: false });
 });
