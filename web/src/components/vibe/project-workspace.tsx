@@ -1,4 +1,5 @@
 "use client";
+import { hasConversationChoice } from "@/lib/vibe-presentation";
 import { parseResultSelection } from "@/lib/vibe-result-selection";
 import { VibeDataUseNotice, VibeRedactionHint } from "./vibe-data-use";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -64,7 +65,7 @@ function AgentEditor({ p, onDirty }: { p: EvaluationWorkspaceProps; onDirty: () 
 // Projection only. The client retains journal, drafts, admission and recovery ownership.
 export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; initial: ReactNode }) {
   const session = p.session!;
-  const [utility, setUtility] = useState<"guide" | "details" | null>(() => !!p.artifact && typeof matchMedia !== "undefined" && matchMedia("(min-width: 1280px)").matches ? "guide" : null);
+  const [utility, setUtility] = useState<"guide" | "details" | null>(null);
   const [wide, setWide] = useState(() => typeof matchMedia !== "undefined" && matchMedia("(min-width: 1280px)").matches);
   const [reference, setReference] = useState<Reference>();
   const utilityTrigger = useRef<HTMLElement | null>(null);
@@ -86,6 +87,15 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
   const active = session.operations.find(op => !terminal(op.state));
   const messages = session.document.messages.filter(message => message.origin !== "playground");
   const latestResponse = messages.findLast(message => message.role === "assistant");
+  const latestOperation = session.operations.at(-1);
+  const guideRecovery = !!p.sendError || !!p.retryUncertainOperationID ||
+    !!latestOperation?.retryable && !latestOperation.completion_receipt && terminal(latestOperation.state);
+  const guideAttention = active?.state === "AWAITING_APPROVAL" ? "Approval needed"
+    : active?.state === "AWAITING_INPUT" ? "Input needed"
+    : active || p.pendingLabel ? "Running"
+    : guideRecovery ? "Needs attention"
+    : p.interactionActions && hasConversationChoice(session) ? "Review needed"
+    : latestResponse && read !== latestResponse.id ? "New response" : undefined;
   const intakeOpen = !!p.recordedUpdate && !p.recordedUpdate.artifactID;
   const newRecordedBaseline = p.recordedUpdate?.artifactID === artifact?.id ? p.recordedUpdate?.baseline : undefined;
   const initialBrief = !artifact || artifact.kind === "task_brief";
@@ -143,11 +153,12 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
   const utilityContent = <><div className="vibe-utility-heading"><h2 ref={utilityHeading} tabIndex={-1}>{utility === "guide" ? "Guide" : "Details"}</h2><VibeButton aria-label={`Close ${utility === "guide" ? "Guide" : "Details"}`} onClick={close}>Close</VibeButton></div>{utility === "guide" ? guide : details}</>;
   return <>
     <header className="vibe-project-header"><div className="vibe-project-identity">{p.navigationToggle}<div><h1>{evaluationIdentity(session).title}</h1><p>{artifact ? `v${buildVersion(session, artifact)} · ${artifact.title}` : "Initial brief"}{result ? ` · Evidence: Run ${runs.indexOf(result) + 1} (${result.state})` : p.selectedResult ? ` · ${sourceLabel}` : artifact ? " · No results for this version" : " · No saved runs"}</p></div></div>
-      <div className="vibe-project-tools"><VibeButton aria-pressed={utility === "guide"} onClick={() => open("guide")}>Guide</VibeButton><VibeButton aria-pressed={utility === "details"} onClick={() => open("details")}>Details</VibeButton></div>
-      <Tabs.Root value={view} onValueChange={next => p.onNavigate(next === "results" ? "checks" : next === "tests" ? "tests" : "build")}><Tabs.List aria-label="Workspace views" className="vibe-nav">{["agent", "tests", "results"].map(value => <Tabs.Tab className="vibe-button vibe-button-quiet" id={`vibe-tab-${value}`} aria-controls="vibe-workspace-panel" key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</Tabs.Tab>)}</Tabs.List></Tabs.Root>
+      <div className="vibe-project-tools"><VibeButton aria-label="Guide" aria-describedby={utility !== "guide" && guideAttention ? "vibe-guide-attention" : undefined} aria-pressed={utility === "guide"} onClick={() => open("guide")}><span>Guide</span>{utility !== "guide" && guideAttention && <small id="vibe-guide-attention" className="vibe-guide-attention">{guideAttention}</small>}</VibeButton><VibeButton aria-pressed={utility === "details"} onClick={() => open("details")}>Details</VibeButton></div>
+      <Tabs.Root className="vibe-project-tabs" value={view} onValueChange={next => p.onNavigate(next === "results" ? "checks" : next === "tests" ? "tests" : "build")}><Tabs.List aria-label="Workspace views" className="vibe-nav">{["agent", "tests", "results"].map(value => <Tabs.Tab className="vibe-button vibe-button-quiet" id={`vibe-tab-${value}`} aria-controls="vibe-workspace-panel" key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</Tabs.Tab>)}</Tabs.List></Tabs.Root>
     </header>
     <div className="vibe-project-body" data-utility-open={!!utility && wide}>
       <div className="vibe-project-main" data-initial={view === "agent" && initialBrief || undefined} id="vibe-workspace-panel" role="tabpanel" aria-labelledby={`vibe-tab-${view}`}>
+        <div className="vibe-project-content">
         {!initialBrief && !intakeOpen && p.onRecordedEvidence && <RecordedIntakeRecovery project={session.id} busy={p.busy} onSave={p.onRecordedEvidence} />}
         {view === "tests" && !!session.validation_reviews?.length && <ValidationHistory reviews={session.validation_reviews} onFix={text => { p.onContent(text); open("guide"); }} />}
         {view === "results" && p.externalResults}
@@ -175,11 +186,12 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
           {terminal(result.state) && <CoverageNote rows={session.rule_coverage?.[result.source?.artifact_id || ""] || []} busy={p.busy || p.dirty} onSuggest={rule => { p.onContent(`Prepare an extra test for review for this rule: ${rule}`); open("guide"); }} />}
         </> : p.selectedResult || (parseResultSelection(p.requestedRunID)?.kind && parseResultSelection(p.requestedRunID)?.kind !== "vibe_operation") ? null : <p role="status">{p.requestedRunID || p.quickChecking ? "Waiting for your check…" : "No results for this version. Run its tests to collect evidence, or choose a saved run to view an earlier tested version."}</p>}
         {!(view === "agent" && initialBrief) && <div className="vibe-notice">{p.notice}</div>}
+        </div>
       </div>
       {wide && utility && <aside className="vibe-utility" aria-label={`${utility === "guide" ? "Guide" : "Details"} utility`}>{utilityContent}</aside>}
     </div>
     {!wide && <Sheet open={!!utility} onOpenChange={value => { if (!value) setUtility(null); }}><SheetContent className="vibe-utility-sheet" showCloseButton={false} initialFocus={utilityHeading} finalFocus={() => utilityTrigger.current || false}><SheetTitle className="sr-only">{utility === "guide" ? "Guide" : "Details"}</SheetTitle><SheetDescription className="sr-only">Supporting project context. Closing keeps your draft.</SheetDescription>{utilityContent}</SheetContent></Sheet>}
-    <span className="sr-only" role="status">{latestResponse && read !== latestResponse.id ? "New Guide response available." : ""}</span>
+    <span className="sr-only" role="status">{utility !== "guide" && guideAttention ? `${guideAttention}. Open Guide for details.` : ""}</span>
     <SavedWorkDialog status={p.savedListStatus} onRetry={p.onRetrySaved} open={!!p.savedWorkOpen} onOpenChange={p.onSavedWorkOpenChange || (() => {})} testJourney={p.testJourney} savedChecks={p.savedChecks} hasResults={runs.length > 0} onResults={() => p.onNavigate("checks")} />
   </>;
 }
