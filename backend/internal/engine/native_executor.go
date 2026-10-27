@@ -240,18 +240,16 @@ func (e NativeExecutor) runAgentLoop(
 		}
 
 		request := provider.Request{
-			ValidateBeforeDispatch: executionContext.ValidateControlledDispatch,
-			OnDispatchValidated:    executionContext.AcknowledgeControlledDispatch,
-			ProviderKey:            executionContext.Deployment.ProviderAccount.ProviderKey,
-			ProviderAccountID:      executionContext.Deployment.ProviderAccount.ID.String(),
-			CredentialReference:    executionContext.Deployment.ProviderAccount.CredentialReference,
-			BaseURL:                executionContext.Deployment.ProviderAccount.BaseURL,
-			Model:                  executionContext.Deployment.ModelID,
-			TraceMode:              executionContext.Deployment.RuntimeProfile.TraceMode,
-			StepTimeout:            stepTimeout(executionContext),
-			Messages:               cloneMessages(state.messages),
-			Tools:                  cloneToolDefinitions(registry.ToolDefinitions()),
-			Metadata:               metadata,
+			ProviderKey:         executionContext.Deployment.ProviderAccount.ProviderKey,
+			ProviderAccountID:   executionContext.Deployment.ProviderAccount.ID.String(),
+			CredentialReference: executionContext.Deployment.ProviderAccount.CredentialReference,
+			BaseURL:             executionContext.Deployment.ProviderAccount.BaseURL,
+			Model:               executionContext.Deployment.ModelID,
+			TraceMode:           executionContext.Deployment.RuntimeProfile.TraceMode,
+			StepTimeout:         stepTimeout(executionContext),
+			Messages:            cloneMessages(state.messages),
+			Tools:               cloneToolDefinitions(registry.ToolDefinitions()),
+			Metadata:            metadata,
 		}
 		if observerErr := e.observer.OnProviderCall(runCtx, request); observerErr != nil {
 			return Result{}, NewFailure(StopReasonObserverError, "record native provider call event", observerErr)

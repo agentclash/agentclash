@@ -93,8 +93,6 @@ func registerEvalSetRoutes(router chi.Router, logger *slog.Logger, manager *Eval
 	if manager == nil {
 		return
 	}
-	router.Post("/eval-sets/controlled/preview", controlledEvalSetHandler(logger, manager))
-	router.Post("/eval-sets/controlled", controlledEvalSetHandler(logger, manager))
 	router.Post("/eval-sets/expand", expandEvalSetHandler(logger, manager))
 	router.Post("/eval-sets", createEvalSetHandler(logger, manager))
 	router.Get("/eval-sets", listEvalSetsHandler(logger, manager))

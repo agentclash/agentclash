@@ -53,11 +53,6 @@ func (c GeminiClient) StreamModel(ctx context.Context, request Request, onDelta 
 		return Response{}, err
 	}
 
-	if request.ValidateBeforeDispatch != nil {
-		if err := request.ValidateBeforeDispatch(ctx); err != nil {
-			return Response{}, err
-		}
-	}
 	apiKey, err := c.credentialResolver.Resolve(ctx, request.CredentialReference)
 	if err != nil {
 		return Response{}, normalizeCredentialError(request.ProviderKey, err)
@@ -88,16 +83,6 @@ func (c GeminiClient) StreamModel(ctx context.Context, request Request, onDelta 
 	req.Header.Set("Content-Type", "application/json")
 
 	startedAt := time.Now().UTC()
-	if request.ValidateBeforeDispatch != nil {
-		if err := request.ValidateBeforeDispatch(callCtx); err != nil {
-			return Response{}, err
-		}
-	}
-	if request.OnDispatchValidated != nil {
-		if err := request.OnDispatchValidated(callCtx); err != nil {
-			return Response{}, err
-		}
-	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		return Response{}, classifyEndpointTransportError(request.ProviderKey, err)

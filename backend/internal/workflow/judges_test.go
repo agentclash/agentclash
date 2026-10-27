@@ -2,7 +2,6 @@ package workflow
 
 import (
 	"context"
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -21,8 +20,6 @@ func TestEvaluateLLMJudges_UsesInferredProviderCredential(t *testing.T) {
 	executionContext := nativeExecutionContext(runID, runAgentID)
 	executionContext.Run.Status = domain.RunStatusRunning
 	executionContext.RunAgent.Status = domain.RunAgentStatusEvaluating
-	executionContext.ValidateControlledDispatch = func(context.Context) error { return repository.ErrControlledSettingsChanged }
-	executionContext.AcknowledgeControlledDispatch = func(context.Context) error { return repository.ErrControlledSettingsChanged }
 	repo.setExecutionContext(runAgentID, executionContext)
 
 	client := &provider.FakeClient{
@@ -95,11 +92,6 @@ func TestEvaluateLLMJudges_UsesInferredProviderCredential(t *testing.T) {
 	if len(client.Requests) != 2 {
 		t.Fatalf("request count = %d, want 2", len(client.Requests))
 	}
-	for _, req := range client.Requests {
-		if req.ValidateBeforeDispatch == nil || req.OnDispatchValidated == nil || !errors.Is(req.ValidateBeforeDispatch(context.Background()), repository.ErrControlledSettingsChanged) || !errors.Is(req.OnDispatchValidated(context.Background()), repository.ErrControlledSettingsChanged) {
-			t.Fatal("single judge dropped controlled dispatch guards")
-		}
-	}
 	if client.Requests[0].ProviderKey != "anthropic" {
 		t.Fatalf("provider key = %q, want anthropic", client.Requests[0].ProviderKey)
 	}
@@ -137,8 +129,6 @@ func TestEvaluateLLMJudges_SupportsNWiseRankingForNormalRuns(t *testing.T) {
 	firstExecutionContext := nativeExecutionContext(runID, firstRunAgentID)
 	firstExecutionContext.Run.Status = domain.RunStatusRunning
 	firstExecutionContext.RunAgent.Status = domain.RunAgentStatusEvaluating
-	firstExecutionContext.ValidateControlledDispatch = func(context.Context) error { return repository.ErrControlledSettingsChanged }
-	firstExecutionContext.AcknowledgeControlledDispatch = func(context.Context) error { return repository.ErrControlledSettingsChanged }
 	repo.setExecutionContext(firstRunAgentID, firstExecutionContext)
 
 	secondExecutionContext := nativeExecutionContext(runID, secondRunAgentID)
@@ -221,9 +211,6 @@ func TestEvaluateLLMJudges_SupportsNWiseRankingForNormalRuns(t *testing.T) {
 	}
 	if len(client.Requests) != 1 {
 		t.Fatalf("request count = %d, want 1", len(client.Requests))
-	}
-	if req := client.Requests[0]; req.ValidateBeforeDispatch == nil || req.OnDispatchValidated == nil || !errors.Is(req.ValidateBeforeDispatch(context.Background()), repository.ErrControlledSettingsChanged) || !errors.Is(req.OnDispatchValidated(context.Background()), repository.ErrControlledSettingsChanged) {
-		t.Fatal("n-wise judge dropped controlled dispatch guards")
 	}
 	if got := client.Requests[0].Messages[0].Content; !containsAll(got, firstRunAgentID.String(), secondRunAgentID.String(), "Escalated to pager immediately", "Restarted a random service") {
 		t.Fatalf("n_wise prompt did not include both candidates: %q", got)

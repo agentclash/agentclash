@@ -16,12 +16,11 @@ type BuildVersionRunnableDeployment struct {
 }
 
 type CreateEvalSessionWithQueuedRunsParams struct {
-	ControlledParentEvalSetID uuid.UUID
-	RequestID                 uuid.UUID
-	RequestHash               string
-	Session                   CreateEvalSessionParams
-	Runs                      []CreateQueuedRunParams
-	EntitlementGate           *RunEntitlementGate
+	RequestID       uuid.UUID
+	RequestHash     string
+	Session         CreateEvalSessionParams
+	Runs            []CreateQueuedRunParams
+	EntitlementGate *RunEntitlementGate
 }
 
 type CreateEvalSessionWithQueuedRunsResult struct {
@@ -120,18 +119,6 @@ func (r *Repository) CreateEvalSessionWithQueuedRuns(
 			return value, tx.Commit(ctx)
 		}
 	}
-	if params.ControlledParentEvalSetID != uuid.Nil {
-		var status string
-		// Serialize the child commit/link with actual parent cancellation. A cancelled
-		// outer can never acquire a newly admitted child after the API's earlier read.
-		err := tx.QueryRow(ctx, `SELECT e.status FROM eval_sets e JOIN eval_set_admissions a ON a.eval_set_id=e.id AND a.workspace_id=e.workspace_id WHERE e.id=$1 AND e.workspace_id=$2 FOR UPDATE OF e`, params.ControlledParentEvalSetID, owner).Scan(&status)
-		if err != nil {
-			return CreateEvalSessionWithQueuedRunsResult{}, err
-		}
-		if status != string(domain.EvalSetStatusQueued) {
-			return CreateEvalSessionWithQueuedRunsResult{}, ErrControlledParentTerminal
-		}
-	}
 	queries := r.queries.WithTx(tx)
 	if params.EntitlementGate != nil && len(params.Runs) > 0 {
 		workspaceID := params.Runs[0].WorkspaceID
@@ -169,17 +156,9 @@ func (r *Repository) CreateEvalSessionWithQueuedRuns(
 				return CreateEvalSessionWithQueuedRunsResult{}, err
 			}
 		}
-		settings, err := admitControlledSettings(ctx, tx, runParams)
-		if err != nil {
-			return CreateEvalSessionWithQueuedRunsResult{}, err
-		}
 		result, err := createQueuedRunWithQueries(ctx, queries, runParams, queuedAt)
 		if err != nil {
 			return CreateEvalSessionWithQueuedRunsResult{}, fmt.Errorf("create queued child run %d: %w", idx+1, err)
-		}
-
-		if err := persistControlledSettings(ctx, tx, result, settings); err != nil {
-			return CreateEvalSessionWithQueuedRunsResult{}, err
 		}
 
 		runRow, err := queries.AttachRunToEvalSession(ctx, repositorysqlc.AttachRunToEvalSessionParams{
@@ -199,14 +178,6 @@ func (r *Repository) CreateEvalSessionWithQueuedRuns(
 
 	if params.RequestID != uuid.Nil {
 		if _, err := tx.Exec(ctx, `INSERT INTO eval_session_admissions(workspace_id,request_id,request_hash,eval_session_id) VALUES($1,$2,$3,$4)`, owner, params.RequestID, params.RequestHash, session.ID); err != nil {
-			return CreateEvalSessionWithQueuedRunsResult{}, err
-		}
-	}
-	if params.ControlledParentEvalSetID != uuid.Nil {
-		if len(params.Runs) == 0 {
-			return CreateEvalSessionWithQueuedRunsResult{}, ErrControlledModeUnsupported
-		}
-		if _, err := tx.Exec(ctx, `INSERT INTO eval_set_sessions(eval_set_id,eval_session_id,pack_ref) VALUES($1,$2,$3)`, params.ControlledParentEvalSetID, session.ID, params.Runs[0].ChallengePackVersionID.String()); err != nil {
 			return CreateEvalSessionWithQueuedRunsResult{}, err
 		}
 	}

@@ -28,27 +28,15 @@ type RuntimeProfileExecutionContext = runner.RuntimeProfileExecutionContext
 type ProviderAccountExecutionContext = runner.ProviderAccountExecutionContext
 
 func (r *Repository) GetRunAgentExecutionContextByID(ctx context.Context, runAgentID uuid.UUID) (RunAgentExecutionContext, error) {
-	// Controlled contexts and their initial receipt check must share one DB
-	// snapshot. A later read could validate configuration B while returning a
-	// context loaded from A. Legacy contexts retain their ordinary read path.
+	// Retained controlled admissions cannot execute after that contract is retired.
 	var controlled bool
 	if err := r.db.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM run_agent_controlled_settings WHERE run_agent_id=$1)`, runAgentID).Scan(&controlled); err != nil {
 		return RunAgentExecutionContext{}, err
 	}
-	queries := r.queries
-	var receiptReader settingsReader = r.db
-	var snapshotTx pgx.Tx
 	if controlled {
-		tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
-		if err != nil {
-			return RunAgentExecutionContext{}, err
-		}
-		snapshotTx = tx
-		defer tx.Rollback(ctx)
-		queries = r.queries.WithTx(tx)
-		receiptReader = tx
+		return RunAgentExecutionContext{}, FrozenExecutionContextError{RunAgentID: runAgentID, Reason: "controlled experiment execution is no longer supported"}
 	}
-	row, err := queries.GetRunAgentExecutionContextByID(ctx, repositorysqlc.GetRunAgentExecutionContextByIDParams{ID: runAgentID})
+	row, err := r.queries.GetRunAgentExecutionContextByID(ctx, repositorysqlc.GetRunAgentExecutionContextByIDParams{ID: runAgentID})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			if _, getErr := r.GetRunAgentByID(ctx, runAgentID); getErr != nil {
@@ -86,14 +74,6 @@ func (r *Repository) GetRunAgentExecutionContextByID(ctx context.Context, runAge
 		}
 	}
 
-	if err := r.installControlledGuard(ctx, &executionContext, receiptReader); err != nil {
-		return RunAgentExecutionContext{}, err
-	}
-	if snapshotTx != nil {
-		if err := snapshotTx.Commit(ctx); err != nil {
-			return RunAgentExecutionContext{}, err
-		}
-	}
 	return executionContext, nil
 }
 

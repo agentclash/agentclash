@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/backend/internal/vibe"
 	"github.com/agentclash/agentclash/runtime/challengepack"
@@ -306,59 +305,20 @@ func TestVibeObservedCanonicalAuthorizedFrozenExport(t *testing.T) {
 	}
 }
 
-func TestVibeCanonicalControlledAssuranceRequiresCompatibleDispatchGuard(t *testing.T) {
-	h, ws, a, run, agent := canonicalHarness(t)
-	useDeterministicCanonicalEvaluator(t, h, run)
-	repo := repository.New(h.db)
-	var snapshot, pack uuid.UUID
-	if err := h.db.QueryRow(h.ctx, `SELECT a.agent_deployment_snapshot_id,r.challenge_pack_version_id FROM run_agents a JOIN runs r ON r.id=a.run_id WHERE a.id=$1`, agent).Scan(&snapshot, &pack); err != nil {
-		t.Fatal(err)
-	}
-	receipt, err := repo.PreviewControlledSettings(h.ctx, ws, snapshot, pack, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err = h.db.Exec(h.ctx, `INSERT INTO run_agent_controlled_settings(run_agent_id,snapshot_id,settings_hash,settings) VALUES($1,$2,$3,$4)`, agent, snapshot, receipt.Hash, receipt.Settings); err != nil {
-		t.Fatal(err)
-	}
-	for _, version := range []int{0, 99, 1} {
-		if version > 0 {
-			if _, err = h.db.Exec(h.ctx, `UPDATE run_agent_controlled_settings SET dispatch_validated_at=now(),dispatch_guard_version=$2 WHERE run_agent_id=$1`, agent, version); err != nil {
-				t.Fatal(err)
-			}
-		}
-		v, err := h.svc.Store.CanonicalResult(h.ctx, h.actor, h.session.ID, vibe.ResultRef{Kind: vibe.ResultRun, ID: run}, &a.ID)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if (v.Participants[0].Fingerprints.Config != nil) != (version == 1) {
-			t.Fatalf("version %d fabricated controlled configuration %+v", version, v.Participants[0])
-		}
-	}
-}
-
-func useDeterministicCanonicalEvaluator(t *testing.T, h *vibeAPIHarness, run uuid.UUID) {
-	t.Helper()
-	_, err := h.db.Exec(h.ctx, `UPDATE challenge_pack_versions SET manifest=jsonb_set(manifest,'{evaluation_spec}','{"name":"controlled","version_number":1,"judge_mode":"deterministic","validators":[{"key":"answer","type":"regex_match","target":"final_output","expected_from":"literal:.+"}],"scorecard":{"dimensions":[{"key":"output_present","source":"validators","validators":["answer"]}]}}'::jsonb) WHERE id=(SELECT challenge_pack_version_id FROM runs WHERE id=$1)`, run)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestVibeCanonicalMountedReadinessRejectsPartialExperimentSchema(t *testing.T) {
+func TestVibeCanonicalMountedReadinessRejectsPartialEvalSessionSchema(t *testing.T) {
 	h := newVibeAPIHarness(t)
 	t.Run("complete_schema", func(t *testing.T) {
 		check := WithConnectorReadiness(func(context.Context) map[string]string { return map[string]string{"vibe_schema": "ok", "redis": "ok"} }, repository.New(h.db))
 		router := buildRouter(routerOptions{logger: slog.Default(), dbReadiness: h.db, temporalReadiness: fakeTemporalHealthChecker{}, dependencyReadiness: check})
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, httptest.NewRequest("GET", "/healthz/ready", nil))
-		if w.Code != 200 || !strings.Contains(w.Body.String(), `"experiment_schema":"ok"`) {
-			t.Fatalf("complete experiment schema not ready: %d %s", w.Code, w.Body)
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"eval_session_schema":"ok"`) {
+			t.Fatalf("complete eval-session schema not ready: %d %s", w.Code, w.Body)
 		}
 	})
-	for _, missing := range []struct{ table, column string }{{"eval_sessions", "workspace_id"}, {"run_agent_controlled_settings", "dispatch_guard_version"}, {"eval_set_admissions", "request_hash"}, {"eval_set_admissions", "workspace_id"}, {"eval_session_admissions", "request_hash"}} {
+	for _, missing := range []struct{ table, column string }{{"eval_sessions", "workspace_id"}, {"run_agent_controlled_settings", "run_agent_id"}, {"eval_session_admissions", "request_hash"}} {
 		t.Run(missing.table+"."+missing.column, func(t *testing.T) {
-			schema := "experiment_ready_" + strings.ReplaceAll(uuid.NewString(), "-", "")
+			schema := "eval_session_ready_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 			if _, e := h.db.Exec(h.ctx, "CREATE SCHEMA "+schema); e != nil {
 				t.Fatal(e)
 			}
@@ -380,33 +340,10 @@ func TestVibeCanonicalMountedReadinessRejectsPartialExperimentSchema(t *testing.
 			router := buildRouter(routerOptions{logger: slog.Default(), dbReadiness: partial, temporalReadiness: fakeTemporalHealthChecker{}, dependencyReadiness: check})
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, httptest.NewRequest("GET", "/healthz/ready", nil))
-			if w.Code != 503 || !strings.Contains(w.Body.String(), `"experiment_schema":"unavailable"`) {
+			if w.Code != 503 || !strings.Contains(w.Body.String(), `"eval_session_schema":"unavailable"`) {
 				t.Fatalf("missing required field ready: %d %s", w.Code, w.Body)
 			}
 		})
-	}
-}
-
-func TestControlledPreviewRejectsUnfixedEvaluatorInputs(t *testing.T) {
-	h, ws, _, run, agent := canonicalHarness(t)
-	repo := repository.New(h.db)
-	var snapshot, pack uuid.UUID
-	if err := h.db.QueryRow(h.ctx, `SELECT a.agent_deployment_snapshot_id,r.challenge_pack_version_id FROM run_agents a JOIN runs r ON r.id=a.run_id WHERE a.id=$1`, agent).Scan(&snapshot, &pack); err != nil {
-		t.Fatal(err)
-	}
-	// This fixture's original fuzzy evaluator uses a process-default account.
-	if _, err := repo.PreviewControlledSettings(h.ctx, ws, snapshot, pack, nil); !errors.Is(err, repository.ErrControlledModeUnsupported) {
-		t.Fatal("external judge route represented as fixed", err)
-	}
-	useDeterministicCanonicalEvaluator(t, h, run)
-	if _, err := repo.PreviewControlledSettings(h.ctx, ws, snapshot, pack, nil); err != nil {
-		t.Fatal("deterministic evaluator unavailable", err)
-	}
-	if _, err := h.db.Exec(h.ctx, `UPDATE challenge_pack_versions SET manifest=jsonb_set(manifest,'{evaluation_spec,scorecard,dimensions}','[{"key":"human","source":"human_preference"}]'::jsonb) WHERE id=$1`, pack); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := repo.PreviewControlledSettings(h.ctx, ws, snapshot, pack, nil); !errors.Is(err, repository.ErrControlledModeUnsupported) {
-		t.Fatal("live human preference represented as fixed", err)
 	}
 }
 

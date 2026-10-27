@@ -19,10 +19,8 @@ import (
 )
 
 type createEvalSessionRequest struct {
-	AdmissionRequestID    uuid.UUID               `json:"admission_request_id,omitempty"`
-	DeploymentSnapshotIDs map[uuid.UUID]uuid.UUID `json:"deployment_snapshot_ids,omitempty"`
-	ControlledSettings    map[uuid.UUID]string    `json:"controlled_settings,omitempty"`
-	ChallengeIdentityIDs  []uuid.UUID             `json:"challenge_identity_ids,omitempty"`
+	AdmissionRequestID   uuid.UUID   `json:"admission_request_id,omitempty"`
+	ChallengeIdentityIDs []uuid.UUID `json:"challenge_identity_ids,omitempty"`
 
 	WorkspaceID            string                         `json:"workspace_id"`
 	ChallengePackVersionID string                         `json:"challenge_pack_version_id"`
@@ -111,7 +109,6 @@ func createEvalSessionHandler(logger *slog.Logger, service RunCreationService) h
 			return
 		}
 
-		input.PreviewOnly = strings.HasSuffix(r.URL.Path, "/preview")
 		result, err := service.CreateEvalSession(r.Context(), caller, input)
 		if err != nil {
 			if errors.Is(err, ErrForbidden) {
@@ -122,10 +119,6 @@ func createEvalSessionHandler(logger *slog.Logger, service RunCreationService) h
 			return
 		}
 
-		if result.Preview != nil {
-			writeJSON(w, http.StatusOK, result.Preview)
-			return
-		}
 		writeJSON(w, http.StatusCreated, createEvalSessionResponse{
 			EvalSession: buildEvalSessionResponse(result.Session),
 			RunIDs:      append([]uuid.UUID(nil), result.RunIDs...),
@@ -136,8 +129,8 @@ func createEvalSessionHandler(logger *slog.Logger, service RunCreationService) h
 }
 
 func writeCreateEvalSessionError(logger *slog.Logger, w http.ResponseWriter, r *http.Request, err error) {
-	if errors.Is(err, repository.ErrControlledSettingsChanged) || errors.Is(err, repository.ErrExperimentRequestConflict) || errors.Is(err, repository.ErrControlledModeUnsupported) {
-		writeError(w, http.StatusConflict, "experiment_conflict", err.Error())
+	if errors.Is(err, repository.ErrEvalSessionAdmissionConflict) {
+		writeError(w, http.StatusConflict, "admission_conflict", err.Error())
 		return
 	}
 
@@ -320,7 +313,7 @@ func decodeCreateEvalSessionRequest(_ context.Context, r *http.Request) (CreateE
 	}
 
 	return CreateEvalSessionInput{
-		AdmissionRequestID: body.AdmissionRequestID, DeploymentSnapshotIDs: body.DeploymentSnapshotIDs, ControlledSettings: body.ControlledSettings, ChallengeIdentityIDs: body.ChallengeIdentityIDs,
+		AdmissionRequestID: body.AdmissionRequestID, ChallengeIdentityIDs: body.ChallengeIdentityIDs,
 		WorkspaceID:            workspaceID,
 		ChallengePackVersionID: challengePackVersionID,
 		ChallengeInputSetID:    challengeInputSetID,

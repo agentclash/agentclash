@@ -77,7 +77,6 @@ func registerProtectedRoutes(
 	// because the workspace boundary is owned by the persisted run row rather than the URL shape.
 	router.Get("/eval-sessions", listEvalSessionsHandler(logger, runReadService))
 	router.Post("/eval-sessions", createEvalSessionHandler(logger, runCreationService))
-	router.Post("/eval-sessions/preview", createEvalSessionHandler(logger, runCreationService))
 	router.Get("/eval-sessions/{evalSessionID}", getEvalSessionHandler(logger, runReadService))
 	registerEvalSetRoutes(router, logger, evalSetManagerOrDefault(authorizer))
 	router.Post("/runs", createRunHandler(logger, runCreationService))

@@ -150,15 +150,13 @@ func evaluateSingleLLMJudge(
 		perModelScores := make([]float64, 0, judge.Samples)
 		for sampleIdx := 0; sampleIdx < judge.Samples; sampleIdx++ {
 			request := provider.Request{
-				ValidateBeforeDispatch: executionContext.ValidateControlledDispatch,
-				OnDispatchValidated:    executionContext.AcknowledgeControlledDispatch,
-				ProviderKey:            providerKey,
-				ProviderAccountID:      providerAccountID,
-				CredentialReference:    credentialReference,
-				BaseURL:                baseURL,
-				Model:                  model,
-				StepTimeout:            judgeTimeout(judge),
-				Messages:               buildJudgeMessages(judge, contextValues),
+				ProviderKey:         providerKey,
+				ProviderAccountID:   providerAccountID,
+				CredentialReference: credentialReference,
+				BaseURL:             baseURL,
+				Model:               model,
+				StepTimeout:         judgeTimeout(judge),
+				Messages:            buildJudgeMessages(judge, contextValues),
 				Metadata: mustMarshalJSON(map[string]any{
 					"run_id":             executionContext.Run.ID,
 					"run_agent_id":       executionContext.RunAgent.ID,
@@ -321,15 +319,13 @@ func evaluateSingleNWiseJudge(
 		for sampleIdx := 0; sampleIdx < judge.Samples; sampleIdx++ {
 			orderedCandidates := orderNWiseCandidates(candidates, executionContext.Run.ID, judge.Key, sampleIdx, judge.PositionDebiasing)
 			request := provider.Request{
-				ValidateBeforeDispatch: executionContext.ValidateControlledDispatch,
-				OnDispatchValidated:    executionContext.AcknowledgeControlledDispatch,
-				ProviderKey:            providerKey,
-				ProviderAccountID:      providerAccountID,
-				CredentialReference:    credentialReference,
-				BaseURL:                baseURL,
-				Model:                  model,
-				StepTimeout:            judgeTimeout(judge),
-				Messages:               buildNWiseJudgeMessages(judge, orderedCandidates),
+				ProviderKey:         providerKey,
+				ProviderAccountID:   providerAccountID,
+				CredentialReference: credentialReference,
+				BaseURL:             baseURL,
+				Model:               model,
+				StepTimeout:         judgeTimeout(judge),
+				Messages:            buildNWiseJudgeMessages(judge, orderedCandidates),
 				Metadata: mustMarshalJSON(map[string]any{
 					"run_id":             executionContext.Run.ID,
 					"run_agent_id":       executionContext.RunAgent.ID,

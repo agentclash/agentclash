@@ -247,14 +247,13 @@ func mountBrowserConnectors(t *testing.T, router chi.Router, db *pgxpool.Pool, s
 		writeJSON(w, 200, pub)
 	})
 	router.Get("/__fixture/connector-evidence", func(w http.ResponseWriter, r *http.Request) {
-		var dispatches, events, receipts, validated, sessions, sets int
+		var dispatches, events, sessions, sets int
 		var states []byte
 		_ = db.QueryRow(r.Context(), `SELECT count(*) FROM connector_dispatches`).Scan(&dispatches)
 		_ = db.QueryRow(r.Context(), `SELECT count(*) FROM hosted_event_receipts`).Scan(&events)
 		_ = db.QueryRow(r.Context(), `SELECT COALESCE(jsonb_agg(jsonb_build_object('id',id,'status',status,'temporal_workflow_id',temporal_workflow_id)),'[]') FROM runs`).Scan(&states)
-		_ = db.QueryRow(r.Context(), `SELECT count(*),count(*) FILTER(WHERE dispatch_validated_at IS NOT NULL AND dispatch_guard_version=1) FROM run_agent_controlled_settings`).Scan(&receipts, &validated)
 		_ = db.QueryRow(r.Context(), `SELECT count(*) FROM eval_sessions`).Scan(&sessions)
 		_ = db.QueryRow(r.Context(), `SELECT count(*) FROM eval_sets`).Scan(&sets)
-		writeJSON(w, 200, map[string]any{"controlled_receipts": receipts, "validated_dispatches": validated, "eval_sessions": sessions, "eval_sets": sets, "calls": calls.Load(), "dispatches": dispatches, "events": events, "runs": json.RawMessage(states)})
+		writeJSON(w, 200, map[string]any{"eval_sessions": sessions, "eval_sets": sets, "calls": calls.Load(), "dispatches": dispatches, "events": events, "runs": json.RawMessage(states)})
 	})
 }

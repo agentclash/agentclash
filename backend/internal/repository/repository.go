@@ -189,24 +189,22 @@ type CreateQueuedRunAgentParams struct {
 }
 
 type CreateQueuedRunParams struct {
-	ExpectedDeploymentSnapshots map[uuid.UUID]uuid.UUID
-	ExpectedSettings            map[uuid.UUID]string
-	OrganizationID              uuid.UUID
-	WorkspaceID                 uuid.UUID
-	ChallengePackVersionID      uuid.UUID
-	ChallengeInputSetID         *uuid.UUID
-	OfficialPackMode            domain.OfficialPackMode
-	CreatedByUserID             *uuid.UUID
-	Name                        string
-	ExecutionMode               string
-	ExecutionPlan               json.RawMessage
-	CIMetadata                  *domain.RunCIMetadata
-	RunAgents                   []CreateQueuedRunAgentParams
-	CaseSelections              []CreateQueuedRunCaseSelectionParams
-	RaceContext                 bool
-	RaceContextMinStepGap       *int32
-	EntitlementGate             *RunEntitlementGate
-	DatasetEvalRun              *RecordDatasetEvalRunParams
+	OrganizationID         uuid.UUID
+	WorkspaceID            uuid.UUID
+	ChallengePackVersionID uuid.UUID
+	ChallengeInputSetID    *uuid.UUID
+	OfficialPackMode       domain.OfficialPackMode
+	CreatedByUserID        *uuid.UUID
+	Name                   string
+	ExecutionMode          string
+	ExecutionPlan          json.RawMessage
+	CIMetadata             *domain.RunCIMetadata
+	RunAgents              []CreateQueuedRunAgentParams
+	CaseSelections         []CreateQueuedRunCaseSelectionParams
+	RaceContext            bool
+	RaceContextMinStepGap  *int32
+	EntitlementGate        *RunEntitlementGate
+	DatasetEvalRun         *RecordDatasetEvalRunParams
 }
 
 type CreateQueuedRunResult struct {

@@ -54,10 +54,6 @@ const (
 )
 
 type Request struct {
-	// Opt-in canonical execution guard. Checked after resolving live credentials, immediately before sending.
-	ValidateBeforeDispatch func(context.Context) error
-	// Called only after live credentials and final validation, at the send boundary.
-	OnDispatchValidated func(context.Context) error
 	ProviderKey         string
 	ProviderAccountID   string
 	CredentialReference string

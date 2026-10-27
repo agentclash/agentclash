@@ -17,12 +17,12 @@ func (r *Repository) ConnectorDependencyChecks(ctx context.Context) map[string]s
 			checks["connector_schema"] = "ok"
 		}
 	}
-	rows, err = r.db.Query(ctx, `SELECT f.request_id,f.request_hash,f.eval_set_id,f.workspace_id,s.workspace_id,a.workspace_id,a.request_id,a.request_hash,a.eval_session_id,c.run_agent_id,c.snapshot_id,c.settings_hash,c.settings,c.admitted_at,c.dispatch_validated_at,c.dispatch_guard_version FROM eval_set_admissions f,eval_sessions s,eval_session_admissions a,run_agent_controlled_settings c LIMIT 0`)
-	checks["experiment_schema"] = "unavailable"
+	rows, err = r.db.Query(ctx, `SELECT s.workspace_id,a.workspace_id,a.request_id,a.request_hash,a.eval_session_id,c.run_agent_id FROM eval_sessions s,eval_session_admissions a,run_agent_controlled_settings c LIMIT 0`)
+	checks["eval_session_schema"] = "unavailable"
 	if err == nil {
 		rows.Close()
 		if rows.Err() == nil {
-			checks["experiment_schema"] = "ok"
+			checks["eval_session_schema"] = "ok"
 		}
 	}
 	return checks

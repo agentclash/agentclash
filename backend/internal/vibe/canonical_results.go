@@ -24,19 +24,17 @@ type CanonicalEvent struct {
 	PayloadHash string  `json:"normalized_payload_sha256"`
 }
 type CanonicalParticipant struct {
-	DispatchValidatedAt  *time.Time       `json:"dispatch_validated_at,omitempty"`
-	DispatchGuardVersion *int             `json:"dispatch_guard_version,omitempty"`
-	RunID                uuid.UUID        `json:"run_id"`
-	RunAgentID           uuid.UUID        `json:"run_agent_id"`
-	SnapshotID           uuid.UUID        `json:"snapshot_id"`
-	DeploymentID         uuid.UUID        `json:"deployment_id"`
-	Adapter              string           `json:"adapter"`
-	Status               string           `json:"status"`
-	Label                string           `json:"label"`
-	InputSetID           uuid.UUID        `json:"challenge_input_set_id"`
-	Cases                []CanonicalCase  `json:"cases"`
-	Fingerprints         Fingerprints     `json:"fingerprints"`
-	Events               []CanonicalEvent `json:"events"`
+	RunID        uuid.UUID        `json:"run_id"`
+	RunAgentID   uuid.UUID        `json:"run_agent_id"`
+	SnapshotID   uuid.UUID        `json:"snapshot_id"`
+	DeploymentID uuid.UUID        `json:"deployment_id"`
+	Adapter      string           `json:"adapter"`
+	Status       string           `json:"status"`
+	Label        string           `json:"label"`
+	InputSetID   uuid.UUID        `json:"challenge_input_set_id"`
+	Cases        []CanonicalCase  `json:"cases"`
+	Fingerprints Fingerprints     `json:"fingerprints"`
+	Events       []CanonicalEvent `json:"events"`
 }
 type CanonicalExperiment struct {
 	Requested int             `json:"requested"`
@@ -47,13 +45,7 @@ type CanonicalExperiment struct {
 	Aggregate json.RawMessage `json:"aggregate,omitempty"`
 	Warnings  []string        `json:"warnings"`
 }
-type CanonicalFleet struct {
-	ID         uuid.UUID   `json:"id"`
-	Status     string      `json:"status"`
-	SessionIDs []uuid.UUID `json:"eval_session_ids"`
-}
 type CanonicalResult struct {
-	Fleet      *CanonicalFleet      `json:"fleet,omitempty"`
 	Experiment *CanonicalExperiment `json:"experiment,omitempty"`
 
 	Binding          ProjectResultBinding   `json:"binding"`
@@ -247,17 +239,6 @@ func canonicalResultTx(ctx context.Context, tx pgx.Tx, v Session, ref ResultRef,
 		if count != len(runs) {
 			return unavailable()
 		}
-		// Controlled Vibe Fleet guarantees one exact fixed-scope child. Only
-		// project-bound children may expose the parent; never publish unverified
-		// siblings from a legacy or altered multi-group set.
-		var fleet CanonicalFleet
-		fe := tx.QueryRow(ctx, `SELECT e.id,e.status FROM eval_sets e JOIN eval_set_admissions a ON a.eval_set_id=e.id JOIN eval_set_sessions x ON x.eval_set_id=e.id WHERE x.eval_session_id=$1 AND e.workspace_id=$2 AND a.workspace_id=$2 AND (SELECT count(*) FROM eval_set_sessions WHERE eval_set_id=e.id)=1`, ref.ID, v.WorkspaceID).Scan(&fleet.ID, &fleet.Status)
-		if fe == nil {
-			fleet.SessionIDs = []uuid.UUID{ref.ID}
-			out.Fleet = &fleet
-		} else if !errors.Is(fe, pgx.ErrNoRows) {
-			return out, fe
-		}
 		if err = tx.QueryRow(ctx, `SELECT status,created_at FROM eval_sessions WHERE id=$1 AND workspace_id=$2`, ref.ID, v.WorkspaceID).Scan(&out.Status, &out.CreatedAt); err != nil {
 			return unavailable()
 		}
@@ -425,31 +406,6 @@ func canonicalResultTx(ctx context.Context, tx pgx.Tx, v Session, ref ResultRef,
 					// Connector run/step limits come from the frozen binding timeout.
 					// Keep historical config unknown pending a complete versioned execution identity;
 					// SnapshotID separately retains the known frozen mapping/auth identity.
-				}
-			}
-			var admitted []byte
-			e = tx.QueryRow(ctx, `SELECT settings,dispatch_validated_at,dispatch_guard_version FROM run_agent_controlled_settings WHERE run_agent_id=$1`, p.RunAgentID).Scan(&admitted, &p.DispatchValidatedAt, &p.DispatchGuardVersion)
-			if e != nil && !errors.Is(e, pgx.ErrNoRows) {
-				return out, e
-			}
-			if e == nil && p.DispatchValidatedAt != nil && p.DispatchGuardVersion != nil && *p.DispatchGuardVersion == 1 {
-				var settings struct {
-					Version  int             `json:"version"`
-					Model    string          `json:"requested_model"`
-					Provider json.RawMessage `json:"provider"`
-				}
-				if json.Unmarshal(admitted, &settings) == nil && settings.Version == 1 {
-					p.Fingerprints.Config = canonicalFingerprint("execution-config", struct {
-						Version  int
-						Settings json.RawMessage
-					}{1, admitted})
-					if p.Adapter == "native" && settings.Model != "" {
-						p.Fingerprints.Model = canonicalFingerprint("model-execution", struct {
-							Version  int
-							Model    string
-							Provider json.RawMessage
-						}{1, settings.Model, settings.Provider})
-					}
 				}
 			}
 			er, e := tx.Query(ctx, `SELECT e.id::text,h.source_event_id,e.sequence_number,e.event_type,e.payload FROM run_events e LEFT JOIN hosted_event_receipts h ON h.run_agent_id=e.run_agent_id AND h.sequence_number=e.sequence_number WHERE e.run_agent_id=$1 ORDER BY e.sequence_number LIMIT 5001`, p.RunAgentID)

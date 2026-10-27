@@ -29,8 +29,6 @@ func TestPromptEvalExecutorSingleCall(t *testing.T) {
 	executionContext := promptEvalExecutionContext()
 	executionContext.Deployment.ProviderAccount.BaseURL = "https://models.example.com/v1"
 	executionContext.Deployment.AgentBuildVersion.ModelSpec = []byte(`{"temperature":0.2,"max_output_tokens":7}`)
-	executionContext.ValidateControlledDispatch = func(context.Context) error { return nil }
-	executionContext.AcknowledgeControlledDispatch = func(context.Context) error { return nil }
 
 	result, err := executor.Execute(context.Background(), executionContext)
 	if err != nil {
@@ -57,7 +55,7 @@ func TestPromptEvalExecutorSingleCall(t *testing.T) {
 		t.Fatalf("provider call count = %d, want 1", len(client.Requests))
 	}
 	req := client.Requests[0]
-	if req.Temperature != nil || req.MaxOutputTokens != 0 || req.ValidateBeforeDispatch == nil || req.OnDispatchValidated == nil || req.Model != executionContext.Deployment.ModelID || req.StepTimeout != time.Second*time.Duration(executionContext.Deployment.RuntimeProfile.StepTimeoutSeconds) {
+	if req.Temperature != nil || req.MaxOutputTokens != 0 || req.Model != executionContext.Deployment.ModelID || req.StepTimeout != time.Second*time.Duration(executionContext.Deployment.RuntimeProfile.StepTimeoutSeconds) {
 		t.Fatal("actual request controls differ from supported contract", req)
 	}
 	if req.BaseURL != "https://models.example.com/v1" {

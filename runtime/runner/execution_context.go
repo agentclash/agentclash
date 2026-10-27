@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"context"
 	"encoding/json"
 	"github.com/agentclash/agentclash/runtime/connectors"
 	"time"
@@ -17,14 +16,12 @@ const maxExecutionPlanMaxIterations = 1000
 // run agent. Hosted repositories, local stores, and future desktop runtimes can
 // build this value from different persistence layers.
 type ExecutionContext struct {
-	ValidateControlledDispatch    func(context.Context) error `json:"-"`
-	AcknowledgeControlledDispatch func(context.Context) error `json:"-"`
-	Run                           domain.Run
-	RunAgent                      domain.RunAgent
-	RunAgents                     []domain.RunAgent
-	ChallengePackVersion          ChallengePackVersionExecutionContext
-	ChallengeInputSet             *ChallengeInputSetExecutionContext
-	Deployment                    AgentDeploymentExecutionContext
+	Run                  domain.Run
+	RunAgent             domain.RunAgent
+	RunAgents            []domain.RunAgent
+	ChallengePackVersion ChallengePackVersionExecutionContext
+	ChallengeInputSet    *ChallengeInputSetExecutionContext
+	Deployment           AgentDeploymentExecutionContext
 }
 
 type ChallengePackVersionExecutionContext struct {

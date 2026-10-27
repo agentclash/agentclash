@@ -2,17 +2,9 @@
 
 Deploy the additive database schema and backend before exposing the workspace UI.
 This roadmap retains migrations 1–92; the CI roundtrip itself adds no migration.
-Check the existing readiness response, including connector and experiment schema
-checks, using the deployment's configured dependencies. Liveness alone does not
-establish worker, funding, provider, email or PDF readiness.
-
-Upgrade compatible canonical workers and drain older workers before enabling
-controlled requests. Older binaries can ignore additive admission fields and
-callbacks. A controlled admission receipt alone is insufficient: the persisted
-settings version and `dispatch_guard_version=1` plus `dispatch_validated_at` are
-required before presenting guarded config/model fingerprints. Missing or unknown
-guard versions remain unknown. Platform validation does not acknowledge an
-upstream seed, external model revision or application source build.
+Check the existing readiness response, including connector schema checks, using
+the deployment's configured dependencies. Liveness alone does not establish
+worker, funding, provider, email or PDF readiness.
 
 Use a private preview before public availability. The existing server switch is
 `VIBE_ENABLED`; `/v1/vibe/config` reports `availability.workspace` and
@@ -26,14 +18,14 @@ same readiness, permission, accounting and actual application journey checks.
 
 Operator-supplied production provider credentials, approved connector origins and
 secrets, funded accounts, real authentication, delivery configuration and runtime
-limits remain deployment prerequisites. The local deterministic verification
-record is not an authorization to change these values or run paid probes.
+limits remain deployment prerequisites. The local deterministic test
+fixture is not an authorization to change these values or run paid probes.
 
-Before rolling back to older canonical workers, stop controlled writers and drain
-or reconcile outstanding controlled work. Preserve admission, dispatch, source,
-accounting, publication and evidence receipts. Unknown execution outcomes remain
-unknown; do not clear reservations or fabricate completion to make a rollback
-appear healthy. Disable the workspace/public admission surface through the
+Before rolling back to older canonical workers, stop new admissions and drain
+or reconcile outstanding work. Preserve source, accounting, publication and
+evidence receipts. Unknown execution outcomes remain unknown; do not clear
+reservations or fabricate completion to make a rollback appear healthy. Disable
+the workspace/public admission surface through the
 existing server settings while retaining read access as supported. Roll back
 application binaries only after the old worker's compatibility boundary is safe.
 Do not reverse additive migrations or erase retained data as a normal rollback.
