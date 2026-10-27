@@ -4,8 +4,7 @@ import { useSearchParams } from "next/navigation";
 import type { ProjectResultBinding } from "./vibe-result-evidence";
 import { formatResultSelection, parseResultSelection } from "./vibe-result-selection";
 import {pinVibeReturn} from "./vibe-keep";
-import { createApiClient } from "@/lib/api/client";
-import type { UserMeResponse } from "@/lib/api/types";
+import type { useVibeWorkspaceAccess } from "./use-vibe-workspace-access";
 import {
   vibeFetch,
   VibeError,
@@ -26,10 +25,8 @@ type Context = {
   workspace: string;
   actorScope?: string;
   savedChecks: SavedCheck[];
-  loadWorkspace?: boolean;
+  account: ReturnType<typeof useVibeWorkspaceAccess>;
   token: () => Promise<string | undefined>;
-  authLoading: boolean;
-  loadAttempt: number;
   setContent: Dispatch<SetStateAction<string>>;
   setModels: Dispatch<SetStateAction<Models>>;
   setWorkspace: Dispatch<SetStateAction<string>>;
@@ -43,7 +40,7 @@ type Context = {
 export function useVibeSaving(c: Context) {
   const {
     actorScope = "browser",
-    loadWorkspace,
+    account,
     savedChecks,
     session,
     artifact: currentArtifact,
@@ -52,8 +49,6 @@ export function useVibeSaving(c: Context) {
     models: currentModels,
     workspace,
     token,
-    authLoading,
-    loadAttempt,
     setContent,
     setModels,
     setWorkspace,
@@ -94,20 +89,14 @@ export function useVibeSaving(c: Context) {
   const saveGeneration = useRef(0);
   const saveRequest = useRef<{ owner: typeof scopeRef.current; generation: number } | undefined>(undefined);
 
-  const [saveAccess, setSaveAccess] = useState<"loading" | "signed_out" | "ready" | "error">(
-    "loading",
-  );
+  const [saveFailure, setSaveFailure] = useState<{ actor: string; status: "signed_out" | "forbidden" }>();
+  const failure = saveFailure?.actor === actorScope ? saveFailure.status : undefined;
+  const saveAccess = failure === "signed_out" ? "signed_out" : account.status === "unavailable" ? "error" : account.status;
   const [saveBaseline, setSaveBaseline] = useState<string>();
   const saveResumed = useRef(false);
   const [saveTarget, setSaveTarget] = useState<Operation>();
   const [savedCheck, setSavedCheck] = useState<SavedCheck>();
-  const [workspaceRows, setWorkspaceRows] = useState<{
-    owner: string;
-    items: { id: string; name: string }[];
-  }>({ owner: actorScope, items: [] });
-  const workspaces = workspaceRows.owner === actorScope ? workspaceRows.items : [];
-  const setWorkspaces = (items: { id: string; name: string }[]) =>
-    setWorkspaceRows({ owner: actorScope, items });
+  const workspaces = failure === "forbidden" ? [] : account.workspaces.filter(item => !saveOpen || !attachedWorkspace || item.id === attachedWorkspace);
   function returnFor(exact:Artifact,operation?:Operation){
     const matches=(run:Operation)=>(run.kind==="check"||run.kind==="retest")&&(run.result_scope?.artifact_id||run.source?.artifact_id||run.results[0]?.version)===exact.id;
     const selectedRun=operation || (params.get("run")?session?.operations.find(run=>run.id===params.get("run")&&matches(run)):session?.operations.findLast(matches));
@@ -143,6 +132,7 @@ export function useVibeSaving(c: Context) {
       advanced: !!exact.unavailable_reason,
     });
     setAdvancedReceipt(undefined);
+    setSaveFailure(undefined);
     if (selected) setSelectedArtifactID(selected.id);
     setSaveBaseline(operation?.id);
     setSaveTarget(exact.kind === "test_suite" ? undefined : operation);
@@ -151,58 +141,14 @@ export function useVibeSaving(c: Context) {
     setSaveOpen(true);
   }
   useEffect(() => {
-    if ((!saveOpen && !loadWorkspace) || authLoading) return;
-    let current = true;
-    setSaveAccess("loading");
-    void token()
-      .then(async (auth) => {
-        if (!current) return;
-        if (!auth) {
-          setWorkspaces([]);
-          setSaveAccess("signed_out");
-          return;
-        }
-        try {
-          const me = await createApiClient(auth).get<UserMeResponse>("/v1/users/me");
-          if (!current) return;
-          const available = me.organizations.flatMap((o) =>
-            o.workspaces.filter(
-              (w) =>
-                (["workspace_admin", "workspace_member"].includes(w.role) ||
-                  o.role === "org_admin") &&
-                (!saveOpen || !attachedWorkspace || w.id === attachedWorkspace),
-            ),
-          );
-          setWorkspaces(available);
-          setWorkspace(
-            (old) =>
-              (saveOpen && attachedWorkspace) ||
-              (available.some((w) => w.id === old)
-                ? old
-                : (saveOpen ? available[0]?.id : "") || ""),
-          );
-          setSaveAccess("ready");
-        } catch (e) {
-          if (!current) return;
-          const expired = (e as { status?: number }).status === 401;
-          setSaveAccess(expired ? "signed_out" : "error");
-          setError(
-            expired
-              ? "Sign in again to keep your work. Your tests are still here."
-              : "Couldn’t load your workspaces. Try again.",
-          );
-        }
-      })
-      .catch((error) => {
-        if (!current) return;
-        setWorkspaces([]);
-        setSaveAccess("signed_out");
-        setError(error instanceof Error ? error.message : "Sign in again to load workspaces.");
-      });
-    return () => {
-      current = false;
-    };
-  }, [saveOpen, token, attachedWorkspace, loadAttempt, authLoading, loadWorkspace, actorScope]);
+    if (account.status === "loading") setSaveFailure(undefined);
+    if (account.status !== "ready") {
+      if (saveOpen && account.status === "unavailable") setError("Couldn’t load your workspaces. Try again.");
+      return;
+    }
+    setWorkspace(old => (saveOpen && attachedWorkspace) ||
+      (account.workspaces.some(item => item.id === old) ? old : (saveOpen ? account.workspaces[0]?.id : "") || ""));
+  }, [account.status, account.workspaces, saveOpen, attachedWorkspace, setWorkspace, setError]);
   useEffect(() => {
     if (!session || saveResumed.current) return;
     if (params.get("keep") !== "1") {
@@ -324,7 +270,7 @@ export function useVibeSaving(c: Context) {
       const auth = await token();
       if (!current()) return;
       if (!auth) {
-        setSaveAccess("signed_out");
+        setSaveFailure({ actor: actorScope, status: "signed_out" });
         return;
       }
       await vibeFetch(`/sessions/${session.id}/claim`, auth, {
@@ -407,10 +353,10 @@ export function useVibeSaving(c: Context) {
       setSavedChecks(Array.isArray(kept) ? kept : []);
     } catch (e) {
       if (!current()) return;
-      if (e instanceof VibeError && e.status === 401) setSaveAccess("signed_out");
+      if (e instanceof VibeError && e.status === 401) setSaveFailure({ actor: actorScope, status: "signed_out" });
       if (e instanceof VibeError && e.status === 403) {
-        setWorkspaces([]);
-        setSaveAccess("ready");
+        setSaveFailure({ actor: actorScope, status: "forbidden" });
+        account.retry();
         setError("Your workspace access changed. Ask its owner for permission to save here.");
       } else setError((e as Error).message);
     } finally {

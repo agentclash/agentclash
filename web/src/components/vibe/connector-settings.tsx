@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { connectorClient, type ConnectorBinding, type ConnectorConfig, type ConnectorPublication, type ConnectorSelection, type DeploymentAdapter } from "@/lib/connector-client";
+import { connectorClient, type ConnectorBinding, type ConnectorConfig, type ConnectorPublication, type DeploymentAdapter } from "@/lib/connector-client";
 import type { ProjectResultBinding } from "@/lib/vibe-result-evidence";
 import type { WorkspaceEvidenceAccess } from "@/lib/use-vibe-workspace-access";
 import { VibeButton } from "./vibe-button";
@@ -12,7 +12,6 @@ export type ConnectorSettingsProps = {
     access: WorkspaceEvidenceAccess;
     token: () => Promise<string | null | undefined>;
     publication?: ConnectorPublication;
-    onConfigured: (selection: ConnectorSelection) => void;
     onRunCreated: (binding: ProjectResultBinding) => void;
 };
 export function ConnectorSettings(p: ConnectorSettingsProps) {
@@ -48,7 +47,6 @@ export function ConnectorSettings(p: ConnectorSettingsProps) {
         return () => controller.abort();
     }, [epoch, generation, access.status, access.canRead, token, workspaceId]);
     const active = () => mounted.current && current.current.epoch === epoch;
-    const configured = (b: ConnectorBinding) => p.onConfigured({ session_id: p.sessionId, workspace_id: p.workspaceId, artifact_id: p.artifactId, deployment_id: b.deployment_id, snapshot_id: b.snapshot_id });
     async function perform(action: "save" | "approve" | "revoke" | "run") {
         if (locked.current || !p.token || p.access.status !== "ready")
             return;
@@ -96,7 +94,6 @@ export function ConnectorSettings(p: ConnectorSettingsProps) {
                         throw Error("Connector approval identity changed.");
                     setSelected(binding);
                     setItems(old => old.map(item => item.snapshot_id === binding.snapshot_id ? binding : item));
-                    configured(binding);
                     setMessage("Connector approved. Running tests is a separate action.");
                 }
                 if (action === "revoke") {
@@ -143,8 +140,7 @@ export function ConnectorSettings(p: ConnectorSettingsProps) {
     return <section aria-label="Application source" className="min-w-0 space-y-4">
   <label className="block text-sm">Application source<select className={inputClass} value={source} onChange={e => { setSource(e.target.value as DeploymentAdapter); setSelected(null); setReviewed(false); }} disabled={busy}><option value="native">Native AgentClash agent</option><option value="http_json">HTTP JSON application</option><option value="hosted">Hosted callback application</option></select></label>
   {source === "native" ? <p className="text-sm">Use the native agent and model settings for your AgentClash deployment.</p> : <>
-   <label className="block text-sm">Saved connector<select className={inputClass} value={selected?.snapshot_id ?? ""} disabled={busy} onChange={e => { const b = items.find(item => item.snapshot_id === e.target.value) ?? null; setSelected(b); setReviewed(false); if (b?.approved)
-            configured(b); }}><option value="">Choose a connector</option>{items.filter(item => item.config.adapter === source).map(item => <option key={item.snapshot_id} value={item.snapshot_id}>{item.snapshot_id} · {item.config.endpoint_url} ({item.approved ? "approved" : "needs approval"})</option>)}</select></label>
+   <label className="block text-sm">Saved connector<select className={inputClass} value={selected?.snapshot_id ?? ""} disabled={busy} onChange={e => { const b = items.find(item => item.snapshot_id === e.target.value) ?? null; setSelected(b); setReviewed(false); }}><option value="">Choose a connector</option>{items.filter(item => item.config.adapter === source).map(item => <option key={item.snapshot_id} value={item.snapshot_id}>{item.snapshot_id} · {item.config.endpoint_url} ({item.approved ? "approved" : "needs approval"})</option>)}</select></label>
    {p.access.canAdmin ? <details><summary className="cursor-pointer text-sm">Configure a new connector</summary><form className="mt-3 space-y-3" onSubmit={e => { e.preventDefault(); void perform("save"); }}>
     <label className="block text-sm">Name<input required className={inputClass} maxLength={200} value={name} onChange={e => setName(e.target.value)} disabled={busy}/></label>
     <label className="block text-sm">HTTPS endpoint<input required type="url" className={inputClass} placeholder="https://app.example.com/invoke" value={endpoint} onChange={e => setEndpoint(e.target.value)} disabled={busy}/></label>

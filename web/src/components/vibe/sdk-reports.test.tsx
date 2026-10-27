@@ -80,9 +80,9 @@ it("preserves the selected review draft while a session event refreshes report h
  const selected={...report,cases:[{source_case_id:"local",case_key:"real"}]};let reads=0;let resolve!:(v:SDKReport[])=>void;
  transport.fetch.mockImplementation(async(path:string)=>{if(path.endsWith("/reports")){if(++reads===1)return [selected];return new Promise<SDKReport[]>(r=>resolve=r)}if(path.includes("/case?"))return {case_key:"real",version:"a",verdict:"FAIL",output:"reply",checks:[],evidence_hash:"hash"};return []});
  const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
- try{await act(async()=>root.render(<SDKReports {...props} selectedResult={selected.binding} refresh={1}/>));await change(node.querySelector('select[aria-label="SDK detail source case"]')!,"local");await change(node.querySelector('textarea[aria-label="SDK grade review reason"]')!,"My unsent review");
- await act(async()=>root.render(<SDKReports {...props} selectedResult={selected.binding} refresh={2}/>));expect(node.querySelector<HTMLTextAreaElement>('textarea[aria-label="SDK grade review reason"]')?.value).toBe("My unsent review");
- await act(async()=>resolve([selected]));expect(node.querySelector<HTMLTextAreaElement>('textarea[aria-label="SDK grade review reason"]')?.value).toBe("My unsent review");
+ try{await act(async()=>root.render(<SDKReports {...props} selectedReport={selected} refresh={1}/>));await change(node.querySelector('select[aria-label="SDK detail source case"]')!,"local");await change(node.querySelector('textarea[aria-label="SDK grade review reason"]')!,"My unsent review");
+ await act(async()=>root.render(<SDKReports {...props} selectedReport={selected} refresh={2}/>));expect(node.querySelector<HTMLTextAreaElement>('textarea[aria-label="SDK grade review reason"]')?.value).toBe("My unsent review");
+ await act(async()=>resolve([]));expect(node.querySelector<HTMLTextAreaElement>('textarea[aria-label="SDK grade review reason"]')?.value).toBe("My unsent review");
  }finally{await act(async()=>root.unmount());node.remove()}
 });
 
@@ -95,7 +95,7 @@ it("retains unsent review and exact pending receipt through failed list refresh 
   return [];
  });
  const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
- const render=(refresh:number)=>root.render(<SDKReports {...props} selectedResult={selected.binding} refresh={refresh}/>);
+ const render=(refresh:number)=>root.render(<SDKReports {...props} selectedReport={selected} refresh={refresh}/>);
  const reason=()=>node.querySelector<HTMLTextAreaElement>('textarea[aria-label="SDK grade review reason"]');
  try{
   await act(async()=>render(1));await change(node.querySelector('select')!,"local");await change(reason()!,"Keep this exact review");
@@ -109,24 +109,25 @@ it("retains unsent review and exact pending receipt through failed list refresh 
  }finally{await act(async()=>root.unmount());node.remove()}
 });
 
-it.each(["forbidden","not_found","missing-source","revoked-access"])("clears cached private report after authoritative %s",async(loss)=>{
+it.each(["forbidden","not_found","source-removed","revoked-access"])("clears cached private report after authoritative %s",async(loss)=>{
  const selected={...report,cases:[{source_case_id:"local",case_key:"real"}]};let reads=0;let restore!:(v:SDKReport[])=>void;
  transport.fetch.mockImplementation(async(path:string)=>{
   if(path.endsWith("/reports")){
    if(++reads===1)return [selected];
    if(loss==="revoked-access")return new Promise<SDKReport[]>(resolve=>restore=resolve);
-   if(loss==="missing-source")return [];
+   if(loss==="source-removed")return [];
    throw new VibeError(loss,"Report access lost",loss==="forbidden"?403:404);
   }
   return [];
  });
  const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
  try{
-  await act(async()=>root.render(<SDKReports {...props} selectedResult={selected.binding} refresh={1}/>));expect(node.querySelector('article[aria-label="Imported report detail"]')).not.toBeNull();
+  await act(async()=>root.render(<SDKReports {...props} selectedReport={selected} refresh={1}/>));expect(node.querySelector('article[aria-label="Imported report detail"]')).not.toBeNull();
   if(loss==="revoked-access"){
-   await act(async()=>root.render(<SDKReports {...props} access={{...access,canRead:false,canWrite:false}} selectedResult={selected.binding} refresh={1}/>));
-   await act(async()=>root.render(<SDKReports {...props} selectedResult={selected.binding} refresh={1}/>));
-  }else await act(async()=>root.render(<SDKReports {...props} selectedResult={selected.binding} refresh={2}/>));
+   await act(async()=>root.render(<SDKReports {...props} access={{...access,canRead:false,canWrite:false}} selectedReport={selected} refresh={1}/>));
+   await act(async()=>root.render(<SDKReports {...props} refresh={1}/>));
+  }else if(loss==="source-removed") await act(async()=>root.render(<SDKReports {...props} refresh={2}/>));
+  else await act(async()=>root.render(<SDKReports {...props} selectedReport={selected} refresh={2}/>));
   expect(node.querySelector('article[aria-label="Imported report detail"]')).toBeNull();
   if(restore)await act(async()=>restore([]));
  }finally{await act(async()=>root.unmount());node.remove()}

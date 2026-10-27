@@ -9,7 +9,7 @@ vi.mock("@/lib/api/client",()=>({createApiClient:()=>({get:mocks.get})}));
 vi.mock("./connector-settings",()=>({ConnectorSettings:(p:ConnectorSettingsProps)=>{mocks.settings(p);return <p>{p.publication?.challenge_input_set_id || "No publication selected"}</p>}}));
 const publication={draft_id:"retained-deleted-draft",challenge_pack_version_id:"version",input_set_key:"exact-key",published_case_id:"case"};
 const mapping=[{published:[publication]}];
-const props=():Omit<ConnectorSettingsProps,"publication">=>({sessionId:"project",workspaceId:"workspace",artifactId:"artifact",actorScope:"actor",token:async()=>"token",access:{status:"ready",canRead:true,canWrite:true,canAdmin:true},onConfigured:vi.fn(),onRunCreated:vi.fn()});
+const props=():Omit<ConnectorSettingsProps,"publication">=>({sessionId:"project",workspaceId:"workspace",artifactId:"artifact",actorScope:"actor",token:async()=>"token",access:{status:"ready",canRead:true,canWrite:true,canAdmin:true},onRunCreated:vi.fn()});
 afterEach(()=>{vi.clearAllMocks();vi.unstubAllGlobals()});
 async function render(p=props()){
  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT",true);mocks.mapping.mockResolvedValue(mapping);

@@ -1,6 +1,5 @@
 "use client";
-import {loadCanonicalResult} from "./vibe-canonical";
-import type {ConnectorSelection} from "./connector-client";
+import {loadCanonicalResult, type CanonicalResult} from "./vibe-canonical";
 import type { RecordedIntakeRequest, RecordedIntakeOutcome, ResultRef, ProjectResultBinding } from "./vibe-result-evidence";
 
 
@@ -88,14 +87,14 @@ export function useVibeWorkspace() {
   const drafts = useVibeDrafts(requestedSessionID || undefined);
   const { content, setContent, trialBuffers, setTrialBuffers, composerEdits, trialEdits } = drafts;
   useEffect(() => { drafts.activate(requestedSessionID || undefined); }, [requestedSessionID, drafts.activate]);
-  const initializedModels = useRef<{ session: string; thread: string } | undefined>(undefined);
+  const initializedModels = useRef<{ session: string; thread: string | null } | undefined>(undefined);
   useEffect(() => {
     if (!session) return;
     const identity = `${authUserID || "guest"}:${session.id}`;
     const previous = initializedModels.current;
     if (previous?.session === identity && previous.thread === navigation.thread) return;
     initializedModels.current = { session: identity, thread: navigation.thread };
-    const message = session.document.messages.find(m => m.preview_thread_id === navigation.thread);
+    const message = session.document.messages.find(m => m.origin === "playground" && (m.preview_thread_id === navigation.thread || `legacy:${m.operation_id}` === navigation.thread));
     const trial = message && session.operations.find(o => o.id === message.operation_id);
     if (previous?.session !== identity) setModels(trial ? { ...session.document.models, target: trial.models.target } : session.document.models);
     else if (trial) setModels(current => ({ ...current, target: trial.models.target }));
@@ -148,7 +147,7 @@ export function useVibeWorkspace() {
   const view = navigation.legacyView;
   const selectedArtifactID = navigation.artifact;
   const setSelectedArtifactID = (artifact: string | null) => navigation.update({ artifact }, "replace");
-  const threadID = navigation.thread;
+  const threadID = navigation.thread || "";
   const setThreadID = (thread: string) => navigation.update({ thread }, "replace");
   const buildEvidence = useRef<
     { operation: string; artifact: string } | undefined
@@ -244,47 +243,55 @@ export function useVibeWorkspace() {
   const latestArtifact = artifacts.at(-1);
   const workingArtifact = session?.document.evaluation?.door === "build" ? workingBuildArtifact(session) : undefined;
   const requestedResult = parseResultSelection(requestedRunID);
-  const evidenceAccess = useVibeWorkspaceAccess(workspaceActor, session?.workspace_id, token, authLoading);
+  const evidenceAccess = useVibeWorkspaceAccess(workspaceActor, session?.workspace_id, token, authLoading, loadAttempt);
   const [resultAttempt, setResultAttempt] = useState(0);
-  const resultLife = useVibeEvidenceOwner(workspaceActor, requestedSessionID || undefined, session?.workspace_id, requestedRunID, requestedResult?.kind === "run" || requestedResult?.kind === "eval_session" ? navigation.artifact || undefined : undefined, String(resultAttempt));
-  const [sourceSelection, setSourceSelection] = useState<{owner:object;binding?:ProjectResultBinding;error?:string;invalid?:boolean}>();
+  const resultLife = useVibeEvidenceOwner(workspaceActor, requestedSessionID || undefined, session?.workspace_id, requestedRunID, requestedResult?.kind === "run" || requestedResult?.kind === "eval_session" ? navigation.artifact || undefined : undefined, String(resultAttempt), evidenceAccess.access.canRead ? "read" : evidenceAccess.access.status);
+  const [sourceSelection, setSourceSelection] = useState<{owner:object;value?:CanonicalResult | SDKReport;error?:string;invalid?:boolean}>();
   const externalKind = requestedResult && requestedResult.kind !== "vibe_operation" ? requestedResult.kind : undefined;
   const externalID = externalKind ? requestedResult?.id : undefined;
   useEffect(() => {
-    if (!externalID || !session || session.id !== requestedSessionID || authLoading) return;
-    const current = resultLife.capture();
-    if (externalKind !== "sdk_report" && externalKind !== "run" && externalKind !== "eval_session") {
-      setSourceSelection({owner:resultLife.owner,error:"This result source is not available here yet."}); return;
+    if (!externalID || !session || session.id !== requestedSessionID || authLoading || !evidenceAccess.access.canRead) return;
+    const captured = resultLife.capture();
+    let live = true;
+    const current = () => live && captured();
+    let timer: ReturnType<typeof setTimeout>;
+    async function load() {
+      try {
+        const auth = await token();
+        if (!current()) return;
+        const value = externalKind === "run" || externalKind === "eval_session"
+          ? await loadCanonicalResult(session!.id, { kind: externalKind, id: externalID! }, auth, navigation.artifact || undefined)
+          : await vibeFetch<SDKReport>(`${reportBase(session!.id)}/${externalID}`, auth);
+        if (!current()) return;
+        if (value.binding.session_id !== session!.id || value.binding.result_ref.kind !== externalKind || value.binding.result_ref.id !== externalID ||
+            (externalKind === "sdk_report" && (value as SDKReport).id !== externalID))
+          throw new VibeError("not_found", "The selected result is unavailable in this project.", 404);
+        setSourceSelection({ owner: resultLife.owner, value });
+        if (externalKind !== "sdk_report" && ["queued", "running", "provisioning", "scoring", "aggregating", "pending"].includes((value as CanonicalResult).status))
+          timer = setTimeout(load, 3000);
+      } catch (e) {
+        if (!current()) return;
+        const invalid = e instanceof VibeError && (e.status === 404 || e.code === "invalid_request");
+        const denied = invalid || e instanceof VibeError && (e.status === 401 || e.status === 403);
+        setSourceSelection(old => ({ owner: resultLife.owner, value: !denied && old?.owner === resultLife.owner ? old.value : undefined,
+          error: invalid ? "The selected result is unavailable in this project." : (e as Error).message, invalid }));
+      }
     }
-    void token().then<{binding:ProjectResultBinding}|undefined>(auth => {
-      if (!current()) return;
-      if(externalKind === "run" || externalKind === "eval_session")return loadCanonicalResult(session.id,{kind:externalKind,id:externalID},auth,navigation.artifact || undefined);
-      return vibeFetch<SDKReport>(`${reportBase(session.id)}/${externalID}`, auth).then(report=>{
-        if(report.id!==externalID)throw new VibeError("not_found","The selected result is unavailable in this project.",404);
-        return report;
-      });
-    }).then(report => {
-      if (!current() || !report) return;
-      if (report.binding.session_id !== session.id || report.binding.result_ref.kind !== externalKind || report.binding.result_ref.id !== externalID)
-        throw new VibeError("not_found", "The selected result is unavailable in this project.", 404);
-      setSourceSelection({owner:resultLife.owner,binding:report.binding});
-    }).catch(e => {
-      if (!current()) return;
-      const invalid = e instanceof VibeError && (e.status === 404 || e.code === "invalid_request");
-      setSourceSelection({owner:resultLife.owner,error:invalid ? "The selected result is unavailable in this project." : (e as Error).message,invalid});
-    });
-  }, [externalID, externalKind, session?.id, requestedSessionID, authLoading, token, resultLife]);
+    void load();
+    return () => { live = false; clearTimeout(timer); };
+  }, [externalID, externalKind, session?.id, requestedSessionID, authLoading, token, resultLife, evidenceAccess.access.canRead]);
   const sourceState = sourceSelection?.owner === resultLife.owner ? sourceSelection : undefined;
-  const selectedResult = sourceState?.binding;
-  const selectedResultLoading = !!externalKind && !sourceState;
-  const selectedResultError = sourceState?.error;
-  const retrySelectedResult = () => setResultAttempt(n => n + 1);
+  const selectedResult = sourceState?.value?.binding;
+  const selectedCanonical = selectedResult?.result_ref.kind === "run" || selectedResult?.result_ref.kind === "eval_session" ? sourceState?.value as CanonicalResult : undefined;
+  const selectedSDKReport = selectedResult?.result_ref.kind === "sdk_report" ? sourceState?.value as SDKReport : undefined;
+  const selectedResultLoading = !!externalKind && !sourceState && (evidenceAccess.access.status === "loading" || evidenceAccess.access.canRead);
+  const selectedResultError = sourceState?.error || (externalKind && evidenceAccess.access.status !== "loading" && !evidenceAccess.access.canRead
+    ? evidenceAccess.access.status === "signed_out" ? "Sign in to read this result." : "Workspace access could not be confirmed." : undefined);
+  const retrySelectedResult = () => evidenceAccess.access.canRead ? setResultAttempt(n => n + 1) : evidenceAccess.retry();
   const pinnedRun = session?.operations.find(item => item.id === (requestedResult?.kind === "vibe_operation" ? requestedResult.id : requestedRunID));
   const pinnedArtifactID = selectedResult?.artifact_id || pinnedRun?.result_scope?.artifact_id || pinnedRun?.source?.artifact_id || pinnedRun?.results[0]?.version;
   const artifact = pinnedArtifactID ? artifacts.find(item => item.id === pinnedArtifactID) : selectedArtifactID ? artifacts.find((a) => a.id === selectedArtifactID) : session?.document.evaluation?.door === "build" ? workingArtifact : latestArtifact;
   const selectionLife = useVibeEvidenceOwner(workspaceActor, requestedSessionID || undefined, session?.workspace_id, artifact?.id, requestedRunID);
-  const [connectorSelection,setConnectorSelection]=useState<{owner:object;selection:ConnectorSelection}>();
-  function onConnectorConfigured(selection:ConnectorSelection){if(selectionLife.current()&&session&&selection.session_id===session.id&&selection.workspace_id===session.workspace_id&&selection.artifact_id===artifact?.id)setConnectorSelection({owner:selectionLife.owner,selection})}
   function onSelectResult(binding: ProjectResultBinding, caseKey?: string) {
     if (!selectionLife.current() || !session || session.id !== requestedSessionID || binding.session_id !== session.id || !session.workspace_id || !artifacts.some(a => a.id === binding.artifact_id)) return;
     const ref = parseResultSelection(formatResultSelection(binding.result_ref));
@@ -365,9 +372,10 @@ export function useVibeWorkspace() {
     if (tested && session.document.artifacts.some(item => item.id === tested) && navigation.artifact !== tested) patch.artifact = tested;
     const cases = (artifact?.blueprint as { cases?: { key?: string }[] } | undefined)?.cases || [];
     if (!externalKind && navigation.case && !cases.some(item => item.key === navigation.case) && !run?.results.some(item => item.case_key === navigation.case)) patch.case = undefined;
-    if (threadID && !sending.current && !trialHistory.some(item => item.id === threadID) && !Object.hasOwn(trialBuffers, trialDraftKey) && !submission.current?.trialKey?.endsWith(`:${threadID}`)) patch.thread = "";
+    if (navigation.thread === null && !sending.current && trialHistory.length) patch.thread = trialHistory.at(-1)!.id;
+    if (threadID && !sending.current && !trialHistory.some(item => item.id === threadID) && !Object.hasOwn(trialBuffers, trialDraftKey) && !submission.current?.trialKey?.endsWith(`:${threadID}`)) patch.thread = null;
     if (Object.keys(patch).length) navigation.update(patch, "replace");
-  }, [session, requestedSessionID, navigation.artifact, navigation.run, navigation.case, threadID, artifact, sourceState, selectedResult, externalKind]);
+  }, [session, requestedSessionID, navigation.artifact, navigation.run, navigation.case, navigation.thread, threadID, artifact, sourceState, selectedResult, externalKind]);
   const legacyTrial = threadID.startsWith("legacy:");
   const trialMessages =
     session?.document.messages.filter(
@@ -380,7 +388,7 @@ export function useVibeWorkspace() {
   function navigate(
     next: typeof view,
     agent = artifact?.id,
-    thread = threadID,
+    thread = navigation.thread,
   ) {
     navigation.update({ view: next, artifact: agent || null, thread, ...(agent && agent !== artifact?.id ? { run: undefined, case: undefined } : {}) });
   }
@@ -1145,7 +1153,7 @@ export function useVibeWorkspace() {
       if (file.current) file.current.value = "";
     } }
   }
-  const { saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,saveOpen,saveAccess,saveBaseline,saveTarget,savedCheck,workspaces,openSave,closeSave,rememberSave,save } = useVibeSaving({actorScope: authUserID || "guest",selectedResult,loadWorkspace: !!authUserID && (!requestedSessionID || newEvaluation),session,artifact,artifacts,content,models,workspace,savedChecks,token,authLoading,loadAttempt,setContent,setModels,setWorkspace,setError,setPending,setSavedChecks,setSelectedArtifactID,reload,writeURL:navigation.writeURL});
+  const { saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,saveOpen,saveAccess,saveBaseline,saveTarget,savedCheck,workspaces,openSave,closeSave,rememberSave,save } = useVibeSaving({actorScope: authUserID || "guest",selectedResult,account:evidenceAccess,session,artifact,artifacts,content,models,workspace,savedChecks,token,setContent,setModels,setWorkspace,setError,setPending,setSavedChecks,setSelectedArtifactID,reload,writeURL:navigation.writeURL});
   const activeContext = session?.document.evaluation ? evaluationIdentity(session) : null;
   const setTrialText = (text: string) => {
     const key = trialDraftKey;
@@ -1155,5 +1163,5 @@ export function useVibeWorkspace() {
   // New work uses the prospective account/workspace and approved defaults,
   // independently of the historical project's funding and retired models.
   const entryAvailable = !!config?.enabled && Object.values(config.defaults).every(id => config.models.some(model => model.id === id)) && config.availability?.[authUserID ? "workspace" : "guest"]?.available === true && (!authUserID || saveAccess === "ready" && workspaces.some(item => item.id === workspace));
-    return { evidenceResult:selectedResult || (pinnedRun?.result_scope&&session?{session_id:session.id,artifact_id:pinnedRun.result_scope.artifact_id,result_ref:{kind:"vibe_operation" as const,id:pinnedRun.id}}:undefined), onConnectorConfigured,configuredConnector:connectorSelection?.owner===selectionLife.owner?connectorSelection.selection:undefined,selectedResult,selectedResultLoading,selectedResultError,retrySelectedResult,onSelectResult,onSDKPromoted,onSDKRegraded,evidenceAccess, sdkInferenceAvailable:inferenceReady && !busy && !!config?.models.some(m=>m.id===models.evaluator), projectReturnPath,saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,archiveMode,setArchiveMode,metadata,exporter, recordedUpdate, startRecordedUpdate, closeRecordedUpdate, addRecordedEvidence, entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, runInferenceAvailable, unavailableReason, messageLimit, messageError, buildQuote, buildQuoteState, refreshBuildQuote, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, canChangeDoor, changeDoor, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, trialMaterials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces };
+    return { evidenceResult:selectedResult || (pinnedRun?.result_scope&&session?{session_id:session.id,artifact_id:pinnedRun.result_scope.artifact_id,result_ref:{kind:"vibe_operation" as const,id:pinnedRun.id}}:undefined), selectedCanonical,selectedSDKReport,selectedResult,selectedResultLoading,selectedResultError,retrySelectedResult,onSelectResult,onSDKPromoted,onSDKRegraded,evidenceAccess, sdkInferenceAvailable:inferenceReady && !busy && !!config?.models.some(m=>m.id===models.evaluator), projectReturnPath,saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,archiveMode,setArchiveMode,metadata,exporter, recordedUpdate, startRecordedUpdate, closeRecordedUpdate, addRecordedEvidence, entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, runInferenceAvailable, unavailableReason, messageLimit, messageError, buildQuote, buildQuoteState, refreshBuildQuote, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, canChangeDoor, changeDoor, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, trialMaterials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces };
 }

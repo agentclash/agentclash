@@ -73,6 +73,10 @@ it("keeps result B in the URL on refresh and restores pane/thread on browser nav
  expect(new URL(window.location.href).searchParams.get("run")).toBe("result-B");
  await act(async()=>root.unmount());root=createRoot(element);
  await act(async()=>root.render(<Harness/>));expect(navigation.run).toBe("result-B");
+ await act(async()=>navigation.update({thread:""}));
+ expect(new URL(window.location.href).searchParams.has("thread")).toBe(true);
+ await act(async()=>navigation.writeURL(new URL(window.location.href)));
+ expect(navigation.thread).toBe("");
  await act(async()=>{window.history.replaceState(null,"","/vibe-evals?session=A&view=try&agent=v1&thread=old");window.dispatchEvent(new PopStateEvent("popstate"))});
  expect(navigation.view).toBe("agent");expect(navigation.section).toBe("trial");expect(navigation.thread).toBe("old");expect(navigation.run).toBeUndefined();
 });
@@ -186,7 +190,7 @@ it.each(["sdk_report","run","eval_session"] as const)("freezes a %s return selec
  history.replaceState({},"",`/vibe-evals?session=A&agent=${artifact.id}&view=results&run=${kind}:${ref.id}&case=local&thread=retained`);
  let saving!:ReturnType<typeof useVibeSaving>;
  const noop=vi.fn();
- function Harness(){saving=useVibeSaving({session:project,artifact,artifacts:[artifact],selectedResult:{session_id:"A",artifact_id:artifact.id,result_ref:ref},content:"",models:defaultModels,workspace:"",savedChecks:[],token,authLoading:false,loadAttempt:0,setContent:noop,setModels:noop,setWorkspace:noop,setError:noop,setPending:noop,setSavedChecks:noop,setSelectedArtifactID:noop,reload:async()=>project,writeURL:noop});return null}
+ function Harness(){saving=useVibeSaving({session:project,artifact,artifacts:[artifact],selectedResult:{session_id:"A",artifact_id:artifact.id,result_ref:ref},content:"",models:defaultModels,workspace:"",savedChecks:[],token,account:{status:"signed_out",workspaces:[],access:{status:"signed_out",canRead:false,canWrite:false,canAdmin:false},retry:noop},setContent:noop,setModels:noop,setWorkspace:noop,setError:noop,setPending:noop,setSavedChecks:noop,setSelectedArtifactID:noop,reload:async()=>project,writeURL:noop});return null}
  await act(async()=>root.render(<Harness/>));await act(async()=>saving.openSave());
  const captured=saving.saveReturnPath!;const url=new URL(captured,"https://local.invalid");
  expect(url.searchParams.get("run")).toBe(`${kind}:${ref.id}`);expect(url.searchParams.get("agent")).toBe(artifact.id);

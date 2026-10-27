@@ -5,16 +5,17 @@ import { useSearchParams } from "next/navigation";
 
 export type VibePane = "agent" | "tests" | "results";
 export type LegacyVibePane = "build" | "try" | "checks" | "tests";
-type Selection = { session?: string; view: VibePane; section?: "trial"; artifact: string | null; thread: string; run?: string; case?: string };
+// A missing thread selects retained history; an empty thread explicitly starts a new conversation.
+type Selection = { session?: string; view: VibePane; section?: "trial"; artifact: string | null; thread: string | null; run?: string; case?: string };
 type Patch = Omit<Partial<Selection>, "view"> & { view?: VibePane | LegacyVibePane };
 function read(params: URLSearchParams): Selection {
   const view = params.get("view");
-  return { session: params.get("session") || undefined, view: view === "checks" || view === "results" ? "results" : view === "tests" ? "tests" : "agent", section: view === "try" || (params.get("section") === "trial" || params.get("utility") === "trial") ? "trial" : undefined, artifact: params.get("agent"), thread: params.get("thread") || "", run: params.get("run") || undefined, case: params.get("case") || undefined };
+  return { session: params.get("session") || undefined, view: view === "checks" || view === "results" ? "results" : view === "tests" ? "tests" : "agent", section: view === "try" || (params.get("section") === "trial" || params.get("utility") === "trial") ? "trial" : undefined, artifact: params.get("agent"), thread: params.get("thread"), run: params.get("run") || undefined, case: params.get("case") || undefined };
 }
 function serialize(url: URL, next: Selection) {
   url.searchParams.delete("utility");
   for (const [key, value] of Object.entries({ session: next.session, view: next.view, agent: next.artifact, thread: next.thread, run: next.run, case: next.case, section: next.section }))
-    value ? url.searchParams.set(key, value) : url.searchParams.delete(key);
+    (value || key === "thread" && value === "") ? url.searchParams.set(key, value!) : url.searchParams.delete(key);
   return url;
 }
 export function useVibeNavigation() {
@@ -39,7 +40,7 @@ export function useVibeNavigation() {
   }, [writeURL]);
   const selectSession = useCallback((session: string) => {
     if (current.current.session) remembered.current.set(current.current.session, current.current);
-    const next = remembered.current.get(session) || { session, view: "agent" as const, artifact: null, thread: "", run: undefined, case: undefined, section: undefined };
+    const next = remembered.current.get(session) || { session, view: "agent" as const, artifact: null, thread: null, run: undefined, case: undefined, section: undefined };
     update(next);
     return next;
   }, [update]);

@@ -1349,10 +1349,10 @@ it("retries a trial with its original thread and preserves text typed during an 
   ).toBe("My next trial");
 });
 
-it("restores a trial's version and model from its URL and excludes Build from its history", async () => {
+it("opens the retained trial without a thread selector and preserves explicit New across refresh", async () => {
   scenarioAgent();
   harness.params = new URLSearchParams(
-    "session=session-one&view=try&agent=artifact-one&thread=thread-one",
+    "session=session-one&view=try&agent=artifact-one",
   );
   session.document.messages = [
     {
@@ -1398,6 +1398,7 @@ it("restores a trial's version and model from its URL and excludes Build from it
   const history = container.querySelector(
     '[role="log"][aria-label="Trial conversation"]',
   )!;
+  expect(new URL(location.href).searchParams.get("thread")).toBe("thread-one");
   expect(history.textContent).toContain("Is it unopened?");
   expect(history.textContent).not.toContain("Private build instructions");
   await type("It is unopened", "Message your agent");
@@ -1410,6 +1411,12 @@ it("restores a trial's version and model from its URL and excludes Build from it
   });
   await click("New conversation");
   expect(history.textContent).toBe("");
+  expect(new URL(location.href).searchParams.has("thread")).toBe(true);
+  expect(new URL(location.href).searchParams.get("thread")).toBe("");
+  harness.params = new URLSearchParams(location.search);
+  await act(async () => root.unmount()); root = createRoot(container);
+  await render();
+  expect(container.querySelector('[role="log"][aria-label="Trial conversation"]')?.textContent).toBe("");
   expect(posts()).toHaveLength(1);
 });
 
@@ -2253,6 +2260,8 @@ it("keeps trial history selectable during an inference outage without sending re
   await render(); await click("Try a message");
   const history = container.querySelector<HTMLSelectElement>('select[aria-label="Trial conversation"]')!;
   expect(history.disabled).toBe(false);
+  expect(history.value).toBe("two");
+  expect(container.querySelector('[role="log"]')?.textContent).toContain("Saved reply two");
   await act(async () => { history.value = "one"; history.dispatchEvent(new Event("change", { bubbles: true })); });
   expect(container.querySelector('[role="log"]')?.textContent).toContain("Saved reply one");
   expect(container.querySelector('[role="log"]')?.textContent).not.toContain("Saved reply two");
@@ -2621,6 +2630,7 @@ it("resolves an SDK URL before pinning its version and keeps historical Results 
  expect(container.querySelector('[aria-label="Imported report detail"]')).not.toBeNull();
  expect(container.querySelector('[aria-label="SDK original JSON"]')).not.toBeNull();
  expect(button("Estimate hosted regrade").disabled).toBe(true);
+ expect(requests.filter(request=>request.path.endsWith("/reports/"+id))).toHaveLength(1);
  expect(posts()).toHaveLength(0);
 });
 it("retains an unavailable SDK selection for retry then clears a confirmed foreign report with an explanation",async()=>{
@@ -2645,10 +2655,16 @@ it("explains a malformed SDK selector without loading or executing it",async()=>
  expect(new URL(location.href).searchParams.get("run")).toBeNull();expect(container.textContent).toContain("selected result is unavailable");expect(requests.some(r=>r.path.endsWith("/reports/invalid"))).toBe(false);expect(posts()).toHaveLength(0);
 });
 
-it("loads canonical source-qualified Results without Vibe inference and pins its artifact",async()=>{
+it("loads canonical source-qualified Results once, pins its artifact and stops terminal polling",async()=>{
+ vi.useFakeTimers();
+ try {
  const {id,artifact,report}=sdkProject();const result={binding:{...report.binding,result_ref:{kind:"run",id}},evidence_metadata:{...report.evidence_metadata,result_ref:{kind:"run",id}},name:"Approved application",status:"completed",created_at:"2026-10-26T00:00:00Z",participants:[],evidence_hash:"canonical-hash",omissions:["Raw canonical event bodies omitted."]};
  harness.params=new URLSearchParams(`session=${session.id}&view=results&agent=${artifact.id}&run=run:${id}`);const before=respond;respond=async(path,options)=>path.endsWith("/canonical-results")?json([result]):path.includes("/canonical-results/run/")?json(result):before(path,options);
- await render();expect(container.querySelector('[aria-label="Canonical result detail"]')).not.toBeNull();expect(container.textContent).toContain("Canonical run");expect(new URL(location.href).searchParams.get("run")).toBe(`run:${id}`);expect(posts()).toHaveLength(0);
+ await render();expect(container.querySelector('[aria-label="Canonical result detail"]')).not.toBeNull();expect(container.textContent).toContain("Canonical run");expect(requests.filter(request=>request.path.includes("/canonical-results/run/"))).toHaveLength(1);expect(new URL(location.href).searchParams.get("run")).toBe(`run:${id}`);expect(posts()).toHaveLength(0);
+ await act(async()=>vi.advanceTimersByTime(9000));
+ expect(requests.filter(request=>request.path.includes("/canonical-results/run/"))).toHaveLength(1);
+ expect(requests.filter(request=>request.path.endsWith("/canonical-results"))).toHaveLength(1);
+ } finally { vi.useRealTimers(); }
 });
 it("retains canonical source uncertainty and retries an authorized lookup without dispatch",async()=>{
  const {id,artifact,report}=sdkProject();const result={binding:{...report.binding,result_ref:{kind:"run",id}},evidence_metadata:{},name:"Application",status:"completed",created_at:"",participants:[],evidence_hash:"hash",omissions:[]};harness.params=new URLSearchParams(`session=${session.id}&view=results&agent=${artifact.id}&run=run:${id}`);const before=respond;let calls=0;respond=async(path,options)=>path.endsWith("/canonical-results")?json([result]):path.includes("/canonical-results/run/")?(++calls===1?json({error:{code:"unavailable",message:"Canonical temporarily unavailable"}},503):json(result)):before(path,options);await render();expect(new URL(location.href).searchParams.get("run")).toBe(`run:${id}`);await click("Retry selected result");expect(container.querySelector('[aria-label="Canonical result detail"]')).not.toBeNull();expect(posts()).toHaveLength(0);

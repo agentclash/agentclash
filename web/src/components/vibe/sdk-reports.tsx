@@ -8,7 +8,7 @@ import { SDKReportDetail } from "./sdk-report-detail";
 import type { SDKEvidenceContext } from "./sdk-report-import";
 import { VibeButton } from "./vibe-button";
 export function SDKReports(props: SDKEvidenceContext & {
-  selectedResult?: ProjectResultBinding; onSelectResult?: (binding: ProjectResultBinding, caseKey?: string) => void;
+  selectedReport?: SDKReport; onSelectResult?: (binding: ProjectResultBinding, caseKey?: string) => void;
   revision?: number; models?: Models; inferenceAvailable?: boolean; refresh?: number;
   onPromoted?: (artifact: Artifact) => void; onRegraded?: (operation: Operation) => void;
   onExport?: (report: SDKReport) => void;
@@ -19,7 +19,7 @@ export function SDKReports(props: SDKEvidenceContext & {
   const life = useVibeEvidenceOwner(actorScope, sessionId, workspaceId, accessRevoked ? "revoked" : "active");
   const tokenRef = useRef(token);
   useEffect(() => { tokenRef.current = token; }, [token]);
-  const [state, setState] = useState<{ owner: object; reports?: SDKReport[]; error?: string }>();
+  const [state, setState] = useState<{ owner: object; reports?: SDKReport[]; denied?: boolean; error?: string }>();
   if (state && state.owner !== life.owner) setState(undefined);
   useEffect(() => {
     let active = true; const current = life.capture();
@@ -31,8 +31,8 @@ export function SDKReports(props: SDKEvidenceContext & {
       if (!active || !current()) return;
       // A failed history refresh must not unmount the current detail or lose an
       // in-flight receipt. Authoritative access/project loss invalidates cache.
-      const revoked = e instanceof VibeError && (e.code === "forbidden" || e.code === "not_found");
-      setState(previous => ({ owner: life.owner, reports: !revoked && previous?.owner === life.owner ? previous.reports : undefined, error: e.message }));
+      const revoked = e instanceof VibeError && ([401, 403, 404].includes(e.status || 0) || ["forbidden", "not_found", "unauthorized"].includes(e.code));
+      setState(previous => ({ owner: life.owner, reports: !revoked && previous?.owner === life.owner ? previous.reports : undefined, denied: revoked || previous?.owner === life.owner && previous.denied, error: e.message }));
     });
     return () => { active = false; };
   }, [sessionId, workspaceId, canRead, status, life, attempt, refresh]);
@@ -40,7 +40,7 @@ export function SDKReports(props: SDKEvidenceContext & {
   if (!props.workspaceId) return <p>Save to a workspace to keep imported reports here.</p>;
   if (!props.access.canRead) return <p>SDK reports are unavailable until access to this workspace is confirmed.</p>;
   const active = state?.owner === life.owner ? state : undefined;
-  const selected = props.selectedResult?.result_ref.kind === "sdk_report" ? active?.reports?.find(r => r.id === props.selectedResult!.result_ref.id && r.binding.artifact_id === props.selectedResult!.artifact_id) : undefined;
+  const selected = !active?.denied && props.selectedReport?.binding.session_id === sessionId && props.selectedReport.binding.result_ref.kind === "sdk_report" && props.selectedReport.id === props.selectedReport.binding.result_ref.id && props.selectedReport.binding.artifact_id === props.artifactId ? props.selectedReport : undefined;
   return <section aria-label="SDK reports" className="space-y-4">
     <h3>SDK reports</h3><p>Imported, unverified application execution. Source grades remain separate from hosted checks and reviews.</p>
     {!active?.reports && !active?.error && <p role="status">Loading SDK reports…</p>}
@@ -51,7 +51,6 @@ export function SDKReports(props: SDKEvidenceContext & {
       <VibeButton onClick={() => { if (life.current()) props.onSelectResult?.(report.binding); }}>Open report {report.external_report_id}</VibeButton>
       <span> · {report.cases.length} cases · {report.source_kind === "agent_result" ? "No imported grade" : "Imported grades"}</span>
     </li>)}</ul>
-    {props.selectedResult?.result_ref.kind === "sdk_report" && active?.reports && !selected && <p role="alert">The selected SDK report is unavailable in this project and version.</p>}
     {selected && <SDKReportDetail key={`${props.actorScope}:${props.sessionId}:${selected.id}`} {...props} report={selected} />}
   </section>;
 }
