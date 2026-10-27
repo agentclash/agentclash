@@ -8,6 +8,16 @@ import (
 )
 
 func (h *VibeHandler) listSessions(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	archived := query.Get("archived")
+	_, cookieErr := r.Cookie(h.cookieName())
+	// A visitor has no private library until creating their first trial.
+	// Existing identities and invalid filters still follow normal access checks.
+	if r.Header.Get("Authorization") == "" && cookieErr == http.ErrNoCookie && query.Get("workspace") == "" &&
+		(archived == "" || archived == "exclude" || archived == "only" || archived == "all") {
+		vibeJSON(w, http.StatusOK, []vibe.Session{})
+		return
+	}
 	actor, err := h.actor(r)
 	if err != nil {
 		vibeError(w, err)

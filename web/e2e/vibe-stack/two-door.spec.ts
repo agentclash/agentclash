@@ -33,8 +33,12 @@ test("clear Build goes through real worker to three results, scoped export and i
  await page.setViewportSize({width:1440,height:900});
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
  await page.goto('/vibe-evals');
+ await expect(page.getByText('No projects yet.',{exact:true})).toBeVisible();
+ await expect(page.getByRole('button',{name:'Retry projects',exact:true})).toHaveCount(0);
+ await expect(page.getByText('Couldn’t load your projects.',{exact:false})).toHaveCount(0);
  await expect(page.getByRole('button',{name:/Build an agent/})).toBeVisible();
  await page.getByRole('button',{name:/Build an agent/}).click();
+ await expect(page.locator('[data-evaluation-id][aria-current="page"]')).toBeVisible();
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
  const send=page.getByRole('button',{name:'Send message',exact:true});
  await expect(send).toHaveText(/Build and try 3 examples/);
