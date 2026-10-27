@@ -23,6 +23,7 @@
 }
 .vibe-portal { background: transparent; }
 .vibe-workspace .vibe-workspace { --vibe-bg: inherit; --vibe-surface: inherit; --vibe-fg: inherit; --vibe-muted: inherit; --vibe-border: inherit; color-scheme: inherit; }
+.vibe-workspace .vibe-message-user { background: var(--vibe-hover); color: var(--vibe-fg); border-color: var(--vibe-border); }
 .vibe-workspace [hidden] { display: none !important; }
 .vibe-project-header { flex: none; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px 20px; padding: 18px 24px 10px; border-bottom: 1px solid var(--vibe-border); background: var(--vibe-bg); }
 .vibe-project-header > :last-child { grid-column: 1/-1; }
@@ -49,6 +50,7 @@
 .vibe-appearance { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-block: 16px; }
 .vibe-workspace :is(input:not([type="checkbox"]), textarea, select) { font-size: 16px; color: var(--vibe-fg); background-color: var(--vibe-surface); max-width: 100%; }
 .vibe-workspace select { border: 1px solid var(--vibe-control-border); border-radius: 8px; padding: 8px; }
+.vibe-workspace .vibe-input { display: block; min-height: 44px; margin-block: 4px 8px; padding: 8px 10px; border: 1px solid var(--vibe-control-border); border-radius: 8px; }
 .vibe-workspace :is(button, a, summary, select, textarea, input):focus-visible { outline-color: var(--vibe-focus); }
 .vibe-workspace .vibe-button { white-space: normal; overflow-wrap: anywhere; }
 .vibe-workspace [data-slot="dialog-close"], .vibe-workspace [data-slot="sheet-close"], .vibe-utility-heading button, .vibe-material-dialog-head > button { min-height: 44px; min-width: 44px; }

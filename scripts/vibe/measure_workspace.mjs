@@ -24,7 +24,7 @@ await recordOwned("performance_samples",output);
 const samples=[];
 try {
  for(const width of [1440,390]) for(let sample=1;sample<=5;sample++) {
-  const context=await browser.newContext({viewport:{width,height:900},colorScheme:"light",reducedMotion:"reduce"});
+  const context=await browser.newContext({viewport:{width,height:900},colorScheme:"dark",reducedMotion:"reduce"});
   const page=await context.newPage();
   const errors=[],blocked=[],writes=[];
   page.on("pageerror",e=>errors.push(e.message));
@@ -48,8 +48,9 @@ try {
   await cdp.send("Network.emulateNetworkConditions",{offline:false,latency:150,downloadThroughput:200000,uploadThroughput:93750,connectionType:"cellular3g"});
   await cdp.send("Emulation.setCPUThrottlingRate",{rate:4});
   const started=performance.now();
-  await page.goto(`${base}/vibe-evals?session=perf-project&agent=prototype&view=results&run=check`,{waitUntil:"domcontentloaded",timeout:120000});
-  await page.getByRole("tab",{name:"Results",exact:true}).waitFor({timeout:120000});
+  await page.goto(`${base}/vibe-evals?session=perf-project&agent=prototype&view=checks&run=check`,{waitUntil:"domcontentloaded",timeout:120000});
+  await page.getByRole("article",{name:"Evaluation scorecard",exact:true}).waitFor({timeout:120000});
+  if (await page.getByRole("tab",{name:"Results",exact:true}).getAttribute("aria-selected") !== "true") throw Error("Result pane is not selected");
   if(width<1280){const guide=page.getByRole("button",{name:"Guide",exact:true});if(await guide.isVisible())await guide.click();}
   const composer=page.getByRole("textbox",{name:"Message Vibe Evals",exact:true});
   await composer.waitFor({state:"visible",timeout:30000});
@@ -58,12 +59,12 @@ try {
   const inputStarted=performance.now();await composer.pressSequentially("Review this retained example.");
   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
   const keyboardMS=performance.now()-inputStarted;
-  const metrics=await page.evaluate(()=>({fcpMS:performance.getEntriesByName("first-contentful-paint")[0]?.startTime??null,scripts:performance.getEntriesByType("resource").filter(r=>r.initiatorType==="script").map(r=>({name:new URL(r.name).pathname,encodedBodySize:r.encodedBodySize,transferSize:r.transferSize})),overflow:document.documentElement.scrollWidth>innerWidth+1}));
+  const metrics=await page.evaluate(()=>({fcpMS:performance.getEntriesByName("first-contentful-paint")[0]?.startTime??null,scripts:performance.getEntriesByType("resource").filter(r=>r.initiatorType==="script").map(r=>({name:new URL(r.name).pathname,encodedBodySize:r.encodedBodySize,transferSize:r.transferSize})),overflow:document.documentElement.scrollWidth>innerWidth+1,surfaceBackground:getComputedStyle(document.querySelector(".vibe-workspace")).backgroundColor}));
   if(errors.length||writes.length)throw Error(JSON.stringify({errors,writes}));
   samples.push({width,sample,readyMS,keyboardMS,...metrics,blockedExternal:blocked});
   await context.close();
  }
- await writeFile(output,JSON.stringify({version:1,commit,base,fixtureSHA256,method:{build:"production",browser:browser.version(),platform:process.platform,viewportHeight:900,coldContextPerSample:true,cacheDisabled:true,cpuRate:4,latencyMS:150,downloadBytesPerSecond:200000,uploadBytesPerSecond:93750,cases:100,messages:62,theme:"light",reducedMotion:true,claim:"Local lab rendering and typing only; no model/network application accuracy or physical Mac claim"},samples},null,2),{flag:"wx"});
+ await writeFile(output,JSON.stringify({version:1,commit,base,fixtureSHA256,method:{build:"production",browser:browser.version(),platform:process.platform,viewportHeight:900,coldContextPerSample:true,cacheDisabled:true,cpuRate:4,latencyMS:150,downloadBytesPerSecond:200000,uploadBytesPerSecond:93750,cases:100,messages:62,theme:"dark",reducedMotion:true,claim:"Local lab rendering and typing only; no model/network application accuracy or physical Mac claim"},samples},null,2),{flag:"wx"});
 } finally {
  await browser.close();
  let absence = false;

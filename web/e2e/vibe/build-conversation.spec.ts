@@ -53,6 +53,17 @@ test("Guide retains the full thread and draft while Results uses explicit eviden
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   const guide = page.locator(".vibe-utility-scroll");
   await expect(page.locator("[data-message-id]")).toHaveCount(26);
+  // Retained user text must remain readable in both system appearances.
+  for (const colorScheme of ["light", "dark"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await expect.poll(async () => page.locator(".vibe-message-user").first().evaluate(bubble => {
+      const rgb = (value: string) => value.match(/[\d.]+/g)!.slice(0,3).map(Number);
+      const luminance = (value: string) => rgb(value).map(v => { const n=v/255; return n<=.04045?n/12.92:((n+.055)/1.055)**2.4; }).reduce((total,v,i)=>total+v*[.2126,.7152,.0722][i],0);
+      const foreground=luminance(getComputedStyle(bubble.querySelector("p")!).color), background=luminance(getComputedStyle(bubble).backgroundColor);
+      return (Math.max(foreground,background)+.05)/(Math.min(foreground,background)+.05);
+    }), colorScheme + " user-message text contrast").toBeGreaterThanOrEqual(4.5);
+  }
+  await page.emulateMedia({ colorScheme: "light" });
   await expect(page.getByText("Earlier messages", { exact: true })).toHaveCount(0);
   await page.getByRole("button", {name:"New response",exact:true}).click();
   await expect(page.getByRole("button", {name:"Latest",exact:true})).toBeVisible();

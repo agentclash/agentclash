@@ -164,6 +164,7 @@ export function EvaluationNavigation(p: Props) {
           <input
             type="search"
             aria-label="Search loaded projects"
+            placeholder="Filter by title"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="vibe-input w-full"

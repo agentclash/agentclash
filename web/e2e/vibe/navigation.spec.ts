@@ -511,7 +511,18 @@ test("Settings descendants retain readable scoped appearance including warning, 
 
 test("library search rename archive and sidebar preference preserve full touch and keyboard titles without running",async({page})=>{
  const control=await serve(page,true);
- await page.getByRole("searchbox",{name:"Search loaded projects"}).fill("exchanges 29");
+ const search = page.getByRole("searchbox",{name:"Search loaded projects"});
+ const assertSearchAffordance = async () => {
+   const control = await search.evaluate(input => {
+     const style=getComputedStyle(input), rgb=(value:string)=>value.match(/[\d.]+/g)!.slice(0,3).map(Number);
+     const luminance=(value:string)=>rgb(value).map(v=>{const n=v/255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4;}).reduce((total,v,i)=>total+v*[.2126,.7152,.0722][i],0);
+     const border=luminance(style.borderTopColor), background=luminance(style.backgroundColor);
+     return {height:input.getBoundingClientRect().height,border:parseFloat(style.borderTopWidth),contrast:(Math.max(border,background)+.05)/(Math.min(border,background)+.05)};
+   });
+   expect(control.height).toBeGreaterThanOrEqual(44); expect(control.border).toBeGreaterThanOrEqual(1); expect(control.contrast).toBeGreaterThanOrEqual(3);
+ };
+ await assertSearchAffordance();
+ await search.fill("exchanges 29");
  await expect(page.locator("[data-evaluation-id]")).toHaveCount(1);
  await page.locator('[data-evaluation-id="older-29"]').click();
  await page.getByRole("button",{name:"Rename project",exact:true}).click();
@@ -529,6 +540,7 @@ test("library search rename archive and sidebar preference preserve full touch a
  await page.getByRole("button",{name:"Collapse sidebar",exact:true}).click();await page.reload();await expect(page.getByRole("button",{name:"Expand sidebar",exact:true})).toBeVisible();
  await page.setViewportSize({width:390,height:844});if(await page.getByRole("button",{name:"Close Guide",exact:true}).isVisible())await page.getByRole("button",{name:"Close Guide",exact:true}).click();await page.getByRole("button",{name:"Open agents",exact:true}).click();
  const mobile=page.getByRole("dialog");await expect(mobile.locator('[data-evaluation-id="older-29"]')).toContainText(title);
+ await assertSearchAffordance();
  expect(await mobile.locator('[data-evaluation-id="older-29"] .vibe-project-full-title').evaluate(node=>node.scrollHeight<=node.clientHeight+1)).toBe(true);
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  expect(control.posts.every(p=>p.path.endsWith('/metadata'))).toBe(true);expect(control.errors).toEqual([]);
