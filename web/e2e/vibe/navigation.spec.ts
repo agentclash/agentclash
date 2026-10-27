@@ -363,6 +363,18 @@ test("same-artifact case Back and Forward restores the visible expectation witho
 test("compact text roles stay consistent across viewport sizes and portaled settings", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   const control = await serve(page, false, true);
+  const check = control.first.operations.find(operation => operation.kind === "check")!;
+  await page.route(/\/v1\/vibe\/operations\/check\/case\?/, route => route.fulfill({
+    headers: { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" },
+    json: check.results[0],
+  }));
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
+  await page.getByText("Test results · 1", { exact: true }).click();
+  await openCase(page);
+  const reply = page.locator(".vibe-result-row .vibe-markdown").first();
+  await expect.soft(reply).toHaveCSS("font-size", "15px");
+  await expect.soft(reply).toHaveCSS("line-height", "24px");
+  await page.getByRole("tab", { name: "Agent", exact: true }).click();
   for (const width of [390, 1440, 2560]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.locator(".vibe-project-identity h1")).toHaveCSS("font-size", "20px");
@@ -380,6 +392,7 @@ test("compact text roles stay consistent across viewport sizes and portaled sett
     await expect(details.getByLabel("Appearance", { exact: true })).toHaveCSS("font-size", "16px");
     await details.getByRole("button", { name: "Settings", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Settings and details", exact: true });
+    await expect.soft(dialog).toHaveCSS("font-family", /Geist/);
     await expect(dialog.getByRole("heading", { name: "Settings and details", exact: true })).toHaveCSS("font-size", "20px");
     await expect(dialog.locator('[data-slot="dialog-description"]')).toHaveCSS("font-size", "14px");
     await expect(dialog.getByRole("button", { name: "Import a test pack", exact: true })).toHaveCSS("font-size", "14px");

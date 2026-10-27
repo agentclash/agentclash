@@ -38,6 +38,7 @@
   --vibe-focus: #e3cb94;
   background: var(--vibe-bg);
   color: var(--vibe-fg);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
   font-size: var(--vibe-font-body);
   line-height: 1.6;
   color-scheme: dark;
@@ -605,7 +606,6 @@
 .vibe-build-examples summary { padding:12px 14px; min-height:48px; }
 .vibe-example-evidence { display:grid; gap:14px; }
 .vibe-evidence-label { font-size: var(--vibe-font-caption); color:var(--vibe-muted); margin-bottom:4px; line-height: 1.45; }
-.vibe-build-examples .vibe-markdown { font-size: var(--vibe-font-control); line-height: 1.45; }
 .vibe-build-examples .vibe-markdown p { margin-block:4px; }
 .vibe-example-reply { border-left:2px solid #625c4d; padding-left:12px; max-height:220px; overflow-y:auto; }
 .vibe-evidence-excerpt { white-space:pre-wrap; overflow-wrap:anywhere; }
