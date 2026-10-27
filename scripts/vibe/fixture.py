@@ -155,12 +155,13 @@ def reconcile(dsn, log, owner_pid):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--database-env", choices=["VIBE_TEST_DATABASE_URL", "DATABASE_URL"], default="VIBE_TEST_DATABASE_URL")
+    parser.add_argument("--label", default="suite", help="Owned child name label; a fresh UUID is always appended")
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         parser.error("command required")
-    with database(os.environ.get("VIBE_TEST_DATABASE_URL", "")) as dsn:
+    with database(os.environ.get("VIBE_TEST_DATABASE_URL", ""), label=args.label) as dsn:
         env = deterministic_env()
         env[args.database_env] = dsn
         result = run_owned(command, name="isolated-suite", env=env)

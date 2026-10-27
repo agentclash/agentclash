@@ -312,7 +312,7 @@ func TestRepositoryListRunRegressionCoverageCasesByRunID(t *testing.T) {
 			"name":"regression-coverage-spec",
 			"version_number":1,
 			"judge_mode":"deterministic",
-			"validators":[{"key":"exact","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],
+			"validators":[{"key":"exact-a","type":"exact_match","target":"final_output","expected_from":"challenge_input"},{"key":"exact-b","type":"exact_match","target":"final_output","expected_from":"challenge_input"}],
 			"scorecard":{"dimensions":["correctness"]}
 		}`),
 	})
@@ -329,6 +329,9 @@ func TestRepositoryListRunRegressionCoverageCasesByRunID(t *testing.T) {
 		t.Fatalf("UpsertRunScorecard returned error: %v", err)
 	}
 
+	// Each validator key is unique per participant/spec (migration 10); two
+	// case outcomes must therefore come from two validators. Keep the losing
+	// participant's conflicting case-A grade to prove winner-only coverage.
 	if _, err := db.Exec(ctx, `
 		INSERT INTO judge_results (
 			id,
@@ -342,9 +345,9 @@ func TestRepositoryListRunRegressionCoverageCasesByRunID(t *testing.T) {
 			raw_output
 		)
 		VALUES
-			($1, $2, $3, $4, $5, 'exact', 'pass', 1.0, '{}'::jsonb),
-			($6, $2, $3, $7, $8, 'exact', 'fail', 0.0, '{}'::jsonb),
-			($9, $10, $3, $4, $5, 'exact', 'fail', 0.0, '{}'::jsonb)
+			($1, $2, $3, $4, $5, 'exact-a', 'pass', 1.0, '{}'::jsonb),
+			($6, $2, $3, $7, $8, 'exact-b', 'fail', 0.0, '{}'::jsonb),
+			($9, $10, $3, $4, $5, 'exact-a', 'fail', 0.0, '{}'::jsonb)
 	`, uuid.New(), fixture.primaryRunAgentID, specRecord.ID, fixture.firstChallengeIdentityID, firstCaseID, uuid.New(), secondChallengeIdentityID, secondCaseID, uuid.New(), fixture.secondaryRunAgentID); err != nil {
 		t.Fatalf("insert judge results returned error: %v", err)
 	}
