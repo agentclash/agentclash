@@ -111,6 +111,7 @@ func TestVibeBrowserStack(t *testing.T) {
 	}
 	auth := browserDevelopmentAuth{}
 	mountBrowserConnectors(t, router, db, svc, temporalClient, auth)
+	mountBrowserReportSnapshots(t, router, db, store, auth)
 	router.Get("/v1/users/me", func(w http.ResponseWriter, r *http.Request) {
 		caller, err := auth.Authenticate(r)
 		if err != nil {
@@ -756,7 +757,7 @@ func (browserDevelopmentAuth) Authenticate(r *http.Request) (Caller, error) {
 	var claims struct {
 		Subject string `json:"sub"`
 	}
-	if json.Unmarshal(payload, &claims) != nil || claims.Subject != "a8000000-0000-4000-8000-000000000001" {
+	if json.Unmarshal(payload, &claims) != nil || (claims.Subject != "a8000000-0000-4000-8000-000000000001" && claims.Subject != "a8000000-0000-4000-8000-000000000004" && claims.Subject != "a8000000-0000-4000-8000-000000000005") {
 		return Caller{}, ErrUnauthenticated
 	}
 	copy := r.Clone(r.Context())

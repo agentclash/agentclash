@@ -615,6 +615,7 @@ export interface ChallengeInputSetSummary {
 // --- Public Shares ---
 
 export type PublicShareResourceType =
+  | "report_snapshot"
   | "challenge_pack_version"
   | "run_scorecard"
   | "run_agent_scorecard"

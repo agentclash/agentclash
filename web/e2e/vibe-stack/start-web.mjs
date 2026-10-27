@@ -1,15 +1,23 @@
 import { startAuthFixture } from "./auth-fixture.mjs";
 import { spawn } from "node:child_process";
-import { cp, mkdtemp, rm, symlink } from "node:fs/promises";
+import { cp, mkdir, open, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 // Next rewrites next-env.d.ts/tsconfig during startup. Run the unchanged app
 // source from a temporary copy so this test never touches an active .next tree
 // or developer configuration. No .env files or credentials are copied.
 const web = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const staging = await mkdtemp(path.join(tmpdir(), "agentclash-vibe-browser-"));
+async function recordOwned(kind, name) {
+  if (!process.env.VIBE_BROWSER_OWNERSHIP_LOG) return;
+  const f=await open(process.env.VIBE_BROWSER_OWNERSHIP_LOG,"a",0o600);
+  try {await f.writeFile(JSON.stringify({kind,name,pid:process.pid,time:new Date().toISOString()})+"\n");await f.sync();} finally {await f.close();}
+}
+const staging = path.join(tmpdir(), `agentclash-vibe-browser-${randomUUID()}`);
+await recordOwned("frontend_directory",staging);
+await mkdir(staging);
 let child;
 let closeAuth;
 let stopping = false;
@@ -26,6 +34,7 @@ async function stop(signal = "SIGTERM") {
 process.on("SIGTERM", () => void stop());
 process.on("SIGINT", () => void stop("SIGINT"));
 try {
+  await recordOwned("loopback_listener", `127.0.0.1:${process.env.WORKOS_API_PORT || "55442"}`);
   closeAuth = await startAuthFixture(Number(process.env.WORKOS_API_PORT || "55442"), `http://127.0.0.1:${process.env.VIBE_BROWSER_WEB_PORT ?? "53518"}`);
   await Promise.all([
     ...["src", "public", "package.json", "tsconfig.json", "next.config.ts", "postcss.config.mjs"].map(
@@ -33,6 +42,7 @@ try {
     ),
     symlink(path.join(web, "node_modules"), path.join(staging, "node_modules"), "dir"),
   ]);
+  await recordOwned("frontend_process", `next:127.0.0.1:${process.env.VIBE_BROWSER_WEB_PORT || "53518"}:${staging}`);
   child = spawn(process.execPath, [
     path.join(web, "node_modules/next/dist/bin/next"),
     "dev", "--hostname", "127.0.0.1", "--port", process.env.VIBE_BROWSER_WEB_PORT ?? "53518",

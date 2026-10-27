@@ -74,6 +74,7 @@ func (h *VibeHandler) Routes() http.Handler {
 		})
 	})
 	h.RegisterSDKReports(r)
+ h.registerReportSnapshots(r)
  h.registerCanonicalResults(r)
 	r.Get("/config", h.config)
 	r.Post("/sessions/{sessionID}/enquiries", h.createEnquiry)

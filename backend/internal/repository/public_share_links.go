@@ -15,6 +15,7 @@ import (
 type PublicShareResourceType string
 
 const (
+	PublicShareResourceReportSnapshot       PublicShareResourceType = "report_snapshot"
 	PublicShareResourceChallengePackVersion PublicShareResourceType = "challenge_pack_version"
 	PublicShareResourceRunScorecard         PublicShareResourceType = "run_scorecard"
 	PublicShareResourceRunAgentScorecard    PublicShareResourceType = "run_agent_scorecard"

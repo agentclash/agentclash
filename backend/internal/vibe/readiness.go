@@ -86,7 +86,9 @@ func (r *Readiness) DependencyChecks(ctx context.Context) map[string]string {
 	if r.DB != nil {
 		// Resolve required columns as well as relations; a reachable but unmigrated
 		// database is not ready. This works with both supported migration runners.
-		rows, err := r.DB.Query(ctx, `SELECT s.id,o.state,b.delivered_at,a.reconciliation_evidence,c.balance,
+		rows, err := r.DB.Query(ctx, `SELECT rs.id,rs.workspace_id,rs.organization_id,rs.actor,rs.client_id,rs.request_hash,rs.content_hash,rs.body,rs.created_at,
+ rn.id,rn.snapshot_id,rn.author_id,rn.client_id,rn.target_id,rn.text,rn.created_at,
+ s.id,o.state,b.delivered_at,a.reconciliation_evidence,c.balance,
    e.session_id,e.client_id,e.request_hash,e.evidence_id,e.artifact_id,
    sp.session_id,sp.client_id,sp.report_id,sp.source_case_id,sp.source_evidence_hash,sp.request_hash,sp.artifact,sp.created_at,
    sr.id,sr.session_id,sr.actor,sr.workspace_id,sr.artifact_id,sr.external_report_id,sr.request_hash,sr.source_json,sr.content_sha256,sr.body,sr.storage_bytes,sr.created_at,
@@ -95,7 +97,7 @@ func (r *Readiness) DependencyChecks(ctx context.Context) map[string]string {
  s.archived_at,f.id,f.session_id,f.artifact_id,f.filename,f.media_type,f.content_sha256,f.content,
  p.draft_id,p.session_id,p.artifact_id,p.workspace_id,p.composition_hash,p.case_keys,p.original_content,p.original_filename,p.original_media_type,p.original_hash,p.advanced,
  k.draft_id,k.artifact_id,k.challenge_pack_version_id,k.case_key,k.input_set_key,k.challenge_key,k.published_case_id
-   FROM vibe_sessions s,vibe_operations o,vibe_outbox b,vibe_attempts a,vibe_accounts c,
+   FROM report_snapshots rs,report_snapshot_notes rn,vibe_sessions s,vibe_operations o,vibe_outbox b,vibe_attempts a,vibe_accounts c,
    vibe_sdk_promotions sp,vibe_sdk_reports sr,vibe_evidence_receipts e,vibe_grade_reviews g,vibe_validation_reviews v,vibe_import_originals f,vibe_pack_sources p,vibe_published_case_bindings k LIMIT 0`)
 		if err == nil {
 			rows.Close()

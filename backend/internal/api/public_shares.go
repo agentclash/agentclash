@@ -45,6 +45,26 @@ type PublicShareRepository interface {
 	GetPublicRunAgentReplaySnapshot(ctx context.Context, runAgentID uuid.UUID) (repository.PublicRunAgentReplaySnapshot, error)
 }
 
+// Optional capability preserves existing resource repository implementations.
+type reportSnapshotRepository interface {
+	GetPublicReportSnapshot(context.Context, uuid.UUID) (repository.PublicReportSnapshot, error)
+	AuthorizeReportSnapshotWriter(context.Context, uuid.UUID, uuid.UUID) error
+}
+
+func (m *PublicShareManager) reportWriter(ctx context.Context, caller Caller, workspace uuid.UUID) error {
+	if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, workspace, ActionPublishPublicArtifact); err != nil {
+		return err
+	}
+	repo, ok := m.repo.(reportSnapshotRepository)
+	if !ok {
+		return repository.ErrPublicShareLinkNotFound
+	}
+	if err := repo.AuthorizeReportSnapshotWriter(ctx, caller.UserID, workspace); err != nil {
+		return ErrForbidden
+	}
+	return nil
+}
+
 type PublicShareService interface {
 	CreateShareLink(ctx context.Context, caller Caller, input CreateShareLinkInput) (CreateShareLinkResult, error)
 	RevokeShareLink(ctx context.Context, caller Caller, shareID uuid.UUID) error
@@ -118,6 +138,14 @@ func (m *PublicShareManager) WithArtifactSigner(signer ArtifactContentSigner) *P
 }
 
 func (m *PublicShareManager) CreateShareLink(ctx context.Context, caller Caller, input CreateShareLinkInput) (CreateShareLinkResult, error) {
+	if input.ResourceType == repository.PublicShareResourceReportSnapshot {
+		if input.SearchIndexing {
+			return CreateShareLinkResult{}, ErrForbidden
+		}
+		if input.ExpiresAt == nil || !input.ExpiresAt.After(m.clock()) {
+			return CreateShareLinkResult{}, errReportShareExpiry
+		}
+	}
 	organizationID, workspaceID, err := m.authorizedResourceScope(ctx, caller, input)
 	if err != nil {
 		return CreateShareLinkResult{}, err
@@ -166,6 +194,11 @@ func (m *PublicShareManager) RevokeShareLink(ctx context.Context, caller Caller,
 	if err := m.authorizer.AuthorizeWorkspace(ctx, caller, share.WorkspaceID); err != nil {
 		return err
 	}
+	if share.ResourceType == repository.PublicShareResourceReportSnapshot {
+		if err := m.reportWriter(ctx, caller, share.WorkspaceID); err != nil {
+			return err
+		}
+	}
 	return m.repo.RevokePublicShareLink(ctx, shareID)
 }
 
@@ -174,6 +207,15 @@ func (m *PublicShareManager) SetShareSearchIndexing(ctx context.Context, caller 
 	if err != nil {
 		return err
 	}
+	if share.ResourceType == repository.PublicShareResourceReportSnapshot {
+		if err := m.reportWriter(ctx, caller, share.WorkspaceID); err != nil {
+			return err
+		}
+		if enabled {
+			return ErrForbidden
+		}
+	}
+
 	if enabled {
 		if err := AuthorizeWorkspaceAction(ctx, m.authorizer, caller, share.WorkspaceID, ActionPublishPublicArtifact); err != nil {
 			return err
@@ -197,6 +239,9 @@ func (m *PublicShareManager) GetPublicShare(ctx context.Context, token string, b
 	resource, err := m.publicResource(ctx, share, baseURL, true)
 	if err != nil {
 		return PublicSharePayload{}, err
+	}
+	if share.ResourceType == repository.PublicShareResourceReportSnapshot {
+		share.SearchIndexing = false
 	}
 	return PublicSharePayload{
 		Share:    mapPublicShareLink(share, ""),
@@ -284,7 +329,7 @@ func (m *PublicShareManager) publicationPayload(ctx context.Context, share repos
 }
 
 func (m *PublicShareManager) publicationEligible(share repository.PublicShareLink) bool {
-	if !share.IsActive || !share.SearchIndexing || share.RevokedAt != nil {
+	if share.ResourceType == repository.PublicShareResourceReportSnapshot || !share.IsActive || !share.SearchIndexing || share.RevokedAt != nil {
 		return false
 	}
 	if share.ExpiresAt != nil && !share.ExpiresAt.After(m.clock()) {
@@ -295,6 +340,20 @@ func (m *PublicShareManager) publicationEligible(share repository.PublicShareLin
 
 func (m *PublicShareManager) authorizedResourceScope(ctx context.Context, caller Caller, input CreateShareLinkInput) (uuid.UUID, uuid.UUID, error) {
 	switch input.ResourceType {
+	case repository.PublicShareResourceReportSnapshot:
+		repo, ok := m.repo.(reportSnapshotRepository)
+		if !ok {
+			return uuid.Nil, uuid.Nil, repository.ErrPublicShareLinkNotFound
+		}
+		snapshot, err := repo.GetPublicReportSnapshot(ctx, input.ResourceID)
+		if err != nil {
+			return uuid.Nil, uuid.Nil, err
+		}
+		if err = m.reportWriter(ctx, caller, snapshot.WorkspaceID); err != nil {
+			return uuid.Nil, uuid.Nil, err
+		}
+		return snapshot.OrganizationID, snapshot.WorkspaceID, nil
+
 	case repository.PublicShareResourceChallengePackVersion:
 		version, err := m.repo.GetRunnableChallengePackVersionByID(ctx, input.ResourceID)
 		if err != nil {
@@ -369,6 +428,28 @@ func (m *PublicShareManager) authorizedResourceScope(ctx context.Context, caller
 
 func (m *PublicShareManager) publicResource(ctx context.Context, share repository.PublicShareLink, baseURL string, includeSignedArtifactURLs bool) (any, error) {
 	switch share.ResourceType {
+	case repository.PublicShareResourceReportSnapshot:
+		repo, ok := m.repo.(reportSnapshotRepository)
+		if !ok {
+			return nil, repository.ErrPublicShareLinkNotFound
+		}
+		snapshot, err := repo.GetPublicReportSnapshot(ctx, share.ResourceID)
+		if err != nil {
+			return nil, err
+		}
+		if snapshot.WorkspaceID != share.WorkspaceID || snapshot.OrganizationID != share.OrganizationID {
+			return nil, repository.ErrPublicShareLinkNotFound
+		}
+		// Workspace/author records and live private notes are not public report content.
+		var value struct {
+			Content json.RawMessage `json:"content"`
+			Hash    string          `json:"content_hash"`
+		}
+		if json.Unmarshal(snapshot.Body, &value) != nil || len(value.Content) == 0 {
+			return nil, repository.ErrPublicShareLinkNotFound
+		}
+		return map[string]any{"type": "report_snapshot", "content": value.Content, "content_hash": value.Hash}, nil
+
 	case repository.PublicShareResourceChallengePackVersion:
 		snapshot, err := m.repo.GetPublicChallengePackVersionSnapshot(ctx, share.ResourceID)
 		if err != nil {
@@ -711,6 +792,8 @@ func updateShareLinkHandler(logger *slog.Logger, service PublicShareService) htt
 
 func getPublicShareHandler(logger *slog.Logger, service PublicShareService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 		token := chi.URLParam(r, "token")
 		result, err := service.GetPublicShare(r.Context(), token, requestBaseURL(r))
 		if err != nil {
@@ -780,6 +863,8 @@ func writeShareError(w http.ResponseWriter, logger *slog.Logger, r *http.Request
 		errors.Is(err, repository.ErrRunAgentScorecardNotFound),
 		errors.Is(err, repository.ErrRunAgentReplayNotFound):
 		writeError(w, http.StatusNotFound, "not_found", "shared resource not found")
+	case errors.Is(err, errReportShareExpiry):
+		writeError(w, http.StatusBadRequest, "invalid_share_request", "report links require an expiry in the future")
 	case errors.Is(err, errInvalidShareResourceType):
 		writeError(w, http.StatusBadRequest, "invalid_share_request", "unsupported resource_type")
 	case errors.Is(err, repository.ErrAgentTryoutNotFound):
@@ -791,6 +876,8 @@ func writeShareError(w http.ResponseWriter, logger *slog.Logger, r *http.Request
 		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 	}
 }
+
+var errReportShareExpiry = errors.New("report link requires future expiry")
 
 var errInvalidShareResourceType = errors.New("invalid public share resource type")
 
@@ -804,7 +891,8 @@ func newShareKey() (string, error) {
 
 func validPublicShareResourceType(resourceType repository.PublicShareResourceType) bool {
 	switch resourceType {
-	case repository.PublicShareResourceChallengePackVersion,
+	case repository.PublicShareResourceReportSnapshot,
+		repository.PublicShareResourceChallengePackVersion,
 		repository.PublicShareResourceRunScorecard,
 		repository.PublicShareResourceRunAgentScorecard,
 		repository.PublicShareResourceRunAgentReplay,

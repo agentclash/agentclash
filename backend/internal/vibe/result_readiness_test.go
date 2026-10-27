@@ -52,8 +52,25 @@ func TestIntegrationResultEvidenceReadinessRequiresMigration(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if r.DependencyChecks(ctx)["vibe_schema"] == "ok" {
+		t.Fatal("pre-report migration advertised ready")
+	}
+	for _, name := range []string{"report_snapshots", "report_snapshot_notes"} {
+		if _, err = db.Exec(ctx, "CREATE TABLE "+name+" (LIKE public."+name+")"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if r.DependencyChecks(ctx)["vibe_schema"] != "ok" {
 		t.Fatal("migrated schema unavailable")
+	}
+	if _, err = db.Exec(ctx, "ALTER TABLE report_snapshot_notes DROP COLUMN target_id"); err != nil {
+		t.Fatal(err)
+	}
+	if r.DependencyChecks(ctx)["vibe_schema"] == "ok" {
+		t.Fatal("missing annotation target advertised ready")
+	}
+	if _, err = db.Exec(ctx, "ALTER TABLE report_snapshot_notes ADD COLUMN target_id text"); err != nil {
+		t.Fatal(err)
 	}
 	if _, err = db.Exec(ctx, "ALTER TABLE vibe_sdk_reports DROP COLUMN source_json"); err != nil {
 		t.Fatal(err)
