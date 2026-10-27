@@ -4,6 +4,7 @@ import { parseResultSelection } from "@/lib/vibe-result-selection";
 import { VibeDataUseNotice, VibeRedactionHint } from "./vibe-data-use";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Tabs } from "@base-ui/react/tabs";
+import { Info, MessageSquare } from "lucide-react";
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from "@/components/ui/sheet";
 import { terminal, type Operation } from "@/lib/vibe";
 import { buildVersion, instructionChangeBaseline } from "@/lib/vibe-build-timeline";
@@ -153,7 +154,7 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
   const utilityContent = <><div className="vibe-utility-heading"><h2 ref={utilityHeading} tabIndex={-1}>{utility === "guide" ? "Guide" : "Details"}</h2><VibeButton aria-label={`Close ${utility === "guide" ? "Guide" : "Details"}`} onClick={close}>Close</VibeButton></div>{utility === "guide" ? guide : details}</>;
   return <>
     <header className="vibe-project-header"><div className="vibe-project-identity">{p.navigationToggle}<div><h1>{evaluationIdentity(session).title}</h1><p>{artifact ? `v${buildVersion(session, artifact)} · ${artifact.title}` : "Initial brief"}{result ? ` · Evidence: Run ${runs.indexOf(result) + 1} (${result.state})` : p.selectedResult ? ` · ${sourceLabel}` : artifact ? " · No results for this version" : " · No saved runs"}</p></div></div>
-      <div className="vibe-project-tools"><VibeButton aria-label="Guide" aria-describedby={utility !== "guide" && guideAttention ? "vibe-guide-attention" : undefined} aria-pressed={utility === "guide"} onClick={() => open("guide")}><span>Guide</span>{utility !== "guide" && guideAttention && <small id="vibe-guide-attention" className="vibe-guide-attention">{guideAttention}</small>}</VibeButton><VibeButton aria-pressed={utility === "details"} onClick={() => open("details")}>Details</VibeButton></div>
+      <div className="vibe-project-tools"><VibeButton aria-label="Guide" aria-describedby={utility !== "guide" && guideAttention ? "vibe-guide-attention" : undefined} aria-pressed={utility === "guide"} onClick={() => open("guide")}><MessageSquare className="vibe-project-tool-icon" aria-hidden="true" /><span className="vibe-project-tool-label">Guide</span>{utility !== "guide" && guideAttention && <small id="vibe-guide-attention" className="vibe-guide-attention">{guideAttention}</small>}</VibeButton><VibeButton aria-label="Details" aria-pressed={utility === "details"} onClick={() => open("details")}><Info className="vibe-project-tool-icon" aria-hidden="true" /><span className="vibe-project-tool-label">Details</span></VibeButton></div>
       <Tabs.Root className="vibe-project-tabs" value={view} onValueChange={next => p.onNavigate(next === "results" ? "checks" : next === "tests" ? "tests" : "build")}><Tabs.List aria-label="Workspace views" className="vibe-nav">{["agent", "tests", "results"].map(value => <Tabs.Tab className="vibe-button vibe-button-quiet" id={`vibe-tab-${value}`} aria-controls="vibe-workspace-panel" key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</Tabs.Tab>)}</Tabs.List></Tabs.Root>
     </header>
     <div className="vibe-project-body" data-utility-open={!!utility && wide}>
