@@ -27,6 +27,9 @@ import (
 	"github.com/agentclash/agentclash/backend/internal/repository"
 	"github.com/agentclash/agentclash/runtime/runevents"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.temporal.io/sdk/activity"
+	"go.temporal.io/sdk/converter"
+	"go.temporal.io/sdk/testsuite"
 )
 
 // These owners use destructive canonical fixtures. Never inherit a deployment DSN.
@@ -444,4 +447,180 @@ func TestConnectorHostedActivityUnknownReentryNeverRedispatches(t *testing.T) {
 	if starter.calls != 1 || row.Status != "unknown" || !first.DeadlineAt.Equal(second.DeadlineAt) || second.ExternalRunID != "" {
 		t.Fatalf("unknown reentry changed dispatch: calls=%d row=%+v first=%+v second=%+v", starter.calls, row, first, second)
 	}
+}
+
+// The actual scheduled activity, guarded request and authenticated persistence
+// share one original deadline. The target deliberately never returns acceptance.
+func TestConnectorHostedWorkflowLostAcceptanceAtRequestBound(t *testing.T) {
+	for _, callback := range []bool{true, false} {
+		name := "authenticated_completion"
+		if !callback {
+			name = "unknown_expires_without_redispatch"
+		}
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			db := connectorTestDB(t)
+			f := seedFixture(t, ctx, db)
+			repo := newSecretsRepo(t, db)
+			if err := repo.UpsertWorkspaceSecret(ctx, repository.UpsertWorkspaceSecretParams{WorkspaceID: f.workspaceID, Key: "APP_TOKEN", Value: "local-fixture-token", ActorUserID: &f.userID}); err != nil {
+				t.Fatal(err)
+			}
+			binding, err := repo.CreateConnector(ctx, repository.CreateConnectorParams{WorkspaceID: f.workspaceID, ActorUserID: f.userID, Name: "Slow hosted fixture", Config: connectors.Config{Adapter: connectors.Hosted, EndpointURL: "https://example.com", SecretKey: "APP_TOKEN", Auth: "bearer", TimeoutSeconds: 7}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = repo.ApproveConnector(ctx, binding, f.userID); err != nil {
+				t.Fatal(err)
+			}
+			created, err := repo.CreateQueuedRun(ctx, repository.CreateQueuedRunParams{OrganizationID: f.organizationID, WorkspaceID: f.workspaceID, ChallengePackVersionID: f.challengePackVersionID, ChallengeInputSetID: &f.challengeInputSetID, OfficialPackMode: domain.OfficialPackModeFull, CreatedByUserID: &f.userID, Name: "Lost acceptance", ExecutionMode: "single_agent", ExecutionPlan: json.RawMessage(`{}`), RunAgents: []repository.CreateQueuedRunAgentParams{{AgentDeploymentID: binding.DeploymentID, AgentDeploymentSnapshotID: binding.SnapshotID, Label: "Hosted"}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			run, agent := created.Run, created.RunAgents[0]
+			var suite testsuite.WorkflowTestSuite
+			suite.SetDisableRegistrationAliasing(true)
+			env := suite.NewTestWorkflowEnvironment()
+			env.SetTestTimeout(20 * time.Second)
+			manager := api.NewHostedRunIngestionManager(repo, "local-callback-key", connectorWorkflowSignaler{env}, nil, slog.Default())
+			var sends atomic.Int32
+			received := make(chan hostedruns.StartRequest, 1)
+			target := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				sends.Add(1)
+				var request hostedruns.StartRequest
+				if r.Header.Get("Authorization") != "Bearer local-fixture-token" || r.URL.Path != "/agentclash/runs" {
+					t.Error("incorrect dispatch auth or endpoint")
+				}
+				if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+					t.Error(err)
+					return
+				}
+				received <- request
+				if callback {
+					timer := time.NewTimer(6 * time.Second)
+					defer timer.Stop()
+					select {
+					case <-r.Context().Done():
+						return
+					case <-timer.C:
+					}
+					status := hostedruns.FinalStatusCompleted
+					event := hostedruns.Event{EventID: "terminal-one", RunAgentID: agent.ID, ExternalRunID: "slow-remote", EventType: hostedruns.EventTypeRunFinished, OccurredAt: time.Now().UTC(), FinalStatus: &status, Output: json.RawMessage(`{"answer":"done"}`)}
+					if err := manager.IngestEvent(ctx, run.ID, "invalid-token", event); err == nil {
+						t.Error("unauthenticated callback accepted")
+					}
+					if err := manager.IngestEvent(ctx, run.ID, request.CallbackToken, event); err != nil {
+						t.Error(err)
+					}
+				}
+				<-r.Context().Done() // acceptance is lost at the original seven-second request bound
+			}))
+			defer target.Close()
+			transport := connectors.Client{HTTP: target.Client(), Resolver: connectorFixtureResolver{}, Dialer: connectorFixtureDialer(func(ctx context.Context, n, a string) (net.Conn, error) {
+				if a != "93.184.216.34:443" {
+					return nil, errors.New("unpinned fixture dial")
+				}
+				return (&net.Dialer{}).DialContext(ctx, n, target.Listener.Addr().String())
+			})}
+			var requestElapsed time.Duration
+			starter := connectorWorkflowStarter(func(ctx context.Context, input workflow.HostedRunStartInput) (hostedruns.StartResponse, error) {
+				approved, secret, err := repo.ResolveApprovedConnector(ctx, binding.SnapshotID, f.workspaceID)
+				if err != nil {
+					return hostedruns.StartResponse{}, err
+				}
+				token, err := hostedruns.NewCallbackTokenSigner("local-callback-key").Sign(run.ID, agent.ID)
+				if err != nil {
+					return hostedruns.StartResponse{}, err
+				}
+				body, err := json.Marshal(hostedruns.StartRequest{RunID: run.ID, RunAgentID: agent.ID, ChallengePackVersionID: f.challengePackVersionID, TaskPayload: input.TaskPayload, TraceLevel: input.TraceLevel, CallbackURL: "https://callback.example.com/events", CallbackToken: token, DeadlineAt: input.DeadlineAt})
+				if err != nil {
+					return hostedruns.StartResponse{}, err
+				}
+				started := time.Now()
+				_, err = transport.DoJSON(ctx, approved.Config.EndpointURL+"/agentclash/runs", approved.Config.Auth, secret, body, input.DeadlineAt)
+				requestElapsed = time.Since(started)
+				return hostedruns.StartResponse{}, err
+			})
+			activities := workflow.NewActivities(repo, workflow.FakeWorkHooks{HostedRunStarter: starter})
+			workflow.Register(env, activities)
+			var activityResult workflow.StartHostedRunResult
+			var atActivityCompletion string
+			env.SetOnActivityCompletedListener(func(info *activity.Info, result converter.EncodedValue, err error) {
+				if info.ActivityType.Name != "workflow.start_hosted_run" || err != nil {
+					return
+				}
+				if err := result.Get(&activityResult); err != nil {
+					t.Error(err)
+					return
+				}
+				row, err := repo.GetHostedRunExecutionByRunAgentID(ctx, agent.ID)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				atActivityCompletion = row.Status
+			})
+			env.ExecuteWorkflow(workflow.RunAgentWorkflow, workflow.RunAgentWorkflowInput{RunID: run.ID, RunAgentID: agent.ID})
+			if callback {
+				if err := env.GetWorkflowError(); err != nil {
+					t.Fatalf("authenticated completion stranded by lost acceptance: %v", err)
+				}
+				if !activityResult.Completed || atActivityCompletion != "completed" {
+					t.Fatalf("completion lost: result=%+v status=%s", activityResult, atActivityCompletion)
+				}
+			} else {
+				if err := env.GetWorkflowError(); err == nil || !strings.Contains(err.Error(), "timed out waiting for callback") {
+					t.Fatalf("expected original callback deadline, got %v", err)
+				}
+				if activityResult.Completed || atActivityCompletion != "unknown" {
+					t.Fatalf("lost acceptance wasn't persisted unknown: result=%+v status=%s", activityResult, atActivityCompletion)
+				}
+			}
+			if sends.Load() != 1 || requestElapsed < 6*time.Second || requestElapsed > 9*time.Second {
+				t.Fatalf("sends=%d request elapsed=%s; expected one bounded request beyond five seconds", sends.Load(), requestElapsed)
+			}
+			request := <-received
+			row, err := repo.GetHostedRunExecutionByRunAgentID(ctx, agent.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantStatus := "unknown"
+			if callback {
+				wantStatus = "completed"
+			}
+			if row.Status != wantStatus {
+				t.Fatalf("persisted execution status=%s, want %s", row.Status, wantStatus)
+			}
+			if !callback && env.Now().After(row.DeadlineAt.Add(time.Second)) {
+				t.Fatal("workflow restarted the callback wait instead of using the original deadline")
+			}
+			if !row.DeadlineAt.Equal(request.DeadlineAt) || !row.DeadlineAt.Equal(activityResult.DeadlineAt) {
+				t.Fatalf("original callback deadline changed: request=%s activity=%s row=%s", request.DeadlineAt, activityResult.DeadlineAt, row.DeadlineAt)
+			}
+			if _, err := activities.StartHostedRun(ctx, workflow.StartHostedRunInput{RunAgentID: agent.ID, TraceLevel: hostedruns.TraceLevelBlackBox}); err != nil {
+				t.Fatal(err)
+			}
+			if sends.Load() != 1 {
+				t.Fatal("re-entry resent a possibly accepted request")
+			}
+			again, err := repo.GetHostedRunExecutionByRunAgentID(ctx, agent.ID)
+			if err != nil || !again.DeadlineAt.Equal(row.DeadlineAt) || again.Status != row.Status {
+				t.Fatalf("re-entry reset execution: %+v %v", again, err)
+			}
+		})
+	}
+}
+
+type connectorWorkflowStarter func(context.Context, workflow.HostedRunStartInput) (hostedruns.StartResponse, error)
+
+func (s connectorWorkflowStarter) Start(ctx context.Context, input workflow.HostedRunStartInput) (hostedruns.StartResponse, error) {
+	return s(ctx, input)
+}
+
+type connectorWorkflowSignaler struct {
+	env *testsuite.TestWorkflowEnvironment
+}
+
+func (s connectorWorkflowSignaler) SignalRunAgentWorkflow(_ context.Context, _ uuid.UUID, _ uuid.UUID, event hostedruns.Event) error {
+	s.env.SignalWorkflow(workflow.HostedRunEventSignal, event)
+	return nil
 }

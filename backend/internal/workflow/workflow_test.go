@@ -18,6 +18,7 @@ import (
 	"github.com/agentclash/agentclash/runtime/provider"
 	"github.com/agentclash/agentclash/runtime/scoring"
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/mock"
 	sdkactivity "go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/client"
 	"go.temporal.io/sdk/temporal"
@@ -981,6 +982,64 @@ func TestRunAgentWorkflowHostedBlackBoxSuccess(t *testing.T) {
 	}
 	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusEvaluating {
 		t.Fatalf("run agent status = %s, want %s", got, domain.RunAgentStatusEvaluating)
+	}
+}
+
+// This uses a real scheduled activity and its actual context deadline. A direct
+// StartHostedRun call would miss Temporal's independent five-second default.
+func TestRunAgentWorkflowHostedAcceptanceBeyondFiveSeconds(t *testing.T) {
+	runID, runAgentID := uuid.New(), uuid.New()
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusRunning), fixtureRunAgent(runID, runAgentID, 0))
+	execution := hostedExecutionContext(runID, runAgentID)
+	execution.Deployment.RuntimeProfile.RunTimeoutSeconds = 12
+	repo.setExecutionContext(runAgentID, execution)
+	starter := &delayedHostedAcceptance{}
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{HostedRunStarter: starter})
+	env.SetTestTimeout(20 * time.Second)
+	env.RegisterDelayedCallback(func() {
+		status := hostedruns.FinalStatusCompleted
+		env.SignalWorkflow(HostedRunEventSignal, hostedruns.Event{RunAgentID: runAgentID, ExternalRunID: "delayed-remote", EventType: hostedruns.EventTypeRunFinished, OccurredAt: time.Now().UTC(), FinalStatus: &status, Output: []byte(`{"answer":"done"}`)})
+	}, 7*time.Second)
+	env.ExecuteWorkflow(RunAgentWorkflow, RunAgentWorkflowInput{RunID: runID, RunAgentID: runAgentID})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("delayed accepted run failed: %v", err)
+	}
+	if !starter.accepted || starter.calls != 1 {
+		t.Fatalf("acceptance=%v sends=%d; expected one acceptance after six seconds", starter.accepted, starter.calls)
+	}
+	if got := repo.currentRunAgent(runAgentID).Status; got != domain.RunAgentStatusEvaluating {
+		t.Fatalf("status=%s", got)
+	}
+}
+
+func TestRunAgentWorkflowHostedStartFailureIsNeverRetried(t *testing.T) {
+	runID, runAgentID := uuid.New(), uuid.New()
+	repo := newFakeRunRepository(fixtureRun(runID, domain.RunStatusRunning), fixtureRunAgent(runID, runAgentID, 0))
+	repo.setExecutionContext(runAgentID, hostedExecutionContext(runID, runAgentID))
+	env := newTestWorkflowEnvironment(repo, FakeWorkHooks{})
+	env.OnActivity(startHostedRunActivityName, mock.Anything, mock.Anything).Return(StartHostedRunResult{}, errors.New("dispatch persistence unavailable")).Once()
+	env.ExecuteWorkflow(RunAgentWorkflow, RunAgentWorkflowInput{RunID: runID, RunAgentID: runAgentID})
+	if err := env.GetWorkflowError(); err == nil {
+		t.Fatal("failed start was reported successful")
+	}
+	env.AssertExpectations(t)
+}
+
+type delayedHostedAcceptance struct {
+	calls    int
+	accepted bool
+}
+
+func (s *delayedHostedAcceptance) Start(ctx context.Context, input HostedRunStartInput) (hostedruns.StartResponse, error) {
+	s.calls++
+	timer := time.NewTimer(6 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return hostedruns.StartResponse{}, ctx.Err()
+	case <-timer.C:
+		s.accepted = true
+		return hostedruns.StartResponse{Accepted: true, ExternalRunID: "delayed-remote"}, nil
 	}
 }
 

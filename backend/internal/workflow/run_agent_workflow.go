@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	nativeActivityBootBuffer    = 20 * time.Second
-	nativeActivityCleanupBuffer = 15 * time.Second
+	nativeActivityBootBuffer        = 20 * time.Second
+	nativeActivityCleanupBuffer     = 15 * time.Second
+	hostedActivityPersistenceBuffer = 10 * time.Second
 )
 
 func RunAgentWorkflow(ctx sdkworkflow.Context, input RunAgentWorkflowInput) error {
@@ -238,8 +239,20 @@ func nativeModelActivityOptions(executionContext repository.RunAgentExecutionCon
 }
 
 func runHostedRunAgent(ctx sdkworkflow.Context, input RunAgentWorkflowInput, executionContext repository.RunAgentExecutionContext) error {
+	// The repository replaces connector run/step limits with the frozen binding's
+	// timeout. Give its acceptance request that full bound, plus repository setup
+	// and the activity's three-second cancellation-independent unknown cleanup.
+	// This allowance does not extend the persisted remote/callback deadline.
+	options := defaultActivityOptions
+	requestTimeout := time.Duration(executionContext.Deployment.RuntimeProfile.RunTimeoutSeconds) * time.Second
+	if requestTimeout < defaultActivityTimeout {
+		requestTimeout = defaultActivityTimeout
+	}
+	options.StartToCloseTimeout = requestTimeout + hostedActivityPersistenceBuffer
+	options.RetryPolicy = &temporal.RetryPolicy{MaximumAttempts: 1}
+	startCtx := sdkworkflow.WithActivityOptions(ctx, options)
 	var startResult StartHostedRunResult
-	if err := sdkworkflow.ExecuteActivity(ctx, startHostedRunActivityName, StartHostedRunInput{
+	if err := sdkworkflow.ExecuteActivity(startCtx, startHostedRunActivityName, StartHostedRunInput{
 		RunAgentID: input.RunAgentID,
 		TraceLevel: hostedruns.TraceLevelBlackBox,
 	}).Get(ctx, &startResult); err != nil {

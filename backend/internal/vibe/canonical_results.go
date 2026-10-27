@@ -362,8 +362,9 @@ func canonicalResultTx(ctx context.Context, tx pgx.Tx, v Session, ref ResultRef,
 						return unavailable()
 					}
 					p.Adapter = c.Adapter
-					// The enclosing runtime-profile deadline is mutable, not admitted snapshot data.
-					// SnapshotID retains frozen mapping/auth identity; a partial config hash would overclaim.
+					// Connector run/step limits come from the frozen binding timeout.
+					// Keep historical config unknown pending a complete versioned execution identity;
+					// SnapshotID separately retains the known frozen mapping/auth identity.
 				}
 			}
 			er, e := tx.Query(ctx, `SELECT e.id::text,h.source_event_id,e.sequence_number,e.event_type,e.payload FROM run_events e LEFT JOIN hosted_event_receipts h ON h.run_agent_id=e.run_agent_id AND h.sequence_number=e.sequence_number WHERE e.run_agent_id=$1 ORDER BY e.sequence_number LIMIT 5001`, p.RunAgentID)

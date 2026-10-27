@@ -61,7 +61,7 @@ export function ConnectorSettings(p:ConnectorSettingsProps){
  return <section aria-label="Application source" className="min-w-0 space-y-4">
   <label className="block text-sm">Application source<select className={inputClass} value={source} onChange={e=>{setSource(e.target.value as DeploymentAdapter);setSelected(null);setReviewed(false)}} disabled={busy}><option value="native">Native AgentClash agent</option><option value="http_json">HTTP JSON application</option><option value="hosted">Hosted callback application</option></select></label>
   {source==="native"?<p className="text-sm">Use the native agent and model settings for your AgentClash deployment.</p>:<>
-   <label className="block text-sm">Saved connector<select className={inputClass} value={selected?.snapshot_id??""} disabled={busy} onChange={e=>{const b=items.find(item=>item.snapshot_id===e.target.value)??null;setSelected(b);setReviewed(false);if(b?.approved)configured(b)}}><option value="">Choose a connector</option>{items.filter(item=>item.config.adapter===source).map(item=><option key={item.snapshot_id} value={item.snapshot_id}>{item.target_origin} ({item.approved?"approved":"needs approval"})</option>)}</select></label>
+   <label className="block text-sm">Saved connector<select className={inputClass} value={selected?.snapshot_id??""} disabled={busy} onChange={e=>{const b=items.find(item=>item.snapshot_id===e.target.value)??null;setSelected(b);setReviewed(false);if(b?.approved)configured(b)}}><option value="">Choose a connector</option>{items.filter(item=>item.config.adapter===source).map(item=><option key={item.snapshot_id} value={item.snapshot_id}>{item.snapshot_id} · {item.config.endpoint_url} ({item.approved?"approved":"needs approval"})</option>)}</select></label>
    {p.access.canAdmin?<details><summary className="cursor-pointer text-sm">Configure a new connector</summary><form className="mt-3 space-y-3" onSubmit={e=>{e.preventDefault();void perform("save")}}>
     <label className="block text-sm">Name<input required className={inputClass} maxLength={200} value={name} onChange={e=>setName(e.target.value)} disabled={busy}/></label>
     <label className="block text-sm">HTTPS endpoint<input required type="url" className={inputClass} placeholder="https://app.example.com/invoke" value={endpoint} onChange={e=>setEndpoint(e.target.value)} disabled={busy}/></label>
@@ -71,7 +71,24 @@ export function ConnectorSettings(p:ConnectorSettingsProps){
     <p className="text-xs">Requests and responses are limited to 1 MiB. This connector uses a 60-second deadline and never follows redirects.</p>
     <VibeButton type="submit" disabled={busy}>Save connector</VibeButton>
    </form></details>:<p className="text-sm">A workspace admin must configure and approve connectors.</p>}
-   {selected&&<div className="space-y-3 text-sm"><p className="break-all">Target: {selected.target_origin}</p><p>Credential: {selected.config.secret_key}, revision {selected.secret_revision}. {selected.approved?"Approved":"Approval required"}.</p>
+   {selected&&<div className="min-w-0 space-y-3 text-sm">
+    <section aria-label="Selected connector contract" className="min-w-0 space-y-3 rounded-md border border-builder-border p-3">
+     <h3 className="font-medium">Selected connector contract</h3>
+     <dl className="min-w-0 space-y-2">
+      <div><dt className="text-xs">Snapshot</dt><dd className="break-all font-mono text-xs">{selected.snapshot_id}</dd></div>
+      <div><dt className="text-xs">HTTPS endpoint</dt><dd className="break-all">{selected.config.endpoint_url}</dd></div>
+      <div><dt className="text-xs">Target origin</dt><dd className="break-all">{selected.target_origin}</dd></div>
+      <div><dt className="text-xs">Authentication</dt><dd>{selected.config.auth==="bearer"?"Bearer token":"X-API-Key header"}</dd></div>
+      <div><dt className="text-xs">Workspace credential reference</dt><dd className="break-all">{selected.config.secret_key}, revision {selected.secret_revision}</dd></div>
+      {selected.config.adapter==="http_json"?<>
+       <div><dt className="text-xs">JSON input field mapping</dt><dd><pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify(selected.config.input_fields??{},null,2)}</pre></dd></div>
+       <div><dt className="text-xs">Literal JSON fields</dt><dd><pre className="whitespace-pre-wrap break-all text-xs">{JSON.stringify(selected.config.literal_json??{},null,2)}</pre></dd></div>
+       <div><dt className="text-xs">Response JSON pointer</dt><dd className="break-all font-mono">{selected.config.response_pointer||"(whole response)"}</dd></div>
+      </>:<div><dt className="text-xs">Invocation protocol</dt><dd>POST /agentclash/runs with signed callbacks. JSON field mapping, literals and response pointers do not apply.</dd></div>}
+      <div><dt className="text-xs">Timeout</dt><dd>{selected.config.timeout_seconds} seconds</dd></div>
+     </dl>
+     <p>{selected.approved?"Approved":"Approval required"}. Secret values are never shown here.</p>
+    </section>
     {p.access.canAdmin&&!selected.approved&&<><label className="flex items-start gap-2"><input type="checkbox" checked={reviewed} onChange={e=>setReviewed(e.target.checked)} disabled={busy}/><span>I approve sending this workspace credential and mapped test inputs to this target.</span></label><VibeButton disabled={busy||!reviewed} onClick={()=>void perform("approve")}>Approve connector</VibeButton></>}
     {p.access.canAdmin&&selected.approved&&<VibeButton disabled={busy} onClick={()=>void perform("revoke")}>Revoke approval</VibeButton>}
     {selected.approved&&p.access.canWrite&&<><p>Canonical run charges and workspace spend limits apply. External application or provider fees are separate and excluded from the platform maximum. Cancellation stops local waiting; remote cancellation is not confirmed.</p>{p.publication?.artifact_id===p.artifactId?<><p>{p.publication.case_count} published cases selected.</p><VibeButton disabled={busy||uncertain} onClick={()=>void perform("run")}>Run published tests</VibeButton></>:<p>Select an exact published test version before running this connector.</p>}</>}
