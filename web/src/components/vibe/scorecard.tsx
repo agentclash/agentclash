@@ -144,7 +144,7 @@ export function VibeScorecard({
   const evidenceVersion = `${operation.id}:${operation.state}:${eventCursor || 0}`;
 
   return (
-    <article aria-label="Evaluation scorecard" className="space-y-5">
+    <article aria-label="Evaluation scorecard" className="space-y-6">
       <div>
         <h2
           className="vibe-results-outcome"

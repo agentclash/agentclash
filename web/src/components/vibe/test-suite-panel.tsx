@@ -91,10 +91,10 @@ export function TestSuitePanel({
   const ready = !!artifact.agent_prompt.trim();
   const added = parent ? tests.filter(test => !suiteCases(parent.blueprint).some(old => old.key===test.key)).length : 0;
   const validationBlocked = !!artifact.validation && artifact.validation.status !== "supported";
-  if (artifact.unavailable_reason || !cases.length) return <section className="vibe-panel p-5 space-y-3"><h2>Pack kept · advanced editor needed</h2><p className="text-sm vibe-muted">{artifact.unavailable_reason || "These tests need the full pack builder."} No tests were removed or run.</p>{artifact.original&&onOriginal?<VibeButton onClick={onOriginal}>Download original {artifact.original.filename}</VibeButton>:<VibeButton onClick={()=>downloadJSON("pack-definition.json",artifact.blueprint)}>Download definition</VibeButton>}<VibeButton onClick={onSave}>Save and open advanced editor</VibeButton></section>;
+  if (artifact.unavailable_reason || !cases.length) return <section className="vibe-panel p-4 space-y-3"><h2>Pack kept · advanced editor needed</h2><p className="text-sm vibe-muted">{artifact.unavailable_reason || "These tests need the full pack builder."} No tests were removed or run.</p>{artifact.original&&onOriginal?<VibeButton onClick={onOriginal}>Download original {artifact.original.filename}</VibeButton>:<VibeButton onClick={()=>downloadJSON("pack-definition.json",artifact.blueprint)}>Download definition</VibeButton>}<VibeButton onClick={onSave}>Save and open advanced editor</VibeButton></section>;
 
   return (
-    <section data-proposal-id={artifact.id} aria-label="Your tests" className="space-y-5">
+    <section data-proposal-id={artifact.id} aria-label="Your tests" className="space-y-6">
       {(instructionDraft.conflict || casesDraft.conflict) && <div role="alert"><p>The saved source changed. Review your draft before applying it.</p><VibeButton onClick={() => { instructionDraft.preserve(); casesDraft.preserve(); }}>Keep my draft for this source</VibeButton><VibeButton onClick={() => { instructionDraft.discard(); casesDraft.discard(); restoreFocus(); }}>Discard my draft</VibeButton></div>}
       <div className="vibe-tests-header">
         <div>
@@ -173,11 +173,13 @@ export function TestSuitePanel({
                 </span>
                 <ChevronRight className="vibe-chevron vibe-muted" size={16} />
               </summary>
-              <div className="border-t border-[var(--vibe-border)] px-5 py-4">
+              <div className="border-t border-[var(--vibe-border)] p-4">
                 <p className="mb-1 text-xs vibe-muted">What should happen</p>
                 <p>{test.expected}</p>
-                {onAskCase && <VibeButton onClick={() => onAskCase(test.key)}>Ask Guide about this test</VibeButton>}
-                {test.editable && <VibeButton variant="quiet" className="mt-2 !px-0" disabled={busy} onClick={() => { setFocusedCase(test.key); setEditing(true); onSelectCase?.(test.key); }}>Edit this expectation</VibeButton>}
+                {(onAskCase || test.editable) && <div className="mt-3 flex flex-wrap gap-2">
+                  {onAskCase && <VibeButton onClick={() => onAskCase(test.key)}>Ask Guide about this test</VibeButton>}
+                  {test.editable && <VibeButton disabled={busy} onClick={() => { setFocusedCase(test.key); setEditing(true); onSelectCase?.(test.key); }}>Edit this expectation</VibeButton>}
+                </div>}
                 {!test.editable && <p className="mt-2 text-sm vibe-muted">To change custom grading rules, edit the original pack and import it again.</p>}
               </div>
             </details>
@@ -185,7 +187,7 @@ export function TestSuitePanel({
         </div>
       )}
       {editing && draft && (
-        <div className="vibe-panel space-y-5 p-5">
+        <div className="vibe-panel space-y-4 p-4">
           {checkingChanges && <p role="status" className="text-sm vibe-muted">Checking these test changes…</p>}
           {draft.map((test, i) => test.editable && (!focusedCase || focusedCase === test.key) && (
             <div key={test.key} className="space-y-3">
@@ -248,7 +250,7 @@ export function TestSuitePanel({
       )}
       {agentOpen && (
         <form
-          className="vibe-panel space-y-4 p-5"
+          className="vibe-panel space-y-4 p-4"
           onSubmit={async (e) => {
             e.preventDefault();
             if (busy || instructionDraft.conflict || !instructions.trim()) return;

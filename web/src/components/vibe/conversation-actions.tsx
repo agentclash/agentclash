@@ -56,7 +56,7 @@ export function ConversationActions({ session, busy, onAction, onReload, primary
   return (
     <section aria-label="Conversation choices" aria-busy={pending} className="min-w-0 space-y-3 text-builder-fg">
       {proposal ? (
-        <div className="space-y-3 rounded-xl border border-builder-border p-4">
+        <div className="space-y-3 rounded-[var(--vibe-radius-md)] border border-builder-border p-4">
           <p className="text-xs text-builder-fg-muted">Suggested checks</p>
           <ul className="list-disc space-y-1 break-words pl-5 text-sm">
             {proposal.facts.map(fact => <li key={fact.id}>{fact.text}</li>)}

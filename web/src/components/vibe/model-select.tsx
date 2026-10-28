@@ -30,7 +30,7 @@ export function ModelSelect({
         value={value}
         disabled={disabled || !models.length}
         onChange={(e) => onChange(e.target.value)}
-        className="max-w-48 rounded-md border border-builder-border bg-builder-panel px-2 py-1.5 text-builder-fg outline-none focus-visible:ring-2 focus-visible:ring-builder-border-strong"
+        className="max-w-48 rounded-[var(--vibe-radius-sm)] border border-builder-border bg-builder-panel px-2 py-2 text-builder-fg outline-none focus-visible:ring-2 focus-visible:ring-builder-border-strong"
       >
         {!models.some((m) => m.id === value) && (
           <option value={value} disabled>{models.length ? `${value.split("/").pop()} (unavailable)` : "No approved models available"}</option>

@@ -136,7 +136,7 @@ export function ConnectorSettings(p: ConnectorSettingsProps) {
         return <p role="status">{p.access.status === "loading" ? "Checking workspace access…" : "Workspace access is unavailable. Reopen settings to try again."}</p>;
     if (!p.access.canRead)
         return <p>Workspace access is required to view connectors.</p>;
-    const inputClass = "w-full min-w-0 rounded-md border border-builder-border bg-builder-bg px-3 py-2";
+    const inputClass = "w-full min-w-0 rounded-[var(--vibe-radius-sm)] border border-builder-border bg-builder-bg px-3 py-2";
     return <section aria-label="Application source" className="min-w-0 space-y-4">
   <label className="block text-sm">Application source<select className={inputClass} value={source} onChange={e => { setSource(e.target.value as DeploymentAdapter); setSelected(null); setReviewed(false); }} disabled={busy}><option value="native">Native AgentClash agent</option><option value="http_json">HTTP JSON application</option><option value="hosted">Hosted callback application</option></select></label>
   {source === "native" ? <p className="text-sm">Use the native agent and model settings for your AgentClash deployment.</p> : <>
@@ -151,7 +151,7 @@ export function ConnectorSettings(p: ConnectorSettingsProps) {
     <VibeButton type="submit" disabled={busy}>Save connector</VibeButton>
    </form></details> : <p className="text-sm">A workspace admin must configure and approve connectors.</p>}
    {selected && <div className="min-w-0 space-y-3 text-sm">
-    <section aria-label="Selected connector contract" className="min-w-0 space-y-3 rounded-md border border-builder-border p-3">
+    <section aria-label="Selected connector contract" className="min-w-0 space-y-3 rounded-[var(--vibe-radius-md)] border border-builder-border p-3">
      <h3>Selected connector contract</h3>
      <dl className="min-w-0 space-y-2">
       <div><dt className="text-xs">Snapshot</dt><dd className="break-all font-mono">{selected.snapshot_id}</dd></div>

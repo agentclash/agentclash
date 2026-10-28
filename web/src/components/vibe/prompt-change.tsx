@@ -21,7 +21,7 @@ export function PromptChange({
   return (
     <details className="vibe-panel text-sm" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
       <summary>Review the instruction change</summary>
-      <div className="space-y-4 border-t border-[var(--vibe-border)] p-5">
+      <div className="space-y-4 border-t border-[var(--vibe-border)] p-4">
         <p className="whitespace-pre-wrap font-mono text-sm [overflow-wrap:anywhere]" aria-label="Instruction changes">
           {changes.map((change, i) => change.kind === "removed" ? (
             <del key={i} className="vibe-diff-removed"><span className="sr-only">Removed: </span>{change.text}</del>

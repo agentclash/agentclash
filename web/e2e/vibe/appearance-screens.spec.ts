@@ -354,5 +354,30 @@ for (const combo of combos) {
       await shoot(page, "k-sidebar", combo);
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
+
+    test(`l delete and credits dialogs ${label}`, async ({ page }) => {
+      await prepare(page, combo);
+      const control = await serve(page);
+      // A workspace in the URL shows the Credits control in Settings.
+      await page.goto("/vibe-evals?session=returns-results&workspace=a8000000-0000-4000-8000-000000000003");
+      await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 20_000 });
+      if (combo.width < 1024) await page.getByRole("button", { name: "Open agents", exact: true }).click();
+      const nav = combo.width < 1024 ? page.getByRole("dialog", { name: "Your agents" }) : page.getByRole("complementary", { name: "Agent sidebar", exact: true });
+      const actions = nav.locator(".vibe-project-actions");
+      if (!(await actions.evaluate(el => (el as HTMLDetailsElement).open))) await actions.locator("summary").click();
+      await actions.getByRole("button", { name: "Delete this project", exact: true }).click();
+      const deletion = page.getByRole("dialog", { name: /^Delete / });
+      await expect(deletion).toBeVisible();
+      await shoot(page, "l-delete-dialog", combo);
+      await deletion.getByRole("button", { name: "Cancel", exact: true }).click();
+      if (combo.width < 1024 && await nav.isVisible()) await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Details", exact: true }).click();
+      const details = combo.width >= 1280 ? page.getByRole("complementary", { name: "Details utility" }) : page.getByRole("dialog", { name: "Details", exact: true });
+      await details.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.getByRole("dialog", { name: "Settings and details" }).getByRole("button", { name: "Credits", exact: true }).click();
+      await expect(page.getByRole("dialog", { name: "Workspace AI credits" })).toBeVisible();
+      await shoot(page, "l-credits-dialog", combo);
+      expect(control.errors).toEqual([]);
+    });
   });
 }

@@ -158,7 +158,7 @@ export function CaseEvidence({
           aria-hidden="true"
         />
       </summary>
-      <div className="space-y-4 border-t border-[var(--vibe-border)] p-5">
+      <div className="space-y-4 border-t border-[var(--vibe-border)] p-4">
         {onAsk && <VibeButton variant="quiet" onClick={onAsk}>Ask Guide about this case</VibeButton>}
         {loading && (
           <p role="status" className="text-sm vibe-muted">
@@ -334,7 +334,7 @@ function EvidenceDetails({
       <div
         id={id}
         hidden={!expanded}
-        className="space-y-6 border-t border-[var(--vibe-border)] pt-5"
+        className="space-y-6 border-t border-[var(--vibe-border)] pt-4"
       >
         {(evidence.expected || evidence.expectations?.length) && (
           <div className="text-sm">
@@ -388,7 +388,7 @@ function EvidenceDetails({
             )}
           </div>
         )}
-        <div className="space-y-5">
+        <div className="space-y-4">
           <p className="text-xs vibe-muted">
             All checks · {evidence.checks.length}
           </p>
