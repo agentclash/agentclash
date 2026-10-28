@@ -32,7 +32,7 @@ import { ConversationGuidance } from "./conversation-guidance";
 import { ActivityStatus, conversationActivity } from "./activity-status";
 import { sendOnEnter } from "./composer-keyboard";
 import { SavedWorkDialog } from "./saved-work-dialog";
-import { BuildNextActions } from "./build-next-actions";
+import { BuildNextActions, ResultContact } from "./build-next-actions";
 import { EvaluationOutcome } from "./evaluation-outcome";
 import { CoverageNote } from "./coverage-note";
 import "./project-workspace.css";
@@ -194,10 +194,11 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
           {terminal(result.state) && <details className="vibe-results-more"><summary>More actions</summary><div className="vibe-results-more-body">
             <div><VibeButton onClick={() => askRun(result)}>Ask about this result</VibeButton></div>
             <GradeReviews key={`reviews:${result.id}`} sessionID={session.id} operation={result} eventCursor={session.event_cursor} load={key=>p.loadEvidence(result.id,key)} />
-            {!resultArtifact.conversation_evaluation && <BuildNextActions showResultLink={false} session={session} artifact={resultArtifact} operation={result} hasOutput={false} busy={p.busy || p.dirty} primary={false} onTry={() => p.onNavigate("try", resultArtifact.id)} onDetails={run => p.onSelectRun(run.id)} onGuide={() => open("guide")} onSave={p.onSave} onTougher={p.onTougher} onExport={p.onExport} loadEvidence={p.loadEvidence} />}
-            {resultArtifact.conversation_evaluation && <EvaluationOutcome onExport={p.onExport} session={session} artifact={resultArtifact} operation={result} busy={p.busy || p.dirty} loadEvidence={p.loadEvidence} onTougher={p.onTougher} />}
+            {!resultArtifact.conversation_evaluation && <BuildNextActions showResultLink={false} showContact={false} session={session} artifact={resultArtifact} operation={result} hasOutput={false} busy={p.busy || p.dirty} primary={false} onTry={() => p.onNavigate("try", resultArtifact.id)} onDetails={run => p.onSelectRun(run.id)} onGuide={() => open("guide")} onSave={p.onSave} onTougher={p.onTougher} onExport={p.onExport} loadEvidence={p.loadEvidence} />}
+            {resultArtifact.conversation_evaluation && <EvaluationOutcome onExport={p.onExport} hideContact session={session} artifact={resultArtifact} operation={result} busy={p.busy || p.dirty} loadEvidence={p.loadEvidence} onTougher={p.onTougher} />}
             <CoverageNote rows={session.rule_coverage?.[result.source?.artifact_id || ""] || []} busy={p.busy || p.dirty} onSuggest={rule => { p.onContent(`Prepare an extra test for review for this rule: ${rule}`); open("guide"); }} />
           </div></details>}
+          {terminal(result.state) && <ResultContact session={session} artifact={resultArtifact} operation={result} busy={p.busy || p.dirty} />}
         </> : p.selectedResult || (parseResultSelection(p.requestedRunID)?.kind && parseResultSelection(p.requestedRunID)?.kind !== "vibe_operation") ? null
           : p.requestedRunID || p.quickChecking ? <p role="status">Waiting for your check…</p>
           : <div className="vibe-empty-state"><p role="status">No results for this version. Run its tests to collect evidence, or choose a saved run to view an earlier tested version.</p><VibeButton onClick={() => p.onNavigate("tests")}>Go to Tests</VibeButton></div>}

@@ -3,13 +3,34 @@
 import { useState } from "react";
 import { WEB_EVENTS } from "@/lib/analytics/events";
 import { captureBuildEvent } from "@/lib/vibe-build-analytics";
+import { useVibeConnection } from "@/lib/vibe-connection";
 import { terminal, type Artifact, type CaseResult, type Operation, type Session } from "@/lib/vibe";
 import { CaseEvidence } from "./case-evidence";
 import { EvaluationOutcome } from "./evaluation-outcome";
 import { ProjectEnquiry } from "./project-enquiry";
 import { VibeButton } from "./vibe-button";
 
-export function BuildNextActions({ session, artifact, operation, hasOutput, busy, primary, onTry, onDetails, onGuide, onSave, onTougher, onExport, loadEvidence, showResultLink = true }: {
+function passedAll(operation?: Operation) {
+  const score = operation?.scorecard;
+  return !!operation && terminal(operation.state) && operation.state === "COMPLETED" && !operation.error && !!score && score.total > 0
+    && operation.results.length === score.total && operation.results.every(item => item.verdict === "PASS")
+    && score.passed === score.total && score.evaluated === score.total && !score.failed && !score.unknown && !score.incomplete_cases;
+}
+
+// The contact call to action stays visible under a finished result, outside "More actions".
+export function ResultContact({ session, artifact, operation, busy }: { session: Session; artifact: Artifact; operation: Operation; busy: boolean }) {
+  const { contact } = useVibeConnection();
+  const score = operation.scorecard;
+  const eligible = artifact.kind === "task_brief" || passedAll(operation) || !!score?.failed || !!score?.unknown;
+  // ProjectEnquiry renders nothing without a contact form or email, so the card would be empty.
+  if (!contact?.available && !contact?.email) return null;
+  return <section className="vibe-results-contact" aria-label="Talk to AgentClash" hidden={!eligible || busy || operation.state === "CANCELLED"}>
+    <p>Want help to build this for your business?</p>
+    <ProjectEnquiry key={`${session.id}:${artifact.id}`} session={session} artifact={artifact} operation={operation} secondary />
+  </section>;
+}
+
+export function BuildNextActions({ session, artifact, operation, hasOutput, busy, primary, onTry, onDetails, onGuide, onSave, onTougher, onExport, loadEvidence, showResultLink = true, showContact = true }: {
   session: Session;
   artifact: Artifact;
   operation?: Operation;
@@ -17,6 +38,7 @@ export function BuildNextActions({ session, artifact, operation, hasOutput, busy
   busy: boolean;
   primary: boolean;
   showResultLink?: boolean;
+  showContact?: boolean;
   onTry: () => void;
   onDetails: (operation: Operation) => void;
   onGuide: () => void;
@@ -30,9 +52,7 @@ export function BuildNextActions({ session, artifact, operation, hasOutput, busy
   const [tougherOpen, setTougherOpen] = useState(false);
   const score = operation?.scorecard;
   const done = !!operation && terminal(operation.state);
-  const allPass = done && operation.state === "COMPLETED" && !operation.error && !!score && score.total > 0
-    && operation.results.length === score.total && operation.results.every(item => item.verdict === "PASS")
-    && score.passed === score.total && score.evaluated === score.total && !score.failed && !score.unknown && !score.incomplete_cases;
+  const allPass = passedAll(operation);
   const brief = artifact.kind === "task_brief";
   const stopped = operation?.state === "CANCELLED";
   const contactEligible = brief || hasOutput || allPass || !!score?.failed || !!score?.unknown;
@@ -51,7 +71,7 @@ export function BuildNextActions({ session, artifact, operation, hasOutput, busy
         : operation && !allPass ? showResultLink && <VibeButton variant={primary ? "primary" : "secondary"} onClick={() => { action(score?.failed ? "review_problem" : "checks"); onDetails(operation); }}>{score?.failed ? "Review the problem" : "See what happened"}</VibeButton>
           : !hasOutput ? <VibeButton variant={primary ? "primary" : "secondary"} onClick={() => { action("try"); onTry(); }}>Try it yourself</VibeButton>
             : null}
-      <div hidden={!contactEligible}><ProjectEnquiry key={`${session.id}:${artifact.id}`} session={session} artifact={artifact} operation={operation} primary={hasOutput && (allPass || !operation)} /></div>
+      {showContact && <div hidden={!contactEligible}><ProjectEnquiry key={`${session.id}:${artifact.id}`} session={session} artifact={artifact} operation={operation} primary={hasOutput && (allPass || !operation)} /></div>}
     </div>
     {!brief && <div className="vibe-build-next-secondary">
       {!hasOutput && operation && !allPass && <VibeButton variant="quiet" onClick={() => { action("try"); onTry(); }}>Try it yourself</VibeButton>}
