@@ -265,6 +265,42 @@ class GuardTests(unittest.TestCase):
         self.assertIn("user default off", acl)
         self.assertIn("-flushall -flushdb", acl)
 
+    def test_vibe_keys_are_available_only_to_api_and_worker(self):
+        from fnmatch import fnmatchcase
+
+        acl = acl_config(
+            {
+                name + "_PASSWORD": "fixture-password-" + name * 8
+                for name in ("API", "WORKER", "TERMINAL", "ADMIN")
+            }
+        )
+        rules = {
+            line.split()[1]: line.split()[2:]
+            for line in acl.splitlines()
+            if line.startswith("user ")
+        }
+        for user in ("api", "worker", "terminal"):
+            patterns = [rule[1:] for rule in rules[user] if rule.startswith("~")]
+            for key in (
+                "vibe:readiness:api",
+                "vibe:rate:anonymous",
+                "vibe:ready:worker",
+            ):
+                with self.subTest(user=user, key=key):
+                    self.assertEqual(
+                        any(fnmatchcase(key, pattern) for pattern in patterns),
+                        user in ("api", "worker"),
+                    )
+            self.assertFalse(
+                any(fnmatchcase("unrelated:private", pattern) for pattern in patterns)
+            )
+        for user in ("api", "worker"):
+            self.assertIn("-flushall", rules[user])
+            self.assertIn("-flushdb", rules[user])
+        self.assertEqual(
+            [rule for rule in rules["terminal"] if rule.startswith("~")], ["~trycli:*"]
+        )
+
     def test_restore_rejects_traversal_and_symlinks(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "backup.tar"
