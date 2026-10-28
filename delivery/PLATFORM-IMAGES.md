@@ -70,7 +70,7 @@ until separately reviewed; never update the host's hash merely to bypass a refus
 [Docker reproducible builds](https://docs.docker.com/build/ci/github-actions/reproducible-builds/),
 [timestamp rewriting](https://docs.docker.com/build/exporters/image-registry/).
 
-For the reviewed curl/libcurl input update, use the [bounded human SSO platform maintenance procedure](PLATFORM-UPDATE.md). It preserves the installed secrets and data destinations before the ordinary application deploy/promote flow.
+For the reviewed package and Caddy JOSE updates, use the [bounded human SSO platform maintenance procedure](PLATFORM-UPDATE.md). It preserves the installed secrets and data destinations before the ordinary application deploy/promote flow.
 
 ## Verification and maintenance
 

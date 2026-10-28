@@ -1,10 +1,17 @@
-# Bounded curl platform maintenance
+# Bounded dependency platform maintenance
 
-`platform_update.py` prepares an existing AWS host for the reviewed change to
-`delivery/maintained.py` and `deploy/aws/platform/inputs.lock.json`. It permits
-exactly those two source changes and their derived source-hash metadata. All
-host scripts, Compose/tool bytes and notices, config, systemd files and upstream
-image lock must remain identical. It refuses other bootstrap upgrades.
+`platform_update.py` prepares an existing AWS host for the reviewed package and
+Caddy JOSE security updates. Its exact existing-file changes are
+`delivery/maintained.py`, `deploy/aws/platform/inputs.lock.json`, and
+`deploy/aws/platform/caddy/go.mod` and `go.sum`. Its exact additions are
+`deploy/aws/platform/Dockerfile.caddy` and the Caddy directory's
+`apply-jose-patch.sh`, `JOSE-MIGRATION.md`, and `jose_migration_test.go`.
+Only these changes and their derived source-hash metadata are permitted. The
+additions must be absent on the predecessor, including dangling symlinks; their
+absence is recorded in the durable transaction. Existing source bytes are saved
+before fencing. All host scripts, Compose/tool bytes and notices, config,
+systemd files, other build recipes and upstream image lock must remain identical.
+It refuses other bootstrap upgrades.
 
 The helper lives outside the installed bootstrap allowlist. A reviewed copy can
 prepare an already published application manifest; changing this helper or
@@ -121,7 +128,7 @@ ID and reviewed helper hash in the private operation record.
 
 The command fences and drains, verifies clean application/Temporal/Valkey stops,
 takes an offline backup through the old runtime, and cleanly stops Caddy. It
-durably snapshots both changed source files, source-hash metadata, host settings,
+durably snapshots all four changed source files, source-hash metadata, host settings,
 Compose environment, generation reference, runtime fingerprint and current/deployed
 release records. It copies **no decrypted secret payloads**; the old generation
 stays in tmpfs. It changes only the approved source files/metadata and host
@@ -152,8 +159,12 @@ is unavailable, apply the separately approved operator network fence.
 
 Do not rerun the installer, delete markers, or blindly retry. Before application
 deployment/migration starts, the reviewed operator recovery can restore the
-saved two source files/metadata, old host settings and control files, verify the
-retained old tmpfs generation and data identities, start only the old platform
+saved four source files/metadata, old host settings and control files, and remove
+exactly the four `added_source_paths` recorded in the durable transaction. Verify
+those names against this helper's fixed `ADDED` allowlist, refuse links or other
+unexpected paths, and fsync their parent directories after removal. Validate the
+restored old platform hash and manifest, then verify the retained old tmpfs
+generation and data identities and start only the old platform
 behind the fence, and reconcile the helper's exact transaction before removing
 its own marker. If tmpfs was lost, reprepare the verified old manifest with its
 original pinned secret references. After any application migration or destination

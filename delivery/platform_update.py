@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Prepare the reviewed curl platform update on an existing host, through human SSO.
+"""Prepare the reviewed dependency platform update on an existing host, through human SSO.
 
 Run a hash-verified copy outside /opt/agentclash as root through the approved SSM
 operator channel. This command never migrates databases or starts applications.
@@ -47,7 +47,18 @@ from release_contract import (
     validate_release,
 )
 
-CHANGED = ("delivery/maintained.py", "deploy/aws/platform/inputs.lock.json")
+CHANGED = (
+    "delivery/maintained.py",
+    "deploy/aws/platform/inputs.lock.json",
+    "deploy/aws/platform/caddy/go.mod",
+    "deploy/aws/platform/caddy/go.sum",
+)
+ADDED = (
+    "deploy/aws/platform/Dockerfile.caddy",
+    "deploy/aws/platform/caddy/apply-jose-patch.sh",
+    "deploy/aws/platform/caddy/JOSE-MIGRATION.md",
+    "deploy/aws/platform/caddy/jose_migration_test.go",
+)
 METADATA = "tools/platform-source.sha256"
 CONTROLS = (
     "compose.env",
@@ -96,13 +107,24 @@ def replace(path, data, mode=0o600):
 
 
 def unpack(raw, root, destination, manifest):
-    """An exact installed inventory and two-file delta bound this maintenance."""
+    """An exact installed inventory and explicit source delta bound maintenance."""
     verify_blob(raw, manifest["bootstrap_sha256"])
-    names = set(platform_files(root)) | {
-        "tools/docker-compose",
-        "tools/SHA256SUMS",
-        METADATA,
-    }
+    require(
+        all(
+            not (root / name).exists() and not (root / name).is_symlink()
+            for name in ADDED
+        ),
+        "Reviewed additions must not already exist on the predecessor",
+    )
+    names = (
+        set(platform_files(root))
+        | set(ADDED)
+        | {
+            "tools/docker-compose",
+            "tools/SHA256SUMS",
+            METADATA,
+        }
+    )
     notices = root / "tools/licenses-compose"
     if notices.exists():
         require(not notices.is_symlink(), "Notice directory must not be a link")
@@ -135,11 +157,13 @@ def unpack(raw, root, destination, manifest):
             target.chmod(0o600)
     require(seen == names, "Incomplete bootstrap inventory")
     changed = {
-        name for name in names if regular(root / name) != regular(destination / name)
+        name
+        for name in names
+        if name in ADDED or regular(root / name) != regular(destination / name)
     }
     require(
-        changed == {*CHANGED, METADATA},
-        "This command permits only the reviewed two-file update",
+        changed == {*CHANGED, *ADDED, METADATA},
+        "This command permits only the reviewed dependency update",
     )
     validate_release(manifest, destination)
     require(
@@ -191,7 +215,10 @@ def execute(h, approval, release_sha):
         ),
         "An interrupted state write requires reconciliation",
     )
-    targets = [h.settings_path, *(h.root / name for name in (*CHANGED, METADATA))]
+    targets = [
+        h.settings_path,
+        *(h.root / name for name in (*CHANGED, *ADDED, METADATA)),
+    ]
     require(
         not any(
             path.with_name(path.name + ".platform-update-pending").exists()
@@ -322,6 +349,7 @@ def execute(h, approval, release_sha):
             "approval_sha256": approval_sha,
             "snapshot_directory": str(snapshot),
             "previous_offline_backup_sha256": previous_backup,
+            "added_source_paths": list(ADDED),
             "stage": "fence",
             "started_at": time.time(),
         }
@@ -351,11 +379,10 @@ def execute(h, approval, release_sha):
             )
             transaction["stage"] = "install"
             replace(record, canonical(transaction))
-            for name in (*CHANGED, METADATA):
+            for name in (*CHANGED, *ADDED, METADATA):
                 target = h.root / name
-                replace(
-                    target, regular(stage / name), stat.S_IMODE(target.stat().st_mode)
-                )
+                mode = 0o600 if name in ADDED else stat.S_IMODE(target.stat().st_mode)
+                replace(target, regular(stage / name), mode)
             updated = {
                 **settings,
                 "platform_images_sha256": approval["platform_images_sha256"],

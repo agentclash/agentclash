@@ -24,7 +24,7 @@ from release_contract import (
     recipe_hash,
     sha256,
 )
-from platform_update import Host, execute
+from platform_update import ADDED, Host, execute
 
 
 class PlatformUpdateTests(unittest.TestCase):
@@ -46,6 +46,8 @@ class PlatformUpdateTests(unittest.TestCase):
                 {"images": {"valkey": {"image": "public/valkey@sha256:" + "f" * 64}}}
             ),
             "deploy/aws/platform/inputs.lock.json": "old input pins",
+            "deploy/aws/platform/caddy/go.mod": "old caddy modules",
+            "deploy/aws/platform/caddy/go.sum": "old caddy checksums",
             "deploy/aws/scripts/host.py": "unchanged host",
             "tools/docker-compose": "unchanged executable",
             "tools/SHA256SUMS": "unchanged checksum",
@@ -109,6 +111,14 @@ class PlatformUpdateTests(unittest.TestCase):
         (self.candidate_root / "deploy/aws/platform/inputs.lock.json").write_text(
             "new input pins"
         )
+        for name in ("go.mod", "go.sum"):
+            (self.candidate_root / "deploy/aws/platform/caddy" / name).write_text(
+                "new caddy " + name
+            )
+        for name in ADDED:
+            path = self.candidate_root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("reviewed caddy addition " + name)
         (self.candidate_root / "tools/platform-source.sha256").write_text(
             platform_hash(self.candidate_root) + "\n"
         )
@@ -259,6 +269,12 @@ class PlatformUpdateTests(unittest.TestCase):
         )
         self.assertEqual(record["previous_offline_backup_sha256"], "2" * 64)
         self.assertEqual(record["backup_sha256"], "3" * 64)
+        self.assertEqual(record["added_source_paths"], list(ADDED))
+        for name in ADDED:
+            self.assertEqual(
+                (self.root / name).read_bytes(),
+                (self.candidate_root / name).read_bytes(),
+            )
         snapshots = Path(record["snapshot_directory"])
         for name, data in self.original_controls.items():
             self.assertEqual((snapshots / "state" / name).read_bytes(), data)
@@ -306,7 +322,21 @@ class PlatformUpdateTests(unittest.TestCase):
         )
         self.refresh_bundle()
         self.bind_candidate()
-        with self.assertRaisesRegex(Refused, "only the reviewed two-file"):
+        with self.assertRaisesRegex(Refused, "only the reviewed dependency"):
+            self.update()
+        self.assertEqual(self.h.events, [])
+
+    def test_unexpected_addition_is_refused_even_with_approved_manifest_hashes(self):
+        path = self.candidate_root / "deploy/aws/platform/caddy/unreviewed.sh"
+        path.write_text("unapproved source")
+        self.candidate["platform_source_sha256"] = platform_hash(self.candidate_root)
+        self.candidate["platform_recipe_sha256"] = recipe_hash(self.candidate_root)
+        (self.candidate_root / "tools/platform-source.sha256").write_text(
+            self.candidate["platform_source_sha256"] + "\n"
+        )
+        self.refresh_bundle()
+        self.bind_candidate()
+        with self.assertRaisesRegex(Refused, "unsafe bootstrap member"):
             self.update()
         self.assertEqual(self.h.events, [])
 
