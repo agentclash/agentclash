@@ -91,13 +91,13 @@ export function CreditsDialog({ workspace }: { workspace: string }) {
             <>
               <div className="my-3 grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-2xl font-semibold">
+                  <p className="text-2xl font-semibold tabular-nums">
                     {dollars(credits.available_nano_usd)}
                   </p>
                   <p className="text-xs text-muted-foreground">Available</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-semibold">
+                  <p className="text-2xl font-semibold tabular-nums">
                     {dollars(credits.held_nano_usd)}
                   </p>
                   <p className="text-xs text-muted-foreground">Reserved</p>
@@ -120,7 +120,7 @@ export function CreditsDialog({ workspace }: { workspace: string }) {
                   {(p.price_minor / 100).toFixed(2)} before tax
                 </Button>
               ))}
-              <p className="text-xs text-muted-foreground">
+              <p className="text-sm text-muted-foreground">
                 Only an organization administrator can purchase top-ups. Payment
                 takes place on Dodo’s checkout page.
               </p>

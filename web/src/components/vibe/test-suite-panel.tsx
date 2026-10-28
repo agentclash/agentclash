@@ -91,14 +91,14 @@ export function TestSuitePanel({
   const ready = !!artifact.agent_prompt.trim();
   const added = parent ? tests.filter(test => !suiteCases(parent.blueprint).some(old => old.key===test.key)).length : 0;
   const validationBlocked = !!artifact.validation && artifact.validation.status !== "supported";
-  if (artifact.unavailable_reason || !cases.length) return <section className="vibe-panel p-5 space-y-3"><h2 className="text-xl font-semibold">Pack kept · advanced editor needed</h2><p className="text-sm vibe-muted">{artifact.unavailable_reason || "These tests need the full pack builder."} No tests were removed or run.</p>{artifact.original&&onOriginal?<VibeButton onClick={onOriginal}>Download original {artifact.original.filename}</VibeButton>:<VibeButton onClick={()=>downloadJSON("pack-definition.json",artifact.blueprint)}>Download definition</VibeButton>}<VibeButton onClick={onSave}>Save and open advanced editor</VibeButton></section>;
+  if (artifact.unavailable_reason || !cases.length) return <section className="vibe-panel p-5 space-y-3"><h2>Pack kept · advanced editor needed</h2><p className="text-sm vibe-muted">{artifact.unavailable_reason || "These tests need the full pack builder."} No tests were removed or run.</p>{artifact.original&&onOriginal?<VibeButton onClick={onOriginal}>Download original {artifact.original.filename}</VibeButton>:<VibeButton onClick={()=>downloadJSON("pack-definition.json",artifact.blueprint)}>Download definition</VibeButton>}<VibeButton onClick={onSave}>Save and open advanced editor</VibeButton></section>;
 
   return (
     <section data-proposal-id={artifact.id} aria-label="Your tests" className="space-y-5">
       {(instructionDraft.conflict || casesDraft.conflict) && <div role="alert"><p>The saved source changed. Review your draft before applying it.</p><VibeButton onClick={() => { instructionDraft.preserve(); casesDraft.preserve(); }}>Keep my draft for this source</VibeButton><VibeButton onClick={() => { instructionDraft.discard(); casesDraft.discard(); restoreFocus(); }}>Discard my draft</VibeButton></div>}
       <div className="vibe-tests-header">
         <div>
-        <h2 ref={editorHeading} tabIndex={-1} className="text-2xl font-semibold tracking-tight">
+        <h2 ref={editorHeading} tabIndex={-1}>
           {validationBlocked
             ? `${cases.length} ${cases.length === 1 ? "test needs" : "tests need"} checking`
             : pendingPolicy
@@ -143,7 +143,7 @@ export function TestSuitePanel({
             </VibeButton>}
           </div>
           {ready && (
-            <p className="text-xs vibe-muted">
+            <p className="text-sm vibe-muted">
               Text test here · {modelLabel || "Selected model"}. Your live app is not called.
             </p>
           )}
@@ -157,7 +157,7 @@ export function TestSuitePanel({
           <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4">
             Rules being tested
           </summary>
-          <ul className="mt-3 list-disc space-y-2 pl-5 leading-6">
+          <ul className="mt-3 list-disc space-y-2 pl-5">
             {rules.map(rule => <li key={rule.id}>{rule.statement}</li>)}
           </ul>
         </details>
@@ -168,17 +168,17 @@ export function TestSuitePanel({
             <details className="vibe-result-row" key={test.key}>
               <summary>
                 <span className="w-5 shrink-0 text-xs vibe-muted">{i + 1}</span>
-                <span className="min-w-0 flex-1 text-sm leading-6">
+                <span className="vibe-row-title min-w-0 flex-1">
                   {test.input}
                 </span>
                 <ChevronRight className="vibe-chevron vibe-muted" size={16} />
               </summary>
-              <div className="border-t border-[var(--vibe-border)] px-5 py-4 text-sm">
+              <div className="border-t border-[var(--vibe-border)] px-5 py-4">
                 <p className="mb-1 text-xs vibe-muted">What should happen</p>
                 <p>{test.expected}</p>
                 {onAskCase && <VibeButton onClick={() => onAskCase(test.key)}>Ask Guide about this test</VibeButton>}
                 {test.editable && <VibeButton variant="quiet" className="mt-2 !px-0" disabled={busy} onClick={() => { setFocusedCase(test.key); setEditing(true); onSelectCase?.(test.key); }}>Edit this expectation</VibeButton>}
-                {!test.editable && <p className="mt-2 text-xs vibe-muted">To change custom grading rules, edit the original pack and import it again.</p>}
+                {!test.editable && <p className="mt-2 text-sm vibe-muted">To change custom grading rules, edit the original pack and import it again.</p>}
               </div>
             </details>
           ))}
@@ -190,7 +190,7 @@ export function TestSuitePanel({
           {draft.map((test, i) => test.editable && (!focusedCase || focusedCase === test.key) && (
             <div key={test.key} className="space-y-3">
               {(focusedCase ? ["expected"] as const : ["input", "expected"] as const).map((field) => (
-                <label key={field} className="block text-xs vibe-muted">
+                <label key={field} className="block vibe-muted">
                   {field === "input"
                     ? `Test ${i + 1} · message`
                     : "What should happen"}
@@ -264,13 +264,13 @@ export function TestSuitePanel({
           }}
         >
           <div>
-            <h3 className="font-medium">{prototypeMode ? "Describe a prototype to try" : "Add your agent’s instructions"}</h3>
+            <h3>{prototypeMode ? "Describe a prototype to try" : "Add your agent’s instructions"}</h3>
             <p className="mt-1 text-sm vibe-muted">
               We’ll run these with {modelLabel || "the selected model"}. This
               tests text replies; your app’s tools and data aren’t connected.
             </p>
           </div>
-          {prototypeMode && <p className="text-xs vibe-muted">Use your own description and rules. The pack’s expected answers won’t be added to the prototype instructions.</p>}
+          {prototypeMode && <p className="text-sm vibe-muted">Use your own description and rules. The pack’s expected answers won’t be added to the prototype instructions.</p>}
           <label className="block text-sm">
             {prototypeMode ? "Its job and your rules" : "Agent instructions"}
             <textarea

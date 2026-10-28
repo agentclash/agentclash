@@ -58,7 +58,7 @@ export function ConversationActions({ session, busy, onAction, onReload, primary
       {proposal ? (
         <div className="space-y-3 rounded-xl border border-builder-border p-4">
           <p className="text-xs text-builder-fg-muted">Suggested checks</p>
-          <ul className="list-disc space-y-1 break-words pl-5 text-sm leading-6">
+          <ul className="list-disc space-y-1 break-words pl-5 text-sm">
             {proposal.facts.map(fact => <li key={fact.id}>{fact.text}</li>)}
           </ul>
           <div className="flex flex-wrap gap-2">
@@ -68,7 +68,7 @@ export function ConversationActions({ session, busy, onAction, onReload, primary
         </div>
       ) : question && (question.options.length > 0 || question.purpose === "offer_help") ? (
         <fieldset className="min-w-0 space-y-3">
-          <legend className={session.document.messages.at(-1)?.id === question.origin_message_id ? "sr-only" : "mb-2 break-words text-sm leading-6"}>{question.text}</legend>
+          <legend className={session.document.messages.at(-1)?.id === question.origin_message_id ? "sr-only" : "mb-2 break-words text-sm"}>{question.text}</legend>
           <div className="flex flex-wrap gap-2">
             {(question.purpose === "offer_help" ? [] : question.options).map(option => question.max_selections === 1 ? (
               <VibeButton type="button" className={button} key={option.id} disabled={disabled} onClick={() => void send({ kind: "answer_question", target_id: question.id, target_revision: question.revision, option_ids: [option.id] })}>{option.label}</VibeButton>

@@ -3,6 +3,7 @@ import { createContext, useContext, useState, useSyncExternalStore, type ReactNo
 import { PortalScope } from "@/components/ui/portal-scope";
 import "./workspace.css";
 import "./project-workspace.css";
+import "./vibe-type.css";
 type Appearance = "system" | "light" | "dark";
 const AppearanceContext = createContext<{ value: Appearance; setValue: (value: Appearance) => void }>({ value: "system", setValue: () => {} });
 const preferenceQuery = "(prefers-color-scheme: dark)";

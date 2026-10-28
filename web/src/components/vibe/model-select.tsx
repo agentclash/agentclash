@@ -16,14 +16,14 @@ export function ModelSelect({
 }) {
   if (models.length === 1 && models[0].id === value) {
     return (
-      <p className="text-xs">
+      <p className="text-sm">
         <span className="mr-2 text-builder-fg-muted">{label}</span>
         {models[0].name || value}
       </p>
     );
   }
   return (
-    <label className="inline-flex items-center gap-2 text-xs text-builder-fg-muted">
+    <label className="inline-flex items-center gap-2 text-builder-fg-muted">
       <span>{label}</span>
       <select
         aria-label={`${label} model`}

@@ -1,0 +1,11 @@
+@layer theme, base, components, utilities;
+
+/* Element defaults for the text roles in workspace.css. They sit in the components
+   layer, so utility classes and the unlayered vibe rules still win. */
+@layer components {
+  .vibe-workspace h2 { font-size: var(--vibe-font-headline); line-height: var(--vibe-leading-headline); font-weight: 600; }
+  .vibe-workspace :is(h3, h4) { font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight: 600; }
+  .vibe-workspace label:has(> :is(textarea, select, input:not([type="checkbox"], [type="radio"]))) { font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight: 600; }
+  .vibe-workspace :is(code, kbd, samp, pre) { font-family: var(--font-mono), ui-monospace, monospace; font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
+  :is(.vibe-markdown, .vibe-message, .vibe-project-content) :is(p, li, blockquote) { max-width: 68ch; }
+}

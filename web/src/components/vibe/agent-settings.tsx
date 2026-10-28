@@ -91,7 +91,7 @@ export function AgentSettings({reimport,open, onOpenChange, config, session, art
                     onModels({ ...models, [role]: value })
                   }
                 />
-                <p className="mt-1 text-xs text-builder-fg-muted">
+                <p className="mt-1 text-sm text-builder-fg-muted">
                   {role === "assistant"
                     ? "Plans the check and helps explain results."
                     : role === "target"
@@ -109,7 +109,7 @@ export function AgentSettings({reimport,open, onOpenChange, config, session, art
               Use assistant model for all roles
             </Button>
           )}
-          <p className="text-xs text-builder-fg-muted">
+          <p className="text-sm text-builder-fg-muted">
             Model changes apply to new messages and runs. Use “Retry with another model” to switch a failed request.
           </p>
           {artifacts.length > 1 && (
@@ -162,7 +162,7 @@ export function AgentSettings({reimport,open, onOpenChange, config, session, art
               Available capabilities and documentation
             </summary>
             {config?.capabilities?.map((c) => (
-              <p key={c.id} className="mt-3 text-xs leading-5">
+              <p key={c.id} className="mt-3">
                 <strong>{c.label}{c.available === false ? " (unavailable)" : ""}:</strong> {c.description}{" "}
                 {c.url && (
                   <a
