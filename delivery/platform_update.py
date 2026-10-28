@@ -52,6 +52,10 @@ CHANGED = (
     "deploy/aws/platform/inputs.lock.json",
     "deploy/aws/platform/caddy/go.mod",
     "deploy/aws/platform/caddy/go.sum",
+    "deploy/aws/platform/temporal/go.mod",
+    "deploy/aws/platform/temporal/go.sum",
+    "deploy/aws/platform/temporal/cli/go.mod",
+    "deploy/aws/platform/temporal/cli/go.sum",
 )
 ADDED = (
     "deploy/aws/platform/Dockerfile.caddy",

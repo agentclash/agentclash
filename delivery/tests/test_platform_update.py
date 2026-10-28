@@ -48,6 +48,10 @@ class PlatformUpdateTests(unittest.TestCase):
             "deploy/aws/platform/inputs.lock.json": "old input pins",
             "deploy/aws/platform/caddy/go.mod": "old caddy modules",
             "deploy/aws/platform/caddy/go.sum": "old caddy checksums",
+            "deploy/aws/platform/temporal/go.mod": "old temporal modules",
+            "deploy/aws/platform/temporal/go.sum": "old temporal checksums",
+            "deploy/aws/platform/temporal/cli/go.mod": "old temporal cli modules",
+            "deploy/aws/platform/temporal/cli/go.sum": "old temporal cli checksums",
             "deploy/aws/scripts/host.py": "unchanged host",
             "tools/docker-compose": "unchanged executable",
             "tools/SHA256SUMS": "unchanged checksum",
@@ -115,6 +119,11 @@ class PlatformUpdateTests(unittest.TestCase):
             (self.candidate_root / "deploy/aws/platform/caddy" / name).write_text(
                 "new caddy " + name
             )
+        for directory in ("temporal", "temporal/cli"):
+            for name in ("go.mod", "go.sum"):
+                (
+                    self.candidate_root / "deploy/aws/platform" / directory / name
+                ).write_text("fixed jose v4.1.6 " + directory + "/" + name)
         for name in ADDED:
             path = self.candidate_root / name
             path.parent.mkdir(parents=True, exist_ok=True)

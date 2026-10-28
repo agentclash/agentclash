@@ -1,9 +1,12 @@
 # Bounded dependency platform maintenance
 
 `platform_update.py` prepares an existing AWS host for the reviewed package and
-Caddy JOSE security updates. Its exact existing-file changes are
+JOSE security updates in Caddy and Temporal. Its exact existing-file changes are
 `delivery/maintained.py`, `deploy/aws/platform/inputs.lock.json`, and
-`deploy/aws/platform/caddy/go.mod` and `go.sum`. Its exact additions are
+`deploy/aws/platform/caddy/go.mod` and `go.sum`, plus both `go.mod`/`go.sum`
+pairs in `deploy/aws/platform/temporal` and `deploy/aws/platform/temporal/cli`.
+Temporal keeps its server/CLI versions and source unchanged; the lock changes
+select the fixed JOSE patch release. Its exact additions are
 `deploy/aws/platform/Dockerfile.caddy` and the Caddy directory's
 `apply-jose-patch.sh`, `JOSE-MIGRATION.md`, and `jose_migration_test.go`.
 Only these changes and their derived source-hash metadata are permitted. The
@@ -128,7 +131,7 @@ ID and reviewed helper hash in the private operation record.
 
 The command fences and drains, verifies clean application/Temporal/Valkey stops,
 takes an offline backup through the old runtime, and cleanly stops Caddy. It
-durably snapshots all four changed source files, source-hash metadata, host settings,
+durably snapshots all eight changed source files, source-hash metadata, host settings,
 Compose environment, generation reference, runtime fingerprint and current/deployed
 release records. It copies **no decrypted secret payloads**; the old generation
 stays in tmpfs. It changes only the approved source files/metadata and host
@@ -159,7 +162,7 @@ is unavailable, apply the separately approved operator network fence.
 
 Do not rerun the installer, delete markers, or blindly retry. Before application
 deployment/migration starts, the reviewed operator recovery can restore the
-saved four source files/metadata, old host settings and control files, and remove
+saved eight source files/metadata, old host settings and control files, and remove
 exactly the four `added_source_paths` recorded in the durable transaction. Verify
 those names against this helper's fixed `ADDED` allowlist, refuse links or other
 unexpected paths, and fsync their parent directories after removal. Validate the
