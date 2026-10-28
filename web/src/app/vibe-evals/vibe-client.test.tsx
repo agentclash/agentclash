@@ -2671,7 +2671,7 @@ it("loads canonical source-qualified Results once, pins its artifact and stops t
  try {
  const {id,artifact,report}=sdkProject();const result={binding:{...report.binding,result_ref:{kind:"run",id}},evidence_metadata:{...report.evidence_metadata,result_ref:{kind:"run",id}},name:"Approved application",status:"completed",created_at:"2026-10-26T00:00:00Z",participants:[],evidence_hash:"canonical-hash",omissions:["Raw canonical event bodies omitted."]};
  harness.params=new URLSearchParams(`session=${session.id}&view=results&agent=${artifact.id}&run=run:${id}`);const before=respond;respond=async(path,options)=>path.endsWith("/canonical-results")?json([result]):path.includes("/canonical-results/run/")?json(result):before(path,options);
- await render();expect(container.querySelector('[aria-label="Canonical result detail"]')).not.toBeNull();expect(container.textContent).toContain("Canonical run");expect(requests.filter(request=>request.path.includes("/canonical-results/run/"))).toHaveLength(1);expect(new URL(location.href).searchParams.get("run")).toBe(`run:${id}`);expect(posts()).toHaveLength(0);
+ await render();expect(container.querySelector('[aria-label="Canonical result detail"]')).not.toBeNull();expect(container.querySelector(".vibe-project-header")?.textContent).toContain(" · Application run");expect(requests.filter(request=>request.path.includes("/canonical-results/run/"))).toHaveLength(1);expect(new URL(location.href).searchParams.get("run")).toBe(`run:${id}`);expect(posts()).toHaveLength(0);
  await act(async()=>vi.advanceTimersByTime(9000));
  expect(requests.filter(request=>request.path.includes("/canonical-results/run/"))).toHaveLength(1);
  expect(requests.filter(request=>request.path.endsWith("/canonical-results"))).toHaveLength(1);

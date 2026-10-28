@@ -24,7 +24,18 @@ export function hasConversationChoice(session: Session | null) {
     (state.pending_question?.scope_id === scope && state.pending_question.status === "active" && (state.pending_question.options.length > 0 || state.pending_question.purpose === "offer_help"));
 }
 
-export type PrimarySurface = "composer" | "choices" | "tests" | "results" | "recovery" | "none";
+const runStates: Record<string, string> = {
+  COMPLETED: "Completed", RUNNING: "Running", QUEUED: "Queued", FAILED: "Failed", CANCELLED: "Stopped",
+  CANCELLING: "Stopping", AWAITING_APPROVAL: "Needs approval", AWAITING_INPUT: "Needs one detail",
+};
+// Unknown states fall back to sentence case so a raw code like EXPIRED never reaches the page.
+export function runStateLabel(state: string) {
+  if (runStates[state]) return runStates[state];
+  const words = state.replace(/_/g, " ").trim().toLowerCase();
+  return words ? words[0].toUpperCase() + words.slice(1) : "Unknown";
+}
+
+export type PrimarySurface ="composer" | "choices" | "tests" | "results" | "recovery" | "none";
 export function primarySurface(input: { busy: boolean; dirty: boolean; typing: boolean; choice: boolean; results: boolean; tests: boolean; recovery: boolean; build?: boolean }): PrimarySurface {
   if (input.busy) return "none";
   if (input.dirty) return "tests";

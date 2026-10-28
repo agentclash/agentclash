@@ -69,7 +69,7 @@ export function CanonicalResults(p: {
       {visible?.error && <p role="alert">{visible.error}</p>}
       <details aria-label="Application run history" className="space-y-3">
         <summary>Application run history</summary>
-        <p>Live canonical execution, with workspace billing and separate external application fees.</p>
+        <p>Runs against your connected app. Uses workspace credits. Your app’s own costs are separate.</p>
         {!visible?.rows && !visible?.error && <p role="status">Loading application runs…</p>}
         <VibeButton onClick={() => { retry(n => n + 1); p.onRefreshSelected?.(); }}>Refresh application runs</VibeButton>
         {visible?.rows?.length === 0 && <p>No application runs are bound to these published tests yet.</p>}
