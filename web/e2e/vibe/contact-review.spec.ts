@@ -32,10 +32,18 @@ async function installFixture(page: Page, mode: ContactMode, posts: string[]) {
   });
 }
 
+// The enquiry is an occasional result action, inside the one "More actions" disclosure.
+async function openMoreActions(page: Page) {
+  const summary = page.locator("details.vibe-results-more > summary");
+  await expect(summary).toBeVisible();
+  if (!(await summary.evaluate(node => (node.parentElement as HTMLDetailsElement).open))) await summary.click();
+}
+
 async function openContact(page: Page) {
   await page.goto("/vibe-evals?session=contact-fixture");
   await page.getByRole("tab", {name:"Results", exact:true}).click();
   await expect(page.getByRole("combobox", {name:"Result history"})).toHaveValue("check");
+  await openMoreActions(page);
   const opener = page.getByRole("button", { name: "Discuss this with AgentClash" }).first();
   await opener.scrollIntoViewIfNeeded();
   await opener.click();
@@ -53,6 +61,7 @@ test("unconfigured and direct-email modes do not collect contact details or send
       await page.goto("/vibe-evals?session=contact-fixture");
       await page.getByRole("tab", {name:"Results", exact:true}).click();
   await expect(page.getByRole("combobox", {name:"Result history"})).toHaveValue("check");
+      await openMoreActions(page);
       await expect(page.getByRole("button", { name: "Discuss this with AgentClash" })).toHaveCount(0);
       expect(posts).toHaveLength(0); await page.unrouteAll(); continue;
     }

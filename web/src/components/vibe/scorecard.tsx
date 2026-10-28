@@ -142,6 +142,16 @@ export function VibeScorecard({
                 ? "Some replies still need a closer look"
                 : `No issues found in ${score.total === 1 ? `this ${unit}` : `these ${score.total} ${unit}`}`;
   const evidenceVersion = `${operation.id}:${operation.state}:${eventCursor || 0}`;
+  // The summary line gives the failed and unresolved counts; this note does not repeat them.
+  const statusNote = testJourney
+    ? done && score.total === 0
+      ? "No tests produced a result."
+      : done
+        ? score.failed || incomplete ? "" : "These replies met the expectations."
+        : regraded ? "Rechecking grades using the saved replies…" : provided ? "Grading the recorded replies…" : "Generating prototype replies and checking them…"
+    : done
+      ? `These findings cover only ${score.total === 1 ? "this" : `these ${score.total}`} ${unit}.`
+      : "Completed findings are kept as the check runs.";
 
   return (
     <article aria-label="Evaluation scorecard" className="space-y-6">
@@ -154,30 +164,11 @@ export function VibeScorecard({
             ? `${score.passed} of ${score.total} tests passed`
             : headline}
         </h2>
-        {done && <p className="mt-3 text-sm">{score.passed} passed · {score.failed} failed · {unresolvedCount} unresolved</p>}
+        {done && <p className="mt-3 text-sm">{score.passed} passed · {score.failed} failed{unresolvedCount ? ` · ${unresolvedCount} unresolved` : ""}</p>}
         {done && overlappingCounts && <p className="mt-2 text-sm vibe-muted">Unresolved cases have unfinished checks and can also be counted as passed or failed.</p>}
-        {findingFirst && concreteFinding?.id === operation.id && <p>{concreteFinding.text}</p>}
+        {findingFirst && concreteFinding?.id === operation.id && leading?.case_key !== failedKey && <p>{concreteFinding.text}</p>}
         {findingFirst && done && !stopped && score.total > 0 && !score.failed && !incomplete && <p className="mt-2 text-sm vibe-muted">All these examples passed. This does not prove reliability beyond these situations; live integrations and unseen inputs remain untested.</p>}
-        <p className="mt-3 text-sm vibe-muted">
-          {testJourney ? (
-            done && score.total === 0 ? (
-              "No tests produced a result."
-            ) : done ? (
-              `${score.failed ? `${score.failed} ${score.failed === 1 ? "needs" : "need"} attention.` : ""}${unresolvedCount ? ` ${unresolvedCount} couldn't be completed.` : score.failed ? "" : "These replies met the expectations."}`
-            ) : (
-              regraded ? "Rechecking grades using the saved replies…" : provided ? "Grading the recorded replies…" : "Generating prototype replies and checking them…"
-            )
-          ) : (
-            <>
-              {done &&
-                score.failed > 0 &&
-                `${score.passed} passed · ${score.failed} ${score.failed === 1 ? "needs" : "need"} attention. `}
-              {done
-                ? `These findings cover only ${score.total === 1 ? "this" : `these ${score.total}`} ${unit}.`
-                : "Completed findings are kept as the check runs."}
-            </>
-          )}
-        </p>
+        {statusNote && <p className="mt-3 text-sm vibe-muted">{statusNote}</p>}
         <p className="mt-2 text-sm vibe-muted">
           {regraded ? "Saved replies only. Your agent was not called again." : provided
             ? "Based on the chats you provided. Your live app was not called."
@@ -248,7 +239,6 @@ export function VibeScorecard({
             onRegrade={done ? onRegrade : undefined}
             origin={operation.source?.kind}
             defaultOpen
-            focused
             allowFixPrompt={!testJourney}
             onFixCopied={() => setCopiedFinding(findingID)}
             busy={busy}
@@ -291,6 +281,15 @@ export function VibeScorecard({
       {done && !testJourney && (
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
+            {score.failed > 0 && (
+              <VibeButton
+                variant={primary && !copied ? "primary" : "secondary"}
+                disabled={busy}
+                onClick={() => onImprove()}
+              >
+                <Lightbulb aria-hidden="true" /> Suggest a change
+              </VibeButton>
+            )}
             {offerSave && (
               <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={onSave}>
                 <Bookmark aria-hidden="true" /> Save this check
@@ -425,21 +424,15 @@ export function VibeScorecard({
               Run as a separate check
             </VibeButton>
           )}
-          {done && !testJourney && (
+          {done && !testJourney && (onNewReplies || (onSave && !offerSave)) && (
             <div className="flex flex-wrap gap-2">
-              {score.failed > 0 && (
-                <VibeButton
-                  variant="quiet"
-                  disabled={busy}
-                  onClick={() => onImprove()}
-                >
-                  <Lightbulb aria-hidden="true" /> Suggest a change
+              {/* Without new replies, "Check the new answer" already reruns these examples. */}
+              {onNewReplies && (
+                <VibeButton variant="quiet" disabled={busy} onClick={onRetest}>
+                  {provided ? "Compare an update" : "Run the same examples again"}
+                  <ArrowRight aria-hidden="true" />
                 </VibeButton>
               )}
-              <VibeButton variant="quiet" disabled={busy} onClick={onRetest}>
-                {provided ? "Compare an update" : "Run the same examples again"}
-                <ArrowRight aria-hidden="true" />
-              </VibeButton>
               {onSave && !offerSave && (
                 <VibeButton variant="quiet" disabled={busy} onClick={onSave}>
                   <Bookmark aria-hidden="true" /> Save this check

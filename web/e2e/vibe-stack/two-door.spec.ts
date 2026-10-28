@@ -24,6 +24,12 @@ async function openView(page: Page, name: 'Agent'|'Tests'|'Results') {
  if(await sheet.isVisible()) await sheet.getByRole('button',{name:'Close Guide',exact:true}).click();
  await page.getByRole('tab',{name,exact:true}).click();
 }
+// Occasional result actions share one "More actions" disclosure below the scorecard.
+async function openMoreActions(page: Page) {
+ const more=page.locator('details.vibe-results-more');
+ await expect(more.locator(':scope > summary')).toBeVisible();
+ if(!(await more.evaluate(el=>(el as HTMLDetailsElement).open))) await more.locator(':scope > summary').click();
+}
 async function reviewLatest(page: Page) {
  const latest=(await evidence(page)).session.document.artifacts.at(-1).id;
  if(new URL(page.url()).searchParams.get('agent')!==latest) await page.getByRole('button',{name:'Review latest version',exact:true}).click();
@@ -54,7 +60,7 @@ test("clear Build goes through real worker to three results, scoped export and i
  await openGuide(page);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
  await openView(page,'Results');
- await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText('3 passed · 0 failed · 0 unresolved');
+ await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText('3 passed · 0 failed');
  await expect(page.getByLabel('Result history').locator('option:not([disabled])')).toHaveCount(1);
  await expect(page.locator('.vibe-project-header')).toContainText('Run 1: Completed');
  await page.screenshot({path:info.outputPath('results-desktop.png'),fullPage:true});
@@ -66,6 +72,7 @@ test("clear Build goes through real worker to three results, scoped export and i
   await page.screenshot({path:info.outputPath(`results-${viewport.width}.png`),fullPage:true});
  }
  await page.setViewportSize({width:1280,height:900});
+ await openMoreActions(page);
  await page.getByRole('button',{name:'Download / save',exact:true}).click();
  const download=page.waitForEvent('download');await page.getByRole('button',{name:'Export / build it myself',exact:true}).click();await page.getByRole('button',{name:'Download exact export',exact:true}).click();await download;await page.getByRole('button',{name:'Close',exact:true}).last().click();
  await page.getByRole('button',{name:'Try it yourself',exact:true}).click();
@@ -83,7 +90,7 @@ test("clear Build goes through real worker to three results, scoped export and i
  await openGuide(page);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
  await openView(page,'Results');
- await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText('3 passed · 0 failed · 0 unresolved');
+ await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText('3 passed · 0 failed');
  expect((await evidence(page)).calls).toHaveLength(afterTrial.calls.length);
 });
 
@@ -204,6 +211,7 @@ test("tougher situations prepare and run one authorized batch while preserving t
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('results');
  const before=await evidence(page), baseline=before.session.document.artifacts.at(-1);
  await openView(page,'Results');
+ await openMoreActions(page);
  await page.locator('.vibe-build-next-actions:not([hidden]) .vibe-build-more > summary').click();
  await page.getByRole('button',{name:'Try tougher situations',exact:true}).click();
  await expect(page.getByText('Prepare 2 additional examples.',{exact:false})).toBeVisible();
@@ -271,9 +279,9 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  const history=page.getByLabel('Result history');
  await expect(history.locator('option:not([disabled])')).toHaveCount(3);
  await history.selectOption(baseline.id);
- await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText('2 passed · 1 failed · 0 unresolved');
+ await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText('2 passed · 1 failed');
  await history.selectOption(comparison.id);
- await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText('3 passed · 0 failed · 0 unresolved');
+ await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText('3 passed · 0 failed');
  await openGuide(page);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
  await page.screenshot({path:info.outputPath('build-same-test-improvement.png')});
@@ -303,7 +311,7 @@ test("sample continuation retains its prototype through harder requests, chat, r
  expect(harder.blueprint.cases.slice(0,3)).toEqual(base.blueprint.cases);
  expect(harder.agent_prompt).toBe(base.agent_prompt);
  expect(v.session.document.active_artifact_id).toBe(base.id);
- await expect(page.getByRole('button',{name:'Try it yourself',exact:true})).toBeVisible();
+ await expect(page.getByRole('textbox',{name:'Message your agent',exact:true})).toBeVisible();
  await reviewLatest(page);
  await openView(page,'Tests');
  await page.getByRole('button',{name:'Update and check',exact:true}).click();
@@ -335,6 +343,7 @@ test("sample continuation retains its prototype through harder requests, chat, r
  expect(v.session.operations.at(-1).scorecard.total).toBe(3);
  expect(v.calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(callsBefore+11);
  await openView(page,'Results');
+ await openMoreActions(page);
  await page.getByRole('button',{name:'Download / save',exact:true}).click();
  const download=page.waitForEvent('download'); await page.getByRole('button',{name:'Export / build it myself',exact:true}).click();await page.getByRole('button',{name:'Download exact export',exact:true}).click();await download;await page.getByRole('button',{name:'Close',exact:true}).last().click();
  await page.screenshot({path:info.outputPath('sample-followup-real-policy.png'),fullPage:true});
@@ -387,7 +396,8 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  const result=await evidence(page);expect(result.calls.map((c:{role:string})=>c.role)).toEqual(['judge']);
  expect(result.session.operations.at(-1).evidence_metadata.origin).toBe('recorded');
  await page.getByRole('tab',{name:'Results',exact:true}).click();
- await expect(page.getByRole('button',{name:'Reload saved evidence',exact:true})).toBeVisible();
+ await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toBeVisible();
+ await openMoreActions(page);
  await page.getByRole('button',{name:'Review a grade',exact:true}).click();
  await page.getByLabel('Grade review reason',{exact:true}).fill('The recorded reply needs a second human review.');
  await expect(page.getByRole('button',{name:'Save grade review',exact:true})).toBeEnabled();
@@ -395,7 +405,8 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  await expect(page.getByText('The recorded reply needs a second human review.',{exact:true})).toBeVisible();
  for(const width of [320,390,600,601,768,1023,1024,1279,1280,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)}
  await page.screenshot({path:info.outputPath('recorded-results.png'),fullPage:true});
- await page.reload();await expect(page.getByRole('button',{name:'Reload saved evidence',exact:true})).toBeVisible();
+ await page.reload();await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toBeVisible();
+ await openMoreActions(page);
  await expect(page.getByText('The recorded reply needs a second human review.',{exact:true})).toBeVisible();
  expect((await evidence(page)).calls).toHaveLength(1);
  // Actual CreateAgent projects retain the testJourney headline; new intake is
@@ -424,7 +435,8 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  expect(final.session.operations.at(-1)).toMatchObject({baseline_id:baseline.id,source:{artifact_id:artifact.id,evidence_set_id:artifact.conversation_evaluation.evidence_set_id,comparison:'updated_replies'}});
  expect(final.session.operations[0].source).toEqual(baseline.source);
  await page.getByRole('tab',{name:'Results',exact:true}).click();
- await page.getByRole('button',{name:'Reload saved evidence',exact:true}).click();
+ // A complete run has no "Reload saved evidence"; reload the page to read the saved run.
+ await page.reload();
  await expect(page.locator('.vibe-project-header')).toContainText('Run 2: Completed');
  await page.getByRole('button',{name:'Compare saved replies',exact:true}).click();
  await expect(page.getByRole('region',{name:'Before',exact:true})).toContainText('I can refund that.');
@@ -445,7 +457,7 @@ test("library original bytes round-trip through browser upload and selected expo
  await expect(page.getByRole('button',{name:'Download original original escaped.json',exact:true})).toBeVisible();
  const sourceDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Download original original escaped.json',exact:true}).click();
  const source=await sourceDownload;const {readFile}=await import('node:fs/promises');expect(await readFile((await source.path())!)).toEqual(original);
- await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:'Export selected version / result',exact:true}).click();
+ await page.getByRole('button',{name:'Settings',exact:true}).click();await page.getByRole('button',{name:/^Export (?:selected version \/ result|tests and agent instructions|agent and checks)$/}).click();
  await expect(page.getByRole('button',{name:'Download exact export',exact:true})).toBeVisible();
  const exportedDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Download exact export',exact:true}).click();
  const exported=JSON.parse(await readFile((await (await exportedDownload).path())!,'utf8'));

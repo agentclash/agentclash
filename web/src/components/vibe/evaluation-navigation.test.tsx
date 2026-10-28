@@ -58,9 +58,16 @@ it("keeps list tools reachable after search misses and switching to an empty arc
   const node = document.createElement("div"), root = createRoot(node);
   document.body.append(node);
   const session = { id: "first", document: { artifacts: [] }, operations: [] } as unknown as Session;
-  const render = (contexts: Session[], archiveMode: "exclude" | "only") => root.render(<EvaluationNavigation enabled contexts={contexts} session={null} choosing disabled={false} archiveMode={archiveMode} onArchiveMode={()=>{}} onNew={()=>{}} onSwitch={()=>{}} onSettings={()=>{}} onSavedWork={()=>{}}>{()=>null}</EvaluationNavigation>);
+  const render = (contexts: Session[], archiveMode: "exclude" | "only") => root.render(<EvaluationNavigation enabled contexts={contexts} session={null} choosing disabled={false} archiveMode={archiveMode} onArchiveMode={()=>{}} onRetryList={()=>{}} onNew={()=>{}} onSwitch={()=>{}} onSettings={()=>{}} onSavedWork={()=>{}}>{()=>null}</EvaluationNavigation>);
+  const projects = Array.from({ length: 7 }, (_, i) => ({ ...session, id: `project-${i}` }));
   try {
-    await act(async () => render([session], "exclude"));
+    // A short list shows no search, but the archive filter and refresh stay reachable.
+    await act(async () => render(projects.slice(0, 6), "exclude"));
+    expect(node.querySelector('input[type="search"]')).toBeNull();
+    expect(node.querySelector('select[aria-label="Project archive filter"]')).not.toBeNull();
+    expect(node.querySelector('button[aria-label="Refresh projects"]')).not.toBeNull();
+    expect(node.textContent).not.toContain("The server returns the latest 100 projects");
+    await act(async () => render(projects, "exclude"));
     const search = node.querySelector<HTMLInputElement>('input[type="search"]')!;
     await act(async () => {
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search, "no matching title");
@@ -68,8 +75,11 @@ it("keeps list tools reachable after search misses and switching to an empty arc
     });
     expect(node.querySelector('[data-evaluation-id]')).toBeNull();
     expect(node.querySelector('input[type="search"]')).toBe(search);
+    expect(search.placeholder).toBe("Search projects");
+    expect(document.getElementById(search.getAttribute("aria-describedby")!)?.textContent).toContain("latest 100 projects");
     await act(async () => render([], "only"));
     expect(node.querySelector<HTMLSelectElement>('select')?.value).toBe("only");
+    expect(node.querySelector('input[type="search"]')).toBe(search);
   } finally { await act(async () => root.unmount()); node.remove(); vi.unstubAllGlobals(); }
 });
 

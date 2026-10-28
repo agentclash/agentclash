@@ -775,6 +775,10 @@ test("Try keeps followups separate from Build and starts fresh on reset", async 
   await page
     .getByRole("button", { name: "Send to agent", exact: true })
     .click();
+  // The click returns before the mock records the request.
+  await expect
+    .poll(() => mock.messageRequests().filter((r) => r.kind === "playground").length)
+    .toBe(2);
   const trials = mock.messageRequests().filter((r) => r.kind === "playground");
   expect(trials).toHaveLength(2);
   expect(trials[0].preview_thread_id).toBe(trials[1].preview_thread_id);
@@ -806,21 +810,23 @@ test("improve and retest keep a fixed comparison, duplicate clicks send once", a
   mock.snapshot().operations[0].scorecard!.failed = 1;
   mock.snapshot().operations[0].scorecard!.passed = 0;
   mock.snapshot().revision++;
-  await openScorecardSection(page, "What was checked");
-  await page
-    .getByRole("button", { name: "Suggest a change", exact: true })
-    .click();
+  // Suggest a change is the primary action of a failed result, outside any disclosure.
+  const suggest = page.getByRole("button", { name: "Suggest a change", exact: true });
+  await expect(suggest).toHaveClass(/vibe-button-primary/);
+  await suggest.click();
   await expect.poll(() => mock.messageCount()).toBe(2);
   await page.getByRole("tab", { name: "Results", exact: true }).click();
-  await openScorecardSection(page, "What was checked");
   expect(
     mock
       .messageRequests()
       .filter((r) => r.kind === "message")
       .at(-1)?.baseline_id,
   ).toBe("check-1");
+  await expect(
+    page.getByRole("button", { name: "Run the same examples again", exact: true }),
+  ).toHaveCount(0);
   await page
-    .getByRole("button", { name: "Run the same examples again", exact: true })
+    .getByRole("button", { name: "Check the new answer", exact: true })
     .click();
   await expect(
     page.getByRole("article", { name: "Evaluation scorecard" }),
@@ -873,7 +879,7 @@ test("lost acknowledgement retries exactly after SSE advances and preserves the 
   await expect(
     page.getByRole("button", { name: "Retry submission" }),
   ).toHaveCount(0);
-  expect(mock.messageRequests()).toHaveLength(2);
+  await expect.poll(() => mock.messageRequests().length).toBe(2);
   expect(mock.messageRequests()[1]).toEqual(mock.messageRequests()[0]);
   expect(mock.messageCount()).toBe(1);
   await expect(composer).toHaveValue("Here is my next question");

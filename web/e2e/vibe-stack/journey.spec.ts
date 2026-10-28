@@ -87,7 +87,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   await tests.getByRole("button", { name: "Run 3 tests", exact: true }).click();
   await page.getByRole("button", { name: "Run 3 examples", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();
-  await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("2 passed · 1 failed · 0 unresolved");
+  await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("2 passed · 1 failed");
   state = await evidence(page, sessionID!);
   const baseline = state.session.operations.at(-1)!;
   expect(baseline.state).toBe("COMPLETED");
@@ -109,7 +109,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   await page.getByRole("button", { name: "Improve and rerun", exact: true }).click();
   await page.getByRole("button", { name: "Run 3 examples", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();
-  await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("3 passed · 0 failed · 0 unresolved");
+  await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("3 passed · 0 failed");
   state = await evidence(page, sessionID!);
   const rerun = state.session.operations.at(-1)!;
   expect(rerun.baseline_id).toBe(baseline.id);
@@ -321,7 +321,7 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   await tests.getByRole("button",{name:"Run 3 tests",exact:true}).click();
   await page.getByRole("button", { name: "Run 3 examples", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();
-  await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("3 passed · 0 failed · 0 unresolved");
+  await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("3 passed · 0 failed");
   const ran=await evidence(page,id);
   expect(ran.hashes[ran.session.document.artifacts.at(-1)!.id]).toEqual(before.hashes[artifact.id]);
   expect(ran.session.operations.filter(o=>o.kind==="check")).toHaveLength(1);

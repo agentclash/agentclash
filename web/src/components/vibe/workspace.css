@@ -466,7 +466,8 @@
     min-width: 44px;
   }
   /* These controls set their own smaller size, so the touch size needs the extra scope. */
-  .vibe-workspace :is(.vibe-sidebar-collapse.vibe-button, .vibe-run-reference button, .vibe-trial-recipient .vibe-button, .vibe-material-chip .vibe-button, .vibe-enquiry-dialog .vibe-button) {
+  .vibe-workspace .vibe-sidebar-filter { min-height: 44px; }
+  .vibe-workspace :is(.vibe-sidebar-collapse.vibe-button, .vibe-sidebar-icon.vibe-button, .vibe-run-reference button, .vibe-trial-recipient .vibe-button, .vibe-material-chip .vibe-button, .vibe-enquiry-dialog .vibe-button) {
     min-width: 44px;
     min-height: 44px;
   }
@@ -574,10 +575,12 @@
 .vibe-sidebar-create .vibe-button { width:100%; justify-content:flex-start; background:var(--vibe-hover); border-color:var(--vibe-border); min-height:42px; }
 .vibe-sidebar-list { flex:1; min-height:0; overflow-y:auto; padding:0 var(--vibe-space-3) var(--vibe-space-4); scrollbar-width:thin; }
 .vibe-sidebar-label { margin:0 var(--vibe-space-2) var(--vibe-space-3); color:var(--vibe-muted); font-size: var(--vibe-font-footnote); font-weight:500; letter-spacing:0.03em; line-height: var(--vibe-leading-footnote); }
-.vibe-sidebar-list > label { display:grid; gap:var(--vibe-space-2); margin-bottom:var(--vibe-space-3); color:var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight:500; }
-.vibe-sidebar-list > label :is(input, select) { width:100%; margin:0; }
-.vibe-sidebar-hint { margin-bottom:var(--vibe-space-3); color:var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
-.vibe-sidebar-list > .vibe-button { margin-bottom:var(--vibe-space-2); justify-content:flex-start; }
+.vibe-sidebar-tools { display:flex; align-items:center; justify-content:space-between; gap:var(--vibe-space-1); margin-bottom:var(--vibe-space-2); }
+.vibe-sidebar-tools > .vibe-sidebar-label { margin-bottom:0; }
+.vibe-workspace .vibe-sidebar-filter { min-width:0; min-height:40px; padding:0 var(--vibe-space-2); border-color:transparent; cursor:pointer; }
+.vibe-workspace .vibe-sidebar-filter:hover { border-color:var(--vibe-border); }
+.vibe-sidebar-icon.vibe-button { flex:none; padding:var(--vibe-space-2); min-width:40px; min-height:40px; color:var(--vibe-muted); }
+.vibe-workspace .vibe-sidebar-search { width:100%; margin:0 0 var(--vibe-space-3); }
 .vibe-sidebar-empty { padding:0 var(--vibe-space-2); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); color:var(--vibe-muted); }
 .vibe-project-list-notice { font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-sidebar-item { position:relative; isolation:isolate; display:flex; align-items:center; gap:var(--vibe-space-2); width:100%; min-width:0; padding:var(--vibe-space-3) var(--vibe-space-2); margin-bottom:var(--vibe-space-1); border:0; border-radius:var(--vibe-radius-sm); text-align:left; cursor:pointer; color:var(--vibe-muted); background:transparent; transition:color 150ms, background-color 150ms; }
@@ -609,6 +612,8 @@
 .vibe-header-identity { display:flex; align-items:center; gap:var(--vibe-space-2); min-width:0; }
 .vibe-header-title { white-space:nowrap; text-overflow:ellipsis; overflow:hidden; font-size: var(--vibe-font-callout); font-weight:500; color:var(--vibe-muted); line-height: var(--vibe-leading-callout); }
 .vibe-shell .vibe-header { min-height:68px; padding:var(--vibe-space-3) var(--vibe-space-5); }
+/* The open sidebar already shows the brand. */
+@media(min-width:1024px) { .vibe-shell[data-collapsed="false"] .vibe-header-title[data-brand] { visibility:hidden; } }
 .vibe-mobile-toggle.vibe-button { display:none; }
 .vibe-sidebar-sheet[data-slot="sheet-content"] { width:min(18.125rem,calc(100dvw - 2rem)); max-width:none; height:100dvh; gap:0; background:var(--vibe-surface); border-color:var(--vibe-border); padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 .vibe-sidebar-sheet .vibe-sidebar-brand { padding-right:60px; }

@@ -88,7 +88,7 @@ async function serve(page: Page, many = false, prototypes = false) {
   });
   await page.goto("/vibe-evals?session=first");
   // The reused development server also waits for AuthKit's initial session check.
-  if (prototypes) await expect(page.getByRole("button", { name: "Try it yourself", exact: true })).toBeVisible({ timeout: 15_000 });
+  if (prototypes) await expect(page.getByRole("textbox", { name: "Message your agent", exact: true })).toBeVisible({ timeout: 15_000 });
   else await expect(page.getByRole("heading", { name: "Improve an agent you already have." })).toBeVisible({ timeout: 15_000 });
   return { first, second, sessions, posts, errors };
 }
@@ -120,7 +120,8 @@ test("a stored trial in B survives opening A, switching, editing and refreshing"
   await page.locator('[data-evaluation-id="second"]').click();
   await openGuide("second");
   await expect(composer).toHaveValue("B's separate guide draft");
-  await page.getByRole("button", { name: "Try it yourself", exact: true }).click();
+  // The Agent tab shows the trial inline; there is no separate "Try it yourself" step.
+  await expect(page.getByRole("button", { name: "Try it yourself", exact: true })).toHaveCount(0);
   const trial = page.getByRole("textbox", { name: "Message your agent", exact: true });
   await expect(trial).toHaveValue("B's unsent trial");
   await trial.fill("B's edited unsent trial");
@@ -155,6 +156,7 @@ test("sidebar creation and cancellation preserve the draft and never start a run
   expect(control.posts).toHaveLength(0);
   await page.getByRole("button", { name: "New evaluation", exact: true }).click();
   await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+  await expect.poll(() => control.posts.length).toBe(1);
   const created = control.posts[0].body.id as string;
   await expect(page.locator(`[data-evaluation-id="${created}"]`)).toHaveAttribute("aria-current", "page");
   await expect(composer).toHaveValue("Keep this unsent description.");
@@ -259,7 +261,7 @@ test("plain-language source choices explain test packs and let an empty choice c
   expect(control.posts).toHaveLength(1);
   await page.getByRole("button", { name: /Build an agent/ }).click();
   await expect(page.getByRole("heading", { name: "What would you like help with?" })).toBeVisible();
-  expect(control.posts.map(post => post.path)).toEqual([
+  await expect.poll(() => control.posts.map(post => post.path)).toEqual([
     "/v1/vibe/sessions",
     "/v1/vibe/sessions",
   ]);
@@ -284,6 +286,7 @@ test("dismissing the extra-run quote restores focus without submitting a paid ru
   control.sessions.set("build", buildEvaluation());
   await page.goto("/vibe-evals?session=build");
   await page.getByRole("tab", { name: "Results", exact: true }).click();
+  await page.locator(".vibe-results-more > summary").click();
   const actions = page.getByRole("region", { name: "Next actions for this version" });
   await expect(actions).toBeVisible();
   await actions.locator("summary").filter({ hasText: "More ways to check" }).click();
@@ -637,6 +640,11 @@ test("Settings descendants retain readable scoped appearance including warning, 
     await page.getByLabel("Appearance",{exact:true}).selectOption(appearance);
     await page.getByRole("complementary",{name:"Details utility"}).getByRole("button",{name:"Settings",exact:true}).click();
     const dialog=page.getByRole("dialog",{name:"Settings and details"});
+    // The dialog moves focus to its initial control after it opens. Focus the select only after
+    // that settles; otherwise the late initial focus takes focus away from it.
+    await expect(dialog).toBeVisible();
+    await expect.poll(()=>dialog.evaluate(popup=>!popup.hasAttribute("data-starting-style")&&popup.contains(document.activeElement))).toBe(true);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const model=dialog.getByLabel("Assistant model",{exact:true});
     await model.focus(); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab");
     const action=dialog.getByRole("button",{name:"Import a test pack",exact:true}); await action.hover();

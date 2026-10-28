@@ -46,17 +46,7 @@ export function AgentSettings({reimport,open, onOpenChange, onOpenChangeComplete
             Choose models, review versions, or export your work.
           </DialogDescription>
           <div className="vibe-dialog-body space-y-4">
-          {(workspace || savable) && <div className="flex flex-wrap gap-2">
-          {workspace && <Button variant="ghost" size="sm" onClick={onCredits}>Credits</Button>}
-          {savable && (
-              <VibeButton
-                disabled={busy}
-                onClick={onSave}
-              >
-                {testJourney ? "Keep these tests" : "Save agent"}
-              </VibeButton>
-            )}
-          </div>}
+          {workspace && <div className="flex flex-wrap gap-2"><Button variant="ghost" size="sm" onClick={onCredits}>Credits</Button></div>}
           {savedDraft && (
             <Link
               className="text-sm underline"
@@ -143,6 +133,14 @@ export function AgentSettings({reimport,open, onOpenChange, onOpenChangeComplete
           {reimport}
           {(savable || session) && <div className="flex flex-wrap gap-2">
           {savable && (
+              <VibeButton
+                disabled={busy}
+                onClick={onSave}
+              >
+                {testJourney ? "Keep these tests" : "Save agent"}
+              </VibeButton>
+            )}
+          {savable ? (
               <Button
                 variant="outline"
                 onClick={onExportConversation}
@@ -151,8 +149,7 @@ export function AgentSettings({reimport,open, onOpenChange, onOpenChangeComplete
                   ? "Export tests and agent instructions"
                   : "Export agent and checks"}
               </Button>
-            )}
-          {session && (
+            ) : (
             <Button variant="outline" onClick={onExportConversation}>
               Export selected version / result
             </Button>

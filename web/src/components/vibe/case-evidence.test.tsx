@@ -187,3 +187,23 @@ it("opens the complete exact explanation beside its concise excerpt",async()=>{
  expect(disclosure.textContent).toContain(explanation);
  expect(disclosure.parentElement?.textContent).toContain("excerpt");
 });
+
+it("shows a grounded finding and its expectation once, and disputes only the other checks", async () => {
+  const reply = "Yes, you can return it. Just bring the receipt.";
+  const finding = { key: "behavior", verdict: "FAIL" as const, evidence: "The agent allowed a late return.", evidence_version: 1, finding: { kind: "observed" as const, quotes: [{ message_id: "output", text: "Yes, you can return it." }], missing: "", covered_message_ids: [] } };
+  const evidence: CaseResult = { ...result("FAIL"), output: reply, expected: "Decline the late return.", checks: [finding] };
+  const dispute = vi.fn();
+  await act(async () => root.render(<CaseEvidence summary={evidence} load={async () => evidence} onDispute={dispute} />));
+  await open();
+  const count = (text: string) => container.textContent!.split(text).length - 1;
+  expect(count(finding.evidence)).toBe(1);
+  expect(count("Decline the late return.")).toBe(1);
+  expect(container.textContent).not.toContain("All checks");
+  expect(container.textContent).not.toContain("That’s not our rule");
+  const labels = () => [...container.querySelectorAll("button")].map(b => b.textContent);
+  expect(labels()).toContain("Change the expected behavior");
+  const withAnswer = { ...evidence, checks: [{ key: "has_answer", verdict: "FAIL" as const, evidence: "No answer check." }, finding] };
+  await act(async () => root.render(<CaseEvidence summary={withAnswer} load={async () => withAnswer} onDispute={dispute} />));
+  expect(container.textContent).toContain("All checks · 2");
+  expect(labels().filter(label => label === "That’s not our rule")).toHaveLength(1);
+});

@@ -5,7 +5,7 @@ import { useVibeEvidenceOwner } from "@/lib/use-vibe-evidence-owner";
 import { projectTitle, sidebarPreference, setSidebarPreference } from "@/lib/vibe-project";
 import type { CollectionStatus } from "@/lib/use-vibe-collection";
 import { CollectionNotice } from "./collection-notice";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   Archive,
@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  RefreshCw,
   Settings,
 } from "lucide-react";
 import {
@@ -79,6 +80,7 @@ export function EvaluationNavigation(p: Props) {
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => setCollapsed(sidebarPreference()), []);
   const [search, setSearch] = useState("");
+  const searchHint = useId();
   const [renaming, setRenaming] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [metadataBusy, setMetadataBusy] = useState(false);
@@ -132,7 +134,10 @@ export function EvaluationNavigation(p: Props) {
     contexts.push(p.session);
   const guest = !p.actorScope || p.actorScope === "guest";
   const hasProjects = p.contexts.length > 0 || !!p.session?.document.evaluation;
-  const showListTools = !guest || hasProjects || (p.archiveMode && p.archiveMode !== "exclude");
+  const filtered = !!p.archiveMode && p.archiveMode !== "exclude";
+  const showListTools = !guest || hasProjects || filtered;
+  // A short list needs no search; the filter stays reachable so archived projects can be restored.
+  const showSearch = contexts.length > 6 || !!search || filtered;
   const navigate = (action: () => void, mobile: boolean) => {
     if (!mobile) {
       action();
@@ -173,40 +178,46 @@ export function EvaluationNavigation(p: Props) {
         </VibeButton>
       </div>
       <nav aria-label="Your agents" className="vibe-sidebar-list">
-        <p className="vibe-sidebar-label">Your projects</p>
-        {showListTools && (
-          <>
-            <label>
-              Search loaded projects
-              <input
-                type="search"
-                aria-label="Search loaded projects"
-                placeholder="Filter by title"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="vibe-input w-full"
-              />
-            </label>
-            <p className="vibe-sidebar-hint">Search this loaded list. The server returns the latest 100 projects.</p>
-            {p.onArchiveMode && (
-              <label>
-                Show
-                <select
-                  aria-label="Project archive filter"
-                  value={p.archiveMode || "exclude"}
-                  onChange={(e) => p.onArchiveMode?.(e.target.value as "exclude" | "only" | "all")}
-                >
-                  <option value="exclude">Active projects</option>
-                  <option value="only">Archived projects</option>
-                  <option value="all">All projects</option>
-                </select>
-              </label>
-            )}
+        {showListTools && (p.onArchiveMode || p.onRetryList) ? (
+          <div className="vibe-sidebar-tools">
+            {p.onArchiveMode ? (
+              <select
+                aria-label="Project archive filter"
+                className="vibe-sidebar-filter"
+                value={p.archiveMode || "exclude"}
+                onChange={(e) => p.onArchiveMode?.(e.target.value as "exclude" | "only" | "all")}
+              >
+                <option value="exclude">Active projects</option>
+                <option value="only">Archived projects</option>
+                <option value="all">All projects</option>
+              </select>
+            ) : <p className="vibe-sidebar-label">Your projects</p>}
             {p.onRetryList && (
-              <VibeButton variant="quiet" disabled={p.listStatus === "loading"} onClick={p.onRetryList}>
-                Refresh projects
+              <VibeButton
+                variant="quiet"
+                className="vibe-sidebar-icon"
+                aria-label="Refresh projects"
+                title="Refresh projects"
+                disabled={p.listStatus === "loading"}
+                onClick={p.onRetryList}
+              >
+                <RefreshCw aria-hidden="true" />
               </VibeButton>
             )}
+          </div>
+        ) : <p className="vibe-sidebar-label">Your projects</p>}
+        {showListTools && showSearch && (
+          <>
+            <input
+              type="search"
+              aria-label="Search loaded projects"
+              aria-describedby={searchHint}
+              placeholder="Search projects"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="vibe-input vibe-sidebar-search"
+            />
+            <p id={searchHint} className="sr-only">Searches the latest 100 projects loaded here.</p>
           </>
         )}
         <CollectionNotice
@@ -276,9 +287,9 @@ export function EvaluationNavigation(p: Props) {
         <details>
           <summary><CircleHelp aria-hidden="true" />Help<ChevronRight className="vibe-chevron" aria-hidden="true" /></summary>
           <p>
-            Search the loaded project list. Rename changes the project title. Archive hides a
-            project from the active list without stopping runs or deleting evidence. Restore it
-            using Archived projects.
+            Search finds titles in the latest 100 projects. Rename changes the project title.
+            Archive hides a project from the active list without stopping runs or deleting
+            evidence. To restore it, show Archived projects above the list.
           </p>
           <p>
             Export starts with the selected version and result. Full history is an explicit choice;

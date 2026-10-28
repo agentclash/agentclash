@@ -56,6 +56,8 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   expect(state.session.document.artifacts[0].agent_prompt).not.toContain("Mira");
   await expect(page.locator(".vibe-result-row")).toHaveCount(0);
   await page.getByRole("tab",{name:"Results",exact:true}).click();
+  // The enquiry is an occasional result action, inside the one "More actions" disclosure.
+  await page.locator("details.vibe-results-more > summary").click();
   await page.getByRole("button",{name:"Discuss this with AgentClash",exact:true}).click();
   await expect(page.getByRole("dialog")).toContainText("Review what you’ll share. Files, raw replies and chat history are not attached.");
   await expect(page.getByRole("textbox",{name:"Your email",exact:true})).toBeVisible();
