@@ -89,16 +89,14 @@ export function BenchmarksHubContent({ published }: Props) {
     <div className="mx-auto w-full max-w-3xl px-6 py-16">
       <SectionEyebrow>Benchmarks</SectionEyebrow>
       <h1 className="mt-3 text-3xl font-semibold tracking-tight leading-[1.15] text-white sm:text-4xl">
-        Head-to-head AI agent benchmarks you can reproduce
+        Explore head-to-head AI agent benchmarks
       </h1>
       <p className="mt-4 max-w-2xl text-sm leading-relaxed text-white/50 sm:text-base">
-        Public eval runs on frozen challenge packs: same tools, same constraints,
-        full trajectory scoring, and replay evidence. Not a vibes leaderboard.
-        Run the same benchmark on your agents when you are ready to gate releases.
+        Explore reported results and their constraints. The current report covers one task and one run per model; its fixture link is a starting point for your own evaluation.
       </p>
 
       <p className="mt-4 text-sm text-white/50">
-        Explore more research in our <Link href="/publications" className="text-white/75 underline hover:text-white">publications</Link>.
+        Read our <Link href="/benchmarks/methodology" className="text-white/75 underline hover:text-white">benchmark methodology</Link> and explore more research in our <Link href="/publications" className="text-white/75 underline hover:text-white">publications</Link>.
       </p>
 
       {latest ? (
@@ -144,15 +142,12 @@ export function BenchmarksHubContent({ published }: Props) {
         </section>
       ) : (
         <section className="mt-14" aria-labelledby="monthly-process-heading">
-          <SectionEyebrow>Monthly reports</SectionEyebrow>
+          <SectionEyebrow>Benchmark reports</SectionEyebrow>
           <SectionTitle>
             <span id="monthly-process-heading">How we publish benchmark reports</span>
           </SectionTitle>
           <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/50">
-            The first measured same-task is in progress. When it ships, this
-            hub will summarize winners, scorecards, and replay links. Until then,
-            here is the process we follow for every public eval and monthly
-            reliability report.
+            Reports appear here when available. This is a suggested process for future comparisons.
           </p>
           <ol className="mt-6 flex flex-col gap-3">
             {BENCHMARKS_MONTHLY_PROCESS.map((step, index) => (
@@ -188,9 +183,7 @@ export function BenchmarksHubContent({ published }: Props) {
           <span id="methodology-heading">Races, not leaderboard snapshots</span>
         </SectionTitle>
         <p className="mt-3 max-w-2xl text-sm leading-relaxed text-white/50">
-          Static leaderboards hide setup drift. AgentClash benchmarks are
-          same-task eval runs on pinned packs so you can compare models, replay
-          evidence, and promote the same workload to a CI gate.
+          Controlled comparisons record the workload, constraints and scoring. Read each report for its actual evidence and limitations.
         </p>
         <div className="mt-6 grid gap-3 sm:grid-cols-2">
           {BENCHMARKS_METHODOLOGY.map((item) => (
@@ -222,7 +215,7 @@ export function BenchmarksHubContent({ published }: Props) {
       <section className="mt-14" aria-labelledby="packs-heading">
         <SectionEyebrow>Challenge packs</SectionEyebrow>
         <SectionTitle>
-          <span id="packs-heading">Reproduce the workload</span>
+          <span id="packs-heading">Explore the workload</span>
         </SectionTitle>
         <div className="mt-6 flex flex-col gap-3">
           {BENCHMARKS_PACK_LINKS.map((link) => (
@@ -253,9 +246,9 @@ export function BenchmarksHubContent({ published }: Props) {
 
       {latest && (
         <section className="mt-14" aria-labelledby="monthly-cadence-heading">
-          <SectionEyebrow>Monthly cadence</SectionEyebrow>
+          <SectionEyebrow>Publication process</SectionEyebrow>
           <SectionTitle>
-            <span id="monthly-cadence-heading">How reports stay reproducible</span>
+            <span id="monthly-cadence-heading">Plan a controlled comparison</span>
           </SectionTitle>
           <ol className="mt-6 flex flex-col gap-3">
             {BENCHMARKS_MONTHLY_PROCESS.map((step, index) => (
@@ -280,7 +273,7 @@ export function BenchmarksHubContent({ published }: Props) {
               rel="noopener noreferrer"
               className="text-white/55 underline-offset-2 hover:text-white/75 hover:underline"
             >
-              monthly benchmark runbook
+              benchmark runbook
             </a>
             .
           </p>

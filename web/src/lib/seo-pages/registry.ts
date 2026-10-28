@@ -1,7 +1,6 @@
-import { AGENT_EVALUATION_FEATURES } from "@/lib/seo-features";
+import { EDITORIAL } from "./editorial";
 import type { SeoPageConfig } from "./types";
 
-const sharedProofPoints = AGENT_EVALUATION_FEATURES;
 
 const sharedDocsLinks = [
   {
@@ -76,7 +75,7 @@ function dedupeRelatedLinks(
 function page(
   config: Omit<
     SeoPageConfig,
-    "proofPoints" | "relatedLinks" | "workflow" | "faqItems"
+    "editorial" | "proofPoints" | "relatedLinks" | "workflow" | "faqItems"
   > & {
     proofPoints?: string[];
     relatedLinks?: SeoPageConfig["relatedLinks"];
@@ -87,29 +86,12 @@ function page(
   const { relatedLinks: customRelatedLinks, ...rest } = config;
 
   return {
-    proofPoints: sharedProofPoints,
+    ...EDITORIAL[config.path],
     relatedLinks: dedupeRelatedLinks([
+      ...EDITORIAL[config.path].relatedLinks,
+      ...(customRelatedLinks ?? []),
       ...seoHubLinksFor(config.path),
-      ...(customRelatedLinks ?? sharedDocsLinks),
     ]),
-    workflow: [
-      {
-        title: "Import the evidence",
-        text: "Start from OpenTelemetry traces, curated datasets, support transcripts, or a real failure your team already saw.",
-      },
-      {
-        title: "Pin the baseline",
-        text: "Record the current accepted behavior so every prompt, model, RAG, or tool change has a fair comparison point.",
-      },
-      {
-        title: "Replay the evidence",
-        text: "Inspect tool calls, outputs, artifacts, latency, cost, and judge evidence when a candidate gets worse.",
-      },
-      {
-        title: "Gate the release",
-        text: "Compare candidate and baseline runs, then fail CI before a regression reaches users.",
-      },
-    ],
     ...rest,
   };
 }
@@ -1271,7 +1253,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "How does replay help CI failures?",
         answer:
-          "When a gate fails, replay shows exactly which step diverged from baseline so you do not guess from a single error string.",
+          "When a gate fails, reviewers can inspect the replay and comparison to investigate the failure instead of guessing from a single error string.",
       },
     ],
     relatedLinks: [
@@ -1362,9 +1344,9 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
     h1: "Synthetic data generation for AI agents that teaches, not noise",
     heroDescription:
       "Bulk self-instruct produces volume without signal. AgentClash and DataSmith run a weak-vs-strong judge loop that accepts examples only when a strong solver succeeds and a weak solver struggles: the useful difficulty zone for fine-tuning and eval.",
-    proofSectionTitle: "Why weak-vs-strong beats prompt-only generation",
+    proofSectionTitle: "Choose a generation strategy",
     proofSectionDescription:
-      "Meta FAIR Autodata showed that agentic self-instruct with solver separation beats standard synthetic pipelines across CS, legal, and math settings. DataSmith implements the practical loop; AgentClash runs it hosted for regression-ready datasets.",
+      "Compare prompt-only expansion with a challenger, solver, and judge workflow. Review accepted examples before using them for evaluation or training.",
     workflowSectionTitle: "From seeds to export or CI gates",
     docsSectionTitle: "Start generating",
     docsSectionDescription:
@@ -1393,7 +1375,7 @@ export const SEO_PAGE_REGISTRY: SeoPageConfig[] = [
       {
         question: "How does Agentic Self-Instruct improve data quality?",
         answer:
-          "A challenger proposes examples, weak and strong solvers attempt them, and a judge accepts rows only when the score gap indicates the example is learnable but not trivial.",
+          "A challenger proposes examples, weak and strong solvers attempt them, and a judge and configured thresholds filter the candidates. A score gap alone does not establish quality.",
       },
       {
         question: "Should I use DataSmith or AgentClash for generation?",

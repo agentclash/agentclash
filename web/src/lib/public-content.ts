@@ -27,8 +27,15 @@ import {
 } from "@/lib/changelog";
 import { PRICING_TIERS } from "@/lib/pricing-data";
 import { SEO_PAGE_REGISTRY, type SeoPageConfig } from "@/lib/seo-pages";
+import { SEO_COLLECTION_INTROS } from "@/lib/seo-pages/collections";
+import {
+  BENCHMARKS_HUB_FAQ,
+  BENCHMARKS_METHODOLOGY,
+  BENCHMARKS_MONTHLY_PROCESS,
+} from "@/lib/benchmarks-hub";
 import { getBundledTryCliDemos } from "@/lib/try-cli/catalog.server";
 import type { DemoMeta } from "@/lib/try-cli/types";
+import { FACTUAL_PAGES } from "@/lib/factual-pages";
 import { PUBLIC_MACHINE_CONTRACTS } from "@/lib/public-contracts";
 
 export const PUBLIC_ORIGIN = DOCS_ORIGIN;
@@ -306,9 +313,9 @@ const STATIC_PAGES: StaticPage[] = [
     sections: [
       {
         heading: "Explore",
-        body: description,
+        body: SEO_COLLECTION_INTROS[path] ?? description,
         links: SEO_PAGE_REGISTRY.filter((page) => page.path.startsWith(`${path}/`)).map(
-          (page) => ({ label: page.sitemapTitle, href: page.path }),
+          (page) => ({ label: `${page.sitemapTitle}: ${page.editorial.title}`, href: page.path }),
         ),
       },
     ],
@@ -334,7 +341,7 @@ const STATIC_PAGES: StaticPage[] = [
     path: "/benchmarks",
     title: "AI Agent Benchmarks",
     description:
-      "Measured same-task agent comparisons with frozen challenge packs, scorecards, and replay evidence.",
+      "Reported same-task agent comparisons, documented configurations, scorecards, and limitations.",
     priority: 0.8,
     changeFrequency: "weekly",
     sections: [
@@ -342,7 +349,21 @@ const STATIC_PAGES: StaticPage[] = [
         heading: "Reports",
         links: getAllReports()
           .filter((report) => !report.sample)
-          .map((report) => ({ label: report.title, href: `/benchmarks/${report.slug}` })),
+          .map((report) => ({ label: report.title, href: `/benchmarks/${report.slug}` })).concat([{ label: "Benchmark methodology", href: "/benchmarks/methodology" }]),
+      },
+      {
+        heading: "Methodology",
+        body: "Controlled comparisons record the workload, constraints and scoring. Read each report for its actual evidence and limitations.",
+        bullets: BENCHMARKS_METHODOLOGY.map((item) => `${item.title}: ${item.text}`),
+        links: [{ label: "Benchmark methodology", href: "/benchmarks/methodology" }],
+      },
+      {
+        heading: "How reports are published",
+        bullets: [...BENCHMARKS_MONTHLY_PROCESS],
+      },
+      {
+        heading: "Frequently asked questions",
+        bullets: BENCHMARKS_HUB_FAQ.map((item) => `${item.question} ${item.answer}`),
       },
     ],
   },
@@ -534,6 +555,12 @@ function renderSeoPage(page: SeoPageConfig, origin: string): string {
     "",
     ...page.proofPoints.map((point) => `- ${point}`),
     "",
+    `## ${page.editorial.title}`,
+    "",
+    page.editorial.example,
+    "",
+    page.editorial.limitation,
+    "",
     `## ${page.workflowSectionTitle}`,
     "",
     ...page.workflow.flatMap((step, index) => [
@@ -700,6 +727,9 @@ function descriptorFromStatic(page: StaticPage): PublicContentDescriptor {
 
 function buildStaticRegistry(): PublicContentDescriptor[] {
   const items: PublicContentDescriptor[] = STATIC_PAGES.map(descriptorFromStatic);
+  for (const page of Object.values(FACTUAL_PAGES)) {
+    items.push(descriptorFromStatic({ ...page, priority: 0.7, sections: page.sections.map(section => ({ ...section, links: "links" in section ? [...section.links] : undefined })) }));
+  }
 
   for (const demo of getBundledTryCliDemos()) {
     const canonicalPath = `/try/${demo.slug}`;

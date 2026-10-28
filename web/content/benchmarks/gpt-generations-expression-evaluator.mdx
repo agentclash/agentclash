@@ -104,9 +104,7 @@ the leanest run (fewer tokens → higher); we don't assert dollar prices here.
 This is a deliberately small first comparison: **one task, a single run per model**
 (n=1), and an OpenAI-only field. The LLM-judge dimensions carry per-run variance,
 and one task can't rank models in general. Read it as a worked example of the
-format and a real, reproducible result — not a verdict on the models. Wider
-fields (including cross-provider and cheaper open-weight models) follow as the
-backend grows to support them.
+format and the reported results, not a verdict on the models. The fixture link below points to mutable main; exact reproduction is not established.
 
 ## Takeaway
 
@@ -115,7 +113,7 @@ you ship. On this task every passing model was "correct" — but one solved it i
 two turns and another couldn't solve it at all. Compare them on *your* tasks, with
 your tools, and read the whole scoreboard before you pick.
 
-For the shareable monthly summary and full methodology appendix, see [Coding agent benchmark — June 2026](/blog/coding-agent-benchmark-june-2026).
+For the summary and methodology appendix, see [Coding agent benchmark — June 2026](/blog/coding-agent-benchmark-june-2026).
 
 ## Methodology appendix
 
@@ -131,7 +129,9 @@ For the shareable monthly summary and full methodology appendix, see [Coding age
 
 **Scorecard dimensions:** correctness (gated hidden tests), output contract, code quality (LLM judge), explanation clarity (LLM judge), plus reliability and token-efficiency cost on the public board.
 
-**Reproduce:**
+**Run your own comparison:**
+
+The fixture link points to mutable main and the original commit and raw replay artifacts are not attached. These commands start a new run, not an exact reproduction. See [benchmark methodology](/benchmarks/methodology).
 
 ```bash
 export AGENTCLASH_API_URL="https://api.agentclash.dev"
@@ -139,6 +139,6 @@ cd cli && go run . run create --follow
 go run . run ranking <run-id> --json
 ```
 
-Monthly checklist and ownership: [`docs/marketing/model-benchmark-workflow.md`](https://github.com/agentclash/agentclash/blob/main/docs/marketing/model-benchmark-workflow.md).
+Suggested checklist and ownership: [`docs/marketing/model-benchmark-workflow.md`](https://github.com/agentclash/agentclash/blob/main/docs/marketing/model-benchmark-workflow.md).
 
 [Run your own eval →](/try)

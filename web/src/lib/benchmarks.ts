@@ -222,6 +222,7 @@ export function parseBenchmarkReport(
 }
 
 function readReportBySlug(slug: string): BenchmarkReportWithContent | null {
+  if (slug === "methodology") return null;
   const filePath = path.join(CONTENT_DIR, `${slug}.mdx`);
 
   if (!fs.existsSync(filePath)) return null;
