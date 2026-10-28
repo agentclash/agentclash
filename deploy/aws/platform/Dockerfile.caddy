@@ -1,0 +1,20 @@
+ARG BUILDER
+ARG UPSTREAM
+FROM ${BUILDER} AS build
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOPROXY=https://proxy.golang.org GOSUMDB=sum.golang.org
+WORKDIR /src
+COPY source/ .
+# Verify the original canonical modules before applying our recorded API patch.
+RUN go mod download && go mod verify
+RUN sh ./apply-jose-patch.sh
+RUN go test -mod=readonly -count=1 jose_migration_test.go
+# Keep the symbol table for downstream Go vulnerability/reachability tools.
+RUN go build -mod=readonly -trimpath -buildvcs=false -ldflags="-w" -o /out/program .
+RUN go version -m /out/program > /out/build-info.txt && \
+    if grep -F 'github.com/go-jose/go-jose/v3' /out/build-info.txt; then exit 1; fi
+COPY licenses.sh /licenses.sh
+RUN sh /licenses.sh /out/notices && cp apply-jose-patch.sh JOSE-MIGRATION.md /out/build-info.txt /out/notices/source/
+FROM ${UPSTREAM}
+USER root
+COPY --from=build /out/program /usr/bin/caddy
+COPY --from=build /out/notices /usr/share/licenses/agentclash-platform/caddy/
