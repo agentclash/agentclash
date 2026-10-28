@@ -109,7 +109,7 @@ export function rewriteMarkdownDestinations(content: string, rewrite: (href: str
     // Escape ampersands so entity-like query and fragment values survive reparsing.
     const encoded = destination.syntax === "jsx"
       ? href.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("'", "&#39;").replaceAll("<", "&lt;")
-      : href.replace(/([\\()<>])/g, "\\$1").replaceAll("&", "&amp;");
+      : href.replace(/([\\()<>])/g, "\\$1").replaceAll("&", "&amp;").replace(/\s/g, (character) => `&#${character.charCodeAt(0)};`);
     const replacement = destination.syntax === "reference"
       ? `(${encoded}${destination.title == null ? "" : ` "${destination.title.replaceAll("\\", "\\\\").replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("\n", "&#10;").replaceAll("\r", "&#13;")}"`})`
       : encoded;

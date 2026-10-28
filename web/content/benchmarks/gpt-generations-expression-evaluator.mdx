@@ -1,5 +1,6 @@
 ---
 title: "We raced four GPT generations on a real coding task — GPT-5.4 won on efficiency"
+dateModified: "2026-10-28"
 date: "2026-06-07"
 description: "A head-to-head AgentClash comparison of GPT-4.1, GPT-5, GPT-5.4, and GPT-5.5 on a real agentic coding task — building an integer expression evaluator with truncating division — scored on correctness, reliability, and token efficiency."
 author: "AgentClash"
@@ -50,11 +51,15 @@ shell and a filesystem, a ten-iteration budget, no network. The task is a real
 slice of coding work with a verifiable outcome, not a trivia question: write a
 working program, and a hidden test suite decides whether it actually runs.
 
-AgentClash scored the whole trajectory across four vantages — deterministic
-checks (the hidden tests), the output contract, behavioral signals (did the run
-complete cleanly), and LLM judges on code quality and explanation — and folded
-them into one composite. (More on that in
-[how AgentClash scores agent trajectories](/blog/how-agentclash-scores-agent-trajectories).)
+The current Expression Evaluator Arena fixture configures four composite dimensions:
+correctness from deterministic tests, output-contract compliance, code quality,
+and explanation clarity. The latter two use LLM judges. Completion is a separate
+metric used for the board's reliability context, not a configured composite
+dimension. See [how AgentClash scores agent trajectories](/blog/how-agentclash-scores-agent-trajectories).
+
+These historical reported numbers are unchanged. The current fixture is mutable;
+without the original frozen spec and execution evidence, it cannot reconstruct
+the exact historical composite calculation.
 
 ## The task
 

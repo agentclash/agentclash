@@ -884,7 +884,7 @@ function buildStaticRegistry(): PublicContentDescriptor[] {
       title: report.title,
       description: report.description,
       kind: "benchmark",
-      lastModified: report.date,
+      lastModified: report.dateModified ?? report.date,
       indexable,
       includeIn: {
         sitemap: indexable,

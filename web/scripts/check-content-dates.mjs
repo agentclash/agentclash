@@ -4,7 +4,7 @@ import matter from "gray-matter";
 import yaml from "js-yaml";
 
 const roots = process.argv.slice(2);
-if (!roots.length) roots.push("content/blog", "content/docs");
+if (!roots.length) roots.push("content/blog", "content/docs", "content/benchmarks");
 const today = new Date().toISOString().slice(0, 10);
 let errors = 0;
 

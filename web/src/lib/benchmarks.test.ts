@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { benchmarkReportSchema } from "@/components/marketing/json-ld";
 import { getAllSlugs, getReportBySlug, parseBenchmarkReport } from "./benchmarks";
 
 const VALID = `---
@@ -60,6 +61,17 @@ describe("parseBenchmarkReport", () => {
       },
     ]);
     expect(report?.content.trim()).toBe("Body content.");
+  });
+
+  it.each(['"2026-10-28"', "2026-10-28"])("carries authored edit date %s into article and dataset metadata", (dateModified) => {
+    const report = parseBenchmarkReport("race-report", VALID.replace('date: "2026-06-06"', `date: "2026-06-06"\ndateModified: ${dateModified}`))!;
+    expect(report.date).toBe("2026-06-06");
+    expect(report.dateModified).toBe("2026-10-28");
+    const schemas = benchmarkReportSchema(report);
+    for (const type of ["BlogPosting", "Dataset"]) {
+      expect(schemas.find((schema) => schema["@type"] === type)).toMatchObject({ datePublished: "2026-06-06", dateModified: "2026-10-28" });
+    }
+    expect(parseBenchmarkReport("unchanged", VALID)?.dateModified).toBeUndefined();
   });
 
   it("sorts results by rank ascending", () => {

@@ -31,6 +31,7 @@ export type BenchmarkReport = {
   slug: string;
   title: string;
   date: string;
+  dateModified?: string;
   description: string;
   author: string;
   featuredModel: string;
@@ -50,6 +51,12 @@ export type BenchmarkReportWithContent = BenchmarkReport & {
 
 function requiredText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function authoredDate(value: unknown): string {
+  return value instanceof Date && !Number.isNaN(value.getTime())
+    ? value.toISOString().slice(0, 10)
+    : requiredText(value);
 }
 
 function optionalText(value: unknown): string {
@@ -172,7 +179,7 @@ export function parseBenchmarkReport(
 
   const { data, content } = parsed;
   const title = requiredText(data.title);
-  const date = requiredText(data.date);
+  const date = authoredDate(data.date);
   const description = requiredText(data.description);
   const author = requiredText(data.author);
   const featuredModel = requiredText(data.featuredModel);
@@ -208,6 +215,7 @@ export function parseBenchmarkReport(
     slug,
     title,
     date,
+    dateModified: authoredDate(data.dateModified) || undefined,
     description,
     author,
     featuredModel,

@@ -60,6 +60,20 @@ describe("docs link destinations", () => {
     expect(markdownDestinations(markdown)).toContain(`${origin}/md/docs?flag=1&copy;#part&trade;`);
   });
 
+  it.each([" ", "&#32;", "&#9;", "&#10;", "&#13;"])("preserves decoded whitespace %s in inline and shared destinations", (entity) => {
+    const doc = getDocBySlug([])!;
+    const decoded = entity === " " ? " " : String.fromCharCode(Number(entity.slice(2, -1)));
+    const content = `[Inline](</docs?q=a${entity}b>) [A *formatted* page][shared] ![Image][shared]\n\n[shared]: </docs?q=a${entity}b>`;
+    const tree = fromMarkdown(renderDocMarkdown({ ...doc, content }, origin));
+    const paragraph = tree.children.find((node) => node.type === "paragraph" && node.children.some((child) => child.type === "imageReference"));
+    if (paragraph?.type !== "paragraph") throw new Error("Missing paragraph");
+    const links = paragraph.children.filter((node) => node.type === "link");
+    expect(links.map((node) => node.url)).toEqual(Array(2).fill(`${origin}/md/docs?q=a${decoded}b`));
+    expect(links[1].children.some((node) => node.type === "emphasis")).toBe(true);
+    expect(paragraph.children.filter((node) => node.type === "imageReference")).toHaveLength(1);
+    expect(tree.children.find((node) => node.type === "definition")?.url).toBe(`/docs?q=a${decoded}b`);
+  });
+
   it("exports shared reference links while preserving image targets and formatted labels", () => {
     const doc = getDocBySlug([])!;
     const content = ["![Image][asset] ![Shared image][shared] [A *formatted* page][shared] [shared][] [shared]", "[asset]: /docs", '[shared]: /docs?x=1&amp;copy;#part "A title"'].join("\n\n");
