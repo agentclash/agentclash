@@ -97,6 +97,10 @@ export function BenchmarksHubContent({ published }: Props) {
         Run the same benchmark on your agents when you are ready to gate releases.
       </p>
 
+      <p className="mt-4 text-sm text-white/50">
+        Explore more research in our <Link href="/publications" className="text-white/75 underline hover:text-white">publications</Link>.
+      </p>
+
       {latest ? (
         <section className="mt-12" aria-labelledby="latest-report-heading">
           <SectionEyebrow>Latest report</SectionEyebrow>

@@ -7,7 +7,13 @@ const COLUMNS: Array<{
   {
     heading: "Product",
     links: [
-      { href: "/#features", label: "Features" },
+      { href: "/features", label: "Features" },
+      { href: "/use-cases", label: "Use cases" },
+      { href: "/industries", label: "Industries" },
+      { href: "/glossary", label: "Glossary" },
+      { href: "/platform/datasmith", label: "DataSmith" },
+      { href: "/agent-opportunity", label: "Agent opportunity" },
+      { href: "/tryouts", label: "Tryouts" },
       { href: "/enterprise", label: "Enterprise" },
       { href: "/pricing", label: "Pricing" },
       { href: "/services", label: "Services" },
@@ -34,6 +40,7 @@ const COLUMNS: Array<{
     heading: "Company",
     links: [
       { href: "/benchmarks", label: "Benchmarks" },
+      { href: "/publications", label: "Publications" },
       { href: "/blog", label: "Blog" },
       { href: "/changelog", label: "Changelog" },
       { href: "/team", label: "Team" },
@@ -46,7 +53,7 @@ export function MarketingFooter() {
   return (
     <footer className="mt-auto border-t border-white/[0.06] px-8 sm:px-12 pt-20 pb-10">
       <div className="mx-auto max-w-[1440px]">
-        <div className="grid gap-12 sm:grid-cols-2 lg:grid-cols-4">
+        <nav aria-label="Footer navigation" className="grid gap-12 sm:grid-cols-2 lg:grid-cols-4">
           {COLUMNS.map((col) => (
             <div key={col.heading}>
               <p className="text-2xs font-[family-name:var(--font-mono)] uppercase tracking-[0.2em] text-white/35">
@@ -79,7 +86,7 @@ export function MarketingFooter() {
               </ul>
             </div>
           ))}
-        </div>
+        </nav>
 
         <div className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-white/[0.06] pt-8 text-2xs font-[family-name:var(--font-mono)] text-white/35">
           <div className="flex items-center gap-6">
