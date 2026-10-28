@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "deploy/aws/scripts"))
 from common import private_json, require
 from release_contract import validate_images, validate_release
 from cloud import Cloud, validate_config, github_guard
+from checks import failure_location, refusal_detail
 
 
 def main():
@@ -153,5 +154,11 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except Exception:
+    except Exception as error:
+        location = failure_location(error)
+        if location:
+            print("Delivery source location: " + location, file=sys.stderr)
+        detail = refusal_detail(error)
+        if detail:
+            print("Delivery invariant: " + detail, file=sys.stderr)
         sys.exit("Delivery refused or failed; inspect private state before retrying")
