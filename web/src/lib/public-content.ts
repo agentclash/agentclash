@@ -60,7 +60,7 @@ export type PublicContentAdapter = {
   title: string;
   description: string;
   kind: PublicContentKind;
-  lastModified: string;
+  lastModified?: string;
   indexable: boolean;
   includeIn: PublicContentInclusion;
   sitemapPriority?: number;
@@ -82,7 +82,7 @@ type StaticPage = {
   title: string;
   description: string;
   kind?: PublicContentKind;
-  lastModified: string;
+  lastModified?: string;
   priority: number;
   changeFrequency?: "weekly" | "monthly";
   sections: StaticSection[];
@@ -110,8 +110,6 @@ const PRIVATE_PREFIXES = [
   "/_next",
 ] as const;
 
-const STATIC_LAST_MODIFIED = "2026-08-14";
-
 const STATIC_PAGES: StaticPage[] = [
   {
     path: "/",
@@ -120,7 +118,6 @@ const STATIC_PAGES: StaticPage[] = [
       "Run AI agents on repeatable real tasks, compare trajectories, inspect replay evidence, and turn failures into regression gates.",
     priority: 1,
     changeFrequency: "weekly",
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "What AgentClash does",
@@ -148,7 +145,6 @@ const STATIC_PAGES: StaticPage[] = [
     description:
       "Agent evaluation should test what an agent does across a complete trajectory, not only what one model call says.",
     priority: 0.7,
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "The evaluation gap",
@@ -171,7 +167,6 @@ const STATIC_PAGES: StaticPage[] = [
     description:
       "Meet the team building open-source infrastructure for repeatable AI agent evaluation.",
     priority: 0.5,
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "What we are building",
@@ -192,7 +187,6 @@ const STATIC_PAGES: StaticPage[] = [
     description:
       "Governed agent release gates, private evaluation infrastructure, audit evidence, and rollout support for platform teams.",
     priority: 0.82,
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "Enterprise outcomes",
@@ -215,7 +209,6 @@ const STATIC_PAGES: StaticPage[] = [
     description:
       "Fixed-scope services for challenge-pack design, regression setup, evaluation pilots, and platform adoption.",
     priority: 0.78,
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "Available engagements",
@@ -234,7 +227,6 @@ const STATIC_PAGES: StaticPage[] = [
     description:
       "A practical checklist for evaluation design, release gates, pilot evidence, and procurement review.",
     priority: 0.77,
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "Checklist coverage",
@@ -253,7 +245,6 @@ const STATIC_PAGES: StaticPage[] = [
     description:
       "Evaluate tool-using AI agents on real tasks with isolated sandboxes, scorecards, replay evidence, and CI regression gates.",
     priority: 0.85,
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "Evaluation workflow",
@@ -272,7 +263,6 @@ const STATIC_PAGES: StaticPage[] = [
     description:
       "Compare baselines and candidates against pinned agent failures and datasets with replay evidence, release thresholds, and CI release gates.",
     priority: 0.82,
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "Regression loop",
@@ -291,7 +281,6 @@ const STATIC_PAGES: StaticPage[] = [
     description:
       "Generate diverse agent evaluation datasets with weak-versus-strong Agentic Self-Instruct workflows.",
     priority: 0.84,
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "DataSmith workflow",
@@ -314,7 +303,6 @@ const STATIC_PAGES: StaticPage[] = [
     title,
     description,
     priority: 0.78,
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "Explore",
@@ -332,7 +320,6 @@ const STATIC_PAGES: StaticPage[] = [
       "Engineering guides, benchmark analysis, product updates, and practical AI agent evaluation advice.",
     priority: 0.8,
     changeFrequency: "weekly",
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "Recent articles",
@@ -350,7 +337,6 @@ const STATIC_PAGES: StaticPage[] = [
       "Measured same-task agent comparisons with frozen challenge packs, scorecards, and replay evidence.",
     priority: 0.8,
     changeFrequency: "weekly",
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "Reports",
@@ -368,7 +354,6 @@ const STATIC_PAGES: StaticPage[] = [
     kind: "publication",
     priority: 0.72,
     changeFrequency: "weekly",
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "Publication policy",
@@ -389,7 +374,6 @@ const STATIC_PAGES: StaticPage[] = [
     kind: "interactive",
     priority: 0.88,
     changeFrequency: "weekly",
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "How demos work",
@@ -409,7 +393,6 @@ const STATIC_PAGES: StaticPage[] = [
     kind: "interactive",
     priority: 0.9,
     changeFrequency: "weekly",
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "Tryout flow",
@@ -429,7 +412,6 @@ const STATIC_PAGES: StaticPage[] = [
     kind: "interactive",
     priority: 0.91,
     changeFrequency: "weekly",
-    lastModified: STATIC_LAST_MODIFIED,
     sections: [
       {
         heading: "POST contract",
@@ -727,7 +709,6 @@ function buildStaticRegistry(): PublicContentDescriptor[] {
       title: `Try ${demo.name} in browser`,
       description: demo.tagline ?? `Run ${demo.name} in a disposable browser sandbox.`,
       kind: "interactive",
-      lastModified: STATIC_LAST_MODIFIED,
       indexable: true,
       includeIn: { ...DEFAULT_INCLUDE },
       sitemapPriority: 0.72,
@@ -743,7 +724,6 @@ function buildStaticRegistry(): PublicContentDescriptor[] {
     description:
       "Free hosted and self-hosted options, plus Pro, Team, and Enterprise plans with bring-your-own LLM keys.",
     kind: "marketing",
-    lastModified: STATIC_LAST_MODIFIED,
     indexable: true,
     includeIn: { ...DEFAULT_INCLUDE },
     sitemapPriority: 0.8,
@@ -758,7 +738,6 @@ function buildStaticRegistry(): PublicContentDescriptor[] {
       title: page.sitemapTitle,
       description: page.sitemapDescription,
       kind: "seo",
-      lastModified: STATIC_LAST_MODIFIED,
       indexable: true,
       includeIn: { ...DEFAULT_INCLUDE },
       sitemapPriority: page.tier === "S" ? 0.8 : page.tier === "A" ? 0.72 : 0.64,
@@ -774,7 +753,6 @@ function buildStaticRegistry(): PublicContentDescriptor[] {
     description:
       "Compare AgentClash with prompt evaluation, observability, and agent evaluation tools.",
     kind: "comparison",
-    lastModified: STATIC_LAST_MODIFIED,
     indexable: true,
     includeIn: { ...DEFAULT_INCLUDE },
     sitemapPriority: 0.8,
@@ -790,7 +768,6 @@ function buildStaticRegistry(): PublicContentDescriptor[] {
       title: `AgentClash vs ${competitor.name}`,
       description: `Compare AgentClash end-to-end agent evaluation with ${competitor.name}, a ${competitor.tag} tool.`,
       kind: "comparison",
-      lastModified: STATIC_LAST_MODIFIED,
       indexable: true,
       includeIn: { ...DEFAULT_INCLUDE },
       sitemapPriority: 0.75,
@@ -838,7 +815,7 @@ function buildStaticRegistry(): PublicContentDescriptor[] {
       title: post.title,
       description: post.description,
       kind: "blog",
-      lastModified: post.date,
+      lastModified: post.dateModified ?? post.date,
       indexable: true,
       includeIn: { ...DEFAULT_INCLUDE },
       sitemapPriority: 0.7,
@@ -859,7 +836,7 @@ function buildStaticRegistry(): PublicContentDescriptor[] {
       title: doc.title,
       description: doc.description,
       kind: "docs",
-      lastModified: doc.dateModified ?? doc.datePublished ?? STATIC_LAST_MODIFIED,
+      lastModified: doc.dateModified ?? doc.datePublished,
       indexable: true,
       includeIn: { ...DEFAULT_INCLUDE },
       sitemapPriority: doc.href === "/docs" ? 0.85 : 0.75,

@@ -36,12 +36,6 @@ const BACKEND_ENV_FILE = path.join(REPO_ROOT, "backend", ".env.example");
 
 export const DOCS_ORIGIN = "https://www.agentclash.dev";
 
-// Build/generation timestamp. Used as an honest `dateModified` fallback for docs
-// that carry no frontmatter date — these pages (including generated CLI/config
-// references and agent-skill pages) are regenerated from source on each build,
-// so "last generated" is a truthful freshness signal for answer engines.
-export const SITE_GENERATED_AT = new Date().toISOString();
-
 export type DocNavItem = {
   title: string;
   description: string;
@@ -1034,8 +1028,7 @@ function createDocPage(
     content,
     sectionTitle,
     datePublished: dates?.datePublished,
-    dateModified:
-      dates?.dateModified ?? dates?.datePublished ?? SITE_GENERATED_AT,
+    dateModified: dates?.dateModified ?? dates?.datePublished,
     headings: extractHeadings(content),
   };
 }
@@ -1048,18 +1041,15 @@ function getFileDocBySlug(slug: string[]) {
   const { data, content } = matter(raw);
   const href = slugToHref(slug);
 
-  const datePublished =
-    typeof data.date === "string"
-      ? data.date
-      : typeof data.datePublished === "string"
-        ? data.datePublished
-        : undefined;
-  const dateModified =
-    typeof data.dateModified === "string"
-      ? data.dateModified
-      : typeof data.updated === "string"
-        ? data.updated
-        : datePublished;
+  // gray-matter parses unquoted YAML dates as Date objects.
+  const authoredDate = (value: unknown) => {
+    if (typeof value === "string") return value;
+    return value instanceof Date && !Number.isNaN(value.getTime())
+      ? value.toISOString().slice(0, 10)
+      : undefined;
+  };
+  const datePublished = authoredDate(data.date) ?? authoredDate(data.datePublished);
+  const dateModified = authoredDate(data.dateModified) ?? authoredDate(data.updated) ?? datePublished;
 
   return { ...createDocPage(
     slug,

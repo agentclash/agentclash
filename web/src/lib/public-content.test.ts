@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildPublicLlmsFull,
   buildPublicLlmsIndex,
@@ -11,6 +11,22 @@ import {
 import { isMarkdownNegotiablePath } from "./public-http";
 
 describe("public content registry", () => {
+  it("keeps known and unknown modification dates stable across build clocks", () => {
+    try {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-10-01T00:00:00Z"));
+      const before = getAllPublicContent().filter((item) => ["/", "/pricing", "/docs", "/docs/agent-skills"].includes(item.canonicalPath)).map(({ canonicalPath, lastModified }) => ({ canonicalPath, lastModified }));
+      vi.setSystemTime(new Date("2026-10-28T00:00:00Z"));
+      const after = getAllPublicContent().filter((item) => ["/", "/pricing", "/docs", "/docs/agent-skills"].includes(item.canonicalPath)).map(({ canonicalPath, lastModified }) => ({ canonicalPath, lastModified }));
+      expect(after).toEqual(before);
+      expect(after).toContainEqual({ canonicalPath: "/", lastModified: undefined });
+      expect(after).toContainEqual({ canonicalPath: "/docs", lastModified: "2026-08-09" });
+      expect(after).toContainEqual({ canonicalPath: "/docs/agent-skills", lastModified: undefined });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("has unique canonical and Markdown paths", () => {
     const items = getAllPublicContent();
     expect(new Set(items.map((item) => item.canonicalPath)).size).toBe(items.length);

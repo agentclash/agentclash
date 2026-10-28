@@ -123,3 +123,8 @@ describe("docs link destinations", () => {
     expect(markdownDestinations(post.content)).toContain("/feed.xml");
   });
 });
+
+it("uses authored dates and leaves unknown generated documentation dates unset", () => {
+  expect(getDocBySlug([])?.dateModified).toBe("2026-08-09");
+  expect(getDocBySlug(["agent-skills"])?.dateModified).toBeUndefined();
+});
