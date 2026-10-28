@@ -3,6 +3,7 @@
 import json
 import os
 import hashlib
+import re
 import tarfile
 
 from common import require, image_ref
@@ -63,8 +64,62 @@ def coverage(report, role):
         )
 
 
-def reconcile(before, after):
-    """Every original affected component must still exist, at a changed version.
+def _caddy_jose_replacement(after, result, finding):
+    """Reviewed v3→v4 migration; absence alone is never remediation evidence."""
+    old_package = "github.com/go-jose/go-jose/v3"
+    replacement = "github.com/go-jose/go-jose/v4"
+    coverage(after, "caddy")
+    require(
+        not any(
+            item.get(field) == old_package
+            for current in after.get("Results", [])
+            for collection, field in (
+                ("Packages", "Name"),
+                ("Vulnerabilities", "PkgName"),
+            )
+            for item in current.get(collection, [])
+        ),
+        "Vulnerable go-jose/v3 remains in consumed output",
+    )
+    candidates = [
+        package
+        for current in after.get("Results", [])
+        if current.get("Type") == "gobinary"
+        and current.get("Target") == "usr/bin/caddy"
+        for package in current.get("Packages", [])
+        if package.get("Name") == replacement
+    ]
+    require(candidates, "Reviewed go-jose/v4 replacement inventory is missing")
+    versions = []
+    for package in candidates:
+        version = package.get("Version")
+        stable = (
+            re.fullmatch(r"v?(4)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", version)
+            if isinstance(version, str)
+            else None
+        )
+        require(
+            stable and tuple(map(int, stable.groups())) >= (4, 1, 6),
+            "go-jose/v4 replacement is not a reviewed fixed stable version",
+        )
+        versions.append(version)
+    return {
+        "id": finding["VulnerabilityID"],
+        "package": finding["PkgName"],
+        "target": result["Target"],
+        "before": finding["InstalledVersion"],
+        "after": [],  # The affected v3 module is absent, not assigned a fake fix.
+        "upstream_fixed_versions": finding.get("FixedVersion", ""),
+        "original_finding": dict(finding),
+        "replacement_package": replacement,
+        "replacement_versions": sorted(set(versions)),
+        "advisory": "https://github.com/go-jose/go-jose/security/advisories/GHSA-mgcc-cww5-fp2q",
+        "resolution": "reviewed major-module replacement; full consumed-image scan passed",
+    }
+
+
+def reconcile(before, after, *, role=None):
+    """Require changed affected components or the explicit reviewed Caddy migration.
 
     A clean full output scan is also mandatory. Deleting inventory or moving a
     vulnerable binary out of scanner coverage cannot satisfy this comparison.
@@ -73,6 +128,15 @@ def reconcile(before, after):
     require(not findings(after), "Consumed image still has high/critical findings")
     remediations = []
     for result, finding in findings(before):
+        if (
+            role == "caddy"
+            and result.get("Type") == "gobinary"
+            and result.get("Target") == "usr/bin/caddy"
+            and finding.get("VulnerabilityID") == "CVE-2026-116587"
+            and finding.get("PkgName") == "github.com/go-jose/go-jose/v3"
+        ):
+            remediations.append(_caddy_jose_replacement(after, result, finding))
+            continue
         candidates = [
             package
             for current in after.get("Results", [])
@@ -240,7 +304,7 @@ class Scanner:
                 {
                     "input": input_ref,
                     "output": output_id,
-                    "resolutions": reconcile(before, after),
+                    "resolutions": reconcile(before, after, role=name),
                     "strict_output_gate_passed": True,
                 }
             )

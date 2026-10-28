@@ -10,6 +10,7 @@ import tarfile
 from common import require, image_ref
 from release_contract import canonical, sha256, tree_hash, APPLICATIONS
 from tools import install
+from checks import command_label
 from package import bundle
 from image_scan import Scanner, reconcile
 import maintained
@@ -275,13 +276,18 @@ def prepare(directory, revision, private_values=()):
     )
 
     def run(command, timeout=900):
+        label = command_label(command)
+        print("Build subprocess: " + label, flush=True)
         result = subprocess.run(
             command, cwd=source, env=env, capture_output=True, timeout=timeout
         )
+        if result.returncode:
+            print("Build subprocess failed: " + label, flush=True)
         require(
             result.returncode == 0,
             "Build or scanner gate failed; nothing has been published",
         )
+        print("Build subprocess passed: " + label, flush=True)
         return result.stdout
 
     for name in ("gitleaks", "trivy"):

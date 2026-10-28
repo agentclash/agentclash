@@ -217,7 +217,14 @@ def build(root, directory, run, gate):
         if name in ("caddy", "postgres"):
             if name == "caddy":
                 (context / "source").mkdir(mode=0o700)
-                for filename in ("main.go", "go.mod", "go.sum"):
+                for filename in (
+                    "main.go",
+                    "go.mod",
+                    "go.sum",
+                    "apply-jose-patch.sh",
+                    "JOSE-MIGRATION.md",
+                    "jose_migration_test.go",
+                ):
                     shutil.copyfile(
                         recipe / "caddy" / filename, context / "source" / filename
                     )
@@ -260,7 +267,7 @@ def build(root, directory, run, gate):
             binary = "caddy" if name == "caddy" else "gosu"
             detail = docker_build(
                 context,
-                "Dockerfile.binary",
+                "Dockerfile.caddy" if name == "caddy" else "Dockerfile.binary",
                 name,
                 {
                     "BUILDER": output["go"],
