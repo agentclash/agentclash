@@ -54,6 +54,21 @@ describe("docs link destinations", () => {
     expect(markdown.endsWith(expected)).toBe(true);
   });
 
+  it("preserves entity-like query and fragment values when reparsing exported links", () => {
+    const doc = getDocBySlug([])!;
+    const markdown = renderDocMarkdown({ ...doc, content: "[Page](/docs?flag=1&amp;copy;#part&amp;trade;)" }, origin);
+    expect(markdownDestinations(markdown)).toContain(`${origin}/md/docs?flag=1&copy;#part&trade;`);
+  });
+
+  it("preserves image-only and shared reference definitions while rewriting link-only definitions", () => {
+    const doc = getDocBySlug([])!;
+    const content = ["![Image][asset]", "![Shared image][shared] [Shared page][shared]", "[Page][page]", "[asset]: /docs", "[shared]: /docs", "[page]: /docs"].join("\n\n");
+    const markdown = renderDocMarkdown({ ...doc, content }, origin);
+    expect(markdown).toContain("[asset]: /docs");
+    expect(markdown).toContain("[shared]: /docs");
+    expect(markdown).toContain(`[page]: ${origin}/md/docs`);
+  });
+
   it("keeps the generated SKILL.md payload intact including literal docs URLs", () => {
     const slug = ["agent-skills", "agentclash-hub"];
     const raw = fs.readFileSync(path.join(process.cwd(), "content", ...slug, "SKILL.md"), "utf8").trim();

@@ -13,21 +13,29 @@ function check(href, file, line) {
   console.error(`${file}:${line}: relative page link ${href}; use a root-relative /docs/ URL`);
   errors++;
 }
-function visit(node, file) {
-  if (node.type === "link" || node.type === "definition") check(node.url, file, node.position.start.line);
+function visit(node, file, imageReferences) {
+  if (node.type === "link" || (node.type === "definition" && !imageReferences.has(normalize(node.identifier)))) check(node.url, file, node.position.start.line);
   if ((node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") && (node.name === "a" || node.name === "Link")) {
     for (const attr of node.attributes) {
       if (attr.type === "mdxJsxAttribute" && attr.name === "href" && typeof attr.value === "string") check(attr.value, file, node.position.start.line);
     }
   }
-  if (node.children) for (const child of node.children) visit(child, file);
+  if (node.children) for (const child of node.children) visit(child, file, imageReferences);
+}
+function normalize(identifier) { return identifier.toUpperCase().replace(/\s+/g, " "); }
+function collectImages(node, imageReferences) {
+  if (node.type === "imageReference") imageReferences.add(normalize(node.identifier));
+  if (node.children) for (const child of node.children) collectImages(child, imageReferences);
 }
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const file = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(file);
     else if (/\.mdx?$/.test(entry.name)) {
-      visit(fromMarkdown(fs.readFileSync(file, "utf8"), { extensions: [mdxJsx()], mdastExtensions: [mdxJsxFromMarkdown()] }), file);
+      const tree = fromMarkdown(fs.readFileSync(file, "utf8"), { extensions: [mdxJsx()], mdastExtensions: [mdxJsxFromMarkdown()] });
+      const imageReferences = new Set();
+      collectImages(tree, imageReferences);
+      visit(tree, file, imageReferences);
     }
   }
 }

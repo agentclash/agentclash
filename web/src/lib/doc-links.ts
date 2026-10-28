@@ -14,6 +14,7 @@ export type MarkdownDestination = {
 /** Read actual destinations, using parser token offsets instead of matching link-shaped text. */
 export function inspectMarkdownDestinations(content: string): MarkdownDestination[] {
   const destinations: MarkdownDestination[] = [];
+  const definitions: Array<{ destination: MarkdownDestination; node: { identifier: string } }> = [];
   const jsx = mdxJsxFromMarkdown();
   const attributes: Array<{ destination: Omit<MarkdownDestination, "href">; value: () => unknown }> = [];
   const destination: Handle = function (token) {
@@ -23,7 +24,9 @@ export function inspectMarkdownDestinations(content: string): MarkdownDestinatio
     node.url = href;
     // Images are assets, even if their URL happens to look like a docs page.
     if (node.type === "image") return;
-    destinations.push({ href, start: token.start.offset, end: token.end.offset, line: token.start.line, syntax: "markdown" });
+    const entry: MarkdownDestination = { href, start: token.start.offset, end: token.end.offset, line: token.start.line, syntax: "markdown" };
+    if (node.type === "definition") definitions.push({ destination: entry, node });
+    else destinations.push(entry);
   };
   const attribute: Handle = function (token) {
     jsx.exit![token.type].call(this, token);
@@ -44,10 +47,20 @@ export function inspectMarkdownDestinations(content: string): MarkdownDestinatio
       mdxJsxTextTagAttributeValueLiteralValue: attribute,
     },
   };
-  fromMarkdown(content, {
+  const tree = fromMarkdown(content, {
     extensions: [mdxJsx()],
     mdastExtensions: [jsx, extension],
   });
+  const imageReferences = new Set<string>();
+  function collectImages(node: typeof tree | (typeof tree.children)[number]) {
+    if (node.type === "imageReference") imageReferences.add(node.identifier.toUpperCase().replace(/\s+/g, " "));
+    if ("children" in node) for (const child of node.children) collectImages(child);
+  }
+  collectImages(tree);
+  // A shared definition must keep its original target for the image.
+  for (const { destination, node } of definitions) {
+    if (!imageReferences.has(node.identifier.toUpperCase().replace(/\s+/g, " "))) destinations.push(destination);
+  }
   for (const { destination, value } of attributes) {
     const href = value();
     if (typeof href === "string") destinations.push({ ...destination, href });
@@ -61,10 +74,10 @@ export function rewriteMarkdownDestinations(content: string, rewrite: (href: str
   for (const destination of destinations.reverse()) {
     const href = rewrite(destination.href);
     if (href === destination.href) continue;
-    // JSX requires entity escaping; Markdown destinations need escaped parentheses.
+    // Escape ampersands so entity-like query and fragment values survive reparsing.
     const encoded = destination.syntax === "jsx"
       ? href.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("'", "&#39;").replaceAll("<", "&lt;")
-      : href.replace(/([\\()<>])/g, "\\$1");
+      : href.replace(/([\\()<>])/g, "\\$1").replaceAll("&", "&amp;");
     content = content.slice(0, destination.start) + encoded + content.slice(destination.end);
   }
   return content;
