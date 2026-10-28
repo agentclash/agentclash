@@ -13,19 +13,24 @@ function check(href, file, line) {
   console.error(`${file}:${line}: relative page link ${href}; use a root-relative /docs/ URL`);
   errors++;
 }
-function visit(node, file, imageReferences) {
+function visit(node, file, imageReferences, definitions) {
   if (node.type === "link" || (node.type === "definition" && !imageReferences.has(normalize(node.identifier)))) check(node.url, file, node.position.start.line);
+  if (node.type === "linkReference" && imageReferences.has(normalize(node.identifier))) {
+    const definition = definitions.get(normalize(node.identifier));
+    if (definition) check(definition.url, file, node.position.start.line);
+  }
   if ((node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") && (node.name === "a" || node.name === "Link")) {
     for (const attr of node.attributes) {
       if (attr.type === "mdxJsxAttribute" && attr.name === "href" && typeof attr.value === "string") check(attr.value, file, node.position.start.line);
     }
   }
-  if (node.children) for (const child of node.children) visit(child, file, imageReferences);
+  if (node.children) for (const child of node.children) visit(child, file, imageReferences, definitions);
 }
 function normalize(identifier) { return identifier.toUpperCase().replace(/\s+/g, " "); }
-function collectImages(node, imageReferences) {
+function collectImages(node, imageReferences, definitions) {
   if (node.type === "imageReference") imageReferences.add(normalize(node.identifier));
-  if (node.children) for (const child of node.children) collectImages(child, imageReferences);
+  if (node.type === "definition" && !definitions.has(normalize(node.identifier))) definitions.set(normalize(node.identifier), node);
+  if (node.children) for (const child of node.children) collectImages(child, imageReferences, definitions);
 }
 function walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -34,8 +39,9 @@ function walk(dir) {
     else if (/\.mdx?$/.test(entry.name)) {
       const tree = fromMarkdown(fs.readFileSync(file, "utf8"), { extensions: [mdxJsx()], mdastExtensions: [mdxJsxFromMarkdown()] });
       const imageReferences = new Set();
-      collectImages(tree, imageReferences);
-      visit(tree, file, imageReferences);
+      const definitions = new Map();
+      collectImages(tree, imageReferences, definitions);
+      visit(tree, file, imageReferences, definitions);
     }
   }
 }

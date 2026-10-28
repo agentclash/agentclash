@@ -8,13 +8,37 @@ export type MarkdownDestination = {
   start: number;
   end: number;
   line: number;
-  syntax: "markdown" | "jsx";
+  syntax: "markdown" | "jsx" | "reference";
+  title?: string | null;
 };
+
+function normalizedIdentifier(identifier: string) {
+  return identifier.toUpperCase().replace(/\s+/g, " ");
+}
+
+// Find the end of the visible label, respecting nested brackets, escapes and code spans.
+function labelEnd(content: string, start: number, end: number): number | undefined {
+  let depth = 0;
+  for (let i = start; i < end; i++) {
+    if (content[i] === "\\") { i++; continue; }
+    if (content[i] === "`") {
+      let j = i;
+      while (content[j] === "`") j++;
+      const closing = content.indexOf(content.slice(i, j), j);
+      if (closing !== -1 && closing < end) { i = closing + (j - i) - 1; continue; }
+      i = j - 1;
+      continue;
+    }
+    if (content[i] === "[") depth++;
+    if (content[i] === "]" && --depth === 0) return i + 1;
+  }
+  return undefined;
+}
 
 /** Read actual destinations, using parser token offsets instead of matching link-shaped text. */
 export function inspectMarkdownDestinations(content: string): MarkdownDestination[] {
   const destinations: MarkdownDestination[] = [];
-  const definitions: Array<{ destination: MarkdownDestination; node: { identifier: string } }> = [];
+  const definitions: Array<{ destination: MarkdownDestination; node: { identifier: string; title?: string | null } }> = [];
   const jsx = mdxJsxFromMarkdown();
   const attributes: Array<{ destination: Omit<MarkdownDestination, "href">; value: () => unknown }> = [];
   const destination: Handle = function (token) {
@@ -52,14 +76,26 @@ export function inspectMarkdownDestinations(content: string): MarkdownDestinatio
     mdastExtensions: [jsx, extension],
   });
   const imageReferences = new Set<string>();
+  const linkReferences: Array<{ identifier: string; start: number; end: number; line: number }> = [];
   function collectImages(node: typeof tree | (typeof tree.children)[number]) {
-    if (node.type === "imageReference") imageReferences.add(node.identifier.toUpperCase().replace(/\s+/g, " "));
+    if (node.type === "imageReference") imageReferences.add(normalizedIdentifier(node.identifier));
+    if (node.type === "linkReference" && node.position?.start.offset !== undefined && node.position.end.offset !== undefined) {
+      linkReferences.push({ identifier: normalizedIdentifier(node.identifier), start: node.position.start.offset, end: node.position.end.offset, line: node.position.start.line });
+    }
     if ("children" in node) for (const child of node.children) collectImages(child);
   }
   collectImages(tree);
-  // A shared definition must keep its original target for the image.
+  const sharedDefinitions = new Map<string, typeof definitions[number]>();
   for (const { destination, node } of definitions) {
-    if (!imageReferences.has(node.identifier.toUpperCase().replace(/\s+/g, " "))) destinations.push(destination);
+    const identifier = normalizedIdentifier(node.identifier);
+    if (!imageReferences.has(identifier)) destinations.push(destination);
+    else if (!sharedDefinitions.has(identifier)) sharedDefinitions.set(identifier, { destination, node });
+  }
+  for (const reference of linkReferences) {
+    const definition = sharedDefinitions.get(reference.identifier);
+    if (!definition) continue;
+    const start = labelEnd(content, reference.start, reference.end);
+    if (start !== undefined) destinations.push({ href: definition.destination.href, start, end: reference.end, line: reference.line, syntax: "reference", title: definition.node.title });
   }
   for (const { destination, value } of attributes) {
     const href = value();
@@ -78,7 +114,10 @@ export function rewriteMarkdownDestinations(content: string, rewrite: (href: str
     const encoded = destination.syntax === "jsx"
       ? href.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("'", "&#39;").replaceAll("<", "&lt;")
       : href.replace(/([\\()<>])/g, "\\$1").replaceAll("&", "&amp;");
-    content = content.slice(0, destination.start) + encoded + content.slice(destination.end);
+    const replacement = destination.syntax === "reference"
+      ? `(${encoded}${destination.title == null ? "" : ` "${destination.title.replaceAll("\\", "\\\\").replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("\n", "&#10;").replaceAll("\r", "&#13;")}"`})`
+      : encoded;
+    content = content.slice(0, destination.start) + replacement + content.slice(destination.end);
   }
   return content;
 }

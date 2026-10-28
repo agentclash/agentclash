@@ -19,10 +19,16 @@ it("rejects relative page links in authored docs while ignoring assets and code"
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
-it("accepts extensionless image references, including definitions shared with links", () => {
+it("ignores image-only references but rejects a relative shared link at its use", () => {
   const dir = mkdtempSync(join(tmpdir(), "docs-image-"));
   try {
-    writeFileSync(join(dir, "sample.mdx"), "![Image][asset]\n\n![Shared][shared] [Link][shared]\n\n[asset]: relative-image\n\n[shared]: relative-shared\n");
+    const file = join(dir, "sample.mdx");
+    writeFileSync(file, "![Image][asset]\n\n![Shared][shared] [Link][shared]\n\n[asset]: relative-image\n\n[shared]: relative-shared\n");
+    const result = spawnSync(process.execPath, ["scripts/check-doc-links.mjs", dir], { cwd: process.cwd(), encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(":3: relative page link relative-shared");
+    expect(result.stderr).not.toContain("relative-image");
+    writeFileSync(file, "![Image][asset]\n\n[asset]: relative-image\n");
     expect(() => execFileSync(process.execPath, ["scripts/check-doc-links.mjs", dir], { cwd: process.cwd() })).not.toThrow();
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });

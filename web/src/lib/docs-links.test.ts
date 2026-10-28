@@ -60,13 +60,20 @@ describe("docs link destinations", () => {
     expect(markdownDestinations(markdown)).toContain(`${origin}/md/docs?flag=1&copy;#part&trade;`);
   });
 
-  it("preserves image-only and shared reference definitions while rewriting link-only definitions", () => {
+  it("exports shared reference links while preserving image targets and formatted labels", () => {
     const doc = getDocBySlug([])!;
-    const content = ["![Image][asset]", "![Shared image][shared] [Shared page][shared]", "[Page][page]", "[asset]: /docs", "[shared]: /docs", "[page]: /docs"].join("\n\n");
+    const content = ["![Image][asset] ![Shared image][shared] [A *formatted* page][shared] [shared][] [shared]", "[asset]: /docs", '[shared]: /docs?x=1&amp;copy;#part "A title"'].join("\n\n");
     const markdown = renderDocMarkdown({ ...doc, content }, origin);
-    expect(markdown).toContain("[asset]: /docs");
-    expect(markdown).toContain("[shared]: /docs");
-    expect(markdown).toContain(`[page]: ${origin}/md/docs`);
+    const tree = fromMarkdown(markdown);
+    const paragraph = tree.children.find((node) => node.type === "paragraph" && node.children.some((child) => child.type === "imageReference"));
+    if (paragraph?.type !== "paragraph") throw new Error("Missing paragraph");
+    const link = paragraph.children.find((node) => node.type === "link");
+    expect(link?.type === "link" && link.url).toBe(`${origin}/md/docs?x=1&copy;#part`);
+    expect(link?.type === "link" && link.title).toBe("A title");
+    expect(link?.type === "link" && link.children.some((child) => child.type === "emphasis")).toBe(true);
+    expect(paragraph.children.filter((node) => node.type === "link").map((node) => node.url)).toEqual(Array(3).fill(`${origin}/md/docs?x=1&copy;#part`));
+    expect(tree.children.filter((node) => node.type === "definition").map((node) => node.url)).toEqual(["/docs", "/docs?x=1&copy;#part"]);
+    expect(paragraph.children.filter((node) => node.type === "imageReference")).toHaveLength(2);
   });
 
   it("keeps the generated SKILL.md payload intact including literal docs URLs", () => {
