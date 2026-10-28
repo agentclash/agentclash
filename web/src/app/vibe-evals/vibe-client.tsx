@@ -26,6 +26,7 @@ import { sessionAccessLost } from "@/lib/use-vibe-session";
 
 
 import Link from "next/link";
+import { useRef, useState } from "react";
 
 
 
@@ -49,6 +50,19 @@ import { useVibeWorkspace } from "@/lib/use-vibe-workspace";
 export function VibeClient() {
   const { evidenceResult,selectedCanonical,selectedSDKReport,selectedResult,selectedResultLoading,selectedResultError,retrySelectedResult,onSelectResult,onSDKPromoted,onSDKRegraded,evidenceAccess,sdkInferenceAvailable,projectReturnPath,saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,archiveMode,setArchiveMode,metadata,exporter, recordedUpdate, startRecordedUpdate, closeRecordedUpdate, addRecordedEvidence, entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, runInferenceAvailable, unavailableReason, messageLimit, messageError, buildQuote, buildQuoteState, refreshBuildQuote, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, canChangeDoor, changeDoor, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, trialMaterials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces } = useVibeWorkspace();
   const choosingEntry = twoDoor && (!session || newEvaluation);
+  const [creditsOpen, setCreditsOpen] = useState(false);
+  // One dialog at a time: Settings closes, then the dialog it asked for opens.
+  const afterSettings = useRef<(() => void) | null>(null);
+  const fromSettings = (action: () => void) => { afterSettings.current = action; setSettingsOpen(false); };
+  const workspaceSelect = useRef<HTMLSelectElement>(null);
+  const choosingWorkspace = !!authUser && (!navigation.session || newEvaluation);
+  const workspaceName = workspaces.find(item => item.id === workspace)?.name;
+  // The picker shows while workspaces load or when there is one to choose; the notice covers the other states.
+  const workspacePicker = choosingWorkspace && (workspaces.length > 0 || saveAccess === "loading");
+  const workspaceChoice = choosingWorkspace && (workspaces.length ? <div className="vibe-entry-workspace">
+    <label>Workspace for new projects<select ref={workspaceSelect} aria-label="Workspace for new projects" aria-describedby={workspaceName ? undefined : "vibe-workspace-hint"} value={workspace} disabled={pending} onChange={event => setWorkspace(event.target.value)}><option value="">Choose a workspace</option>{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
+    {!workspaceName && <p id="vibe-workspace-hint">Choose a workspace to use its credits.</p>}
+  </div> : saveAccess === "loading" && <p className="vibe-connection-status mt-3" role="status">Loading workspaces…</p>);
   const resultSources = session && artifact ? [
           <CanonicalResults key="application" selected={selectedCanonical} onRefreshSelected={retrySelectedResult} sessionId={session.id} workspaceId={session.workspace_id} actorScope={authUser?.id || "guest"} token={token} access={evidenceAccess.access} onSelectResult={onSelectResult} onExport={result=>{const pinned=session.document.artifacts.find(a=>a.id===result.binding.artifact_id);if(pinned)void exporter.startResult(pinned,result.binding.result_ref)}}/>,
           <SDKReports key="sdk" selectedReport={selectedSDKReport} sessionId={session.id} workspaceId={session.workspace_id} artifactId={artifact.id} actorScope={authUser?.id || "guest"} token={token} access={evidenceAccess.access} onSelectResult={onSelectResult} revision={session.revision} models={models} inferenceAvailable={sdkInferenceAvailable} refresh={session.event_cursor} onPromoted={onSDKPromoted} onRegraded={onSDKRegraded} onExport={report=>{const pinned=session.document.artifacts.find(a=>a.id===report.binding.artifact_id);if(pinned)void exporter.startResult(pinned,report.binding.result_ref);}} />,
@@ -74,7 +88,7 @@ return (
           <VibeButton variant="quiet" onClick={() => setRunQuote(undefined)}>Cancel</VibeButton>
         </div></DialogContent>
       </Dialog>
-      <VibeConnection.Provider value={{ token, contact: config?.contact }}><EvaluationNavigation actorScope={authUser?.id || "guest"} archiveMode={archiveMode} onArchiveMode={setArchiveMode} onMetadata={metadata} accountControl={authUser && (!navigation.session || newEvaluation) && <label>Workspace for new projects<select aria-label="Workspace for new projects" value={workspace} disabled={pending || saveAccess === "loading"} onChange={event => setWorkspace(event.target.value)} className="w-full min-w-0"><option value="">Choose a workspace</option>{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>{saveAccess === "loading" && <span>Loading workspaces…</span>}</label>} accountLabel={authLoading ? "Loading account…" : authUser ? authUser.email || "Signed in account" : "Guest · private to this browser"} listStatus={contextList.status} onRetryList={contextList.retry} enabled={twoDoor} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
+      <VibeConnection.Provider value={{ token, contact: config?.contact }}><EvaluationNavigation actorScope={authUser?.id || "guest"} archiveMode={archiveMode} onArchiveMode={setArchiveMode} onMetadata={metadata} workspace={choosingWorkspace && workspaces.length > 0 ? { name: workspaceName, onChange: () => workspaceSelect.current?.focus() } : undefined} accountLabel={authLoading ? "Loading account…" : authUser ? authUser.email || "Signed in account" : "Guest · private to this browser"} listStatus={contextList.status} onRetryList={contextList.retry} enabled={twoDoor} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
         choosing={newEvaluation} disabled={!config || pending || uncertain}
         onDeleted={id => {
           discardedContextIDs.current.add(id);
@@ -92,11 +106,12 @@ return (
         newEvaluation={newEvaluation}
         contextNavigationBlocked={!config || pending || uncertain}
         entryBlocked={!entryAvailable}
-        entryNotice={!entryAvailable && (config || configError ? <div className="vibe-entry-availability">
-          <p role={configError ? "alert" : "status"}>{configError ? "Couldn’t connect. Try again." : unavailableReason}</p>
-          {configError ? <VibeButton variant="quiet" onClick={() => setLoadAttempt(attempt => attempt + 1)}>Retry connection</VibeButton>
-            : <VibeButton variant="quiet" onClick={() => setSettingsOpen(true)}>Review settings</VibeButton>}
-        </div> : <p className="vibe-connection-status mt-3" role="status">Connecting…</p>)}
+        entryNotice={<>{workspaceChoice}{!entryAvailable && (config || configError ? (configError || !(workspacePicker && !workspaceName)) && <div className="vibe-entry-availability">
+          {configError ? <><p role="alert">Couldn’t connect. Try again.</p><VibeButton variant="quiet" onClick={() => setLoadAttempt(attempt => attempt + 1)}>Retry connection</VibeButton></>
+            : choosingWorkspace && !workspaceName && saveAccess === "ready" ? <><p role="status">You need a workspace to start a project. Ask a workspace owner for access.</p><Link className="underline" href="/dashboard">Open your workspace</Link></>
+            : choosingWorkspace && !workspaceName && saveAccess === "error" ? <><p role="alert">Your workspaces couldn’t be loaded.</p><VibeButton variant="quiet" onClick={() => setLoadAttempt(attempt => attempt + 1)}>Try again</VibeButton></>
+            : <><p role="status">{unavailableReason}</p><VibeButton variant="quiet" onClick={() => setSettingsOpen(true)}>Review settings</VibeButton></>}
+        </div> : <p className="vibe-connection-status mt-3" role="status">Connecting…</p>)}</>}
         onCancelNew={() => setNewEvaluation(false)}
         canChangeDoor={canChangeDoor}
         onChangeDoor={() => void changeDoor()}
@@ -266,7 +281,7 @@ return (
               </div>
             )}
             {workspace && !testJourney && !session?.document.evaluation_first && (
-              <CreditsDialog workspace={workspace} />
+              <Button variant="ghost" size="sm" onClick={() => setCreditsOpen(true)}>Credits</Button>
             )}
             {artifact &&
               artifact.kind !== "test_plan" &&
@@ -386,12 +401,14 @@ return (
       }
       </EvaluationNavigation></VibeConnection.Provider>
       <AgentSettings reimport={session && artifact && artifact.kind !== "test_plan" ? <ReimportReview key={`${authUser?.id}:${session.id}:${artifact.id}`} actor={authUser?.id || "guest"} session={session} artifact={artifact} token={token} disabled={busy || dirtyArtifact} onApplied={updated => { if (accept(updated)) { const next = updated.document.artifacts.at(-1); if (next) navigate("tests", next.id, ""); setSettingsOpen(false); } }} /> : undefined} open={settingsOpen} onOpenChange={setSettingsOpen}
+        onOpenChangeComplete={open => { const action = afterSettings.current; afterSettings.current = null; if (!open) action?.(); }}
         config={config} session={session} artifact={artifact} artifacts={artifacts}
         models={models} busy={busy || dirtyArtifact} workspace={workspace}
         testJourney={testJourney} projectReturnPath={projectReturnPath} savedDraft={savedDraft} onModels={changeModels}
         onVersion={id => navigate(view, id, "")}
-        onSave={() => void openSave()} onImport={() => file.current?.click()}
-        onExportConversation={() => void exportConversation()} />
+        onSave={() => fromSettings(() => void openSave())} onCredits={() => fromSettings(() => setCreditsOpen(true))} onImport={() => file.current?.click()}
+        onExportConversation={() => fromSettings(() => void exportConversation())} />
+      {workspace && <CreditsDialog key={workspace} workspace={workspace} open={creditsOpen} onOpenChange={setCreditsOpen} />}
       <input
         ref={file}
         type="file"

@@ -8,7 +8,6 @@ import { Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { type Artifact, type Models, type Session, type VibeConfig } from "@/lib/vibe";
-import { CreditsDialog } from "./credits-dialog";
 import { ModelSelect } from "./model-select";
 import { VibeButton } from "./vibe-button";
 
@@ -16,6 +15,7 @@ type Props = {
   reimport?: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenChangeComplete?: (open: boolean) => void;
   config: VibeConfig | null;
   session: Session | null;
   artifact?: Artifact;
@@ -29,14 +29,17 @@ type Props = {
   onModels: (models: Models) => void;
   onVersion: (id: string) => void;
   onSave: () => void;
+  onCredits: () => void;
   onImport: () => void;
   onExportConversation: () => void;
 };
 
-export function AgentSettings({reimport,open, onOpenChange, config, session, artifact, artifacts, models, busy, workspace, testJourney, projectReturnPath,savedDraft, onModels, onVersion, onSave, onImport, onExportConversation}: Props) {
+// Actions that open another dialog (Credits, Save, Export) close Settings first;
+// the parent opens the next dialog from onOpenChangeComplete.
+export function AgentSettings({reimport,open, onOpenChange, onOpenChangeComplete, config, session, artifact, artifacts, models, busy, workspace, testJourney, projectReturnPath,savedDraft, onModels, onVersion, onSave, onCredits, onImport, onExportConversation}: Props) {
   const savable = !!artifact && artifact.kind !== "test_plan" && artifact.kind !== "conversation_evaluation";
   return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange} onOpenChangeComplete={onOpenChangeComplete}>
         <DialogContent className="vibe-workspace vibe-dialog">
           <DialogTitle>Settings and details</DialogTitle>
           <DialogDescription>
@@ -44,14 +47,11 @@ export function AgentSettings({reimport,open, onOpenChange, config, session, art
           </DialogDescription>
           <div className="vibe-dialog-body space-y-4">
           {(workspace || savable) && <div className="flex flex-wrap gap-2">
-          {workspace && <CreditsDialog workspace={workspace} />}
+          {workspace && <Button variant="ghost" size="sm" onClick={onCredits}>Credits</Button>}
           {savable && (
               <VibeButton
                 disabled={busy}
-                onClick={() => {
-                  onOpenChange(false);
-                  onSave();
-                }}
+                onClick={onSave}
               >
                 {testJourney ? "Keep these tests" : "Save agent"}
               </VibeButton>

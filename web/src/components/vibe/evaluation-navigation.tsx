@@ -54,7 +54,8 @@ type Props = {
   archiveMode?: "exclude" | "only" | "all";
   onArchiveMode?: (mode: "exclude" | "only" | "all") => void;
   onMetadata?: (target: Session, patch: { title?: string; archived?: boolean }) => Promise<boolean>;
-  accountControl?: ReactNode;
+  /** Signed-in entry only: the workspace for new projects; the picker itself is on the entry screen. */
+  workspace?: { name?: string; onChange: () => void };
   accountLabel?: string;
   listStatus?: CollectionStatus;
   onRetryList?: () => void;
@@ -262,8 +263,15 @@ export function EvaluationNavigation(p: Props) {
             )}
       </nav>
       <div className="vibe-sidebar-footer">
-        {p.accountControl}
         <p className="vibe-muted">{p.accountLabel || "Guest · private to this browser"}</p>
+        {p.workspace && (
+          <div className="vibe-sidebar-workspace">
+            <p><span>Workspace</span>{p.workspace.name || "Not chosen"}</p>
+            <VibeButton variant="quiet" aria-label={p.workspace.name ? "Change workspace" : "Choose workspace"} onClick={() => navigate(p.workspace!.onChange, mobile)}>
+              {p.workspace.name ? "Change" : "Choose"}
+            </VibeButton>
+          </div>
+        )}
         <Link href="/"><House aria-hidden="true" />Home</Link>
         <details>
           <summary><CircleHelp aria-hidden="true" />Help<ChevronRight className="vibe-chevron" aria-hidden="true" /></summary>

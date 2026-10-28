@@ -198,6 +198,20 @@ async function openSession(page: Page, id: string, view?: string) {
   await page.goto(`/vibe-evals?session=${id}${view ? `&view=${view}` : ""}`);
 }
 
+// Signed-in entry: the local AuthKit fixture signs in, and /v1/users/me lists two workspaces.
+async function signIn(page: Page) {
+  await page.route("**/v1/users/me", route => {
+    const headers = { "Access-Control-Allow-Origin": new URL(page.url() || "http://127.0.0.1:53517").origin, "Access-Control-Allow-Credentials": "true" };
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: { ...headers, "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,OPTIONS" } });
+    return route.fulfill({ headers, json: { user_id: "a8000000-0000-4000-8000-000000000001", email: "browser@example.invalid", organizations: [{ id: "org", name: "Returns Co", slug: "returns-co", role: "org_admin", workspaces: [
+      { id: "a8000000-0000-4000-8000-000000000003", name: "Returns team", slug: "returns-team", role: "workspace_admin" },
+      { id: "a8000000-0000-4000-8000-000000000006", name: "Support pilots", slug: "support-pilots", role: "workspace_member" },
+    ] }] } });
+  });
+  await page.goto("/auth/login?returnTo=%2Fvibe-evals");
+  await page.getByRole("button", { name: "Continue with AgentClash" }).click();
+}
+
 const combos: Combo[] = viewports.flatMap(v => schemes.map(scheme => ({ ...v, scheme })));
 
 for (const combo of combos) {
@@ -353,6 +367,21 @@ for (const combo of combos) {
       await expect(nav.locator("[data-evaluation-id]").first()).toBeVisible();
       await shoot(page, "k-sidebar", combo);
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
+    });
+
+    test(`m signed-in entry with workspace picker ${label}`, async ({ page }) => {
+      await prepare(page, combo);
+      const control = await serve(page);
+      await signIn(page);
+      const picker = page.getByRole("combobox", { name: "Workspace for new projects", exact: true });
+      await expect(picker).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText("Choose a workspace to use its credits.", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Review settings" })).toHaveCount(0);
+      await shoot(page, "m-entry-workspace", combo);
+      await picker.selectOption({ label: "Returns team" });
+      await expect(page.getByRole("button", { name: /Build an agent/ })).toBeEnabled();
+      await shoot(page, "m-entry-workspace-chosen", combo);
+      expect(control.errors).toEqual([]);
     });
 
     test(`l delete and credits dialogs ${label}`, async ({ page }) => {

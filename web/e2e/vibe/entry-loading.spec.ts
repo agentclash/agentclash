@@ -107,3 +107,48 @@ test("offline retry preserves a restored unsent draft and submits nothing", asyn
   expect(writes).toEqual([]);
   expect(errors).toEqual([]);
 });
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+  test(`signed-in entry shows the workspace picker and the sidebar moves focus to it at ${viewport.width}px`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const errors: string[] = [];
+    const writes: string[] = [];
+    page.on("pageerror", error => errors.push(error.message));
+    const cors = () => ({ "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" });
+    const preflight = { "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,POST,PATCH,OPTIONS" };
+    await page.route("**/v1/users/me", route => route.request().method() === "OPTIONS"
+      ? route.fulfill({ status: 204, headers: { ...cors(), ...preflight } })
+      : route.fulfill({ headers: cors(), json: { user_id: "a8000000-0000-4000-8000-000000000001", organizations: [{ id: "org", name: "Org", slug: "org", role: "org_admin", workspaces: [
+        { id: "a8000000-0000-4000-8000-000000000003", name: "Returns team", slug: "returns", role: "workspace_admin" },
+        { id: "a8000000-0000-4000-8000-000000000006", name: "Support pilots", slug: "support", role: "workspace_member" },
+      ] }] } }));
+    await page.route("**/v1/vibe/**", route => {
+      const request = route.request();
+      if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers: { ...cors(), ...preflight } });
+      if (request.method() !== "GET") writes.push(request.url());
+      if (new URL(request.url()).pathname.endsWith("/config")) return route.fulfill({ headers: cors(), json: { enabled: true, availability: { guest: { available: false }, workspace: { available: true } }, two_door: true, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) } });
+      return route.fulfill({ headers: cors(), json: [] });
+    });
+    await page.goto("/auth/login?returnTo=%2Fvibe-evals");
+    await page.getByRole("button", { name: "Continue with AgentClash" }).click();
+    const picker = page.getByRole("combobox", { name: "Workspace for new projects", exact: true });
+    await expect(picker).toBeVisible({ timeout: 20_000 });
+    await expect(picker).toHaveAccessibleDescription("Choose a workspace to use its credits.");
+    await expect(page.getByRole("button", { name: /Build an agent/ })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Review settings" })).toHaveCount(0);
+    if (viewport.width < 1024) await page.getByRole("button", { name: "Open agents", exact: true }).click();
+    await page.getByRole("button", { name: "Choose workspace", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(picker).toBeFocused();
+    await picker.selectOption({ label: "Support pilots" });
+    await expect(page.getByRole("button", { name: /Build an agent/ })).toBeEnabled();
+    await expect(picker).not.toHaveAttribute("aria-describedby");
+    if (viewport.width < 1024) await page.getByRole("button", { name: "Open agents", exact: true }).click();
+    await expect(page.locator(".vibe-sidebar-workspace").filter({ visible: true })).toContainText("Support pilots");
+    await page.getByRole("button", { name: "Change workspace", exact: true }).click();
+    await expect(picker).toBeFocused();
+    await expect(page.getByRole("combobox", { name: "Workspace for new projects" })).toHaveCount(1);
+    expect(writes).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}

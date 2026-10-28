@@ -3,7 +3,9 @@ const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT || "55441"}`;
 const workspace = "a8000000-0000-4000-8000-000000000003";
 const blueprint = { slug: "share-tests", name: "Selected report tests", difficulty: "easy", instructions: "{{question}}", cases: [{ key: "case-1", payload: { question: "May I return this?" }, expectations: [{ key: "expected_behavior", kind: "text", value: "Explain the return policy." }] }], validators: [{ key: "answer", type: "regex_match", target: "final_output", expected_from: "literal:.+" }], judges: [{ key: "behavior", mode: "assertion", assertion: "The response meets this case's expected_behavior and the following shared rules:\n\nNever claim to process a refund.", context_from: ["case.expectations.expected_behavior"] }], dimensions: [{ key: "answer", source: "validators", validators: ["answer"] }, { key: "behavior", source: "llm_judge", judge_key: "behavior" }] };
 async function login(page: Page, user?: string) { if (user)
-    await page.request.get(`http://127.0.0.1:55442/__fixture/identity?user=${user}`); await page.goto("/auth/login?returnTo=%2Fvibe-evals"); await page.getByRole("button", { name: "Continue with AgentClash" }).click(); await expect(page.getByLabel("Workspace for new projects")).toBeVisible(); }
+    await page.request.get(`http://127.0.0.1:55442/__fixture/identity?user=${user}`); await page.goto("/auth/login?returnTo=%2Fvibe-evals"); await page.getByRole("button", { name: "Continue with AgentClash" }).click();
+    // A viewer has no workspace to start projects in, so the entry shows a notice instead of the picker.
+    await expect(page.getByLabel("Workspace for new projects").or(page.getByText("You need a workspace to start a project.", { exact: false }))).toBeVisible(); }
 test("selected copy survives private cleanup with independent member/viewer navigation and capability lifecycle", async ({ page, browser }) => {
     const errors: string[] = [];
     page.on("pageerror", e => errors.push(e.message));

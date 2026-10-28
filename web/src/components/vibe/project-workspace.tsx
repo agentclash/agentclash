@@ -70,6 +70,7 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
   const [wide, setWide] = useState(() => typeof matchMedia !== "undefined" && matchMedia("(min-width: 1280px)").matches);
   const [reference, setReference] = useState<Reference>();
   const utilityTrigger = useRef<HTMLElement | null>(null);
+  const afterUtilityClose = useRef<(() => void) | null>(null);
   const utilityHeading = useRef<HTMLHeadingElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const guideBody = useRef<HTMLDivElement>(null);
@@ -114,6 +115,8 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
   }, []);
   const open = (next: "guide" | "details") => { const trigger = document.activeElement as HTMLElement; utilityTrigger.current = trigger; setUtility(next); if (wide) requestAnimationFrame(() => { if (document.activeElement === trigger) utilityHeading.current?.focus(); }); };
   const close = () => { setUtility(null); if (wide) requestAnimationFrame(() => utilityTrigger.current?.focus()); };
+  // Below 1280 the utility is a modal sheet: close it before Settings opens.
+  const settings = () => { if (wide) { p.onSettings(); return; } afterUtilityClose.current = p.onSettings; setUtility(null); };
   const ask = (next: Reference) => { setReference(next); open("guide"); requestAnimationFrame(() => composer.current?.focus()); };
   const askRun = (run: Operation, caseKey?: string) => ask({ project: session.id, viewed_run_id: run.id, ...(caseKey ? { viewed_case_key: caseKey } : {}), title: caseKey ? run.results.find(item => item.case_key === caseKey)?.title || caseKey : `Run ${runs.indexOf(run) + 1}` });
   const dirty = () => {
@@ -156,7 +159,7 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
   const sourceLabel = p.selectedResult?.result_ref.kind === "sdk_report" ? "Imported SDK report" : p.selectedResult?.result_ref.kind === "eval_session" ? "Application session" : "Application run";
   const identity = evaluationIdentity(session);
   const versionLabel = artifact ? `v${buildVersion(session, artifact)}${artifact.title && artifact.title !== identity.title ? ` · ${artifact.title}` : ""}` : "Initial brief";
-  const details = <div className="vibe-utility-scroll text-sm" aria-label="Project details"><h3>{identity.title}</h3><p>{identity.scope}</p><p>Version: {versionLabel}</p><p>{result ? `Results: Run ${runs.indexOf(result) + 1} · ${runStateLabel(result.state)}` : p.selectedResult ? `Results: ${sourceLabel}` : "No results for this version"}</p>{p.connectorSettings && <section aria-label="Agent connection settings"><h3>Connect your application</h3>{p.connectorSettings}</section>}<AppearanceControl /><VibeButton onClick={p.onSettings}>Settings</VibeButton></div>;
+  const details = <div className="vibe-utility-scroll text-sm" aria-label="Project details"><h3>{identity.title}</h3><p>{identity.scope}</p><p>Version: {versionLabel}</p><p>{result ? `Results: Run ${runs.indexOf(result) + 1} · ${runStateLabel(result.state)}` : p.selectedResult ? `Results: ${sourceLabel}` : "No results for this version"}</p>{p.connectorSettings && <section aria-label="Agent connection settings"><h3>Connect your application</h3>{p.connectorSettings}</section>}<AppearanceControl /><VibeButton onClick={settings}>Settings</VibeButton></div>;
   const utilityContent = <><div className="vibe-utility-heading"><h2 ref={utilityHeading} tabIndex={-1}>{utility === "guide" ? "Guide" : "Details"}</h2><VibeButton aria-label={`Close ${utility === "guide" ? "Guide" : "Details"}`} onClick={close}>Close</VibeButton></div>{utility === "guide" ? guide : details}</>;
   return <>
     <header className="vibe-project-header" data-utility-open={!!utility && wide} data-initial={view === "agent" && initialBrief || undefined}><div className="vibe-project-identity">{p.navigationToggle}<div><h1>{identity.title}</h1><p>{versionLabel}{result ? ` · Run ${runs.indexOf(result) + 1}: ${runStateLabel(result.state)}` : p.selectedResult ? ` · ${sourceLabel}` : artifact ? " · No results for this version" : " · No saved runs"}</p></div></div>
@@ -197,7 +200,7 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
       </div>
       {wide && utility && <aside className="vibe-utility" aria-label={`${utility === "guide" ? "Guide" : "Details"} utility`}>{utilityContent}</aside>}
     </div>
-    {!wide && <Sheet open={!!utility} onOpenChange={value => { if (!value) setUtility(null); }}><SheetContent className="vibe-utility-sheet" showCloseButton={false} initialFocus={utilityHeading} finalFocus={() => utilityTrigger.current || false}><SheetTitle className="sr-only">{utility === "guide" ? "Guide" : "Details"}</SheetTitle><SheetDescription className="sr-only">Supporting project context. Closing keeps your draft.</SheetDescription>{utilityContent}</SheetContent></Sheet>}
+    {!wide && <Sheet open={!!utility} onOpenChange={value => { if (!value) setUtility(null); }} onOpenChangeComplete={value => { const action = afterUtilityClose.current; afterUtilityClose.current = null; if (!value) action?.(); }}><SheetContent className="vibe-utility-sheet" showCloseButton={false} initialFocus={utilityHeading} finalFocus={() => utilityTrigger.current || false}><SheetTitle className="sr-only">{utility === "guide" ? "Guide" : "Details"}</SheetTitle><SheetDescription className="sr-only">Supporting project context. Closing keeps your draft.</SheetDescription>{utilityContent}</SheetContent></Sheet>}
     <span className="sr-only" role="status">{utility !== "guide" && guideAttention ? `${guideAttention}. Open Guide for details.` : ""}</span>
     <SavedWorkDialog status={p.savedListStatus} onRetry={p.onRetrySaved} open={!!p.savedWorkOpen} onOpenChange={p.onSavedWorkOpenChange || (() => {})} testJourney={p.testJourney} savedChecks={p.savedChecks} hasResults={runs.length > 0} onResults={() => p.onNavigate("checks")} />
   </>;
