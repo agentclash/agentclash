@@ -40,7 +40,11 @@ def main():
         if args.kind == "approval":
             settings = {
                 **config,
-                "delivery": {"enabled": True, "environment": config["kind"]},
+                "delivery": {
+                    "enabled": True,
+                    "environment": config["kind"],
+                    "expires_at": config.get("expires_at"),
+                },
             }
             validate_approval(
                 value,
