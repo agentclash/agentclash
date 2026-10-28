@@ -16,28 +16,10 @@ function normalizedIdentifier(identifier: string) {
   return identifier.toUpperCase().replace(/\s+/g, " ");
 }
 
-// Find the end of the visible label, respecting nested brackets, escapes and code spans.
-function labelEnd(content: string, start: number, end: number): number | undefined {
-  let depth = 0;
-  for (let i = start; i < end; i++) {
-    if (content[i] === "\\") { i++; continue; }
-    if (content[i] === "`") {
-      let j = i;
-      while (content[j] === "`") j++;
-      const closing = content.indexOf(content.slice(i, j), j);
-      if (closing !== -1 && closing < end) { i = closing + (j - i) - 1; continue; }
-      i = j - 1;
-      continue;
-    }
-    if (content[i] === "[") depth++;
-    if (content[i] === "]" && --depth === 0) return i + 1;
-  }
-  return undefined;
-}
-
 /** Read actual destinations, using parser token offsets instead of matching link-shaped text. */
 export function inspectMarkdownDestinations(content: string): MarkdownDestination[] {
   const destinations: MarkdownDestination[] = [];
+  const labelEnds = new WeakMap<object, number>();
   const definitions: Array<{ destination: MarkdownDestination; node: { identifier: string; title?: string | null } }> = [];
   const jsx = mdxJsxFromMarkdown();
   const attributes: Array<{ destination: Omit<MarkdownDestination, "href">; value: () => unknown }> = [];
@@ -63,8 +45,22 @@ export function inspectMarkdownDestinations(content: string): MarkdownDestinatio
       });
     }
   };
+  // Mirror the parser's label exit handler while retaining its exact token boundary.
+  const label: Handle = function (token) {
+    const fragment = this.stack[this.stack.length - 1];
+    const value = this.resume();
+    const node = this.stack[this.stack.length - 1];
+    this.data.inReference = true;
+    if (node.type === "link" && "children" in fragment) {
+      node.children = fragment.children as typeof node.children;
+      labelEnds.set(node, token.end.offset);
+    } else if (node.type === "image") {
+      node.alt = value;
+    }
+  };
   const extension: Extension = {
     exit: {
+      label,
       resourceDestinationString: destination,
       definitionDestinationString: destination,
       mdxJsxFlowTagAttributeValueLiteralValue: attribute,
@@ -80,7 +76,8 @@ export function inspectMarkdownDestinations(content: string): MarkdownDestinatio
   function collectImages(node: typeof tree | (typeof tree.children)[number]) {
     if (node.type === "imageReference") imageReferences.add(normalizedIdentifier(node.identifier));
     if (node.type === "linkReference" && node.position?.start.offset !== undefined && node.position.end.offset !== undefined) {
-      linkReferences.push({ identifier: normalizedIdentifier(node.identifier), start: node.position.start.offset, end: node.position.end.offset, line: node.position.start.line });
+      const start = labelEnds.get(node);
+      if (start !== undefined) linkReferences.push({ identifier: normalizedIdentifier(node.identifier), start, end: node.position.end.offset, line: node.position.start.line });
     }
     if ("children" in node) for (const child of node.children) collectImages(child);
   }
@@ -94,8 +91,7 @@ export function inspectMarkdownDestinations(content: string): MarkdownDestinatio
   for (const reference of linkReferences) {
     const definition = sharedDefinitions.get(reference.identifier);
     if (!definition) continue;
-    const start = labelEnd(content, reference.start, reference.end);
-    if (start !== undefined) destinations.push({ href: definition.destination.href, start, end: reference.end, line: reference.line, syntax: "reference", title: definition.node.title });
+    destinations.push({ href: definition.destination.href, start: reference.start, end: reference.end, line: reference.line, syntax: "reference", title: definition.node.title });
   }
   for (const { destination, value } of attributes) {
     const href = value();

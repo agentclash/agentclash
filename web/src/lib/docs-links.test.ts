@@ -76,6 +76,17 @@ describe("docs link destinations", () => {
     expect(paragraph.children.filter((node) => node.type === "imageReference")).toHaveLength(2);
   });
 
+  it("preserves backtick runs and brackets inside a shared reference label", () => {
+    const doc = getDocBySlug([])!;
+    const content = "[a ``x````` ] y``][shared]\n\n![Image][shared]\n\n[shared]: /docs";
+    const tree = fromMarkdown(renderDocMarkdown({ ...doc, content }, origin));
+    const paragraph = tree.children.find((node) => node.type === "paragraph" && node.children.some((child) => child.type === "link"));
+    const link = paragraph?.type === "paragraph" ? paragraph.children.find((node) => node.type === "link") : undefined;
+    expect(link?.type === "link" && link.url).toBe(`${origin}/md/docs`);
+    expect(link?.type === "link" && link.children.find((node) => node.type === "inlineCode")?.value).toBe("x````` ] y");
+    expect(tree.children.find((node) => node.type === "definition")?.url).toBe("/docs");
+  });
+
   it("keeps the generated SKILL.md payload intact including literal docs URLs", () => {
     const slug = ["agent-skills", "agentclash-hub"];
     const raw = fs.readFileSync(path.join(process.cwd(), "content", ...slug, "SKILL.md"), "utf8").trim();
