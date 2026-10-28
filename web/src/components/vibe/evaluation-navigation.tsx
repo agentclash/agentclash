@@ -142,7 +142,7 @@ export function EvaluationNavigation(p: Props) {
   const navigation = (mobile: boolean) => (
     <>
       <div className="vibe-sidebar-brand">
-        <ClashMark className="size-5 vibe-muted" />
+        <ClashMark className="size-5 vibe-muted" tone="current" />
         <span>Vibe Evals</span>
         {!mobile && (
           <VibeButton
