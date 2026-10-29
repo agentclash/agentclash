@@ -417,6 +417,9 @@ test("text roles stay consistent across viewport sizes and portaled dialogs", as
     await page.getByRole("button", { name: "Details", exact: true }).click();
     const details = width < 1280 ? page.getByRole("dialog", { name: "Details", exact: true }) : page.getByRole("complementary", { name: "Details utility", exact: true });
     await expect(details.getByLabel("Appearance", { exact: true })).toHaveCSS("font-size", "16px");
+    const subheading = details.locator("h3").first();
+    await expect(subheading).toHaveCSS("font-size", "14px");
+    await expect(subheading).toHaveCSS("font-weight", "600");
     await details.getByRole("button", { name: "Settings", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Settings and details", exact: true });
     await expect.soft(dialog).toHaveCSS("font-family", /Geist/);
