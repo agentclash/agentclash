@@ -744,6 +744,10 @@ test("Try keeps followups separate from Build and starts fresh on reset", async 
     .getByRole("textbox", { name: "Message Vibe Evals" })
     .fill("Build a return-policy assistant.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
+  // The reply resets the composer, so type the next draft after it arrives.
+  await expect(
+    page.getByRole("button", { name: "Try it yourself", exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("textbox", { name: "Message Vibe Evals" })
     .fill("Unsent changes to my agent");
