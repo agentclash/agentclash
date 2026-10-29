@@ -143,6 +143,9 @@ export type EvaluationWorkspaceProps = {
   onImport: () => void;
   importNotice?: ReactNode;
   onSettings: () => void;
+  // The run estimate waits while a modal Guide or Details sheet is open or closing.
+  estimateOpen?: boolean;
+  onUtilitySheet?: (open: boolean) => void;
   loadEvidence: (operation: string, key: string) => Promise<CaseResult>;
   onAction: (id: string, action: "stop" | "approve") => void;
   onRetry?: (id: string, assistantModel?: string) => void;
@@ -862,11 +865,10 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                         </VibeButton>
                       )}
                       <VibeButton
-                        variant="quiet"
                         disabled={!!p.pendingLabel}
                         onClick={() => p.onAction(active.id, "stop")}
                       >
-                        <Square />
+                        <Square aria-hidden="true" className="vibe-stop-icon" fill="currentColor" />
                         Stop
                       </VibeButton>
                     </div>

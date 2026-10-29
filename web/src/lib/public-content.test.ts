@@ -84,7 +84,9 @@ describe("public content registry", () => {
     expect(canonicalPathFromMarkdownSegments(["docs", "..", "pricing"])).toBeNull();
   });
 
-  it("drives llms and search from exact registered URLs", () => {
+  // The first full llms build runs the whole public registry, which can pass the
+  // default 5s timeout on a busy runner; the assertions are unchanged.
+  it("drives llms and search from exact registered URLs", { timeout: 30000 }, () => {
     const index = buildPublicLlmsIndex("https://example.test");
     const full = buildPublicLlmsFull("https://example.test");
     const search = getPublicSearchIndex();

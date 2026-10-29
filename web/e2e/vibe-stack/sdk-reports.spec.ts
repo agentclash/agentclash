@@ -67,9 +67,12 @@ test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrad
  const promoted=await evidence(page,id);expect(promoted.session.document.artifacts).toHaveLength(2);expect(promoted.session.document.artifacts[0].blueprint).toEqual(artifact.blueprint);expect(promoted.session.operations).toHaveLength(1);
  await page.goBack();await expect(page.getByRole("article",{name:"Imported report detail"})).toBeVisible();expect(new URL(page.url()).searchParams.get("agent")).toBe(artifact.id);
  const afterDownload=page.waitForEvent("download");await page.getByRole("button",{name:"Download exact original",exact:true}).click();expect(await readFile((await (await afterDownload).path())!,"utf8")).toBe(source);
+ // From 1280px the Guide panel is open by default; close it while the width is stable, so a resize below
+ // 1280px never races its removal. The closed choice persists across the resizes.
+ const closeGuide=page.getByRole("button",{name:"Close Guide",exact:true});if(await closeGuide.isVisible())await closeGuide.click();
  for(const width of [320,390,768,1440]){
   await page.setViewportSize({width,height:900});
-  const closeGuide=page.getByRole("button",{name:"Close Guide",exact:true});if(await closeGuide.isVisible())await closeGuide.click();
+  if(await closeGuide.isVisible())await closeGuide.click();
   await page.getByRole("article",{name:"Imported report detail"}).scrollIntoViewIfNeeded();
   await expect(page.getByRole("article",{name:"Imported report detail"})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);

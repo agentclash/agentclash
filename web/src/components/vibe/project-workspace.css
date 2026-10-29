@@ -69,6 +69,26 @@
 .vibe-results-more-body > .vibe-build-next-actions { margin-block: 0; padding-block: 0; border-top: 0; }
 .vibe-results-more-body > details { margin-top: 0; }
 .vibe-empty-state { display: grid; justify-items: start; gap: var(--vibe-space-3); }
+/* One progress strip at the top of the content, or of the Guide sheet below 1280px. It stays in view
+   while the content scrolls, and holds the only Stop and Approve controls. Idle, it is an empty live region. */
+.vibe-progress-strip[data-active] { position: sticky; top: calc(-1 * clamp(var(--vibe-space-4), 3dvh, var(--vibe-space-6))); z-index: 2; display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-areas: "copy actions" "bar bar" "note note"; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-block-end: var(--vibe-space-5); padding: var(--vibe-space-3) var(--vibe-space-4); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); background: var(--vibe-surface); }
+.vibe-progress-row { display: contents; }
+.vibe-progress-copy { grid-area: copy; min-width: 0; }
+.vibe-progress-strip .vibe-status-text { color: var(--vibe-fg); font-weight: 500; }
+.vibe-progress-detail, .vibe-progress-note { font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); color: var(--vibe-muted); }
+.vibe-progress-note { grid-area: note; }
+.vibe-progress-actions { grid-area: actions; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--vibe-space-2); }
+.vibe-progress-bar { grid-area: bar; position: relative; height: 6px; overflow: hidden; border-radius: 3px; background: var(--vibe-hover); }
+.vibe-progress-bar > span { position: absolute; inset-block: 0; inset-inline-start: 0; border-radius: inherit; background: var(--vibe-fg); transition: inline-size 300ms ease-out; }
+/* Unknown totals keep one shape: moving dashes across the whole track, still dashes with reduced motion. */
+.vibe-progress-bar[data-indeterminate] > span { inline-size: 100%; background: repeating-linear-gradient(90deg, var(--vibe-muted) 0 10px, transparent 10px 18px); animation: vibe-progress-dashes 900ms linear infinite; }
+@keyframes vibe-progress-dashes { to { background-position: 18px 0; } }
+.vibe-progress-bar[data-paused] > span { animation: none; }
+.vibe-workspace .vibe-button .vibe-stop-icon { width: 12px; height: 12px; }
+.vibe-utility-sheet .vibe-progress-strip[data-active] { position: static; flex: none; margin: var(--vibe-space-3) var(--vibe-space-4) 0; }
+/* Focus that scrolls into view stops below the sticky strip, so the strip never hides it (WCAG 2.4.11). */
+@media (min-width: 601px) { .vibe-project-main:has(> .vibe-project-content > .vibe-progress-strip[data-active]) { scroll-padding-top: 9rem; } }
+@media (forced-colors: active) { .vibe-progress-bar { border: 1px solid CanvasText; } .vibe-progress-bar > span { forced-color-adjust: none; background: Highlight; } }
 .vibe-project-content > label:has(> select[aria-label="Result history"]) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-bottom: var(--vibe-space-4); font-size: var(--vibe-font-callout); color: var(--vibe-muted); line-height: var(--vibe-leading-callout); }
 .vibe-project-main .vibe-instructions-text { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: var(--vibe-surface); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); padding: var(--vibe-space-4); }
 .vibe-utility, .vibe-utility-sheet { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--vibe-surface); color: var(--vibe-fg); }
@@ -124,6 +144,9 @@
   .vibe-project-tool-label { display: none; }
   .vibe-project-tools .vibe-guide-attention { position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; min-height: 0; padding: 0; overflow: hidden; border-radius: 50%; font-size: 0; background: var(--vibe-fg); }
   .vibe-utility-sheet[data-slot="sheet-content"] { width: 100%; border: 0; }
+  /* The status takes the full row; Stop sits beside the note that explains it. */
+  /* A sticky strip would cover a third of a short screen, so it scrolls with the content here. */
+  .vibe-progress-strip[data-active] { position: static; grid-template-areas: "copy copy" "bar bar" "note actions"; }
 }
 @media (prefers-reduced-motion: reduce) {
   .vibe-workspace, .vibe-workspace *, .vibe-workspace *::before, .vibe-workspace *::after { animation-duration: 0s !important; transition-duration: 0s !important; scroll-behavior: auto !important; }

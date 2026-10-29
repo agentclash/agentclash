@@ -52,6 +52,7 @@ export function VibeClient() {
   const { evidenceResult,selectedCanonical,selectedSDKReport,selectedResult,selectedResultLoading,selectedResultError,retrySelectedResult,onSelectResult,onSDKPromoted,onSDKRegraded,evidenceAccess,sdkInferenceAvailable,projectReturnPath,saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,archiveMode,setArchiveMode,metadata,exporter, recordedUpdate, startRecordedUpdate, closeRecordedUpdate, addRecordedEvidence, entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, runInferenceAvailable, unavailableReason, messageLimit, messageError, buildQuote, buildQuoteState, refreshBuildQuote, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, canChangeDoor, changeDoor, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, trialMaterials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces } = useVibeWorkspace();
   const choosingEntry = twoDoor && (!session || newEvaluation);
   const [creditsOpen, setCreditsOpen] = useState(false);
+  const [utilitySheet, setUtilitySheet] = useState(false);
   // One dialog at a time: Settings closes, then the dialog it asked for opens.
   const afterSettings = useRef<(() => void) | null>(null);
   const fromSettings = (action: () => void) => { afterSettings.current = action; setSettingsOpen(false); };
@@ -72,7 +73,7 @@ export function VibeClient() {
 return (
     <VibeAppearance>
  <ExportDialog controller={exporter}/>
-      <Dialog open={!!runQuote} onOpenChange={open => { if (!open) setRunQuote(undefined); }}>
+      <Dialog open={!!runQuote && !utilitySheet} onOpenChange={open => { if (!open) setRunQuote(undefined); }}>
         <DialogContent className="vibe-workspace vibe-dialog" initialFocus={quoteHeading} finalFocus={() => {
           const trigger = quoteTrigger.current;
           return trigger?.isConnected && !trigger.matches(":disabled") ? trigger : document.getElementById("vibe-trial-message") || document.getElementById("vibe-message");
@@ -218,6 +219,8 @@ return (
         }}
         onSave={openSave}
         onSettings={() => setSettingsOpen(true)}
+        estimateOpen={!!runQuote}
+        onUtilitySheet={setUtilitySheet}
         importNotice={importError && importError.sessionID === sessionID && !newEvaluation && <div ref={importNotice} tabIndex={-1} className="vibe-import-error" role="alert">
           <p>{importError.message}</p>
           <VibeButton variant="quiet" disabled={busy} onClick={() => file.current?.click()}>Choose a file</VibeButton>

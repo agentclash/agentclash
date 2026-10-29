@@ -158,6 +158,8 @@ test("mobile prototype output remains visible while its check completes in the s
 });
 
 test("Guide composer and evidence fit small screens with long input",async({page},info)=>{
+  // Load narrow: from 1280px the Guide opens by default, and its panel would leave during the first resize.
+  await page.setViewportSize({width:320,height:800});
   const control=await serve(page);const composer=page.getByRole("textbox",{name:"Message Vibe Evals"});
   for(const width of [320,390,768,1280,1440]){
     await page.setViewportSize({width,height:800});if(!(await composer.isVisible()))await page.getByRole("button",{name:"Guide",exact:true}).click();
