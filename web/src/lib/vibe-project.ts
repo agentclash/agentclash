@@ -20,3 +20,18 @@ export function setSidebarPreference(collapsed: boolean) {
     localStorage.setItem("vibe-sidebar:v1", collapsed ? "collapsed" : "expanded");
   } catch {}
 }
+// Only a Close on the wide Guide panel sets this; closing the narrow sheet is not a preference.
+let guideClosed = false;
+export function guidePreference() {
+  try {
+    return localStorage.getItem("vibe-guide:v1") === "closed";
+  } catch {
+    return guideClosed;
+  }
+}
+export function setGuidePreference(closed: boolean) {
+  guideClosed = closed;
+  try {
+    localStorage.setItem("vibe-guide:v1", closed ? "closed" : "open");
+  } catch {}
+}

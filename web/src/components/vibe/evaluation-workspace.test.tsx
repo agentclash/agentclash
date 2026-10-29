@@ -79,7 +79,7 @@ function operation(id: string): Operation {
 }
 
 beforeEach(() => {
-  draftMemory.clear(); sessionStorage.clear();
+  draftMemory.clear(); sessionStorage.clear(); localStorage.clear();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal(
     "matchMedia",
@@ -637,12 +637,21 @@ it("restores instruction reading focus after saving creates a new version", asyn
  expect(document.activeElement).toBe(container.querySelector('[aria-label="Agent instructions"] h2'));
 });
 
-it("keeps Guide closed as responses and run attention arrive and preserves the draft on explicit open", async () => {
+it("opens Guide by default on wide screens, keeps a closed Guide closed after a reload and shows progress in one strip", async () => {
   const current = session([{ id: "request", role: "user", content: "Help with returns" }]);
   current.document.evaluation = { id: current.id, chat_id: current.id, door: "build" };
   const artifact = { id: "suite", kind: "test_suite" as const, title: "Returns", agent_prompt: "Use supplied policy", accepted: true, source_message_id: "request", blueprint: { cases: [] } };
   current.document.artifacts = [artifact];
   await render({ twoDoor: true, session: current, artifact, content: "Keep my question" });
+  expect(container.querySelector('[aria-label="Guide utility"]')).not.toBeNull();
+  expect(button("Guide").getAttribute("aria-pressed")).toBe("true");
+  await act(async () => button("Close Guide").click());
+  expect(container.querySelector('[aria-label="Guide utility"]')).toBeNull();
+  expect(localStorage.getItem("vibe-guide:v1")).toBe("closed");
+  // A reload keeps the user's choice.
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await render();
   expect(container.querySelector('[aria-label="Guide utility"]')).toBeNull();
   expect(button("Guide").getAttribute("aria-pressed")).toBe("false");
 
@@ -650,22 +659,58 @@ it("keeps Guide closed as responses and run attention arrive and preserves the d
   expect(container.querySelector('[aria-label="Guide utility"]')).toBeNull();
   expect(button("Guide").textContent).toContain("New response");
 
-  const active = { ...operation("active"), kind: "message", state: "AWAITING_APPROVAL" };
+  // Progress, Approve and Stop show once, at the top of the main pane, not as a Guide flag.
+  const active: Operation = { ...operation("active"), state: "AWAITING_APPROVAL", results: [], progress: { phase: "awaiting_approval", completed_cases: 0, total_cases: 3 } };
   await render({ session: { ...props.session!, operations: [active] } });
-  expect(button("Guide").textContent).toContain("Approval needed");
-  expect(container.querySelector('[aria-label="Guide utility"]')).toBeNull();
-  await render({ session: { ...props.session!, operations: [{ ...active, state: "RUNNING" }] } });
-  expect(button("Guide").textContent).toContain("Running");
+  const strip = () => container.querySelector(".vibe-project-content > .vibe-progress-strip")!;
+  expect(button("Guide").textContent).not.toContain("Approval needed");
+  expect(strip().textContent).toContain("Review the cost before continuing.");
+  expect([...container.querySelectorAll("button")].filter(item => item.textContent === "Approve run")).toHaveLength(1);
+  expect([...container.querySelectorAll("button")].filter(item => item.textContent === "Stop")).toHaveLength(1);
+  await render({ session: { ...props.session!, operations: [{ ...active, state: "RUNNING", progress: { phase: "grading", completed_cases: 1, total_cases: 3 } }] } });
+  expect(button("Guide").textContent).not.toContain("Running");
+  expect(strip().querySelector('[role="status"]')?.textContent).toBe("Running 2 of 3 tests");
+  const bar = strip().querySelector('[role="progressbar"]')!;
+  expect([bar.getAttribute("aria-valuenow"), bar.getAttribute("aria-valuemax"), bar.getAttribute("aria-valuetext")]).toEqual(["1", "3", "1 of 3 tests done"]);
+  expect([...container.querySelectorAll('[role="status"]')].filter(node => /Running|tests/.test(node.textContent || ""))).toHaveLength(1);
+  await act(async () => button("Stop").click());
+  expect(props.onAction).toHaveBeenCalledWith("active", "stop");
+  // A total that disappears mid-run does not turn the bar indeterminate.
+  await render({ session: { ...props.session!, operations: [{ ...active, state: "RUNNING", progress: { phase: "grading", completed_cases: 1, total_cases: 0 } }] } });
+  expect(strip().querySelector('[role="progressbar"]')?.hasAttribute("data-indeterminate")).toBe(false);
   await render({ session: { ...props.session!, operations: [{ ...active, state: "FAILED", retryable: true }] } });
+  expect(strip().querySelector('[role="progressbar"]')).toBeNull();
   expect(button("Guide").textContent).toContain("Needs attention");
 
   await act(async () => button("Guide").click());
   expect(container.querySelector('[aria-label="Guide utility"]')).not.toBeNull();
+  expect(localStorage.getItem("vibe-guide:v1")).toBe("open");
   expect(container.querySelector<HTMLTextAreaElement>('#vibe-message')?.value).toBe("Keep my question");
-  await act(async () => button("Close Guide").click());
-  expect(container.querySelector('[aria-label="Guide utility"]')).toBeNull();
-  await act(async () => button("Guide").click());
-  expect(container.querySelector<HTMLTextAreaElement>('#vibe-message')?.value).toBe("Keep my question");
+  await act(async () => button("Details").click());
+  await act(async () => button("Close Details").click());
+  expect(container.querySelector('[aria-label="Guide utility"]')).not.toBeNull();
   expect(props.onContent).not.toHaveBeenCalled();
   expect(props.onSend).not.toHaveBeenCalled();
+});
+
+it("keeps a message without a test total indeterminate and hides Guide while the project is a brief", async () => {
+  const current = session([{ id: "request", role: "user", content: "Help with returns", operation_id: "turn" }]);
+  current.document.evaluation = { id: current.id, chat_id: current.id, door: "build" };
+  const artifact = { id: "suite", kind: "test_suite" as const, title: "Returns", agent_prompt: "Use supplied policy", accepted: true, source_message_id: "request", blueprint: { cases: [] } };
+  current.document.artifacts = [artifact];
+  current.operations = [{ ...operation("turn"), kind: "message", state: "RUNNING", source: undefined, scorecard: undefined, progress: { phase: "understanding", completed_cases: 0, total_cases: 0 } }];
+  await render({ twoDoor: true, session: current, artifact });
+  const bar = container.querySelector('.vibe-progress-strip [role="progressbar"]')!;
+  expect(bar.hasAttribute("data-indeterminate")).toBe(true);
+  expect(bar.hasAttribute("aria-valuenow")).toBe(false);
+  expect(container.querySelector(".vibe-progress-strip [role=\"status\"]")?.textContent).toContain("Understanding your request…");
+  // A brief answers its question in the Agent view; Guide has nothing to show, so it has no button or flag.
+  const brief = session([{ id: "request", role: "user", content: "My agent answers shop return questions." }, { id: "question", role: "assistant", content: "How long can items be returned: 14 days or 30 days?" }]);
+  brief.document.evaluation = { id: brief.id, chat_id: brief.id, door: "build" };
+  brief.document.build = { cycle_id: "cycle", phase: "clarifying", clarifications_used: 1 };
+  brief.document.conversation_state = { version: 1, actions_version: 1, through_message_id: "question", brief: { scope_id: "scope", revision: 1, facts: [] }, guidance: {}, pending_question: { id: "q", revision: 1, scope_id: "scope", origin_message_id: "question", purpose: "clarify_rule", status: "active", text: "How long can items be returned: 14 days or 30 days?", options: [{ id: "14", label: "14 days" }, { id: "30", label: "30 days" }], max_selections: 1, proposal_id: null, proposal_revision: null } };
+  await render({ session: brief, artifact: undefined, interactionActions: true, onChoice: vi.fn(), onReloadChoices: vi.fn() });
+  expect([...container.querySelectorAll("button")].some(item => item.getAttribute("aria-label") === "Guide")).toBe(false);
+  expect(container.textContent).not.toContain("Review needed");
+  expect(container.querySelector(".vibe-progress-strip")).toBeNull();
 });

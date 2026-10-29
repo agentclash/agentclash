@@ -113,7 +113,8 @@ test("a stored trial in B survives opening A, switching, editing and refreshing"
     const button = page.getByRole("button", { name: "Guide", exact: true });
     if (await button.getAttribute("aria-pressed") !== "true") await button.click();
   };
-  await expect(page.getByRole("button", { name: "Guide", exact: true })).toHaveAttribute("aria-pressed", "false");
+  // At 1280px the Guide panel is open by default once a version exists.
+  await expect(page.getByRole("button", { name: "Guide", exact: true })).toHaveAttribute("aria-pressed", "true");
   await openGuide("first");
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   await composer.fill("A's unsent guide");
@@ -476,6 +477,77 @@ test("one dialog at a time: Details closes before Settings, Settings closes befo
   expect(control.errors).toEqual([]);
 });
 
+test("Guide opens by default from 1280px once a version exists, stays closed below it, and a close survives a reload", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const control = await serve(page, false, true);
+  const panel = page.getByRole("complementary", { name: "Guide utility", exact: true });
+  const guide = page.getByRole("button", { name: "Guide", exact: true });
+  await expect(panel).toBeVisible();
+  await expect(guide).toHaveAttribute("aria-pressed", "true");
+  // Below 1280px the Guide is a modal sheet, so it never opens by itself.
+  await page.setViewportSize({ width: 1279, height: 900 });
+  await expect(panel).toHaveCount(0);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(guide).toHaveAttribute("aria-pressed", "false");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(panel).toBeVisible();
+  // Details replaces the panel and closing it brings the Guide back.
+  await page.getByRole("button", { name: "Details", exact: true }).click();
+  await expect(page.getByRole("complementary", { name: "Details utility", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Close Details", exact: true }).click();
+  await expect(panel).toBeVisible();
+  await page.getByRole("button", { name: "Close Guide", exact: true }).click();
+  await expect(panel).toHaveCount(0);
+  await expect(guide).toBeFocused();
+  await page.reload();
+  await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 15_000 });
+  await expect(guide).toHaveAttribute("aria-pressed", "false");
+  await expect(panel).toHaveCount(0);
+  await guide.click();
+  await expect(panel).toBeVisible();
+  await page.reload();
+  await expect(panel).toBeVisible({ timeout: 15_000 });
+  expect(control.posts).toHaveLength(0);
+  expect(control.errors).toEqual([]);
+});
+
+test("one dialog at a time: a run estimate that arrives while the Guide sheet is open waits for the sheet to close", async ({ page }) => {
+  const control = await serve(page, false, true);
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const quotes: string[] = [];
+  await page.route(/\/run-quote$/, async route => {
+    if (route.request().method() !== "POST") return route.fallback();
+    quotes.push(route.request().url());
+    await held;
+    await route.fulfill({ headers: { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" },
+      json: { id: "quote", cases: 1, calls: 2, max_cost_nano_usd: 1_000_000, expires_at: new Date(Date.now() + 600_000).toISOString() } });
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => {
+    const record = window as unknown as { mostDialogs: number };
+    record.mostDialogs = 0;
+    const count = () => { record.mostDialogs = Math.max(record.mostDialogs, document.querySelectorAll('[role="dialog"]').length); };
+    new MutationObserver(count).observe(document.body, { childList: true, subtree: true, attributes: true });
+  });
+  await page.getByRole("tab", { name: "Tests", exact: true }).click();
+  const run = page.getByRole("button", { name: "Run 1 test", exact: true });
+  await run.click();
+  await expect.poll(() => quotes.length).toBe(1);
+  await page.getByRole("button", { name: "Guide", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Guide", exact: true })).toBeVisible();
+  release();
+  const estimate = page.getByRole("dialog", { name: "Run these tests", exact: true });
+  await expect(estimate).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  expect(await page.evaluate(() => (window as unknown as { mostDialogs: number }).mostDialogs)).toBe(1);
+  await estimate.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(run).toBeFocused();
+  expect(control.posts).toHaveLength(0);
+  expect(control.errors).toEqual([]);
+});
+
 test("Guide keeps its composer in view through short-window resizing without losing a draft", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   const control = await serve(page, false, true);
@@ -515,9 +587,10 @@ test("workspace geometry, scoped portal appearance and reading focus adapt at ev
   const control = await serve(page, false, true);
   for (const width of [390, 600, 601, 1023, 1024, 1279, 1280, 1440, 1920, 2560]) {
     await page.setViewportSize({ width, height: 900 });
-    // Resize preserves the utility value; close the sheet to inspect main content.
-    const close = page.getByRole("button", { name: "Close Guide", exact: true });
-    if (width < 1280 && await close.isVisible()) await close.click();
+    // Resize preserves an opened utility; close the Guide sheet to inspect main content.
+    // The default wide Guide panel is not a sheet and closes itself below 1280px.
+    const sheet = page.getByRole("dialog", { name: "Guide", exact: true });
+    if (width < 1280 && await sheet.isVisible()) await sheet.getByRole("button", { name: "Close Guide", exact: true }).click();
     await page.getByRole("button", { name: "Details", exact: true }).click();
     const appearance = page.getByLabel("Appearance", { exact: true });
     await appearance.selectOption("light");

@@ -121,7 +121,20 @@ function fixtures() {
     { id: "prepare", kind: "message", state: "COMPLETED", billing: "SETTLED", models, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] },
     run,
   ];
-  return new Map<string, Session>([results, ready, progress, question, choices, improveStart, buildStart].map(s => [s.id, s]));
+
+  // A run in progress: the server seeds every test at admission, so the total is known from the start.
+  const running = base("returns-running", "test", "Return desk checks");
+  running.document.artifacts = [{ ...prototype("running-v1"), title: "Return desk checks" }];
+  running.document.active_artifact_id = "running-v1";
+  running.document.messages = ready.document.messages.map(m => ({ ...m, ...(m.artifact_id ? { artifact_id: "running-v1" } : {}) }));
+  const seeded = caseResults("running-v1").map((c, i) => i === 0 ? c : { ...c, output: "", verdict: "UNKNOWN" as const, checks: [], error: { code: "not_evaluated", message: "This case has not been evaluated yet." } });
+  running.operations = [
+    { id: "r-prepare", kind: "message", state: "COMPLETED", billing: "SETTLED", models, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] },
+    { id: "run-live", kind: "check", state: "RUNNING", billing: "RESERVED", models, max_cost_nano_usd: 120_000_000, actual_cost_nano_usd: 0,
+      source: { kind: "prompt", label: "Return desk checks", artifact_id: "running-v1" }, results: seeded,
+      progress: { phase: "grading", completed_cases: 1, total_cases: 3, phase_elapsed_ms: 8_000 } },
+  ];
+  return new Map<string, Session>([results, ready, running, progress, question, choices, improveStart, buildStart].map(s => [s.id, s]));
 }
 
 async function serve(page: Page) {
@@ -260,10 +273,9 @@ for (const combo of combos) {
       await openSession(page, "build-question");
       await expect(page.getByText("How long can items be returned: 14 days or 30 days?").first()).toBeVisible({ timeout: 20_000 });
       await shoot(page, "d-build-chat-question", combo, { tall: true });
-      // The header badge says "Review needed"; open Guide to see where the choices live.
-      await page.getByRole("button", { name: "Guide", exact: true }).click();
-      await page.waitForTimeout(300);
-      await shoot(page, "d-build-chat-question-guide", combo);
+      // A brief answers its question here; Guide has nothing to add yet, so it has no button or flag.
+      await expect(page.getByRole("button", { name: "Guide", exact: true })).toHaveCount(0);
+      await expect(page.getByText("Review needed")).toHaveCount(0);
       await openSession(page, "build-choices");
       await expect(page.getByText("How long can items be returned: 14 days or 30 days?").first()).toBeVisible({ timeout: 20_000 });
       const options = page.getByRole("region", { name: "Conversation choices" });
@@ -283,6 +295,9 @@ for (const combo of combos) {
       await expect(page.getByRole("tab", { name: "Agent", exact: true })).toHaveAttribute("aria-selected", "true");
       await expect(page.getByRole("textbox", { name: "Message your agent", exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Try it yourself", exact: true })).toHaveCount(0);
+      // From 1280px the Guide panel is open by default once a version exists; below it, it waits for the Guide button.
+      if (combo.width >= 1280) await expect(page.getByRole("complementary", { name: "Guide utility", exact: true })).toBeVisible();
+      else await expect(page.getByRole("dialog")).toHaveCount(0);
       await shoot(page, "e-agent-tab", combo, { tall: true });
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
@@ -332,6 +347,27 @@ for (const combo of combos) {
       await expect(more.getByRole("button", { name: "Ask about this result", exact: true })).toBeVisible();
       await more.scrollIntoViewIfNeeded();
       await shoot(page, "h-results-more", combo, { tall: true });
+      expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
+    });
+
+    test(`o run in progress ${label}`, async ({ page }) => {
+      await prepare(page, combo);
+      const control = await serve(page);
+      await openSession(page, "returns-running", "checks");
+      await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 20_000 });
+      const strip = page.locator(".vibe-progress-strip[data-active]");
+      await expect(strip.getByRole("status")).toHaveText("Running 2 of 3 tests");
+      await expect(strip.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1");
+      await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(1);
+      await shoot(page, "o-run-progress", combo, { tall: true });
+      if (combo.width < 1280) {
+        // The modal Guide sheet covers the main pane, so the one strip moves into it.
+        await page.getByRole("button", { name: "Guide", exact: true }).click();
+        const sheet = page.getByRole("dialog", { name: "Guide", exact: true });
+        await expect(sheet.getByRole("status").filter({ hasText: "Running 2 of 3 tests" })).toBeVisible();
+        await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(1);
+        await shoot(page, "o-run-progress-guide", combo);
+      }
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
 

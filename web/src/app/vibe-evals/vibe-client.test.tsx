@@ -138,7 +138,7 @@ function posts() {
 beforeEach(() => {
   routerQuery = undefined;
   harness.authLoading = false; harness.user = undefined;
-  sessionStorage.clear(); draftMemory.clear();
+  sessionStorage.clear(); localStorage.clear(); draftMemory.clear();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   Element.prototype.scrollIntoView = vi.fn();
   vi.stubGlobal("CSS", { escape: (value: string) => value });
@@ -2310,6 +2310,53 @@ it("closes the Details sheet before Settings opens below 1280px", async () => {
   expect(dialogNames()).toEqual(["Settings and details"]);
   expect(dialogs.most()).toBe(1);
   dialogs.stop();
+});
+
+it("closes the Guide sheet before a run estimate that arrives while it is open below 1280px", async () => {
+  const suite = scenarioAgent(); suite.kind = "test_suite"; suite.accepted = true;
+  session.document.evaluation = { id: session.id, chat_id: "chat", door: "test" };
+  harness.params = new URLSearchParams(`session=${session.id}&view=tests&agent=${suite.id}`);
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  respond = async path => {
+    if (path === "/config") return json({ enabled: true, two_door: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id })) });
+    if (path.endsWith("/run-quote")) { await held; return json({ id: "quote-1", cases: 3, calls: 6, max_cost_nano_usd: 0, expires_at: new Date(Date.now() + 600000).toISOString() }); }
+    return path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  };
+  await render();
+  const dialogs = watchDialogs();
+  await click("Run 3 tests");
+  await click("Guide");
+  expect(dialogNames()).toEqual(["Guide"]);
+  await act(async () => { release(); await new Promise(resolve => setTimeout(resolve, 0)); });
+  expect(dialogNames()).toEqual(["Run these tests"]);
+  expect(dialogs.most()).toBe(1);
+  dialogs.stop();
+  // Only the estimate was requested; nothing ran.
+  expect(requests.filter(r => r.method === "POST").map(r => r.path)).toEqual([`/sessions/${session.id}/run-quote`]);
+});
+
+it("keeps the Guide open by default from 1280px after the first version and remembers a close across a reload", async () => {
+  vi.stubGlobal("matchMedia", vi.fn((query: string) => ({ matches: query === "(min-width: 1280px)", addListener: vi.fn(), removeListener: vi.fn(), addEventListener: vi.fn(), removeEventListener: vi.fn() })));
+  acceptedDraft();
+  session.document.evaluation = { id: session.id, chat_id: "chat", door: "build" };
+  respond = async path => path === "/config" ? json({ enabled: true, two_door: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id })) }) : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render();
+  const guide = () => container.querySelector('[aria-label="Guide utility"]');
+  expect(guide()).not.toBeNull();
+  expect(button("Guide").getAttribute("aria-pressed")).toBe("true");
+  expect(dialogNames()).toEqual([]);
+  await click("Close Guide");
+  expect(guide()).toBeNull();
+  await act(async () => root.unmount());
+  root = createRoot(container);
+  await render();
+  expect(container.querySelector('[aria-label="Workspace views"]')).not.toBeNull();
+  expect(guide()).toBeNull();
+  expect(button("Guide").getAttribute("aria-pressed")).toBe("false");
+  await click("Guide");
+  expect(guide()).not.toBeNull();
+  expect(posts()).toHaveLength(0);
 });
 
 it("puts the workspace picker on the entry screen and focuses it from the sidebar instead of opening Settings", async () => {
