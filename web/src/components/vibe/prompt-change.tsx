@@ -22,7 +22,7 @@ export function PromptChange({
     <details className="vibe-panel text-sm" open={open} onToggle={event => setOpen(event.currentTarget.open)}>
       <summary>Review the instruction change</summary>
       <div className="space-y-4 border-t border-[var(--vibe-border)] p-4">
-        <p className="whitespace-pre-wrap font-mono text-sm [overflow-wrap:anywhere]" aria-label="Instruction changes">
+        <p className="whitespace-pre-wrap text-sm [overflow-wrap:anywhere]" aria-label="Instruction changes">
           {changes.map((change, i) => change.kind === "removed" ? (
             <del key={i} className="vibe-diff-removed"><span className="sr-only">Removed: </span>{change.text}</del>
           ) : change.kind === "added" ? (
@@ -31,7 +31,7 @@ export function PromptChange({
         </p>
         <details>
           <summary className="cursor-pointer vibe-muted">Full updated instructions</summary>
-          <pre className="mt-3 whitespace-pre-wrap [overflow-wrap:anywhere]">{after}</pre>
+          <pre className="mt-3 whitespace-pre-wrap font-sans [overflow-wrap:anywhere]">{after}</pre>
         </details>
         <p className="vibe-muted">
           Your earlier version and results are kept. Running a comparison tests

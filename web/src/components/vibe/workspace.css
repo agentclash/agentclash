@@ -347,7 +347,7 @@
   border-radius: var(--vibe-radius-md) var(--vibe-radius-md) 4px var(--vibe-radius-md);
   background: var(--vibe-hover);
 }
-.vibe-message-user[data-pending="true"] {
+.vibe-workspace .vibe-message-user[data-pending="true"] {
   border-color: var(--vibe-control-border);
 }
 .vibe-activity {
@@ -752,7 +752,8 @@
 .vibe-workspace[data-slot="dialog-content"] { font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-workspace [data-slot="dialog-title"] { font-size:var(--vibe-font-title2); font-weight:600; line-height: var(--vibe-leading-title2); }
 .vibe-dialog [data-slot="dialog-title"] { padding-right:var(--vibe-space-6); }
-.vibe-dialog-body { overflow:auto; min-height:0; min-width:0; overscroll-behavior:contain; }
+/* The inset keeps focus rings of edge controls inside the scroll area. */
+.vibe-dialog-body { overflow:auto; min-height:0; min-width:0; overscroll-behavior:contain; padding:5px; margin:-5px; }
 .vibe-dialog-body > [data-slot="dialog-description"] { margin-bottom:var(--vibe-space-4); }
 .vibe-dialog :is(input:not([type="checkbox"], [type="file"]), textarea, select) { font-size: var(--vibe-font-body); line-height: var(--vibe-leading-body); }
 .vibe-connection-status { color:var(--vibe-muted); font-size: var(--vibe-font-callout); min-height:24px; line-height: var(--vibe-leading-callout); }

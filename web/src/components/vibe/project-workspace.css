@@ -106,7 +106,7 @@
 @media (min-width: 1024px) { .vibe-workspace .vibe-sidebar { display: flex; flex: 0 0 auto; } .vibe-workspace .vibe-mobile-toggle { display: none; } }
 @media (max-width: 1023px) { .vibe-workspace .vibe-sidebar { display: none; } .vibe-workspace .vibe-mobile-toggle { display: inline-flex; } .vibe-workspace .vibe-desktop-toggle { display: none; } }
 @media (max-width: 600px) {
-  .vibe-project-header { padding: var(--vibe-space-3); gap: var(--vibe-space-2) var(--vibe-space-1); }
+  .vibe-project-header { padding: var(--vibe-space-3) var(--vibe-gutter); gap: var(--vibe-space-2) var(--vibe-space-1); }
   .vibe-project-header .vibe-nav { gap: 0; }
   .vibe-project-header .vibe-button { padding-inline: var(--vibe-space-2); }
   .vibe-project-tools > button { position: relative; width: 44px; height: 44px; padding: 0; }
