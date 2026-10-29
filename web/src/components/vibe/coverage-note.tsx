@@ -11,7 +11,7 @@ export function CoverageNote({ rows, busy, onSuggest }: {
   if (!rows.length) return null;
   const gap = rows.find(row => !row.case_keys.length);
   return (
-    <details className="mt-5 text-sm vibe-muted">
+    <details className="mt-6 text-sm vibe-muted">
       <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-2 focus-visible:outline-offset-4">Which rules have examples?</summary>
       <p className="mt-3">These links show what the examples cover. They don’t prove your agent handles every situation.</p>
       <ul className="mt-3 space-y-2">

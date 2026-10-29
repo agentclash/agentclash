@@ -438,7 +438,7 @@ return (
                   disabled={busy}
                   value={workspace}
                   onChange={(e) => setWorkspace(e.target.value)}
-                  className="mt-2 w-full rounded-lg border bg-background p-3"
+                  className="mt-2 w-full rounded-[var(--vibe-radius-sm)] border bg-background p-3"
                 >
                   {workspaces.map((w) => (
                     <option key={w.id} value={w.id}>
@@ -464,7 +464,7 @@ return (
             <Link
               href={`/auth/login?returnTo=${encodeURIComponent(keepReturnURL(sessionID || "", saveArtifact?.id || "", workspace, saveBaseline,saveReturnPath,saveAdvanced))}`}
               onClick={rememberSave}
-              className="rounded-lg bg-primary px-4 py-3 text-center text-sm text-primary-foreground"
+              className="rounded-[var(--vibe-radius-sm)] bg-primary px-4 py-3 text-center text-sm text-primary-foreground"
             >
               Sign in to save your work
             </Link>

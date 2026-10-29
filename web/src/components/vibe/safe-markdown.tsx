@@ -15,7 +15,7 @@ export function AgentReply({ children }: { children: string }) {
   // Preserve the exact text, including large numbers and escaped strings.
   if (structured)
     return (
-      <pre className="overflow-auto whitespace-pre-wrap rounded-lg bg-builder-surface p-3 font-mono text-sm">
+      <pre className="overflow-auto whitespace-pre-wrap rounded-[var(--vibe-radius-sm)] bg-builder-surface p-3 font-mono text-sm">
         <code>{children}</code>
       </pre>
     );
@@ -32,7 +32,7 @@ export function safeLink(url: string) {
 }
 export function SafeMarkdown({ children }: { children: string }) {
   return (
-    <div className="vibe-markdown space-y-3 break-words [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-builder-surface [&_pre]:p-3 [&_code]:font-mono">
+    <div className="vibe-markdown space-y-3 break-words [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_pre]:overflow-auto [&_pre]:rounded-[var(--vibe-radius-sm)] [&_pre]:bg-builder-surface [&_pre]:p-3 [&_code]:font-mono">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         skipHtml

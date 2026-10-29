@@ -56,7 +56,7 @@ export function ReimportReview({ actor, session, artifact, token, disabled, onAp
     {active?.review && <>
       {active.review.partial && <p>Partial evidence: missing items stay missing. Imported scores are historical claims, not new execution or a complete baseline.</p>}
       <p>{active.review.changes.length ? `${active.review.changes.length} semantic changes` : "No semantic changes to tests or instructions."}</p>
-      <ul className="space-y-3">{active.review.changes.map(change => <li key={change.path} className="min-w-0 rounded border border-current/20 p-2 text-sm [overflow-wrap:anywhere]">
+      <ul className="space-y-3">{active.review.changes.map(change => <li key={change.path} className="min-w-0 rounded-[var(--vibe-radius-sm)] border border-current/20 p-2 text-sm [overflow-wrap:anywhere]">
         <p><strong>{change.kind}</strong> · {change.path}</p>
         <p>Before</p><pre className="whitespace-pre-wrap break-words">{JSON.stringify(change.before, null, 2)}</pre>
         <p>After</p><pre className="whitespace-pre-wrap break-words">{JSON.stringify(change.after, null, 2)}</pre>
