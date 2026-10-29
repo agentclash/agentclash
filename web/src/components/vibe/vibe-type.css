@@ -1,4 +1,5 @@
-@layer theme, base, components, utilities;
+/* Repeat Tailwind 4.2 layer order, so this file cannot reorder the layers if it loads first. */
+@layer properties, theme, base, components, utilities;
 
 /* Element defaults for the text roles in workspace.css. They sit in the components
    layer, so utility classes and the unlayered vibe rules still win. */
@@ -7,5 +8,5 @@
   .vibe-workspace :is(h3, h4) { font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight: 600; }
   .vibe-workspace label:has(> :is(textarea, select, input:not([type="checkbox"], [type="radio"]))) { font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight: 600; }
   .vibe-workspace :is(code, kbd, samp, pre) { font-family: var(--font-mono), ui-monospace, monospace; font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
-  :is(.vibe-markdown, .vibe-message, .vibe-project-content) :is(p, li, blockquote) { max-width: 68ch; }
+  :is(.vibe-markdown, .vibe-message, .vibe-project-content) :is(p, blockquote) { max-width: 68ch; }
 }

@@ -2342,12 +2342,13 @@ it("puts the workspace picker on the entry screen and focuses it from the sideba
 });
 
 it.each([
-  { access: "ready", text: "You need a workspace to start a project.", action: "Open your workspace" },
+  { access: "ready", text: "You need a workspace to start a project.", action: "Open your dashboard" },
   { access: "error", text: "Your workspaces couldn’t be loaded.", action: "Try again" },
+  { access: "signed_out", text: "Sign in again to choose a workspace.", action: "Sign in again" },
 ])("replaces Review settings with a workspace action when workspace access is $access", async ({ access, text, action }) => {
   signedInWorkspace(); harness.params = new URLSearchParams();
   if (access === "ready") harness.me.mockResolvedValue({ organizations: [] });
-  else harness.me.mockRejectedValue(Object.assign(new Error("Unavailable"), { status: 503 }));
+  else harness.me.mockRejectedValue(Object.assign(new Error("Unavailable"), { status: access === "signed_out" ? 401 : 503 }));
   respond = async path => path === "/config" ? json({ enabled: true, two_door: true, availability: { guest: { available: false }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }] }) : json([]);
   await render();
   expect(document.querySelector('select[aria-label="Workspace for new projects"]')).toBeNull();
@@ -2781,14 +2782,14 @@ it("loads canonical source-qualified Results once, pins its artifact and stops t
  try {
  const {id,artifact,report}=sdkProject();const result={binding:{...report.binding,result_ref:{kind:"run",id}},evidence_metadata:{...report.evidence_metadata,result_ref:{kind:"run",id}},name:"Approved application",status:"completed",created_at:"2026-10-26T00:00:00Z",participants:[],evidence_hash:"canonical-hash",omissions:["Raw canonical event bodies omitted."]};
  harness.params=new URLSearchParams(`session=${session.id}&view=results&agent=${artifact.id}&run=run:${id}`);const before=respond;respond=async(path,options)=>path.endsWith("/canonical-results")?json([result]):path.includes("/canonical-results/run/")?json(result):before(path,options);
- await render();expect(container.querySelector('[aria-label="Canonical result detail"]')).not.toBeNull();expect(container.querySelector(".vibe-project-header")?.textContent).toContain(" · Application run");expect(requests.filter(request=>request.path.includes("/canonical-results/run/"))).toHaveLength(1);expect(new URL(location.href).searchParams.get("run")).toBe(`run:${id}`);expect(posts()).toHaveLength(0);
+ await render();expect(container.querySelector('[aria-label="Application result detail"]')).not.toBeNull();expect(container.querySelector(".vibe-project-header")?.textContent).toContain(" · Application run");expect(requests.filter(request=>request.path.includes("/canonical-results/run/"))).toHaveLength(1);expect(new URL(location.href).searchParams.get("run")).toBe(`run:${id}`);expect(posts()).toHaveLength(0);
  await act(async()=>vi.advanceTimersByTime(9000));
  expect(requests.filter(request=>request.path.includes("/canonical-results/run/"))).toHaveLength(1);
  expect(requests.filter(request=>request.path.endsWith("/canonical-results"))).toHaveLength(1);
  } finally { vi.useRealTimers(); }
 });
 it("retains canonical source uncertainty and retries an authorized lookup without dispatch",async()=>{
- const {id,artifact,report}=sdkProject();const result={binding:{...report.binding,result_ref:{kind:"run",id}},evidence_metadata:{},name:"Application",status:"completed",created_at:"",participants:[],evidence_hash:"hash",omissions:[]};harness.params=new URLSearchParams(`session=${session.id}&view=results&agent=${artifact.id}&run=run:${id}`);const before=respond;let calls=0;respond=async(path,options)=>path.endsWith("/canonical-results")?json([result]):path.includes("/canonical-results/run/")?(++calls===1?json({error:{code:"unavailable",message:"Canonical temporarily unavailable"}},503):json(result)):before(path,options);await render();expect(new URL(location.href).searchParams.get("run")).toBe(`run:${id}`);await click("Retry selected result");expect(container.querySelector('[aria-label="Canonical result detail"]')).not.toBeNull();expect(posts()).toHaveLength(0);
+ const {id,artifact,report}=sdkProject();const result={binding:{...report.binding,result_ref:{kind:"run",id}},evidence_metadata:{},name:"Application",status:"completed",created_at:"",participants:[],evidence_hash:"hash",omissions:[]};harness.params=new URLSearchParams(`session=${session.id}&view=results&agent=${artifact.id}&run=run:${id}`);const before=respond;let calls=0;respond=async(path,options)=>path.endsWith("/canonical-results")?json([result]):path.includes("/canonical-results/run/")?(++calls===1?json({error:{code:"unavailable",message:"Canonical temporarily unavailable"}},503):json(result)):before(path,options);await render();expect(new URL(location.href).searchParams.get("run")).toBe(`run:${id}`);await click("Retry selected result");expect(container.querySelector('[aria-label="Application result detail"]')).not.toBeNull();expect(posts()).toHaveLength(0);
 });
 
 

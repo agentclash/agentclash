@@ -68,7 +68,7 @@ test("reviewed tests execute application CI, retain a real regression, and retur
   await page.getByRole("button", { name: "Run published tests", exact: true }).click();
   const baseline = await (await admission).json();
   await page.getByRole("button", { name: "Close Details", exact: true }).click();
-  await expect(page.getByRole("article", { name: "Canonical result detail" })).toContainText("Canonical status: completed", { timeout: 90_000 });
+  await expect(page.getByRole("article", { name: "Application result detail" })).toContainText("Status: completed", { timeout: 90_000 });
   const source = await get(`/v1/vibe/sessions/${session}/canonical-results/run/${baseline.id}?artifact_id=${artifact.id}`);
   const participant = source.participants[0];
   const policy = { policy_key: "reviewed-application", policy_version: 1, require_comparable: true, require_scorecard_pass: true, required_dimensions: ["correctness"], dimensions: { correctness: { fail_delta: 0.05 } } };
