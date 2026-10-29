@@ -110,7 +110,7 @@ export function ConnectorSettings(p: ConnectorSettingsProps) {
                     if (!active())
                         return;
                     p.onRunCreated({ session_id: p.sessionId, artifact_id: p.artifactId, result_ref: { kind: "run", id: result.id }, challenge_pack_version_id: p.publication.challenge_pack_version_id });
-                    setMessage("Canonical run created.");
+                    setMessage("Application run created.");
                 }
             }
         }
@@ -170,7 +170,7 @@ export function ConnectorSettings(p: ConnectorSettingsProps) {
     </section>
     {p.access.canAdmin && !selected.approved && <><label className="flex items-start gap-2"><input type="checkbox" checked={reviewed} onChange={e => setReviewed(e.target.checked)} disabled={busy}/><span>I approve sending this workspace credential and mapped test inputs to this target.</span></label><VibeButton disabled={busy || !reviewed} onClick={() => void perform("approve")}>Approve connector</VibeButton></>}
     {p.access.canAdmin && selected.approved && <VibeButton disabled={busy} onClick={() => void perform("revoke")}>Revoke approval</VibeButton>}
-    {selected.approved && p.access.canWrite && <><p>Canonical run charges and workspace spend limits apply. External application or provider fees are separate and excluded from the platform maximum. Cancellation stops local waiting; remote cancellation is not confirmed.</p>{p.publication?.artifact_id === p.artifactId ? <><p>{p.publication.case_count} published cases selected.</p><VibeButton disabled={busy || uncertain} onClick={() => void perform("run")}>Run published tests</VibeButton></> : <p>Select an exact published test version before running this connector.</p>}</>}
+    {selected.approved && p.access.canWrite && <><p>Application run charges and workspace spend limits apply. External application or provider fees are separate and excluded from the platform maximum. Cancellation stops local waiting; remote cancellation is not confirmed.</p>{p.publication?.artifact_id === p.artifactId ? <><p>{p.publication.case_count} published cases selected.</p><VibeButton disabled={busy || uncertain} onClick={() => void perform("run")}>Run published tests</VibeButton></> : <p>Select an exact published test version before running this connector.</p>}</>}
    </div>}
   </>}
   {message && <p role="status" className="break-words text-sm">{message}</p>}

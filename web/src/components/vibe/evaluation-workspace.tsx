@@ -1,7 +1,7 @@
 "use client";
 import { RecordedIntake } from "./recorded-intake";
 import type { RecordedIntakeRequest, RecordedIntakeOutcome } from "@/lib/vibe-result-evidence";
-import { VibeDataUseNotice, VibeRedactionHint } from "./vibe-data-use";
+import { VibeDataUseNotice } from "./vibe-data-use";
 
 import Link from "next/link";
 import { ProjectWorkspace } from "./project-workspace";
@@ -372,7 +372,6 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
           )}
         </div>
         {p.materialInput || <VibeDataUseNotice />}
-        <VibeRedactionHint />
         {previewOpen ? p.preview : <>
         <div>
           {referencedRun && <div className="vibe-run-reference"><span>Asking about this saved result · {referencedRun.scorecard?.passed ?? 0} passed</span><button type="button" className="vibe-run-reference-dismiss" aria-label="Remove result reference" onClick={() => setReferencedRun(undefined)}>×</button></div>}
@@ -606,7 +605,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                 </div>
                 <VibeButton disabled={p.busy} onClick={() => setIntake("recorded")}><MessagesSquare />Check replies from my app</VibeButton>
                 <VibeButton disabled={p.busy} onClick={changeSource}><FileText />Try my saved instructions</VibeButton>
-              </div><p className="vibe-source-note">Live connections aren’t available here yet. Instructions recreate behavior here; a pack supplies tests, not an agent.</p>
+              </div><p className="vibe-source-note">Signed-in workspaces can connect a live app from Details after you publish tests. Instructions recreate behavior here. A test pack supplies tests, not an agent.</p>
               <details className="vibe-source-help"><summary>What’s a test pack?</summary><p>A saved set of situations to try and what a good response should do. It is also called a challenge pack. Import one only if you already have it.</p></details>
               {p.canChangeDoor && <button type="button" className="vibe-door-switch" onClick={p.onChangeDoor}>Actually, I want to build an agent.</button>}</>}
               {door === "build" && p.canChangeDoor && <button type="button" className="vibe-door-switch" onClick={p.onChangeDoor}>Already have an agent? Improve it instead.</button>}
@@ -661,7 +660,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   <label className="sr-only" htmlFor="vibe-instructions-source">
                     Agent instructions to test
                   </label>
-                  <VibeDataUseNotice /><VibeRedactionHint />
+                  <VibeDataUseNotice />
                   <textarea
                     id="vibe-instructions-source"
                     value={instructionText}
@@ -881,7 +880,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
             {p.session?.document.build?.phase === "error" && !activityLabel && !operations.some(operation => operation.error && operation.id === p.session?.operations.at(-1)?.id) && (
               <p role="alert" className="mt-4 text-sm text-builder-warn">
                 {p.session.document.build.error?.message || "This Build cycle stopped. Your work is saved."}{" "}
-                {p.session.document.artifacts.length ? "You can edit this prototype and use Run tests for a fresh estimate." : "Use New evaluation to start another prototype."}
+                {p.session.document.artifacts.length ? "You can edit this prototype. Run the tests again for a new estimate." : "Use New evaluation to start another prototype."}
               </p>
             )}
             {awaitingBuildAnswer && p.session?.document.conversation_state?.pending_question?.purpose !== "clarify_job" && !p.busy && <div className="mt-4"><VibeButton onClick={p.onSample}>Use a sample policy</VibeButton><p className="mt-2 text-sm vibe-muted">A labelled demonstration. Your real policy stays unspecified.</p></div>}

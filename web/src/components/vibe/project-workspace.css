@@ -70,9 +70,7 @@
 .vibe-guide-composer { display: flex; flex-direction: column; gap: var(--vibe-space-2); flex: 0 1 auto; min-height: 0; padding: clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-3)) var(--vibe-space-4) max(clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-4)), env(safe-area-inset-bottom)); border-top: 1px solid var(--vibe-border); max-height: 55dvh; }
 .vibe-guide-context { min-height: 0; overflow: auto; overscroll-behavior: contain; }
 .vibe-guide-tools { display: flex; flex-wrap: wrap; align-items: flex-start; gap: var(--vibe-space-2); }
-.vibe-guide-data-use { flex: 1; min-width: 0; font-size: var(--vibe-font-callout); color: var(--vibe-muted); line-height: var(--vibe-leading-callout); }
-.vibe-guide-data-use > summary { width: fit-content; min-height: 44px; padding-block: var(--vibe-space-3); cursor: pointer; }
-.vibe-guide-data-use[open] { flex-basis: 100%; }
+.vibe-workspace .vibe-guide-data-use { flex: 1; min-width: 0; margin: 0; align-self: center; }
 .vibe-guide-composer .vibe-composer { flex: none; padding: var(--vibe-space-3); }
 .vibe-guide-composer textarea { height: clamp(2.75rem, 12dvh, 6rem); min-height: 44px; max-height: min(10rem, 24dvh); resize: vertical; }
 .vibe-utility-sheet[data-slot="sheet-content"] { width: min(30rem, 100dvw); max-width: none; height: 100dvh; gap: 0; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }

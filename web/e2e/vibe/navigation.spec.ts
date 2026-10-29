@@ -463,9 +463,9 @@ test("Guide keeps its composer in view through short-window resizing without los
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
-  await page.getByText("Data use", { exact: true }).click();
-  await expect(page.getByText(/Guest uploads expire after seven days/)).toBeVisible();
-  await page.getByText("Data use", { exact: true }).click();
+  const composer = page.locator(".vibe-guide-composer");
+  await expect(composer.getByText("Guest files expire in 7 days. Leave out secrets and customer IDs.", { exact: false })).toBeVisible();
+  await expect(composer.getByRole("link", { name: "Data use and retention (new tab)", exact: true })).toHaveAttribute("href", "/docs/vibe-evals/data-use");
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
 });

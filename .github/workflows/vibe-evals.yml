@@ -139,7 +139,7 @@ jobs:
       - name: Typecheck and safe Markdown tests
         run: |
           npx tsc --noEmit --incremental false
-          npx vitest run "src/app/(workspace)/workspaces/[workspaceId]/runs/[runId]/run-detail-client.test.tsx" src/lib/ci-setup.test.ts "src/app/(workspace)/workspaces/[workspaceId]/ci-setup/ci-setup-client.test.tsx" src/components/share/report-snapshot.test.tsx src/components/share/workspace-reports.test.tsx src/app/vibe-evals src/components/vibe src/lib/vibe.test.ts src/lib/vibe-controllers.test.tsx src/lib/vibe-export.test.ts src/lib/vibe-reports.test.ts src/components/challenge-packs/vibe-return.test.tsx src/lib/vibe-build-analytics.test.ts src/lib/use-vibe-inputs.test.tsx src/lib/vibe-request-recovery.test.ts
+          npx vitest run "src/app/(workspace)/workspaces/[workspaceId]/runs/[runId]/run-detail-client.test.tsx" src/lib/ci-setup.test.ts "src/app/(workspace)/workspaces/[workspaceId]/ci-setup/ci-setup-client.test.tsx" src/components/share/report-snapshot.test.tsx src/components/share/workspace-reports.test.tsx src/app/vibe-evals src/components/vibe src/lib/vibe.test.ts src/lib/vibe-controllers.test.tsx src/lib/vibe-export.test.ts src/lib/vibe-reports.test.ts src/components/challenge-packs/vibe-return.test.tsx src/lib/vibe-build-analytics.test.ts src/lib/use-vibe-inputs.test.tsx src/lib/vibe-request-recovery.test.ts src/lib/vibe-presentation.test.ts src/lib/vibe-project.test.ts
       - uses: actions/upload-artifact@v4
         if: always()
         with:

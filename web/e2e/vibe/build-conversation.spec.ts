@@ -145,11 +145,11 @@ test("mobile prototype output remains visible while its check completes in the s
   const output=page.getByRole("region",{name:"Your agent’s output"});
   await expect(output).toContainText("Spam");
   Object.assign(state.operations.find(op=>op.id===run.id)!,{state:"RUNNING",results:[],scorecard:undefined});state.event_cursor!++;
-  await expect(page.locator(".vibe-project-header")).toContainText("RUNNING");
+  await expect(page.locator(".vibe-project-header")).toContainText(/Run \d+: Running/);
   await output.scrollIntoViewIfNeeded();
   const before=(await output.boundingBox())!;
   const index=state.operations.findIndex(op=>op.id===run.id);state.operations[index]=structuredClone(run);state.event_cursor!++;
-  await expect(page.locator(".vibe-project-header")).toContainText("COMPLETED");
+  await expect(page.locator(".vibe-project-header")).toContainText(/Run \d+: Completed/);
   await expect(output).toBeInViewport();expect(Math.abs((await output.boundingBox())!.y-before.y)).toBeLessThan(100);
   await page.getByRole("tab",{name:"Results",exact:true}).click();
   await expect(page.getByRole("combobox",{name:"Result history"})).toHaveValue("run-1");

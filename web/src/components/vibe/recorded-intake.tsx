@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useVibeEditorDraft } from "@/lib/use-vibe-editor-draft";
 import type { RecordedIntakeRequest, RecordedIntakeOutcome } from "@/lib/vibe-result-evidence";
-import { VibeDataUseNotice, VibeRedactionHint } from "./vibe-data-use";
+import { VibeDataUseNotice } from "./vibe-data-use";
 import { VibeButton } from "./vibe-button";
 
 export function RecordedIntake({project,revision,busy,onSave,onClose,reviewedExpectations}:{project:string;revision:number;busy:boolean;reviewedExpectations?:{id:string;statement:string}[];onSave:(request:RecordedIntakeRequest)=>Promise<RecordedIntakeOutcome>;onClose:()=>void}){
@@ -23,7 +23,7 @@ export function RecordedIntake({project,revision,busy,onSave,onClose,reviewedExp
   else setError("Saving is still unconfirmed. Retry the same saved request to recover its receipt; your source will not be duplicated.");
  }}>
   <h2>Check replies from my app</h2><p>Paste 1–3 complete chats, including customer messages and actual agent replies. Enter your expectations separately. This checks saved replies; it does not call your app.</p>
-  <VibeDataUseNotice/><VibeRedactionHint/>
+  <VibeDataUseNotice/>
   <details><summary>Sample transcript format</summary><pre className="whitespace-pre-wrap">{"Customer: I opened an item bought 10 days ago.\nAgent: I can refund that."}</pre><p>Example expectation: Opened items are not eligible for a refund. Use your own rules.</p></details>
   <label>Recorded replies<textarea aria-label="Recorded replies" className="vibe-textarea" disabled={busy||!!pending.value} value={content.value} onChange={e=>content.setValue(e.target.value)}/></label>
   <label>Expected behavior<textarea aria-label="Expected behavior" className="vibe-textarea" disabled={busy||!!pending.value} value={expectations.value} onChange={e=>expectations.setValue(e.target.value)}/></label><p className="text-sm vibe-muted">One expectation per line. Saving does not run a model. The server checks the upload and project storage limits.</p>
