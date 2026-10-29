@@ -64,6 +64,7 @@ import { buildProgress, instructionChangeBaseline } from "@/lib/vibe-build-timel
 import { WEB_EVENTS } from "@/lib/analytics/events";
 import { captureBuildEvent } from "@/lib/vibe-build-analytics";
 import "./workspace.css";
+import "./vibe-type.css";
 
 type View = "build" | "try" | "checks" | "tests";
 
@@ -373,9 +374,9 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
         <VibeRedactionHint />
         {previewOpen ? p.preview : <>
         <div>
-          {referencedRun && <div className="vibe-run-reference"><span>Asking about this saved result · {referencedRun.scorecard?.passed ?? 0} passed</span><button type="button" aria-label="Remove result reference" onClick={() => setReferencedRun(undefined)}>×</button></div>}
+          {referencedRun && <div className="vibe-run-reference"><span>Asking about this saved result · {referencedRun.scorecard?.passed ?? 0} passed</span><button type="button" className="vibe-run-reference-dismiss" aria-label="Remove result reference" onClick={() => setReferencedRun(undefined)}>×</button></div>}
           {!buildJourney && !welcome && !showResult && (
-            <label htmlFor="vibe-message" className="mb-2 block text-xs vibe-muted">
+            <label htmlFor="vibe-message" className="mb-2 block text-sm font-semibold vibe-muted">
               Your next message
             </label>
           )}
@@ -428,7 +429,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
               </VibeButton>
             </div>
           </form>
-          {p.sendError && <p className="mt-2 text-xs vibe-muted" role="alert">{p.sendError}</p>}
+          {p.sendError && <p className="mt-2 text-sm vibe-muted" role="alert">{p.sendError}</p>}
           {welcome && !entry && (
             <VibeButton
               variant="quiet"
@@ -598,7 +599,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   <TooltipProvider delay={250}>
                     <Tooltip>
                       <TooltipTrigger aria-label="What is a test pack?" className="vibe-source-tooltip"><CircleHelp aria-hidden="true" /></TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[280px] leading-relaxed">A test pack (also called a challenge pack) contains situations to try and what a good response should do. Import one only if you already have it.</TooltipContent>
+                      <TooltipContent side="top" className="max-w-[280px]">A test pack (also called a challenge pack) contains situations to try and what a good response should do. Import one only if you already have it.</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 </div>
@@ -613,7 +614,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
             {intake === "recorded" && p.session && p.onRecordedEvidence && <RecordedIntake project={p.session.id} revision={p.session.revision} busy={p.busy} onSave={p.onRecordedEvidence} onClose={() => setIntake(null)} />}
             {p.importNotice}
             {door && !buildJourney && p.artifact?.agent_prompt && <section aria-label="Prototype scope" className="mb-5 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-medium">Interactive prototype{p.artifact.sample ? " · Sample demonstration" : ""}</p><VibeButton variant="quiet" onClick={() => p.onNavigate("try")}>Talk to this prototype</VibeButton></div>
+              <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">Interactive prototype{p.artifact.sample ? " · Sample demonstration" : ""}</p><VibeButton variant="quiet" onClick={() => p.onNavigate("try")}>Talk to this prototype</VibeButton></div>
               <p className="vibe-muted">{p.artifact.scope_note || "Runs here using what you supplied; your business systems aren’t connected."}</p>
               {p.artifact.sample && <p className="mt-1 vibe-muted">These results check the sample, not your business policy.</p>}
             </section>}
@@ -635,7 +636,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
             ) : intake === "instructions" ? (
               <section className="space-y-5">
                 <div>
-                  <h2 className="text-xl font-semibold">
+                  <h2>
                     Try your app’s instructions
                   </h2>
                   <p className="mt-2 text-sm vibe-muted">
@@ -698,7 +699,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
               >
                 {runs.length > 1 && (
                   <div className="mb-5 flex justify-end">
-                    <label className="text-xs vibe-muted">
+                    <label className="vibe-muted">
                       Result{" "}
                       <select
                         aria-label="Result history"
@@ -882,8 +883,8 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                 {p.session.document.artifacts.length ? "You can edit this prototype and use Run tests for a fresh estimate." : "Use New evaluation to start another prototype."}
               </p>
             )}
-            {awaitingBuildAnswer && p.session?.document.conversation_state?.pending_question?.purpose !== "clarify_job" && !p.busy && <div className="mt-4"><VibeButton onClick={p.onSample}>Use a sample policy</VibeButton><p className="mt-2 text-xs vibe-muted">A labelled demonstration. Your real policy stays unspecified.</p></div>}
-            {pendingDemo && !p.busy && <div className="mt-4"><VibeButton onClick={() => p.onDemo?.(pendingDemo.id)}>Try a sample email assistant</VibeButton><p className="mt-2 text-xs vibe-muted">Uses fictional messages. You can describe your own task instead.</p></div>}
+            {awaitingBuildAnswer && p.session?.document.conversation_state?.pending_question?.purpose !== "clarify_job" && !p.busy && <div className="mt-4"><VibeButton onClick={p.onSample}>Use a sample policy</VibeButton><p className="mt-2 text-sm vibe-muted">A labelled demonstration. Your real policy stays unspecified.</p></div>}
+            {pendingDemo && !p.busy && <div className="mt-4"><VibeButton onClick={() => p.onDemo?.(pendingDemo.id)}>Try a sample email assistant</VibeButton><p className="mt-2 text-sm vibe-muted">Uses fictional messages. You can describe your own task instead.</p></div>}
             {welcome && welcomeExample && <div className="mt-3 space-y-3">
               <p className="text-sm vibe-muted">A test pairs an example task with what should happen.</p>
               <ExampleComparison input="Can I return an unopened item bought 10 days ago?" expected="With a 30-day policy, this item is eligible. No refund is processed." />

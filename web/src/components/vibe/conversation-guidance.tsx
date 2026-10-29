@@ -28,6 +28,6 @@ export function ConversationGuidance({ cards, scope, message }: { cards?: unknow
 export function TestMeaning() {
   return <details className="vibe-test-meaning text-sm vibe-muted">
     <summary>What’s a test?</summary>
-    <p className="mt-2 leading-6">A test is an example task and what a good result should look like. We compare your agent’s reply with that expectation.</p>
+    <p className="mt-2">A test is an example task and what a good result should look like. We compare your agent’s reply with that expectation.</p>
   </details>;
 }

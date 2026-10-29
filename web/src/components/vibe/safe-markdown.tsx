@@ -15,7 +15,7 @@ export function AgentReply({ children }: { children: string }) {
   // Preserve the exact text, including large numbers and escaped strings.
   if (structured)
     return (
-      <pre className="overflow-auto whitespace-pre-wrap rounded-lg bg-builder-surface p-3 font-mono text-base leading-6">
+      <pre className="overflow-auto whitespace-pre-wrap rounded-lg bg-builder-surface p-3 font-mono text-sm">
         <code>{children}</code>
       </pre>
     );

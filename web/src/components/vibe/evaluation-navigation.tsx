@@ -9,6 +9,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   Archive,
+  ChevronRight,
+  CircleHelp,
+  FolderCog,
+  House,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -171,7 +175,7 @@ export function EvaluationNavigation(p: Props) {
         <p className="vibe-sidebar-label">Your projects</p>
         {showListTools && (
           <>
-            <label className="text-sm">
+            <label>
               Search loaded projects
               <input
                 type="search"
@@ -182,9 +186,9 @@ export function EvaluationNavigation(p: Props) {
                 className="vibe-input w-full"
               />
             </label>
-            <p className="text-xs vibe-muted">Search this loaded list. The server returns the latest 100 projects.</p>
+            <p className="vibe-sidebar-hint">Search this loaded list. The server returns the latest 100 projects.</p>
             {p.onArchiveMode && (
-              <label className="text-sm">
+              <label>
                 Show
                 <select
                   aria-label="Project archive filter"
@@ -259,10 +263,10 @@ export function EvaluationNavigation(p: Props) {
       </nav>
       <div className="vibe-sidebar-footer">
         {p.accountControl}
-        <p className="text-sm vibe-muted">{p.accountLabel || "Guest · private to this browser"}</p>
-        <Link href="/">Home</Link>
+        <p className="vibe-muted">{p.accountLabel || "Guest · private to this browser"}</p>
+        <Link href="/"><House aria-hidden="true" />Home</Link>
         <details>
-          <summary>Help</summary>
+          <summary><CircleHelp aria-hidden="true" />Help<ChevronRight className="vibe-chevron" aria-hidden="true" /></summary>
           <p>
             Search the loaded project list. Rename changes the project title. Archive hides a
             project from the active list without stopping runs or deleting evidence. Restore it
@@ -277,7 +281,7 @@ export function EvaluationNavigation(p: Props) {
         </details>
         {p.session && (p.onMetadata || (p.session.document.evaluation && p.onDeleted)) && (
           <details className="vibe-project-actions" key={p.session.id} ref={mobile ? mobileActions : desktopActions}>
-            <summary>Project actions</summary>
+            <summary><FolderCog aria-hidden="true" />Project actions<ChevronRight className="vibe-chevron" aria-hidden="true" /></summary>
             <div className="space-y-2">
               {p.onMetadata && (
                 <>

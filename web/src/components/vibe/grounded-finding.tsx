@@ -40,7 +40,7 @@ export function GroundedFinding({ result, check }: {
   const finding = verifiedFinding(result, check);
   if (!finding) return null;
   return (
-    <section aria-label="Evidence for this grade" className="space-y-3 text-sm">
+    <section aria-label="Evidence for this grade" className="space-y-3">
       <div>
         <p className="mb-1 text-xs vibe-muted">What should happen</p>
         <p className="whitespace-pre-wrap break-words">{expectedBehavior(result, check)}</p>
@@ -49,7 +49,7 @@ export function GroundedFinding({ result, check }: {
         <div>
           <p className="mb-1 text-xs vibe-muted">Missing from the replies</p>
           <p className="whitespace-pre-wrap break-words">{finding.missing}</p>
-          <p className="mt-1 text-xs vibe-muted">
+          <p className="mt-1 text-sm vibe-muted">
             The judge checked the complete replies for this behavior. Open the full evidence to review its conclusion.
           </p>
         </div>
