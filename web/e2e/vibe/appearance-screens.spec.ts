@@ -2,7 +2,7 @@
 // at desktop and phone widths. Every `/v1/vibe/**` request is fulfilled here, so
 // no API or model is reached. Run it before and after a UI change and compare:
 //   VIBE_SCREENS=1 VIBE_SCREENS_DIR=test-results/screens-before npx playwright test --config playwright.vibe.config.ts appearance-screens
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { defaultModels, type Artifact, type CaseResult, type Operation, type Session } from "../../src/lib/vibe";
@@ -10,7 +10,8 @@ import { actionSession } from "./interaction-fixture";
 
 test.skip(process.env.VIBE_SCREENS !== "1", "Screenshot review only; enable VIBE_SCREENS=1.");
 
-const outDir = path.resolve(process.cwd(), process.env.VIBE_SCREENS_DIR ?? "test-results/vibe-screens");
+// Relative folders resolve from web/, wherever the command runs.
+const outDir = path.resolve(__dirname, "../..", process.env.VIBE_SCREENS_DIR ?? "test-results/vibe-screens");
 const viewports = [{ width: 1440, height: 960 }, { width: 390, height: 844 }] as const;
 const schemes = ["dark", "light"] as const;
 type Combo = { width: number; height: number; scheme: (typeof schemes)[number] };
@@ -137,6 +138,7 @@ async function serve(page: Page) {
     if (p.endsWith("/case")) {
       const key = url.searchParams.get("key");
       for (const s of sessions.values()) for (const op of s.operations) if (p.includes(`/${op.id}/`)) { const hit = op.results.find(r => r.case_key === key); if (hit) return json(hit); }
+      unknown.push(`GET ${p}?key=${key}`);
       return json({ error: { message: "missing case" } }, 404);
     }
     const id = p.split("/sessions/")[1]?.split("/")[0];
@@ -151,7 +153,7 @@ async function serve(page: Page) {
     }
     if (p.endsWith("/sessions")) return json([...sessions.values()]);
     if (p.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: state ? `event: snapshot\ndata: ${JSON.stringify(state)}\n\n` : ": connected\n\n" });
-    if (state) return json(state);
+    if (state && request.method() === "GET" && p.endsWith(`/sessions/${id}`)) return json(state);
     unknown.push(`${request.method()} ${p}`);
     return json({});
   });
@@ -175,6 +177,8 @@ async function shoot(page: Page, state: string, combo: Combo, opts: { tall?: boo
   await page.waitForTimeout(350);
   await page.screenshot({ path: path.join(outDir, name(state, combo)), fullPage: true });
   if (!opts.tall) return;
+  // Remove a tall capture from an earlier run, so a folder never mixes old and new evidence.
+  await rm(path.join(outDir, name(state, combo, "-tall")), { force: true });
   // The app is an h-dvh shell with inner scrollers, so a full-page capture equals
   // the viewport. Grow the viewport (same width, same breakpoints) to reveal the rest.
   const extra = await page.evaluate(() => {
@@ -279,11 +283,10 @@ for (const combo of combos) {
       await expect(page.getByRole("heading", { name: "3 tests are ready" })).toBeVisible();
       await shoot(page, "f-tests-ready", combo, { tall: true });
       const tests = page.getByRole("region", { name: "Your tests", exact: true });
-      const firstCase = tests.locator("summary").filter({ hasText: inputs[1] });
-      if (await firstCase.count() && !(await firstCase.first().evaluate(node => (node.parentElement as HTMLDetailsElement).open))) {
-        await firstCase.first().click();
-        await shoot(page, "f-tests-case-open", combo);
-      }
+      const firstCase = tests.locator("summary").filter({ hasText: inputs[1] }).first();
+      await expect(firstCase).toBeVisible();
+      if (!(await firstCase.evaluate(node => (node.parentElement as HTMLDetailsElement).open))) await firstCase.click();
+      await shoot(page, "f-tests-case-open", combo);
       await tests.getByRole("button", { name: "Run 3 tests" }).click();
       const dialog = page.getByRole("dialog");
       await expect(dialog.getByRole("button", { name: "Run 3 examples" })).toBeVisible();
