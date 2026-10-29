@@ -41,6 +41,8 @@ export function CreditsDialog({ workspace, open, onOpenChange }: { workspace: st
   useEffect(() => {
     if (!open) return;
     let live = true;
+    // A failure from an earlier opening must not show while this request runs.
+    setError("");
     token.current().then(auth => vibeFetch<Credits>(creditsPath(workspace), auth)).then(
       (next) => { if (live) { setCredits(next); setError(""); } },
       (e) => { if (live) setError((e as Error).message); },

@@ -2330,12 +2330,13 @@ it("puts the workspace picker on the entry screen and focuses it from the sideba
 });
 
 it.each([
-  { access: "ready", text: "You need a workspace to start a project.", action: "Open your workspace" },
+  { access: "ready", text: "You need a workspace to start a project.", action: "Open your dashboard" },
   { access: "error", text: "Your workspaces couldn’t be loaded.", action: "Try again" },
+  { access: "signed_out", text: "Sign in again to choose a workspace.", action: "Sign in again" },
 ])("replaces Review settings with a workspace action when workspace access is $access", async ({ access, text, action }) => {
   signedInWorkspace(); harness.params = new URLSearchParams();
   if (access === "ready") harness.me.mockResolvedValue({ organizations: [] });
-  else harness.me.mockRejectedValue(Object.assign(new Error("Unavailable"), { status: 503 }));
+  else harness.me.mockRejectedValue(Object.assign(new Error("Unavailable"), { status: access === "signed_out" ? 401 : 503 }));
   respond = async path => path === "/config" ? json({ enabled: true, two_door: true, availability: { guest: { available: false }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }] }) : json([]);
   await render();
   expect(document.querySelector('select[aria-label="Workspace for new projects"]')).toBeNull();

@@ -62,7 +62,7 @@ export function VibeClient() {
   const workspaceChoice = choosingWorkspace && (workspaces.length ? <div className="vibe-entry-workspace">
     <label>Workspace for new projects<select ref={workspaceSelect} aria-label="Workspace for new projects" aria-describedby={workspaceName ? undefined : "vibe-workspace-hint"} value={workspace} disabled={pending} onChange={event => setWorkspace(event.target.value)}><option value="">Choose a workspace</option>{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     {!workspaceName && <p id="vibe-workspace-hint">Choose a workspace to use its credits.</p>}
-  </div> : saveAccess === "loading" && <p className="vibe-connection-status mt-3" role="status">Loading workspaces…</p>);
+  </div> : saveAccess === "loading" && !!config && <p className="vibe-connection-status mt-3" role="status">Loading workspaces…</p>);
   const resultSources = session && artifact ? [
           <CanonicalResults key="application" selected={selectedCanonical} onRefreshSelected={retrySelectedResult} sessionId={session.id} workspaceId={session.workspace_id} actorScope={authUser?.id || "guest"} token={token} access={evidenceAccess.access} onSelectResult={onSelectResult} onExport={result=>{const pinned=session.document.artifacts.find(a=>a.id===result.binding.artifact_id);if(pinned)void exporter.startResult(pinned,result.binding.result_ref)}}/>,
           <SDKReports key="sdk" selectedReport={selectedSDKReport} sessionId={session.id} workspaceId={session.workspace_id} artifactId={artifact.id} actorScope={authUser?.id || "guest"} token={token} access={evidenceAccess.access} onSelectResult={onSelectResult} revision={session.revision} models={models} inferenceAvailable={sdkInferenceAvailable} refresh={session.event_cursor} onPromoted={onSDKPromoted} onRegraded={onSDKRegraded} onExport={report=>{const pinned=session.document.artifacts.find(a=>a.id===report.binding.artifact_id);if(pinned)void exporter.startResult(pinned,report.binding.result_ref);}} />,
@@ -108,8 +108,9 @@ return (
         entryBlocked={!entryAvailable}
         entryNotice={<>{workspaceChoice}{!entryAvailable && (config || configError ? (configError || !(workspacePicker && !workspaceName)) && <div className="vibe-entry-availability">
           {configError ? <><p role="alert">Couldn’t connect. Try again.</p><VibeButton variant="quiet" onClick={() => setLoadAttempt(attempt => attempt + 1)}>Retry connection</VibeButton></>
-            : choosingWorkspace && !workspaceName && saveAccess === "ready" ? <><p role="status">You need a workspace to start a project. Ask a workspace owner for access.</p><Link className="underline" href="/dashboard">Open your workspace</Link></>
+            : choosingWorkspace && !workspaceName && saveAccess === "ready" ? <><p role="status">You need a workspace to start a project. Create one from your dashboard, or ask a workspace owner for access.</p><Link className="underline" href="/dashboard">Open your dashboard</Link></>
             : choosingWorkspace && !workspaceName && saveAccess === "error" ? <><p role="alert">Your workspaces couldn’t be loaded.</p><VibeButton variant="quiet" onClick={() => setLoadAttempt(attempt => attempt + 1)}>Try again</VibeButton></>
+            : choosingWorkspace && !workspaceName && saveAccess === "signed_out" ? <><p role="alert">Your sign-in expired. Sign in again to choose a workspace.</p><Link className="underline" href={`/auth/login?returnTo=${encodeURIComponent("/vibe-evals")}`}>Sign in again</Link></>
             : <><p role="status">{unavailableReason}</p><VibeButton variant="quiet" onClick={() => setSettingsOpen(true)}>Review settings</VibeButton></>}
         </div> : <p className="vibe-connection-status mt-3" role="status">Connecting…</p>)}</>}
         onCancelNew={() => setNewEvaluation(false)}

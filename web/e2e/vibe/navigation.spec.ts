@@ -420,6 +420,33 @@ test("text roles stay consistent across viewport sizes and portaled dialogs", as
   expect(control.errors).toEqual([]);
 });
 
+test("one dialog at a time: Settings closes before Save or Export opens", async ({ page }) => {
+  await serve(page, false, true);
+  await page.goto("/vibe-evals?session=first&workspace=a8000000-0000-4000-8000-000000000003");
+  await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 15_000 });
+  await page.evaluate(() => {
+    const record = window as unknown as { mostDialogs: number };
+    record.mostDialogs = 0;
+    const count = () => { record.mostDialogs = Math.max(record.mostDialogs, document.querySelectorAll('[role="dialog"]').length); };
+    new MutationObserver(count).observe(document.body, { childList: true, subtree: true, attributes: true });
+  });
+  const settings = page.getByRole("dialog", { name: "Settings and details", exact: true });
+  for (const action of [/^(Keep these tests|Save agent)$/, /^Export (tests and agent instructions|agent and checks)$/]) {
+    await page.evaluate(() => { (window as unknown as { mostDialogs: number }).mostDialogs = 0; });
+    await page.getByRole("button", { name: "Details", exact: true }).click();
+    await page.getByRole("complementary", { name: "Details utility", exact: true }).getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(settings).toBeVisible();
+    await settings.getByRole("button", { name: action }).first().click();
+    await expect(settings).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    // Settings has finished closing before the next dialog appears, even during the animation.
+    expect(await page.evaluate(() => (window as unknown as { mostDialogs: number }).mostDialogs), String(action)).toBe(1);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.getByRole("button", { name: "Close Details", exact: true }).click();
+  }
+});
+
 test("one dialog at a time: Details closes before Settings, Settings closes before Credits, focus returns to the opener", async ({ page }) => {
   const control = await serve(page, false, true);
   await page.route(/\/v1\/vibe\/credits\?/, route => route.fulfill({
