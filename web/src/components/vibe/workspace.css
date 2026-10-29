@@ -768,11 +768,16 @@
 .vibe-dialog-body { overflow:auto; min-height:0; min-width:0; overscroll-behavior:contain; }
 .vibe-dialog-body > [data-slot="dialog-description"] { margin-bottom:var(--vibe-space-4); }
 .vibe-dialog :is(input:not([type="checkbox"], [type="file"]), textarea, select) { font-size: var(--vibe-font-body); line-height: var(--vibe-leading-body); }
+/* A quiet aside starts the row; Cancel and the primary action end it. Phones stack all three at full width. */
+.vibe-dialog-actions { display:flex; align-items:center; justify-content:flex-end; gap:var(--vibe-space-2); min-width:0; }
+.vibe-dialog-actions > .vibe-dialog-aside { margin-right:auto; }
 .vibe-connection-status { color:var(--vibe-muted); font-size: var(--vibe-font-callout); min-height:24px; line-height: var(--vibe-leading-callout); }
 .vibe-import-error { margin-block:var(--vibe-space-4); padding:var(--vibe-space-4); border:1px solid color-mix(in srgb, var(--vibe-error) 50%, var(--vibe-surface)); border-radius:var(--vibe-radius-md); }
 .vibe-import-error p { margin-bottom:var(--vibe-space-2); }
 @media(max-width:600px) {
   .vibe-dialog[data-slot="dialog-content"] { padding:var(--vibe-space-4); }
+  .vibe-dialog-actions { flex-direction:column; align-items:stretch; }
+  .vibe-dialog-actions > .vibe-dialog-aside { margin-right:0; }
   .vibe-dock-heading .vibe-context-label { flex-wrap:wrap; }
   .vibe-new-response { padding-inline:var(--vibe-space-2); }
 }

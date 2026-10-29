@@ -6,6 +6,7 @@ import { dollars, terminal, type CaseResult, type Operation } from "@/lib/vibe";
 import { verifiedFinding } from "./grounded-finding";
 import { CaseEvidence } from "./case-evidence";
 import { unresolvedCase } from "@/lib/vibe-result-evidence";
+import { testCount } from "@/lib/vibe-presentation";
 import { originalInputs } from "./result-prompts";
 import { recoveryMessage } from "./recovery-message";
 import { VibeButton } from "./vibe-button";
@@ -66,13 +67,6 @@ export function VibeScorecard({
   if (!score) return null;
   const done = terminal(operation.state);
   const provided = operation.source?.kind === "provided_conversations";
-  const unit = provided
-    ? score.total === 1
-      ? "chat"
-      : "chats"
-    : score.total === 1
-      ? "example"
-      : "examples";
   const regraded = operation.source?.comparison === "regraded";
   const rechecked = regraded || operation.source?.comparison === "rechecked";
   const comparable = comparableGrades(operation, baseline);
@@ -127,20 +121,20 @@ export function VibeScorecard({
   const findingID = `${operation.id}:${leading?.case_key || ""}`;
   const copied = copiedFinding === findingID;
   const headline = stopped
-    ? "Check stopped. Results are saved."
+    ? "Run stopped. Results are saved."
     : !done
-      ? `Checking ${score.total} ${unit}…`
+      ? `Running ${testCount(score.total)}…`
       : score.total === 0
-        ? "No replies were checked."
+        ? "No tests were run."
         : rechecked
-          ? regraded ? "Saved replies regraded" : "Same chats rechecked"
+          ? regraded ? "Saved replies regraded" : "Same replies graded again"
           : regressions
-            ? `${regressions} newly failing ${provided ? regressions === 1 ? "chat" : "chats" : regressions === 1 ? "example" : "examples"} in this update`
+            ? `${testCount(regressions, "newly failing")} in this update`
             : score.failed
-              ? `${score.failed} ${provided ? score.failed === 1 ? "chat" : "chats" : score.failed === 1 ? "example" : "examples"} failed`
+              ? `${testCount(score.failed)} failed`
               : incomplete
                 ? "Some replies still need a closer look"
-                : `No issues found in ${score.total === 1 ? `this ${unit}` : `these ${score.total} ${unit}`}`;
+                : `No issues found in ${score.total === 1 ? "this test" : `these ${testCount(score.total)}`}`;
   const evidenceVersion = `${operation.id}:${operation.state}:${eventCursor || 0}`;
   // The summary line gives the failed and unresolved counts; this note does not repeat them.
   const statusNote = testJourney
@@ -148,13 +142,13 @@ export function VibeScorecard({
       ? "No tests produced a result."
       : done
         ? score.failed || incomplete ? "" : "These replies met the expectations."
-        : regraded ? "Rechecking grades using the saved replies…" : provided ? "Grading the recorded replies…" : "Generating prototype replies and checking them…"
+        : regraded ? "Regrading the saved replies…" : provided ? "Grading the recorded replies…" : "Generating agent replies and grading them…"
     : done
-      ? `These findings cover only ${score.total === 1 ? "this" : `these ${score.total}`} ${unit}.`
-      : "Completed findings are kept as the check runs.";
+      ? `These findings cover only ${score.total === 1 ? "this test" : `these ${testCount(score.total)}`}.`
+      : "Completed findings are kept while the run continues.";
 
   return (
-    <article aria-label="Evaluation scorecard" className="space-y-6">
+    <article aria-label="Run results" className="space-y-6">
       <div>
         <h2
           className="vibe-results-outcome"
@@ -165,13 +159,13 @@ export function VibeScorecard({
             : headline}
         </h2>
         {done && <p className="mt-3 text-sm">{score.passed} passed · {score.failed} failed{unresolvedCount ? ` · ${unresolvedCount} unresolved` : ""}</p>}
-        {done && overlappingCounts && <p className="mt-2 text-sm vibe-muted">Unresolved cases have unfinished checks and can also be counted as passed or failed.</p>}
+        {done && overlappingCounts && <p className="mt-2 text-sm vibe-muted">Unresolved tests have unfinished grading and can also be counted as passed or failed.</p>}
         {findingFirst && concreteFinding?.id === operation.id && leading?.case_key !== failedKey && <p>{concreteFinding.text}</p>}
-        {findingFirst && done && !stopped && score.total > 0 && !score.failed && !incomplete && <p className="mt-2 text-sm vibe-muted">All these examples passed. This does not prove reliability beyond these situations; live integrations and unseen inputs remain untested.</p>}
+        {findingFirst && done && !stopped && score.total > 0 && !score.failed && !incomplete && <p className="mt-2 text-sm vibe-muted">All these tests passed. This does not prove reliability beyond them; live integrations and unseen inputs remain untested.</p>}
         {statusNote && <p className="mt-3 text-sm vibe-muted">{statusNote}</p>}
         <p className="mt-2 text-sm vibe-muted">
           {regraded ? "Saved replies only. Your agent was not called again." : provided
-            ? "Based on the chats you provided. Your live app was not called."
+            ? "Based on the conversations you provided. Your live app was not called."
             : "Text replies from your saved instructions. Your live app was not called."}
         </p>
         {baseline && done && !rechecked && !comparable && <p className="mt-3 text-sm vibe-muted">These runs do not have matching verified grading settings. Earlier results are kept separately.</p>}
@@ -193,13 +187,7 @@ export function VibeScorecard({
             ) : (
               <>
                 {fixed} previously failing{" "}
-                {provided
-                  ? fixed === 1
-                    ? "chat"
-                    : "chats"
-                  : fixed === 1
-                    ? "example"
-                    : "examples"}
+                {fixed === 1 ? "test" : "tests"}
                 {fixed === 1 ? " now passes" : " now pass"} · {regressions} new{" "}
                 {regressions === 1 ? "failure" : "failures"}.
                 <span className="vibe-muted">
@@ -207,7 +195,7 @@ export function VibeScorecard({
                   Same expectations and evaluator.{" "}
                   {provided
                     ? "Same customer messages."
-                    : "Same example messages."}
+                    : "Same test messages."}
                 </span>
               </>
             )}
@@ -217,13 +205,13 @@ export function VibeScorecard({
           <p className="mt-3 text-sm vibe-muted">
             {unresolvedCount > 0
               ? `${unresolvedCount} ${unresolvedCount === 1 ? "result is" : "results are"} unresolved. `
-              : "Some checks are incomplete. "}
+              : "Some grading is incomplete. "}
             An unfinished grade is not a failure by your agent. Completed results are kept.
           </p>
         )}
       </div>
 
-      <label className="vibe-results-filter">Show cases<select aria-label="Filter cases" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All</option><option value="failing">Failing</option><option value="unresolved">Unresolved</option><option value="passing">Passing</option></select></label>
+      <label className="vibe-results-filter">Show tests<select aria-label="Filter tests" value={filter} onChange={e=>setFilter(e.target.value)}><option value="all">All</option><option value="failing">Failing</option><option value="unresolved">Unresolved</option><option value="passing">Passing</option></select></label>
       {done && operation.error && <p role="alert" className="text-sm text-builder-warn">{recoveryMessage(operation)}</p>}
 
       {leading && (
@@ -292,7 +280,7 @@ export function VibeScorecard({
             )}
             {offerSave && (
               <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={onSave}>
-                <Bookmark aria-hidden="true" /> Save this check
+                <Bookmark aria-hidden="true" /> Save this result
               </VibeButton>
             )}
             {retryable && onRecheck && (
@@ -301,7 +289,7 @@ export function VibeScorecard({
                 disabled={busy}
                 onClick={onRecheck}
               >
-                Recheck these chats
+                Grade these replies again
                 <ArrowRight aria-hidden="true" />
               </VibeButton>
             )}
@@ -316,7 +304,7 @@ export function VibeScorecard({
               disabled={busy}
               onClick={onNewReplies || onRetest}
             >
-              Check the new answer
+              {onNewReplies ? "Test new replies" : "Run tests again"}
               <ArrowRight aria-hidden="true" />
             </VibeButton>
             {operation.results.length > 0 && (
@@ -381,7 +369,7 @@ export function VibeScorecard({
         ))}
 
       <details className="text-sm vibe-muted">
-        <summary className="cursor-pointer py-2">What was checked</summary>
+        <summary className="cursor-pointer py-2">About this run</summary>
         <div className="mt-2 space-y-3">
           <p>
             {score.passed} passed · {score.failed}{" "}
@@ -393,8 +381,8 @@ export function VibeScorecard({
           </p>
           <p>
             {regraded ? "Previously saved replies were graded again. The original replies, rules and results are unchanged." : provided
-              ? `${operation.source?.label || "Provided conversations"}. Every message in the selected chats was included. No replies were generated and no live agent was called.`
-              : "New text replies generated here from the saved instructions. Each example starts fresh; tools, live data and preview chats are not included."}
+              ? `${operation.source?.label || "Provided conversations"}. Every message in the selected conversations was included. No replies were generated and no live agent was called.`
+              : "New text replies generated here from the saved instructions. Each test starts fresh; tools, live data and trial conversations are not included."}
           </p>
           <details><summary>Saved source identities and capture</summary>
             <p>Origin: {operation.evidence_metadata?.origin || "unverified"}. Application revision: {operation.evidence_metadata?.application_revision || "unknown"}.</p>
@@ -421,21 +409,21 @@ export function VibeScorecard({
           </p>
           {done && onNewCheck && (
             <VibeButton variant="quiet" disabled={busy} onClick={onNewCheck}>
-              Run as a separate check
+              Start a separate run
             </VibeButton>
           )}
           {done && !testJourney && (onNewReplies || (onSave && !offerSave)) && (
             <div className="flex flex-wrap gap-2">
-              {/* Without new replies, "Check the new answer" already reruns these examples. */}
+              {/* Without new replies, "Run tests again" already reruns these tests. */}
               {onNewReplies && (
                 <VibeButton variant="quiet" disabled={busy} onClick={onRetest}>
-                  {provided ? "Compare an update" : "Run the same examples again"}
+                  {provided ? "Compare an update" : "Run the same tests again"}
                   <ArrowRight aria-hidden="true" />
                 </VibeButton>
               )}
               {onSave && !offerSave && (
                 <VibeButton variant="quiet" disabled={busy} onClick={onSave}>
-                  <Bookmark aria-hidden="true" /> Save this check
+                  <Bookmark aria-hidden="true" /> Save this result
                 </VibeButton>
               )}
             </div>

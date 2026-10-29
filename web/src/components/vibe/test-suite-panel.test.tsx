@@ -67,7 +67,7 @@ it("labels a failed policy update as unapplied and makes running the previous te
 it.each(["contradicted", "unclear", "unavailable"] as const)("does not offer an unsupported %s candidate as ready", async status => {
   artifact.validation = { status, blueprint_hash: "suite", policy_hash: "policy", validator_version: "v1" };
   await render();
-  expect(node.querySelector("h2")?.textContent).toBe("5 tests need checking");
+  expect(node.querySelector("h2")?.textContent).toBe("5 tests need review");
   expect(button("Run 5 tests").disabled).toBe(true);
   expect(button("Keep these tests").disabled).toBe(true);
   await act(async () => button("Run 5 tests").click());

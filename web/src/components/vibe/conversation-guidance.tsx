@@ -8,7 +8,7 @@ export function ExampleComparison({ input, expected }: { input: string; expected
   return <section aria-label="Illustrative test" className="vibe-example">
     <div className="vibe-example-heading"><span>Example only</span><span>Nothing was run</span></div>
     <div className="vibe-example-columns">
-      <div><h3>Example task</h3><p>{input}</p></div>
+      <div><h3>Task</h3><p>{input}</p></div>
       <div><h3>What a good result looks like</h3><p>{expected}</p></div>
     </div>
   </section>;
@@ -28,6 +28,6 @@ export function ConversationGuidance({ cards, scope, message }: { cards?: unknow
 export function TestMeaning() {
   return <details className="vibe-test-meaning text-sm vibe-muted">
     <summary>What’s a test?</summary>
-    <p className="mt-2">A test is an example task and what a good result should look like. We compare your agent’s reply with that expectation.</p>
+    <p className="mt-2">A test is a task for your agent and what a good result should look like. We compare your agent’s reply with that expectation.</p>
   </details>;
 }

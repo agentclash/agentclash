@@ -17,7 +17,7 @@ export type ArtifactCaseMapping = { artifact_id: string; draft_id?: string; comp
 // Retained publication receipts outlive their editable advanced draft.
 export async function loadArtifactCaseMapping(sessionId: string, artifactId: string, token?: string | null): Promise<ArtifactCaseMapping[]> {
   const rows = await vibeFetch<ArtifactCaseMapping[]>(`/sessions/${encodeURIComponent(sessionId)}/artifacts/${encodeURIComponent(artifactId)}/case-mapping`, token);
-  if (!Array.isArray(rows) || rows.some(row => !row || row.artifact_id !== artifactId || !Array.isArray(row.cases) || !Array.isArray(row.published))) throw Error("Case mapping could not be read.");
+  if (!Array.isArray(rows) || rows.some(row => !row || row.artifact_id !== artifactId || !Array.isArray(row.cases) || !Array.isArray(row.published))) throw Error("Test mapping could not be read.");
   return rows;
 }
 export const reportBase = (sessionId: string) => `/sessions/${encodeURIComponent(sessionId)}/reports`;
@@ -28,10 +28,10 @@ export const unknownFingerprints = (): Fingerprints => ({ model: null, build: nu
 export function reportSourceCases(source: string, kind: SDKReportImport["source_kind"]): { id: string; label: string }[] {
   const value = JSON.parse(source);
   if (kind === "agent_result") return [{ id: "", label: "Agent result" }];
-  if (!Array.isArray(value.cases) || value.cases.length > 200) throw Error("Choose a v1 eval report with at most 200 cases.");
+  if (!Array.isArray(value.cases) || value.cases.length > 200) throw Error("Choose a v1 eval report with at most 200 tests.");
   return value.cases.map((row: { case?: { case_id?: unknown; name?: unknown } }) => {
     const c = row.case || {};
-    if (typeof c.case_id !== "string") throw Error("Each report case needs its original case_id.");
+    if (typeof c.case_id !== "string") throw Error("Each report test needs its original case_id.");
     return { id: c.case_id, label: typeof c.name === "string" ? `${c.case_id} — ${c.name}` : c.case_id };
   });
 }

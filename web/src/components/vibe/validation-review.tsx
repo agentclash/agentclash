@@ -4,8 +4,8 @@ import { runStateLabel } from "@/lib/vibe-presentation";
 import { VibeButton } from "./vibe-button";
 
 export function ValidationDetails({validation,onFix}:{validation:SuiteValidation;onFix?:(text:string)=>void}){
- return <section aria-label="Test validation" className="space-y-2"><h3>Test review: {runStateLabel(validation.status)}</h3><p className="text-sm vibe-muted">A limited check against the rules you supplied.</p>
-  {validation.cases?.map(item=><div key={item.case_key}><strong>{item.case_key} · {item.status}</strong><p>{item.reason}</p>{item.status!=="supported"&&onFix&&<VibeButton onClick={()=>onFix(`Review the expected behavior for proposed case ${item.case_key}: ${item.reason}`)}>Review {item.case_key}</VibeButton>}</div>)}
+ return <section aria-label="Test validation" className="space-y-2"><h3>Test review: {runStateLabel(validation.status)}</h3><p className="text-sm vibe-muted">A limited review against the rules you supplied.</p>
+  {validation.cases?.map(item=><div key={item.case_key}><strong>{item.case_key} · {item.status}</strong><p>{item.reason}</p>{item.status!=="supported"&&onFix&&<VibeButton onClick={()=>onFix(`Review the expected behavior for proposed test ${item.case_key}: ${item.reason}`)}>Review {item.case_key}</VibeButton>}</div>)}
   {validation.rules?.map(item=><div key={item.rule_id}><strong>Rule {item.rule_id} · {item.status}</strong><p>{item.reason}</p>{item.status!=="supported"&&onFix&&<VibeButton onClick={()=>onFix(`Clarify rule ${item.rule_id}: ${item.reason}`)}>Clarify {item.rule_id}</VibeButton>}</div>)}
   {validation.problems?.map((problem,i)=><p key={i}>{problem.subject} · {problem.status}: {problem.reason}</p>)}
   {validation.shared_criteria?.reason&&<p>Shared criteria: {validation.shared_criteria.reason}</p>}{validation.policy_reconciliation?.reason&&<p>Policy: {validation.policy_reconciliation.reason}</p>}

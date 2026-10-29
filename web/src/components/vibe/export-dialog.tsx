@@ -2,6 +2,7 @@
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { VibeButton } from "./vibe-button";
 import { unresolvedCase } from "@/lib/vibe-result-evidence";
+import { testCount } from "@/lib/vibe-presentation";
 import type { useVibeExport } from "@/lib/use-vibe-export";
 export function ExportDialog({ controller: c }: { controller: ReturnType<typeof useVibeExport> }) {
   const state = c.state,
@@ -27,7 +28,7 @@ export function ExportDialog({ controller: c }: { controller: ReturnType<typeof 
             <>
               <p>
                 Version {p.artifact_id.slice(0, 8)} ·{" "}
-                {p.selection.result_ref?.kind === "run" || p.selection.result_ref?.kind === "eval_session" ? `Canonical ${p.selection.result_ref.kind === "run" ? "run" : "evaluation"} ${p.selection.result_ref.id.slice(0,8)}` : p.selection.result_ref?.kind === "sdk_report" ? `SDK report ${p.selection.result_ref.id.slice(0,8)}` : p.selection.result_id ? `Run ${p.selection.result_id.slice(0, 8)}` : "Definition"}{" "}
+                {p.selection.result_ref?.kind === "run" || p.selection.result_ref?.kind === "eval_session" ? `Application ${p.selection.result_ref.kind === "run" ? "run" : "session"} ${p.selection.result_ref.id.slice(0,8)}` : p.selection.result_ref?.kind === "sdk_report" ? `SDK report ${p.selection.result_ref.id.slice(0,8)}` : p.selection.result_id ? `Run ${p.selection.result_id.slice(0, 8)}` : "Definition"}{" "}
                 · {p.selection.scope === "history" ? "Full history" : "Selected evidence"}
               </p>
               <p>
@@ -35,7 +36,7 @@ export function ExportDialog({ controller: c }: { controller: ReturnType<typeof 
                 {p.runs
                   .map(
                     (run) =>
-                      `${run.result_scope?.case_keys.length ?? "Unknown"} selected cases; ${run.scorecard?.failed || 0} failed, ${run.results.filter((result) => unresolvedCase({ ...result, checks: result.checks || [] })).length} unresolved saved cases`,
+                      `${run.result_scope ? testCount(run.result_scope.case_keys.length, "selected") : "Unknown selected tests"}; ${run.scorecard?.failed || 0} failed, ${run.results.filter((result) => unresolvedCase({ ...result, checks: result.checks || [] })).length} unresolved saved tests`,
                   )
                   .join("; ")}
               </p>

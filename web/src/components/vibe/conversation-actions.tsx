@@ -57,12 +57,12 @@ export function ConversationActions({ session, busy, onAction, onReload, primary
     <section aria-label="Conversation choices" aria-busy={pending} className="min-w-0 space-y-3 text-builder-fg">
       {proposal ? (
         <div className="space-y-3 rounded-[var(--vibe-radius-md)] border border-builder-border p-4">
-          <p className="text-xs text-builder-fg-muted">Suggested checks</p>
+          <p className="text-xs text-builder-fg-muted">Suggested rules</p>
           <ul className="list-disc space-y-1 break-words pl-5 text-sm">
             {proposal.facts.map(fact => <li key={fact.id}>{fact.text}</li>)}
           </ul>
           <div className="flex flex-wrap gap-2">
-            <VibeButton type="button" className={button} disabled={disabled} variant={primary && !error ? "primary" : "secondary"} onClick={() => void send({ kind: "adopt_proposal", target_id: proposal.id, target_revision: proposal.revision })}>Use these checks</VibeButton>
+            <VibeButton type="button" className={button} disabled={disabled} variant={primary && !error ? "primary" : "secondary"} onClick={() => void send({ kind: "adopt_proposal", target_id: proposal.id, target_revision: proposal.revision })}>Use these rules</VibeButton>
             <VibeButton type="button" className={button} disabled={disabled} onClick={() => void send({ kind: "reject_proposal", target_id: proposal.id, target_revision: proposal.revision })}>Leave these out</VibeButton>
           </div>
         </div>

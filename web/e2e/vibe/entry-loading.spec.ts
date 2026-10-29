@@ -136,14 +136,14 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await expect(picker).toHaveAccessibleDescription("Choose a workspace to use its credits.");
     await expect(page.getByRole("button", { name: /Build an agent/ })).toBeDisabled();
     await expect(page.getByRole("button", { name: "Review settings" })).toHaveCount(0);
-    if (viewport.width < 1024) await page.getByRole("button", { name: "Open agents", exact: true }).click();
+    if (viewport.width < 1024) await page.getByRole("button", { name: "Open projects", exact: true }).click();
     await page.getByRole("button", { name: "Choose workspace", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(picker).toBeFocused();
     await picker.selectOption({ label: "Support pilots" });
     await expect(page.getByRole("button", { name: /Build an agent/ })).toBeEnabled();
     await expect(picker).not.toHaveAttribute("aria-describedby");
-    if (viewport.width < 1024) await page.getByRole("button", { name: "Open agents", exact: true }).click();
+    if (viewport.width < 1024) await page.getByRole("button", { name: "Open projects", exact: true }).click();
     await expect(page.locator(".vibe-sidebar-workspace").filter({ visible: true })).toContainText("Support pilots");
     await page.getByRole("button", { name: "Change workspace", exact: true }).click();
     await expect(picker).toBeFocused();

@@ -198,12 +198,12 @@ it("shows a grounded finding and its expectation once, and disputes only the oth
   const count = (text: string) => container.textContent!.split(text).length - 1;
   expect(count(finding.evidence)).toBe(1);
   expect(count("Decline the late return.")).toBe(1);
-  expect(container.textContent).not.toContain("All checks");
-  expect(container.textContent).not.toContain("That’s not our rule");
+  expect(container.textContent).not.toContain("All expectations");
   const labels = () => [...container.querySelectorAll("button")].map(b => b.textContent);
-  expect(labels()).toContain("Change the expected behavior");
+  expect(labels().filter(label => label === "Change expected result")).toHaveLength(1);
   const withAnswer = { ...evidence, checks: [{ key: "has_answer", verdict: "FAIL" as const, evidence: "No answer check." }, finding] };
   await act(async () => root.render(<CaseEvidence summary={withAnswer} load={async () => withAnswer} onDispute={dispute} />));
-  expect(container.textContent).toContain("All checks · 2");
-  expect(labels().filter(label => label === "That’s not our rule")).toHaveLength(1);
+  expect(container.textContent).toContain("All expectations · 2");
+  // The finding and the other expectation each keep one change button.
+  expect(labels().filter(label => label === "Change expected result")).toHaveLength(2);
 });

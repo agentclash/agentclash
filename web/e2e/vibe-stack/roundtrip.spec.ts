@@ -126,11 +126,11 @@ test("reviewed tests execute application CI, retain a real regression, and retur
   updatedArchive.artifacts[0].blueprint.version.evaluation_spec.validators[0].expected_from = "literal:30-day";
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const updateBytes = JSON.stringify(updatedArchive);
-  await page.getByLabel("Updated evaluation export").setInputFiles({ name: "updated.json", mimeType: "application/json", buffer: Buffer.from(updateBytes) });
+  await page.getByLabel("Updated export file").setInputFiles({ name: "updated.json", mimeType: "application/json", buffer: Buffer.from(updateBytes) });
   await expect(page.getByRole("region", { name: "Review reimport" })).toContainText("semantic changes");
   await page.getByRole("button", { name: "Cancel reimport", exact: true }).click();
   expect((await snapshot()).document.artifacts).toHaveLength(1);
-  await page.getByLabel("Updated evaluation export").setInputFiles({ name: "updated.json", mimeType: "application/json", buffer: Buffer.from(updateBytes) });
+  await page.getByLabel("Updated export file").setInputFiles({ name: "updated.json", mimeType: "application/json", buffer: Buffer.from(updateBytes) });
   await page.getByRole("button", { name: "Accept changes as a new version", exact: true }).click();
   await expect.poll(async () => (await snapshot()).document.artifacts.length).toBe(2);
   const next = (await snapshot()).document.artifacts[1];

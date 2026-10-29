@@ -59,7 +59,7 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   // The enquiry is an occasional result action, inside the one "More actions" disclosure.
   await page.locator("details.vibe-results-more > summary").click();
   await page.getByRole("button",{name:"Discuss this with AgentClash",exact:true}).click();
-  await expect(page.getByRole("dialog")).toContainText("Review what you’ll share. Files, raw replies and chat history are not attached.");
+  await expect(page.getByRole("dialog")).toContainText("Review what you’ll share. Files, raw replies and conversation history are not attached.");
   await expect(page.getByRole("textbox",{name:"Your email",exact:true})).toBeVisible();
   const summary=page.getByRole("textbox",{name:"Project summary",exact:true});
   await expect(summary).not.toHaveValue(/Mira|Ana/);

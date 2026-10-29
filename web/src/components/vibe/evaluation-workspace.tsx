@@ -274,9 +274,9 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
     (active
       ? buildJourney ? buildProgress(active) : conversationActivity(active, p.testJourney)
       : p.quickChecking
-        ? "Preparing the check…"
+        ? "Preparing the run…"
         : waitingForResult
-          ? "Waiting for your check…"
+          ? "Waiting for your run…"
           : undefined);
   const contentStamp = [
     p.session?.document.messages.at(-1)?.id,
@@ -396,14 +396,14 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
               onChange={(e) => p.onContent(e.target.value)}
               placeholder={
                 welcome
-                  ? door === "test" ? "Or describe your agent and what you want to check…" : door === "build" ? "We spend hours answering customer questions about returns…" : p.testJourney
+                  ? door === "test" ? "Or describe your agent and what you want to test…" : door === "build" ? "We spend hours answering customer questions about returns…" : p.testJourney
                     ? "My agent helps customers with returns…"
                     : "I made an AI trip planner…"
                   : referencedRun
                     ? "Ask about this saved result…"
                     : showResult && !buildJourney
                     ? "Ask about these results…"
-                    : buildJourney ? "Message Vibe Evals…" : p.testJourney
+                    : buildJourney ? "Message Guide…" : p.testJourney
                       ? "Add a rule, ask a question, or change a test…"
                       : "Paste the question and your app’s answer, or keep talking…"
               }
@@ -424,7 +424,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                 aria-label="Send message"
                 disabled={p.busy || p.dirty || p.sendBlocked || !p.content.trim()}
               >
-                {p.buildStart ? "Build and try 3 examples" : <span className="sr-only">Send</span>}
+                {p.buildStart ? "Build and run 3 tests" : <span className="sr-only">Send</span>}
                 <ArrowUp />
               </VibeButton>
             </div>
@@ -490,7 +490,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                             "Agent",
                             "Discuss what matters, ask about findings, or change the rules.",
                           ],
-                          ["tests", "Tests", "Edit cases and expectations for this version."],
+                          ["tests", "Tests", "Edit tests and expectations for this version."],
                           [
                             "checks",
                             "Results",
@@ -530,7 +530,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
             {(
               [
                 [
-                  "New check",
+                  "New project",
                   Plus,
                   () => {
                     window.location.assign("/vibe-evals");
@@ -565,11 +565,11 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
         </div>}
       </header>}
       {p.newEvaluation && <div className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto" ref={newEntry} tabIndex={-1}
-        aria-label="New evaluation choices" onKeyDown={event => { if (event.key === "Escape" && !p.contextNavigationBlocked) { p.onCancelNew?.(); requestAnimationFrame(() => document.getElementById("vibe-message")?.focus({ preventScroll: true })); } }}>
+        aria-label="New project choices" onKeyDown={event => { if (event.key === "Escape" && !p.contextNavigationBlocked) { p.onCancelNew?.(); requestAnimationFrame(() => document.getElementById("vibe-message")?.focus({ preventScroll: true })); } }}>
         <div className="vibe-column vibe-entry-page">
           <VibeButton variant="quiet" className="vibe-back-button" disabled={p.contextNavigationBlocked} onClick={() => {
             p.onCancelNew?.(); requestAnimationFrame(() => document.getElementById("vibe-message")?.focus({ preventScroll: true }));
-          }}><ArrowLeft />{p.session?.document.evaluation ? "Back to your evaluation" : "Back"}</VibeButton>
+          }}><ArrowLeft />{p.session?.document.evaluation ? "Back to your project" : "Back"}</VibeButton>
           <EvaluationEntry busy={!!p.contextNavigationBlocked || !!p.entryBlocked} onDoor={p.onDoor} notice={p.entryNotice} />
           {p.pendingLabel && <ActivityStatus label={p.pendingLabel} working />}
           {p.notice}
@@ -591,32 +591,32 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
             className={`vibe-column ${welcome ? "vibe-entry-page" : "py-8 sm:py-12"}`}
           >
             {welcome && !intake && (entry ? <EvaluationEntry busy={p.busy || !!p.inferenceUnavailable} onDoor={p.onDoor} notice={p.newEvaluation ? undefined : p.entryNotice} /> : <div className="vibe-welcome mb-6">
-              <h1 className="vibe-entry-title">{door === "build" ? "What would you like help with?" : door === "test" ? "Improve an agent you already have." : p.testJourney ? "What should your agent do?" : "Check the AI in your app."}</h1>
-              <p className="mt-4 max-w-[560px] vibe-muted">{door === "build" ? "Describe a repetitive task. We’ll make a prototype and try three situations to see what works." : door === "test" ? "Bring actual replies, saved instructions or a test pack." : p.testJourney ? "Describe its job and rules. We’ll check what works and what needs fixing." : "Tell us what it does, or paste an answer you want checked."}</p>
+              <h1 className="vibe-entry-title">{door === "build" ? "What would you like help with?" : door === "test" ? "Improve an agent you already have." : p.testJourney ? "What should your agent do?" : "Test the AI in your app."}</h1>
+              <p className="mt-4 max-w-[560px] vibe-muted">{door === "build" ? "Describe a repetitive task. We’ll make an agent and run three tests to see what works." : door === "test" ? "Bring actual replies, saved instructions or a test pack." : p.testJourney ? "Describe its job and rules. We’ll test what works and what needs fixing." : "Tell us what it does, or paste an answer you want to test."}</p>
               {door === "test" && <><div className="vibe-source-options">
                 <div className="vibe-source-option">
                   <VibeButton disabled={p.busy} onClick={p.onImport}><FileUp />Import a test pack</VibeButton>
                   <TooltipProvider delay={250}>
                     <Tooltip>
                       <TooltipTrigger aria-label="What is a test pack?" className="vibe-source-tooltip"><CircleHelp aria-hidden="true" /></TooltipTrigger>
-                      <TooltipContent side="top" className="max-w-[280px]">A test pack (also called a challenge pack) contains situations to try and what a good response should do. Import one only if you already have it.</TooltipContent>
+                      <TooltipContent side="top" className="max-w-[280px]">A test pack is a saved set of tests: what to send your agent and what a good response should do. Import one only if you already have it.</TooltipContent>
                     </Tooltip>
                   </TooltipProvider>
                 </div>
-                <VibeButton disabled={p.busy} onClick={() => setIntake("recorded")}><MessagesSquare />Check replies from my app</VibeButton>
+                <VibeButton disabled={p.busy} onClick={() => setIntake("recorded")}><MessagesSquare />Test replies from my app</VibeButton>
                 <VibeButton disabled={p.busy} onClick={changeSource}><FileText />Try my saved instructions</VibeButton>
               </div><p className="vibe-source-note">Connect a live app from Details after your first version. Instructions recreate behavior here. A test pack supplies tests, not an agent.</p>
-              <details className="vibe-source-help"><summary>What’s a test pack?</summary><p>A saved set of situations to try and what a good response should do. It is also called a challenge pack. Import one only if you already have it.</p></details>
+              <details className="vibe-source-help"><summary>What’s a test pack?</summary><p>A saved set of tests: what to send your agent and what a good response should do. Import one only if you already have it.</p></details>
               {p.canChangeDoor && <button type="button" className="vibe-door-switch" onClick={p.onChangeDoor}>Actually, I want to build an agent.</button>}</>}
               {door === "build" && p.canChangeDoor && <button type="button" className="vibe-door-switch" onClick={p.onChangeDoor}>Already have an agent? Improve it instead.</button>}
-              {!door && p.testJourney && <p className="mt-3 text-sm vibe-muted">Already have an agent or challenge pack? Describe it here or <button type="button" className="underline underline-offset-4" disabled={p.busy} onClick={p.onImport}>import your pack</button>.</p>}
+              {!door && p.testJourney && <p className="mt-3 text-sm vibe-muted">Already have an agent or test pack? Describe it here or <button type="button" className="underline underline-offset-4" disabled={p.busy} onClick={p.onImport}>import your pack</button>.</p>}
             </div>)}
             {intake === "recorded" && p.session && p.onRecordedEvidence && <RecordedIntake project={p.session.id} revision={p.session.revision} busy={p.busy} onSave={p.onRecordedEvidence} onClose={() => setIntake(null)} />}
             {p.importNotice}
-            {door && !buildJourney && p.artifact?.agent_prompt && <section aria-label="Prototype scope" className="mb-4 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">Interactive prototype{p.artifact.sample ? " · Sample demonstration" : ""}</p><VibeButton variant="quiet" onClick={() => p.onNavigate("try")}>Talk to this prototype</VibeButton></div>
+            {door && !buildJourney && p.artifact?.agent_prompt && <section aria-label="Agent scope" className="mb-4 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2"><p className="font-semibold">Agent{p.artifact.sample ? " · Sample demonstration" : ""}</p><VibeButton variant="quiet" onClick={() => p.onNavigate("try")}>Talk to this agent</VibeButton></div>
               <p className="vibe-muted">{p.artifact.scope_note || "Runs here using what you supplied; your business systems aren’t connected."}</p>
-              {p.artifact.sample && <p className="mt-1 vibe-muted">These results check the sample, not your business policy.</p>}
+              {p.artifact.sample && <p className="mt-1 vibe-muted">These results test the sample, not your business policy.</p>}
             </section>}
             {buildJourney && p.session && !welcome && <div hidden={(p.view !== "build" && p.view !== "try") || !!intake}>
               <BuildWorkspace session={p.session} artifact={p.artifact} busy={p.busy || p.dirty} primary={buildPrimary}
@@ -627,7 +627,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                 onGuide={() => { p.onNavigate("build"); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true })); }}
                 onImprove={operation => {
                   scroll.follow();
-                  p.onMessage("Suggest a focused improvement to these agent instructions using the failed examples. Preserve the checks and expected behavior.", operation);
+                  p.onMessage("Suggest a focused improvement to these agent instructions using the failed tests. Keep the tests and expected behavior.", operation);
                 }}
                 onSave={p.onSave} onTougher={p.onTougher} onExport={p.onExport} loadEvidence={p.loadEvidence} />
             </div>}
@@ -641,7 +641,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   </h2>
                   <p className="mt-2 text-sm vibe-muted">
                     Paste the instructions your app gives its AI. We’ll use them
-                    to generate example answers here.
+                    to run tests here.
                   </p>
                 </div>
                 <form
@@ -651,7 +651,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                     if (!instructionText.trim() || p.busy) return;
                     setIntake(null);
                     p.onMessage(
-                      "Prepare three useful examples to check these instructions against the rules we discussed.",
+                      "Prepare three useful tests for these instructions, based on the rules we discussed.",
                       undefined,
                       instructionText,
                     );
@@ -681,7 +681,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                       type="submit"
                       disabled={p.busy || !instructionText.trim()}
                     >
-                      Prepare examples
+                      Prepare tests
                       <ArrowRight />
                     </VibeButton>
                   </div>
@@ -711,9 +711,9 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                       >
                         {runs.map((r, i) => (
                           <option key={r.id} value={r.id}>
-                            {i === runs.length - 1 ? "Latest · " : ""}Check{" "}
+                            {i === runs.length - 1 ? "Latest · " : ""}Run{" "}
                             {i + 1}
-                            {r.source?.comparison === "regraded" ? " · grades rechecked" : r.kind === "retest" ? " · comparison" : ""}
+                            {r.source?.comparison === "regraded" ? " · regraded" : r.kind === "retest" ? " · comparison" : ""}
                           </option>
                         ))}
                       </select>
@@ -734,7 +734,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                     p.onMessage(
                       result.source?.kind === "provided_conversations"
                         ? "Suggest a concrete instruction change to address the observed failures. Keep the expectations fixed. Explain what to copy into my agent; do not claim to apply it."
-                        : "Suggest a focused improvement to these agent instructions using the failed examples. Preserve the checks and expected behavior.",
+                        : "Suggest a focused improvement to these agent instructions using the failed tests. Keep the tests and expected behavior.",
                       result,
                     );
                   }}
@@ -840,7 +840,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
               <div className="mt-4"><ConversationActions key={p.session.id} session={p.session} busy={p.busy || p.dirty} primary={primary === "choices"} onAction={p.onChoice} onReload={p.onReloadChoices} /></div>
             )}
             {!buildJourney && p.artifact?.agent_prompt && p.view === "build" && !activityLabel && <VibeButton disabled={p.busy || p.dirty} onClick={() => switchView("try")}>Try it yourself</VibeButton>}
-            {buildJourney && !p.artifact && active?.state === "RUNNING" && active.conversation_decision?.intent === "prepare_tests" && <p className="vibe-build-intro">I’m making a first version, then I’ll try three situations and check its replies. Your business systems won’t be connected.</p>}
+            {buildJourney && !p.artifact && active?.state === "RUNNING" && active.conversation_decision?.intent === "prepare_tests" && <p className="vibe-build-intro">I’m making a first version, then I’ll run three tests on its replies. Your business systems won’t be connected.</p>}
             <ActivityStatus label={activityLabel} working={active?.state === "RUNNING" && !p.pendingLabel} />
             <AnimatePresence initial={false}>
               {activityLabel && active && (
@@ -880,13 +880,13 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
             {p.session?.document.build?.phase === "error" && !activityLabel && !operations.some(operation => operation.error && operation.id === p.session?.operations.at(-1)?.id) && (
               <p role="alert" className="mt-4 text-sm text-builder-warn">
                 {p.session.document.build.error?.message || "This Build cycle stopped. Your work is saved."}{" "}
-                {p.session.document.artifacts.length ? "You can edit this prototype. Run the tests again for a new estimate." : "Use New evaluation to start another prototype."}
+                {p.session.document.artifacts.length ? "You can edit this agent. Run the tests again for a new estimate." : "Use New project to start again."}
               </p>
             )}
             {awaitingBuildAnswer && p.session?.document.conversation_state?.pending_question?.purpose !== "clarify_job" && !p.busy && <div className="mt-4"><VibeButton onClick={p.onSample}>Use a sample policy</VibeButton><p className="mt-2 text-sm vibe-muted">A labelled demonstration. Your real policy stays unspecified.</p></div>}
             {pendingDemo && !p.busy && <div className="mt-4"><VibeButton onClick={() => p.onDemo?.(pendingDemo.id)}>Try a sample email assistant</VibeButton><p className="mt-2 text-sm vibe-muted">Uses fictional messages. You can describe your own task instead.</p></div>}
             {welcome && welcomeExample && <div className="mt-3 space-y-3">
-              <p className="text-sm vibe-muted">A test pairs an example task with what should happen.</p>
+              <p className="text-sm vibe-muted">A test pairs a task with what should happen.</p>
               <ExampleComparison input="Can I return an unopened item bought 10 days ago?" expected="With a 30-day policy, this item is eligible. No refund is processed." />
               <VibeButton variant="quiet" onClick={() => { p.onContent(p.testJourney ? exampleAgentDescription : exampleAnswer); composer.current?.focus({ preventScroll: true }); }}>Use this description</VibeButton>
             </div>}

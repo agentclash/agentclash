@@ -82,23 +82,24 @@ describe("truthful Build status", () => {
     expect(buildProgress({ ...message, state: "COMPLETED" })).toBeUndefined();
     expect(buildProgress({ ...message, state: "CANCELLING" })).toBe("Stopping…");
     message.conversation_decision = { intent: "prepare_tests", source_message_id: "task" };
-    expect(buildProgress(message)).toBe("Creating your prototype…");
+    expect(buildProgress(message)).toBe("Creating your agent…");
     message.progress.phase = "switching_assistant";
     expect(buildProgress(message)).toBe("Trying another model…");
   });
   it("distinguishes an all-pass from incomplete, stopped and unavailable checks", () => {
-    expect(buildRunSummary(passed)).toBe("It handled these 3 situations as expected.");
+    expect(buildRunSummary(passed)).toBe("It passed all 3 tests.");
     for (const incomplete of [ { incomplete_cases: 1 }, { evaluated: 2 }, { unknown: 1 }, { passed: 2 } ])
-      expect(buildRunSummary({ ...passed, scorecard: { ...passed.scorecard!, ...incomplete } })).toContain("could not be fully checked");
-    expect(buildRunSummary({ ...passed, results: passed.results.slice(0, 2) })).toContain("could not be fully checked");
+      expect(buildRunSummary({ ...passed, scorecard: { ...passed.scorecard!, ...incomplete } })).toContain("could not be fully graded");
+    expect(buildRunSummary({ ...passed, results: passed.results.slice(0, 2) })).toContain("could not be fully graded");
     expect(buildRunSummary({ ...passed, state: "CANCELLED" })).toContain("Stopped");
     expect(buildRunSummary({ ...passed, state: "FAILED" })).toContain("couldn’t finish");
     expect(buildRunSummary({ ...passed, state: "EXPIRED" })).toContain("couldn’t finish");
     expect(buildRunSummary({ ...passed, error: { code: "provider_rate_limit", message: "Busy" } })).toContain("couldn’t finish");
-    expect(buildRunSummary(operation("empty", "check"))).toBe("No replies were checked.");
+    expect(buildRunSummary(operation("empty", "check"))).toBe("No tests were run.");
   });
   it("reports only completed progress and never treats a grade recheck as an improved agent", () => {
-    expect(buildProgress({ ...passed, state: "RUNNING", progress: { phase: "grading", completed_cases: 1, total_cases: 3 } })).toBe("1 of 3 examples checked…");
-    expect(buildRunSummary({ ...passed, source: { kind: "prompt", label: "", artifact_id: "v1", comparison: "regraded" } })).toContain("prototype hasn’t changed");
+    expect(buildProgress({ ...passed, state: "RUNNING", progress: { phase: "grading", completed_cases: 1, total_cases: 3 } })).toBe("1 of 3 tests finished…");
+    expect(buildProgress({ ...passed, state: "RUNNING", progress: { phase: "grading", completed_cases: 0, total_cases: 1 } })).toBe("Running 1 test…");
+    expect(buildRunSummary({ ...passed, source: { kind: "prompt", label: "", artifact_id: "v1", comparison: "regraded" } })).toContain("agent hasn’t changed");
   });
 });

@@ -16,6 +16,6 @@ export function RecordedTests({project,artifact,evidence,busy,blocked,onDirty,on
   {draft.conflict&&<p role="alert">The saved expectations changed. Keep this draft for its source or discard it.</p>}
   {draft.dirty&&<><VibeButton disabled={busy||draft.conflict||!draft.value.trim()} onClick={async()=>{const submitted=draft.value;const expectations=submitted.split("\n").map(s=>s.trim()).filter(Boolean).map((statement,i)=>({id:rules[i]?.id||`expectation-${i+1}`,statement}));if(await onEdit({artifact_id:artifact.id,expectations})){draft.discard(submitted);onDirty(false)}else setError("Expectations were not saved. Your previous version remains available.");}}>Save expectations</VibeButton><VibeButton onClick={()=>{draft.discard();onDirty(false)}}>Discard expectation changes</VibeButton></>}
   {error&&<p role="alert">{error}</p>}
-  <VibeButton disabled={busy||blocked||draft.dirty||!evidence} onClick={onRun}>Check these recorded replies</VibeButton>
+  <VibeButton disabled={busy||blocked||draft.dirty||!evidence} onClick={onRun}>Run recorded tests</VibeButton>
  </section>;
 }

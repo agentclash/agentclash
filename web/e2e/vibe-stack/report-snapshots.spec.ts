@@ -28,7 +28,7 @@ test("selected copy survives private cleanup with independent member/viewer navi
     await page.locator("summary").filter({ hasText: /^Import SDK report$/ }).click();
     const source = JSON.stringify({ schema_version: 1, report_id: "PRIVATE_REPORT", generated_at: "2026-10-26T12:00:00Z", runner: { name: "agentclash-evals", version: "1" }, summary: { total: 1, passed: 0, failed: 1, skipped: 0, errored: 0 }, cases: [{ case: { case_id: "PRIVATE_CASE", name: "PRIVATE_LABEL" }, status: "failed", metrics: [{ key: "PRIVATE_METRIC", name: "PRIVATE_NAME", passed: false, score: 0.2, reason: "PRIVATE_REASON" }], agent_result: { input: "PRIVATE_INPUT", output: "PRIVATE_OUTPUT" } }], exit_code: 1 }).replace('"score":0.2', '"score":0.12345678901234567890123456789');
     await page.getByRole("region", { name: "Import SDK report", exact: true }).locator('input[type="file"]').setInputFiles({ name: "report.json", mimeType: "application/json", buffer: Buffer.from(source) });
-    await page.getByLabel("Test case for PRIVATE_CASE — PRIVATE_LABEL").selectOption({ index: 1 });
+    await page.getByLabel("Test for PRIVATE_CASE — PRIVATE_LABEL").selectOption({ index: 1 });
     const imported = page.waitForResponse(r => r.url().endsWith(`/sessions/${session}/reports`) && r.request().method() === "POST");
     await page.getByRole("button", { name: "Import historical report", exact: true }).click();
     const importedResponse = await imported;

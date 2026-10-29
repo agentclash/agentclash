@@ -108,7 +108,7 @@ export function CaseEvidence({
   const explanation =
     finding?.error?.message ||
     finding?.evidence ||
-    "A detailed explanation was not recorded for this check.";
+    "A detailed explanation was not recorded for this expectation.";
   const excerpt = concise && explanation.length > 240;
   const boundary = explanation.lastIndexOf(" ", 240);
   const visibleExplanation = excerpt
@@ -138,7 +138,7 @@ export function CaseEvidence({
             (concise && evidence?.input != null
               ? caseInput(evidence.input)
               : summary.case_key
-                  .replace(/^case-/, exampleFirst ? "Example " : concise ? "Test " : "Situation ")
+                  .replace(/^case-/, "Test ")
                   .replaceAll("-", " "))}
         </span>
         <span className="text-xs text-builder-fg-muted">
@@ -157,7 +157,7 @@ export function CaseEvidence({
         />
       </summary>
       <div className="space-y-4 border-t border-[var(--vibe-border)] p-4">
-        {onAsk && <VibeButton variant="quiet" onClick={onAsk}>Ask Guide about this case</VibeButton>}
+        {onAsk && <VibeButton variant="quiet" onClick={onAsk}>Ask Guide about this test</VibeButton>}
         {loading && (
           <p role="status" className="text-sm vibe-muted">
             Loading saved evidence…
@@ -176,7 +176,7 @@ export function CaseEvidence({
               </p>
             )}
             {exampleFirst && <div className="vibe-example-evidence">
-              <div><p className="vibe-evidence-label">{compactPreview ? "We gave it" : "Situation we tried"}</p>{compactPreview ? <EvidenceExcerpt text={caseInput(evidence.input)} label="input" /> : <SafeMarkdown>{caseInput(evidence.input)}</SafeMarkdown>}</div>
+              <div><p className="vibe-evidence-label">{compactPreview ? "We gave it" : "Test input"}</p>{compactPreview ? <EvidenceExcerpt text={caseInput(evidence.input)} label="input" /> : <SafeMarkdown>{caseInput(evidence.input)}</SafeMarkdown>}</div>
               {!compactPreview && <div><p className="vibe-evidence-label">What it should do</p><SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown></div>}
               <div><p className="vibe-evidence-label">{compactPreview ? "It replied" : "What it actually replied"}</p>{evidence.output ? <div className="vibe-example-reply">{compactPreview ? <EvidenceExcerpt text={evidence.output} label="reply" /> : <AgentReply>{evidence.output}</AgentReply>}</div> : <p>No reply was recorded.</p>}</div>
             </div>}
@@ -331,12 +331,12 @@ function EvidenceDetails({
               onDispute(expectedBehavior(evidence, finding), evidence)
             }
           >
-            Change the expected behavior
+            Change expected result
           </VibeButton>
         )}
-        {onRegrade && <VibeButton variant="quiet" disabled={busy} onClick={onRegrade}>Recheck saved grades</VibeButton>}
+        {onRegrade && <VibeButton variant="quiet" disabled={busy} onClick={onRegrade}>Regrade saved replies</VibeButton>}
       </div>
-      {onRegrade && <p className="text-sm vibe-muted">Rechecking uses the same replies and rules. Your earlier results stay saved.</p>}
+      {onRegrade && <p className="text-sm vibe-muted">Regrading uses the same replies and rules. Your earlier results stay saved.</p>}
       <div
         id={id}
         hidden={!expanded}
@@ -396,7 +396,7 @@ function EvidenceDetails({
         )}
         {otherChecks && <div className="space-y-4">
           <p className="text-xs vibe-muted">
-            All checks · {evidence.checks.length}
+            All expectations · {evidence.checks.length}
           </p>
           {evidence.checks.map((check) => (
             <div key={check.key}>
@@ -429,7 +429,7 @@ function EvidenceDetails({
                     onDispute(expectedBehavior(evidence, check), evidence)
                   }
                 >
-                  That’s not our rule
+                  Change expected result
                 </VibeButton>
               )}
             </div>

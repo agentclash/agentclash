@@ -5,6 +5,7 @@ import { reportBase, loadSDKCase, sdkExportValue, type SDKReport } from "@/lib/v
 import { downloadBytes } from "@/lib/vibe-export";
 import type { GradeReview, GradeReviewInput } from "@/lib/vibe-result-evidence";
 import { useVibeEvidenceOwner } from "@/lib/use-vibe-evidence-owner";
+import { testCount } from "@/lib/vibe-presentation";
 import type { SDKEvidenceContext } from "./sdk-report-import";
 import { VibeButton } from "./vibe-button";
 
@@ -74,12 +75,12 @@ export function SDKReportDetail({ report, sessionId, actorScope, workspaceId, ac
       {onExport && <VibeButton onClick={() => onExport(report)}>Export report with tests</VibeButton>}
     </div>
     {rawSource !== undefined && <details open><summary>Original report contents</summary><pre className="whitespace-pre-wrap break-words">{JSON.stringify(rawSource, null, 2)}</pre></details>}
-    <label>Source case<select aria-label="SDK detail source case" disabled={busy || !!reviewRequest || !!promotion} value={sourceID} onChange={e => { setSourceID(e.target.value); setReason(""); setEvidence(undefined); setReviewed(false); }}><option value="">Choose a source case</option>{report.cases.map(c => <option key={c.source_case_id} value={c.source_case_id}>{c.source_case_id} → {[c.input_set_key, c.challenge_key, c.case_key].filter(Boolean).join(" / ")}</option>)}</select></label>
-    {evidence && <section className="space-y-3" aria-label="Imported case evidence">
+    <label>Source test<select aria-label="SDK detail source test" disabled={busy || !!reviewRequest || !!promotion} value={sourceID} onChange={e => { setSourceID(e.target.value); setReason(""); setEvidence(undefined); setReviewed(false); }}><option value="">Choose a source test</option>{report.cases.map(c => <option key={c.source_case_id} value={c.source_case_id}>{c.source_case_id} → {[c.input_set_key, c.challenge_key, c.case_key].filter(Boolean).join(" / ")}</option>)}</select></label>
+    {evidence && <section className="space-y-3" aria-label="Imported test evidence">
       <p>Original verdict: {report.source_kind === "agent_result" ? "Not supplied" : evidence.verdict}</p>
       <h4>Retained final reply</h4><pre className="whitespace-pre-wrap break-words">{evidence.output || "No final reply recorded."}</pre>
       {evidence.messages?.map(message => <p key={message.id}><strong>{message.role}</strong>: {message.content}</p>)}
-      <details><summary>Original checks</summary><pre className="whitespace-pre-wrap break-words">{JSON.stringify(evidence.checks, null, 2)}</pre></details>
+      <details><summary>Original grades</summary><pre className="whitespace-pre-wrap break-words">{JSON.stringify(evidence.checks, null, 2)}</pre></details>
       {access.canWrite && <form className="space-y-2" onSubmit={e => { e.preventDefault(); void action(async (auth, current) => {
         const request = reviewRequest || { client_id: crypto.randomUUID(), result_ref: report.binding.result_ref, artifact_id: report.binding.artifact_id, source_case_id: sourceID, case_key: evidence.case_key, source_evidence_hash: evidence.evidence_hash || "", reason };
         setReviewRequest(request); setReviewRejected(false);
@@ -93,7 +94,7 @@ export function SDKReportDetail({ report, sessionId, actorScope, workspaceId, ac
       {access.canWrite && evidence.expected && <section aria-label="Review imported expectation" className="space-y-2">
         <h4>Review imported expectation</h4><pre className="whitespace-pre-wrap break-words">{evidence.expected}</pre>
         <p>Adopt this exact expectation into a new test version. The existing version, source report and grades remain unchanged.</p>
-        <label><input type="checkbox" disabled={busy || !!promotion} checked={reviewed} onChange={e => setReviewed(e.target.checked)} />I reviewed this expectation for the selected test case.</label>
+        <label><input type="checkbox" disabled={busy || !!promotion} checked={reviewed} onChange={e => setReviewed(e.target.checked)} />I reviewed this expectation for the selected test.</label>
         <VibeButton disabled={busy || promotionRejected || !reviewed || revision === undefined} onClick={() => action(async (auth, current) => {
           const request = promotion || { client_id: crypto.randomUUID(), revision: revision!, source_case_id: sourceID, source_evidence_hash: report.content_sha256, expected: evidence.expected!, reviewed: true as const }; setPromotion(request); setPromotionRejected(false);
           const artifact = await vibeFetch<Artifact>(`${base}/promote`, auth, { method: "POST", body: JSON.stringify(request) });
@@ -110,7 +111,7 @@ export function SDKReportDetail({ report, sessionId, actorScope, workspaceId, ac
         const quote = await vibeFetch<RunQuote>(`/sessions/${sessionId}/run-quote`, auth, { method: "POST", body: JSON.stringify(request) });
         if (current()) setRegrade({ request: { ...request, run_quote_id: quote.id }, quote });
       })}>Estimate hosted regrade</VibeButton>
-      {regrade && <div><p>{regrade.quote.cases} cases · up to {regrade.quote.calls} grading calls · maximum ${(regrade.quote.max_cost_nano_usd / 1e9).toFixed(4)}. Quote expires {new Date(regrade.quote.expires_at).toLocaleTimeString()}.</p>
+      {regrade && <div><p>{testCount(regrade.quote.cases)} · up to {regrade.quote.calls} grading calls · maximum ${(regrade.quote.max_cost_nano_usd / 1e9).toFixed(4)}. Quote expires {new Date(regrade.quote.expires_at).toLocaleTimeString()}.</p>
         <VibeButton disabled={busy || !access.canWrite || !inferenceAvailable} onClick={() => action(async (auth, current) => {
           const operation = await vibeFetch<Operation>(`/sessions/${sessionId}/messages`, auth, { method: "POST", body: JSON.stringify(regrade.request) });
           if (current()) { setRegrade(undefined); setNotice("Separate hosted regrade submitted. Original grades are unchanged."); onRegraded?.(operation); }

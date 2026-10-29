@@ -42,6 +42,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 
 
 import { dollars } from "@/lib/vibe";
+import { testCount } from "@/lib/vibe-presentation";
 
 import { keepReturnURL, savedWorkURL, advancedURL } from "@/lib/vibe-keep";
 
@@ -75,18 +76,20 @@ return (
         <DialogContent className="vibe-workspace vibe-dialog" initialFocus={quoteHeading} finalFocus={() => {
           const trigger = quoteTrigger.current;
           return trigger?.isConnected && !trigger.matches(":disabled") ? trigger : document.getElementById("vibe-trial-message") || document.getElementById("vibe-message");
-        }}><DialogTitle ref={quoteHeading} tabIndex={-1}>{runQuote?.kind === "message" ? "Try tougher situations" : runQuote?.baseline ? "Rerun the same examples" : "Try these examples"}</DialogTitle>
+        }}><DialogTitle ref={quoteHeading} tabIndex={-1}>{runQuote?.kind === "message" ? "Run harder tests" : runQuote?.baseline ? "Run the same tests again" : "Run these tests"}</DialogTitle>
           <div className="vibe-dialog-body">
-          <DialogDescription>{runQuote?.kind === "message" ? `${runQuote.extra.additional_examples} new situations + ${(runQuote.quote.cases || 0) - (runQuote.extra.additional_examples || 0)} existing examples` : `${runQuote?.quote.cases} examples`} · up to {dollars(runQuote?.quote.max_cost_nano_usd || 0)}. Usually a few minutes; provider queues can take longer. {runQuote?.kind === "message" ? "Includes preparation, review, automatic fixes and running this batch. Existing cases and their earlier results stay unchanged." : runQuote?.baseline ? "The same examples and grading stay fixed. Earlier results are kept." : "This run uses the selected instructions or recorded replies."}</DialogDescription>
-          {runQuote?.extra.case_keys && <p>Selected cases: {runQuote.extra.case_keys.join(", ")}. A new run will retain these results separately from the original.</p>}
-          {runQuote?.kind !== "message" && <p>{runQuote?.extra.purpose === "regrade" ? "Regrade: the evaluator checks the original saved replies again." : artifacts.find(item=>item.id===runQuote?.extra.artifact_id)?.conversation_evaluation ? "Recorded source: the evaluator checks your exact saved replies. Your app and a target model are not called. The original app model and build identities are unknown." : "Prototype source: a target model generates new replies from the selected saved instructions."}</p>}
+          <DialogDescription>{runQuote?.kind === "message" ? `${testCount(runQuote.extra.additional_examples || 0, "new")} + ${testCount((runQuote.quote.cases || 0) - (runQuote.extra.additional_examples || 0), "existing")}` : testCount(runQuote?.quote.cases || 0)} · up to {dollars(runQuote?.quote.max_cost_nano_usd || 0)}. Usually a few minutes; provider queues can take longer. {runQuote?.kind === "message" ? "Includes preparing, reviewing and fixing the new tests, then running all of them. Existing tests and their earlier results stay unchanged." : runQuote?.baseline ? "The same tests and grading stay fixed. Earlier results are kept." : "This run uses the selected instructions or recorded replies."}</DialogDescription>
+          {runQuote?.extra.case_keys && <p>Selected tests: {runQuote.extra.case_keys.join(", ")}. A new run will retain these results separately from the original.</p>}
+          {runQuote?.kind !== "message" && <p>{runQuote?.extra.purpose === "regrade" ? "Regrade: the evaluator grades the original saved replies again." : artifacts.find(item=>item.id===runQuote?.extra.artifact_id)?.conversation_evaluation ? "Recorded replies: the evaluator grades your exact saved replies. Your app and a target model are not called. The original app model and build identities are unknown." : "Generated replies: a target model writes new replies from the selected agent instructions."}</p>}
           <p>Scope: {artifacts.find(item => item.id === runQuote?.selectionArtifact)?.title || "Selected project"} · up to {runQuote?.quote.calls} model calls · {funding}.</p>
-          <p>Running sends selected instructions, materials and cases to configured model providers and stores the conversation and results.</p>
+          <p>Running sends the selected instructions, materials and tests to the configured model providers and stores the replies and results.</p>
           {!runQuoteCurrent && <p role="status">This estimate expired or the project changed. Refresh it before running.</p>}
-          <VibeButton variant="quiet" disabled={busy} onClick={() => { if (!runQuote) return; const q = runQuote; if (q.kind === "message") void requestPreparation(q.content || "", q.extra.additional_examples || 0, q.extra.artifact_id || ""); else void requestRun(q.baseline, q.extra.evidence_set_id, q.extra.purpose, q.extra.case_keys && q.extra.retry_source_result_ref && q.extra.artifact_id ? {case_keys:q.extra.case_keys,retry_source_result_ref:q.extra.retry_source_result_ref,artifact_id:q.extra.artifact_id} : undefined, q.recordedArtifactID); }}>Refresh estimate</VibeButton>
-          <VibeButton variant="primary" disabled={busy || !(runQuote?.kind === "message" ? inferenceAvailable : runInferenceAvailable) || !runQuoteCurrent} onClick={() => { if (!runQuote || !isRunQuoteCurrent()) return; const q=runQuote; setRunQuote(undefined); void submit(q.kind,q.content || "",q.baseline,{...q.extra,...(q.extra.cycle_id ? {} : {run_quote_id:q.quote.id})}); }}>{runQuote?.kind === "message" ? "Prepare and run this batch" : `Run ${runQuote?.quote.cases} examples`}</VibeButton>
-          <VibeButton variant="quiet" onClick={() => setRunQuote(undefined)}>Cancel</VibeButton>
-        </div></DialogContent>
+          </div>
+          <div className="vibe-dialog-actions">
+            <VibeButton variant="quiet" className="vibe-dialog-aside" disabled={busy} onClick={() => { if (!runQuote) return; const q = runQuote; if (q.kind === "message") void requestPreparation(q.content || "", q.extra.additional_examples || 0, q.extra.artifact_id || ""); else void requestRun(q.baseline, q.extra.evidence_set_id, q.extra.purpose, q.extra.case_keys && q.extra.retry_source_result_ref && q.extra.artifact_id ? {case_keys:q.extra.case_keys,retry_source_result_ref:q.extra.retry_source_result_ref,artifact_id:q.extra.artifact_id} : undefined, q.recordedArtifactID); }}>Refresh estimate</VibeButton>
+            <VibeButton onClick={() => setRunQuote(undefined)}>Cancel</VibeButton>
+            <VibeButton variant="primary" disabled={busy || !(runQuote?.kind === "message" ? inferenceAvailable : runInferenceAvailable) || !runQuoteCurrent} onClick={() => { if (!runQuote || !isRunQuoteCurrent()) return; const q=runQuote; setRunQuote(undefined); void submit(q.kind,q.content || "",q.baseline,{...q.extra,...(q.extra.cycle_id ? {} : {run_quote_id:q.quote.id})}); }}>Start run</VibeButton>
+          </div></DialogContent>
       </Dialog>
       <VibeConnection.Provider value={{ token, contact: config?.contact }}><EvaluationNavigation actorScope={authUser?.id || "guest"} archiveMode={archiveMode} onArchiveMode={setArchiveMode} onMetadata={metadata} workspace={choosingWorkspace && workspaces.length > 0 ? { name: workspaceName, onChange: () => workspaceSelect.current?.focus() } : undefined} accountLabel={authLoading ? "Loading account…" : authUser ? authUser.email || "Signed in account" : "Guest · private to this browser"} listStatus={contextList.status} onRetryList={contextList.retry} enabled={twoDoor} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
         choosing={newEvaluation} disabled={!config || pending || uncertain}
@@ -118,7 +121,7 @@ return (
         savedWorkOpen={savedWorkOpen}
         onSavedWorkOpenChange={setSavedWorkOpen}
         onDoor={door => void chooseDoor(door)}
-        contextControl={activeContext && <p className="vibe-context-label" aria-label="Active evaluation" title={`${activeContext.title} · ${activeContext.scope}`}>
+        contextControl={activeContext && <p className="vibe-context-label" aria-label="Active project" title={`${activeContext.title} · ${activeContext.scope}`}>
           <span className="vibe-context-dot" aria-hidden="true" /><span className="vibe-context-title">{activeContext.title}</span><span>· {activeContext.scope}</span>
         </p>}
         buildStart={buildStart}
@@ -163,11 +166,11 @@ return (
         onSelectCase={key => navigation.update({ case: key })}
         quickChecking={runPending}
         pendingLabel={
-          (loadingSession && !session ? "Loading your conversation…" : undefined) ||
+          (loadingSession && !session ? "Loading your project…" : undefined) ||
           pendingAction ||
           (pending && !active
             ? runPending
-              ? "Starting your check…"
+              ? "Starting your run…"
               : pendingMessage
                 ? "Sending your message…"
                 : "Saving your changes…"
@@ -185,7 +188,7 @@ return (
         }}
         onMessage={(text, operation, instructions) => {
           navigate("build");
-          void submit("message", instructions && session?.document.format_version === 1 ? `${text}\n\nAgent instructions to check:\n${instructions}` : text, undefined, {
+          void submit("message", instructions && session?.document.format_version === 1 ? `${text}\n\nAgent instructions to test:\n${instructions}` : text, undefined, {
             ...(instructions ? { instructions } : {}),
             ...(operation
               ? {
@@ -246,7 +249,7 @@ return (
             {runQuoteState === "preparation" && <p role="status">Preparing estimate…</p>}
             {runQuoteState === "failure" && <p role="alert">Estimate failed: {runQuoteError}. Nothing ran. Run the tests again for a new estimate.</p>}
             {config && !inferenceAvailable && !choosingEntry && <p role="status">{unavailableReason}</p>}
-            {buildStart && <section aria-label="Build estimate"><p>Requesting an estimate sends your draft to AgentClash to calculate and store the estimate. It does not run model inference.</p><p role="status">{buildQuoteState === "failure" ? "Estimate failed" : buildQuoteState === "preparation" || !buildQuote ? content.trim() ? "Preparing estimate…" : "Describe the task to see an estimate" : `Estimate: up to ${dollars(buildQuote.max_cost_nano_usd)} · ${buildQuote.cases} tests · up to ${buildQuote.max_calls} model calls${buildQuoteState === "expired" ? " · Out of date" : ""}`} · {funding}.</p><p>Includes preparation, review, automatic fixes and the first batch.</p><VibeButton disabled={busy || !content.trim() || !inferenceAvailable} onClick={refreshBuildQuote}>Refresh build estimate</VibeButton></section>}
+            {buildStart && <section aria-label="Build estimate"><p>Requesting an estimate sends your draft to AgentClash to calculate and store the estimate. It does not run model inference.</p><p role="status">{buildQuoteState === "failure" ? "Estimate failed" : buildQuoteState === "preparation" || !buildQuote ? content.trim() ? "Preparing estimate…" : "Describe the task to see an estimate" : `Estimate: up to ${dollars(buildQuote.max_cost_nano_usd)} · ${buildQuote.cases} tests · up to ${buildQuote.max_calls} model calls${buildQuoteState === "expired" ? " · Out of date" : ""}`} · {funding}.</p><p>Includes preparation, review, automatic fixes and the first run.</p><VibeButton disabled={busy || !content.trim() || !inferenceAvailable} onClick={refreshBuildQuote}>Refresh build estimate</VibeButton></section>}
             {!choosingEntry && !config && !configError && <p className="vibe-connection-status" role="status">Connecting…</p>}
             {!choosingEntry && configError && (
               <div className="mb-3 space-y-2 text-sm">
@@ -267,7 +270,7 @@ return (
                   {saved
                     ? testJourney
                       ? "Your tests are saved. Find them in Saved work whenever you update your agent."
-                      : "Your agent and checks are saved."
+                      : "Your agent and tests are saved."
                     : savedModelNotice}
                 </p>
                 <Link
@@ -276,7 +279,7 @@ return (
                 >
                   {testJourney
                     ? "Open tests in the advanced editor"
-                    : "Open your evaluation"}
+                    : "Open in the advanced editor"}
                 </Link>
               </div>
             )}
@@ -297,7 +300,7 @@ return (
               )}
             {sessionUnavailable && !loadingSession && (
               <p role="status" className="mb-3 text-sm vibe-muted">
-                This conversation could not be loaded.
+                This project could not be loaded.
               </p>
             )}
             {session && selectedArtifactID && !artifact && <p role="alert" className="text-sm text-builder-warn">This test version is unavailable. Choose another version in Settings.</p>}
@@ -351,7 +354,7 @@ return (
                     document.getElementById("vibe-message")?.focus();
                   }}
                 >
-                  Keep message in a new conversation
+                  Keep message in a new project
                 </VibeButton>
               )}
             {uncertain && !submission.current?.retryOperationID && (
@@ -367,7 +370,7 @@ return (
             )}
             {dirtyArtifact && !testJourney && (
               <p className="mb-3 text-sm vibe-muted">
-                Save or discard your edits before running a check or sending a
+                Save or discard your edits before starting a run or sending a
                 message.
               </p>
             )}
@@ -414,7 +417,7 @@ return (
         type="file"
         accept=".json,.yaml,.yml"
         className="hidden"
-        aria-label="Evaluation file"
+        aria-label="Test pack file"
         onChange={(e) => upload(e.target.files?.[0])}
       />
       <Dialog open={saveOpen} onOpenChange={closeSave}>
@@ -423,18 +426,18 @@ return (
             {saveArtifact?.kind === "test_plan" ? "Keep this brief" : testJourney
               ? "Keep these tests"
               : saveTarget
-                ? "Save this check"
-                : "Save agent and checks"}
+                ? "Save this result"
+                : "Save agent and tests"}
           </DialogTitle>
           <DialogDescription>
             {saveArtifact?.kind === "test_plan" ? "Keep your plan for when you’re ready. No agent or results are needed." : testJourney
               ? "Save this test set so you can run it again after changing your agent."
               : saveTarget
-                ? "Keep the source, expectations and this result together. Only you can reopen this check. Future runs use your workspace’s AI credits."
-                : `Save these instructions and ${suiteCases(saveArtifact?.blueprint).length || "the reviewed"} checks to your workspace. Future checks use your workspace’s AI credits.`}
+                ? "Keep the source, expectations and this result together. Only you can reopen this result. Future runs use your workspace’s AI credits."
+                : `Save these instructions and ${suiteCases(saveArtifact?.blueprint).length || "the reviewed"} tests to your workspace. Future runs use your workspace’s AI credits.`}
           </DialogDescription>
           <div className="vibe-dialog-body space-y-4">
-          <dl className="space-y-2 text-sm"><dt>Project</dt><dd className="break-words">{session?projectTitle(session):"Selected project"}</dd><dt>Version and tests</dt><dd>{saveArtifact?.title} · {saveArtifact?.id.slice(0,8)} · {saveArtifact?.conversation_evaluation?`${saveArtifact.conversation_evaluation.expectations?.length||0} expectations`:saveAdvanced?"Advanced case count is reviewed in the builder":`${suiteCases(saveArtifact?.blueprint).length} tests`}</dd><dt>Baseline</dt><dd>{saveBaseline?`Run ${saveBaseline.slice(0,8)}`:"No baseline selected"}</dd><dt>Workspace and visibility</dt><dd>{workspaces.find(w=>w.id===workspace)?.name||"Choose a workspace"} · {saveTarget||saveArtifact?.kind==="test_plan"?"Private saved check or brief":"Workspace members can access the saved pack/build"}</dd></dl>
+          <dl className="space-y-2 text-sm"><dt>Project</dt><dd className="break-words">{session?projectTitle(session):"Selected project"}</dd><dt>Version and tests</dt><dd>{saveArtifact?.title} · {saveArtifact?.id.slice(0,8)} · {saveArtifact?.conversation_evaluation?`${saveArtifact.conversation_evaluation.expectations?.length||0} expectations`:saveAdvanced?"Advanced test count is reviewed in the builder":`${suiteCases(saveArtifact?.blueprint).length} tests`}</dd><dt>Baseline</dt><dd>{saveBaseline?`Run ${saveBaseline.slice(0,8)}`:"No baseline selected"}</dd><dt>Workspace and visibility</dt><dd>{workspaces.find(w=>w.id===workspace)?.name||"Choose a workspace"} · {saveTarget||saveArtifact?.kind==="test_plan"?"Private saved result or brief":"Workspace members can access the saved pack/build"}</dd></dl>
           <p>Future runs use this workspace’s AI credits. Saving does not deploy or run anything.</p>
           {advancedReceipt&&<a className="underline" href={advancedURL(advancedReceipt.workspace_id,advancedReceipt.draft_id,saveReturnPath,session?projectTitle(session):undefined)}>Open advanced editor and keep a return link</a>}
           {(error || snapshots.loadError) && (
@@ -486,7 +489,7 @@ return (
             </Link>
           )}
           {savedCheck && (
-            <p role="status" className="text-sm">Saved. <a className="underline" href={savedWorkURL(savedCheck)}>Open saved {savedCheck.kind === "brief" ? "brief" : "check"}</a></p>
+            <p role="status" className="text-sm">Saved. <a className="underline" href={savedWorkURL(savedCheck)}>Open saved {savedCheck.kind === "brief" ? "brief" : "result"}</a></p>
           )}
           {!saveTarget && saveDraft && (
             <>
@@ -503,7 +506,7 @@ return (
                 }
                 className="text-sm underline"
               >
-                {testJourney ? "Open saved tests" : "Open your evaluation"}
+                {testJourney ? "Open saved tests" : "Open in the advanced editor"}
               </a>
               {testJourney && <Link className="text-sm underline" href={advancedURL(saveDraft.workspace_id,saveDraft.draft_id,saveReturnPath,session?projectTitle(session):undefined)}>Open in full pack builder</Link>}
             </>

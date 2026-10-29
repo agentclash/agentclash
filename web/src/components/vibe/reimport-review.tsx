@@ -50,7 +50,7 @@ export function ReimportReview({ actor, session, artifact, token, disabled, onAp
   return <section aria-label="Review reimport" className="space-y-3">
     <h3>Review an updated export</h3>
     <p className="text-sm vibe-muted">Compare with version {artifact.id.slice(0, 8)}. Creating a new version keeps earlier tests and grades. Publish it separately, then choose a completed run as your CI baseline.</p>
-    <input ref={input} type="file" accept=".json" aria-label="Updated evaluation export" disabled={disabled || active?.busy} onChange={event => void review(event.target.files?.[0])} className="w-full min-w-0" />
+    <input ref={input} type="file" accept=".json" aria-label="Updated export file" disabled={disabled || active?.busy} onChange={event => void review(event.target.files?.[0])} className="w-full min-w-0" />
     {active?.busy && <p role="status">Preparing this exact version…</p>}
     {active?.error && <p role="alert">{active.error}</p>}
     {active?.review && <>

@@ -38,10 +38,10 @@ for (const width of [320, 390, 768, 1280, 1440]) {
     await expect(leading.getByRole("region", { name: "Evidence for this grade" }).first()).toBeVisible();
     await expect(leading.locator("blockquote:visible")).toHaveText(`Quoted from the reply${quote}`);
     await expect(leading.getByText(rule, { exact: true }).first()).toBeVisible();
-    await expect(page.getByText("Based on the chats you provided. Your live app was not called.", { exact: true })).toBeVisible();
+    await expect(page.getByText("Based on the conversations you provided. Your live app was not called.", { exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: info.outputPath(`grounded-${width}.png`), fullPage: true });
-    await leading.getByRole("button", { name: "Recheck saved grades", exact: true }).click();
+    await leading.getByRole("button", { name: "Regrade saved replies", exact: true }).click();
     await expect(page.getByRole("heading", { name: "Saved replies regraded", exact: true })).toBeVisible();
     expect(submissions).toHaveLength(1);
     expect(session.operations[0]).toEqual(operation);
