@@ -26,7 +26,6 @@ export function CaseEvidence({
   onDispute,
   onRegrade,
   defaultOpen = false,
-  focused = false,
   allowFixPrompt = false,
   onFixCopied,
   origin,
@@ -46,7 +45,6 @@ export function CaseEvidence({
   onDispute?: (rule: string, result: CaseResult) => void;
   onRegrade?: () => void;
   defaultOpen?: boolean;
-  focused?: boolean;
   allowFixPrompt?: boolean;
   onFixCopied?: () => void;
   origin?: EvidenceOrigin;
@@ -205,13 +203,13 @@ export function CaseEvidence({
               <FixPromptCopy
                 prompt={prompt}
                 busy={busy}
-                primary={focused}
                 onCopied={onFixCopied}
               />
             )}
             {!compactPreview && <EvidenceDetails
               evidence={evidence}
               finding={finding}
+              expectationShown={exampleFirst || !!verifiedFinding(evidence, finding)}
               origin={origin}
               onDispute={onDispute}
               onRegrade={onRegrade}
@@ -286,6 +284,7 @@ function PrimaryReply({
 function EvidenceDetails({
   evidence,
   finding,
+  expectationShown,
   origin,
   onDispute,
   onRegrade,
@@ -294,6 +293,7 @@ function EvidenceDetails({
 }: {
   evidence: CaseResult;
   finding?: EvidenceCheck;
+  expectationShown: boolean;
   origin?: EvidenceOrigin;
   onDispute?: (rule: string, result: CaseResult) => void;
   onRegrade?: () => void;
@@ -302,6 +302,12 @@ function EvidenceDetails({
 }) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
+  // The finding and its expectation already show above; list checks only when there is more.
+  const otherChecks = evidence.checks.some((check) => check.key !== finding?.key);
+  const cited = new Set(finding?.message_ids || []);
+  const supporting = evidence.messages?.length
+    ? evidence.messages.some((message) => cited.has(message.id))
+    : !!evidence.output;
   return (
     <div className="space-y-3">
       <div className="-ml-3 flex flex-wrap items-center gap-1">
@@ -336,20 +342,20 @@ function EvidenceDetails({
         hidden={!expanded}
         className="space-y-6 border-t border-[var(--vibe-border)] pt-4"
       >
-        {(evidence.expected || evidence.expectations?.length) && (
+        {!expectationShown && (evidence.expected || evidence.expectations?.length) && (
           <div className="text-sm">
             <p className="mb-2 text-xs vibe-muted">Expected behavior</p>
             <SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown>
           </div>
         )}
-        <div aria-label="Supporting messages" className="space-y-3">
+        {supporting && <div aria-label="Supporting messages" className="space-y-3">
           <p className="text-xs vibe-muted">Supporting messages</p>
           <SupportingEvidence
             evidence={evidence}
             finding={finding}
             origin={origin}
           />
-        </div>
+        </div>}
         {evidence.messages?.length ? (
           <div>
             <p className="mb-3 text-xs vibe-muted">
@@ -388,7 +394,7 @@ function EvidenceDetails({
             )}
           </div>
         )}
-        <div className="space-y-4">
+        {otherChecks && <div className="space-y-4">
           <p className="text-xs vibe-muted">
             All checks · {evidence.checks.length}
           </p>
@@ -414,7 +420,7 @@ function EvidenceDetails({
               </SafeMarkdown>
               <GroundedFinding result={evidence} check={check} />
               <CitedMessages evidence={evidence} check={check} />
-              {onDispute && (
+              {onDispute && check.key !== finding?.key && (
                 <VibeButton
                   variant="quiet"
                   className="mt-2"
@@ -428,12 +434,12 @@ function EvidenceDetails({
               )}
             </div>
           ))}
-          {onImprove && evidence.verdict === "FAIL" && (
-            <VibeButton disabled={busy} onClick={() => onImprove(evidence)}>
-              Improve this behavior
-            </VibeButton>
-          )}
-        </div>
+        </div>}
+        {onImprove && evidence.verdict === "FAIL" && (
+          <VibeButton disabled={busy} onClick={() => onImprove(evidence)}>
+            Improve this behavior
+          </VibeButton>
+        )}
       </div>
     </div>
   );
@@ -524,12 +530,10 @@ function CitedMessages({
 function FixPromptCopy({
   prompt,
   busy,
-  primary,
   onCopied,
 }: {
   prompt: string;
   busy?: boolean;
-  primary: boolean;
   onCopied?: () => void;
 }) {
   const [copying, setCopying] = useState(false);
@@ -551,7 +555,6 @@ function FixPromptCopy({
   return (
     <div className="space-y-2">
       <VibeButton
-        variant={primary && !copied ? "primary" : "secondary"}
         disabled={busy || copying}
         loading={copying}
         onClick={() => void copy()}

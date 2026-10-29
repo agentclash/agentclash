@@ -451,7 +451,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
       {!p.embedded && <header className="vibe-header">
         {p.twoDoor ? <div className="vibe-header-identity">
           {p.navigationToggle}
-          <span className="vibe-header-title">{p.newEvaluation || entry ? "New evaluation" : p.session ? evaluationIdentity(p.session).title : "Vibe Evals"}</span>
+          {p.newEvaluation || entry || !p.session ? <span className="vibe-header-title" data-brand>Vibe Evals</span> : <span className="vibe-header-title">{evaluationIdentity(p.session).title}</span>}
         </div> : (
         <Link
           href="/vibe-evals"
@@ -631,7 +631,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                 }}
                 onSave={p.onSave} onTougher={p.onTougher} onExport={p.onExport} loadEvidence={p.loadEvidence} />
             </div>}
-            {p.view === "tests" ? (suiteContents || <p>No tests in this version yet. Ask Guide to prepare examples.</p>) : p.view === "try" ? (
+            {p.view === "tests" ? (suiteContents || <div className="vibe-empty-state"><p>No tests in this version yet. Guide can prepare tests for you to review.</p><VibeButton onClick={() => { p.onNavigate("build"); requestAnimationFrame(() => composer.current?.focus({ preventScroll: true })); }}>Ask Guide for tests</VibeButton></div>) : p.view === "try" ? (
               buildJourney ? null : p.preview
             ) : intake === "instructions" ? (
               <section className="space-y-4">

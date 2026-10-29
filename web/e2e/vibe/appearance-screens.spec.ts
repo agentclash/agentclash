@@ -22,6 +22,8 @@ const config = {
   availability: { guest: { available: true }, workspace: { available: true } },
   two_door: true,
   interaction_actions: true,
+  // Production needs VIBE_ENQUIRY_EMAIL (and Resend settings for the form) to show the contact call to action.
+  contact: { available: true, email: "team@example.test" },
   defaults: models,
   models: [...new Set(Object.values(models))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })),
 };
@@ -283,7 +285,8 @@ for (const combo of combos) {
       await openSession(page, "returns-results");
       await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 20_000 });
       await expect(page.getByRole("tab", { name: "Agent", exact: true })).toHaveAttribute("aria-selected", "true");
-      await expect(page.getByRole("button", { name: "Try it yourself", exact: true })).toBeVisible();
+      await expect(page.getByRole("textbox", { name: "Message your agent", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Try it yourself", exact: true })).toHaveCount(0);
       await shoot(page, "e-agent-tab", combo, { tall: true });
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
@@ -326,6 +329,12 @@ for (const combo of combos) {
       }
       await page.waitForTimeout(600);
       await shoot(page, "h-results-failed-case", combo, { tall: true });
+      // Occasional result actions share one disclosure below the main action row.
+      const more = page.locator(".vibe-results-more");
+      await more.locator("summary").first().click();
+      await expect(more.getByRole("button", { name: "Ask about this result", exact: true })).toBeVisible();
+      await more.scrollIntoViewIfNeeded();
+      await shoot(page, "h-results-more", combo, { tall: true });
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
 
@@ -352,6 +361,30 @@ for (const combo of combos) {
       await details.getByRole("button", { name: "Settings", exact: true }).click();
       await expect(page.getByRole("dialog", { name: "Settings and details" })).toBeVisible();
       await shoot(page, "j-settings-dialog", combo, { tall: true });
+      expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
+    });
+
+    test(`n empty tests and results ${label}`, async ({ page }) => {
+      await prepare(page, combo);
+      const control = await serve(page);
+      // A saved agent with no tests yet: both tabs are empty and each offers its next step.
+      const draft = base("returns-draft", "test", "Return desk draft");
+      draft.document.artifacts = [{ id: "draft-v1", kind: "agent_draft", title: "Return desk draft", agent_prompt: instructions, accepted: true, source_message_id: "request", blueprint: {} }];
+      draft.document.active_artifact_id = "draft-v1";
+      control.sessions.set(draft.id, draft);
+      await openSession(page, draft.id);
+      await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 20_000 });
+      await page.getByRole("tab", { name: "Tests", exact: true }).click();
+      const askGuide = page.getByRole("button", { name: "Ask Guide for tests", exact: true });
+      await expect(askGuide).toBeVisible();
+      await shoot(page, "n-tests-empty", combo);
+      await page.getByRole("tab", { name: "Results", exact: true }).click();
+      await expect(page.getByText(/^No results for this version\./)).toBeVisible();
+      await shoot(page, "n-results-empty", combo);
+      await page.getByRole("button", { name: "Go to Tests", exact: true }).click();
+      await expect(page.getByRole("tab", { name: "Tests", exact: true })).toHaveAttribute("aria-selected", "true");
+      await askGuide.click();
+      await expect(page.getByRole("textbox", { name: "Message Vibe Evals" })).toBeVisible();
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
 

@@ -59,6 +59,16 @@
 .vibe-results-filter select { min-width: 128px; }
 .vibe-test-review > summary, .vibe-test-review-history > summary { min-height: 44px; padding-block: var(--vibe-space-3); color: var(--vibe-muted); font-size: var(--vibe-font-callout); cursor: pointer; line-height: var(--vibe-leading-callout); }
 .vibe-test-review-history { margin-top: var(--vibe-space-5); border-top: 1px solid var(--vibe-border); padding-top: var(--vibe-space-2); }
+/* The scorecard keeps the main result actions; occasional ones share one disclosure. */
+.vibe-results-more { margin-top: var(--vibe-space-5); }
+.vibe-results-more > summary { width: fit-content; min-height: 44px; padding-block: var(--vibe-space-3); color: var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); cursor: pointer; }
+.vibe-results-more-body { display: grid; gap: var(--vibe-space-5); min-width: 0; margin-top: var(--vibe-space-3); }
+.vibe-results-contact { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--vibe-space-3); margin-top: var(--vibe-space-5); padding: var(--vibe-space-4); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); background: var(--vibe-surface); }
+.vibe-results-contact[hidden] { display: none; }
+.vibe-results-contact > p { margin: 0; font-weight: 500; }
+.vibe-results-more-body > .vibe-build-next-actions { margin-block: 0; padding-block: 0; border-top: 0; }
+.vibe-results-more-body > details { margin-top: 0; }
+.vibe-empty-state { display: grid; justify-items: start; gap: var(--vibe-space-3); }
 .vibe-project-content > label:has(> select[aria-label="Result history"]) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-bottom: var(--vibe-space-4); font-size: var(--vibe-font-callout); color: var(--vibe-muted); line-height: var(--vibe-leading-callout); }
 .vibe-project-main .vibe-instructions-text { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: var(--vibe-surface); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); padding: var(--vibe-space-4); }
 .vibe-utility, .vibe-utility-sheet { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--vibe-surface); color: var(--vibe-fg); }
@@ -141,6 +151,6 @@
 .vibe-sdk-results input[type="file"] { display: block; width: 100%; margin-block: var(--vibe-space-2) var(--vibe-space-3); }
 .vibe-sdk-results input[type="checkbox"] { margin-inline-end: var(--vibe-space-2); }
 .vibe-sdk-results pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 28rem; overflow: auto; padding: var(--vibe-space-3); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-sm); background: var(--vibe-surface); }
-.vibe-sdk-results summary { cursor: pointer; min-height: 44px; padding-block: var(--vibe-space-3); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight: 500; }
+.vibe-sdk-results summary { cursor: pointer; min-height: 44px; padding-block: var(--vibe-space-3); color: var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-sdk-results ul { display: grid; gap: var(--vibe-space-2); }
 .vibe-sdk-results :is(article[aria-label="Imported report detail"], details:has(> section[aria-label="Import SDK report"])) { border-block-start: 1px solid var(--vibe-border); padding-block-start: var(--vibe-space-4); }

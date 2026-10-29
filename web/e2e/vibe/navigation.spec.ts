@@ -88,7 +88,7 @@ async function serve(page: Page, many = false, prototypes = false) {
   });
   await page.goto("/vibe-evals?session=first");
   // The reused development server also waits for AuthKit's initial session check.
-  if (prototypes) await expect(page.getByRole("button", { name: "Try it yourself", exact: true })).toBeVisible({ timeout: 15_000 });
+  if (prototypes) await expect(page.getByRole("textbox", { name: "Message your agent", exact: true })).toBeVisible({ timeout: 15_000 });
   else await expect(page.getByRole("heading", { name: "Improve an agent you already have." })).toBeVisible({ timeout: 15_000 });
   return { first, second, sessions, posts, errors };
 }
@@ -120,7 +120,8 @@ test("a stored trial in B survives opening A, switching, editing and refreshing"
   await page.locator('[data-evaluation-id="second"]').click();
   await openGuide("second");
   await expect(composer).toHaveValue("B's separate guide draft");
-  await page.getByRole("button", { name: "Try it yourself", exact: true }).click();
+  // The Agent tab shows the trial inline; there is no separate "Try it yourself" step.
+  await expect(page.getByRole("button", { name: "Try it yourself", exact: true })).toHaveCount(0);
   const trial = page.getByRole("textbox", { name: "Message your agent", exact: true });
   await expect(trial).toHaveValue("B's unsent trial");
   await trial.fill("B's edited unsent trial");
@@ -155,6 +156,7 @@ test("sidebar creation and cancellation preserve the draft and never start a run
   expect(control.posts).toHaveLength(0);
   await page.getByRole("button", { name: "New evaluation", exact: true }).click();
   await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+  await expect.poll(() => control.posts.length).toBe(1);
   const created = control.posts[0].body.id as string;
   await expect(page.locator(`[data-evaluation-id="${created}"]`)).toHaveAttribute("aria-current", "page");
   await expect(composer).toHaveValue("Keep this unsent description.");
@@ -259,7 +261,7 @@ test("plain-language source choices explain test packs and let an empty choice c
   expect(control.posts).toHaveLength(1);
   await page.getByRole("button", { name: /Build an agent/ }).click();
   await expect(page.getByRole("heading", { name: "What would you like help with?" })).toBeVisible();
-  expect(control.posts.map(post => post.path)).toEqual([
+  await expect.poll(() => control.posts.map(post => post.path)).toEqual([
     "/v1/vibe/sessions",
     "/v1/vibe/sessions",
   ]);
@@ -284,6 +286,7 @@ test("dismissing the extra-run quote restores focus without submitting a paid ru
   control.sessions.set("build", buildEvaluation());
   await page.goto("/vibe-evals?session=build");
   await page.getByRole("tab", { name: "Results", exact: true }).click();
+  await page.locator(".vibe-results-more > summary").click();
   const actions = page.getByRole("region", { name: "Next actions for this version" });
   await expect(actions).toBeVisible();
   await actions.locator("summary").filter({ hasText: "More ways to check" }).click();
@@ -720,7 +723,7 @@ test("Settings descendants retain readable scoped appearance including warning, 
 
 test("library search rename archive and sidebar preference preserve full touch and keyboard titles without running",async({page})=>{
  const control=await serve(page,true);
- const search = page.getByRole("searchbox",{name:"Search loaded projects"});
+ const search = page.getByRole("searchbox",{name:"Search projects"});
  const assertSearchAffordance = async () => {
    const control = await search.evaluate(input => {
      const style=getComputedStyle(input), rgb=(value:string)=>value.match(/[\d.]+/g)!.slice(0,3).map(Number);
@@ -740,7 +743,7 @@ test("library search rename archive and sidebar preference preserve full touch a
  await page.getByRole("textbox",{name:"Project title",exact:true}).fill(title);
  await page.getByRole("textbox",{name:"Project title",exact:true}).press("Enter");
  await expect(page.getByRole("button",{name:"Rename project",exact:true})).toBeVisible();
- await page.getByRole("searchbox",{name:"Search loaded projects"}).fill("autumn project");
+ await page.getByRole("searchbox",{name:"Search projects"}).fill("autumn project");
  const row=page.locator('[data-evaluation-id="older-29"]');await expect(row).toContainText(title);
  await row.focus();expect(await row.locator('.vibe-project-full-title').evaluate(node=>node.scrollHeight<=node.clientHeight+1)).toBe(true);
  await page.getByRole("button",{name:"Archive project",exact:true}).click();await expect(row).toHaveCount(0);

@@ -73,6 +73,7 @@ test("Guide retains the full thread and draft while Results uses explicit eviden
   await page.getByRole("tab", {name:"Results",exact:true}).click();
   await expect(composer).toHaveValue("Keep my unsent question");
   expect(Math.abs(await guide.evaluate(el=>el.scrollTop)-top)).toBeLessThan(5);
+  await page.locator(".vibe-results-more > summary").click();
   await page.locator(".vibe-build-more > summary").click();
   await page.getByRole("button",{name:"Try a sample",exact:true}).click();
   await expect(page.getByRole("region",{name:"Saved sample demonstration"})).toContainText("Spam. This is an unsolicited request");

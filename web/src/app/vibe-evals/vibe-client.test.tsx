@@ -103,6 +103,8 @@ function button(name: string) {
 }
 async function click(name: string) {
   if (name === "Describe" && container.querySelector('[role="tab"][data-active][id="vibe-tab-build"]')) return;
+  // The project Agent tab shows the trial inline, so there is nothing to open.
+  if (name === "Try a message" && document.getElementById("vibe-trial-message")) return;
   await act(async () => button(name).click());
 }
 async function openChecks() {
@@ -1924,7 +1926,10 @@ it("cites exact chat messages and prepares a disputed rule without silently chan
   );
   expect(container.textContent).toContain("AI · message 4");
   expect(container.textContent).toContain("When did you buy it?");
-  await click("That’s not our rule");
+  // The finding's dispute control is the only one; the per-check copy was a duplicate.
+  expect(button("Change the expected behavior")).toBeTruthy();
+  expect([...container.querySelectorAll("button")].some(b => b.textContent === "That’s not our rule")).toBe(false);
+  await click("Change the expected behavior");
   expect(composer().value).toContain("The correct expectation is:");
   expect(posts()).toHaveLength(0);
   await type("That’s not our rule. Only ask for missing details.");
@@ -2283,6 +2288,13 @@ it("closes Settings before Credits opens, so only one dialog shows at a time", a
   await click("Close credits");
   expect(dialogNames()).toEqual([]);
   await click("Settings");
+  const settings = [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find(dialog => dialog.textContent?.includes("Settings and details"))!;
+  const exports = [...settings.querySelectorAll("button")].filter(b => b.textContent?.startsWith("Export"));
+  expect(exports.map(b => b.textContent)).toEqual(["Export agent and checks"]);
+  // Saving is an action, so it sits with export after the settings, not above them.
+  const save = [...settings.querySelectorAll("button")].find(b => b.textContent === "Save agent")!;
+  const importPack = [...settings.querySelectorAll("button")].find(b => b.textContent?.includes("Import a test pack"))!;
+  expect(save.compareDocumentPosition(importPack) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   await clickIn("Settings and details", "Save agent");
   expect(dialogNames()).toEqual(["Save agent and checks"]);
   expect(dialogs.most()).toBe(1);
