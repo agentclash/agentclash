@@ -63,18 +63,18 @@ return (
           return trigger?.isConnected && !trigger.matches(":disabled") ? trigger : document.getElementById("vibe-trial-message") || document.getElementById("vibe-message");
         }}><DialogTitle ref={quoteHeading} tabIndex={-1}>{runQuote?.kind === "message" ? "Try tougher situations" : runQuote?.baseline ? "Rerun the same examples" : "Try these examples"}</DialogTitle>
           <div className="vibe-dialog-body">
-          <DialogDescription>{runQuote?.kind === "message" ? `${runQuote.extra.additional_examples} new situations + ${(runQuote.quote.cases || 0) - (runQuote.extra.additional_examples || 0)} existing examples` : `${runQuote?.quote.cases} examples`} · up to {dollars(runQuote?.quote.max_cost_nano_usd || 0)}. Usually a few minutes; provider queues can take longer. {runQuote?.kind === "message" ? "Includes preparation, review, bounded repairs and running this batch. Existing cases and their earlier results stay unchanged." : runQuote?.baseline ? "The same examples and grading stay fixed. Earlier results are kept." : "This run uses the selected instructions or recorded replies."}</DialogDescription>
+          <DialogDescription>{runQuote?.kind === "message" ? `${runQuote.extra.additional_examples} new situations + ${(runQuote.quote.cases || 0) - (runQuote.extra.additional_examples || 0)} existing examples` : `${runQuote?.quote.cases} examples`} · up to {dollars(runQuote?.quote.max_cost_nano_usd || 0)}. Usually a few minutes; provider queues can take longer. {runQuote?.kind === "message" ? "Includes preparation, review, automatic fixes and running this batch. Existing cases and their earlier results stay unchanged." : runQuote?.baseline ? "The same examples and grading stay fixed. Earlier results are kept." : "This run uses the selected instructions or recorded replies."}</DialogDescription>
           {runQuote?.extra.case_keys && <p>Selected cases: {runQuote.extra.case_keys.join(", ")}. A new run will retain these results separately from the original.</p>}
           {runQuote?.kind !== "message" && <p>{runQuote?.extra.purpose === "regrade" ? "Regrade: the evaluator checks the original saved replies again." : artifacts.find(item=>item.id===runQuote?.extra.artifact_id)?.conversation_evaluation ? "Recorded source: the evaluator checks your exact saved replies. Your app and a target model are not called. The original app model and build identities are unknown." : "Prototype source: a target model generates new replies from the selected saved instructions."}</p>}
-          <p>Estimate: {runQuoteState}. Scope: {artifacts.find(item => item.id === runQuote?.selectionArtifact)?.title || "Selected project"} · {runQuote?.quote.calls} model calls maximum · {funding}.</p>
-          <p>{funding}. Running sends selected instructions, materials and cases to configured model providers and stores conversation/results.</p>
-          {!runQuoteCurrent && <p role="status">This estimate expired or the project changed. Refresh it before running.</p>}
+          <p>Scope: {artifacts.find(item => item.id === runQuote?.selectionArtifact)?.title || "Selected project"} · up to {runQuote?.quote.calls} model calls · {funding}.</p>
+          <p>Running sends selected instructions, materials and cases to configured model providers and stores the conversation and results.</p>
+          {runQuoteState === "preparation" ? <p role="status">Preparing estimate…</p> : runQuoteState === "failure" ? <p role="alert">Estimate failed: {runQuoteError}. Nothing ran.</p> : !runQuoteCurrent && <p role="status">This estimate expired or the project changed. Refresh it before running.</p>}
           <VibeButton variant="quiet" disabled={busy} onClick={() => { if (!runQuote) return; const q = runQuote; if (q.kind === "message") void requestPreparation(q.content || "", q.extra.additional_examples || 0, q.extra.artifact_id || ""); else void requestRun(q.baseline, q.extra.evidence_set_id, q.extra.purpose, q.extra.case_keys && q.extra.retry_source_result_ref && q.extra.artifact_id ? {case_keys:q.extra.case_keys,retry_source_result_ref:q.extra.retry_source_result_ref,artifact_id:q.extra.artifact_id} : undefined, q.recordedArtifactID); }}>Refresh estimate</VibeButton>
           <VibeButton variant="primary" disabled={busy || !(runQuote?.kind === "message" ? inferenceAvailable : runInferenceAvailable) || !runQuoteCurrent} onClick={() => { if (!runQuote || !isRunQuoteCurrent()) return; const q=runQuote; setRunQuote(undefined); void submit(q.kind,q.content || "",q.baseline,{...q.extra,...(q.extra.cycle_id ? {} : {run_quote_id:q.quote.id})}); }}>{runQuote?.kind === "message" ? "Prepare and run this batch" : `Run ${runQuote?.quote.cases} examples`}</VibeButton>
           <VibeButton variant="quiet" onClick={() => setRunQuote(undefined)}>Cancel</VibeButton>
         </div></DialogContent>
       </Dialog>
-      <VibeConnection.Provider value={{ token, contact: config?.contact }}><EvaluationNavigation actorScope={authUser?.id || "guest"} archiveMode={archiveMode} onArchiveMode={setArchiveMode} onMetadata={metadata} accountControl={authUser && (!navigation.session || newEvaluation) && <label className="text-sm">Workspace for new projects<select aria-label="Workspace for new projects" value={workspace} disabled={pending || saveAccess === "loading"} onChange={event => setWorkspace(event.target.value)} className="w-full min-w-0"><option value="">Choose a workspace</option>{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>{saveAccess === "loading" && <span>Loading workspaces…</span>}</label>} accountLabel={authLoading ? "Loading account…" : authUser ? authUser.email || "Signed in account" : "Guest · private to this browser"} listStatus={contextList.status} onRetryList={contextList.retry} enabled={twoDoor} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
+      <VibeConnection.Provider value={{ token, contact: config?.contact }}><EvaluationNavigation actorScope={authUser?.id || "guest"} archiveMode={archiveMode} onArchiveMode={setArchiveMode} onMetadata={metadata} accountControl={authUser && (!navigation.session || newEvaluation) && <label>Workspace for new projects<select aria-label="Workspace for new projects" value={workspace} disabled={pending || saveAccess === "loading"} onChange={event => setWorkspace(event.target.value)} className="w-full min-w-0"><option value="">Choose a workspace</option>{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select>{saveAccess === "loading" && <span>Loading workspaces…</span>}</label>} accountLabel={authLoading ? "Loading account…" : authUser ? authUser.email || "Signed in account" : "Guest · private to this browser"} listStatus={contextList.status} onRetryList={contextList.retry} enabled={twoDoor} contexts={contexts.filter(context => !discardedContextIDs.current.has(context.id))} session={session}
         choosing={newEvaluation} disabled={!config || pending || uncertain}
         onDeleted={id => {
           discardedContextIDs.current.add(id);
@@ -92,11 +92,11 @@ return (
         newEvaluation={newEvaluation}
         contextNavigationBlocked={!config || pending || uncertain}
         entryBlocked={!entryAvailable}
-        entryNotice={!entryAvailable && <div className="vibe-entry-availability">
+        entryNotice={!entryAvailable && (config || configError ? <div className="vibe-entry-availability">
           <p role={configError ? "alert" : "status"}>{configError ? "Couldn’t connect. Try again." : unavailableReason}</p>
           {configError ? <VibeButton variant="quiet" onClick={() => setLoadAttempt(attempt => attempt + 1)}>Retry connection</VibeButton>
-            : config && <VibeButton variant="quiet" onClick={() => setSettingsOpen(true)}>Review settings</VibeButton>}
-        </div>}
+            : <VibeButton variant="quiet" onClick={() => setSettingsOpen(true)}>Review settings</VibeButton>}
+        </div> : <p className="vibe-connection-status mt-3" role="status">Connecting…</p>)}
         onCancelNew={() => setNewEvaluation(false)}
         canChangeDoor={canChangeDoor}
         onChangeDoor={() => void changeDoor()}
@@ -228,11 +228,10 @@ return (
         savedChecks={savedChecks} savedListStatus={savedList.status} onRetrySaved={savedList.retry}
         notice={
           <>
-            <p className="text-sm vibe-muted">Vibe checks use selected instructions and materials with configured model providers. Application runs separately send selected tests to an approved connection and store canonical results.</p>
             {runQuoteState === "preparation" && <p role="status">Preparing estimate…</p>}
-            {runQuoteState === "failure" && <p role="alert">Estimate failed: {runQuoteError}. Use Run tests to request a new estimate; nothing ran.</p>}
+            {runQuoteState === "failure" && <p role="alert">Estimate failed: {runQuoteError}. Nothing ran. Run the tests again for a new estimate.</p>}
             {config && !inferenceAvailable && !choosingEntry && <p role="status">{unavailableReason}</p>}
-            {buildStart && <section aria-label="Build estimate"><p>Requesting an estimate sends your draft to AgentClash to calculate and store the estimate. It does not run model inference.</p><p role="status">Estimate: {buildQuoteState}{buildQuote && ` · up to ${dollars(buildQuote.max_cost_nano_usd)} · ${buildQuote.cases} cases · up to ${buildQuote.max_calls} model calls`} · {funding}.</p><p>Includes preparation, review, bounded repairs and the first batch.</p><VibeButton disabled={busy || !content.trim() || !inferenceAvailable} onClick={refreshBuildQuote}>Refresh build estimate</VibeButton></section>}
+            {buildStart && <section aria-label="Build estimate"><p>Requesting an estimate sends your draft to AgentClash to calculate and store the estimate. It does not run model inference.</p><p role="status">{buildQuoteState === "failure" ? "Estimate failed" : buildQuoteState === "preparation" || !buildQuote ? content.trim() ? "Preparing estimate…" : "Describe the task to see an estimate" : `Estimate: up to ${dollars(buildQuote.max_cost_nano_usd)} · ${buildQuote.cases} tests · up to ${buildQuote.max_calls} model calls${buildQuoteState === "expired" ? " · Out of date" : ""}`} · {funding}.</p><p>Includes preparation, review, automatic fixes and the first batch.</p><VibeButton disabled={busy || !content.trim() || !inferenceAvailable} onClick={refreshBuildQuote}>Refresh build estimate</VibeButton></section>}
             {!choosingEntry && !config && !configError && <p className="vibe-connection-status" role="status">Connecting…</p>}
             {!choosingEntry && configError && (
               <div className="mb-3 space-y-2 text-sm">
@@ -286,7 +285,7 @@ return (
                 This conversation could not be loaded.
               </p>
             )}
-            {session && selectedArtifactID && !artifact && <p role="alert" className="text-sm text-builder-warn">This test version is unavailable. Open History to choose saved work.</p>}
+            {session && selectedArtifactID && !artifact && <p role="alert" className="text-sm text-builder-warn">This test version is unavailable. Choose another version in Settings.</p>}
             {authUser && snapshots.loadError?.includes("Sign in again") && <Link href={`/auth/login?returnTo=${encodeURIComponent(`/vibe-evals?${new URLSearchParams({ ...(sessionID ? { session: sessionID } : {}), view: navigation.view })}`)}`}>Sign in again</Link>}
             {(error || snapshots.loadError) && (
               <p role="alert" className="mb-3 text-sm text-builder-warn">
@@ -422,7 +421,7 @@ return (
           <p>Future runs use this workspace’s AI credits. Saving does not deploy or run anything.</p>
           {advancedReceipt&&<a className="underline" href={advancedURL(advancedReceipt.workspace_id,advancedReceipt.draft_id,saveReturnPath,session?projectTitle(session):undefined)}>Open advanced editor and keep a return link</a>}
           {(error || snapshots.loadError) && (
-            <p role="alert" className="text-xs text-builder-warn">
+            <p role="alert" className="text-sm text-builder-warn">
               {error || snapshots.loadError}
             </p>
           )}
@@ -438,7 +437,7 @@ return (
                   disabled={busy}
                   value={workspace}
                   onChange={(e) => setWorkspace(e.target.value)}
-                  className="mt-2 w-full rounded-lg border bg-background p-3"
+                  className="mt-2 w-full rounded-[var(--vibe-radius-sm)] border bg-background p-3"
                 >
                   {workspaces.map((w) => (
                     <option key={w.id} value={w.id}>
@@ -464,7 +463,7 @@ return (
             <Link
               href={`/auth/login?returnTo=${encodeURIComponent(keepReturnURL(sessionID || "", saveArtifact?.id || "", workspace, saveBaseline,saveReturnPath,saveAdvanced))}`}
               onClick={rememberSave}
-              className="rounded-lg bg-primary px-4 py-3 text-center text-sm text-primary-foreground"
+              className="rounded-[var(--vibe-radius-sm)] bg-primary px-4 py-3 text-center text-sm text-primary-foreground"
             >
               Sign in to save your work
             </Link>
@@ -475,7 +474,7 @@ return (
           {!saveTarget && saveDraft && (
             <>
               {!saveComplete && (
-                <p className="text-xs text-builder-fg-muted">
+                <p className="text-sm text-builder-fg-muted">
                   {saveNotice}
                 </p>
               )}

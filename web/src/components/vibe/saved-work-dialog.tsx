@@ -29,7 +29,7 @@ export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, h
             savedChecks.map((c) => (
               <a
                 key={c.id}
-                className="rounded-lg border p-3 text-sm"
+                className="rounded-[var(--vibe-radius-md)] border p-3 text-sm"
                 href={savedWorkURL(c)}
               >
                 <span className="block break-words">{c.project_title||c.title}</span><span className="block text-xs">{c.title} · {c.artifact_id.slice(0,8)}</span>

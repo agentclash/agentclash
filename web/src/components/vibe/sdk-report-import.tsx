@@ -40,7 +40,7 @@ function SDKImportFields({ sessionId, workspaceId, artifactId, actorScope, acces
     }).catch(e => { if (live && current()) setError(e.message); });
     return () => { live = false; };
   }, [sessionId, artifactId, workspaceId, access.canRead, mappingAttempt, life]);
-  if (access.status === "signed_out") return <p>Sign in and save this project to a workspace to import an SDK report.</p>;
+  if (access.status === "signed_out") return <p className="text-sm">Sign in and save this project to a workspace to import an SDK report.</p>;
   if (!workspaceId) return <p>Save this project to a workspace before importing historical evidence.</p>;
   if (access.status !== "ready") return <p role="status">{access.status === "loading" ? "Checking workspace access…" : "Workspace access is unavailable. Retry the access check to import."}</p>;
   if (!access.canWrite) return <p>Your workspace role can read evidence. Importing requires write access.</p>;

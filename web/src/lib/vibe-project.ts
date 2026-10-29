@@ -1,9 +1,11 @@
 import type { Session } from "./vibe";
-export function projectTitle(session: Pick<Session, "id" | "title" | "document">) {
-  return (
-    session.title?.trim() ||
-    `${session.document.evaluation?.door === "build" ? "New prototype" : "New evaluation"} ${session.id.slice(0, 8)}`
-  );
+export function projectTitle(session: Pick<Session, "id" | "title" | "document" | "updated_at">) {
+  const title = session.title?.trim();
+  if (title) return title;
+  const fallback = session.document.evaluation?.door === "build" ? "Untitled prototype" : "Untitled project";
+  // A short, stable tag keeps untitled projects apart; a date would repeat and change on every edit.
+  const tag = session.id.replace(/[^0-9a-z]/gi, "").slice(0, 4).toUpperCase();
+  return tag ? `${fallback} · ${tag}` : fallback;
 }
 let sidebarCollapsed = false;
 export function sidebarPreference() {

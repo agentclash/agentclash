@@ -80,24 +80,25 @@ export function CreditsDialog({ workspace }: { workspace: string }) {
         Credits
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="vibe-workspace vibe-dialog">
           <DialogTitle>Workspace AI credits</DialogTitle>
           <DialogDescription>
             Operations reserve their maximum cost first. Actual provider spend
             is settled after execution. Uncertain calls stay reserved while
             accounting is resolved.
           </DialogDescription>
+          <div className="vibe-dialog-body space-y-4">
           {credits && (
             <>
-              <div className="my-3 grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-2xl font-semibold">
+                  <p className="text-2xl font-semibold tabular-nums">
                     {dollars(credits.available_nano_usd)}
                   </p>
                   <p className="text-xs text-muted-foreground">Available</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-semibold">
+                  <p className="text-2xl font-semibold tabular-nums">
                     {dollars(credits.held_nano_usd)}
                   </p>
                   <p className="text-xs text-muted-foreground">Reserved</p>
@@ -109,6 +110,7 @@ export function CreditsDialog({ workspace }: { workspace: string }) {
                   purchases are paused.
                 </p>
               )}
+              <div className="grid gap-2">
               {credits.products.map((p) => (
                 <Button
                   key={p.id}
@@ -120,7 +122,8 @@ export function CreditsDialog({ workspace }: { workspace: string }) {
                   {(p.price_minor / 100).toFixed(2)} before tax
                 </Button>
               ))}
-              <p className="text-xs text-muted-foreground">
+              </div>
+              <p className="text-sm text-muted-foreground">
                 Only an organization administrator can purchase top-ups. Payment
                 takes place on Dodo’s checkout page.
               </p>
@@ -131,6 +134,7 @@ export function CreditsDialog({ workspace }: { workspace: string }) {
               {error}
             </p>
           )}
+          </div>
         </DialogContent>
       </Dialog>
     </>

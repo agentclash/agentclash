@@ -31,18 +31,20 @@ export function DeleteProject({ session, onClose, onDeleted }: { session: Sessio
     finally { sending.current = false; setBusy(false); }
   }
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose(); }}>
-    <DialogContent className="vibe-workspace sm:max-w-lg">
+    <DialogContent className="vibe-workspace vibe-dialog">
       <DialogTitle className="[overflow-wrap:anywhere]">{receipt ? "Project removed" : `Delete “${projectTitle(session)}” and its data?`}</DialogTitle>
       <DialogDescription>{receipt
         ? "New access and runs are blocked. Stored files and remaining content are being removed."
         : "This removes this project’s files, conversation, versions and results, stops pending work and cancels unsent enquiries. It does not delete other projects."}</DialogDescription>
-      {!receipt && <p className="text-sm vibe-muted">Separate workspace saves and downloaded copies remain. An email already sent or in flight cannot be recalled. Minimal cost records remain for billing; provider retention also applies.</p>}
-      <p className="text-sm vibe-muted">Selected workspace reports and their public links remain independently. Revoke public links from the report. {session.workspace_id && <Link className="underline" href={`/workspaces/${session.workspace_id}/reports`}>Open workspace reports</Link>}</p>
-      {error && <p role="alert">{error}</p>}
-      <div className="flex flex-wrap gap-2">{receipt ? <VibeButton onClick={onClose}>Done</VibeButton> : <>
-        <VibeButton disabled={busy} onClick={() => void erase()}>{busy ? "Deleting…" : "Delete project permanently"}</VibeButton>
-        <VibeButton variant="quiet" disabled={busy} onClick={onClose}>Cancel</VibeButton>
-      </>}</div>
+      <div className="vibe-dialog-body space-y-4">
+        {!receipt && <p className="text-sm vibe-muted">Separate workspace saves and downloaded copies remain. An email already sent or in flight cannot be recalled. Minimal cost records remain for billing; provider retention also applies.</p>}
+        <p className="text-sm vibe-muted">Selected workspace reports and their public links remain independently. Revoke public links from the report. {session.workspace_id && <Link className="underline" href={`/workspaces/${session.workspace_id}/reports`}>Open workspace reports</Link>}</p>
+        {error && <p role="alert">{error}</p>}
+        <div className="flex flex-wrap gap-2">{receipt ? <VibeButton onClick={onClose}>Done</VibeButton> : <>
+          <VibeButton disabled={busy} onClick={() => void erase()}>{busy ? "Deleting…" : "Delete project permanently"}</VibeButton>
+          <VibeButton variant="quiet" disabled={busy} onClick={onClose}>Cancel</VibeButton>
+        </>}</div>
+      </div>
     </DialogContent>
   </Dialog>;
 }

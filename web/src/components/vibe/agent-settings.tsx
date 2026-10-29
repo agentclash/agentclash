@@ -34,6 +34,7 @@ type Props = {
 };
 
 export function AgentSettings({reimport,open, onOpenChange, config, session, artifact, artifacts, models, busy, workspace, testJourney, projectReturnPath,savedDraft, onModels, onVersion, onSave, onImport, onExportConversation}: Props) {
+  const savable = !!artifact && artifact.kind !== "test_plan" && artifact.kind !== "conversation_evaluation";
   return (
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="vibe-workspace vibe-dialog">
@@ -42,10 +43,9 @@ export function AgentSettings({reimport,open, onOpenChange, config, session, art
             Choose models, review versions, or export your work.
           </DialogDescription>
           <div className="vibe-dialog-body space-y-4">
+          {(workspace || savable) && <div className="flex flex-wrap gap-2">
           {workspace && <CreditsDialog workspace={workspace} />}
-          {artifact &&
-            artifact.kind !== "test_plan" &&
-            artifact.kind !== "conversation_evaluation" && (
+          {savable && (
               <VibeButton
                 disabled={busy}
                 onClick={() => {
@@ -56,6 +56,7 @@ export function AgentSettings({reimport,open, onOpenChange, config, session, art
                 {testJourney ? "Keep these tests" : "Save agent"}
               </VibeButton>
             )}
+          </div>}
           {savedDraft && (
             <Link
               className="text-sm underline"
@@ -91,7 +92,7 @@ export function AgentSettings({reimport,open, onOpenChange, config, session, art
                     onModels({ ...models, [role]: value })
                   }
                 />
-                <p className="mt-1 text-xs text-builder-fg-muted">
+                <p className="mt-1 text-sm text-builder-fg-muted">
                   {role === "assistant"
                     ? "Plans the check and helps explain results."
                     : role === "target"
@@ -109,7 +110,7 @@ export function AgentSettings({reimport,open, onOpenChange, config, session, art
               Use assistant model for all roles
             </Button>
           )}
-          <p className="text-xs text-builder-fg-muted">
+          <p className="text-sm text-builder-fg-muted">
             Model changes apply to new messages and runs. Use “Retry with another model” to switch a failed request.
           </p>
           {artifacts.length > 1 && (
@@ -119,7 +120,7 @@ export function AgentSettings({reimport,open, onOpenChange, config, session, art
                 aria-label="Agent version"
                 value={artifact?.id}
                 disabled={busy}
-                className="mt-2 w-full rounded-lg border bg-background p-2"
+                className="mt-2 w-full rounded-[var(--vibe-radius-sm)] border bg-background p-2"
                 onChange={(e) => {
                   onVersion(e.target.value);
                 }}
@@ -140,9 +141,8 @@ export function AgentSettings({reimport,open, onOpenChange, config, session, art
             <Paperclip size={16} /> Import a test pack
           </Button>
           {reimport}
-          {artifact &&
-            artifact.kind !== "test_plan" &&
-            artifact.kind !== "conversation_evaluation" && (
+          {(savable || session) && <div className="flex flex-wrap gap-2">
+          {savable && (
               <Button
                 variant="outline"
                 onClick={onExportConversation}
@@ -153,16 +153,17 @@ export function AgentSettings({reimport,open, onOpenChange, config, session, art
               </Button>
             )}
           {session && (
-            <Button variant="ghost" onClick={onExportConversation}>
+            <Button variant="outline" onClick={onExportConversation}>
               Export selected version / result
             </Button>
           )}
+          </div>}
           <details className="text-sm">
             <summary className="cursor-pointer">
               Available capabilities and documentation
             </summary>
             {config?.capabilities?.map((c) => (
-              <p key={c.id} className="mt-3 text-xs leading-5">
+              <p key={c.id} className="mt-3">
                 <strong>{c.label}{c.available === false ? " (unavailable)" : ""}:</strong> {c.description}{" "}
                 {c.url && (
                   <a

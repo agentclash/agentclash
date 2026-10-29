@@ -56,7 +56,7 @@ test("clear Build goes through real worker to three results, scoped export and i
  await openView(page,'Results');
  await expect(page.getByRole('article',{name:'Evaluation scorecard'})).toContainText('3 passed · 0 failed · 0 unresolved');
  await expect(page.getByLabel('Result history').locator('option:not([disabled])')).toHaveCount(1);
- await expect(page.locator('.vibe-project-header')).toContainText('Run 1 (COMPLETED)');
+ await expect(page.locator('.vibe-project-header')).toContainText('Run 1: Completed');
  await page.screenshot({path:info.outputPath('results-desktop.png'),fullPage:true});
  for(const viewport of [{width:360,height:800},{width:390,height:844}]) {
   await page.setViewportSize(viewport);
@@ -131,7 +131,7 @@ test("entry and context controls fit desktop and mobile",async({page},info)=>{
  }
  await page.getByRole('button',{name:/Improve an existing agent/}).click();
  for(const name of ['Import a test pack','Try my saved instructions']) await expect(page.getByRole('button',{name,exact:true})).toBeVisible();
- await expect(page.getByText('Live connections aren’t available',{exact:false})).toBeVisible();
+ await expect(page.getByText('Connect a live app from Details',{exact:false})).toBeVisible();
 });
 
 test("switching while a run completes keeps messages and draft attached to the selected evaluation",async({page})=>{
@@ -425,7 +425,7 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  expect(final.session.operations[0].source).toEqual(baseline.source);
  await page.getByRole('tab',{name:'Results',exact:true}).click();
  await page.getByRole('button',{name:'Reload saved evidence',exact:true}).click();
- await expect(page.locator('.vibe-project-header')).toContainText('Run 2 (COMPLETED)');
+ await expect(page.locator('.vibe-project-header')).toContainText('Run 2: Completed');
  await page.getByRole('button',{name:'Compare saved replies',exact:true}).click();
  await expect(page.getByRole('region',{name:'Before',exact:true})).toContainText('I can refund that.');
  await expect(page.getByRole('region',{name:'After',exact:true})).toContainText('I can refund that now.');

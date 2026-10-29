@@ -29,7 +29,7 @@ export function Message({
     >
       {message.role !== "user" && (
         <p className="mb-2 flex items-center gap-2 text-xs vibe-muted">
-          <ClashMark className="size-4" />
+          <ClashMark className="size-4" tone="current" />
           Vibe Evals
         </p>
       )}

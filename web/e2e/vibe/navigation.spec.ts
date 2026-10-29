@@ -360,7 +360,23 @@ test("same-artifact case Back and Forward restores the visible expectation witho
   expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
 });
 
-test("compact text roles stay consistent across viewport sizes and portaled dialogs", async ({ page }) => {
+test("project title and tabs share the left edge of the content", async ({ page }) => {
+  await serve(page, false, true);
+  await page.goto("/vibe-evals?session=first&workspace=a8000000-0000-4000-8000-000000000003");
+  const tabs = page.getByRole("tablist", { name: "Workspace views" });
+  const title = page.locator(".vibe-project-identity h1");
+  const content = page.locator(".vibe-project-content");
+  const edges = async () => ({ tabs: (await tabs.boundingBox())!.x, title: (await title.boundingBox())!.x, content: (await content.boundingBox())!.x });
+  for (const width of [1024, 1280, 1440, 2560]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(async () => { const e = await edges(); return Math.max(Math.abs(e.tabs - e.content), Math.abs(e.title - e.content)); }, { message: `${width}px` }).toBeLessThanOrEqual(1);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("button", { name: "Guide", exact: true }).click();
+  await expect.poll(async () => { const e = await edges(); return Math.abs(e.tabs - e.content); }, { message: "1440px with Guide open" }).toBeLessThanOrEqual(1);
+});
+
+test("text roles stay consistent across viewport sizes and portaled dialogs", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   const control = await serve(page, false, true);
   const check = control.first.operations.find(operation => operation.kind === "check")!;
@@ -377,19 +393,20 @@ test("compact text roles stay consistent across viewport sizes and portaled dial
   await page.getByText("Test results · 1", { exact: true }).click();
   await openCase(page);
   const reply = page.locator(".vibe-result-row .vibe-markdown").first();
-  await expect.soft(reply).toHaveCSS("font-size", "15px");
+  await expect.soft(reply).toHaveCSS("font-size", "16px");
   await expect.soft(reply).toHaveCSS("line-height", "24px");
   await page.getByRole("tab", { name: "Agent", exact: true }).click();
   for (const width of [390, 1440, 2560]) {
     await page.setViewportSize({ width, height: 900 });
     await expect(page.locator(".vibe-project-identity h1")).toHaveCSS("font-size", "20px");
-    await expect(page.getByRole("heading", { name: "Agent instructions", exact: true })).toHaveCSS("font-size", "18px");
-    await expect(page.locator(".vibe-instructions-text")).toHaveCSS("font-size", "15px");
+    await expect(page.getByRole("heading", { name: "Agent instructions", exact: true })).toHaveCSS("font-size", "16px");
+    await expect(page.getByRole("heading", { name: "Agent instructions", exact: true })).toHaveCSS("line-height", "22px");
+    await expect(page.locator(".vibe-instructions-text")).toHaveCSS("font-size", "16px");
     await expect(page.getByRole("textbox", { name: "Message your agent", exact: true })).toHaveCSS("font-size", "16px");
     await expect(page.getByRole("tab", { name: "Agent", exact: true })).toHaveCSS("font-size", "14px");
     if (width < 1024) await page.getByRole("button", { name: "Open agents", exact: true }).click();
     const navigation = width < 1024 ? page.getByRole("dialog", { name: "Your agents", exact: true }) : page.getByRole("complementary", { name: "Agent sidebar", exact: true });
-    await expect(navigation.locator('[data-evaluation-id="first"] .vibe-project-full-title')).toHaveCSS("font-size", "13px");
+    await expect(navigation.locator('[data-evaluation-id="first"] .vibe-project-full-title')).toHaveCSS("font-size", "14px");
     await expect(navigation.locator('[data-evaluation-id="first"] small')).toHaveCSS("font-size", "12px");
     const actions = navigation.locator(".vibe-project-actions");
     if (!(await actions.evaluate(element => (element as HTMLDetailsElement).open))) await actions.locator("summary").click();
@@ -400,6 +417,9 @@ test("compact text roles stay consistent across viewport sizes and portaled dial
     await page.getByRole("button", { name: "Details", exact: true }).click();
     const details = width < 1280 ? page.getByRole("dialog", { name: "Details", exact: true }) : page.getByRole("complementary", { name: "Details utility", exact: true });
     await expect(details.getByLabel("Appearance", { exact: true })).toHaveCSS("font-size", "16px");
+    const subheading = details.locator("h3").first();
+    await expect(subheading).toHaveCSS("font-size", "14px");
+    await expect(subheading).toHaveCSS("font-weight", "600");
     await details.getByRole("button", { name: "Settings", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Settings and details", exact: true });
     await expect.soft(dialog).toHaveCSS("font-family", /Geist/);
@@ -443,9 +463,9 @@ test("Guide keeps its composer in view through short-window resizing without los
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   }
-  await page.getByText("Data use", { exact: true }).click();
-  await expect(page.getByText(/Guest uploads expire after seven days/)).toBeVisible();
-  await page.getByText("Data use", { exact: true }).click();
+  const composer = page.locator(".vibe-guide-composer");
+  await expect(composer.getByText("Guest files expire in 7 days. Leave out secrets and customer IDs.", { exact: false })).toBeVisible();
+  await expect(composer.getByRole("link", { name: "Data use and retention (new tab)", exact: true })).toHaveAttribute("href", "/docs/vibe-evals/data-use");
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
 });

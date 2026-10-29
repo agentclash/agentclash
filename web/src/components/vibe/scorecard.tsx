@@ -144,10 +144,10 @@ export function VibeScorecard({
   const evidenceVersion = `${operation.id}:${operation.state}:${eventCursor || 0}`;
 
   return (
-    <article aria-label="Evaluation scorecard" className="space-y-5">
+    <article aria-label="Evaluation scorecard" className="space-y-6">
       <div>
         <h2
-          className="vibe-results-outcome font-semibold leading-tight tracking-tight"
+          className="vibe-results-outcome"
           aria-live="polite"
         >
           {testJourney && done && !stopped && score.total > 0 && !regraded
@@ -178,7 +178,7 @@ export function VibeScorecard({
             </>
           )}
         </p>
-        <p className="mt-2 text-xs vibe-muted">
+        <p className="mt-2 text-sm vibe-muted">
           {regraded ? "Saved replies only. Your agent was not called again." : provided
             ? "Based on the chats you provided. Your live app was not called."
             : "Text replies from your saved instructions. Your live app was not called."}
@@ -329,7 +329,7 @@ export function VibeScorecard({
             )}
           </div>
           {score.failed > 0 && (
-            <p className="text-xs vibe-muted">
+            <p className="text-sm vibe-muted">
               Fix the behavior in your app, then bring back its new replies to
               the same messages.
             </p>
@@ -381,9 +381,9 @@ export function VibeScorecard({
           </div>
         ))}
 
-      <details className="text-xs vibe-muted">
+      <details className="text-sm vibe-muted">
         <summary className="cursor-pointer py-2">What was checked</summary>
-        <div className="mt-2 space-y-3 leading-6">
+        <div className="mt-2 space-y-3">
           <p>
             {score.passed} passed · {score.failed}{" "}
             {score.failed === 1 ? "needs" : "need"} attention · {unresolvedCount}{" "}
@@ -512,7 +512,7 @@ function CopyOriginalInputs({
         <Copy aria-hidden="true" /> Copy original inputs
       </VibeButton>
       {message && (
-        <p role="status" className="w-full text-xs vibe-muted">
+        <p role="status" className="w-full text-sm vibe-muted">
           {message}
         </p>
       )}

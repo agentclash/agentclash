@@ -49,14 +49,14 @@ export function ReimportReview({ actor, session, artifact, token, disabled, onAp
   }
   return <section aria-label="Review reimport" className="space-y-3">
     <h3>Review an updated export</h3>
-    <p className="text-sm vibe-muted">Compare with version {artifact.id.slice(0, 8)}. Creating a new version keeps earlier tests and grades. Publish it separately, then explicitly choose a completed canonical run as your CI baseline.</p>
-    <input ref={input} type="file" accept=".json" aria-label="Updated evaluation export" disabled={disabled || active?.busy} onChange={event => void review(event.target.files?.[0])} className="w-full min-w-0 text-sm" />
+    <p className="text-sm vibe-muted">Compare with version {artifact.id.slice(0, 8)}. Creating a new version keeps earlier tests and grades. Publish it separately, then choose a completed run as your CI baseline.</p>
+    <input ref={input} type="file" accept=".json" aria-label="Updated evaluation export" disabled={disabled || active?.busy} onChange={event => void review(event.target.files?.[0])} className="w-full min-w-0" />
     {active?.busy && <p role="status">Preparing this exact version…</p>}
     {active?.error && <p role="alert">{active.error}</p>}
     {active?.review && <>
       {active.review.partial && <p>Partial evidence: missing items stay missing. Imported scores are historical claims, not new execution or a complete baseline.</p>}
       <p>{active.review.changes.length ? `${active.review.changes.length} semantic changes` : "No semantic changes to tests or instructions."}</p>
-      <ul className="space-y-3">{active.review.changes.map(change => <li key={change.path} className="min-w-0 rounded border border-current/20 p-2 text-sm [overflow-wrap:anywhere]">
+      <ul className="space-y-3">{active.review.changes.map(change => <li key={change.path} className="min-w-0 rounded-[var(--vibe-radius-sm)] border border-current/20 p-2 text-sm [overflow-wrap:anywhere]">
         <p><strong>{change.kind}</strong> · {change.path}</p>
         <p>Before</p><pre className="whitespace-pre-wrap break-words">{JSON.stringify(change.before, null, 2)}</pre>
         <p>After</p><pre className="whitespace-pre-wrap break-words">{JSON.stringify(change.after, null, 2)}</pre>

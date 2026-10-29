@@ -21,13 +21,13 @@ export function ConversationGuidance({ cards, scope, message }: { cards?: unknow
   if (!example) return null;
   return <div className="mt-4 space-y-2" data-guidance-id={example.id}>
     {!hidden && <ExampleComparison input={example.input} expected={example.expected} />}
-    <VibeButton variant="quiet" className="!min-h-9 !px-0 text-xs" aria-expanded={!hidden} onClick={() => setHidden(!hidden)}>{hidden ? "Show example" : "Hide example"}</VibeButton>
+    <VibeButton variant="quiet" className="!px-0" aria-expanded={!hidden} onClick={() => setHidden(!hidden)}>{hidden ? "Show example" : "Hide example"}</VibeButton>
   </div>;
 }
 
 export function TestMeaning() {
   return <details className="vibe-test-meaning text-sm vibe-muted">
     <summary>What’s a test?</summary>
-    <p className="mt-2 leading-6">A test is an example task and what a good result should look like. We compare your agent’s reply with that expectation.</p>
+    <p className="mt-2">A test is an example task and what a good result should look like. We compare your agent’s reply with that expectation.</p>
   </details>;
 }

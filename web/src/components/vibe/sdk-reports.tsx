@@ -46,7 +46,7 @@ export function SDKReports(props: SDKEvidenceContext & {
     {active?.error && <p role="alert">{active.error}</p>}
     <details aria-label="SDK report history" className="space-y-3">
       <summary>SDK report history</summary>
-      {unavailable ? <p>{unavailable}</p> : <>
+      {unavailable ? <p className="text-sm">{unavailable}</p> : <>
         <p>Imported, unverified application execution. Source grades remain separate from hosted checks and reviews.</p>
         {!active?.reports && !active?.error && <p role="status">Loading SDK reports…</p>}
         <VibeButton onClick={() => setAttempt(n => n + 1)}>Reload SDK reports</VibeButton>

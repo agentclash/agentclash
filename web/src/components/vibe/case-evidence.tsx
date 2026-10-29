@@ -135,7 +135,7 @@ export function CaseEvidence({
             aria-hidden="true"
           />
         )}
-        <span className="min-w-0 flex-1">
+        <span className="vibe-row-title min-w-0 flex-1">
           {summary.title ||
             (concise && evidence?.input != null
               ? caseInput(evidence.input)
@@ -158,10 +158,10 @@ export function CaseEvidence({
           aria-hidden="true"
         />
       </summary>
-      <div className="space-y-4 border-t border-[var(--vibe-border)] p-5">
+      <div className="space-y-4 border-t border-[var(--vibe-border)] p-4">
         {onAsk && <VibeButton variant="quiet" onClick={onAsk}>Ask Guide about this case</VibeButton>}
         {loading && (
-          <p role="status" className="text-xs vibe-muted">
+          <p role="status" className="text-sm vibe-muted">
             Loading saved evidence…
           </p>
         )}
@@ -266,7 +266,7 @@ function PrimaryReply({
   const boundary = text.lastIndexOf(" ", 280);
   const quote = excerpt ? text.slice(0, boundary > 200 ? boundary : 280) : text;
   return (
-    <blockquote className="border-l-2 border-[var(--vibe-border)] pl-4 text-sm">
+    <blockquote className="border-l-2 border-[var(--vibe-border)] pl-4">
       <p className="mb-1 text-xs vibe-muted">
         {origin === "prompt"
           ? "Generated reply"
@@ -330,11 +330,11 @@ function EvidenceDetails({
         )}
         {onRegrade && <VibeButton variant="quiet" disabled={busy} onClick={onRegrade}>Recheck saved grades</VibeButton>}
       </div>
-      {onRegrade && <p className="text-xs vibe-muted">Rechecking uses the same replies and rules. Your earlier results stay saved.</p>}
+      {onRegrade && <p className="text-sm vibe-muted">Rechecking uses the same replies and rules. Your earlier results stay saved.</p>}
       <div
         id={id}
         hidden={!expanded}
-        className="space-y-6 border-t border-[var(--vibe-border)] pt-5"
+        className="space-y-6 border-t border-[var(--vibe-border)] pt-4"
       >
         {(evidence.expected || evidence.expectations?.length) && (
           <div className="text-sm">
@@ -361,7 +361,7 @@ function EvidenceDetails({
                   <p className="mb-1 text-xs vibe-muted">
                     {evidenceRole(message.role)} · message {index + 1}
                   </p>
-                  <p className="vibe-transcript text-sm">{message.content}</p>
+                  <p className="vibe-transcript">{message.content}</p>
                 </li>
               ))}
             </ol>
@@ -388,13 +388,13 @@ function EvidenceDetails({
             )}
           </div>
         )}
-        <div className="space-y-5">
+        <div className="space-y-4">
           <p className="text-xs vibe-muted">
             All checks · {evidence.checks.length}
           </p>
           {evidence.checks.map((check) => (
             <div key={check.key}>
-              <p className="text-xs font-medium">
+              <p className="text-sm font-semibold">
                 {check.key === "behavior"
                   ? "Expected behavior"
                   : check.key === "has_answer"
@@ -486,7 +486,7 @@ function MessageQuote({
   index: number;
 }) {
   return (
-    <blockquote className="border-l-2 border-[var(--vibe-border)] pl-4 text-sm">
+    <blockquote className="border-l-2 border-[var(--vibe-border)] pl-4">
       <p className="mb-1 text-xs vibe-muted">
         {evidenceRole(message.role)} · message {index + 1}
       </p>
@@ -559,7 +559,7 @@ function FixPromptCopy({
         <Copy aria-hidden="true" />
         {copied ? "Copy fix prompt again" : "Copy fix prompt"}
       </VibeButton>
-      <p className="text-xs vibe-muted" role={copied ? "status" : undefined}>
+      <p className="text-sm vibe-muted" role={copied ? "status" : undefined}>
         {copied
           ? "Copied. Paste it into your coding tool, then bring back the new answer."
           : "Paste this into your coding tool."}

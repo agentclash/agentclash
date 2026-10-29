@@ -46,7 +46,7 @@ export function TaskOutput({ text, sessionID, materials = [], brief = false }: {
         {hasJSON && <VibeButton variant="quiet" onClick={() => download("json")}>JSON (.json)</VibeButton>}
       </div></details>
     </div>
-    <span role="status" className="text-xs vibe-muted">{notice}</span>
+    <span role="status" className="text-sm vibe-muted">{notice}</span>
     {sessionID && materials.length > 0 && <TaskSources sessionID={sessionID} bindings={materials} />}
   </section>;
 }
