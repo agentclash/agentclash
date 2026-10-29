@@ -667,9 +667,12 @@ it("opens Guide by default on wide screens, keeps a closed Guide closed after a 
   expect(strip().textContent).toContain("Review the cost before continuing.");
   expect([...container.querySelectorAll("button")].filter(item => item.textContent === "Approve run")).toHaveLength(1);
   expect([...container.querySelectorAll("button")].filter(item => item.textContent === "Stop")).toHaveLength(1);
+  // Nothing has run before approval, so the note about Stop and costs waits for the run.
+  expect(strip().querySelector(".vibe-progress-note")).toBeNull();
   await render({ session: { ...props.session!, operations: [{ ...active, state: "RUNNING", progress: { phase: "grading", completed_cases: 1, total_cases: 3 } }] } });
   expect(button("Guide").textContent).not.toContain("Running");
-  expect(strip().querySelector('[role="status"]')?.textContent).toBe("Running 2 of 3 tests");
+  expect(strip().querySelector('[role="status"]')?.textContent).toBe("1 of 3 tests finished");
+  expect(strip().querySelector(".vibe-progress-note")?.textContent).toContain("Stop keeps finished results.");
   const bar = strip().querySelector('[role="progressbar"]')!;
   expect([bar.getAttribute("aria-valuenow"), bar.getAttribute("aria-valuemax"), bar.getAttribute("aria-valuetext")]).toEqual(["1", "3", "1 of 3 tests done"]);
   expect([...container.querySelectorAll('[role="status"]')].filter(node => /Running|tests/.test(node.textContent || ""))).toHaveLength(1);
@@ -691,6 +694,25 @@ it("opens Guide by default on wide screens, keeps a closed Guide closed after a 
   expect(container.querySelector('[aria-label="Guide utility"]')).not.toBeNull();
   expect(props.onContent).not.toHaveBeenCalled();
   expect(props.onSend).not.toHaveBeenCalled();
+});
+
+it("marks the reply read when the Guide closes, and only the Guide button changes the saved choice", async () => {
+  const current = session([{ id: "request", role: "user", content: "Help with returns" }, { id: "reply", role: "assistant", content: "Here is a draft agent." }]);
+  current.document.evaluation = { id: current.id, chat_id: current.id, door: "build" };
+  const artifact = { id: "draft", kind: "agent_draft" as const, title: "Returns", agent_prompt: "Use supplied policy", accepted: true, source_message_id: "request", blueprint: {} };
+  current.document.artifacts = [artifact];
+  await render({ twoDoor: true, session: current, artifact, view: "tests" });
+  await act(async () => button("Close Guide").click());
+  // The user saw this reply in the open Guide, so neither the badge nor the status announces it.
+  expect(button("Guide").textContent).not.toContain("New response");
+  expect(container.ownerDocument.body.textContent).not.toContain("New response. Open Guide");
+  expect(localStorage.getItem("vibe-guide:v1")).toBe("closed");
+  await act(async () => button("Ask Guide for tests").click());
+  expect(container.querySelector('[aria-label="Guide utility"]')).not.toBeNull();
+  expect(localStorage.getItem("vibe-guide:v1")).toBe("closed");
+  await act(async () => button("Close Guide").click());
+  await act(async () => button("Guide").click());
+  expect(localStorage.getItem("vibe-guide:v1")).toBe("open");
 });
 
 it("keeps a message without a test total indeterminate and hides Guide while the project is a brief", async () => {

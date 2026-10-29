@@ -86,6 +86,8 @@
 .vibe-progress-bar[data-paused] > span { animation: none; }
 .vibe-workspace .vibe-button .vibe-stop-icon { width: 12px; height: 12px; }
 .vibe-utility-sheet .vibe-progress-strip[data-active] { position: static; flex: none; margin: var(--vibe-space-3) var(--vibe-space-4) 0; }
+/* Focus that scrolls into view stops below the sticky strip, so the strip never hides it (WCAG 2.4.11). */
+@media (min-width: 601px) { .vibe-project-main:has(> .vibe-project-content > .vibe-progress-strip[data-active]) { scroll-padding-top: 9rem; } }
 @media (forced-colors: active) { .vibe-progress-bar { border: 1px solid CanvasText; } .vibe-progress-bar > span { forced-color-adjust: none; background: Highlight; } }
 .vibe-project-content > label:has(> select[aria-label="Result history"]) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-bottom: var(--vibe-space-4); font-size: var(--vibe-font-callout); color: var(--vibe-muted); line-height: var(--vibe-leading-callout); }
 .vibe-project-main .vibe-instructions-text { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: var(--vibe-surface); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); padding: var(--vibe-space-4); }
@@ -143,7 +145,8 @@
   .vibe-project-tools .vibe-guide-attention { position: absolute; top: 2px; right: 2px; width: 8px; height: 8px; min-height: 0; padding: 0; overflow: hidden; border-radius: 50%; font-size: 0; background: var(--vibe-fg); }
   .vibe-utility-sheet[data-slot="sheet-content"] { width: 100%; border: 0; }
   /* The status takes the full row; Stop sits beside the note that explains it. */
-  .vibe-progress-strip[data-active] { grid-template-areas: "copy copy" "bar bar" "note actions"; }
+  /* A sticky strip would cover a third of a short screen, so it scrolls with the content here. */
+  .vibe-progress-strip[data-active] { position: static; grid-template-areas: "copy copy" "bar bar" "note actions"; }
 }
 @media (prefers-reduced-motion: reduce) {
   .vibe-workspace, .vibe-workspace *, .vibe-workspace *::before, .vibe-workspace *::after { animation-duration: 0s !important; transition-duration: 0s !important; scroll-behavior: auto !important; }

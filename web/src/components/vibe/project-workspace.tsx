@@ -77,6 +77,7 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
   const guideButton = useRef<HTMLButtonElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
   const guideBody = useRef<HTMLDivElement>(null);
+  const refocusGuide = useRef(false);
   const [read, setRead] = useState<string>();
   const view = p.view === "checks" ? "results" : p.view === "tests" ? "tests" : "agent";
   const artifact = p.artifact;
@@ -127,18 +128,27 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
       // A desktop utility must not become a new modal above an active dialog.
       // Its draft stays in the controller and can be reopened explicitly.
       if (!media.matches && document.querySelector(".vibe-dialog[data-open]")) setUtility(null);
+      // The side panel unmounts below 1280px. Focus inside it must not fall to the page.
+      if (!media.matches && document.querySelector(".vibe-utility")?.contains(document.activeElement)) refocusGuide.current = true;
       setWide(media.matches);
     };
     media.addEventListener("change", update); return () => media.removeEventListener("change", update);
   }, []);
-  const open = (next: "guide" | "details") => {
+  useEffect(() => {
+    if (!refocusGuide.current) return; refocusGuide.current = false;
+    // A Details sheet that opens in its place takes focus itself.
+    if (!document.activeElement || document.activeElement === document.body) guideButton.current?.focus();
+  }, [wide]);
+  // Only the Guide button changes the saved choice; other actions open the Guide for now.
+  const open = (next: "guide" | "details", remember = false) => {
     const trigger = document.activeElement as HTMLElement; utilityTrigger.current = trigger;
-    if (next === "guide" && wide && guideClosed) { setGuideClosed(false); setGuidePreference(false); }
+    if (remember && wide && guideClosed) { setGuideClosed(false); setGuidePreference(false); }
     setUtility(next); if (wide) requestAnimationFrame(() => { if (document.activeElement === trigger) utilityHeading.current?.focus(); });
   };
   const close = () => {
     // The Guide that opened by default has no opener; its own button brings it back.
     const target = shown === "guide" && !utility ? guideButton : utilityTrigger;
+    if (shown === "guide") setRead(latestResponse?.id);
     if (wide && shown === "guide") { setGuideClosed(true); setGuidePreference(true); }
     setUtility(null); if (wide) requestAnimationFrame(() => target.current?.focus());
   };
@@ -193,7 +203,7 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
   return <>
     <header className="vibe-project-header" data-utility-open={!!shown && wide} data-initial={view === "agent" && initialBrief || undefined}><div className="vibe-project-identity">{p.navigationToggle}<div><h1>{identity.title}</h1><p>{versionLabel}{result ? ` · Run ${runs.indexOf(result) + 1}: ${runStateLabel(result.state)}` : p.selectedResult ? ` · ${sourceLabel}` : artifact ? " · No results for this version" : " · No saved runs"}</p></div></div>
       <Tabs.Root className="vibe-project-tabs" value={view} onValueChange={next => p.onNavigate(next === "results" ? "checks" : next === "tests" ? "tests" : "build")}><Tabs.List aria-label="Workspace views" className="vibe-nav">{["agent", "tests", "results"].map(value => <Tabs.Tab className="vibe-button vibe-button-quiet" id={`vibe-tab-${value}`} aria-controls="vibe-workspace-panel" key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</Tabs.Tab>)}</Tabs.List></Tabs.Root>
-      <div className="vibe-project-tools">{!initialBrief && <VibeButton ref={guideButton} aria-label="Guide" aria-describedby={shown !== "guide" && guideAttention ? "vibe-guide-attention" : undefined} aria-pressed={shown === "guide"} onClick={() => open("guide")}><MessageSquare className="vibe-project-tool-icon" aria-hidden="true" /><span className="vibe-project-tool-label">Guide</span>{shown !== "guide" && guideAttention && <small id="vibe-guide-attention" className="vibe-guide-attention">{guideAttention}</small>}</VibeButton>}<VibeButton aria-label="Details" aria-pressed={shown === "details"} onClick={() => open("details")}><Info className="vibe-project-tool-icon" aria-hidden="true" /><span className="vibe-project-tool-label">Details</span></VibeButton></div>
+      <div className="vibe-project-tools">{!initialBrief && <VibeButton ref={guideButton} aria-label="Guide" aria-describedby={shown !== "guide" && guideAttention ? "vibe-guide-attention" : undefined} aria-pressed={shown === "guide"} onClick={() => open("guide", true)}><MessageSquare className="vibe-project-tool-icon" aria-hidden="true" /><span className="vibe-project-tool-label">Guide</span>{shown !== "guide" && guideAttention && <small id="vibe-guide-attention" className="vibe-guide-attention">{guideAttention}</small>}</VibeButton>}<VibeButton aria-label="Details" aria-pressed={shown === "details"} onClick={() => open("details")}><Info className="vibe-project-tool-icon" aria-hidden="true" /><span className="vibe-project-tool-label">Details</span></VibeButton></div>
     </header>
     <div className="vibe-project-body" data-utility-open={!!shown && wide}>
       <div className="vibe-project-main" data-initial={view === "agent" && initialBrief || undefined} id="vibe-workspace-panel" role="tabpanel" aria-labelledby={`vibe-tab-${view}`}>

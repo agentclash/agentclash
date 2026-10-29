@@ -485,8 +485,11 @@ test("Guide opens by default from 1280px once a version exists, stays closed bel
   await expect(panel).toBeVisible();
   await expect(guide).toHaveAttribute("aria-pressed", "true");
   // Below 1280px the Guide is a modal sheet, so it never opens by itself.
+  // Focus in the side panel moves to the Guide button instead of falling to the page.
+  await panel.getByRole("textbox", { name: "Message Vibe Evals" }).focus();
   await page.setViewportSize({ width: 1279, height: 900 });
   await expect(panel).toHaveCount(0);
+  await expect(guide).toBeFocused();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(guide).toHaveAttribute("aria-pressed", "false");
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -508,6 +511,37 @@ test("Guide opens by default from 1280px once a version exists, stays closed bel
   await page.reload();
   await expect(panel).toBeVisible({ timeout: 15_000 });
   expect(control.posts).toHaveLength(0);
+  expect(control.errors).toEqual([]);
+});
+
+test("the progress strip never covers the control that has keyboard focus", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const control = await serve(page, false, true);
+  control.sessions.get("first")!.operations.push({ id: "live", kind: "check", state: "RUNNING", billing: "RESERVED", models: defaultModels, source: { kind: "prompt", artifact_id: "prototype", label: "Customer email sorter" },
+    max_cost_nano_usd: 1, actual_cost_nano_usd: 0, results: [], progress: { phase: "grading", completed_cases: 1, total_cases: 3 } });
+  const main = page.locator(".vibe-project-main");
+  for (const width of [1440, 768, 390]) {
+    await page.setViewportSize({ width, height: 600 });
+    await page.reload();
+    await expect(main.locator(".vibe-progress-strip[data-active]").getByRole("status")).toHaveText("1 of 3 tests finished", { timeout: 15_000 });
+    // Start at the end of the content and move focus backwards, as a keyboard user does.
+    await main.evaluate(el => el.scrollTo(0, el.scrollHeight));
+    await main.locator("button:visible, textarea:visible, summary:visible, select:visible, a[href]:visible").last().focus();
+    let checked = 0;
+    for (let step = 0; step < 15; step++) {
+      await page.keyboard.press("Shift+Tab");
+      const boxes = await page.evaluate(() => {
+        const active = document.activeElement as HTMLElement | null, strip = document.querySelector(".vibe-project-main .vibe-progress-strip")!;
+        if (!active?.closest(".vibe-project-main") || strip.contains(active)) return null;
+        const focus = active.getBoundingClientRect(), cover = strip.getBoundingClientRect();
+        return { name: active.textContent?.slice(0, 40), top: focus.top, bottom: focus.bottom, stripTop: cover.top, stripBottom: cover.bottom };
+      });
+      if (!boxes) continue;
+      checked++;
+      expect(boxes.top >= boxes.stripBottom || boxes.bottom <= boxes.stripTop, `${width}px: ${JSON.stringify(boxes)}`).toBe(true);
+    }
+    expect(checked, `${width}px focus steps checked`).toBeGreaterThanOrEqual(2);
+  }
   expect(control.errors).toEqual([]);
 });
 

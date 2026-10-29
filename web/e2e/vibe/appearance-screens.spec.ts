@@ -356,7 +356,7 @@ for (const combo of combos) {
       await openSession(page, "returns-running", "checks");
       await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 20_000 });
       const strip = page.locator(".vibe-progress-strip[data-active]");
-      await expect(strip.getByRole("status")).toHaveText("Running 2 of 3 tests");
+      await expect(strip.getByRole("status")).toHaveText("1 of 3 tests finished");
       await expect(strip.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "1");
       await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(1);
       await shoot(page, "o-run-progress", combo, { tall: true });
@@ -364,8 +364,9 @@ for (const combo of combos) {
         // The modal Guide sheet covers the main pane, so the one strip moves into it.
         await page.getByRole("button", { name: "Guide", exact: true }).click();
         const sheet = page.getByRole("dialog", { name: "Guide", exact: true });
-        await expect(sheet.getByRole("status").filter({ hasText: "Running 2 of 3 tests" })).toBeVisible();
-        await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(1);
+        await expect(sheet.getByRole("status").filter({ hasText: "1 of 3 tests finished" })).toBeVisible();
+        // The modal sheet hides the page from the accessibility tree, so count Stop in the DOM.
+        await expect(page.locator(".vibe-progress-strip button", { hasText: "Stop" })).toHaveCount(1);
         await shoot(page, "o-run-progress-guide", combo);
       }
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);

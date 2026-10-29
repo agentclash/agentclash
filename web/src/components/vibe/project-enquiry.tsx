@@ -43,13 +43,14 @@ export function ProjectEnquiry({ session, artifact, operation, primary = false, 
     source.current = { artifact_id: artifact.id, operation_id: operation?.id, revision: session.revision };
     edit({ ...draft, summary: projectSummary(session, artifact, operation) });
   }
-  function submitError(message: string) {
-    setError(message);
-    requestAnimationFrame(() => {
-      errorRef.current?.focus();
-      errorRef.current?.scrollIntoView?.({ block: "nearest" });
-    });
-  }
+  // Each submit error moves focus to the alert once it renders, even when the message repeats.
+  const [errorShown, setErrorShown] = useState(0);
+  function submitError(message: string) { setError(message); setErrorShown(count => count + 1); }
+  useEffect(() => {
+    if (!errorShown) return;
+    errorRef.current?.focus();
+    errorRef.current?.scrollIntoView?.({ block: "nearest" });
+  }, [errorShown]);
   useEffect(() => {
     // Preserve the exact submitted body across a lost acknowledgement and reload.
     try {

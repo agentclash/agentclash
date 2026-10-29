@@ -91,6 +91,8 @@ export function ActivityStatus({ label, working }: { label?: string; working: bo
 }
 
 const runKinds = new Set(["check", "retest"]);
+// Before approval or start nothing has run yet, so the note about Stop does not apply.
+const runningStates = new Set(["RUNNING", "FINALIZING", "CANCELLING"]);
 // The first snapshot of a run fixes its mode: a run with a known total keeps a
 // count and a filling bar, a run without one keeps the indeterminate bar.
 export function useRunTotal(operation?: Operation) {
@@ -109,7 +111,8 @@ export function ProgressStrip({ operation, total, pendingLabel, testJourney, onA
 }) {
   const completed = Math.min(operation?.progress?.completed_cases || 0, total);
   const counting = !pendingLabel && operation?.state === "RUNNING" && total > 0;
-  const label = pendingLabel || (operation ? counting ? `Running ${Math.min(completed + 1, total)} of ${testCount(total)}` : conversationActivity(operation, testJourney) : undefined);
+  // completed_cases leaves out errored cases, so name a count, never the test that is running.
+  const label = pendingLabel || (operation ? counting ? `${completed} of ${testCount(total)} finished` : conversationActivity(operation, testJourney) : undefined);
   const detail = counting ? conversationActivity(operation!, testJourney, false) : undefined;
   const motionPaused = useSyncExternalStore(subscribePreference, readPreference, serverPreference);
   const value = total > 0 ? { "aria-valuemin": 0, "aria-valuemax": total, "aria-valuenow": completed, "aria-valuetext": `${completed} of ${testCount(total)} done` } : {};
@@ -127,6 +130,6 @@ export function ProgressStrip({ operation, total, pendingLabel, testJourney, onA
     {label && <div className="vibe-progress-bar" role="progressbar" aria-label="Progress" data-indeterminate={total > 0 ? undefined : true} data-paused={motionPaused || undefined} {...value}>
       <span style={total > 0 ? { inlineSize: `${(completed / total) * 100}%` } : undefined} />
     </div>}
-    {operation && runKinds.has(operation.kind) && <p className="vibe-progress-note">Stop keeps finished results. Provider costs can stay unknown until billing is settled.</p>}
+    {operation && runKinds.has(operation.kind) && runningStates.has(operation.state) && <p className="vibe-progress-note">Stop keeps finished results. Provider costs can stay unknown until billing is settled.</p>}
   </div>;
 }
