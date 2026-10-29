@@ -3,7 +3,9 @@ const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT || "55441"}`;
 const workspace = "a8000000-0000-4000-8000-000000000003";
 const blueprint = { slug: "share-tests", name: "Selected report tests", difficulty: "easy", instructions: "{{question}}", cases: [{ key: "case-1", payload: { question: "May I return this?" }, expectations: [{ key: "expected_behavior", kind: "text", value: "Explain the return policy." }] }], validators: [{ key: "answer", type: "regex_match", target: "final_output", expected_from: "literal:.+" }], judges: [{ key: "behavior", mode: "assertion", assertion: "The response meets this case's expected_behavior and the following shared rules:\n\nNever claim to process a refund.", context_from: ["case.expectations.expected_behavior"] }], dimensions: [{ key: "answer", source: "validators", validators: ["answer"] }, { key: "behavior", source: "llm_judge", judge_key: "behavior" }] };
 async function login(page: Page, user?: string) { if (user)
-    await page.request.get(`http://127.0.0.1:55442/__fixture/identity?user=${user}`); await page.goto("/auth/login?returnTo=%2Fvibe-evals"); await page.getByRole("button", { name: "Continue with AgentClash" }).click(); await expect(page.getByLabel("Workspace for new projects")).toBeVisible(); }
+    await page.request.get(`http://127.0.0.1:55442/__fixture/identity?user=${user}`); await page.goto("/auth/login?returnTo=%2Fvibe-evals"); await page.getByRole("button", { name: "Continue with AgentClash" }).click();
+    // A viewer has no workspace to start projects in, so the entry shows a notice instead of the picker.
+    await expect(page.getByLabel("Workspace for new projects").or(page.getByText("You need a workspace to start a project.", { exact: false }))).toBeVisible(); }
 test("selected copy survives private cleanup with independent member/viewer navigation and capability lifecycle", async ({ page, browser }) => {
     const errors: string[] = [];
     page.on("pageerror", e => errors.push(e.message));
@@ -26,7 +28,7 @@ test("selected copy survives private cleanup with independent member/viewer navi
     await page.locator("summary").filter({ hasText: /^Import SDK report$/ }).click();
     const source = JSON.stringify({ schema_version: 1, report_id: "PRIVATE_REPORT", generated_at: "2026-10-26T12:00:00Z", runner: { name: "agentclash-evals", version: "1" }, summary: { total: 1, passed: 0, failed: 1, skipped: 0, errored: 0 }, cases: [{ case: { case_id: "PRIVATE_CASE", name: "PRIVATE_LABEL" }, status: "failed", metrics: [{ key: "PRIVATE_METRIC", name: "PRIVATE_NAME", passed: false, score: 0.2, reason: "PRIVATE_REASON" }], agent_result: { input: "PRIVATE_INPUT", output: "PRIVATE_OUTPUT" } }], exit_code: 1 }).replace('"score":0.2', '"score":0.12345678901234567890123456789');
     await page.getByRole("region", { name: "Import SDK report", exact: true }).locator('input[type="file"]').setInputFiles({ name: "report.json", mimeType: "application/json", buffer: Buffer.from(source) });
-    await page.getByLabel("Test case for PRIVATE_CASE — PRIVATE_LABEL").selectOption({ index: 1 });
+    await page.getByLabel("Test for PRIVATE_CASE — PRIVATE_LABEL").selectOption({ index: 1 });
     const imported = page.waitForResponse(r => r.url().endsWith(`/sessions/${session}/reports`) && r.request().method() === "POST");
     await page.getByRole("button", { name: "Import historical report", exact: true }).click();
     const importedResponse = await imported;

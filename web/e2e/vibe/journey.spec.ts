@@ -39,7 +39,7 @@ async function openDetails(summary: Locator) {
 async function openScorecardSection(page: Page, name: string | RegExp) {
   await openDetails(
     page
-      .getByRole("article", { name: "Evaluation scorecard" })
+      .getByRole("article", { name: "Run results" })
       .locator("summary")
       .filter({ hasText: name }),
   );
@@ -589,17 +589,17 @@ test("describe, review, independently select agent, check, inspect unknowns and 
   await page.getByRole("button", { name: "Run 3 tests" }).click();
   await page.getByRole("button", {name:"View latest results",exact:true}).click();
   await expect(
-    page.getByRole("article", { name: "Evaluation scorecard" }),
+    page.getByRole("article", { name: "Run results" }),
   ).toContainText("1 passed · 0 need attention · 2 unresolved");
   expect(mock.snapshot().operations[0].models.target).toBe("openai/gpt-4.1");
   expect(mock.snapshot().operations[0].models.evaluator).toBe(models.evaluator);
   await openScorecardSection(page, /^Other results/);
-  await openScorecardSection(page, /^Situation 2/);
+  await openScorecardSection(page, /^Test 2/);
   await expect(page.getByText("Target timed out.")).toBeVisible();
   const url = page.url();
   await page.reload();
   await expect(
-    page.getByRole("article", { name: "Evaluation scorecard" }),
+    page.getByRole("article", { name: "Run results" }),
   ).toBeVisible();
   expect(page.url()).toBe(url);
   expect(mock.checkCount()).toBe(1);
@@ -627,7 +627,7 @@ test("simple chat sends a real message, offers proposals without a draft and nev
     page.getByText("What would you like to explore about support agents?"),
   ).toBeVisible();
   await expect(
-    page.getByRole("article", { name: "Evaluation scorecard" }),
+    page.getByRole("article", { name: "Run results" }),
   ).toHaveCount(0);
   await expect(
     page.getByRole("region", { name: "Your agent", exact: true }),
@@ -709,7 +709,7 @@ test("draft editor exposes the full instructions and exports the user's exact re
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const downloadReady = page.waitForEvent("download");
   await page
-    .getByRole("button", { name: "Export agent and checks", exact: true })
+    .getByRole("button", { name: "Export agent and tests", exact: true })
     .click();
   await page.getByRole("button",{name:"Download exact export",exact:true}).click();
   const download = await downloadReady;
@@ -744,6 +744,10 @@ test("Try keeps followups separate from Build and starts fresh on reset", async 
     .getByRole("textbox", { name: "Message Vibe Evals" })
     .fill("Build a return-policy assistant.");
   await page.getByRole("button", { name: "Send message", exact: true }).click();
+  // The reply resets the composer, so type the next draft after it arrives.
+  await expect(
+    page.getByRole("button", { name: "Try it yourself", exact: true }),
+  ).toBeVisible();
   await page
     .getByRole("textbox", { name: "Message Vibe Evals" })
     .fill("Unsent changes to my agent");
@@ -775,6 +779,10 @@ test("Try keeps followups separate from Build and starts fresh on reset", async 
   await page
     .getByRole("button", { name: "Send to agent", exact: true })
     .click();
+  // The click returns before the mock records the request.
+  await expect
+    .poll(() => mock.messageRequests().filter((r) => r.kind === "playground").length)
+    .toBe(2);
   const trials = mock.messageRequests().filter((r) => r.kind === "playground");
   expect(trials).toHaveLength(2);
   expect(trials[0].preview_thread_id).toBe(trials[1].preview_thread_id);
@@ -806,31 +814,33 @@ test("improve and retest keep a fixed comparison, duplicate clicks send once", a
   mock.snapshot().operations[0].scorecard!.failed = 1;
   mock.snapshot().operations[0].scorecard!.passed = 0;
   mock.snapshot().revision++;
-  await openScorecardSection(page, "What was checked");
-  await page
-    .getByRole("button", { name: "Suggest a change", exact: true })
-    .click();
+  // Suggest a change is the primary action of a failed result, outside any disclosure.
+  const suggest = page.getByRole("button", { name: "Suggest a change", exact: true });
+  await expect(suggest).toHaveClass(/vibe-button-primary/);
+  await suggest.click();
   await expect.poll(() => mock.messageCount()).toBe(2);
   await page.getByRole("tab", { name: "Results", exact: true }).click();
-  await openScorecardSection(page, "What was checked");
   expect(
     mock
       .messageRequests()
       .filter((r) => r.kind === "message")
       .at(-1)?.baseline_id,
   ).toBe("check-1");
+  await expect(
+    page.getByRole("button", { name: "Run the same tests again", exact: true }),
+  ).toHaveCount(0);
   await page
-    .getByRole("button", { name: "Run the same examples again", exact: true })
+    .getByRole("button", { name: "Run tests again", exact: true })
     .click();
   await expect(
-    page.getByRole("article", { name: "Evaluation scorecard" }),
-  ).toContainText("1 previously failing example now passes");
+    page.getByRole("article", { name: "Run results" }),
+  ).toContainText("1 previously failing test now passes");
   expect(mock.checkCount()).toBe(2);
   expect(mock.snapshot().operations[1].baseline_id).toBe("check-1");
   mock.stale();
   await page.waitForResponse((r) => r.url().endsWith("/events"));
   await expect(
-    page.getByRole("article", { name: "Evaluation scorecard" }),
+    page.getByRole("article", { name: "Run results" }),
   ).toHaveCount(1);
 });
 
@@ -844,7 +854,7 @@ test("refresh during a check never reruns; Stop preserves reconciling billing", 
   ).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: "Stop", exact: true }).click();
-  await openScorecardSection(page, "What was checked");
+  await openScorecardSection(page, "About this run");
   await expect(
     page.getByText("Provider spend is still being reconciled.", {
       exact: true,
@@ -873,7 +883,7 @@ test("lost acknowledgement retries exactly after SSE advances and preserves the 
   await expect(
     page.getByRole("button", { name: "Retry submission" }),
   ).toHaveCount(0);
-  expect(mock.messageRequests()).toHaveLength(2);
+  await expect.poll(() => mock.messageRequests().length).toBe(2);
   expect(mock.messageRequests()[1]).toEqual(mock.messageRequests()[0]);
   expect(mock.messageCount()).toBe(1);
   await expect(composer).toHaveValue("Here is my next question");
@@ -903,7 +913,7 @@ test("unapplied instructions cannot run checks; applying creates a ready-to-try 
   await page.getByRole("button", { name: "Run 3 tests" }).click();
   await page.getByRole("button", {name:"View latest results",exact:true}).click();
   await expect(
-    page.getByRole("article", { name: "Evaluation scorecard" }),
+    page.getByRole("article", { name: "Run results" }),
   ).toBeVisible();
   expect(mock.checkCount()).toBe(1);
   expect(mock.snapshot().document.artifacts).toHaveLength(2);
@@ -917,7 +927,7 @@ test("expanded evidence refreshes when a persisted UNKNOWN becomes PASS", async 
 }) => {
   const mock = await mockVibe(page, { paused: true });
   await createAndCheck(page);
-  await openScorecardSection(page, /^Situation 2/);
+  await openScorecardSection(page, /^Test 2/);
   await expect(page.getByText("Target timed out.")).toBeVisible();
   const operation = mock.snapshot().operations[0];
   operation.results[1] = {
@@ -960,7 +970,7 @@ for (const state of ["RUNNING", "CANCELLED"]) {
     if (state === "CANCELLED") {
       await openScorecardSection(page, /^Other results/);
     }
-    await openScorecardSection(page, /^Situation 2/);
+    await openScorecardSection(page, /^Test 2/);
     await expect(page.getByText("Target timed out.")).toBeVisible();
     const revision = session.revision;
     const caseBefore = structuredClone(operation.results[1]);
@@ -977,9 +987,9 @@ for (const state of ["RUNNING", "CANCELLED"]) {
       page.getByText(operation.results[1].output, { exact: true }).first(),
     ).toBeVisible();
     const row = page
-      .getByRole("article", { name: "Evaluation scorecard" })
+      .getByRole("article", { name: "Run results" })
       .locator("summary")
-      .filter({ hasText: "Situation 2" })
+      .filter({ hasText: "Test 2" })
       .locator("..");
     await expect(row).toHaveAttribute("open", "");
     await expect(row.locator(":scope > summary")).toContainText("Could not determine");

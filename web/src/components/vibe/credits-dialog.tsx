@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAccessToken } from "@workos-inc/authkit-nextjs/components";
 import { Button } from "@/components/ui/button";
 import {
@@ -21,26 +21,34 @@ type Credits = {
     currency: string;
   }[];
 };
-export function CreditsDialog({ workspace }: { workspace: string }) {
+const creditsPath = (workspace: string) => `/credits?workspace_id=${encodeURIComponent(workspace)}`;
+// One controlled instance at the page root; openers close their own dialog first.
+export function CreditsDialog({ workspace, open, onOpenChange }: { workspace: string; open: boolean; onOpenChange: (open: boolean) => void }) {
   const { getAccessToken } = useAccessToken();
-  const [open, setOpen] = useState(false);
+  const token = useRef(getAccessToken);
+  useEffect(() => { token.current = getAccessToken; }, [getAccessToken]);
   const [credits, setCredits] = useState<Credits | null>(null);
   const [error, setError] = useState("");
   const [pending, setPending] = useState(false);
   async function load() {
-    setOpen(true);
     setError("");
     try {
-      setCredits(
-        await vibeFetch<Credits>(
-          `/credits?workspace_id=${encodeURIComponent(workspace)}`,
-          await getAccessToken(),
-        ),
-      );
+      setCredits(await vibeFetch<Credits>(creditsPath(workspace), await token.current()));
     } catch (e) {
       setError((e as Error).message);
     }
   }
+  useEffect(() => {
+    if (!open) return;
+    let live = true;
+    // A failure from an earlier opening must not show while this request runs.
+    setError("");
+    token.current().then(auth => vibeFetch<Credits>(creditsPath(workspace), auth)).then(
+      (next) => { if (live) { setCredits(next); setError(""); } },
+      (e) => { if (live) setError((e as Error).message); },
+    );
+    return () => { live = false; };
+  }, [open, workspace]);
   async function checkout(product: string) {
     setPending(true);
     setError("");
@@ -75,11 +83,7 @@ export function CreditsDialog({ workspace }: { workspace: string }) {
     }
   }
   return (
-    <>
-      <Button variant="ghost" size="sm" onClick={load}>
-        Credits
-      </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="vibe-workspace vibe-dialog">
           <DialogTitle>Workspace AI credits</DialogTitle>
           <DialogDescription>
@@ -137,6 +141,5 @@ export function CreditsDialog({ workspace }: { workspace: string }) {
           </div>
         </DialogContent>
       </Dialog>
-    </>
   );
 }

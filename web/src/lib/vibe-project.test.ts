@@ -12,8 +12,8 @@ it("keeps a project's own title", () => {
   expect(projectTitle(project("build", { title: "  Refund desk  " }))).toBe("Refund desk");
 });
 
-it("names an untitled project by door with a short stable tag", () => {
-  expect(projectTitle(project("build"))).toBe("Untitled prototype · 3FA8");
+it("names every untitled project the same way, with a short stable tag", () => {
+  expect(projectTitle(project("build"))).toBe("Untitled project · 3FA8");
   expect(projectTitle(project("test"))).toBe("Untitled project · 3FA8");
   expect(projectTitle(project())).toBe("Untitled project · 3FA8");
   expect(projectTitle(project("build", { title: " " }))).not.toContain("3fa85f64");

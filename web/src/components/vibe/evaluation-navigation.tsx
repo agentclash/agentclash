@@ -5,7 +5,7 @@ import { useVibeEvidenceOwner } from "@/lib/use-vibe-evidence-owner";
 import { projectTitle, sidebarPreference, setSidebarPreference } from "@/lib/vibe-project";
 import type { CollectionStatus } from "@/lib/use-vibe-collection";
 import { CollectionNotice } from "./collection-notice";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   Archive,
@@ -17,6 +17,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
+  RefreshCw,
   Settings,
 } from "lucide-react";
 import {
@@ -42,10 +43,10 @@ export function evaluationIdentity(session: Session) {
   const version = artifact ? buildVersion(session, artifact) : 0;
   const scope =
     artifact?.kind === "conversation_evaluation"
-      ? "Saved conversations"
+      ? "Recorded replies"
       : artifact?.agent_prompt
-        ? `${artifact.sample ? "Sample" : "Prototype"} v${version}`
-        : artifact ? `Tests v${version}` : "Setup";
+        ? `${artifact.sample ? "Sample agent" : "Agent"} v${version}`
+        : artifact ? `Tests v${version}` : session.document.evaluation?.door === "test" ? "No tests yet" : "No agent yet";
   return { title, scope };
 }
 
@@ -54,7 +55,8 @@ type Props = {
   archiveMode?: "exclude" | "only" | "all";
   onArchiveMode?: (mode: "exclude" | "only" | "all") => void;
   onMetadata?: (target: Session, patch: { title?: string; archived?: boolean }) => Promise<boolean>;
-  accountControl?: ReactNode;
+  /** Signed-in entry only: the workspace for new projects; the picker itself is on the entry screen. */
+  workspace?: { name?: string; onChange: () => void };
   accountLabel?: string;
   listStatus?: CollectionStatus;
   onRetryList?: () => void;
@@ -78,6 +80,7 @@ export function EvaluationNavigation(p: Props) {
   const [collapsed, setCollapsed] = useState(false);
   useEffect(() => setCollapsed(sidebarPreference()), []);
   const [search, setSearch] = useState("");
+  const searchHint = useId();
   const [renaming, setRenaming] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const [metadataBusy, setMetadataBusy] = useState(false);
@@ -131,7 +134,10 @@ export function EvaluationNavigation(p: Props) {
     contexts.push(p.session);
   const guest = !p.actorScope || p.actorScope === "guest";
   const hasProjects = p.contexts.length > 0 || !!p.session?.document.evaluation;
-  const showListTools = !guest || hasProjects || (p.archiveMode && p.archiveMode !== "exclude");
+  const filtered = !!p.archiveMode && p.archiveMode !== "exclude";
+  const showListTools = !guest || hasProjects || filtered;
+  // A short list needs no search; the filter stays reachable so archived projects can be restored.
+  const showSearch = contexts.length > 6 || !!search || filtered;
   const navigate = (action: () => void, mobile: boolean) => {
     if (!mobile) {
       action();
@@ -168,44 +174,50 @@ export function EvaluationNavigation(p: Props) {
       <div className="vibe-sidebar-create">
         <VibeButton disabled={p.disabled} onClick={() => navigate(p.onNew, mobile)}>
           <Plus />
-          New evaluation
+          New project
         </VibeButton>
       </div>
-      <nav aria-label="Your agents" className="vibe-sidebar-list">
-        <p className="vibe-sidebar-label">Your projects</p>
-        {showListTools && (
-          <>
-            <label>
-              Search loaded projects
-              <input
-                type="search"
-                aria-label="Search loaded projects"
-                placeholder="Filter by title"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="vibe-input w-full"
-              />
-            </label>
-            <p className="vibe-sidebar-hint">Search this loaded list. The server returns the latest 100 projects.</p>
-            {p.onArchiveMode && (
-              <label>
-                Show
-                <select
-                  aria-label="Project archive filter"
-                  value={p.archiveMode || "exclude"}
-                  onChange={(e) => p.onArchiveMode?.(e.target.value as "exclude" | "only" | "all")}
-                >
-                  <option value="exclude">Active projects</option>
-                  <option value="only">Archived projects</option>
-                  <option value="all">All projects</option>
-                </select>
-              </label>
-            )}
+      <nav aria-label="Your projects" className="vibe-sidebar-list">
+        {showListTools && (p.onArchiveMode || p.onRetryList) ? (
+          <div className="vibe-sidebar-tools">
+            {p.onArchiveMode ? (
+              <select
+                aria-label="Project archive filter"
+                className="vibe-sidebar-filter"
+                value={p.archiveMode || "exclude"}
+                onChange={(e) => p.onArchiveMode?.(e.target.value as "exclude" | "only" | "all")}
+              >
+                <option value="exclude">Active projects</option>
+                <option value="only">Archived projects</option>
+                <option value="all">All projects</option>
+              </select>
+            ) : <p className="vibe-sidebar-label">Your projects</p>}
             {p.onRetryList && (
-              <VibeButton variant="quiet" disabled={p.listStatus === "loading"} onClick={p.onRetryList}>
-                Refresh projects
+              <VibeButton
+                variant="quiet"
+                className="vibe-sidebar-icon"
+                aria-label="Refresh projects"
+                title="Refresh projects"
+                disabled={p.listStatus === "loading"}
+                onClick={p.onRetryList}
+              >
+                <RefreshCw aria-hidden="true" />
               </VibeButton>
             )}
+          </div>
+        ) : <p className="vibe-sidebar-label">Your projects</p>}
+        {showListTools && showSearch && (
+          <>
+            <input
+              type="search"
+              aria-label="Search projects"
+              aria-describedby={`${searchHint}-${mobile ? "sheet" : "side"}`}
+              placeholder="Search projects"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="vibe-input vibe-sidebar-search"
+            />
+            <p id={`${searchHint}-${mobile ? "sheet" : "side"}`} className="sr-only">Searches the latest 100 projects loaded here.</p>
           </>
         )}
         <CollectionNotice
@@ -228,9 +240,9 @@ export function EvaluationNavigation(p: Props) {
                 const running = context.operations.some((operation) => !terminal(operation.state));
                 const selected = context.id === p.session?.id && !p.choosing;
                 const status = running ? "Running"
-                  : latestRun?.state === "COMPLETED" ? "Checked"
-                  : latestRun?.state === "FAILED" ? "Check failed"
-                  : latestRun ? "Check incomplete" : scope;
+                  : latestRun?.state === "COMPLETED" ? "Run complete"
+                  : latestRun?.state === "FAILED" ? "Run failed"
+                  : latestRun ? "Run incomplete" : scope;
                 return (
                   <button
                     key={context.id}
@@ -262,15 +274,22 @@ export function EvaluationNavigation(p: Props) {
             )}
       </nav>
       <div className="vibe-sidebar-footer">
-        {p.accountControl}
         <p className="vibe-muted">{p.accountLabel || "Guest · private to this browser"}</p>
+        {p.workspace && (
+          <div className="vibe-sidebar-workspace">
+            <p><span>Workspace</span>{p.workspace.name || "Not chosen"}</p>
+            <VibeButton variant="quiet" aria-label={p.workspace.name ? "Change workspace" : "Choose workspace"} onClick={() => navigate(p.workspace!.onChange, mobile)}>
+              {p.workspace.name ? "Change" : "Choose"}
+            </VibeButton>
+          </div>
+        )}
         <Link href="/"><House aria-hidden="true" />Home</Link>
         <details>
           <summary><CircleHelp aria-hidden="true" />Help<ChevronRight className="vibe-chevron" aria-hidden="true" /></summary>
           <p>
-            Search the loaded project list. Rename changes the project title. Archive hides a
-            project from the active list without stopping runs or deleting evidence. Restore it
-            using Archived projects.
+            Search finds titles in the latest 100 projects. Rename changes the project title.
+            Archive hides a project from the active list without stopping runs or deleting
+            evidence. To restore it, show Archived projects above the list.
           </p>
           <p>
             Export starts with the selected version and result. Full history is an explicit choice;
@@ -386,7 +405,7 @@ export function EvaluationNavigation(p: Props) {
       >
         <SheetTrigger
           render={
-            <VibeButton variant="quiet" className="vibe-mobile-toggle" aria-label="Open agents" />
+            <VibeButton variant="quiet" className="vibe-mobile-toggle" aria-label="Open projects" />
           }
         >
           <PanelLeftOpen />
@@ -396,9 +415,9 @@ export function EvaluationNavigation(p: Props) {
           className="vibe-workspace vibe-sidebar-sheet"
           finalFocus={() => !drawerNavigating.current}
         >
-          <SheetTitle className="sr-only">Your agents</SheetTitle>
+          <SheetTitle className="sr-only">Your projects</SheetTitle>
           <SheetDescription className="sr-only">
-            Switch agents or start something new.
+            Switch projects or start a new one.
           </SheetDescription>
           {navigation(true)}
         </SheetContent>
@@ -409,7 +428,7 @@ export function EvaluationNavigation(p: Props) {
     <div className="vibe-shell" data-collapsed={collapsed}>
       <motion.aside
         className="vibe-sidebar"
-        aria-label="Agent sidebar"
+        aria-label="Projects sidebar"
         inert={collapsed}
         aria-hidden={collapsed || undefined}
         initial={false}

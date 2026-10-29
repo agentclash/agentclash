@@ -22,7 +22,7 @@ export function RecordedIntake({project,revision,busy,onSave,onClose,reviewedExp
   else if(outcome==="rejected"&&!wasPending){pending.discard();setError("The replies were not saved. Review the reported issue and try again.");}
   else setError("Saving is still unconfirmed. Retry the same saved request to recover its receipt; your source will not be duplicated.");
  }}>
-  <h2>Check replies from my app</h2><p>Paste 1–3 complete chats, including customer messages and actual agent replies. Enter your expectations separately. This checks saved replies; it does not call your app.</p>
+  <h2>Test replies from my app</h2><p>Paste 1–3 complete conversations, including customer messages and actual agent replies. Enter your expectations separately. This grades saved replies; it does not call your app.</p>
   <VibeDataUseNotice/>
   <details><summary>Sample transcript format</summary><pre className="whitespace-pre-wrap">{"Customer: I opened an item bought 10 days ago.\nAgent: I can refund that."}</pre><p>Example expectation: Opened items are not eligible for a refund. Use your own rules.</p></details>
   <label>Recorded replies<textarea aria-label="Recorded replies" className="vibe-textarea" disabled={busy||!!pending.value} value={content.value} onChange={e=>content.setValue(e.target.value)}/></label>

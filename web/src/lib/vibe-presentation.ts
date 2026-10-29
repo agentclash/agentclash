@@ -49,3 +49,8 @@ export function primarySurface(input: { busy: boolean; dirty: boolean; typing: b
   if (input.tests) return "tests";
   return "composer";
 }
+
+// "1 test", "3 tests", "2 new tests": the one count noun for tests across Vibe Evals.
+export function testCount(count: number, qualifier = "") {
+  return `${count} ${qualifier ? `${qualifier} ` : ""}${count === 1 ? "test" : "tests"}`;
+}

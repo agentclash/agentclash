@@ -465,7 +465,7 @@ export function useVibeWorkspace() {
   async function ensureSession(scope = scopeRef.current, ownsAttempt = () => true) {
     if (requestedSessionID && session?.id !== requestedSessionID)
       throw new Error(
-        "Load this conversation before sending. No new conversation was created.",
+        "Load this project before sending. No new project was created.",
       );
     if (session) return session;
     const id = crypto.randomUUID();
@@ -511,7 +511,7 @@ export function useVibeWorkspace() {
   function loadSavedCase(id: string, key: string): Promise<CaseResult> {
     const owner = session?.id;
     if (!owner || activeSessionRef.current !== owner)
-      return Promise.reject(new Error("This conversation changed. Reopen its saved checks."));
+      return Promise.reject(new Error("This project changed. Reopen its saved results."));
     const cacheKey = JSON.stringify([workspaceActor, owner, id, key]);
     const existing = savedCaseReads.current.get(cacheKey);
     if (existing) return existing;
@@ -1101,7 +1101,7 @@ export function useVibeWorkspace() {
     const scope = scopeRef.current;
     if (action === "stop" && buildJourney && session) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_RECOVERY_CLICKED, { session_id: session.id, operation_id: id, action: "stop" });
     setPending(true);
-    setPendingAction(action === "stop" ? "Stopping…" : "Starting your check…");
+    setPendingAction(action === "stop" ? "Stopping…" : "Starting your run…");
     setError("");
     try {
       await vibeFetch(`/operations/${id}/${action}`, await token(), {

@@ -25,7 +25,7 @@ it("keeps passing evidence closed and opens the full checks only on request", as
   expect(node.querySelectorAll(".vibe-build-next-actions")).toHaveLength(1);
   expect(node.querySelectorAll(".vibe-project-enquiry")).toHaveLength(0);
   expect(load).not.toHaveBeenCalled();
-  await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent?.includes("See 2 checks"))!.click());
+  await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent?.includes("See 2 results"))!.click());
   expect(details).toHaveBeenCalledTimes(1);
 });
 async function openSample() {
@@ -33,7 +33,7 @@ async function openSample() {
 }
 it("shows an actual example and explains it once, with a direct way to try the prototype", async () => {
   await render();
-  expect(node.textContent).toContain("This check matched your rules");
+  expect(node.textContent).toContain("This test matched your rules");
   expect(load).not.toHaveBeenCalled();
   await openSample();
   expect(load).toHaveBeenCalledWith("run1", "email");
@@ -44,7 +44,7 @@ it("shows an actual example and explains it once, with a direct way to try the p
   expect(node.textContent).toContain("We gave it");
   expect(node.textContent).toContain("Win a prize");
   expect(node.textContent).toContain("It replied");
-  expect(node.textContent).toContain("Other situations remain untested");
+  expect(node.textContent).toContain("Other inputs remain untested");
   expect(load).toHaveBeenCalledTimes(1);
   await render(); expect(load).toHaveBeenCalledTimes(1);
   await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent?.includes("Try it yourself"))!.click());
@@ -101,12 +101,12 @@ it("offers improvement only after a supported failure and does not submit automa
 });
 it("never treats unknowns or a stopped check as a complete success", async () => {
   await render({ ...op, scorecard: { ...op.scorecard!, passed: 0, unknown: 1 } });
-  expect(node.textContent).toContain("could not be fully checked");
+  expect(node.textContent).toContain("could not be fully graded");
   expect(node.textContent).toContain("See what happened");
   expect(node.textContent).toContain("Try it yourself");
   await render({ ...op, state: "CANCELLED" });
   expect(node.textContent).toContain("Stopped");
-  expect(node.textContent).not.toContain("This check matched your rules");
+  expect(node.textContent).not.toContain("This test matched your rules");
   expect(node.querySelector(".vibe-build-next-actions")?.hasAttribute("hidden")).toBe(true);
 });
 it("reports improvements and regressions only against matching tests and grading", async () => {

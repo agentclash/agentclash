@@ -44,8 +44,8 @@ export function BuildRunResult({ session, operation, artifact, current, first, b
   const canImprove = done && current && !operation.error && !!score?.failed && finding?.supported && !regraded;
   const headline = done && operation.state === "COMPLETED" && !operation.error && finding?.text && !regraded
     ? finding.text : allPass && !regraded ? score!.total === 1
-      ? `This ${artifact?.sample ? "sample check matched the sample rules" : "check matched your rules"}.`
-      : `All ${score!.total} ${artifact?.sample ? "sample checks matched the sample rules" : "checks matched your rules"}.` : buildRunSummary(operation);
+      ? `This ${artifact?.sample ? "sample test matched the sample rules" : "test matched your rules"}.`
+      : `All ${score!.total} ${artifact?.sample ? "sample tests matched the sample rules" : "tests matched your rules"}.` : buildRunSummary(operation);
   const eventBase = { session_id: session.id, operation_id: operation.id, artifact_id: artifact?.id, sample: !!artifact?.sample };
   function action(name: "checks" | "review_fix") {
     captureBuildEvent(WEB_EVENTS.VIBE_BUILD_ACTION_CLICKED, { ...eventBase, action: name });
@@ -63,22 +63,22 @@ export function BuildRunResult({ session, operation, artifact, current, first, b
     observer.observe(card.current);
     return () => { visible.current = false; observer.disconnect(); };
   }, [session.id, operation.id, operation.state, operation.error, score, artifact?.id, artifact?.sample, allPass, done, leadingOrdinal]);
-  return <article ref={card} className="vibe-build-result" aria-label="Prototype example results" data-run-id={operation.id}>
-    {!hasOutput && <><p className="vibe-build-eyebrow">{artifact ? `Interactive prototype · v${buildVersion(session, artifact)}` : "Saved check"}{artifact?.sample ? " · Sample demonstration" : ""}</p>
+  return <article ref={card} className="vibe-build-result" aria-label="Agent test results" data-run-id={operation.id}>
+    {!hasOutput && <><p className="vibe-build-eyebrow">{artifact ? `Agent · v${buildVersion(session, artifact)}` : "Saved run"}{artifact?.sample ? " · Sample demonstration" : ""}</p>
     {artifact && <h2 className="vibe-build-task">{artifact.title}</h2>}
     <p className="vibe-build-note">Runs here using what you supplied; your business systems aren’t connected.</p>
     </>}
     <p className="vibe-build-finding" role="status">{headline}</p>
-    {artifact?.sample && <p className="vibe-build-note">These results check the sample, not your business policy.</p>}
+    {artifact?.sample && <p className="vibe-build-note">These results test the sample, not your business policy.</p>}
     {operation.source?.kind === "provided_conversations" && <p className="vibe-build-note">Recorded replies only; your live app wasn’t called.</p>}
-    {(allPass || hasOutput) && <p className="vibe-build-note">{hasOutput && "These sample checks don’t grade your separate trial output. "}{allPass && "Other situations remain untested."}</p>}
+    {(allPass || hasOutput) && <p className="vibe-build-note">{hasOutput && "These sample tests don’t grade your separate trial output. "}{allPass && "Other inputs remain untested."}</p>}
     {baseline && done && <p className="vibe-build-note">{regraded
-      ? "Only the grades changed. This does not show an improved prototype."
+      ? "Only the grades changed. This does not show an improved agent."
       : comparable
-        ? `Same examples and grading · ${improved} improved · ${regressed} regressed. ${baseline.models.target === operation.models.target ? "Earlier results are kept." : "The target model also changed, so the difference cannot be credited to the prompt alone."}`
-        : "Separate baseline: the examples or grading differ. These scores do not establish an improvement."}</p>}
+        ? `Same tests and grading · ${improved} improved · ${regressed} regressed. ${baseline.models.target === operation.models.target ? "Earlier results are kept." : "The target model also changed, so the difference cannot be credited to the prompt alone."}`
+        : "Separate baseline: the tests or grading differ. These scores do not establish an improvement."}</p>}
     {current && leading && !allPass && <div className="vibe-build-examples">
-      {first && <p className="vibe-test-explanation">We gave it a situation and checked its reply against the rules. That’s a check.</p>}
+      {first && <p className="vibe-test-explanation">We gave it an input and graded its reply against the rules. That’s a test.</p>}
       <CaseEvidence key={leading.case_key} summary={{ ...leading, title: leading.title || inputs.get(leading.case_key) }} exampleFirst concise compactPreview
         prefetch={false}
         onReload={() => captureBuildEvent(WEB_EVENTS.VIBE_BUILD_RECOVERY_CLICKED, { ...eventBase, action: "reload_evidence", error_code: leading.error?.code })}
@@ -92,7 +92,7 @@ export function BuildRunResult({ session, operation, artifact, current, first, b
         }} />
     </div>}
     {current && canImprove && <div className="vibe-build-evidence-action"><VibeButton variant="quiet" disabled={busy} onClick={() => { action("review_fix"); onImprove(); }}>Review a fix</VibeButton></div>}
-    {!current && done && <VibeButton variant="quiet" onClick={() => { action("checks"); onDetails(); }}>See saved checks</VibeButton>}
+    {!current && done && <VibeButton variant="quiet" onClick={() => { action("checks"); onDetails(); }}>See saved results</VibeButton>}
 
   </article>;
 }

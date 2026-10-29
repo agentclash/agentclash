@@ -21,7 +21,7 @@ export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, h
           <DialogDescription>
             {testJourney
               ? "Tests you can return to after your next change."
-              : "Private checks you can return to and repeat."}
+              : "Private results you can return to and run again."}
           </DialogDescription>
           <div className="vibe-dialog-body space-y-4">
           <CollectionNotice hasRows={savedChecks.length > 0} status={status} retry={onRetry} />
@@ -37,7 +37,7 @@ export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, h
                   {c.kind === "brief" ? "Preparation brief · not run" : c.draft_id
                     ? "Saved tests"
                     : c.source?.kind === "provided_conversations"
-                      ? "Provided chats"
+                      ? "Recorded replies"
                       : "Text test"}
                 </span>
               </a>
@@ -46,7 +46,7 @@ export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, h
             <p className="text-sm text-muted-foreground">
               {testJourney
                 ? "Choose “Keep these tests” to find them here next time."
-                : "After your first result, choose “Save this check” to keep it here."}
+                : "After your first result, choose “Save this result” to keep it here."}
             </p>
           )}
 
@@ -57,7 +57,7 @@ export function SavedWorkDialog({open, onOpenChange, testJourney, savedChecks, h
                 onResults();
               }}
             >
-              Results in this conversation
+              Results in this project
               <ArrowRight />
             </VibeButton>
           )}

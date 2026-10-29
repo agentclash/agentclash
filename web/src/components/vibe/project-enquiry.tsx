@@ -13,7 +13,7 @@ import "./project-enquiry.css";
 
 type Draft = { summary: string; email: string; name: string; company: string };
 
-export function ProjectEnquiry({ session, artifact, operation, primary = false }: { session: Session; artifact: Artifact; operation?: Operation; primary?: boolean }) {
+export function ProjectEnquiry({ session, artifact, operation, primary = false, secondary = false }: { session: Session; artifact: Artifact; operation?: Operation; primary?: boolean; secondary?: boolean }) {
   const { token, contact } = useVibeConnection();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => ({ summary: projectSummary(session, artifact, operation), email: "", name: "", company: "" }));
@@ -99,7 +99,7 @@ export function ProjectEnquiry({ session, artifact, operation, primary = false }
 
   if (!available && !directEmail) return null;
   return <section className="vibe-project-enquiry">
-    <VibeButton ref={triggerRef} variant={primary ? "primary" : "quiet"} onClick={() => {
+    <VibeButton ref={triggerRef} variant={primary ? "primary" : secondary ? "secondary" : "quiet"} onClick={() => {
       if (!opened.current) { refresh(); opened.current = true; }
       if (session.document.evaluation?.door === "build") captureBuildEvent(WEB_EVENTS.VIBE_BUILD_ENQUIRY_OPENED, eventBase);
       setOpen(true);
@@ -108,7 +108,7 @@ export function ProjectEnquiry({ session, artifact, operation, primary = false }
       <DialogContent className="vibe-workspace vibe-dialog vibe-enquiry-dialog" initialFocus={titleRef} finalFocus={triggerRef}>
         <div className="vibe-enquiry-heading">
           <DialogTitle ref={titleRef} tabIndex={-1}>Let’s discuss building this for your business</DialogTitle>
-          <DialogDescription>Review what you’ll share. Files, raw replies and chat history are not attached.</DialogDescription>
+          <DialogDescription>Review what you’ll share. Files, raw replies and conversation history are not attached.</DialogDescription>
         </div>
         <div className="vibe-dialog-body vibe-enquiry-body">
           <form className="vibe-enquiry-form" noValidate onSubmit={e => { e.preventDefault(); void send(); }}>

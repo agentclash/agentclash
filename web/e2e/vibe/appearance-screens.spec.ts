@@ -22,6 +22,8 @@ const config = {
   availability: { guest: { available: true }, workspace: { available: true } },
   two_door: true,
   interaction_actions: true,
+  // Production needs VIBE_ENQUIRY_EMAIL (and Resend settings for the form) to show the contact call to action.
+  contact: { available: true, email: "team@example.test" },
   defaults: models,
   models: [...new Set(Object.values(models))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })),
 };
@@ -202,6 +204,20 @@ async function openSession(page: Page, id: string, view?: string) {
   await page.goto(`/vibe-evals?session=${id}${view ? `&view=${view}` : ""}`);
 }
 
+// Signed-in entry: the local AuthKit fixture signs in, and /v1/users/me lists two workspaces.
+async function signIn(page: Page) {
+  await page.route("**/v1/users/me", route => {
+    const headers = { "Access-Control-Allow-Origin": new URL(page.url() || "http://127.0.0.1:53517").origin, "Access-Control-Allow-Credentials": "true" };
+    if (route.request().method() === "OPTIONS") return route.fulfill({ status: 204, headers: { ...headers, "Access-Control-Allow-Headers": "Content-Type,Authorization", "Access-Control-Allow-Methods": "GET,OPTIONS" } });
+    return route.fulfill({ headers, json: { user_id: "a8000000-0000-4000-8000-000000000001", email: "browser@example.invalid", organizations: [{ id: "org", name: "Returns Co", slug: "returns-co", role: "org_admin", workspaces: [
+      { id: "a8000000-0000-4000-8000-000000000003", name: "Returns team", slug: "returns-team", role: "workspace_admin" },
+      { id: "a8000000-0000-4000-8000-000000000006", name: "Support pilots", slug: "support-pilots", role: "workspace_member" },
+    ] }] } });
+  });
+  await page.goto("/auth/login?returnTo=%2Fvibe-evals");
+  await page.getByRole("button", { name: "Continue with AgentClash" }).click();
+}
+
 const combos: Combo[] = viewports.flatMap(v => schemes.map(scheme => ({ ...v, scheme })));
 
 for (const combo of combos) {
@@ -227,7 +243,7 @@ for (const combo of combos) {
       await shoot(page, "b-build-starter", combo);
       const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
       await composer.fill("My agent answers shop return questions. Unopened items can be returned within 30 days. It should ask for missing details.");
-      await expect(page.getByText(/Build and try 3 examples/).first()).toBeVisible();
+      await expect(page.getByText(/Build and run 3 tests/).first()).toBeVisible();
       await page.waitForTimeout(900);
       await shoot(page, "b-build-starter-typed", combo);
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
@@ -269,7 +285,8 @@ for (const combo of combos) {
       await openSession(page, "returns-results");
       await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 20_000 });
       await expect(page.getByRole("tab", { name: "Agent", exact: true })).toHaveAttribute("aria-selected", "true");
-      await expect(page.getByRole("button", { name: "Try it yourself", exact: true })).toBeVisible();
+      await expect(page.getByRole("textbox", { name: "Message your agent", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Try it yourself", exact: true })).toHaveCount(0);
       await shoot(page, "e-agent-tab", combo, { tall: true });
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
@@ -289,7 +306,7 @@ for (const combo of combos) {
       await shoot(page, "f-tests-case-open", combo);
       await tests.getByRole("button", { name: "Run 3 tests" }).click();
       const dialog = page.getByRole("dialog");
-      await expect(dialog.getByRole("button", { name: "Run 3 examples" })).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Start run" })).toBeVisible();
       await shoot(page, "g-cost-dialog", combo);
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
@@ -300,7 +317,7 @@ for (const combo of combos) {
       await openSession(page, "returns-results");
       await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 20_000 });
       await page.getByRole("tab", { name: "Results", exact: true }).click();
-      await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toBeVisible();
+      await expect(page.getByRole("article", { name: "Run results" })).toBeVisible();
       await shoot(page, "h-results", combo, { tall: true });
       // Expand the failed case row and its evidence.
       const failed = page.locator(".vibe-result-row").filter({ hasText: inputs[1] }).first();
@@ -312,6 +329,12 @@ for (const combo of combos) {
       }
       await page.waitForTimeout(600);
       await shoot(page, "h-results-failed-case", combo, { tall: true });
+      // Occasional result actions share one disclosure below the main action row.
+      const more = page.locator(".vibe-results-more");
+      await more.locator("summary").first().click();
+      await expect(more.getByRole("button", { name: "Ask about this result", exact: true })).toBeVisible();
+      await more.scrollIntoViewIfNeeded();
+      await shoot(page, "h-results-more", combo, { tall: true });
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
 
@@ -341,21 +364,60 @@ for (const combo of combos) {
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
 
+    test(`n empty tests and results ${label}`, async ({ page }) => {
+      await prepare(page, combo);
+      const control = await serve(page);
+      // A saved agent with no tests yet: both tabs are empty and each offers its next step.
+      const draft = base("returns-draft", "test", "Return desk draft");
+      draft.document.artifacts = [{ id: "draft-v1", kind: "agent_draft", title: "Return desk draft", agent_prompt: instructions, accepted: true, source_message_id: "request", blueprint: {} }];
+      draft.document.active_artifact_id = "draft-v1";
+      control.sessions.set(draft.id, draft);
+      await openSession(page, draft.id);
+      await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 20_000 });
+      await page.getByRole("tab", { name: "Tests", exact: true }).click();
+      const askGuide = page.getByRole("button", { name: "Ask Guide for tests", exact: true });
+      await expect(askGuide).toBeVisible();
+      await shoot(page, "n-tests-empty", combo);
+      await page.getByRole("tab", { name: "Results", exact: true }).click();
+      await expect(page.getByText(/^No results for this version\./)).toBeVisible();
+      await shoot(page, "n-results-empty", combo);
+      await page.getByRole("button", { name: "Go to Tests", exact: true }).click();
+      await expect(page.getByRole("tab", { name: "Tests", exact: true })).toHaveAttribute("aria-selected", "true");
+      await askGuide.click();
+      await expect(page.getByRole("textbox", { name: "Message Vibe Evals" })).toBeVisible();
+      expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
+    });
+
     test(`k sidebar ${label}`, async ({ page }) => {
       await prepare(page, combo);
       const control = await serve(page);
       await openSession(page, "returns-results");
       await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 20_000 });
       if (combo.width < 1024) {
-        await page.getByRole("button", { name: "Open agents", exact: true }).click();
-        await expect(page.getByRole("dialog", { name: "Your agents" })).toBeVisible();
+        await page.getByRole("button", { name: "Open projects", exact: true }).click();
+        await expect(page.getByRole("dialog", { name: "Your projects" })).toBeVisible();
       } else {
-        await expect(page.getByRole("complementary", { name: "Agent sidebar", exact: true })).toBeVisible();
+        await expect(page.getByRole("complementary", { name: "Projects sidebar", exact: true })).toBeVisible();
       }
-      const nav = combo.width < 1024 ? page.getByRole("dialog", { name: "Your agents" }) : page.getByRole("complementary", { name: "Agent sidebar", exact: true });
+      const nav = combo.width < 1024 ? page.getByRole("dialog", { name: "Your projects" }) : page.getByRole("complementary", { name: "Projects sidebar", exact: true });
       await expect(nav.locator("[data-evaluation-id]").first()).toBeVisible();
       await shoot(page, "k-sidebar", combo);
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
+    });
+
+    test(`m signed-in entry with workspace picker ${label}`, async ({ page }) => {
+      await prepare(page, combo);
+      const control = await serve(page);
+      await signIn(page);
+      const picker = page.getByRole("combobox", { name: "Workspace for new projects", exact: true });
+      await expect(picker).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByText("Choose a workspace to use its credits.", { exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Review settings" })).toHaveCount(0);
+      await shoot(page, "m-entry-workspace", combo);
+      await picker.selectOption({ label: "Returns team" });
+      await expect(page.getByRole("button", { name: /Build an agent/ })).toBeEnabled();
+      await shoot(page, "m-entry-workspace-chosen", combo);
+      expect(control.errors).toEqual([]);
     });
 
     test(`l delete and credits dialogs ${label}`, async ({ page }) => {
@@ -364,8 +426,8 @@ for (const combo of combos) {
       // A workspace in the URL shows the Credits control in Settings.
       await page.goto("/vibe-evals?session=returns-results&workspace=a8000000-0000-4000-8000-000000000003");
       await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 20_000 });
-      if (combo.width < 1024) await page.getByRole("button", { name: "Open agents", exact: true }).click();
-      const nav = combo.width < 1024 ? page.getByRole("dialog", { name: "Your agents" }) : page.getByRole("complementary", { name: "Agent sidebar", exact: true });
+      if (combo.width < 1024) await page.getByRole("button", { name: "Open projects", exact: true }).click();
+      const nav = combo.width < 1024 ? page.getByRole("dialog", { name: "Your projects" }) : page.getByRole("complementary", { name: "Projects sidebar", exact: true });
       const actions = nav.locator(".vibe-project-actions");
       if (!(await actions.evaluate(el => (el as HTMLDetailsElement).open))) await actions.locator("summary").click();
       await actions.getByRole("button", { name: "Delete this project", exact: true }).click();

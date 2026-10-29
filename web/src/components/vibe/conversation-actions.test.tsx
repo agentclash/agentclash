@@ -46,7 +46,7 @@ it("adopts the displayed group only on explicit click and renders supplied text 
   expect(onAction).not.toHaveBeenCalled();
   expect(node.querySelector("script")).toBeNull();
   expect(node.textContent).toContain('<script>fetch("/save")</script>');
-  await act(async () => button("Use these checks").click());
+  await act(async () => button("Use these rules").click());
   expect(onAction.mock.calls[0][0]).toMatchObject({ kind: "adopt_proposal", target_id: scope, target_revision: 7, option_ids: [], text: null });
   expect(button("14 days")).toBeUndefined();
 });

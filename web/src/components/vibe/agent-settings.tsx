@@ -8,7 +8,6 @@ import { Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { type Artifact, type Models, type Session, type VibeConfig } from "@/lib/vibe";
-import { CreditsDialog } from "./credits-dialog";
 import { ModelSelect } from "./model-select";
 import { VibeButton } from "./vibe-button";
 
@@ -16,6 +15,7 @@ type Props = {
   reimport?: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onOpenChangeComplete?: (open: boolean) => void;
   config: VibeConfig | null;
   session: Session | null;
   artifact?: Artifact;
@@ -29,40 +29,30 @@ type Props = {
   onModels: (models: Models) => void;
   onVersion: (id: string) => void;
   onSave: () => void;
+  onCredits: () => void;
   onImport: () => void;
   onExportConversation: () => void;
 };
 
-export function AgentSettings({reimport,open, onOpenChange, config, session, artifact, artifacts, models, busy, workspace, testJourney, projectReturnPath,savedDraft, onModels, onVersion, onSave, onImport, onExportConversation}: Props) {
+// Actions that open another dialog (Credits, Save, Export) close Settings first;
+// the parent opens the next dialog from onOpenChangeComplete.
+export function AgentSettings({reimport,open, onOpenChange, onOpenChangeComplete, config, session, artifact, artifacts, models, busy, workspace, testJourney, projectReturnPath,savedDraft, onModels, onVersion, onSave, onCredits, onImport, onExportConversation}: Props) {
   const savable = !!artifact && artifact.kind !== "test_plan" && artifact.kind !== "conversation_evaluation";
   return (
-      <Dialog open={open} onOpenChange={onOpenChange}>
+      <Dialog open={open} onOpenChange={onOpenChange} onOpenChangeComplete={onOpenChangeComplete}>
         <DialogContent className="vibe-workspace vibe-dialog">
           <DialogTitle>Settings and details</DialogTitle>
           <DialogDescription>
             Choose models, review versions, or export your work.
           </DialogDescription>
           <div className="vibe-dialog-body space-y-4">
-          {(workspace || savable) && <div className="flex flex-wrap gap-2">
-          {workspace && <CreditsDialog workspace={workspace} />}
-          {savable && (
-              <VibeButton
-                disabled={busy}
-                onClick={() => {
-                  onOpenChange(false);
-                  onSave();
-                }}
-              >
-                {testJourney ? "Keep these tests" : "Save agent"}
-              </VibeButton>
-            )}
-          </div>}
+          {workspace && <div className="flex flex-wrap gap-2"><Button variant="ghost" size="sm" onClick={onCredits}>Credits</Button></div>}
           {savedDraft && (
             <Link
               className="text-sm underline"
               href={advancedURL(savedDraft.workspace_id,savedDraft.draft_id,projectReturnPath,session?projectTitle(session):undefined)}
             >
-              Open saved evaluation
+              Open in the advanced editor
             </Link>
           )}
           {(
@@ -94,11 +84,11 @@ export function AgentSettings({reimport,open, onOpenChange, config, session, art
                 />
                 <p className="mt-1 text-sm text-builder-fg-muted">
                   {role === "assistant"
-                    ? "Plans the check and helps explain results."
+                    ? "Plans the tests and helps explain results."
                     : role === "target"
-                      ? "Generates replies when testing instructions here. Changing it starts a fresh preview conversation."
+                      ? "Generates replies when testing instructions here. Changing it starts a fresh trial conversation."
                       : config?.local_testing && !config?.free_only
-                        ? "Grades replies against your expectations. Changing it requires a new baseline or rechecking saved grades."
+                        ? "Grades replies against your expectations. Changing it requires a new baseline or regrading saved replies."
                         : "Grades replies against your expectations. The free trial keeps this fixed."}
                 </p>
               </div>
@@ -143,16 +133,23 @@ export function AgentSettings({reimport,open, onOpenChange, config, session, art
           {reimport}
           {(savable || session) && <div className="flex flex-wrap gap-2">
           {savable && (
+              <VibeButton
+                disabled={busy}
+                onClick={onSave}
+              >
+                {testJourney ? "Keep these tests" : "Save agent"}
+              </VibeButton>
+            )}
+          {savable ? (
               <Button
                 variant="outline"
                 onClick={onExportConversation}
               >
                 {testJourney
                   ? "Export tests and agent instructions"
-                  : "Export agent and checks"}
+                  : "Export agent and tests"}
               </Button>
-            )}
-          {session && (
+            ) : (
             <Button variant="outline" onClick={onExportConversation}>
               Export selected version / result
             </Button>

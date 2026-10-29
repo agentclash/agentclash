@@ -88,7 +88,7 @@ async function serve(page: Page, many = false, prototypes = false) {
   });
   await page.goto("/vibe-evals?session=first");
   // The reused development server also waits for AuthKit's initial session check.
-  if (prototypes) await expect(page.getByRole("button", { name: "Try it yourself", exact: true })).toBeVisible({ timeout: 15_000 });
+  if (prototypes) await expect(page.getByRole("textbox", { name: "Message your agent", exact: true })).toBeVisible({ timeout: 15_000 });
   else await expect(page.getByRole("heading", { name: "Improve an agent you already have." })).toBeVisible({ timeout: 15_000 });
   return { first, second, sessions, posts, errors };
 }
@@ -120,7 +120,8 @@ test("a stored trial in B survives opening A, switching, editing and refreshing"
   await page.locator('[data-evaluation-id="second"]').click();
   await openGuide("second");
   await expect(composer).toHaveValue("B's separate guide draft");
-  await page.getByRole("button", { name: "Try it yourself", exact: true }).click();
+  // The Agent tab shows the trial inline; there is no separate "Try it yourself" step.
+  await expect(page.getByRole("button", { name: "Try it yourself", exact: true })).toHaveCount(0);
   const trial = page.getByRole("textbox", { name: "Message your agent", exact: true });
   await expect(trial).toHaveValue("B's unsent trial");
   await trial.fill("B's edited unsent trial");
@@ -144,17 +145,18 @@ test("sidebar creation and cancellation preserve the draft and never start a run
   const control = await serve(page);
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   await composer.fill("Keep this unsent description.");
-  await page.getByRole("button", { name: "New evaluation", exact: true }).click();
+  await page.getByRole("button", { name: "New project", exact: true }).click();
   await expect(page.getByRole("heading", { name: "What would you like to evaluate?" })).toBeVisible();
-  await page.getByRole("button", { name: "Back to your evaluation" }).click();
+  await page.getByRole("button", { name: "Back to your project" }).click();
   await expect(composer).toHaveValue("Keep this unsent description.");
   await expect(composer).toBeFocused();
-  await page.getByRole("button", { name: "New evaluation", exact: true }).click();
+  await page.getByRole("button", { name: "New project", exact: true }).click();
   await page.keyboard.press("Escape");
   await expect(composer).toBeFocused();
   expect(control.posts).toHaveLength(0);
-  await page.getByRole("button", { name: "New evaluation", exact: true }).click();
+  await page.getByRole("button", { name: "New project", exact: true }).click();
   await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+  await expect.poll(() => control.posts.length).toBe(1);
   const created = control.posts[0].body.id as string;
   await expect(page.locator(`[data-evaluation-id="${created}"]`)).toHaveAttribute("aria-current", "page");
   await expect(composer).toHaveValue("Keep this unsent description.");
@@ -170,9 +172,9 @@ test("navigation preserves active context while another evaluation completes", a
   await composer.fill("First draft");
   await page.locator('[data-evaluation-id="second"]').click();
   await expect(page.locator('[data-evaluation-id="second"]')).toContainText("Running");
-  await page.getByRole("button", { name: "New evaluation", exact: true }).click();
+  await page.getByRole("button", { name: "New project", exact: true }).click();
   await expect(page.getByRole("button", { name: /Improve an existing agent/ })).toBeEnabled();
-  await page.getByRole("button", { name: "Back to your evaluation" }).click();
+  await page.getByRole("button", { name: "Back to your project" }).click();
   await composer.fill("Second draft");
   await page.locator('[data-evaluation-id="first"]').click();
   await expect(composer).toHaveValue("First draft");
@@ -192,19 +194,19 @@ test("drawer supports keyboard dismissal, focus return and source selection on s
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   const control = await serve(page);
-  const trigger = page.getByRole("button", { name: "Open agents", exact: true });
+  const trigger = page.getByRole("button", { name: "Open projects", exact: true });
   await trigger.click();
-  const drawer = page.getByRole("dialog", { name: "Your agents" });
+  const drawer = page.getByRole("dialog", { name: "Your projects" });
   await expect(drawer).toBeVisible();
   await expect(drawer).toHaveCSS("opacity", "1");
   await page.keyboard.press("Escape");
   await expect(drawer).toBeHidden();
   await expect(trigger).toBeFocused();
   await trigger.click();
-  await drawer.getByRole("button", { name: "New evaluation", exact: true }).click();
+  await drawer.getByRole("button", { name: "New project", exact: true }).click();
   await expect(drawer).toBeHidden();
-  await expect(page.getByLabel("New evaluation choices", { exact: true })).toBeFocused();
-  await page.getByRole("button", { name: "Back to your evaluation" }).click();
+  await expect(page.getByLabel("New project choices", { exact: true })).toBeFocused();
+  await page.getByRole("button", { name: "Back to your project" }).click();
   await page.getByRole("button", { name: "Try my saved instructions", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Improve an agent you already have." })).toBeHidden();
   expect(control.posts).toHaveLength(0);
@@ -233,9 +235,9 @@ test("entry, context label and composer fit mobile, desktop and zoom-sized layou
   await page.getByRole("button", { name: "Collapse sidebar", exact: true }).click();
   await expect(page.getByRole("button", { name: "Expand sidebar", exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Expand sidebar", exact: true })).toBeFocused();
-  await expect(page.getByRole("button", { name: "New evaluation", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "New project", exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Expand sidebar", exact: true }).click();
-  await expect(page.getByRole("button", { name: "New evaluation", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "New project", exact: true })).toBeVisible();
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
 });
@@ -243,7 +245,7 @@ test("entry, context label and composer fit mobile, desktop and zoom-sized layou
 test("plain-language source choices explain test packs and let an empty choice change doors", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 });
   const control = await serve(page);
-  await page.getByRole("button", { name: "New evaluation", exact: true }).click();
+  await page.getByRole("button", { name: "New project", exact: true }).click();
   await page.getByRole("button", { name: /Improve an existing agent/ }).click();
   await expect(page.getByRole("heading", { name: "Improve an agent you already have." })).toBeVisible();
   const help = page.getByLabel("What is a test pack?", { exact: true });
@@ -251,15 +253,15 @@ test("plain-language source choices explain test packs and let an empty choice c
   await help.hover();
   const tooltip = page.locator('[data-slot="tooltip-content"][data-open]');
   await expect(tooltip).toBeVisible();
-  await expect(tooltip).toContainText("A test pack (also called a challenge pack) contains situations to try");
+  await expect(tooltip).toContainText("A test pack is a saved set of tests: what to send your agent and what a good response should do.");
   await help.focus();
   await expect(tooltip).toContainText("Import one only if you already have it");
   await page.getByRole("button", { name: "Actually, I want to build an agent.", exact: true }).click();
-  await expect(page.getByLabel("New evaluation choices", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("New project choices", { exact: true })).toBeVisible();
   expect(control.posts).toHaveLength(1);
   await page.getByRole("button", { name: /Build an agent/ }).click();
   await expect(page.getByRole("heading", { name: "What would you like help with?" })).toBeVisible();
-  expect(control.posts.map(post => post.path)).toEqual([
+  await expect.poll(() => control.posts.map(post => post.path)).toEqual([
     "/v1/vibe/sessions",
     "/v1/vibe/sessions",
   ]);
@@ -272,7 +274,7 @@ test("a failed import stays in Improve and clears when returning to the chooser"
   await page.locator('input[type="file"]').setInputFiles({ name: "broken.json", mimeType: "application/json", buffer: Buffer.from("{") });
   await expect(page.getByRole("alert").filter({ hasText: "Couldn’t import this file" })).toBeVisible();
   await page.getByRole("button", { name: "Actually, I want to build an agent." }).click();
-  await expect(page.getByLabel("New evaluation choices")).toBeVisible();
+  await expect(page.getByLabel("New project choices")).toBeVisible();
   await expect(page.getByRole("alert").filter({ hasText: "Couldn’t import this file" })).toHaveCount(0);
   expect(control.posts.map(post => post.path)).toEqual(["/v1/vibe/sessions/first/import"]);
   expect(control.errors).toEqual([]);
@@ -284,14 +286,15 @@ test("dismissing the extra-run quote restores focus without submitting a paid ru
   control.sessions.set("build", buildEvaluation());
   await page.goto("/vibe-evals?session=build");
   await page.getByRole("tab", { name: "Results", exact: true }).click();
+  await page.locator(".vibe-results-more > summary").click();
   const actions = page.getByRole("region", { name: "Next actions for this version" });
   await expect(actions).toBeVisible();
-  await actions.locator("summary").filter({ hasText: "More ways to check" }).click();
-  await actions.getByRole("button", { name: "Try tougher situations" }).click();
+  await actions.locator("summary").filter({ hasText: "More ways to test" }).click();
+  await actions.getByRole("button", { name: "Add harder tests" }).click();
   await actions.getByRole("button", { name: "See cost and continue" }).click();
-  const dialog = page.getByRole("dialog", { name: "Try tougher situations" });
+  const dialog = page.getByRole("dialog", { name: "Run harder tests" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Prepare and run this batch" })).toBeEnabled();
+  await expect(dialog.getByRole("button", { name: "Start run" })).toBeEnabled();
   expect(control.posts.map(post => post.path)).toEqual(["/v1/vibe/sessions/build/build-quote"]);
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
@@ -303,7 +306,7 @@ test("dismissing the extra-run quote restores focus without submitting a paid ru
 test("long evaluation titles scroll inside the sidebar and saved work stays accessible", async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 720 });
   const control = await serve(page, true);
-  const list = page.getByRole("navigation", { name: "Your agents" });
+  const list = page.getByRole("navigation", { name: "Your projects" });
   await expect(list.locator("[data-evaluation-id]")).toHaveCount(32);
   expect(await list.evaluate(element => element.scrollHeight > element.clientHeight)).toBe(true);
   const title = list.locator(".vibe-sidebar-item-copy > span").last();
@@ -404,8 +407,8 @@ test("text roles stay consistent across viewport sizes and portaled dialogs", as
     await expect(page.locator(".vibe-instructions-text")).toHaveCSS("font-size", "16px");
     await expect(page.getByRole("textbox", { name: "Message your agent", exact: true })).toHaveCSS("font-size", "16px");
     await expect(page.getByRole("tab", { name: "Agent", exact: true })).toHaveCSS("font-size", "14px");
-    if (width < 1024) await page.getByRole("button", { name: "Open agents", exact: true }).click();
-    const navigation = width < 1024 ? page.getByRole("dialog", { name: "Your agents", exact: true }) : page.getByRole("complementary", { name: "Agent sidebar", exact: true });
+    if (width < 1024) await page.getByRole("button", { name: "Open projects", exact: true }).click();
+    const navigation = width < 1024 ? page.getByRole("dialog", { name: "Your projects", exact: true }) : page.getByRole("complementary", { name: "Projects sidebar", exact: true });
     await expect(navigation.locator('[data-evaluation-id="first"] .vibe-project-full-title')).toHaveCSS("font-size", "14px");
     await expect(navigation.locator('[data-evaluation-id="first"] small')).toHaveCSS("font-size", "12px");
     const actions = navigation.locator(".vibe-project-actions");
@@ -429,10 +432,92 @@ test("text roles stay consistent across viewport sizes and portaled dialogs", as
     await dialog.getByRole("button", { name: "Credits", exact: true }).click();
     const credits = page.getByRole("dialog", { name: "Workspace AI credits", exact: true });
     await expect.soft(credits.locator('[data-slot="dialog-title"]')).toHaveCSS("font-size", "20px");
+    await expect(dialog).toHaveCount(0);
     await credits.getByRole("button", { name: "Close", exact: true }).click();
-    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    // Below 1280 the Details sheet closed before Settings opened; the wide panel stays.
+    if (width >= 1280) await page.getByRole("button", { name: "Close Details", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  }
+  expect(control.posts).toHaveLength(0);
+  expect(control.errors).toEqual([]);
+});
+
+test("one dialog at a time: Settings closes before Save or Export opens", async ({ page }) => {
+  await serve(page, false, true);
+  await page.goto("/vibe-evals?session=first&workspace=a8000000-0000-4000-8000-000000000003");
+  await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 15_000 });
+  await page.evaluate(() => {
+    const record = window as unknown as { mostDialogs: number };
+    record.mostDialogs = 0;
+    const count = () => { record.mostDialogs = Math.max(record.mostDialogs, document.querySelectorAll('[role="dialog"]').length); };
+    new MutationObserver(count).observe(document.body, { childList: true, subtree: true, attributes: true });
+  });
+  const settings = page.getByRole("dialog", { name: "Settings and details", exact: true });
+  for (const action of [/^(Keep these tests|Save agent)$/, /^Export (tests and agent instructions|agent and checks)$/]) {
+    await page.evaluate(() => { (window as unknown as { mostDialogs: number }).mostDialogs = 0; });
+    await page.getByRole("button", { name: "Details", exact: true }).click();
+    await page.getByRole("complementary", { name: "Details utility", exact: true }).getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(settings).toBeVisible();
+    await settings.getByRole("button", { name: action }).first().click();
+    await expect(settings).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    // Settings has finished closing before the next dialog appears, even during the animation.
+    expect(await page.evaluate(() => (window as unknown as { mostDialogs: number }).mostDialogs), String(action)).toBe(1);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.getByRole("button", { name: "Close Details", exact: true }).click();
   }
+});
+
+test("one dialog at a time: Details closes before Settings, Settings closes before Credits, focus returns to the opener", async ({ page }) => {
+  const control = await serve(page, false, true);
+  await page.route(/\/v1\/vibe\/credits\?/, route => route.fulfill({
+    headers: { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" },
+    json: { under_review: false, balance_nano_usd: 0, held_nano_usd: 0, available_nano_usd: 0, products: [] },
+  }));
+  await page.goto("/vibe-evals?session=first&workspace=a8000000-0000-4000-8000-000000000003");
+  await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 15_000 });
+  // Count every dialog popup in the page, including one that is still animating closed.
+  await page.evaluate(() => {
+    const record = window as unknown as { mostDialogs: number };
+    record.mostDialogs = 0;
+    const count = () => { record.mostDialogs = Math.max(record.mostDialogs, document.querySelectorAll('[role="dialog"]').length); };
+    new MutationObserver(count).observe(document.body, { childList: true, subtree: true, attributes: true });
+  });
+  const mostDialogs = () => page.evaluate(() => (window as unknown as { mostDialogs: number }).mostDialogs);
+  const settings = page.getByRole("dialog", { name: "Settings and details", exact: true });
+  const credits = page.getByRole("dialog", { name: "Workspace AI credits", exact: true });
+  for (const width of [390, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const detailsButton = page.getByRole("button", { name: "Details", exact: true });
+    await detailsButton.click();
+    const details = width < 1280 ? page.getByRole("dialog", { name: "Details", exact: true }) : page.getByRole("complementary", { name: "Details utility", exact: true });
+    const settingsButton = details.getByRole("button", { name: "Settings", exact: true });
+    await settingsButton.click();
+    await expect(settings).toBeVisible();
+    // The wide panel is not modal and stays (hidden from assistive tech while Settings is open).
+    if (width < 1280) await expect(page.getByRole("dialog", { name: "Details", exact: true })).toHaveCount(0);
+    else await expect(page.locator(".vibe-utility")).toBeVisible();
+    // The sheet returned focus to Details before Settings opened; the panel keeps its button.
+    const opener = width < 1280 ? detailsButton : settingsButton;
+    await settings.getByRole("button", { name: "Credits", exact: true }).click();
+    await expect(credits).toBeVisible();
+    await expect(settings).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    // Escape closes only the top dialog; Settings does not reopen behind it.
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(opener).toBeFocused();
+    // Settings alone also returns focus to its opener.
+    if (width < 1280) await detailsButton.click(); else await expect(details).toBeVisible();
+    await details.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(settings).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(opener).toBeFocused();
+    if (width >= 1280) await page.getByRole("button", { name: "Close Details", exact: true }).click();
+  }
+  expect(await mostDialogs()).toBe(1);
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
 });
@@ -601,6 +686,11 @@ test("Settings descendants retain readable scoped appearance including warning, 
     await page.getByLabel("Appearance",{exact:true}).selectOption(appearance);
     await page.getByRole("complementary",{name:"Details utility"}).getByRole("button",{name:"Settings",exact:true}).click();
     const dialog=page.getByRole("dialog",{name:"Settings and details"});
+    // The dialog moves focus to its initial control after it opens. Focus the select only after
+    // that settles; otherwise the late initial focus takes focus away from it.
+    await expect(dialog).toBeVisible();
+    await expect.poll(()=>dialog.evaluate(popup=>!popup.hasAttribute("data-starting-style")&&popup.contains(document.activeElement))).toBe(true);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const model=dialog.getByLabel("Assistant model",{exact:true});
     await model.focus(); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab");
     const action=dialog.getByRole("button",{name:"Import a test pack",exact:true}); await action.hover();
@@ -613,7 +703,7 @@ test("Settings descendants retain readable scoped appearance including warning, 
       const ratio=(a:number[],b:number[])=>{const x=luminance(a),y=luminance(b);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05);};
       const sample=(element:Element)=>{const style=getComputedStyle(element),bg=background(element),fg=blend(rgba(style.color),bg);return {text:element.textContent?.trim().slice(0,80),color:style.color,background:bg,contrast:ratio(fg,bg)};};
       const select=popup.querySelector<HTMLSelectElement>('[aria-label="Assistant model"]')!, css=getComputedStyle(select), bg=background(select);
-      const help=[...popup.querySelectorAll("p")].filter(el=>/Plans the check|Generates replies|Grades replies|Model changes apply/.test(el.textContent||""));
+      const help=[...popup.querySelectorAll("p")].filter(el=>/Plans the tests|Generates replies|Grades replies|Model changes apply/.test(el.textContent||""));
       const labels=[...popup.querySelectorAll("label")].filter(el=>el.querySelector('select[aria-label$=" model"]'));
       const warning=[...document.querySelectorAll('[role="alert"]')].find(el=>el.textContent?.includes("Fixture provider is unavailable."))!;
       const ringColor=[...css.boxShadow.matchAll(/(?:rgba?|oklch|color)\([^)]*\)/g)].map(match=>match[0]).filter(color=>rgba(color)[3]>0).at(-1);
@@ -633,7 +723,7 @@ test("Settings descendants retain readable scoped appearance including warning, 
 
 test("library search rename archive and sidebar preference preserve full touch and keyboard titles without running",async({page})=>{
  const control=await serve(page,true);
- const search = page.getByRole("searchbox",{name:"Search loaded projects"});
+ const search = page.getByRole("searchbox",{name:"Search projects"});
  const assertSearchAffordance = async () => {
    const control = await search.evaluate(input => {
      const style=getComputedStyle(input), rgb=(value:string)=>value.match(/[\d.]+/g)!.slice(0,3).map(Number);
@@ -653,7 +743,7 @@ test("library search rename archive and sidebar preference preserve full touch a
  await page.getByRole("textbox",{name:"Project title",exact:true}).fill(title);
  await page.getByRole("textbox",{name:"Project title",exact:true}).press("Enter");
  await expect(page.getByRole("button",{name:"Rename project",exact:true})).toBeVisible();
- await page.getByRole("searchbox",{name:"Search loaded projects"}).fill("autumn project");
+ await page.getByRole("searchbox",{name:"Search projects"}).fill("autumn project");
  const row=page.locator('[data-evaluation-id="older-29"]');await expect(row).toContainText(title);
  await row.focus();expect(await row.locator('.vibe-project-full-title').evaluate(node=>node.scrollHeight<=node.clientHeight+1)).toBe(true);
  await page.getByRole("button",{name:"Archive project",exact:true}).click();await expect(row).toHaveCount(0);
@@ -661,7 +751,7 @@ test("library search rename archive and sidebar preference preserve full touch a
  await page.getByRole("button",{name:"Restore project",exact:true}).click();await expect(row).toHaveCount(0);
  await page.getByLabel("Project archive filter").selectOption("exclude");await expect(row).toHaveCount(1);
  await page.getByRole("button",{name:"Collapse sidebar",exact:true}).click();await page.reload();await expect(page.getByRole("button",{name:"Expand sidebar",exact:true})).toBeVisible();
- await page.setViewportSize({width:390,height:844});if(await page.getByRole("button",{name:"Close Guide",exact:true}).isVisible())await page.getByRole("button",{name:"Close Guide",exact:true}).click();await page.getByRole("button",{name:"Open agents",exact:true}).click();
+ await page.setViewportSize({width:390,height:844});if(await page.getByRole("button",{name:"Close Guide",exact:true}).isVisible())await page.getByRole("button",{name:"Close Guide",exact:true}).click();await page.getByRole("button",{name:"Open projects",exact:true}).click();
  const mobile=page.getByRole("dialog");await expect(mobile.locator('[data-evaluation-id="older-29"]')).toContainText(title);
  await assertSearchAffordance();
  expect(await mobile.locator('[data-evaluation-id="older-29"] .vibe-project-full-title').evaluate(node=>node.scrollHeight<=node.clientHeight+1)).toBe(true);

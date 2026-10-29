@@ -26,7 +26,6 @@ export function CaseEvidence({
   onDispute,
   onRegrade,
   defaultOpen = false,
-  focused = false,
   allowFixPrompt = false,
   onFixCopied,
   origin,
@@ -46,7 +45,6 @@ export function CaseEvidence({
   onDispute?: (rule: string, result: CaseResult) => void;
   onRegrade?: () => void;
   defaultOpen?: boolean;
-  focused?: boolean;
   allowFixPrompt?: boolean;
   onFixCopied?: () => void;
   origin?: EvidenceOrigin;
@@ -110,7 +108,7 @@ export function CaseEvidence({
   const explanation =
     finding?.error?.message ||
     finding?.evidence ||
-    "A detailed explanation was not recorded for this check.";
+    "A detailed explanation was not recorded for this expectation.";
   const excerpt = concise && explanation.length > 240;
   const boundary = explanation.lastIndexOf(" ", 240);
   const visibleExplanation = excerpt
@@ -140,7 +138,7 @@ export function CaseEvidence({
             (concise && evidence?.input != null
               ? caseInput(evidence.input)
               : summary.case_key
-                  .replace(/^case-/, exampleFirst ? "Example " : concise ? "Test " : "Situation ")
+                  .replace(/^case-/, "Test ")
                   .replaceAll("-", " "))}
         </span>
         <span className="text-xs text-builder-fg-muted">
@@ -159,7 +157,7 @@ export function CaseEvidence({
         />
       </summary>
       <div className="space-y-4 border-t border-[var(--vibe-border)] p-4">
-        {onAsk && <VibeButton variant="quiet" onClick={onAsk}>Ask Guide about this case</VibeButton>}
+        {onAsk && <VibeButton variant="quiet" onClick={onAsk}>Ask Guide about this test</VibeButton>}
         {loading && (
           <p role="status" className="text-sm vibe-muted">
             Loading saved evidence…
@@ -178,7 +176,7 @@ export function CaseEvidence({
               </p>
             )}
             {exampleFirst && <div className="vibe-example-evidence">
-              <div><p className="vibe-evidence-label">{compactPreview ? "We gave it" : "Situation we tried"}</p>{compactPreview ? <EvidenceExcerpt text={caseInput(evidence.input)} label="input" /> : <SafeMarkdown>{caseInput(evidence.input)}</SafeMarkdown>}</div>
+              <div><p className="vibe-evidence-label">{compactPreview ? "We gave it" : "Test input"}</p>{compactPreview ? <EvidenceExcerpt text={caseInput(evidence.input)} label="input" /> : <SafeMarkdown>{caseInput(evidence.input)}</SafeMarkdown>}</div>
               {!compactPreview && <div><p className="vibe-evidence-label">What it should do</p><SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown></div>}
               <div><p className="vibe-evidence-label">{compactPreview ? "It replied" : "What it actually replied"}</p>{evidence.output ? <div className="vibe-example-reply">{compactPreview ? <EvidenceExcerpt text={evidence.output} label="reply" /> : <AgentReply>{evidence.output}</AgentReply>}</div> : <p>No reply was recorded.</p>}</div>
             </div>}
@@ -205,13 +203,13 @@ export function CaseEvidence({
               <FixPromptCopy
                 prompt={prompt}
                 busy={busy}
-                primary={focused}
                 onCopied={onFixCopied}
               />
             )}
             {!compactPreview && <EvidenceDetails
               evidence={evidence}
               finding={finding}
+              expectationShown={exampleFirst || !!verifiedFinding(evidence, finding)}
               origin={origin}
               onDispute={onDispute}
               onRegrade={onRegrade}
@@ -283,9 +281,15 @@ function PrimaryReply({
   );
 }
 
+// Only the expected behavior and the user's own rules can be changed; "Reply received" is a grading step.
+function changeable(evidence: CaseResult, check: { key: string }) {
+  return check.key === "behavior" || !!evidence.expectations?.some((rule) => rule.id === check.key);
+}
+
 function EvidenceDetails({
   evidence,
   finding,
+  expectationShown,
   origin,
   onDispute,
   onRegrade,
@@ -294,6 +298,7 @@ function EvidenceDetails({
 }: {
   evidence: CaseResult;
   finding?: EvidenceCheck;
+  expectationShown: boolean;
   origin?: EvidenceOrigin;
   onDispute?: (rule: string, result: CaseResult) => void;
   onRegrade?: () => void;
@@ -302,6 +307,12 @@ function EvidenceDetails({
 }) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
+  // The finding and its expectation already show above; list checks only when there is more.
+  const otherChecks = evidence.checks.some((check) => check.key !== finding?.key);
+  const cited = new Set(finding?.message_ids || []);
+  const supporting = evidence.messages?.length
+    ? evidence.messages.some((message) => cited.has(message.id))
+    : !!evidence.output;
   return (
     <div className="space-y-3">
       <div className="-ml-3 flex flex-wrap items-center gap-1">
@@ -317,7 +328,7 @@ function EvidenceDetails({
             className={expanded ? "rotate-90" : ""}
           />
         </VibeButton>
-        {onDispute && finding && (
+        {onDispute && finding && changeable(evidence, finding) && (
           <VibeButton
             variant="quiet"
             disabled={busy}
@@ -325,31 +336,31 @@ function EvidenceDetails({
               onDispute(expectedBehavior(evidence, finding), evidence)
             }
           >
-            Change the expected behavior
+            Change expected result
           </VibeButton>
         )}
-        {onRegrade && <VibeButton variant="quiet" disabled={busy} onClick={onRegrade}>Recheck saved grades</VibeButton>}
+        {onRegrade && <VibeButton variant="quiet" disabled={busy} onClick={onRegrade}>Regrade saved replies</VibeButton>}
       </div>
-      {onRegrade && <p className="text-sm vibe-muted">Rechecking uses the same replies and rules. Your earlier results stay saved.</p>}
+      {onRegrade && <p className="text-sm vibe-muted">Regrading uses the same replies and rules. Your earlier results stay saved.</p>}
       <div
         id={id}
         hidden={!expanded}
         className="space-y-6 border-t border-[var(--vibe-border)] pt-4"
       >
-        {(evidence.expected || evidence.expectations?.length) && (
+        {!expectationShown && (evidence.expected || evidence.expectations?.length) && (
           <div className="text-sm">
             <p className="mb-2 text-xs vibe-muted">Expected behavior</p>
             <SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown>
           </div>
         )}
-        <div aria-label="Supporting messages" className="space-y-3">
+        {supporting && <div aria-label="Supporting messages" className="space-y-3">
           <p className="text-xs vibe-muted">Supporting messages</p>
           <SupportingEvidence
             evidence={evidence}
             finding={finding}
             origin={origin}
           />
-        </div>
+        </div>}
         {evidence.messages?.length ? (
           <div>
             <p className="mb-3 text-xs vibe-muted">
@@ -388,20 +399,17 @@ function EvidenceDetails({
             )}
           </div>
         )}
-        <div className="space-y-4">
+        {otherChecks && <div className="space-y-4">
           <p className="text-xs vibe-muted">
-            All checks · {evidence.checks.length}
+            Grading details · {evidence.checks.length}
           </p>
-          {evidence.checks.map((check) => (
+          {evidence.checks.map((check) => {
+            const rule = evidence.expectations?.find((item) => item.id === check.key);
+            const name = check.key === "behavior" ? "Expected behavior" : check.key === "has_answer" ? "Reply received" : rule?.statement || check.key;
+            return (
             <div key={check.key}>
               <p className="text-sm font-semibold">
-                {check.key === "behavior"
-                  ? "Expected behavior"
-                  : check.key === "has_answer"
-                    ? "Reply received"
-                    : evidence.expectations?.find(
-                        (rule) => rule.id === check.key,
-                      )?.statement || check.key}
+                {name}
                 {" · "}
                 {check.verdict === "PASS"
                   ? "Passed"
@@ -414,26 +422,28 @@ function EvidenceDetails({
               </SafeMarkdown>
               <GroundedFinding result={evidence} check={check} />
               <CitedMessages evidence={evidence} check={check} />
-              {onDispute && (
+              {onDispute && changeable(evidence, check) && check.key !== finding?.key && (
                 <VibeButton
                   variant="quiet"
                   className="mt-2"
                   disabled={busy}
+                  aria-label={`Change expected result: ${name}`}
                   onClick={() =>
                     onDispute(expectedBehavior(evidence, check), evidence)
                   }
                 >
-                  That’s not our rule
+                  Change expected result
                 </VibeButton>
               )}
             </div>
-          ))}
-          {onImprove && evidence.verdict === "FAIL" && (
-            <VibeButton disabled={busy} onClick={() => onImprove(evidence)}>
-              Improve this behavior
-            </VibeButton>
-          )}
-        </div>
+            );
+          })}
+        </div>}
+        {onImprove && evidence.verdict === "FAIL" && (
+          <VibeButton disabled={busy} onClick={() => onImprove(evidence)}>
+            Improve this behavior
+          </VibeButton>
+        )}
       </div>
     </div>
   );
@@ -524,12 +534,10 @@ function CitedMessages({
 function FixPromptCopy({
   prompt,
   busy,
-  primary,
   onCopied,
 }: {
   prompt: string;
   busy?: boolean;
-  primary: boolean;
   onCopied?: () => void;
 }) {
   const [copying, setCopying] = useState(false);
@@ -551,7 +559,6 @@ function FixPromptCopy({
   return (
     <div className="space-y-2">
       <VibeButton
-        variant={primary && !copied ? "primary" : "secondary"}
         disabled={busy || copying}
         loading={copying}
         onClick={() => void copy()}

@@ -50,7 +50,7 @@ export function GroundedFinding({ result, check }: {
           <p className="mb-1 text-xs vibe-muted">Missing from the replies</p>
           <p className="whitespace-pre-wrap break-words">{finding.missing}</p>
           <p className="mt-1 text-sm vibe-muted">
-            The judge checked the complete replies for this behavior. Open the full evidence to review its conclusion.
+            The judge reviewed the complete replies for this behavior. Open the full evidence to review its conclusion.
           </p>
         </div>
       )}

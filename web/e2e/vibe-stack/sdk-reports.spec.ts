@@ -27,7 +27,7 @@ test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrad
  await page.locator("summary").filter({hasText:/^Import SDK report$/}).click();
  const source=" \r\n"+JSON.stringify({schema_version:1,report_id:"python-local-original",generated_at:"2026-10-26T12:00:00Z",runner:{name:"agentclash-evals",version:"1"},summary:{total:1,passed:0,failed:1,skipped:0,errored:0},cases:[{case:{case_id:"local arbitrary id",name:"Retained answer",expected:"Confirm eligibility without claiming that a refund was processed."},status:"failed",metrics:[{key:"uploaded-rule",name:"Uploaded rule",passed:false,score:0.2,reason:"Original uploaded judgment"}],agent_result:{input:"Can I return my unopened item bought 10 days ago?",output:"Your unopened item bought 10 days ago is eligible under the 30-day policy. I cannot process a refund."}}],exit_code:1},null,2)+"\t\n";
  await page.getByRole("region",{name:"Import SDK report",exact:true}).locator('input[type="file"]').setInputFiles({name:"original-sdk.json",mimeType:"application/json",buffer:Buffer.from(source)});
- const mapping=page.getByLabel("Test case for local arbitrary id — Retained answer");await expect(mapping.locator("option")).toHaveCount(2);await mapping.selectOption({index:1});
+ const mapping=page.getByLabel("Test for local arbitrary id — Retained answer");await expect(mapping.locator("option")).toHaveCount(2);await mapping.selectOption({index:1});
  const imported=page.waitForResponse(r=>r.url().endsWith(`/sessions/${id}/reports`)&&r.request().method()==="POST");await page.getByRole("button",{name:"Import historical report",exact:true}).click();
  const response=await imported;expect(response.ok(),await response.text()).toBe(true);const report=await response.json();
  await expect(page.getByRole("article",{name:"Imported report detail"})).toBeVisible();
@@ -35,7 +35,7 @@ test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrad
  expect((await evidence(page,id)).session.operations).toHaveLength(0);
  const sourceURL=page.url();await page.reload();await expect(page.getByRole("article",{name:"Imported report detail"})).toBeVisible();
  const originalDownload=page.waitForEvent("download");await page.getByRole("button",{name:"Download exact original",exact:true}).click();const downloaded=await originalDownload;expect(await readFile((await downloaded.path())!,"utf8")).toBe(source);
- await page.getByLabel("SDK detail source case").selectOption("local arbitrary id");await page.getByLabel("SDK grade review reason").fill("The uploaded grade did not account for the explicit processing limitation.");await page.getByRole("button",{name:"Record grade review",exact:true}).click();await expect(page.getByRole("region",{name:"SDK grade reviews"})).toContainText("processing limitation");
+ await page.getByLabel("SDK detail source test").selectOption("local arbitrary id");await page.getByLabel("SDK grade review reason").fill("The uploaded grade did not account for the explicit processing limitation.");await page.getByRole("button",{name:"Record grade review",exact:true}).click();await expect(page.getByRole("region",{name:"SDK grade reviews"})).toContainText("processing limitation");
  await page.getByRole("button",{name:"Export report with tests",exact:true}).click();await expect(page.getByRole("dialog")).toContainText("SDK report");
  await page.getByRole("button",{name:"Reconcile and prepare selected evidence again",exact:true}).click();
  const exportDownload=page.waitForEvent("download");await page.getByRole("button",{name:"Download exact export",exact:true}).click();const archive=JSON.parse(await readFile((await (await exportDownload).path())!,"utf8"));
@@ -61,8 +61,8 @@ test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrad
  await expect.poll(()=>new URL(page.url()).searchParams.get("run")).toBe(graded.session.operations[0].id);
  await page.getByLabel("SDK report history",{exact:true}).locator("summary").click();
  await page.getByRole("button",{name:"Open report python-local-original",exact:true}).click();await expect(page).toHaveURL(sourceURL);
- await page.getByLabel("SDK detail source case").selectOption("local arbitrary id");const promote=page.getByRole("button",{name:"Create version with this expectation",exact:true});await expect(promote).toBeDisabled();
- await page.getByRole("checkbox",{name:"I reviewed this expectation for the selected test case."}).check();await promote.click();
+ await page.getByLabel("SDK detail source test").selectOption("local arbitrary id");const promote=page.getByRole("button",{name:"Create version with this expectation",exact:true});await expect(promote).toBeDisabled();
+ await page.getByRole("checkbox",{name:"I reviewed this expectation for the selected test."}).check();await promote.click();
  await expect(page.getByRole("tab",{name:"Tests",exact:true})).toHaveAttribute("aria-selected","true");
  const promoted=await evidence(page,id);expect(promoted.session.document.artifacts).toHaveLength(2);expect(promoted.session.document.artifacts[0].blueprint).toEqual(artifact.blueprint);expect(promoted.session.operations).toHaveLength(1);
  await page.goBack();await expect(page.getByRole("article",{name:"Imported report detail"})).toBeVisible();expect(new URL(page.url()).searchParams.get("agent")).toBe(artifact.id);
