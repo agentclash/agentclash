@@ -283,7 +283,7 @@
   border-radius: 14px 14px 4px 14px;
   background: var(--vibe-hover);
 }
-.vibe-message-user[data-pending="true"] {
+.vibe-workspace .vibe-message-user[data-pending="true"] {
   border-color: var(--vibe-control-border);
 }
 .vibe-activity {
