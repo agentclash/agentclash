@@ -104,7 +104,7 @@ function ProductVisual() {
           <div className="flex items-center gap-2">
             <span className="size-2 rounded-full bg-emerald-300" />
             <span className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/45">
-              live eval
+              illustrative example
             </span>
           </div>
           <span className="rounded-md border border-white/[0.08] px-2 py-1 font-[family-name:var(--font-mono)] text-2xs text-white/45">
@@ -121,7 +121,7 @@ function ProductVisual() {
           <div key={name} className="bg-[#090909] p-4">
             <p className="text-sm font-medium text-white">{name}</p>
             <div className="mt-5 flex items-end justify-between gap-3">
-              <span className="font-[family-name:var(--font-display)] text-5xl text-white">
+              <span className="font-sans font-semibold text-5xl text-white">
                 {score}
               </span>
               <span className="mb-1 text-right text-xs leading-5 text-white/45">
@@ -220,7 +220,7 @@ export function SeoLandingPage({ config }: { config: SeoPageConfig }) {
               <p className="mt-10 font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-cyan-200/70">
                 {config.eyebrow}
               </p>
-              <h1 className="mt-5 max-w-[14ch] font-[family-name:var(--font-display)] text-5xl font-normal leading-none tracking-normal text-white sm:text-7xl">
+              <h1 className="mt-5 max-w-[14ch] font-sans text-5xl font-semibold leading-none tracking-tight text-white sm:text-7xl">
                 {config.h1}
               </h1>
               <p className="mt-8 max-w-[58ch] text-base leading-8 text-white/62 sm:text-lg">
@@ -253,11 +253,9 @@ export function SeoLandingPage({ config }: { config: SeoPageConfig }) {
         <section className="border-y border-white/[0.06] px-6 py-20 sm:px-12">
           <div className="mx-auto max-w-[1440px]">
             <div className="max-w-3xl">
-              <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
-                {config.proofSectionTitle}
-              </p>
+              <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">Evidence</p>
               <h2 className="mt-4 text-3xl font-semibold tracking-normal text-white sm:text-5xl">
-                Built for reviewable agent decisions
+                {config.proofSectionTitle}
               </h2>
               <p className="mt-5 text-sm leading-7 text-white/55 sm:text-base">
                 {config.proofSectionDescription}
@@ -279,6 +277,13 @@ export function SeoLandingPage({ config }: { config: SeoPageConfig }) {
           </div>
         </section>
 
+        <section className="px-6 py-20 sm:px-12">
+          <div className="mx-auto max-w-[1440px]">
+            <h2 className="text-3xl font-semibold tracking-tight">{config.editorial.title}</h2>
+            <p className="mt-5 text-white/70">{config.editorial.example}</p>
+            <p className="mt-4 text-white/55">{config.editorial.limitation}</p>
+          </div>
+        </section>
         <section className="px-6 py-20 sm:px-12 sm:py-28">
           <div className="mx-auto max-w-[1440px]">
             <div className="grid gap-12 lg:grid-cols-[0.7fr_1fr]">
@@ -316,11 +321,9 @@ export function SeoLandingPage({ config }: { config: SeoPageConfig }) {
         <section className="border-y border-white/[0.06] px-6 py-20 sm:px-12">
           <div className="mx-auto grid max-w-[1440px] gap-10 lg:grid-cols-[0.8fr_1fr] lg:items-start">
             <div>
-              <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">
-                {config.docsSectionTitle}
-              </p>
+              <p className="font-[family-name:var(--font-mono)] text-2xs uppercase tracking-normal text-white/35">Further reading</p>
               <h2 className="mt-4 text-3xl font-semibold tracking-normal text-white sm:text-5xl">
-                Bring your first workload into the loop
+                {config.docsSectionTitle}
               </h2>
               <p className="mt-5 text-sm leading-7 text-white/55 sm:text-base">
                 {config.docsSectionDescription}

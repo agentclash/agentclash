@@ -2,7 +2,7 @@ import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SITE_URL } from "@/components/marketing/json-ld";
-import BlogPostPage from "./[slug]/page";
+import BlogPostPage, { generateMetadata } from "./[slug]/page";
 
 vi.mock("@/components/marketing/marketing-shell", () => ({
   MarketingShell: ({ children }: { children: React.ReactNode }) => (
@@ -24,6 +24,7 @@ vi.mock("@/lib/blog", () => ({
     slug: "fixture-post",
     title: "Fixture Post",
     date: "2026-05-08",
+    dateModified: "2026-06-01",
     description: "Fixture description.",
     author: "AgentClash",
     content: "Fixture content.",
@@ -52,6 +53,11 @@ afterEach(() => {
 });
 
 describe("blog post structured data", () => {
+  it("exposes the modification date in article metadata", async () => {
+    const metadata = await generateMetadata({ params: Promise.resolve({ slug: "fixture-post" }) });
+    expect(metadata.openGraph).toMatchObject({ publishedTime: "2026-05-08", modifiedTime: "2026-06-01" });
+  });
+
   it("renders breadcrumb and BlogPosting JSON-LD", async () => {
     const page = await BlogPostPage({
       params: Promise.resolve({ slug: "fixture-post" }),
@@ -112,7 +118,7 @@ describe("blog post structured data", () => {
         height: 630,
       },
       datePublished: "2026-05-08",
-      dateModified: "2026-05-08",
+      dateModified: "2026-06-01",
       author: {
         "@type": "Person",
         name: "AgentClash",

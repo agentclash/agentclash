@@ -413,6 +413,11 @@ export default function AgentEvaluationPage() {
             <div className="grid gap-3">
               {[
                 [
+                  "AI agent testing",
+                  "Explore testing approaches for agent behavior and regressions.",
+                  "/ai-agent-testing",
+                ],
+                [
                   "Quickstart",
                   "Validate the CLI and get to your first runnable command.",
                   "/docs/getting-started/quickstart",

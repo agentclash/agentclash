@@ -1,11 +1,12 @@
 ---
 title: "Coding agent benchmark — June 2026"
+dateModified: "2026-10-28"
 date: "2026-06-11"
-description: "Our first measured public benchmark: four GPT generations on a real coding task with frozen challenge packs, full trajectory scoring, and replay evidence. Methodology, scoreboard, and reproduction steps."
+description: "Our first measured public benchmark: four GPT generations on a real coding task with reported scoring, setup, and limitations."
 author: "AgentClash"
 ---
 
-This is the first monthly coding-agent benchmark we publish on [/benchmarks](/benchmarks): a head-to-head comparison on a frozen challenge pack, scored on the full trajectory, with numbers you can reproduce.
+This summary describes the reported head-to-head comparison on [/benchmarks](/benchmarks). The linked fixture is mutable and the report does not attach raw replay artifacts or an immutable input commit.
 
 **Headline:** GPT-5.4 solved an integer expression evaluator in two model calls and about 8K tokens. GPT-5 and GPT-5.5 also passed. GPT-4.1 burned its full ten-iteration budget and never submitted a valid solution.
 
@@ -32,7 +33,7 @@ Every passing model was "correct" on the hidden tests. The separation showed up 
 
 Use this block when you cite the report or rerun the eval internally.
 
-### Frozen challenge pack
+### Documented challenge pack
 
 | Field | Value |
 | ----- | ----- |
@@ -42,7 +43,7 @@ Use this block when you cite the report or rerun the eval internally.
 | Execution mode | Native sandbox, shell + file tools, network off |
 | Iteration budget | 10 model turns; 240s wall clock; 40K token cap per run |
 
-Pin the git commit when you reproduce. This report was authored against the pack on `main` as of June 2026.
+The fixture link points to mutable `main`; the report does not record an immutable commit. Pin a commit for a new comparison.
 
 ### Models tested
 
@@ -53,7 +54,7 @@ Pin the git commit when you reproduce. This report was authored against the pack
 | GPT-5.4 | OpenAI | n=1 |
 | GPT-5.5 | OpenAI | n=1 |
 
-This is a small first field (OpenAI-only, one task). Wider cross-provider races follow as we expand hosted lineup support.
+This is a small first field (OpenAI-only, one task). It cannot establish a general model ranking.
 
 ### Scoring dimensions
 
@@ -66,47 +67,16 @@ Composite score folds these scorecard dimensions from the pack:
 
 Reliability reflects run completion. **Cost** on the public scoreboard is token-efficiency normalized to the leanest run (not a dollar price).
 
-### Evidence we attach to every report
+### Evidence and further work
 
-- Scoreboard rows exported from `GET .../runs/{id}/ranking` (or `agentclash run ranking <run-id> --json`)
-- Replay / trajectory for each lane (tool calls, artifacts, judge rationale)
-- Validator pass/fail per dimension
-- Latency and token totals per run
-- Gate verdict (`pass_threshold: 0.5` on the pack)
-
-### Reproduce the eval
-
-Hosted path (recommended):
-
-```bash
-export AGENTCLASH_API_URL="https://api.agentclash.dev"
-cd cli
-go run . auth login --device
-go run . workspace use <workspace-id>
-go run . run create --follow   # select Expression Evaluator Arena + your model lineup
-go run . run ranking <run-id> --json > ranking.json
-```
-
-Then scaffold or hand-edit the MDX report:
-
-```bash
-node scripts/benchmarks/scaffold.mjs \
-  --ranking ranking.json \
-  --title "Your headline" \
-  --model "GPT-5.4" \
-  --slug your-slug
-```
-
-Full monthly checklist, ownership, and syndication steps live in the repo runbook: [`docs/marketing/model-benchmark-workflow.md`](https://github.com/agentclash/agentclash/blob/main/docs/marketing/model-benchmark-workflow.md).
+The report presents scoreboard values and a documented configuration. Raw replay and validator artifacts are not attached here. The fixture on `main` is a starting point for a new comparison, not an exact reproduction recipe. See [benchmark methodology](/benchmarks/methodology) for what to freeze and report.
 
 ## Caveats (read before you tweet)
 
 - **n=1 per model** on a **single task**. LLM judges add per-run variance.
-- Not a general model ranking. It is a worked example of a reproducible public benchmark format.
-- Promote meaningful failures back into challenge-pack coverage so the next month's report gates on real regressions.
+- Not a general model ranking. It is a reported comparison with limited public evidence.
+- Review meaningful failures when designing future challenge-pack coverage.
 
-## What we do next month
+## Further reading
 
-We follow the same five-step cadence on [/benchmarks](/benchmarks): pin the pack, evaluate every candidate on identical constraints, export scorecards, attach replay evidence, summarize on the hub and RSS feed. Subscribe at [/benchmarks/feed.xml](/benchmarks/feed.xml).
-
-Want the same discipline on your workloads? [Book an eval workshop](/enterprise) or [run your own eval](/try).
+See the [benchmark hub](/benchmarks) and [RSS feed](/benchmarks/feed.xml) for available reports. For your own workload, [run an eval](/try).

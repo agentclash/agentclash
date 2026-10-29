@@ -4,21 +4,40 @@ import { GET as getFull, HEAD as headFull } from "@/app/llms-full.txt/route";
 import { PUBLIC_MACHINE_CONTRACTS } from "@/lib/public-contracts";
 
 describe("LLM discovery routes", () => {
-  it.each([
-    ["/llms.txt", getIndex, headIndex],
-    ["/llms-full.txt", getFull, headFull],
-  ] as const)("serves GET and HEAD for %s", async (pathname, get, head) => {
+  it("serves GET and HEAD for /llms.txt", async () => {
     vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const request = new Request(`https://www.agentclash.dev${pathname}`);
+    const request = new Request(`https://www.agentclash.dev/llms.txt`);
 
-    const getResponse = get(request);
+    const getResponse = getIndex(request);
     expect(getResponse.status).toBe(200);
     expect(getResponse.headers.get("content-type")).toBe(
       "text/plain; charset=utf-8",
     );
     expect((await getResponse.text()).length).toBeGreaterThan(100);
 
-    const headResponse = head(request);
+    const headResponse = headIndex(request);
+    expect(headResponse.status).toBe(200);
+    expect(headResponse.headers.get("content-type")).toBe(
+      "text/plain; charset=utf-8",
+    );
+    expect(await headResponse.text()).toBe("");
+  });
+
+  // The full bundle renders every registered page on a cold registry, which
+  // exceeds the default 5s timeout on CI runners as the corpus grows. The
+  // longer budget covers that one-time build; assertions are unchanged.
+  it("serves GET and HEAD for /llms-full.txt", { timeout: 30000 }, async () => {
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const request = new Request(`https://www.agentclash.dev/llms-full.txt`);
+
+    const getResponse = getFull(request);
+    expect(getResponse.status).toBe(200);
+    expect(getResponse.headers.get("content-type")).toBe(
+      "text/plain; charset=utf-8",
+    );
+    expect((await getResponse.text()).length).toBeGreaterThan(100);
+
+    const headResponse = headFull(request);
     expect(headResponse.status).toBe(200);
     expect(headResponse.headers.get("content-type")).toBe(
       "text/plain; charset=utf-8",

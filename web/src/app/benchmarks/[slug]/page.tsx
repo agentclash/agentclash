@@ -51,6 +51,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       locale: "en_US",
       siteName: "AgentClash",
       publishedTime: report.date,
+      modifiedTime: report.dateModified ?? report.date,
       authors: [report.author],
       images: [{ url: ogImage, width: 1200, height: 630, alt: report.title }],
     },
