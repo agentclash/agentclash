@@ -30,7 +30,7 @@ export async function MarketingHeader({ nav = DEFAULT_NAV }: Props) {
             AgentClash
           </span>
         </Link>
-        <nav className="flex items-center gap-0.5 sm:gap-2 text-xs lg:text-sm">
+        <nav aria-label="Primary navigation" className="flex items-center gap-0.5 sm:gap-2 text-xs lg:text-sm">
           {nav.map((item) =>
             item.external ? (
               <a

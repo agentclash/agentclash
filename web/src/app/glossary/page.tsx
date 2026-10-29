@@ -3,6 +3,7 @@ import {
   createSeoCollectionMetadata,
 } from "@/components/marketing/seo-collection-page";
 import { getSeoPagesByPrefix } from "@/lib/seo-pages";
+import { SEO_COLLECTION_INTROS } from "@/lib/seo-pages/collections";
 
 const PAGE_PATH = "/glossary";
 const PAGE_TITLE = "Agent Evaluation Glossary - AgentClash";
@@ -23,7 +24,7 @@ export default function GlossaryIndexPage() {
       description={PAGE_DESCRIPTION}
       eyebrow="Glossary"
       h1="Agent evaluation glossary"
-      intro="Plain-language definitions for the concepts behind AgentClash: what agent evaluation means, how challenge packs work, and what release gates enforce before you ship."
+      intro={SEO_COLLECTION_INTROS[PAGE_PATH]}
       pages={getSeoPagesByPrefix(PAGE_PATH)}
       schemaId="agentclash-glossary-index-schema"
     />

@@ -421,6 +421,11 @@ export default function DataSmithPage() {
             <div className="grid gap-3">
               {[
                 [
+                  "Trace to dataset",
+                  "Turn agent traces into examples for evaluation.",
+                  "/trace-to-dataset",
+                ],
+                [
                   "Introducing DataSmith",
                   "Launch blog: weak-vs-strong loop, trace ingestion, and export formats.",
                   "/blog/introducing-datasmith-synthetic-agent-data",

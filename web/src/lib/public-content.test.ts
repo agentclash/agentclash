@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildPublicLlmsFull,
   buildPublicLlmsIndex,
@@ -11,6 +11,22 @@ import {
 import { isMarkdownNegotiablePath } from "./public-http";
 
 describe("public content registry", () => {
+  it("keeps known and unknown modification dates stable across build clocks", () => {
+    try {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date("2026-10-01T00:00:00Z"));
+      const before = getAllPublicContent().filter((item) => ["/", "/pricing", "/docs", "/docs/agent-skills"].includes(item.canonicalPath)).map(({ canonicalPath, lastModified }) => ({ canonicalPath, lastModified }));
+      vi.setSystemTime(new Date("2026-10-28T00:00:00Z"));
+      const after = getAllPublicContent().filter((item) => ["/", "/pricing", "/docs", "/docs/agent-skills"].includes(item.canonicalPath)).map(({ canonicalPath, lastModified }) => ({ canonicalPath, lastModified }));
+      expect(after).toEqual(before);
+      expect(after).toContainEqual({ canonicalPath: "/", lastModified: undefined });
+      expect(after).toContainEqual({ canonicalPath: "/docs", lastModified: "2026-08-09" });
+      expect(after).toContainEqual({ canonicalPath: "/docs/agent-skills", lastModified: undefined });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("has unique canonical and Markdown paths", () => {
     const items = getAllPublicContent();
     expect(new Set(items.map((item) => item.canonicalPath)).size).toBe(items.length);
@@ -84,5 +100,54 @@ describe("public content registry", () => {
     expect(full).not.toContain("# Publication ");
     expect(search.some((item) => item.href === "/pricing")).toBe(true);
     expect(search.some((item) => item.href.startsWith("/workspaces"))).toBe(false);
+  });
+});
+
+describe("editorial representations", () => {
+  it("includes each page's concrete example and limitation in Markdown", async () => {
+    const { SEO_PAGE_REGISTRY } = await import("@/lib/seo-pages");
+    for (const page of SEO_PAGE_REGISTRY) {
+      expect(page.editorial?.example, page.path).toBeTruthy();
+      expect(page.editorial?.limitation, page.path).toBeTruthy();
+      const markdown = resolvePublicContent(page.path)?.renderMarkdown();
+      expect(markdown, page.path).toContain(page.editorial.example);
+      expect(markdown, page.path).toContain(page.editorial.limitation);
+    }
+  });
+  it("registers factual security and methodology pages", () => {
+    expect(resolvePublicContent("/security")?.renderMarkdown()).toContain("private vulnerability");
+    expect(resolvePublicContent("/security")?.includeIn.sitemap).toBe(true);
+    expect(resolvePublicContent("/benchmarks/methodology")?.includeIn.sitemap).toBe(true);
+    expect(resolvePublicContent("/benchmarks/methodology")?.renderMarkdown()).toContain("one run per model");
+  });
+
+  it("shares benchmark hub methodology and FAQ with Markdown", () => {
+    const markdown = resolvePublicContent("/benchmarks")?.renderMarkdown() ?? "";
+    expect(markdown).toContain("Freeze inputs");
+    expect(markdown).toContain("Token efficiency is not dollar spend");
+    expect(markdown).toContain("one run per model");
+    expect(markdown).toContain("What does the public report compare?");
+  });
+
+  it("shares collection intros with Markdown", async () => {
+    const { SEO_COLLECTION_INTROS } = await import("@/lib/seo-pages/collections");
+    for (const [path, intro] of Object.entries(SEO_COLLECTION_INTROS)) {
+      expect(resolvePublicContent(path)?.renderMarkdown(), path).toContain(intro);
+    }
+    expect(resolvePublicContent("/industries")?.renderMarkdown()).toContain(
+      "no deployment or compliance result is implied",
+    );
+  });
+
+  it("links named fixtures from their pages", () => {
+    expect(resolvePublicContent("/use-cases/research-agent-evaluation")?.renderMarkdown()).toContain(
+      "examples/challenge-packs/deep-research-analyst.yaml",
+    );
+    expect(resolvePublicContent("/use-cases/support-agent-evaluation")?.renderMarkdown()).toContain(
+      "examples/challenge-packs/multi-turn-refund-recovery.yaml",
+    );
+    const banking = resolvePublicContent("/industries/banking")?.renderMarkdown() ?? "";
+    expect(banking).toContain("examples/challenge-packs/multi-turn-refund-recovery.yaml");
+    expect(banking).toContain("examples/challenge-packs/secret-hygiene-env.yaml");
   });
 });

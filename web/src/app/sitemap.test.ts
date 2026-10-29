@@ -23,7 +23,7 @@ function descriptor(
     title: overrides.title,
     description: overrides.description ?? "Fixture description",
     kind: overrides.kind ?? "marketing",
-    lastModified: overrides.lastModified ?? "2026-08-14",
+    lastModified: overrides.lastModified,
     indexable: overrides.indexable ?? true,
     includeIn: overrides.includeIn ?? {
       sitemap: true,
@@ -116,6 +116,11 @@ describe("sitemap", () => {
     expect(image.startsWith("https://www.agentclash.dev/og?")).toBe(true);
     expect(image).toContain("&amp;");
     expect(image).not.toMatch(/&(?!amp;|lt;|gt;|quot;|#39;)/);
+  });
+
+  it("omits dates when content has no known modification date", () => {
+    getAllPublicContentMock.mockReturnValue([descriptor({ canonicalPath: "/unknown", title: "Unknown" })]);
+    expect(sitemap()[0]?.lastModified).toBeUndefined();
   });
 
   it("omits invalid dates without failing the whole sitemap", () => {

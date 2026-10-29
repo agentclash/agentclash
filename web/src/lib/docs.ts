@@ -1,7 +1,11 @@
 import fs from "fs";
 import path from "path";
 import matter from "gray-matter";
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { mdxJsxFromMarkdown } from "mdast-util-mdx-jsx";
+import { mdxJsx } from "micromark-extension-mdx-jsx";
 import type { BlogPostWithContent } from "./blog";
+import { rewriteMarkdownDestinations, resolveDocsDestination } from "./doc-links";
 
 const CONTENT_DIR = path.join(process.cwd(), "content", "docs");
 const AGENT_SKILLS_DIR = path.join(process.cwd(), "content", "agent-skills");
@@ -31,12 +35,6 @@ const CLI_CONFIG_FILE = path.join(
 const BACKEND_ENV_FILE = path.join(REPO_ROOT, "backend", ".env.example");
 
 export const DOCS_ORIGIN = "https://www.agentclash.dev";
-
-// Build/generation timestamp. Used as an honest `dateModified` fallback for docs
-// that carry no frontmatter date — these pages (including generated CLI/config
-// references and agent-skill pages) are regenerated from source on each build,
-// so "last generated" is a truthful freshness signal for answer engines.
-export const SITE_GENERATED_AT = new Date().toISOString();
 
 export type DocNavItem = {
   title: string;
@@ -70,6 +68,7 @@ export type DocPage = {
   title: string;
   description: string;
   content: string;
+  sourcePath?: string;
   sectionTitle?: string;
   datePublished?: string;
   dateModified?: string;
@@ -1029,8 +1028,7 @@ function createDocPage(
     content,
     sectionTitle,
     datePublished: dates?.datePublished,
-    dateModified:
-      dates?.dateModified ?? dates?.datePublished ?? SITE_GENERATED_AT,
+    dateModified: dates?.dateModified ?? dates?.datePublished,
     headings: extractHeadings(content),
   };
 }
@@ -1043,27 +1041,24 @@ function getFileDocBySlug(slug: string[]) {
   const { data, content } = matter(raw);
   const href = slugToHref(slug);
 
-  const datePublished =
-    typeof data.date === "string"
-      ? data.date
-      : typeof data.datePublished === "string"
-        ? data.datePublished
-        : undefined;
-  const dateModified =
-    typeof data.dateModified === "string"
-      ? data.dateModified
-      : typeof data.updated === "string"
-        ? data.updated
-        : datePublished;
+  // gray-matter parses unquoted YAML dates as Date objects.
+  const authoredDate = (value: unknown) => {
+    if (typeof value === "string") return value;
+    return value instanceof Date && !Number.isNaN(value.getTime())
+      ? value.toISOString().slice(0, 10)
+      : undefined;
+  };
+  const datePublished = authoredDate(data.date) ?? authoredDate(data.datePublished);
+  const dateModified = authoredDate(data.dateModified) ?? authoredDate(data.updated) ?? datePublished;
 
-  return createDocPage(
+  return { ...createDocPage(
     slug,
     data.title as string,
     data.description as string,
     content,
     findSectionTitle(href),
     { datePublished, dateModified },
-  );
+  ), sourcePath: filePath };
 }
 
 function getGeneratedDocBySlug(slug: string[]) {
@@ -1098,13 +1093,13 @@ function getGeneratedDocBySlug(slug: string[]) {
       const skill = getAgentSkillBySlugPath(slug.slice(1));
       if (!skill) return null;
 
-      return createDocPage(
+      return { ...createDocPage(
         slug,
         skill.title,
         skill.description,
         renderAgentSkillPage(skill),
         "Agent Skills",
-      );
+      ), sourcePath: path.join(AGENT_SKILLS_DIR, skill.relativePath, "SKILL.md") };
     }
 
     return null;
@@ -1554,18 +1549,6 @@ function uniqueSlugs(slugs: string[][]) {
   });
 }
 
-function docHrefToMarkdownHref(href: string, origin: string) {
-  if (href === "/docs") {
-    return `${origin}/md/docs`;
-  }
-
-  if (href.startsWith("/docs/")) {
-    return `${origin}/md${href}`;
-  }
-
-  return href.startsWith("http") ? href : `${origin}${href}`;
-}
-
 function renderCallout(type: string, body: string) {
   const label = type.charAt(0).toUpperCase() + type.slice(1);
   const lines = body
@@ -1584,20 +1567,40 @@ function renderCallout(type: string, body: string) {
   ].join("\n");
 }
 
-function normalizeMarkdownForExport(content: string, origin: string) {
-  return content
-    .replace(/<Callout type="(info|warning|note)">([\s\S]*?)<\/Callout>/g, (_, type, body) =>
-      renderCallout(type, body),
-    )
-    .replace(/\]\((\/docs(?:\/[^)\s]*)?)\)/g, (_, href) => `](${docHrefToMarkdownHref(href, origin)})`)
-    .trim();
+function rewriteCallouts(content: string): string {
+  const tree = fromMarkdown(content, { extensions: [mdxJsx()], mdastExtensions: [mdxJsxFromMarkdown()] });
+  const edits: Array<{ start: number; end: number; value: string }> = [];
+  function walk(node: typeof tree | (typeof tree.children)[number]) {
+    if ((node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") && node.name === "Callout") {
+      const type = node.attributes.find((attr) => attr.type === "mdxJsxAttribute" && attr.name === "type");
+      const start = node.position?.start.offset;
+      const end = node.position?.end.offset;
+      if (type?.type === "mdxJsxAttribute" && typeof type.value === "string" && start !== undefined && end !== undefined) {
+        const source = content.slice(start, end);
+        const body = source.slice(source.indexOf(">") + 1, source.lastIndexOf("</Callout>"));
+        edits.push({ start, end, value: renderCallout(type.value, body) });
+        return;
+      }
+    }
+    if ("children" in node) for (const child of node.children) walk(child);
+  }
+  walk(tree);
+  for (const edit of edits.sort((a, b) => b.start - a.start)) {
+    content = content.slice(0, edit.start) + edit.value + content.slice(edit.end);
+  }
+  return content;
 }
 
-function normalizeBlogMarkdownForExport(content: string, origin: string) {
-  return normalizeMarkdownForExport(content, origin).replace(
-    /\]\((\/[^)\s]*)\)/g,
-    (_, href) => `](${origin}${href})`,
-  );
+function normalizeMarkdownForExport(content: string, origin: string, sourcePath?: string, blog = false) {
+  const knownPaths = new Set(getAllDocPaths());
+  const rewritten = rewriteMarkdownDestinations(content, (href) => {
+    const docsHref = resolveDocsDestination(href, sourcePath, CONTENT_DIR, AGENT_SKILLS_DIR, knownPaths);
+    if (docsHref) return `${origin}/md${docsHref}`;
+    return blog && href.startsWith("/") && !href.startsWith("//") ? `${origin}${href}` : href;
+  });
+  // Convert authored callouts, skipping inline and fenced code through the Markdown AST.
+  // Callouts are handled separately from destinations so they cannot change parser offsets.
+  return rewriteCallouts(rewritten).trim();
 }
 
 export function getDocMarkdownPath(slug: string[] = []) {
@@ -1686,7 +1689,7 @@ export function renderDocMarkdown(doc: DocPage, origin = DOCS_ORIGIN) {
     `Source: ${origin}${doc.href}`,
     `Markdown export: ${origin}${doc.href === "/" ? "/md" : `/md${doc.href}`}`,
     "",
-    normalizeMarkdownForExport(doc.content, origin),
+    normalizeMarkdownForExport(doc.content, origin, doc.sourcePath),
   ];
 
   return lines.join("\n").trim();
@@ -1706,7 +1709,7 @@ export function renderBlogMarkdown(
     `Published: ${post.date}`,
     `Author: ${post.author}`,
     "",
-    normalizeBlogMarkdownForExport(post.content, origin),
+    normalizeMarkdownForExport(post.content, origin, path.join(process.cwd(), "content", "blog", `${post.slug}.mdx`), true),
   ];
 
   return lines.join("\n").trim();

@@ -43,6 +43,18 @@ describe("blog content", () => {
     });
   });
 
+  it("retains an authored modification date separately from publication", () => {
+    const post = parseBlogPost("edited", `---
+title: Edited
+date: "2026-05-07"
+dateModified: "2026-06-01"
+description: Example
+author: Author
+---
+Body`);
+    expect(post).toMatchObject({ date: "2026-05-07", dateModified: "2026-06-01" });
+  });
+
   it("ignores malformed frontmatter when parsing a post", () => {
     expect(parseBlogPost("broken", "---\ntitle: [\n---\ncontent")).toBeNull();
   });

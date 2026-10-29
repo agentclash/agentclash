@@ -69,6 +69,8 @@ describe("public representation negotiation", () => {
   it.each([
     "/",
     "/pricing",
+    "/security",
+    "/benchmarks/methodology",
     "/docs/getting-started/quickstart",
     "/blog/example",
     "/compare/agentclash-vs-langsmith",

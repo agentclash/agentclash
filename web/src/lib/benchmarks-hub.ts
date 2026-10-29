@@ -1,51 +1,14 @@
 export const BENCHMARKS_HUB_FAQ = [
-  {
-    question: "How is AgentClash different from a static leaderboard?",
-    answer:
-      "Leaderboards summarize one-off scores on generic tasks. AgentClash runs same-task evals on frozen challenge packs with the same tools, sandbox policy, and iteration budget, then publishes replay evidence and scorecards you can reuse as regression gates.",
-  },
-  {
-    question: "What gets frozen in a public benchmark?",
-    answer:
-      "The challenge pack version, runtime constraints, tool policy, scoring spec, and input cases. Every model in an eval run sees the same workload so differences show up in trajectories, not setup drift.",
-  },
-  {
-    question: "Can we run the same benchmark on our agents?",
-    answer:
-      "Yes. Book an eval workshop or start a Team workspace. We pin the same pack on your workloads, baseline your current agent, and deliver scorecards and CI gates your platform team can ship on.",
-  },
-  {
-    question: "How often do you publish benchmark reports?",
-    answer:
-      "We publish when major models ship and on a monthly reliability cadence. Subscribe to the benchmarks RSS feed or check this hub for the latest same-task summary and links to full replays.",
-  },
+  { question: "What does the public report compare?", answer: "The expression evaluator report compares four OpenAI models on one task, with one run per model. It is not a general model ranking." },
+  { question: "Can I reproduce the exact results?", answer: "The report describes its configuration, but the fixture link points to mutable main and raw replay artifacts are not attached. Treat it as a starting point for your own evaluation." },
+  { question: "How often are reports published?", answer: "Reports are published when available. Check the hub or RSS feed for updates." },
 ] as const;
 
 export const BENCHMARKS_METHODOLOGY = [
-  {
-    title: "Frozen challenge pack",
-    text: "Each eval run pins a versioned YAML pack: prompts, tools, sandbox, evaluation spec, and input cases. No moving targets mid-benchmark.",
-  },
-  {
-    title: "Same runtime constraints",
-    text: "Every candidate gets the same sandbox, tool policy, network rules, and iteration budget so comparisons stay fair.",
-  },
-  {
-    title: "Baseline vs candidate",
-    text: "Enterprise teams reuse the same packs to compare a ship candidate against a known baseline and fail CI when scorecards regress.",
-  },
-  {
-    title: "Scorecard dimensions",
-    text: "Composite scores fold in correctness, reliability, latency, cost, behavioral signals, and judge evidence from the full trajectory.",
-  },
-  {
-    title: "Replay and evidence",
-    text: "Runs preserve tool calls, artifacts, and judge rationale so reviewers can audit a verdict without rerunning the eval.",
-  },
-  {
-    title: "Gate verdict",
-    text: "The same workload can power a public benchmark today and a release gate tomorrow once your team trusts the scoring rules.",
-  },
+  { title: "Freeze inputs", text: "For a controlled comparison, record the pack commit, inputs, models, tool policy and budgets." },
+  { title: "Interpret scoring", text: "Read deterministic checks and judge dimensions separately. Token efficiency is not dollar spend." },
+  { title: "Repeat runs", text: "Multiple runs and reported variation help assess reliability; a single run does not estimate a pass rate." },
+  { title: "Read the caveats", text: "The expression evaluator report describes one task and one run per model. Its mutable fixture link is not an exact reproduction recipe." },
 ] as const;
 
 export const BENCHMARKS_CHILD_PAGES = [
@@ -63,8 +26,8 @@ export const BENCHMARKS_CHILD_PAGES = [
 
 export const BENCHMARKS_MONTHLY_BLOG = {
   href: "/blog/coding-agent-benchmark-june-2026",
-  title: "Coding agent benchmark — June 2026",
-  text: "Shareable monthly summary with methodology appendix and reproduction steps.",
+  title: "Coding agent benchmark: June 2026",
+  text: "Summary of the reported expression evaluator results and their limits.",
 } as const;
 
 export const BENCHMARKS_RUNBOOK_HREF =
@@ -113,9 +76,7 @@ export const BENCHMARKS_PACK_LINKS = [
 ] as const;
 
 export const BENCHMARKS_MONTHLY_PROCESS = [
-  "Pin a challenge pack version, git commit, and runtime constraints in the report appendix.",
-  "Run every candidate on the same pack with identical tools, sandbox, and budgets.",
-  "Export ranking JSON (`agentclash run ranking`) and attach replay plus validator evidence.",
-  "Publish measured MDX on /benchmarks and a shareable monthly blog summary.",
-  "Summarize on this hub, RSS feed, and changelog; promote failures into pack coverage.",
+  "Record the pack version, commit, inputs, models, and runtime constraints.",
+  "Run candidates under the same tools, network policy, and budgets.",
+  "Preserve scorecards and evidence, then report sample sizes and limitations.",
 ] as const;
