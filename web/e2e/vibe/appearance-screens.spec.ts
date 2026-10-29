@@ -21,6 +21,8 @@ const config = {
   availability: { guest: { available: true }, workspace: { available: true } },
   two_door: true,
   interaction_actions: true,
+  // Production needs VIBE_ENQUIRY_EMAIL (and Resend settings for the form) to show the contact call to action.
+  contact: { available: true, email: "team@example.test" },
   defaults: models,
   models: [...new Set(Object.values(models))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })),
 };
