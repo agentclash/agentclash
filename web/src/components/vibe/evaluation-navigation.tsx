@@ -46,7 +46,7 @@ export function evaluationIdentity(session: Session) {
       ? "Recorded replies"
       : artifact?.agent_prompt
         ? `${artifact.sample ? "Sample agent" : "Agent"} v${version}`
-        : artifact ? `Tests v${version}` : "No agent yet";
+        : artifact ? `Tests v${version}` : session.document.evaluation?.door === "test" ? "No tests yet" : "No agent yet";
   return { title, scope };
 }
 
@@ -210,14 +210,14 @@ export function EvaluationNavigation(p: Props) {
           <>
             <input
               type="search"
-              aria-label="Search loaded projects"
-              aria-describedby={searchHint}
+              aria-label="Search projects"
+              aria-describedby={`${searchHint}-${mobile ? "sheet" : "side"}`}
               placeholder="Search projects"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="vibe-input vibe-sidebar-search"
             />
-            <p id={searchHint} className="sr-only">Searches the latest 100 projects loaded here.</p>
+            <p id={`${searchHint}-${mobile ? "sheet" : "side"}`} className="sr-only">Searches the latest 100 projects loaded here.</p>
           </>
         )}
         <CollectionNotice

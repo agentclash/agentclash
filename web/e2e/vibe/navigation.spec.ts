@@ -364,6 +364,22 @@ test("same-artifact case Back and Forward restores the visible expectation witho
   expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
 });
 
+test("project title and tabs share the left edge of the content", async ({ page }) => {
+  await serve(page, false, true);
+  await page.goto("/vibe-evals?session=first&workspace=a8000000-0000-4000-8000-000000000003");
+  const tabs = page.getByRole("tablist", { name: "Workspace views" });
+  const title = page.locator(".vibe-project-identity h1");
+  const content = page.locator(".vibe-project-content");
+  const edges = async () => ({ tabs: (await tabs.boundingBox())!.x, title: (await title.boundingBox())!.x, content: (await content.boundingBox())!.x });
+  for (const width of [1024, 1280, 1440, 2560]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(async () => { const e = await edges(); return Math.max(Math.abs(e.tabs - e.content), Math.abs(e.title - e.content)); }, { message: `${width}px` }).toBeLessThanOrEqual(1);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("button", { name: "Guide", exact: true }).click();
+  await expect.poll(async () => { const e = await edges(); return Math.abs(e.tabs - e.content); }, { message: "1440px with Guide open" }).toBeLessThanOrEqual(1);
+});
+
 test("text roles stay consistent across viewport sizes and portaled dialogs", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   const control = await serve(page, false, true);
@@ -405,6 +421,9 @@ test("text roles stay consistent across viewport sizes and portaled dialogs", as
     await page.getByRole("button", { name: "Details", exact: true }).click();
     const details = width < 1280 ? page.getByRole("dialog", { name: "Details", exact: true }) : page.getByRole("complementary", { name: "Details utility", exact: true });
     await expect(details.getByLabel("Appearance", { exact: true })).toHaveCSS("font-size", "16px");
+    const subheading = details.locator("h3").first();
+    await expect(subheading).toHaveCSS("font-size", "14px");
+    await expect(subheading).toHaveCSS("font-weight", "600");
     await details.getByRole("button", { name: "Settings", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Settings and details", exact: true });
     await expect.soft(dialog).toHaveCSS("font-family", /Geist/);
@@ -422,6 +441,33 @@ test("text roles stay consistent across viewport sizes and portaled dialogs", as
   }
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
+});
+
+test("one dialog at a time: Settings closes before Save or Export opens", async ({ page }) => {
+  await serve(page, false, true);
+  await page.goto("/vibe-evals?session=first&workspace=a8000000-0000-4000-8000-000000000003");
+  await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 15_000 });
+  await page.evaluate(() => {
+    const record = window as unknown as { mostDialogs: number };
+    record.mostDialogs = 0;
+    const count = () => { record.mostDialogs = Math.max(record.mostDialogs, document.querySelectorAll('[role="dialog"]').length); };
+    new MutationObserver(count).observe(document.body, { childList: true, subtree: true, attributes: true });
+  });
+  const settings = page.getByRole("dialog", { name: "Settings and details", exact: true });
+  for (const action of [/^(Keep these tests|Save agent)$/, /^Export (tests and agent instructions|agent and checks)$/]) {
+    await page.evaluate(() => { (window as unknown as { mostDialogs: number }).mostDialogs = 0; });
+    await page.getByRole("button", { name: "Details", exact: true }).click();
+    await page.getByRole("complementary", { name: "Details utility", exact: true }).getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(settings).toBeVisible();
+    await settings.getByRole("button", { name: action }).first().click();
+    await expect(settings).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    // Settings has finished closing before the next dialog appears, even during the animation.
+    expect(await page.evaluate(() => (window as unknown as { mostDialogs: number }).mostDialogs), String(action)).toBe(1);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await page.getByRole("button", { name: "Close Details", exact: true }).click();
+  }
 });
 
 test("one dialog at a time: Details closes before Settings, Settings closes before Credits, focus returns to the opener", async ({ page }) => {
@@ -784,7 +830,7 @@ test("Settings descendants retain readable scoped appearance including warning, 
 
 test("library search rename archive and sidebar preference preserve full touch and keyboard titles without running",async({page})=>{
  const control=await serve(page,true);
- const search = page.getByRole("searchbox",{name:"Search loaded projects"});
+ const search = page.getByRole("searchbox",{name:"Search projects"});
  const assertSearchAffordance = async () => {
    const control = await search.evaluate(input => {
      const style=getComputedStyle(input), rgb=(value:string)=>value.match(/[\d.]+/g)!.slice(0,3).map(Number);
@@ -804,7 +850,7 @@ test("library search rename archive and sidebar preference preserve full touch a
  await page.getByRole("textbox",{name:"Project title",exact:true}).fill(title);
  await page.getByRole("textbox",{name:"Project title",exact:true}).press("Enter");
  await expect(page.getByRole("button",{name:"Rename project",exact:true})).toBeVisible();
- await page.getByRole("searchbox",{name:"Search loaded projects"}).fill("autumn project");
+ await page.getByRole("searchbox",{name:"Search projects"}).fill("autumn project");
  const row=page.locator('[data-evaluation-id="older-29"]');await expect(row).toContainText(title);
  await row.focus();expect(await row.locator('.vibe-project-full-title').evaluate(node=>node.scrollHeight<=node.clientHeight+1)).toBe(true);
  await page.getByRole("button",{name:"Archive project",exact:true}).click();await expect(row).toHaveCount(0);

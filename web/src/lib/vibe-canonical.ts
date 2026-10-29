@@ -5,7 +5,7 @@ export type CanonicalParticipant={run_id:string;run_agent_id:string;snapshot_id:
 export type CanonicalResult={experiment?:{requested:number;completed:number;failed:number;pending:number;scored:number;aggregate?:{overall?:{n:number;mean:number;std_dev:number};participants?:{label:string;overall?:{n:number;mean:number;std_dev:number}}[]};warnings:string[]};binding:ProjectResultBinding;evidence_metadata:EvidenceMetadata;name:string;status:string;created_at:string;participants:CanonicalParticipant[];evidence_hash:string;omissions:string[]};
 export const canonicalBase=(session:string)=>`/sessions/${encodeURIComponent(session)}/canonical-results`;
 export async function loadCanonicalResult(session:string,ref:ResultRef,token?:string|null,artifact?:string,hash?:string){
- if(ref.kind!=="run"&&ref.kind!=="eval_session")throw Error("Choose a canonical result.");
+ if(ref.kind!=="run"&&ref.kind!=="eval_session")throw Error("Choose an application result.");
  const params=new URLSearchParams();if(artifact)params.set("artifact_id",artifact);if(hash)params.set("hash",hash);
  const row=await vibeFetch<CanonicalResult>(`${canonicalBase(session)}/${ref.kind}/${encodeURIComponent(ref.id)}?${params}`,token);
  if(row.binding.session_id!==session||row.binding.result_ref.kind!==ref.kind||row.binding.result_ref.id!==ref.id||(artifact&&row.binding.artifact_id!==artifact)||!row.evidence_hash)throw Error("Canonical source identity changed.");return row;

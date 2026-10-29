@@ -18,13 +18,17 @@ function passedAll(operation?: Operation) {
 }
 
 // The contact call to action stays visible under a finished result, outside "More actions".
+// It stays mounted while a new run is in progress, so an enquiry receipt survives the run.
 export function ResultContact({ session, artifact, operation, busy }: { session: Session; artifact: Artifact; operation: Operation; busy: boolean }) {
   const { contact } = useVibeConnection();
   const score = operation.scorecard;
-  const eligible = artifact.kind === "task_brief" || passedAll(operation) || !!score?.failed || !!score?.unknown;
+  // Recorded replies keep their earlier rule: any graded chat, also while busy or stopped.
+  const recorded = !!artifact.conversation_evaluation;
+  const eligible = recorded ? !!score && score.passed + score.failed > 0
+    : artifact.kind === "task_brief" || passedAll(operation) || !!score?.failed || !!score?.unknown;
   // ProjectEnquiry renders nothing without a contact form or email, so the card would be empty.
   if (!contact?.available && !contact?.email) return null;
-  return <section className="vibe-results-contact" aria-label="Talk to AgentClash" hidden={!eligible || busy || operation.state === "CANCELLED"}>
+  return <section className="vibe-results-contact" aria-label="Talk to AgentClash" hidden={!terminal(operation.state) || !eligible || (!recorded && (busy || operation.state === "CANCELLED"))}>
     <p>Want help to build this for your business?</p>
     <ProjectEnquiry key={`${session.id}:${artifact.id}`} session={session} artifact={artifact} operation={operation} secondary />
   </section>;

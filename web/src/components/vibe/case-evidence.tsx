@@ -281,6 +281,11 @@ function PrimaryReply({
   );
 }
 
+// Only the expected behavior and the user's own rules can be changed; "Reply received" is a grading step.
+function changeable(evidence: CaseResult, check: { key: string }) {
+  return check.key === "behavior" || !!evidence.expectations?.some((rule) => rule.id === check.key);
+}
+
 function EvidenceDetails({
   evidence,
   finding,
@@ -323,7 +328,7 @@ function EvidenceDetails({
             className={expanded ? "rotate-90" : ""}
           />
         </VibeButton>
-        {onDispute && finding && (
+        {onDispute && finding && changeable(evidence, finding) && (
           <VibeButton
             variant="quiet"
             disabled={busy}
@@ -396,18 +401,15 @@ function EvidenceDetails({
         )}
         {otherChecks && <div className="space-y-4">
           <p className="text-xs vibe-muted">
-            All expectations · {evidence.checks.length}
+            Grading details · {evidence.checks.length}
           </p>
-          {evidence.checks.map((check) => (
+          {evidence.checks.map((check) => {
+            const rule = evidence.expectations?.find((item) => item.id === check.key);
+            const name = check.key === "behavior" ? "Expected behavior" : check.key === "has_answer" ? "Reply received" : rule?.statement || check.key;
+            return (
             <div key={check.key}>
               <p className="text-sm font-semibold">
-                {check.key === "behavior"
-                  ? "Expected behavior"
-                  : check.key === "has_answer"
-                    ? "Reply received"
-                    : evidence.expectations?.find(
-                        (rule) => rule.id === check.key,
-                      )?.statement || check.key}
+                {name}
                 {" · "}
                 {check.verdict === "PASS"
                   ? "Passed"
@@ -420,11 +422,12 @@ function EvidenceDetails({
               </SafeMarkdown>
               <GroundedFinding result={evidence} check={check} />
               <CitedMessages evidence={evidence} check={check} />
-              {onDispute && check.key !== finding?.key && (
+              {onDispute && changeable(evidence, check) && check.key !== finding?.key && (
                 <VibeButton
                   variant="quiet"
                   className="mt-2"
                   disabled={busy}
+                  aria-label={`Change expected result: ${name}`}
                   onClick={() =>
                     onDispute(expectedBehavior(evidence, check), evidence)
                   }
@@ -433,7 +436,8 @@ function EvidenceDetails({
                 </VibeButton>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>}
         {onImprove && evidence.verdict === "FAIL" && (
           <VibeButton disabled={busy} onClick={() => onImprove(evidence)}>
