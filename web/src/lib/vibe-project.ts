@@ -3,8 +3,9 @@ export function projectTitle(session: Pick<Session, "id" | "title" | "document" 
   const title = session.title?.trim();
   if (title) return title;
   const fallback = session.document.evaluation?.door === "build" ? "Untitled prototype" : "Untitled project";
-  const updated = session.updated_at ? new Date(session.updated_at) : undefined;
-  return updated && !Number.isNaN(updated.getTime()) ? `${fallback} · ${updated.toLocaleDateString(undefined, { month: "short", day: "numeric" })}` : fallback;
+  // A short, stable tag keeps untitled projects apart; a date would repeat and change on every edit.
+  const tag = session.id.replace(/[^0-9a-z]/gi, "").slice(0, 4).toUpperCase();
+  return tag ? `${fallback} · ${tag}` : fallback;
 }
 let sidebarCollapsed = false;
 export function sidebarPreference() {

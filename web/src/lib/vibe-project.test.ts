@@ -12,16 +12,15 @@ it("keeps a project's own title", () => {
   expect(projectTitle(project("build", { title: "  Refund desk  " }))).toBe("Refund desk");
 });
 
-it("names an untitled project by door without showing its ID", () => {
-  expect(projectTitle(project("build"))).toBe("Untitled prototype");
-  expect(projectTitle(project("test"))).toBe("Untitled project");
-  expect(projectTitle(project())).toBe("Untitled project");
+it("names an untitled project by door with a short stable tag", () => {
+  expect(projectTitle(project("build"))).toBe("Untitled prototype · 3FA8");
+  expect(projectTitle(project("test"))).toBe("Untitled project · 3FA8");
+  expect(projectTitle(project())).toBe("Untitled project · 3FA8");
   expect(projectTitle(project("build", { title: " " }))).not.toContain("3fa85f64");
 });
 
-it("adds a short date when the project has one", () => {
-  const updated_at = "2026-10-28T12:00:00Z";
-  const day = new Date(updated_at).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  expect(projectTitle(project("build", { updated_at }))).toBe(`Untitled prototype · ${day}`);
-  expect(projectTitle(project("test", { updated_at: "not a date" }))).toBe("Untitled project");
+it("keeps the name when the project changes and tells two projects apart", () => {
+  const before = projectTitle(project("build", { updated_at: "2026-10-28T12:00:00Z" }));
+  expect(projectTitle(project("build", { updated_at: "2026-10-29T12:00:00Z" }))).toBe(before);
+  expect(projectTitle(project("build", { id: "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d" }))).not.toBe(before);
 });

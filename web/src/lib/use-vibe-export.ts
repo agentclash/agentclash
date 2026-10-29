@@ -122,7 +122,7 @@ export function useVibeExport(
           return observedExportValue(item,job.preparation.observed_evidence||[],job.preparation.session_id);
         }
         if(item.kind === "canonical_result"){
-          if(!item.result_ref)throw Error("Canonical result reference is missing.");
+          if(!item.result_ref)throw Error("The application result reference is missing.");
           await loadCanonicalResult(job.preparation.session_id,item.result_ref,auth,item.artifact_id,item.hash);
           return canonicalExportValue(item,job.preparation.canonical_results || [],job.preparation.session_id);
         }
