@@ -456,7 +456,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
           href="/vibe-evals"
           className="flex w-fit items-center gap-2.5 text-sm font-semibold"
         >
-          <ClashMark className="size-5 vibe-muted" />
+          <ClashMark className="size-5 vibe-muted" tone="current" />
           Vibe Evals
         </Link>
         )}
@@ -508,7 +508,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                             {currentPane === value && (
                               <motion.span
                                 layoutId="vibe-current-view"
-                                className="absolute inset-0 -z-10 rounded-[10px] bg-[#22211d]"
+                                className="absolute inset-0 -z-10 rounded-[10px] bg-[var(--vibe-active)]"
                                 transition={{ duration: reduced ? 0 : 0.22 }}
                               />
                             )}
