@@ -683,6 +683,11 @@ test("Settings descendants retain readable scoped appearance including warning, 
     await page.getByLabel("Appearance",{exact:true}).selectOption(appearance);
     await page.getByRole("complementary",{name:"Details utility"}).getByRole("button",{name:"Settings",exact:true}).click();
     const dialog=page.getByRole("dialog",{name:"Settings and details"});
+    // The dialog moves focus to its initial control after it opens. Focus the select only after
+    // that settles; otherwise the late initial focus takes focus away from it.
+    await expect(dialog).toBeVisible();
+    await expect.poll(()=>dialog.evaluate(popup=>!popup.hasAttribute("data-starting-style")&&popup.contains(document.activeElement))).toBe(true);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const model=dialog.getByLabel("Assistant model",{exact:true});
     await model.focus(); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab");
     const action=dialog.getByRole("button",{name:"Import a test pack",exact:true}); await action.hover();
