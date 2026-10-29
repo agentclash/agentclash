@@ -8,8 +8,9 @@ it.each([
   expect(runStateLabel(state)).toBe(label);
 });
 
-it("uses sentence case for states it does not know", () => {
-  expect(runStateLabel("PARTIAL")).toBe("Partial");
+it("maps the later backend states and uses sentence case for others", () => {
+  expect(runStateLabel("PARTIAL")).toBe("Partly complete");
+  expect(runStateLabel("RESERVED")).toBe("Preparing");
   expect(runStateLabel("WAITING_FOR_PROVIDER")).toBe("Waiting for provider");
   expect(runStateLabel("supported")).toBe("Supported");
   expect(runStateLabel("")).toBe("Unknown");

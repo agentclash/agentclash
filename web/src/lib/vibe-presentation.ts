@@ -27,8 +27,10 @@ export function hasConversationChoice(session: Session | null) {
 const runStates: Record<string, string> = {
   COMPLETED: "Completed", RUNNING: "Running", QUEUED: "Queued", FAILED: "Failed", CANCELLED: "Stopped",
   CANCELLING: "Stopping", AWAITING_APPROVAL: "Needs approval", AWAITING_INPUT: "Needs one detail",
+  CREATED: "Queued", VALIDATING: "Preparing", RESERVED: "Preparing", FINALIZING: "Finishing",
+  PARTIAL: "Partly complete", EXPIRED: "Expired",
 };
-// Unknown states fall back to sentence case so a raw code like EXPIRED never reaches the page.
+// States added later fall back to sentence case, so a raw code never reaches the page.
 export function runStateLabel(state: string) {
   if (runStates[state]) return runStates[state];
   const words = state.replace(/_/g, " ").trim().toLowerCase();

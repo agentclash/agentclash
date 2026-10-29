@@ -210,14 +210,14 @@ export function EvaluationNavigation(p: Props) {
           <>
             <input
               type="search"
-              aria-label="Search loaded projects"
-              aria-describedby={searchHint}
+              aria-label="Search projects"
+              aria-describedby={`${searchHint}-${mobile ? "sheet" : "side"}`}
               placeholder="Search projects"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="vibe-input vibe-sidebar-search"
             />
-            <p id={searchHint} className="sr-only">Searches the latest 100 projects loaded here.</p>
+            <p id={`${searchHint}-${mobile ? "sheet" : "side"}`} className="sr-only">Searches the latest 100 projects loaded here.</p>
           </>
         )}
         <CollectionNotice
