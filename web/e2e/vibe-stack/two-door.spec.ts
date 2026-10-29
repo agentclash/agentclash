@@ -184,6 +184,7 @@ test("imported tests need independent target instructions and keep identical gra
  await page.getByRole('button',{name:'Run 3 tests',exact:true}).click();
  await expect(page.getByRole('dialog')).toContainText('up to');
  expect((await evidence(page)).session.operations).toHaveLength(0);
+ await expect(page.getByRole('dialog')).toContainText('3 tests ·');
  await page.getByRole('button',{name:'Start run',exact:true}).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.operations.at(-1)?.state;}).toBe('COMPLETED');
  state=await evidence(page);const baseline=state.session.operations.at(-1);expect(baseline.scorecard.failed).toBe(1);
@@ -194,6 +195,7 @@ test("imported tests need independent target instructions and keep identical gra
  await page.goto(`/vibe-evals?session=${state.session.id}&agent=${updated.document.artifacts.at(-1).id}&view=build`);
  await openView(page,'Tests');
  await page.getByRole('button',{name:'Improve and rerun',exact:true}).click();
+ await expect(page.getByRole('dialog')).toContainText('3 tests ·');
  await page.getByRole('button',{name:'Start run',exact:true}).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.operations.length===2 && v.session.operations.at(-1)?.state==='COMPLETED';}).toBe(true);
  state=await evidence(page);const rerun=state.session.operations.at(-1);
@@ -267,6 +269,7 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  await openView(page,'Tests');
  await page.getByRole('button',{name:'Apply change and rerun',exact:true}).click();
  await expect(page.getByRole('dialog')).toContainText('up to');
+ await expect(page.getByRole('dialog')).toContainText('3 tests ·');
  await page.getByRole('button',{name:'Start run',exact:true}).click();
  await expect.poll(async()=> {const o=(await evidence(page)).session.operations.at(-1);return o?.state==='COMPLETED'?o.scorecard?.passed:null;}).toBe(3);
  const final=await evidence(page), comparison=final.session.operations.at(-1);
@@ -317,6 +320,7 @@ test("sample continuation retains its prototype through harder requests, chat, r
  await page.getByRole('button',{name:'Update and run',exact:true}).click();
  await expect(page.getByRole('dialog')).toContainText('5 tests');
  expect((await evidence(page)).session.operations.filter((o:{kind:string})=>o.kind==='check')).toHaveLength(1);
+ await expect(page.getByRole('dialog')).toContainText('5 tests ·');
  await page.getByRole('button',{name:'Start run',exact:true}).click();
  await expect.poll(async()=>(await evidence(page)).session.operations.some((o:{state:string,source?:{artifact_id:string}})=>o.source?.artifact_id===harder.id && o.state==='COMPLETED')).toBe(true);
  v=await evidence(page);expect(v.session.document.active_artifact_id).toBe(harder.id);
@@ -366,6 +370,7 @@ test("pasted instructions remain the exact target and run only after the disclos
  await page.getByRole('button',{name:'Run 3 tests',exact:true}).click();
  await expect(page.getByRole('dialog')).toContainText('up to');
  expect((await evidence(page)).calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(callsBefore);
+ await expect(page.getByRole('dialog')).toContainText('3 tests ·');
  await page.getByRole('button',{name:'Start run',exact:true}).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.operations.find((o:{kind:string})=>o.kind==='check')?.state;},{timeout:90000}).toBe('COMPLETED');
  v=await evidence(page);
@@ -391,6 +396,7 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  await page.getByRole('button',{name:'Run recorded tests',exact:true}).click();
  await expect(page.getByRole('button',{name:'Start run',exact:true})).toBeEnabled();
  expect((await evidence(page)).calls).toHaveLength(0);
+ await expect(page.getByRole('dialog')).toContainText('1 test ·');
  await page.getByRole('button',{name:'Start run',exact:true}).click();
  await expect.poll(async()=>{const e=await evidence(page);return e.session.operations.at(-1)?.state;},{timeout:90000}).toBe('COMPLETED');
  const result=await evidence(page);expect(result.calls.map((c:{role:string})=>c.role)).toEqual(['judge']);
@@ -427,8 +433,10 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  const quoted=page.waitForRequest(request=>request.url().endsWith('/run-quote')&&request.method()==='POST');
  await page.getByRole('button',{name:'Run recorded tests',exact:true}).click();
  expect((await quoted).postDataJSON()).toMatchObject({kind:'retest',baseline_id:baseline.id,artifact_id:artifact.id,evidence_set_id:artifact.conversation_evaluation.evidence_set_id});
+ await expect(page.getByRole('dialog')).toContainText('1 test ·');
  await expect(page.getByRole('button',{name:'Start run',exact:true})).toBeEnabled();
  expect((await evidence(page)).calls).toHaveLength(1);
+ await expect(page.getByRole('dialog')).toContainText('1 test ·');
  await page.getByRole('button',{name:'Start run',exact:true}).click();
  await expect.poll(async()=>{const e=await evidence(page);return e.session.operations.find((op:{source?:{artifact_id?:string}})=>op.source?.artifact_id===artifact.id)?.state;},{timeout:90000}).toBe('COMPLETED');
  const final=await evidence(page);expect(final.calls.map((c:{role:string})=>c.role)).toEqual(['judge','judge']);

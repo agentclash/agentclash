@@ -85,6 +85,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   await page.getByRole("button", { name: "Use these instructions" }).click();
   await openTests(page);
   await tests.getByRole("button", { name: "Run 3 tests", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("3 tests ·");
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();
   await expect(page.getByRole("article", { name: "Run results" })).toContainText("2 passed · 1 failed");
@@ -107,6 +108,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   await openTests(page);
   await expect(page.getByRole("region", { name: "Your tests", exact: true })).toHaveAttribute("data-proposal-id", fix.id);
   await page.getByRole("button", { name: "Improve and rerun", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText("3 tests ·");
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();
   await expect(page.getByRole("article", { name: "Run results" })).toContainText("3 passed · 0 failed");
@@ -319,6 +321,7 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   await page.getByRole("button",{name:"Use these instructions"}).click();
   await openTests(page);
   await tests.getByRole("button",{name:"Run 3 tests",exact:true}).click();
+  await expect(page.getByRole("dialog")).toContainText("3 tests ·");
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();
   await expect(page.getByRole("article", { name: "Run results" })).toContainText("3 passed · 0 failed");

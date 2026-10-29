@@ -46,7 +46,7 @@ export function evaluationIdentity(session: Session) {
       ? "Recorded replies"
       : artifact?.agent_prompt
         ? `${artifact.sample ? "Sample agent" : "Agent"} v${version}`
-        : artifact ? `Tests v${version}` : "No agent yet";
+        : artifact ? `Tests v${version}` : session.document.evaluation?.door === "test" ? "No tests yet" : "No agent yet";
   return { title, scope };
 }
 
