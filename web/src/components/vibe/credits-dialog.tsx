@@ -114,6 +114,7 @@ export function CreditsDialog({ workspace, open, onOpenChange }: { workspace: st
                   purchases are paused.
                 </p>
               )}
+              <div className="grid gap-2">
               {credits.products.map((p) => (
                 <Button
                   key={p.id}
@@ -125,6 +126,7 @@ export function CreditsDialog({ workspace, open, onOpenChange }: { workspace: st
                   {(p.price_minor / 100).toFixed(2)} before tax
                 </Button>
               ))}
+              </div>
               <p className="text-sm text-muted-foreground">
                 Only an organization administrator can purchase top-ups. Payment
                 takes place on Dodo’s checkout page.

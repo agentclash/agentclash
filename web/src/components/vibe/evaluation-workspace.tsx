@@ -605,7 +605,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                 </div>
                 <VibeButton disabled={p.busy} onClick={() => setIntake("recorded")}><MessagesSquare />Check replies from my app</VibeButton>
                 <VibeButton disabled={p.busy} onClick={changeSource}><FileText />Try my saved instructions</VibeButton>
-              </div><p className="vibe-source-note">Connect a live app from Details after your first version. Instructions recreate behavior here. A test pack supplies tests, not an agent.</p>
+              </div><p className="vibe-source-note">Signed-in workspaces can connect a live app from Details after you publish tests. Instructions recreate behavior here. A test pack supplies tests, not an agent.</p>
               <details className="vibe-source-help"><summary>What’s a test pack?</summary><p>A saved set of situations to try and what a good response should do. It is also called a challenge pack. Import one only if you already have it.</p></details>
               {p.canChangeDoor && <button type="button" className="vibe-door-switch" onClick={p.onChangeDoor}>Actually, I want to build an agent.</button>}</>}
               {door === "build" && p.canChangeDoor && <button type="button" className="vibe-door-switch" onClick={p.onChangeDoor}>Already have an agent? Improve it instead.</button>}
