@@ -574,7 +574,7 @@
 .vibe-sidebar-create .vibe-button { width:100%; justify-content:flex-start; background:var(--vibe-hover); border-color:var(--vibe-border); min-height:42px; }
 .vibe-sidebar-list { flex:1; min-height:0; overflow-y:auto; padding:0 var(--vibe-space-3) var(--vibe-space-4); scrollbar-width:thin; }
 .vibe-sidebar-label { margin:0 var(--vibe-space-2) var(--vibe-space-3); color:var(--vibe-muted); font-size: var(--vibe-font-footnote); font-weight:500; letter-spacing:0.03em; line-height: var(--vibe-leading-footnote); }
-.vibe-sidebar-list > label, .vibe-sidebar-footer > label { display:grid; gap:var(--vibe-space-2); margin-bottom:var(--vibe-space-3); color:var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight:500; }
+.vibe-sidebar-list > label { display:grid; gap:var(--vibe-space-2); margin-bottom:var(--vibe-space-3); color:var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight:500; }
 .vibe-sidebar-list > label :is(input, select) { width:100%; margin:0; }
 .vibe-sidebar-hint { margin-bottom:var(--vibe-space-3); color:var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-sidebar-list > .vibe-button { margin-bottom:var(--vibe-space-2); justify-content:flex-start; }
@@ -592,6 +592,10 @@
 .vibe-sidebar-footer { display:flex; flex-direction:column; gap:var(--vibe-space-1); padding:var(--vibe-space-3); border-top:1px solid var(--vibe-border); }
 .vibe-sidebar-footer .vibe-button { justify-content:flex-start; font-size: var(--vibe-font-callout); font-weight:500; padding-inline:var(--vibe-space-2); line-height: var(--vibe-leading-callout); }
 .vibe-sidebar-footer > p { padding:var(--vibe-space-1) var(--vibe-space-2) var(--vibe-space-2); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); }
+.vibe-sidebar-workspace { display:flex; align-items:center; justify-content:space-between; gap:var(--vibe-space-2); padding:0 0 var(--vibe-space-2) var(--vibe-space-2); }
+.vibe-sidebar-workspace > p { display:grid; min-width:0; overflow-wrap:anywhere; font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight:500; }
+.vibe-sidebar-workspace > p > span { color:var(--vibe-muted); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); font-weight:400; }
+.vibe-sidebar-workspace > .vibe-button { flex-shrink:0; }
 .vibe-sidebar-footer > a, .vibe-sidebar-footer > details > summary { display:flex; align-items:center; gap:var(--vibe-space-2); min-height:40px; padding:var(--vibe-space-2); border-radius:var(--vibe-radius-sm); color:var(--vibe-muted); font-size: var(--vibe-font-callout); font-weight:500; cursor:pointer; line-height: var(--vibe-leading-callout); list-style:none; }
 .vibe-sidebar-footer > details > summary::-webkit-details-marker { display:none; }
 .vibe-sidebar-footer :is(a, summary) > svg { width:16px; height:16px; flex-shrink:0; }
@@ -615,6 +619,10 @@
 .vibe-entry-page .vibe-active-context { margin-top:var(--vibe-space-1); }
 .vibe-entry-title { font-size: var(--vibe-font-large); font-weight:600; line-height: var(--vibe-leading-large); letter-spacing:-0.02em; text-wrap:balance; }
 @media(max-width:600px) { .vibe-workspace { --vibe-font-large: 1.625rem; --vibe-leading-large: 2rem; } }
+.vibe-entry-workspace { display:grid; gap:var(--vibe-space-2); max-width:22.5rem; margin-top:var(--vibe-space-5); }
+.vibe-entry-workspace > label { display:grid; gap:var(--vibe-space-2); }
+.vibe-entry-workspace select { width:100%; min-height:44px; }
+.vibe-workspace .vibe-entry-workspace > p { color:var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-entry-availability { display:flex; flex-wrap:wrap; align-items:center; gap:var(--vibe-space-2) var(--vibe-space-4); margin-top:var(--vibe-space-5); padding:var(--vibe-space-3) var(--vibe-space-4); border:1px solid var(--vibe-border); border-radius:var(--vibe-radius-md); background:var(--vibe-surface); }
 .vibe-entry-availability p { flex:1; min-width:180px; font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-entry-page > .vibe-notice { color:var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }

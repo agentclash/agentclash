@@ -429,10 +429,92 @@ test("text roles stay consistent across viewport sizes and portaled dialogs", as
     await dialog.getByRole("button", { name: "Credits", exact: true }).click();
     const credits = page.getByRole("dialog", { name: "Workspace AI credits", exact: true });
     await expect.soft(credits.locator('[data-slot="dialog-title"]')).toHaveCSS("font-size", "20px");
+    await expect(dialog).toHaveCount(0);
     await credits.getByRole("button", { name: "Close", exact: true }).click();
-    await dialog.getByRole("button", { name: "Close", exact: true }).click();
+    // Below 1280 the Details sheet closed before Settings opened; the wide panel stays.
+    if (width >= 1280) await page.getByRole("button", { name: "Close Details", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  }
+  expect(control.posts).toHaveLength(0);
+  expect(control.errors).toEqual([]);
+});
+
+test("one dialog at a time: Settings closes before Save or Export opens", async ({ page }) => {
+  await serve(page, false, true);
+  await page.goto("/vibe-evals?session=first&workspace=a8000000-0000-4000-8000-000000000003");
+  await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 15_000 });
+  await page.evaluate(() => {
+    const record = window as unknown as { mostDialogs: number };
+    record.mostDialogs = 0;
+    const count = () => { record.mostDialogs = Math.max(record.mostDialogs, document.querySelectorAll('[role="dialog"]').length); };
+    new MutationObserver(count).observe(document.body, { childList: true, subtree: true, attributes: true });
+  });
+  const settings = page.getByRole("dialog", { name: "Settings and details", exact: true });
+  for (const action of [/^(Keep these tests|Save agent)$/, /^Export (tests and agent instructions|agent and checks)$/]) {
+    await page.evaluate(() => { (window as unknown as { mostDialogs: number }).mostDialogs = 0; });
+    await page.getByRole("button", { name: "Details", exact: true }).click();
+    await page.getByRole("complementary", { name: "Details utility", exact: true }).getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(settings).toBeVisible();
+    await settings.getByRole("button", { name: action }).first().click();
+    await expect(settings).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    // Settings has finished closing before the next dialog appears, even during the animation.
+    expect(await page.evaluate(() => (window as unknown as { mostDialogs: number }).mostDialogs), String(action)).toBe(1);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.getByRole("button", { name: "Close Details", exact: true }).click();
   }
+});
+
+test("one dialog at a time: Details closes before Settings, Settings closes before Credits, focus returns to the opener", async ({ page }) => {
+  const control = await serve(page, false, true);
+  await page.route(/\/v1\/vibe\/credits\?/, route => route.fulfill({
+    headers: { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" },
+    json: { under_review: false, balance_nano_usd: 0, held_nano_usd: 0, available_nano_usd: 0, products: [] },
+  }));
+  await page.goto("/vibe-evals?session=first&workspace=a8000000-0000-4000-8000-000000000003");
+  await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 15_000 });
+  // Count every dialog popup in the page, including one that is still animating closed.
+  await page.evaluate(() => {
+    const record = window as unknown as { mostDialogs: number };
+    record.mostDialogs = 0;
+    const count = () => { record.mostDialogs = Math.max(record.mostDialogs, document.querySelectorAll('[role="dialog"]').length); };
+    new MutationObserver(count).observe(document.body, { childList: true, subtree: true, attributes: true });
+  });
+  const mostDialogs = () => page.evaluate(() => (window as unknown as { mostDialogs: number }).mostDialogs);
+  const settings = page.getByRole("dialog", { name: "Settings and details", exact: true });
+  const credits = page.getByRole("dialog", { name: "Workspace AI credits", exact: true });
+  for (const width of [390, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const detailsButton = page.getByRole("button", { name: "Details", exact: true });
+    await detailsButton.click();
+    const details = width < 1280 ? page.getByRole("dialog", { name: "Details", exact: true }) : page.getByRole("complementary", { name: "Details utility", exact: true });
+    const settingsButton = details.getByRole("button", { name: "Settings", exact: true });
+    await settingsButton.click();
+    await expect(settings).toBeVisible();
+    // The wide panel is not modal and stays (hidden from assistive tech while Settings is open).
+    if (width < 1280) await expect(page.getByRole("dialog", { name: "Details", exact: true })).toHaveCount(0);
+    else await expect(page.locator(".vibe-utility")).toBeVisible();
+    // The sheet returned focus to Details before Settings opened; the panel keeps its button.
+    const opener = width < 1280 ? detailsButton : settingsButton;
+    await settings.getByRole("button", { name: "Credits", exact: true }).click();
+    await expect(credits).toBeVisible();
+    await expect(settings).toHaveCount(0);
+    await expect(page.getByRole("dialog")).toHaveCount(1);
+    // Escape closes only the top dialog; Settings does not reopen behind it.
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(opener).toBeFocused();
+    // Settings alone also returns focus to its opener.
+    if (width < 1280) await detailsButton.click(); else await expect(details).toBeVisible();
+    await details.getByRole("button", { name: "Settings", exact: true }).click();
+    await expect(settings).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(opener).toBeFocused();
+    if (width >= 1280) await page.getByRole("button", { name: "Close Details", exact: true }).click();
+  }
+  expect(await mostDialogs()).toBe(1);
   expect(control.posts).toHaveLength(0);
   expect(control.errors).toEqual([]);
 });
@@ -601,6 +683,11 @@ test("Settings descendants retain readable scoped appearance including warning, 
     await page.getByLabel("Appearance",{exact:true}).selectOption(appearance);
     await page.getByRole("complementary",{name:"Details utility"}).getByRole("button",{name:"Settings",exact:true}).click();
     const dialog=page.getByRole("dialog",{name:"Settings and details"});
+    // The dialog moves focus to its initial control after it opens. Focus the select only after
+    // that settles; otherwise the late initial focus takes focus away from it.
+    await expect(dialog).toBeVisible();
+    await expect.poll(()=>dialog.evaluate(popup=>!popup.hasAttribute("data-starting-style")&&popup.contains(document.activeElement))).toBe(true);
+    await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
     const model=dialog.getByLabel("Assistant model",{exact:true});
     await model.focus(); await page.keyboard.press("Tab"); await page.keyboard.press("Shift+Tab");
     const action=dialog.getByRole("button",{name:"Import a test pack",exact:true}); await action.hover();

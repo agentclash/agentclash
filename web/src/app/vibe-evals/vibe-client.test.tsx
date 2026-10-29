@@ -28,9 +28,12 @@ vi.mock("@/lib/api/client", () => ({
   createApiClient: () => ({ get: harness.me }),
 }));
 vi.mock("@/components/vibe/credits-dialog", () => ({
-  CreditsDialog: ({ workspace }: { workspace: string }) => (
-    <span>Credits for {workspace}</span>
-  ),
+  CreditsDialog: ({ workspace, open, onOpenChange }: { workspace: string; open: boolean; onOpenChange: (open: boolean) => void }) => open ? (
+    <div role="dialog" aria-label="Workspace AI credits">
+      <span>Credits for {workspace}</span>
+      <button type="button" onClick={() => onOpenChange(false)}>Close credits</button>
+    </div>
+  ) : null,
 }));
 
 const replaceBrowserURL = window.history.replaceState.bind(window.history);
@@ -973,7 +976,10 @@ it.each([
     const href =
       "/workspaces/workspace-one/challenge-packs/builder/canonical-one";
     expect(container.querySelector(`a[href^="${href}"]`)).not.toBeNull();
+    expect(container.textContent).not.toContain("Credits for workspace-one");
+    await click("Credits");
     expect(container.textContent).toContain("Credits for workspace-one");
+    await click("Close credits");
     await click("Save agent");
     expect(button(confirmed ? "Saved" : "Save and iterate").disabled).toBe(
       confirmed,
@@ -2243,6 +2249,99 @@ it.each([
   await render(); await type("A question for this saved project");
   expect(button("Send message").disabled).toBe(blocked);
   expect(posts()).toHaveLength(0);
+});
+
+function dialogNames() {
+  return [...document.querySelectorAll('[role="dialog"]')].map(dialog =>
+    dialog.getAttribute("aria-label") || document.getElementById(dialog.getAttribute("aria-labelledby") || "")?.textContent || "");
+}
+// Records the most dialogs present together, including one that is still closing.
+function watchDialogs() {
+  let most = 0;
+  const count = () => { most = Math.max(most, document.querySelectorAll('[role="dialog"]').length); };
+  const observer = new MutationObserver(count);
+  observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+  return { most: () => { count(); return most; }, stop: () => observer.disconnect() };
+}
+async function clickIn(scope: string, name: string) {
+  const dialog = document.querySelectorAll<HTMLElement>('[role="dialog"]')[dialogNames().indexOf(scope)];
+  const found = [...dialog?.querySelectorAll<HTMLButtonElement>("button") || []].find(b => b.textContent?.trim() === name);
+  expect(found, `${scope} button: ${name}`).toBeTruthy();
+  await act(async () => found!.click());
+}
+
+it("closes Settings before Credits opens, so only one dialog shows at a time", async () => {
+  acceptedDraft(); signedInWorkspace();
+  Object.assign(session, { anonymous: false, workspace_id: "workspace-one" });
+  await render();
+  const dialogs = watchDialogs();
+  await click("Settings");
+  expect(dialogNames()).toEqual(["Settings and details"]);
+  await clickIn("Settings and details", "Credits");
+  expect(dialogNames()).toEqual(["Workspace AI credits"]);
+  expect(container.textContent).toContain("Credits for workspace-one");
+  await click("Close credits");
+  expect(dialogNames()).toEqual([]);
+  await click("Settings");
+  await clickIn("Settings and details", "Save agent");
+  expect(dialogNames()).toEqual(["Save agent and checks"]);
+  expect(dialogs.most()).toBe(1);
+  dialogs.stop();
+  expect(requests.filter(request => request.method === "POST")).toHaveLength(0);
+});
+
+it("closes the Details sheet before Settings opens below 1280px", async () => {
+  acceptedDraft();
+  session.document.evaluation = { id: session.id, chat_id: "chat", door: "build" };
+  respond = async path => path === "/config" ? json({ enabled: true, two_door: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id })) }) : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render();
+  const dialogs = watchDialogs();
+  await click("Details");
+  expect(dialogNames()).toEqual(["Details"]);
+  await clickIn("Details", "Settings");
+  expect(dialogNames()).toEqual(["Settings and details"]);
+  expect(dialogs.most()).toBe(1);
+  dialogs.stop();
+});
+
+it("puts the workspace picker on the entry screen and focuses it from the sidebar instead of opening Settings", async () => {
+  signedInWorkspace(); harness.params = new URLSearchParams();
+  harness.me.mockResolvedValue({ organizations: [{ role: "org_admin", workspaces: [{ id: "workspace-one", name: "Workspace One" }, { id: "workspace-two", name: "Workspace Two" }] }] });
+  respond = async path => path === "/config" ? json({ enabled: true, two_door: true, availability: { guest: { available: false }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }] }) : json([]);
+  await render();
+  const pickers = document.querySelectorAll<HTMLSelectElement>('select[aria-label="Workspace for new projects"]');
+  expect(pickers).toHaveLength(1);
+  const picker = pickers[0];
+  expect(picker.closest(".vibe-welcome")).not.toBeNull();
+  expect(picker.closest(".vibe-sidebar")).toBeNull();
+  expect(document.getElementById(picker.getAttribute("aria-describedby")!)?.textContent).toBe("Choose a workspace to use its credits.");
+  expect([...document.querySelectorAll("button")].some(b => b.textContent === "Review settings")).toBe(false);
+  const sidebar = container.querySelector(".vibe-sidebar-workspace")!;
+  expect(sidebar.textContent).toContain("Not chosen");
+  await click("Choose workspace");
+  expect(document.activeElement).toBe(picker);
+  expect(dialogNames()).toEqual([]);
+  await act(async () => { picker.value = "workspace-two"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(picker.hasAttribute("aria-describedby")).toBe(false);
+  expect(sidebar.textContent).toContain("Workspace Two");
+  expect(button("Change workspace")).toBeTruthy();
+  expect([...container.querySelectorAll<HTMLButtonElement>("button")].filter(b => /Build an agent|Improve an existing agent/.test(b.textContent || "")).every(b => !b.disabled)).toBe(true);
+  expect(requests.filter(request => request.method === "POST")).toHaveLength(0);
+});
+
+it.each([
+  { access: "ready", text: "You need a workspace to start a project.", action: "Open your dashboard" },
+  { access: "error", text: "Your workspaces couldn’t be loaded.", action: "Try again" },
+  { access: "signed_out", text: "Sign in again to choose a workspace.", action: "Sign in again" },
+])("replaces Review settings with a workspace action when workspace access is $access", async ({ access, text, action }) => {
+  signedInWorkspace(); harness.params = new URLSearchParams();
+  if (access === "ready") harness.me.mockResolvedValue({ organizations: [] });
+  else harness.me.mockRejectedValue(Object.assign(new Error("Unavailable"), { status: access === "signed_out" ? 401 : 503 }));
+  respond = async path => path === "/config" ? json({ enabled: true, two_door: true, availability: { guest: { available: false }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }] }) : json([]);
+  await render();
+  expect(document.querySelector('select[aria-label="Workspace for new projects"]')).toBeNull();
+  expect(container.querySelector(".vibe-entry-availability")?.textContent).toContain(text);
+  expect([...container.querySelectorAll(".vibe-entry-availability :is(a, button)")].map(item => item.textContent)).toEqual([action]);
 });
 
 it("lets a signed-in user explicitly choose a workspace before either new-project door without dispatching inference", async () => {
