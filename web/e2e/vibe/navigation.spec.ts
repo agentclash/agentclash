@@ -360,6 +360,22 @@ test("same-artifact case Back and Forward restores the visible expectation witho
   expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
 });
 
+test("project title and tabs share the left edge of the content", async ({ page }) => {
+  await serve(page, false, true);
+  await page.goto("/vibe-evals?session=first&workspace=a8000000-0000-4000-8000-000000000003");
+  const tabs = page.getByRole("tablist", { name: "Workspace views" });
+  const title = page.locator(".vibe-project-identity h1");
+  const content = page.locator(".vibe-project-content");
+  const edges = async () => ({ tabs: (await tabs.boundingBox())!.x, title: (await title.boundingBox())!.x, content: (await content.boundingBox())!.x });
+  for (const width of [1024, 1280, 1440, 2560]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect.poll(async () => { const e = await edges(); return Math.max(Math.abs(e.tabs - e.content), Math.abs(e.title - e.content)); }, { message: `${width}px` }).toBeLessThanOrEqual(1);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.getByRole("button", { name: "Guide", exact: true }).click();
+  await expect.poll(async () => { const e = await edges(); return Math.abs(e.tabs - e.content); }, { message: "1440px with Guide open" }).toBeLessThanOrEqual(1);
+});
+
 test("text roles stay consistent across viewport sizes and portaled dialogs", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   const control = await serve(page, false, true);
