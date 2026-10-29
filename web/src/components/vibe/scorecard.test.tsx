@@ -183,7 +183,7 @@ async function render(
 it("shows the outcome before filtering result rows without changing whole-run totals", async () => {
  await render(operation([failure,passing]));
  const heading=container.querySelector("h2")!.textContent;
- const select=container.querySelector<HTMLSelectElement>('select[aria-label="Filter cases"]');
+ const select=container.querySelector<HTMLSelectElement>('select[aria-label="Filter tests"]');
  expect(select).not.toBeNull();
  expect(container.querySelector("h2")!.compareDocumentPosition(select!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
  await act(async()=>{select!.value="passing";select!.dispatchEvent(new Event("change",{bubbles:true}));});
@@ -215,7 +215,7 @@ it("makes fixing, rerunning and keeping tests direct actions for the core journe
   expect(container.querySelector("h2")!.textContent).toBe(
     "1 of 2 tests passed",
   );
-  expect(container.textContent).not.toContain("Check the new answer");
+  expect(container.textContent).not.toContain("Test new replies");
   expect(container.textContent).not.toContain("bring back its new replies");
   await click("Help me fix this");
   expect(improve).toHaveBeenCalledOnce();
@@ -239,7 +239,7 @@ it("makes keeping tests the primary action for a passing first run", async () =>
 it("leads with one reply and keeps complete evidence behind a single accessible disclosure", async () => {
   const load = await render(operation([passing, failure]));
   const leading = container.querySelector('[aria-label="Leading finding"]')!;
-  expect(container.querySelector("h2")!.textContent).toBe("1 chat failed");
+  expect(container.querySelector("h2")!.textContent).toBe("1 test failed");
   expect(leading.querySelector("details")!.open).toBe(true);
   expect(leading.textContent).toContain(failure.checks[0].evidence);
   const visibleQuotes = [...leading.querySelectorAll("blockquote")].filter(
@@ -259,15 +259,16 @@ it("leads with one reply and keeps complete evidence behind a single accessible 
   expect(fullEvidence.textContent).toContain("Ask only for missing details.");
   expect(fullEvidence.textContent).toContain("Full conversation · 4 messages");
   // One check that is the finding: the finding above is its only copy.
-  expect(fullEvidence.textContent).not.toContain("All checks");
+  expect(fullEvidence.textContent).not.toContain("All expectations");
   expect(leading.textContent!.split(failure.checks[0].evidence).length - 1).toBe(1);
-  expect(container.textContent).not.toContain("That’s not our rule");
+  // Only the finding offers a change; its expectation is not repeated as a second button.
+  expect([...container.querySelectorAll("button")].filter((b) => b.textContent?.trim() === "Change expected result")).toHaveLength(1);
   expect(
     button("Copy fix prompt").closest('[aria-label="Leading finding"]'),
   ).toBe(leading);
-  expect(button("Change the expected behavior").closest("[hidden]")).toBeNull();
+  expect(button("Change expected result").closest("[hidden]")).toBeNull();
   expect(load.mock.calls).toEqual([["memory"]]);
-  for (const label of ["Other results", "What was checked"]) {
+  for (const label of ["Other results", "About this run"]) {
     const details = [...container.querySelectorAll("details")].find((node) =>
       node.firstElementChild?.textContent?.startsWith(label),
     );
@@ -276,7 +277,7 @@ it("leads with one reply and keeps complete evidence behind a single accessible 
   await click("See evidence");
   expect(button("Hide evidence").getAttribute("aria-expanded")).toBe("true");
   expect(fullEvidence.hidden).toBe(false);
-  await click("Change the expected behavior");
+  await click("Change expected result");
   expect(dispute).toHaveBeenCalledWith(
     "Ask only for missing details.",
     failure,
@@ -368,10 +369,10 @@ it("copies an honest prompt and dispatches the new-answer callback only after a 
   expect(nextAnswer).not.toHaveBeenCalled();
   expect(improve).not.toHaveBeenCalled();
   expect(retest).not.toHaveBeenCalled();
-  expect(button("Check the new answer").className).toContain(
+  expect(button("Test new replies").className).toContain(
     "vibe-button-primary",
   );
-  await click("Check the new answer");
+  await click("Test new replies");
   expect(nextAnswer).toHaveBeenCalledTimes(1);
 });
 
@@ -425,7 +426,7 @@ it("prioritizes a new regression over an existing failure without hiding either"
   const next = { ...operation([failure, regressed]), id: "next", baseline_id: old.id };
   old.grading = next.grading = { version: 1, hash: "matching" } as Operation["grading"];
   await render(next, old);
-  expect(container.querySelector("h2")!.textContent).toContain("1 newly failing chat");
+  expect(container.querySelector("h2")!.textContent).toContain("1 newly failing test");
   expect(
     container.querySelector('[aria-label="Leading finding"] summary')!
       .textContent,
@@ -434,7 +435,7 @@ it("prioritizes a new regression over an existing failure without hiding either"
     container.querySelector('[aria-label="Individual results"]')!.textContent,
   ).toContain(failure.title);
   expect(container.textContent).toContain(
-    "0 previously failing chats now pass · 1 new failure",
+    "0 previously failing tests now pass · 1 new failure",
   );
 });
 
@@ -443,7 +444,7 @@ it("does not turn regrading unchanged replies into an improvement claim", async 
   op.source!.comparison = "rechecked";
   await render(op, operation([{ ...passing, verdict: "FAIL" }]));
   expect(container.querySelector("h2")!.textContent).toBe(
-    "Same chats rechecked",
+    "Same replies graded again",
   );
   expect(container.textContent).toContain(
     "A different grade does not show that your agent improved",
@@ -484,21 +485,21 @@ it.each(["PARTIAL", "CANCELLED"])(
     expect(container.textContent).not.toContain("Copy fix prompt");
     if (state === "CANCELLED")
       expect(container.querySelector("h2")!.textContent).toContain(
-        "Check stopped",
+        "Run stopped",
       );
   },
 );
 
-it("keeps an all-pass outcome scoped to its tested examples and offers no repair prompt", async () => {
+it("keeps an all-pass outcome scoped to its tests and offers no repair prompt", async () => {
   await render(operation([passing]));
   expect(container.querySelector("h2")!.textContent).toBe(
-    "No issues found in this chat",
+    "No issues found in this test",
   );
   expect(container.textContent).toContain(
-    "These findings cover only this chat",
+    "These findings cover only this test",
   );
   expect(container.textContent).not.toContain("Copy fix prompt");
-  expect(button("Check the new answer").className).toContain(
+  expect(button("Test new replies").className).toContain(
     "vibe-button-primary",
   );
 });
@@ -509,13 +510,13 @@ it("offers saving as the primary action after a successful comparison without st
     operation([{ ...passing, verdict: "FAIL" }]),
     true,
   );
-  expect(button("Save this check").className).toContain("vibe-button-primary");
-  expect(button("Save this check").closest("details")).toBeNull();
-  expect(button("Check the new answer").className).toContain(
+  expect(button("Save this result").className).toContain("vibe-button-primary");
+  expect(button("Save this result").closest("details")).toBeNull();
+  expect(button("Test new replies").className).toContain(
     "vibe-button-secondary",
   );
   expect(save).not.toHaveBeenCalled();
-  await click("Save this check");
+  await click("Save this result");
   expect(save).toHaveBeenCalledTimes(1);
   expect(nextAnswer).not.toHaveBeenCalled();
 });
@@ -534,10 +535,10 @@ it.each(["initial", "rechecked", "stopped", "incomplete", "empty", "failed"])(
       kind === "initial" ? undefined : operation([passing]),
       true,
     );
-    expect(button("Save this check").className).not.toContain(
+    expect(button("Save this result").className).not.toContain(
       "vibe-button-primary",
     );
-    expect(button("Save this check").closest("details")).not.toBeNull();
+    expect(button("Save this result").closest("details")).not.toBeNull();
     expect(save).not.toHaveBeenCalled();
   },
 );
@@ -601,9 +602,9 @@ it("offers mixed failed and unassessed checks in the unresolved filter and exact
  op.scorecard={...op.scorecard!,incomplete_cases:2,checks_expected:5,checks_evaluated:3};
  await render(op);
  expect(container.textContent).toContain("1 passed · 2 failed · 2 unresolved");
- expect(container.querySelector("h2")!.textContent).toBe("2 chats failed");
+ expect(container.querySelector("h2")!.textContent).toBe("2 tests failed");
  expect(container.textContent).toContain("can also be counted as passed or failed");
- const select=container.querySelector<HTMLSelectElement>('[aria-label="Filter cases"]')!;
+ const select=container.querySelector<HTMLSelectElement>('[aria-label="Filter tests"]')!;
  await act(async()=>{select.value="failing";select.dispatchEvent(new Event("change",{bubbles:true}))});
  expect(container.textContent).toContain("Partially assessed");
  expect(container.textContent).toContain(failure.title);
@@ -613,7 +614,7 @@ it("offers mixed failed and unassessed checks in the unresolved filter and exact
  expect(container.textContent).toContain("Partially assessed");
  expect(container.textContent).not.toContain(failure.title);
  expect(container.textContent).toContain("Awaiting assessment");
- expect(container.querySelector("h2")!.textContent).toBe("2 chats failed");
+ expect(container.querySelector("h2")!.textContent).toBe("2 tests failed");
  expect(container.textContent).toContain("1 passed · 2 failed · 2 unresolved");
  const retry=vi.fn();
  await act(async()=>root.render(<ResultRecoveryControls operation={op} busy={false} onReload={()=>{}} onRetry={retry} onFullRun={()=>{}}/>));
@@ -642,13 +643,13 @@ it("keeps one primary action on a failed check and moves Suggest a change into t
   expect(button("Suggest a change").closest("details")).toBeNull();
   expect([...container.querySelectorAll(".vibe-button-primary")].map(b => b.textContent?.trim())).toEqual(["Suggest a change"]);
   expect(button("Copy fix prompt").className).toContain("vibe-button-secondary");
-  // "Check the new answer" already reruns the same examples when there are no new replies.
-  expect(container.textContent).not.toContain("Run the same examples again");
-  await click("Check the new answer");
+  // "Run tests again" already reruns the same tests when there are no new replies.
+  expect(container.textContent).not.toContain("Run the same tests again");
+  await click("Run tests again");
   expect(retest).toHaveBeenCalledOnce();
   await click("Suggest a change");
   expect(improve).toHaveBeenCalledOnce();
-  expect(button("Save this check").closest("details")).not.toBeNull();
+  expect(button("Save this result").closest("details")).not.toBeNull();
 });
 
 it("keeps Compare an update only while the new-answer button collects new replies", async () => {
@@ -656,9 +657,9 @@ it("keeps Compare an update only while the new-answer button collects new replie
   expect(button("Compare an update").closest("details")).not.toBeNull();
   await click("Compare an update");
   expect(retest).toHaveBeenCalledOnce();
-  await click("Check the new answer");
+  await click("Test new replies");
   expect(nextAnswer).toHaveBeenCalledOnce();
-  expect(container.textContent).not.toContain("Run as a separate check");
+  expect(container.textContent).not.toContain("Start a separate run");
 });
 
 it("starts a fresh review only after the stale request is authoritatively rejected without a receipt",async()=>{
@@ -748,7 +749,7 @@ it.each(["new ASCII", "new multibyte", "persisted invalid"])("corrects an overli
 it("opens Guide for the chosen case even when its evidence cannot load", async () => {
   const ask = vi.fn();
   await act(async () => root.render(<VibeScorecard operation={redacted(operation([failure]))} loadEvidence={async () => { throw Error("Saved evidence offline"); }} onImprove={improve} onRetest={retest} onAskCase={ask} busy={false} />));
-  await click("Ask Guide about this case");
+  await click("Ask Guide about this test");
   expect(ask).toHaveBeenCalledExactlyOnceWith("memory");
   expect(retest).not.toHaveBeenCalled();
   expect(improve).not.toHaveBeenCalled();

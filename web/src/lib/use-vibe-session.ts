@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { vibeFetch, watchVibe, VibeError, type Session } from "./vibe";
 
-export const sessionAccessLost = "This browser can’t access the saved session. Your unsent message is still here.";
+export const sessionAccessLost = "This browser can’t access the saved project. Your unsent message is still here.";
 export function isSessionAccessError(error: unknown) {
   return error instanceof VibeError && [401, 403, 404].includes(error.status || 0);
 }

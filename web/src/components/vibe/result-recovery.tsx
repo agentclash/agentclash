@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { terminal, type Operation } from "@/lib/vibe";
 import { unresolvedCase } from "@/lib/vibe-result-evidence";
+import { testCount } from "@/lib/vibe-presentation";
 import { VibeButton } from "./vibe-button";
 
 const stoppedStates = ["CANCELLED", "EXPIRED", "FAILED"];
@@ -18,10 +19,10 @@ export function ResultRecoveryControls({operation,busy,onReload,onRetry,onFullRu
  const recovery=offersFullRun(operation);
  if(!recovery&&terminal(operation.state)&&!operation.result_scope?.retry_source_result_ref&&operation.actual_cost_nano_usd!==null&&!operation.progress?.last_confirmed_at)return null;
  return <section aria-label="Result recovery" className="space-y-3">
-  {operation.result_scope?.retry_source_result_ref&&<p>This is a separate run of {operation.result_scope.case_keys.length} selected cases. Earlier evidence remains separate; this does not establish that the whole suite passes.</p>}
+  {operation.result_scope?.retry_source_result_ref&&<p>This is a separate run of {testCount(operation.result_scope.case_keys.length, "selected")}. Earlier evidence remains separate; this does not establish that the whole suite passes.</p>}
   {operation.actual_cost_nano_usd===null&&<p>Actual provider cost is unknown while accounting reconciles. Completed evidence stays available.</p>}
   {operation.progress?.last_confirmed_at&&<p>Last confirmed progress: {new Date(operation.progress.last_confirmed_at).toLocaleString()} · phase {operation.progress.phase.replaceAll("_"," ")} · {Math.floor((operation.progress.phase_elapsed_ms||0)/1000)} seconds confirmed phase time.</p>}
-  {terminal(operation.state)&&!!unresolved.length&&<fieldset><legend>Unresolved cases to retry</legend>{unresolved.map(c=><label className="block" key={c.case_key}><input type="checkbox" checked={!excluded.includes(c.case_key)} onChange={e=>setExcluded(old=>e.target.checked?old.filter(key=>key!==c.case_key):[...old,c.case_key])}/>{c.title||c.case_key}</label>)}</fieldset>}
+  {terminal(operation.state)&&!!unresolved.length&&<fieldset><legend>Unresolved tests to retry</legend>{unresolved.map(c=><label className="block" key={c.case_key}><input type="checkbox" checked={!excluded.includes(c.case_key)} onChange={e=>setExcluded(old=>e.target.checked?old.filter(key=>key!==c.case_key):[...old,c.case_key])}/>{c.title||c.case_key}</label>)}</fieldset>}
   {terminal(operation.state)&&!!unresolved.length&&onRetry&&!reconciled&&<p>Retry becomes available after the original execution and billing finish reconciliation.</p>}
   {(recovery||!terminal(operation.state)||operation.actual_cost_nano_usd===null)&&<div className="flex flex-wrap gap-2">
    <VibeButton onClick={onReload}>Reload saved evidence</VibeButton>

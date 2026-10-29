@@ -282,7 +282,7 @@ it("shows a committed result instead of a stale failure and removes its retry", 
 
 it("shows an example without changing the draft; explicit use fills it without sending", async () => {
   await render();
-  expect(container.textContent).toContain("Check the AI in your app.");
+  expect(container.textContent).toContain("Test the AI in your app.");
   expect(container.querySelectorAll("textarea")).toHaveLength(1);
   expect(container.textContent).not.toContain("I have example chats");
   expect(container.textContent).not.toContain("I have the instructions");
@@ -338,7 +338,7 @@ it("offers distinct instructions and recorded-reply intake", async () => {
   expect(container.querySelector('textarea[aria-label="Conversations to check"]')).toBeNull();
   const input = container.querySelector<HTMLTextAreaElement>('#vibe-instructions-source')!;
   await type(input, "Only unopened items qualify.");
-  await act(async () => button("Prepare examples").click());
+  await act(async () => button("Prepare tests").click());
   expect(props.onMessage).toHaveBeenCalledWith(expect.any(String), undefined, "Only unopened items qualify.");
 });
 
@@ -428,7 +428,7 @@ it("keeps the previous transcript hidden while a new-answer check is being admit
     view: "build",
     quickChecking: true,
     busy: true,
-    pendingLabel: "Starting your check…",
+    pendingLabel: "Starting your run…",
   });
   expect(container.textContent).not.toContain("The old answer before the fix");
   expect(container.textContent).not.toContain("The earlier finding");
@@ -544,7 +544,7 @@ it("does not promise a prototype for an unclassified message or casual chat", as
   for (const state of ["QUEUED", "RUNNING", "FINALIZING"] as const) {
     turn.state = state;
     await show();
-    expect(container.textContent).not.toMatch(/first version|three made-up|Creating your prototype|Saving your results|Waiting to start/);
+    expect(container.textContent).not.toMatch(/first version|three made-up|Creating your agent|Saving your results|Waiting to start/);
     expect(button("Stop")).toBeTruthy();
   }
   turn.state = "RUNNING";
@@ -568,7 +568,7 @@ it("announces prototype creation only after a confirmed build decision", async (
     conversation_decision: { intent: "prepare_tests", source_message_id: "task" } }];
   await act(async () => root.render(<EvaluationWorkspace {...props} session={current} twoDoor busy />));
   expect(container.querySelector(".vibe-build-intro")?.textContent).toContain("I’m making a first version");
-  expect(container.textContent).toContain("Creating your prototype…");
+  expect(container.textContent).toContain("Creating your agent…");
 });
 
 it("owns agent and test editors in main while Guide references a case without sending or rewriting the draft", async () => {
@@ -576,10 +576,10 @@ it("owns agent and test editors in main while Guide references a case without se
   state.document.evaluation = { id: state.id, chat_id: state.id, door: "test" };
   const artifact = { id: "suite", kind: "test_suite" as const, title: "Returns", agent_prompt: "Use our actual policy", accepted: true, source_message_id: "request", blueprint: { cases: [{ key: "return", payload: { question: "Return?" }, expectations: [{ key: "expected_behavior", kind: "text", value: "Expected observation, never policy" }] }] } };
   state.document.artifacts = [artifact];
-  await render({ twoDoor: true, session: state, artifact, content: "My own question", preview: <section aria-label="Try your prototype">Trial owner</section> });
+  await render({ twoDoor: true, session: state, artifact, content: "My own question", preview: <section aria-label="Try your agent">Trial owner</section> });
   expect(container.querySelector('[aria-label="Agent instructions"]')).not.toBeNull();
   expect(container.querySelector('[aria-label="Your tests"]')).toBeNull();
-  expect(container.querySelector('[aria-label="Try your prototype"]')).not.toBeNull();
+  expect(container.querySelector('[aria-label="Try your agent"]')).not.toBeNull();
   await render({ view: "tests" });
   expect(container.querySelector('[aria-label="Agent instructions"]')).toBeNull();
   const tests = container.querySelector('[aria-label="Your tests"]')!;

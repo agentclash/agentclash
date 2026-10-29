@@ -3,13 +3,14 @@
 import { useReducedMotion } from "framer-motion";
 import { useSyncExternalStore } from "react";
 import type { Operation } from "@/lib/vibe";
+import { testCount } from "@/lib/vibe-presentation";
 
 export function conversationActivity(operation: Operation, testJourney?: boolean) {
   const origin = operation.source?.comparison === "regraded" ? "regraded" : operation.evidence_metadata?.origin ||
     (operation.source?.kind === "provided_conversations" ? "recorded" : operation.source?.kind === "prompt" ? "prototype" : undefined);
-  const sourceLabel = origin === "prototype" ? "Text prototype" : origin === "recorded" ? "Recorded app replies" : origin === "regraded" ? "Saved replies · Regrade" : "Source unverified";
+  const sourceLabel = origin === "prototype" ? "Generated replies" : origin === "recorded" ? "Recorded app replies" : origin === "regraded" ? "Saved replies · Regrade" : "Source unverified";
   const describe = (label: string) => ["check", "retest", "playground"].includes(operation.kind) ? `${sourceLabel} · ${label}` : label;
-  const grading = origin === "prototype" ? "Grading the generated reply…" : origin === "recorded" ? "Grading the recorded replies…" : origin === "regraded" ? "Regrading the saved replies…" : "Checking the reply…";
+  const grading = origin === "prototype" ? "Grading the generated reply…" : origin === "recorded" ? "Grading the recorded replies…" : origin === "regraded" ? "Regrading the saved replies…" : "Grading the reply…";
   if (operation.state === "AWAITING_APPROVAL") return describe("Review the cost before continuing.");
   if (operation.state === "CANCELLING") return describe("Stopping…");
   if (operation.state === "QUEUED") return describe("Waiting to start…");
@@ -22,7 +23,7 @@ export function conversationActivity(operation: Operation, testJourney?: boolean
       understanding: "Understanding your request…",
       advisory_understanding: "Understanding your request…",
       preparing: "Preparing your next step…",
-      reviewing: "Checking the tests against your rules…",
+      reviewing: "Reviewing the tests against your rules…",
       repairing: "Adjusting the tests to match your rules…",
       switching_assistant: "Trying another model…",
       running_agent: origin === "prototype" ? "Generating a text reply from these instructions…" : origin === "recorded" || origin === "regraded" ? grading : "Processing the reply…",
@@ -39,7 +40,7 @@ export function conversationActivity(operation: Operation, testJourney?: boolean
     return "Thinking…";
   }
   if (operation.scorecard && operation.scorecard.evaluated > 0)
-    return describe(`${operation.scorecard.evaluated} of ${operation.scorecard.total} tests checked`);
+    return describe(`${operation.scorecard.evaluated} of ${testCount(operation.scorecard.total)} graded`);
   return describe("Running your tests…");
 }
 

@@ -1,4 +1,5 @@
 import { terminal, type Artifact, type Operation, type Session } from "./vibe";
+import { testCount } from "./vibe-presentation";
 
 export function workingBuildArtifact(session: Session): Artifact | undefined {
   const id = session.document.active_artifact_id || session.document.build?.artifact_id;
@@ -86,16 +87,16 @@ export function buildProgress(operation: Operation) {
   if (operation.state === "QUEUED") return message ? "Thinking…" : "Waiting to start…";
   if (operation.state === "FINALIZING") return message ? "Saving your reply…" : "Saving your results…";
   if (terminal(operation.state)) return undefined;
-  if (operation.kind === "playground") return "Your prototype is replying…";
+  if (operation.kind === "playground") return "Your agent is replying…";
   if (operation.kind === "check" || operation.kind === "retest") {
     const { completed_cases = 0, total_cases = 0 } = operation.progress || {};
     return completed_cases > 0 && total_cases > 0
-      ? `${completed_cases} of ${total_cases} examples checked…`
-      : total_cases > 0 ? `Trying ${total_cases} examples…` : "Trying your examples…";
+      ? `${completed_cases} of ${testCount(total_cases)} finished…`
+      : total_cases > 0 ? `Running ${testCount(total_cases)}…` : "Running your tests…";
   }
   if (operation.progress?.phase === "switching_assistant") return "Trying another model…";
   if (intent === "suggest_fix") return "Preparing a suggested improvement…";
-  if (intent === "prepare_tests") return "Creating your prototype…";
+  if (intent === "prepare_tests") return "Creating your agent…";
   if (intent === "chat") return "Replying…";
   if (intent === "explain_results") return "Reading your results…";
   return "Thinking…";
@@ -103,13 +104,13 @@ export function buildProgress(operation: Operation) {
 
 export function buildRunSummary(operation: Operation) {
   const score = operation.scorecard;
-  if (operation.state === "CANCELLED") return "Stopped. Your completed examples are saved.";
-  if (!terminal(operation.state)) return buildProgress(operation) || "Trying your examples…";
-  if (operation.error || operation.state !== "COMPLETED") return "This check couldn’t finish. Your work is saved.";
-  if (!score || score.total === 0) return "No replies were checked.";
-  if (operation.source?.comparison === "regraded") return "Saved replies regraded. The prototype hasn’t changed.";
-  if (score.failed) return `${score.failed === 1 ? "One example needs" : `${score.failed} examples need`} attention.`;
+  if (operation.state === "CANCELLED") return "Stopped. Your completed results are saved.";
+  if (!terminal(operation.state)) return buildProgress(operation) || "Running your tests…";
+  if (operation.error || operation.state !== "COMPLETED") return "This run couldn’t finish. Your work is saved.";
+  if (!score || score.total === 0) return "No tests were run.";
+  if (operation.source?.comparison === "regraded") return "Saved replies regraded. The agent hasn’t changed.";
+  if (score.failed) return `${score.failed === 1 ? "One test needs" : `${score.failed} tests need`} attention.`;
   if (score.unknown || score.evaluated !== score.total || score.incomplete_cases || score.passed !== score.total || operation.results.length !== score.total || operation.results.some(c => c.verdict !== "PASS"))
-    return "Some examples could not be fully checked.";
-  return score.total === 1 ? "It handled this situation as expected." : `It handled these ${score.total} situations as expected.`;
+    return "Some tests could not be fully graded.";
+  return score.total === 1 ? "It passed this test." : `It passed all ${score.total} tests.`;
 }

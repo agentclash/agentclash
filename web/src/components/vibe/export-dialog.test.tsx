@@ -57,7 +57,7 @@ it("keeps mixed unresolved counts and requires a separate explicit partial downl
   try {
     await act(async () => root.render(<ExportDialog controller={controller} />));
     expect(document.body.textContent).toContain(
-      "1 selected cases; 1 failed, 1 unresolved saved cases",
+      "1 selected test; 1 failed, 1 unresolved saved tests",
     );
     expect(document.body.textContent).toContain("case:run-one:mixed: Not loaded yet");
     expect(button("Download exact export")).toBeUndefined();

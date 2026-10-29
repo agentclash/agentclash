@@ -50,7 +50,7 @@ export function ConnectorSetup(p: Omit<ConnectorSettingsProps, "publication">) {
         const cases = mapping.flatMap(row => row.published).filter(row => row.draft_id === option.draft_id && row.challenge_pack_version_id === option.challenge_pack_version_id && row.input_set_key === option.input_set_key);
         const ids = new Set(cases.map(c => c.published_case_id));
         if (!ids.size)
-            throw Error("No exact published cases are available.");
+            throw Error("No exact published tests are available.");
         setChosen({ owner: life.owner, publication: { draft_id: option.draft_id, artifact_id: p.artifactId, challenge_pack_version_id: option.challenge_pack_version_id, challenge_input_set_id: matching[0].id, input_set_key: option.input_set_key, case_count: ids.size } });
     }
     catch (e) {

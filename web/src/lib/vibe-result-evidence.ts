@@ -25,7 +25,7 @@ export function compareResultEvidence(current: Operation, baseline: Operation) {
  }
  if(!a||!b)unknown.push("origin");else if(a.origin!==b.origin)changed.push("origin");
  const scope=current.result_scope, oldScope=baseline.result_scope;
- if(!scope||!oldScope)unknown.push("case scope");else if(JSON.stringify(scope.case_keys)!==JSON.stringify(oldScope.case_keys))changed.push("case scope");
+ if(!scope||!oldScope)unknown.push("test scope");else if(JSON.stringify(scope.case_keys)!==JSON.stringify(oldScope.case_keys))changed.push("test scope");
  const regraded=a?.origin==="imported"||b?.origin==="imported"||a?.origin==="regraded"||b?.origin==="regraded";
  return {changed,unknown,controlled:!regraded&&!unknown.length&&changed.every(key=>key==="build")};
 }

@@ -21,9 +21,9 @@ it("imports exact bytes with explicit mapping and recovers the same retry withou
   await act(async()=>root.render(<SDKReportImportForm {...props} onImported={done}/>));
   await change(node.querySelector('select[aria-label="SDK source format"]')!,"agent_result");
   const raw=' {"input":"original","output":"\\u0041"}\n';await change(node.querySelector('textarea')!,raw);
-  await act(async()=>button(node,"Read source cases").click());
-  await change(node.querySelector('input[aria-label="Standalone source case ID"]')!,"arbitrary local id");
-  const select=node.querySelector('select[aria-label="Test case for Agent result"]')! as HTMLSelectElement;
+  await act(async()=>button(node,"Read source tests").click());
+  await change(node.querySelector('input[aria-label="Standalone source test ID"]')!,"arbitrary local id");
+  const select=node.querySelector('select[aria-label="Test for Agent result"]')! as HTMLSelectElement;
   expect(select.value).toBe("");await change(select,select.options[1].value);
   await act(async()=>button(node,"Import historical report").click());
   expect(done).not.toHaveBeenCalled();expect(node.textContent).toContain("Try again");fail=false;
@@ -55,8 +55,8 @@ it("works after StrictMode replay and invalidates late import completion on arti
  const node=document.createElement("div");document.body.append(node);const root=createRoot(node);const done=vi.fn();
  const render=(artifactId="a")=><React.StrictMode><SDKReportImportForm {...props} artifactId={artifactId} onImported={done}/></React.StrictMode>;
  try{
-  await act(async()=>root.render(render()));await change(node.querySelector('select[aria-label="SDK source format"]')!,"agent_result");await change(node.querySelector('textarea')!,'{"input":"original","output":"answer"}');await act(async()=>button(node,"Read source cases").click());await change(node.querySelector('input[aria-label="Standalone source case ID"]')!,"local");
-  const select=node.querySelector('select[aria-label="Test case for Agent result"]')! as HTMLSelectElement;expect(select.options).toHaveLength(2);await change(select,select.options[1].value);
+  await act(async()=>root.render(render()));await change(node.querySelector('select[aria-label="SDK source format"]')!,"agent_result");await change(node.querySelector('textarea')!,'{"input":"original","output":"answer"}');await act(async()=>button(node,"Read source tests").click());await change(node.querySelector('input[aria-label="Standalone source test ID"]')!,"local");
+  const select=node.querySelector('select[aria-label="Test for Agent result"]')! as HTMLSelectElement;expect(select.options).toHaveLength(2);await change(select,select.options[1].value);
   await act(async()=>button(node,"Import historical report").click());await act(async()=>root.render(render("b")));await act(async()=>root.render(render()));await act(async()=>resolve(report));expect(done).not.toHaveBeenCalled();
  }finally{await act(async()=>root.unmount());node.remove()}
 });
@@ -73,7 +73,7 @@ it("keeps expectation promotion reviewed and hosted regrading separately quoted"
  const node=document.createElement("div");document.body.append(node);const root=createRoot(node);const promoted=vi.fn(),regraded=vi.fn();
  try{
   await act(async()=>root.render(<SDKReportDetail {...props} report={full} revision={2} models={{assistant:"a",target:"t",evaluator:"j"}} inferenceAvailable onPromoted={promoted} onRegraded={regraded}/>));
-  await change(node.querySelector('select[aria-label="SDK detail source case"]')!,"local");expect(button(node,"Create version with this expectation").disabled).toBe(true);
+  await change(node.querySelector('select[aria-label="SDK detail source test"]')!,"local");expect(button(node,"Create version with this expectation").disabled).toBe(true);
   await act(async()=>{(node.querySelector('input[type="checkbox"]') as HTMLInputElement).click()});await act(async()=>button(node,"Create version with this expectation").click());expect(promoted).toHaveBeenCalledWith({id:"new-version"});expect(calls[0].body).toMatchObject({reviewed:true,source_case_id:"local",source_evidence_hash:"hash",expected:"Imported expectation"});
   await act(async()=>button(node,"Estimate hosted regrade").click());expect(regraded).not.toHaveBeenCalled();expect(calls.some(c=>c.path.endsWith("messages"))).toBe(false);
   await act(async()=>button(node,"Confirm separate hosted regrade").click());const submitted=calls.find(c=>c.path.endsWith("messages"))!.body;expect(submitted).toMatchObject({purpose:"regrade",regrade_source_result_ref:report.binding.result_ref,run_quote_id:"quote",source_evidence_hash:"hash"});expect(submitted.baseline_id).toBeUndefined();expect(regraded).toHaveBeenCalledWith({id:"new-hosted-run"});expect(full.source_kind).toBe("eval_report");
@@ -89,7 +89,7 @@ it("preserves the selected review draft while a session event refreshes report h
  const selected={...report,cases:[{source_case_id:"local",case_key:"real"}]};let reads=0;let resolve!:(v:SDKReport[])=>void;
  transport.fetch.mockImplementation(async(path:string)=>{if(path.endsWith("/reports")){if(++reads===1)return [selected];return new Promise<SDKReport[]>(r=>resolve=r)}if(path.includes("/case?"))return {case_key:"real",version:"a",verdict:"FAIL",output:"reply",checks:[],evidence_hash:"hash"};return []});
  const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
- try{await act(async()=>root.render(<SDKReports {...props} selectedReport={selected} refresh={1}/>));await change(node.querySelector('select[aria-label="SDK detail source case"]')!,"local");await change(node.querySelector('textarea[aria-label="SDK grade review reason"]')!,"My unsent review");
+ try{await act(async()=>root.render(<SDKReports {...props} selectedReport={selected} refresh={1}/>));await change(node.querySelector('select[aria-label="SDK detail source test"]')!,"local");await change(node.querySelector('textarea[aria-label="SDK grade review reason"]')!,"My unsent review");
  await act(async()=>root.render(<SDKReports {...props} selectedReport={selected} refresh={2}/>));expect(node.querySelector<HTMLTextAreaElement>('textarea[aria-label="SDK grade review reason"]')?.value).toBe("My unsent review");
  await act(async()=>resolve([]));expect(node.querySelector<HTMLTextAreaElement>('textarea[aria-label="SDK grade review reason"]')?.value).toBe("My unsent review");
  }finally{await act(async()=>root.unmount());node.remove()}

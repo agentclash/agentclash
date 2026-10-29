@@ -111,7 +111,7 @@ test("an inaccessible saved session can recover without losing or automatically 
   await page.goto(`/vibe-evals?session=${randomUUID()}`);
   await expect(
     page.getByText(
-      "This browser can’t access the saved session. Your unsent message is still here.",
+      "This browser can’t access the saved project. Your unsent message is still here.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -129,7 +129,7 @@ test("an inaccessible saved session can recover without losing or automatically 
   ).toBeDisabled();
   await page
     .getByRole("button", {
-      name: "Keep message in a new conversation",
+      name: "Keep message in a new project",
       exact: true,
     })
     .click();

@@ -103,7 +103,7 @@ test("V1 recorded replies and historical result selection survive refresh withou
   await expect(history).toHaveValue("recorded-2");
   await history.selectOption("recorded-1");
   await expect(page).toHaveURL(/run=recorded-1/);
-  await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toContainText("1 passed · 1 failed");
+  await expect(page.getByRole("article", { name: "Run results" })).toContainText("1 passed · 1 failed");
   const row = page.locator(".vibe-result-row").first();
   if (await row.getAttribute("open") === null) await row.locator("summary").click();
   await expect(row.getByText("When did you buy it?", { exact: true }).first()).toBeVisible();

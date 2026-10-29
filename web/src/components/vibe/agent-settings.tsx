@@ -52,7 +52,7 @@ export function AgentSettings({reimport,open, onOpenChange, onOpenChangeComplete
               className="text-sm underline"
               href={advancedURL(savedDraft.workspace_id,savedDraft.draft_id,projectReturnPath,session?projectTitle(session):undefined)}
             >
-              Open saved evaluation
+              Open in the advanced editor
             </Link>
           )}
           {(
@@ -84,11 +84,11 @@ export function AgentSettings({reimport,open, onOpenChange, onOpenChangeComplete
                 />
                 <p className="mt-1 text-sm text-builder-fg-muted">
                   {role === "assistant"
-                    ? "Plans the check and helps explain results."
+                    ? "Plans the tests and helps explain results."
                     : role === "target"
-                      ? "Generates replies when testing instructions here. Changing it starts a fresh preview conversation."
+                      ? "Generates replies when testing instructions here. Changing it starts a fresh trial conversation."
                       : config?.local_testing && !config?.free_only
-                        ? "Grades replies against your expectations. Changing it requires a new baseline or rechecking saved grades."
+                        ? "Grades replies against your expectations. Changing it requires a new baseline or regrading saved replies."
                         : "Grades replies against your expectations. The free trial keeps this fixed."}
                 </p>
               </div>
@@ -147,7 +147,7 @@ export function AgentSettings({reimport,open, onOpenChange, onOpenChangeComplete
               >
                 {testJourney
                   ? "Export tests and agent instructions"
-                  : "Export agent and checks"}
+                  : "Export agent and tests"}
               </Button>
             ) : (
             <Button variant="outline" onClick={onExportConversation}>

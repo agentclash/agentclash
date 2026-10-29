@@ -101,7 +101,7 @@ export async function collectExport(
             !item.hash ||
             c.evidence_hash !== item.hash
           )
-            throw new Error("Case identity or evidence changed after preparation.");
+            throw new Error("Test identity or evidence changed after preparation.");
         }
         job.values.set(key, structuredClone(value));
         job.missing.delete(key);

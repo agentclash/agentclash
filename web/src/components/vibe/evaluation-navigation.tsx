@@ -43,10 +43,10 @@ export function evaluationIdentity(session: Session) {
   const version = artifact ? buildVersion(session, artifact) : 0;
   const scope =
     artifact?.kind === "conversation_evaluation"
-      ? "Saved conversations"
+      ? "Recorded replies"
       : artifact?.agent_prompt
-        ? `${artifact.sample ? "Sample" : "Prototype"} v${version}`
-        : artifact ? `Tests v${version}` : "Setup";
+        ? `${artifact.sample ? "Sample agent" : "Agent"} v${version}`
+        : artifact ? `Tests v${version}` : session.document.evaluation?.door === "test" ? "No tests yet" : "No agent yet";
   return { title, scope };
 }
 
@@ -174,10 +174,10 @@ export function EvaluationNavigation(p: Props) {
       <div className="vibe-sidebar-create">
         <VibeButton disabled={p.disabled} onClick={() => navigate(p.onNew, mobile)}>
           <Plus />
-          New evaluation
+          New project
         </VibeButton>
       </div>
-      <nav aria-label="Your agents" className="vibe-sidebar-list">
+      <nav aria-label="Your projects" className="vibe-sidebar-list">
         {showListTools && (p.onArchiveMode || p.onRetryList) ? (
           <div className="vibe-sidebar-tools">
             {p.onArchiveMode ? (
@@ -240,9 +240,9 @@ export function EvaluationNavigation(p: Props) {
                 const running = context.operations.some((operation) => !terminal(operation.state));
                 const selected = context.id === p.session?.id && !p.choosing;
                 const status = running ? "Running"
-                  : latestRun?.state === "COMPLETED" ? "Checked"
-                  : latestRun?.state === "FAILED" ? "Check failed"
-                  : latestRun ? "Check incomplete" : scope;
+                  : latestRun?.state === "COMPLETED" ? "Run complete"
+                  : latestRun?.state === "FAILED" ? "Run failed"
+                  : latestRun ? "Run incomplete" : scope;
                 return (
                   <button
                     key={context.id}
@@ -405,7 +405,7 @@ export function EvaluationNavigation(p: Props) {
       >
         <SheetTrigger
           render={
-            <VibeButton variant="quiet" className="vibe-mobile-toggle" aria-label="Open agents" />
+            <VibeButton variant="quiet" className="vibe-mobile-toggle" aria-label="Open projects" />
           }
         >
           <PanelLeftOpen />
@@ -415,9 +415,9 @@ export function EvaluationNavigation(p: Props) {
           className="vibe-workspace vibe-sidebar-sheet"
           finalFocus={() => !drawerNavigating.current}
         >
-          <SheetTitle className="sr-only">Your agents</SheetTitle>
+          <SheetTitle className="sr-only">Your projects</SheetTitle>
           <SheetDescription className="sr-only">
-            Switch agents or start something new.
+            Switch projects or start a new one.
           </SheetDescription>
           {navigation(true)}
         </SheetContent>
@@ -428,7 +428,7 @@ export function EvaluationNavigation(p: Props) {
     <div className="vibe-shell" data-collapsed={collapsed}>
       <motion.aside
         className="vibe-sidebar"
-        aria-label="Agent sidebar"
+        aria-label="Projects sidebar"
         inert={collapsed}
         aria-hidden={collapsed || undefined}
         initial={false}

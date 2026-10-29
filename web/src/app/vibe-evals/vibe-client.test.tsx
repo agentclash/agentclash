@@ -77,10 +77,7 @@ function button(name: string) {
     )
   )
     name = "Save expectations";
-  if (name === "Run these tests")
-    return [...container.querySelectorAll<HTMLButtonElement>("button")].find(
-      (b) => /^Run .*examples$/.test(b.textContent || ""),
-    )!;
+  if (name === "Run these tests") name = "Start run";
   if (name === "Describe")
     name = [...container.querySelectorAll("button")].some((b) =>
       b.textContent?.includes("Back to Vibe Evals"),
@@ -214,7 +211,7 @@ it.each([[false,false],[true,false],[false,true]])("saves recorded replies throu
     return initial(path,options);
   };
   await render();
-  await click("Check replies from my app");
+  await click("Test replies from my app");
   expect(requests.filter(r=>r.method==="POST")).toHaveLength(0);
   await type("Customer: Hello\nAgent: Exact reply","Recorded replies");
   await type("Answer without inventing facts.","Expected behavior");
@@ -230,7 +227,7 @@ it.each([[false,false],[true,false],[false,true]])("saves recorded replies throu
   expect(typeof evidence.body.client_id).toBe("string");
   expect(requests.some(r=>r.path.endsWith("/messages")||r.path.endsWith("/run-quote"))).toBe(false);
   expect(container.textContent).toContain("Exact reply");
-  await click("Check these recorded replies");
+  await click("Run recorded tests");
   expect(requests.find(r=>r.path.endsWith("/run-quote"))?.body).toMatchObject({artifact_id:"recorded-version",evidence_set_id:"recorded-source",kind:"check"});
   expect(requests.some(r=>r.path.endsWith("/messages"))).toBe(false);
 });
@@ -748,7 +745,7 @@ it("stops forbidden event retries and lets an empty inaccessible session keep it
   await render();
   await type("Keep this bike repair receptionist brief");
   expect(container.textContent).toContain(
-    "This browser can’t access the saved session",
+    "This browser can’t access the saved project",
   );
   expect(container.textContent).not.toContain("Reconnecting to saved progress");
   expect(timers.mock.calls.filter(([, delay]) => delay === 2000)).toHaveLength(
@@ -756,11 +753,11 @@ it("stops forbidden event retries and lets an empty inaccessible session keep it
   );
   expect(harness.watch).toHaveBeenCalledTimes(1);
   expect(button("Send message").disabled).toBe(true);
-  await click("Keep message in a new conversation");
+  await click("Keep message in a new project");
   expect(composer().value).toBe("Keep this bike repair receptionist brief");
   expect(harness.params.has("session")).toBe(false);
   expect(container.textContent).not.toContain(
-    "This browser can’t access the saved session",
+    "This browser can’t access the saved project",
   );
   expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
   expect(button("Send message").disabled).toBe(false);
@@ -777,7 +774,7 @@ it("keeps an inaccessible accepted draft available while offering an explicit co
   expect(button("Try it yourself")).toBeTruthy();
   expect(button("Retry connection").disabled).toBe(false);
   expect(container.textContent).not.toContain(
-    "Keep message in a new conversation",
+    "Keep message in a new project",
   );
   expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
   harness.watch.mockImplementation(
@@ -790,7 +787,7 @@ it("keeps an inaccessible accepted draft available while offering an explicit co
   );
   await click("Retry connection");
   expect(container.textContent).not.toContain(
-    "This browser can’t access the saved session",
+    "This browser can’t access the saved project",
   );
   expect(button("Try it yourself")).toBeTruthy();
   expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
@@ -1003,7 +1000,7 @@ it.each([
     expect(new URL(returnPath,"http://localhost").searchParams.get("run")).toBe("original-default-run");
     expect(button(confirmed ? "Saved" : "Save and iterate").disabled).toBe(confirmed);
     expect(container.textContent).not.toContain(
-      "Your agent and checks are saved.",
+      "Your agent and tests are saved.",
     );
     expect([...document.querySelectorAll('[role="dialog"] button')].some(b=>b.textContent==="Saved")).toBe(confirmed);
     expect(requests.filter((r) => r.method === "POST")).toHaveLength(0);
@@ -1046,10 +1043,10 @@ it.each([
             )
           : json(session);
     await render();
-    expect(container.textContent).toContain("Your agent and checks are saved.");
+    expect(container.textContent).toContain("Your agent and tests are saved.");
     await selectModel(label, "openai/gpt-4.1");
     expect(container.textContent).not.toContain(
-      "Your agent and checks are saved.",
+      "Your agent and tests are saved.",
     );
     expect(container.textContent).toContain(
       "Your current model choices differ from those recorded when this agent was saved.",
@@ -1081,7 +1078,7 @@ it.each([
     ]);
     await click("Close");
     await selectModel(label, defaultModels[role]);
-    expect(container.textContent).toContain("Your agent and checks are saved.");
+    expect(container.textContent).toContain("Your agent and tests are saved.");
     await click("Save agent");
     expect(button("Saved").disabled).toBe(true);
     expect(requests.filter((r) => r.path.endsWith("/save"))).toHaveLength(1);
@@ -1161,7 +1158,7 @@ it.each([
     await followLink(container);
     expect(container.textContent).toContain(notice);
     expect(container.textContent).not.toContain(
-      "Your agent and checks are saved.",
+      "Your agent and tests are saved.",
     );
     expect(mutations()).toHaveLength(0);
     await click("Save agent");
@@ -1294,7 +1291,7 @@ it.each([
     expect(
       container.querySelector('textarea[aria-label="Message your agent"]'),
     ).not.toBeNull();
-    await click("Use an example message");
+    await click("Use a test message");
     expect(
       container.querySelector<HTMLTextAreaElement>(
         'textarea[aria-label="Message your agent"]',
@@ -1738,7 +1735,7 @@ it.each(["completed", "failed", "completed from pinned run"])("keeps an asynchro
     expectation.dispatchEvent(new Event("input", { bubbles: true }));
   });
   await click("Save test changes");
-  expect(container.textContent).toContain("Checking these test changes…");
+  expect(container.textContent).toContain("Reviewing these test changes…");
   expect(container.querySelectorAll<HTMLTextAreaElement>('[aria-label="Your tests"] textarea')[1].value).toBe("Decline returns after the new deadline.");
   expect(button("Save test changes").disabled).toBe(true);
   if (!pinned) await type("My next guide question");
@@ -1750,7 +1747,7 @@ it.each(["completed", "failed", "completed from pinned run"])("keeps an asynchro
     session = { ...session, revision: 3, event_cursor: 3, operations: [{ ...editOperation, state: "FAILED", error: { code: "test_policy_conflict", message: "The expectation contradicts the rule." } }] };
   }
   await act(async () => snapshot(structuredClone(session)));
-  expect(container.textContent).not.toContain("Checking these test changes…");
+  expect(container.textContent).not.toContain("Reviewing these test changes…");
   if (outcome !== "failed") {
     expect(container.querySelector('[data-proposal-id="updated-tests"]')).toBeTruthy();
     expect(container.querySelector('[aria-label="Your tests"] textarea')).toBeNull();
@@ -1897,7 +1894,7 @@ it("keeps optional instruction testing behind More options without a source-sele
     )!.set!.call(field, "Only explain eligibility. Never process refunds.");
     field.dispatchEvent(new Event("input", { bubbles: true }));
   });
-  await click("Prepare examples");
+  await click("Prepare tests");
   expect(posts()[0].body).toMatchObject({
     evaluation_first: true,
     instructions: "Only explain eligibility. Never process refunds.",
@@ -1927,9 +1924,8 @@ it("cites exact chat messages and prepares a disputed rule without silently chan
   expect(container.textContent).toContain("AI · message 4");
   expect(container.textContent).toContain("When did you buy it?");
   // The finding's dispute control is the only one; the per-check copy was a duplicate.
-  expect(button("Change the expected behavior")).toBeTruthy();
-  expect([...container.querySelectorAll("button")].some(b => b.textContent === "That’s not our rule")).toBe(false);
-  await click("Change the expected behavior");
+  expect([...container.querySelectorAll("button")].filter(b => b.textContent === "Change expected result")).toHaveLength(1);
+  await click("Change expected result");
   expect(composer().value).toContain("The correct expectation is:");
   expect(posts()).toHaveLength(0);
   await type("That’s not our rule. Only ask for missing details.");
@@ -1985,7 +1981,7 @@ it("saves a provided-chat check without creating a prompt or agent build", async
     return json(session);
   };
   await render();
-  await click("Save this check");
+  await click("Save this result");
   await act(async () =>
     [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')]
       .find((b) => b.textContent === "Save and iterate")!
@@ -1998,7 +1994,7 @@ it("saves a provided-chat check without creating a prompt or agent build", async
   });
   expect(write?.body).not.toHaveProperty("agent_prompt");
   expect(requests.some((r) => r.path.endsWith("/save"))).toBe(false);
-  expect(document.body.textContent).toContain("Open saved check");
+  expect(document.body.textContent).toContain("Open saved result");
 });
 
 it("keeps the V1 entry visible while configuration loads, fails, and retries", async () => {
@@ -2015,7 +2011,7 @@ it("keeps the V1 entry visible while configuration loads, fails, and retries", a
   const entry = () => {
     expect(container.textContent).toContain("What would you like to evaluate?");
     expect(container.textContent).not.toContain("What should your agent do?");
-    expect(container.querySelector('[aria-label="Agent sidebar"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="Projects sidebar"]')).not.toBeNull();
     expect(composer()).toBeNull();
     return [...container.querySelectorAll<HTMLButtonElement>("button")]
       .filter(b => /Build an agent|Improve an existing agent/.test(b.textContent || ""));
@@ -2120,7 +2116,7 @@ it("claims the anonymous conversation when authentication finishes before its ev
   await act(async()=>{await new Promise(resolve=>setTimeout(resolve,10));});
   expect(requests.filter(r=>r.path.endsWith("/claim"))).toHaveLength(1);
   expect(posts()).toHaveLength(0);
-  expect(container.textContent).not.toContain("can’t access the saved session");
+  expect(container.textContent).not.toContain("can’t access the saved project");
 });
 
 it("waits for auth loading before requesting a private saved session", async () => {
@@ -2164,9 +2160,9 @@ it.each(["build", "test"] as const)("blocks unavailable %s admission while retai
   expect(button("Send message").disabled).toBe(true);
   expect(container.textContent).toContain("Previously saved question");
   expect(container.textContent).toContain("No approved models");
-  await click("New evaluation");
-  expect(button("Back to your evaluation").disabled).toBe(false);
-  await click("Back to your evaluation");
+  await click("New project");
+  expect(button("Back to your project").disabled).toBe(false);
+  await click("Back to your project");
   expect(container.textContent).toContain("Previously saved question");
   await click("Settings");
   expect(button("Export selected version / result").disabled).toBe(false);
@@ -2188,16 +2184,16 @@ it("uses server time to expire a run quote and refreshes its estimate without di
   };
   await render(); await click("Run 3 tests");
   expect(document.querySelector('[role="dialog"]')?.textContent).toContain("estimate expired");
-  expect(button("Run 3 examples").disabled).toBe(true);
+  expect(button("Start run").disabled).toBe(true);
   await click("Refresh estimate");
-  expect(quotes).toBe(2); expect(button("Run 3 examples").disabled).toBe(false);
+  expect(quotes).toBe(2); expect(button("Start run").disabled).toBe(false);
   harness.params = new URLSearchParams(`session=${session.id}&agent=other-version`); await render();
-  expect(button("Run 3 examples").disabled).toBe(true);
+  expect(button("Start run").disabled).toBe(true);
   harness.params = new URLSearchParams(`session=${session.id}&agent=${suite.id}`); await render();
-  expect(button("Run 3 examples").disabled).toBe(false);
+  expect(button("Start run").disabled).toBe(false);
   clientNow += 600001;
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)); });
-  expect(button("Run 3 examples").disabled).toBe(true);
+  expect(button("Start run").disabled).toBe(true);
   expect(posts()).toHaveLength(0);
 });
 
@@ -2290,13 +2286,13 @@ it("closes Settings before Credits opens, so only one dialog shows at a time", a
   await click("Settings");
   const settings = [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find(dialog => dialog.textContent?.includes("Settings and details"))!;
   const exports = [...settings.querySelectorAll("button")].filter(b => b.textContent?.startsWith("Export"));
-  expect(exports.map(b => b.textContent)).toEqual(["Export agent and checks"]);
+  expect(exports.map(b => b.textContent)).toEqual(["Export agent and tests"]);
   // Saving is an action, so it sits with export after the settings, not above them.
   const save = [...settings.querySelectorAll("button")].find(b => b.textContent === "Save agent")!;
   const importPack = [...settings.querySelectorAll("button")].find(b => b.textContent?.includes("Import a test pack"))!;
   expect(save.compareDocumentPosition(importPack) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
   await clickIn("Settings and details", "Save agent");
-  expect(dialogNames()).toEqual(["Save agent and checks"]);
+  expect(dialogNames()).toEqual(["Save agent and tests"]);
   expect(dialogs.most()).toBe(1);
   dialogs.stop();
   expect(requests.filter(request => request.method === "POST")).toHaveLength(0);
@@ -2404,7 +2400,7 @@ it.each(["guest", "workspace-a"])("starts a new workspace project independently 
     if (path.startsWith("/sessions/") && path !== `/sessions/${session.id}`) return json({ ...session, id: path.split("/").at(-1), anonymous: false, workspace_id: "workspace-b", document: { ...session.document, models: defaultModels, artifacts: [], messages: [], evaluation: { id: path.split("/").at(-1), door: "build" } } });
     return previous(path, options);
   };
-  await render(); await click("New evaluation");
+  await render(); await click("New project");
   const choice = container.querySelector<HTMLSelectElement>('select[aria-label="Workspace for new projects"]')!;
   expect([...choice.options].some(o => o.value === "workspace-b")).toBe(true);
   await act(async () => { choice.value = "workspace-b"; choice.dispatchEvent(new Event("change", { bubbles: true })); });
@@ -2669,8 +2665,8 @@ it("keeps untested version Results empty until explicit history pins the tested 
   expect(container.querySelector(".vibe-project-header")?.textContent).toContain("v1 · Old policy");
   expect(container.querySelector('[aria-label="Next actions for this version"]')?.getAttribute("data-artifact-id")).toBe("v1");
   const followup=container.querySelector('[aria-label="Next actions for this version"]')!;
-  await act(async()=>[...followup.querySelectorAll("summary")].find(summary=>summary.textContent==="More ways to check")!.click());
-  await act(async()=>[...followup.querySelectorAll<HTMLButtonElement>("button")].find(button=>button.textContent==="Try tougher situations")!.click());
+  await act(async()=>[...followup.querySelectorAll("summary")].find(summary=>summary.textContent==="More ways to test")!.click());
+  await act(async()=>[...followup.querySelectorAll<HTMLButtonElement>("button")].find(button=>button.textContent==="Add harder tests")!.click());
   await click("See cost and continue");
   expect(requests.find(request=>request.path.endsWith("/build-quote"))?.body.artifact_id).toBe("v1");
   expect(posts()).toHaveLength(0);
@@ -2697,7 +2693,7 @@ it.each([[false,false],[false,true],[true,false]])("collects new recorded replie
   if(path.endsWith("/run-quote"))return json({id:"new-source-quote",kind:"run",revision:session.revision,cases:1,calls:1,max_cost_nano_usd:0,expires_at:new Date(Date.now()+600000).toISOString()});
   return initial(path,options);
  };
- await render();await click("Results");await click(testJourney?"Add new recorded replies":"Check the new answer");
+ await render();await click("Results");await click(testJourney?"Add new recorded replies":"Test new replies");
  expect(requests.some(r=>r.path.endsWith("/run-quote"))).toBe(false);
  expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Recorded replies"]')!.value).toBe("");
  await type("Customer: Question\nAgent: Corrected reply","Recorded replies");await type("Use the supplied facts.","Expected behavior");await click("Review recorded replies");
@@ -2705,13 +2701,13 @@ it.each([[false,false],[false,true],[true,false]])("collects new recorded replie
  expect(requests.find(r=>r.path.endsWith("/evidence"))?.body.expectations).toEqual([{id:"original-rule",statement:"Use the supplied facts."}]);
  expect(requests.some(r=>r.path.endsWith("/messages")||r.path.endsWith("/run-quote"))).toBe(false);
  expect(session.document.artifacts[0]).toEqual(oldArtifact);
- await act(async()=>root.render(<div/>));await render();await click("Tests");await click("Check these recorded replies");
+ await act(async()=>root.render(<div/>));await render();await click("Tests");await click("Run recorded tests");
  expect(requests.find(r=>r.path.endsWith("/run-quote"))?.body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source"});
  expect(requests.some(r=>r.path.endsWith("/messages"))).toBe(false);
  await click("Refresh estimate");
  const quotes=requests.filter(r=>r.path.endsWith("/run-quote"));expect(quotes).toHaveLength(2);
  expect(quotes[1].body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source"});
- await click("Run 1 examples");
+ await click("Start run");
  expect(requests.find(r=>r.path.endsWith("/messages"))?.body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source",run_quote_id:"new-source-quote"});
 });
 
@@ -2802,6 +2798,6 @@ it("explains unavailable evaluation entry before its disabled choices while keep
   expect(reason).toBeTruthy();
   expect(reason.compareDocumentPosition(choices) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect([...choices.querySelectorAll("button")].every(button => button.disabled)).toBe(true);
-  expect([...container.querySelectorAll("summary")].some(node => node.textContent === "Read a sample evaluation")).toBe(true);
+  expect([...container.querySelectorAll("summary")].some(node => node.textContent === "Read a sample test")).toBe(true);
   expect(requests.filter(request => request.method === "POST")).toHaveLength(0);
 });

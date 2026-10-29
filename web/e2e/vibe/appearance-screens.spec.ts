@@ -243,7 +243,7 @@ for (const combo of combos) {
       await shoot(page, "b-build-starter", combo);
       const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
       await composer.fill("My agent answers shop return questions. Unopened items can be returned within 30 days. It should ask for missing details.");
-      await expect(page.getByText(/Build and try 3 examples/).first()).toBeVisible();
+      await expect(page.getByText(/Build and run 3 tests/).first()).toBeVisible();
       await page.waitForTimeout(900);
       await shoot(page, "b-build-starter-typed", combo);
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
@@ -306,7 +306,7 @@ for (const combo of combos) {
       await shoot(page, "f-tests-case-open", combo);
       await tests.getByRole("button", { name: "Run 3 tests" }).click();
       const dialog = page.getByRole("dialog");
-      await expect(dialog.getByRole("button", { name: "Run 3 examples" })).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Start run" })).toBeVisible();
       await shoot(page, "g-cost-dialog", combo);
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
@@ -317,7 +317,7 @@ for (const combo of combos) {
       await openSession(page, "returns-results");
       await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 20_000 });
       await page.getByRole("tab", { name: "Results", exact: true }).click();
-      await expect(page.getByRole("article", { name: "Evaluation scorecard" })).toBeVisible();
+      await expect(page.getByRole("article", { name: "Run results" })).toBeVisible();
       await shoot(page, "h-results", combo, { tall: true });
       // Expand the failed case row and its evidence.
       const failed = page.locator(".vibe-result-row").filter({ hasText: inputs[1] }).first();
@@ -394,12 +394,12 @@ for (const combo of combos) {
       await openSession(page, "returns-results");
       await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 20_000 });
       if (combo.width < 1024) {
-        await page.getByRole("button", { name: "Open agents", exact: true }).click();
-        await expect(page.getByRole("dialog", { name: "Your agents" })).toBeVisible();
+        await page.getByRole("button", { name: "Open projects", exact: true }).click();
+        await expect(page.getByRole("dialog", { name: "Your projects" })).toBeVisible();
       } else {
-        await expect(page.getByRole("complementary", { name: "Agent sidebar", exact: true })).toBeVisible();
+        await expect(page.getByRole("complementary", { name: "Projects sidebar", exact: true })).toBeVisible();
       }
-      const nav = combo.width < 1024 ? page.getByRole("dialog", { name: "Your agents" }) : page.getByRole("complementary", { name: "Agent sidebar", exact: true });
+      const nav = combo.width < 1024 ? page.getByRole("dialog", { name: "Your projects" }) : page.getByRole("complementary", { name: "Projects sidebar", exact: true });
       await expect(nav.locator("[data-evaluation-id]").first()).toBeVisible();
       await shoot(page, "k-sidebar", combo);
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
@@ -426,8 +426,8 @@ for (const combo of combos) {
       // A workspace in the URL shows the Credits control in Settings.
       await page.goto("/vibe-evals?session=returns-results&workspace=a8000000-0000-4000-8000-000000000003");
       await expect(page.getByRole("tablist", { name: "Workspace views" })).toBeVisible({ timeout: 20_000 });
-      if (combo.width < 1024) await page.getByRole("button", { name: "Open agents", exact: true }).click();
-      const nav = combo.width < 1024 ? page.getByRole("dialog", { name: "Your agents" }) : page.getByRole("complementary", { name: "Agent sidebar", exact: true });
+      if (combo.width < 1024) await page.getByRole("button", { name: "Open projects", exact: true }).click();
+      const nav = combo.width < 1024 ? page.getByRole("dialog", { name: "Your projects" }) : page.getByRole("complementary", { name: "Projects sidebar", exact: true });
       const actions = nav.locator(".vibe-project-actions");
       if (!(await actions.evaluate(el => (el as HTMLDetailsElement).open))) await actions.locator("summary").click();
       await actions.getByRole("button", { name: "Delete this project", exact: true }).click();

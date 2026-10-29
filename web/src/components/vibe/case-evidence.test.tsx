@@ -188,7 +188,7 @@ it("opens the complete exact explanation beside its concise excerpt",async()=>{
  expect(disclosure.parentElement?.textContent).toContain("excerpt");
 });
 
-it("shows a grounded finding and its expectation once, and disputes only the other checks", async () => {
+it("shows a grounded finding and its expectation once, and offers changes only for expectations", async () => {
   const reply = "Yes, you can return it. Just bring the receipt.";
   const finding = { key: "behavior", verdict: "FAIL" as const, evidence: "The agent allowed a late return.", evidence_version: 1, finding: { kind: "observed" as const, quotes: [{ message_id: "output", text: "Yes, you can return it." }], missing: "", covered_message_ids: [] } };
   const evidence: CaseResult = { ...result("FAIL"), output: reply, expected: "Decline the late return.", checks: [finding] };
@@ -198,12 +198,13 @@ it("shows a grounded finding and its expectation once, and disputes only the oth
   const count = (text: string) => container.textContent!.split(text).length - 1;
   expect(count(finding.evidence)).toBe(1);
   expect(count("Decline the late return.")).toBe(1);
-  expect(container.textContent).not.toContain("All checks");
-  expect(container.textContent).not.toContain("That’s not our rule");
+  expect(container.textContent).not.toContain("Grading details");
   const labels = () => [...container.querySelectorAll("button")].map(b => b.textContent);
-  expect(labels()).toContain("Change the expected behavior");
-  const withAnswer = { ...evidence, checks: [{ key: "has_answer", verdict: "FAIL" as const, evidence: "No answer check." }, finding] };
+  expect(labels().filter(label => label === "Change expected result")).toHaveLength(1);
+  const withAnswer = { ...evidence, expectations: [{ id: "receipt", statement: "Ask for the receipt." }], checks: [{ key: "has_answer", verdict: "FAIL" as const, evidence: "No answer check." }, { key: "receipt", verdict: "PASS" as const, evidence: "It asked for the receipt." }, finding] };
   await act(async () => root.render(<CaseEvidence summary={withAnswer} load={async () => withAnswer} onDispute={dispute} />));
-  expect(container.textContent).toContain("All checks · 2");
-  expect(labels().filter(label => label === "That’s not our rule")).toHaveLength(1);
+  expect(container.textContent).toContain("Grading details · 3");
+  // "Reply received" is a grading step, not a rule, so only the finding and the user's rule can change.
+  expect(labels().filter(label => label === "Change expected result")).toHaveLength(2);
+  expect([...container.querySelectorAll("button")].map(b => b.getAttribute("aria-label"))).toContain("Change expected result: Ask for the receipt.");
 });

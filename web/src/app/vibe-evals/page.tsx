@@ -4,7 +4,7 @@ import { VibeClient } from "./vibe-client";
 export const metadata: Metadata = {
   title: "Vibe Evals | AgentClash",
   description:
-    "Describe your AI agent. Build a useful evaluation, see where it needs work, and improve it in one conversation.",
+    "Describe your AI agent. Build useful tests, see where it needs work, and improve it in one conversation.",
   robots: { index: false, follow: false },
 };
 export default function VibePage() {

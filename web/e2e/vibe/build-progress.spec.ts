@@ -43,7 +43,7 @@ for (const [width, content] of [[1440, "hhui"], [390, "let’s drink vodka yay"]
       await show();
       await expect(page.getByRole("status").filter({ hasText: phase === "FINALIZING" ? "Saving your reply…" : "Thinking…" })).toBeVisible();
       await expect(page.locator(".vibe-build-intro")).toHaveCount(0);
-      await expect(page.getByText(/Creating your prototype|Waiting to start|Saving your results/)).toHaveCount(0);
+      await expect(page.getByText(/Creating your agent|Waiting to start|Saving your results/)).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Stop", exact: true })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     }
@@ -66,6 +66,6 @@ test("a real task announces a prototype after the server confirms the action", a
   state.operations[0].conversation_decision = { intent: "prepare_tests", source_message_id: "request" };
   await show();
   await expect(page.locator(".vibe-build-intro")).toContainText("I’m making a first version");
-  await expect(page.getByRole("status").filter({ hasText: "Creating your prototype…" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Creating your agent…" })).toBeVisible();
   expect(errors).toEqual([]);
 });

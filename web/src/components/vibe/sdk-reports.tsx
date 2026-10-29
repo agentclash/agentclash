@@ -4,6 +4,7 @@ import { VibeError, vibeFetch, type Artifact, type Models, type Operation } from
 import type { ProjectResultBinding } from "@/lib/vibe-result-evidence";
 import { reportBase, type SDKReport } from "@/lib/vibe-reports";
 import { useVibeEvidenceOwner } from "@/lib/use-vibe-evidence-owner";
+import { testCount } from "@/lib/vibe-presentation";
 import { SDKReportDetail } from "./sdk-report-detail";
 import type { SDKEvidenceContext } from "./sdk-report-import";
 import { VibeButton } from "./vibe-button";
@@ -47,13 +48,13 @@ export function SDKReports(props: SDKEvidenceContext & {
     <details aria-label="SDK report history" className="space-y-3">
       <summary>SDK report history</summary>
       {unavailable ? <p className="text-sm">{unavailable}</p> : <>
-        <p>Imported, unverified application execution. Source grades remain separate from hosted checks and reviews.</p>
+        <p>Imported, unverified application execution. Source grades remain separate from hosted runs and reviews.</p>
         {!active?.reports && !active?.error && <p role="status">Loading SDK reports…</p>}
         <VibeButton onClick={() => setAttempt(n => n + 1)}>Reload SDK reports</VibeButton>
-        {active?.reports?.length === 0 && <p>No imported reports yet. Import historical evidence without running a check.</p>}
+        {active?.reports?.length === 0 && <p>No imported reports yet. Import historical evidence without starting a run.</p>}
         <ul>{active?.reports?.map(report => <li key={report.id}>
           <VibeButton onClick={() => { if (life.current()) props.onSelectResult?.(report.binding); }}>Open report {report.external_report_id}</VibeButton>
-          <span> · {report.cases.length} cases · {report.source_kind === "agent_result" ? "No imported grade" : "Imported grades"}</span>
+          <span> · {testCount(report.cases.length)} · {report.source_kind === "agent_result" ? "No imported grade" : "Imported grades"}</span>
         </li>)}</ul>
       </>}
     </details>

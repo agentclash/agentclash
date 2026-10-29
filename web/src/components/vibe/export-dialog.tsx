@@ -2,6 +2,7 @@
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { VibeButton } from "./vibe-button";
 import { unresolvedCase } from "@/lib/vibe-result-evidence";
+import { testCount } from "@/lib/vibe-presentation";
 import type { useVibeExport } from "@/lib/use-vibe-export";
 export function ExportDialog({ controller: c }: { controller: ReturnType<typeof useVibeExport> }) {
   const state = c.state,
@@ -35,7 +36,7 @@ export function ExportDialog({ controller: c }: { controller: ReturnType<typeof 
                 {p.runs
                   .map(
                     (run) =>
-                      `${run.result_scope?.case_keys.length ?? "Unknown"} selected cases; ${run.scorecard?.failed || 0} failed, ${run.results.filter((result) => unresolvedCase({ ...result, checks: result.checks || [] })).length} unresolved saved cases`,
+                      `${run.result_scope ? testCount(run.result_scope.case_keys.length, "selected") : "Unknown selected tests"}; ${run.scorecard?.failed || 0} failed, ${run.results.filter((result) => unresolvedCase({ ...result, checks: result.checks || [] })).length} unresolved saved tests`,
                   )
                   .join("; ")}
               </p>

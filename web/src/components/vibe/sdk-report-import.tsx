@@ -54,7 +54,7 @@ function SDKImportFields({ sessionId, workspaceId, artifactId, actorScope, acces
   };
   return <section aria-label="Import SDK report" className="space-y-4">
     <h3>Import an SDK report</h3>
-    <p>Keep a v1 eval report or standalone agent result with this test version. Importing runs no checks and uses no inference credits. Original bytes and imported grades stay unchanged.</p>
+    <p>Keep a v1 eval report or standalone agent result with this test version. Importing starts no runs and uses no inference credits. Original bytes and imported grades stay unchanged.</p>
     <form className="space-y-3" onSubmit={async e => {
       e.preventDefault(); if (busy || !cases || !mapping) return;
       const bound = life.capture(); const current = () => bound() && parentCurrent();
@@ -62,7 +62,7 @@ function SDKImportFields({ sessionId, workspaceId, artifactId, actorScope, acces
       if (!body) {
         const bindings = cases.map(c => {
           const tuple = tuples.find(([key]) => key === c.target)?.[1];
-          if (!tuple || !c.id.trim()) throw Error("Map every source case explicitly.");
+          if (!tuple || !c.id.trim()) throw Error("Map every source test explicitly.");
           const ids = Array.from(new Set(published.filter(p => p.challenge_pack_version_id === version && p.case_key === tuple.case_key && p.challenge_key === tuple.challenge_key && p.input_set_key === tuple.input_set_key).map(p => p.published_case_id)));
           return { source_case_id: c.id, ...tuple, ...(version && ids.length === 1 ? { published_case_id: ids[0] } : {}) };
         });
@@ -88,13 +88,13 @@ function SDKImportFields({ sessionId, workspaceId, artifactId, actorScope, acces
           catch (e) { if (current() && reading === fileRead.current) setError((e as Error).message); }
         }} /></label>
         <label className="block">Original JSON<textarea aria-label="SDK original JSON" className="vibe-textarea" value={source} onChange={e => { fileRead.current++; setSource(e.target.value); setCases(undefined); }} /></label>
-        <VibeButton disabled={!source} onClick={() => preview(source)}>Read source cases</VibeButton>
-        {cases && <fieldset><legend>Bind each source case to this test version</legend>
-          {cases.length === 0 && <p>This report has no cases. Its diagnostic summary will be retained.</p>}
+        <VibeButton disabled={!source} onClick={() => preview(source)}>Read source tests</VibeButton>
+        {cases && <fieldset><legend>Bind each source test to this test version</legend>
+          {cases.length === 0 && <p>This report has no tests. Its diagnostic summary will be retained.</p>}
           {cases.map((c, index) => <div key={index} className="space-y-2">
-            {kind === "agent_result" ? <label>Source case ID<input aria-label="Standalone source case ID" value={c.id} onChange={e => setCases(old => old?.map((item, i) => i === index ? { ...item, id: e.target.value } : item))} /></label> : <p>{c.label}</p>}
-            <label>Test case<select aria-label={`Test case for ${c.label}`} value={c.target} onChange={e => setCases(old => old?.map((item, i) => i === index ? { ...item, target: e.target.value } : item))}>
-              <option value="">Choose exact test case</option>{tuples.map(([key, tuple]) => <option key={key} value={key}>{[tuple.input_set_key, tuple.challenge_key, tuple.case_key].filter(Boolean).join(" / ")}</option>)}
+            {kind === "agent_result" ? <label>Source test ID<input aria-label="Standalone source test ID" value={c.id} onChange={e => setCases(old => old?.map((item, i) => i === index ? { ...item, id: e.target.value } : item))} /></label> : <p>{c.label}</p>}
+            <label>Test<select aria-label={`Test for ${c.label}`} value={c.target} onChange={e => setCases(old => old?.map((item, i) => i === index ? { ...item, target: e.target.value } : item))}>
+              <option value="">Choose the exact test</option>{tuples.map(([key, tuple]) => <option key={key} value={key}>{[tuple.input_set_key, tuple.challenge_key, tuple.case_key].filter(Boolean).join(" / ")}</option>)}
             </select></label>
           </div>)}
         </fieldset>}
@@ -105,7 +105,7 @@ function SDKImportFields({ sessionId, workspaceId, artifactId, actorScope, acces
           {(["messages", "tools", "retrieval"] as const).map(key => <div key={key}><label>{key} capture<select value={capture[key].scope} onChange={e => setCapture(old => ({ ...old, [key]: { ...old[key], scope: e.target.value as typeof old[typeof key]["scope"] } }))}>{["unknown", "partial", "complete"].map(v => <option key={v}>{v}</option>)}</select></label><label>{key} instrumentation<select value={capture[key].instrumentation} onChange={e => setCapture(old => ({ ...old, [key]: { ...old[key], instrumentation: e.target.value as typeof old[typeof key]["instrumentation"] } }))}>{["unknown", "not_instrumented", "instrumented"].map(v => <option key={v}>{v}</option>)}</select></label></div>)}
         </details>
       </fieldset>
-      {!mapping && <VibeButton disabled={busy} onClick={() => { setError(""); setMapping(undefined); setMappingAttempt(n => n + 1); }}>Retry case mapping</VibeButton>}
+      {!mapping && <VibeButton disabled={busy} onClick={() => { setError(""); setMapping(undefined); setMappingAttempt(n => n + 1); }}>Retry test mapping</VibeButton>}
       <VibeButton type="submit" variant="primary" loading={busy} disabled={busy || !mapping || !cases || cases.some(c => !c.id.trim() || !c.target)}>{request ? "Retry this report import" : "Import historical report"}</VibeButton>
       {request && <p>The import is unconfirmed. Retry sends the same bytes and metadata. <VibeButton disabled={busy} onClick={() => { setRequest(undefined); setError(""); }}>Edit import metadata</VibeButton></p>}
     </form>

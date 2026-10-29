@@ -108,7 +108,7 @@ export function ProjectEnquiry({ session, artifact, operation, primary = false, 
       <DialogContent className="vibe-workspace vibe-dialog vibe-enquiry-dialog" initialFocus={titleRef} finalFocus={triggerRef}>
         <div className="vibe-enquiry-heading">
           <DialogTitle ref={titleRef} tabIndex={-1}>Let’s discuss building this for your business</DialogTitle>
-          <DialogDescription>Review what you’ll share. Files, raw replies and chat history are not attached.</DialogDescription>
+          <DialogDescription>Review what you’ll share. Files, raw replies and conversation history are not attached.</DialogDescription>
         </div>
         <div className="vibe-dialog-body vibe-enquiry-body">
           <form className="vibe-enquiry-form" noValidate onSubmit={e => { e.preventDefault(); void send(); }}>
