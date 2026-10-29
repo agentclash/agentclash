@@ -61,7 +61,7 @@
 .vibe-test-review-history { margin-top: var(--vibe-space-5); border-top: 1px solid var(--vibe-border); padding-top: var(--vibe-space-2); }
 /* The scorecard keeps the main result actions; occasional ones share one disclosure. */
 .vibe-results-more { margin-top: var(--vibe-space-5); }
-.vibe-results-more > summary { width: fit-content; padding-block: var(--vibe-space-2); color: var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); cursor: pointer; }
+.vibe-results-more > summary { width: fit-content; min-height: 44px; padding-block: var(--vibe-space-3); color: var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); cursor: pointer; }
 .vibe-results-more-body { display: grid; gap: var(--vibe-space-5); min-width: 0; margin-top: var(--vibe-space-3); }
 .vibe-results-contact { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--vibe-space-3); margin-top: var(--vibe-space-5); padding: var(--vibe-space-4); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); background: var(--vibe-surface); }
 .vibe-results-contact[hidden] { display: none; }

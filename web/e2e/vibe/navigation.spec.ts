@@ -677,7 +677,7 @@ test("Settings descendants retain readable scoped appearance including warning, 
 
 test("library search rename archive and sidebar preference preserve full touch and keyboard titles without running",async({page})=>{
  const control=await serve(page,true);
- const search = page.getByRole("searchbox",{name:"Search loaded projects"});
+ const search = page.getByRole("searchbox",{name:"Search projects"});
  const assertSearchAffordance = async () => {
    const control = await search.evaluate(input => {
      const style=getComputedStyle(input), rgb=(value:string)=>value.match(/[\d.]+/g)!.slice(0,3).map(Number);
@@ -697,7 +697,7 @@ test("library search rename archive and sidebar preference preserve full touch a
  await page.getByRole("textbox",{name:"Project title",exact:true}).fill(title);
  await page.getByRole("textbox",{name:"Project title",exact:true}).press("Enter");
  await expect(page.getByRole("button",{name:"Rename project",exact:true})).toBeVisible();
- await page.getByRole("searchbox",{name:"Search loaded projects"}).fill("autumn project");
+ await page.getByRole("searchbox",{name:"Search projects"}).fill("autumn project");
  const row=page.locator('[data-evaluation-id="older-29"]');await expect(row).toContainText(title);
  await row.focus();expect(await row.locator('.vibe-project-full-title').evaluate(node=>node.scrollHeight<=node.clientHeight+1)).toBe(true);
  await page.getByRole("button",{name:"Archive project",exact:true}).click();await expect(row).toHaveCount(0);

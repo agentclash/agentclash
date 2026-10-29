@@ -23,7 +23,7 @@ export function ResultRecoveryControls({operation,busy,onReload,onRetry,onFullRu
   {operation.progress?.last_confirmed_at&&<p>Last confirmed progress: {new Date(operation.progress.last_confirmed_at).toLocaleString()} · phase {operation.progress.phase.replaceAll("_"," ")} · {Math.floor((operation.progress.phase_elapsed_ms||0)/1000)} seconds confirmed phase time.</p>}
   {terminal(operation.state)&&!!unresolved.length&&<fieldset><legend>Unresolved cases to retry</legend>{unresolved.map(c=><label className="block" key={c.case_key}><input type="checkbox" checked={!excluded.includes(c.case_key)} onChange={e=>setExcluded(old=>e.target.checked?old.filter(key=>key!==c.case_key):[...old,c.case_key])}/>{c.title||c.case_key}</label>)}</fieldset>}
   {terminal(operation.state)&&!!unresolved.length&&onRetry&&!reconciled&&<p>Retry becomes available after the original execution and billing finish reconciliation.</p>}
-  {(recovery||!terminal(operation.state))&&<div className="flex flex-wrap gap-2">
+  {(recovery||!terminal(operation.state)||operation.actual_cost_nano_usd===null)&&<div className="flex flex-wrap gap-2">
    <VibeButton onClick={onReload}>Reload saved evidence</VibeButton>
    {recovery&&<>
     {!!unresolved.length&&onRetry&&<VibeButton disabled={busy||!reconciled||!selected.length} onClick={()=>onRetry(selected)}>Retry unresolved</VibeButton>}

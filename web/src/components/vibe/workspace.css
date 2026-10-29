@@ -466,7 +466,7 @@
     min-width: 44px;
   }
   /* These controls set their own smaller size, so the touch size needs the extra scope. */
-  .vibe-workspace .vibe-sidebar-filter { min-height: 44px; }
+  .vibe-workspace select.vibe-sidebar-filter { min-height: 44px; }
   .vibe-workspace :is(.vibe-sidebar-collapse.vibe-button, .vibe-sidebar-icon.vibe-button, .vibe-run-reference button, .vibe-trial-recipient .vibe-button, .vibe-material-chip .vibe-button, .vibe-enquiry-dialog .vibe-button) {
     min-width: 44px;
     min-height: 44px;
