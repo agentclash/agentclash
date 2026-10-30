@@ -77,7 +77,7 @@ export function BuildRunResult({ session, operation, artifact, current, first, b
         : "Separate baseline: the tests or grading differ. These scores do not establish an improvement."}</p>}
     {current && leading && <div className="vibe-build-examples">
       {first && <p className="vibe-test-explanation">We gave it an input and graded its reply against the rules. That’s a test.</p>}
-      <CaseEvidence key={leading.case_key} summary={{ ...leading, title: leading.title || inputs.get(leading.case_key) }} exampleFirst concise compactPreview
+      <CaseEvidence key={leading.case_key} summary={{ ...leading, title: leading.title || inputs.get(leading.case_key) }} concise compactPreview
         defaultOpen={current} prefetch={current}
         onReload={() => captureBuildEvent(WEB_EVENTS.VIBE_BUILD_RECOVERY_CLICKED, { ...eventBase, action: "reload_evidence", error_code: leading.error?.code })}
         evidenceVersion={`${operation.id}:${operation.state}`} load={key => loadEvidence(operation.id, key)}

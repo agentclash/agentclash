@@ -250,3 +250,24 @@ for (const door of ["build", "improve"] as const) test(`a committed ${door} firs
   expect(fake.posts.filter(post => post.path.endsWith("/messages") && post.body.kind === "message")).toHaveLength(1);
   expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
 });
+
+
+for (const kind of ["malformed", "oversized"] as const) test(`fix8 Settings ${kind} import keeps the signed-in Improve start without a project`, async ({ page }) => {
+  const failure = { status: 400, code: "invalid_pack", message: "This test pack is not valid JSON.", admission: "rejected" as const };
+  const fake = await fakeVibe(page, { ...signedIn, failures: { "POST /import": failure } });
+  await signIn(page);
+  await workspacePicker(page).selectOption({ label: "Returns team" });
+  await chooseDoor(page, "improve");
+  await doorReady(page, "improve");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Import a test pack", exact: true }).click();
+  await page.getByLabel("Test pack file", { exact: true }).setInputFiles({ name: "tests.json", mimeType: "application/json", buffer: Buffer.from(kind === "malformed" ? "{broken" : "x".repeat(1024 * 1024 + 1)) });
+  await expect(page.locator('.vibe-improve-start [role="alert"]')).toHaveText(kind === "malformed" ? failure.message : "This file exceeds the import size limit.");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator(".vibe-project-header")).toHaveCount(0);
+  expect(new URL(page.url()).searchParams.get("session")).toBeNull();
+  expect(fake.sessions.size).toBe(0);
+  expect(writes(fake)).toEqual(kind === "malformed" ? ["POST /sessions", "POST /sessions/:id/import", "DELETE /sessions/:id"] : []);
+  expect(fake.errors).toEqual([]);
+  expect(fake.unknown).toEqual([]);
+});

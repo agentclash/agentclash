@@ -243,21 +243,17 @@ it("leads with one reply and keeps complete evidence behind a single accessible 
   expect(container.querySelector("h2")!.textContent).toBe("1 test failed");
   expect(leading.querySelector("details")!.open).toBe(true);
   expect(leading.textContent).toContain(failure.checks[0].evidence);
-  const visibleQuotes = [...leading.querySelectorAll("blockquote")].filter(
-    (quote) => !quote.closest("[hidden]"),
-  );
-  expect(visibleQuotes).toHaveLength(1);
-  expect(visibleQuotes[0].textContent).toContain(
-    "How many days ago did you buy it?",
-  );
-  expect(visibleQuotes[0].textContent).toContain("App reply");
+  const visibleReplies = [...leading.querySelectorAll(".vibe-example-reply")].filter(reply => !reply.closest("[hidden]"));
+  expect(visibleReplies).toHaveLength(1);
+  expect(visibleReplies[0].textContent).toContain("How many days ago did you buy it?");
+  expect(visibleReplies[0].previousElementSibling?.textContent).toBe("It replied");
   expect(button("Show full conversation").getAttribute("aria-expanded")).toBe("false");
   const fullEvidence = document.getElementById(
     button("Show full conversation").getAttribute("aria-controls")!,
   )!;
   expect(fullEvidence.hidden).toBe(true);
   expect(fullEvidence.textContent).toContain("I bought it 10 days ago.");
-  expect(fullEvidence.textContent).toContain("Ask only for missing details.");
+  expect(leading.querySelector(".vibe-example-evidence > div:nth-child(3)")?.textContent).toContain("Ask only for missing details.");
   expect(fullEvidence.textContent).toContain("Full conversation · 4 messages");
   // One check that is the finding: the finding above is its only copy.
   expect(fullEvidence.textContent).not.toContain("All expectations");
@@ -297,9 +293,9 @@ it("keeps a long reply complete in evidence and the fix prompt while showing a l
   };
   await render(operation([long]));
   const quote = container.querySelector(
-    '[aria-label="Leading finding"] blockquote',
+    '[aria-label="Leading finding"] .vibe-example-reply .vibe-evidence-excerpt',
   )!;
-  expect(quote.textContent).toContain("App reply · preview; full reply below");
+  expect(quote.textContent).toContain("(excerpt)");
   expect(quote.textContent).not.toContain("The exact final sentence.");
   await click("Show full conversation");
   const fullEvidence = document.getElementById(
@@ -791,7 +787,7 @@ it.each(["prompt", "provided_conversations"] as const)("shows the shared input, 
 });
 
 it("uses the same expected behavior label and order in the compact Build evidence", async () => {
-  await act(async () => root.render(<CaseEvidence summary={failure} load={async () => failure} concise exampleFirst compactPreview defaultOpen />));
+  await act(async () => root.render(<CaseEvidence summary={failure} load={async () => failure} concise compactPreview defaultOpen />));
   const labels = [...container.querySelectorAll("p")].map(p => p.textContent!.trim()).filter(text => ["We gave it", "It replied", "It should", "What needs attention"].includes(text));
   expect(labels).toEqual(["We gave it", "It replied", "It should", "What needs attention"]);
   expect(container.textContent).toContain("Ask only for missing details.");
@@ -870,9 +866,9 @@ it("P5: puts the Improve primary between the leading finding and Other results",
   expect(primary.nextElementSibling).toBe(container.querySelector(".vibe-other-results"));
   expect(container.querySelector('[aria-label="Individual results"]')?.contains(container.querySelector(".vibe-other-results"))).toBe(true);
 });
-it.each([false, true])("P5: Ask Guide shares the bottom evidence action row (example first: %s)", async exampleFirst => {
+it("P5: Ask Guide shares the bottom evidence action row", async () => {
   const ask = vi.fn();
-  await act(async () => root.render(<CaseEvidence summary={failure} load={async () => failure} concise exampleFirst={exampleFirst} defaultOpen onAsk={ask} onDispute={dispute} />));
+  await act(async () => root.render(<CaseEvidence summary={failure} load={async () => failure} concise defaultOpen onAsk={ask} onDispute={dispute} />));
   const action = button("Show full conversation").parentElement!;
   const guide = button("Ask Guide about this test");
   expect(guide.parentElement).toBe(action);
@@ -884,11 +880,26 @@ it.each([false, true])("P5: Ask Guide shares the bottom evidence action row (exa
 it("P5: keeps Ask Guide mounted and focused when delayed evidence arrives", async () => {
   let resolve!: (result: CaseResult) => void;
   const pending = new Promise<CaseResult>(done => { resolve = done; });
-  await act(async () => root.render(<CaseEvidence summary={failure} load={() => pending} concise exampleFirst defaultOpen onAsk={vi.fn()} onDispute={dispute} />));
+  await act(async () => root.render(<CaseEvidence summary={failure} load={() => pending} concise defaultOpen onAsk={vi.fn()} onDispute={dispute} />));
   const guide = button("Ask Guide about this test");
   guide.focus(); expect(document.activeElement).toBe(guide);
   await act(async () => resolve(failure));
   expect(button("Ask Guide about this test")).toBe(guide);
   expect(document.activeElement).toBe(guide);
   expect(guide.parentElement).toBe(button("Show full conversation").parentElement);
+});
+
+
+it.each([false, true])("fix8 uses one evidence layout for passed and failed rows (compact: %s)", async compact => {
+  const ask = vi.fn();
+  await act(async () => root.render(<>{[passing, failure].map(result => <CaseEvidence key={result.case_key} summary={result} load={async () => result} defaultOpen compactPreview={compact} onAsk={ask} onDispute={dispute} onRegrade={retest} origin="provided_conversations" />)}</>));
+  const rows = [...container.querySelectorAll(".vibe-result-row")];
+  expect(rows).toHaveLength(2);
+  for (const [index, row] of rows.entries()) {
+    const labels = [...row.querySelectorAll("p")].map(node => node.textContent!.trim()).filter(text => ["We gave it", "It replied", "It should", "Why it passed", "What needs attention"].includes(text));
+    expect(labels).toEqual(["We gave it", "It replied", "It should", index === 0 ? "Why it passed" : "What needs attention"]);
+    expect(row.querySelector(".vibe-example-reply")?.textContent).toContain(index === 0 ? "It is outside the 30-day return window." : "How many days ago did you buy it?");
+  }
+  const actions = ["Ask Guide about this test", "Show full conversation", "Change expected result", "Grade the same replies again"];
+  for (const row of rows) expect([...row.querySelectorAll(".vibe-evidence-actions button")].map(node => node.textContent!.trim())).toEqual(actions);
 });

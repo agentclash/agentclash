@@ -120,6 +120,11 @@ function emptyStartDraft(row: EditorDraft | undefined, editor: "brief" | "inputs
   } catch { return false; }
 }
 
+function pendingStartValues(value: string | undefined): string[] {
+  try { const values: unknown = JSON.parse(value || "[]"); return Array.isArray(values) ? values.filter((value): value is string => typeof value === "string") : []; }
+  catch { return []; }
+}
+
 function carryInstructionDraft(project: string, from: Artifact | undefined, to: Artifact | undefined, submitted?: EditorDraft) {
   if (!from || !to || !submitted || from.id === to.id || from.agent_prompt !== to.agent_prompt || submitted.value === from.agent_prompt || submitted.source !== editorSource({ id: from.id, agent_prompt: from.agent_prompt })) return;
   const current = readEditorDraft(project, from.id, "instructions");
@@ -170,9 +175,12 @@ export function useVibeWorkspace() {
       const guest = `start:guest:${door}`, account = `start:${authUserID}:${door}`;
       const row = readEditorDraft(guest, "start", editor);
       if (!row) continue;
-      if (emptyStartDraft(readEditorDraft(account, "start", editor), editor)) {
+      if (!emptyStartDraft(row, editor)) {
         const all = draftMemory.get(account) || readBuildDrafts(account) || emptyDrafts();
-        persistDrafts(account, { ...all, editors: { ...all.editors, [editorDraftKey(account, "start", editor)]: row } });
+        const occupied = !emptyStartDraft(readEditorDraft(account, "start", editor), editor);
+        const target = occupied ? `pending-${editor}` : editor;
+        const saved = occupied ? { ...row, value: JSON.stringify([...pendingStartValues(readEditorDraft(account, "start", target)?.value), row.value]) } : row;
+        persistDrafts(account, { ...all, editors: { ...all.editors, [editorDraftKey(account, "start", target)]: saved } });
       }
       discardEditorDraft(guest, "start", editor, row);
       migrated = true;
@@ -184,6 +192,14 @@ export function useVibeWorkspace() {
   let startInputs: { instructions: string; model?: string; conversations: string; rules: string; chat?: string; mode?: "instructions" | "replies" | "pack" } = { instructions: "", conversations: "", rules: "" };
   try { startInputs = { ...startInputs, ...JSON.parse(startImproveDraft.value) }; } catch { /* Keep an unreadable draft in storage. */ }
   const setStartInputs = (patch: Partial<typeof startInputs>) => startImproveDraft.setValue(JSON.stringify({ ...startInputs, ...patch }));
+  const pendingStart = useVibeEditorDraft(`start:${authUserID || "guest"}:${startDoor === "build" ? "build" : "test"}`, "start", startDoor === "build" ? "pending-brief" : "pending-inputs", "", "[]");
+  const pendingStartTexts = pendingStartValues(pendingStart.value);
+  const pendingStartDraft = !!authUserID && pendingStartTexts.length > 0;
+  function resolvePendingStart(use: boolean) {
+    if (use) (startDoor === "build" ? startBuildDraft : startImproveDraft).setValue(pendingStartTexts[0]);
+    if (pendingStartTexts.length > 1) pendingStart.setValue(JSON.stringify(pendingStartTexts.slice(1)));
+    else pendingStart.discard();
+  }
   const hiddenStartDraft = useVibeEditorDraft(`start:${authUserID || "guest"}:hidden`, "start", "projects", "", "[]");
   let hiddenStarts: string[] = [];
   try { const stored: unknown = JSON.parse(hiddenStartDraft.value); if (Array.isArray(stored)) hiddenStarts = stored.filter((id): id is string => typeof id === "string"); } catch { /* Optional mirror. */ }
@@ -632,7 +648,8 @@ export function useVibeWorkspace() {
   const trialMaterials = useVibeInputs(sessionID || "", `trial:${artifact?.id || ""}:${threadID}`, token, workspaceActor);
   const materialFingerprint = JSON.stringify(materials.bindings);
   const adoptionFingerprint = JSON.stringify(materials.adoptions);
-  const messageLimit = (session?.anonymous === false ? config?.signed_in_limits : config?.anonymous_limits)?.max_message_bytes || (session?.anonymous === false ? 65536 : 16384);
+  const signedInInput = session ? !session.anonymous : !!authUserID;
+  const messageLimit = (signedInInput ? config?.signed_in_limits : config?.anonymous_limits)?.max_message_bytes || (signedInInput ? 65536 : 16384);
   const messageError = new TextEncoder().encode(content).length > messageLimit ? `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.` : "";
   const buildStart = session?.document.evaluation?.door === "build" && !session.document.build && !session.document.artifacts.length;
   const continuingBuild = (session?.document.build?.phase === "clarifying" || session?.document.build?.phase === "waiting");
@@ -704,18 +721,24 @@ export function useVibeWorkspace() {
       if (!ownsScope(scope)) throw Error("The active account or project changed.");
       if (first.kind === "pack" || first.kind === "replies") {
         const before = new Set(next.document.artifacts.map(artifact => artifact.id));
+        const beforeEvidence = new Set(next.document.evidence_sets?.map(evidence => evidence.id));
+        const expectations = first.kind === "replies" ? first.rules.split("\n").map(line => line.trim()).filter(Boolean).map((statement, index) => ({ id: `rule-${index + 1}`, statement })) : [];
         try {
           if (first.kind === "pack") {
             next = await vibeFetch<Session>(`/sessions/${id}/import`, auth, { method: "POST", headers: { "Content-Type": first.file.name.endsWith(".json") ? "application/json" : "application/yaml", "If-Match": String(next.revision), "X-File-Name": encodeURIComponent(first.file.name) }, body: new Blob([first.file]) });
           } else {
-            next = await vibeFetch<Session>(`/sessions/${id}/evidence`, auth, { method: "POST", body: JSON.stringify({ client_id: clientID, revision: next.revision, label: "Recorded replies", content: first.conversations, expectations: first.rules.split("\n").map(line => line.trim()).filter(Boolean).map((statement, index) => ({ id: `rule-${index + 1}`, statement })) }) });
+            next = await vibeFetch<Session>(`/sessions/${id}/evidence`, auth, { method: "POST", body: JSON.stringify({ client_id: clientID, revision: next.revision, label: "Recorded replies", content: first.conversations, expectations }) });
             if (next.evidence_receipt?.client_id !== clientID) throw Error("The saved reply receipt is unavailable. Try again.");
           }
         } catch (e) {
           // Intake may have committed before the response disappeared. Never offer a second project.
           let reconciled: Session | undefined;
           try { reconciled = await vibeFetch<Session>(`/sessions/${id}`, auth); } catch { /* Keep ambiguous intake visible for recovery. */ }
-          const committed = first.kind === "replies" ? reconciled?.evidence_receipt?.client_id === clientID : reconciled?.document.artifacts.some(artifact => !before.has(artifact.id));
+          // Ordinary GET omits the receipt. Intake atomically saves the exact source and linked tests.
+          const committed = first.kind === "replies" ? reconciled?.document.evidence_sets?.some(evidence =>
+            !beforeEvidence.has(evidence.id) && evidence.id === reconciled.document.active_evidence_id && evidence.raw === first.conversations &&
+            reconciled.document.artifacts.some(artifact => !before.has(artifact.id) && artifact.kind === "conversation_evaluation" && artifact.conversation_evaluation?.evidence_set_id === evidence.id && editorSource(artifact.conversation_evaluation.expectations) === editorSource(expectations)))
+            : reconciled?.document.artifacts.some(artifact => !before.has(artifact.id));
           if (!committed && e instanceof VibeError && (e.admission === "rejected" || e.status !== undefined && e.status >= 400 && e.status < 500)) throw e;
           admitted = true;
           if (reconciled) next = reconciled;
@@ -1396,6 +1419,13 @@ export function useVibeWorkspace() {
   async function upload(uploaded?: File) {
     const scope = scopeRef.current;
     if (!uploaded || busy) return;
+    if (!requestedSessionID) {
+      setSettingsOpen(false);
+      if (startDoor !== "improve") chooseDoor("test");
+      try { await startProject("test", { kind: "pack", file: uploaded }); }
+      finally { if (file.current) file.current.value = ""; }
+      return;
+    }
     setPending(true);
     setImportError(undefined);
     let importSessionID = sessionID;
@@ -1449,5 +1479,5 @@ export function useVibeWorkspace() {
   // independently of the historical project's funding and retired models.
   const entryAvailable = !authLoading && !configError && !!config?.enabled && Object.values(config.defaults).every(id => config.models.some(model => model.id === id)) && config.availability?.[authUserID ? "workspace" : "guest"]?.available === true && (!authUserID || saveAccess === "ready" && workspaces.some(item => item.id === workspace));
   const visibleArrival = arrival && session?.id === arrival.sessionID && !arrivalIsOpen ? { target: arrival.target, open: () => showView(arrival.target, arrival.run) } : undefined;
-    return { serverNow, startDoor, startProject, backFromStart, startBuildDraft, startInputs, setStartInputs, startError, arrival: visibleArrival, takeStartFocus, evidenceResult:selectedResult || (pinnedRun?.result_scope&&session?{session_id:session.id,artifact_id:pinnedRun.result_scope.artifact_id,result_ref:{kind:"vibe_operation" as const,id:pinnedRun.id}}:undefined), selectedCanonical,selectedSDKReport,selectedResult,selectedResultLoading,selectedResultError,retrySelectedResult,onSelectResult,onSDKPromoted,onSDKRegraded,evidenceAccess, sdkInferenceAvailable:inferenceReady && !busy && !!config?.models.some(m=>m.id===models.evaluator), projectReturnPath,saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,archiveMode,setArchiveMode,metadata,exporter, recordedUpdate, startRecordedUpdate, closeRecordedUpdate, addRecordedEvidence, entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, runInferenceAvailable, unavailableReason, messageLimit, messageError, buildQuote, buildQuoteState, refreshBuildQuote, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, trialMaterials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces };
+    return { serverNow, startDoor, startProject, backFromStart, pendingStartDraft, resolvePendingStart, startBuildDraft, startInputs, setStartInputs, startError, arrival: visibleArrival, takeStartFocus, evidenceResult:selectedResult || (pinnedRun?.result_scope&&session?{session_id:session.id,artifact_id:pinnedRun.result_scope.artifact_id,result_ref:{kind:"vibe_operation" as const,id:pinnedRun.id}}:undefined), selectedCanonical,selectedSDKReport,selectedResult,selectedResultLoading,selectedResultError,retrySelectedResult,onSelectResult,onSDKPromoted,onSDKRegraded,evidenceAccess, sdkInferenceAvailable:inferenceReady && !busy && !!config?.models.some(m=>m.id===models.evaluator), projectReturnPath,saveDraft,saveComplete,saveNotice,saveKept,saveArtifact,saveReturnPath,saveAdvanced,advancedReceipt,archiveMode,setArchiveMode,metadata,exporter, recordedUpdate, startRecordedUpdate, closeRecordedUpdate, addRecordedEvidence, entryAvailable, authUser, authLoading, contextList, savedList, runQuoteState, runQuoteError, funding, inferenceAvailable, runInferenceAvailable, unavailableReason, messageLimit, messageError, buildQuote, buildQuoteState, refreshBuildQuote, runQuoteCurrent, isRunQuoteCurrent, accept, active, activeContext, adoptContext, applyChoice, artifact, artifacts, buildEvidence, buildJourney, buildStart, busy, changeModels, chooseDoor, closeSave, composerEdits, config, configError, connection, content, contexts, currentView, dirtyArtifact, discardedContextIDs, drafts, edit, error, evaluation, exportConversation, file, importError, importNotice, keptArtifact, latestArtifact, loadSavedCase, loadingSession, materialScope, materials, trialMaterials, models, navigate, navigation, newEvaluation, newTrial, openNewEvaluation, openSave, operationAction, pending, pendingAction, pendingEdit, pendingMessage, quoteError, quoteHeading, quoteMatches, quoteTrigger, reloadChoices, rememberSave, requestPreparation, requestRun, requestedRunID, retryOperation, retrySubmission, retryUnsentMessage, runPending, runQuote, save, saveAccess, saveBaseline, saveOpen, saveTarget, saved, savedCheck, savedChecks, savedDraft, savedModelNotice, savedWorkOpen, scenarioCount, select, selectedArtifactID, sendMessage, session, sessionID, sessionUnavailable, setChecksDirtyID, setConnection, setContent, setContexts, setError, setLoadAttempt, setModels, setNewEvaluation, setPending, setPendingMessage, setRunQuote, setSavedWorkOpen, setSelectedArtifactID, setSettingsOpen, setThreadID, setTrialText, setWorkspace, settingsOpen, snapshots, submission, submit, switchContext, testJourney, threadID, token, trialHistory, trialMessages, trialText, twoDoor, uncertain, upload, view, workspace, workspaces };
 }

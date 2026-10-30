@@ -6,7 +6,7 @@ import { caseInput, type CaseResult, type EvidenceMessage } from "@/lib/vibe";
 import { validCaseEvidence } from "@/lib/vibe-evidence";
 import { AgentReply, SafeMarkdown } from "./safe-markdown";
 import { VibeButton } from "./vibe-button";
-import { GroundedFinding, verifiedFinding } from "./grounded-finding";
+import { GroundedFinding } from "./grounded-finding";
 import {
   evidenceRole,
   expectedBehavior,
@@ -30,7 +30,6 @@ export function CaseEvidence({
   onFixCopied,
   origin,
   concise = false,
-  exampleFirst = false,
   compactPreview = false,
   onEvidence,
   onReload,
@@ -49,7 +48,6 @@ export function CaseEvidence({
   onFixCopied?: () => void;
   origin?: EvidenceOrigin;
   concise?: boolean;
-  exampleFirst?: boolean;
   compactPreview?: boolean;
   onEvidence?: (evidence: CaseResult) => void;
   onReload?: () => void;
@@ -181,18 +179,18 @@ export function CaseEvidence({
                 {evidence.error.message}
               </p>
             )}
-            {exampleFirst && <div className="vibe-example-evidence">
-              <div><p className="vibe-evidence-label">We gave it</p>{recorded && customerMessages.length ? <div className="vibe-recorded-chat">{customerMessages.map(message => <div className="vibe-recorded-bubble" data-role="user" key={message.id}><strong>Customer</strong><p>{message.content}</p></div>)}</div> : compactPreview ? <EvidenceExcerpt text={input} label="input" /> : <SafeMarkdown>{input}</SafeMarkdown>}</div>
-              <div><p className="vibe-evidence-label">It replied</p>{reply ? <div className="vibe-example-reply">{compactPreview ? <EvidenceExcerpt text={reply} label="reply" /> : <AgentReply>{reply}</AgentReply>}</div> : <p>No reply was recorded.</p>}</div>
+            <div className="vibe-example-evidence">
+              <div><p className="vibe-evidence-label">We gave it</p>{recorded && customerMessages.length ? <div className="vibe-recorded-chat">{customerMessages.map(message => <div className="vibe-recorded-bubble" data-role="user" key={message.id}><strong>Customer</strong><p>{message.content}</p></div>)}</div> : compactPreview || concise ? <EvidenceExcerpt text={input} label="input" /> : <SafeMarkdown>{input}</SafeMarkdown>}</div>
+              <div><p className="vibe-evidence-label">It replied</p>{reply ? <div className="vibe-example-reply"><EvidenceExcerpt text={reply} label="reply" /></div> : <p>No reply was recorded.</p>}</div>
               <div><p className="vibe-evidence-label">It should</p><SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown></div>
-            </div>}
-            {finding && (!compactPreview || finding.verdict === "FAIL") && (
+            </div>
+            {finding && (
               <div>
                 <p className="mb-1 text-xs vibe-muted">
                   {finding.verdict === "FAIL"
                     ? "What needs attention"
                     : finding.verdict === "PASS"
-                      ? "Why this passed"
+                      ? "Why it passed"
                       : "What is still unknown"}
                   {excerpt && " · excerpt"}
                 </p>
@@ -200,11 +198,6 @@ export function CaseEvidence({
                 {excerpt && <details className="mt-2"><summary className="cursor-pointer text-sm">Read complete explanation</summary><SafeMarkdown>{explanation}</SafeMarkdown></details>}
               </div>
             )}
-            {!exampleFirst && (verifiedFinding(evidence, finding) ? <GroundedFinding result={evidence} check={finding} /> : <PrimaryReply
-              evidence={evidence}
-              finding={finding}
-              origin={origin}
-            />)}
             {!compactPreview && prompt && (
               <FixPromptCopy
                 prompt={prompt}
@@ -226,9 +219,8 @@ export function CaseEvidence({
         <EvidenceDetails
           evidence={evidence}
           finding={finding}
-          expectationShown={!!evidence && (exampleFirst || !!verifiedFinding(evidence, finding))}
+          expectationShown={!!evidence}
           origin={origin}
-          compactPreview={compactPreview}
           onAsk={onAsk}
           onDispute={onDispute}
           onRegrade={onRegrade}
@@ -250,45 +242,6 @@ function EvidenceExcerpt({ text, label }: { text: string; label: "input" | "repl
   </>;
 }
 
-function PrimaryReply({
-  evidence,
-  finding,
-  origin,
-}: {
-  evidence: CaseResult;
-  finding?: EvidenceCheck;
-  origin?: EvidenceOrigin;
-}) {
-  const cited = new Set(finding?.message_ids || []);
-  const replies =
-    evidence.messages?.filter((message) => message.role === "assistant") || [];
-  const message =
-    replies.findLast((reply) => cited.has(reply.id)) || replies.at(-1);
-  const text = message?.content || evidence.output;
-  if (!text) return null;
-  // This is a verbatim excerpt for scanning. The saved reply remains complete in
-  // See evidence and in the copied fix prompt; no evaluated material is changed.
-  const excerpt = text.length > 280;
-  const boundary = text.lastIndexOf(" ", 280);
-  const quote = excerpt ? text.slice(0, boundary > 200 ? boundary : 280) : text;
-  return (
-    <blockquote className="border-l-2 border-[var(--vibe-border)] pl-4">
-      <p className="mb-1 text-xs vibe-muted">
-        {origin === "prompt"
-          ? "Generated reply"
-          : origin === "provided_conversations"
-            ? "App reply"
-            : "Recorded reply"}
-        {excerpt ? " · preview; full reply below" : ""}
-      </p>
-      <p className="vibe-transcript">
-        {quote}
-        {excerpt && "…"}
-      </p>
-    </blockquote>
-  );
-}
-
 // Only the expected behavior and the user's own rules can be changed; "Reply received" is a grading step.
 function changeable(evidence: CaseResult, check: { key: string }) {
   return check.key === "behavior" || !!evidence.expectations?.some((rule) => rule.id === check.key);
@@ -299,7 +252,6 @@ function EvidenceDetails({
   finding,
   expectationShown,
   origin,
-  compactPreview,
   onAsk,
   onDispute,
   onRegrade,
@@ -310,7 +262,6 @@ function EvidenceDetails({
   finding?: EvidenceCheck;
   expectationShown: boolean;
   origin?: EvidenceOrigin;
-  compactPreview?: boolean;
   onAsk?: () => void;
   onDispute?: (rule: string, result: CaseResult) => void;
   onRegrade?: () => void;
@@ -321,7 +272,7 @@ function EvidenceDetails({
   const [expanded, setExpanded] = useState(false);
   const guide = onAsk && <VibeButton variant="quiet" disabled={busy} onClick={onAsk}>Ask Guide about this test</VibeButton>;
   // Keep the Guide button mounted while evidence loads so keyboard focus stays put.
-  if (!evidence || compactPreview) return guide ? <div className="space-y-3"><div className="vibe-evidence-actions -ml-3 flex flex-wrap items-center gap-1">{guide}</div></div> : null;
+  if (!evidence) return guide ? <div className="space-y-3"><div className="vibe-evidence-actions -ml-3 flex flex-wrap items-center gap-1">{guide}</div></div> : null;
   // The finding and its expectation already show above; list checks only when there is more.
   const otherChecks = evidence.checks.some((check) => check.key !== finding?.key);
   const cited = new Set(finding?.message_ids || []);

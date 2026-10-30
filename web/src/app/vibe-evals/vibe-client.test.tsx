@@ -4341,6 +4341,7 @@ it.each(["build", "test"] as const)("moves the guest %s start draft into an empt
   signedInWorkspace(); await render();
   const field = () => container.querySelector<HTMLTextAreaElement>(".vibe-start-page textarea")!;
   expect(field().value).toBe("Guest policy survives an empty account draft.");
+  expect(container.textContent).not.toContain("You have text from before you signed in.");
   const guest = `start:guest:${door}`;
   expect(draftMemory.get(guest)?.editors[`${guest}:start:editor:${editor}`]).toBeUndefined();
   expect(JSON.parse(sessionStorage.getItem(`vibe-build-drafts:${guest}`)!).editors[`${guest}:start:editor:${editor}`]).toBeUndefined();
@@ -4349,7 +4350,7 @@ it.each(["build", "test"] as const)("moves the guest %s start draft into an empt
   expect(requests.filter(request => request.method !== "GET")).toEqual([]);
 });
 
-it.each(["build", "test"] as const)("preserves an occupied account %s start draft when signing in from a guest", async door => {
+it.each([["build", "Use it"], ["build", "Discard"], ["test", "Use it"], ["test", "Discard"]] as const)("fix8 preserves both occupied %s drafts and resolves pending text with %s", async (door, action) => {
   await enterDoor(door);
   await type("Separate guest draft.", door === "build" ? "What task should the agent handle?" : "Agent instructions");
   const editor = door === "build" ? "brief" : "inputs";
@@ -4363,9 +4364,21 @@ it.each(["build", "test"] as const)("preserves an occupied account %s start draf
   const guest = `start:guest:${door}`;
   expect(draftMemory.get(guest)?.editors[`${guest}:start:editor:${editor}`]).toBeUndefined();
   expect(JSON.parse(sessionStorage.getItem(`vibe-build-drafts:${guest}`)!).editors[`${guest}:start:editor:${editor}`]).toBeUndefined();
+  expect(container.textContent).toContain("You have text from before you signed in.");
   harness.user = undefined; await render();
   signedInWorkspace(); harness.user = { id: "second-account" }; await render();
   expect(container.querySelector<HTMLTextAreaElement>(".vibe-start-page textarea")?.value).toBe("");
+  expect(container.textContent).not.toContain("You have text from before you signed in.");
+  harness.user = { id: "fixture-user" }; await render();
+  await act(async () => root.unmount()); draftMemory.clear(); root = createRoot(container); await render();
+  expect(container.textContent).toContain("You have text from before you signed in.");
+  expect(container.querySelector<HTMLTextAreaElement>(".vibe-start-page textarea")?.value).toBe("Existing account work.");
+  await click(action);
+  expect(container.querySelector<HTMLTextAreaElement>(".vibe-start-page textarea")?.value).toBe(action === "Use it" ? "Separate guest draft." : "Existing account work.");
+  expect(container.textContent).not.toContain("You have text from before you signed in.");
+  await act(async () => root.unmount()); draftMemory.clear(); root = createRoot(container); await render();
+  expect(container.querySelector<HTMLTextAreaElement>(".vibe-start-page textarea")?.value).toBe(action === "Use it" ? "Separate guest draft." : "Existing account work.");
+  expect(container.textContent).not.toContain("You have text from before you signed in.");
   expect(requests.filter(request => request.method !== "GET")).toEqual([]);
 });
 
@@ -4531,13 +4544,15 @@ it("uses singular test counts in the save dialog for a one-test agent", async ()
   expect(version.nextElementSibling?.textContent).not.toContain("1 tests");
 });
 
-it.each(["replies", "pack"] as const)("fix4 reconciles a committed %s intake after its response is lost", async kind => {
+it.each(["replies", "pack"] as const)("fix8 reconciles a committed %s intake from a plain session GET after its response is lost", async kind => {
   await enterDoor("test");
   const previous = respond;
   respond = async (path, options) => {
     if (!path.endsWith(kind === "pack" ? "/import" : "/evidence")) return previous(path, options);
-    const client = kind === "replies" ? JSON.parse(String(options.body)).client_id : undefined;
-    session = { ...session, revision: 2, document: { ...session.document, artifacts: [{ id: "committed-intake", kind: "test_suite", title: "Committed tests", agent_prompt: "", blueprint: {}, accepted: true, source_message_id: "" }] }, ...(client ? { evidence_receipt: { client_id: client, artifact_id: "committed-intake", evidence_id: "saved-replies" } } : {}) };
+    session = { ...session, revision: 2, document: { ...session.document,
+      ...(kind === "replies" ? { active_evidence_id: "saved-replies", evidence_sets: [{ id: "saved-replies", label: "Recorded replies", raw: "Customer: Hi\nAgent: Hello", conversations: [{ key: "chat-1", title: "Conversation 1", messages: [{ id: "c1-m1", role: "user", content: "Hi\n" }, { id: "c1-m2", role: "assistant", content: "Hello" }] }] }] } : {}),
+      artifacts: [{ id: "committed-intake", kind: kind === "replies" ? "conversation_evaluation" : "test_suite", title: "Committed tests", agent_prompt: "", blueprint: {}, accepted: true, source_message_id: "", ...(kind === "replies" ? { conversation_evaluation: { evidence_set_id: "saved-replies", expectations: [{ id: "rule-1", statement: "Be polite" }] } } : {}) }],
+    } };
     throw new TypeError("Intake acknowledgement lost");
   };
   if (kind === "replies") {
@@ -4548,6 +4563,8 @@ it.each(["replies", "pack"] as const)("fix4 reconciles a committed %s intake aft
     const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
     await act(async () => { Object.defineProperty(input, "files", { value: [new File(['{}'], "checks.json")] }); input.dispatchEvent(new Event("change", { bubbles: true })); });
   }
+  expect(session.evidence_receipt).toBeUndefined();
+  expect(container.textContent).not.toContain("Couldn’t confirm the saved input.");
   expect(params().get("session")).toBe(session.id);
   expect(params().get("agent")).toBe("committed-intake");
   expect(params().get("view")).toBe("tests");
@@ -4617,4 +4634,89 @@ it.each(["replies", "pack"] as const)("fix4 keeps the same %s project and input 
   expect(container.textContent).toContain("Couldn’t confirm the saved input");
   expect(requests.filter(r => r.method === "DELETE")).toHaveLength(0);
   expect(requests.filter(r => r.path === "/sessions" && r.method === "POST")).toHaveLength(1);
+});
+
+
+it.each(["malformed", "oversized"] as const)("fix8 cleans up a %s Settings import from the signed-in Improve start", async kind => {
+  signedInWorkspace();
+  await enterDoor("test");
+  const previous = respond;
+  const projects = new Set<string>();
+  respond = async (path, options) => {
+    if (path === "/sessions" && options.method === "POST") projects.add(JSON.parse(String(options.body)).id);
+    if (options.method === "DELETE") { projects.delete(path.split("/").at(-1)!); return json({}); }
+    if (path.endsWith("/import")) return json({ error: { code: "invalid_pack", message: "This test pack is not valid JSON.", admission: "rejected" } }, 400);
+    return previous(path, options);
+  };
+  await click("Settings");
+  await clickIn("Settings and details", "Import a test pack");
+  const input = container.querySelector<HTMLInputElement>('input[aria-label="Test pack file"]')!;
+  const file = new File([kind === "malformed" ? "{broken" : "x".repeat(1024 * 1024 + 1)], "tests.json");
+  await act(async () => { Object.defineProperty(input, "files", { configurable: true, value: [file] }); input.dispatchEvent(new Event("change", { bubbles: true })); });
+  expect(projects.size).toBe(0);
+  expect(params().get("session")).toBeNull();
+  expect(container.querySelector(".vibe-improve-start")).not.toBeNull();
+  expect(container.querySelector(".vibe-project-header")).toBeNull();
+  expect(container.querySelector('.vibe-improve-start [role="alert"]')?.textContent).toBe(kind === "malformed" ? "This test pack is not valid JSON." : "This file exceeds the import size limit.");
+  expect(input.value).toBe("");
+  expect(requests.filter(request => request.path === "/sessions" && request.method === "POST")).toHaveLength(kind === "malformed" ? 1 : 0);
+  expect(requests.filter(request => request.method === "DELETE")).toHaveLength(kind === "malformed" ? 1 : 0);
+});
+
+it.each([["build", false, 16384], ["test", false, 16384], ["build", true, 65536], ["test", true, 65536], ["test", true, 32768]] as const)("fix8 uses the prospective %s message limit (signed in: %s, limit: %i)", async (door, signedIn, limit) => {
+  if (signedIn) signedInWorkspace();
+  await enterDoor(door);
+  const previous = respond;
+  respond = async (path, options) => path === "/config" ? json({ ...(await twoDoorConfig().json()), anonymous_limits: { max_message_bytes: 16384 }, signed_in_limits: { max_message_bytes: limit } }) : previous(path, options);
+  harness.authLoading = true; await render(); harness.authLoading = false; await render();
+  const label = door === "build" ? "What task should the agent handle?" : "Agent instructions";
+  const primary = door === "build" ? "Build and run 3 tests" : "Write 3 tests";
+  await type("é".repeat(limit / 2 + 1), label);
+  await click(primary);
+  expect(params().get("session")).toBeNull();
+  expect(requests.filter(request => request.method === "POST")).toEqual([]);
+  expect(container.querySelector('.vibe-start-page [role="alert"]')?.textContent).toBe(`Message exceeds the ${limit.toLocaleString()} byte UTF-8 limit.`);
+  await type("é".repeat(limit / 2), label);
+  await click(primary);
+  expect(params().get("session")).toBeTruthy();
+  expect(posts()).toHaveLength(1);
+});
+
+
+it.each(["build", "test"] as const)("fix8 keeps multiple guest %s drafts pending under their first signed-in owner", async door => {
+  const label = door === "build" ? "What task should the agent handle?" : "Agent instructions";
+  await enterDoor(door);
+  signedInWorkspace(); await render(); await type("Account policy", label);
+  harness.user = undefined; await render(); await type("First guest policy", label);
+  signedInWorkspace(); await render();
+  harness.user = undefined; await render(); await type("Second guest policy", label);
+  signedInWorkspace(); await render();
+  expect(textarea(label)?.value).toBe("Account policy");
+  await click("Use it");
+  expect(textarea(label)?.value).toBe("First guest policy");
+  expect(container.textContent).toContain("You have text from before you signed in.");
+  await click("Use it");
+  expect(textarea(label)?.value).toBe("Second guest policy");
+  expect(container.textContent).not.toContain("You have text from before you signed in.");
+  expect(requests.filter(request => request.method !== "GET")).toEqual([]);
+});
+
+it.each(["source", "expectations", "link"] as const)("fix8 keeps recovery open when the saved replies %s does not match", async mismatch => {
+  await enterDoor("test");
+  const previous = respond;
+  respond = async (path, options) => {
+    if (!path.endsWith("/evidence")) return previous(path, options);
+    session = { ...session, revision: 2, document: { ...session.document,
+      active_evidence_id: "saved-replies", evidence_sets: [{ id: "saved-replies", label: "Recorded replies", raw: mismatch === "source" ? "Customer: Different\nAgent: No" : "Customer: Hi\nAgent: Hello", conversations: [] }],
+      artifacts: [{ id: "unconfirmed-intake", kind: "conversation_evaluation", title: "Saved tests", agent_prompt: "", blueprint: {}, accepted: true, source_message_id: "", conversation_evaluation: { evidence_set_id: mismatch === "link" ? "other-source" : "saved-replies", expectations: [{ id: "rule-1", statement: mismatch === "expectations" ? "Different rule" : "Be polite" }] } }],
+    } };
+    throw new TypeError("Intake acknowledgement lost");
+  };
+  await click("Real replies"); await type("Customer: Hi\nAgent: Hello", "Conversations"); await type("Be polite", "What a good reply must do"); await click("Save and check");
+  expect(params().get("session")).toBe(session.id);
+  expect(container.textContent).toContain("Couldn’t confirm the saved input. Reload this project to check before trying again.");
+  expect(storedImproveStart()).toMatchObject({ conversations: "Customer: Hi\nAgent: Hello", rules: "Be polite" });
+  expect(requests.filter(request => request.method === "DELETE")).toEqual([]);
+  expect(requests.filter(request => request.path === "/sessions" && request.method === "POST")).toHaveLength(1);
+  expect(container.querySelector(".vibe-improve-start")).toBeNull();
 });

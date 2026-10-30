@@ -67,6 +67,7 @@ async function firstAnswer(page: Page, flow: FlowMeter) {
   const failed = runResults(page).locator("details").filter({ has: page.locator("summary", { hasText: "Issue found" }) }).first();
   if (!(await failed.evaluate(el => (el as HTMLDetailsElement).open))) await flow.click(failed.locator("summary").first(), "open failed test");
   await expect(agentReply(page)).toBeVisible();
+  for (const label of ["We gave it", "It replied", "It should", "What needs attention"]) await expect(failed.getByText(label, { exact: true })).toBeVisible();
   await flow.mark("M1");
 }
 
@@ -104,7 +105,7 @@ test("Build reaches its first test result in 2 clicks and 1 text", async ({ page
   await expect(buildOptions(page)).toBeVisible();
   await expect(page.getByRole("button", { name: "Answer return questions", exact: true })).toBeVisible();
   await expect(switchDoorButton(page, "build")).toBeVisible();
-  expect((await census(page)).controls.mainEnabled).toBe(5);
+  expect((await census(page)).controls.mainEnabled).toBe(controlBudget["build start"]);
   await flow.decision("build start", [page.getByRole("button", { name: "Answer return questions", exact: true }), page.getByRole("button", { name: "Sort support emails", exact: true }), buildOptions(page), switchDoorButton(page, "build")]);
   await flow.fill(composer(page), description, "task");
   await expect(sendButton(page)).toBeEnabled({ timeout: 20_000 });
@@ -121,6 +122,14 @@ test("Build reaches its first test result in 2 clicks and 1 text", async ({ page
   await expect(agentReply(page)).toBeVisible();
   await flow.mark("M1");
   await finish(page, fake, flow, { clicks: 2, texts: 1, files: 0, decisions: 2 });
+  const others = buildResult(page).locator(".vibe-other-results");
+  await others.locator(":scope > summary").click();
+  const passed = others.locator(".vibe-result-row").filter({ has: page.locator("summary", { hasText: "Passed" }) }).first();
+  await passed.locator(":scope > summary").click();
+  for (const label of ["We gave it", "It replied", "It should", "Why it passed"]) await expect(passed.getByText(label, { exact: true })).toBeVisible();
+  await expect(passed.locator(".vibe-example-reply")).toBeVisible();
+  await expect(passed.locator(".vibe-example-reply")).not.toHaveText("");
+  await expect(passed.getByRole("button", { name: "Show full conversation", exact: true })).toBeVisible();
 });
 
 // The saved-instructions path to the first result. The tests and the result open by themselves.

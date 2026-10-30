@@ -137,8 +137,11 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   await firstTest.locator(":scope > summary").click();
   await expect(firstTest).toHaveJSProperty("open", true);
   for (const label of ["We gave it", "It replied", "It should"]) await expect(firstTest.getByText(label, { exact: true })).toBeVisible();
+  await expect(firstTest.getByText(/^Why it passed(?: · excerpt)?$/)).toBeVisible();
   await expect(firstTest.locator(".vibe-example-reply")).toBeVisible();
   await expect(firstTest.locator(".vibe-example-reply")).not.toHaveText("");
+  await expect(firstTest.getByRole("button", { name: "Show full conversation", exact: true })).toBeVisible();
+  await expect(firstTest.getByRole("button", { name: "Change expected result", exact: true })).toBeVisible();
   await firstTest.getByRole("button", { name: "Grade the same replies again", exact: true }).click();
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   const regraded = await finished(page, sessionID!, beforeRegrade.session.operations.length);

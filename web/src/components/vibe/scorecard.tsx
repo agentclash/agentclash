@@ -161,7 +161,7 @@ export function VibeScorecard({
     {baseline && comparable && !rechecked && <p>{fixed} fixed · {regressions} new failures. Same tests and grading model.</p>}
     {incomplete && <p>{unresolvedCount ? `${unresolvedCount} unresolved. ` : ""}Some grading is incomplete. Completed results are kept.</p>}
     <section aria-label="Individual results" className="space-y-6">
-    {leading && <div className="vibe-panel" aria-label="Leading finding"><CaseEvidence key={findingID} summary={leading} onAsk={onAskCase ? () => onAskCase(leading.case_key) : undefined} onDispute={onDispute} onRegrade={onRegrade} concise exampleFirst evidenceVersion={evidenceVersion} load={loadEvidence} origin={operation.source?.kind} defaultOpen busy={busy} /></div>}
+    {leading && <div className="vibe-panel" aria-label="Leading finding"><CaseEvidence key={findingID} summary={leading} onAsk={onAskCase ? () => onAskCase(leading.case_key) : undefined} onDispute={onDispute} onRegrade={onRegrade} concise evidenceVersion={evidenceVersion} load={loadEvidence} origin={operation.source?.kind} defaultOpen busy={busy} /></div>}
     {score.failed > 0 ? <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={() => onImprove()}><Lightbulb aria-hidden="true" />Suggest a fix</VibeButton>
       : onSave && !incomplete && !stopped ? <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={onSave}><Bookmark aria-hidden="true" />Keep these tests</VibeButton>
       : <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={onRetest}>Run tests again</VibeButton>}
