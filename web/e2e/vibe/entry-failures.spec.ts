@@ -271,3 +271,59 @@ for (const kind of ["malformed", "oversized"] as const) test(`fix8 Settings ${ki
   expect(fake.errors).toEqual([]);
   expect(fake.unknown).toEqual([]);
 });
+
+
+for (const limit of [65536, 32768]) test(`fix9 instructions reserve the test request within the ${limit} byte limit`, async ({ page }) => {
+  const fake = await fakeVibe(page, { ...signedIn, config: { ...signedIn.config, signed_in_limits: { max_message_bytes: limit } } });
+  await signIn(page);
+  await workspacePicker(page).selectOption({ label: "Returns team" });
+  await chooseDoor(page, "improve"); await doorReady(page, "improve");
+  const room = limit - 71;
+  const largest = "é".repeat(Math.floor(room / 2)) + "x";
+  await startComposer(page, "improve").fill(largest + "x");
+  await improvePrimary(page, "instructions").click();
+  await expect(page.locator('.vibe-improve-start [role="alert"]')).toHaveText(`Agent instructions can use up to ${room.toLocaleString()} UTF-8 bytes. The test request uses 71 of the ${limit.toLocaleString()} byte limit.`);
+  expect(writes(fake)).toEqual([]);
+  await expect(page.locator(".vibe-project-header")).toHaveCount(0);
+  await startComposer(page, "improve").fill(largest);
+  await improvePrimary(page, "instructions").click();
+  await expect(page.getByRole("tab", { name: "Tests", exact: true })).toHaveAttribute("aria-selected", "true");
+  const messages = fake.posts.filter(post => post.path.endsWith("/messages"));
+  expect(messages).toHaveLength(1);
+  expect(Buffer.byteLength(messages[0].body.content, "utf8")).toBe(limit);
+  expect(fake.sessions.size).toBe(1);
+  expect(fake.errors).toEqual([]); expect(fake.unknown).toEqual([]);
+});
+
+test("fix9 large pending reply drafts survive reloads and resolve one at a time", async ({ page }) => {
+  const fake = await fakeVibe(page, signedIn);
+  await signIn(page);
+  await workspacePicker(page).selectOption({ label: "Returns team" });
+  await chooseDoor(page, "improve"); await doorReady(page, "improve");
+  await improveSource(page, "recorded");
+  await repliesInput(page).fill("Existing account replies");
+  await rulesInput(page).fill("Keep the account rule");
+  for (let index = 0; index < 5; index++) {
+    await page.evaluate(index => {
+      const project = "start:guest:test";
+      const value = JSON.stringify({ mode: "replies", conversations: `${index}:` + "x".repeat(240 * 1024), rules: `Guest rule ${index}` });
+      sessionStorage.setItem(`vibe-build-drafts:${project}`, JSON.stringify({ version: 2, composers: {}, editors: { [`${project}:start:editor:inputs`]: { artifact: "start", source: "", value } } }));
+    }, index);
+    await page.reload(); await doorReady(page, "improve");
+    await expect(repliesInput(page)).toHaveValue("Existing account replies");
+    await expect(page.getByRole("button", { name: "Use it", exact: true })).toBeVisible();
+  }
+  await page.reload(); await doorReady(page, "improve");
+  let current = "Existing account replies", rule = "Keep the account rule";
+  for (let index = 0; index < 5; index++) {
+    await page.getByRole("button", { name: index % 2 ? "Discard" : "Use it", exact: true }).click();
+    if (!(index % 2)) { current = `${index}:` + "x".repeat(240 * 1024); rule = `Guest rule ${index}`; }
+    await expect(repliesInput(page)).toHaveValue(current);
+    await expect(rulesInput(page)).toHaveValue(rule);
+    await page.reload(); await doorReady(page, "improve");
+    await expect(repliesInput(page)).toHaveValue(current);
+    await expect(page.getByRole("button", { name: "Use it", exact: true })).toHaveCount(index < 4 ? 1 : 0);
+  }
+  expect(writes(fake)).toEqual([]);
+  expect(fake.errors).toEqual([]); expect(fake.unknown).toEqual([]);
+});

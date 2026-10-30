@@ -2974,7 +2974,13 @@ async function enterDoor(door: "build" | "test") {
       return json(session, 201);
     }
     if (path.endsWith("/build-quote")) return json({ id: "quote", max_calls: 9, cases: 3, max_cost_nano_usd: 250000000, request: { content: JSON.parse(String(options.body)).content, models: defaultModels }, expires_at: new Date(Date.now() + 600000).toISOString() });
-    if (path.endsWith("/messages")) return json({ id: "admitted", kind: "message", state: "QUEUED", models: defaultModels, results: [] }, 202);
+    if (path.endsWith("/messages")) {
+      const content = JSON.parse(String(options.body)).content || "";
+      const config = await (await respond("/config", {})).json();
+      const limit = (harness.user ? config.signed_in_limits : config.anonymous_limits)?.max_message_bytes || (harness.user ? 65536 : 16384);
+      if (new TextEncoder().encode(content).length > limit) return json({ error: { code: "invalid_message", message: "The message exceeds its size limit.", admission: "rejected" } }, 400);
+      return json({ id: "admitted", kind: "message", state: "QUEUED", models: defaultModels, results: [] }, 202);
+    }
     return path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
   };
   await render();
@@ -4663,7 +4669,7 @@ it.each(["malformed", "oversized"] as const)("fix8 cleans up a %s Settings impor
   expect(requests.filter(request => request.method === "DELETE")).toHaveLength(kind === "malformed" ? 1 : 0);
 });
 
-it.each([["build", false, 16384], ["test", false, 16384], ["build", true, 65536], ["test", true, 65536], ["test", true, 32768]] as const)("fix8 uses the prospective %s message limit (signed in: %s, limit: %i)", async (door, signedIn, limit) => {
+it.each([["build", false, 16384], ["test", false, 16384], ["build", true, 65536], ["test", true, 65536], ["test", true, 32768]] as const)("fix9 checks the complete prospective %s message limit (signed in: %s, limit: %i)", async (door, signedIn, limit) => {
   if (signedIn) signedInWorkspace();
   await enterDoor(door);
   const previous = respond;
@@ -4671,15 +4677,18 @@ it.each([["build", false, 16384], ["test", false, 16384], ["build", true, 65536]
   harness.authLoading = true; await render(); harness.authLoading = false; await render();
   const label = door === "build" ? "What task should the agent handle?" : "Agent instructions";
   const primary = door === "build" ? "Build and run 3 tests" : "Write 3 tests";
-  await type("é".repeat(limit / 2 + 1), label);
+  const room = limit - (door === "test" ? 71 : 0);
+  const largest = "é".repeat(Math.floor(room / 2)) + (room % 2 ? "x" : "");
+  await type(largest + "x", label);
   await click(primary);
   expect(params().get("session")).toBeNull();
-  expect(requests.filter(request => request.method === "POST")).toEqual([]);
-  expect(container.querySelector('.vibe-start-page [role="alert"]')?.textContent).toBe(`Message exceeds the ${limit.toLocaleString()} byte UTF-8 limit.`);
-  await type("é".repeat(limit / 2), label);
+  expect(requests.filter(request => request.method === "POST")).toHaveLength(0);
+  expect(container.querySelector('.vibe-start-page [role="alert"]')?.textContent).toBe(door === "test" ? `Agent instructions can use up to ${room.toLocaleString()} UTF-8 bytes. The test request uses 71 of the ${limit.toLocaleString()} byte limit.` : `Message exceeds the ${limit.toLocaleString()} byte UTF-8 limit.`);
+  await type(largest, label);
   await click(primary);
   expect(params().get("session")).toBeTruthy();
   expect(posts()).toHaveLength(1);
+  expect(new TextEncoder().encode(String(posts()[0].body.content)).length).toBe(limit);
 });
 
 
@@ -4719,4 +4728,44 @@ it.each(["source", "expectations", "link"] as const)("fix8 keeps recovery open w
   expect(requests.filter(request => request.method === "DELETE")).toEqual([]);
   expect(requests.filter(request => request.path === "/sessions" && request.method === "POST")).toHaveLength(1);
   expect(container.querySelector(".vibe-improve-start")).toBeNull();
+});
+
+
+it.each([["build", false], ["replies", false], ["replies", true]] as const)("fix9 preserves five large pending guest %s drafts across reloads and resolves each separately (legacy queue: %s)", async (kind, legacy) => {
+  const door = kind === "build" ? "build" : "test";
+  const label = kind === "build" ? "What task should the agent handle?" : "Conversations";
+  const account = "Existing account work";
+  const values = Array.from({ length: 5 }, (_, index) => `${index}:` + "x".repeat(240 * 1024));
+  await enterDoor(door);
+  const legacyValue = JSON.stringify({ mode: "replies", conversations: "Older guest reply", rules: "Keep this rule" });
+  if (legacy) sessionStorage.setItem("vibe-build-drafts:start:fixture-user:test", JSON.stringify({ version: 2, composers: {}, editors: { "start:fixture-user:test:start:editor:pending-inputs": { artifact: "start", source: "", value: JSON.stringify([legacyValue]) } } }));
+  signedInWorkspace(); await render();
+  if (kind === "replies") await click("Real replies");
+  await type(account, label);
+  for (const value of values) {
+    harness.user = undefined; await render();
+    if (kind === "replies") await click("Real replies");
+    await type(value, label);
+    signedInWorkspace(); await render();
+  }
+  if (legacy) values.unshift("Older guest reply");
+  const reload = async () => {
+    await act(async () => root.unmount()); draftMemory.clear(); root = createRoot(container); await render();
+  };
+  await reload();
+  expect(textarea(label).value === account).toBe(true);
+  expect(container.textContent).toContain("You have text from before you signed in.");
+  harness.user = { id: "other-account" }; await render();
+  expect(container.textContent).not.toContain("You have text from before you signed in.");
+  signedInWorkspace(); await render();
+  let current = account;
+  for (let index = 0; index < values.length; index++) {
+    await click(index % 2 ? "Discard" : "Use it");
+    if (!(index % 2)) current = values[index];
+    expect(textarea(label).value === current).toBe(true);
+    await reload();
+    expect(textarea(label).value === current).toBe(true);
+    expect(container.textContent?.includes("You have text from before you signed in.")).toBe(index < values.length - 1);
+  }
+  expect(requests.filter(request => request.method !== "GET")).toEqual([]);
 });

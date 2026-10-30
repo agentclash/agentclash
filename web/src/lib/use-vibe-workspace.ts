@@ -173,14 +173,25 @@ export function useVibeWorkspace() {
     let migrated = false;
     for (const [door, editor] of [["build", "brief"], ["test", "inputs"]] as const) {
       const guest = `start:guest:${door}`, account = `start:${authUserID}:${door}`;
+      const legacy = readEditorDraft(account, "start", `pending-${editor}`);
+      if (legacy) {
+        const values = pendingStartValues(legacy.value);
+        if (values.length) {
+          const all = draftMemory.get(account) || readBuildDrafts(account) || emptyDrafts();
+          const editors = { ...all.editors };
+          for (const value of values) editors[editorDraftKey(account, "start", `pending-${editor}:${crypto.randomUUID()}`)] = { ...legacy, value };
+          delete editors[editorDraftKey(account, "start", `pending-${editor}`)];
+          persistDrafts(account, { ...all, editors });
+          migrated = true;
+        }
+      }
       const row = readEditorDraft(guest, "start", editor);
       if (!row) continue;
       if (!emptyStartDraft(row, editor)) {
         const all = draftMemory.get(account) || readBuildDrafts(account) || emptyDrafts();
         const occupied = !emptyStartDraft(readEditorDraft(account, "start", editor), editor);
-        const target = occupied ? `pending-${editor}` : editor;
-        const saved = occupied ? { ...row, value: JSON.stringify([...pendingStartValues(readEditorDraft(account, "start", target)?.value), row.value]) } : row;
-        persistDrafts(account, { ...all, editors: { ...all.editors, [editorDraftKey(account, "start", target)]: saved } });
+        const target = occupied ? `pending-${editor}:${crypto.randomUUID()}` : editor;
+        persistDrafts(account, { ...all, editors: { ...all.editors, [editorDraftKey(account, "start", target)]: row } });
       }
       discardEditorDraft(guest, "start", editor, row);
       migrated = true;
@@ -192,13 +203,16 @@ export function useVibeWorkspace() {
   let startInputs: { instructions: string; model?: string; conversations: string; rules: string; chat?: string; mode?: "instructions" | "replies" | "pack" } = { instructions: "", conversations: "", rules: "" };
   try { startInputs = { ...startInputs, ...JSON.parse(startImproveDraft.value) }; } catch { /* Keep an unreadable draft in storage. */ }
   const setStartInputs = (patch: Partial<typeof startInputs>) => startImproveDraft.setValue(JSON.stringify({ ...startInputs, ...patch }));
-  const pendingStart = useVibeEditorDraft(`start:${authUserID || "guest"}:${startDoor === "build" ? "build" : "test"}`, "start", startDoor === "build" ? "pending-brief" : "pending-inputs", "", "[]");
-  const pendingStartTexts = pendingStartValues(pendingStart.value);
-  const pendingStartDraft = !!authUserID && pendingStartTexts.length > 0;
+  const pendingStartProject = `start:${authUserID || "guest"}:${startDoor === "build" ? "build" : "test"}`;
+  const pendingStartPrefix = editorDraftKey(pendingStartProject, "start", startDoor === "build" ? "pending-brief:" : "pending-inputs:");
+  const pendingStartRows = Object.entries((draftMemory.get(pendingStartProject) || readBuildDrafts(pendingStartProject))?.editors || {}).filter(([key, row]) => key.startsWith(pendingStartPrefix) && row.artifact === "start");
+  const pendingStartDraft = !!authUserID && pendingStartRows.length > 0;
   function resolvePendingStart(use: boolean) {
-    if (use) (startDoor === "build" ? startBuildDraft : startImproveDraft).setValue(pendingStartTexts[0]);
-    if (pendingStartTexts.length > 1) pendingStart.setValue(JSON.stringify(pendingStartTexts.slice(1)));
-    else pendingStart.discard();
+    if (!authUserID || !pendingStartRows.length) return;
+    const [key, row] = pendingStartRows[0];
+    if (use) (startDoor === "build" ? startBuildDraft : startImproveDraft).setValue(row.value);
+    discardEditorDraft(pendingStartProject, "start", key.slice(editorDraftKey(pendingStartProject, "start", "").length), row);
+    renderStartDrafts(value => value + 1);
   }
   const hiddenStartDraft = useVibeEditorDraft(`start:${authUserID || "guest"}:hidden`, "start", "projects", "", "[]");
   let hiddenStarts: string[] = [];
@@ -695,7 +709,13 @@ export function useVibeWorkspace() {
   async function startProject(door: "build" | "test", first: StartInput): Promise<void> {
     if (starting.current || pending || !config || requestedSessionID) return;
     if (first.kind !== "pack" && !(first.kind === "replies" ? first.conversations.trim() && first.rules.trim() : first.text.trim())) return;
-    if (first.kind !== "pack" && first.kind !== "replies" && new TextEncoder().encode(first.text).length > messageLimit) { setStartError(`Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.`); return; }
+    const instructionsPrefix = "Write three tests for these instructions.\n\nAgent instructions to test:\n";
+    const content = first.kind === "pack" || first.kind === "replies" ? "" : first.kind === "instructions" ? instructionsPrefix + first.text : first.text;
+    if (new TextEncoder().encode(content).length > messageLimit) {
+      const prefixBytes = new TextEncoder().encode(instructionsPrefix).length;
+      setStartError(first.kind === "instructions" ? `Agent instructions can use up to ${Math.max(0, messageLimit - prefixBytes).toLocaleString()} UTF-8 bytes. The test request uses ${prefixBytes} of the ${messageLimit.toLocaleString()} byte limit.` : `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.`);
+      return;
+    }
     if ((first.kind === "build" || first.kind === "instructions" || first.kind === "chat") && !entryAvailable) { setStartError(unavailableReason); return; }
     if (first.kind === "build" && !authUserID && (config as StartConfig).guest_trial?.initial_build_used) { setStartError("Your free build is used. Sign in to continue."); return; }
     if (first.kind === "build" && !authUserID && (config as StartConfig).guest_trial?.build_in_progress) { setStartError("Another build is using your free trial. Try again when it finishes."); return; }
@@ -748,7 +768,6 @@ export function useVibeWorkspace() {
       } else {
         const quote = first.kind === "build" ? await vibeFetch<BuildQuote>(`/sessions/${id}/build-quote`, auth, { method: "POST", body: JSON.stringify({ content: first.text, models: requestModels }) }) : undefined;
         if (!ownsScope(scope)) throw Error("The active account or project changed.");
-        const content = first.kind !== "instructions" ? first.text : `Write three tests for these instructions.\n\nAgent instructions to test:\n${first.text}`;
         const following: Follow = { view: "agent", target: door === "build" ? "results" : "tests", ...(quote ? { cycle: quote.id } : {}) };
         firstRequest = {
           scope: { actor: scope.actor, sessionID: id }, sessionID: id,

@@ -157,6 +157,11 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
       return json({ error: { code: "quote_expired", message: "Use Build and run 3 tests, or Retry your saved request." } }, 409);
     if (p.endsWith("/build-quote")) return json({ id: `build-quote-${posts.length}`, max_calls: 9, cases: 3, max_cost_nano_usd: 250_000_000, request: { content: body.content, models: body.models, ...(body.inputs ? { inputs: body.inputs } : {}), ...(body.adopt_rules ? { adopt_rules: body.adopt_rules } : {}) }, expires_at: new Date(Date.now() + 600_000).toISOString() });
     if (p.endsWith("/run-quote")) return json({ id: `run-quote-${posts.length}`, max_cost_nano_usd: 120_000_000, cases: 3, calls: 6, expires_at: new Date(Date.now() + 600_000).toISOString() });
+    if (p.endsWith("/messages")) {
+      const limits = options.config?.[options.signedIn ? "signed_in_limits" : "anonymous_limits"] as { max_message_bytes?: number } | undefined;
+      const limit = limits?.max_message_bytes || (options.signedIn ? 65536 : 16384);
+      if (Buffer.byteLength(body.content || "", "utf8") > limit) return json({ error: { code: "invalid_message", message: "The message exceeds its size limit.", admission: "rejected" } }, 400);
+    }
     if (p.endsWith("/messages") && body.kind === "message") {
       const op = running(body.client_id, "message", { max_cost_nano_usd: 1, conversation_decision: { intent: "prepare_tests", source_message_id: body.client_id }, progress: { phase: "preparing", completed_cases: 0, total_cases: 3, phase_elapsed_ms: 2_000 } } as any);
       s.operations.push(op);
