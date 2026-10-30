@@ -60,8 +60,8 @@ type PendingSubmission = {
   retryOperationID?: string;
   uncertain: boolean;
   follow?: Follow;
-  // "Help me fix this" also follows an explicitly retried request.
-  fix?: boolean;
+  // The original fix message also owns an explicitly retried request.
+  fix?: string;
 };
 type SubmissionRecovery = {
   attempt?: object;
@@ -183,7 +183,7 @@ export function useVibeWorkspace() {
   const currentView = useRef(view); currentView.current = view;
   const currentPane = useRef(navigation.view); currentPane.current = navigation.view;
   const follow = useRef<Follow & { sessionID: string; run?: string } | undefined>(undefined);
-  const fixRequest = useRef<{ sessionID: string; operation: string } | undefined>(undefined);
+  const fixRequest = useRef<{ sessionID: string; operation: string; message: string } | undefined>(undefined);
   const retryFixRequest = useRef<typeof fixRequest.current>(undefined);
   const [arrival, setArrival] = useState<{ sessionID: string; target: Follow["target"]; run?: string }>();
   // A8: an admitted run is in the URL before the session snapshot contains it.
@@ -782,7 +782,7 @@ export function useVibeWorkspace() {
         composerVersion,
         trialKey,
         follow: followed,
-        fix: kind === "message" && extra.purpose === "suggest_change",
+        fix: kind === "message" && extra.purpose === "suggest_change" ? clientID : undefined,
         body: JSON.stringify({
           client_id: clientID,
           revision: v.revision,
@@ -907,7 +907,7 @@ export function useVibeWorkspace() {
       }
       const run = requestKind === "check" || requestKind === "retest";
       if (request.follow) { follow.current = { ...request.follow, sessionID: request.sessionID, ...(run ? { run: admitted.id } : {}) }; setArrival(undefined); }
-      if (request.fix) { fixRequest.current = { sessionID: request.sessionID, operation: admitted.id }; retryFixRequest.current = fixRequest.current; }
+      if (request.fix) { fixRequest.current = { sessionID: request.sessionID, operation: admitted.id, message: request.fix }; retryFixRequest.current = fixRequest.current; }
       if (run) {
         admittedRuns.current.add(admitted.id);
         navigation.update({ run: admitted.id }, "replace");
@@ -965,7 +965,7 @@ export function useVibeWorkspace() {
     if (!request?.uncertain || !visibleRecovery() || !request.retryOperationID || session?.id !== request.sessionID) return;
     const admitted = session.operations.find(operation => operation.retry_of_operation_id === request.retryOperationID);
     if (!admitted) return;
-    if (request.fix) { fixRequest.current = { sessionID: request.sessionID, operation: admitted.id }; retryFixRequest.current = fixRequest.current; }
+    if (request.fix) { fixRequest.current = { sessionID: request.sessionID, operation: admitted.id, message: request.fix }; retryFixRequest.current = fixRequest.current; }
     if (JSON.parse(request.body).assistant_model)
       setModels(current => ({ ...current, assistant: admitted.models.assistant }));
     submission.current = null;
@@ -1051,8 +1051,14 @@ export function useVibeWorkspace() {
       if (operation) operations.push(operation);
       session.operations.filter(o => o.retry_of_operation_id === id).forEach(o => operationIDs.add(o.id));
     }
+    // Legacy replies have no operation ID. Only the submitted message's turn can own that fix.
+    const messages = session.document.messages;
+    const sourceIndex = messages.findIndex(m => m.role === "user" && m.id === fix.message);
+    const nextUserIndex = messages.findIndex((m, i) => i > sourceIndex && m.role === "user");
+    const replies = sourceIndex < 0 ? [] : messages.slice(sourceIndex + 1, nextUserIndex < 0 ? undefined : nextUserIndex);
     const proposed = operations.map(o => o.completion_receipt?.artifact_id).find(Boolean) ||
-      session.document.messages.find(m => m.role === "assistant" && m.artifact_id && operations.some(o => o.id === m.operation_id))?.artifact_id;
+      messages.find(m => m.role === "assistant" && m.artifact_id && operations.some(o => o.id === m.operation_id))?.artifact_id ||
+      replies.find(m => m.role === "assistant" && !m.operation_id && m.artifact_id && session.document.artifacts.some(a => a.id === m.artifact_id && a.proposal_message_id === m.id))?.artifact_id;
     if (!proposed || !session.document.artifacts.some(a => a.id === proposed)) {
       if (operations.length && operations.every(o => terminal(o.state))) fixRequest.current = undefined;
       return;
@@ -1100,7 +1106,7 @@ export function useVibeWorkspace() {
       scope: scopeRef.current,
       sessionID: session.id,
       retryOperationID: id,
-      fix: retryFixRequest.current?.sessionID === session.id && retryFixRequest.current.operation === id,
+      fix: retryFixRequest.current?.sessionID === session.id && retryFixRequest.current.operation === id ? retryFixRequest.current.message : undefined,
       body: JSON.stringify({ client_id: crypto.randomUUID(), revision: session.revision, ...(assistantModel ? { assistant_model: assistantModel } : {}) }),
       composer: null,
       composerVersion: composerEdits.current,

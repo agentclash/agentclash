@@ -3275,7 +3275,68 @@ it.each([["build", "Apply change and rerun"], ["test", "Improve and rerun"]] as 
   expect(posts()).toHaveLength(1);
 });
 
-it.each(["RUNNING", "FAILED", "CANCELLED"])("does not select another Guide operation's child as the %s fix", async state => {
+it.each(["reload", "later snapshot"])("selects the core journey's message-linked fix without an operation in the snapshot (%s)", async delivery => {
+  readyTests();
+  const v1 = { ...session.document.artifacts[0], source_message_id: "original-brief" };
+  const baseline = run(runID, v1.id);
+  session.document.artifacts = [v1];
+  session.operations = [baseline];
+  harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);
+  const proposal = { ...v1, id: "fixed", parent_id: v1.id, accepted: false, proposal_message_id: "reply-fixed", agent_prompt: "Original policy. Never promise a refund." };
+  let messages: Session["document"]["messages"] = [];
+  const initial = respond;
+  respond = async (path, options) => {
+    if (path.endsWith("/messages")) {
+      const body = JSON.parse(String(options.body));
+      messages = [
+        { id: body.client_id, role: "user", content: body.content },
+        { id: "reply-fixed", role: "assistant", content: "Review the change, then test it.", artifact_id: proposal.id },
+      ];
+      if (delivery === "reload") session = { ...session, revision: 2, event_cursor: 2, document: { ...session.document, artifacts: [v1, proposal], messages } };
+      return json({ id: "prepare-fixed", state: "COMPLETED" }, 202);
+    }
+    return initial(path, options);
+  };
+  await render(); await click("Help me fix this");
+  if (delivery === "later snapshot") await publish([baseline], { artifacts: [v1, proposal], messages });
+  expect(posts()[0].body).toMatchObject({ kind: "message", purpose: "suggest_change", baseline_id: runID });
+  expect(session.operations.map(o => o.id)).toEqual([runID]);
+  expect(proposal.source_message_id).toBe("original-brief");
+  expect(params().get("agent")).toBe("fixed");
+  expect(params().get("run")).toBeNull();
+  expect(params().get("view")).toBe("agent");
+  expect([...container.querySelectorAll("h2")].some(h => h.textContent === "Ready to test the fix")).toBe(true);
+  expect(container.querySelector('[data-proposal-id="fixed"] [aria-label="Instruction changes"]')?.textContent).toContain("Never promise a refund.");
+  expect(button("Improve and rerun")).toBeTruthy();
+  expect(posts()).toHaveLength(1);
+});
+
+it.each(["next user", "foreign operation"])("does not select a legacy proposal from another request (%s)", async mode => {
+  readyTests();
+  const baseline = run(runID, "artifact-one");
+  session.operations = [baseline];
+  harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);
+  const initial = respond;
+  respond = async (path, options) => path.endsWith("/messages") ? json({ id: "prepare-fixed", state: "COMPLETED" }, 202) : initial(path, options);
+  await render(); await click("Help me fix this");
+  const selected = params().get("agent");
+  const v1 = session.document.artifacts[0];
+  await publish([baseline], {
+    artifacts: [v1, { ...v1, id: "unrelated", parent_id: v1.id, proposal_message_id: "reply-unrelated", agent_prompt: "An unrelated edit." }],
+    messages: [
+      { id: String(posts()[0].body.client_id), role: "user", content: "Suggest a focused fix." },
+      { id: "no-fix", role: "assistant", content: "I have no change to suggest." },
+      ...(mode === "next user" ? [{ id: "another-request", role: "user" as const, content: "Edit my instructions." }] : []),
+      { id: "reply-unrelated", role: "assistant", content: "Here is another edit.", artifact_id: "unrelated", ...(mode === "foreign operation" ? { operation_id: "another-operation" } : {}) },
+    ],
+  });
+  expect(params().get("agent")).toBe(selected);
+  expect(params().get("run")).toBe(runID);
+  expect(button("Review latest version")).toBeTruthy();
+  expect(posts()).toHaveLength(1);
+});
+
+it.each(["RUNNING", "FAILED", "CANCELLED", "COMPLETED"])("does not select another Guide operation's child as the %s fix", async state => {
   readyTests("build");
   session.operations = [run(runID, "artifact-one")];
   harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);
