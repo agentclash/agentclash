@@ -2985,6 +2985,39 @@ it("keeps a user who left the run's view where they are and offers See the resul
   expect(document.activeElement?.closest('[aria-label="Run results"]')).not.toBeNull();
 });
 
+it.each(["link", "history"])("announces a new run while Results shows an older run and clears arrival through %s", async selection => {
+  readyTests();
+  const oldID = "a8000000-0000-4000-8000-000000000001";
+  const old = run(oldID, "artifact-one");
+  session.operations = [old];
+  harness.params = new URLSearchParams(`session=${session.id}&view=tests`);
+  admitRunLater();
+  await render();
+  await click("Run again"); await click("Start run");
+  await publish([old, run(runID, "artifact-one", { state: "RUNNING", scorecard: undefined, results: [] })]);
+  await click("Results");
+  const selectRun = (id: string) => act(async () => {
+    const history = container.querySelector<HTMLSelectElement>('[aria-label="Result history"]')!;
+    history.value = id; history.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await selectRun(oldID);
+  await publish([old, run(runID, "artifact-one")]); await frame();
+  expect(params().get("view")).toBe("results");
+  expect(params().get("run")).toBe(oldID);
+  expect(announced()).toContain("Your run finished.");
+  expect(container.querySelector(".vibe-arrival")?.textContent).toContain("Your run finished.");
+  expect(resultLinks()).toHaveLength(1);
+  await publish(session.operations);
+  expect(resultLinks()).toHaveLength(1);
+  if (selection === "link") await click("See the result");
+  else await selectRun(runID);
+  expect(params().get("run")).toBe(runID);
+  expect(container.querySelector(".vibe-arrival")).toBeNull();
+  expect(announced()).not.toContain("Your run finished.");
+  await selectRun(oldID);
+  expect(resultLinks()).toHaveLength(0);
+});
+
 it("does not move a project behind the new-project chooser when its run ends, and offers the result on return", async () => {
   readyTests();
   harness.params = new URLSearchParams(`session=${session.id}&view=tests`);
@@ -3134,6 +3167,55 @@ it("opens Results with focus on its heading when the first Build run ends and th
   expect(container.querySelector(".vibe-arrival")).toBeNull();
 });
 
+it("does not announce an arrival when Results already shows the first Build run", async () => {
+  const build = await firstBuildRunning();
+  await click("Results");
+  expect(container.querySelector<HTMLSelectElement>('[aria-label="Result history"]')?.value).toBe(runID);
+  expect(params().get("run")).toBeNull();
+  await build.finish(); await frame();
+  expect(params().get("view")).toBe("results");
+  expect(container.querySelector(".vibe-arrival")).toBeNull();
+  expect(announced()).not.toContain("Your run finished.");
+});
+
+it.each([false, true])("delivers the first Build result after preparation fails and retries in the same cycle (typing: %s)", async typing => {
+  await enterDoor("build");
+  await type("Answer shop return questions within 30 days.");
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 450)); });
+  await click("Send message");
+  const cycle = String(posts()[0].body.cycle_id);
+  const failed: Operation = { id: "admitted", kind: "message", state: "FAILED", billing: "RELEASED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [], retryable: true, error: { code: "provider_error", message: "Provider failed. Your request is saved." } };
+  await publish([failed], { messages: [{ id: String(posts()[0].body.client_id), role: "user", content: String(posts()[0].body.content), operation_id: failed.id }], build: { cycle_id: cycle, phase: "error", clarifications_used: 0, error: failed.error } });
+  expect(container.textContent).toContain("Provider failed. Your request is saved.");
+  const retry = { ...failed, id: "retry-build", retry_of_operation_id: failed.id, state: "RUNNING", retryable: false, error: undefined };
+  const before = respond;
+  respond = async (path, options) => path.endsWith("/retry") ? json(retry, 202) : before(path, options);
+  await click("Retry");
+  await publish([failed, retry], { build: { cycle_id: cycle, phase: "preparing", clarifications_used: 0 } });
+  const v1 = { ...scenarioAgent(), kind: "test_suite", accepted: true };
+  const build = (phase: string) => ({ artifacts: [v1], build: { cycle_id: cycle, phase, clarifications_used: 0, artifact_id: v1.id, check_id: runID } });
+  await publish([failed, { ...retry, state: "COMPLETED" }, run(runID, v1.id, { state: "RUNNING", scorecard: undefined, results: [] })], build("checking"));
+  const trial = document.getElementById("vibe-trial-message") as HTMLTextAreaElement;
+  if (typing) {
+    act(() => trial.focus());
+    await type("Keep this draft while retry finishes", "Message your agent");
+  } else act(() => button("Change agent instructions").focus());
+  await publish([failed, { ...retry, state: "COMPLETED" }, run(runID, v1.id)], build("results")); await frame();
+  if (typing) {
+    expect(params().get("view")).toBe("agent");
+    expect(document.activeElement).toBe(trial);
+    expect(trial.value).toBe("Keep this draft while retry finishes");
+    expect(announced()).toContain("Your run finished.");
+    await click("See the result");
+  }
+  expect(params().get("view")).toBe("results");
+  expect(params().get("run")).toBe(runID);
+  expect(container.querySelector('[aria-label="Run results"]')).not.toBeNull();
+  if (!typing) expect(document.activeElement?.closest('[aria-label="Run results"]')).not.toBeNull();
+  expect(posts()).toHaveLength(1);
+  expect(requests.filter(request => request.path.endsWith("/retry"))).toHaveLength(1);
+});
+
 it("still reports a run that is missing from the project as unavailable (A8)", async () => {
   readyTests();
   harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);
@@ -3190,6 +3272,62 @@ it.each([["build", "Apply change and rerun"], ["test", "Improve and rerun"]] as 
   await click(rerun);
   expect(requests.find(r => r.path.endsWith("/run-quote"))?.body).toMatchObject({ kind: "retest", baseline_id: runID, artifact_id: "artifact-two" });
   expect(dialogNames()).toEqual(["Run the same tests again"]);
+  expect(posts()).toHaveLength(1);
+});
+
+it.each(["RUNNING", "FAILED", "CANCELLED"])("does not select another Guide operation's child as the %s fix", async state => {
+  readyTests("build");
+  session.operations = [run(runID, "artifact-one")];
+  harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);
+  const fix: Operation = { id: "fix-request", kind: "message", state: "RUNNING", billing: "RESERVED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] };
+  respond = async path => path === "/config" ? twoDoorConfig() : path.endsWith("/messages") ? json(fix, 202) : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render(); await click("Help me fix this");
+  const selected = params().get("agent");
+  const v1 = session.document.artifacts[0];
+  const operations = [...session.operations, { ...fix, state }];
+  await publish(operations);
+  const edit: Operation = { ...fix, id: "unrelated-edit", state: "COMPLETED", completion_receipt: { action: "edit_tests", source_message_id: "edit-request", artifact_id: "edited-tests", case_count: 3, changed_case_count: 1 } };
+  await publish([...operations, edit], {
+    artifacts: [v1, { ...v1, id: "edited-tests", parent_id: v1.id, source_message_id: "edit-request", agent_prompt: "Instructions from another request." }],
+    messages: [{ id: "edit-reply", role: "assistant", content: "Updated your tests.", operation_id: edit.id, artifact_id: "edited-tests" }],
+  });
+  expect(params().get("view")).toBe("agent");
+  expect(params().get("agent")).toBe(selected);
+  expect(button("Review latest version")).toBeTruthy();
+  expect(posts()).toHaveLength(1);
+});
+
+it.each(["nested", "explicit", "lost acknowledgment"])("selects the fix from its retry after the original fails (%s)", async mode => {
+  const explicit = mode !== "nested";
+  readyTests("build");
+  const baseline = run(runID, "artifact-one");
+  session.operations = [baseline];
+  harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);
+  const fix: Operation = { id: "fix-request", kind: "message", state: "RUNNING", billing: "RESERVED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] };
+  const retry = { ...fix, id: "fix-retry", retry_of_operation_id: fix.id };
+  const nested = { ...retry, id: "fix-retry-again", retry_of_operation_id: retry.id };
+  respond = async path => {
+    if (path.endsWith("/retry")) {
+      if (mode === "lost acknowledgment") throw new TypeError("Lost retry acknowledgment");
+      return json(retry, 202);
+    }
+    return path === "/config" ? twoDoorConfig() : path.endsWith("/messages") ? json(fix, 202) : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  };
+  await render(); await click("Help me fix this");
+  const failed = { ...fix, state: "FAILED", retryable: true, error: { code: "provider_error", message: "Provider failed. Retry your fix." } };
+  const messages: Session["document"]["messages"] = [{ id: "fix-message", role: "user", content: "Suggest a focused fix.", operation_id: fix.id }];
+  if (explicit) {
+    await publish([baseline, failed], { messages });
+    await click("Guide"); await click("Retry"); await click("Close Guide");
+    await publish([baseline, failed, retry], { messages });
+  } else await publish([baseline, failed, { ...retry, state: "FAILED" }, nested], { messages });
+  const proposal = { ...session.document.artifacts[0], id: "retried-fix", parent_id: "artifact-one", agent_prompt: "Never promise a refund." };
+  const completed = { ...(explicit ? retry : nested), state: "COMPLETED", completion_receipt: { action: "suggest_change", source_message_id: "fix-message", artifact_id: proposal.id, case_count: 3, changed_case_count: 0 } };
+  await publish([...session.operations.filter(o => o.id !== completed.id), completed], { artifacts: [...session.document.artifacts, proposal] });
+  expect(params().get("view")).toBe("agent");
+  expect(params().get("agent")).toBe(proposal.id);
+  expect(params().get("run")).toBeNull();
+  expect(container.querySelector<HTMLDetailsElement>('[aria-label="Suggested change"] details')?.open).toBe(true);
   expect(posts()).toHaveLength(1);
 });
 
