@@ -1,6 +1,6 @@
 import {expect,test,type Page} from "@playwright/test";
 import {writeFile} from "node:fs/promises";
-import {chooseDoor,doorButton,doorReady,improveSource,sourceButton} from "../vibe/entry-model";
+import {chooseDoor,doorButton,doorReady,improveSource,sendButton,showView,sourceButton} from "../vibe/entry-model";
 const api=`http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const description="Answer shop return questions. Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund. Prepare exactly three tests.";
 test.beforeEach(async({request})=>{
@@ -20,10 +20,13 @@ async function openGuide(page: Page) {
  const button=page.getByRole('button',{name:'Guide',exact:true});
  if(await button.getAttribute('aria-pressed')!=='true') await button.click();
 }
-async function openView(page: Page, name: 'Agent'|'Tests'|'Results') {
+// PR 1: Results and Tests can open by themselves; showView clicks the tab only when needed.
+// Pass the finished run ("Run 1") when the wanted view differs from the one that opens by itself,
+// and opensResults for the first Build run, so the helper clicks only after Results opened.
+async function openView(page: Page, name: 'Agent'|'Tests'|'Results', finished?: string, options?: {opensResults?: boolean}) {
  const sheet=page.getByRole('dialog').filter({has:page.getByRole('button',{name:'Close Guide',exact:true})});
  if(await sheet.isVisible()) await sheet.getByRole('button',{name:'Close Guide',exact:true}).click();
- await page.getByRole('tab',{name,exact:true}).click();
+ await showView(page,name,finished,options);
 }
 // Occasional result actions share one "More actions" disclosure below the scorecard.
 async function openMoreActions(page: Page) {
@@ -31,6 +34,8 @@ async function openMoreActions(page: Page) {
  await expect(more.locator(':scope > summary')).toBeVisible();
  if(!(await more.evaluate(el=>(el as HTMLDetailsElement).open))) await more.locator(':scope > summary').click();
 }
+// A new version from an ordinary Guide message stays unselected until "Review latest version".
+// Guide's fix after "Help me fix this" selects itself: its test asserts that and does not use this helper.
 async function reviewLatest(page: Page) {
  const latest=(await evidence(page)).session.document.artifacts.at(-1).id;
  if(new URL(page.url()).searchParams.get('agent')!==latest) await page.getByRole('button',{name:'Review latest version',exact:true}).click();
@@ -47,7 +52,7 @@ test("clear Build goes through real worker to three results, scoped export and i
  await chooseDoor(page,'build');
  await expect(page.locator('[data-evaluation-id][aria-current="page"]')).toBeVisible();
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
- const send=page.getByRole('button',{name:'Send message',exact:true});
+ const send=sendButton(page);
  await expect(send).toHaveText(/Build and run 3 tests/);
  await expect(send).toBeEnabled();
  await send.click();
@@ -57,10 +62,12 @@ test("clear Build goes through real worker to three results, scoped export and i
  expect(v.session.operations.filter((o:{kind:string})=>o.kind==='check')).toHaveLength(1);
  expect(v.session.operations.at(-1).results).toHaveLength(3);
  expect(v.calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(3);
- await expect(page.getByRole('tab',{name:'Agent',exact:true})).toHaveAttribute('aria-selected','true');
+ // PR 1: the first Build result opens Results by itself.
+ await expect(page.locator('.vibe-project-header')).toContainText('Run 1: Completed');
+ await expect(page.locator('[role="tab"][aria-selected="true"]')).toHaveText(/^Results$/);
  await openGuide(page);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
- await openView(page,'Results');
+ await openView(page,'Results','Run 1',{opensResults:true});
  await expect(page.getByRole('article',{name:'Run results'})).toContainText('3 passed · 0 failed');
  await expect(page.getByLabel('Result history').locator('option:not([disabled])')).toHaveCount(1);
  await expect(page.locator('.vibe-project-header')).toContainText('Run 1: Completed');
@@ -100,7 +107,7 @@ test("mobile loading exposes Stop and cancelling does not restart the initial ch
  await page.request.post(`${api}/__fixture/control`,{data:{target_delay_ms:3000}});
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
- await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();
+ await expect(sendButton(page)).toBeEnabled();
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('checking');
  await openGuide(page);
@@ -118,7 +125,7 @@ test("mobile loading exposes Stop and cancelling does not restart the initial ch
 test("one question then unknown produces a labelled sample, with no invented requirements",async({page},info)=>{
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill('Build me a returns agent for Shopify');
- await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();
+ await expect(sendButton(page)).toBeEnabled();
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect(page.getByRole('button',{name:'Use a sample policy'})).toBeVisible();
  await page.reload();await page.getByRole('button',{name:'Use a sample policy'}).click();
@@ -126,7 +133,7 @@ test("one question then unknown produces a labelled sample, with no invented req
  const v=await evidence(page);expect(v.session.document.build.clarifications_used).toBe(1);
  expect(v.session.document.artifacts[0].sample).toBe('returns');
  expect(v.session.document.policies || []).toHaveLength(0);
- await openView(page,'Agent');
+ await openView(page,'Agent','Run 1',{opensResults:true});
  await expect(page.getByRole('region',{name:'Version scope'})).toContainText('Your real policy is still unspecified.');
  await page.screenshot({path:info.outputPath('sample-results.png'),fullPage:true});
 });
@@ -147,7 +154,7 @@ test("switching while a run completes keeps messages and draft attached to the s
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
  const first=new URL(page.url()).searchParams.get('session');
- await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();
+ await expect(sendButton(page)).toBeEnabled();
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('checking');
  await page.getByRole('button',{name:'New project',exact:true}).click();
@@ -170,7 +177,7 @@ test("imported tests need independent target instructions and keep identical gra
  // Seed a real compiled pack through Build, then import its tests in another evaluation.
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
- await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
+ await expect(sendButton(page)).toBeEnabled();await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('results');
  const original=(await evidence(page)).session.document.artifacts[0].blueprint;
  await page.getByRole('button',{name:'New project',exact:true}).click();await chooseDoor(page,'improve');
@@ -210,7 +217,7 @@ test("imported tests need independent target instructions and keep identical gra
 test("tougher situations prepare and run one authorized batch while preserving the baseline",async({page})=>{
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
- await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
+ await expect(sendButton(page)).toBeEnabled();await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('results');
  const before=await evidence(page), baseline=before.session.document.artifacts.at(-1);
  await openView(page,'Results');
@@ -239,7 +246,7 @@ test("tougher situations prepare and run one authorized batch while preserving t
 test("Build keeps the failed reply, proposed fix and authorized same-test improvement in project history",async({page},info)=>{
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
  const composer=page.getByRole('textbox',{name:'Message Vibe Evals'});
- await composer.fill(description);await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();await composer.press('Enter');
+ await composer.fill(description);await expect(sendButton(page)).toBeEnabled();await composer.press('Enter');
  await expect.poll(async()=> (await evidence(page)).session.document.build?.phase).toBe('results');
  const original=await evidence(page), target=original.session.document.artifacts.at(-1);
  // A controlled instruction edit yields a real failed target reply through the
@@ -261,14 +268,20 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  await expect.poll(async()=> (await evidence(page)).session.document.artifacts.length).toBe(3);
  const proposed=await evidence(page);
  expect(proposed.session.operations.filter((o:{kind:string})=>o.kind==='check'||o.kind==='retest')).toHaveLength(2);
- await reviewLatest(page);
- const changes=page.getByLabel('Instruction changes',{exact:true}).last();
- const changeSummary=page.locator('summary').filter({hasText:'Review the instruction change'});
- if(!(await changeSummary.evaluate(node=>(node.parentElement as HTMLDetailsElement).open))) await changeSummary.click();
+ // PR 1: Guide's fix selects itself on the Agent view, with its instruction diff open and the rerun
+ // next to it. No click comes before these checks, so a missing selection or a closed diff fails here.
+ const fix=proposed.session.document.artifacts.at(-1).id;
+ await expect.poll(()=>new URL(page.url()).searchParams.get('agent')).toBe(fix);
+ await expect(page.getByRole('tab',{name:'Agent',exact:true})).toHaveAttribute('aria-selected','true');
+ await expect(page.getByRole('button',{name:'Review latest version',exact:true})).toHaveCount(0);
+ const suggested=page.getByRole('region',{name:'Suggested change',exact:true});
+ await expect(suggested.locator(':scope > details')).toHaveJSProperty('open',true);
+ const changes=suggested.getByLabel('Instruction changes',{exact:true});
  await expect(changes).toBeVisible();
- await expect(page.getByLabel('Instruction changes',{exact:true}).last()).toContainText('Only unopened');
- await openView(page,'Tests');
- await page.getByRole('button',{name:'Apply change and rerun',exact:true}).click();
+ await expect(changes).toContainText('Only unopened');
+ const rerun=suggested.getByRole('button',{name:'Apply change and rerun',exact:true});
+ await expect(rerun).toBeVisible();
+ await rerun.click();
  await expect(page.getByRole('dialog')).toContainText('up to');
  await expect(page.getByRole('dialog')).toContainText('3 tests ·');
  await page.getByRole('button',{name:'Start run',exact:true}).click();
@@ -300,7 +313,7 @@ test("sample continuation retains its prototype through harder requests, chat, r
   await expect.poll(()=>new URL(page.url()).searchParams.get('session')).toBeTruthy();
   const before=(await evidence(page)).session.operations.length;
   if((await evidence(page)).session.document.artifacts.length) await openGuide(page);
-  await composer.fill(text);await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();await composer.press('Enter');
+  await composer.fill(text);await expect(sendButton(page).or(page.getByRole('button',{name:'Send message',exact:true}))).toBeEnabled();await composer.press('Enter');
   await expect.poll(async()=>{const x=(await evidence(page)).session;return x.operations.length>before && ['COMPLETED','FAILED'].includes(x.operations.at(-1)?.state)?x.operations.at(-1)?.state:'waiting';},{timeout:60000}).toBe('COMPLETED');
  }
  await send('I waste time sorting emails. Separate spam from customer messages.');
@@ -308,6 +321,7 @@ test("sample continuation retains its prototype through harder requests, chat, r
  await expect.poll(async()=>(await evidence(page)).session.document.build.phase,{timeout:60000}).toBe('results');
  let v=await evidence(page);const base=v.session.document.artifacts[0];
  expect(base.sample_basis.sample_basis).toBe('email_sorting');
+ await openView(page,'Agent','Run 1',{opensResults:true});
  await expect(page.getByRole('region',{name:'Version scope'})).toContainText('Sample demonstration');
  await page.reload();await send('harden these tests bro');
  v=await evidence(page);const harder=v.session.document.artifacts.at(-1);

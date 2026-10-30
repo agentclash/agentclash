@@ -69,6 +69,8 @@
 .vibe-results-more-body > .vibe-build-next-actions { margin-block: 0; padding-block: 0; border-top: 0; }
 .vibe-results-more-body > details { margin-top: 0; }
 .vibe-empty-state { display: grid; justify-items: start; gap: var(--vibe-space-3); }
+/* A finished run or test preparation that the user left: a link to its view. */
+.vibe-arrival { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-bottom: var(--vibe-space-4); }
 /* One progress strip at the top of the content, or of the Guide sheet below 1280px. It stays in view
    while the content scrolls, and holds the only Stop and Approve controls. Idle, it is an empty live region. */
 .vibe-progress-strip[data-active] { position: sticky; top: calc(-1 * clamp(var(--vibe-space-4), 3dvh, var(--vibe-space-6))); z-index: 2; display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-areas: "copy actions" "bar bar" "note note"; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-block-end: var(--vibe-space-5); padding: var(--vibe-space-3) var(--vibe-space-4); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); background: var(--vibe-surface); }
