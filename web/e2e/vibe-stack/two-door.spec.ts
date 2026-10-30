@@ -1,6 +1,6 @@
 import {expect,test,type Page} from "@playwright/test";
 import {writeFile} from "node:fs/promises";
-import {chooseDoor,doorButton,doorReady,improveSource,sendButton,showView,sourceButton} from "../vibe/entry-model";
+import {composer as entryComposer,chooseDoor,doorButton,doorReady,improveSource,sendButton,showView,sourceButton} from "../vibe/entry-model";
 const api=`http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const description="Answer shop return questions. Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund. Prepare exactly three tests.";
 test.beforeEach(async({request})=>{
@@ -55,7 +55,7 @@ test("clear Build goes through real worker to three results, scoped export and i
  await chooseDoor(page,'build');
  await expect(page.locator('[data-evaluation-id][aria-current="page"]')).toHaveCount(0);
  expect(new URL(page.url()).searchParams.get('session')).toBeNull();
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
+ await entryComposer(page).fill(description);
  const send=sendButton(page);
  await expect(send).toHaveText(/Build and run 3 tests/);
  await expect(send).toBeEnabled();
@@ -110,9 +110,9 @@ test("mobile loading exposes Stop and cancelling does not restart the initial ch
  await page.setViewportSize({width:390,height:844});
  await page.request.post(`${api}/__fixture/control`,{data:{target_delay_ms:3000}});
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
+ await entryComposer(page).fill(description);
  await expect(sendButton(page)).toBeEnabled();
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
+ await entryComposer(page).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('checking');
  await openGuide(page);
  await expect(page.locator('.vibe-status-shine')).toBeVisible();
@@ -128,9 +128,9 @@ test("mobile loading exposes Stop and cancelling does not restart the initial ch
 });
 test("one question then unknown produces a labelled sample, with no invented requirements",async({page},info)=>{
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill('Build me a returns agent for Shopify');
+ await entryComposer(page).fill('Build me a returns agent for Shopify');
  await expect(sendButton(page)).toBeEnabled();
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
+ await entryComposer(page).press('Enter');
  await expect(page.getByRole('button',{name:'Use a sample policy'})).toBeVisible();
  await page.reload();await page.getByRole('button',{name:'Use a sample policy'}).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;},{timeout:90000}).toBe('results');
@@ -157,10 +157,10 @@ test("entry and context controls fit desktop and mobile",async({page},info)=>{
 test("switching while a run completes keeps messages and draft attached to the selected evaluation",async({page})=>{
  await page.request.post(`${api}/__fixture/control`,{data:{target_delay_ms:2000}});
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
+ await entryComposer(page).fill(description);
  expect(new URL(page.url()).searchParams.get('session')).toBeNull();
  await expect(sendButton(page)).toBeEnabled();
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
+ await entryComposer(page).press('Enter');
  await expect(page).toHaveURL(/session=/);
  const first=new URL(page.url()).searchParams.get('session');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('checking');
@@ -183,8 +183,8 @@ test("switching while a run completes keeps messages and draft attached to the s
 test("imported tests need independent target instructions and keep identical grading through a fix",async({page},info)=>{
  // Seed a real compiled pack through Build, then import its tests in another evaluation.
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
- await expect(sendButton(page)).toBeEnabled();await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
+ await entryComposer(page).fill(description);
+ await expect(sendButton(page)).toBeEnabled();await entryComposer(page).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('results');
  const original=(await evidence(page)).session.document.artifacts[0].blueprint;
  await page.getByRole('button',{name:'New project',exact:true}).click();await chooseDoor(page,'improve');
@@ -223,8 +223,8 @@ test("imported tests need independent target instructions and keep identical gra
 
 test("tougher situations prepare and run one authorized batch while preserving the baseline",async({page})=>{
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
- await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
- await expect(sendButton(page)).toBeEnabled();await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
+ await entryComposer(page).fill(description);
+ await expect(sendButton(page)).toBeEnabled();await entryComposer(page).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('results');
  const before=await evidence(page), baseline=before.session.document.artifacts.at(-1);
  await openView(page,'Results');
@@ -252,7 +252,7 @@ test("tougher situations prepare and run one authorized batch while preserving t
 
 test("Build keeps the failed reply, proposed fix and authorized same-test improvement in project history",async({page},info)=>{
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
- const composer=page.getByRole('textbox',{name:'Message Vibe Evals'});
+ const composer=entryComposer(page);
  await composer.fill(description);await expect(sendButton(page)).toBeEnabled();await composer.press('Enter');
  await expect.poll(async()=> (await evidence(page)).session.document.build?.phase).toBe('results');
  const original=await evidence(page), target=original.session.document.artifacts.at(-1);
@@ -310,7 +310,7 @@ test("sample continuation retains its prototype through harder requests, chat, r
  await page.goto('/vibe-evals'); await chooseDoor(page,'build');
  expect(new URL(page.url()).searchParams.get('session')).toBeNull();
  const callsBefore=0; // beforeEach resets the fixture journal; navigation makes no calls.
- const composer=page.getByRole('textbox',{name:'Message Vibe Evals',exact:true});
+ const composer=entryComposer(page);
  async function send(text:string){
   const state=new URL(page.url()).searchParams.get('session') ? await evidence(page) : undefined;
   const before=state?.session.operations.length || 0;

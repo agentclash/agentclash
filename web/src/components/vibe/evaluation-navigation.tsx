@@ -52,6 +52,7 @@ export function evaluationIdentity(session: Session) {
 
 type Props = {
   actorScope?: string;
+  signInReturnPath?: string;
   archiveMode?: "exclude" | "only" | "all";
   onArchiveMode?: (mode: "exclude" | "only" | "all") => void;
   onMetadata?: (target: Session, patch: { title?: string; archived?: boolean }) => Promise<boolean>;
@@ -427,7 +428,7 @@ export function EvaluationNavigation(p: Props) {
   if (guest && !hasProjects && !filtered && !search) return <div className="vibe-shell vibe-shell-empty"><div className="vibe-main">
     {p.children(null)}
     <CollectionNotice collection="projects" guest status={p.listStatus} retry={p.onRetryList} />
-    <header className="vibe-entry-topbar"><div className="vibe-entry-brand"><ClashMark className="size-7" tone="current" /><span>Vibe Evals</span></div><nav aria-label="Entry navigation"><div className="vibe-entry-projects">{toggle}</div><Link href="/docs/vibe-evals">Help</Link><Link href={`/auth/login?returnTo=${encodeURIComponent("/vibe-evals")}`}>Sign in</Link></nav></header>
+    <header className="vibe-entry-topbar"><div className="vibe-entry-brand"><ClashMark className="size-7" tone="current" /><span>Vibe Evals</span></div><nav aria-label="Entry navigation"><div className="vibe-entry-projects">{toggle}</div><Link href="/docs/vibe-evals">Help</Link><Link href={`/auth/login?returnTo=${encodeURIComponent(p.signInReturnPath || "/vibe-evals")}`}>Sign in</Link></nav></header>
   </div></div>;
   return (
     <div className="vibe-shell" data-collapsed={collapsed}>

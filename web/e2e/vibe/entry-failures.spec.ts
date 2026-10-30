@@ -230,3 +230,18 @@ test.describe("H11 Back from an Improve source panel keeps the drafts", () => {
     expect(fake.errors).toEqual([]);
   });
 });
+
+for (const door of ["build", "improve"] as const) test(`a committed ${door} first message survives a lost acknowledgement without a second operation`, async ({ page }) => {
+  const fake = await fakeVibe(page, { loseFirstMessageAck: true });
+  await page.goto("/vibe-evals"); await entryReady(page); await chooseDoor(page, door); await doorReady(page, door);
+  await startComposer(page, door).fill(door === "build" ? description : instructions);
+  await (door === "build" ? sendButton(page) : improvePrimary(page, "instructions")).click();
+  await expect(page.locator(".vibe-project-header")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry submission", exact: true })).toHaveCount(0);
+  if (door === "build") await expect(page.locator(".vibe-project-header")).toContainText("Run 1: Completed", { timeout: 30_000 });
+  else await expect(page.getByRole("tab", { name: "Tests", exact: true })).toHaveAttribute("aria-selected", "true");
+  expect(fake.posts.filter(post => post.method === "DELETE")).toEqual([]);
+  expect(fake.posts.filter(post => post.path === "/sessions")).toHaveLength(1);
+  expect(fake.posts.filter(post => post.path.endsWith("/messages") && post.body.kind === "message")).toHaveLength(1);
+  expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
+});

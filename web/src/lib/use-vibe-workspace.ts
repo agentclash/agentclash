@@ -15,7 +15,7 @@ import { reportBase, type SDKReport } from "./vibe-reports";
 import { useVibeExport } from "./use-vibe-export";
 import {pinVibeReturn} from "./vibe-keep";
 import { useVibeSaving } from "@/lib/use-vibe-saving";
-import { readEditorDraft, discardEditorDraft, type EditorDraft } from "@/lib/vibe-build-drafts";
+import { readEditorDraft, discardEditorDraft, draftMemory, readBuildDrafts, emptyDrafts, persistDrafts, editorDraftKey, type EditorDraft } from "@/lib/vibe-build-drafts";
 import { useVibeEditorDraft } from "./use-vibe-editor-draft";
 import { useVibeDrafts } from "@/lib/use-vibe-drafts";
 import { useVibeNavigation, type VibePane } from "@/lib/use-vibe-navigation";
@@ -63,6 +63,7 @@ type PendingSubmission = {
   trialKey?: string;
   retryOperationID?: string;
   uncertain: boolean;
+  startDraft?: { kind: "build" | "instructions"; value: string };
   follow?: Follow;
   // "Help me fix this": the tested version and the versions that existed before the request.
   fix?: { from?: string; known: string[] };
@@ -76,6 +77,14 @@ type SubmissionRecovery = {
   error: string;
 };
 const recoveryKey = (scope: RequestScope) => JSON.stringify([scope.actor, scope.sessionID]);
+function clearStartDraft(request: PendingSubmission) {
+  if (!request.startDraft) return;
+  const project = `start:${request.scope.actor}:${request.startDraft.kind === "build" ? "build" : "test"}`;
+  const editor = request.startDraft.kind === "build" ? "brief" : "inputs";
+  const row = readEditorDraft(project, "start", editor);
+  if (row?.value === request.startDraft.value) discardEditorDraft(project, "start", editor, row);
+}
+
 
 
 export function useVibeWorkspace() {
@@ -111,6 +120,20 @@ export function useVibeWorkspace() {
   }, [session, navigation.thread, authUserID]);
   const discardedContextIDs = useRef(new Set<string>());
   const startDoor = !requestedSessionID && (navigation.start === "build" || navigation.start === "improve") ? navigation.start : undefined;
+  const [, renderStartDrafts] = useState(0);
+  useEffect(() => {
+    if (!authUserID || authLoading) return;
+    let migrated = false;
+    for (const [door, editor] of [["build", "brief"], ["test", "inputs"]] as const) {
+      const guest = `start:guest:${door}`, account = `start:${authUserID}:${door}`;
+      const row = readEditorDraft(guest, "start", editor);
+      if (!row || readEditorDraft(account, "start", editor)) continue;
+      const all = draftMemory.get(account) || readBuildDrafts(account) || emptyDrafts();
+      if (persistDrafts(account, { ...all, editors: { ...all.editors, [editorDraftKey(account, "start", editor)]: row } })) discardEditorDraft(guest, "start", editor, row);
+      migrated = true;
+    }
+    if (migrated) renderStartDrafts(value => value + 1);
+  }, [authUserID, authLoading]);
   const startBuildDraft = useVibeEditorDraft(`start:${authUserID || "guest"}:build`, "start", "brief", "", "");
   const startImproveDraft = useVibeEditorDraft(`start:${authUserID || "guest"}:test`, "start", "inputs", "", "{}");
   let startInputs: { instructions: string; model?: string; conversations: string; rules: string; mode?: "instructions" | "replies" | "pack" } = { instructions: "", conversations: "", rules: "" };
@@ -617,10 +640,11 @@ export function useVibeWorkspace() {
     const clientID = crypto.randomUUID();
     const rawTitle = first.kind === "pack" ? first.file.name.replace(/\.[^.]+$/, "") : first.kind === "replies" ? "Recorded replies" : first.text.trim().split(/(?<=[.!?])\s|\n/)[0];
     const title = Array.from(rawTitle.replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").trim()).slice(0, 60).join("");
-    const requestModels = { ...config.defaults, ...(first.kind === "instructions" && first.model ? { target: first.model } : {}) };
+    const requestModels = { ...models, ...(first.kind === "instructions" && first.model ? { target: first.model } : {}) };
     starting.current = true; setPending(true); setStartError("");
     let auth: string | undefined;
     let admitted = false;
+    let firstRequest: PendingSubmission | undefined;
     let createdRevision: number | undefined;
     try {
       auth = await token();
@@ -638,10 +662,27 @@ export function useVibeWorkspace() {
         const quote = first.kind === "build" ? await vibeFetch<BuildQuote>(`/sessions/${id}/build-quote`, auth, { method: "POST", body: JSON.stringify({ content: first.text, models: requestModels }) }) : undefined;
         if (!ownsScope(scope)) throw Error("The active account or project changed.");
         const content = first.kind === "build" ? first.text : `Write three tests for these instructions.\n\nAgent instructions to test:\n${first.text}`;
-        const operation = await vibeFetch<Operation>(`/sessions/${id}/messages`, auth, { method: "POST", body: JSON.stringify({ client_id: clientID, revision: next.revision, kind: "message", evaluation_first: true, test_journey: true, content, models: requestModels, ...(first.kind === "instructions" ? { instructions: first.text } : {}), ...(quote ? { cycle_id: quote.id } : {}) }) });
-        admitted = true;
-        next = { ...next, operations: [...next.operations.filter(item => item.id !== operation.id), operation], document: { ...next.document, messages: [...next.document.messages, { id: clientID, role: "user", content, operation_id: operation.id }] } };
-        follow.current = { sessionID: id, view: "agent", target: door === "build" ? "results" : "tests", ...(quote ? { cycle: quote.id } : {}) };
+        const following: Follow = { view: "agent", target: door === "build" ? "results" : "tests", ...(quote ? { cycle: quote.id } : {}) };
+        firstRequest = {
+          scope: { actor: scope.actor, sessionID: id }, sessionID: id,
+          body: JSON.stringify({ client_id: clientID, revision: next.revision, kind: "message", evaluation_first: true, test_journey: true, content, models: requestModels, ...(first.kind === "instructions" ? { instructions: first.text } : {}), ...(quote ? { cycle_id: quote.id } : {}) }),
+          composer: null, composerVersion: 0, uncertain: false, follow: following,
+          startDraft: { kind: first.kind, value: first.kind === "build" ? first.text : startImproveDraft.value },
+        };
+        try {
+          const operation = await vibeFetch<Operation>(`/sessions/${id}/messages`, auth, { method: "POST", body: firstRequest.body });
+          admitted = true;
+          next = { ...next, operations: [...next.operations.filter(item => item.id !== operation.id), operation], document: { ...next.document, messages: [...next.document.messages, { id: clientID, role: "user", content, operation_id: operation.id }] } };
+        } catch (e) {
+          if (recoverRequest(firstRequest, e) === "rejected") throw e;
+          // A missing response is not a rejection. Read the receipt before offering an exact replay.
+          admitted = true;
+          try { next = await vibeFetch<Session>(`/sessions/${id}`, auth); } catch { /* Keep the project visible while its receipt is unavailable. */ }
+          const message = next.document.messages.find(item => item.id === clientID && item.role === "user");
+          if (message && next.operations.some(item => item.id === message.operation_id)) firstRequest.uncertain = false;
+          else recoveries.current.set(recoveryKey(firstRequest.scope), { submission: { current: firstRequest }, sending: { current: false }, retry: { current: undefined }, message: { id: clientID, content }, error: (e as Error).message });
+        }
+        follow.current = { sessionID: id, ...following };
       }
       admitted = true;
       if (!ownsScope(scope)) return;
@@ -653,8 +694,10 @@ export function useVibeWorkspace() {
       // adoptContext restores remembered views; first intake always lands on its tests.
       if (first.kind === "pack" || first.kind === "replies") navigation.update({ view: "tests", artifact: next.document.artifacts.at(-1)?.id || null }, "replace");
       setContexts(old => [next, ...old.filter(row => row.id !== id)]);
-      if (first.kind === "build") startBuildDraft.discard(first.text);
-      if (first.kind === "instructions" || first.kind === "replies") startImproveDraft.discard(startImproveDraft.value);
+      if (!firstRequest?.uncertain) {
+        if (first.kind === "build") startBuildDraft.discard(first.text);
+        if (first.kind === "instructions" || first.kind === "replies") startImproveDraft.discard(startImproveDraft.value);
+      }
     } catch (e) {
       if (!admitted) {
         discardedContextIDs.current.add(id);
@@ -677,6 +720,7 @@ export function useVibeWorkspace() {
     finally { if (ownsScope(scope)) { setPending(false); } }
   }
   function openNewEvaluation() {
+    if (startDoor) backFromStart();
     setImportError(undefined);
     setNewEvaluation(true);
   }
@@ -922,6 +966,7 @@ export function useVibeWorkspace() {
       }
       if (!ownsRequest()) return;
       submission.current = null;
+      clearStartDraft(request);
       retryUnsentMessage.current = undefined;
       setError("");
       if (!visibleRecovery()) { setPendingMessage(undefined); return; }
@@ -977,6 +1022,16 @@ export function useVibeWorkspace() {
       }
     }
   }
+
+
+  useEffect(() => {
+    const request = submission.current;
+    if (!request?.uncertain || !request.startDraft || !visibleRecovery() || session?.id !== request.sessionID) return;
+    const clientID = JSON.parse(request.body).client_id;
+    const message = session.document.messages.find(item => item.id === clientID && item.role === "user");
+    if (!message || !session.operations.some(item => item.id === message.operation_id)) return;
+    submission.current = null; clearStartDraft(request); setPendingMessage(undefined); setUncertain(false); setError("");
+  }, [session, uncertain, submission, visibleRecovery, setPendingMessage, setError]);
 
   // Reconcile an SSE acknowledgement that can arrive before the POST returns.
   useEffect(() => {

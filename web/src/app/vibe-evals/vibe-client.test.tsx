@@ -117,7 +117,7 @@ async function openChecks() {
 }
 async function type(value: string, label = "Message Vibe Evals") {
   const input = container.querySelector<HTMLTextAreaElement>(
-    `textarea[aria-label="${label}"]`,
+    `textarea[aria-label="${label}"]${label === "Message Vibe Evals" ? ", #vibe-start-build" : ""}`,
   )!;
   await act(async () => {
     Object.getOwnPropertyDescriptor(
@@ -129,7 +129,7 @@ async function type(value: string, label = "Message Vibe Evals") {
 }
 function composer() {
   return container.querySelector<HTMLTextAreaElement>(
-    'textarea[aria-label="Message Vibe Evals"]',
+    'textarea[aria-label="Message Vibe Evals"], #vibe-start-build',
   )!;
 }
 function posts() {
@@ -268,7 +268,7 @@ it.each(["setup", "agent"].flatMap(mode => [false, true].map(touch => ({ mode, t
       mode === "agent" ? "Message your agent" : "Message Vibe Evals";
     await type("I bought an unopened item 10 days ago.", label);
     const input = container.querySelector<HTMLTextAreaElement>(
-      `textarea[aria-label="${label}"]`,
+      `textarea[aria-label="${label}"]${label === "Message Vibe Evals" ? ", #vibe-start-build" : ""}`,
     )!;
     for (const options of [
       { shiftKey: true },
@@ -3313,7 +3313,7 @@ it("PR4 submits instructions and model with a title limited to 60 characters", a
 it("PR4 cleans up a failed first message and retains the door draft across a switch", async () => {
   await enterDoor("build");
   const previous = respond;
-  respond = async (path, options) => path.endsWith("/messages") ? json({ error: { code: "unavailable", message: "Try again later" } }, 503) : previous(path, options);
+  respond = async (path, options) => path.endsWith("/messages") ? json({ error: { code: "unavailable", message: "Try again later", admission: "rejected" } }, 503) : previous(path, options);
   await type("Keep this Build draft."); await click("Build and run 3 tests");
   expect(requests.some(r => r.method === "DELETE" && r.path === `/sessions/${session.id}`)).toBe(true);
   expect(params().get("session")).toBeNull();
@@ -3394,7 +3394,7 @@ it("PR4 keeps Projects available from the compact top bar on entry and start", a
 it("PR4 hides a failed first input after reload when server cleanup is unavailable", async () => {
   await enterDoor("build");
   const previous = respond;
-  respond = async (path, options) => path.endsWith("/messages") || options.method === "DELETE" ? json({ error: { code: "unavailable", message: "Try again" } }, 503) : path === "/sessions" && options.method !== "POST" ? json([session]) : previous(path, options);
+  respond = async (path, options) => path.endsWith("/messages") || options.method === "DELETE" ? json({ error: { code: "unavailable", message: "Try again", admission: "rejected" } }, 503) : path === "/sessions" && options.method !== "POST" ? json([session]) : previous(path, options);
   await type("Keep this failed brief."); await click("Build and run 3 tests");
   expect(container.querySelector(".vibe-project-header")).toBeNull();
   await act(async () => root.unmount()); root = createRoot(container); await render();
@@ -3522,7 +3522,7 @@ it("PR4 round2 restores the chosen workspace and failed Build draft after auth r
   signedInWorkspace();
   harness.me.mockResolvedValue({ organizations: [{ role: "org_admin", workspaces: [{ id: "workspace-one", name: "One" }, { id: "workspace-two", name: "Two" }] }] });
   const previous = respond;
-  respond = async (path, options) => path.endsWith("/messages") ? json({ error: { code: "insufficient_credits", message: "This workspace has no AI credits." } }, 402) : previous(path, options);
+  respond = async (path, options) => path.endsWith("/messages") ? json({ error: { code: "insufficient_credits", message: "This workspace has no AI credits.", admission: "rejected" } }, 402) : previous(path, options);
   await render(); await click("Back");
   const picker = container.querySelector<HTMLSelectElement>('[aria-label="Workspace for new projects"]')!;
   await act(async () => { picker.value = "workspace-two"; picker.dispatchEvent(new Event("change", { bubbles: true })); });
@@ -3554,4 +3554,136 @@ it("PR4 round2 blocks both doors when refreshing previously loaded config fails"
   expect(buttonByDoor("build").disabled).toBe(true);
   expect(buttonByDoor("test").disabled).toBe(true);
   expect(requests.filter(r => r.method !== "GET")).toEqual([]);
+});
+
+it.each(["build", "test"] as const)("PR4 round4 recovers a committed %s first message after its acknowledgement is lost", async door => {
+  await enterDoor(door);
+  const previous = respond;
+  respond = async (path, options) => {
+    if (path.endsWith("/messages")) {
+      const body = JSON.parse(String(options.body));
+      const operation = { id: "first-committed", kind: "message", state: "QUEUED", models: body.models, results: [] } as Operation;
+      session = { ...session, revision: 2, event_cursor: 2, operations: [operation], document: { ...session.document, messages: [{ id: body.client_id, role: "user", content: body.content, operation_id: operation.id }] } };
+      throw new TypeError("Connection closed after commit");
+    }
+    return previous(path, options);
+  };
+  await type("Keep one paid operation.", door === "build" ? "Message Vibe Evals" : "Agent instructions to test");
+  await click(door === "build" ? "Build and run 3 tests" : "Prepare tests");
+  expect(requests.filter(r => r.method === "DELETE")).toEqual([]);
+  expect(params().get("session")).toBe(session.id);
+  expect(container.querySelector(".vibe-project-header")).not.toBeNull();
+  expect(container.textContent).toContain("Keep one paid operation.");
+  expect(container.textContent).not.toContain("Retry submission");
+  expect(posts()).toHaveLength(1);
+});
+
+it("PR4 round4 keeps an uncertain first request visible and replays the exact body after a later rejection", async () => {
+  await enterDoor("build");
+  const previous = respond;
+  let attempts = 0, lost = false;
+  respond = async (path, options) => {
+    if (path.endsWith("/messages")) {
+      attempts++;
+      if (attempts === 1) {
+        lost = true;
+        const body = JSON.parse(String(options.body));
+        session = { ...session, revision: 2, event_cursor: 2, operations: [{ id: "first-committed", kind: "message", state: "QUEUED", models: body.models, results: [] } as Operation], document: { ...session.document, messages: [{ id: body.client_id, role: "user", content: body.content, operation_id: "first-committed" }] } };
+        throw new TypeError("Connection closed after commit");
+      }
+      if (attempts === 2) return json({ error: { code: "unavailable", message: "Retry unavailable", admission: "rejected" } }, 503);
+      lost = false;
+      return json({ id: "first-committed", kind: "message", state: "QUEUED", models: defaultModels, results: [] }, 202);
+    }
+    if (lost && path === `/sessions/${session.id}` && !options.method) throw new TypeError("Receipt read offline");
+    return previous(path, options);
+  };
+  await type("Keep this request identity."); await click("Build and run 3 tests");
+  expect(requests.filter(r => r.method === "DELETE")).toEqual([]);
+  expect(params().get("session")).toBe(session.id);
+  expect(container.querySelector(".vibe-project-header")).not.toBeNull();
+  await click("Retry submission");
+  expect(container.textContent).toContain("Retry submission");
+  await click("Retry submission");
+  expect(posts()).toHaveLength(3);
+  expect(posts()[1]).toEqual(posts()[0]); expect(posts()[2]).toEqual(posts()[0]);
+  expect(requests.filter(r => r.path === "/sessions" && r.method === "POST")).toHaveLength(1);
+  expect(requests.filter(r => r.method === "DELETE")).toEqual([]);
+  expect(container.textContent).not.toContain("Retry submission");
+});
+
+it.each(["build", "test"] as const)("PR4 round4 preserves the guest %s draft through sign-in and reload", async door => {
+  await enterDoor(door);
+  await type("Guest text survives sign-in.", door === "build" ? "Message Vibe Evals" : "Agent instructions to test");
+  signedInWorkspace(); await render();
+  expect(door === "build" ? composer().value : container.querySelector<HTMLTextAreaElement>("#vibe-instructions-source")?.value).toBe("Guest text survives sign-in.");
+  await act(async () => root.unmount()); draftMemory.clear(); root = createRoot(container); await render();
+  expect(door === "build" ? composer().value : container.querySelector<HTMLTextAreaElement>("#vibe-instructions-source")?.value).toBe("Guest text survives sign-in.");
+  expect(requests.filter(r => r.method !== "GET")).toEqual([]);
+});
+
+it.each(["build", "test"] as const)("PR4 round4 signs in back to the selected %s start", async door => {
+  await enterDoor(door);
+  const link = container.querySelector<HTMLAnchorElement>('.vibe-entry-topbar a[href*="auth/login"]')!;
+  expect(new URL(link.href).searchParams.get("returnTo")).toBe(`/vibe-evals?start=${door === "build" ? "build" : "improve"}`);
+});
+
+it("PR4 round4 uses Settings models for Build quotes and retries", async () => {
+  await enterDoor("build"); signedInWorkspace();
+  const previous = respond;
+  let quotes = 0;
+  respond = async (path, options) => {
+    if (path === "/config") return json({ ...(await twoDoorConfig().json()), models: [...new Set(Object.values(defaultModels)), "approved/other"].map(id => ({ id, name: id })) });
+    if (path.endsWith("/build-quote") && ++quotes === 1) return json({ error: { code: "cost_limit", message: "Choose cheaper models." } }, 400);
+    return previous(path, options);
+  };
+  await render(); await type("Use my chosen model.");
+  await click("Build and run 3 tests");
+  expect(container.textContent).toContain("Choose cheaper models.");
+  await selectModel("Assistant", "approved/other");
+  await click("Build and run 3 tests");
+  const quote = requests.filter(r => r.path.endsWith("/build-quote")).at(-1)!;
+  expect(quote.body.models).toEqual({ ...defaultModels, assistant: "approved/other" });
+  expect(posts()[0].body.models).toEqual({ ...defaultModels, assistant: "approved/other" });
+});
+
+it.each([["build", "drawer"], ["test", "drawer"], ["build", "sidebar"], ["test", "sidebar"]] as const)("PR4 round4 opens New project from the uncommitted %s start via %s", async (door, surface) => {
+  await enterDoor(door);
+  await type("Keep the uncommitted input.", door === "build" ? "Message Vibe Evals" : "Agent instructions to test");
+  if (surface === "sidebar") { signedInWorkspace(); await render(); }
+  else await click("Open projects");
+  await click("New project");
+  expect(visibleH1().map(h => h.textContent)).toEqual(["What would you like to evaluate?"]);
+  expect(params().get("start")).toBeNull();
+  await act(async () => buttonByDoor(door).click());
+  expect(door === "build" ? composer().value : container.querySelector<HTMLTextAreaElement>("#vibe-instructions-source")?.value).toBe("Keep the uncommitted input.");
+  expect(requests.filter(r => r.method !== "GET")).toEqual([]);
+});
+
+it("PR4 round4 names the Build input with its visible label", async () => {
+  await enterDoor("build");
+  const input = container.querySelector<HTMLTextAreaElement>("#vibe-start-build")!;
+  const label = container.querySelector<HTMLLabelElement>('label[for="vibe-start-build"]')!;
+  expect(input.getAttribute("aria-label") || label.textContent).toContain("Describe the task");
+});
+
+it("PR4 round4 reconciles an uncertain first request from a later saved snapshot without resending", async () => {
+  await enterDoor("build");
+  const previous = respond;
+  respond = async (path, options) => {
+    if (path.endsWith("/messages")) throw new TypeError("Lost first response");
+    return previous(path, options);
+  };
+  await type("Save one first request."); await click("Build and run 3 tests");
+  expect(requests.filter(r => r.method === "DELETE")).toEqual([]);
+  expect(button("Retry submission").disabled).toBe(false);
+  const body = posts()[0].body;
+  const operation = { id: "saved-first", kind: "message", state: "QUEUED", models: defaultModels, results: [] } as Operation;
+  await publish([operation], { messages: [{ id: String(body.client_id), role: "user", content: String(body.content), operation_id: operation.id }] });
+  expect(container.textContent).not.toContain("Retry submission");
+  expect(container.textContent).not.toContain("Lost first response");
+  expect(posts()).toHaveLength(1);
+  expect(requests.filter(r => r.path === "/sessions" && r.method === "POST")).toHaveLength(1);
+  await click("New project"); await act(async () => buttonByDoor("build").click());
+  expect(composer().value).toBe("");
 });

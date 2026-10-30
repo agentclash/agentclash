@@ -303,3 +303,16 @@ for (const door of ["build", "improve"] as const) test(`${door} start follows br
   expect(fake.posts).toEqual([]);
   expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
 });
+
+for (const door of ["build", "improve"] as const) test(`New project returns from the ${door} start without losing its draft`, async ({ page }) => {
+  const fake = await fakeVibe(page);
+  await page.goto("/vibe-evals"); await entryReady(page); await doorButton(page, door).click(); await doorReady(page, door);
+  const input = startComposer(page, door);
+  await input.fill("Keep this uncommitted draft.");
+  await expect(page.locator('.vibe-entry-topbar').getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute("href", `/auth/login?returnTo=${encodeURIComponent(`/vibe-evals?start=${door}`)}`);
+  await page.getByRole("button", { name: "Open projects", exact: true }).click();
+  await page.getByRole("dialog", { name: "Your projects" }).getByRole("button", { name: "New project", exact: true }).click();
+  await entryReady(page); await expect(page.getByRole("dialog")).toHaveCount(0);
+  await doorButton(page, door).click(); await doorReady(page, door); await expect(input).toHaveValue("Keep this uncommitted draft.");
+  expect(fake.posts).toEqual([]); expect(fake.errors).toEqual([]);
+});

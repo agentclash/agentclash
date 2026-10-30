@@ -14,7 +14,7 @@ export function BuildStart(p: { draft: string; onDraft(text: string): void; pric
     <h1 ref={heading} tabIndex={-1}>What would you like help with?</h1>
     <p>Describe the task and what a good reply should do.</p>
     {p.trialUsed ? <p>Your free build is used. <Link className="underline" href={`/auth/login?returnTo=${encodeURIComponent("/vibe-evals?start=build")}`}>Sign in to continue.</Link></p> : <form className="vibe-start-form" onSubmit={e => { e.preventDefault(); send(); }}>
-      <label htmlFor="vibe-start-build">Describe the task</label><textarea id="vibe-start-build" aria-label="Message Vibe Evals" rows={5} value={p.draft} onChange={e => p.onDraft(e.target.value)} onKeyDown={e => sendOnEnter(e, send)} />
+      <label htmlFor="vibe-start-build">Describe the task</label><textarea id="vibe-start-build" rows={5} value={p.draft} onChange={e => p.onDraft(e.target.value)} onKeyDown={e => sendOnEnter(e, send)} />
       <p>{p.price.kind === "trial" ? "One free build" : p.price.kind === "ceiling" ? `Up to ${dollars(p.price.nanoUSD)}` : "Cost is checked when you start."}</p>
       <VibeButton type="submit" variant="primary" disabled={p.busy || !!p.blockedReason || !p.draft.trim()}>{p.busy ? "Starting…" : "Build and run 3 tests"}</VibeButton>
       {p.blockedReason && <p role="status">{p.blockedReason}</p>}{p.error && <p role="alert">{p.error}</p>}

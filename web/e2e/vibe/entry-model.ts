@@ -7,7 +7,7 @@ export type ImproveSource = "instructions" | "recorded" | "import";
 type FilePayload = { name: string; mimeType: string; buffer: Buffer };
 
 export const startCopy = {
-  build: { heading: "What would you like help with?", composer: "Message Vibe Evals", primary: "Build and run 3 tests", switchDoor: "Already have an agent? Improve it instead." },
+  build: { heading: "What would you like help with?", composer: "Describe the task", primary: "Build and run 3 tests", switchDoor: "Already have an agent? Improve it instead." },
   improve: { heading: "Improve an agent you already have.", composer: "Agent instructions to test", switchDoor: "Actually, I want to build an agent." },
   sources: { instructions: "Try my saved instructions", recorded: "Test replies from my app", import: "Import a test pack" },
   primaries: { instructions: "Prepare tests", recorded: "Review recorded replies", import: /^(Choose a file|Import test pack)$/ },
@@ -32,7 +32,7 @@ export const projectStartHeading = (page: Page, door: Door) => page.getByRole("h
 export const sourceButton = (page: Page, source: ImproveSource) => page.getByRole("button", { name: startCopy.sources[source], exact: true });
 export const startComposer = (page: Page, door: Door) => startScreen(page).getByRole("textbox", { name: startCopy[door].composer, exact: true });
 // Retain the project Guide composer as well as the start inputs for existing specs.
-export const composer = (page: Page) => page.getByRole("textbox", { name: startCopy.build.composer, exact: true }).or(startComposer(page, "improve"));
+export const composer = (page: Page) => page.getByRole("textbox", { name: "Message Vibe Evals", exact: true }).or(startComposer(page, "build")).or(startComposer(page, "improve"));
 export const sendButton = (page: Page) => startScreen(page).getByRole("button", { name: startCopy.build.primary, exact: true });
 export const improvePrimary = (page: Page, source: ImproveSource) => startScreen(page).getByRole("button", { name: startCopy.primaries[source], exact: true });
 export const repliesInput = (page: Page) => startScreen(page).getByRole("textbox", { name: startCopy.replies, exact: true });

@@ -126,6 +126,14 @@ for (const { label, viewport, touch } of viewports) test.describe(label, () => {
     expect(fake.posts).toEqual([]); expect(fake.errors).toEqual([]);
   });
 
+  test("Build input uses its visible label as its accessible name", async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const fake = await fakeVibe(page);
+    await page.goto("/vibe-evals"); await entryReady(page); await chooseDoor(page, "build"); await doorReady(page, "build");
+    await expect(startComposer(page, "build")).toHaveAccessibleName("Describe the task");
+    expect(fake.posts).toEqual([]); expect(fake.errors).toEqual([]);
+  });
+
   // The structural checks below use the light appearance: this test proves dark gives the same structure.
   test("light and dark give the same structure", () => {
     for (const state of states) expect(results[state].census.dark, state).toEqual(results[state].census.light);
