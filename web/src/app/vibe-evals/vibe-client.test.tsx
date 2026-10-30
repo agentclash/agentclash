@@ -4361,7 +4361,11 @@ it.each(["build", "test"] as const)("preserves an occupied account %s start draf
   signedInWorkspace(); await render();
   expect(container.querySelector<HTMLTextAreaElement>(".vibe-start-page textarea")?.value).toBe("Existing account work.");
   const guest = `start:guest:${door}`;
-  expect(draftMemory.get(guest)?.editors[`${guest}:start:editor:${editor}`]?.value).toContain("Separate guest draft.");
+  expect(draftMemory.get(guest)?.editors[`${guest}:start:editor:${editor}`]).toBeUndefined();
+  expect(JSON.parse(sessionStorage.getItem(`vibe-build-drafts:${guest}`)!).editors[`${guest}:start:editor:${editor}`]).toBeUndefined();
+  harness.user = undefined; await render();
+  signedInWorkspace(); harness.user = { id: "second-account" }; await render();
+  expect(container.querySelector<HTMLTextAreaElement>(".vibe-start-page textarea")?.value).toBe("");
   expect(requests.filter(request => request.method !== "GET")).toEqual([]);
 });
 
@@ -4454,11 +4458,15 @@ it.each(["instructions", "replies", "recovered instructions"] as const)("retains
   await click("Describe it in chat");
   await type("Keep this separate unsent Guide conversation.", "Message Guide");
   await click("Back");
+  await type("Independent instruction policy.", "Agent instructions");
+  await click("Real replies");
+  await type("Customer: Hello\nAgent: Retained reply", "Conversations");
+  await type("Use the given facts.", "What a good reply must do");
   if (source === "replies") {
     await click("Real replies");
     await type("Customer: Hello\nAgent: Retained reply", "Conversations");
     await type("Use the given facts.", "What a good reply must do");
-  } else await type("Only unopened purchases within 30 days qualify for returns.", "Agent instructions");
+  } else { await click("Instructions"); await type("Only unopened purchases within 30 days qualify for returns.", "Agent instructions"); }
   const previous = respond;
   respond = async (path, options) => {
     if (path.endsWith("/evidence")) {
@@ -4477,9 +4485,9 @@ it.each(["instructions", "replies", "recovered instructions"] as const)("retains
     await act(async () => snapshot(structuredClone(session)));
   }
   expect(storedImproveStart()).toMatchObject({ chat: "Keep this separate unsent Guide conversation." });
-  expect(storedImproveStart().instructions || "").toBe("");
-  expect(storedImproveStart().conversations || "").toBe("");
-  expect(storedImproveStart().rules || "").toBe("");
+  expect(storedImproveStart().instructions || "").toBe(source === "replies" ? "Independent instruction policy." : "");
+  expect(storedImproveStart().conversations || "").toBe(source === "replies" ? "" : "Customer: Hello\nAgent: Retained reply");
+  expect(storedImproveStart().rules || "").toBe(source === "replies" ? "" : "Use the given facts.");
   expect(requests.filter(request => request.path.endsWith(source === "replies" ? "/evidence" : "/messages"))).toHaveLength(1);
   await act(async () => root.unmount()); draftMemory.clear(); root = createRoot(container); await render();
   expect(storedImproveStart()).toMatchObject({ chat: "Keep this separate unsent Guide conversation." });
@@ -4521,4 +4529,92 @@ it("uses singular test counts in the save dialog for a one-test agent", async ()
   const version = [...dialog.querySelectorAll("dt")].find(label => label.textContent === "Version and tests")!;
   expect(version.nextElementSibling?.textContent).toContain("1 test");
   expect(version.nextElementSibling?.textContent).not.toContain("1 tests");
+});
+
+it.each(["replies", "pack"] as const)("fix4 reconciles a committed %s intake after its response is lost", async kind => {
+  await enterDoor("test");
+  const previous = respond;
+  respond = async (path, options) => {
+    if (!path.endsWith(kind === "pack" ? "/import" : "/evidence")) return previous(path, options);
+    const client = kind === "replies" ? JSON.parse(String(options.body)).client_id : undefined;
+    session = { ...session, revision: 2, document: { ...session.document, artifacts: [{ id: "committed-intake", kind: "test_suite", title: "Committed tests", agent_prompt: "", blueprint: {}, accepted: true, source_message_id: "" }] }, ...(client ? { evidence_receipt: { client_id: client, artifact_id: "committed-intake", evidence_id: "saved-replies" } } : {}) };
+    throw new TypeError("Intake acknowledgement lost");
+  };
+  if (kind === "replies") {
+    await click("Real replies"); await type("Customer: Hi\nAgent: Hello", "Conversations"); await type("Be polite", "What a good reply must do"); await click("Save and check");
+    expect(storedImproveStart().conversations || "").toBe("");
+  } else {
+    await click("Test pack");
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await act(async () => { Object.defineProperty(input, "files", { value: [new File(['{}'], "checks.json")] }); input.dispatchEvent(new Event("change", { bubbles: true })); });
+  }
+  expect(params().get("session")).toBe(session.id);
+  expect(params().get("agent")).toBe("committed-intake");
+  expect(params().get("view")).toBe("tests");
+  expect(requests.filter(r => r.method === "DELETE")).toHaveLength(0);
+  expect(requests.filter(r => r.path === "/sessions" && r.method === "POST")).toHaveLength(1);
+});
+
+it("fix4 cleans up a rejected first chat Send and retains the start draft", async () => {
+  await enterDoor("test"); await click("Describe it in chat"); await type("Help test my returns agent.", "Message Guide");
+  const previous = respond;
+  respond = async (path, options) => path.endsWith("/messages") ? json({ error: { code: "insufficient_credits", message: "No credits available.", admission: "rejected" } }, 402) : previous(path, options);
+  await click("Send message");
+  expect(params().get("session")).toBeNull();
+  expect(textarea("Message Guide")?.value).toBe("Help test my returns agent.");
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe("No credits available.");
+  expect(requests.filter(r => r.method === "DELETE")).toHaveLength(1);
+  expect(posts()[0].body.content).toBe("Help test my returns agent.");
+  expect(posts()[0].body.instructions).toBeUndefined();
+});
+
+it.each(["build", "improve"] as const)("fix4 reload of the %s start offers config connection recovery", async door => {
+  harness.params = new URLSearchParams(`start=${door}`);
+  let failed = true;
+  respond = async path => path === "/config" ? failed ? json({ error: { code: "unavailable", message: "Offline" } }, 503) : twoDoorConfig() : json([]);
+  await render();
+  expect(container.textContent).toContain("Couldn’t connect");
+  expect(container.querySelector(".vibe-project-header")).toBeNull();
+  failed = false; await click("Retry connection");
+  expect(container.textContent).not.toContain("Couldn’t connect");
+  await type("My retained task has enough detail to build.", door === "build" ? "What task should the agent handle?" : "Agent instructions");
+  expect(button(door === "build" ? "Build and run 3 tests" : "Write 3 tests").disabled).toBe(false);
+  expect(requests.filter(r => r.method !== "GET")).toEqual([]);
+});
+
+it.each(["build", "test"] as const)("fix4 has one More disclosure for a completed %s result", async door => {
+  const suite = readyTests(door);
+  session.operations = [run(runID, suite.id)];
+  harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);
+  respond = async path => path === "/config" ? twoDoorConfig() : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render();
+  const more = container.querySelectorAll("details.vibe-results-more");
+  expect(more).toHaveLength(1);
+  expect(more[0].querySelector(":scope > summary")?.textContent).toBe("More");
+  expect(more[0].textContent).toContain("Ask about this result");
+  if (door === "test") expect(container.querySelector('section[aria-label="Individual results"] summary')).not.toBeNull();
+});
+
+
+it.each(["replies", "pack"] as const)("fix4 keeps the same %s project and input when its intake receipt cannot be read", async kind => {
+  await enterDoor("test");
+  const previous = respond;
+  let intakeSent = false;
+  respond = async (path, options) => {
+    if (path.endsWith(kind === "pack" ? "/import" : "/evidence")) { intakeSent = true; throw new TypeError("Intake acknowledgement lost"); }
+    if (intakeSent && path === `/sessions/${session.id}`) throw new TypeError("Receipt read unavailable");
+    return previous(path, options);
+  };
+  if (kind === "replies") {
+    await click("Real replies"); await type("Customer: Hi\nAgent: Hello", "Conversations"); await type("Be polite", "What a good reply must do"); await click("Save and check");
+    expect(storedImproveStart()).toMatchObject({ conversations: "Customer: Hi\nAgent: Hello", rules: "Be polite" });
+  } else {
+    await click("Test pack");
+    const input = container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    await act(async () => { Object.defineProperty(input, "files", { value: [new File(['{}'], "checks.json")] }); input.dispatchEvent(new Event("change", { bubbles: true })); });
+  }
+  expect(params().get("session")).toBe(session.id);
+  expect(container.textContent).toContain("Couldn’t confirm the saved input");
+  expect(requests.filter(r => r.method === "DELETE")).toHaveLength(0);
+  expect(requests.filter(r => r.path === "/sessions" && r.method === "POST")).toHaveLength(1);
 });

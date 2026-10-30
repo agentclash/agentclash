@@ -127,9 +127,14 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   const beforeRegrade = state;
   const passedResults = page.getByRole("article", { name: "Run results" }).locator("summary").filter({ hasText: /^More$/ });
   if (!(await passedResults.evaluate(node => (node.parentElement as HTMLDetailsElement).open))) await passedResults.click();
-  await page.locator('[aria-label="Individual results"] summary').first().click();
-  await expect(page.getByRole("region", { name: "Evidence for this grade" }).first()).toBeVisible();
-  await page.getByRole("button", { name: "Grade the same replies again", exact: true }).first().click();
+  const individual = page.getByRole("region", { name: "Individual results", exact: true });
+  await expect(individual).toBeVisible();
+  const finding = individual.locator('[aria-label="Leading finding"] > details');
+  await expect(finding).toHaveAttribute("open", "");
+  for (const label of ["We gave it", "It replied", "It should"]) await expect(finding.getByText(label, { exact: true })).toBeVisible();
+  await expect(finding.locator(".vibe-example-reply")).toBeVisible();
+  await expect(finding.locator(".vibe-example-reply")).not.toHaveText("");
+  await finding.getByRole("button", { name: "Grade the same replies again", exact: true }).click();
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   const regraded = await finished(page, sessionID!, beforeRegrade.session.operations.length);
   expect(regraded.source?.comparison).toBe("regraded");

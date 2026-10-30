@@ -168,7 +168,7 @@ for (const width of [1440, 390]) test(`first result keeps ordered evidence and a
   if (width === 390) await page.getByRole("button", { name: "Close Guide", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();
   const result = page.getByRole("article", { name: "Agent test results" });
-  const headline = result.getByRole("heading", { level: 2 });
+  const headline = result.getByRole("heading", { level: 1 });
   await expect(headline).toHaveCount(1); await expect(headline).toHaveText(resultCopy.headline(0, 1));
   await expect(headline).toHaveClass("vibe-results-outcome");
   await expect(result.locator(":scope > :first-child h1")).toHaveText(resultCopy.headline(0, 1));

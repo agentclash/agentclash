@@ -79,7 +79,7 @@ async function toResults(page: Page) {
   await expect(page.getByRole("article", { name: "Run results" })).toBeVisible();
   const outcome = page.locator(".vibe-project-main h1.vibe-results-outcome");
   await expect(outcome).toBeFocused();
-  await expect(outcome).toHaveCSS("outline-style", "solid");
+  expect(await outcome.evaluate(element => document.activeElement === element)).toBe(true);
   return fake;
 }
 

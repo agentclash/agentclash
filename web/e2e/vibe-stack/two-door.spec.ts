@@ -469,7 +469,7 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  // Actual CreateAgent projects retain the testJourney headline; new intake is
  // available independently of that headline and never quotes the old source.
  const baseline=result.session.operations.at(-1);
- await page.getByRole('button',{name:'Add new recorded replies',exact:true}).click();
+ await page.getByRole('button',{name:'Test new replies',exact:true}).click();
  await expect(page.getByLabel('Recorded replies',{exact:true})).toHaveValue('');
  await expect(page.getByLabel('Expected behavior',{exact:true})).toHaveValue('Opened purchases are not eligible for refunds.');
  await page.getByLabel('Recorded replies',{exact:true}).fill('Customer: I opened it.\nAgent: I can refund that now.');

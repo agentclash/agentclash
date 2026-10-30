@@ -125,7 +125,11 @@ for (const { label, viewport, touch } of viewports) test.describe(label, () => {
     if (touch) {
       expect(layout.map(item => item.x)).toEqual([layout[0].x, layout[0].x, layout[0].x]);
       expect(layout[1].y).toBeGreaterThan(layout[0].y); expect(layout[2].y).toBeGreaterThan(layout[1].y);
-    } else expect(await door.locator("ol").evaluate(list => getComputedStyle(list).flexWrap)).toBe("wrap");
+    } else {
+      expect(layout.map(item => item.y)).toEqual([layout[0].y, layout[0].y, layout[0].y]);
+      expect(layout[1].x).toBeGreaterThan(layout[0].x); expect(layout[2].x).toBeGreaterThan(layout[1].x);
+      expect(await door.locator("ol").evaluate(list => getComputedStyle(list).gridTemplateColumns.split(" ").length)).toBe(3);
+    }
     expect(fake.posts).toEqual([]); expect(fake.errors).toEqual([]);
   });
 

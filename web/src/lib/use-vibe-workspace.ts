@@ -48,7 +48,7 @@ import { editableEvaluation, defaultModels, terminal, retryVibeOperation, VibeEr
 
 type StartConfig = VibeConfig & { first_build_ceiling_nano_usd?: number; guest_trial?: { initial_build_used: boolean; build_in_progress: boolean } };
 
-export type StartInput = { kind: "build"; text: string } | { kind: "instructions"; text: string; model?: string } | { kind: "replies"; conversations: string; rules: string } | { kind: "pack"; file: File };
+export type StartInput = { kind: "chat"; text: string } | { kind: "build"; text: string } | { kind: "instructions"; text: string; model?: string } | { kind: "replies"; conversations: string; rules: string } | { kind: "pack"; file: File };
 
 type RequestScope = { actor: string; sessionID?: string };
 // The work the user started and the view they started it from. When it ends, the
@@ -77,18 +77,17 @@ type SubmissionRecovery = {
   error: string;
 };
 const recoveryKey = (scope: RequestScope) => JSON.stringify([scope.actor, scope.sessionID]);
-function clearImproveStartDraft(project: string, expected: string) {
+function clearImproveStartDraft(project: string, expected: string, segment: "instructions" | "replies") {
   const row = readEditorDraft(project, "start", "inputs");
-  if (!row || row.value !== expected) return;
+  if (!row) return;
   try {
-    const inputs = JSON.parse(row.value);
-    if (typeof inputs.chat === "string" && inputs.chat) {
-      const all = draftMemory.get(project) || readBuildDrafts(project) || emptyDrafts();
-      persistDrafts(project, { ...all, editors: { ...all.editors, [editorDraftKey(project, "start", "inputs")]: { ...row, value: JSON.stringify({ chat: inputs.chat }) } } });
-      return;
-    }
-  } catch { return; }
-  discardEditorDraft(project, "start", "inputs", row);
+    const inputs = JSON.parse(row.value), submitted = JSON.parse(expected);
+    const fields = segment === "instructions" ? ["instructions", "model"] : ["conversations", "rules"];
+    if (fields.some(field => inputs[field] !== submitted[field])) return;
+    for (const field of fields) delete inputs[field];
+    const all = draftMemory.get(project) || readBuildDrafts(project) || emptyDrafts();
+    persistDrafts(project, { ...all, editors: { ...all.editors, [editorDraftKey(project, "start", "inputs")]: { ...row, value: JSON.stringify(inputs) } } });
+  } catch { /* Preserve an unreadable start draft. */ }
 }
 
 function clearStartDraft(request: PendingSubmission) {
@@ -106,7 +105,7 @@ function clearStartDraft(request: PendingSubmission) {
     } catch { /* Preserve an unreadable start draft. */ }
     return;
   }
-  if (request.startDraft.kind === "instructions") clearImproveStartDraft(project, request.startDraft.value);
+  if (request.startDraft.kind === "instructions") clearImproveStartDraft(project, request.startDraft.value, "instructions");
   else if (row?.value === request.startDraft.value) discardEditorDraft(project, "start", editor, row);
 }
 
@@ -170,9 +169,12 @@ export function useVibeWorkspace() {
     for (const [door, editor] of [["build", "brief"], ["test", "inputs"]] as const) {
       const guest = `start:guest:${door}`, account = `start:${authUserID}:${door}`;
       const row = readEditorDraft(guest, "start", editor);
-      if (!row || !emptyStartDraft(readEditorDraft(account, "start", editor), editor)) continue;
-      const all = draftMemory.get(account) || readBuildDrafts(account) || emptyDrafts();
-      if (persistDrafts(account, { ...all, editors: { ...all.editors, [editorDraftKey(account, "start", editor)]: row } })) discardEditorDraft(guest, "start", editor, row);
+      if (!row) continue;
+      if (emptyStartDraft(readEditorDraft(account, "start", editor), editor)) {
+        const all = draftMemory.get(account) || readBuildDrafts(account) || emptyDrafts();
+        persistDrafts(account, { ...all, editors: { ...all.editors, [editorDraftKey(account, "start", editor)]: row } });
+      }
+      discardEditorDraft(guest, "start", editor, row);
       migrated = true;
     }
     if (migrated) renderStartDrafts(value => value + 1);
@@ -677,7 +679,7 @@ export function useVibeWorkspace() {
     if (starting.current || pending || !config || requestedSessionID) return;
     if (first.kind !== "pack" && !(first.kind === "replies" ? first.conversations.trim() && first.rules.trim() : first.text.trim())) return;
     if (first.kind !== "pack" && first.kind !== "replies" && new TextEncoder().encode(first.text).length > messageLimit) { setStartError(`Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.`); return; }
-    if ((first.kind === "build" || first.kind === "instructions") && !entryAvailable) { setStartError(unavailableReason); return; }
+    if ((first.kind === "build" || first.kind === "instructions" || first.kind === "chat") && !entryAvailable) { setStartError(unavailableReason); return; }
     if (first.kind === "build" && !authUserID && (config as StartConfig).guest_trial?.initial_build_used) { setStartError("Your free build is used. Sign in to continue."); return; }
     if (first.kind === "build" && !authUserID && (config as StartConfig).guest_trial?.build_in_progress) { setStartError("Another build is using your free trial. Try again when it finishes."); return; }
     if (first.kind === "pack" && first.file.size > (authUserID ? 1024 * 1024 : 256 * 1024)) { setStartError("This file exceeds the import size limit."); return; }
@@ -690,6 +692,7 @@ export function useVibeWorkspace() {
     starting.current = true; setPending(true); setStartError("");
     let auth: string | undefined;
     let admitted = false;
+    let intakeUncertain = false;
     let firstRequest: PendingSubmission | undefined;
     let createdRevision: number | undefined;
     try {
@@ -699,21 +702,36 @@ export function useVibeWorkspace() {
       let next = await vibeFetch<Session>(`/sessions/${id}`, auth);
       createdRevision = next.revision;
       if (!ownsScope(scope)) throw Error("The active account or project changed.");
-      if (first.kind === "pack") {
-        next = await vibeFetch<Session>(`/sessions/${id}/import`, auth, { method: "POST", headers: { "Content-Type": first.file.name.endsWith(".json") ? "application/json" : "application/yaml", "If-Match": String(next.revision), "X-File-Name": encodeURIComponent(first.file.name) }, body: new Blob([first.file]) });
-      } else if (first.kind === "replies") {
-        next = await vibeFetch<Session>(`/sessions/${id}/evidence`, auth, { method: "POST", body: JSON.stringify({ client_id: clientID, revision: next.revision, label: "Recorded replies", content: first.conversations, expectations: first.rules.split("\n").map(line => line.trim()).filter(Boolean).map((statement, index) => ({ id: `rule-${index + 1}`, statement })) }) });
-        if (next.evidence_receipt?.client_id !== clientID) throw Error("The saved reply receipt is unavailable. Try again.");
+      if (first.kind === "pack" || first.kind === "replies") {
+        const before = new Set(next.document.artifacts.map(artifact => artifact.id));
+        try {
+          if (first.kind === "pack") {
+            next = await vibeFetch<Session>(`/sessions/${id}/import`, auth, { method: "POST", headers: { "Content-Type": first.file.name.endsWith(".json") ? "application/json" : "application/yaml", "If-Match": String(next.revision), "X-File-Name": encodeURIComponent(first.file.name) }, body: new Blob([first.file]) });
+          } else {
+            next = await vibeFetch<Session>(`/sessions/${id}/evidence`, auth, { method: "POST", body: JSON.stringify({ client_id: clientID, revision: next.revision, label: "Recorded replies", content: first.conversations, expectations: first.rules.split("\n").map(line => line.trim()).filter(Boolean).map((statement, index) => ({ id: `rule-${index + 1}`, statement })) }) });
+            if (next.evidence_receipt?.client_id !== clientID) throw Error("The saved reply receipt is unavailable. Try again.");
+          }
+        } catch (e) {
+          // Intake may have committed before the response disappeared. Never offer a second project.
+          let reconciled: Session | undefined;
+          try { reconciled = await vibeFetch<Session>(`/sessions/${id}`, auth); } catch { /* Keep ambiguous intake visible for recovery. */ }
+          const committed = first.kind === "replies" ? reconciled?.evidence_receipt?.client_id === clientID : reconciled?.document.artifacts.some(artifact => !before.has(artifact.id));
+          if (!committed && e instanceof VibeError && (e.admission === "rejected" || e.status !== undefined && e.status >= 400 && e.status < 500)) throw e;
+          admitted = true;
+          if (reconciled) next = reconciled;
+          intakeUncertain = !committed;
+          if (intakeUncertain) recoveries.current.set(recoveryKey({ actor: scope.actor, sessionID: id }), { submission: { current: null }, sending: { current: false }, retry: { current: undefined }, error: "Couldn’t confirm the saved input. Reload this project to check before trying again." });
+        }
       } else {
         const quote = first.kind === "build" ? await vibeFetch<BuildQuote>(`/sessions/${id}/build-quote`, auth, { method: "POST", body: JSON.stringify({ content: first.text, models: requestModels }) }) : undefined;
         if (!ownsScope(scope)) throw Error("The active account or project changed.");
-        const content = first.kind === "build" ? first.text : `Write three tests for these instructions.\n\nAgent instructions to test:\n${first.text}`;
+        const content = first.kind !== "instructions" ? first.text : `Write three tests for these instructions.\n\nAgent instructions to test:\n${first.text}`;
         const following: Follow = { view: "agent", target: door === "build" ? "results" : "tests", ...(quote ? { cycle: quote.id } : {}) };
         firstRequest = {
           scope: { actor: scope.actor, sessionID: id }, sessionID: id,
           body: JSON.stringify({ client_id: clientID, revision: next.revision, kind: "message", evaluation_first: true, test_journey: true, content, models: requestModels, ...(first.kind === "instructions" ? { instructions: first.text } : {}), ...(quote ? { cycle_id: quote.id } : {}) }),
           composer: null, composerVersion: 0, uncertain: false, follow: following,
-          startDraft: { kind: first.kind, value: first.kind === "build" ? first.text : startImproveDraft.value },
+          startDraft: { kind: first.kind, value: first.kind === "instructions" ? startImproveDraft.value : first.text },
         };
         try {
           const operation = await vibeFetch<Operation>(`/sessions/${id}/messages`, auth, { method: "POST", body: firstRequest.body });
@@ -740,9 +758,9 @@ export function useVibeWorkspace() {
       // adoptContext restores remembered views; first intake always lands on its tests.
       if (first.kind === "pack" || first.kind === "replies") navigation.update({ view: "tests", artifact: next.document.artifacts.at(-1)?.id || null }, "replace");
       setContexts(old => [next, ...old.filter(row => row.id !== id)]);
-      if (!firstRequest?.uncertain) {
-        if (first.kind === "build") startBuildDraft.discard(first.text);
-        if (first.kind === "instructions" || first.kind === "replies") clearImproveStartDraft(`start:${scope.actor}:test`, startImproveDraft.value);
+      if (!firstRequest?.uncertain && !intakeUncertain) {
+        if (firstRequest) clearStartDraft(firstRequest);
+        if (first.kind === "replies") clearImproveStartDraft(`start:${scope.actor}:test`, startImproveDraft.value, "replies");
       }
     } catch (e) {
       if (!admitted) {

@@ -189,7 +189,7 @@ function EntryWorkspace({ p }: { p: EvaluationWorkspaceProps }) {
 
 export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
   if (p.startScreen || p.twoDoor && (p.newEvaluation || !p.session)) return <>
-    {p.startScreen ? <><header className="vibe-header vibe-entry-header"><div className="vibe-header-identity">{p.navigationToggle}<span className="vibe-header-title" data-brand>Vibe Evals</span></div></header><div className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto">{p.startScreen}</div></> : <EntryWorkspace p={p} />}
+    {p.startScreen ? <><header className="vibe-header vibe-entry-header"><div className="vibe-header-identity">{p.navigationToggle}<span className="vibe-header-title" data-brand>Vibe Evals</span></div></header><div className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto">{p.startScreen}<div className="vibe-column">{p.entryNotice}</div></div></> : <EntryWorkspace p={p} />}
     <SavedWorkDialog status={p.savedListStatus} onRetry={p.onRetrySaved} open={!!p.savedWorkOpen} onOpenChange={p.onSavedWorkOpenChange || (() => {})} testJourney={p.testJourney} savedChecks={p.savedChecks} hasResults={false} onResults={() => {}} />
   </>;
   if (p.twoDoor && p.session && (p.session.document.evaluation || p.sourceIntent) && !p.newEvaluation) return <ProjectWorkspace p={p} initial={<LegacyEvaluationWorkspace {...p} embedded view="build" />} />;
