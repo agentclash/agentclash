@@ -208,3 +208,56 @@ it("shows a grounded finding and its expectation once, and offers changes only f
   expect(labels().filter(label => label === "Change expected result")).toHaveLength(2);
   expect([...container.querySelectorAll("button")].map(b => b.getAttribute("aria-label"))).toContain("Change expected result: Ask for the receipt.");
 });
+
+it.each(["PASS", "FAIL"] as const)("keeps verified %s evidence visible in every unified preview", async verdict => {
+  const quote = verdict === "PASS" ? "I cannot process refunds." : "I processed your refund.";
+  const rule = "Never claim to process refunds.";
+  for (const recorded of [false, true]) for (const compact of [false, true]) {
+    const reply = "Here is the policy. ".repeat(60) + quote;
+    const evidence: CaseResult = {
+      ...result(verdict), output: recorded ? "" : reply,
+      messages: recorded ? [{ id: "u", role: "user", content: "Can I return this?" }, { id: "a", role: "assistant", content: reply }] : undefined,
+      expectations: [{ id: "policy", statement: rule }],
+      checks: [{ key: "policy", verdict, evidence: "The final sentence supports this grade.", evidence_version: 1, finding: { kind: "observed", quotes: [{ message_id: recorded ? "a" : "output", text: quote }], missing: "", covered_message_ids: [] } }],
+    };
+    const dispute = vi.fn(), regrade = vi.fn();
+    await act(async () => root.render(<CaseEvidence key={`${recorded}:${compact}`} summary={evidence} load={async () => evidence} defaultOpen concise compactPreview={compact} origin={recorded ? "provided_conversations" : "prompt"} onDispute={dispute} onRegrade={regrade} />));
+    const region = container.querySelector('section[aria-label="Evidence for this grade"]');
+    expect(region).not.toBeNull();
+    expect(region!.closest("[hidden]")).toBeNull();
+    expect(region!.querySelector("blockquote")?.textContent).toBe(`Quoted from the reply${quote}`);
+    expect(container.textContent!.split(rule)).toHaveLength(2);
+    expect(container.querySelector(".vibe-example-reply > p")?.textContent).not.toContain(quote);
+    expect([...container.querySelectorAll(".vibe-example-evidence > div > p")].map(p => p.textContent)).toEqual(["We gave it", "It replied", "It should"]);
+    const buttons = [...container.querySelectorAll("button")];
+    await act(async () => buttons.find(b => b.textContent === "Change expected result")!.click());
+    expect(dispute).toHaveBeenCalledExactlyOnceWith(rule, evidence);
+    expect(regrade).not.toHaveBeenCalled();
+    await act(async () => buttons.find(b => b.textContent === "Grade the same replies again")!.click());
+    expect(regrade).toHaveBeenCalledOnce();
+    expect(dispute).toHaveBeenCalledOnce();
+  }
+});
+
+it("keeps missing behavior visible without inventing a quote or duplicating the finding in grading details", async () => {
+  const missing = "Ask for the receipt.";
+  const evidence: CaseResult = { ...result("FAIL"), expected: missing, output: "I can help with returns.", checks: [
+    { key: "policy", verdict: "FAIL", evidence: "The receipt was not requested.", evidence_version: 1, finding: { kind: "missing_behavior", quotes: [], missing, covered_message_ids: ["output"] } },
+    { key: "has_answer", verdict: "PASS", evidence: "A reply was received." },
+  ] };
+  await act(async () => root.render(<CaseEvidence summary={evidence} load={async () => evidence} defaultOpen />));
+  const regions = container.querySelectorAll('section[aria-label="Evidence for this grade"]');
+  expect(regions).toHaveLength(1);
+  expect(regions[0].closest("[hidden]")).toBeNull();
+  expect(regions[0].textContent).toContain("Missing from the replies");
+  expect(regions[0].textContent).toContain(missing);
+  expect(regions[0].querySelector("blockquote")).toBeNull();
+  expect(regions[0].textContent).toContain("The judge reviewed the complete replies");
+});
+
+it.each(["invented", "unverified"])("keeps %s findings out of the grounded evidence region", async kind => {
+  const evidence: CaseResult = { ...result("FAIL"), output: "I cannot process refunds.", checks: [{ key: "policy", verdict: "FAIL", evidence: "An explanation was recorded.", evidence_version: kind === "unverified" ? undefined : 1, finding: { kind: "observed", quotes: [{ message_id: "output", text: kind === "invented" ? "I processed a refund." : "I cannot process refunds." }], missing: "", covered_message_ids: [] } }] };
+  await act(async () => root.render(<CaseEvidence summary={evidence} load={async () => evidence} defaultOpen />));
+  expect(container.querySelector('[aria-label="Evidence for this grade"]')).toBeNull();
+  expect(container.textContent).toContain("An explanation was recorded.");
+});

@@ -33,18 +33,19 @@ export function verifiedFinding(result: CaseResult, check?: EvidenceCheck) {
   return null;
 }
 
-export function GroundedFinding({ result, check }: {
+export function GroundedFinding({ result, check, showExpectation = true }: {
   result: CaseResult;
   check?: EvidenceCheck;
+  showExpectation?: boolean;
 }) {
   const finding = verifiedFinding(result, check);
   if (!finding) return null;
   return (
     <section aria-label="Evidence for this grade" className="space-y-3">
-      <div>
+      {showExpectation && <div>
         <p className="mb-1 text-xs vibe-muted">What should happen</p>
         <p className="whitespace-pre-wrap break-words">{expectedBehavior(result, check)}</p>
-      </div>
+      </div>}
       {finding.kind === "missing_behavior" && (
         <div>
           <p className="mb-1 text-xs vibe-muted">Missing from the replies</p>

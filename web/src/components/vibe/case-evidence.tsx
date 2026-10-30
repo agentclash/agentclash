@@ -196,6 +196,7 @@ export function CaseEvidence({
                 </p>
                 <SafeMarkdown>{visibleExplanation}</SafeMarkdown>
                 {excerpt && <details className="mt-2"><summary className="cursor-pointer text-sm">Read complete explanation</summary><SafeMarkdown>{explanation}</SafeMarkdown></details>}
+                <GroundedFinding result={evidence} check={finding} showExpectation={false} />
               </div>
             )}
             {!compactPreview && prompt && (
@@ -387,7 +388,7 @@ function EvidenceDetails({
               <SafeMarkdown>
                 {check.error?.message || check.evidence}
               </SafeMarkdown>
-              <GroundedFinding result={evidence} check={check} />
+              {check.key !== finding?.key && <GroundedFinding result={evidence} check={check} />}
               <CitedMessages evidence={evidence} check={check} />
               {onDispute && changeable(evidence, check) && check.key !== finding?.key && (
                 <VibeButton
