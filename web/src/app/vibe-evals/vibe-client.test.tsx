@@ -1,4 +1,4 @@
-import React, { act } from "react";
+import React, { act, Profiler } from "react";
 import { createRoot, hydrateRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -2471,6 +2471,28 @@ it("keeps the Guide open by default from 1280px after the first version and reme
   await click("Guide");
   expect(guide()).not.toBeNull();
   expect(posts()).toHaveLength(0);
+});
+
+it.each([
+  { state: "no workspaces", roles: [], picker: false },
+  { state: "viewer-only workspaces", roles: ["workspace_viewer"], picker: false },
+  { state: "one choosable workspace", roles: ["workspace_member", "workspace_viewer"], picker: true },
+  { state: "multiple choosable workspaces", roles: ["workspace_member", "workspace_admin"], picker: true },
+])("shows only the workspace notice or sidebar picker with $state, including before automatic selection", async ({ roles, picker }) => {
+  signedInWorkspace(); harness.params = new URLSearchParams();
+  harness.me.mockResolvedValue({ organizations: [{ role: "org_member", workspaces: roles.map((role, index) => ({ id: `workspace-${index}`, name: `Workspace ${index}`, role })) }] });
+  respond = async path => path === "/config" ? json({ enabled: true, two_door: true, availability: { guest: { available: false }, workspace: { available: true } }, defaults: defaultModels, models: [{ id: defaultModels.target, name: "Fixture" }] }) : json([]);
+  const states: { picker: boolean; notice: boolean }[] = [];
+  const observe = () => ({ picker: !!container.querySelector(".vibe-sidebar-workspace"), notice: !!container.querySelector(".vibe-entry-availability")?.textContent?.includes("You need a workspace to start a project.") });
+  await render(<Profiler id="workspace-entry" onRender={() => { states.push(observe()); }}><VibeClient /></Profiler>);
+  expect(observe()).toEqual({ picker, notice: !picker });
+  expect(states).not.toContainEqual({ picker: true, notice: true });
+  if (!picker) {
+    expect(container.querySelector('select[aria-label="Workspace for new projects"]')).toBeNull();
+    expect([...container.querySelectorAll(".vibe-entry-availability :is(a, button)")].map(item => item.textContent)).toEqual(["Open your dashboard"]);
+    expect(container.querySelector(".vibe-entry-availability a")?.getAttribute("href")).toBe("/dashboard");
+  }
+  expect(requests.filter(request => request.method === "POST")).toHaveLength(0);
 });
 
 it("puts the workspace picker on the entry screen and focuses it from the sidebar instead of opening Settings", async () => {

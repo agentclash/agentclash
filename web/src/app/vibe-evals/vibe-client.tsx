@@ -78,8 +78,8 @@ export function VibeClient() {
   const workspaceSelect = useRef<HTMLSelectElement>(null);
   const choosingWorkspace = !!authUser && (!navigation.session || newEvaluation);
   const workspaceName = workspaces.find(item => item.id === workspace)?.name;
-  // The picker shows while workspaces load or when there is one to choose; the notice covers the other states.
-  const workspacePicker = choosingWorkspace && (workspaces.length > 1 || saveAccess === "loading");
+  // The sidebar covers even a single workspace before automatic selection finishes.
+  const workspacePicker = choosingWorkspace && (workspaces.length > 0 || saveAccess === "loading");
   const workspaceChoice = choosingWorkspace && (workspaces.length > 1 ? <div className="vibe-entry-workspace">
     <label>Workspace for new projects<select ref={workspaceSelect} aria-label="Workspace for new projects" aria-describedby={workspaceName ? undefined : "vibe-workspace-hint"} value={workspace} disabled={pending} onChange={event => setWorkspace(event.target.value)}><option value="">Choose a workspace</option>{workspaces.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
     {!workspaceName && <p id="vibe-workspace-hint">Choose a workspace to use its credits.</p>}

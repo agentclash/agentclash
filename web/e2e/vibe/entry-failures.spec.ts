@@ -32,13 +32,14 @@ async function creditsActionNextTo(page: Page, error: string) {
   await expect(near.getByRole("button", { name: /credits/i }).or(near.getByRole("link", { name: /credits/i })).first()).toBeVisible({ timeout: 2_000 });
 }
 
-test("H3 signed in with no workspace shows one message and one action", async ({ page }) => {
-  const fake = await fakeVibe(page, { ...signedIn, me: { user_id: "a8000000-0000-4000-8000-000000000001", organizations: [] } });
+for (const viewer of [false, true]) test(`H3 signed in with ${viewer ? "only viewer workspaces" : "no workspace"} shows one message and one action`, async ({ page }) => {
+  const fake = await fakeVibe(page, { ...signedIn, me: { user_id: "a8000000-0000-4000-8000-000000000001", organizations: viewer ? [{ id: "org", name: "Returns Co", slug: "returns-co", role: "org_member", workspaces: [{ id: "a8000000-0000-4000-8000-000000000003", name: "Returns team", slug: "returns", role: "workspace_viewer" }] }] : [] } });
   await signIn(page);
   await expect(entryNotice(page).getByRole("status")).toHaveText(/^You need a workspace to start a project\./, { timeout: 20_000 });
   await expect(entryNotice(page).locator("a, button")).toHaveCount(1);
   await expect(entryNotice(page).getByRole("link", { name: "Open your dashboard", exact: true })).toHaveAttribute("href", "/dashboard");
   await expect(workspacePicker(page)).toHaveCount(0);
+  await expect(page.locator(".vibe-sidebar-workspace")).toHaveCount(0);
   await doorsDisabled(page);
   expect(fake.posts).toEqual([]);
   expect(fake.errors).toEqual([]);
@@ -55,6 +56,7 @@ test("H4 workspaces that fail to load offer Try again, which recovers", async ({
   await entryNotice(page).getByRole("button", { name: "Try again", exact: true }).click();
   await expect(workspacePicker(page)).toBeVisible();
   await expect(entryNotice(page).getByRole("alert")).toHaveCount(0);
+  await expect(entryNotice(page).getByRole("status")).toHaveCount(0);
   expect(fake.posts).toEqual([]);
   expect(fake.errors).toEqual([]);
 });

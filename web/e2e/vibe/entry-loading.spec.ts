@@ -158,6 +158,7 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     const picker = workspacePicker(page);
     await expect(picker).toBeVisible({ timeout: 20_000 });
     await expect(picker).toHaveAccessibleDescription("Choose a workspace to use its credits.");
+    await expect(page.getByText("You need a workspace to start a project.", { exact: false })).toHaveCount(0);
     await expect(doorButton(page, "build")).toBeDisabled();
     await expect(page.getByRole("button", { name: "Review settings" })).toHaveCount(0);
     if (viewport.width < 1024) await page.getByRole("button", { name: "Open projects", exact: true }).click();
