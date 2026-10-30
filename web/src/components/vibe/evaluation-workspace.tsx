@@ -216,6 +216,8 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
     if (p.newEvaluation) newEntry.current?.focus();
   }, [p.newEvaluation]);
   const composer = useRef<HTMLTextAreaElement>(null);
+  const questionID = activeBuildQuestion?.id;
+  useEffect(() => { if (questionID) composer.current?.focus(); }, [questionID]);
   const parent = p.session?.document.artifacts.find(
     (a) => a.id === p.artifact?.parent_id,
   );
@@ -862,14 +864,14 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   ) : null)}
               </div>
             )}
-            {p.view === "build" && !intake && p.session && !awaitingBuildAnswer && p.interactionActions && p.onChoice && p.onReloadChoices && (
+            {p.view === "build" && !intake && p.session && p.interactionActions && p.onChoice && p.onReloadChoices && (
               <div className="mt-4"><ConversationActions key={p.session.id} session={p.session} busy={p.busy || p.dirty} primary={primary === "choices"} onAction={p.onChoice} onReload={p.onReloadChoices} /></div>
             )}
             {!buildJourney && p.artifact?.agent_prompt && p.view === "build" && !activityLabel && <VibeButton disabled={p.busy || p.dirty} onClick={() => switchView("try")}>Try it yourself</VibeButton>}
             {buildJourney && !p.artifact && active?.state === "RUNNING" && active.conversation_decision?.intent === "prepare_tests" && <p className="vibe-build-intro">I’m making a first version, then I’ll run three tests on its replies. Your business systems won’t be connected.</p>}
-            <ActivityStatus label={activityLabel} working={active?.state === "RUNNING" && !p.pendingLabel} />
+            {!p.embedded && <ActivityStatus label={activityLabel} working={active?.state === "RUNNING" && !p.pendingLabel} />}
             <AnimatePresence initial={false}>
-              {activityLabel && active && (
+              {!p.embedded && activityLabel && active && (
                 <motion.div
                   key="activity"
                   className="vibe-activity"
@@ -908,7 +910,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                 {p.session.document.artifacts.length ? "You can edit this agent. Run the tests again for a new estimate." : "Use New project to start again."}
               </p>
             )}
-            {awaitingBuildAnswer && p.session?.document.conversation_state?.pending_question?.purpose !== "clarify_job" && !p.busy && <div className="mt-4"><VibeButton onClick={p.onSample}>Use a sample policy</VibeButton><p className="mt-2 text-sm vibe-muted">A labelled demonstration. Your real policy stays unspecified.</p></div>}
+            {awaitingBuildAnswer && p.session?.document.conversation_state?.pending_question?.purpose !== "clarify_job" && !p.busy && <div className="mt-4"><VibeButton variant="quiet" onClick={p.onSample}>Use a sample policy</VibeButton><p className="mt-2 text-sm vibe-muted">A labelled demonstration. Your real policy stays unspecified.</p></div>}
             {pendingDemo && !p.busy && <div className="mt-4"><VibeButton onClick={() => p.onDemo?.(pendingDemo.id)}>Try a sample email assistant</VibeButton><p className="mt-2 text-sm vibe-muted">Uses fictional messages. You can describe your own task instead.</p></div>}
             {welcome && welcomeExample && <div className="mt-3 space-y-3">
               <p className="text-sm vibe-muted">A test pairs a task with what should happen.</p>

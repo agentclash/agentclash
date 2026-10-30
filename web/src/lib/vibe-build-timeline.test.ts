@@ -82,7 +82,7 @@ describe("truthful Build status", () => {
     expect(buildProgress({ ...message, state: "COMPLETED" })).toBeUndefined();
     expect(buildProgress({ ...message, state: "CANCELLING" })).toBe("Stopping…");
     message.conversation_decision = { intent: "prepare_tests", source_message_id: "task" };
-    expect(buildProgress(message)).toBe("Creating your agent…");
+    expect(buildProgress(message)).toBe("Understand the task");
     message.progress.phase = "switching_assistant";
     expect(buildProgress(message)).toBe("Trying another model…");
   });
@@ -102,4 +102,8 @@ describe("truthful Build status", () => {
     expect(buildProgress({ ...passed, state: "RUNNING", progress: { phase: "grading", completed_cases: 0, total_cases: 1 } })).toBe("Running 1 test…");
     expect(buildRunSummary({ ...passed, source: { kind: "prompt", label: "", artifact_id: "v1", comparison: "regraded" } })).toContain("agent hasn’t changed");
   });
+});
+
+it.each([["understanding", "Understand the task"], ["preparing", "Write the instructions"], ["reviewing", "Write 3 tests"], ["repairing", "Write 3 tests"]])("Build progress uses server phase %s", (phase, label) => {
+  expect(buildProgress(operation("prepare", "message", { state: "RUNNING", conversation_decision: { intent: "prepare_tests", source_message_id: "task" }, progress: { phase, completed_cases: 0, total_cases: 0 } }))).toBe(label);
 });

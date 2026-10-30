@@ -102,7 +102,7 @@ export function TaskInput({ inputs, pdfAvailable, disabled, configure = false }:
   }
   return <section className="vibe-task-input" aria-label="Task material">
     <span role="status" className="sr-only">{announcement}</span>
-    <p className="vibe-material-hint">Recipient: {inputs.recipient?.startsWith("trial:") ? "this trial conversation" : "Agent brief"}</p>
+    {!inputs.recipient?.startsWith("trial:") && <p className="vibe-material-hint">Recipient: Agent brief</p>}
     <VibeButton ref={triggerRef} variant="quiet" disabled={disabled} onClick={() => { openedOwner.current = inputs.draftKey; target.current = null; setOpen(true); }}>Add a file or text</VibeButton>
     <VibeDataUseNotice />
     {!!inputs.items.length && <ul className="vibe-material-chips" aria-label="Attached material">{inputs.items.map(({ material, usage, acknowledged }) => <li key={material.id} className="vibe-material-chip">

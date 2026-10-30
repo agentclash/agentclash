@@ -395,6 +395,7 @@ test("text roles stay consistent across viewport sizes and portaled dialogs", as
   }));
   await page.goto("/vibe-evals?session=first&workspace=a8000000-0000-4000-8000-000000000003");
   await page.getByRole("tab", { name: "Results", exact: true }).click();
+  await page.getByText("All 1 test results", { exact: true }).click();
   await page.getByText("Test results · 1", { exact: true }).click();
   await openCase(page);
   const reply = page.locator(".vibe-result-row .vibe-markdown").first();

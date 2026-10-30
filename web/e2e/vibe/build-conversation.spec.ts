@@ -15,7 +15,7 @@ function fixture(): Session {
       ] },
     operations: [...Array.from({ length: 24 }, (_, i) => ({ ...run, id: `chat-op-${i}`, kind: "message", results: [], scorecard: undefined })), { ...run, id: "prepare", kind: "message", results: [], scorecard: undefined }, structuredClone(run)] };
 }
-async function serve(page: Page, state = fixture()) {
+async function serve(page: Page, state = fixture(), evidence = savedCase) {
   const posts: Record<string, unknown>[] = [], errors: string[] = [];
   page.on("pageerror", e => errors.push(e.message));
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
@@ -27,7 +27,7 @@ async function serve(page: Page, state = fixture()) {
     if (path.endsWith("/sessions")) return route.fulfill({ headers, json: [state] });
     if (path.endsWith("/saved-checks")) return route.fulfill({ headers, json: [] });
     if (path.endsWith("/evaluations")) return route.fulfill({ headers, json: [state] });
-    if (path.endsWith("/case")) return route.fulfill({ headers, json: savedCase });
+    if (path.endsWith("/case")) return route.fulfill({ headers, json: evidence });
     if (path.endsWith("/events")) return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(state)}\n\n` });
     if (request.method() === "POST") {
       const body = request.postDataJSON(); posts.push(body);
@@ -73,10 +73,10 @@ test("Guide retains the full thread and draft while Results uses explicit eviden
   await page.getByRole("tab", {name:"Results",exact:true}).click();
   await expect(composer).toHaveValue("Keep my unsent question");
   expect(Math.abs(await guide.evaluate(el=>el.scrollTop)-top)).toBeLessThan(5);
+  await expect(page.getByRole("article", { name: "Agent test results" })).toContainText("Your agent passed 1 of 1 tests");
+  await expect(page.getByRole("article", { name: "Agent test results" }).locator("details[open]")).toContainText("Spam. This is an unsolicited request");
+  await expect(page.getByRole("region", { name: "Try your agent", exact: true })).toBeVisible();
   await page.locator(".vibe-results-more > summary").click();
-  await page.locator(".vibe-build-more > summary").click();
-  await page.getByRole("button",{name:"Try a sample",exact:true}).click();
-  await expect(page.getByRole("region",{name:"Saved sample demonstration"})).toContainText("Spam. This is an unsolicited request");
   expect(control.posts).toHaveLength(0);
   await page.getByRole("button",{name:"Ask about this result",exact:true}).click();
   await expect(page.getByLabel("Guide reference",{exact:true})).toContainText("Run 1");
@@ -153,8 +153,56 @@ test("mobile prototype output remains visible while its check completes in the s
   await expect(page.locator(".vibe-project-header")).toContainText(/Run \d+: Completed/);
   await expect(output).toBeInViewport();expect(Math.abs((await output.boundingBox())!.y-before.y)).toBeLessThan(100);
   await page.getByRole("tab",{name:"Results",exact:true}).click();
-  await expect(page.getByRole("combobox",{name:"Result history"})).toHaveValue("run-1");
+  await expect(page.getByRole("article", { name: "Agent test results" })).toHaveAttribute("data-run-id", "run-1");
+  await expect(page.getByRole("combobox",{name:"Result history"})).toHaveCount(0);
   expect(control.posts).toHaveLength(1);expect(control.errors).toEqual([]);
+});
+
+for (const width of [1440, 390]) test(`first result keeps ordered evidence and a full-width divider inside the card at ${width}px`, async ({ page }, info) => {
+  await page.setViewportSize({ width, height: 900 });
+  const state = fixture();
+  const failure: CaseResult = { ...savedCase, verdict: "FAIL", output: "Send your bank details.", checks: [{ key: "behavior", verdict: "FAIL", evidence: "It followed the spam email's instructions." }] };
+  Object.assign(state.operations.at(-1)!, { results: [{ ...failure, input: null, output: "" }], scorecard: { ...run.scorecard!, passed: 0, failed: 1 } });
+  const control = await serve(page, state, failure);
+  if (width === 390) await page.getByRole("button", { name: "Close Guide", exact: true }).click();
+  await page.getByRole("tab", { name: "Results", exact: true }).click();
+  const result = page.getByRole("article", { name: "Agent test results" });
+  const headline = result.getByRole("heading", { level: 2 });
+  await expect(headline).toHaveCount(1); await expect(headline).toHaveText("Your agent passed 0 of 1 tests");
+  await expect(headline).toHaveClass("vibe-results-outcome");
+  await expect(result.locator(":scope > :first-child h2")).toHaveText("Your agent passed 0 of 1 tests");
+  await expect(result.locator(".vibe-build-task, .vibe-build-eyebrow")).toHaveCount(0);
+  const card = result.locator(".vibe-build-examples"), row = card.locator(".vibe-result-row");
+  await expect(row.getByText("It should", { exact: true })).toBeVisible();
+  await expect(row.getByText("What needs attention", { exact: true })).toBeVisible();
+  expect(await row.evaluate(element => {
+    const text = element.textContent!;
+    const order = ["We gave it", "It replied", "It should", "What needs attention"].map(label => text.indexOf(label));
+    return order.every((position, index) => position >= 0 && (index === 0 || position > order[index - 1]));
+  })).toBe(true);
+  const bounds = (await card.boundingBox())!;
+  for (const label of ["We gave it", "It replied", "It should", "What needs attention"]) {
+    const field = row.getByText(label, { exact: true }).locator("..");
+    const box = (await field.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(bounds.x + 8);
+    expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width - 8);
+    expect(box.y).toBeGreaterThanOrEqual(bounds.y + 8);
+    expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height - 8);
+  }
+  const divider = (await row.locator(":scope > div").boundingBox())!;
+  expect(Math.abs(divider.x - bounds.x - 1)).toBeLessThanOrEqual(1);
+  expect(Math.abs(divider.width - (bounds.width - 2))).toBeLessThanOrEqual(1);
+  const should = (await row.getByText("It should", { exact: true }).boundingBox())!;
+  const replied = (await row.getByText("It replied", { exact: true }).boundingBox())!;
+  expect(should.y).toBeGreaterThan(replied.y);
+  const scope = result.getByText("Runs here using what you supplied; your business systems aren’t connected.", { exact: true });
+  expect((await scope.boundingBox())!.y).toBeGreaterThanOrEqual(bounds.y + bounds.height);
+  await expect(page.getByRole("combobox", { name: "Result history" })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "Message your agent", exact: true })).toHaveCount(1);
+  await expect(page.getByRole("region", { name: "Try your agent", exact: true })).not.toContainText("Recipient:");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(control.errors).toEqual([]); expect(control.posts).toHaveLength(0);
+  await page.screenshot({ path: info.outputPath(`build-result-evidence-${width}.png`), fullPage: true });
 });
 
 test("Guide composer and evidence fit small screens with long input",async({page},info)=>{
@@ -203,4 +251,17 @@ test("prototype history separates retained threads and legacy replies without in
   await expect(panel.getByRole("textbox",{name:"Message your agent",exact:true})).toBeEmpty();
   await expect(panel.getByRole("log").locator(".vibe-message")).toHaveCount(0);
   expect(control.posts).toHaveLength(0);expect(control.errors).toEqual([]);
+});
+
+for (const phase of ["error", "ready"]) test(`saved agent shows automatic-run admission failure in ${phase}`, async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const state = fixture(); state.operations = state.operations.filter(op => op.id !== run.id);
+  state.document.build = { ...state.document.build!, phase, check_id: undefined, error: { code: "unavailable", message: "The run could not start." } };
+  const control = await serve(page, state);
+  await page.getByRole("button", { name: "Close Guide", exact: true }).click();
+  const recovery = page.getByRole("region", { name: "Build needs a run", exact: true });
+  await expect(recovery.getByRole("alert")).toHaveText("The run could not start.");
+  await expect(recovery.getByRole("button", { name: "Run 3 tests", exact: true })).toBeEnabled();
+  await expect(page.getByRole("region", { name: "Agent instructions", exact: true })).toContainText("Identify spam emails");
+  expect(control.posts).toHaveLength(0); expect(control.errors).toEqual([]);
 });

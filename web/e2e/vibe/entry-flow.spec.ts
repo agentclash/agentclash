@@ -7,7 +7,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { agentReply, description, expectation, fakeVibe, instructions, packFile, transcript, type Fake } from "./entry-fake";
 import { flowMeter, type FlowMeter } from "./flow-meter";
-import { composer, doorButton, doorReady, entryReady, sendButton, sourceButton } from "./entry-model";
+import { buildResult, composer, doorButton, doorReady, entryReady, sendButton, sourceButton } from "./entry-model";
 
 test.use({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
 test.describe.configure({ timeout: 120_000 });
@@ -75,13 +75,20 @@ test("Build reaches its first test result in 2 clicks and 1 text", async ({ page
   await flow.fill(composer(page), description, "task");
   await expect(sendButton(page)).toBeEnabled({ timeout: 20_000 });
   // The forward options of the Build start, as in verification.md section 2: describe, example, attach, switch door.
-  await flow.decision("build start", [sendButton(page), page.getByRole("button", { name: "See an example" }), page.getByRole("button", { name: "Add a file or text" }), page.getByRole("button", { name: "Already have an agent? Improve it instead." })]);
+  const examples = page.getByRole("button", { name: "Answer return questions", exact: true });
+  const choices = await examples.isVisible()
+    ? [examples, page.getByRole("button", { name: "Sort support emails", exact: true }), page.getByRole("button", { name: "Attach a file", exact: true })]
+    : [page.getByRole("button", { name: "See an example" }), page.getByRole("button", { name: "Add a file or text" })];
+  await flow.decision("build start", [sendButton(page), ...choices, page.getByRole("button", { name: "Already have an agent? Improve it instead." })]);
   flow.consent();
   await flow.click(sendButton(page), "Build and run 3 tests");
   await runDone(page);
-  await resultShown(page);
+  await expect(tab(page, "Results")).toHaveAttribute("aria-selected", "true");
+  await expect(buildResult(page)).toContainText("Your agent passed 2 of 3 tests");
+  await expect(buildResult(page).locator("details[open]")).toContainText("It replied");
   await flow.mark("M2");
-  await firstAnswer(page, flow);
+  await expect(agentReply(page)).toBeVisible();
+  await flow.mark("M1");
   await finish(page, fake, flow, { clicks: 2, texts: 1, files: 0, decisions: 2 });
 });
 
@@ -205,6 +212,7 @@ test.describe("keyboard only", () => {
     await flow.fill(composer(page), description, "task");
     await expect(sendButton(page)).toBeEnabled({ timeout: 20_000 });
     flow.consent();
+    await flow.tabTo(sendButton(page), "Build and run 3 tests");
     await flow.press("Enter", "send");
     await submitted(fake, "/messages");
     await flow.save();

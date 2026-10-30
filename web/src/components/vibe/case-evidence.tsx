@@ -179,6 +179,7 @@ export function CaseEvidence({
               <div><p className="vibe-evidence-label">{compactPreview ? "We gave it" : "Test input"}</p>{compactPreview ? <EvidenceExcerpt text={caseInput(evidence.input)} label="input" /> : <SafeMarkdown>{caseInput(evidence.input)}</SafeMarkdown>}</div>
               {!compactPreview && <div><p className="vibe-evidence-label">What it should do</p><SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown></div>}
               <div><p className="vibe-evidence-label">{compactPreview ? "It replied" : "What it actually replied"}</p>{evidence.output ? <div className="vibe-example-reply">{compactPreview ? <EvidenceExcerpt text={evidence.output} label="reply" /> : <AgentReply>{evidence.output}</AgentReply>}</div> : <p>No reply was recorded.</p>}</div>
+              {compactPreview && <div><p className="vibe-evidence-label">It should</p><AgentReply>{expectedBehavior(evidence, finding)}</AgentReply></div>}
             </div>}
             {finding && (!compactPreview || finding.verdict === "FAIL") && (
               <div>

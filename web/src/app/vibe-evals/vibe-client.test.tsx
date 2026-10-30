@@ -2699,6 +2699,7 @@ it("keeps untested version Results empty until explicit history pins the tested 
   session.document.evaluation={id:session.id,chat_id:session.id,door:"build"};
   session.document.artifacts=[v1,v2]; session.document.active_artifact_id="v2";
   session.operations=[{id:"old-run",kind:"check",state:"COMPLETED",billing:"SETTLED",models:defaultModels,source:{kind:"prompt",artifact_id:"v1",label:"Old policy"},results:[],max_cost_nano_usd:0,actual_cost_nano_usd:0,scorecard:{total:1,passed:1,failed:0,unknown:0,evaluated:1,pass_rate:1,coverage:1}}];
+  session.operations.unshift({...session.operations[0],id:"earlier-run"});
   harness.params=new URLSearchParams(`session=${session.id}&view=agent&agent=v2`);
   const original=respond; respond=async(path,options)=>path==="/config"?json({enabled:true,two_door:true,defaults:defaultModels,models:[...new Set(Object.values(defaultModels))].map(id=>({id,name:id})),availability:{guest:{available:true},workspace:{available:true}}}):original(path,options);
   await render(); await click("Results");
@@ -3149,7 +3150,7 @@ it.each([["build", "Apply change and rerun"], ["test", "Improve and rerun"]] as 
     return path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
   };
   await render();
-  await click("Help me fix this");
+  await click(door === "build" ? "Fix this" : "Help me fix this");
   expect(posts()[0].body).toMatchObject({ kind: "message", purpose: "suggest_change", baseline_id: runID });
   expect(params().get("view")).toBe("agent");
   const v1 = session.document.artifacts[0];
@@ -3178,7 +3179,7 @@ it("leaves the pinned result in place when the user moved to Results before the 
   const fixID = "a8000000-0000-4000-8000-0000000000f2";
   respond = async path => path === "/config" ? twoDoorConfig() : path.endsWith("/messages") ? json({ id: fixID, kind: "message", state: "RUNNING", billing: "RESERVED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] }, 202) : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
   await render();
-  await click("Help me fix this");
+  await click("Fix this");
   await click("Results");
   const v1 = session.document.artifacts[0];
   await publish(session.operations, { artifacts: [v1, { ...v1, id: "artifact-two", parent_id: v1.id, agent_prompt: "Original policy. Never promise a refund." }], messages: [{ id: "fix-reply", role: "assistant", content: "Here is a focused change.", operation_id: fixID, artifact_id: "artifact-two" }] });

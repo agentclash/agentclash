@@ -10,7 +10,7 @@ export const entryCopy = {
   heading: "What would you like to evaluate?",
   choices: "New project choices",
   doors: { build: /Build an agent/, improve: /Improve an existing agent/ },
-  doorHeadings: { build: "What would you like help with?", improve: "Improve an agent you already have." },
+  doorHeadings: { build: /What task should the agent handle\?|What would you like help with\?/, improve: "Improve an agent you already have." },
   sources: { instructions: "Try my saved instructions", recorded: "Test replies from my app", import: "Import a test pack" },
   composer: "Message Vibe Evals",
   // The Build start send button. Its name is its visible text (E2, WCAG 2.5.3).
@@ -26,7 +26,8 @@ export const doorButton = (page: Page, door: Door) => page.getByRole("button", {
 export const doorHeading = (page: Page, door: Door, exact?: boolean) =>
   page.getByRole("heading", { name: entryCopy.doorHeadings[door], ...(exact === undefined ? {} : { exact }) });
 export const sourceButton = (page: Page, source: ImproveSource) => page.getByRole("button", { name: entryCopy.sources[source], exact: true });
-export const composer = (page: Page) => page.getByRole("textbox", { name: entryCopy.composer });
+export const composer = (page: Page) => page.getByRole("textbox", { name: /^(Message Vibe Evals|What task should the agent handle\?)$/ });
+export const buildResult = (page: Page) => page.getByRole("article", { name: "Agent test results", exact: true });
 export const sendButton = (page: Page) => page.getByRole("button", { name: entryCopy.send, exact: true });
 // A filled primary button (components/vibe/vibe-button.tsx). Add any new primary style here too.
 export const primaryButtons = (page: Page): Locator => page.locator(".vibe-button-primary").filter({ visible: true });
