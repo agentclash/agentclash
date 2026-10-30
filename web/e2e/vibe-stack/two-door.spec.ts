@@ -34,13 +34,11 @@ async function openMoreActions(page: Page) {
  await expect(more.locator(':scope > summary')).toBeVisible();
  if(!(await more.evaluate(el=>(el as HTMLDetailsElement).open))) await more.locator(':scope > summary').click();
 }
-// PR 1 selects Guide's fix by itself; other new versions still offer "Review latest version".
+// A new version from an ordinary Guide message stays unselected until "Review latest version".
+// Guide's fix after "Help me fix this" selects itself: its test asserts that and does not use this helper.
 async function reviewLatest(page: Page) {
  const latest=(await evidence(page)).session.document.artifacts.at(-1).id;
- const review=page.getByRole('button',{name:'Review latest version',exact:true});
- const selected=()=>new URL(page.url()).searchParams.get('agent')===latest;
- await expect.poll(async()=>selected() || await review.isVisible()).toBe(true);
- if(!selected()) await review.click({timeout:5000}).catch(()=>undefined);
+ if(new URL(page.url()).searchParams.get('agent')!==latest) await page.getByRole('button',{name:'Review latest version',exact:true}).click();
  await expect.poll(()=>new URL(page.url()).searchParams.get('agent')).toBe(latest);
 }
 test("clear Build goes through real worker to three results, scoped export and interactive prototype",async({page},info)=>{
@@ -270,15 +268,20 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  await expect.poll(async()=> (await evidence(page)).session.document.artifacts.length).toBe(3);
  const proposed=await evidence(page);
  expect(proposed.session.operations.filter((o:{kind:string})=>o.kind==='check'||o.kind==='retest')).toHaveLength(2);
- await reviewLatest(page);
- const changes=page.getByLabel('Instruction changes',{exact:true}).last();
- const changeSummary=page.locator('summary').filter({hasText:'Review the instruction change'});
- if(!(await changeSummary.evaluate(node=>(node.parentElement as HTMLDetailsElement).open))) await changeSummary.click();
- await expect(changes).toBeVisible();
- await expect(page.getByLabel('Instruction changes',{exact:true}).last()).toContainText('Only unopened');
- // PR 1: the rerun shows with the fix on the Agent view (it is also on Tests).
+ // PR 1: Guide's fix selects itself on the Agent view, with its instruction diff open and the rerun
+ // next to it. No click comes before these checks, so a missing selection or a closed diff fails here.
+ const fix=proposed.session.document.artifacts.at(-1).id;
+ await expect.poll(()=>new URL(page.url()).searchParams.get('agent')).toBe(fix);
  await expect(page.getByRole('tab',{name:'Agent',exact:true})).toHaveAttribute('aria-selected','true');
- await page.getByRole('region',{name:'Suggested change',exact:true}).getByRole('button',{name:'Apply change and rerun',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Review latest version',exact:true})).toHaveCount(0);
+ const suggested=page.getByRole('region',{name:'Suggested change',exact:true});
+ await expect(suggested.locator(':scope > details')).toHaveJSProperty('open',true);
+ const changes=suggested.getByLabel('Instruction changes',{exact:true});
+ await expect(changes).toBeVisible();
+ await expect(changes).toContainText('Only unopened');
+ const rerun=suggested.getByRole('button',{name:'Apply change and rerun',exact:true});
+ await expect(rerun).toBeVisible();
+ await rerun.click();
  await expect(page.getByRole('dialog')).toContainText('up to');
  await expect(page.getByRole('dialog')).toContainText('3 tests ·');
  await page.getByRole('button',{name:'Start run',exact:true}).click();

@@ -120,11 +120,17 @@ test("Improve fix loop reaches the compared result in 3 clicks", async ({ page }
   await instructionsToResult(page, flow);
   const start = { ...(await flow.mark("M2")) };
   await flow.click(runResults(page).getByRole("button", { name: "Help me fix this", exact: true }), "Help me fix this");
-  const rerun = page.getByRole("button", { name: "Improve and rerun", exact: true });
+  // The fix selects itself on Agent with its instruction diff open and the rerun next to it; no click comes before these checks.
+  const suggested = page.getByRole("region", { name: "Suggested change", exact: true });
+  const rerun = suggested.getByRole("button", { name: "Improve and rerun", exact: true });
   await expect(rerun).toBeVisible({ timeout: 30_000 });
+  await expect.poll(() => new URL(page.url()).searchParams.get("agent")).toBe("v1-fix");
   await expect(tab(page, "Agent")).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByLabel("Instruction changes", { exact: true })).toContainText("Decline every return after 30 days.");
   await expect(page.getByRole("button", { name: "Review latest version", exact: true })).toHaveCount(0);
+  await expect(suggested.locator(":scope > details")).toHaveJSProperty("open", true);
+  const changes = suggested.getByLabel("Instruction changes", { exact: true });
+  await expect(changes).toBeVisible();
+  await expect(changes).toContainText("Decline every return after 30 days.");
   const runs = () => fake.posts.filter(post => post.path.endsWith("/messages") && ["check", "retest"].includes(post.body.kind));
   // Nothing runs before the cost dialog: only the first run so far.
   expect(runs()).toHaveLength(1);

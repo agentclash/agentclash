@@ -1009,6 +1009,7 @@ export function useVibeWorkspace() {
   }
   // The result comes to the user: a finished run, first Build run or first test preparation
   // opens its view if the user is still where it started and is not typing there. Otherwise a link to it shows.
+  // The new-project chooser keeps the project's view under it: the link waits there for the user's return.
   useEffect(() => {
     const started = follow.current;
     if (!started || !session) return;
@@ -1020,7 +1021,7 @@ export function useVibeWorkspace() {
     if (!done) return;
     follow.current = undefined;
     if (navigation.view === started.target) return;
-    if (navigation.view === started.view && !document.querySelector('[role="dialog"]') && !typingInView()) showView(started.target, started.run, "replace");
+    if (navigation.view === started.view && !newEvaluation && !document.querySelector('[role="dialog"]') && !typingInView()) showView(started.target, started.run, "replace");
     else setArrival({ sessionID: session.id, target: started.target, run: started.run });
     // Only a new snapshot can finish the followed work.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1029,6 +1030,8 @@ export function useVibeWorkspace() {
     if (arrival && (navigation.view === arrival.target || session?.id !== arrival.sessionID)) setArrival(undefined);
   }, [arrival, navigation.view, session?.id]);
   // After "Help me fix this", select Guide's new version on the Agent view, where the fix shows.
+  // A user who writes in the view (an unsaved edit, a field with text, or a trial draft for the
+  // version and thread on screen) keeps that version; "Review latest version" leads to the fix.
   useEffect(() => {
     const fix = fixRequest.current;
     if (!fix || !session) return;
@@ -1042,7 +1045,7 @@ export function useVibeWorkspace() {
       return;
     }
     fixRequest.current = undefined;
-    if (navigation.view !== "agent" || dirtyArtifact || artifact?.id === proposed) return;
+    if (navigation.view !== "agent" || artifact?.id === proposed || typingInView() || trialText) return;
     navigation.update({ view: "agent", artifact: proposed, run: undefined, case: undefined, thread: "" }, "replace");
     // Only a new snapshot can deliver the proposed version.
     // eslint-disable-next-line react-hooks/exhaustive-deps

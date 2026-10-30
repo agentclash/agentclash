@@ -2985,6 +2985,28 @@ it("keeps a user who left the run's view where they are and offers See the resul
   expect(document.activeElement?.closest('[aria-label="Run results"]')).not.toBeNull();
 });
 
+it("does not move a project behind the new-project chooser when its run ends, and offers the result on return", async () => {
+  readyTests();
+  harness.params = new URLSearchParams(`session=${session.id}&view=tests`);
+  admitRunLater();
+  await render();
+  await click("Run 3 tests"); await click("Start run");
+  await publish([run(runID, "artifact-one", { state: "RUNNING", scorecard: undefined, results: [] })]);
+  await click("New project");
+  await publish([run(runID, "artifact-one")]); await frame();
+  // The chooser stays, and the project behind it stays on Tests.
+  expect(container.querySelector('[aria-label="New project choices"]')).not.toBeNull();
+  expect(params().get("view")).toBe("tests");
+  await click("Back to your project"); await frame();
+  expect(params().get("view")).toBe("tests");
+  expect(announced()).toContain("Your run finished.");
+  expect(resultLinks()).toHaveLength(1);
+  await click("See the result"); await frame();
+  expect(params().get("view")).toBe("results");
+  expect(params().get("run")).toBe(runID);
+  expect(announced()).not.toContain("Your run finished.");
+});
+
 // The persistent status region announces the finished work; the visible link has no role of its own.
 const announced = () => [...container.querySelectorAll('.sr-only[role="status"]')].map(node => node.textContent).join(" ");
 const resultLinks = () => [...container.querySelectorAll("button")].filter(b => b.textContent === "See the result");
@@ -3186,6 +3208,42 @@ it("leaves the pinned result in place when the user moved to Results before the 
   expect(params().get("run")).toBe(runID);
   expect(params().get("agent")).not.toBe("artifact-two");
   expect(button("Review latest version")).toBeTruthy();
+});
+
+// The trial draft belongs to the version and thread on screen: a fix that arrives while the user
+// writes to the agent must not swap the version under the composer.
+it.each([["build", true], ["test", true], ["build", false], ["test", false]] as const)("keeps the %s version a user writes to the agent about while Guide prepares the fix (focus in the composer: %s), and offers Review latest version", async (door, focused) => {
+  readyTests(door);
+  session.operations = [run(runID, "artifact-one")];
+  harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);
+  const fixID = "a8000000-0000-4000-8000-0000000000f3";
+  respond = async path => path === "/config" ? twoDoorConfig() : path.endsWith("/messages") ? json({ id: fixID, kind: "message", state: "RUNNING", billing: "RESERVED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] }, 202) : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render();
+  await click("Help me fix this");
+  expect(params().get("view")).toBe("agent");
+  const trial = document.getElementById("vibe-trial-message") as HTMLTextAreaElement;
+  act(() => trial.focus());
+  await type("Can I return opened headphones?", "Message your agent");
+  if (!focused) act(() => trial.blur());
+  const selection = { agent: params().get("agent"), thread: params().get("thread") };
+  const v1 = session.document.artifacts[0];
+  await publish([...session.operations, { id: fixID, kind: "message", state: "COMPLETED", billing: "SETTLED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] }], {
+    artifacts: [v1, { ...v1, id: "artifact-two", parent_id: v1.id, accepted: false, agent_prompt: "Original policy. Never promise a refund." }],
+    messages: [{ id: "fix-reply", role: "assistant", content: "Here is a focused change.", operation_id: fixID, artifact_id: "artifact-two" }],
+  }); await frame();
+  expect(params().get("view")).toBe("agent");
+  expect(params().get("agent")).toBe(selection.agent);
+  expect(params().get("thread")).toBe(selection.thread);
+  const composer = document.getElementById("vibe-trial-message") as HTMLTextAreaElement;
+  expect(composer).toBe(trial);
+  expect(composer.value).toBe("Can I return opened headphones?");
+  if (focused) expect(document.activeElement).toBe(composer);
+  // The user goes to the fix when ready; their draft stays with the version they wrote it for.
+  await click("Review latest version");
+  expect(params().get("agent")).toBe("artifact-two");
+  expect(container.querySelector<HTMLDetailsElement>('[aria-label="Suggested change"] details')?.open).toBe(true);
+  expect((document.getElementById("vibe-trial-message") as HTMLTextAreaElement).value).toBe("");
+  expect(posts()).toHaveLength(1);
 });
 
 it("names the Build send button by its visible text (E2)", async () => {
