@@ -112,7 +112,7 @@ export function BuildConversation({ session, artifact, busy, primary, onPreviewO
         {entry.historical && <p className="vibe-build-eyebrow">Earlier run</p>}
         {terminal(entry.operation.state) ? <BuildRunResult session={session} operation={entry.operation} artifact={entry.artifact}
           current={current} first={entry.id === firstEvidence} busy={busy} loadEvidence={loadEvidence}
-          onImprove={() => onImprove(entry.operation)} onDetails={() => onDetails(entry.operation)} />
+          onTry={() => openTrial(entry.artifact?.id)} onImprove={() => onImprove(entry.operation)} onDetails={() => onDetails(entry.operation)} />
           : <div><p className="vibe-build-note">Running {testCount(entry.operation.progress?.total_cases || 3)} against {entry.artifact?.sample ? "the sample rules" : "your instructions"}…</p>
             {firstCase && <details className="vibe-prototype-details"><summary>See one test we’re running</summary>
               <p className="vibe-evidence-label">We’ll ask</p><AgentReply>{firstCase.input}</AgentReply>
@@ -123,7 +123,7 @@ export function BuildConversation({ session, artifact, busy, primary, onPreviewO
       </div></motion.div>;
     })}
     {pending}
-    {active && <BuildNextActions key={`${session.id}:${active.id}`} session={session} artifact={active} operation={latestRun} hasOutput={hasOutput} busy={busy} primary={primary}
+    {active && <BuildNextActions key={`${session.id}:${active.id}`} session={session} artifact={active} operation={latestRun} hasOutput={hasOutput} busy={busy} primary={primary && !latestRun}
       onTry={() => openTrial(active.id)} onDetails={onDetails} onGuide={onGuide} onSave={onSave} onTougher={onTougher} onExport={onExport} loadEvidence={loadEvidence} />}
   </div>;
 }

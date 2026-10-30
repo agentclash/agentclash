@@ -52,12 +52,15 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     await page.screenshot({ path: info.outputPath(`entry-loading-${viewport.width}.png`) });
     release();
     await expect(page.getByRole("alert").filter({ hasText: "Couldn’t connect" })).toBeVisible();
+    expect(configRequests).toBe(1);
     await expect(heading).toBeVisible();
     await expect(build).toBeDisabled();
     await expect(page.getByRole("status").filter({ hasText: "Connecting…" })).toHaveCount(0);
+    expect(await heading.boundingBox()).toEqual(before);
     await page.getByRole("button", { name: "Retry connection" }).click();
     await expect(build).toBeEnabled();
     await expect(improve).toBeEnabled();
+    expect(configRequests).toBe(2);
     expect(await heading.boundingBox()).toEqual(before);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(writes).toEqual([]);
@@ -98,10 +101,12 @@ test("offline retry preserves a restored unsent draft and submits nothing", asyn
   const draft = composer(page);
   await expect(draft).toHaveValue("Keep this unsent draft.");
   await expect(page.getByRole("alert").filter({ hasText: "Your message is still here." })).toBeVisible();
+  expect(configRequests).toBe(1);
   expect(writes).toEqual([]);
   expect(quotes).toEqual([]);
   await page.getByRole("button", { name: "Retry connection" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Couldn’t connect" })).toHaveCount(0);
+  expect(configRequests).toBe(2);
   await expect(draft).toHaveValue("Keep this unsent draft.");
   // Reconnection may price the unsent draft, but never submits or runs it.
   await expect.poll(() => quotes.length).toBe(1);

@@ -56,7 +56,7 @@ export function PrototypeTrial({ workspace = false, sessionID, error, materialIn
       <form className="vibe-composer vibe-composer-compact vibe-chat-composer" onSubmit={event => { event.preventDefault(); if (!busy && !inferenceBlocked && !error && (text.trim() || hasMaterial)) onSend(); }}>
         <label className="sr-only" htmlFor="vibe-trial-message">Message your agent</label>
         <textarea id="vibe-trial-message" aria-describedby={error ? "vibe-trial-error" : undefined} ref={input} rows={1} aria-label="Message your agent" placeholder="Give your agent a task…" value={text} onChange={event => onText(event.target.value)} onKeyDown={event => sendOnEnter(event, () => { if (!busy && !inferenceBlocked && !error && (text.trim() || hasMaterial)) onSend(); })} />
-        <VibeButton type="submit" variant="primary" aria-label="Send to agent" disabled={busy || inferenceBlocked || !!error || (!text.trim() && !hasMaterial)}>{dock && <span>Try it</span>}<ArrowUp /></VibeButton>
+        <VibeButton type="submit" variant={workspace && inline ? "secondary" : "primary"} aria-label={dock ? "Try it" : "Send to agent"} disabled={busy || inferenceBlocked || !!error || (!text.trim() && !hasMaterial)}>{dock && <span>Try it</span>}<ArrowUp /></VibeButton>
       </form>
       {!dock && <p className="vibe-build-note">This generates a reply; it does not run or change your tests.</p>}
       {model && <details className="vibe-trial-cost"><summary>{model.name} · {model.input_nano_per_token || model.output_nano_per_token ? "Uses credits · model rates" : "Free model"}</summary>

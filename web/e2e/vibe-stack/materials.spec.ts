@@ -27,7 +27,9 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   test.skip(kind === "pdf" && !process.env.VIBE_TEST_PDF_RUNTIME, "Real isolated PDF reader required");
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.goto("/vibe-evals");
-  await page.getByRole("button", {name:/Build an agent/}).click();
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "build" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
   await page.getByRole("button", {name:"Add a file or text", exact:true}).click();
   if (kind === "paste") {
     await page.getByRole("tab", {name:"Paste text"}).click();
@@ -95,7 +97,9 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
 
 test("bad PDF offers paste without creating an agent or silently shortening input",async({page})=>{
   test.skip(!process.env.VIBE_TEST_PDF_RUNTIME,"Real reader required");
-  await page.goto("/vibe-evals");await page.getByRole("button",{name:/Build an agent/}).click();
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "build" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
   await page.getByRole("button",{name:"Add a file or text",exact:true}).click();
   await page.getByLabel("Choose one PDF").setInputFiles({name:"broken.pdf",mimeType:"application/pdf",buffer:Buffer.from("%PDF-broken")});
   await expect(page.getByRole("alert").filter({hasText:"Paste its text instead"})).toBeVisible();

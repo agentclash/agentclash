@@ -8,12 +8,12 @@ import (
 
 // An agent owns its conversation, specification and runs. New sessions do not
 // need a parent chat or a row in vibe_evaluation_contexts.
-func (s *Store) CreateAgent(ctx context.Context, actor string, ws *uuid.UUID, id uuid.UUID, door string, models Models) (Session, error) {
+func (s *Store) CreateAgent(ctx context.Context, actor string, ws *uuid.UUID, id uuid.UUID, door string, models Models, title ...string) (Session, error) {
 	if id == uuid.Nil || (door != "build" && door != "test") {
 		return Session{}, fault("invalid_request", "Choose Build an agent or Improve an existing agent.")
 	}
 	d := Document{FormatVersion: 1, Evaluation: &EvaluationContext{ID: id, ChatID: id, Door: door}, TestJourney: true, Models: models, Messages: []Message{}, Requirements: []Requirement{}, Artifacts: []Artifact{}}
-	v, err := s.createSession(ctx, actor, ws, id, d)
+	v, err := s.createSession(ctx, actor, ws, id, d, title...)
 	if err == nil && (v.Document.FormatVersion != 1 || v.Document.Evaluation == nil || v.Document.Evaluation.Door != door) {
 		return Session{}, fault("idempotency_conflict", "This request already created a different agent.")
 	}

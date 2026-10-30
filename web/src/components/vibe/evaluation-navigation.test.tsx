@@ -5,7 +5,7 @@ import { EvaluationNavigation } from "./evaluation-navigation";
 import type { Session } from "@/lib/vibe";
 import type { CollectionStatus } from "@/lib/use-vibe-collection";
 vi.mock("framer-motion", () => ({ useReducedMotion: () => true, motion: { aside: ({children}: React.PropsWithChildren) => <aside>{children}</aside>, span: ({children}: React.PropsWithChildren) => <span>{children}</span> } }));
-vi.mock("@/components/ui/sheet", () => ({ Sheet: () => null, SheetContent: () => null, SheetDescription: () => null, SheetTitle: () => null, SheetTrigger: () => null }));
+vi.mock("@/components/ui/sheet", () => ({ Sheet: ({children}: React.PropsWithChildren) => <>{children}</>, SheetContent: () => null, SheetDescription: () => null, SheetTitle: () => null, SheetTrigger: ({children}: React.PropsWithChildren) => <button>{children}</button> }));
 it("discards obsolete metadata failures and resets pending controls on project switch", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const node = document.createElement("div"), root = createRoot(node);
@@ -35,7 +35,9 @@ it("keeps guest project tools out of an empty list and preserves real load error
   const render = (actorScope?: string, status: CollectionStatus = "forbidden") => root.render(<EvaluationNavigation actorScope={actorScope} enabled contexts={[]} session={null} choosing disabled={false} listStatus={status} onRetryList={retry} onArchiveMode={()=>{}} onNew={()=>{}} onSwitch={()=>{}} onSettings={()=>{}} onSavedWork={()=>{}}>{()=>null}</EvaluationNavigation>);
   try {
     await act(async () => render("guest", "ready"));
-    expect(node.textContent).toContain("No projects yet.");
+    expect(node.querySelector(".vibe-entry-topbar")).not.toBeNull();
+    expect(node.querySelector(".vibe-sidebar")).toBeNull();
+    expect(node.textContent).toContain("Projects");
     expect(node.textContent).not.toContain("Retry");
     await act(async () => render("guest", "loading"));
     expect(node.textContent).toContain("Loading projects…");

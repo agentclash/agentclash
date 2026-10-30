@@ -71,14 +71,14 @@ export function BuildNextActions({ session, artifact, operation, hasOutput, busy
   const available = !busy && !(operation && !done) && !stopped;
   return <section className="vibe-build-next-actions" aria-label="Next actions for this version" data-artifact-id={artifact.id} hidden={!available}>
     <div className="vibe-build-next-primary">
-      {brief ? <VibeButton variant={primary ? "primary" : "secondary"} onClick={() => { action("change"); onGuide(); }}>Add missing information</VibeButton>
-        : operation && !allPass ? showResultLink && <VibeButton variant={primary ? "primary" : "secondary"} onClick={() => { action(score?.failed ? "review_problem" : "checks"); onDetails(operation); }}>{score?.failed ? "Review the problem" : "See what happened"}</VibeButton>
-          : !hasOutput ? <VibeButton variant={primary ? "primary" : "secondary"} onClick={() => { action("try"); onTry(); }}>Try it yourself</VibeButton>
+      {brief ? <VibeButton variant={primary && !done ? "primary" : "secondary"} onClick={() => { action("change"); onGuide(); }}>Add missing information</VibeButton>
+        : operation && !allPass ? showResultLink && <VibeButton variant={primary && !done ? "primary" : "secondary"} onClick={() => { action(score?.failed ? "review_problem" : "checks"); onDetails(operation); }}>{score?.failed ? "Review the problem" : "See what happened"}</VibeButton>
+          : !hasOutput ? <VibeButton variant={primary && !done ? "primary" : "secondary"} onClick={() => { action("try"); onTry(); }}>Try your agent</VibeButton>
             : null}
       {showContact && <div hidden={!contactEligible}><ProjectEnquiry key={`${session.id}:${artifact.id}`} session={session} artifact={artifact} operation={operation} primary={hasOutput && (allPass || !operation)} /></div>}
     </div>
     {!brief && <div className="vibe-build-next-secondary">
-      {!hasOutput && operation && !allPass && <VibeButton variant="quiet" onClick={() => { action("try"); onTry(); }}>Try it yourself</VibeButton>}
+      {!hasOutput && operation && !allPass && <VibeButton variant="quiet" onClick={() => { action("try"); onTry(); }}>Try your agent</VibeButton>}
       {showResultLink && operation && allPass && <VibeButton variant="quiet" onClick={() => { action("checks"); onDetails(operation); }}>See {operation.results.length} {operation.results.length === 1 ? "result" : "results"}</VibeButton>}
       {hasOutput && <VibeButton variant="quiet" onClick={() => { action("change"); onGuide(); }}>Change how it works</VibeButton>}
       {operation && <VibeButton variant="quiet" aria-expanded={keepOpen} onClick={() => { action("save"); setKeepOpen(value => !value); }}>Download / save</VibeButton>}

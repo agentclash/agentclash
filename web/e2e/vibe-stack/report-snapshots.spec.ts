@@ -5,7 +5,7 @@ const blueprint = { slug: "share-tests", name: "Selected report tests", difficul
 async function login(page: Page, user?: string) { if (user)
     await page.request.get(`http://127.0.0.1:55442/__fixture/identity?user=${user}`); await page.goto("/auth/login?returnTo=%2Fvibe-evals"); await page.getByRole("button", { name: "Continue with AgentClash" }).click();
     // A viewer has no workspace to start projects in, so the entry shows a notice instead of the picker.
-    await expect(page.getByLabel("Workspace for new projects").or(page.getByText("You need a workspace to start a project.", { exact: false }))).toBeVisible(); }
+    await expect(page.locator(".vibe-sidebar-workspace").or(page.getByText("You need a workspace to start a project.", { exact: false }))).toBeVisible(); }
 test("selected copy survives private cleanup with independent member/viewer navigation and capability lifecycle", async ({ page, browser }) => {
     const errors: string[] = [];
     page.on("pageerror", e => errors.push(e.message));
@@ -13,17 +13,17 @@ test("selected copy survives private cleanup with independent member/viewer navi
     page.on("request", r => { if (r.url().startsWith(api) && r.headers().authorization)
         ownerToken = r.headers().authorization; });
     await login(page);
-    await page.getByLabel("Workspace for new projects").selectOption(workspace);
+    await expect(page.getByRole("button", { name: /Build an agent/ })).toBeEnabled(); await expect(page.getByLabel("Workspace for new projects")).toHaveCount(0);
     await page.getByRole("button", { name: /Improve an existing agent/ }).click();
-    await expect(page).toHaveURL(/session=/);
-    const session = new URL(page.url()).searchParams.get("session")!;
-    // Compare the complete fixture journal across this action window: earlier serial
-    // journeys may have calls, but imports/report sharing must append none.
-    const before = await (await page.request.get(`${api}/__fixture/evidence?session=${session}`)).json();
+    await expect(page).toHaveURL(/start=improve/);
+    await page.request.post(`${api}/__fixture/control`, { data: { reset_calls: true } });
+    const before = { calls: [] };
+    await page.getByRole("radio", { name: "Test pack", exact: true }).click();
     const choose = page.waitForEvent("filechooser");
-    await page.getByRole("button", { name: "Import a test pack", exact: true }).click();
+    await page.getByRole("button", { name: "Choose a file", exact: true }).click();
     await (await choose).setFiles({ name: "tests.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(blueprint)) });
     await expect(page.getByRole("tab", { name: "Tests", exact: true })).toBeVisible();
+    const session = new URL(page.url()).searchParams.get("session")!;
     await page.getByRole("tab", { name: "Results", exact: true }).click();
     await page.locator("summary").filter({ hasText: /^Import SDK report$/ }).click();
     const source = JSON.stringify({ schema_version: 1, report_id: "PRIVATE_REPORT", generated_at: "2026-10-26T12:00:00Z", runner: { name: "agentclash-evals", version: "1" }, summary: { total: 1, passed: 0, failed: 1, skipped: 0, errored: 0 }, cases: [{ case: { case_id: "PRIVATE_CASE", name: "PRIVATE_LABEL" }, status: "failed", metrics: [{ key: "PRIVATE_METRIC", name: "PRIVATE_NAME", passed: false, score: 0.2, reason: "PRIVATE_REASON" }], agent_result: { input: "PRIVATE_INPUT", output: "PRIVATE_OUTPUT" } }], exit_code: 1 }).replace('"score":0.2', '"score":0.12345678901234567890123456789');

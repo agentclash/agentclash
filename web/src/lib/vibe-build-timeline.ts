@@ -96,7 +96,7 @@ export function buildProgress(operation: Operation) {
   }
   if (operation.progress?.phase === "switching_assistant") return "Trying another model…";
   if (intent === "suggest_fix") return "Preparing a suggested improvement…";
-  if (intent === "prepare_tests") return "Creating your agent…";
+  if (intent === "prepare_tests") return buildStageLabel(operation);
   if (intent === "chat") return "Replying…";
   if (intent === "explain_results") return "Reading your results…";
   return "Thinking…";
@@ -113,4 +113,20 @@ export function buildRunSummary(operation: Operation) {
   if (score.unknown || score.evaluated !== score.total || score.incomplete_cases || score.passed !== score.total || operation.results.length !== score.total || operation.results.some(c => c.verdict !== "PASS"))
     return "Some tests could not be fully graded.";
   return score.total === 1 ? "It passed this test." : `It passed all ${score.total} tests.`;
+}
+
+export const buildStages = ["Understand the task", "Write the instructions", "Write 3 tests", "Run tests"] as const;
+
+export function buildStageIndex(operation?: Operation, phase?: string) {
+  if (phase === "checking" || phase === "results" || operation?.kind === "check" || operation?.kind === "retest") return 3;
+  if (phase === "ready") return 2;
+  if (operation?.progress?.phase === "reviewing" || operation?.progress?.phase === "repairing") return 2;
+  if (operation?.progress?.phase === "preparing") return 1;
+  return 0;
+}
+
+export function buildStageLabel(operation?: Operation, phase?: string) {
+  if (phase === "clarifying" || operation?.state === "AWAITING_INPUT") return "Needs your answer";
+  const stage = buildStageIndex(operation, phase);
+  return stage === 3 ? `Run tests (${operation?.progress?.completed_cases || 0} of ${operation?.progress?.total_cases || 3})` : buildStages[stage];
 }

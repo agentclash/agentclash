@@ -13,14 +13,15 @@ async function evidence(page:Page,id:string){const value=await (await page.reque
 test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrade and reviewed promotion",async({page})=>{
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
  await page.goto("/auth/login?returnTo=%2Fvibe-evals");await page.getByRole("button",{name:"Continue with AgentClash"}).click();
- await expect(page.getByLabel("Workspace for new projects")).toBeVisible();await page.getByLabel("Workspace for new projects").selectOption(workspace);
+ await expect(page.getByRole("button", { name: /Build an agent/ })).toBeEnabled(); await expect(page.getByLabel("Workspace for new projects")).toHaveCount(0);
  await page.getByRole("button",{name:/Improve an existing agent/}).click();
- const importTests=page.getByRole("button",{name:"Import a test pack",exact:true});await expect(importTests).toBeEnabled();
+ await page.getByRole("radio",{name:"Test pack",exact:true}).click();
+ const importTests=page.getByRole("button",{name:"Choose a file",exact:true});await expect(importTests).toBeEnabled();
  const chooseTests=page.waitForEvent("filechooser");await importTests.click();await (await chooseTests).setFiles({name:"sdk-tests.json",mimeType:"application/json",buffer:Buffer.from(JSON.stringify(blueprint))});
  await expect(page.getByRole("tab",{name:"Tests",exact:true})).toBeVisible();
  const id=new URL(page.url()).searchParams.get("session")!;
  await expect.poll(async()=>((await evidence(page,id)).session.document.artifacts || []).length).toBe(1);
- const initial=await evidence(page,id);const artifact=initial.session.document.artifacts[0];expect(initial.session.operations).toHaveLength(0);
+ const initial=await evidence(page,id);const artifact=initial.session.document.artifacts[0];expect(initial.session.operations).toHaveLength(0);expect(initial.session.workspace_id).toBe(workspace);
  await page.getByRole("tab",{name:"Results",exact:true}).click();
  await expect(page.getByLabel("SDK report history",{exact:true})).toHaveCount(0);
  await expect(page.getByLabel("Application run history",{exact:true})).toHaveCount(0);

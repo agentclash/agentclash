@@ -22,7 +22,7 @@ export function ImproveStart(p: {
   const empty = p.mode === "instructions" ? !p.drafts.instructions.trim() : !p.drafts.conversations.trim() || !p.drafts.rules.trim();
   const notices = <>{p.blockedReason && <p role="status">{p.blockedReason}</p>}{p.error && <p role="alert">{p.error}</p>}</>;
   const importFile = (chosen?: File) => { if (chosen && !blocked) p.onImportPack(chosen); };
-  return <section className="vibe-improve-start">
+  return <section className="vibe-improve-start vibe-start-page" onKeyDown={event => { if (event.key === "Escape" && !p.busy) p.onBack(); }}>
     <VibeButton variant="quiet" className="vibe-improve-link" disabled={p.busy} onClick={p.onBack}>Back</VibeButton>
     <h1 ref={heading} tabIndex={-1}>How do you want to test your agent?</h1>
     <div role="radiogroup" aria-label="Agent source" className="vibe-improve-segments">
@@ -45,13 +45,13 @@ export function ImproveStart(p: {
       else p.onSaveReplies({ conversations: p.drafts.conversations, rules: p.drafts.rules });
     }}>
       {p.mode === "instructions" ? <>
-        <div><div className="vibe-improve-field-heading"><label htmlFor="vibe-start-instructions">Agent instructions</label><InstructionsHelp /></div><textarea id="vibe-start-instructions" className="vibe-textarea" rows={4} value={p.drafts.instructions} disabled={p.busy} onChange={event => p.onDraft({ instructions: event.target.value })} placeholder="Paste the instructions your agent uses…" /></div>
+        <div><div className="vibe-improve-field-heading"><label htmlFor="vibe-instructions-source">Agent instructions</label><InstructionsHelp /></div><textarea id="vibe-instructions-source" className="vibe-textarea" rows={4} value={p.drafts.instructions} disabled={p.busy} onChange={event => p.onDraft({ instructions: event.target.value })} placeholder="Paste the instructions your agent uses…" /></div>
         <label>Which model does your agent use?<select value={p.drafts.model || ""} disabled={p.busy} onChange={event => p.onDraft({ model: event.target.value })}><option value="">Use the selected model</option>{p.models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label>
       </> : <>
         <p className="vibe-muted">Paste full conversations. We grade the saved replies; your app is not called.</p>
-        <label>Conversations<textarea className="vibe-textarea" rows={6} value={p.drafts.conversations} disabled={p.busy} onChange={event => p.onDraft({ conversations: event.target.value })} placeholder={repliesPlaceholder} /></label>
+        <label>Conversations<textarea id="vibe-start-conversations" className="vibe-textarea" rows={6} value={p.drafts.conversations} disabled={p.busy} onChange={event => p.onDraft({ conversations: event.target.value })} placeholder={repliesPlaceholder} /></label>
         <ReplyCount text={p.drafts.conversations} />
-        <label>What a good reply must do<textarea className="vibe-textarea" rows={3} value={p.drafts.rules} disabled={p.busy} onChange={event => p.onDraft({ rules: event.target.value })} placeholder="One rule per line. For example: Opened items are not eligible for a refund." /></label>
+        <label>What a good reply must do<textarea id="vibe-start-rules" className="vibe-textarea" rows={3} value={p.drafts.rules} disabled={p.busy} onChange={event => p.onDraft({ rules: event.target.value })} placeholder="One rule per line. For example: Opened items are not eligible for a refund." /></label>
       </>}
       <div className="vibe-improve-submit"><div className="vibe-improve-submit-actions"><VibeButton variant="primary" type="submit" disabled={blocked || empty} loading={p.busy}>{p.mode === "instructions" ? "Write 3 tests" : "Save and check"}</VibeButton>{p.mode === "instructions" && <VibeButton variant="quiet" className="vibe-improve-link" disabled={p.busy} onClick={() => p.onDraft({ instructions: exampleAgentDescription })}>Use sample instructions</VibeButton>}</div>
         <p className="text-sm vibe-muted">{p.mode === "instructions" ? "Review the tests and run price before you run." : "Save the replies, then review the grading price."}</p>{notices}

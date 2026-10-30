@@ -7,7 +7,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { agentReply, description, expectation, fakeVibe, instructions, packFile, transcript, type Fake } from "./entry-fake";
 import { flowMeter, type FlowMeter } from "./flow-meter";
-import { composer, doorButton, doorReady, entryReady, sendButton, sourceButton, runTestsButton, testChangeButton, addAgentInstructions } from "./entry-model";
+import { composer, doorButton, doorReady, entryReady, sendButton, sourceButton, runTestsButton, testChangeButton, addAgentInstructions, buildResult, improvePrimary, repliesInput, rulesInput, startComposer, switchDoorButton } from "./entry-model";
 
 test.use({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
 test.describe.configure({ timeout: 120_000 });
@@ -16,9 +16,8 @@ type Budget = { clicks: number; texts: number; files: number; decisions: number 
 // Enabled main-zone controls in the first viewport at each decision point, measured (1440, light).
 // "imported tests" is 13: the import writes Guide's two messages, as the backend does, so the Guide
 // column opens with them and its controls count in the main zone (12 before PR 1, with an empty Guide).
-// After PR 4: instructions 3 clicks + 1 text; replies 3 clicks + 2 texts; pack 4 clicks + file + text.
-// Keep today's click budgets until lazy creation merges; the explicit consent dialog remains.
-const controlBudget: Record<string, number> = { entry: 3, "build start": 7, "improve start": 8, "imported tests": 13, cost: 4 };
+// Lazy creation is merged: measure the direct first-input paths; keep explicit run consent.
+const controlBudget: Record<string, number> = { entry: 3, "build start": 4, "improve start": 8, "imported tests": 13, cost: 4 };
 const tab = (page: Page, name: "Agent" | "Tests" | "Results") => page.getByRole("tab", { name, exact: true });
 const runResults = (page: Page) => page.getByRole("article", { name: "Run results" });
 const runDone = (page: Page) => expect(page.locator(".vibe-project-header")).toContainText("Run 1: Completed", { timeout: 30_000 });
@@ -75,9 +74,10 @@ async function finish(page: Page, fake: Fake, flow: FlowMeter, budget: Budget) {
   expect(record.mostDialogs, "dialogs open at the same time").toBeLessThanOrEqual(1);
   // A8 (fixed in PR 1): a run with no error shows no "selected result is unavailable" alert.
   expect(unavailable, "A8: unavailable-result alerts").toBe(0);
-  // A5: nothing model-bound before the explicit consent, and one project per door choice.
+  // A5: inference waits for consent; each path creates one project on its committed input.
   expect(record.writesBeforeConsent.filter(w => w.path.endsWith("/messages"))).toEqual([]);
   expect(record.writesBeforeConsent.filter(w => w.path === "/sessions").length).toBeLessThanOrEqual(1);
+  expect(fake.posts.filter(post => post.path === "/sessions")).toHaveLength(1);
   expect(fake.unknown).toEqual([]);
   expect(fake.errors).toEqual([]);
 }
@@ -87,30 +87,40 @@ test("Build reaches its first test result in 2 clicks and 1 text", async ({ page
   await flow.decision("entry", [doorButton(page, "build"), doorButton(page, "improve")]);
   await flow.click(doorButton(page, "build"), "Build door");
   await doorReady(page, "build");
+  expect(fake.posts).toEqual([]);
   await flow.fill(composer(page), description, "task");
   await expect(sendButton(page)).toBeEnabled({ timeout: 20_000 });
   // The forward options of the Build start, as in verification.md section 2: describe, example, attach, switch door.
-  await flow.decision("build start", [sendButton(page), page.getByRole("button", { name: "See an example" }), page.getByRole("button", { name: "Add a file or text" }), page.getByRole("button", { name: "Already have an agent? Improve it instead." })]);
+  const examples = page.getByRole("button", { name: "Answer return questions", exact: true });
+  const choices = await examples.isVisible()
+    ? [examples, page.getByRole("button", { name: "Sort support emails", exact: true }), page.getByRole("button", { name: "Attach a file", exact: true })]
+    : [page.getByRole("button", { name: "See an example" }), page.getByRole("button", { name: "Add a file or text" })];
+  await flow.decision("build start", [sendButton(page), ...choices, page.getByRole("button", { name: "Already have an agent? Improve it instead." })]);
+  expect(fake.posts).toEqual([]);
   flow.consent();
   await flow.click(sendButton(page), "Build and run 3 tests");
   await runDone(page);
-  await resultShown(page);
+  await expect(tab(page, "Results")).toHaveAttribute("aria-selected", "true");
+  await expect(buildResult(page)).toContainText("Your agent passed 2 of 3 tests");
+  await expect(buildResult(page).locator("details[open]")).toContainText("It replied");
   await flow.mark("M2");
-  await firstAnswer(page, flow);
+  await expect(agentReply(page)).toBeVisible();
+  await flow.mark("M1");
   await finish(page, fake, flow, { clicks: 2, texts: 1, files: 0, decisions: 2 });
 });
 
 // The saved-instructions path to the first result. The tests and the result open by themselves.
-async function instructionsToResult(page: Page, flow: FlowMeter) {
+async function instructionsToResult(page: Page, flow: FlowMeter, fake: Fake) {
   await flow.decision("entry", [doorButton(page, "build"), doorButton(page, "improve")]);
   await flow.click(doorButton(page, "improve"), "Improve door");
   await doorReady(page, "improve");
+  expect(fake.posts).toEqual([]);
   // The forward options of the Improve start, as in verification.md section 2: three sources and describe.
   await flow.decision("improve start", [sourceButton(page, "import"), sourceButton(page, "recorded"), sourceButton(page, "instructions"), composer(page)]);
-  await flow.click(sourceButton(page, "instructions"), "instructions source");
-  await flow.fill(page.getByRole("textbox", { name: "Agent instructions to test" }), instructions, "instructions");
+  await flow.fill(startComposer(page, "improve"), instructions, "instructions");
+  expect(fake.posts).toEqual([]);
   flow.consent();
-  await flow.click(page.getByRole("button", { name: "Prepare tests" }), "Prepare tests");
+  await flow.click(improvePrimary(page, "instructions"), "Prepare tests");
   await expect(page.getByText("These are example messages I’ll send to your agent.").first()).toBeVisible({ timeout: 30_000 });
   await expect(tab(page, "Tests")).toHaveAttribute("aria-selected", "true");
   await expect(runTestsButton(page)).toHaveText("Run 3 tests");
@@ -122,25 +132,30 @@ async function instructionsToResult(page: Page, flow: FlowMeter) {
   await flow.mark("M2");
 }
 
-test("Improve with saved instructions reaches its first test result in 5 clicks and 1 text", async ({ page }) => {
+test("Improve with saved instructions reaches its first test result in 4 clicks and 1 text", async ({ page }) => {
   const { fake, flow } = await open(page, "improve-instructions");
-  await instructionsToResult(page, flow);
+  await instructionsToResult(page, flow, fake);
   await firstAnswer(page, flow);
-  await finish(page, fake, flow, { clicks: 5, texts: 1, files: 0, decisions: 2 });
+  await finish(page, fake, flow, { clicks: 4, texts: 1, files: 0, decisions: 2 });
 });
 
 // A1f: from the first failed result to the compared result of Guide's fix. The fix is selected
 // by itself and shows with its rerun on the Agent view; the cost dialog stays.
 test("Improve fix loop reaches the compared result in 3 clicks", async ({ page }) => {
   const { fake, flow } = await open(page, "improve-fix");
-  await instructionsToResult(page, flow);
+  await instructionsToResult(page, flow, fake);
   const start = { ...(await flow.mark("M2")) };
   await flow.click(runResults(page).getByRole("button", { name: "Suggest a fix", exact: true }), "Suggest a fix");
   const rerun = testChangeButton(page);
+  const suggested = page.getByRole("region", { name: "Suggested change", exact: true });
   await expect(rerun).toBeVisible({ timeout: 30_000 });
+  await expect.poll(() => new URL(page.url()).searchParams.get("agent")).toBe("v1-fix");
   await expect(tab(page, "Agent")).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByLabel("Instruction changes", { exact: true })).toContainText("Decline every return after 30 days.");
   await expect(page.getByRole("button", { name: "Review latest version", exact: true })).toHaveCount(0);
+  await expect(suggested.locator(":scope > details")).toHaveJSProperty("open", true);
+  const changes = suggested.getByLabel("Instruction changes", { exact: true });
+  await expect(changes).toBeVisible();
+  await expect(changes).toContainText("Decline every return after 30 days.");
   const runs = () => fake.posts.filter(post => post.path.endsWith("/messages") && ["check", "retest"].includes(post.body.kind));
   // Nothing runs before the cost dialog: only the first run so far.
   expect(runs()).toHaveLength(1);
@@ -166,11 +181,13 @@ test("Improve with recorded replies reaches its first test result in 5 clicks an
   await flow.decision("entry", [doorButton(page, "build"), doorButton(page, "improve")]);
   await flow.click(doorButton(page, "improve"), "Improve door");
   await doorReady(page, "improve");
+  expect(fake.posts).toEqual([]);
   await flow.decision("improve start", [sourceButton(page, "import"), sourceButton(page, "recorded"), sourceButton(page, "instructions"), composer(page)]);
   await flow.click(sourceButton(page, "recorded"), "recorded source");
-  await flow.fill(page.getByLabel("Recorded replies", { exact: true }), transcript, "recorded replies");
-  await flow.fill(page.getByLabel("Expected behavior", { exact: true }), expectation, "expected behavior");
-  await flow.click(page.getByRole("button", { name: "Review recorded replies", exact: true }), "Review recorded replies");
+  await flow.fill(repliesInput(page), transcript, "recorded replies");
+  await flow.fill(rulesInput(page), expectation, "expected behavior");
+  expect(fake.posts).toEqual([]);
+  await flow.click(improvePrimary(page, "recorded"), "Review recorded replies");
   await expect(page.getByRole("region", { name: "Recorded reply tests" })).toBeVisible({ timeout: 30_000 });
   await flow.click(page.getByRole("button", { name: "Run recorded tests", exact: true }), "Run recorded tests");
   await flow.decision("cost", [startRun(page)]);
@@ -188,8 +205,10 @@ test("Improve with a test pack import reaches its first test result in 7 clicks,
   await flow.decision("entry", [doorButton(page, "build"), doorButton(page, "improve")]);
   await flow.click(doorButton(page, "improve"), "Improve door");
   await doorReady(page, "improve");
+  expect(fake.posts).toEqual([]);
   await flow.decision("improve start", [sourceButton(page, "import"), sourceButton(page, "recorded"), sourceButton(page, "instructions"), composer(page)]);
-  await flow.chooseFile(sourceButton(page, "import"), packFile, "Import a test pack");
+  await flow.click(sourceButton(page, "import"), "Test pack source");
+  await flow.chooseFile(improvePrimary(page, "import"), packFile, "Choose a file");
   const add = addAgentInstructions(page);
   await expect(add).toBeVisible({ timeout: 30_000 });
   await expect(add).toBeDisabled();
@@ -219,10 +238,13 @@ test.describe("keyboard only", () => {
     await flow.tabTo(doorButton(page, "build"), "Build door");
     await flow.press("Enter", "Build door");
     await doorReady(page, "build");
+    expect(fake.posts).toEqual([]);
     await flow.tabTo(composer(page), "composer");
     await flow.fill(composer(page), description, "task");
     await expect(sendButton(page)).toBeEnabled({ timeout: 20_000 });
+    expect(fake.posts).toEqual([]);
     flow.consent();
+    await flow.tabTo(sendButton(page), "Build and run 3 tests");
     await flow.press("Enter", "send");
     await submitted(fake, "/messages");
     await flow.save();
@@ -233,12 +255,14 @@ test.describe("keyboard only", () => {
     await flow.tabTo(doorButton(page, "improve"), "Improve door");
     await flow.press("Enter", "Improve door");
     await doorReady(page, "improve");
+    expect(fake.posts).toEqual([]);
     await flow.tabTo(sourceButton(page, "instructions"), "instructions source");
     await flow.press("Enter", "instructions source");
-    const box = page.getByRole("textbox", { name: "Agent instructions to test" });
+    const box = startComposer(page, "improve");
     await flow.tabTo(box, "instructions");
     await flow.fill(box, instructions, "instructions");
-    await flow.tabTo(page.getByRole("button", { name: "Prepare tests" }), "Prepare tests");
+    await flow.tabTo(improvePrimary(page, "instructions"), "Prepare tests");
+    expect(fake.posts).toEqual([]);
     flow.consent();
     await flow.press("Enter", "Prepare tests");
     await submitted(fake, "/messages");
@@ -250,13 +274,15 @@ test.describe("keyboard only", () => {
     await flow.tabTo(doorButton(page, "improve"), "Improve door");
     await flow.press("Enter", "Improve door");
     await doorReady(page, "improve");
-    await flow.tabTo(sourceButton(page, "recorded"), "recorded source");
-    await flow.press("Enter", "recorded source");
-    for (const [label, value] of [["Recorded replies", transcript], ["Expected behavior", expectation]]) {
-      await flow.tabTo(page.getByLabel(label, { exact: true }), label);
-      await flow.fill(page.getByLabel(label, { exact: true }), value, label);
+    expect(fake.posts).toEqual([]);
+    await flow.tabTo(sourceButton(page, "instructions"), "Agent source");
+    await flow.press("ArrowRight", "Real replies source");
+    for (const [input, value, label] of [[repliesInput(page), transcript, "recorded replies"], [rulesInput(page), expectation, "expected behavior"]] as const) {
+      await flow.tabTo(input, label);
+      await flow.fill(input, value, label);
     }
-    await flow.tabTo(page.getByRole("button", { name: "Review recorded replies", exact: true }), "Review recorded replies");
+    await flow.tabTo(improvePrimary(page, "recorded"), "Review recorded replies");
+    expect(fake.posts).toEqual([]);
     await flow.press("Enter", "Review recorded replies");
     await submitted(fake, "/evidence");
     await flow.save();
@@ -267,9 +293,58 @@ test.describe("keyboard only", () => {
     await flow.tabTo(doorButton(page, "improve"), "Improve door");
     await flow.press("Enter", "Improve door");
     await doorReady(page, "improve");
-    await flow.tabTo(sourceButton(page, "import"), "Import a test pack");
-    await flow.chooseFile(sourceButton(page, "import"), packFile, "Import a test pack");
+    expect(fake.posts).toEqual([]);
+    await flow.tabTo(sourceButton(page, "instructions"), "Agent source");
+    await flow.press("End", "Test pack source");
+    await flow.tabTo(improvePrimary(page, "import"), "Choose a file");
+    await flow.chooseFile(improvePrimary(page, "import"), packFile, "Choose a file");
     await submitted(fake, "/import");
     await flow.save();
   });
+});
+
+test("door navigation keeps both drafts and makes no project before input is committed", async ({ page }) => {
+  const { fake } = await open(page, "uncommitted-doors");
+  await doorButton(page, "build").click(); await doorReady(page, "build");
+  await composer(page).fill(description);
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await expect(doorButton(page, "build")).toBeFocused();
+  await expect(page.locator("h1")).toHaveCount(1);
+  await expect(page.locator(".vibe-entry-intro")).not.toHaveAttribute("data-fresh");
+  await doorButton(page, "improve").click(); await doorReady(page, "improve");
+  await startComposer(page, "improve").fill(instructions);
+  await switchDoorButton(page, "improve").click();
+  await doorReady(page, "build"); await expect(composer(page)).toHaveValue(description);
+  await page.reload(); await doorReady(page, "build"); await expect(composer(page)).toHaveValue(description);
+  await expect(page.locator("h1")).toHaveCount(1);
+  expect(fake.posts).toEqual([]);
+  expect(fake.errors).toEqual([]); expect(fake.unknown).toEqual([]);
+});
+
+
+for (const door of ["build", "improve"] as const) test(`${door} start follows browser history and reload without creating a project`, async ({ page }) => {
+  const { fake } = await open(page, `${door}-history`);
+  await doorButton(page, door).click(); await doorReady(page, door);
+  expect(fake.posts).toEqual([]);
+  await page.goBack(); await entryReady(page);
+  await expect(doorButton(page, door)).toBeFocused();
+  await page.goForward(); await doorReady(page, door);
+  await page.reload(); await doorReady(page, door);
+  await page.getByRole("button", { name: "Back", exact: true }).click();
+  await entryReady(page); await expect(doorButton(page, door)).toBeFocused();
+  expect(fake.posts).toEqual([]);
+  expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
+});
+
+for (const door of ["build", "improve"] as const) test(`New project returns from the ${door} start without losing its draft`, async ({ page }) => {
+  const fake = await fakeVibe(page);
+  await page.goto("/vibe-evals"); await entryReady(page); await doorButton(page, door).click(); await doorReady(page, door);
+  const input = startComposer(page, door);
+  await input.fill("Keep this uncommitted draft.");
+  await expect(page.locator('.vibe-entry-topbar').getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute("href", `/auth/login?returnTo=${encodeURIComponent(`/vibe-evals?start=${door}`)}`);
+  await page.getByRole("button", { name: "Open projects", exact: true }).click();
+  await page.getByRole("dialog", { name: "Your projects" }).getByRole("button", { name: "New project", exact: true }).click();
+  await entryReady(page); await expect(page.getByRole("dialog")).toHaveCount(0);
+  await doorButton(page, door).click(); await doorReady(page, door); await expect(input).toHaveValue("Keep this uncommitted draft.");
+  expect(fake.posts).toEqual([]); expect(fake.errors).toEqual([]);
 });

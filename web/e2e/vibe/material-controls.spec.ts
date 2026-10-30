@@ -159,13 +159,13 @@ test("recorded Improve inputs show their format and count without opening help",
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/vibe-evals"); await entryReady(page);
   await chooseDoor(page, "improve"); await improveSource(page, "recorded");
-  const replies = page.getByRole("textbox", { name: "Recorded replies", exact: true });
+  const replies = page.getByRole("textbox", { name: "Conversations", exact: true });
   await expect(replies).toHaveAttribute("placeholder", /Customer:.*\nAgent:/);
   await expect(replies).toHaveAttribute("placeholder", /---/);
-  await replies.fill(transcript); await page.getByLabel("Expected behavior", { exact: true }).fill(expectation);
+  await replies.fill(transcript); await page.getByLabel("What a good reply must do", { exact: true }).fill(expectation);
   await expect(page.getByRole("status").filter({ hasText: "1 conversation · 2 messages" })).toBeVisible();
   expect(fake.posts.filter(post => post.path.endsWith("/evidence"))).toEqual([]);
-  await page.getByRole("button", { name: "Review recorded replies", exact: true }).click();
+  await page.getByRole("button", { name: "Save and check", exact: true }).click();
   await expect(page.locator(".vibe-recorded-bubble")).toHaveCount(2);
   await expect(page.locator('.vibe-recorded-bubble[data-role="assistant"]')).toContainText("Agent");
   await expect(page.getByRole("button", { name: "Run recorded tests", exact: true })).toBeEnabled();

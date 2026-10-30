@@ -282,6 +282,15 @@ export type VibeConfig = {
   anonymous_limits?: Record<string, number>;
   signed_in_limits?: Record<string, number>;
   trial_budget_nano_usd?: number;
+  first_build_ceiling_nano_usd?: number;
+  guest_trial?: { initial_build_used: boolean; build_in_progress: boolean };
+};
+
+export type CreateSessionInput = {
+  id: string;
+  door?: "build" | "test";
+  workspace_id?: string;
+  title?: string;
 };
 
 // Only the generated single-judge preview is edited here. Imported contracts

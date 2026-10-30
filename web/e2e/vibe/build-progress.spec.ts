@@ -66,6 +66,28 @@ test("a real task announces a prototype after the server confirms the action", a
   state.operations[0].conversation_decision = { intent: "prepare_tests", source_message_id: "request" };
   await show();
   await expect(page.locator(".vibe-build-intro")).toContainText("I’m making a first version");
-  await expect(page.getByRole("status").filter({ hasText: "Creating your agent…" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Understand the task" })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+for (const width of [1440, 390]) test(`first Build shows each server stage and one Stop at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  const { state, show, errors } = await conversation(page, "Sort customer emails using our support rules.");
+  const turn = state.operations[0]; turn.state = "RUNNING"; turn.created_at = new Date(Date.now() - 65000).toISOString();
+  turn.conversation_decision = { intent: "prepare_tests", source_message_id: "request" };
+  for (const [phase, label] of [["understanding", "Understand the task"], ["preparing", "Write the instructions"], ["reviewing", "Write 3 tests"], ["repairing", "Write 3 tests"]]) {
+    turn.progress = { phase, completed_cases: 0, total_cases: 0 }; await show();
+    const strip = page.locator(".vibe-progress-strip[data-active]");
+    await expect(strip.getByRole("status")).toHaveText(label); await expect(strip.getByRole("list", { name: "Build stages" }).getByRole("listitem")).toHaveCount(4);
+    const stages = strip.getByRole("list", { name: "Build stages" }).getByRole("listitem");
+    const index = phase === "understanding" ? 0 : phase === "preparing" ? 1 : 2;
+    await expect(stages.nth(index)).toHaveAttribute("aria-current", "step");
+    expect(await stages.nth(index).evaluate(stage => getComputedStyle(stage).fontWeight)).toBe("600");
+    expect(await stages.nth(index).evaluate(stage => getComputedStyle(stage).textDecorationLine)).not.toContain("underline");
+    for (let done = 0; done < index; done++) { await expect(stages.nth(done)).toContainText("✓"); await expect(stages.nth(done)).toContainText("Done:"); }
+    await expect(stages.nth(index + 1)).toHaveAttribute("data-state", "upcoming");
+    await expect(strip).toContainText(/Elapsed 1:/); await expect(page.getByRole("button", { name: "Stop", exact: true })).toHaveCount(1);
+    await expect(strip).toContainText("Stop keeps finished results.");
+  }
   expect(errors).toEqual([]);
 });
