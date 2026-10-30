@@ -35,11 +35,13 @@ async function openView(page: Page, name: 'Agent'|'Tests'|'Results', finished?: 
  if(await sheet.isVisible()) await sheet.getByRole('button',{name:'Close Guide',exact:true}).click();
  await showView(page,name,finished,options);
 }
-// Occasional result actions share one "More actions" disclosure below the scorecard.
+// Both doors use this hook for occasional actions; Other results stays separate.
 async function openMoreActions(page: Page) {
  const more=page.locator('details.vibe-results-more');
+ await expect(more).toHaveCount(1);
  await expect(more.locator(':scope > summary')).toBeVisible();
  if(!(await more.evaluate(el=>(el as HTMLDetailsElement).open))) await more.locator(':scope > summary').click();
+ await expect(more).toHaveJSProperty('open',true);
 }
 // A new version from an ordinary Guide message stays unselected until "Review latest version".
 // Guide's fix after "Help me fix this" selects itself: its test asserts that and does not use this helper.
@@ -441,7 +443,14 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  const result=await evidence(page);expect(result.calls.map((c:{role:string})=>c.role)).toEqual(['judge']);
  expect(result.session.operations.at(-1).evidence_metadata.origin).toBe('recorded');
  await page.getByRole('tab',{name:'Results',exact:true}).click();
- await expect(page.getByRole('article',{name:'Run results'})).toBeVisible();
+ const resultCard=page.getByRole('article',{name:'Run results'});
+ await expect(resultCard.getByRole('heading',{name:resultCopy.headline(0,1),exact:true})).toBeVisible();
+ const customerInput=resultCard.locator('.vibe-example-evidence > div').first();
+ await expect(customerInput.locator('.vibe-recorded-bubble[data-role=user] p')).toHaveText('I opened it.');
+ await expect(customerInput).not.toContainText('"conversation"');
+ await expect(resultCard.locator('.vibe-example-reply')).toContainText('I can refund that.');
+ await resultCard.getByRole('button',{name:'Show full conversation',exact:true}).click();
+ await expect(resultCard.getByText('Full conversation · 2 messages',{exact:true})).toBeVisible();
  await openMoreActions(page);
  await page.getByRole('button',{name:'Review a grade',exact:true}).click();
  await page.getByLabel('Grade review reason',{exact:true}).fill('The recorded reply needs a second human review.');
@@ -450,7 +459,10 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  await expect(page.getByText('The recorded reply needs a second human review.',{exact:true})).toBeVisible();
  for(const width of [320,390,600,601,768,1023,1024,1279,1280,1440]){await page.setViewportSize({width,height:900});expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true)}
  await page.screenshot({path:info.outputPath('recorded-results.png'),fullPage:true});
- await page.reload();await expect(page.getByRole('article',{name:'Run results'})).toBeVisible();
+ await page.reload();
+ await expect(resultCard.getByRole('heading',{name:resultCopy.headline(0,1),exact:true})).toBeVisible();
+ await expect(customerInput.locator('.vibe-recorded-bubble[data-role=user] p')).toHaveText('I opened it.');
+ await expect(customerInput).not.toContainText('"conversation"');
  await openMoreActions(page);
  await expect(page.getByText('The recorded reply needs a second human review.',{exact:true})).toBeVisible();
  expect((await evidence(page)).calls).toHaveLength(1);

@@ -1,6 +1,7 @@
 "use client";
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { dollars, type Artifact, type Models, type Operation, type RunQuote, type Session } from "@/lib/vibe";
+import { testCount } from "@/lib/vibe-presentation";
 import { VibeButton } from "./vibe-button";
 
 type Price = { quote?: RunQuote; error?: string; credits?: boolean; refresh(): void; onCredits(): void };
@@ -28,5 +29,5 @@ export function ImproveRunNotice({ reason }: { reason?: string }) {
 }
 export function ImproveRunButton({ count, comparison, busy, blockedReason, onRun, primary = true }: { count: number; comparison?: boolean; busy?: boolean; blockedReason?: string; onRun(): void; primary?: boolean }) {
   const price = useImprovePrice();
-  return <div className="space-y-2"><VibeButton variant={primary ? "primary" : "secondary"} disabled={busy || !!blockedReason || price?.credits} onClick={onRun}>{priceLabel(comparison ? "Test this change" : `Run ${count} ${count === 1 ? "test" : "tests"}`, price)}</VibeButton><ImproveRunNotice reason={blockedReason} /></div>;
+  return <div className="space-y-2"><VibeButton variant={primary ? "primary" : "secondary"} disabled={busy || !!blockedReason || price?.credits} onClick={onRun}>{priceLabel(comparison ? "Test this change" : `Run ${testCount(count)}`, price)}</VibeButton><ImproveRunNotice reason={blockedReason} /></div>;
 }

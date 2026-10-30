@@ -103,7 +103,10 @@ export function CaseEvidence({
   const error = current?.error;
   const loading = open && !current;
   const finding = evidence ? findingCheck(evidence) : undefined;
-  const input = evidence?.input != null ? caseInput(evidence.input) : evidence?.messages?.filter(message => message.role === "user").map(message => message.content).join("\n\n") || "No input was recorded.";
+  const recorded = origin === "provided_conversations";
+  const customerMessages = evidence?.messages?.filter(message => message.role === "user") || [];
+  const customerInput = customerMessages.map(message => message.content).join("\n\n");
+  const input = recorded ? customerInput || "No customer message was recorded." : evidence?.input != null ? caseInput(evidence.input) : customerInput || "No input was recorded.";
   const cited = new Set(finding?.message_ids || []);
   const replies = evidence?.messages?.filter(message => message.role === "assistant") || [];
   const reply = replies.findLast(message => cited.has(message.id))?.content || replies.at(-1)?.content || evidence?.output;
@@ -140,7 +143,7 @@ export function CaseEvidence({
         <span className="vibe-row-title min-w-0 flex-1">
           {summary.title ||
             (concise && evidence?.input != null
-              ? caseInput(evidence.input)
+              ? input
               : summary.case_key
                   .replace(/^case-/, "Test ")
                   .replaceAll("-", " "))}
@@ -180,7 +183,7 @@ export function CaseEvidence({
               </p>
             )}
             {exampleFirst && <div className="vibe-example-evidence">
-              <div><p className="vibe-evidence-label">We gave it</p>{compactPreview ? <EvidenceExcerpt text={input} label="input" /> : <SafeMarkdown>{input}</SafeMarkdown>}</div>
+              <div><p className="vibe-evidence-label">We gave it</p>{recorded && customerMessages.length ? <div className="vibe-recorded-chat">{customerMessages.map(message => <div className="vibe-recorded-bubble" data-role="user" key={message.id}><strong>Customer</strong><p>{message.content}</p></div>)}</div> : compactPreview ? <EvidenceExcerpt text={input} label="input" /> : <SafeMarkdown>{input}</SafeMarkdown>}</div>
               <div><p className="vibe-evidence-label">It replied</p>{reply ? <div className="vibe-example-reply">{compactPreview ? <EvidenceExcerpt text={reply} label="reply" /> : <AgentReply>{reply}</AgentReply>}</div> : <p>No reply was recorded.</p>}</div>
               <div><p className="vibe-evidence-label">It should</p><SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown></div>
             </div>}
@@ -388,7 +391,7 @@ function EvidenceDetails({
                 Original message or task
               </p>
               <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words text-sm">
-                {caseInput(evidence.input)}
+                {origin === "provided_conversations" ? "No customer message was recorded." : caseInput(evidence.input)}
               </pre>
             </div>
             {evidence.output && (

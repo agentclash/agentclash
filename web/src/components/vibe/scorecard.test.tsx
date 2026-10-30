@@ -767,14 +767,19 @@ it("puts the Improve finding and Suggest a fix before a single More disclosure",
 });
 
 it.each(["prompt", "provided_conversations"] as const)("shows the shared input, reply, expected behavior and finding order for %s Improve results", async kind => {
-  const result = { ...failure, input: kind === "prompt" ? "May I return this?" : null, output: kind === "prompt" ? "How many days ago did you buy it?" : "" };
+  const result = { ...failure, input: kind === "prompt" ? "May I return this?" : { conversation: "Conversation 1" }, output: kind === "prompt" ? "How many days ago did you buy it?" : "" };
   const op = operation([result]); op.source!.kind = kind;
   await render(op, undefined, true, true);
   const leading = container.querySelector('[aria-label="Leading finding"]')!;
   const labels = [...leading.querySelectorAll("p")].filter(p => ["We gave it", "It replied", "It should", "What needs attention"].includes(p.textContent!.trim()));
   expect(labels.map(p => p.textContent!.trim())).toEqual(["We gave it", "It replied", "It should", "What needs attention"]);
   expect(labels[0].parentElement!.textContent).toContain(kind === "prompt" ? "May I return this?" : "I bought it 10 days ago.");
-  if (kind === "provided_conversations") expect(labels[0].parentElement!.textContent).toContain("It is unopened.");
+  if (kind === "provided_conversations") {
+    expect(labels[0].parentElement!.textContent).toContain("It is unopened.");
+    expect(labels[0].parentElement!.textContent).not.toContain('"conversation"');
+    expect(labels[0].parentElement!.textContent).not.toContain("Conversation 1");
+    expect(labels[0].parentElement!.querySelectorAll('.vibe-recorded-bubble[data-role="user"]')).toHaveLength(2);
+  }
   expect(labels[1].parentElement!.textContent).toContain("How many days ago did you buy it?");
   expect(labels[2].parentElement!.textContent).toContain("Ask only for missing details.");
   expect(labels[3].parentElement!.textContent).toContain(failure.checks[0].evidence);
@@ -817,4 +822,29 @@ it.each([0, 2, 3])("U12/U13 Improve uses the shared outcome and fix label (%s pa
   await render(operation(results), undefined, true, true);
   expect(container.querySelector(".vibe-results-outcome")?.textContent).toBe(passed === 3 ? "Your agent passed all 3 tests" : `Your agent passed ${passed} of 3 tests`);
   if (passed < 3) expect(button("Suggest a fix").querySelector("svg")).not.toBeNull();
+});
+
+
+it.each(["prompt", "provided_conversations"] as const)("exposes one stable More hook for %s Improve result actions", async kind => {
+  const op = operation([failure, passing]); op.source!.kind = kind;
+  await render(op, undefined, true, true);
+  const more = container.querySelectorAll("details.vibe-results-more");
+  expect(more).toHaveLength(1);
+  expect(more[0].querySelector(":scope > summary")?.textContent).toBe("More");
+  expect(button("Run tests again").closest("details")).toBe(more[0]);
+  expect(button("Suggest a fix").closest("details")).toBeNull();
+  expect(more[0].contains(container.querySelector(".vibe-other-results"))).toBe(false);
+});
+
+it.each([false, true])("does not display a recorded conversation marker when customer messages are unavailable (assistant replies: %s)", async assistantOnly => {
+  const result = { ...failure, title: "", input: { conversation: "Conversation 1" }, messages: assistantOnly ? failure.messages!.filter(message => message.role === "assistant") : undefined };
+  await render(operation([result]), undefined, false, true);
+  const input = container.querySelector(".vibe-example-evidence > div")!;
+  expect(input.textContent).toContain("No customer message was recorded.");
+  expect(container.textContent).not.toContain('"conversation"');
+});
+
+it.each([[0, "Your agent passed 0 of 1 test"], [1, "Your agent passed all 1 test"]])("uses singular in the Improve headline when %i of one test passed", async (passed, headline) => {
+  await render(operation([passed ? passing : failure]), undefined, false, true);
+  expect(container.querySelector(".vibe-results-outcome")?.textContent).toBe(headline);
 });

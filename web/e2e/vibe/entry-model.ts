@@ -110,7 +110,7 @@ export const testChangeButton = (page: Page) => page.getByRole("button", { name:
 export const addAgentInstructions = (page: Page) => page.getByRole("button", { name: "Add your agent's instructions", exact: true });
 
 export const resultCopy = {
-  headline: (passed: number, total: number) => passed === total ? `Your agent passed all ${total} tests` : `Your agent passed ${passed} of ${total} tests`,
+  headline: (passed: number, total: number) => passed === total ? `Your agent passed all ${total} ${total === 1 ? "test" : "tests"}` : `Your agent passed ${passed} of ${total} ${total === 1 ? "test" : "tests"}`,
   fix: "Suggest a fix",
   other: /^Other results ·/,
 } as const;

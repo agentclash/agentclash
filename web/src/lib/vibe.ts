@@ -1,3 +1,4 @@
+import { testCount } from "./vibe-presentation";
 import type { ConversationState, ConversationChange } from "./vibe-conversation";
 
 export type Models = { assistant: string; target: string; evaluator: string };
@@ -446,10 +447,10 @@ export function completionAcknowledgement(operation: Operation): string | undefi
   const receipt = operation.completion_receipt;
   if (!receipt) return undefined;
   if (receipt.action === "prepare_tests")
-    return `${receipt.case_count} ${receipt.case_count === 1 ? "test is" : "tests are"} ready.`;
+    return `${testCount(receipt.case_count)} ${receipt.case_count === 1 ? "is" : "are"} ready.`;
   if (receipt.action === "edit_tests")
     return receipt.changed_case_count > 0
-      ? `Updated ${receipt.changed_case_count} ${receipt.changed_case_count === 1 ? "test" : "tests"}.`
+      ? `Updated ${testCount(receipt.changed_case_count)}.`
       : "Updated the test rules.";
   if (receipt.action === "suggest_fix") return "Prepared a suggested fix.";
   return undefined;

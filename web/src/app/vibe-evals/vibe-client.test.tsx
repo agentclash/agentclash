@@ -4511,3 +4511,14 @@ it("U14 keeps keyboard focus on the Results tab when revisiting a finished run",
   expect(document.activeElement).toBe(tab);
   expect(container.querySelectorAll("h1")).toHaveLength(1);
 });
+
+
+it("uses singular test counts in the save dialog for a one-test agent", async () => {
+  acceptedDraft(); signedInWorkspace();
+  await render(); await click("Save agent");
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(dialog.textContent).toContain("Save these instructions and 1 test to your workspace.");
+  const version = [...dialog.querySelectorAll("dt")].find(label => label.textContent === "Version and tests")!;
+  expect(version.nextElementSibling?.textContent).toContain("1 test");
+  expect(version.nextElementSibling?.textContent).not.toContain("1 tests");
+});

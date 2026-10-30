@@ -167,7 +167,7 @@ export function VibeScorecard({
     {score.failed > 0 ? <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={() => onImprove()}><Lightbulb aria-hidden="true" />Suggest a fix</VibeButton>
       : onSave && !incomplete && !stopped ? <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={onSave}><Bookmark aria-hidden="true" />Keep these tests</VibeButton>
       : <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={onRetest}>Run tests again</VibeButton>}
-    <details className="text-sm vibe-muted"><summary className="cursor-pointer py-3">More</summary><div className="mt-3 space-y-4">
+    <details className="vibe-results-more text-sm vibe-muted"><summary className="cursor-pointer py-3">More</summary><div className="mt-3 space-y-4">
       <p>{score.passed} passed · {score.failed} failed{unresolvedCount ? ` · ${unresolvedCount} unresolved` : ""}</p>
       {overlappingCounts && <p>Unresolved tests have unfinished grading and can also be counted as passed or failed.</p>}
       <p>{regraded ? "Saved replies only. Your agent was not called again." : provided ? "Based on the conversations you provided. Your live app was not called." : "Text replies from your saved instructions. Your live app was not called."}</p>
@@ -234,8 +234,7 @@ export function VibeScorecard({
               </>
             ) : (
               <>
-                {fixed} previously failing{" "}
-                {fixed === 1 ? "test" : "tests"}
+                {testCount(fixed, "previously failing")}
                 {fixed === 1 ? " now passes" : " now pass"} · {regressions} new{" "}
                 {regressions === 1 ? "failure" : "failures"}.
                 <span className="vibe-muted">

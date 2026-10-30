@@ -146,7 +146,7 @@ export function TestSuitePanel({
                   ? "Run previous tests"
                   : comparison
                   ? rerunLabel(buildJourney)
-                  : buildJourney && parent ? "Update and run" : `Run ${cases.length} ${cases.length === 1 ? "test" : "tests"}`
+                  : buildJourney && parent ? "Update and run" : `Run ${testCount(cases.length)}`
                 : preparingOnly ? "Keep these tests" : buildJourney && rules.length ? "Build from saved rules" : "Add your agent", ready && !buildJourney ? price : undefined)}
               <ArrowRight />
             </VibeButton>}

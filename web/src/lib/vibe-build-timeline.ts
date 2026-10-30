@@ -109,10 +109,10 @@ export function buildRunSummary(operation: Operation) {
   if (operation.error || operation.state !== "COMPLETED") return "This run couldn’t finish. Your work is saved.";
   if (!score || score.total === 0) return "No tests were run.";
   if (operation.source?.comparison === "regraded") return "Saved replies regraded. The agent hasn’t changed.";
-  if (score.failed) return `${score.failed === 1 ? "One test needs" : `${score.failed} tests need`} attention.`;
+  if (score.failed) return `${score.failed === 1 ? "One test needs" : `${testCount(score.failed)} need`} attention.`;
   if (score.unknown || score.evaluated !== score.total || score.incomplete_cases || score.passed !== score.total || operation.results.length !== score.total || operation.results.some(c => c.verdict !== "PASS"))
     return "Some tests could not be fully graded.";
-  return score.total === 1 ? "It passed this test." : `It passed all ${score.total} tests.`;
+  return score.total === 1 ? "It passed this test." : `It passed all ${testCount(score.total)}.`;
 }
 
 export const buildStages = ["Understand the task", "Write the instructions", "Write 3 tests", "Run tests"] as const;
