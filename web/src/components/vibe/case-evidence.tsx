@@ -164,7 +164,6 @@ export function CaseEvidence({
         />
       </summary>
       <div className="space-y-4 border-t border-[var(--vibe-border)] p-4">
-        {onAsk && <VibeButton variant="quiet" onClick={onAsk}>Ask Guide about this test</VibeButton>}
         {loading && (
           <p role="status" className="text-sm vibe-muted">
             Loading saved evidence…
@@ -213,16 +212,6 @@ export function CaseEvidence({
                 onCopied={onFixCopied}
               />
             )}
-            {!compactPreview && <EvidenceDetails
-              evidence={evidence}
-              finding={finding}
-              expectationShown={exampleFirst || !!verifiedFinding(evidence, finding)}
-              origin={origin}
-              onDispute={onDispute}
-              onRegrade={onRegrade}
-              onImprove={onImprove}
-              busy={busy}
-            />}
           </>
         )}
         {(error || summary.verdict === "UNKNOWN") && (
@@ -234,6 +223,18 @@ export function CaseEvidence({
             Reload saved evidence
           </VibeButton>
         )}
+        <EvidenceDetails
+          evidence={evidence}
+          finding={finding}
+          expectationShown={!!evidence && (exampleFirst || !!verifiedFinding(evidence, finding))}
+          origin={origin}
+          compactPreview={compactPreview}
+          onAsk={onAsk}
+          onDispute={onDispute}
+          onRegrade={onRegrade}
+          onImprove={onImprove}
+          busy={busy}
+        />
       </div>
     </details>
   );
@@ -298,15 +299,19 @@ function EvidenceDetails({
   finding,
   expectationShown,
   origin,
+  compactPreview,
+  onAsk,
   onDispute,
   onRegrade,
   onImprove,
   busy,
 }: {
-  evidence: CaseResult;
+  evidence?: CaseResult;
   finding?: EvidenceCheck;
   expectationShown: boolean;
   origin?: EvidenceOrigin;
+  compactPreview?: boolean;
+  onAsk?: () => void;
   onDispute?: (rule: string, result: CaseResult) => void;
   onRegrade?: () => void;
   onImprove?: (result: CaseResult) => void;
@@ -314,6 +319,9 @@ function EvidenceDetails({
 }) {
   const id = useId();
   const [expanded, setExpanded] = useState(false);
+  const guide = onAsk && <VibeButton variant="quiet" disabled={busy} onClick={onAsk}>Ask Guide about this test</VibeButton>;
+  // Keep the Guide button mounted while evidence loads so keyboard focus stays put.
+  if (!evidence || compactPreview) return guide ? <div className="space-y-3"><div className="vibe-evidence-actions -ml-3 flex flex-wrap items-center gap-1">{guide}</div></div> : null;
   // The finding and its expectation already show above; list checks only when there is more.
   const otherChecks = evidence.checks.some((check) => check.key !== finding?.key);
   const cited = new Set(finding?.message_ids || []);
@@ -322,7 +330,8 @@ function EvidenceDetails({
     : !!evidence.output;
   return (
     <div className="space-y-3">
-      <div className="-ml-3 flex flex-wrap items-center gap-1">
+      <div className="vibe-evidence-actions -ml-3 flex flex-wrap items-center gap-1">
+        {guide}
         <VibeButton
           variant="quiet"
           aria-expanded={expanded}

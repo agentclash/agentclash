@@ -47,7 +47,9 @@ export function ImproveStart(p: {
       else p.onSaveReplies({ conversations: p.drafts.conversations, rules: p.drafts.rules });
     }}>
       {p.mode === "instructions" ? <>
-        <div><div className="vibe-improve-field-heading"><label htmlFor={`${id}-instructions`}>Agent instructions</label><InstructionsHelp><VibeButton variant="quiet" className="vibe-improve-link" disabled={p.busy} onClick={() => p.onDraft({ instructions: exampleAgentDescription })}>Use sample instructions</VibeButton></InstructionsHelp></div><textarea id={`${id}-instructions`} className="vibe-textarea" rows={4} value={p.drafts.instructions} disabled={p.busy} onChange={event => p.onDraft({ instructions: event.target.value })} placeholder="Paste the instructions your agent uses…" /></div>
+        <div><div className="vibe-improve-field-heading"><label htmlFor={`${id}-instructions`}>Agent instructions</label><InstructionsHelp /></div><textarea id={`${id}-instructions`} className="vibe-textarea" rows={4} value={p.drafts.instructions} disabled={p.busy} onChange={event => p.onDraft({ instructions: event.target.value })} placeholder="Paste the instructions your agent uses…" /></div>
+        <VibeButton variant="quiet" className="vibe-improve-link" disabled={p.busy} onClick={() => p.onDraft({ instructions: exampleAgentDescription })}>Use sample instructions</VibeButton>
+        <label htmlFor={`${id}-model`}>Which model does your agent use?<select id={`${id}-model`} value={p.drafts.model || ""} disabled={p.busy} onChange={event => p.onDraft({ model: event.target.value })}><option value="">Use the selected model</option>{p.models.map(model => <option key={model.id} value={model.id}>{friendlyModelName(model, true)}</option>)}</select></label>
       </> : <>
         <p className="vibe-muted">Paste full conversations. We grade the saved replies; your app is not called.</p>
         <label htmlFor={`${id}-conversations`}>Conversations<textarea id={`${id}-conversations`} className="vibe-textarea" rows={6} value={p.drafts.conversations} disabled={p.busy} onChange={event => p.onDraft({ conversations: event.target.value })} placeholder={repliesPlaceholder} /></label>
@@ -62,7 +64,6 @@ export function ImproveStart(p: {
       <VibeButton variant="quiet" disabled={p.busy} onClick={() => p.onOther("chat")}>Describe it in chat</VibeButton>
       {p.signedIn ? <><VibeButton variant="quiet" disabled={p.busy} onClick={() => p.onOther("live_app")}>Connect a live app</VibeButton><VibeButton variant="quiet" disabled={p.busy} onClick={() => p.onOther("sdk_report")}>Import an SDK report</VibeButton></>
         : <><p><a href="/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dimprove">Sign in to connect a live app</a></p><p><a href="/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dimprove">Sign in to import an SDK report</a></p></>}
-      {p.mode === "instructions" && <label htmlFor={`${id}-model`}>Which model does your agent use?<select id={`${id}-model`} value={p.drafts.model || ""} disabled={p.busy} onChange={event => p.onDraft({ model: event.target.value })}><option value="">Use the selected model</option>{p.models.map(model => <option key={model.id} value={model.id}>{friendlyModelName(model, true)}</option>)}</select></label>}
       <VibeButton variant="quiet" className="vibe-improve-link" disabled={p.busy} onClick={p.onSwitchDoor}>Build an agent instead</VibeButton>
     </div></details>
     <VibeDataUseNotice />

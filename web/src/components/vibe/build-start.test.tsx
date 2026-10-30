@@ -118,19 +118,35 @@ it("sends Enter once and ignores another Enter or form submit while busy", async
 });
 
 
-it("shows two examples and puts files, switching and data documentation in one disclosure", async () => {
-  await render({ draft: "Answer questions using our return policy." });
-  const details = node.querySelector("details")!;
-  expect(details).not.toBeNull(); expect(details.open).toBe(false);
-  expect(details.querySelector("summary")?.textContent).toBe("Files and other options");
-  expect(node.querySelectorAll(".vibe-build-example-chips button")).toHaveLength(2);
-  expect(node.querySelector(".vibe-build-example-chips")?.closest("details")).toBeNull();
-  for (const name of ["Attach a file", "Already have an agent? Improve it instead."]) expect(button(name).closest("details")).toBe(details);
+it("P2: exposes attachment after two chips and the switch at the bottom without a disclosure", async () => {
+  await render();
+  expect(node.querySelector("details")).toBeNull();
+  const row = node.querySelector(".vibe-build-example-chips")!;
+  expect([...row.querySelectorAll("button")].map(control => control.textContent)).toEqual(["Answer return questions", "Sort support emails", "Attach a file"]);
+  expect(button("Attach a file").querySelector("svg.lucide-paperclip")).not.toBeNull();
+  const switcher = button("Already have an agent? Improve it instead.");
+  expect(switcher.parentElement).toBe(node.querySelector("section"));
+  expect(node.querySelector("form")!.compareDocumentPosition(switcher) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(node.querySelector(".vibe-material-hint")?.textContent).toContain("Leave out secrets and customer IDs.");
   expect(node.querySelector(".vibe-material-hint a")).toBeNull();
-  expect(details.querySelector("a")?.getAttribute("href")).toBe("/docs/vibe-evals/data-use");
-  const controls = [...node.querySelectorAll("button, textarea, a[href], summary")].filter(control => !control.closest("header") && (!control.closest("details") || control.tagName === "SUMMARY"));
-  expect(controls).toHaveLength(5); expect(controls.length).toBeLessThanOrEqual(5);
+  expect(node.querySelector('a[href="/docs/vibe-evals/data-use"]')).toBeNull();
+  const controls = [...node.querySelectorAll<HTMLButtonElement>("button, textarea, select, a[href], summary")].filter(control => !control.closest("header") && !control.disabled);
+  expect(controls).toHaveLength(5);
+});
+it("P3: puts a left-aligned primary and price immediately below chips with its reason beneath", async () => {
+  const style = document.createElement("style"); style.textContent = readFileSync("src/components/vibe/build-output.css", "utf8"); document.head.append(style);
+  try {
+    await render();
+    const actions = node.querySelector(".vibe-build-start-actions")!;
+    expect(node.querySelector(".vibe-build-example-chips")!.nextElementSibling).toBe(actions);
+    expect(actions.querySelector(".vibe-build-start-submit")!.firstElementChild).toBe(submit());
+    expect(submit().nextElementSibling?.textContent).toBe("Free trial");
+    expect(getComputedStyle(actions).justifyContent).toBe("flex-start");
+    expect(parseFloat(getComputedStyle(submit().parentElement!).marginInlineStart)).toBe(0);
+    const reason = document.getElementById(submit().getAttribute("aria-describedby")!)!;
+    expect(actions.nextElementSibling).toBe(reason);
+    expect(reason.textContent).toBe("Describe the task in a sentence or two.");
+  } finally { style.remove(); }
 });
 it("associates each mounted Build question with its own input", async () => {
   await render();

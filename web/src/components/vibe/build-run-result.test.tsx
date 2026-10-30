@@ -193,3 +193,12 @@ it.each([0, 2, 3])("U12/U13 Build uses the shared outcome and fix label (%s pass
   expect(node.querySelector(".vibe-results-outcome")?.textContent).toBe(passed === 3 ? "Your agent passed all 3 tests" : `Your agent passed ${passed} of 3 tests`);
   if (passed < 3) expect([...node.querySelectorAll("button")].find(button => button.textContent === "Suggest a fix")?.querySelector("svg")).toBeTruthy();
 });
+
+it("P5: puts Suggest a fix immediately after the finding and before Other results", async () => {
+  const failure = { ...evidence, verdict: "FAIL" as const };
+  await render({ ...op, results: [failure, { ...evidence, case_key: "other" }], scorecard: { ...op.scorecard!, passed: 1, failed: 1, total: 2, evaluated: 2 } });
+  const finding = node.querySelector(".vibe-build-examples")!;
+  const action = finding.nextElementSibling!;
+  expect(action.querySelector("button")?.textContent).toBe("Suggest a fix");
+  expect(action.nextElementSibling).toBe(node.querySelector(".vibe-other-results"));
+});

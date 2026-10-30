@@ -13,7 +13,7 @@ export const startCopy = {
   primaries: { instructions: "Write 3 tests", recorded: "Save and check", import: "Choose a file" },
   replies: "Conversations", rules: "What a good reply must do",
   existingProject: { build: "What task should the agent handle?", improve: "Improve an agent you already have." },
-  buildOptions: "Files and other options", improveOptions: "Other ways to bring your agent", resultsMore: "More",
+  buildOptions: "Attach a file", improveOptions: "Other ways to bring your agent", resultsMore: "More",
 } as const;
 export const entryCopy = {
   heading: "What would you like to evaluate?", choices: "New project choices",
@@ -40,7 +40,7 @@ export const sendButton = (page: Page) => startScreen(page).getByRole("button", 
 export const improvePrimary = (page: Page, source: ImproveSource) => startScreen(page).getByRole("button", { name: startCopy.primaries[source], exact: true });
 export const repliesInput = (page: Page) => startScreen(page).getByRole("textbox", { name: startCopy.replies, exact: true });
 export const rulesInput = (page: Page) => startScreen(page).getByRole("textbox", { name: startCopy.rules, exact: true });
-export const buildOptions = (page: Page) => startScreen(page).locator("summary").filter({ hasText: new RegExp(`^${startCopy.buildOptions}$`) });
+export const buildOptions = (page: Page) => startScreen(page).getByRole("button", { name: startCopy.buildOptions, exact: true });
 export const improveOptions = (page: Page) => startScreen(page).locator("summary").filter({ hasText: new RegExp(`^${startCopy.improveOptions}$`) });
 export const resultsMore = (page: Page) => page.locator("summary").filter({ hasText: new RegExp(`^${startCopy.resultsMore}$`) });
 export const switchDoorButton = (page: Page, door: Door) => startScreen(page).getByRole("button", { name: startCopy[door].switchDoor, exact: true });

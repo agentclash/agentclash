@@ -5,7 +5,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { Session } from "../../src/lib/vibe";
 import { description, fakeVibe, instructions, models, project } from "./entry-fake";
-import { chooseDoor, composer, doorButton, doorReady, entryHeading, entryReady, sendButton, sourceButton, doorHeading, startScreen, startComposer, buildOptions, otherResults, resultsMore } from "./entry-model";
+import { chooseDoor, composer, doorButton, doorReady, entryHeading, entryReady, sendButton, sourceButton, doorHeading, startScreen, startComposer, buildOptions, startCopy, otherResults, resultsMore } from "./entry-model";
 
 type Scheme = "light" | "dark";
 const schemes = ["light", "dark"] as const;
@@ -99,7 +99,7 @@ test("the entry and both door starts: display serif questions, 3:1 control bound
   await chooseDoor(page, "build");
   await doorReady(page, "build");
   const box = page.locator(".vibe-build-start-card");
-  await buildOptions(page).click();
+  await expect(buildOptions(page)).toBeVisible();
   for (const scheme of schemes) for (const contrast of ["no-preference", "more"] as const) {
     await settle(page, scheme, { contrast });
     const title = doorHeading(page, "build"), input = startComposer(page, "build");
@@ -120,7 +120,7 @@ test("the entry and both door starts: display serif questions, 3:1 control bound
     expect(await css(input, "outline-color"), scheme).not.toBe(await css(input, "border-top-color"));
     expect(await boundary(input, "outline"), `${scheme} Build focus ring`).toBeGreaterThanOrEqual(3);
     await input.blur(); await expect(input).toHaveCSS("outline-style", "none");
-    const chips = startScreen(page).getByRole("group", { name: "Example tasks" }).getByRole("button");
+    const chips = startScreen(page).getByRole("group", { name: "Example tasks" }).locator(".vibe-example-chip");
     await expect(chips).toHaveCount(2);
     for (const chip of await chips.all()) {
       await expect(chip).toHaveCSS("border-radius", "999px");
@@ -346,7 +346,7 @@ test.describe("before hydration", () => {
   });
 });
 
-test("review polish: shared start hierarchy, chip and step rows, aligned quiet controls and styled disclosures at 1440 and 390", async ({ page }) => {
+test("review polish: shared start hierarchy, chip rows and vertical steps, aligned quiet controls and styled disclosures at 1440 and 390", async ({ page }) => {
   const fake = await fakeVibe(page);
   for (const width of [1440, 390]) for (const scheme of schemes) {
     await page.setViewportSize({ width, height: 960 });
@@ -356,23 +356,34 @@ test("review polish: shared start hierarchy, chip and step rows, aligned quiet c
     const steps = page.locator(".vibe-door-steps > li");
     const rects = await steps.evaluateAll(elements => elements.map(element => { const rect = element.getBoundingClientRect(); return { x: rect.x, y: rect.y }; }));
     expect(rects).toHaveLength(3);
-    if (width === 1440) expect(new Set(rects.map(rect => rect.y)).size).toBe(1);
-    else { expect(rects[0].y).toBeLessThan(rects[1].y); expect(rects[1].y).toBeLessThan(rects[2].y); }
+    expect(new Set(rects.map(rect => rect.x)).size).toBe(1);
+    expect(rects[0].y).toBeLessThan(rects[1].y); expect(rects[1].y).toBeLessThan(rects[2].y);
     for (const door of ["build", "improve"] as const) {
       await chooseDoor(page, door); await doorReady(page, door);
       const title = doorHeading(page, door);
       await expect(title).toHaveClass("vibe-start-title");
       await expect(title).toHaveCSS("font-family", /Instrument[ _]Serif/);
       await expect(title).toHaveCSS("font-size", width === 390 ? "32px" : "42.88px");
-      const options = door === "build" ? buildOptions(page) : startScreen(page).locator(".vibe-improve-other > summary");
-      const disclosure = options.locator("..");
-      await expect(options).toHaveCSS("list-style-type", "none");
-      const before = () => options.evaluate(element => getComputedStyle(element, "::before").transform);
-      const closed = await before();
-      await options.click();
-      await expect(disclosure).toHaveJSProperty("open", true);
-      await expect.poll(before).not.toBe(closed);
-      await expect.poll(() => options.evaluate(element => getComputedStyle(element, "::before").transitionDuration)).toBe("0s");
+      if (door === "improve") {
+        const options = startScreen(page).locator(".vibe-improve-other > summary");
+        const disclosure = options.locator("..");
+        await expect(options).toHaveCSS("list-style-type", "none");
+        const before = () => options.evaluate(element => getComputedStyle(element, "::before").transform);
+        const closed = await before();
+        await options.click();
+        await expect(disclosure).toHaveJSProperty("open", true);
+        await expect.poll(before).not.toBe(closed);
+        await expect.poll(() => options.evaluate(element => getComputedStyle(element, "::before").transitionDuration)).toBe("0s");
+      } else {
+        await expect(startScreen(page).locator("details")).toHaveCount(0);
+        await expect(buildOptions(page)).toBeVisible();
+        const primary = sendButton(page), input = startComposer(page, "build");
+        const task = (await input.boundingBox())!, action = (await primary.boundingBox())!;
+        expect(Math.abs(action.x - task.x)).toBeLessThanOrEqual(1);
+        expect(action.y).toBeGreaterThan((await startScreen(page).locator(".vibe-build-example-chips").boundingBox())!.y);
+        await expect(primary).toHaveAccessibleDescription("Describe the task in a sentence or two.");
+        await expect(startScreen(page).getByRole("button", { name: startCopy.build.switchDoor, exact: true })).toBeVisible();
+      }
       const quiet = startScreen(page).locator(".vibe-button-quiet:not(.vibe-example-chip)").filter({ visible: true });
       for (const button of await quiet.all()) {
         await expect(button).toHaveCSS("padding-left", "0px");

@@ -104,7 +104,7 @@ for (const { label, viewport, touch } of viewports) test.describe(label, () => {
     await context.close();
   });
 
-  test("Build preview wraps whole numbered steps and keeps a short door name", async ({ page }) => {
+  test("Build preview stacks single-line numbered steps at every width and keeps a short door name", async ({ page }) => {
     await page.setViewportSize(viewport);
     const fake = await fakeVibe(page);
     await page.goto("/vibe-evals"); await entryReady(page);
@@ -122,14 +122,9 @@ for (const { label, viewport, touch } of viewports) test.describe(label, () => {
       expect(item.whiteSpace).toBe("nowrap"); expect(item.labelLines).toBe(1);
       expect(item.numerals).toContain("tabular-nums");
     }
-    if (touch) {
-      expect(layout.map(item => item.x)).toEqual([layout[0].x, layout[0].x, layout[0].x]);
-      expect(layout[1].y).toBeGreaterThan(layout[0].y); expect(layout[2].y).toBeGreaterThan(layout[1].y);
-    } else {
-      expect(layout.map(item => item.y)).toEqual([layout[0].y, layout[0].y, layout[0].y]);
-      expect(layout[1].x).toBeGreaterThan(layout[0].x); expect(layout[2].x).toBeGreaterThan(layout[1].x);
-      expect(await door.locator("ol").evaluate(list => getComputedStyle(list).gridTemplateColumns.split(" ").length)).toBe(3);
-    }
+    expect(layout.map(item => item.x)).toEqual([layout[0].x, layout[0].x, layout[0].x]);
+    expect(layout[1].y).toBeGreaterThan(layout[0].y); expect(layout[2].y).toBeGreaterThan(layout[1].y);
+    expect(await door.locator("ol").evaluate(list => getComputedStyle(list).gridTemplateColumns.split(" ").length)).toBe(1);
     expect(fake.posts).toEqual([]); expect(fake.errors).toEqual([]);
   });
 

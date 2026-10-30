@@ -31,7 +31,26 @@ export function census(page: Page): Promise<Census> {
     const zone = (el: Element) => el.closest('.vibe-sidebar, [aria-label="Projects sidebar"], [aria-label="Your projects"]') ? "nav" as const : el.closest("header") ? "header" as const : "main" as const;
     // A link inside a sentence is exempt from the 44 px target rule (WCAG 2.5.8 inline exception).
     const inline = (el: Element) => el.tagName === "A" && !!el.parentElement && getComputedStyle(el).display === "inline" && text(el.parentElement.textContent).length > text(el.textContent).length;
-    const rows = [...new Set(document.querySelectorAll(selector))].filter(shown).map(el => {
+    const grouped = new Map<object, Element>(), named = new Map<Node, Map<string, object>>();
+    const disabled = (el: Element) => (el as HTMLButtonElement).disabled === true || el.getAttribute("aria-disabled") === "true";
+    for (const el of [...new Set(document.querySelectorAll(selector))].filter(shown)) {
+      let key: object = el;
+      if (el.matches('input[type="radio"], [role="radio"], [role="radiogroup"]')) {
+        // A radio group is one control: roving tabindex gives it one Tab stop.
+        const group = el.closest('[role="radiogroup"]'), name = el.getAttribute("name");
+        if (group) key = group;
+        else if (name) {
+          const scope = (el as HTMLInputElement).form || el.getRootNode();
+          if (!named.has(scope)) named.set(scope, new Map());
+          const names = named.get(scope)!;
+          if (!names.has(name)) names.set(name, {});
+          key = names.get(name)!;
+        }
+      }
+      const previous = grouped.get(key);
+      if (!previous || (disabled(previous) && !disabled(el)) || (!disabled(el) && (previous as HTMLElement).tabIndex < 0 && (el as HTMLElement).tabIndex === 0)) grouped.set(key, el);
+    }
+    const rows = [...grouped.values()].map(el => {
       const box = el.getBoundingClientRect();
       return { zone: zone(el), first: first(el), tag: el.tagName.toLowerCase(), name: text(el.getAttribute("aria-label") || (el as HTMLElement).innerText || el.getAttribute("placeholder")).slice(0, 80),
         disabled: (el as HTMLButtonElement).disabled === true || el.getAttribute("aria-disabled") === "true", primary: el.classList.contains("vibe-button-primary"), inline: inline(el), w: Math.round(box.width), h: Math.round(box.height) };

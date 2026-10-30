@@ -87,11 +87,12 @@ export function BuildRunResult({ session, operation, artifact, current, first, b
           if (visible.current) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_EXAMPLE_VIEWED, { ...eventBase, case_ordinal: leadingOrdinal }, `${session.id}:${operation.id}:${evidence.case_key}`);
         }} />
     </div>}
+    {current && canImprove && <div className="vibe-build-evidence-action"><VibeButton variant="primary" disabled={busy} onClick={() => { action("review_fix"); onImprove(); }}><Lightbulb aria-hidden="true" />Suggest a fix</VibeButton></div>}
     {current && operation.results.length > 1 && <details className="vibe-other-results"><summary>Other results · {operation.results.length - 1}</summary>
       {operation.results.filter(result => result !== leading).map(result => <CaseEvidence key={result.case_key} summary={{ ...result, title: result.title || inputs.get(result.case_key) }} concise evidenceVersion={`${operation.id}:${operation.state}`} load={key => loadEvidence(operation.id, key)} origin={operation.source?.kind} busy={busy} />)}
     </details>}
     {!hasOutput && <p className="vibe-build-note">Runs here using what you supplied; your business systems aren’t connected.</p>}
-    {current && canImprove && <div className="vibe-build-evidence-action"><VibeButton variant="primary" disabled={busy} onClick={() => { action("review_fix"); onImprove(); }}><Lightbulb aria-hidden="true" />Suggest a fix</VibeButton></div>}
+
     {current && allPass && onTry && <VibeButton variant="primary" disabled={busy} onClick={onTry}>Try your agent</VibeButton>}
     {!current && done && <VibeButton variant="quiet" onClick={() => { action("checks"); onDetails(); }}>See saved results</VibeButton>}
 

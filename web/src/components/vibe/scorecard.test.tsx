@@ -750,6 +750,7 @@ it.each(["new ASCII", "new multibyte", "persisted invalid"])("corrects an overli
 it("opens Guide for the chosen case even when its evidence cannot load", async () => {
   const ask = vi.fn();
   await act(async () => root.render(<VibeScorecard operation={redacted(operation([failure]))} loadEvidence={async () => { throw Error("Saved evidence offline"); }} onImprove={improve} onRetest={retest} onAskCase={ask} busy={false} />));
+  expect(button("Ask Guide about this test").closest(".vibe-evidence-actions")).not.toBeNull();
   await click("Ask Guide about this test");
   expect(ask).toHaveBeenCalledExactlyOnceWith("memory");
   expect(retest).not.toHaveBeenCalled();
@@ -847,4 +848,35 @@ it.each([false, true])("does not display a recorded conversation marker when cus
 it.each([[0, "Your agent passed 0 of 1 test"], [1, "Your agent passed all 1 test"]])("uses singular in the Improve headline when %i of one test passed", async (passed, headline) => {
   await render(operation([passed ? passing : failure]), undefined, false, true);
   expect(container.querySelector(".vibe-results-outcome")?.textContent).toBe(headline);
+});
+
+it("P5: puts the Improve primary between the leading finding and Other results", async () => {
+  await render(operation([failure, passing]), undefined, true, true);
+  const finding = container.querySelector('[aria-label="Leading finding"]')!;
+  const primary = button("Suggest a fix");
+  expect(finding.nextElementSibling).toBe(primary);
+  expect(primary.nextElementSibling).toBe(container.querySelector(".vibe-other-results"));
+  expect(container.querySelector('[aria-label="Individual results"]')?.contains(container.querySelector(".vibe-other-results"))).toBe(true);
+});
+it.each([false, true])("P5: Ask Guide shares the bottom evidence action row (example first: %s)", async exampleFirst => {
+  const ask = vi.fn();
+  await act(async () => root.render(<CaseEvidence summary={failure} load={async () => failure} concise exampleFirst={exampleFirst} defaultOpen onAsk={ask} onDispute={dispute} />));
+  const action = button("Show full conversation").parentElement!;
+  const guide = button("Ask Guide about this test");
+  expect(guide.parentElement).toBe(action);
+  expect(action.contains(button("Change expected result"))).toBe(true);
+  expect(container.querySelector(".vibe-result-row > div > button")?.textContent).not.toBe("Ask Guide about this test");
+  await act(async () => guide.click()); expect(ask).toHaveBeenCalledOnce();
+});
+
+it("P5: keeps Ask Guide mounted and focused when delayed evidence arrives", async () => {
+  let resolve!: (result: CaseResult) => void;
+  const pending = new Promise<CaseResult>(done => { resolve = done; });
+  await act(async () => root.render(<CaseEvidence summary={failure} load={() => pending} concise exampleFirst defaultOpen onAsk={vi.fn()} onDispute={dispute} />));
+  const guide = button("Ask Guide about this test");
+  guide.focus(); expect(document.activeElement).toBe(guide);
+  await act(async () => resolve(failure));
+  expect(button("Ask Guide about this test")).toBe(guide);
+  expect(document.activeElement).toBe(guide);
+  expect(guide.parentElement).toBe(button("Show full conversation").parentElement);
 });

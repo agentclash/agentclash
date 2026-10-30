@@ -82,12 +82,13 @@ it("U9: the free trial uses muted sans metadata", async () => {
   expect(price.fontSize).toBe("var(--vibe-font-footnote)");
   expect(price.color).toBe("var(--vibe-muted)");
 });
-it("U10: entry steps occupy three desktop columns and a mobile list", async () => {
+it("P1: entry steps form a single column with single-line labels at every width", async () => {
   await draw(<EvaluationEntry busy={false} />);
   const steps = node.querySelector(".vibe-door-steps")!;
   expect(steps.children).toHaveLength(3);
   expect(getComputedStyle(steps).display).toBe("grid");
-  expect(getComputedStyle(steps).gridTemplateColumns).toBe("repeat(3,minmax(0,1fr))");
+  expect(getComputedStyle(steps).gridTemplateColumns).toBe("minmax(0,1fr)");
+  for (const step of steps.children) expect(getComputedStyle(step).whiteSpace).toBe("nowrap");
   expect(style.textContent).toContain('.vibe-door-steps { grid-template-columns:minmax(0,1fr); }');
 });
 it("U16: the trial follows the result action area by the existing 32px spacing token", () => {

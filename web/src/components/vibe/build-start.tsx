@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
+import { Paperclip } from "lucide-react";
 import { dollars } from "@/lib/vibe";
 import { VibeButton } from "./vibe-button";
 import { sendOnEnter } from "./composer-keyboard";
@@ -29,7 +30,7 @@ export function BuildStart(p: { draft: string; onDraft(text: string): void; pric
     {p.trialUsed && <p className="vibe-build-trial-used">Your free build is used. <a href="/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dbuild">Sign in to continue.</a></p>}
     <form className="vibe-build-start-card" onSubmit={event => { event.preventDefault(); send(); }}>
       <textarea id={`${id}-task`} ref={input} disabled={reading} aria-describedby={`${id}-helper`} className="vibe-textarea" rows={4} value={p.draft} onChange={event => p.onDraft(event.target.value)} onKeyDown={event => sendOnEnter(event, send)} placeholder="Help customers check whether they can return an item." />
-      <div className="vibe-build-example-chips" role="group" aria-label="Example tasks"><span>Try:</span>{examples.map(example => <VibeButton variant="quiet" className="vibe-example-chip" key={example.label} disabled={unavailable} onClick={() => { p.onDraft(example.text); input.current?.focus(); }}>{example.label}</VibeButton>)}</div>
+      <div className="vibe-build-example-chips" role="group" aria-label="Example tasks"><span>Try:</span>{examples.map(example => <VibeButton variant="quiet" className="vibe-example-chip" key={example.label} disabled={unavailable} onClick={() => { p.onDraft(example.text); input.current?.focus(); }}>{example.label}</VibeButton>)}<VibeButton variant="quiet" disabled={unavailable} onClick={() => file.current?.click()}><Paperclip aria-hidden="true" />Attach a file</VibeButton></div>
       <div className="vibe-build-start-actions">
         <div className="vibe-build-start-submit">
           <VibeButton type="submit" variant="primary" loading={p.busy || reading} disabled={!!reason || unavailable} aria-describedby={reason ? `${id}-reason` : undefined}>Build and run 3 tests</VibeButton>
@@ -40,24 +41,20 @@ export function BuildStart(p: { draft: string; onDraft(text: string): void; pric
       {p.trialUsed && <span id={`${id}-reason`} className="sr-only">{reason}</span>}
       {(p.error || fileError) && <p role="alert">{p.error || fileError}</p>}
     </form>
-    <details className="vibe-build-start-options"><summary>Files and other options</summary><div>
-        <VibeButton variant="quiet" disabled={unavailable} onClick={() => file.current?.click()}>Attach a file</VibeButton>
-        <input ref={file} type="file" hidden accept=".txt,.md,.csv,.json,text/plain,text/markdown,text/csv,application/json" aria-label="Attach a task file" onChange={async event => {
-          const selected = event.target.files?.[0]; event.target.value = ""; if (!selected) return;
-          if (selected.size > 100_000 || !/\.(txt|md|csv|json)$/i.test(selected.name)) { setFileError("Choose a text file under 100 KB (.txt, .md, .csv or .json)."); return; }
-          setReading(true); setFileError("");
-          try {
-            const bytes = await selected.arrayBuffer();
-            let text: string;
-            try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
-            catch { setFileError("This file is not UTF-8 text. Save it as UTF-8 and try again."); return; }
-            p.onDraft([p.draft.trim(), text.trim()].filter(Boolean).join("\n\n")); input.current?.focus(); }
-          catch { setFileError("Couldn’t read this file. Try another file."); }
-          finally { setReading(false); }
-        }} />
-      <VibeButton variant="quiet" disabled={unavailable} onClick={p.onSwitchDoor}>Already have an agent? Improve it instead.</VibeButton>
-      <a className="vibe-build-data-link" href="/docs/vibe-evals/data-use" target="_blank" rel="noopener noreferrer">Data use<span className="sr-only"> and retention (new tab)</span></a>
-    </div></details>
+    <input ref={file} type="file" hidden accept=".txt,.md,.csv,.json,text/plain,text/markdown,text/csv,application/json" aria-label="Attach a task file" onChange={async event => {
+      const selected = event.target.files?.[0]; event.target.value = ""; if (!selected) return;
+      if (selected.size > 100_000 || !/\.(txt|md|csv|json)$/i.test(selected.name)) { setFileError("Choose a text file under 100 KB (.txt, .md, .csv or .json)."); return; }
+      setReading(true); setFileError("");
+      try {
+        const bytes = await selected.arrayBuffer();
+        let text: string;
+        try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+        catch { setFileError("This file is not UTF-8 text. Save it as UTF-8 and try again."); return; }
+        p.onDraft([p.draft.trim(), text.trim()].filter(Boolean).join("\n\n")); input.current?.focus(); }
+      catch { setFileError("Couldn’t read this file. Try another file."); }
+      finally { setReading(false); }
+    }} />
+    <VibeButton variant="quiet" disabled={unavailable} onClick={p.onSwitchDoor}>Already have an agent? Improve it instead.</VibeButton>
     <VibeDataUseNotice showLink={false} />
   </section>;
 }

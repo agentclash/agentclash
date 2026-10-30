@@ -96,12 +96,13 @@ it("explains guest advanced paths and keeps Back and door switch reachable", asy
 });
 
 
-it("keeps optional choices in disclosures and caps each populated segment at eight main controls", async () => {
+it("P4: exposes the sample and friendly model while keeping only rare choices in disclosures", async () => {
   await draw({ drafts: { instructions: "Keep the policy", model: "model-a", conversations: "Customer: Hi\nAgent: Hello", rules: "Be helpful" } });
   expect(button("Back").closest("header")).not.toBeNull();
-  expect(button("Use sample instructions").closest("details")?.querySelector("summary")?.textContent).toBe("Where do I find these?");
+  expect(button("Use sample instructions").closest("details")).toBeNull();
   expect(button("Build an agent instead").closest("details")?.querySelector("summary")?.textContent).toBe("Other ways to bring your agent");
-  expect(node.querySelector("select")?.closest("details")?.querySelector("summary")?.textContent).toBe("Other ways to bring your agent");
+  expect(node.querySelector("select")?.closest("details")).toBeNull();
+  expect([...node.querySelectorAll("option")].map(option => option.textContent)).toContain("Model A");
   const counts: number[] = [];
   for (const mode of ["Instructions", "Real replies", "Test pack"]) {
     await click(mode);
@@ -110,9 +111,11 @@ it("keeps optional choices in disclosures and caps each populated segment at eig
       for (let detail = control.parentElement?.closest("details"); detail; detail = detail.parentElement?.closest("details")) if (!detail.open && !detail.querySelector(":scope > summary")?.contains(control)) return false;
       return true;
     });
-    counts.push(controls.length);
+    expect(node.querySelectorAll('[role="radio"][tabindex="0"]')).toHaveLength(1);
+    if (mode !== "Instructions") { expect(button("Use sample instructions")).toBeUndefined(); expect(node.querySelector("select")).toBeNull(); }
+    counts.push(controls.length - 2);
   }
-  expect(counts).toEqual([8, 8, 6]);
+  expect(counts).toEqual([8, 6, 4]);
 });
 it("labels every Improve input and gives independent mounts unique field ids", async () => {
   await draw();

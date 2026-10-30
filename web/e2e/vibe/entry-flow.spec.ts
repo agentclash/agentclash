@@ -8,7 +8,7 @@ import { resultCopy } from "./entry-model";
 import { expect, test, type Page } from "@playwright/test";
 import { agentReply, description, expectation, fakeVibe, instructions, packFile, transcript, type Fake } from "./entry-fake";
 import { flowMeter, type FlowMeter, census, writeRecord } from "./flow-meter";
-import { composer, doorButton, doorReady, entryReady, sendButton, sourceButton, runTestsButton, testChangeButton, addAgentInstructions, buildResult, improvePrimary, repliesInput, rulesInput, startComposer, switchDoorButton, buildOptions, improveOptions } from "./entry-model";
+import { composer, doorButton, doorReady, entryReady, sendButton, sourceButton, runTestsButton, testChangeButton, addAgentInstructions, buildResult, improvePrimary, repliesInput, rulesInput, startComposer, switchDoorButton, buildOptions, improveOptions, startScreen } from "./entry-model";
 
 test.use({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
 test.describe.configure({ timeout: 120_000 });
@@ -36,6 +36,16 @@ async function improveResultShown(page: Page, expected: string) {
   await resultShown(page);
   const leading = page.getByLabel("Leading finding", { exact: true });
   await expect(leading.locator("p").filter({ hasText: /^(We gave it|It replied|It should|What needs attention)$/ })).toHaveText(["We gave it", "It replied", "It should", "What needs attention"]);
+  const fix = runResults(page).getByRole("button", { name: "Suggest a fix", exact: true });
+  await expect(fix).toBeVisible();
+  expect(await leading.evaluate(element => element.nextElementSibling?.textContent?.trim())).toBe("Suggest a fix");
+  const remaining = await runResults(page).locator(".vibe-result-row").count() - 1;
+  if (remaining > 0) expect(await fix.evaluate(element => element.nextElementSibling?.classList.contains("vibe-other-results"))).toBe(true);
+  else expect(await fix.evaluate(element => element.nextElementSibling === null)).toBe(true);
+  const actions = leading.locator(".vibe-evidence-actions").first();
+  await expect(actions.getByRole("button", { name: "Ask Guide about this test", exact: true })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "Show full conversation", exact: true })).toBeVisible();
+  await expect(actions.getByRole("button", { name: "Change expected result", exact: true })).toBeVisible();
   const rule = leading.locator(".vibe-example-evidence > div").filter({ has: page.getByText("It should", { exact: true }) });
   await expect(rule).toContainText(expected);
   await expect(rule).toBeVisible();
@@ -89,18 +99,22 @@ test("Build reaches its first test result in 2 clicks and 1 text", async ({ page
   await flow.click(doorButton(page, "build"), "Build door");
   await doorReady(page, "build");
   expect(fake.posts).toEqual([]);
-  await flow.fill(composer(page), description, "task");
-  await expect(sendButton(page)).toBeEnabled({ timeout: 20_000 });
-  // Two examples stay immediate; attachment and switching share one disclosure.
+  await expect(sendButton(page)).toBeDisabled();
   await expect(buildOptions(page)).toBeVisible();
   await expect(page.getByRole("button", { name: "Answer return questions", exact: true })).toBeVisible();
-  await flow.decision("build start", [sendButton(page), page.getByRole("button", { name: "Answer return questions", exact: true }), page.getByRole("button", { name: "Sort support emails", exact: true }), buildOptions(page)]);
+  await expect(switchDoorButton(page, "build")).toBeVisible();
+  expect((await census(page)).controls.mainEnabled).toBe(5);
+  await flow.decision("build start", [page.getByRole("button", { name: "Answer return questions", exact: true }), page.getByRole("button", { name: "Sort support emails", exact: true }), buildOptions(page), switchDoorButton(page, "build")]);
+  await flow.fill(composer(page), description, "task");
+  await expect(sendButton(page)).toBeEnabled({ timeout: 20_000 });
   expect(fake.posts).toEqual([]);
   flow.consent();
   await flow.click(sendButton(page), "Build and run 3 tests");
   await runDone(page);
   await expect(tab(page, "Results")).toHaveAttribute("aria-selected", "true");
   await expect(buildResult(page)).toContainText(resultCopy.headline(2, 3));
+  expect(await buildResult(page).locator(".vibe-build-examples").evaluate(element => element.nextElementSibling?.textContent?.trim())).toBe("Suggest a fix");
+  expect(await buildResult(page).locator(".vibe-build-evidence-action").evaluate(element => element.nextElementSibling?.classList.contains("vibe-other-results"))).toBe(true);
   await expect(buildResult(page).locator("details[open]")).toContainText("It replied");
   await flow.mark("M2");
   await expect(agentReply(page)).toBeVisible();
@@ -356,7 +370,16 @@ test("every Improve segment keeps at most eight enabled main controls", async ({
   const segments: Record<string, { empty: number; populated: number }> = {};
   for (const source of ["instructions", "recorded", "import"] as const) {
     await sourceButton(page, source).click();
-    const empty = (await census(page)).controls.mainEnabled;
+    const snapshot = await census(page);
+    const empty = snapshot.controls.mainEnabled;
+    expect(snapshot.rows.filter(row => row.tag === "button" && ["Instructions", "Real replies", "Test pack"].includes(row.name))).toHaveLength(1);
+    if (source === "instructions") {
+      await expect(startScreen(page).getByRole("combobox", { name: "Which model does your agent use?" })).toBeVisible();
+      await expect(startScreen(page).getByRole("button", { name: "Use sample instructions", exact: true })).toBeVisible();
+    } else {
+      await expect(startScreen(page).getByRole("combobox", { name: "Which model does your agent use?" })).toHaveCount(0);
+      await expect(startScreen(page).getByRole("button", { name: "Use sample instructions", exact: true })).toHaveCount(0);
+    }
     if (source === "instructions") await startComposer(page, "improve").fill(instructions);
     if (source === "recorded") { await repliesInput(page).fill(transcript); await rulesInput(page).fill(expectation); }
     const populated = (await census(page)).controls.mainEnabled;
