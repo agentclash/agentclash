@@ -96,13 +96,13 @@ export function CreditsDialog({ workspace, open, onOpenChange }: { workspace: st
             <>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-2xl font-semibold tabular-nums">
+                  <p className="vibe-num text-2xl font-medium">
                     {dollars(credits.available_nano_usd)}
                   </p>
                   <p className="text-xs text-muted-foreground">Available</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-semibold tabular-nums">
+                  <p className="vibe-num text-2xl font-medium">
                     {dollars(credits.held_nano_usd)}
                   </p>
                   <p className="text-xs text-muted-foreground">Reserved</p>

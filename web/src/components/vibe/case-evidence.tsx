@@ -123,9 +123,9 @@ export function CaseEvidence({
     >
       <summary className="flex cursor-pointer list-none items-center gap-3 text-sm">
         {summary.verdict === "PASS" ? (
-          <Check size={16} aria-hidden="true" />
+          <Check size={16} className="vibe-verdict-pass" aria-hidden="true" />
         ) : summary.verdict === "FAIL" ? (
-          <X size={16} className="text-builder-warn" aria-hidden="true" />
+          <X size={16} className="vibe-verdict-issue" aria-hidden="true" />
         ) : (
           <HelpCircle
             size={16}
@@ -141,7 +141,7 @@ export function CaseEvidence({
                   .replace(/^case-/, "Test ")
                   .replaceAll("-", " "))}
         </span>
-        <span className="text-xs text-builder-fg-muted">
+        <span className={`vibe-verdict-word text-xs ${summary.verdict === "PASS" ? "vibe-verdict-pass" : summary.verdict === "FAIL" ? "vibe-verdict-issue" : "text-builder-fg-muted"}`}>
           {summary.verdict === "PASS"
             ? "Passed"
             : summary.verdict === "FAIL"

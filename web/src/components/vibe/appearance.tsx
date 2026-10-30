@@ -1,5 +1,5 @@
 "use client";
-import { createContext, useContext, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { PortalScope } from "@/components/ui/portal-scope";
 import "./workspace.css";
 import "./project-workspace.css";
@@ -23,8 +23,19 @@ export function VibeAppearance({ children }: { children: ReactNode }) {
   const value = choice || saved;
   const systemDark = useSyncExternalStore(subscribeSystem, () => typeof matchMedia === "function" && matchMedia(preferenceQuery).matches, () => false);
   const resolved = value === "system" ? systemDark ? "dark" : "light" : value;
+  const route = useRef<HTMLElement>(null);
+  // page.tsx sets the browser bar colour per system appearance. A Settings choice can differ from
+  // the system, so the bar takes the canvas colour of the resolved appearance while the route is open.
+  useEffect(() => {
+    const canvas = route.current && getComputedStyle(route.current).getPropertyValue("--vibe-bg").trim();
+    if (!canvas) return;
+    const metas = [...document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')];
+    const before = metas.map(meta => meta.content);
+    metas.forEach(meta => { meta.content = canvas; });
+    return () => metas.forEach((meta, i) => { meta.content = before[i]; });
+  }, [resolved]);
   const change = (next: Appearance) => { setValue(next); try { localStorage.setItem("vibe-appearance", next); } catch { /* Remains effective in this page. */ } };
-  return <AppearanceContext.Provider value={{ value, setValue: change }}><PortalScope.Provider value={{ className: "vibe-workspace vibe-portal", "data-appearance": resolved }}><main data-appearance={resolved} className="vibe-workspace vibe-route flex h-dvh flex-col overflow-hidden font-sans">{children}</main></PortalScope.Provider></AppearanceContext.Provider>;
+  return <AppearanceContext.Provider value={{ value, setValue: change }}><PortalScope.Provider value={{ className: "vibe-workspace vibe-portal", "data-appearance": resolved }}><main ref={route} data-appearance={resolved} className="vibe-workspace vibe-route flex h-dvh flex-col overflow-hidden font-sans">{children}</main></PortalScope.Provider></AppearanceContext.Provider>;
 }
 export function AppearanceControl() {
   const { value, setValue } = useContext(AppearanceContext);

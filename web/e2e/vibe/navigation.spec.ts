@@ -403,7 +403,7 @@ test("text roles stay consistent across viewport sizes and portaled dialogs", as
   await page.getByRole("tab", { name: "Agent", exact: true }).click();
   for (const width of [390, 1440, 2560]) {
     await page.setViewportSize({ width, height: 900 });
-    await expect(page.locator(".vibe-project-identity h1")).toHaveCSS("font-size", "20px");
+    await expect(page.locator(".vibe-project-identity h1")).toHaveCSS("font-size", width <= 600 ? "20px" : "28px");
     await expect(page.getByRole("heading", { name: "Agent instructions", exact: true })).toHaveCSS("font-size", "16px");
     await expect(page.getByRole("heading", { name: "Agent instructions", exact: true })).toHaveCSS("line-height", "22px");
     await expect(page.locator(".vibe-instructions-text")).toHaveCSS("font-size", "16px");
@@ -434,6 +434,11 @@ test("text roles stay consistent across viewport sizes and portaled dialogs", as
     await dialog.getByRole("button", { name: "Credits", exact: true }).click();
     const credits = page.getByRole("dialog", { name: "Workspace AI credits", exact: true });
     await expect.soft(credits.locator('[data-slot="dialog-title"]')).toHaveCSS("font-size", "20px");
+    await expect(credits.locator(".vibe-num")).toHaveCount(2);
+    for (const amount of await credits.locator(".vibe-num").all()) {
+      await expect(amount).toHaveCSS("font-family", /IBM[ _]Plex[ _]Mono/);
+      await expect(amount).toHaveCSS("font-variant-numeric", "tabular-nums");
+    }
     await expect(dialog).toHaveCount(0);
     await credits.getByRole("button", { name: "Close", exact: true }).click();
     // Below 1280 the Details sheet closed before Settings opened; the wide panel stays.
@@ -689,12 +694,12 @@ test("workspace geometry, scoped portal appearance and reading focus adapt at ev
       expect(geometry.utility).toBeLessThan((width - geometry.sidebar) / 2);
     } else expect(geometry.utility).toBe(width <= 600 ? width : 480);
     if (width <= 600) expect(geometry.height).toBe(900);
-    expect(geometry.background).toBe("rgb(255, 255, 255)"); expect(geometry.color).toBe("rgb(37, 36, 31)");
+    expect(geometry.background).toBe("rgb(255, 255, 255)"); expect(geometry.color).toBe("rgb(28, 26, 22)");
     expect(geometry.transition).toBe("0s"); if (width < 1280) expect(geometry.backdropMotion).toBe("0s");
     expect(geometry.overflow).toBe(false); expect(geometry.globalTheme).toBe(true);
     await appearance.selectOption("dark");
     const utility = page.locator(width >= 1280 ? ".vibe-utility" : '[data-slot="sheet-content"]');
-    await expect(utility).toHaveCSS("background-color", "rgb(25, 25, 22)");
+    await expect(utility).toHaveCSS("background-color", width >= 1280 ? "rgb(27, 26, 23)" : "rgb(33, 31, 27)");
     await appearance.selectOption("system");
     await expect(utility).toHaveCSS("background-color", "rgb(255, 255, 255)");
     await page.getByRole("button", { name: "Close Details", exact: true }).click();
@@ -731,8 +736,8 @@ test("remaining 320 and 768 layouts retain contrast, scaled text and utility foc
     const popup=page.locator('[data-slot="sheet-content"]');
     const appearance=page.getByLabel("Appearance",{exact:true});
     await appearance.selectOption("system");
-    await expect(popup).toHaveCSS("background-color","rgb(25, 25, 22)");
-    await expect(popup).toHaveCSS("color","rgb(238, 236, 229)");
+    await expect(popup).toHaveCSS("background-color","rgb(33, 31, 27)");
+    await expect(popup).toHaveCSS("color","rgb(237, 233, 225)");
     await appearance.selectOption("light");
     await expect(popup).toHaveCSS("background-color","rgb(255, 255, 255)");
     const geometry=await popup.evaluate(el=>({width:el.getBoundingClientRect().width,height:el.getBoundingClientRect().height,background:getComputedStyle(el).backgroundColor,color:getComputedStyle(el).color,transition:getComputedStyle(el).transitionDuration,overflow:document.documentElement.scrollWidth>innerWidth}));
@@ -859,7 +864,10 @@ test("library search rename archive and sidebar preference preserve full touch a
  await page.getByRole("button",{name:"Restore project",exact:true}).click();await expect(row).toHaveCount(0);
  await page.getByLabel("Project archive filter").selectOption("exclude");await expect(row).toHaveCount(1);
  await page.getByRole("button",{name:"Collapse sidebar",exact:true}).click();await page.reload();await expect(page.getByRole("button",{name:"Expand sidebar",exact:true})).toBeVisible();
- await page.setViewportSize({width:390,height:844});if(await page.getByRole("button",{name:"Close Guide",exact:true}).isVisible())await page.getByRole("button",{name:"Close Guide",exact:true}).click();await page.getByRole("button",{name:"Open projects",exact:true}).click();
+ await page.setViewportSize({width:390,height:844});
+ // The default desktop Guide unmounts after the breakpoint listener renders.
+ await expect(page.getByRole("button",{name:"Close Guide",exact:true})).toHaveCount(0);
+ await page.getByRole("button",{name:"Open projects",exact:true}).click();
  const mobile=page.getByRole("dialog");await expect(mobile.locator('[data-evaluation-id="older-29"]')).toContainText(title);
  await assertSearchAffordance();
  expect(await mobile.locator('[data-evaluation-id="older-29"] .vibe-project-full-title').evaluate(node=>node.scrollHeight<=node.clientHeight+1)).toBe(true);

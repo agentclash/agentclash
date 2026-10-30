@@ -104,10 +104,10 @@ test("mobile loading exposes Stop and cancelling does not restart the initial ch
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('checking');
  await openGuide(page);
- await expect(page.locator('.vibe-status-shine')).toBeVisible();
+ await expect(page.locator('.vibe-status-dots')).toBeVisible();
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await page.screenshot({path:info.outputPath('loading-mobile.png'),fullPage:true});
- await page.emulateMedia({reducedMotion:'reduce'});await expect(page.locator('.vibe-status-shine')).not.toBeVisible();
+ await page.emulateMedia({reducedMotion:'reduce'});await expect(page.locator('.vibe-status-dots')).not.toBeVisible();
  await page.getByRole('button',{name:'Stop',exact:true}).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.operations.at(-1)?.state;}).toBe('CANCELLED');
  await page.reload();

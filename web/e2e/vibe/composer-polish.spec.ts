@@ -3,7 +3,7 @@ import type { Session } from "../../src/lib/vibe";
 
 test.use({ video: { mode: "on", size: { width: 1440, height: 960 } } });
 
-test("responsive input, draft preservation and truthful shining status", async ({ page }, info) => {
+test("responsive input, draft preservation and a truthful working status", async ({ page }, info) => {
   test.setTimeout(60_000);
   const models = { assistant: "fixture/free", target: "fixture/free", evaluator: "fixture/free" };
   const state: Session = {
@@ -31,15 +31,16 @@ test("responsive input, draft preservation and truthful shining status", async (
   const input = page.getByRole("textbox", { name: "Message Vibe Evals" });
   await expect(page.locator('[role="status"]').filter({ hasText: "Thinking…" })).toBeVisible();
   await expect(page.getByText("Preparing your tests…", { exact: true })).not.toBeVisible();
-  const shine = page.locator(".vibe-status-shine");
-  await expect(shine).toBeVisible();
-  const position = await shine.evaluate(el => getComputedStyle(el).backgroundPosition);
-  await expect.poll(() => shine.evaluate(el => getComputedStyle(el).backgroundPosition)).not.toBe(position);
-  // An intentional motion-review capture, not a synchronization wait.
-  await page.waitForTimeout(30_000);
+  // The working state is three pulsing dots beside a static status line; no gradient text.
+  const dots = page.locator(".vibe-status-dots");
+  const pulsing = () => dots.evaluate(el => el.getAnimations({ subtree: true }).filter(a => a.playState === "running").length);
+  await expect(dots).toBeVisible();
+  await expect.poll(pulsing).toBe(1);
+  expect(await page.locator(".vibe-status-text").first().evaluate(el => getComputedStyle(el).backgroundClip)).not.toBe("text");
   await page.getByRole("button", { name: "Pause status animation" }).click();
-  await expect(shine).toHaveCount(0);
+  await expect(dots).toHaveCount(0);
   await page.getByRole("button", { name: "Resume status animation" }).click();
+  await expect.poll(pulsing).toBe(1);
   for (const width of [320, 390, 768, 1280, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     await input.fill("Please keep the purchase age and condition rules. ".repeat(40));
@@ -54,9 +55,12 @@ test("responsive input, draft preservation and truthful shining status", async (
     await page.screenshot({ path: info.outputPath(`composer-${width}.png`), fullPage: true });
   }
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await expect(shine).not.toBeVisible();
+  await expect(dots).not.toBeVisible();
+  await expect(page.locator('[role="status"]').filter({ hasText: "Thinking…" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => document.getAnimations().filter(a => a.playState === "running").length)).toBe(0);
+  // The dots are plain shapes in currentColor, so forced colours keep them (a gradient text would vanish).
   await page.emulateMedia({ reducedMotion: "no-preference", forcedColors: "active" });
-  await expect(shine).not.toBeVisible();
+  await expect(dots).toBeVisible();
   await page.emulateMedia({ forcedColors: "none" });
   // Browser reflow at a 1280px screen / 400% zoom is a 320 CSS-pixel viewport.
   // Actual Safari zoom and physical IME remain workstation checks.

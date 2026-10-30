@@ -1,10 +1,24 @@
-/* Route and every portaled subtree share semantic appearance, never html state. */
+/* Route and every portaled subtree share semantic appearance, never html state.
+   "Ink & Clay": warm paper or charcoal, ink for every control, clay only for a finding,
+   sage only for a pass. Text levels 2-4 are ink at an opacity, so each keeps its contrast
+   on every surface: 12px text uses text-2 or higher; text-3 is for 14px and up; text-4 is
+   for disabled and decorative use only. Control borders are 3:1 or more on every surface.
+   Status colours never carry meaning alone: each comes with a glyph and a word. */
 .vibe-workspace[data-appearance] {
-  --vibe-bg: #faf9f6; --vibe-surface: #ffffff; --vibe-fg: #25241f; --vibe-muted: #656158; --vibe-border: #d8d4ca;
-  --vibe-control-border: #8c8678; --vibe-hover: #eeece6; --vibe-accent: #343124; --vibe-on-accent: #fffdf5; --vibe-focus: #765820; --vibe-error: #a53424;
-  --vibe-active: #e2dfd6; --vibe-accent-hover: #4a4535; --vibe-accent-pressed: #252218;
+  --vibe-bg: #faf8f5; --vibe-sidebar: #f3f0ea; --vibe-surface: #ffffff; --vibe-surface-2: #f2efe9; --vibe-surface-3: #e7e3da; --vibe-elevated: #ffffff;
+  --vibe-text-1: #1c1a16; --vibe-text-2: rgba(28,26,22,.74); --vibe-text-3: rgba(28,26,22,.66); --vibe-text-4: rgba(28,26,22,.4);
+  --vibe-separator: rgba(28,26,22,.12); --vibe-control-border: rgba(28,26,22,.56);
+  --vibe-ink: #1c1a16; --vibe-on-ink: #faf8f5; --vibe-ink-hover: #36322b; --vibe-ink-pressed: #0f0e0c; --vibe-focus: #765820;
+  --vibe-issue: #a8432a; --vibe-issue-tint: #f6e6df; --vibe-on-issue: #ffffff; --vibe-pass: #2e6b40; --vibe-pass-tint: #e5efe4; --vibe-caution: #8a5a00;
+  --vibe-overlay: rgba(18,17,15,.45);
+  --vibe-shadow-2: 0 8px 24px rgba(28,26,22,.1); --vibe-shadow-3: 0 24px 64px rgba(28,26,22,.16);
   --vibe-diff-add-bg: #e3efd6; --vibe-diff-add-fg: #2f5219; --vibe-diff-del-bg: #f8e1d8; --vibe-diff-del-fg: #8a2e1d; --vibe-selection: #e8dcbc;
-  --background: var(--vibe-bg); --foreground: var(--vibe-fg); --popover: var(--vibe-surface); --popover-foreground: var(--vibe-fg);
+  /* Earlier names, kept as aliases of the roles above. They resolve on this element, so the
+     dark block below only sets the roles. */
+  --vibe-fg: var(--vibe-text-1); --vibe-muted: var(--vibe-text-2); --vibe-border: var(--vibe-separator);
+  --vibe-hover: var(--vibe-surface-2); --vibe-active: var(--vibe-surface-3); --vibe-error: var(--vibe-issue);
+  --vibe-accent: var(--vibe-ink); --vibe-on-accent: var(--vibe-on-ink); --vibe-accent-hover: var(--vibe-ink-hover); --vibe-accent-pressed: var(--vibe-ink-pressed);
+  --background: var(--vibe-bg); --foreground: var(--vibe-fg); --popover: var(--vibe-elevated); --popover-foreground: var(--vibe-fg);
   --muted: var(--vibe-hover); --muted-foreground: var(--vibe-muted); --border: var(--vibe-border); --input: var(--vibe-control-border);
   --card: var(--vibe-surface); --card-foreground: var(--vibe-fg); --primary: var(--vibe-accent); --primary-foreground: var(--vibe-on-accent);
   --secondary: var(--vibe-hover); --secondary-foreground: var(--vibe-fg); --accent: var(--vibe-hover); --accent-foreground: var(--vibe-fg);
@@ -14,22 +28,36 @@
   --builder-fg-subtle: var(--vibe-muted); --builder-fg-faint: var(--vibe-muted);
   --builder-surface: var(--vibe-hover); --builder-surface-hover: var(--vibe-hover); --builder-panel: var(--vibe-surface);
   --builder-border: var(--vibe-control-border); --builder-border-strong: var(--vibe-focus);
-  --builder-warn: var(--vibe-error); --builder-warn-soft: color-mix(in srgb, var(--vibe-error) 12%, var(--vibe-surface));
-  --ring: var(--vibe-focus); --destructive: var(--vibe-error);
+  --builder-warn: var(--vibe-issue); --builder-warn-soft: var(--vibe-issue-tint);
+  --ring: var(--vibe-focus); --destructive: var(--vibe-issue);
   color-scheme: light;
 }
+/* Dark: elevated surfaces are lighter than the canvas (sidebar and cards, then dialogs and sheets). */
 .vibe-workspace[data-appearance="dark"] {
-  --vibe-bg: #0c0c0b; --vibe-surface: #191916; --vibe-fg: #eeece5; --vibe-muted: #b1ada4; --vibe-border: #403e37;
-  --vibe-control-border: #898477; --vibe-hover: #292820; --vibe-accent: #eee9dc; --vibe-on-accent: #191814; --vibe-focus: #e3cb94; --vibe-error: #f0ad9f;
-  --vibe-active: #343229; --vibe-accent-hover: #fff9ed; --vibe-accent-pressed: #d8d2c4;
+  --vibe-bg: #12110f; --vibe-sidebar: #1b1a17; --vibe-surface: #1b1a17; --vibe-surface-2: #24221e; --vibe-surface-3: #2e2b26; --vibe-elevated: #211f1b;
+  --vibe-text-1: #ede9e1; --vibe-text-2: rgba(237,233,225,.76); --vibe-text-3: rgba(237,233,225,.62); --vibe-text-4: rgba(237,233,225,.38);
+  --vibe-separator: rgba(237,233,225,.1); --vibe-control-border: rgba(237,233,225,.46);
+  --vibe-ink: #ede9e1; --vibe-on-ink: #12110f; --vibe-ink-hover: #fffaf0; --vibe-ink-pressed: #d9d3c6; --vibe-focus: #e3cb94;
+  --vibe-issue: #f0957a; --vibe-issue-tint: #3a2620; --vibe-on-issue: #12110f; --vibe-pass: #8ccb9a; --vibe-pass-tint: #1f2d22; --vibe-caution: #e2b65e;
+  --vibe-overlay: rgba(18,17,15,.6);
+  --vibe-shadow-2: 0 8px 24px rgba(0,0,0,.4); --vibe-shadow-3: 0 24px 64px rgba(0,0,0,.55);
   --vibe-diff-add-bg: #2f3c27; --vibe-diff-add-fg: #d2e6bc; --vibe-diff-del-bg: #482f27; --vibe-diff-del-fg: #f0c7b4; --vibe-selection: #443d2e;
   color-scheme: dark;
 }
+/* The loading fallback renders before the route sets data-appearance, so it follows the system
+   appearance with the same canvas colours (and the theme-color in page.tsx). */
+.vibe-route-fallback { min-height: 100dvh; background: #faf8f5; }
+@media (prefers-color-scheme: dark) { .vibe-route-fallback { background: #12110f; } }
 .vibe-portal { background: transparent; }
+.vibe-workspace :is([data-slot="dialog-overlay"], [data-slot="sheet-overlay"]) { background: var(--vibe-overlay); -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
+.vibe-workspace :is([data-slot="popover-content"], [data-slot="dropdown-menu-content"]) { background: var(--vibe-elevated); box-shadow: var(--vibe-shadow-2); border: 1px solid var(--vibe-border); }
 .vibe-workspace .vibe-workspace {
-  --vibe-bg: inherit; --vibe-surface: inherit; --vibe-fg: inherit; --vibe-muted: inherit; --vibe-border: inherit;
-  --vibe-hover: inherit; --vibe-active: inherit; --vibe-control-border: inherit;
-  --vibe-accent: inherit; --vibe-accent-hover: inherit; --vibe-accent-pressed: inherit; --vibe-on-accent: inherit; --vibe-focus: inherit;
+  --vibe-bg: inherit; --vibe-sidebar: inherit; --vibe-surface: inherit; --vibe-surface-2: inherit; --vibe-surface-3: inherit; --vibe-elevated: inherit;
+  --vibe-text-1: inherit; --vibe-text-2: inherit; --vibe-text-3: inherit; --vibe-text-4: inherit; --vibe-separator: inherit; --vibe-control-border: inherit;
+  --vibe-ink: inherit; --vibe-on-ink: inherit; --vibe-ink-hover: inherit; --vibe-ink-pressed: inherit; --vibe-focus: inherit;
+  --vibe-issue: inherit; --vibe-issue-tint: inherit; --vibe-on-issue: inherit; --vibe-pass: inherit; --vibe-pass-tint: inherit; --vibe-caution: inherit;
+  --vibe-fg: inherit; --vibe-muted: inherit; --vibe-border: inherit; --vibe-hover: inherit; --vibe-active: inherit;
+  --vibe-accent: inherit; --vibe-accent-hover: inherit; --vibe-accent-pressed: inherit; --vibe-on-accent: inherit;
   color-scheme: inherit;
 }
 .vibe-workspace .vibe-message-user { background: var(--vibe-hover); color: var(--vibe-fg); border-color: var(--vibe-border); }
@@ -37,24 +65,27 @@
 /* Title and tabs share the left edge of the content column below (.vibe-project-content, or
    .vibe-column while the project is a brief), centered in the main pane. Percent padding
    resolves against the header, which is as wide as the body. */
-.vibe-project-header { --vibe-main-width: 100%; --vibe-content-max: 60rem; flex: none; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: var(--vibe-space-2) var(--vibe-space-4); padding: clamp(var(--vibe-space-2), 1.5dvh, var(--vibe-space-4)) var(--vibe-gutter) var(--vibe-space-2) calc(var(--vibe-gutter) + max(0px, (var(--vibe-main-width) - 2 * var(--vibe-gutter) - var(--vibe-content-max)) / 2)); border-bottom: 1px solid var(--vibe-border); background: var(--vibe-bg); }
+.vibe-project-header { --vibe-main-width: 100%; --vibe-content-max: 60rem; flex: none; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: var(--vibe-space-2) var(--vibe-space-4); padding: clamp(var(--vibe-space-2), 1.5dvh, var(--vibe-space-4)) var(--vibe-gutter) var(--vibe-space-2) calc(var(--vibe-gutter) + max(0px, (var(--vibe-main-width) - 2 * var(--vibe-gutter) - var(--vibe-content-max)) / 2)); border-bottom: 1px solid var(--vibe-border); background: color-mix(in srgb, var(--vibe-bg) 88%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
 .vibe-project-header[data-initial] { --vibe-content-max: calc(50.5rem - 2 * var(--vibe-gutter)); }
 .vibe-project-tabs { grid-row: 2; grid-column: 1; min-width: 0; }
 .vibe-project-header .vibe-nav { flex-wrap: wrap; margin: 0; gap: var(--vibe-space-1); border: 0; }
 .vibe-project-header .vibe-button { min-height: 44px; padding: var(--vibe-space-2) var(--vibe-space-3); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-project-identity { grid-column: 1/-1; display: flex; align-items: flex-start; gap: var(--vibe-space-3); min-width: 0; }
 .vibe-project-identity h1 { font-size: var(--vibe-font-title2); line-height: var(--vibe-leading-title2); font-weight: 600; overflow-wrap: anywhere; }
+/* The project name is identity, so it speaks in the display serif (28/34) where there is room; phones keep Geist 600 20. */
+@media (min-width: 601px) { .vibe-project-identity h1 { font-family: var(--vibe-font-serif); font-size: var(--vibe-font-large); line-height: var(--vibe-leading-large); font-weight: 400; letter-spacing: -0.01em; } }
 .vibe-project-identity p { font-size: var(--vibe-font-callout); color: var(--vibe-muted); overflow-wrap: anywhere; line-height: var(--vibe-leading-callout); }
 .vibe-project-tools { grid-row: 2; grid-column: 2; align-self: start; display: flex; gap: var(--vibe-space-2); align-items: center; }
 .vibe-project-tools .vibe-project-tool-icon { display: none; }
 /* The status sits beside "Guide" on one line, so Guide and Details keep one height. */
-.vibe-guide-attention { display: inline-flex; align-items: center; min-height: 20px; padding-inline: var(--vibe-space-2); border-radius: var(--vibe-radius-sm); background: var(--vibe-active); color: var(--vibe-fg); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); font-weight: 500; white-space: nowrap; }
+.vibe-guide-attention { display: inline-flex; align-items: center; min-height: 20px; padding-inline: var(--vibe-space-2); border-radius: var(--vibe-radius-pill); background: var(--vibe-active); color: var(--vibe-fg); font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); font-weight: 500; white-space: nowrap; }
 .vibe-project-header [data-active], .vibe-project-tools [aria-pressed="true"] { color: var(--vibe-fg); background: var(--vibe-hover); }
 .vibe-project-body { display: grid; grid-template-columns: minmax(0,1fr); min-height: 0; flex: 1; }
 .vibe-project-main { min-width: 0; overflow: auto; padding: clamp(var(--vibe-space-4), 3dvh, var(--vibe-space-6)) var(--vibe-gutter); overscroll-behavior: contain; }
 .vibe-project-content { width: 100%; max-width: 60rem; min-width: 0; margin-inline: auto; }
 .vibe-project-content > section, .vibe-project-content > .vibe-notice { margin-block-end: var(--vibe-space-5); }
-.vibe-workspace .vibe-results-outcome { font-size: var(--vibe-font-title1); line-height: var(--vibe-leading-title1); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* The answer of a run is a milestone, so it speaks in the display serif. Weight 400 is the only one loaded. */
+.vibe-workspace .vibe-results-outcome { font-family: var(--vibe-font-serif); font-size: var(--vibe-font-display-s); line-height: var(--vibe-leading-display); font-weight: 400; letter-spacing: -0.02em; text-wrap: balance; }
 .vibe-results-filter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); font-size: var(--vibe-font-callout); color: var(--vibe-muted); line-height: var(--vibe-leading-callout); }
 .vibe-results-filter select { min-width: 128px; }
 .vibe-test-review > summary, .vibe-test-review-history > summary { min-height: 44px; padding-block: var(--vibe-space-3); color: var(--vibe-muted); font-size: var(--vibe-font-callout); cursor: pointer; line-height: var(--vibe-leading-callout); }
@@ -69,29 +100,40 @@
 .vibe-results-more-body > .vibe-build-next-actions { margin-block: 0; padding-block: 0; border-top: 0; }
 .vibe-results-more-body > details { margin-top: 0; }
 .vibe-empty-state { display: grid; justify-items: start; gap: var(--vibe-space-3); }
+.vibe-workspace .vibe-empty-state :is(h2, h3), .vibe-workspace .vibe-empty-title { font-family: var(--vibe-font-serif); font-size: var(--vibe-font-title1); line-height: var(--vibe-leading-title1); font-weight: 400; letter-spacing: -0.01em; }
 /* One progress strip at the top of the content, or of the Guide sheet below 1280px. It stays in view
    while the content scrolls, and holds the only Stop and Approve controls. Idle, it is an empty live region. */
-.vibe-progress-strip[data-active] { position: sticky; top: calc(-1 * clamp(var(--vibe-space-4), 3dvh, var(--vibe-space-6))); z-index: 2; display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-areas: "copy actions" "bar bar" "note note"; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-block-end: var(--vibe-space-5); padding: var(--vibe-space-3) var(--vibe-space-4); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); background: var(--vibe-surface); }
+.vibe-progress-strip[data-active] { position: sticky; top: calc(-1 * clamp(var(--vibe-space-4), 3dvh, var(--vibe-space-6))); z-index: 2; display: grid; grid-template-columns: minmax(0,1fr) auto; grid-template-areas: "copy actions" "bar bar" "note note"; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-block-end: var(--vibe-space-5); padding: var(--vibe-space-3) var(--vibe-space-4); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); background: color-mix(in srgb, var(--vibe-bg) 88%, transparent); -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+/* The sticky strip is the one content-layer material; it turns opaque when transparency is reduced. */
+@media (prefers-reduced-transparency: reduce) { .vibe-workspace :is([data-slot="dialog-overlay"], [data-slot="sheet-overlay"]), .vibe-project-header, .vibe-progress-strip[data-active] { background: var(--vibe-bg); -webkit-backdrop-filter: none; backdrop-filter: none; } }
 .vibe-progress-row { display: contents; }
 .vibe-progress-copy { grid-area: copy; min-width: 0; }
 .vibe-progress-strip .vibe-status-text { color: var(--vibe-fg); font-weight: 500; }
 .vibe-progress-detail, .vibe-progress-note { font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); color: var(--vibe-muted); }
 .vibe-progress-note { grid-area: note; }
 .vibe-progress-actions { grid-area: actions; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--vibe-space-2); }
-.vibe-progress-bar { grid-area: bar; position: relative; height: 6px; overflow: hidden; border-radius: 3px; background: var(--vibe-hover); }
-.vibe-progress-bar > span { position: absolute; inset-block: 0; inset-inline-start: 0; border-radius: inherit; background: var(--vibe-fg); transition: inline-size 300ms ease-out; }
-/* Unknown totals keep one shape: moving dashes across the whole track, still dashes with reduced motion. */
-.vibe-progress-bar[data-indeterminate] > span { inline-size: 100%; background: repeating-linear-gradient(90deg, var(--vibe-muted) 0 10px, transparent 10px 18px); animation: vibe-progress-dashes 900ms linear infinite; }
-@keyframes vibe-progress-dashes { to { background-position: 18px 0; } }
-.vibe-progress-bar[data-paused] > span { animation: none; }
+.vibe-progress-bar { grid-area: bar; position: relative; height: 4px; overflow: hidden; border-radius: 2px; background: var(--vibe-hover); }
+.vibe-progress-bar > span { position: absolute; inset-block: 0; inset-inline-start: 0; border-radius: inherit; background: var(--vibe-ink); transition: inline-size 300ms ease-out; }
+/* Unknown totals: a soft ink highlight sweeps along the track. Paused, or with reduced motion,
+   it rests as a 35% bar. The status text always names the step, so motion is never the only signal. */
+.vibe-progress-bar[data-indeterminate] > span { inline-size: 35%; background: linear-gradient(90deg, var(--vibe-ink) 55%, transparent); transition: none; }
+@media (prefers-reduced-motion: no-preference) {
+  .vibe-progress-bar[data-indeterminate]:not([data-paused]) > span { inline-size: 30%; background: linear-gradient(90deg, transparent, var(--vibe-ink) 50%, transparent); animation: vibe-progress-sweep 1.4s var(--vibe-ease-std) infinite; }
+}
+@keyframes vibe-progress-sweep { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
 .vibe-workspace .vibe-button .vibe-stop-icon { width: 12px; height: 12px; }
 .vibe-utility-sheet .vibe-progress-strip[data-active] { position: static; flex: none; margin: var(--vibe-space-3) var(--vibe-space-4) 0; }
 /* Focus that scrolls into view stops below the sticky strip, so the strip never hides it (WCAG 2.4.11). */
 @media (min-width: 601px) { .vibe-project-main:has(> .vibe-project-content > .vibe-progress-strip[data-active]) { scroll-padding-top: 9rem; } }
-@media (forced-colors: active) { .vibe-progress-bar { border: 1px solid CanvasText; } .vibe-progress-bar > span { forced-color-adjust: none; background: Highlight; } }
+@media (forced-colors: active) {
+  .vibe-progress-bar { border: 1px solid CanvasText; }
+  .vibe-progress-bar > span, .vibe-progress-bar[data-indeterminate] > span, .vibe-progress-bar[data-indeterminate]:not([data-paused]) > span { forced-color-adjust: none; background: Highlight; }
+}
 .vibe-project-content > label:has(> select[aria-label="Result history"]) { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-2) var(--vibe-space-3); margin-bottom: var(--vibe-space-4); font-size: var(--vibe-font-callout); color: var(--vibe-muted); line-height: var(--vibe-leading-callout); }
 .vibe-project-main .vibe-instructions-text { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; background: var(--vibe-surface); border: 1px solid var(--vibe-border); border-radius: var(--vibe-radius-md); padding: var(--vibe-space-4); }
 .vibe-utility, .vibe-utility-sheet { display: flex; flex-direction: column; min-height: 0; min-width: 0; background: var(--vibe-surface); color: var(--vibe-fg); }
+/* Sheets are elevation 3: the elevated surface (lighter than the canvas in dark) and a deep shadow. */
+.vibe-workspace .vibe-utility-sheet { background: var(--vibe-elevated); box-shadow: var(--vibe-shadow-3); }
 .vibe-utility { border-left: 1px solid var(--vibe-border); }
 .vibe-utility-heading { display: flex; flex: none; align-items: center; justify-content: space-between; gap: var(--vibe-space-3); padding: clamp(var(--vibe-space-2), 2dvh, var(--vibe-space-4)) var(--vibe-space-4); border-bottom: 1px solid var(--vibe-border); }
 .vibe-utility-heading h2 { font-size: var(--vibe-font-title2); font-weight: 600; line-height: var(--vibe-leading-title2); }
@@ -105,7 +147,8 @@
 .vibe-guide-composer textarea { height: clamp(2.75rem, 12dvh, 6rem); min-height: 44px; max-height: min(10rem, 24dvh); resize: vertical; }
 .vibe-utility-sheet[data-slot="sheet-content"] { width: min(30rem, 100dvw); max-width: none; height: 100dvh; gap: 0; padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
 .vibe-appearance { display: flex; flex-wrap: wrap; align-items: center; gap: var(--vibe-space-3); margin-block: var(--vibe-space-4); }
-.vibe-workspace :is(input:not([type="checkbox"], [type="file"]), textarea, select) { font-size: var(--vibe-font-body); font-weight: 400; color: var(--vibe-fg); background-color: var(--vibe-surface); max-width: 100%; line-height: var(--vibe-leading-body); }
+.vibe-workspace :is(input:not([type="checkbox"], [type="file"]), textarea, select) { border-color: var(--vibe-control-border); font-size: var(--vibe-font-body); font-weight: 400; color: var(--vibe-fg); background-color: var(--vibe-surface); max-width: 100%; line-height: var(--vibe-leading-body); }
+.vibe-workspace .vibe-composer textarea { background-color: transparent; }
 .vibe-workspace select { border: 1px solid var(--vibe-control-border); border-radius: var(--vibe-radius-sm); padding: var(--vibe-space-2); }
 .vibe-workspace .vibe-input { display: block; min-height: 44px; margin-block: var(--vibe-space-1) var(--vibe-space-2); padding: var(--vibe-space-2) var(--vibe-space-3); border: 1px solid var(--vibe-control-border); border-radius: var(--vibe-radius-sm); }
 .vibe-workspace :is(button, a, summary, select, textarea, input):focus-visible { outline-color: var(--vibe-focus); }
@@ -117,12 +160,29 @@
 .vibe-workspace .vibe-dialog :is(label,[data-slot="dialog-description"]), .vibe-workspace .vibe-material-hint { font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-workspace .vibe-dialog small { font-size: var(--vibe-font-footnote); line-height: var(--vibe-leading-footnote); }
 .vibe-workspace .vibe-context-title, .vibe-workspace .vibe-sidebar-item-copy > span, .vibe-workspace .vibe-material-chip-name, .vibe-workspace .vibe-header-title { white-space: normal; overflow: visible; text-overflow: clip; max-width: none; overflow-wrap: anywhere; }
-.vibe-workspace .vibe-sidebar, .vibe-workspace .vibe-sidebar-sheet, .vibe-workspace .vibe-composer, .vibe-workspace .vibe-material-tabs, .vibe-workspace .vibe-trial-recipient, .vibe-workspace .vibe-prototype-card { background: var(--vibe-surface); color: var(--vibe-fg); border-color: var(--vibe-border); }
+.vibe-workspace .vibe-composer, .vibe-workspace .vibe-material-tabs, .vibe-workspace .vibe-trial-recipient, .vibe-workspace .vibe-prototype-card { background: var(--vibe-surface); color: var(--vibe-fg); border-color: var(--vibe-border); }
+/* The sidebar is the secondary background: darker than the canvas in light, lighter in dark. */
+.vibe-workspace .vibe-sidebar, .vibe-workspace .vibe-sidebar-sheet { background: var(--vibe-sidebar); color: var(--vibe-fg); border-color: var(--vibe-border); }
+.vibe-workspace .vibe-sidebar-sheet { box-shadow: var(--vibe-shadow-3); }
+/* The composer is a control, so its boundary is 3:1 at rest (it is level 1: no shadow). */
+.vibe-workspace .vibe-composer { border-color: var(--vibe-control-border); }
 .vibe-workspace ::selection { background: var(--vibe-selection); color: var(--vibe-fg); }
-.vibe-workspace .vibe-sidebar-selected, .vibe-workspace .vibe-button-secondary:hover, .vibe-workspace .vibe-button-quiet:hover, .vibe-workspace .vibe-sidebar-item:hover { background: var(--vibe-hover); border-color: var(--vibe-border); color: var(--vibe-fg); }
-.vibe-workspace .vibe-button-primary, .vibe-workspace .vibe-material-tab[data-active] { background: var(--vibe-accent); border-color: var(--vibe-accent); color: var(--vibe-on-accent); }
-.vibe-workspace .vibe-button-primary:hover:not(:disabled) { background: var(--vibe-accent-hover); border-color: var(--vibe-accent-hover); }
-.vibe-workspace .vibe-button-primary:active:not(:disabled) { background: var(--vibe-accent-pressed); border-color: var(--vibe-accent-pressed); }
+/* Secondary buttons are controls, so their boundary is 3:1 at rest and on hover. */
+.vibe-workspace .vibe-button-secondary { border-color: var(--vibe-control-border); }
+.vibe-workspace .vibe-button-secondary:hover { background: var(--vibe-hover); border-color: var(--vibe-control-border); color: var(--vibe-fg); }
+.vibe-workspace .vibe-button-quiet:hover, .vibe-workspace .vibe-sidebar-item:hover { background: var(--vibe-hover); border-color: var(--vibe-border); color: var(--vibe-fg); }
+/* In the sidebar a hover tints the sidebar colour, which surface-2 does not do in light. */
+.vibe-workspace :is(.vibe-sidebar, .vibe-sidebar-sheet) :is(.vibe-sidebar-item, .vibe-button-quiet):hover:not(:disabled) { background: color-mix(in srgb, var(--vibe-text-1) 6%, var(--vibe-sidebar)); }
+.vibe-workspace .vibe-sidebar-selected { background: var(--vibe-surface-3); border-color: transparent; }
+.vibe-workspace select.vibe-sidebar-filter { background-color: transparent; }
+/* One primary per region: a solid ink fill. */
+.vibe-workspace .vibe-button-primary, .vibe-workspace .vibe-material-tab[data-active] { background: var(--vibe-ink); border-color: var(--vibe-ink); color: var(--vibe-on-ink); }
+.vibe-workspace .vibe-button-primary:hover:not(:disabled) { background: var(--vibe-ink-hover); border-color: var(--vibe-ink-hover); }
+.vibe-workspace .vibe-button-primary:active:not(:disabled) { background: var(--vibe-ink-pressed); border-color: var(--vibe-ink-pressed); }
+/* A status colour is never alone: test rows pair it with a glyph and a word. */
+.vibe-workspace .vibe-verdict-pass { color: var(--vibe-pass); }
+.vibe-workspace .vibe-verdict-issue { color: var(--vibe-issue); }
+.vibe-workspace .vibe-verdict-word { font-weight: 500; }
 .vibe-workspace :is(.vibe-button-secondary, .vibe-button-quiet):active:not(:disabled) { background: var(--vibe-active); }
 .vibe-workspace .vibe-material-error, .vibe-workspace .vibe-material-inline-error { color: var(--vibe-error); }
 .vibe-workspace .vibe-material-delete { background: var(--vibe-hover); }
@@ -149,17 +209,28 @@
   .vibe-progress-strip[data-active] { position: static; grid-template-areas: "copy copy" "bar bar" "note actions"; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .vibe-workspace, .vibe-workspace *, .vibe-workspace *::before, .vibe-workspace *::after { animation-duration: 0s !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
+  .vibe-workspace, .vibe-workspace *, .vibe-workspace *::before, .vibe-workspace *::after { animation: none !important; transition-duration: 0s !important; scroll-behavior: auto !important; }
 }
+/* Increased contrast: secondary text, hairlines and control borders darken, status colours deepen.
+   The dark block repeats every role, because both blocks match a dark route. */
 @media (prefers-contrast: more) {
-  .vibe-workspace[data-appearance] { --vibe-muted: var(--vibe-fg); --vibe-border: var(--vibe-fg); --vibe-diff-add-fg: var(--vibe-fg); --vibe-diff-del-fg: var(--vibe-fg); --vibe-selection: color-mix(in srgb, var(--vibe-focus) 35%, var(--vibe-bg)); }
+  .vibe-workspace[data-appearance] {
+    --vibe-text-2: rgba(28,26,22,.86); --vibe-text-3: rgba(28,26,22,.86); --vibe-separator: rgba(28,26,22,.7); --vibe-control-border: rgba(28,26,22,.7);
+    --vibe-issue: #8e3520; --vibe-pass: #1f5530; --vibe-caution: #6e4700;
+    --vibe-diff-add-fg: var(--vibe-fg); --vibe-diff-del-fg: var(--vibe-fg); --vibe-selection: color-mix(in srgb, var(--vibe-focus) 35%, var(--vibe-bg));
+  }
+  .vibe-workspace[data-appearance="dark"] {
+    --vibe-text-2: rgba(237,233,225,.88); --vibe-text-3: rgba(237,233,225,.88); --vibe-separator: rgba(237,233,225,.66); --vibe-control-border: rgba(237,233,225,.66);
+    --vibe-issue: #ffb39e; --vibe-pass: #a8ddb3; --vibe-caution: #f0cc85;
+  }
   .vibe-workspace[data-appearance] .vibe-composer:focus-within { border-color: var(--vibe-focus); box-shadow: 0 0 0 1px var(--vibe-focus); }
 }
 .vibe-reply-body[data-collapsed="true"] { max-height: 24rem; overflow: hidden; }
 .vibe-project-main[data-initial] { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
 .vibe-project-main[data-initial] > .vibe-project-content { display: contents; }
 .vibe-project-main[data-initial] > .vibe-project-content > .vibe-composer-dock { flex-shrink: 1; min-height: 0; max-height: 100%; overflow-y: auto; }
-.vibe-workspace .vibe-sidebar-create .vibe-button { background: var(--vibe-hover); color: var(--vibe-fg); border-color: var(--vibe-border); }
+.vibe-workspace .vibe-sidebar-create .vibe-button { background: var(--vibe-surface); color: var(--vibe-fg); border-color: var(--vibe-control-border); }
+.vibe-workspace .vibe-sidebar-create .vibe-button:hover:not(:disabled) { background: var(--vibe-hover); }
 /* Shared outline buttons follow the route appearance even under html.dark. */
 .vibe-workspace [data-slot="button"][data-variant="outline"] { background: var(--vibe-surface); color: var(--vibe-fg); border-color: var(--vibe-control-border); }
 .vibe-workspace [data-slot="button"][data-variant="outline"]:hover { background: var(--vibe-hover); }
@@ -177,3 +248,7 @@
 .vibe-sdk-results summary { cursor: pointer; min-height: 44px; padding-block: var(--vibe-space-3); color: var(--vibe-muted); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-sdk-results ul { display: grid; gap: var(--vibe-space-2); }
 .vibe-sdk-results :is(article[aria-label="Imported report detail"], details:has(> section[aria-label="Import SDK report"])) { border-block-start: 1px solid var(--vibe-border); padding-block-start: var(--vibe-space-4); }
+
+@media (forced-colors: active) {
+  .vibe-workspace :is(.vibe-verdict-pass, .vibe-verdict-issue) { color: CanvasText; }
+}

@@ -26,7 +26,7 @@ export function ModelSelect({
     return (
       <p className="text-sm">
         <span className="mr-2 text-builder-fg-muted">{label}</span>
-        <span title={value}>{modelName(models[0], models)}</span>
+        <span className="vibe-num" title={value}>{modelName(models[0], models)}</span>
       </p>
     );
   }
