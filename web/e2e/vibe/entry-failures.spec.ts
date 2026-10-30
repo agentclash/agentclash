@@ -327,3 +327,22 @@ test("fix9 large pending reply drafts survive reloads and resolve one at a time"
   expect(writes(fake)).toEqual([]);
   expect(fake.errors).toEqual([]); expect(fake.unknown).toEqual([]);
 });
+
+
+for (const mode of ["recorded", "import"] as const) test(`fix11 reload restores the ${mode} segment without hydration errors`, async ({ page }) => {
+  const fake = await fakeVibe(page);
+  await page.goto("/vibe-evals?start=improve"); await doorReady(page, "improve");
+  await improveSource(page, mode);
+  if (mode === "recorded") {
+    await repliesInput(page).fill("Customer: Can I return it?\nAgent: Yes, within 30 days.");
+    await rulesInput(page).fill("Allow returns within 30 days.");
+  }
+  await page.reload(); await doorReady(page, "improve");
+  await expect(sourceButton(page, mode)).toHaveAttribute("aria-checked", "true");
+  if (mode === "recorded") {
+    await expect(repliesInput(page)).toHaveValue("Customer: Can I return it?\nAgent: Yes, within 30 days.");
+    await expect(rulesInput(page)).toHaveValue("Allow returns within 30 days.");
+  } else await expect(improvePrimary(page, mode)).toBeVisible();
+  expect(writes(fake)).toEqual([]);
+  expect(fake.errors).toEqual([]); expect(fake.unknown).toEqual([]);
+});

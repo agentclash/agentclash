@@ -1,5 +1,6 @@
 import React, { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { defaultModels, VibeError, type Operation, type Session } from "@/lib/vibe";
 import { draftMemory } from "@/lib/vibe-build-drafts";
@@ -4768,4 +4769,66 @@ it.each([["build", false], ["replies", false], ["replies", true]] as const)("fix
     expect(container.textContent?.includes("You have text from before you signed in.")).toBe(index < values.length - 1);
   }
   expect(requests.filter(request => request.method !== "GET")).toEqual([]);
+});
+
+
+it.each(["replies", "pack", "build"] as const)("hydrates a stored %s start draft without replacing server markup", async mode => {
+  await act(async () => root.unmount());
+  harness.params = new URLSearchParams(`start=${mode === "build" ? "build" : "improve"}`);
+  replaceBrowserURL(null, "", `/vibe-evals?${harness.params}`);
+  respond = async path => path === "/config" ? twoDoorConfig() : json([]);
+  container.innerHTML = renderToString(<VibeClient />);
+  const serverHeading = container.querySelector("h1");
+  const project = `start:guest:${mode === "build" ? "build" : "test"}`;
+  const editor = mode === "build" ? "brief" : "inputs";
+  const value = mode === "build" ? "Build an assistant for return questions." : JSON.stringify({ mode, conversations: "Customer: Return?\nAgent: Within 30 days.", rules: "Allow returns within 30 days." });
+  sessionStorage.setItem(`vibe-build-drafts:${project}`, JSON.stringify({ version: 2, composers: {}, editors: { [`${project}:start:editor:${editor}`]: { artifact: "start", source: "", value } } }));
+  const errors: unknown[] = [], consoleErrors = vi.spyOn(console, "error").mockImplementation(() => {});
+  await act(async () => { root = hydrateRoot(container, <VibeClient />, { onRecoverableError: error => errors.push(error) }); });
+  expect(errors).toEqual([]); expect(consoleErrors.mock.calls).toEqual([]);
+  expect(container.querySelector("h1")).toBe(serverHeading);
+  expect(container.querySelector("[inert]")).toBeNull();
+  if (mode === "build") expect(composer().value).toBe(value);
+  else {
+    expect(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toBe(mode === "replies" ? "Real replies" : "Test pack");
+    if (mode === "replies") { expect(textarea("Conversations").value).toBe("Customer: Return?\nAgent: Within 30 days."); expect(textarea("What a good reply must do").value).toBe("Allow returns within 30 days."); }
+    else expect(container.querySelector('[aria-label="Test pack file"]')).toBeTruthy();
+  }
+  expect(requests.filter(request => request.method !== "GET")).toEqual([]);
+});
+
+it("server renders start defaults without reading persisted or in-memory drafts", async () => {
+  await act(async () => root.unmount());
+  harness.params = new URLSearchParams("start=improve");
+  replaceBrowserURL(null, "", `/vibe-evals?${harness.params}`);
+  const project = "start:guest:test", key = `${project}:start:editor:inputs`;
+  const row = { artifact: "start", source: "", value: JSON.stringify({ mode: "replies", conversations: "Saved replies", rules: "Saved rules" }) };
+  sessionStorage.setItem(`vibe-build-drafts:${project}`, JSON.stringify({ version: 2, composers: {}, editors: { [key]: row } }));
+  draftMemory.set(project, { version: 2, guide: "", trials: {}, editors: { [key]: row } });
+  const reads = vi.spyOn(Storage.prototype, "getItem");
+  container.innerHTML = renderToString(<VibeClient />);
+  root = createRoot(container);
+  expect(reads.mock.calls).toEqual([]);
+  expect(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toBe("Instructions");
+  expect(container.querySelector("[inert]")?.getAttribute("style")).toContain("visibility:hidden");
+});
+
+it("hydrates a pending start notice only after restoring account drafts", async () => {
+  await act(async () => root.unmount());
+  signedInWorkspace(); harness.params = new URLSearchParams("start=improve&workspace=workspace-one");
+  replaceBrowserURL(null, "", `/vibe-evals?${harness.params}`);
+  container.innerHTML = renderToString(<VibeClient />);
+  const project = "start:fixture-user:test";
+  const value = JSON.stringify({ mode: "replies", conversations: "Account replies", rules: "Account rule" });
+  sessionStorage.setItem(`vibe-build-drafts:${project}`, JSON.stringify({ version: 2, composers: {}, editors: {
+    [`${project}:start:editor:inputs`]: { artifact: "start", source: "", value },
+    [`${project}:start:editor:pending-inputs:one`]: { artifact: "start", source: "", value: JSON.stringify({ mode: "pack" }) },
+  } }));
+  const errors: unknown[] = [], consoleErrors = vi.spyOn(console, "error").mockImplementation(() => {});
+  await act(async () => { root = hydrateRoot(container, <VibeClient />, { onRecoverableError: error => errors.push(error) }); });
+  expect(errors).toEqual([]); expect(consoleErrors.mock.calls).toEqual([]);
+  expect(textarea("Conversations").value).toBe("Account replies");
+  expect(button("Use it")).toBeTruthy();
+  await click("Use it");
+  expect(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toBe("Test pack");
 });

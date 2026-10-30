@@ -46,11 +46,12 @@ function AgentEditor({ p, onDirty }: { p: EvaluationWorkspaceProps; onDirty: () 
   const draft = useVibeEditorDraft(p.session!.id, artifact.id, "instructions", editorSource({ id: artifact.id, agent_prompt: artifact.agent_prompt }), artifact.agent_prompt);
   const heading = useRef<HTMLHeadingElement>(null);
   const form = useRef<HTMLFormElement>(null);
-  const [editing, setEditing] = useState(draft.dirty || !artifact.agent_prompt);
+  const [editing, setEditing] = useState<boolean>();
+  const showEditor = editing ?? (draft.dirty || !artifact.agent_prompt);
   useEffect(onDirty, [draft.dirty]);
   return <section aria-label="Agent instructions" className="space-y-4"><h2 ref={heading} tabIndex={-1}>Agent instructions</h2>
     {draft.conflict && <div role="alert"><p>The saved source changed. Review your draft before applying it.</p><VibeButton onClick={draft.preserve}>Keep my draft for this source</VibeButton></div>}
-    {editing ? <form ref={form} className="space-y-3" onSubmit={async event => {
+    {showEditor ? <form ref={form} className="space-y-3" onSubmit={async event => {
       event.preventDefault(); if (p.busy || draft.conflict || !draft.value.trim()) return;
       const trigger = document.activeElement; const submitted = draft.value;
       if (await p.onEdit({ artifact_id: artifact.id, agent_prompt: submitted })) {
@@ -70,8 +71,9 @@ function AgentEditor({ p, onDirty }: { p: EvaluationWorkspaceProps; onDirty: () 
 export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; initial: ReactNode }) {
   const session = p.session!;
   const [utility, setUtility] = useState<"guide" | "details" | null>(p.sourceIntent === "live_app" ? "details" : null);
-  const [wide, setWide] = useState(() => typeof matchMedia !== "undefined" && matchMedia("(min-width: 1280px)").matches);
-  const [guideClosed, setGuideClosed] = useState(guidePreference);
+  const [wide, setWide] = useState(false);
+  const [guideClosed, setGuideClosed] = useState(false);
+  useEffect(() => setGuideClosed(guidePreference()), []);
   const [reference, setReference] = useState<Reference>();
   const utilityTrigger = useRef<HTMLElement | null>(null);
   const afterUtilityClose = useRef<(() => void) | null>(null);
@@ -156,7 +158,7 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
       if (!media.matches && document.querySelector(".vibe-utility")?.contains(document.activeElement)) refocusGuide.current = true;
       setWide(media.matches);
     };
-    media.addEventListener("change", update); return () => media.removeEventListener("change", update);
+    update(); media.addEventListener("change", update); return () => media.removeEventListener("change", update);
   }, []);
   // D3: after a door click, focus the Build composer or the project title.
   useEffect(() => {

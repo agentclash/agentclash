@@ -5,6 +5,7 @@ import { FileUp } from "lucide-react";
 import { VibeButton } from "./vibe-button";
 import { VibeDataUseNotice } from "./vibe-data-use";
 import { exampleAgentDescription, InstructionsHelp, ReplyCount, repliesPlaceholder } from "./improve-inputs";
+import { useVibeBrowserReady } from "@/lib/use-vibe-browser-ready";
 import "./improve.css";
 
 export function ImproveStart(p: {
@@ -15,9 +16,10 @@ export function ImproveStart(p: {
   onWriteTests(input: { text: string; model?: string }): void; onSaveReplies(input: { conversations: string; rules: string }): void;
   onImportPack(file: File): void; onOther(kind: "chat" | "live_app" | "sdk_report"): void; onSwitchDoor(): void; onBack(): void;
 }) {
+  const ready = useVibeBrowserReady();
   const id = useId();
   const heading = useRef<HTMLHeadingElement>(null);
-  useEffect(() => { heading.current?.focus(); }, []);
+  useEffect(() => { if (ready) heading.current?.focus(); }, [ready]);
   const file = useRef<HTMLInputElement>(null), radios = useRef<(HTMLButtonElement | null)[]>([]);
   const modes = ["instructions", "replies", "pack"] as const;
   const blocked = p.busy || !!p.blockedReason;

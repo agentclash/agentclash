@@ -6,6 +6,7 @@ import { dollars } from "@/lib/vibe";
 import { VibeButton } from "./vibe-button";
 import { sendOnEnter } from "./composer-keyboard";
 import { VibeDataUseNotice } from "./vibe-data-use";
+import { useVibeBrowserReady } from "@/lib/use-vibe-browser-ready";
 import "./build-output.css";
 
 const examples = [
@@ -14,6 +15,7 @@ const examples = [
 ];
 
 export function BuildStart(p: { draft: string; onDraft(text: string): void; price: { kind: "trial" } | { kind: "ceiling"; nanoUSD: number } | { kind: "unknown" }; trialUsed: boolean; busy: boolean; error?: string; blockedReason?: string; onStart(text: string): void; onSwitchDoor(): void; onBack(): void }) {
+  const ready = useVibeBrowserReady();
   const id = useId();
   const input = useRef<HTMLTextAreaElement>(null);
   const file = useRef<HTMLInputElement>(null);
@@ -22,7 +24,7 @@ export function BuildStart(p: { draft: string; onDraft(text: string): void; pric
   const reason = p.trialUsed ? "Your free build is used. Sign in to continue." : p.blockedReason || (p.draft.trim().length < 20 ? "Describe the task in a sentence or two." : "");
   const unavailable = p.busy || reading;
   const send = () => { if (!reason && !unavailable) p.onStart(p.draft.trim()); };
-  useEffect(() => { input.current?.focus(); }, []);
+  useEffect(() => { if (ready) input.current?.focus(); }, [ready]);
   return <section className="vibe-build-start vibe-start-page" onKeyDown={event => { if (event.key === "Escape" && !unavailable) p.onBack(); }}>
     <header><VibeButton variant="quiet" disabled={unavailable} onClick={p.onBack}>Back</VibeButton></header>
     <h1 className="vibe-start-title"><label htmlFor={`${id}-task`}>What task should the agent handle?</label></h1>

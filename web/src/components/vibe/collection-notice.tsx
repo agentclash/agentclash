@@ -1,4 +1,5 @@
 import type { CollectionStatus } from "@/lib/use-vibe-collection";
+import { useVibeBrowserReady } from "@/lib/use-vibe-browser-ready";
 import { VibeButton } from "./vibe-button";
 
 export function CollectionNotice({ status, retry, hasRows = false, collection = "saved-work", guest = false }: {
@@ -8,6 +9,7 @@ export function CollectionNotice({ status, retry, hasRows = false, collection = 
   collection?: "projects" | "saved-work";
   guest?: boolean;
 }) {
+  const ready = useVibeBrowserReady();
   if (!status || status === "ready") return null;
   const projects = collection === "projects";
   const label = projects ? "projects" : "saved work";
@@ -19,7 +21,7 @@ export function CollectionNotice({ status, retry, hasRows = false, collection = 
     : `Couldn’t load ${subject}. Try again.`;
   return <div role="status" className={`vibe-collection-notice ${projects ? "vibe-project-list-notice " : ""}text-sm vibe-muted`}>
     <p>{message}</p>
-    {status === "signed_out" && <a href={`/auth/login?returnTo=${encodeURIComponent(typeof window === "undefined" ? "/vibe-evals" : window.location.pathname + window.location.search)}`}>Sign in</a>}
+    {status === "signed_out" && <a href={`/auth/login?returnTo=${encodeURIComponent(!ready ? "/vibe-evals" : window.location.pathname + window.location.search)}`}>Sign in</a>}
     {status !== "loading" && retry && <VibeButton variant="quiet" onClick={retry}>Retry {label}</VibeButton>}
   </div>;
 }

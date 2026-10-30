@@ -1,6 +1,7 @@
 import { draftMemory } from "@/lib/vibe-build-drafts";
 import React, { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot, hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   defaultModels,
@@ -819,4 +820,45 @@ it.each(["error", "ready"])("shows a saved Build artifact's automatic-run error 
   current.document.artifacts = [artifact]; current.document.build = { cycle_id: "cycle", phase, clarifications_used: 0, artifact_id: artifact.id, error: { code: "unavailable", message: "The run could not start." } };
   await render({ twoDoor: true, session: current, artifact }); expect(container.querySelector('[role="alert"]')?.textContent).toBe("The run could not start.");
   await act(async () => button("Run 3 tests").click()); expect(props.onRun).toHaveBeenCalledOnce();
+});
+
+
+it.each([false, true])("hydrates the desktop Guide preference without reading browser state on the server (closed: %s)", async closed => {
+  await act(async () => root.unmount());
+  const current = session([{ id: "request", role: "user", content: "Help with returns" }]);
+  current.document.evaluation = { id: current.id, chat_id: current.id, door: "build" };
+  const artifact = { id: "suite", kind: "test_suite" as const, title: "Returns", agent_prompt: "Use supplied policy", accepted: true, source_message_id: "request", blueprint: { cases: [] } };
+  current.document.artifacts = [artifact];
+  props = { ...props, twoDoor: true, session: current, artifact };
+  localStorage.setItem("vibe-guide:v1", closed ? "closed" : "open");
+  const reads = vi.spyOn(Storage.prototype, "getItem");
+  container.innerHTML = renderToString(<EvaluationWorkspace {...props} />);
+  const serverReads = reads.mock.calls.slice();
+  const errors: unknown[] = [], consoleErrors = vi.spyOn(console, "error").mockImplementation(() => {});
+  await act(async () => { root = hydrateRoot(container, <EvaluationWorkspace {...props} />, { onRecoverableError: error => errors.push(error) }); });
+  expect(serverReads).toEqual([]);
+  expect(errors).toEqual([]); expect(consoleErrors.mock.calls).toEqual([]);
+  expect(!!container.querySelector('[aria-label="Guide utility"]')).toBe(!closed);
+  expect(button("Guide").getAttribute("aria-pressed")).toBe(String(!closed));
+  reads.mockRestore(); consoleErrors.mockRestore();
+});
+
+
+it("restores an unsent instruction editor after hydrating its read-only server view", async () => {
+  await act(async () => root.unmount());
+  const current = session();
+  current.document.evaluation = { id: current.id, chat_id: current.id, door: "test" };
+  const artifact = { id: "suite", kind: "test_suite" as const, title: "Returns", agent_prompt: "Use supplied policy", accepted: true, source_message_id: "request", blueprint: { cases: [] } };
+  current.document.artifacts = [artifact];
+  props = { ...props, twoDoor: true, session: current, artifact };
+  container.innerHTML = renderToString(<EvaluationWorkspace {...props} />);
+  expect(container.querySelector('[aria-label="Agent instructions"] textarea')).toBeNull();
+  sessionStorage.setItem("vibe-build-drafts:session-one", JSON.stringify({ version: 2, composers: {}, editors: {
+    "session-one:suite:editor:instructions": { artifact: "suite", source: '{"agent_prompt":"Use supplied policy","id":"suite"}', value: "Keep these unsent instructions" },
+  } }));
+  const errors: unknown[] = [], consoleErrors = vi.spyOn(console, "error").mockImplementation(() => {});
+  await act(async () => { root = hydrateRoot(container, <EvaluationWorkspace {...props} />, { onRecoverableError: error => errors.push(error) }); });
+  expect(errors).toEqual([]); expect(consoleErrors.mock.calls).toEqual([]);
+  expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Agent instructions"] textarea')?.value).toBe("Keep these unsent instructions");
+  consoleErrors.mockRestore();
 });
