@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { dollars } from "@/lib/vibe";
 import { VibeButton } from "./vibe-button";
+import { sendOnEnter } from "./composer-keyboard";
 import { VibeDataUseNotice } from "./vibe-data-use";
 import "./build-output.css";
 
@@ -18,14 +19,15 @@ export function BuildStart(p: { draft: string; onDraft(text: string): void; pric
   const [reading, setReading] = useState(false);
   const reason = p.trialUsed ? "Your free build is used. Sign in to continue." : p.blockedReason || (p.draft.trim().length < 20 ? "Describe the task in a sentence or two." : "");
   const unavailable = p.busy || reading;
+  const send = () => { if (!reason && !unavailable) p.onStart(p.draft.trim()); };
   useEffect(() => { input.current?.focus(); }, []);
-  return <section className="vibe-build-start">
-    <header><VibeButton variant="quiet" onClick={p.onBack}>Back</VibeButton></header>
+  return <section className="vibe-build-start vibe-start-page" onKeyDown={event => { if (event.key === "Escape" && !unavailable) p.onBack(); }}>
+    <header><VibeButton variant="quiet" disabled={unavailable} onClick={p.onBack}>Back</VibeButton></header>
     <h1 id="vibe-build-question" className="vibe-empty-title">What task should the agent handle?</h1>
     <p id="vibe-build-helper">A few sentences: what comes in, what a good reply does, any rules.</p>
     {p.trialUsed && <p className="vibe-build-trial-used">Your free build is used. <a href="/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dbuild">Sign in to continue.</a></p>}
-    <form className="vibe-build-start-card" onSubmit={event => { event.preventDefault(); if (!reason && !unavailable) p.onStart(p.draft.trim()); }}>
-      <textarea ref={input} disabled={reading} aria-labelledby="vibe-build-question" aria-describedby="vibe-build-helper" className="vibe-textarea" rows={4} value={p.draft} onChange={event => p.onDraft(event.target.value)} placeholder="Help customers check whether they can return an item." />
+    <form className="vibe-build-start-card" onSubmit={event => { event.preventDefault(); send(); }}>
+      <textarea id="vibe-start-build" ref={input} disabled={reading} aria-labelledby="vibe-build-question" aria-describedby="vibe-build-helper" className="vibe-textarea" rows={4} value={p.draft} onChange={event => p.onDraft(event.target.value)} onKeyDown={event => sendOnEnter(event, send)} placeholder="Help customers check whether they can return an item." />
       <div className="vibe-build-examples" aria-label="Example tasks">{examples.map(example => <VibeButton key={example.label} disabled={unavailable} onClick={() => { p.onDraft(example.text); input.current?.focus(); }}>{example.label}</VibeButton>)}</div>
       <div className="vibe-build-start-actions">
         <VibeButton variant="quiet" disabled={unavailable} onClick={() => file.current?.click()}>Attach a file</VibeButton>
@@ -52,6 +54,6 @@ export function BuildStart(p: { draft: string; onDraft(text: string): void; pric
       {(p.error || fileError) && <p role="alert">{p.error || fileError}</p>}
     </form>
     <VibeDataUseNotice />
-    <VibeButton variant="quiet" onClick={p.onSwitchDoor}>Already have an agent? Improve it instead.</VibeButton>
+    <VibeButton variant="quiet" disabled={unavailable} onClick={p.onSwitchDoor}>Already have an agent? Improve it instead.</VibeButton>
   </section>;
 }

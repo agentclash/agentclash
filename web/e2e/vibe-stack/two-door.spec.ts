@@ -34,7 +34,8 @@ async function openMoreActions(page: Page) {
  await expect(more.locator(':scope > summary')).toBeVisible();
  if(!(await more.evaluate(el=>(el as HTMLDetailsElement).open))) await more.locator(':scope > summary').click();
 }
-// PR 1 selects Guide's fix by itself; other new versions still offer "Review latest version".
+// A new version from an ordinary Guide message stays unselected until "Review latest version".
+// Guide's fix after "Help me fix this" selects itself: its test asserts that and does not use this helper.
 async function reviewLatest(page: Page) {
  const latest=(await evidence(page)).session.document.artifacts.at(-1).id;
  const review=page.getByRole('button',{name:'Review latest version',exact:true});
@@ -47,12 +48,15 @@ test("clear Build goes through real worker to three results, scoped export and i
  await page.setViewportSize({width:1440,height:900});
  const errors:string[]=[];page.on("pageerror",e=>errors.push(e.message));
  await page.goto('/vibe-evals');
- await expect(page.getByText('No projects yet.',{exact:true})).toBeVisible();
+ await expect(page.locator('.vibe-entry-topbar')).toBeVisible();
+ await expect(page.getByRole('complementary',{name:'Projects sidebar'})).toHaveCount(0);
  await expect(page.getByRole('button',{name:'Retry projects',exact:true})).toHaveCount(0);
  await expect(page.getByText('Couldn’t load your projects.',{exact:false})).toHaveCount(0);
  await expect(doorButton(page,'build')).toBeVisible();
  await chooseDoor(page,'build');
  await doorReady(page,'build');
+ await expect(page.locator('[data-evaluation-id][aria-current="page"]')).toHaveCount(0);
+ expect(new URL(page.url()).searchParams.get('session')).toBeNull();
  await entryComposer(page).fill(description);
  const send=sendButton(page);
  await expect(send).toHaveText(/Build and run 3 tests/);
@@ -152,29 +156,32 @@ test("entry and context controls fit desktop and mobile",async({page},info)=>{
  }
  await chooseDoor(page,'improve');
  for(const source of ['import','instructions'] as const) await expect(sourceButton(page,source)).toBeVisible();
- await expect(page.getByText('Connect a live app from Details',{exact:false})).toBeVisible();
+ await expect(page.getByRole('textbox',{name:'Agent instructions to test'})).toBeVisible();
+ await expect(page.locator('h1:visible')).toHaveCount(1);
 });
 
 test("switching while a run completes keeps messages and draft attached to the selected evaluation",async({page})=>{
  await page.request.post(`${api}/__fixture/control`,{data:{target_delay_ms:2000}});
  await page.goto('/vibe-evals');await chooseDoor(page,'build');
  await entryComposer(page).fill(description);
+ expect(new URL(page.url()).searchParams.get('session')).toBeNull();
  await expect(sendButton(page)).toBeEnabled();
  await sendButton(page).click();
- await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('checking');
+ await expect(page).toHaveURL(/session=/);
  const first=new URL(page.url()).searchParams.get('session');
+ await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('checking');
  await page.getByRole('button',{name:'New project',exact:true}).click();
  await chooseDoor(page,'improve');
  await doorReady(page,'improve');
- const second=new URL(page.url()).searchParams.get('session');expect(second).not.toBe(first);
- const composer=page.getByRole('textbox',{name:'Message Vibe Evals'});
+ expect(new URL(page.url()).searchParams.get('session')).toBeNull();
+ const composer=page.getByRole('textbox',{name:'Agent instructions to test'});
  await composer.fill('My unsent support agent brief');
  await expect.poll(async()=>{const v=await (await page.request.get(`${api}/__fixture/evidence?session=${first}`)).json();return v.session.document.build?.phase;},{timeout:60000}).toBe('results');
- await expect(page.locator(`[data-evaluation-id="${second}"]`)).toHaveAttribute('aria-current','page');
  await expect(composer).toHaveValue('My unsent support agent brief');
- expect((await evidence(page)).session.document.artifacts).toHaveLength(0);
+ await expect(page.locator(`[data-evaluation-id="${first}"]`)).toBeVisible();
  await page.locator(`[data-evaluation-id="${first}"]`).click();
- await page.locator(`[data-evaluation-id="${second}"]`).click();
+ await page.getByRole('button',{name:'New project',exact:true}).click();
+ await chooseDoor(page,'improve');
  await expect(composer).toHaveValue('My unsent support agent brief');
  await page.request.post(`${api}/__fixture/control`,{data:{target_delay_ms:0}});
 });
@@ -273,15 +280,20 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  await expect.poll(async()=> (await evidence(page)).session.document.artifacts.length).toBe(3);
  const proposed=await evidence(page);
  expect(proposed.session.operations.filter((o:{kind:string})=>o.kind==='check'||o.kind==='retest')).toHaveLength(2);
- await reviewLatest(page);
- const changes=page.getByLabel('Instruction changes',{exact:true}).last();
- const changeSummary=page.locator('summary').filter({hasText:'Review the instruction change'});
- if(!(await changeSummary.evaluate(node=>(node.parentElement as HTMLDetailsElement).open))) await changeSummary.click();
- await expect(changes).toBeVisible();
- await expect(page.getByLabel('Instruction changes',{exact:true}).last()).toContainText('Only unopened');
- // PR 1: the rerun shows with the fix on the Agent view (it is also on Tests).
+ // PR 1: Guide's fix selects itself on the Agent view, with its instruction diff open and the rerun
+ // next to it. No click comes before these checks, so a missing selection or a closed diff fails here.
+ const fix=proposed.session.document.artifacts.at(-1).id;
+ await expect.poll(()=>new URL(page.url()).searchParams.get('agent')).toBe(fix);
  await expect(page.getByRole('tab',{name:'Agent',exact:true})).toHaveAttribute('aria-selected','true');
- await page.getByRole('region',{name:'Suggested change',exact:true}).getByRole('button',{name:'Apply change and rerun',exact:true}).click();
+ await expect(page.getByRole('button',{name:'Review latest version',exact:true})).toHaveCount(0);
+ const suggested=page.getByRole('region',{name:'Suggested change',exact:true});
+ await expect(suggested.locator(':scope > details')).toHaveJSProperty('open',true);
+ const changes=suggested.getByLabel('Instruction changes',{exact:true});
+ await expect(changes).toBeVisible();
+ await expect(changes).toContainText('Only unopened');
+ const rerun=suggested.getByRole('button',{name:'Apply change and rerun',exact:true});
+ await expect(rerun).toBeVisible();
+ await rerun.click();
  await expect(page.getByRole('dialog')).toContainText('up to');
  await expect(page.getByRole('dialog')).toContainText('3 tests ·');
  await page.getByRole('button',{name:'Start run',exact:true}).click();
@@ -307,16 +319,17 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
 test("sample continuation retains its prototype through harder requests, chat, real policy and export", async ({page},info)=>{
  await page.goto('/vibe-evals'); await chooseDoor(page,'build');
  await doorReady(page,'build');
- const callsBefore=0;
+ expect(new URL(page.url()).searchParams.get('session')).toBeNull();
+ const callsBefore=0; // beforeEach resets the fixture journal; navigation makes no calls.
  const composer=entryComposer(page);
  async function send(text:string){
-  const id=new URL(page.url()).searchParams.get('session');
-  const before=id ? (await evidence(page)).session.operations.length : 0;
-  if(id && (await evidence(page)).session.document.artifacts.length) await openGuide(page);
+  const state=new URL(page.url()).searchParams.get('session') ? await evidence(page) : undefined;
+  const before=state?.session.operations.length || 0;
+  if(state?.session.document.artifacts.length) await openGuide(page);
   await composer.fill(text);
   const submit=sendButton(page).or(page.getByRole('button',{name:'Send message',exact:true}));
   await expect(submit).toBeEnabled();await submit.click();
-  await expect.poll(()=>new URL(page.url()).searchParams.get('session')).toBeTruthy();
+  await expect(page).toHaveURL(/session=/);
   await expect.poll(async()=>{const x=(await evidence(page)).session;return x.operations.length>before && ['COMPLETED','FAILED'].includes(x.operations.at(-1)?.state)?x.operations.at(-1)?.state:'waiting';},{timeout:60000}).toBe('COMPLETED');
  }
  await send('I waste time sorting emails. Separate spam from customer messages.');
@@ -374,8 +387,8 @@ test("sample continuation retains its prototype through harder requests, chat, r
 test("pasted instructions remain the exact target and run only after the disclosed approval", async ({page}) => {
  await page.goto('/vibe-evals');
  await chooseDoor(page,'improve');
- await expect.poll(()=>new URL(page.url()).searchParams.get('session')).toBeTruthy();
- const callsBefore=(await evidence(page)).calls.filter((c:{role:string})=>c.role==='target').length;
+ expect(new URL(page.url()).searchParams.get('session')).toBeNull();
+ const callsBefore=0; // beforeEach resets the fixture journal; navigation makes no calls.
  await improveSource(page,'instructions');
  const instructions='Answer shop return questions. Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.';
  await page.getByRole('textbox',{name:'Agent instructions to test',exact:true}).fill(instructions);

@@ -253,12 +253,12 @@ for (const combo of combos) {
     test(`b build starter ${label}`, async ({ page }) => {
       await prepare(page, combo);
       const control = await serve(page);
-      await openSession(page, "build-start");
+      await page.goto("/vibe-evals?start=build");
       await doorReady(page, "build", 20_000);
       await shoot(page, "b-build-starter", combo);
       await composer(page).fill("My agent answers shop return questions. Unopened items can be returned within 30 days. It should ask for missing details.");
       await expect(page.getByText(/Build and run 3 tests/).first()).toBeVisible();
-      await page.waitForTimeout(900);
+      await expect(composer(page)).toHaveValue("My agent answers shop return questions. Unopened items can be returned within 30 days. It should ask for missing details.");
       await shoot(page, "b-build-starter-typed", combo);
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
@@ -266,7 +266,7 @@ for (const combo of combos) {
     test(`c improve starter ${label}`, async ({ page }) => {
       await prepare(page, combo);
       const control = await serve(page);
-      await openSession(page, "improve-start");
+      await page.goto("/vibe-evals?start=improve");
       await doorReady(page, "improve", 20_000);
       await shoot(page, "c-improve-starter", combo);
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
@@ -509,7 +509,7 @@ for (const combo of combos) {
       await improveSource(page, "instructions");
       await page.getByRole("textbox", { name: "Agent instructions to test" }).fill(instructions);
       await shoot(page, "q-improve-instructions", combo);
-      await page.getByRole("button", { name: "Back to conversation", exact: true }).click();
+
       await improveSource(page, "recorded");
       await page.getByLabel("Recorded replies", { exact: true }).fill(transcript);
       await shoot(page, "q-improve-recorded", combo, { tall: true });

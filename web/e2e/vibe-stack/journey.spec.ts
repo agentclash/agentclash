@@ -57,7 +57,9 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   page.on("pageerror", error => pageErrors.push(error.message));
   const original = await readFile(path.resolve(process.cwd(), "../backend/internal/vibe/testdata/reliability/returns-original-request.txt"), "utf8");
   await page.goto("/vibe-evals");
-  await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "test" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   await composer.fill(original);
   await composer.press("Enter");
@@ -215,7 +217,9 @@ test("provider cooldown crosses the real worker and API and retry creates one ne
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await page.request.post(`${api}/__fixture/control`, { data: { rate_limit_calls: 1 } });
   await page.goto("/vibe-evals");
-  await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "test" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   const original = await readFile(path.resolve(process.cwd(), "../backend/internal/vibe/testdata/reliability/returns-original-request.txt"), "utf8");
   await composer.fill(original);
@@ -265,7 +269,9 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   const errors: string[]=[]; page.on("pageerror",e=>errors.push(e.message));
   const original=await readFile(path.resolve(process.cwd(),"../backend/internal/vibe/testdata/reliability/returns-original-request.txt"),"utf8");
   await page.goto("/vibe-evals");
-  await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "test" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
   await page.getByRole("textbox",{name:"Message Vibe Evals"}).fill(original);
   await page.getByRole("textbox",{name:"Message Vibe Evals"}).press("Enter");
   await openTests(page);

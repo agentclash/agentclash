@@ -23,6 +23,7 @@ it("places a four-line labelled input after one heading and keeps the primary fi
   expect(node.querySelectorAll("h1")).toHaveLength(1);
   expect(node.querySelector("h1")?.textContent).toBe("What task should the agent handle?");
   expect(input().getAttribute("aria-labelledby")).toBe(node.querySelector("h1")?.id);
+  expect(input().hasAttribute("aria-label")).toBe(false);
   expect(input().rows).toBeGreaterThanOrEqual(4);
   expect(document.activeElement).toBe(input());
   expect(submit().classList.contains("vibe-button-primary")).toBe(true);
@@ -90,4 +91,26 @@ it("accepts UTF-8 bytes with a BOM and appends the decoded text", async () => {
   await act(async () => fileInput.dispatchEvent(new Event("change", { bubbles: true })));
   expect(input().value).toBe("Original task.\n\nCafé returns policy.");
   expect(node.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("sends Enter once and ignores another Enter or form submit while busy", async () => {
+  function Screen() {
+    const [busy, setBusy] = useState(false);
+    return <BuildStart draft="Answer questions using our return policy." onDraft={() => {}} price={{ kind: "trial" }} trialUsed={false} busy={busy} onStart={text => { start(text); setBusy(true); }} onBack={back} onSwitchDoor={switchDoor} />;
+  }
+  await act(async () => root.render(<Screen />));
+  const enter = async (extra: KeyboardEventInit = {}) => {
+    const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true, ...extra });
+    await act(async () => { input().dispatchEvent(event); });
+    return event;
+  };
+  await enter({ shiftKey: true }); await enter({ isComposing: true });
+  expect(start).not.toHaveBeenCalled();
+  expect((await enter()).defaultPrevented).toBe(true);
+  expect(start).toHaveBeenCalledExactlyOnceWith("Answer questions using our return policy.");
+  expect(submit().disabled).toBe(true);
+  expect(submit().getAttribute("aria-busy")).toBe("true");
+  await enter(); await send();
+  expect(start).toHaveBeenCalledOnce();
+  expect(input().value).toBe("Answer questions using our return policy.");
 });
