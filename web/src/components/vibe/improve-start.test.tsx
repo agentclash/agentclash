@@ -144,3 +144,15 @@ it("uses the display serif question and visible borders for every segment", asyn
     }
   } finally { style.remove(); }
 });
+
+
+it("keeps programmatic heading focus without a control outline", async () => {
+  const style = document.createElement("style");
+  style.textContent = readFileSync("src/components/vibe/project-workspace.css", "utf8"); document.head.append(style);
+  try {
+    await draw();
+    const heading = node.querySelector("h1")!;
+    expect(document.activeElement).toBe(heading);
+    expect(getComputedStyle(heading).outline).toBe("none");
+  } finally { style.remove(); }
+});

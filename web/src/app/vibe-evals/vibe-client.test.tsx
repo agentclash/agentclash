@@ -4732,14 +4732,12 @@ it.each(["source", "expectations", "link"] as const)("fix8 keeps recovery open w
 });
 
 
-it.each([["build", false], ["replies", false], ["replies", true]] as const)("fix9 preserves five large pending guest %s drafts across reloads and resolves each separately (legacy queue: %s)", async (kind, legacy) => {
+it.each(["build", "replies"] as const)("fix9 preserves five large pending guest %s drafts across reloads and resolves each separately", async kind => {
   const door = kind === "build" ? "build" : "test";
   const label = kind === "build" ? "What task should the agent handle?" : "Conversations";
   const account = "Existing account work";
   const values = Array.from({ length: 5 }, (_, index) => `${index}:` + "x".repeat(240 * 1024));
   await enterDoor(door);
-  const legacyValue = JSON.stringify({ mode: "replies", conversations: "Older guest reply", rules: "Keep this rule" });
-  if (legacy) sessionStorage.setItem("vibe-build-drafts:start:fixture-user:test", JSON.stringify({ version: 2, composers: {}, editors: { "start:fixture-user:test:start:editor:pending-inputs": { artifact: "start", source: "", value: JSON.stringify([legacyValue]) } } }));
   signedInWorkspace(); await render();
   if (kind === "replies") await click("Real replies");
   await type(account, label);
@@ -4749,7 +4747,6 @@ it.each([["build", false], ["replies", false], ["replies", true]] as const)("fix
     await type(value, label);
     signedInWorkspace(); await render();
   }
-  if (legacy) values.unshift("Older guest reply");
   const reload = async () => {
     await act(async () => root.unmount()); draftMemory.clear(); root = createRoot(container); await render();
   };
@@ -4831,4 +4828,31 @@ it("hydrates a pending start notice only after restoring account drafts", async 
   expect(button("Use it")).toBeTruthy();
   await click("Use it");
   expect(container.querySelector('[role="radio"][aria-checked="true"]')?.textContent).toBe("Test pack");
+});
+
+
+it.each(["build", "improve"] as const)("fix12 centres one server-rendered loading status on the %s start", async door => {
+  await act(async () => root.unmount());
+  harness.params = new URLSearchParams(`start=${door}`);
+  replaceBrowserURL(null, "", `/vibe-evals?${harness.params}`);
+  container.innerHTML = renderToString(<VibeClient />);
+  root = createRoot(container);
+  const visibleStatuses = [...container.querySelectorAll('[role="status"]')].filter(status => !status.closest("[inert]"));
+  expect(visibleStatuses.map(status => status.textContent)).toEqual(["Loading…"]);
+  expect(visibleStatuses[0].closest(".vibe-start-region")).not.toBeNull();
+  expect(container.textContent).not.toContain("Loading projects…");
+  expect(container.querySelector("[inert]")?.getAttribute("style")).toContain("visibility:hidden");
+});
+
+it.each(["build", "improve"] as const)("fix12 has one connection status while the %s start waits for config", async door => {
+  harness.params = new URLSearchParams(`start=${door}`);
+  const config = deferred<Response>(), projects = deferred<Response>();
+  respond = async path => path === "/config" ? config.promise : path === "/sessions" ? projects.promise : json([]);
+  await render();
+  expect([...container.querySelectorAll('[role="status"]')].map(status => status.textContent)).toEqual(["Connecting…"]);
+  expect(container.textContent).not.toContain("Loading projects…");
+  expect(container.querySelector('.vibe-start-page [role="status"]')?.textContent).toBe("Connecting…");
+  await act(async () => { config.resolve(twoDoorConfig()); projects.resolve(json([])); });
+  expect(container.textContent).not.toContain("Connecting…");
+  expect(requests.filter(request => request.method !== "GET")).toEqual([]);
 });

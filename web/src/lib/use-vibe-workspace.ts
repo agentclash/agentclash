@@ -121,11 +121,6 @@ function emptyStartDraft(row: EditorDraft | undefined, editor: "brief" | "inputs
   } catch { return false; }
 }
 
-function pendingStartValues(value: string | undefined): string[] {
-  try { const values: unknown = JSON.parse(value || "[]"); return Array.isArray(values) ? values.filter((value): value is string => typeof value === "string") : []; }
-  catch { return []; }
-}
-
 function carryInstructionDraft(project: string, from: Artifact | undefined, to: Artifact | undefined, submitted?: EditorDraft) {
   if (!from || !to || !submitted || from.id === to.id || from.agent_prompt !== to.agent_prompt || submitted.value === from.agent_prompt || submitted.source !== editorSource({ id: from.id, agent_prompt: from.agent_prompt })) return;
   const current = readEditorDraft(project, from.id, "instructions");
@@ -175,18 +170,6 @@ export function useVibeWorkspace() {
     let migrated = false;
     for (const [door, editor] of [["build", "brief"], ["test", "inputs"]] as const) {
       const guest = `start:guest:${door}`, account = `start:${authUserID}:${door}`;
-      const legacy = readEditorDraft(account, "start", `pending-${editor}`);
-      if (legacy) {
-        const values = pendingStartValues(legacy.value);
-        if (values.length) {
-          const all = draftMemory.get(account) || readBuildDrafts(account) || emptyDrafts();
-          const editors = { ...all.editors };
-          for (const value of values) editors[editorDraftKey(account, "start", `pending-${editor}:${crypto.randomUUID()}`)] = { ...legacy, value };
-          delete editors[editorDraftKey(account, "start", `pending-${editor}`)];
-          persistDrafts(account, { ...all, editors });
-          migrated = true;
-        }
-      }
       const row = readEditorDraft(guest, "start", editor);
       if (!row) continue;
       if (!emptyStartDraft(row, editor)) {

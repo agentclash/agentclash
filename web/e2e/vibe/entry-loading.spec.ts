@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { fakeVibe } from "./entry-fake";
 import { defaultModels } from "../../src/lib/vibe";
-import { composer, doorButton, entryHeading, workspacePicker } from "./entry-model";
+import { composer, doorButton, doorHeading, entryHeading, workspacePicker } from "./entry-model";
 
 test.describe("before hydration", () => {
   test.use({ javaScriptEnabled: false });
@@ -9,6 +10,23 @@ test.describe("before hydration", () => {
     await expect(entryHeading(page)).toBeVisible();
     await expect(doorButton(page, "build")).toBeDisabled();
     await expect(page.getByText("What should your agent do?", { exact: true })).toHaveCount(0);
+  });
+  for (const width of [1440, 390]) test(`start reload has one centred loading status before hydration at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/vibe-evals?start=improve");
+    const status = page.getByRole("status");
+    await expect(status).toHaveCount(1);
+    await expect(status).toHaveText("Loading…");
+    await expect(status).toBeVisible();
+    await expect(page.getByText("Loading projects…", { exact: true })).toHaveCount(0);
+    const region = await page.locator(".vibe-start-region").boundingBox();
+    const box = await status.boundingBox();
+    expect(region).not.toBeNull(); expect(box).not.toBeNull();
+    expect(Math.abs(box!.x + box!.width / 2 - (region!.x + region!.width / 2))).toBeLessThan(2);
+    expect(Math.abs(box!.y + box!.height / 2 - (region!.y + region!.height / 2))).toBeLessThan(2);
+    expect(box!.y).toBeGreaterThan(56);
+    expect(box!.y + box!.height).toBeLessThan(850);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 });
 
@@ -158,3 +176,17 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     expect(errors).toEqual([]);
   });
 }
+
+for (const width of [1440, 390]) test(`Improve reload keeps heading focus without an outline at ${width}px`, async ({ page }) => {
+  await page.setViewportSize({ width, height: 900 });
+  await fakeVibe(page);
+  await page.goto("/vibe-evals?start=improve");
+  await page.reload();
+  const heading = doorHeading(page, "improve");
+  await expect(heading).toBeVisible();
+  await expect(heading).toBeFocused();
+  expect(await heading.evaluate(element => document.activeElement === element)).toBe(true);
+  await expect(heading).toHaveCSS("outline-style", "none");
+  await expect(heading).toHaveCSS("box-shadow", "none");
+  await expect(page.getByText("Loading projects…", { exact: true })).toHaveCount(0);
+});

@@ -39,7 +39,7 @@ export function BuildStart(p: { draft: string; onDraft(text: string): void; pric
           <span className="vibe-build-price">{p.price.kind === "trial" ? "Free trial" : p.price.kind === "ceiling" ? `Up to ${dollars(p.price.nanoUSD)}` : "Price available when you start"}</span>
         </div>
       </div>
-      {reason && !p.trialUsed && <p id={`${id}-reason`} className="vibe-build-note">{reason}</p>}
+      {reason && !p.trialUsed && <p id={`${id}-reason`} className="vibe-build-note" role={p.blockedReason ? "status" : undefined}>{reason}</p>}
       {p.trialUsed && <span id={`${id}-reason`} className="sr-only">{reason}</span>}
       {(p.error || fileError) && <p role="alert">{p.error || fileError}</p>}
     </form>

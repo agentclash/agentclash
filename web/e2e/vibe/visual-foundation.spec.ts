@@ -140,6 +140,14 @@ test("the entry and both door starts: display serif questions, 3:1 control bound
     await expect(title, scheme).toHaveCSS("font-family", /Instrument[ _]Serif/);
     await expect(title, scheme).toHaveCSS("font-weight", "400");
     expect(parseFloat(await css(title, "font-size")), scheme).toBeGreaterThanOrEqual(32);
+    await title.focus();
+    expect(await title.evaluate(element => document.activeElement === element)).toBe(true);
+    await expect(title).toHaveCSS("outline-style", "none");
+    await page.keyboard.press("Tab");
+    const radio = startScreen(page).getByRole("radio", { checked: true });
+    await expect(radio).toBeFocused();
+    await expect(radio).toHaveCSS("outline-style", "solid");
+    expect(await boundary(radio, "outline"), `${scheme} Improve keyboard ring`).toBeGreaterThanOrEqual(3);
     await expect(page.locator(".vibe-composer-dock")).toHaveCount(0);
     for (const source of ["instructions", "recorded", "import"] as const) {
       await sourceButton(page, source).click();

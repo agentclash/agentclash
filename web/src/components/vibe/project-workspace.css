@@ -273,3 +273,9 @@
 .vibe-project-body[data-guide-open] .vibe-project-main .vibe-data-use-notice { display: none; }
 
 .vibe-workspace .vibe-results-outcome:focus-visible { outline: 2px solid var(--vibe-focus); outline-offset: 3px; }
+
+
+.vibe-workspace .vibe-start-title[tabindex="-1"]:focus { outline: none; }
+.vibe-start-region { position: relative; display: grid; min-height: 100%; }
+.vibe-start-region > [inert] { position: absolute; inset: 0; }
+.vibe-start-loading { align-self: center; justify-self: center; margin: 0; padding: var(--vibe-gutter); text-align: center; }
