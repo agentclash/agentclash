@@ -7,6 +7,8 @@
   .vibe-workspace h2 { font-size: var(--vibe-font-headline); line-height: var(--vibe-leading-headline); font-weight: 600; }
   .vibe-workspace :is(h3, h4) { font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight: 600; }
   .vibe-workspace label:has(> :is(textarea, select, input:not([type="checkbox"], [type="radio"]))) { font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight: 600; }
-  .vibe-workspace :is(code, kbd, samp, pre) { font-family: var(--font-mono), ui-monospace, monospace; font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
+  .vibe-workspace :is(code, kbd, samp, pre) { font-family: var(--vibe-font-data); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
+  /* Mono counts: a number that is its own element (a <data> or .vibe-num) uses the data face with tabular figures. */
+  .vibe-workspace :is(data, .vibe-num) { font-family: var(--vibe-font-data); font-variant-numeric: tabular-nums; }
   :is(.vibe-markdown, .vibe-message, .vibe-project-content) :is(p, blockquote) { max-width: 68ch; }
 }

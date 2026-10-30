@@ -72,7 +72,7 @@ export function ActivityStatus({ label, working }: { label?: string; working: bo
         <span key={label || "idle"} className="vibe-status-text">
           {label || ""}
           {!!label && working && !reduced && !motionPaused && (
-            <span aria-hidden="true" className="vibe-status-shine">{label}</span>
+            <span aria-hidden="true" className="vibe-status-dots">{label}</span>
           )}
         </span>
       </p>
