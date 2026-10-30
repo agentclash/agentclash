@@ -50,12 +50,17 @@ export async function doorReady(page: Page, door: Door, timeout?: number) {
  * Shows a project view. Since PR 1, Results (after a run) and Tests (after the first test
  * preparation) can open by themselves. When `finished` names a run ("Run 1"), wait until the
  * page shows that run as ended and the view settles; then click the tab only when it is not selected.
+ * Pass `opensResults` for a run that opens Results by itself (the first Build run): the helper waits
+ * until Results is selected, then clicks. The real backend ends the run before it marks the Build
+ * results ready (backend/internal/vibe/reliable_recovery.go), so the run can show as ended before
+ * the move, and a late move would undo the click.
  */
-export async function showView(page: Page, name: "Agent" | "Tests" | "Results", finished?: string) {
+export async function showView(page: Page, name: "Agent" | "Tests" | "Results", finished?: string, { opensResults = false } = {}) {
   if (finished) {
     await expect(page.locator(".vibe-project-header")).toContainText(new RegExp(`${finished}: (Completed|Failed|Stopped|Partly complete|Expired)`), { timeout: 30_000 });
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   }
+  if (opensResults) await expect(page.getByRole("tab", { name: "Results", exact: true })).toHaveAttribute("aria-selected", "true", { timeout: 30_000 });
   const tab = page.getByRole("tab", { name, exact: true });
   if (await tab.getAttribute("aria-selected") !== "true") await tab.click();
   await expect(tab).toHaveAttribute("aria-selected", "true");

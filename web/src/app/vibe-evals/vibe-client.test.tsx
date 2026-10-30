@@ -2985,6 +2985,133 @@ it("keeps a user who left the run's view where they are and offers See the resul
   expect(document.activeElement?.closest('[aria-label="Run results"]')).not.toBeNull();
 });
 
+// The persistent status region announces the finished work; the visible link has no role of its own.
+const announced = () => [...container.querySelectorAll('.sr-only[role="status"]')].map(node => node.textContent).join(" ");
+const resultLinks = () => [...container.querySelectorAll("button")].filter(b => b.textContent === "See the result");
+
+it("offers See the result on Tests while the user edits the tests, and announces the finished run", async () => {
+  readyTests();
+  harness.params = new URLSearchParams(`session=${session.id}&view=tests`);
+  admitRunLater();
+  await render();
+  await click("Run 3 tests"); await click("Start run");
+  await publish([run(runID, "artifact-one", { state: "RUNNING", scorecard: undefined, results: [] })]);
+  await click("Agent");
+  expect(announced()).not.toContain("Your run finished.");
+  await publish([run(runID, "artifact-one")]); await frame();
+  expect(params().get("view")).toBe("agent");
+  expect(announced()).toContain("Your run finished.");
+  expect(container.querySelector(".vibe-arrival")?.getAttribute("role")).toBeNull();
+  await click("Tests");
+  // The tests' own "See the result" leads; the arrival link does not repeat it.
+  expect(resultLinks()).toHaveLength(1);
+  expect(container.querySelector(".vibe-arrival")).toBeNull();
+  await click("Edit tests");
+  // The editor hides the tests' own link, so the arrival link shows.
+  expect(resultLinks()).toHaveLength(1);
+  expect(container.querySelector(".vibe-arrival")?.textContent).toContain("Your run finished.");
+  await click("See the result"); await frame();
+  expect(params().get("view")).toBe("results");
+  expect(params().get("run")).toBe(runID);
+  expect(announced()).not.toContain("Your run finished.");
+});
+
+// Guide's fix (artifact-two) is rerun from the Agent view against Run 1.
+async function rerunFixOnAgent() {
+  readyTests("build");
+  const v1 = session.document.artifacts[0];
+  session.document.artifacts = [v1, { ...v1, id: "artifact-two", parent_id: v1.id, accepted: false, agent_prompt: "Original policy. Never promise a refund." }];
+  session.operations = [run(runID, "artifact-one")];
+  harness.params = new URLSearchParams(`session=${session.id}&view=agent&agent=artifact-two`);
+  const retestID = "a8000000-0000-4000-8000-0000000000c3";
+  const retest = (extra: Partial<Operation> = {}) => run(retestID, "artifact-two", { kind: "retest", baseline_id: runID, ...extra });
+  respond = async path => {
+    if (path === "/config") return twoDoorConfig();
+    if (path.endsWith("/run-quote")) return json({ id: "quote", cases: 3, calls: 6, max_cost_nano_usd: 0, expires_at: new Date(Date.now() + 600000).toISOString() });
+    if (path.endsWith("/messages")) return json(retest({ state: "RUNNING", scorecard: undefined, results: [] }), 202);
+    return path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  };
+  await render();
+  button("Apply change and rerun").focus();
+  await click("Apply change and rerun");
+  await click("Start run"); await frame();
+  await publish([...session.operations, retest({ state: "RUNNING", scorecard: undefined, results: [] })]);
+  return { finish: () => publish([run(runID, "artifact-one"), retest()]) };
+}
+
+it("opens Results after a rerun though the cost dialog left focus in the empty trial composer", async () => {
+  const rerun = await rerunFixOnAgent();
+  // The disabled rerun button cannot take focus back, so the dialog gives it to the trial composer.
+  expect(document.activeElement?.id).toBe("vibe-trial-message");
+  expect((document.activeElement as HTMLTextAreaElement).value).toBe("");
+  await rerun.finish(); await frame();
+  expect(params().get("view")).toBe("results");
+  expect(document.activeElement?.closest('[aria-label="Run results"]')).not.toBeNull();
+  expect(container.querySelector(".vibe-arrival")).toBeNull();
+});
+
+it("keeps a user with unsaved agent instructions on Agent when the rerun ends, and offers See the result", async () => {
+  const rerun = await rerunFixOnAgent();
+  await click("Change agent instructions"); await frame();
+  const editor = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Agent instructions"]')!;
+  editor.focus();
+  await type("Half-typed new instructions", "Agent instructions");
+  // The change is unsaved; the user has left the field.
+  act(() => editor.blur());
+  expect(document.activeElement).toBe(document.body);
+  await rerun.finish(); await frame();
+  expect(params().get("view")).toBe("agent");
+  expect(editor.isConnected).toBe(true);
+  expect(editor.value).toBe("Half-typed new instructions");
+  expect(container.querySelector(".vibe-arrival")?.textContent).toContain("Your run finished.");
+  expect(announced()).toContain("Your run finished.");
+});
+
+// The first Build run: Guide makes artifact-one and runs its tests in the cycle of the Build estimate.
+async function firstBuildRunning() {
+  await enterDoor("build");
+  await type("Answer shop return questions within 30 days.");
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 450)); });
+  await click("Send message");
+  expect(posts()).toHaveLength(1);
+  const cycle = String(posts()[0].body.cycle_id);
+  const message: Operation = { id: "admitted", kind: "message", state: "COMPLETED", billing: "SETTLED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] };
+  const v1 = { ...scenarioAgent(), kind: "test_suite", accepted: true };
+  const build = (phase: string) => ({ artifacts: [v1], build: { cycle_id: cycle, phase, clarifications_used: 0, artifact_id: v1.id, check_id: runID } });
+  await publish([message, run(runID, v1.id, { state: "RUNNING", scorecard: undefined, results: [] })], build("checking"));
+  expect(params().get("view")).not.toBe("results");
+  return { finish: () => publish([message, run(runID, v1.id)], build("results")) };
+}
+
+it("keeps a user who writes to the agent during the first Build run where they are, with focus in the composer", async () => {
+  const build = await firstBuildRunning();
+  const trial = document.getElementById("vibe-trial-message") as HTMLTextAreaElement;
+  expect(trial?.closest(".vibe-project-main")).not.toBeNull();
+  trial.focus();
+  await type("Can I return opened headphones?", "Message your agent");
+  await build.finish(); await frame();
+  expect(params().get("view")).not.toBe("results");
+  expect(document.activeElement).toBe(trial);
+  expect(trial.value).toBe("Can I return opened headphones?");
+  expect(container.querySelector(".vibe-arrival")?.textContent).toContain("Your run finished.");
+  await click("See the result"); await frame();
+  expect(params().get("view")).toBe("results");
+  expect(container.querySelector('[aria-label="Run results"]')).not.toBeNull();
+});
+
+it("opens Results with focus on its heading when the first Build run ends and the user is not typing", async () => {
+  const build = await firstBuildRunning();
+  // Focus on a button of the view does not hold the user there.
+  const change = button("Change agent instructions");
+  act(() => change.focus());
+  expect(document.activeElement).toBe(change);
+  await build.finish(); await frame();
+  expect(params().get("view")).toBe("results");
+  expect(document.activeElement?.tagName).toBe("H2");
+  expect(document.activeElement?.closest('[aria-label="Run results"]')).not.toBeNull();
+  expect(container.querySelector(".vibe-arrival")).toBeNull();
+});
+
 it("still reports a run that is missing from the project as unavailable (A8)", async () => {
   readyTests();
   harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);

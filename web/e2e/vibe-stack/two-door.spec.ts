@@ -21,11 +21,12 @@ async function openGuide(page: Page) {
  if(await button.getAttribute('aria-pressed')!=='true') await button.click();
 }
 // PR 1: Results and Tests can open by themselves; showView clicks the tab only when needed.
-// Pass the finished run ("Run 1") when the wanted view differs from the one that opens by itself.
-async function openView(page: Page, name: 'Agent'|'Tests'|'Results', finished?: string) {
+// Pass the finished run ("Run 1") when the wanted view differs from the one that opens by itself,
+// and opensResults for the first Build run, so the helper clicks only after Results opened.
+async function openView(page: Page, name: 'Agent'|'Tests'|'Results', finished?: string, options?: {opensResults?: boolean}) {
  const sheet=page.getByRole('dialog').filter({has:page.getByRole('button',{name:'Close Guide',exact:true})});
  if(await sheet.isVisible()) await sheet.getByRole('button',{name:'Close Guide',exact:true}).click();
- await showView(page,name,finished);
+ await showView(page,name,finished,options);
 }
 // Occasional result actions share one "More actions" disclosure below the scorecard.
 async function openMoreActions(page: Page) {
@@ -63,12 +64,12 @@ test("clear Build goes through real worker to three results, scoped export and i
  expect(v.session.operations.filter((o:{kind:string})=>o.kind==='check')).toHaveLength(1);
  expect(v.session.operations.at(-1).results).toHaveLength(3);
  expect(v.calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(3);
- // PR 1: the first result can open Results by itself; either way the page stays on Agent or Results.
+ // PR 1: the first Build result opens Results by itself.
  await expect(page.locator('.vibe-project-header')).toContainText('Run 1: Completed');
- await expect(page.locator('[role="tab"][aria-selected="true"]')).toHaveText(/^(Agent|Results)$/);
+ await expect(page.locator('[role="tab"][aria-selected="true"]')).toHaveText(/^Results$/);
  await openGuide(page);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
- await openView(page,'Results','Run 1');
+ await openView(page,'Results','Run 1',{opensResults:true});
  await expect(page.getByRole('article',{name:'Run results'})).toContainText('3 passed · 0 failed');
  await expect(page.getByLabel('Result history').locator('option:not([disabled])')).toHaveCount(1);
  await expect(page.locator('.vibe-project-header')).toContainText('Run 1: Completed');
@@ -134,7 +135,7 @@ test("one question then unknown produces a labelled sample, with no invented req
  const v=await evidence(page);expect(v.session.document.build.clarifications_used).toBe(1);
  expect(v.session.document.artifacts[0].sample).toBe('returns');
  expect(v.session.document.policies || []).toHaveLength(0);
- await openView(page,'Agent','Run 1');
+ await openView(page,'Agent','Run 1',{opensResults:true});
  await expect(page.getByRole('region',{name:'Version scope'})).toContainText('Your real policy is still unspecified.');
  await page.screenshot({path:info.outputPath('sample-results.png'),fullPage:true});
 });
@@ -317,7 +318,7 @@ test("sample continuation retains its prototype through harder requests, chat, r
  await expect.poll(async()=>(await evidence(page)).session.document.build.phase,{timeout:60000}).toBe('results');
  let v=await evidence(page);const base=v.session.document.artifacts[0];
  expect(base.sample_basis.sample_basis).toBe('email_sorting');
- await openView(page,'Agent','Run 1');
+ await openView(page,'Agent','Run 1',{opensResults:true});
  await expect(page.getByRole('region',{name:'Version scope'})).toContainText('Sample demonstration');
  await page.reload();await send('harden these tests bro');
  v=await evidence(page);const harder=v.session.document.artifacts.at(-1);

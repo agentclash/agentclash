@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowRight, ChevronRight, Copy, Pencil } from "lucide-react";
 import { useVibeEditorDraft } from "@/lib/use-vibe-editor-draft";
 import { editorSource } from "@/lib/vibe-build-drafts";
@@ -35,6 +35,7 @@ export function TestSuitePanel({
   comparison,
   onRun,
   onResult,
+  onResultShown,
   onEdit,
   onDirty,
   onSave, onOriginal,
@@ -59,6 +60,8 @@ export function TestSuitePanel({
   onRun: () => void;
   // Set when these tests already ran: the primary opens that result and running again is secondary.
   onResult?: () => void;
+  // Reports whether this panel shows its own "See the result", so the page does not repeat it.
+  onResultShown?: (shown: boolean) => void;
   onEdit: (fields: Record<string, unknown>) => Promise<boolean>;
   onDirty: (dirty: boolean) => void;
   onSave: () => void;
@@ -97,6 +100,9 @@ export function TestSuitePanel({
   const changes = changedCases(tests, draft);
   const ready = !!artifact.agent_prompt.trim();
   const ran = ready && !!onResult;
+  // The editor and the agent form hide the actions, and with them "See the result".
+  const resultShown = ran && !agentOpen && !editing && !artifact.unavailable_reason && cases.length > 0;
+  useLayoutEffect(() => { onResultShown?.(resultShown); return () => onResultShown?.(false); }, [onResultShown, resultShown]);
   const added = parent ? tests.filter(test => !suiteCases(parent.blueprint).some(old => old.key===test.key)).length : 0;
   const validationBlocked = !!artifact.validation && artifact.validation.status !== "supported";
   if (artifact.unavailable_reason || !cases.length) return <section className="vibe-panel p-4 space-y-3"><h2>Pack kept · advanced editor needed</h2><p className="text-sm vibe-muted">{artifact.unavailable_reason || "These tests need the full pack builder."} No tests were removed or run.</p>{artifact.original&&onOriginal?<VibeButton onClick={onOriginal}>Download original {artifact.original.filename}</VibeButton>:<VibeButton onClick={()=>downloadJSON("pack-definition.json",artifact.blueprint)}>Download definition</VibeButton>}<VibeButton onClick={onSave}>Save and open advanced editor</VibeButton></section>;

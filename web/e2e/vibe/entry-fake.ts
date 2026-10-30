@@ -226,8 +226,13 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
       const keys: unknown[] = Array.isArray(pack?.cases) ? pack.cases.map((c: any) => c?.key) : [];
       if (!keys.length || keys.some(key => typeof key !== "string" || !key) || new Set(keys).size !== keys.length)
         return json({ error: { code: "invalid_request", message: "This file is not a test pack that the preview can run." } }, 422);
-      const art: Artifact = { id: "pack-v1", kind: "test_suite", title: packFile.name, summary: "Imported test pack.", agent_prompt: "", accepted: false, source_message_id: "import", blueprint: pack,
+      const art: Artifact = { id: "pack-v1", kind: "test_suite", title: packFile.name, summary: "Imported test pack.", agent_prompt: "", accepted: false, source_message_id: "import", proposal_message_id: "import-reply", blueprint: pack,
         original: { id: "orig-1", artifact_id: "pack-v1", filename: packFile.name, media_type: packFile.mimeType, content_sha256: "0".repeat(64), size_bytes: packFile.buffer.length } } as any;
+      // As backend/internal/vibe/service.go importVersion: a user message names the pack (the compiled
+      // pack name, "Generated eval" without one) and Guide replies with the count of imported tests.
+      const name = typeof pack.name === "string" && pack.name.trim() || "Generated eval";
+      s.document.messages.push({ id: "import", role: "user", content: `Imported ${name} (${keys.length} cases).` },
+        { id: "import-reply", role: "assistant", content: `Your ${keys.length} imported tests are ready to review.`, artifact_id: art.id });
       s.document.artifacts.push(art); s.document.active_artifact_id = art.id; s.title = packFile.name;
       bump(s);
       return json(s);

@@ -998,8 +998,17 @@ export function useVibeWorkspace() {
       document.querySelector<HTMLElement>(target === "results" ? '[aria-label="Run results"] h2' : '[aria-label="Your tests"] h2')?.focus();
     });
   }
+  // The user is typing in the open view: an unsaved edit, or focus in a list, an editable region or a
+  // text field with text in the main view. An empty field does not count: after "Start run" the cost
+  // dialog returns focus to the empty trial composer. Decide this before the view changes: after it, focus is gone.
+  function typingInView() {
+    if (dirtyArtifact) return true;
+    const field = document.activeElement?.closest('textarea, select, [contenteditable=""], [contenteditable="true"], input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"]):not([type="color"]):not([type="image"])');
+    if (!field?.closest(".vibe-project-main")) return false;
+    return field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement ? !!field.value : true;
+  }
   // The result comes to the user: a finished run, first Build run or first test preparation
-  // opens its view if the user is still where it started. Otherwise a link to it shows.
+  // opens its view if the user is still where it started and is not typing there. Otherwise a link to it shows.
   useEffect(() => {
     const started = follow.current;
     if (!started || !session) return;
@@ -1011,7 +1020,7 @@ export function useVibeWorkspace() {
     if (!done) return;
     follow.current = undefined;
     if (navigation.view === started.target) return;
-    if (navigation.view === started.view && !document.querySelector('[role="dialog"]')) showView(started.target, started.run, "replace");
+    if (navigation.view === started.view && !document.querySelector('[role="dialog"]') && !typingInView()) showView(started.target, started.run, "replace");
     else setArrival({ sessionID: session.id, target: started.target, run: started.run });
     // Only a new snapshot can finish the followed work.
     // eslint-disable-next-line react-hooks/exhaustive-deps

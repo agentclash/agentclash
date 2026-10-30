@@ -45,8 +45,8 @@ for (const kind of ["paste", "pdf"] as const) test(`${kind}: material to actual 
   await expect(sendButton(page)).toBeEnabled();
   await sendButton(page).click();
   await expect.poll(async () => (await saved(page)).session.document.build?.phase, {timeout:90000}).toBe("results");
-  // PR 1: the first result can open Results by itself; the agent's output is on Agent.
-  await showView(page, "Agent", "Run 1");
+  // PR 1: the first result opens Results by itself; the agent's output is on Agent.
+  await showView(page, "Agent", "Run 1", {opensResults: true});
   await expect(page.getByRole("region",{name:"Your agent’s output"})).toContainText("Mira will ship the prototype on Friday");
   await page.getByText("Material used",{exact:true}).click();
   await page.getByText("Page 1",{exact:true}).click();

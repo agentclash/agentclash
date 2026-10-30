@@ -80,6 +80,8 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
   const refocusGuide = useRef(false);
   const title = useRef<HTMLHeadingElement>(null);
   const [read, setRead] = useState<string>();
+  // Tests shows its own "See the result" unless the test editor is open.
+  const [suiteResult, setSuiteResult] = useState(false);
   const view = p.view === "checks" ? "results" : p.view === "tests" ? "tests" : "agent";
   const artifact = p.artifact;
   const runs = session.operations.filter(op => op.kind === "check" || op.kind === "retest");
@@ -116,8 +118,9 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
     : p.interactionActions && hasConversationChoice(session) ? "Review needed"
     : latestResponse && read !== latestResponse.id ? "New response" : undefined;
   // From 1280px the Guide is a side panel that stays open after the first version until the user closes it.
-  // An empty Guide (recorded replies, an imported pack) stays closed until it has a conversation.
+  // An empty Guide (recorded replies) stays closed until it has a conversation.
   const guideEmpty = !messages.length && !p.pendingMessage;
+  const arrivalText = p.arrival ? p.arrival.target === "results" ? "Your run finished." : "Your tests are ready." : "";
   const shown = utility ?? (wide && !initialBrief && !guideClosed && !guideEmpty ? "guide" : null);
   const runTotal = useRunTotal(active);
   // Below 1280 the utility is a modal sheet. It counts as open until its close completes,
@@ -227,8 +230,9 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
       <div className="vibe-project-main" data-initial={view === "agent" && initialBrief || undefined} id="vibe-workspace-panel" role="tabpanel" aria-labelledby={`vibe-tab-${view}`}>
         <div className="vibe-project-content">
         {!stripInSheet && progress}
-        {p.arrival && !(view === "tests" && p.arrival.target === "results" && testedRun && artifact?.kind === "test_suite") && <p className="vibe-arrival" role="status">
-          {p.arrival.target === "results" ? "Your run finished." : "Your tests are ready."} <VibeButton variant="quiet" onClick={p.arrival.open}>{p.arrival.target === "results" ? "See the result" : "See your tests"}<ArrowRight /></VibeButton></p>}
+        {/* The persistent status region announces it: some screen readers skip a live region that mounts with its text. */}
+        {p.arrival && !(view === "tests" && p.arrival.target === "results" && suiteResult) && <p className="vibe-arrival">
+          {arrivalText} <VibeButton variant="quiet" onClick={p.arrival.open}>{p.arrival.target === "results" ? "See the result" : "See your tests"}<ArrowRight /></VibeButton></p>}
         {!initialBrief && !intakeOpen && p.onRecordedEvidence && <RecordedIntakeRecovery project={session.id} busy={p.busy} onSave={p.onRecordedEvidence} />}
         {view === "results" && runs.length > 0 && <label>Result history<select aria-label="Result history" value={result?.id || ""} onChange={event => { if (event.target.value) p.onSelectRun(event.target.value); }}><option value="" disabled>Choose a saved run</option>{runs.map((run, i) => <option key={run.id} value={run.id}>Run {i + 1} · {runStateLabel(run.state)}</option>)}</select></label>}
         {intakeOpen && p.onRecordedEvidence ? <section aria-label="New recorded replies"><p>Compare with the selected saved run. Keep the customer messages and expectations the same; supply the actual new app replies. Review and enter the expectations explicitly before saving.</p><RecordedIntake reviewedExpectations={session.document.artifacts.find(item=>item.id===p.recordedUpdate?.baseline.source?.artifact_id)?.conversation_evaluation?.expectations} project={session.id} revision={session.revision} busy={p.busy} onSave={p.onRecordedEvidence} onClose={p.onCloseRecordedUpdate || (()=>{})}/></section> : view === "agent" ? initialBrief ? initial : <>
@@ -238,7 +242,7 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
           {!fix && parent && parent.agent_prompt !== artifact!.agent_prompt && <PromptChange key={`change:${artifact!.id}`} before={parent.agent_prompt} after={artifact!.agent_prompt} />}
           <section aria-label="Agent references"><h2>References</h2><p>{session.document.policies?.find(policy => policy.id === artifact!.policy_id)?.rules.map(rule => rule.statement).join("\n") || "No adopted rules in this version."}</p>{!!artifact!.reference_inputs?.length && <TaskSources key={`${session.id}:${artifact!.id}`} sessionID={session.id} bindings={artifact!.reference_inputs} />}</section>
           {artifact!.agent_prompt ? p.preview : !artifact!.conversation_evaluation && <p>Add instructions to try this agent.</p>}
-        </> : view === "tests" ? artifact?.conversation_evaluation ? <RecordedTests key={artifact.id} project={session.id} artifact={artifact} blocked={p.dirty||p.runInferenceUnavailable} evidence={session.document.evidence_sets?.find(item => item.id === artifact.conversation_evaluation!.evidence_set_id)} busy={p.busy} onDirty={p.onDirty} onEdit={p.onEdit} onRun={() => p.onRun(newRecordedBaseline,artifact.conversation_evaluation!.evidence_set_id,newRecordedBaseline ? artifact.id : undefined)} /> : artifact?.kind === "test_suite" ? <TestSuitePanel key={artifact.id} mode="tests" onAgent={() => p.onNavigate("build")} onAskCase={key => ask({ project: session.id, artifact_id: artifact.id, viewed_case_key: key, title: suiteCases(artifact.blueprint).find(test => test.key === key)?.input || key })} projectID={session.id} selectedCase={p.selectedCase} onSelectCase={p.onSelectCase} artifact={artifact} parent={parent} busy={p.busy} blocked={p.dirty} comparison={!!changeBaseline} buildJourney={build} inferenceUnavailable={p.inferenceUnavailable} checkingChanges={p.checkingTestChanges} onEdit={p.onEdit} onDirty={dirty} onRun={() => p.onRun(changeBaseline)} onResult={testedRun ? () => p.onSelectRun(testedRun.id) : undefined} onSave={() => p.onSave()} onOriginal={()=>p.onOriginal?.(artifact)} onSettings={p.onSettings} modelLabel={p.modelLabel} rules={session.document.policies?.find(policy => policy.id === artifact.policy_id)?.rules} />
+        </> : view === "tests" ? artifact?.conversation_evaluation ? <RecordedTests key={artifact.id} project={session.id} artifact={artifact} blocked={p.dirty||p.runInferenceUnavailable} evidence={session.document.evidence_sets?.find(item => item.id === artifact.conversation_evaluation!.evidence_set_id)} busy={p.busy} onDirty={p.onDirty} onEdit={p.onEdit} onRun={() => p.onRun(newRecordedBaseline,artifact.conversation_evaluation!.evidence_set_id,newRecordedBaseline ? artifact.id : undefined)} /> : artifact?.kind === "test_suite" ? <TestSuitePanel key={artifact.id} mode="tests" onAgent={() => p.onNavigate("build")} onAskCase={key => ask({ project: session.id, artifact_id: artifact.id, viewed_case_key: key, title: suiteCases(artifact.blueprint).find(test => test.key === key)?.input || key })} projectID={session.id} selectedCase={p.selectedCase} onSelectCase={p.onSelectCase} artifact={artifact} parent={parent} busy={p.busy} blocked={p.dirty} comparison={!!changeBaseline} buildJourney={build} inferenceUnavailable={p.inferenceUnavailable} checkingChanges={p.checkingTestChanges} onEdit={p.onEdit} onDirty={dirty} onRun={() => p.onRun(changeBaseline)} onResult={testedRun ? () => p.onSelectRun(testedRun.id) : undefined} onResultShown={setSuiteResult} onSave={() => p.onSave()} onOriginal={()=>p.onOriginal?.(artifact)} onSettings={p.onSettings} modelLabel={p.modelLabel} rules={session.document.policies?.find(policy => policy.id === artifact.policy_id)?.rules} />
           : initialBrief ? <div className="vibe-empty-state"><p>No tests yet. Write your brief in Agent first.</p><VibeButton onClick={() => p.onNavigate("build")}>Go to Agent</VibeButton></div>
           : <div className="vibe-empty-state"><p>No tests in this version yet. Guide can prepare tests for you to review.</p><VibeButton onClick={askForTests}>Ask Guide for tests</VibeButton></div>
         : result && resultArtifact ? <>
@@ -266,7 +270,7 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
       {wide && shown && <aside className="vibe-utility" aria-label={`${shown === "guide" ? "Guide" : "Details"} utility`}>{utilityContent}</aside>}
     </div>
     {!wide && <Sheet open={!!utility} onOpenChange={value => { if (!value) setUtility(null); }} onOpenChangeComplete={value => { const action = afterUtilityClose.current; afterUtilityClose.current = null; if (!value) { setSheetActive(false); action?.(); } }}><SheetContent className="vibe-utility-sheet" showCloseButton={false} initialFocus={utilityHeading} finalFocus={() => utilityTrigger.current || false}><SheetTitle className="sr-only">{utility === "guide" ? "Guide" : "Details"}</SheetTitle><SheetDescription className="sr-only">Supporting project context. Closing keeps your draft.</SheetDescription>{utilityContent}</SheetContent></Sheet>}
-    <span className="sr-only" role="status">{shown !== "guide" && guideAttention ? `${guideAttention}. Open Guide for details.` : ""}</span>
+    <span className="sr-only" role="status">{[arrivalText, shown !== "guide" && guideAttention ? `${guideAttention}. Open Guide for details.` : ""].filter(Boolean).join(" ")}</span>
     <SavedWorkDialog status={p.savedListStatus} onRetry={p.onRetrySaved} open={!!p.savedWorkOpen} onOpenChange={p.onSavedWorkOpenChange || (() => {})} testJourney={p.testJourney} savedChecks={p.savedChecks} hasResults={runs.length > 0} onResults={() => p.onNavigate("checks")} />
   </>;
 }

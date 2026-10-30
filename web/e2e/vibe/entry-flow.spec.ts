@@ -14,8 +14,9 @@ test.describe.configure({ timeout: 120_000 });
 
 type Budget = { clicks: number; texts: number; files: number; decisions: number };
 // Enabled main-zone controls in the first viewport at each decision point, measured (1440, light).
-// "imported tests" went from 12 to 9 in PR 1: an empty Guide column no longer opens by default.
-const controlBudget: Record<string, number> = { entry: 3, "build start": 7, "improve start": 8, "imported tests": 9, cost: 4 };
+// "imported tests" is 13: the import writes Guide's two messages, as the backend does, so the Guide
+// column opens with them and its controls count in the main zone (12 before PR 1, with an empty Guide).
+const controlBudget: Record<string, number> = { entry: 3, "build start": 7, "improve start": 8, "imported tests": 13, cost: 4 };
 const tab = (page: Page, name: "Agent" | "Tests" | "Results") => page.getByRole("tab", { name, exact: true });
 const runResults = (page: Page) => page.getByRole("article", { name: "Run results" });
 const runDone = (page: Page) => expect(page.locator(".vibe-project-header")).toContainText("Run 1: Completed", { timeout: 30_000 });
