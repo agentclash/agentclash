@@ -13,6 +13,11 @@ const signedIn: FakeOptions = { signedIn: true, config: { availability: { guest:
 const noCredits = { status: 402, code: "insufficient_credits", message: "This workspace has no AI credits.", admission: "rejected" as const };
 const known = (id: string) => `Known defect: see ~/.claude/plans/vibe-evals-redesign.md section 8.3 ${id}`;
 const doorsDisabled = async (page: Page) => { for (const door of ["build", "improve"] as const) await expect(doorButton(page, door)).toBeDisabled(); };
+// A delayed automatic retry would come with the next event stream reconnect, so wait for one.
+async function afterReconnect(fake: { events: () => number }) {
+  const seen = fake.events();
+  await expect.poll(() => fake.events(), { timeout: 15_000 }).toBeGreaterThan(seen);
+}
 const writes = (fake: { posts: { method: string; path: string }[] }) => fake.posts.map(post => `${post.method} ${post.path.replace(/sessions\/[^/]+/, "sessions/:id")}`);
 
 // The local AuthKit fixture signs in; the fake answers /v1/users/me.
@@ -79,6 +84,7 @@ test.describe("H7 no credits", () => {
     await expect(sendButton(page)).toBeEnabled();
     await expect(composer(page)).toHaveValue(description);
     await expect(page.getByRole("dialog")).toHaveCount(0);
+    await afterReconnect(fake);
     await writeRecord("h7-build", { alerts: await page.getByRole("alert").allInnerTexts(), writes: writes(fake) });
     expect(writes(fake).filter(write => !write.endsWith("/build-quote"))).toEqual(["POST /sessions", "POST /sessions/:id/messages"]);
     expect(fake.errors).toEqual([]);
@@ -114,6 +120,7 @@ test.describe("H7 no credits", () => {
     await expect(page.getByRole("alert").filter({ hasText: noCredits.message })).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Run 3 tests", exact: true })).toBeEnabled();
+    await afterReconnect(fake);
     await writeRecord("h7-run", { alerts: await page.getByRole("alert").allInnerTexts(), writes: writes(fake) });
     expect(writes(fake)).toEqual(["POST /sessions", "POST /sessions/:id/messages", "POST /sessions/:id/run-quote", "POST /sessions/:id/messages"]);
     expect(fake.errors).toEqual([]);

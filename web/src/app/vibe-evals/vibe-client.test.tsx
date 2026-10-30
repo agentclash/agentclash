@@ -2872,6 +2872,9 @@ async function enterDoor(door: "build" | "test") {
 }
 const visibleH1 = () => [...container.querySelectorAll("h1")].filter(h1 => !h1.closest("[hidden]"));
 
+// Plain tests of the setup, so an it.fails below cannot pass because the door setup broke.
+for (const door of ["build", "test"] as const) it(`enters the ${door} door with the shared setup`, () => enterDoor(door));
+
 for (const door of ["build", "test"] as const) {
   it.fails(`shows exactly one h1 on the ${door} start (known defect B3)`, async () => {
     await enterDoor(door);

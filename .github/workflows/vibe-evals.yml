@@ -48,6 +48,7 @@ on:
       - 'web/src/components/vibe/**'
       - 'web/src/components/ui/**'
       - 'web/src/app/globals.css'
+      - 'web/src/app/layout.tsx'
       - 'web/src/lib/analytics/**'
       - 'web/src/components/share/**'
       - 'web/src/components/app-shell/top-bar.tsx'

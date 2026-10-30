@@ -11,6 +11,8 @@ test.use({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
 test.describe.configure({ timeout: 120_000 });
 
 type Budget = { clicks: number; texts: number; files: number; decisions: number };
+// Enabled main-zone controls in the first viewport at each decision point, measured today (1440, light).
+const controlBudget: Record<string, number> = { entry: 3, "build start": 7, "improve start": 8, "imported tests": 12, cost: 4 };
 const tab = (page: Page, name: "Agent" | "Tests" | "Results") => page.getByRole("tab", { name, exact: true });
 const runResults = (page: Page) => page.getByRole("article", { name: "Run results" });
 const runDone = (page: Page) => expect(page.locator(".vibe-project-header")).toContainText("Run 1: Completed", { timeout: 30_000 });
@@ -41,6 +43,10 @@ async function finish(page: Page, fake: Fake, flow: FlowMeter, budget: Budget) {
   expect(m2.texts, "text entries to the first test result").toBeLessThanOrEqual(budget.texts);
   expect(m2.files, "file choices to the first test result").toBeLessThanOrEqual(budget.files);
   expect(record.decisions.filter(d => d.options >= 2).length, "decision points").toBeLessThanOrEqual(budget.decisions);
+  for (const d of record.decisions) {
+    expect(controlBudget[d.at], `a control budget for "${d.at}"`).toBeDefined();
+    expect(d.mainEnabled, `enabled main controls at "${d.at}"`).toBeLessThanOrEqual(controlBudget[d.at]);
+  }
   expect(record.mostDialogs, "dialogs open at the same time").toBeLessThanOrEqual(1);
   // A5: nothing model-bound before the explicit consent, and one project per door choice.
   expect(record.writesBeforeConsent.filter(w => w.path.endsWith("/messages"))).toEqual([]);

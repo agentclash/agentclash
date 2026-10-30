@@ -71,6 +71,7 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
   const queues = new Map<string, (() => void)[]>();
   const posts: { method: string; path: string; body: any }[] = [];
   const unknown: string[] = [], errors: string[] = [], external: string[] = [];
+  let eventRequests = 0;
   const failures = options.failures ?? {};
   const config = { ...fakeConfig, ...options.config };
   const later = (s: Session, ...steps: (() => void)[]) => queues.set(s.id, [...(queues.get(s.id) ?? []), ...steps.map(step => () => { step(); bump(s); })]);
@@ -118,6 +119,7 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
     if (method === "GET") {
       if (p === "/sessions") return json([...sessions.values()]);
       if (state && p.endsWith("/events")) {
+        eventRequests++;
         queues.get(state.id)?.shift()?.();
         return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(state)}\n\n` });
       }
@@ -150,7 +152,8 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
         s.document.build = { cycle_id: body.cycle_id || "cycle", phase: "preparing", clarifications_used: 0 };
         if (options.buildFails) {
           later(s, () => finish(op, { state: "FAILED", billing: "RELEASED", retryable: true, error: { code: "provider_error", message: "The selected model’s provider failed. Your request is saved." } } as any));
-          retries.set(op.id, () => { finish(op, { retryable: false } as any); buildRun(s, running(`retry-${op.id}`, "message", { retry_of_operation_id: op.id, max_cost_nano_usd: 1 } as any), art); });
+          // As backend/internal/vibe/retry.go: the source stays FAILED, is no longer retryable, and a new operation runs.
+          retries.set(op.id, () => { (op as any).retryable = false; buildRun(s, running(`retry-${op.id}`, "message", { retry_of_operation_id: op.id, max_cost_nano_usd: 1 } as any), art); });
           bump(s);
           return json(op, 202);
         }
@@ -214,6 +217,6 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
     unknown.push(`${method} ${p}`);
     return json({ error: { code: "invalid_state", message: "The entry fake has no handler for this request." } }, 400);
   });
-  return { sessions, posts, unknown, errors, external, config, current: () => [...sessions.values()].at(-1)! };
+  return { sessions, posts, unknown, errors, external, config, events: () => eventRequests, current: () => [...sessions.values()].at(-1)! };
 }
 export type Fake = Awaited<ReturnType<typeof fakeVibe>>;

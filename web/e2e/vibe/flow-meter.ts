@@ -21,7 +21,7 @@ export type Census = { controls: { all: number; main: number; mainEnabled: numbe
 /** Visible controls, primaries, h1 and words. Counts of controls and words are for the first viewport. */
 export function census(page: Page): Promise<Census> {
   return page.evaluate(() => {
-    const selector = 'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"], [role="tab"], [role="link"], [role="combobox"], [tabindex]:not([tabindex="-1"])';
+    const selector = 'a[href], button, input:not([type="hidden"]), select, textarea, summary, [role="button"], [role="tab"], [role="link"], [role="combobox"], [role="radio"], [role="checkbox"], [role="switch"], [role="menuitem"], [role="option"], [tabindex]:not([tabindex="-1"])';
     const text = (value: string | null | undefined) => (value || "").replace(/\s+/g, " ").trim();
     const shown = (el: Element) => {
       const box = el.getBoundingClientRect();
@@ -98,7 +98,7 @@ export async function flowMeter(page: Page, name: string, { keyboardOnly = false
   await watchDialogs(page);
   const counts = { clicks: 0, texts: 0, files: 0, submits: 0, tabs: 0 };
   const snapshot = (): Counts => ({ ...counts, actions: counts.clicks + counts.texts + counts.files + counts.submits });
-  const steps: string[] = [], decisions: { at: string; options: number }[] = [], writes: Write[] = [];
+  const steps: string[] = [], decisions: { at: string; options: number; mainEnabled: number }[] = [], writes: Write[] = [];
   const milestones: Record<string, Counts> = {};
   const probes = new Map<string, Locator>();
   let consent: Counts | undefined;
@@ -138,10 +138,10 @@ export async function flowMeter(page: Page, name: string, { keyboardOnly = false
       steps.push(`tabs:${label}:${presses}`);
       return presses;
     },
-    /** Records a decision point: the enabled forward options shown in the main zone now. */
+    /** Records a decision point: the forward options the spec names, and the census of enabled main-zone controls in the first viewport. */
     decision: async (at: string, options: Locator[]) => {
       for (const option of options) await expect(option).toBeEnabled();
-      decisions.push({ at, options: options.length });
+      decisions.push({ at, options: options.length, mainEnabled: (await census(page)).controls.mainEnabled });
     },
     /** The next action is the explicit consent to a model-bound write. */
     consent: () => { consent = snapshot(); },
