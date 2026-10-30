@@ -1,3 +1,4 @@
+import { resultCopy } from "./entry-model";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { fakeVibe, description } from "./entry-fake";
 import { buildResult, composer as entryComposer, doorButton, doorReady, entryReady, sendButton } from "./entry-model";
@@ -1005,9 +1006,9 @@ for (const width of [1440, 390]) test(`Build reveals its failed test and inline 
   const fake = await fakeVibe(page); await page.goto("/vibe-evals"); await entryReady(page);
   await doorButton(page, "build").click(); await doorReady(page, "build");
   await entryComposer(page).fill(description); await sendButton(page).click();
-  await expect(buildResult(page)).toContainText("Your agent passed 2 of 3 tests");
+  await expect(buildResult(page)).toContainText(resultCopy.headline(2, 3));
   await expect(buildResult(page).locator("details[open]")).toContainText("It replied");
-  const fix = buildResult(page).getByRole("button", { name: "Fix this", exact: true }); await expect(fix).toBeInViewport();
+  const fix = buildResult(page).getByRole("button", { name: resultCopy.fix, exact: true }); await expect(fix).toBeInViewport();
   const trial = page.getByRole("region", { name: "Try your agent", exact: true }); await expect(trial).toBeVisible();
   await trial.getByRole("textbox", { name: "Message your agent", exact: true }).fill("Can I return an item after 20 days?");
   await expect(trial.getByRole("button", { name: "Send to agent", exact: true })).toBeEnabled();

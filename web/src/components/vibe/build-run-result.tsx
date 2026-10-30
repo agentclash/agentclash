@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { Lightbulb } from "lucide-react";
 import { WEB_EVENTS } from "@/lib/analytics/events";
 import { captureBuildEvent } from "@/lib/vibe-build-analytics";
 import { terminal, type Artifact, type CaseResult, type Operation, type Session } from "@/lib/vibe";
@@ -9,8 +10,10 @@ import { CaseEvidence } from "./case-evidence";
 import { comparableGrades } from "./scorecard";
 import { VibeButton } from "./vibe-button";
 import { suiteCases } from "./test-suite-cases";
+import { resultHeadline } from "./result-headline";
 
-export function BuildRunResult({ session, operation, artifact, current, first, busy, loadEvidence, onImprove, onDetails, onTry }: {
+export function BuildRunResult({ session, operation, artifact, current, first, busy, loadEvidence, onImprove, onDetails, onTry, headingLevel = 2 }: {
+  headingLevel?: 1 | 2;
   session: Session;
   operation: Operation;
   artifact?: Artifact;
@@ -22,6 +25,7 @@ export function BuildRunResult({ session, operation, artifact, current, first, b
   onDetails: () => void;
   onTry?: () => void;
 }) {
+  const Heading = headingLevel === 1 ? "h1" : "h2";
   const hasOutput = session.document.messages.some(message => message.origin === "playground" && message.role === "assistant" && message.artifact_id === artifact?.id);
   const card = useRef<HTMLElement>(null);
   const visible = useRef(false);
@@ -43,7 +47,7 @@ export function BuildRunResult({ session, operation, artifact, current, first, b
   const canImprove = done && current && !operation.error && !!score?.failed && !regraded;
   const complete = done && operation.state === "COMPLETED" && !operation.error && !!score && score.total > 0
     && score.evaluated === score.total && !score.unknown && !score.incomplete_cases && operation.results.length === score.total;
-  const headline = complete && !regraded ? `Your agent passed ${score!.passed} of ${score!.total} tests` : buildRunSummary(operation);
+  const headline = complete && !regraded ? resultHeadline(score!.passed, score!.total) : buildRunSummary(operation);
   const eventBase = { session_id: session.id, operation_id: operation.id, artifact_id: artifact?.id, sample: !!artifact?.sample };
   function action(name: "checks" | "review_fix") {
     captureBuildEvent(WEB_EVENTS.VIBE_BUILD_ACTION_CLICKED, { ...eventBase, action: name });
@@ -62,7 +66,7 @@ export function BuildRunResult({ session, operation, artifact, current, first, b
     return () => { visible.current = false; observer.disconnect(); };
   }, [session.id, operation.id, operation.state, operation.error, score, artifact?.id, artifact?.sample, allPass, done, leadingOrdinal]);
   return <article ref={card} className="vibe-build-result" aria-label="Agent test results" data-run-id={operation.id}>
-    <div role="status"><h2 tabIndex={-1} className="vibe-results-outcome">{headline}</h2></div>
+    <div role="status"><Heading tabIndex={-1} className="vibe-results-outcome">{headline}</Heading></div>
     {artifact?.sample && <p className="vibe-build-note">Sample demonstration. These results test the sample, not your business policy.</p>}
     {operation.source?.kind === "provided_conversations" && <p className="vibe-build-note">Recorded replies only; your live app wasn’t called.</p>}
     {(allPass || hasOutput) && <p className="vibe-build-note">{hasOutput && "These sample tests don’t grade your separate trial output. "}{allPass && "Other inputs remain untested."}</p>}
@@ -83,8 +87,11 @@ export function BuildRunResult({ session, operation, artifact, current, first, b
           if (visible.current) captureBuildEvent(WEB_EVENTS.VIBE_BUILD_EXAMPLE_VIEWED, { ...eventBase, case_ordinal: leadingOrdinal }, `${session.id}:${operation.id}:${evidence.case_key}`);
         }} />
     </div>}
+    {current && operation.results.length > 1 && <details className="vibe-other-results"><summary>Other results · {operation.results.length - 1}</summary>
+      {operation.results.filter(result => result !== leading).map(result => <CaseEvidence key={result.case_key} summary={{ ...result, title: result.title || inputs.get(result.case_key) }} concise evidenceVersion={`${operation.id}:${operation.state}`} load={key => loadEvidence(operation.id, key)} origin={operation.source?.kind} busy={busy} />)}
+    </details>}
     {!hasOutput && <p className="vibe-build-note">Runs here using what you supplied; your business systems aren’t connected.</p>}
-    {current && canImprove && <div className="vibe-build-evidence-action"><VibeButton variant="primary" disabled={busy} onClick={() => { action("review_fix"); onImprove(); }}>Fix this</VibeButton></div>}
+    {current && canImprove && <div className="vibe-build-evidence-action"><VibeButton variant="primary" disabled={busy} onClick={() => { action("review_fix"); onImprove(); }}><Lightbulb aria-hidden="true" />Suggest a fix</VibeButton></div>}
     {current && allPass && onTry && <VibeButton variant="primary" disabled={busy} onClick={onTry}>Try your agent</VibeButton>}
     {!current && done && <VibeButton variant="quiet" onClick={() => { action("checks"); onDetails(); }}>See saved results</VibeButton>}
 

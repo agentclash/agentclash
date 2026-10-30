@@ -8,7 +8,7 @@ import { BuildStart } from "./build-start";
 let root: Root, node: HTMLDivElement;
 const start = vi.fn(), back = vi.fn(), switchDoor = vi.fn();
 type Props = React.ComponentProps<typeof BuildStart>;
-beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.clearAllMocks(); node = document.createElement("div"); document.body.append(node); root = createRoot(node); });
+beforeEach(() => { vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true); vi.clearAllMocks(); node = document.createElement("div"); node.className = "vibe-workspace"; document.body.append(node); root = createRoot(node); });
 afterEach(async () => { await act(async () => root.unmount()); node.remove(); vi.unstubAllGlobals(); });
 async function render(p: Partial<Props> = {}) {
   function Screen() { const [draft, onDraft] = useState(p.draft || ""); return <BuildStart draft={draft} onDraft={onDraft} price={{ kind: "trial" }} trialUsed={false} busy={false} onStart={start} onBack={back} onSwitchDoor={switchDoor} {...p} />; }
@@ -123,8 +123,8 @@ it("shows two examples and puts files, switching and data documentation in one d
   const details = node.querySelector("details")!;
   expect(details).not.toBeNull(); expect(details.open).toBe(false);
   expect(details.querySelector("summary")?.textContent).toBe("Files and other options");
-  expect(node.querySelectorAll(".vibe-build-examples button")).toHaveLength(2);
-  expect(node.querySelector(".vibe-build-examples")?.closest("details")).toBeNull();
+  expect(node.querySelectorAll(".vibe-build-example-chips button")).toHaveLength(2);
+  expect(node.querySelector(".vibe-build-example-chips")?.closest("details")).toBeNull();
   for (const name of ["Attach a file", "Already have an agent? Improve it instead."]) expect(button(name).closest("details")).toBe(details);
   expect(node.querySelector(".vibe-material-hint")?.textContent).toContain("Leave out secrets and customer IDs.");
   expect(node.querySelector(".vibe-material-hint a")).toBeNull();
@@ -141,7 +141,7 @@ it("associates each mounted Build question with its own input", async () => {
 });
 
 it("uses the display serif and a flat card with a distinct keyboard focus ring", async () => {
-  const style = document.createElement("style"); style.textContent = readFileSync("src/components/vibe/build-output.css", "utf8"); document.head.append(style);
+  const style = document.createElement("style"); style.textContent = readFileSync("src/components/vibe/build-output.css", "utf8") + readFileSync("src/components/vibe/project-workspace.css", "utf8"); document.head.append(style);
   try {
     await render();
     expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-serif)");

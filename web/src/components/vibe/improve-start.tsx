@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useId, useRef } from "react";
+import { friendlyModelName } from "./model-name";
 import { FileUp } from "lucide-react";
 import { VibeButton } from "./vibe-button";
 import { VibeDataUseNotice } from "./vibe-data-use";
@@ -25,7 +26,7 @@ export function ImproveStart(p: {
   const importFile = (chosen?: File) => { if (chosen && !blocked) p.onImportPack(chosen); };
   return <section className="vibe-improve-start vibe-start-page" onKeyDown={event => { if (event.key === "Escape" && !p.busy) p.onBack(); }}>
     <header><VibeButton variant="quiet" className="vibe-improve-link" disabled={p.busy} onClick={p.onBack}>Back</VibeButton></header>
-    <h1 className="vibe-empty-title" ref={heading} tabIndex={-1}>How do you want to test your agent?</h1>
+    <h1 className="vibe-start-title" ref={heading} tabIndex={-1}>How do you want to test your agent?</h1>
     <div role="radiogroup" aria-label="Agent source" className="vibe-improve-segments">
       {modes.map((mode, index) => <button key={mode} ref={element => { radios.current[index] = element; }} type="button" role="radio" aria-checked={p.mode === mode} tabIndex={p.mode === mode ? 0 : -1} disabled={p.busy}
         onClick={() => p.onMode(mode)} onKeyDown={event => {
@@ -61,7 +62,7 @@ export function ImproveStart(p: {
       <VibeButton variant="quiet" disabled={p.busy} onClick={() => p.onOther("chat")}>Describe it in chat</VibeButton>
       {p.signedIn ? <><VibeButton variant="quiet" disabled={p.busy} onClick={() => p.onOther("live_app")}>Connect a live app</VibeButton><VibeButton variant="quiet" disabled={p.busy} onClick={() => p.onOther("sdk_report")}>Import an SDK report</VibeButton></>
         : <><p><a href="/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dimprove">Sign in to connect a live app</a></p><p><a href="/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dimprove">Sign in to import an SDK report</a></p></>}
-      {p.mode === "instructions" && <label htmlFor={`${id}-model`}>Which model does your agent use?<select id={`${id}-model`} value={p.drafts.model || ""} disabled={p.busy} onChange={event => p.onDraft({ model: event.target.value })}><option value="">Use the selected model</option>{p.models.map(model => <option key={model.id} value={model.id}>{model.name}</option>)}</select></label>}
+      {p.mode === "instructions" && <label htmlFor={`${id}-model`}>Which model does your agent use?<select id={`${id}-model`} value={p.drafts.model || ""} disabled={p.busy} onChange={event => p.onDraft({ model: event.target.value })}><option value="">Use the selected model</option>{p.models.map(model => <option key={model.id} value={model.id}>{friendlyModelName(model, true)}</option>)}</select></label>}
       <VibeButton variant="quiet" className="vibe-improve-link" disabled={p.busy} onClick={p.onSwitchDoor}>Build an agent instead</VibeButton>
     </div></details>
     <VibeDataUseNotice />

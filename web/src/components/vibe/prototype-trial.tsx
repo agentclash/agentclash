@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef, type ReactNode } from "react";
+import { VibeDataUseNotice } from "./vibe-data-use";
+import { friendlyModelName } from "./model-name";
 import { ArrowUp } from "lucide-react";
 import { dollars, type Model, type Session } from "@/lib/vibe";
 import { AgentReply } from "./safe-markdown";
@@ -51,7 +53,7 @@ export function PrototypeTrial({ workspace = false, sessionID, error, materialIn
     </div>}
     {!dock && !messages.length && example && <VibeButton variant="quiet" disabled={busy} onClick={() => onText(example)}>Use a test message</VibeButton>}
     {thread.startsWith("legacy:") ? <p className="vibe-build-note">Start a new conversation to try follow-ups. This earlier trial used one message.</p> : <>
-      {materialInput}
+      {materialInput || <VibeDataUseNotice />}
       {error && <p id="vibe-trial-error" role="alert">{error}</p>}
       <form className="vibe-composer vibe-composer-compact vibe-chat-composer" onSubmit={event => { event.preventDefault(); if (!busy && !inferenceBlocked && !error && (text.trim() || hasMaterial)) onSend(); }}>
         <label className="sr-only" htmlFor="vibe-trial-message">Message your agent</label>
@@ -59,7 +61,7 @@ export function PrototypeTrial({ workspace = false, sessionID, error, materialIn
         <VibeButton type="submit" variant={workspace && inline ? "secondary" : "primary"} aria-label={dock ? "Try it" : "Send to agent"} disabled={busy || inferenceBlocked || !!error || (!text.trim() && !hasMaterial)}>{dock && <span>Try it</span>}<ArrowUp /></VibeButton>
       </form>
       {!dock && <p className="vibe-build-note">This generates a reply; it does not run or change your tests.</p>}
-      {model && <details className="vibe-trial-cost"><summary>{model.name} · {model.input_nano_per_token || model.output_nano_per_token ? "Uses credits · model rates" : "Free model"}</summary>
+      {model && <details className="vibe-trial-cost"><summary>{friendlyModelName(model, true)} · {model.input_nano_per_token || model.output_nano_per_token ? "Uses credits · model rates" : "Free model"}</summary>
         <p>Per million tokens: {dollars(model.input_nano_per_token * 1_000_000)} input, {dollars(model.output_nano_per_token * 1_000_000)} output. Cost depends on the conversation length. Sending uses your existing preview allowance.</p>
       </details>}
     </>}

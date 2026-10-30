@@ -1,3 +1,4 @@
+import { resultCopy } from "./entry-model";
 // Flow economy of each door path, from the entry to the first test result (M2), with a
 // stateful fake (no API, no model). Budgets equal the measured counts: they stop
 // regressions. Each test writes flow-<path>.json (actions, milestones, decisions, writes,
@@ -99,7 +100,7 @@ test("Build reaches its first test result in 2 clicks and 1 text", async ({ page
   await flow.click(sendButton(page), "Build and run 3 tests");
   await runDone(page);
   await expect(tab(page, "Results")).toHaveAttribute("aria-selected", "true");
-  await expect(buildResult(page)).toContainText("Your agent passed 2 of 3 tests");
+  await expect(buildResult(page)).toContainText(resultCopy.headline(2, 3));
   await expect(buildResult(page).locator("details[open]")).toContainText("It replied");
   await flow.mark("M2");
   await expect(agentReply(page)).toBeVisible();
@@ -162,7 +163,7 @@ test("Improve fix loop reaches the compared result in 3 clicks", async ({ page }
   await flow.click(startRun(page), "Start run");
   await expect(page.locator(".vibe-project-header")).toContainText("Run 2: Completed", { timeout: 30_000 });
   await resultShown(page);
-  await expect(runResults(page).getByRole("heading", { name: "3 of 3 tests passed" })).toBeVisible();
+  await expect(runResults(page).getByRole("heading", { name: resultCopy.headline(3, 3) })).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy the new instructions", exact: true })).toBeVisible();
   const end = await flow.mark("F1");
   const record = await flow.save();

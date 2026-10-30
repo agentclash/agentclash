@@ -813,8 +813,8 @@
 .vibe-entry-doors .vibe-door-title { font-family:var(--font-display),ui-serif,Georgia,serif; font-size:32px; line-height:1.15; font-weight:400; }
 .vibe-entry-doors p { font-size:14px; line-height:20px; }
 .vibe-door-preview { width:100%; background:var(--vibe-hover); padding:12px; border-radius:12px; font-size:12px; line-height:24px; min-height:72px; }
-.vibe-door-steps { display:flex; flex-wrap:wrap; align-content:center; gap:4px 16px; list-style:none; margin:0; }
-.vibe-door-steps > li { display:flex; align-items:baseline; gap:6px; white-space:nowrap; }
+.vibe-door-steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); align-content:center; gap:4px 16px; list-style:none; margin:0; }
+.vibe-door-steps > li { display:flex; align-items:baseline; gap:6px; min-width:0; }
 .vibe-door-steps b { font-family:var(--font-mono),monospace; font-variant-numeric:tabular-nums; font-weight:400; }
 .vibe-door-preview > div { display:flex; gap:8px; align-items:center; }
 .vibe-door-issue { color:var(--vibe-issue,var(--vibe-error)); }
@@ -849,7 +849,7 @@
  .vibe-entry-doors { margin-top:20px; gap:12px; }
  .vibe-entry-doors > button { gap:8px; padding:16px; }
  .vibe-entry-doors .vibe-door-title { font-size:26px; }
- .vibe-door-steps { flex-direction:column; }
+ .vibe-door-steps { grid-template-columns:minmax(0,1fr); }
  .vibe-door-preview { min-height:0; padding:8px; line-height:20px; }
 }
 .vibe-entry-intro { position:relative; isolation:isolate; }

@@ -22,7 +22,11 @@ async function render(operation = op, options: { current?: boolean; sample?: str
 it("opens the leading passing evidence and opens full checks only on request", async () => {
   const second = { ...evidence, case_key: "second", input: null, output: "" };
   await render({ ...op, results: [...op.results, second], scorecard: { ...op.scorecard!, total: 2, evaluated: 2, passed: 2 } });
-  expect(node.querySelectorAll(".vibe-result-row")).toHaveLength(1);
+  expect(node.querySelectorAll(".vibe-result-row")).toHaveLength(2);
+  expect(node.querySelector(".vibe-other-results > summary")?.textContent).toBe("Other results · 1");
+  expect(node.querySelector(".vibe-other-results .vibe-verdict-word")?.textContent).toBe("Passed");
+  expect(node.querySelector(".vibe-other-results svg.vibe-verdict-pass")).not.toBeNull();
+  expect(node.querySelector(".vibe-other-results .vibe-result-row")?.hasAttribute("open")).toBe(false);
   expect(node.querySelectorAll(".vibe-build-next-actions")).toHaveLength(1);
   expect(node.querySelectorAll(".vibe-project-enquiry")).toHaveLength(0);
   expect(load).toHaveBeenCalledWith("run1", "email");
@@ -31,7 +35,7 @@ it("opens the leading passing evidence and opens full checks only on request", a
 });
 it("shows an actual example and explains it once, with a direct way to try the prototype", async () => {
   await render();
-  expect(node.textContent).toContain("Your agent passed 1 of 1 tests");
+  expect(node.textContent).toContain("Your agent passed all 1 tests");
   expect(load).toHaveBeenCalledWith("run1", "email");
   expect(node.querySelector(".vibe-result-row summary")?.textContent).toContain("Win a prize");
   expect(node.querySelector(".vibe-result-row")?.hasAttribute("open")).toBe(true);
@@ -78,7 +82,7 @@ it("recovers missing evidence without making up a reply or offering a fix", asyn
   expect(node.textContent).toContain("Evidence unavailable");
   expect(node.textContent).toContain("Reload saved evidence");
   expect(node.textContent).not.toContain("What it actually replied");
-  expect(node.textContent).not.toContain("Fix this");
+  expect(node.textContent).not.toContain("Suggest a fix");
 });
 it("offers one explicit fix for a failed result without submitting automatically", async () => {
   const failure: CaseResult = { ...evidence, verdict: "FAIL", output: "Not spam", checks: [{ key: "behavior", verdict: "FAIL", evidence: "It let a spam email through.", evidence_version: 1, finding: { kind: "observed", missing: "", quotes: [{ message_id: "output", text: "Not spam" }], covered_message_ids: [] } }] };
@@ -91,7 +95,8 @@ it("offers one explicit fix for a failed result without submitting automatically
   expect(node.textContent).toContain("It let a spam email through.");
   expect(improve).not.toHaveBeenCalled();
   expect(node.querySelectorAll(".vibe-button-primary")).toHaveLength(1);
-  await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent?.includes("Fix this"))!.click());
+  expect(node.querySelector(".vibe-button-primary svg")).not.toBeNull();
+  await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent?.includes("Suggest a fix"))!.click());
   expect(improve).toHaveBeenCalledTimes(1);
   await act(async () => Array.from(node.querySelectorAll("button")).find(b => b.textContent === "Try your agent")!.click());
   expect(trial).toHaveBeenCalledTimes(1);
@@ -103,7 +108,7 @@ it("never treats unknowns or a stopped check as a complete success", async () =>
   expect(node.textContent).toContain("Try your agent");
   await render({ ...op, state: "CANCELLED" });
   expect(node.textContent).toContain("Stopped");
-  expect(node.textContent).not.toContain("Your agent passed 1 of 1 tests");
+  expect(node.textContent).not.toContain("Your agent passed all 1 tests");
   expect(node.querySelector(".vibe-build-next-actions")?.hasAttribute("hidden")).toBe(true);
 });
 it("reports improvements and regressions only against matching tests and grading", async () => {
@@ -169,15 +174,22 @@ it("uses exactly one scorecard outcome h2 for the result headline", async () => 
   const headings = node.querySelectorAll(".vibe-build-result h2");
   expect(headings).toHaveLength(1);
   expect(headings[0].classList.contains("vibe-results-outcome")).toBe(true);
-  expect(headings[0].textContent).toBe("Your agent passed 1 of 1 tests");
+  expect(headings[0].textContent).toBe("Your agent passed all 1 tests");
 });
 
 it("leads with the outcome and keeps scope below evidence without repeating the agent identity", async () => {
   await render();
   const card = node.querySelector(".vibe-build-result")!;
-  expect(card.firstElementChild?.querySelector("h2")?.textContent).toBe("Your agent passed 1 of 1 tests");
+  expect(card.firstElementChild?.querySelector("h2")?.textContent).toBe("Your agent passed all 1 tests");
   expect(card.querySelector(".vibe-build-task, .vibe-build-eyebrow")).toBeNull();
   const scope = Array.from(card.querySelectorAll("p")).find(p => p.textContent?.startsWith("Runs here using"))!;
   expect(scope).toBeDefined();
   expect(card.querySelector(".vibe-build-examples")!.compareDocumentPosition(scope) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+});
+
+it.each([0, 2, 3])("U12/U13 Build uses the shared outcome and fix label (%s passed)", async passed => {
+  const results = Array.from({ length: 3 }, (_, index) => ({ ...evidence, case_key: `case-${index}`, verdict: index < passed ? "PASS" as const : "FAIL" as const }));
+  await render({ ...op, results, scorecard: { ...op.scorecard!, total: 3, evaluated: 3, passed, failed: 3 - passed } });
+  expect(node.querySelector(".vibe-results-outcome")?.textContent).toBe(passed === 3 ? "Your agent passed all 3 tests" : `Your agent passed ${passed} of 3 tests`);
+  if (passed < 3) expect([...node.querySelectorAll("button")].find(button => button.textContent === "Suggest a fix")?.querySelector("svg")).toBeTruthy();
 });

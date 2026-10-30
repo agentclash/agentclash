@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { defaultModels, type Session } from "../../src/lib/vibe";
-import { chooseDoor, composer, doorButton, doorReady, entryHeading, improveSource, newProjectChoices, projectStartHeading, sourceButton, resultsMore, improveOptions } from "./entry-model";
+import { chooseDoor, composer, doorButton, doorReady, entryHeading, improveSource, newProjectChoices, projectStartHeading, sourceButton, otherResults, improveOptions } from "./entry-model";
 
 function evaluation(id: string): Session {
   return { id, revision: 1, event_cursor: 1, anonymous: true, operations: [],
@@ -372,7 +372,7 @@ test("project title and tabs share the left edge of the content", async ({ page 
   await serve(page, false, true);
   await page.goto("/vibe-evals?session=first&workspace=a8000000-0000-4000-8000-000000000003");
   const tabs = page.getByRole("tablist", { name: "Workspace views" });
-  const title = page.locator(".vibe-project-identity h1");
+  const title = page.locator(".vibe-project-identity :is(h1, h2)");
   const content = page.locator(".vibe-project-content");
   const edges = async () => ({ tabs: (await tabs.boundingBox())!.x, title: (await title.boundingBox())!.x, content: (await content.boundingBox())!.x });
   for (const width of [1024, 1280, 1440, 2560]) {
@@ -388,9 +388,11 @@ test("text roles stay consistent across viewport sizes and portaled dialogs", as
   await page.emulateMedia({ reducedMotion: "reduce" });
   const control = await serve(page, false, true);
   const check = control.first.operations.find(operation => operation.kind === "check")!;
+  check.results.push({ ...check.results[0], case_key: "second", title: "Another prize email" });
+  check.scorecard = { ...check.scorecard!, total: 2, passed: 2, evaluated: 2 };
   await page.route(/\/v1\/vibe\/operations\/check\/case\?/, route => route.fulfill({
     headers: { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" },
-    json: check.results[0],
+    json: check.results.find(result => result.case_key === new URL(route.request().url()).searchParams.get("key")),
   }));
   await page.route(/\/v1\/vibe\/credits\?/, route => route.fulfill({
     headers: { "Access-Control-Allow-Origin": new URL(page.url()).origin, "Access-Control-Allow-Credentials": "true" },
@@ -398,16 +400,17 @@ test("text roles stay consistent across viewport sizes and portaled dialogs", as
   }));
   await page.goto("/vibe-evals?session=first&workspace=a8000000-0000-4000-8000-000000000003");
   await page.getByRole("tab", { name: "Results", exact: true }).click();
-  await page.getByText("All 1 test results", { exact: true }).click();
-  await resultsMore(page).click();
-  await openCase(page);
-  const reply = page.locator(".vibe-result-row .vibe-markdown").first();
+  await otherResults(page).click();
+  const otherRow = page.locator(".vibe-build-result .vibe-other-results .vibe-result-row").first();
+  await otherRow.locator("summary").click();
+  await expect(otherRow.getByText("Passed", { exact: true })).toBeVisible();
+  const reply = otherRow.locator(".vibe-markdown").first();
   await expect.soft(reply).toHaveCSS("font-size", "16px");
   await expect.soft(reply).toHaveCSS("line-height", "24px");
   await page.getByRole("tab", { name: "Agent", exact: true }).click();
   for (const width of [390, 1440, 2560]) {
     await page.setViewportSize({ width, height: 900 });
-    await expect(page.locator(".vibe-project-identity h1")).toHaveCSS("font-size", width <= 600 ? "20px" : "28px");
+    await expect(page.locator(".vibe-project-identity :is(h1, h2)")).toHaveCSS("font-size", width <= 600 ? "20px" : "28px");
     await expect(page.getByRole("heading", { name: "Agent instructions", exact: true })).toHaveCSS("font-size", "16px");
     await expect(page.getByRole("heading", { name: "Agent instructions", exact: true })).toHaveCSS("line-height", "22px");
     await expect(page.locator(".vibe-instructions-text")).toHaveCSS("font-size", "16px");

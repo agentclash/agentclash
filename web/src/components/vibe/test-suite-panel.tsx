@@ -1,5 +1,7 @@
 "use client";
 
+import { friendlyModelName } from "./model-name";
+
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowRight, ChevronRight, Pencil } from "lucide-react";
 import { useVibeEditorDraft } from "@/lib/use-vibe-editor-draft";
@@ -159,7 +161,7 @@ export function TestSuitePanel({
           </div>
           {ready && (
             <p className="text-sm vibe-muted">
-              Text test here · {modelLabel || "Selected model"}. Your live app is not called.
+              Runs your instructions on {modelLabel ? friendlyModelName({ id: modelLabel }) : "the selected model"}. Your live app is not called.
             </p>
           )}
         </div>}

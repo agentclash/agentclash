@@ -1,3 +1,4 @@
+import { resultCopy } from "../vibe/entry-model";
 import {expect,test,type Page} from "@playwright/test";
 import {writeFile} from "node:fs/promises";
 import { chooseDoor, doorButton, doorReady, improveSource, sendButton, showView, sourceButton, runTestsButton, testChangeButton, addAgentInstructions, buildResult, composer as entryComposer } from "../vibe/entry-model";
@@ -81,7 +82,7 @@ test("clear Build goes through real worker to three results, scoped export and i
  await openGuide(page);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
  await openView(page,'Results','Run 1',{opensResults:true});
- await expect(buildResult(page)).toContainText('Your agent passed 3 of 3 tests');
+ await expect(buildResult(page)).toContainText(resultCopy.headline(3, 3));
  await expect(page.getByLabel('Result history')).toHaveCount(0);
  await expect(buildResult(page)).toHaveAttribute('data-run-id',v.session.operations.at(-1).id);
  await expect(page.locator('.vibe-project-header')).toContainText('Run 1: Completed');
@@ -113,7 +114,7 @@ test("clear Build goes through real worker to three results, scoped export and i
  await openGuide(page);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
  await openView(page,'Results');
- await expect(buildResult(page)).toContainText('Your agent passed 3 of 3 tests');
+ await expect(buildResult(page)).toContainText(resultCopy.headline(3, 3));
  expect((await evidence(page)).calls).toHaveLength(afterTrial.calls.length);
 });
 
@@ -283,7 +284,7 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  await openView(page,'Results');
  const failedCard=page.getByRole('article',{name:'Run results'});
  await expect(failedCard.getByText('Opened items are eligible.',{exact:true}).first()).toBeVisible();
- await failedCard.getByRole('button',{name:'Fix this',exact:true}).click();
+ await failedCard.getByRole('button',{name:resultCopy.fix,exact:true}).click();
  await expect.poll(async()=> (await evidence(page)).session.document.artifacts.length).toBe(3);
  const proposed=await evidence(page);
  expect(proposed.session.operations.filter((o:{kind:string})=>o.kind==='check'||o.kind==='retest')).toHaveLength(2);
@@ -315,9 +316,9 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
  const history=page.getByLabel('Result history');
  await expect(history.locator('option:not([disabled])')).toHaveCount(3);
  await history.selectOption(baseline.id);
- await expect(buildResult(page)).toContainText('Your agent passed 2 of 3 tests');
+ await expect(buildResult(page)).toContainText(resultCopy.headline(2, 3));
  await history.selectOption(comparison.id);
- await expect(buildResult(page)).toContainText('Your agent passed 3 of 3 tests');
+ await expect(buildResult(page)).toContainText(resultCopy.headline(3, 3));
  await openGuide(page);
  await expect(page.locator('[data-message-id]').first()).toContainText('Answer shop return questions');
  await page.screenshot({path:info.outputPath('build-same-test-improvement.png')});

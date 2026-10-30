@@ -92,7 +92,12 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
   // Canonical explicit history pins the selected artifact in the controller.
   // Until that agrees, never combine one version with another version's evidence.
   const result = !p.selectedResult && candidate && artifact && testedArtifactID(candidate) === artifact.id ? candidate : undefined;
+  const resultID = result?.id;
+  const resultReady = !!result && terminal(result.state);
+  const previousResult = useRef({ id: resultID, ready: resultReady });
   const resultArtifact = result ? session.document.artifacts.find(item => item.id === testedArtifactID(result)) : undefined;
+  const resultHeading = view === "results" && !!resultArtifact && !!result && (!!result.scorecard || session.document.evaluation?.door === "build" && terminal(result.state) && !resultArtifact.conversation_evaluation);
+  const ProjectHeading = resultHeading ? "h2" : "h1";
   const parent = session.document.artifacts.find(item => item.id === artifact?.parent_id);
   const changeBaseline = instructionChangeBaseline(session, artifact);
   // The latest finished run of the selected version: on Tests, its result leads and a rerun is secondary.
@@ -165,6 +170,15 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
     // A Details sheet that opens in its place takes focus itself.
     if (!document.activeElement || document.activeElement === document.body) guideButton.current?.focus();
   }, [wide]);
+  useEffect(() => {
+    const previous = previousResult.current;
+    previousResult.current = { id: resultID, ready: resultReady };
+    if (view !== "results" || !resultReady || previous.id === resultID && previous.ready) return;
+    const field = document.activeElement;
+    if (field?.closest('[role="dialog"], select, [contenteditable="true"], [contenteditable=""]')) return;
+    if ((field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement) && field.value.trim()) return;
+    document.querySelector<HTMLElement>('.vibe-project-main [aria-label="Run results"] .vibe-results-outcome')?.focus({ preventScroll: true });
+  }, [view, resultID, resultReady]);
   // Only the Guide button changes the saved choice; other actions open the Guide for now.
   const open = (next: "guide" | "details", remember = false) => {
     const trigger = document.activeElement as HTMLElement; utilityTrigger.current = trigger;
@@ -229,11 +243,11 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
   const utilityContent = <><div className="vibe-utility-heading"><h2 ref={utilityHeading} tabIndex={-1}>{shown === "guide" ? "Guide" : "Details"}</h2><VibeButton aria-label={`Close ${shown === "guide" ? "Guide" : "Details"}`} onClick={close}>Close</VibeButton></div>{shown === "guide" ? guide : details}</>;
   const scorecard = result && <VibeScorecard onAskCase={key => askRun(result, key)} operation={result} findingFirst testJourney={p.testJourney} primary={!build && !(retryLeads && !!result.retryable)} baseline={runs.find(run => run.id === result.baseline_id)} eventCursor={session.event_cursor} busy={p.busy || p.dirty} loadEvidence={key => p.loadEvidence(result.id, key)} onImprove={() => p.onMessage(result.source?.kind === "provided_conversations" ? "Suggest a concrete instruction change to address the observed failures. Keep the expectations fixed. Explain what to copy into my agent; do not claim to apply it." : "Suggest a focused improvement using the failed tests. Keep the expectations.", result)} onRetest={() => p.onRun(result)} onNewReplies={result.source?.kind === "provided_conversations" && p.onNewReplies ? () => p.onNewReplies!(result) : undefined} onDispute={(rule, evidence) => { p.onDispute(rule, evidence, result); open("guide"); }} onNewCheck={offersFullRun(result) ? undefined : () => p.onRun(undefined, result.source?.evidence_set_id)} onSave={() => p.onSave(result)} onRegrade={p.onRegrade ? () => p.onRegrade!(result) : undefined} />;
   return <>
-    <header className="vibe-project-header" data-utility-open={!!shown && wide} data-initial={view === "agent" && initialBrief || undefined}><div className="vibe-project-identity">{p.navigationToggle}<div><h1 ref={title} tabIndex={-1}>{identity.title}</h1><p>{versionLabel}{result ? ` · Run ${runs.indexOf(result) + 1}: ${runStateLabel(result.state)}` : p.selectedResult ? ` · ${sourceLabel}` : artifact ? " · No results for this version" : " · No saved runs"}</p></div></div>
+    <header className="vibe-project-header" data-utility-open={!!shown && wide} data-initial={view === "agent" && initialBrief || undefined}><div className="vibe-project-identity">{p.navigationToggle}<div><ProjectHeading ref={title} tabIndex={-1}>{identity.title}</ProjectHeading><p>{versionLabel}{result ? ` · Run ${runs.indexOf(result) + 1}: ${runStateLabel(result.state)}` : p.selectedResult ? ` · ${sourceLabel}` : artifact ? " · No results for this version" : " · No saved runs"}</p></div></div>
       {hasFrame && <Tabs.Root className="vibe-project-tabs" value={view} onValueChange={next => p.onNavigate(next === "results" ? "checks" : next === "tests" ? "tests" : "build")}><Tabs.List aria-label="Workspace views" className="vibe-nav">{["agent", "tests", "results"].map(value => <Tabs.Tab className="vibe-button vibe-button-quiet" id={`vibe-tab-${value}`} aria-controls="vibe-workspace-panel" key={value} value={value}>{value[0].toUpperCase() + value.slice(1)}</Tabs.Tab>)}</Tabs.List></Tabs.Root>}
       {hasFrame && <div className="vibe-project-tools"><VibeButton ref={guideButton} aria-label="Guide" aria-describedby={shown !== "guide" && guideAttention ? "vibe-guide-attention" : undefined} aria-pressed={shown === "guide"} onClick={() => open("guide", true)}><MessageSquare className="vibe-project-tool-icon" aria-hidden="true" /><span className="vibe-project-tool-label">Guide</span>{shown !== "guide" && guideAttention && <small id="vibe-guide-attention" className="vibe-guide-attention">{guideAttention}</small>}</VibeButton><VibeButton aria-label="Details" aria-pressed={shown === "details"} onClick={() => open("details")}><Info className="vibe-project-tool-icon" aria-hidden="true" /><span className="vibe-project-tool-label">Details</span></VibeButton></div>}
     </header>
-    <div className="vibe-project-body" data-utility-open={!!shown && wide}>
+    <div className="vibe-project-body" data-guide-open={shown === "guide" || undefined} data-utility-open={!!shown && wide}>
       <div className="vibe-project-main" data-initial={view === "agent" && initialBrief || undefined} id="vibe-workspace-panel" role={hasFrame ? "tabpanel" : undefined} aria-labelledby={hasFrame ? `vibe-tab-${view}` : undefined}>
         <div className="vibe-project-content">
         {!stripInSheet && progress}
@@ -257,12 +271,12 @@ export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; 
           <OperationFeedback serverTime={session.server_time} original={session.operations.find(op => op.id === result.retry_of_operation_id) || result} operation={result} busy={p.busy} pendingID={p.retryPendingOperationID} uncertainID={p.retryUncertainOperationID} onRetry={p.onRetry} retryModels={p.retryModels} primary={retryLeads} />
           {result.baseline_id && runs.find(run=>run.id===result.baseline_id) && <ResultComparison key={`comparison:${result.id}`} current={result} baseline={runs.find(run=>run.id===result.baseline_id)!} load={p.loadEvidence}/>}
           {build && terminal(result.state) && !resultArtifact.conversation_evaluation ? <>
-            <article aria-label="Run results"><BuildRunResult key={result.id} session={session} artifact={resultArtifact} operation={result} current first={runs[0]?.id === result.id} busy={p.busy || p.dirty} loadEvidence={p.loadEvidence} onImprove={() => p.onMessage("Suggest a focused improvement using the failed tests. Keep the expectations.", result)} onDetails={() => askRun(result)} onTry={() => { document.getElementById("vibe-trial-message")?.focus(); }} /></article>
+            <article aria-label="Run results"><BuildRunResult headingLevel={1} key={result.id} session={session} artifact={resultArtifact} operation={result} current first={runs[0]?.id === result.id} busy={p.busy || p.dirty} loadEvidence={p.loadEvidence} onImprove={() => p.onMessage("Suggest a focused improvement using the failed tests. Keep the expectations.", result)} onDetails={() => askRun(result)} onTry={() => { document.getElementById("vibe-trial-message")?.focus(); }} /></article>
             {resultArtifact.agent_prompt && p.preview}
             <details className="vibe-build-all-results"><summary>All {result.results.length} test results</summary>{scorecard}</details>
           </> : <>
 
-          <VibeScorecard more={p.testJourney && !build ? <>
+          <VibeScorecard headingLevel={1} more={p.testJourney && !build ? <>
           <ResultRecoveryControls key={`recovery:${result.id}`} operation={result} busy={p.busy||p.dirty} onReload={p.onReloadEvidence||(()=>{})} onRetry={p.onRetryCases?keys=>p.onRetryCases!(result,keys):undefined} onFullRun={()=>p.onRun(undefined,result.source?.evidence_set_id)} />
           {terminal(result.state) && <div className="vibe-results-more-body">
             <div><VibeButton onClick={() => askRun(result)}>Ask about this result</VibeButton></div>

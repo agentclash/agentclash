@@ -71,9 +71,9 @@
 .vibe-project-header .vibe-nav { flex-wrap: wrap; margin: 0; gap: var(--vibe-space-1); border: 0; }
 .vibe-project-header .vibe-button { min-height: 44px; padding: var(--vibe-space-2) var(--vibe-space-3); font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); }
 .vibe-project-identity { grid-column: 1/-1; display: flex; align-items: flex-start; gap: var(--vibe-space-3); min-width: 0; }
-.vibe-project-identity h1 { font-size: var(--vibe-font-title2); line-height: var(--vibe-leading-title2); font-weight: 600; overflow-wrap: anywhere; }
+.vibe-project-identity :is(h1, h2) { font-size: var(--vibe-font-title2); line-height: var(--vibe-leading-title2); font-weight: 600; overflow-wrap: anywhere; }
 /* The project name is identity, so it speaks in the display serif (28/34) where there is room; phones keep Geist 600 20. */
-@media (min-width: 601px) { .vibe-project-identity h1 { font-family: var(--vibe-font-serif); font-size: var(--vibe-font-large); line-height: var(--vibe-leading-large); font-weight: 400; letter-spacing: -0.01em; } }
+@media (min-width: 601px) { .vibe-project-identity :is(h1, h2) { font-family: var(--vibe-font-serif); font-size: var(--vibe-font-large); line-height: var(--vibe-leading-large); font-weight: 400; letter-spacing: -0.01em; } }
 .vibe-project-identity p { font-size: var(--vibe-font-callout); color: var(--vibe-muted); overflow-wrap: anywhere; line-height: var(--vibe-leading-callout); }
 .vibe-project-tools { grid-row: 2; grid-column: 2; align-self: start; display: flex; gap: var(--vibe-space-2); align-items: center; }
 .vibe-project-tools .vibe-project-tool-icon { display: none; }
@@ -253,3 +253,22 @@
 @media (forced-colors: active) {
   .vibe-workspace :is(.vibe-verdict-pass, .vibe-verdict-issue) { color: CanvasText; }
 }
+
+.vibe-workspace .vibe-start-title { margin: 0; font-family: var(--vibe-font-serif); font-size: var(--vibe-font-display-s); line-height: var(--vibe-leading-display); font-weight: 400; letter-spacing: -0.02em; text-wrap: balance; }
+.vibe-workspace :is(.vibe-start-page, .vibe-prototype-trial) .vibe-button-quiet:not(.vibe-example-chip) { padding-inline: 0; border-inline-width: 0; min-height: 44px; min-width: 44px; justify-content: flex-start; }
+.vibe-workspace :is(.vibe-start-page, .vibe-prototype-trial) :is(a, .vibe-button-quiet) { text-decoration: none; text-underline-offset: 3px; }
+.vibe-workspace :is(.vibe-start-page, .vibe-prototype-trial) :is(a, .vibe-button-quiet):is(:hover, :focus-visible) { text-decoration: underline; }
+.vibe-workspace .vibe-start-page label:not(.sr-only):not(h1 > label) { font-family: var(--font-sans), sans-serif; font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight: 600; }
+.vibe-workspace summary { list-style: none; }
+.vibe-workspace summary::-webkit-details-marker { display: none; }
+.vibe-workspace details:not(.vibe-result-row):not(:has(> summary > .vibe-chevron)) > summary { display: flex; align-items: center; gap: var(--vibe-space-2); cursor: pointer; min-height: 44px; }
+.vibe-workspace details:not(.vibe-result-row):not(:has(> summary > .vibe-chevron)) > summary::before { content: ""; flex: 0 0 auto; width: 6px; height: 6px; border-top: 1.5px solid currentColor; border-right: 1.5px solid currentColor; transform: rotate(45deg); }
+.vibe-workspace details[open]:not(.vibe-result-row):not(:has(> summary > .vibe-chevron)) > summary::before { transform: rotate(135deg); }
+@media (prefers-reduced-motion: no-preference) { .vibe-workspace summary::before { transition: transform var(--vibe-dur-2) var(--vibe-ease-std); } }
+.vibe-other-results { margin-block: var(--vibe-space-4); }
+.vibe-other-results .vibe-result-row > summary { min-height: 44px; }
+.vibe-other-results .vibe-row-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vibe-build-result + .vibe-prototype-trial, article:has(> .vibe-build-result) + .vibe-prototype-trial { margin-block-start: var(--vibe-space-6); }
+.vibe-project-body[data-guide-open] .vibe-project-main .vibe-data-use-notice { display: none; }
+
+.vibe-workspace .vibe-results-outcome:focus-visible { outline: 2px solid var(--vibe-focus); outline-offset: 3px; }

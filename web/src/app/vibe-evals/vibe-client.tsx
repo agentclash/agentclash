@@ -1,4 +1,6 @@
 "use client";
+
+import { friendlyModelName } from "@/components/vibe/model-name";
 import { BuildStart } from "@/components/vibe/build-start";
 import { ImproveOtherStart, type ImproveSource } from "@/components/vibe/improve-other-start";
 import { ImproveStart } from "@/components/vibe/improve-start";
@@ -160,8 +162,7 @@ return (
         onChoice={applyChoice}
         onReloadChoices={reloadChoices}
         modelLabel={
-          config?.models?.find((m) => m.id === models.target)?.name ||
-          models.target
+          friendlyModelName(config?.models?.find((m) => m.id === models.target) || { id: models.target })
         }
         session={session}
         artifact={artifact}

@@ -1,3 +1,4 @@
+import { resultCopy } from "./entry-model";
 import { expect, test, type Page } from "@playwright/test";
 import { defaultModels, type CaseResult, type Operation, type Session } from "../../src/lib/vibe";
 
@@ -73,7 +74,7 @@ test("Guide retains the full thread and draft while Results uses explicit eviden
   await page.getByRole("tab", {name:"Results",exact:true}).click();
   await expect(composer).toHaveValue("Keep my unsent question");
   expect(Math.abs(await guide.evaluate(el=>el.scrollTop)-top)).toBeLessThan(5);
-  await expect(page.getByRole("article", { name: "Agent test results" })).toContainText("Your agent passed 1 of 1 tests");
+  await expect(page.getByRole("article", { name: "Agent test results" })).toContainText(resultCopy.headline(1, 1));
   await expect(page.getByRole("article", { name: "Agent test results" }).locator("details[open]")).toContainText("Spam. This is an unsolicited request");
   await expect(page.getByRole("region", { name: "Try your agent", exact: true })).toBeVisible();
   await page.locator(".vibe-results-more > summary").click();
@@ -168,9 +169,9 @@ for (const width of [1440, 390]) test(`first result keeps ordered evidence and a
   await page.getByRole("tab", { name: "Results", exact: true }).click();
   const result = page.getByRole("article", { name: "Agent test results" });
   const headline = result.getByRole("heading", { level: 2 });
-  await expect(headline).toHaveCount(1); await expect(headline).toHaveText("Your agent passed 0 of 1 tests");
+  await expect(headline).toHaveCount(1); await expect(headline).toHaveText(resultCopy.headline(0, 1));
   await expect(headline).toHaveClass("vibe-results-outcome");
-  await expect(result.locator(":scope > :first-child h2")).toHaveText("Your agent passed 0 of 1 tests");
+  await expect(result.locator(":scope > :first-child h1")).toHaveText(resultCopy.headline(0, 1));
   await expect(result.locator(".vibe-build-task, .vibe-build-eyebrow")).toHaveCount(0);
   const card = result.locator(".vibe-build-examples"), row = card.locator(".vibe-result-row");
   await expect(row.getByText("It should", { exact: true })).toBeVisible();

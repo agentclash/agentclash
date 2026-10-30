@@ -108,3 +108,11 @@ export async function improveSource(page: Page, source: ImproveSource, file?: Fi
 export const runTestsButton = (page: Page, count = 3) => page.getByRole("button", { name: new RegExp(`^Run ${count} tests(?: · up to \\$[0-9.,]+)?$`) });
 export const testChangeButton = (page: Page) => page.getByRole("button", { name: /^Test this change(?: · up to \$[0-9.,]+)?$/ });
 export const addAgentInstructions = (page: Page) => page.getByRole("button", { name: "Add your agent's instructions", exact: true });
+
+export const resultCopy = {
+  headline: (passed: number, total: number) => passed === total ? `Your agent passed all ${total} tests` : `Your agent passed ${passed} of ${total} tests`,
+  fix: "Suggest a fix",
+  other: /^Other results ·/,
+} as const;
+export const otherResults = (page: Page) => page.locator("summary").filter({ hasText: resultCopy.other }).filter({ visible: true });
+export const suggestFix = (page: Page) => page.getByRole("button", { name: resultCopy.fix, exact: true });

@@ -1,3 +1,4 @@
+import { resultCopy } from "./entry-model";
 import { expect, test } from "@playwright/test";
 import { fakeVibe, models } from "./entry-fake";
 import { actionSession } from "./interaction-fixture";
@@ -18,7 +19,7 @@ for (const width of [390, 1440]) {
     await expect(answer).toBeVisible();
     await expect(page.getByRole("textbox", { name: "Message Vibe Evals", exact: true })).toBeFocused();
     await answer.click();
-    await expect(page.getByRole("heading", { name: "Your agent passed 2 of 3 tests", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: resultCopy.headline(2, 3), exact: true })).toBeVisible();
     expect(fake.posts).toHaveLength(1);
     expect(fake.posts[0]).toMatchObject({ method: "POST", path: `/sessions/${session.id}/messages`, body: { kind: "message", content: "30 days", cycle_id: "first-build-cycle", revision: 4, models: session.document.models } });
     expect(fake.posts.some(post => post.path.endsWith("/actions") || post.path.endsWith("/build-quote"))).toBe(false);

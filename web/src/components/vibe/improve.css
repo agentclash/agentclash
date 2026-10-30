@@ -1,5 +1,5 @@
 .vibe-improve-start { width: min(100%, 44rem); margin-inline: auto; padding: 1.5rem 1rem 2rem; display: grid; gap: 1.5rem; }
-.vibe-improve-start h1 { font-family: var(--vibe-font-serif); font-size: clamp(1.5rem, 1.2rem + 1vw, 2rem); line-height: 1.2; font-weight: 400; text-wrap: balance; }
+
 .vibe-improve-segments { display: flex; flex-wrap: wrap; gap: .25rem; padding: .25rem; border: 1px solid var(--vibe-control-border); border-radius: .75rem; }
 .vibe-improve-segments button { border: 1px solid var(--vibe-control-border); flex: 1 1 6rem; min-height: 44px; padding: .5rem; border-radius: .5rem; }
 .vibe-improve-segments button[aria-checked=true] { background: var(--vibe-hover); box-shadow: none; font-weight: 600; }
@@ -8,10 +8,10 @@
 .vibe-improve-form { gap: 1rem; }
 .vibe-improve-start select { width: 100%; min-height: 44px; padding: .5rem; border: 1px solid var(--vibe-control-border); border-radius: .5rem; background: var(--vibe-surface); }
 .vibe-improve-start summary, .vibe-improve-start a { cursor: pointer; min-height: 44px; padding-block: .75rem; }
-.vibe-improve-start a { display: inline-flex; align-items: center; text-decoration: underline; }
+.vibe-improve-start a { display: inline-flex; align-items: center; text-decoration: none; }
 .vibe-improve-help > :not(summary) { margin-top: .75rem; }
 .vibe-improve-request { padding: 1rem; border: 1px solid var(--vibe-control-border); border-radius: .5rem; }
-.vibe-improve-link { justify-self: start; text-decoration: underline; text-underline-offset: 3px; }
+.vibe-improve-link { justify-self: start; text-decoration: none; text-underline-offset: 3px; }
 .vibe-improve-drop { display: grid; justify-items: start; gap: 1rem; border: 1px dashed var(--vibe-control-border); padding: 1.5rem; border-radius: .75rem; }
 .vibe-improve-count { font-family: var(--font-mono), monospace; font-variant-numeric: tabular-nums; font-size: .875rem; }
 .vibe-improve-other > div { display: grid; justify-items: start; gap: .5rem; }

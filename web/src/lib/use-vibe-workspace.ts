@@ -1131,8 +1131,9 @@ export function useVibeWorkspace() {
     navigation.update({ view: target, ...(run ? { run } : {}) }, mode);
     setArrival(undefined);
     requestAnimationFrame(() => {
-      if (document.activeElement?.closest('input, textarea, select, [contenteditable="true"]')) return;
-      document.querySelector<HTMLElement>(target === "results" ? '[aria-label="Run results"] h2' : '[aria-label="Your tests"] h2')?.focus();
+      const field = document.activeElement;
+      if (field?.closest('select, [contenteditable="true"]') || ((field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement) && field.value.trim())) return;
+      document.querySelector<HTMLElement>(target === "results" ? '[aria-label="Run results"] .vibe-results-outcome' : '[aria-label="Your tests"] h2')?.focus();
     });
   }
   // The user is typing in the open view: an unsaved edit, or focus in a list, an editable region or a

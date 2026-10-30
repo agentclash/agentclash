@@ -804,7 +804,7 @@ it("shows the first Build result with leading evidence and an inline trial", asy
   const evidence = { case_key: "late", version: artifact.id, input: "Return after 40 days", output: "Declined", expected: "Decline returns after 30 days", verdict: "PASS" as const, checks: [] };
   const run = { ...operation("run"), source: { kind: "prompt" as const, label: "Returns", artifact_id: artifact.id }, results: [evidence], scorecard: { total: 1, evaluated: 1, passed: 1, failed: 0, unknown: 0, coverage: 1, pass_rate: 1 } }; current.operations = [run];
   await render({ twoDoor: true, view: "checks", session: current, artifact, loadEvidence: vi.fn(async () => evidence), preview: <section aria-label="Try your agent"><textarea id="vibe-trial-message" /></section> });
-  expect(container.querySelector('[aria-label="Agent test results"]')?.textContent).toContain("Your agent passed 1 of 1 tests");
+  expect(container.querySelector('[aria-label="Agent test results"]')?.textContent).toContain("Your agent passed all 1 tests");
   expect(container.textContent).toContain("Return after 40 days"); expect(container.textContent).toContain("Decline returns after 30 days");
   expect(container.querySelector('[aria-label="Try your agent"]')).not.toBeNull();
   await act(async () => button("Try your agent").click()); expect(document.activeElement?.id).toBe("vibe-trial-message");

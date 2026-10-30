@@ -1,13 +1,7 @@
 "use client";
 import type { Model } from "@/lib/vibe";
 
-// Prefer the display name. A name that only repeats the ID drops the provider prefix unless that
-// would make two models look the same. The full ID stays in the title.
-const shortID = (id: string) => id.split("/").pop() || id;
-function modelName(model: Model, models: Model[]) {
-  if (model.name && model.name !== model.id) return model.name;
-  return models.filter(item => shortID(item.id) === shortID(model.id)).length > 1 ? model.id : shortID(model.id);
-}
+import { friendlyModelName } from "./model-name";
 
 export function ModelSelect({
   label,
@@ -26,7 +20,7 @@ export function ModelSelect({
     return (
       <p className="text-sm">
         <span className="mr-2 text-builder-fg-muted">{label}</span>
-        <span className="vibe-num" title={value}>{modelName(models[0], models)}</span>
+        <span className="vibe-num" title={value}>{friendlyModelName(models[0], true)}</span>
       </p>
     );
   }
@@ -42,11 +36,11 @@ export function ModelSelect({
         className="max-w-48 rounded-[var(--vibe-radius-sm)] border border-builder-border bg-builder-panel px-2 py-2 text-builder-fg outline-none focus-visible:ring-2 focus-visible:ring-builder-border-strong"
       >
         {!models.some((m) => m.id === value) && (
-          <option value={value} disabled>{models.length ? `${value.split("/").pop()} (unavailable)` : "No approved models available"}</option>
+          <option value={value} disabled>{models.length ? `${friendlyModelName({ id: value }, true)} (unavailable)` : "No approved models available"}</option>
         )}
         {models.map((m) => (
           <option key={m.id} value={m.id} title={m.id}>
-            {modelName(m, models)}
+            {friendlyModelName(m, true)}
           </option>
         ))}
       </select>

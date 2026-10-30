@@ -24,12 +24,12 @@ export function BuildStart(p: { draft: string; onDraft(text: string): void; pric
   useEffect(() => { input.current?.focus(); }, []);
   return <section className="vibe-build-start vibe-start-page" onKeyDown={event => { if (event.key === "Escape" && !unavailable) p.onBack(); }}>
     <header><VibeButton variant="quiet" disabled={unavailable} onClick={p.onBack}>Back</VibeButton></header>
-    <h1 className="vibe-empty-title"><label htmlFor={`${id}-task`}>What task should the agent handle?</label></h1>
+    <h1 className="vibe-start-title"><label htmlFor={`${id}-task`}>What task should the agent handle?</label></h1>
     <p id={`${id}-helper`}>A few sentences: what comes in, what a good reply does, any rules.</p>
     {p.trialUsed && <p className="vibe-build-trial-used">Your free build is used. <a href="/auth/login?returnTo=%2Fvibe-evals%3Fstart%3Dbuild">Sign in to continue.</a></p>}
     <form className="vibe-build-start-card" onSubmit={event => { event.preventDefault(); send(); }}>
       <textarea id={`${id}-task`} ref={input} disabled={reading} aria-describedby={`${id}-helper`} className="vibe-textarea" rows={4} value={p.draft} onChange={event => p.onDraft(event.target.value)} onKeyDown={event => sendOnEnter(event, send)} placeholder="Help customers check whether they can return an item." />
-      <div className="vibe-build-examples" aria-label="Example tasks">{examples.map(example => <VibeButton key={example.label} disabled={unavailable} onClick={() => { p.onDraft(example.text); input.current?.focus(); }}>{example.label}</VibeButton>)}</div>
+      <div className="vibe-build-example-chips" role="group" aria-label="Example tasks"><span>Try:</span>{examples.map(example => <VibeButton variant="quiet" className="vibe-example-chip" key={example.label} disabled={unavailable} onClick={() => { p.onDraft(example.text); input.current?.focus(); }}>{example.label}</VibeButton>)}</div>
       <div className="vibe-build-start-actions">
         <div className="vibe-build-start-submit">
           <VibeButton type="submit" variant="primary" loading={p.busy || reading} disabled={!!reason || unavailable} aria-describedby={reason ? `${id}-reason` : undefined}>Build and run 3 tests</VibeButton>

@@ -15,7 +15,7 @@ function Harness(p: Partial<Props>) {
 }
 beforeEach(() => {
   vi.clearAllMocks(); vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  node = document.createElement("div"); document.body.append(node); root = createRoot(node);
+  node = document.createElement("div"); node.className = "vibe-workspace"; document.body.append(node); root = createRoot(node);
 });
 afterEach(async () => { await act(async () => root.unmount()); node.remove(); vi.unstubAllGlobals(); });
 const draw = async (p: Partial<Props> = {}) => act(async () => root.render(<Harness {...p} />));
@@ -130,7 +130,7 @@ it("labels every Improve input and gives independent mounts unique field ids", a
 });
 
 it("uses the display serif question and visible borders for every segment", async () => {
-  const style = document.createElement("style"); style.textContent = readFileSync("src/components/vibe/improve.css", "utf8").replaceAll("var(--vibe-control-border)", "#765820"); document.head.append(style);
+  const style = document.createElement("style"); style.textContent = (readFileSync("src/components/vibe/improve.css", "utf8") + readFileSync("src/components/vibe/project-workspace.css", "utf8")).replaceAll("var(--vibe-control-border)", "#765820"); document.head.append(style);
   try {
     await draw();
     expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-serif)");

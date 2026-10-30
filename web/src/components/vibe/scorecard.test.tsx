@@ -214,7 +214,7 @@ it("makes fixing, rerunning and keeping tests direct actions for the core journe
   };
   await render(op, undefined, true, true);
   expect(container.querySelector("h2")!.textContent).toBe(
-    "1 of 2 tests passed",
+    "Your agent passed 1 of 2 tests",
   );
   expect(container.textContent).not.toContain("Test new replies");
   expect(container.textContent).not.toContain("bring back its new replies");
@@ -791,12 +791,30 @@ it("uses the same expected behavior label and order in the compact Build evidenc
   expect(container.textContent).toContain("Ask only for missing details.");
 });
 
-it("keeps the actual expected rule when a leading Improve grade is disputed from More", async () => {
+it("keeps the actual expected rule when a leading Improve grade is disputed", async () => {
   await render(operation([failure]), undefined, true, true);
   const more = [...container.querySelectorAll("details")].find(detail => detail.querySelector(":scope > summary")?.textContent === "More")!;
   await act(async () => more.querySelector<HTMLButtonElement>("summary")!.click());
-  const row = more.querySelector<HTMLDetailsElement>(".vibe-result-row")!;
+  const row = container.querySelector<HTMLDetailsElement>('[aria-label="Leading finding"] .vibe-result-row')!;
   await act(async () => { row.open = true; row.dispatchEvent(new Event("toggle")); });
   await click("Change expected result");
   expect(dispute).toHaveBeenCalledWith("Ask only for missing details.", failure);
+});
+
+it("shows other results separately from More with a passed glyph and word in the Improve journey", async () => {
+  await render(operation([passing, failure]), undefined, true, true);
+  const other = container.querySelector(".vibe-other-results")!;
+  expect(other?.querySelector("summary")?.textContent).toBe("Other results · 1");
+  expect(other.closest("details")?.parentElement?.closest("details")).toBeNull();
+  expect(other.querySelector(".vibe-verdict-word")?.textContent).toBe("Passed");
+  expect(other.querySelector("svg.vibe-verdict-pass")).not.toBeNull();
+  expect(other.querySelector(".vibe-result-row")?.hasAttribute("open")).toBe(false);
+  expect(button("Suggest a fix").querySelector("svg")).not.toBeNull();
+});
+
+it.each([0, 2, 3])("U12/U13 Improve uses the shared outcome and fix label (%s passed)", async passed => {
+  const results = Array.from({ length: 3 }, (_, index) => ({ ...(index < passed ? passing : failure), case_key: `case-${index}` }));
+  await render(operation(results), undefined, true, true);
+  expect(container.querySelector(".vibe-results-outcome")?.textContent).toBe(passed === 3 ? "Your agent passed all 3 tests" : `Your agent passed ${passed} of 3 tests`);
+  if (passed < 3) expect(button("Suggest a fix").querySelector("svg")).not.toBeNull();
 });

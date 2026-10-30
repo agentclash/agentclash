@@ -234,3 +234,9 @@ it("dismisses imported instructions without saving or discarding the instruction
   await act(async () => button("Add your agent").click());
   expect(node.querySelector<HTMLTextAreaElement>('[aria-label="Agent instructions"]')?.value).toBe("Keep my unsaved policy");
 });
+
+it("U8 explains the friendly model used for the text run", async () => {
+  await act(async () => root.render(<TestSuitePanel artifact={artifact} mode="tests" busy={false} blocked={false} comparison={false} modelLabel="openai/gpt-4.1-mini" onRun={run} onEdit={vi.fn()} onDirty={vi.fn()} onSave={vi.fn()} onSettings={vi.fn()} />));
+  expect(node.textContent).toContain("Runs your instructions on GPT-4.1 mini. Your live app is not called.");
+  expect(node.textContent).not.toContain("openai/gpt-4.1-mini");
+});

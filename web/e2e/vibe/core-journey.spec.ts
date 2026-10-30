@@ -1,3 +1,4 @@
+import { resultCopy } from "./entry-model";
 import { expect, test } from "@playwright/test";
 import type { Artifact, Operation, Session } from "../../src/lib/vibe";
 
@@ -289,7 +290,7 @@ for (const mobile of [false, true]) {
     await tests.getByRole("button", { name: "Run 3 tests" }).click();
     await page.getByRole("button", { name: "View latest results", exact: true }).click();
     await expect(
-      page.getByRole("heading", { name: "2 of 3 tests passed" }),
+      page.getByRole("heading", { name: resultCopy.headline(2, 3) }),
     ).toBeVisible();
     await expect(
       page
@@ -329,7 +330,7 @@ for (const mobile of [false, true]) {
     await page.getByRole("button", { name: "Test this change", exact: true }).click();
     await page.getByRole("tab", { name: "Results", exact: true }).click();
     await expect(
-      page.getByRole("heading", { name: "3 of 3 tests passed" }),
+      page.getByRole("heading", { name: resultCopy.headline(3, 3) }),
     ).toBeVisible();
     expect(requests.map((r) => r.kind)).toEqual([
       "message",
@@ -343,7 +344,7 @@ for (const mobile of [false, true]) {
     ).toBeVisible();
     await page.reload();
     await expect(
-      page.getByRole("heading", { name: "3 of 3 tests passed" }),
+      page.getByRole("heading", { name: resultCopy.headline(3, 3) }),
     ).toBeVisible();
     expect(requests).toHaveLength(5);
     await page.screenshot({ path: info.outputPath("same-tests-results.png"), fullPage: true });
