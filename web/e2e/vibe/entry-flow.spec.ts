@@ -10,7 +10,9 @@ import { composer, doorButton, doorReady, entryReady, sendButton, sourceButton }
 test.use({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
 test.describe.configure({ timeout: 120_000 });
 
-type Budget = { clicks: number; texts: number; files: number; decisions: number };
+// unavailable: "The selected result is unavailable in this project." alerts after a run with no error.
+// Known defect A8 (~/.claude/plans/vibe-evals-redesign.md section 8.2): held at today's count per path.
+type Budget = { clicks: number; texts: number; files: number; decisions: number; unavailable: number };
 // Enabled main-zone controls in the first viewport at each decision point, measured today (1440, light).
 const controlBudget: Record<string, number> = { entry: 3, "build start": 7, "improve start": 8, "imported tests": 12, cost: 4 };
 const tab = (page: Page, name: "Agent" | "Tests" | "Results") => page.getByRole("tab", { name, exact: true });
@@ -36,7 +38,8 @@ async function firstAnswer(page: Page, flow: FlowMeter) {
 }
 
 async function finish(page: Page, fake: Fake, flow: FlowMeter, budget: Budget) {
-  const record = await flow.save({ selectedResultUnavailable: await page.getByRole("alert").filter({ hasText: "selected result is unavailable" }).count() });
+  const unavailable = await page.getByRole("alert").filter({ hasText: "selected result is unavailable" }).count();
+  const record = await flow.save({ selectedResultUnavailable: unavailable });
   const m2 = record.milestones.M2;
   expect(m2, "M2 reached").toBeTruthy();
   expect(m2.clicks, "clicks to the first test result").toBeLessThanOrEqual(budget.clicks);
@@ -48,6 +51,7 @@ async function finish(page: Page, fake: Fake, flow: FlowMeter, budget: Budget) {
     expect(d.mainEnabled, `enabled main controls at "${d.at}"`).toBeLessThanOrEqual(controlBudget[d.at]);
   }
   expect(record.mostDialogs, "dialogs open at the same time").toBeLessThanOrEqual(1);
+  expect(unavailable, "known defect A8: unavailable-result alerts, held at baseline").toBe(budget.unavailable);
   // A5: nothing model-bound before the explicit consent, and one project per door choice.
   expect(record.writesBeforeConsent.filter(w => w.path.endsWith("/messages"))).toEqual([]);
   expect(record.writesBeforeConsent.filter(w => w.path === "/sessions").length).toBeLessThanOrEqual(1);
@@ -71,7 +75,7 @@ test("Build reaches its first test result in 3 clicks and 1 text", async ({ page
   await expect(runResults(page)).toBeVisible();
   await flow.mark("M2");
   await firstAnswer(page, flow);
-  await finish(page, fake, flow, { clicks: 3, texts: 1, files: 0, decisions: 2 });
+  await finish(page, fake, flow, { clicks: 3, texts: 1, files: 0, decisions: 2, unavailable: 0 });
 });
 
 test("Improve with saved instructions reaches its first test result in 7 clicks and 1 text", async ({ page }) => {
@@ -95,7 +99,7 @@ test("Improve with saved instructions reaches its first test result in 7 clicks 
   await expect(runResults(page)).toBeVisible();
   await flow.mark("M2");
   await firstAnswer(page, flow);
-  await finish(page, fake, flow, { clicks: 7, texts: 1, files: 0, decisions: 2 });
+  await finish(page, fake, flow, { clicks: 7, texts: 1, files: 0, decisions: 2, unavailable: 1 });
 });
 
 test("Improve with recorded replies reaches its first test result in 6 clicks and 2 texts", async ({ page }) => {
@@ -118,7 +122,7 @@ test("Improve with recorded replies reaches its first test result in 6 clicks an
   await expect(runResults(page)).toBeVisible();
   await flow.mark("M2");
   // Recorded replies come from the user's app, so this path has no model-written answer (no M1).
-  await finish(page, fake, flow, { clicks: 6, texts: 2, files: 0, decisions: 2 });
+  await finish(page, fake, flow, { clicks: 6, texts: 2, files: 0, decisions: 2, unavailable: 1 });
 });
 
 test("Improve with a test pack import reaches its first test result in 8 clicks, 1 file and 1 text", async ({ page }) => {
@@ -145,7 +149,7 @@ test("Improve with a test pack import reaches its first test result in 8 clicks,
   await expect(runResults(page)).toBeVisible();
   await flow.mark("M2");
   await firstAnswer(page, flow);
-  await finish(page, fake, flow, { clicks: 8, texts: 1, files: 1, decisions: 3 });
+  await finish(page, fake, flow, { clicks: 8, texts: 1, files: 1, decisions: 3, unavailable: 1 });
 });
 
 // D1: each door reaches its first submission with the keyboard only (the meter rejects pointer actions).

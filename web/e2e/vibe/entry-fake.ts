@@ -26,7 +26,15 @@ export const description = "Answer customer questions about returns for my onlin
 export const instructions = "Help shoppers with returns. Allow unopened items within 30 days of purchase. Decline later returns politely. Ask for missing details before deciding.";
 export const transcript = "Customer: I bought headphones 45 days ago. They are still sealed. Can I return them?\nAgent: Sure, bring them back with the receipt.";
 export const expectation = "Decline purchases older than 30 days.";
-export const packFile = { name: "returns-pack.yaml", mimeType: "application/yaml", buffer: Buffer.from("name: returns\ncases: []\n") };
+// A pack with three text cases. The fake reads its case keys and, as the backend compiler does
+// (backend/internal/api/vibe_compiler.go:245), rejects a file with no case.
+export const packFile = { name: "returns-pack.yaml", mimeType: "application/yaml", buffer: Buffer.from([
+  "pack:", "  slug: returns", "  name: Returns", "version:", "  number: 1", "  execution_mode: prompt_eval", "input_sets:", "  - key: default", "    cases:",
+  "      - case_key: eligible", "        inputs: [{ key: message, value: \"Unopened, bought 10 days ago. Can I return it?\" }]",
+  "      - case_key: late", "        inputs: [{ key: message, value: \"Unopened, bought 45 days ago. Can I return it?\" }]",
+  "      - case_key: missing", "        inputs: [{ key: message, value: \"I want to return something.\" }]", "",
+].join("\n")) };
+export const packCaseKeys = (raw: string) => [...raw.matchAll(/^\s*- case_key:\s*(\S+)/gm)].map(match => match[1]);
 
 const inputs = ["Unopened, bought 10 days ago. Can I return it?", "Unopened, bought 45 days ago. Can I return it?", "I want to return something."];
 const expected = ["Explain that it is eligible.", "Decline the late return.", "Ask for purchase age and item condition."];
@@ -201,6 +209,8 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
       return json(s);
     }
     if (p.endsWith("/import")) {
+      const cases = packCaseKeys(request.postData() ?? "");
+      if (cases.length !== 3) return json({ error: { code: "invalid_request", message: `The fake serves a pack of 3 cases; this file has ${cases.length}.` } }, 422);
       const art: Artifact = { id: "pack-v1", kind: "test_suite", title: packFile.name, summary: "Imported test pack.", agent_prompt: "", accepted: false, source_message_id: "import", blueprint,
         original: { id: "orig-1", artifact_id: "pack-v1", filename: packFile.name, media_type: packFile.mimeType, content_sha256: "0".repeat(64), size_bytes: packFile.buffer.length } } as any;
       s.document.artifacts.push(art); s.document.active_artifact_id = art.id; s.title = packFile.name;
