@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ArrowRight, Bookmark, Copy, Lightbulb } from "lucide-react";
 import { dollars, terminal, type CaseResult, type Operation } from "@/lib/vibe";
 import { verifiedFinding } from "./grounded-finding";
@@ -29,6 +29,8 @@ export function VibeScorecard({
   onAskCase,
   busy,
   testJourney = false,
+  buildJourney = false,
+  more,
 }: {
   findingFirst?: boolean;
   primary?: boolean;
@@ -47,6 +49,8 @@ export function VibeScorecard({
   onAskCase?: (caseKey: string) => void;
   busy: boolean;
   testJourney?: boolean;
+  buildJourney?: boolean;
+  more?: ReactNode;
 }) {
   const [filter,setFilter]=useState("all");
   const [copiedFinding, setCopiedFinding] = useState("");
@@ -147,6 +151,43 @@ export function VibeScorecard({
       ? `These findings cover only ${score.total === 1 ? "this test" : `these ${testCount(score.total)}`}.`
       : "Completed findings are kept while the run continues.";
 
+  if (testJourney && !buildJourney && done) return <article aria-label="Run results" className="space-y-6">
+    <h2 className="vibe-results-outcome" aria-live="polite" tabIndex={-1}>{!stopped && score.total > 0 && !regraded ? `${score.passed} of ${score.total} tests passed` : headline}</h2>
+    {operation.error && <p role="alert">{recoveryMessage(operation)}</p>}
+    {baseline && comparable && !rechecked && <p>{fixed} fixed · {regressions} new failures. Same tests and grading model.</p>}
+    {incomplete && <p>{unresolvedCount ? `${unresolvedCount} unresolved. ` : ""}Some grading is incomplete. Completed results are kept.</p>}
+    {leading && <div className="vibe-panel" aria-label="Leading finding"><CaseEvidence key={findingID} summary={leading} concise exampleFirst evidenceVersion={evidenceVersion} load={loadEvidence} origin={operation.source?.kind} defaultOpen busy={busy} /></div>}
+    {score.failed > 0 ? <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={() => onImprove()}><Lightbulb aria-hidden="true" />Suggest a fix</VibeButton>
+      : onSave && !incomplete && !stopped ? <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={onSave}><Bookmark aria-hidden="true" />Keep these tests</VibeButton>
+      : <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={onRetest}>Run tests again</VibeButton>}
+    <details className="text-sm vibe-muted"><summary className="cursor-pointer py-3">More</summary><div className="mt-3 space-y-4">
+      <p>{score.passed} passed · {score.failed} failed{unresolvedCount ? ` · ${unresolvedCount} unresolved` : ""}</p>
+      {overlappingCounts && <p>Unresolved tests have unfinished grading and can also be counted as passed or failed.</p>}
+      <p>{regraded ? "Saved replies only. Your agent was not called again." : provided ? "Based on the conversations you provided. Your live app was not called." : "Text replies from your saved instructions. Your live app was not called."}</p>
+      {rechecked && <p>These are the same saved replies. A different grade does not show that your agent improved.</p>}
+      {baseline && !rechecked && !comparable && <p>These runs do not have matching verified grading settings. Earlier results are kept separately.</p>}
+      <label className="vibe-results-filter">Show tests<select aria-label="Filter tests" value={filter} onChange={e => setFilter(e.target.value)}><option value="all">All</option><option value="failing">Failing</option><option value="unresolved">Unresolved</option><option value="passing">Passing</option></select></label>
+      <div className="vibe-panel" aria-label="Individual results">{visible.map(result => <CaseEvidence key={`${operation.id}:${result.case_key}`} summary={result} onAsk={onAskCase ? () => onAskCase(result.case_key) : undefined} concise evidenceVersion={evidenceVersion} load={loadEvidence} onDispute={onDispute} onRegrade={onRegrade} origin={operation.source?.kind} busy={busy} />)}</div>
+      <div className="flex flex-wrap gap-2">
+        {(score.failed > 0 || onSave && !incomplete && !stopped) && <VibeButton disabled={busy} onClick={onRetest}>Run tests again</VibeButton>}
+        {score.failed > 0 && onSave && <VibeButton variant="quiet" disabled={busy} onClick={onSave}>Keep these tests</VibeButton>}
+        {provided && onNewReplies && <VibeButton disabled={busy} onClick={onNewReplies}>Test new replies</VibeButton>}
+        {onRegrade && <VibeButton variant="quiet" disabled={busy} onClick={onRegrade}>Grade the same replies again</VibeButton>}
+        {onNewCheck && <VibeButton variant="quiet" disabled={busy} onClick={onNewCheck}>Start a separate run</VibeButton>}
+        {provided && <CopyOriginalInputs key={operation.id} results={operation.results} load={loadEvidence} />}
+      </div>
+      <p>Grading model: {operation.models.evaluator}</p>
+      {!provided && !regraded && <p>Agent model: {operation.models.target}</p>}
+      <p>{score.checks_evaluated ?? score.evaluated} of {score.checks_expected ?? score.total} expectations evaluated.</p>
+      <p>{operation.billing === "RECONCILING" ? "Provider spend is still being reconciled." : `Provider spend: ${dollars(operation.actual_cost_nano_usd)}.`}</p>
+      {more}
+      <details><summary>Technical details</summary><p>Origin: {operation.evidence_metadata?.origin || "unverified"}. Application revision: {operation.evidence_metadata?.application_revision || "unknown"}.</p>
+        {(["model", "build", "test", "judge", "config"] as const).map(name => <p className="break-all" key={name}>{name}: {operation.evidence_metadata?.fingerprints[name] || "unknown"}</p>)}
+        {(["messages", "tools", "retrieval"] as const).map(name => <p key={name}>{name}: {operation.evidence_metadata?.capture_scope[name].scope || "unknown"} · instrumentation {operation.evidence_metadata?.capture_scope[name].instrumentation || "unknown"}</p>)}
+      </details>
+    </div></details>
+  </article>;
+
   return (
     <article aria-label="Run results" className="space-y-6">
       <div>
@@ -183,7 +224,7 @@ export function VibeScorecard({
             {testJourney ? (
               <>
                 {fixed} fixed · {regressions} new failures. Same tests and
-                evaluator.
+                grading model.
               </>
             ) : (
               <>
@@ -193,7 +234,7 @@ export function VibeScorecard({
                 {regressions === 1 ? "failure" : "failures"}.
                 <span className="vibe-muted">
                   {" "}
-                  Same expectations and evaluator.{" "}
+                  Same expectations and grading model.{" "}
                   {provided
                     ? "Same customer messages."
                     : "Same test messages."}
@@ -401,7 +442,7 @@ export function VibeScorecard({
                 <br />
               </>
             )}
-            Evaluator: {operation.models.evaluator}
+            Grading model: {operation.models.evaluator}
           </p>
           <p>
             {operation.billing === "RECONCILING"

@@ -61,3 +61,15 @@ export function PromptChange({
     </details>
   );
 }
+
+export function CopyNewInstructions({ after, busy = false }: { after: string; busy?: boolean }) {
+  const [copied, setCopied] = useState(""), [fallback, setFallback] = useState("");
+  return <section aria-label="Use the new instructions" className="space-y-3">
+    <VibeButton variant="primary" disabled={busy} onClick={async () => {
+      try { await navigator.clipboard.writeText(after); setCopied(after); setFallback(""); }
+      catch { setFallback(after); }
+    }}><Copy aria-hidden="true" />{copied === after ? "Copy the new instructions · copied" : "Copy the new instructions"}</VibeButton>
+    <p className="text-sm vibe-muted">Paste them into your app. We don&apos;t change your live app.</p>
+    {fallback === after && <><p role="status">Select and copy the instructions below.</p><textarea className="vibe-textarea" aria-label="New instructions to copy" readOnly value={after} onFocus={event => event.currentTarget.select()} /></>}
+  </section>;
+}

@@ -7,7 +7,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { agentReply, description, expectation, fakeVibe, instructions, packFile, transcript, type Fake } from "./entry-fake";
 import { flowMeter, type FlowMeter } from "./flow-meter";
-import { composer, doorButton, doorReady, entryReady, sendButton, sourceButton } from "./entry-model";
+import { composer, doorButton, doorReady, entryReady, sendButton, sourceButton, runTestsButton, testChangeButton, addAgentInstructions } from "./entry-model";
 
 test.use({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
 test.describe.configure({ timeout: 120_000 });
@@ -16,6 +16,8 @@ type Budget = { clicks: number; texts: number; files: number; decisions: number 
 // Enabled main-zone controls in the first viewport at each decision point, measured (1440, light).
 // "imported tests" is 13: the import writes Guide's two messages, as the backend does, so the Guide
 // column opens with them and its controls count in the main zone (12 before PR 1, with an empty Guide).
+// After PR 4: instructions 3 clicks + 1 text; replies 3 clicks + 2 texts; pack 4 clicks + file + text.
+// Keep today's click budgets until lazy creation merges; the explicit consent dialog remains.
 const controlBudget: Record<string, number> = { entry: 3, "build start": 7, "improve start": 8, "imported tests": 13, cost: 4 };
 const tab = (page: Page, name: "Agent" | "Tests" | "Results") => page.getByRole("tab", { name, exact: true });
 const runResults = (page: Page) => page.getByRole("article", { name: "Run results" });
@@ -25,6 +27,19 @@ const startRun = (page: Page) => page.getByRole("dialog").getByRole("button", { 
 async function resultShown(page: Page) {
   await expect(tab(page, "Results")).toHaveAttribute("aria-selected", "true");
   await expect(runResults(page)).toBeVisible();
+  await expect(page.getByText("SDK report history", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Application run history", { exact: true })).toHaveCount(0);
+  await expect(page.locator("summary").filter({ hasText: /^Import SDK report$/ })).toHaveCount(0);
+}
+
+async function improveResultShown(page: Page, expected: string) {
+  await resultShown(page);
+  const leading = page.getByLabel("Leading finding", { exact: true });
+  await expect(leading.locator("p").filter({ hasText: /^(We gave it|It replied|It should|What needs attention)$/ })).toHaveText(["We gave it", "It replied", "It should", "What needs attention"]);
+  const rule = leading.locator(".vibe-example-evidence > div").filter({ has: page.getByText("It should", { exact: true }) });
+  await expect(rule).toContainText(expected);
+  await expect(rule).toBeVisible();
+  await expect(leading.getByRole("button", { name: "Show full conversation", exact: true })).toHaveAttribute("aria-expanded", "false");
 }
 
 async function open(page: Page, name: string, options: { keyboardOnly?: boolean } = {}) {
@@ -98,11 +113,12 @@ async function instructionsToResult(page: Page, flow: FlowMeter) {
   await flow.click(page.getByRole("button", { name: "Prepare tests" }), "Prepare tests");
   await expect(page.getByText("These are example messages I’ll send to your agent.").first()).toBeVisible({ timeout: 30_000 });
   await expect(tab(page, "Tests")).toHaveAttribute("aria-selected", "true");
-  await flow.click(page.getByRole("button", { name: "Run 3 tests", exact: true }), "Run 3 tests");
+  await expect(runTestsButton(page)).toHaveText("Run 3 tests");
+  await flow.click(runTestsButton(page), "Run 3 tests");
   await flow.decision("cost", [startRun(page)]);
   await flow.click(startRun(page), "Start run");
   await runDone(page);
-  await resultShown(page);
+  await improveResultShown(page, "Decline the late return.");
   await flow.mark("M2");
 }
 
@@ -119,8 +135,8 @@ test("Improve fix loop reaches the compared result in 3 clicks", async ({ page }
   const { fake, flow } = await open(page, "improve-fix");
   await instructionsToResult(page, flow);
   const start = { ...(await flow.mark("M2")) };
-  await flow.click(runResults(page).getByRole("button", { name: "Help me fix this", exact: true }), "Help me fix this");
-  const rerun = page.getByRole("button", { name: "Improve and rerun", exact: true });
+  await flow.click(runResults(page).getByRole("button", { name: "Suggest a fix", exact: true }), "Suggest a fix");
+  const rerun = testChangeButton(page);
   await expect(rerun).toBeVisible({ timeout: 30_000 });
   await expect(tab(page, "Agent")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByLabel("Instruction changes", { exact: true })).toContainText("Decline every return after 30 days.");
@@ -128,12 +144,13 @@ test("Improve fix loop reaches the compared result in 3 clicks", async ({ page }
   const runs = () => fake.posts.filter(post => post.path.endsWith("/messages") && ["check", "retest"].includes(post.body.kind));
   // Nothing runs before the cost dialog: only the first run so far.
   expect(runs()).toHaveLength(1);
-  await flow.click(rerun, "Improve and rerun");
+  await flow.click(rerun, "Test this change");
   await flow.decision("cost", [startRun(page)]);
   await flow.click(startRun(page), "Start run");
   await expect(page.locator(".vibe-project-header")).toContainText("Run 2: Completed", { timeout: 30_000 });
   await resultShown(page);
-  await expect(runResults(page)).toContainText("3 passed · 0 failed");
+  await expect(runResults(page).getByRole("heading", { name: "3 of 3 tests passed" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy the new instructions", exact: true })).toBeVisible();
   const end = await flow.mark("F1");
   const record = await flow.save();
   expect(end.clicks - start.clicks, "A1f: clicks in the fix loop").toBeLessThanOrEqual(3);
@@ -160,7 +177,7 @@ test("Improve with recorded replies reaches its first test result in 5 clicks an
   flow.consent();
   await flow.click(startRun(page), "Start run");
   await runDone(page);
-  await resultShown(page);
+  await improveResultShown(page, expectation);
   await flow.mark("M2");
   // Recorded replies come from the user's app, so this path has no model-written answer (no M1).
   await finish(page, fake, flow, { clicks: 5, texts: 2, files: 0, decisions: 2 });
@@ -173,20 +190,21 @@ test("Improve with a test pack import reaches its first test result in 7 clicks,
   await doorReady(page, "improve");
   await flow.decision("improve start", [sourceButton(page, "import"), sourceButton(page, "recorded"), sourceButton(page, "instructions"), composer(page)]);
   await flow.chooseFile(sourceButton(page, "import"), packFile, "Import a test pack");
-  const add = page.getByRole("button", { name: "Add your agent", exact: true });
+  const add = addAgentInstructions(page);
   await expect(add).toBeVisible({ timeout: 30_000 });
-  await flow.decision("imported tests", [add, page.getByRole("button", { name: "Create an agent", exact: true }), page.getByRole("button", { name: "Keep for later", exact: true })]);
-  await flow.click(add, "Add your agent");
+  await expect(add).toBeDisabled();
+  await expect(page.getByRole("textbox", { name: "Agent instructions", exact: true })).toBeVisible();
   await flow.fill(page.getByRole("textbox", { name: "Agent instructions", exact: true }), instructions, "agent instructions");
-  await flow.click(page.getByRole("button", { name: "Use these instructions", exact: true }), "Use these instructions");
-  await expect(tab(page, "Agent")).toHaveAttribute("aria-selected", "true");
-  await flow.click(tab(page, "Tests"), "Tests tab");
-  await flow.click(page.getByRole("button", { name: "Run 3 tests", exact: true }), "Run 3 tests");
+  await flow.decision("imported tests", [add, page.getByRole("button", { name: "Keep for later", exact: true })]);
+  await flow.click(add, "Add your agent's instructions");
+  await expect(tab(page, "Tests")).toHaveAttribute("aria-selected", "true");
+  await expect(runTestsButton(page)).toHaveText("Run 3 tests");
+  await flow.click(runTestsButton(page), "Run 3 tests");
   await flow.decision("cost", [startRun(page)]);
   flow.consent();
   await flow.click(startRun(page), "Start run");
   await runDone(page);
-  await resultShown(page);
+  await improveResultShown(page, "Decline the late return.");
   await flow.mark("M2");
   await firstAnswer(page, flow);
   await finish(page, fake, flow, { clicks: 7, texts: 1, files: 1, decisions: 3 });

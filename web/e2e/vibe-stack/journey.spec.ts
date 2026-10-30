@@ -80,11 +80,10 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   await page.reload();
   await openTests(page);
   const tests = page.getByRole("region", { name: "Your tests", exact: true }).last();
-  await tests.getByRole("button", { name: "Add your agent", exact: true }).click();
   await page.getByRole("textbox", { name: "Agent instructions", exact: true }).fill("Opened items are eligible. Unopened items within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.");
-  await page.getByRole("button", { name: "Use these instructions" }).click();
+  await page.getByRole("button", { name: "Add your agent's instructions" }).click();
   await openTests(page);
-  await tests.getByRole("button", { name: "Run 3 tests", exact: true }).click();
+  await tests.getByRole("button", { name: /^Run 3 tests(?: · up to \$[0-9.,]+)?$/ }).click();
   await expect(page.getByRole("dialog")).toContainText("3 tests ·");
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();
@@ -96,7 +95,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   const originalHashes = state.hashes[baselineArtifact.id];
   expect(originalHashes).toEqual(state.hashes[prepared.id]);
 
-  await page.getByRole("button", { name: "Help me fix this", exact: true }).click();
+  await page.getByRole("button", { name: "Suggest a fix", exact: true }).click();
   const proposed = await finished(page, sessionID!, state.session.operations.length);
   expect(proposed.completion_receipt?.action).toBe("suggest_fix");
   state = await evidence(page, sessionID!);
@@ -107,7 +106,7 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
   await expect(page.getByRole("region", { name: "Agent instructions", exact: true })).toContainText(fix.agent_prompt!);
   await openTests(page);
   await expect(page.getByRole("region", { name: "Your tests", exact: true })).toHaveAttribute("data-proposal-id", fix.id);
-  await page.getByRole("button", { name: "Improve and rerun", exact: true }).click();
+  await page.getByRole("button", { name: /^Test this change(?: · up to \$[0-9.,]+)?$/ }).click();
   await expect(page.getByRole("dialog")).toContainText("3 tests ·");
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();
@@ -123,11 +122,11 @@ test("real API, PostgreSQL and Temporal preserve the suite across failures, retr
 
   // A grade dispute reuses replies. It cannot call the target or edit the suite.
   const beforeRegrade = state;
-  const passedResults = page.locator("summary").filter({ hasText: /^Test results/ });
+  const passedResults = page.getByRole("article", { name: "Run results" }).locator("summary").filter({ hasText: /^More$/ });
   if (!(await passedResults.evaluate(node => (node.parentElement as HTMLDetailsElement).open))) await passedResults.click();
   await page.locator('[aria-label="Individual results"] summary').first().click();
   await expect(page.getByRole("region", { name: "Evidence for this grade" }).first()).toBeVisible();
-  await page.getByRole("button", { name: "Regrade saved replies", exact: true }).first().click();
+  await page.getByRole("button", { name: "Grade the same replies again", exact: true }).first().click();
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   const regraded = await finished(page, sessionID!, beforeRegrade.session.operations.length);
   expect(regraded.source?.comparison).toBe("regraded");
@@ -316,11 +315,10 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   await expect(page.getByRole("heading",{name:"3 tests are ready"})).toBeVisible();
   expect(new URL(page.url()).searchParams.get("agent")).toBe(artifact.id);
   const tests=page.getByRole("region",{name:"Your tests",exact:true}).last();
-  await tests.getByRole("button",{name:"Add your agent",exact:true}).click();
   await page.getByRole("textbox",{name:"Agent instructions",exact:true}).fill("Only unopened items within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.");
-  await page.getByRole("button",{name:"Use these instructions"}).click();
+  await page.getByRole("button",{name:"Add your agent's instructions"}).click();
   await openTests(page);
-  await tests.getByRole("button",{name:"Run 3 tests",exact:true}).click();
+  await tests.getByRole("button",{name:/^Run 3 tests(?: · up to \$[0-9.,]+)?$/}).click();
   await expect(page.getByRole("dialog")).toContainText("3 tests ·");
   await page.getByRole("button", { name: "Start run", exact: true }).click();
   await page.getByRole("tab", { name: "Results", exact: true }).click();

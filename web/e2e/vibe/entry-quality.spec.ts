@@ -21,7 +21,7 @@ const known = (id: string) => `Known defect ${id} (see ~/.claude/plans/vibe-eval
 // which forces the fixing PR to delete the entry and meet the target instead.
 // B3 (one h1) and E2 (the Build send button's name) were fixed in PR 1: their entries are gone.
 const baseline: Record<"B2" | "B3" | "E2" | "F1", Partial<Record<State, unknown>>> = {
-  B2: { S1: [], S2: [], S2r: [] },
+  B2: { S1: [], S2: [] },
   B3: {},
   E2: {},
   // Measured at 390 touch, the only viewport that runs F1.

@@ -8,6 +8,7 @@ import { GradeReviews } from "./grade-reviews";
 import { ResultComparison } from "./result-comparison";
 import { compareResultEvidence } from "@/lib/vibe-result-evidence";
 import { VibeScorecard } from "./scorecard";
+import { CaseEvidence } from "./case-evidence";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -217,7 +218,7 @@ it("makes fixing, rerunning and keeping tests direct actions for the core journe
   );
   expect(container.textContent).not.toContain("Test new replies");
   expect(container.textContent).not.toContain("bring back its new replies");
-  await click("Help me fix this");
+  await click("Suggest a fix");
   expect(improve).toHaveBeenCalledOnce();
   await click("Run tests again");
   expect(retest).toHaveBeenCalledOnce();
@@ -250,9 +251,9 @@ it("leads with one reply and keeps complete evidence behind a single accessible 
     "How many days ago did you buy it?",
   );
   expect(visibleQuotes[0].textContent).toContain("App reply");
-  expect(button("See evidence").getAttribute("aria-expanded")).toBe("false");
+  expect(button("Show full conversation").getAttribute("aria-expanded")).toBe("false");
   const fullEvidence = document.getElementById(
-    button("See evidence").getAttribute("aria-controls")!,
+    button("Show full conversation").getAttribute("aria-controls")!,
   )!;
   expect(fullEvidence.hidden).toBe(true);
   expect(fullEvidence.textContent).toContain("I bought it 10 days ago.");
@@ -274,8 +275,8 @@ it("leads with one reply and keeps complete evidence behind a single accessible 
     );
     expect(details?.open).toBe(false);
   }
-  await click("See evidence");
-  expect(button("Hide evidence").getAttribute("aria-expanded")).toBe("true");
+  await click("Show full conversation");
+  expect(button("Hide full conversation").getAttribute("aria-expanded")).toBe("true");
   expect(fullEvidence.hidden).toBe(false);
   await click("Change expected result");
   expect(dispute).toHaveBeenCalledWith(
@@ -300,9 +301,9 @@ it("keeps a long reply complete in evidence and the fix prompt while showing a l
   )!;
   expect(quote.textContent).toContain("App reply · preview; full reply below");
   expect(quote.textContent).not.toContain("The exact final sentence.");
-  await click("See evidence");
+  await click("Show full conversation");
   const fullEvidence = document.getElementById(
-    button("Hide evidence").getAttribute("aria-controls")!,
+    button("Hide full conversation").getAttribute("aria-controls")!,
   )!;
   expect(fullEvidence.hidden).toBe(false);
   expect(fullEvidence.textContent).toContain(fullReply);
@@ -347,7 +348,7 @@ it("includes every cited message in the evidence disclosure", async () => {
     ],
   };
   await render(operation([allCited]));
-  await click("See evidence");
+  await click("Show full conversation");
   const supporting = container.querySelector(
     '[aria-label="Supporting messages"]',
   )!;
@@ -753,4 +754,49 @@ it("opens Guide for the chosen case even when its evidence cannot load", async (
   expect(ask).toHaveBeenCalledExactlyOnceWith("memory");
   expect(retest).not.toHaveBeenCalled();
   expect(improve).not.toHaveBeenCalled();
+});
+
+it("puts the Improve finding and Suggest a fix before a single More disclosure", async () => {
+  await render(operation([passing, failure]), undefined, true, true);
+  const fix = button("Suggest a fix"); expect(fix).toBeDefined(); expect(fix.closest("details")).toBeNull();
+  expect([...container.querySelectorAll(".vibe-button-primary")].map(b => b.textContent?.trim())).toEqual(["Suggest a fix"]);
+  expect(button("Run tests again").closest("details")?.querySelector("summary")?.textContent).toBe("More");
+  expect(container.textContent).toContain("Grading model:");
+  expect(container.querySelector('[aria-label="Leading finding"]')).not.toBeNull();
+  await click("Suggest a fix"); expect(improve).toHaveBeenCalledOnce();
+});
+
+it.each(["prompt", "provided_conversations"] as const)("shows the shared input, reply, expected behavior and finding order for %s Improve results", async kind => {
+  const result = { ...failure, input: kind === "prompt" ? "May I return this?" : null, output: kind === "prompt" ? "How many days ago did you buy it?" : "" };
+  const op = operation([result]); op.source!.kind = kind;
+  await render(op, undefined, true, true);
+  const leading = container.querySelector('[aria-label="Leading finding"]')!;
+  const labels = [...leading.querySelectorAll("p")].filter(p => ["We gave it", "It replied", "It should", "What needs attention"].includes(p.textContent!.trim()));
+  expect(labels.map(p => p.textContent!.trim())).toEqual(["We gave it", "It replied", "It should", "What needs attention"]);
+  expect(labels[0].parentElement!.textContent).toContain(kind === "prompt" ? "May I return this?" : "I bought it 10 days ago.");
+  if (kind === "provided_conversations") expect(labels[0].parentElement!.textContent).toContain("It is unopened.");
+  expect(labels[1].parentElement!.textContent).toContain("How many days ago did you buy it?");
+  expect(labels[2].parentElement!.textContent).toContain("Ask only for missing details.");
+  expect(labels[3].parentElement!.textContent).toContain(failure.checks[0].evidence);
+  expect(labels.every(label => !label.closest("[hidden]"))).toBe(true);
+  expect(button("Show full conversation").getAttribute("aria-expanded")).toBe("false");
+  await click("Show full conversation");
+  expect(document.getElementById(button("Hide full conversation").getAttribute("aria-controls")!)!.hidden).toBe(false);
+});
+
+it("uses the same expected behavior label and order in the compact Build evidence", async () => {
+  await act(async () => root.render(<CaseEvidence summary={failure} load={async () => failure} concise exampleFirst compactPreview defaultOpen />));
+  const labels = [...container.querySelectorAll("p")].map(p => p.textContent!.trim()).filter(text => ["We gave it", "It replied", "It should", "What needs attention"].includes(text));
+  expect(labels).toEqual(["We gave it", "It replied", "It should", "What needs attention"]);
+  expect(container.textContent).toContain("Ask only for missing details.");
+});
+
+it("keeps the actual expected rule when a leading Improve grade is disputed from More", async () => {
+  await render(operation([failure]), undefined, true, true);
+  const more = [...container.querySelectorAll("details")].find(detail => detail.querySelector(":scope > summary")?.textContent === "More")!;
+  await act(async () => more.querySelector<HTMLButtonElement>("summary")!.click());
+  const row = more.querySelector<HTMLDetailsElement>(".vibe-result-row")!;
+  await act(async () => { row.open = true; row.dispatchEvent(new Event("toggle")); });
+  await click("Change expected result");
+  expect(dispute).toHaveBeenCalledWith("Ask only for missing details.", failure);
 });

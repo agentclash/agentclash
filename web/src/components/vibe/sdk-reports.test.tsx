@@ -37,6 +37,17 @@ it("shows imported results with zero operations and selects the server binding o
  const history=node.querySelector<HTMLDetailsElement>('details[aria-label="SDK report history"]');expect(history).not.toBeNull();expect(history!.open).toBe(false);await act(async()=>history!.querySelector("summary")!.click());expect(history!.open).toBe(true);
  await act(async()=>button(node,"Open report local").click());expect(select).toHaveBeenCalledWith(report.binding);}finally{await act(async()=>root.unmount());node.remove()}
 });
+it("omits empty project SDK history and reveals it when a report exists",async()=>{
+ transport.fetch.mockResolvedValue([]);const node=document.createElement("div");document.body.append(node);const root=createRoot(node);const select=vi.fn();
+ try{
+  await act(async()=>root.render(<SDKReports {...props} hideEmptyHistory refresh={1} onSelectResult={select}/>));
+  expect(node.querySelector('[aria-label="SDK report history"]')).toBeNull();
+  transport.fetch.mockResolvedValue([report]);
+  await act(async()=>root.render(<SDKReports {...props} hideEmptyHistory refresh={2} onSelectResult={select}/>));
+  const history=node.querySelector<HTMLDetailsElement>('[aria-label="SDK report history"]')!;expect(history).not.toBeNull();expect(history.open).toBe(false);
+  await act(async()=>history.querySelector<HTMLElement>("summary")!.click());await act(async()=>button(node,"Open report local").click());expect(select).toHaveBeenCalledWith(report.binding);
+ }finally{await act(async()=>root.unmount());node.remove()}
+});
 it.each(["signed-out","no-workspace"])("keeps %s SDK report guidance inside optional history",async(state)=>{
  const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
  try{
@@ -200,5 +211,15 @@ it.each([new Error("Response lost"),new VibeError("unauthenticated","Sign in aga
   await act(async()=>root.render(<SDKReportDetail {...props} report={selected} revision={2} onPromoted={done}/>));await change(node.querySelector('select')!,"local");await act(async()=>node.querySelector<HTMLInputElement>('input[type="checkbox"]')!.click());await act(async()=>button(node,"Create version with this expectation").click());
   await act(async()=>root.render(<SDKReportDetail {...props} report={selected} revision={9} onPromoted={done}/>));expect(button(node,"Review expectation again")).toBeUndefined();expect(node.querySelector('select')!.disabled).toBe(true);expect(writes).toHaveLength(1);
   await act(async()=>button(node,"Retry expectation promotion").click());expect(writes).toHaveLength(2);expect(writes[1]).toBe(writes[0]);expect(done).toHaveBeenCalledWith({id:"already-created-version"});
+ }finally{await act(async()=>root.unmount());node.remove()}
+});
+
+it("retries an unavailable project history without showing an empty SDK report history",async()=>{
+ vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT",true);transport.fetch.mockRejectedValue(new Error("History unavailable"));const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
+ try{
+  await act(async()=>root.render(<SDKReports {...props} selectedReport={undefined} hideEmptyHistory/>));
+  expect(node.querySelector('[aria-label="SDK report history"]')).toBeNull();expect(node.querySelector('[role="alert"]')!.textContent).toBe("History unavailable");
+  transport.fetch.mockResolvedValue([]);await act(async()=>[...node.querySelectorAll("button")].find(b=>b.textContent==="Reload SDK reports")!.click());
+  expect(node.textContent).toBe("");
  }finally{await act(async()=>root.unmount());node.remove()}
 });

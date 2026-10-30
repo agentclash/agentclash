@@ -1,6 +1,6 @@
 import {expect,test,type Page} from "@playwright/test";
 import {writeFile} from "node:fs/promises";
-import {chooseDoor,doorButton,doorReady,improveSource,sendButton,showView,sourceButton} from "../vibe/entry-model";
+import {chooseDoor,doorButton,doorReady,improveSource,sendButton,showView,sourceButton,runTestsButton,testChangeButton,addAgentInstructions} from "../vibe/entry-model";
 const api=`http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const description="Answer shop return questions. Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund. Prepare exactly three tests.";
 test.beforeEach(async({request})=>{
@@ -185,13 +185,12 @@ test("imported tests need independent target instructions and keep identical gra
  await page.getByRole('button',{name:'New project',exact:true}).click();await chooseDoor(page,'improve');
  await page.locator('input[type=file]').setInputFiles({name:'returns.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(original))});
  await openView(page,'Tests');
- await expect(page.getByRole('button',{name:'Add your agent',exact:true})).toBeVisible();
+ await expect(addAgentInstructions(page)).toBeVisible();
  let state=await evidence(page);expect(state.session.operations).toHaveLength(0);expect(state.session.document.artifacts.at(-1).blueprint).toEqual(original);
- await page.getByRole('button',{name:'Create an agent',exact:true}).click();
  await page.getByRole('textbox',{name:'Agent instructions',exact:true}).fill('Opened items are eligible. Unopened items within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.');
- await page.getByRole('button',{name:'Use these instructions',exact:true}).click();
+ await addAgentInstructions(page).click();
  await openView(page,'Tests');
- await page.getByRole('button',{name:'Run 3 tests',exact:true}).click();
+ await runTestsButton(page).click();
  await expect(page.getByRole('dialog')).toContainText('up to');
  expect((await evidence(page)).session.operations).toHaveLength(0);
  await expect(page.getByRole('dialog')).toContainText('3 tests ·');
@@ -204,7 +203,7 @@ test("imported tests need independent target instructions and keep identical gra
  const updated=await patch.json();
  await page.goto(`/vibe-evals?session=${state.session.id}&agent=${updated.document.artifacts.at(-1).id}&view=build`);
  await openView(page,'Tests');
- await page.getByRole('button',{name:'Improve and rerun',exact:true}).click();
+ await testChangeButton(page).click();
  await expect(page.getByRole('dialog')).toContainText('3 tests ·');
  await page.getByRole('button',{name:'Start run',exact:true}).click();
  await expect.poll(async()=>{const v=await evidence(page);return v.session.operations.length===2 && v.session.operations.at(-1)?.state==='COMPLETED';}).toBe(true);
@@ -212,7 +211,9 @@ test("imported tests need independent target instructions and keep identical gra
  expect(rerun.baseline_id).toBe(baseline.id);expect(rerun.grading.hash).toBe(baseline.grading.hash);
  expect(rerun.scorecard.passed).toBe(3);expect(state.session.document.artifacts.at(-1).blueprint).toEqual(original);
  await openView(page,'Results');
- await expect(page.getByText('1 fixed · 0 new failures. Same tests and evaluator.')).toBeVisible();
+ await expect(page.getByText('1 fixed · 0 new failures. Same tests and grading model.')).toBeVisible();
+ await expect(page.getByRole('button',{name:'Copy the new instructions',exact:true})).toBeVisible();
+ await expect(page.getByText("Paste them into your app. We don't change your live app.",{exact:true})).toBeVisible();
  await page.screenshot({path:info.outputPath('same-tests-improvement.png'),fullPage:true});
 });
 
@@ -379,7 +380,7 @@ test("pasted instructions remain the exact target and run only after the disclos
  expect(v.session.document.artifacts[0].agent_prompt).toBe(instructions);
  expect(v.calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(callsBefore);
  await openView(page,'Tests');
- await page.getByRole('button',{name:'Run 3 tests',exact:true}).click();
+ await runTestsButton(page).click();
  await expect(page.getByRole('dialog')).toContainText('up to');
  expect((await evidence(page)).calls.filter((c:{role:string})=>c.role==='target')).toHaveLength(callsBefore);
  await expect(page.getByRole('dialog')).toContainText('3 tests ·');

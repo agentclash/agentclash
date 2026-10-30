@@ -103,6 +103,10 @@ export function CaseEvidence({
   const error = current?.error;
   const loading = open && !current;
   const finding = evidence ? findingCheck(evidence) : undefined;
+  const input = evidence?.input != null ? caseInput(evidence.input) : evidence?.messages?.filter(message => message.role === "user").map(message => message.content).join("\n\n") || "No input was recorded.";
+  const cited = new Set(finding?.message_ids || []);
+  const replies = evidence?.messages?.filter(message => message.role === "assistant") || [];
+  const reply = replies.findLast(message => cited.has(message.id))?.content || replies.at(-1)?.content || evidence?.output;
   const prompt =
     evidence && allowFixPrompt ? fixPrompt(evidence, origin) : null;
   const explanation =
@@ -176,9 +180,9 @@ export function CaseEvidence({
               </p>
             )}
             {exampleFirst && <div className="vibe-example-evidence">
-              <div><p className="vibe-evidence-label">{compactPreview ? "We gave it" : "Test input"}</p>{compactPreview ? <EvidenceExcerpt text={caseInput(evidence.input)} label="input" /> : <SafeMarkdown>{caseInput(evidence.input)}</SafeMarkdown>}</div>
-              {!compactPreview && <div><p className="vibe-evidence-label">What it should do</p><SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown></div>}
-              <div><p className="vibe-evidence-label">{compactPreview ? "It replied" : "What it actually replied"}</p>{evidence.output ? <div className="vibe-example-reply">{compactPreview ? <EvidenceExcerpt text={evidence.output} label="reply" /> : <AgentReply>{evidence.output}</AgentReply>}</div> : <p>No reply was recorded.</p>}</div>
+              <div><p className="vibe-evidence-label">We gave it</p>{compactPreview ? <EvidenceExcerpt text={input} label="input" /> : <SafeMarkdown>{input}</SafeMarkdown>}</div>
+              <div><p className="vibe-evidence-label">It replied</p>{reply ? <div className="vibe-example-reply">{compactPreview ? <EvidenceExcerpt text={reply} label="reply" /> : <AgentReply>{reply}</AgentReply>}</div> : <p>No reply was recorded.</p>}</div>
+              <div><p className="vibe-evidence-label">It should</p><SafeMarkdown>{expectedBehavior(evidence, finding)}</SafeMarkdown></div>
             </div>}
             {finding && (!compactPreview || finding.verdict === "FAIL") && (
               <div>
@@ -322,7 +326,7 @@ function EvidenceDetails({
           aria-controls={id}
           onClick={() => setExpanded((value) => !value)}
         >
-          {expanded ? "Hide evidence" : "See evidence"}
+          {expanded ? "Hide full conversation" : "Show full conversation"}
           <ChevronRight
             aria-hidden="true"
             className={expanded ? "rotate-90" : ""}
@@ -339,7 +343,7 @@ function EvidenceDetails({
             Change expected result
           </VibeButton>
         )}
-        {onRegrade && <VibeButton variant="quiet" disabled={busy} onClick={onRegrade}>Regrade saved replies</VibeButton>}
+        {onRegrade && <VibeButton variant="quiet" disabled={busy} onClick={onRegrade}>Grade the same replies again</VibeButton>}
       </div>
       {onRegrade && <p className="text-sm vibe-muted">Regrading uses the same replies and rules. Your earlier results stay saved.</p>}
       <div

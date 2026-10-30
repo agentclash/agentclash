@@ -339,7 +339,7 @@ for (const combo of combos) {
       const failed = page.locator(".vibe-result-row").filter({ hasText: inputs[1] }).first();
       if (await failed.count()) {
         if (!(await failed.evaluate(el => (el as HTMLDetailsElement).open))) await failed.locator("summary").first().click();
-        const evidence = failed.getByRole("button", { name: "See evidence" });
+        const evidence = failed.getByRole("button", { name: "Show full conversation" });
         if (await evidence.count()) await evidence.first().click();
         await failed.scrollIntoViewIfNeeded();
       }
@@ -524,7 +524,7 @@ for (const combo of combos) {
       await chooseDoor(page, "improve");
       await doorReady(page, "improve");
       await improveSource(page, "import", packFile);
-      await expect(page.getByRole("button", { name: "Add your agent", exact: true })).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByRole("button", { name: "Add your agent's instructions", exact: true })).toBeVisible({ timeout: 20_000 });
       await shoot(page, "r-improve-pack-imported", combo, { tall: true });
       // The cost dialog on the Improve door, reached from saved instructions.
       await page.goto("/vibe-evals");
@@ -534,7 +534,7 @@ for (const combo of combos) {
       await page.getByRole("textbox", { name: "Agent instructions to test" }).fill(description);
       await page.getByRole("button", { name: "Prepare tests", exact: true }).click();
       await page.getByRole("tab", { name: "Tests", exact: true }).click();
-      await page.getByRole("button", { name: "Run 3 tests", exact: true }).click();
+      await page.getByRole("button", { name: /^Run 3 tests(?: · up to \$[0-9.,]+)?$/ }).click();
       await expect(page.getByRole("dialog").getByRole("button", { name: "Start run" })).toBeEnabled();
       await shoot(page, "r-improve-cost-dialog", combo);
       expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);

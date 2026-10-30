@@ -747,6 +747,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                   </div>
                 )}
                 <VibeScorecard
+                      buildJourney={buildJourney}
                   findingFirst={!!door}
                   testJourney={p.testJourney}
                   primary={primary === "results"}

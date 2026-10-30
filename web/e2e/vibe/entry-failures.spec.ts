@@ -4,7 +4,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { description, fakeVibe, instructions, transcript, expectation, type FakeOptions } from "./entry-fake";
 import { writeRecord } from "./flow-meter";
-import { chooseDoor, composer, doorButton, doorReady, entryNotice, entryReady, improveSource, sendButton, workspacePicker } from "./entry-model";
+import { chooseDoor, composer, doorButton, doorReady, entryNotice, entryReady, improveSource, sendButton, workspacePicker , runTestsButton } from "./entry-model";
 
 test.use({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
 test.describe.configure({ timeout: 90_000 });
@@ -110,7 +110,7 @@ test.describe("H7 no credits", () => {
     await page.getByRole("textbox", { name: "Agent instructions to test" }).fill(instructions);
     await page.getByRole("button", { name: "Prepare tests" }).click();
     await page.getByRole("tab", { name: "Tests", exact: true }).click();
-    await page.getByRole("button", { name: "Run 3 tests", exact: true }).click();
+    await runTestsButton(page).click();
     await page.getByRole("dialog").getByRole("button", { name: "Start run", exact: true }).click();
   }
 
@@ -119,15 +119,18 @@ test.describe("H7 no credits", () => {
     await startRun(page);
     await expect(page.getByRole("alert").filter({ hasText: noCredits.message })).toBeVisible();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Run 3 tests", exact: true })).toBeEnabled();
+    await expect(runTestsButton(page)).toBeDisabled();
+    await creditsActionNextTo(page, noCredits.message);
     await afterReconnect(fake);
     await writeRecord("h7-run", { alerts: await page.getByRole("alert").allInnerTexts(), writes: writes(fake) });
-    expect(writes(fake)).toEqual(["POST /sessions", "POST /sessions/:id/messages", "POST /sessions/:id/run-quote", "POST /sessions/:id/messages"]);
+    expect(writes(fake).filter(write => !write.endsWith("/run-quote"))).toEqual(["POST /sessions", "POST /sessions/:id/messages", "POST /sessions/:id/messages"]);
+    const quotes = fake.posts.filter(post => post.path.endsWith("/run-quote"));
+    expect(quotes).toHaveLength(1);
+    for (const quote of quotes) expect(quote.body).toMatchObject({ kind: "check", artifact_id: "v1", approve_artifact: true });
     expect(fake.errors).toEqual([]);
   });
 
   test("on the Improve Start run: a Credits action sits next to the error", async ({ page }) => {
-    test.fail(true, known("H7"));
     await fakeVibe(page, { ...signedIn, failures: { "POST /messages:check": noCredits } });
     await startRun(page);
     await creditsActionNextTo(page, noCredits.message);

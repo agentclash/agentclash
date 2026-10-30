@@ -93,7 +93,7 @@ function button(name: string) {
     ...document.querySelectorAll<HTMLButtonElement>("button"),
   ].find(
     (b) =>
-      b.getAttribute("aria-label") === name || b.textContent?.trim() === name,
+      b.getAttribute("aria-label") === name || b.textContent?.trim() === name || b.textContent?.trim().startsWith(`${name} · up to $`),
   );
   expect(found, `button: ${name}`).toBeTruthy();
   return found!;
@@ -225,9 +225,13 @@ it.each([[false,false],[true,false],[false,true]])("saves recorded replies throu
   const evidence=requests.find(r=>r.path.endsWith("/evidence"))!;
   expect(evidence.body).toMatchObject({revision:1,content:"Customer: Hello\nAgent: Exact reply",expectations:[{id:"expectation-1",statement:"Answer without inventing facts."}]});
   expect(typeof evidence.body.client_id).toBe("string");
-  expect(requests.some(r=>r.path.endsWith("/messages")||r.path.endsWith("/run-quote"))).toBe(false);
+  expect(requests.some(r=>r.path.endsWith("/messages") || r.path.endsWith("/run-quote"))).toBe(false);
   expect(container.textContent).toContain("Exact reply");
   await click("Run recorded tests");
+  const cost = document.querySelector('[role="dialog"]')!;
+  expect(cost.querySelector('[data-slot="dialog-description"]')?.textContent).toBe("1 test · up to $0.00.");
+  expect(cost.textContent).toContain("No new replies are generated and your app is not called.");
+  expect(cost.textContent).not.toContain("selected instructions, materials and tests");
   expect(requests.find(r=>r.path.endsWith("/run-quote"))?.body).toMatchObject({artifact_id:"recorded-version",evidence_set_id:"recorded-source",kind:"check"});
   expect(requests.some(r=>r.path.endsWith("/messages"))).toBe(false);
 });
@@ -1788,8 +1792,7 @@ it("prepares tests before collecting actual instructions and preserves the suite
   expect(container.textContent).toContain("3 tests are ready");
   expect(
     container.querySelector('textarea[aria-label="Agent instructions"]'),
-  ).toBeNull();
-  await click("Add your agent");
+  ).not.toBeNull();
   expect(container.textContent).toContain(
     "your app’s tools and data aren’t connected",
   );
@@ -1798,7 +1801,7 @@ it("prepares tests before collecting actual instructions and preserves the suite
     "Use our supplied return policy. Ask for missing details.",
     "Agent instructions",
   );
-  await click("Use these instructions");
+  await click("Add your agent's instructions");
   expect(posts()).toHaveLength(0);
   expect(session.document.artifacts.at(-1)?.blueprint).toEqual(blueprint);
   await click("Run 3 tests");
@@ -1840,7 +1843,7 @@ it.each([false, true])("keeps a generated suite without inference even when unav
   };
   await render();
   if (unavailable) expect(button("Run 3 tests").disabled).toBe(true);
-  await click("Keep these tests");
+  await click(unavailable ? "Keep these tests" : "Keep for later");
   await act(async () => {
     const dialog = document.querySelector('[role="dialog"]')!;
     const save = [...dialog.querySelectorAll("button")].find(
@@ -2742,20 +2745,22 @@ it.each([[false,false],[false,true],[true,false]])("collects new recorded replie
   if(path.endsWith("/run-quote"))return json({id:"new-source-quote",kind:"run",revision:session.revision,cases:1,calls:1,max_cost_nano_usd:0,expires_at:new Date(Date.now()+600000).toISOString()});
   return initial(path,options);
  };
- await render();await click("Results");await click(testJourney?"Add new recorded replies":"Test new replies");
- expect(requests.some(r=>r.path.endsWith("/run-quote"))).toBe(false);
+ await render();await click("Results");await click("Test new replies");
+ expect(requests.some(r=>r.path.endsWith("/messages"))).toBe(false);
  expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Recorded replies"]')!.value).toBe("");
  await type("Customer: Question\nAgent: Corrected reply","Recorded replies");await type("Use the supplied facts.","Expected behavior");await click("Review recorded replies");
  if(lostAck){await act(async()=>snapshot(session));await click("Retry saving these replies");const attempts=requests.filter(r=>r.path.endsWith("/evidence"));expect(attempts[1].body).toEqual(attempts[0].body);}
  expect(requests.find(r=>r.path.endsWith("/evidence"))?.body.expectations).toEqual([{id:"original-rule",statement:"Use the supplied facts."}]);
- expect(requests.some(r=>r.path.endsWith("/messages")||r.path.endsWith("/run-quote"))).toBe(false);
+ expect(requests.some(r=>r.path.endsWith("/messages"))).toBe(false);
  expect(session.document.artifacts[0]).toEqual(oldArtifact);
- await act(async()=>root.render(<div/>));await render();await click("Tests");await click("Run recorded tests");
- expect(requests.find(r=>r.path.endsWith("/run-quote"))?.body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source"});
+ await act(async()=>root.render(<div/>));await render();await click("Tests");
+ expect(requests.some(r=>r.path.endsWith("/run-quote"))).toBe(false);
+ await click("Run recorded tests");
+ expect(requests.findLast(r=>r.path.endsWith("/run-quote"))?.body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source"});
  expect(requests.some(r=>r.path.endsWith("/messages"))).toBe(false);
  await click("Refresh estimate");
- const quotes=requests.filter(r=>r.path.endsWith("/run-quote"));expect(quotes).toHaveLength(2);
- expect(quotes[1].body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source"});
+ const quotes=requests.filter(r=>r.path.endsWith("/run-quote")&&r.body.artifact_id==="new-recorded");expect(quotes).toHaveLength(2);
+ expect(quotes.at(-1)!.body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source"});
  await click("Start run");
  expect(requests.find(r=>r.path.endsWith("/messages"))?.body).toMatchObject({kind:"retest",baseline_id:baseline.id,artifact_id:"new-recorded",evidence_set_id:"new-source",run_quote_id:"new-source-quote"});
 });
@@ -2927,6 +2932,25 @@ function readyTests(door: "build" | "test" = "test") {
   session.document = { ...session.document, format_version: 1, test_journey: true, evaluation: { id: session.id, chat_id: session.id, door } };
   return suite;
 }
+
+it.each(["guest", "member", "viewer", "no workspace", "loading"])("shows SDK import only for a signed-in workspace writer (%s)", async actor => {
+  readyTests();
+  if (actor !== "guest") signedInWorkspace();
+  if (actor !== "guest" && actor !== "no workspace") session.workspace_id = "workspace-one";
+  if (actor === "viewer") harness.me.mockResolvedValue({ organizations: [{ role: "org_member", workspaces: [{ id: "workspace-one", name: "Workspace One", role: "workspace_viewer" }] }] });
+  if (actor === "loading") harness.me.mockReturnValue(new Promise(() => {}));
+  session.operations = [run(runID, "artifact-one")];
+  harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);
+  respond = async path => path === "/config" ? twoDoorConfig() : path.endsWith("/case") ? json(session.operations[0].results[0]) : path.endsWith("/reports") || path.endsWith("/canonical-results") || path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render();
+  expect(container.querySelector('[aria-label="Run results"]')).not.toBeNull();
+  const summaries = [...container.querySelectorAll("summary")].map(s => s.textContent);
+  expect(summaries.filter(s => s === "Import SDK report")).toHaveLength(actor === "member" ? 1 : 0);
+  expect(summaries).not.toContain("SDK report history");
+  expect(summaries).not.toContain("Application run history");
+  expect(container.querySelector('[aria-label="Observed result evidence"]')).toBeNull();
+  if (actor === "guest") expect(requests.filter(r => r.path.endsWith("/reports") || r.path.endsWith("/canonical-results"))).toHaveLength(0);
+});
 function run(id: string, artifact: string, extra: Partial<Operation> = {}): Operation {
   return { id, kind: "check", state: "COMPLETED", billing: "SETTLED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, source: { kind: "prompt", label: "Tests", artifact_id: artifact },
     results: [{ case_key: "case-1", version: artifact, input: { question: "A complete task" }, output: "A wrong reply", verdict: "FAIL", checks: [{ key: "behavior", verdict: "FAIL", evidence: "It ignored the rule." }] }],
@@ -3137,7 +3161,7 @@ it("offers See the result as the primary on Tests after these tests ran, and Run
   expect(params().get("run")).toBe(runID);
 });
 
-it.each([["build", "Apply change and rerun"], ["test", "Improve and rerun"]] as const)("selects Guide's fix on the %s Agent view with the diff open and the rerun next to it, and runs nothing", async (door, rerun) => {
+it.each([["build", "Apply change and rerun"], ["test", "Test this change"]] as const)("selects Guide's fix on the %s Agent view with the diff open and the rerun next to it, and runs nothing", async (door, rerun) => {
   readyTests(door);
   session.operations = [run(runID, "artifact-one")];
   harness.params = new URLSearchParams(`session=${session.id}&view=results&run=${runID}`);
@@ -3149,7 +3173,7 @@ it.each([["build", "Apply change and rerun"], ["test", "Improve and rerun"]] as 
     return path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
   };
   await render();
-  await click("Help me fix this");
+  await click(door === "build" ? "Help me fix this" : "Suggest a fix");
   expect(posts()[0].body).toMatchObject({ kind: "message", purpose: "suggest_change", baseline_id: runID });
   expect(params().get("view")).toBe("agent");
   const v1 = session.document.artifacts[0];
@@ -3166,7 +3190,7 @@ it.each([["build", "Apply change and rerun"], ["test", "Improve and rerun"]] as 
   expect(change.textContent).toContain("Never promise a refund.");
   expect(posts()).toHaveLength(1);
   await click(rerun);
-  expect(requests.find(r => r.path.endsWith("/run-quote"))?.body).toMatchObject({ kind: "retest", baseline_id: runID, artifact_id: "artifact-two" });
+  expect(requests.findLast(r => r.path.endsWith("/run-quote"))?.body).toMatchObject({ kind: "retest", baseline_id: runID, artifact_id: "artifact-two" });
   expect(dialogNames()).toEqual(["Run the same tests again"]);
   expect(posts()).toHaveLength(1);
 });
@@ -3234,7 +3258,7 @@ it("shows a failed run estimate once", async () => {
   await render();
   await click("Run 3 tests");
   expect(container.textContent?.split("Estimates are paused.").length).toBe(2);
-  expect(container.textContent).toContain("Estimate failed: Estimates are paused.");
+  expect(container.textContent).toContain("Couldn't get the price. Estimates are paused.");
   expect(dialogNames()).toEqual([]);
   expect(posts()).toHaveLength(0);
 });
@@ -3273,4 +3297,105 @@ it("returns focus to the project title from the chooser when the project has no 
   await click("New project");
   await click("Back to your project"); await frame();
   expect(document.activeElement).toBe(container.querySelector(".vibe-project-header h1"));
+});
+
+it("keeps an Improve credit rejection next to Run and opens Credits without another run", async () => {
+  readyTests("test"); signedInWorkspace(); session.workspace_id = "workspace-one";
+  harness.params = new URLSearchParams(`session=${session.id}&workspace=workspace-one&view=tests`);
+  respond = async path => path === "/config" ? twoDoorConfig()
+    : path.startsWith("/credits?") ? json({ products: [], available_nano_usd: 0, held_nano_usd: 0 })
+    : path.endsWith("/run-quote") ? json({ id: "quote", cases: 3, calls: 6, max_cost_nano_usd: 0, expires_at: new Date(Date.now() + 600000).toISOString() })
+    : path.endsWith("/messages") ? json({ error: { code: "insufficient_credits", message: "This workspace has no AI credits.", admission: "rejected" } }, 402)
+    : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render(); await click("Run 3 tests"); await click("Start run");
+  const near = container.querySelector('.vibe-tests-actions [role="alert"]');
+  expect(near?.textContent).toContain("This workspace has no AI credits.");
+  expect(near?.querySelector("button")?.textContent).toBe("Credits");
+  expect(button("Run 3 tests").disabled).toBe(true);
+  expect(container.textContent?.split("This workspace has no AI credits.")).toHaveLength(2);
+  await act(async () => near!.querySelector<HTMLButtonElement>("button")!.click());
+  expect(dialogNames()).toEqual(["Workspace AI credits"]);
+  expect(posts()).toHaveLength(1);
+});
+
+it("ends a compared Improve run with one Copy primary and the exact new instructions", async () => {
+  const clipboard = vi.fn().mockResolvedValue(undefined);
+  Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: clipboard } });
+  const original = readyTests("test");
+  const updated = { ...original, id: "compared-version", parent_id: original.id, agent_prompt: "Exact improved policy." };
+  const baseline = run(runID, original.id, { grading: { version: 1, hash: "fixed-grading" } });
+  const current = run("compared-result", updated.id, { kind: "retest", baseline_id: baseline.id, grading: baseline.grading,
+    results: [{ ...baseline.results[0], version: updated.id, verdict: "PASS", output: "Correct reply", checks: [{ key: "behavior", verdict: "PASS", evidence: "Followed the rule." }] }],
+    scorecard: { passed: 1, failed: 0, unknown: 0, total: 1, evaluated: 1, pass_rate: 1, coverage: 1 } });
+  session.document.artifacts.push(updated); session.operations = [baseline, current];
+  harness.params = new URLSearchParams(`session=${session.id}&agent=${updated.id}&view=results&run=${current.id}`);
+  respond = async path => path === "/config" ? twoDoorConfig()
+    : path.includes("/case") ? json(path.includes(baseline.id) ? baseline.results[0] : current.results[0])
+    : path.endsWith("/run-quote") ? json({ id: "quote", cases: 1, calls: 2, max_cost_nano_usd: 0, expires_at: new Date(Date.now() + 600000).toISOString() })
+    : path.endsWith("/grade-reviews") || path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render();
+  expect(container.textContent).toContain("1 fixed · 0 new failures. Same tests and grading model.");
+  expect(container.textContent).toContain("Paste them into your app. We don't change your live app.");
+  expect([...container.querySelectorAll('.vibe-project-main .vibe-button-primary')].map(button => button.textContent?.trim())).toEqual(["Copy the new instructions"]);
+  await click("Copy the new instructions"); expect(clipboard).toHaveBeenCalledWith(updated.agent_prompt);
+  expect(posts()).toHaveLength(0);
+});
+
+it("runs an imported pack after inline instructions without requesting a price before Run", async () => {
+  const suite = readyTests("test"); suite.agent_prompt = "";
+  harness.params = new URLSearchParams(`session=${session.id}&view=tests&agent=${suite.id}`);
+  const blueprint = structuredClone(suite.blueprint);
+  respond = async (path, options) => {
+    if (path === "/config") return twoDoorConfig();
+    if (path.endsWith("/run-quote")) return json({ id: "pack-quote", cases: 3, calls: 6, max_cost_nano_usd: 120000000, expires_at: new Date(Date.now() + 600000).toISOString() });
+    if (options.method === "PATCH") {
+      const body = JSON.parse(String(options.body));
+      const bound = { ...suite, id: "bound-import", parent_id: suite.id, agent_prompt: body.agent_prompt };
+      session = { ...session, revision: session.revision + 1, document: { ...session.document, artifacts: [...session.document.artifacts, bound] } };
+      return json(session);
+    }
+    if (path.endsWith("/messages")) return json({ id: "pack-run", kind: "check", state: "QUEUED", models: defaultModels, results: [] }, 202);
+    return path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  };
+  await render();
+  expect(button("Add your agent's instructions").disabled).toBe(true);
+  await type("Use our actual return policy.", "Agent instructions");
+  expect(button("Add your agent's instructions").disabled).toBe(false);
+  await click("Add your agent's instructions");
+  expect(session.document.artifacts.at(-1)?.blueprint).toEqual(blueprint);
+  expect(button("Run 3 tests").disabled).toBe(false);
+  expect(button("Run 3 tests").textContent?.trim()).toBe("Run 3 tests");
+  expect(requests.filter(r => r.path.endsWith("/run-quote"))).toHaveLength(0);
+  await click("Run 3 tests");
+  expect(dialogNames()).toEqual(["Run these tests"]);
+  expect(document.querySelector('[data-slot="dialog-description"]')?.textContent).toBe("3 tests · up to $0.12.");
+  expect(requests.filter(r => r.path.endsWith("/run-quote"))).toHaveLength(1);
+  expect(posts()).toHaveLength(0);
+  await click("Start run");
+  expect(posts()).toHaveLength(1);
+  expect(posts()[0].body).toMatchObject({ kind: "check", artifact_id: "bound-import", run_quote_id: "pack-quote", approve_artifact: true });
+});
+
+it("keeps a quote credit rejection beside Run and retries only after the user's click", async () => {
+  readyTests("test"); signedInWorkspace(); session.workspace_id = "workspace-one";
+  harness.params = new URLSearchParams(`session=${session.id}&workspace=workspace-one&view=tests`);
+  let estimates = 0;
+  respond = async path => path === "/config" ? twoDoorConfig()
+    : path.endsWith("/run-quote") ? ++estimates === 1
+      ? json({ error: { code: "insufficient_credits", message: "No credits available." } }, 402)
+      : json({ id: "funded-quote", cases: 3, calls: 6, max_cost_nano_usd: 0, expires_at: new Date(Date.now() + 600000).toISOString() })
+    : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render(); expect(estimates).toBe(0);
+  await click("Run 3 tests");
+  const near = container.querySelector('.vibe-tests-actions [role="alert"]');
+  expect(near?.textContent).toContain("No credits available.");
+  expect(container.textContent?.split("No credits available.")).toHaveLength(2);
+  expect(button("Run 3 tests").disabled).toBe(true);
+  await act(async () => near!.querySelector<HTMLButtonElement>("button")!.click());
+  expect(dialogNames()).toEqual(["Workspace AI credits"]);
+  await click("Close credits");
+  expect(estimates).toBe(1); expect(posts()).toHaveLength(0);
+  await act(async () => [...near!.querySelectorAll("button")].find(b => b.textContent === "Try again")!.click());
+  expect(estimates).toBe(2); expect(dialogNames()).toEqual(["Run these tests"]);
+  expect(button("Start run").disabled).toBe(false); expect(posts()).toHaveLength(0);
 });

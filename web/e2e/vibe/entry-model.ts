@@ -72,3 +72,8 @@ export async function improveSource(page: Page, source: ImproveSource, file?: Fi
   await sourceButton(page, source).click();
   if (chooser && file) await (await chooser).setFiles(file);
 }
+
+// Improve can display a matching price from an earlier Run click.
+export const runTestsButton = (page: Page, count = 3) => page.getByRole("button", { name: new RegExp(`^Run ${count} tests(?: · up to \\$[0-9.,]+)?$`) });
+export const testChangeButton = (page: Page) => page.getByRole("button", { name: /^Test this change(?: · up to \$[0-9.,]+)?$/ });
+export const addAgentInstructions = (page: Page) => page.getByRole("button", { name: "Add your agent's instructions", exact: true });

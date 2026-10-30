@@ -868,3 +868,34 @@ test("library search rename archive and sidebar preference preserve full touch a
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  expect(control.posts.every(p=>p.path.endsWith('/metadata'))).toBe(true);expect(control.errors).toEqual([]);
 });
+
+test("Improve import keeps instructions in Tests and requests a price only on Run", async ({ page }) => {
+  const { fakeVibe, packFile, instructions } = await import("./entry-fake");
+  const { entryReady, addAgentInstructions, runTestsButton } = await import("./entry-model");
+  const fake = await fakeVibe(page);
+  await page.goto("/vibe-evals"); await entryReady(page);
+  await chooseDoor(page, "improve"); await improveSource(page, "import", packFile);
+  const tests = page.getByRole("region", { name: "Your tests", exact: true });
+  await expect(tests.getByRole("textbox", { name: "Agent instructions", exact: true })).toBeVisible();
+  await expect(tests.getByRole("button", { name: "Create an agent", exact: true })).toHaveCount(0);
+  await expect(addAgentInstructions(page)).toBeDisabled();
+  await tests.getByRole("textbox", { name: "Agent instructions", exact: true }).fill(instructions);
+  await expect(addAgentInstructions(page)).toBeEnabled();
+  await addAgentInstructions(page).click();
+  await expect(page.getByRole("tab", { name: "Tests", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(runTestsButton(page)).toHaveText("Run 3 tests");
+  await expect(runTestsButton(page)).toBeEnabled();
+  expect(fake.posts.filter(post => post.path.endsWith("/run-quote"))).toEqual([]);
+  expect(fake.posts.filter(post => post.path.endsWith("/messages"))).toEqual([]);
+  await runTestsButton(page).click();
+  const dialog = page.getByRole("dialog", { name: "Run these tests" });
+  await expect(dialog.getByText("3 tests · up to $0.12.", { exact: true })).toBeVisible();
+  expect(fake.posts.filter(post => post.path.endsWith("/run-quote"))).toHaveLength(1);
+  await dialog.getByText("What happens when I run?", { exact: true }).click();
+  await expect(dialog).toContainText("The selected model writes text replies");
+  await page.keyboard.press("Escape");
+  await expect(runTestsButton(page)).toBeFocused();
+  await expect(runTestsButton(page)).toHaveText("Run 3 tests · up to $0.12");
+  expect(fake.posts.filter(post => post.path.endsWith("/run-quote"))).toHaveLength(1);
+  expect(fake.posts.filter(post => post.path.endsWith("/messages"))).toEqual([]);
+});

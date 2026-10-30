@@ -730,7 +730,7 @@ async function createAndCheck(page: Page) {
     .getByRole("button", { name: "Send message", exact: true })
     .click({ clickCount: 2 });
   await page
-    .getByRole("button", { name: "Run 3 tests", exact: true })
+    .getByRole("button", { name: /^Run 3 tests(?: · up to \$[0-9.,]+)?$/ })
     .click();
   await page.getByRole("tab", {name:"Results",exact:true}).click();
 }

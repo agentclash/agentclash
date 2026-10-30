@@ -151,3 +151,30 @@ test("closed source remedies focus partial and rule fields; data-use details are
   expect(control.writes).toEqual(["delete-input"]);
   expect(control.errors).toEqual([]);
 });
+
+test("recorded Improve inputs show their format and count without opening help", async ({ page }) => {
+  const { fakeVibe, transcript, expectation } = await import("./entry-fake");
+  const { chooseDoor, entryReady, improveSource } = await import("./entry-model");
+  const fake = await fakeVibe(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/vibe-evals"); await entryReady(page);
+  await chooseDoor(page, "improve"); await improveSource(page, "recorded");
+  const replies = page.getByRole("textbox", { name: "Recorded replies", exact: true });
+  await expect(replies).toHaveAttribute("placeholder", /Customer:.*\nAgent:/);
+  await expect(replies).toHaveAttribute("placeholder", /---/);
+  await replies.fill(transcript); await page.getByLabel("Expected behavior", { exact: true }).fill(expectation);
+  await expect(page.getByRole("status").filter({ hasText: "1 conversation · 2 messages" })).toBeVisible();
+  expect(fake.posts.filter(post => post.path.endsWith("/evidence"))).toEqual([]);
+  await page.getByRole("button", { name: "Review recorded replies", exact: true }).click();
+  await expect(page.locator(".vibe-recorded-bubble")).toHaveCount(2);
+  await expect(page.locator('.vibe-recorded-bubble[data-role="assistant"]')).toContainText("Agent");
+  await expect(page.getByRole("button", { name: "Run recorded tests", exact: true })).toBeEnabled();
+  expect(fake.posts.filter(post => post.path.endsWith("/run-quote"))).toEqual([]);
+  await page.getByRole("button", { name: "Run recorded tests", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Run these tests" });
+  expect(fake.posts.filter(post => post.path.endsWith("/run-quote"))).toHaveLength(1);
+  await dialog.getByText("What happens when I run?", { exact: true }).click();
+  await expect(dialog).toContainText("No new replies are generated and your app is not called.");
+  await expect(dialog).not.toContainText("selected instructions, materials");
+  expect(fake.posts.filter(post => post.path.endsWith("/messages"))).toEqual([]);
+});
