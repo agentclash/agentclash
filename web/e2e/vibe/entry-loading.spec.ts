@@ -1,12 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { defaultModels } from "../../src/lib/vibe";
+import { composer, doorButton, entryHeading, workspacePicker } from "./entry-model";
 
 test.describe("before hydration", () => {
   test.use({ javaScriptEnabled: false });
   test("server HTML already shows the V1 entry", async ({ page }) => {
     await page.goto("/vibe-evals");
-    await expect(page.getByRole("heading", { name: "What would you like to evaluate?" })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Build an agent/ })).toBeDisabled();
+    await expect(entryHeading(page)).toBeVisible();
+    await expect(doorButton(page, "build")).toBeDisabled();
     await expect(page.getByText("What should your agent do?", { exact: true })).toHaveCount(0);
   });
 });
@@ -38,15 +39,15 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
       return route.fulfill({ headers, json: [] });
     });
     await page.goto("/vibe-evals");
-    const heading = page.getByRole("heading", { name: "What would you like to evaluate?" });
-    const build = page.getByRole("button", { name: /Build an agent/ });
-    const improve = page.getByRole("button", { name: /Improve an existing agent/ });
+    const heading = entryHeading(page);
+    const build = doorButton(page, "build");
+    const improve = doorButton(page, "improve");
     await expect(heading).toBeVisible();
     await expect(build).toBeDisabled();
     await expect(improve).toBeDisabled();
     await expect(page.getByRole("status").filter({ hasText: "Connecting…" })).toBeVisible();
     await expect(page.getByText("What should your agent do?", { exact: true })).toHaveCount(0);
-    await expect(page.getByRole("textbox", { name: "Message Vibe Evals" })).toHaveCount(0);
+    await expect(composer(page)).toHaveCount(0);
     const before = await heading.boundingBox();
     await page.screenshot({ path: info.outputPath(`entry-loading-${viewport.width}.png`) });
     release();
@@ -94,14 +95,14 @@ test("offline retry preserves a restored unsent draft and submits nothing", asyn
     return route.fulfill({ headers, json: [] });
   });
   await page.goto("/vibe-evals?session=draft-session");
-  const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
-  await expect(composer).toHaveValue("Keep this unsent draft.");
+  const draft = composer(page);
+  await expect(draft).toHaveValue("Keep this unsent draft.");
   await expect(page.getByRole("alert").filter({ hasText: "Your message is still here." })).toBeVisible();
   expect(writes).toEqual([]);
   expect(quotes).toEqual([]);
   await page.getByRole("button", { name: "Retry connection" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "Couldn’t connect" })).toHaveCount(0);
-  await expect(composer).toHaveValue("Keep this unsent draft.");
+  await expect(draft).toHaveValue("Keep this unsent draft.");
   // Reconnection may price the unsent draft, but never submits or runs it.
   await expect.poll(() => quotes.length).toBe(1);
   expect(writes).toEqual([]);
@@ -131,17 +132,17 @@ for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 
     });
     await page.goto("/auth/login?returnTo=%2Fvibe-evals");
     await page.getByRole("button", { name: "Continue with AgentClash" }).click();
-    const picker = page.getByRole("combobox", { name: "Workspace for new projects", exact: true });
+    const picker = workspacePicker(page);
     await expect(picker).toBeVisible({ timeout: 20_000 });
     await expect(picker).toHaveAccessibleDescription("Choose a workspace to use its credits.");
-    await expect(page.getByRole("button", { name: /Build an agent/ })).toBeDisabled();
+    await expect(doorButton(page, "build")).toBeDisabled();
     await expect(page.getByRole("button", { name: "Review settings" })).toHaveCount(0);
     if (viewport.width < 1024) await page.getByRole("button", { name: "Open projects", exact: true }).click();
     await page.getByRole("button", { name: "Choose workspace", exact: true }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(picker).toBeFocused();
     await picker.selectOption({ label: "Support pilots" });
-    await expect(page.getByRole("button", { name: /Build an agent/ })).toBeEnabled();
+    await expect(doorButton(page, "build")).toBeEnabled();
     await expect(picker).not.toHaveAttribute("aria-describedby");
     if (viewport.width < 1024) await page.getByRole("button", { name: "Open projects", exact: true }).click();
     await expect(page.locator(".vibe-sidebar-workspace").filter({ visible: true })).toContainText("Support pilots");

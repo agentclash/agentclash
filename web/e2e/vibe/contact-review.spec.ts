@@ -7,7 +7,7 @@ const session = { id: "contact-fixture", revision: 1, event_cursor: 1, anonymous
 type ContactMode = "configured" | "email-only" | "unconfigured";
 
 async function installFixture(page: Page, mode: ContactMode, posts: string[]) {
-  const origin = new URL(process.env.VIBE_TEST_BASE_URL ?? "http://127.0.0.1:53517").origin;
+  const origin = new URL(test.info().project.use.baseURL ?? "http://127.0.0.1:53517").origin;
   let receiptStatus = "received";
   await page.route("**/v1/vibe/**", async route => {
     const req = route.request(), url = new URL(req.url()), pathname = url.pathname;

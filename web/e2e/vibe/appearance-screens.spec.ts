@@ -7,6 +7,9 @@ import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { defaultModels, type Artifact, type CaseResult, type Operation, type Session } from "../../src/lib/vibe";
 import { actionSession } from "./interaction-fixture";
+import { description, fakeVibe, packFile, transcript } from "./entry-fake";
+import { chooseDoor, composer, doorButton, doorReady, entryNotice, entryReady, improveSource, workspacePicker } from "./entry-model";
+import { tabsTo } from "./flow-meter";
 
 test.skip(process.env.VIBE_SCREENS !== "1", "Screenshot review only; enable VIBE_SCREENS=1.");
 
@@ -242,8 +245,7 @@ for (const combo of combos) {
       await prepare(page, combo);
       const control = await serve(page);
       await page.goto("/vibe-evals");
-      await expect(page.getByRole("heading", { name: "What would you like to evaluate?" })).toBeVisible({ timeout: 20_000 });
-      await expect(page.getByRole("button", { name: /Build an agent/ })).toBeEnabled({ timeout: 20_000 });
+      await entryReady(page, 20_000);
       await shoot(page, "a-entry", combo);
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
@@ -252,10 +254,9 @@ for (const combo of combos) {
       await prepare(page, combo);
       const control = await serve(page);
       await openSession(page, "build-start");
-      await expect(page.getByRole("heading", { name: "What would you like help with?" })).toBeVisible({ timeout: 20_000 });
+      await doorReady(page, "build", 20_000);
       await shoot(page, "b-build-starter", combo);
-      const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
-      await composer.fill("My agent answers shop return questions. Unopened items can be returned within 30 days. It should ask for missing details.");
+      await composer(page).fill("My agent answers shop return questions. Unopened items can be returned within 30 days. It should ask for missing details.");
       await expect(page.getByText(/Build and run 3 tests/).first()).toBeVisible();
       await page.waitForTimeout(900);
       await shoot(page, "b-build-starter-typed", combo);
@@ -266,7 +267,7 @@ for (const combo of combos) {
       await prepare(page, combo);
       const control = await serve(page);
       await openSession(page, "improve-start");
-      await expect(page.getByRole("heading", { name: "Improve an agent you already have." })).toBeVisible({ timeout: 20_000 });
+      await doorReady(page, "improve", 20_000);
       await shoot(page, "c-improve-starter", combo);
       expect(control.unknown).toEqual([]); expect(control.errors).toEqual([]);
     });
@@ -446,13 +447,13 @@ for (const combo of combos) {
       await prepare(page, combo);
       const control = await serve(page);
       await signIn(page);
-      const picker = page.getByRole("combobox", { name: "Workspace for new projects", exact: true });
+      const picker = workspacePicker(page);
       await expect(picker).toBeVisible({ timeout: 20_000 });
       await expect(page.getByText("Choose a workspace to use its credits.", { exact: true })).toBeVisible();
       await expect(page.getByRole("button", { name: "Review settings" })).toHaveCount(0);
       await shoot(page, "m-entry-workspace", combo);
       await picker.selectOption({ label: "Returns team" });
-      await expect(page.getByRole("button", { name: /Build an agent/ })).toBeEnabled();
+      await expect(doorButton(page, "build")).toBeEnabled();
       await shoot(page, "m-entry-workspace-chosen", combo);
       expect(control.errors).toEqual([]);
     });
@@ -480,6 +481,63 @@ for (const combo of combos) {
       await expect(page.getByRole("dialog", { name: "Workspace AI credits" })).toBeVisible();
       await shoot(page, "l-credits-dialog", combo);
       expect(control.errors).toEqual([]);
+    });
+
+    // Entry and door states for the redesign (verification.md G1), with the stateful entry fake.
+    test(`p entry failure and door focus ${label}`, async ({ page }) => {
+      await prepare(page, combo);
+      const failures: Record<string, { status: number; code: string; message: string }> = { "GET /config": { status: 503, code: "unavailable", message: "Offline" } };
+      const fake = await fakeVibe(page, { failures });
+      await page.goto("/vibe-evals");
+      await expect(entryNotice(page).getByRole("alert")).toContainText("Couldn’t connect", { timeout: 20_000 });
+      await shoot(page, "p-entry-config-error", combo);
+      delete failures["GET /config"];
+      await page.goto("/vibe-evals");
+      await entryReady(page, 20_000);
+      expect(await tabsTo(page, doorButton(page, "build"))).toBeGreaterThan(0);
+      await shoot(page, "p-entry-door-focus-visible", combo);
+      expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
+    });
+
+    test(`q improve sources ${label}`, async ({ page }) => {
+      await prepare(page, combo);
+      const fake = await fakeVibe(page);
+      await page.goto("/vibe-evals");
+      await entryReady(page, 20_000);
+      await chooseDoor(page, "improve");
+      await doorReady(page, "improve");
+      await improveSource(page, "instructions");
+      await page.getByRole("textbox", { name: "Agent instructions to test" }).fill(instructions);
+      await shoot(page, "q-improve-instructions", combo);
+      await page.getByRole("button", { name: "Back to conversation", exact: true }).click();
+      await improveSource(page, "recorded");
+      await page.getByLabel("Recorded replies", { exact: true }).fill(transcript);
+      await shoot(page, "q-improve-recorded", combo, { tall: true });
+      expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
+    });
+
+    test(`r improve pack import and cost dialog ${label}`, async ({ page }) => {
+      await prepare(page, combo);
+      const fake = await fakeVibe(page);
+      await page.goto("/vibe-evals");
+      await entryReady(page, 20_000);
+      await chooseDoor(page, "improve");
+      await doorReady(page, "improve");
+      await improveSource(page, "import", packFile);
+      await expect(page.getByRole("button", { name: "Add your agent", exact: true })).toBeVisible({ timeout: 20_000 });
+      await shoot(page, "r-improve-pack-imported", combo, { tall: true });
+      // The cost dialog on the Improve door, reached from saved instructions.
+      await page.goto("/vibe-evals");
+      await entryReady(page, 20_000);
+      await chooseDoor(page, "improve");
+      await improveSource(page, "instructions");
+      await page.getByRole("textbox", { name: "Agent instructions to test" }).fill(description);
+      await page.getByRole("button", { name: "Prepare tests", exact: true }).click();
+      await page.getByRole("tab", { name: "Tests", exact: true }).click();
+      await page.getByRole("button", { name: "Run 3 tests", exact: true }).click();
+      await expect(page.getByRole("dialog").getByRole("button", { name: "Start run" })).toBeEnabled();
+      await shoot(page, "r-improve-cost-dialog", combo);
+      expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
     });
   });
 }

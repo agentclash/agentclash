@@ -1,5 +1,6 @@
 import {expect,test,type Page} from "@playwright/test";
 import {writeFile} from "node:fs/promises";
+import {chooseDoor,doorButton,doorReady,improveSource,sourceButton} from "../vibe/entry-model";
 const api=`http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const description="Answer shop return questions. Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund. Prepare exactly three tests.";
 test.beforeEach(async({request})=>{
@@ -42,8 +43,8 @@ test("clear Build goes through real worker to three results, scoped export and i
  await expect(page.getByText('No projects yet.',{exact:true})).toBeVisible();
  await expect(page.getByRole('button',{name:'Retry projects',exact:true})).toHaveCount(0);
  await expect(page.getByText('Couldn’t load your projects.',{exact:false})).toHaveCount(0);
- await expect(page.getByRole('button',{name:/Build an agent/})).toBeVisible();
- await page.getByRole('button',{name:/Build an agent/}).click();
+ await expect(doorButton(page,'build')).toBeVisible();
+ await chooseDoor(page,'build');
  await expect(page.locator('[data-evaluation-id][aria-current="page"]')).toBeVisible();
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
  const send=page.getByRole('button',{name:'Send message',exact:true});
@@ -97,7 +98,7 @@ test("clear Build goes through real worker to three results, scoped export and i
 test("mobile loading exposes Stop and cancelling does not restart the initial check",async({page},info)=>{
  await page.setViewportSize({width:390,height:844});
  await page.request.post(`${api}/__fixture/control`,{data:{target_delay_ms:3000}});
- await page.goto('/vibe-evals');await page.getByRole('button',{name:/Build an agent/}).click();
+ await page.goto('/vibe-evals');await chooseDoor(page,'build');
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
  await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
@@ -115,7 +116,7 @@ test("mobile loading exposes Stop and cancelling does not restart the initial ch
  await expect(page.getByText('All these tests passed.',{exact:false})).not.toBeVisible();
 });
 test("one question then unknown produces a labelled sample, with no invented requirements",async({page},info)=>{
- await page.goto('/vibe-evals');await page.getByRole('button',{name:/Build an agent/}).click();
+ await page.goto('/vibe-evals');await chooseDoor(page,'build');
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill('Build me a returns agent for Shopify');
  await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
@@ -132,26 +133,26 @@ test("one question then unknown produces a labelled sample, with no invented req
 test("entry and context controls fit desktop and mobile",async({page},info)=>{
  for(const viewport of [{width:360,height:800},{width:390,height:844},{width:768,height:900},{width:1440,height:900}]) {
   await page.setViewportSize(viewport);await page.goto('/vibe-evals');
-  await expect(page.getByRole('button',{name:/Improve an existing agent/})).toBeVisible();
+  await expect(doorButton(page,'improve')).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:info.outputPath(`entry-${viewport.width}.png`),fullPage:true});
  }
- await page.getByRole('button',{name:/Improve an existing agent/}).click();
- for(const name of ['Import a test pack','Try my saved instructions']) await expect(page.getByRole('button',{name,exact:true})).toBeVisible();
+ await chooseDoor(page,'improve');
+ for(const source of ['import','instructions'] as const) await expect(sourceButton(page,source)).toBeVisible();
  await expect(page.getByText('Connect a live app from Details',{exact:false})).toBeVisible();
 });
 
 test("switching while a run completes keeps messages and draft attached to the selected evaluation",async({page})=>{
  await page.request.post(`${api}/__fixture/control`,{data:{target_delay_ms:2000}});
- await page.goto('/vibe-evals');await page.getByRole('button',{name:/Build an agent/}).click();
+ await page.goto('/vibe-evals');await chooseDoor(page,'build');
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
  const first=new URL(page.url()).searchParams.get('session');
  await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('checking');
  await page.getByRole('button',{name:'New project',exact:true}).click();
- await page.getByRole('button',{name:/Improve an existing agent/}).click();
- await expect(page.getByRole('heading',{name:'Improve an agent you already have.'})).toBeVisible();
+ await chooseDoor(page,'improve');
+ await doorReady(page,'improve');
  const second=new URL(page.url()).searchParams.get('session');expect(second).not.toBe(first);
  const composer=page.getByRole('textbox',{name:'Message Vibe Evals'});
  await composer.fill('My unsent support agent brief');
@@ -167,12 +168,12 @@ test("switching while a run completes keeps messages and draft attached to the s
 
 test("imported tests need independent target instructions and keep identical grading through a fix",async({page},info)=>{
  // Seed a real compiled pack through Build, then import its tests in another evaluation.
- await page.goto('/vibe-evals');await page.getByRole('button',{name:/Build an agent/}).click();
+ await page.goto('/vibe-evals');await chooseDoor(page,'build');
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
  await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('results');
  const original=(await evidence(page)).session.document.artifacts[0].blueprint;
- await page.getByRole('button',{name:'New project',exact:true}).click();await page.getByRole('button',{name:/Improve an existing agent/}).click();
+ await page.getByRole('button',{name:'New project',exact:true}).click();await chooseDoor(page,'improve');
  await page.locator('input[type=file]').setInputFiles({name:'returns.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(original))});
  await openView(page,'Tests');
  await expect(page.getByRole('button',{name:'Add your agent',exact:true})).toBeVisible();
@@ -207,7 +208,7 @@ test("imported tests need independent target instructions and keep identical gra
 });
 
 test("tougher situations prepare and run one authorized batch while preserving the baseline",async({page})=>{
- await page.goto('/vibe-evals');await page.getByRole('button',{name:/Build an agent/}).click();
+ await page.goto('/vibe-evals');await chooseDoor(page,'build');
  await page.getByRole('textbox',{name:'Message Vibe Evals'}).fill(description);
  await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();await page.getByRole('textbox',{name:'Message Vibe Evals'}).press('Enter');
  await expect.poll(async()=>{const v=await evidence(page);return v.session.document.build?.phase;}).toBe('results');
@@ -236,7 +237,7 @@ test("tougher situations prepare and run one authorized batch while preserving t
 });
 
 test("Build keeps the failed reply, proposed fix and authorized same-test improvement in project history",async({page},info)=>{
- await page.goto('/vibe-evals');await page.getByRole('button',{name:/Build an agent/}).click();
+ await page.goto('/vibe-evals');await chooseDoor(page,'build');
  const composer=page.getByRole('textbox',{name:'Message Vibe Evals'});
  await composer.fill(description);await expect(page.getByRole('button',{name:'Send message',exact:true})).toBeEnabled();await composer.press('Enter');
  await expect.poll(async()=> (await evidence(page)).session.document.build?.phase).toBe('results');
@@ -291,7 +292,7 @@ test("Build keeps the failed reply, proposed fix and authorized same-test improv
 });
 
 test("sample continuation retains its prototype through harder requests, chat, real policy and export", async ({page},info)=>{
- await page.goto('/vibe-evals'); await page.getByRole('button',{name:/Build an agent/}).click();
+ await page.goto('/vibe-evals'); await chooseDoor(page,'build');
  await expect.poll(()=>new URL(page.url()).searchParams.get('session')).toBeTruthy();
  const callsBefore=(await evidence(page)).calls.filter((c:{role:string})=>c.role==='target').length;
  const composer=page.getByRole('textbox',{name:'Message Vibe Evals',exact:true});
@@ -355,10 +356,10 @@ test("sample continuation retains its prototype through harder requests, chat, r
 
 test("pasted instructions remain the exact target and run only after the disclosed approval", async ({page}) => {
  await page.goto('/vibe-evals');
- await page.getByRole('button',{name:/Improve an existing agent/}).click();
+ await chooseDoor(page,'improve');
  await expect.poll(()=>new URL(page.url()).searchParams.get('session')).toBeTruthy();
  const callsBefore=(await evidence(page)).calls.filter((c:{role:string})=>c.role==='target').length;
- await page.getByRole('button',{name:'Try my saved instructions',exact:true}).click();
+ await improveSource(page,'instructions');
  const instructions='Answer shop return questions. Only unopened items bought within 30 days are eligible. Ask only for missing purchase age or item condition. Never claim to process a refund.';
  await page.getByRole('textbox',{name:'Agent instructions to test',exact:true}).fill(instructions);
  await page.getByRole('button',{name:'Prepare tests',exact:true}).click();
@@ -385,8 +386,8 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
  await page.setViewportSize({width:390,height:844});
  await page.goto('/vibe-evals');
- await page.getByRole('button',{name:/Improve an existing agent/}).click();
- await page.getByRole('button',{name:'Test replies from my app',exact:true}).click();
+ await chooseDoor(page,'improve');
+ await improveSource(page,'recorded');
  await expect(page.getByRole('button',{name:'Review recorded replies',exact:true})).toBeVisible();
  await page.getByLabel('Recorded replies',{exact:true}).fill('Customer: I opened it.\nAgent: I can refund that.');
  await page.getByLabel('Expected behavior',{exact:true}).fill('Opened purchases are not eligible for refunds.');
@@ -456,12 +457,10 @@ test("recorded replies intake uses an explicit quote and evaluator-only executio
 
 test("library original bytes round-trip through browser upload and selected export without inference",async({page},info)=>{
  await page.setViewportSize({width:1280,height:900});await page.goto('/vibe-evals');
- await page.getByRole('button',{name:/Improve an existing agent/}).click();
+ await chooseDoor(page,'improve');
  // Unknown canonical extension is retained exactly and remains explicitly uneditable.
  const original=Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),Buffer.from('{\r\n  "pack": {"name":"Escaped \\u0041 pack", "future_extension":true},\r\n  "version": {"version":"1.0.0"}\r\n}\r\n')]);
- const chooser=page.waitForEvent('filechooser');
- await page.getByRole('button',{name:'Import a test pack',exact:true}).click();
- await (await chooser).setFiles({name:'original escaped.json',mimeType:'application/json',buffer:original});
+ await improveSource(page,'import',{name:'original escaped.json',mimeType:'application/json',buffer:original});
  await expect(page.getByRole('button',{name:'Download original original escaped.json',exact:true})).toBeVisible();
  const sourceDownload=page.waitForEvent('download');await page.getByRole('button',{name:'Download original original escaped.json',exact:true}).click();
  const source=await sourceDownload;const {readFile}=await import('node:fs/promises');expect(await readFile((await source.path())!)).toEqual(original);
