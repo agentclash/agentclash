@@ -128,10 +128,10 @@ it("P2: exposes attachment after two chips and the switch at the bottom without 
   expect(switcher.parentElement).toBe(node.querySelector("section"));
   expect(node.querySelector("form")!.compareDocumentPosition(switcher) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(node.querySelector(".vibe-material-hint")?.textContent).toContain("Leave out secrets and customer IDs.");
-  expect(node.querySelector(".vibe-material-hint a")).toBeNull();
-  expect(node.querySelector('a[href="/docs/vibe-evals/data-use"]')).toBeNull();
+  const dataUse = node.querySelector('.vibe-material-hint a[href="/docs/vibe-evals/data-use"]');
+  expect(dataUse?.textContent).toContain("Data use");
   const controls = [...node.querySelectorAll<HTMLButtonElement>("button, textarea, select, a[href], summary")].filter(control => !control.closest("header") && !control.disabled);
-  expect(controls).toHaveLength(5);
+  expect(controls).toHaveLength(6);
 });
 it("P3: puts a left-aligned primary and price immediately below chips with its reason beneath", async () => {
   const style = document.createElement("style"); style.textContent = readFileSync("src/components/vibe/build-output.css", "utf8"); document.head.append(style);

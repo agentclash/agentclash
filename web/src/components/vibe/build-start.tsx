@@ -55,6 +55,6 @@ export function BuildStart(p: { draft: string; onDraft(text: string): void; pric
       finally { setReading(false); }
     }} />
     <VibeButton variant="quiet" disabled={unavailable} onClick={p.onSwitchDoor}>Already have an agent? Improve it instead.</VibeButton>
-    <VibeDataUseNotice showLink={false} />
+    <VibeDataUseNotice />
   </section>;
 }

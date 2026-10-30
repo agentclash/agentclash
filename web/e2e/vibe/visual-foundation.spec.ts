@@ -360,6 +360,12 @@ test("review polish: shared start hierarchy, chip rows and vertical steps, align
     expect(rects[0].y).toBeLessThan(rects[1].y); expect(rects[1].y).toBeLessThan(rects[2].y);
     for (const door of ["build", "improve"] as const) {
       await chooseDoor(page, door); await doorReady(page, door);
+      const dataUse = startScreen(page).getByRole("link", { name: "Data use and retention (new tab)", exact: true });
+      await page.mouse.move(0, 0);
+      await expect(dataUse).toBeVisible();
+      await expect(dataUse).toHaveAccessibleName("Data use and retention (new tab)");
+      await expect(dataUse).toHaveAttribute("href", "/docs/vibe-evals/data-use");
+      await expect(dataUse).toHaveCSS("text-decoration-line", "underline");
       const title = doorHeading(page, door);
       await expect(title).toHaveClass("vibe-start-title");
       await expect(title).toHaveCSS("font-family", /Instrument[ _]Serif/);

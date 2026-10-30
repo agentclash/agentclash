@@ -56,10 +56,18 @@ it("U4: quiet text aligns with its column and keeps 44px targets", async () => {
     expect(computed.minWidth).toBe("44px");
   }
 });
-it("U5: both starts use plain quiet links with a hover/focus underline", async () => {
+it("U5: quiet buttons stay plain at rest with a hover/focus underline", async () => {
   await draw(<ImproveStart {...improve} />);
   for (const button of node.querySelectorAll(".vibe-button-quiet")) expect(getComputedStyle(button).textDecoration).toBe("none");
-  expect(css).toContain(':is(a, .vibe-button-quiet):is(:hover, :focus-visible) { text-decoration: underline; }');
+  expect(css).toContain('.vibe-button-quiet:is(:hover, :focus-visible) { text-decoration: underline; }');
+});
+it.each(["build", "improve"] as const)("W1: %s keeps the shared Data use link underlined at rest", async door => {
+  await draw(door === "build" ? <BuildStart {...build} /> : <ImproveStart {...improve} />);
+  const link = node.querySelector<HTMLAnchorElement>('.vibe-data-use-notice a[href="/docs/vibe-evals/data-use"]');
+  expect(link).not.toBeNull();
+  expect(link!.textContent).toBe("Data use and retention (new tab)");
+  expect(link!.target).toBe("_blank");
+  expect(getComputedStyle(link!).textDecorationLine).toBe("underline");
 });
 it("U6: every associated input label has the same callout weight and size", async () => {
   await draw(<ImproveStart {...improve} />);

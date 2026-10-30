@@ -18,7 +18,8 @@ type Budget = { clicks: number; texts: number; files: number; decisions: number 
 // "imported tests" is 13: the import writes Guide's two messages, as the backend does, so the Guide
 // column opens with them and its controls count in the main zone (12 before PR 1, with an empty Guide).
 // Lazy creation is merged: measure the direct first-input paths; keep explicit run consent.
-const controlBudget: Record<string, number> = { entry: 3, "build start": 5, "improve start": 8, "imported tests": 13, cost: 4 };
+// "build start" is 6, one over the plan target of 5: the sixth is the required data-use link.
+const controlBudget: Record<string, number> = { entry: 3, "build start": 6, "improve start": 8, "imported tests": 13, cost: 4 };
 const tab = (page: Page, name: "Agent" | "Tests" | "Results") => page.getByRole("tab", { name, exact: true });
 const runResults = (page: Page) => page.getByRole("article", { name: "Run results" });
 const runDone = (page: Page) => expect(page.locator(".vibe-project-header")).toContainText("Run 1: Completed", { timeout: 30_000 });

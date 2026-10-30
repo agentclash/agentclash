@@ -256,8 +256,9 @@
 
 .vibe-workspace .vibe-start-title { margin: 0; font-family: var(--vibe-font-serif); font-size: var(--vibe-font-display-s); line-height: var(--vibe-leading-display); font-weight: 400; letter-spacing: -0.02em; text-wrap: balance; }
 .vibe-workspace :is(.vibe-start-page, .vibe-prototype-trial) .vibe-button-quiet:not(.vibe-example-chip) { padding-inline: 0; border-inline-width: 0; min-height: 44px; min-width: 44px; justify-content: flex-start; }
-.vibe-workspace :is(.vibe-start-page, .vibe-prototype-trial) :is(a, .vibe-button-quiet) { text-decoration: none; text-underline-offset: 3px; }
-.vibe-workspace :is(.vibe-start-page, .vibe-prototype-trial) :is(a, .vibe-button-quiet):is(:hover, :focus-visible) { text-decoration: underline; }
+.vibe-workspace :is(.vibe-start-page, .vibe-prototype-trial) .vibe-button-quiet { text-decoration: none; text-underline-offset: 3px; }
+.vibe-workspace :is(.vibe-start-page, .vibe-prototype-trial) .vibe-button-quiet:is(:hover, :focus-visible) { text-decoration: underline; }
+.vibe-workspace .vibe-data-use-notice a { text-decoration-line: underline; text-underline-offset: 4px; }
 .vibe-workspace .vibe-start-page label:not(.sr-only):not(h1 > label) { font-family: var(--font-sans), sans-serif; font-size: var(--vibe-font-callout); line-height: var(--vibe-leading-callout); font-weight: 600; }
 .vibe-workspace summary { list-style: none; }
 .vibe-workspace summary::-webkit-details-marker { display: none; }
