@@ -4,7 +4,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { description, fakeVibe } from "./entry-fake";
 import { axe, census, focused, labelInName, seriousOrCritical, tabsTo, writeRecord, type AxeViolation, type Census } from "./flow-meter";
-import { chooseDoor, composer, doorButton, doorReady, entryReady, improveSource, sendButton } from "./entry-model";
+import { chooseDoor, composer, doorButton, doorReady, entryReady, improveSource, repliesInput, sendButton, startComposer } from "./entry-model";
 
 const states = ["S0", "S1", "S1t", "S2", "S2i", "S2r"] as const;
 const schemes = ["light", "dark"] as const;
@@ -19,13 +19,13 @@ const viewports = [
 const known = (id: string) => `Known defect ${id} (see ~/.claude/plans/vibe-evals-redesign.md section 8.2): it must stay at today's baseline. The PR that fixes it deletes its baseline entry here.`;
 // Today's defects (d2248411), held at their measured baseline. A regression fails, and so does a fix,
 // which forces the fixing PR to delete the entry and meet the target instead.
-// B3 (one h1) and E2 (the Build send button's name) were fixed in PR 1: their entries are gone.
+// PR 1 fixed B3 and E2. PR 4 fixes B2 on starts, D2 and both F1 baselines.
 const baseline: Record<"B2" | "B3" | "E2" | "F1", Partial<Record<State, unknown>>> = {
-  B2: { S1: [], S2: [], S2r: [] },
+  B2: {},
   B3: {},
   E2: {},
   // Measured at 390 touch, the only viewport that runs F1.
-  F1: { S0: ["Read a sample test 352x20"], S2r: ["Sample transcript format 352x24"] },
+  F1: {},
 };
 const held = (id: keyof typeof baseline, state: State) => baseline[id][state] !== undefined;
 function check(id: keyof typeof baseline, state: State, actual: unknown, target: () => void) {
@@ -80,24 +80,50 @@ for (const { label, viewport, touch } of viewports) test.describe(label, () => {
     results.S1 = await measure(build.page, { focus: await focusAfterChange(build.page) });
     await composer(build.page).fill(description);
     await expect(sendButton(build.page)).toBeEnabled({ timeout: 20_000 });
-    await expect(build.page.getByText(/Estimate: up to/).first()).toBeVisible();
+    await expect(build.page.getByText("One free build", { exact: true })).toBeVisible();
+    expect(build.fake.posts).toEqual([]);
     results.S1t = await measure(build.page);
-    // A fresh page, so the Improve start has no draft carried over from Build.
+    // The Improve door has its own draft.
     const improve = await start();
     await chooseDoor(improve.page, "improve");
     await doorReady(improve.page, "improve");
     results.S2 = await measure(improve.page, { focus: await focusAfterChange(improve.page) });
     await improveSource(improve.page, "instructions");
-    await expect(improve.page.getByRole("textbox", { name: "Agent instructions to test" })).toBeVisible();
+    await expect(startComposer(improve.page, "improve")).toBeVisible();
     results.S2i = await measure(improve.page);
-    await improve.page.getByRole("button", { name: "Back to conversation", exact: true }).click();
     await improveSource(improve.page, "recorded");
-    await expect(improve.page.getByLabel("Recorded replies", { exact: true })).toBeVisible();
+    await expect(repliesInput(improve.page)).toBeVisible();
+    await expect(repliesInput(improve.page)).toHaveAttribute("placeholder", /Customer:.*\nAgent:/);
     results.S2r = await measure(improve.page);
     for (const { fake } of [build, improve]) { expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]); }
     expect(Object.keys(results)).toEqual([...states]);
     await writeRecord(`quality-${label.replace(" ", "-")}`, results);
     await context.close();
+  });
+
+  test("Build preview wraps whole numbered steps and keeps a short door name", async ({ page }) => {
+    await page.setViewportSize(viewport);
+    const fake = await fakeVibe(page);
+    await page.goto("/vibe-evals"); await entryReady(page);
+    const door = doorButton(page, "build");
+    await expect(door).toHaveAccessibleName("Build an agent");
+    await expect(door).toHaveAccessibleDescription("Turn a task into an agent and three tests. Next: Describe the task");
+    const steps = door.locator("ol > li");
+    await expect(steps).toHaveText(["01Describe the task", "02We draft the agent", "03Three tests run"]);
+    const layout = await steps.evaluateAll(items => items.map(item => {
+      const box = item.getBoundingClientRect(), number = item.querySelector("b")!, label = document.createRange();
+      label.selectNodeContents(item.lastChild!);
+      return { x: box.x, y: box.y, labelLines: label.getClientRects().length, whiteSpace: getComputedStyle(item).whiteSpace, numerals: getComputedStyle(number).fontVariantNumeric };
+    }));
+    for (const item of layout) {
+      expect(item.whiteSpace).toBe("nowrap"); expect(item.labelLines).toBe(1);
+      expect(item.numerals).toContain("tabular-nums");
+    }
+    if (touch) {
+      expect(layout.map(item => item.x)).toEqual([layout[0].x, layout[0].x, layout[0].x]);
+      expect(layout[1].y).toBeGreaterThan(layout[0].y); expect(layout[2].y).toBeGreaterThan(layout[1].y);
+    } else expect(await door.locator("ol").evaluate(list => getComputedStyle(list).flexWrap)).toBe("wrap");
+    expect(fake.posts).toEqual([]); expect(fake.errors).toEqual([]);
   });
 
   // The structural checks below use the light appearance: this test proves dark gives the same structure.
@@ -137,15 +163,11 @@ for (const { label, viewport, touch } of viewports) test.describe(label, () => {
   }
 
   test("D2 S0: at most 3 Tab presses reach the first door", () => {
-    // Known defect D2 at 1440 (7 presses, sidebar first). The next test holds it at that baseline.
-    test.fail(!touch, known("D2"));
+    // The empty entry starts its keyboard path at the doors.
     expect(results.S0.tabsToDoor).toBeLessThanOrEqual(3);
   });
-  if (!touch) test("D2 S0: no more Tab presses than today's baseline (7)", () => {
-    expect(results.S0.tabsToDoor).toBeLessThanOrEqual(7);
-  });
-  // D3 (fixed in PR 1): the Build composer, or the project title on Improve, takes focus after the door click.
+  // D3: the uncommitted start heading takes focus after each door click.
   for (const state of ["S1", "S2"] as const) test(`D3 ${state}: focus moves into the door, not to the page body`, () => {
-    expect(results[state].focus).toEqual(state === "S1" ? { tag: "textarea", name: "Message Vibe Evals" } : { tag: "h1", name: expect.stringMatching(/\S/) });
+    expect(results[state].focus).toEqual({ tag: "h1", name: expect.stringMatching(/\S/) });
   });
 });

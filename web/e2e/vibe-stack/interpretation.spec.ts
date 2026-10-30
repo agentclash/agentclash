@@ -5,7 +5,11 @@ test("v15 real stack: joke, vague job, clarification, three clean tests", async 
   const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await page.goto("/vibe-evals");
-  if (process.env.VIBE_BROWSER_TWO_DOOR === "1") await page.getByRole("button", { name: /Improve an existing agent/ }).click();
+  if (process.env.VIBE_BROWSER_TWO_DOOR === "1") {
+  const created = await page.request.post(`${api}/v1/vibe/sessions`, { data: { id: crypto.randomUUID(), door: "test" } });
+  expect(created.ok(), await created.text()).toBe(true);
+  await page.goto(`/vibe-evals?session=${(await created.json()).id}`);
+  }
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   const send = page.getByRole("button", { name: "Send message", exact: true });
   await composer.fill("drin vodka hewhe");

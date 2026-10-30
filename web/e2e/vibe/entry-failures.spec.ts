@@ -4,7 +4,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { description, fakeVibe, instructions, transcript, expectation, type FakeOptions } from "./entry-fake";
 import { writeRecord } from "./flow-meter";
-import { chooseDoor, composer, doorButton, doorReady, entryNotice, entryReady, improveSource, sendButton, workspacePicker } from "./entry-model";
+import { chooseDoor, composer, doorButton, doorReady, entryNotice, entryReady, improvePrimary, improveSource, repliesInput, rulesInput, sampleButton, sendButton, sourceButton, startComposer, workspacePicker } from "./entry-model";
 
 test.use({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
 test.describe.configure({ timeout: 90_000 });
@@ -84,9 +84,11 @@ test.describe("H7 no credits", () => {
     await expect(sendButton(page)).toBeEnabled();
     await expect(composer(page)).toHaveValue(description);
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await afterReconnect(fake);
+    await page.reload();
+    await expect(composer(page)).toHaveValue(description);
+    await expect(sendButton(page)).toBeEnabled();
     await writeRecord("h7-build", { alerts: await page.getByRole("alert").allInnerTexts(), writes: writes(fake) });
-    expect(writes(fake).filter(write => !write.endsWith("/build-quote"))).toEqual(["POST /sessions", "POST /sessions/:id/messages"]);
+    expect(writes(fake).filter(write => !write.endsWith("/build-quote"))).toEqual(["POST /sessions", "POST /sessions/:id/messages", "DELETE /sessions/:id"]);
     expect(fake.errors).toEqual([]);
   });
 
@@ -107,8 +109,8 @@ test.describe("H7 no credits", () => {
     await workspacePicker(page).selectOption({ label: "Returns team" });
     await chooseDoor(page, "improve");
     await improveSource(page, "instructions");
-    await page.getByRole("textbox", { name: "Agent instructions to test" }).fill(instructions);
-    await page.getByRole("button", { name: "Prepare tests" }).click();
+    await startComposer(page, "improve").fill(instructions);
+    await improvePrimary(page, "instructions").click();
     await page.getByRole("tab", { name: "Tests", exact: true }).click();
     await page.getByRole("button", { name: "Run 3 tests", exact: true }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Start run", exact: true }).click();
@@ -141,20 +143,24 @@ test("H8 guest capacity reached explains why before the disabled doors and keeps
   await expect(reason).toHaveText("Guest inference capacity is currently reached. Your saved work remains available.", { timeout: 20_000 });
   await doorsDisabled(page);
   expect(await reason.evaluate((node, door) => !!(node.compareDocumentPosition(door!) & Node.DOCUMENT_POSITION_FOLLOWING), await doorButton(page, "build").elementHandle())).toBe(true);
-  await page.locator("summary").filter({ hasText: "Read a sample test" }).click();
+  await sampleButton(page).click();
   await expect(page.getByRole("heading", { name: "Sample: a return policy assistant" })).toBeVisible();
   expect(fake.posts).toEqual([]);
   expect(fake.errors).toEqual([]);
 });
 
-test("H9 a failed project creation at the door shows the error and keeps both doors usable", async ({ page }) => {
+test("H9 a failed first commit keeps the Build draft and leaves no project", async ({ page }) => {
   const fake = await fakeVibe(page, { failures: { "POST /sessions": { status: 503, code: "unavailable", message: "Vibe could not complete this request. Try again shortly." } } });
   await page.goto("/vibe-evals");
   await entryReady(page, 30_000);
   await chooseDoor(page, "build");
+  expect(fake.posts).toEqual([]);
+  await composer(page).fill(description);
+  await sendButton(page).click();
   await expect(page.getByRole("alert").filter({ hasText: "Vibe could not complete this request. Try again shortly." })).toBeVisible();
-  for (const door of ["build", "improve"] as const) await expect(doorButton(page, door)).toBeEnabled();
-  await expect(page.getByText("No projects yet.", { exact: true })).toBeVisible();
+  await expect(sendButton(page)).toBeEnabled();
+  await expect(composer(page)).toHaveValue(description);
+  await expect(page.locator(".vibe-project-header")).toHaveCount(0);
   expect(new URL(page.url()).searchParams.get("session")).toBeNull();
   expect(writes(fake)).toEqual(["POST /sessions"]);
   expect(fake.errors).toEqual([]);
@@ -188,16 +194,17 @@ test.describe("H11 Back from an Improve source panel keeps the drafts", () => {
     await entryReady(page, 30_000);
     await chooseDoor(page, "improve");
     await doorReady(page, "improve");
-    await composer(page).fill("My unsent description.");
+    await startComposer(page, "improve").fill("My unsent description.");
     await improveSource(page, "instructions");
-    const box = page.getByRole("textbox", { name: "Agent instructions to test" });
+    const box = startComposer(page, "improve");
     await box.fill(instructions);
-    await page.getByRole("button", { name: "Back to conversation", exact: true }).click();
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await chooseDoor(page, "improve");
     await doorReady(page, "improve");
-    await expect(composer(page)).toHaveValue("My unsent description.");
+    await expect(composer(page)).toHaveValue(instructions);
     await improveSource(page, "instructions");
     await expect(box).toHaveValue(instructions);
-    expect(writes(fake)).toEqual(["POST /sessions"]);
+    expect(writes(fake)).toEqual([]);
     expect(fake.errors).toEqual([]);
   });
 
@@ -207,17 +214,19 @@ test.describe("H11 Back from an Improve source panel keeps the drafts", () => {
     await entryReady(page, 30_000);
     await chooseDoor(page, "improve");
     await doorReady(page, "improve");
-    await composer(page).fill("My unsent description.");
+    await startComposer(page, "improve").fill("My unsent description.");
     await improveSource(page, "recorded");
-    await page.getByLabel("Recorded replies", { exact: true }).fill(transcript);
-    await page.getByLabel("Expected behavior", { exact: true }).fill(expectation);
-    await page.getByRole("form", { name: "Recorded reply intake" }).getByRole("button", { name: "Back", exact: true }).click();
+    await repliesInput(page).fill(transcript);
+    await rulesInput(page).fill(expectation);
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await chooseDoor(page, "improve");
     await doorReady(page, "improve");
+    await sourceButton(page, "instructions").click();
     await expect(composer(page)).toHaveValue("My unsent description.");
     await improveSource(page, "recorded");
-    await expect(page.getByLabel("Recorded replies", { exact: true })).toHaveValue(transcript);
-    await expect(page.getByLabel("Expected behavior", { exact: true })).toHaveValue(expectation);
-    expect(writes(fake)).toEqual(["POST /sessions"]);
+    await expect(repliesInput(page)).toHaveValue(transcript);
+    await expect(rulesInput(page)).toHaveValue(expectation);
+    expect(writes(fake)).toEqual([]);
     expect(fake.errors).toEqual([]);
   });
 });

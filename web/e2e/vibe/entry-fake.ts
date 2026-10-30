@@ -81,7 +81,7 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
   const unknown: string[] = [], errors: string[] = [], external: string[] = [];
   let eventRequests = 0;
   const failures = options.failures ?? {};
-  const config = { ...fakeConfig, ...options.config };
+  const config = { first_build_ceiling_nano_usd: 500_000_000, ...(options.signedIn ? {} : { guest_trial: { initial_build_used: false, build_in_progress: false } }), ...fakeConfig, ...options.config };
   const later = (s: Session, ...steps: (() => void)[]) => queues.set(s.id, [...(queues.get(s.id) ?? []), ...steps.map(step => () => { step(); bump(s); })]);
   const retries = new Map<string, () => void>();
   // The first Build turn makes a version, then runs its three tests.
@@ -132,7 +132,7 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
         return route.fulfill({ headers, contentType: "text/event-stream", body: `event: snapshot\ndata: ${JSON.stringify(state)}\n\n` });
       }
       if (state && p === `/sessions/${id}`) return json(state);
-      unknown.push(`GET ${p}`);
+      if (!p.startsWith("/sessions/")) unknown.push(`GET ${p}`);
       return json({ error: { code: "not_found", message: "Project is unavailable." } }, 404);
     }
     let body: any = {};
@@ -141,8 +141,10 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
     const name = p === "/sessions" ? "/sessions" : p.endsWith("/messages") ? `/messages:${body.kind}` : `/${p.split("/").at(-1)}`;
     const f = failures[`${method} ${name}`] ?? failures[`${method} ${name.split(":")[0]}`];
     if (f) return route.fulfill({ headers, ...fail(f) });
+    if (method === "DELETE") { sessions.delete(id!); return json({ status: "deleted" }); }
     if (method === "POST" && p === "/sessions") {
       const created = project(body.id, body.door, body.workspace_id);
+      if (body.title) created.title = body.title;
       sessions.set(created.id, created);
       return json(created, 201);
     }

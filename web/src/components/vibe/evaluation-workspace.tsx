@@ -75,6 +75,7 @@ User: Plan a one-day Jaipur trip for two people with a total budget of ₹5,000,
 Assistant: Here’s your plan: transport ₹2,000, food ₹2,000, and activities ₹4,000. Total: ₹8,000. This fits within your ₹5,000 budget.`;
 
 export type EvaluationWorkspaceProps = {
+ startScreen?: ReactNode;
  embedded?: boolean;
  materialInput?: ReactNode;
   twoDoor?: boolean;
@@ -86,8 +87,6 @@ export type EvaluationWorkspaceProps = {
   entryBlocked?: boolean;
   entryNotice?: ReactNode;
   onCancelNew?: () => void;
-  canChangeDoor?: boolean;
-  onChangeDoor?: () => void;
   savedWorkOpen?: boolean;
   onSavedWorkOpenChange?: (open: boolean) => void;
   buildStart?: boolean;
@@ -171,7 +170,27 @@ function focusProject() {
   (document.getElementById("vibe-message") || document.querySelector<HTMLElement>(".vibe-project-header h1"))?.focus({ preventScroll: true });
 }
 
+function EntryWorkspace({ p }: { p: EvaluationWorkspaceProps }) {
+  const heading = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (p.newEvaluation) { const title = heading.current?.querySelector<HTMLElement>("h1"); title?.setAttribute("tabindex", "-1"); title?.focus(); } }, [p.newEvaluation]);
+  const back = () => { p.onCancelNew?.(); requestAnimationFrame(focusProject); };
+  return <>
+    <header className="vibe-header vibe-entry-header"><div className="vibe-header-identity">{p.navigationToggle}<span className="vibe-header-title" data-brand>Vibe Evals</span></div></header>
+    <div className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto" ref={heading} aria-label="New project choices" onKeyDown={event => { if (event.key === "Escape" && p.newEvaluation && !p.contextNavigationBlocked) back(); }}>
+      <div className="vibe-column vibe-entry-page">
+        {p.newEvaluation && p.session && <VibeButton variant="quiet" className="vibe-back-button" disabled={p.contextNavigationBlocked} onClick={back}>Back to your project</VibeButton>}
+        <EvaluationEntry busy={!!p.contextNavigationBlocked || !!p.entryBlocked} onDoor={p.onDoor} notice={p.entryNotice} />
+        {p.notice}
+      </div>
+    </div>
+  </>;
+}
+
 export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
+  if (p.startScreen || p.twoDoor && (p.newEvaluation || !p.session)) return <>
+    {p.startScreen ? <><header className="vibe-header vibe-entry-header"><div className="vibe-header-identity">{p.navigationToggle}<span className="vibe-header-title" data-brand>Vibe Evals</span></div></header><div className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto">{p.startScreen}</div></> : <EntryWorkspace p={p} />}
+    <SavedWorkDialog status={p.savedListStatus} onRetry={p.onRetrySaved} open={!!p.savedWorkOpen} onOpenChange={p.onSavedWorkOpenChange || (() => {})} testJourney={p.testJourney} savedChecks={p.savedChecks} hasResults={false} onResults={() => {}} />
+  </>;
   if (p.twoDoor && p.session?.document.evaluation && !p.newEvaluation) return <ProjectWorkspace p={p} initial={<LegacyEvaluationWorkspace {...p} embedded view="build" />} />;
   return <LegacyEvaluationWorkspace {...p} />;
 }
@@ -632,9 +651,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                 <VibeButton ref={sourceRef("recorded")} disabled={p.busy} onClick={() => openSource("recorded")}><MessagesSquare />Test replies from my app</VibeButton>
                 <VibeButton ref={sourceRef("instructions")} disabled={p.busy} onClick={changeSource}><FileText />Try my saved instructions</VibeButton>
               </div><p className="vibe-source-note">Signed-in workspaces can connect a live app from Details after you publish tests. Instructions recreate behavior here. A test pack supplies tests, not an agent.</p>
-              <details className="vibe-source-help"><summary>What’s a test pack?</summary><p>A saved set of tests: what to send your agent and what a good response should do. Import one only if you already have it.</p></details>
-              {p.canChangeDoor && <button type="button" className="vibe-door-switch" onClick={p.onChangeDoor}>Actually, I want to build an agent.</button>}</>}
-              {door === "build" && p.canChangeDoor && <button type="button" className="vibe-door-switch" onClick={p.onChangeDoor}>Already have an agent? Improve it instead.</button>}
+              <details className="vibe-source-help"><summary>What’s a test pack?</summary><p>A saved set of tests: what to send your agent and what a good response should do. Import one only if you already have it.</p></details></>}
               {!door && p.testJourney && <p className="mt-3 text-sm vibe-muted">Already have an agent or test pack? Describe it here or <button type="button" className="underline underline-offset-4" disabled={p.busy} onClick={p.onImport}>import your pack</button>.</p>}
             </div>)}
             {intake === "recorded" && p.session && p.onRecordedEvidence && <RecordedIntake project={p.session.id} revision={p.session.revision} busy={p.busy} onSave={p.onRecordedEvidence} onClose={() => setIntake(null)} />}
@@ -677,7 +694,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                     if (!instructionText.trim() || p.busy) return;
                     setIntake(null);
                     p.onMessage(
-                      "Prepare three useful tests for these instructions, based on the rules we discussed.",
+                      "Write three tests for these instructions.",
                       undefined,
                       instructionText,
                     );

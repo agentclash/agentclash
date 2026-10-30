@@ -339,7 +339,7 @@ it("offers distinct instructions and recorded-reply intake", async () => {
   const input = container.querySelector<HTMLTextAreaElement>('#vibe-instructions-source')!;
   await type(input, "Only unopened items qualify.");
   await act(async () => button("Prepare tests").click());
-  expect(props.onMessage).toHaveBeenCalledWith(expect.any(String), undefined, "Only unopened items qualify.");
+  expect(props.onMessage).toHaveBeenCalledWith("Write three tests for these instructions.", undefined, "Only unopened items qualify.");
 });
 
 it("holds the direct-check proposal behind one truthful activity state", async () => {
@@ -715,7 +715,7 @@ it("marks the reply read when the Guide closes, and only the Guide button change
   expect(localStorage.getItem("vibe-guide:v1")).toBe("open");
 });
 
-it("keeps a message without a test total indeterminate and hides Guide while the project is a brief", async () => {
+it("PR4 keeps a message indeterminate and retains frame tools after the first artifact", async () => {
   const current = session([{ id: "request", role: "user", content: "Help with returns", operation_id: "turn" }]);
   current.document.evaluation = { id: current.id, chat_id: current.id, door: "build" };
   const artifact = { id: "suite", kind: "test_suite" as const, title: "Returns", agent_prompt: "Use supplied policy", accepted: true, source_message_id: "request", blueprint: { cases: [] } };
@@ -726,13 +726,15 @@ it("keeps a message without a test total indeterminate and hides Guide while the
   expect(bar.hasAttribute("data-indeterminate")).toBe(true);
   expect(bar.hasAttribute("aria-valuenow")).toBe(false);
   expect(container.querySelector(".vibe-progress-strip [role=\"status\"]")?.textContent).toContain("Understanding your request…");
-  // A brief answers its question in the Agent view; Guide has nothing to show, so it has no button or flag.
+  // Once an artifact has existed, the frame tools stay even when a brief is selected.
   const brief = session([{ id: "request", role: "user", content: "My agent answers shop return questions." }, { id: "question", role: "assistant", content: "How long can items be returned: 14 days or 30 days?" }]);
   brief.document.evaluation = { id: brief.id, chat_id: brief.id, door: "build" };
   brief.document.build = { cycle_id: "cycle", phase: "clarifying", clarifications_used: 1 };
   brief.document.conversation_state = { version: 1, actions_version: 1, through_message_id: "question", brief: { scope_id: "scope", revision: 1, facts: [] }, guidance: {}, pending_question: { id: "q", revision: 1, scope_id: "scope", origin_message_id: "question", purpose: "clarify_rule", status: "active", text: "How long can items be returned: 14 days or 30 days?", options: [{ id: "14", label: "14 days" }, { id: "30", label: "30 days" }], max_selections: 1, proposal_id: null, proposal_revision: null } };
   await render({ session: brief, artifact: undefined, interactionActions: true, onChoice: vi.fn(), onReloadChoices: vi.fn() });
-  expect([...container.querySelectorAll("button")].some(item => item.getAttribute("aria-label") === "Guide")).toBe(false);
+  expect([...container.querySelectorAll("button")].some(item => item.getAttribute("aria-label") === "Guide")).toBe(true);
+  expect(container.querySelector('[aria-label="Workspace views"]')).not.toBeNull();
+  expect(container.querySelector('[aria-label="Details"]')).not.toBeNull();
   expect(container.textContent).not.toContain("Review needed");
   expect(container.querySelector(".vibe-progress-strip")).toBeNull();
 });
