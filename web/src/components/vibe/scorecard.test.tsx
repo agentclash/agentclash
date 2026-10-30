@@ -818,6 +818,18 @@ it("shows other results separately from More with a passed glyph and word in the
   expect(button("Suggest a fix").querySelector("svg")).not.toBeNull();
 });
 
+it.each([
+  { failed: false, label: "Results · 3", rows: 3 },
+  { failed: true, label: "Other results · 2", rows: 2 },
+])("labels Improve results according to whether a finding leads ($label)", async ({ failed, label, rows }) => {
+  const results = [passing, { ...passing, case_key: "second" }, { ...(failed ? failure : passing), case_key: "third" }];
+  await render(operation(results), undefined, true, true);
+  const list = container.querySelector(".vibe-other-results")!;
+  expect(list.querySelector(":scope > summary")?.textContent).toBe(label);
+  expect(list.querySelectorAll(".vibe-result-row")).toHaveLength(rows);
+  expect(container.querySelectorAll('[aria-label="Leading finding"]')).toHaveLength(failed ? 1 : 0);
+});
+
 it.each([0, 2, 3])("U12/U13 Improve uses the shared outcome and fix label (%s passed)", async passed => {
   const results = Array.from({ length: 3 }, (_, index) => ({ ...(index < passed ? passing : failure), case_key: `case-${index}` }));
   await render(operation(results), undefined, true, true);

@@ -386,9 +386,12 @@ test("review polish: shared start hierarchy, chip rows and vertical steps, align
       }
       const quiet = startScreen(page).locator(".vibe-button-quiet:not(.vibe-example-chip)").filter({ visible: true });
       for (const button of await quiet.all()) {
+        await page.mouse.move(0, 0);
         await expect(button).toHaveCSS("padding-left", "0px");
         await expect(button).toHaveCSS("text-decoration-line", "none");
         expect((await button.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+        await button.hover();
+        await expect(button).toHaveCSS("text-decoration-line", "underline");
       }
       if (door === "build") {
         const chips = startScreen(page).locator(".vibe-example-chip");

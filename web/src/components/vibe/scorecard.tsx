@@ -165,7 +165,7 @@ export function VibeScorecard({
     {score.failed > 0 ? <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={() => onImprove()}><Lightbulb aria-hidden="true" />Suggest a fix</VibeButton>
       : onSave && !incomplete && !stopped ? <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={onSave}><Bookmark aria-hidden="true" />Keep these tests</VibeButton>
       : <VibeButton variant={primary ? "primary" : "secondary"} disabled={busy} onClick={onRetest}>Run tests again</VibeButton>}
-    {remaining.length > 0 && <details className="vibe-other-results"><summary>Other results · {remaining.length}</summary>
+    {remaining.length > 0 && <details className="vibe-other-results"><summary>{leading ? "Other results" : "Results"} · {remaining.length}</summary>
       {remaining.map(result => <CaseEvidence key={`${operation.id}:${result.case_key}`} summary={result} onAsk={onAskCase ? () => onAskCase(result.case_key) : undefined} concise evidenceVersion={evidenceVersion} load={loadEvidence} onDispute={onDispute} onRegrade={onRegrade} origin={operation.source?.kind} busy={busy} />)}
     </details>}
     </section>
