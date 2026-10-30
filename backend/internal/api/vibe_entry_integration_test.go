@@ -13,7 +13,7 @@ import (
 )
 
 func TestVibeConfigEntryTrialIntegration(t *testing.T) {
-	f := newVibeAPIHarness(t)
+	f, workspace, _ := sdkHarness(t)
 	h := &VibeHandler{Service: f.svc, CookieSecret: strings.Repeat("s", 32)}
 	for _, tt := range []struct {
 		name, phase, kind, state                            string
@@ -67,10 +67,14 @@ func TestVibeConfigEntryTrialIntegration(t *testing.T) {
 					}
 				}
 				if tt.saved {
-					// Saving changes the actor but retains the original guest trial_key.
-					_, err = f.db.Exec(f.ctx, `UPDATE vibe_sessions SET actor=$2 WHERE id=$1`, s.ID, f.actor)
+					// Saving changes ownership but retains the original guest trial_key.
+					var trialKey string
+					err = f.db.QueryRow(f.ctx, `UPDATE vibe_sessions SET actor=$2,workspace_id=$3 WHERE id=$1 RETURNING trial_key`, s.ID, f.actor, workspace).Scan(&trialKey)
 					if err != nil {
 						t.Fatal(err)
+					}
+					if trialKey != actor {
+						t.Fatalf("saved trial_key=%q, want %q", trialKey, actor)
 					}
 				}
 			}
@@ -92,6 +96,21 @@ func TestVibeConfigEntryTrialIntegration(t *testing.T) {
 	}
 }
 
+func TestVibeTrialKeyIndexIntegration(t *testing.T) {
+	f := newVibeAPIHarness(t)
+	var valid bool
+	var definition string
+	err := f.db.QueryRow(f.ctx, `SELECT i.indisvalid,pg_get_indexdef(i.indexrelid)
+	 FROM pg_index i WHERE i.indexrelid=to_regclass('vibe_sessions_trial_key_idx')
+	 AND i.indrelid='vibe_sessions'::regclass`).Scan(&valid, &definition)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !valid || !strings.Contains(definition, "USING btree (trial_key) WHERE (trial_key IS NOT NULL)") {
+		t.Fatalf("invalid trial index: valid=%v definition=%s", valid, definition)
+	}
+}
+
 func TestVibeSessionTitleIntegration(t *testing.T) {
 	f := newVibeAPIHarness(t)
 	h := &VibeHandler{Service: f.svc, CookieSecret: strings.Repeat("s", 32)}
@@ -103,6 +122,7 @@ func TestVibeSessionTitleIntegration(t *testing.T) {
 	}{
 		{name: "valid", door: "build", title: entryTitle("  Returns agent  "), status: 201, want: "Returns agent"},
 		{name: "Unicode 80 characters", door: "test", title: entryTitle(strings.Repeat("界", 80)), status: 201, want: strings.Repeat("界", 80)},
+		{name: "padded 80 characters", door: "build", title: entryTitle("  " + strings.Repeat("a", 80) + "  "), status: 201, want: strings.Repeat("a", 80)},
 		{name: "too long", door: "build", title: entryTitle(strings.Repeat("a", 81)), status: 400},
 		{name: "control", door: "test", title: entryTitle("bad\nname"), status: 400},
 		{name: "empty build", door: "build", title: entryTitle(""), status: 201},
