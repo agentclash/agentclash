@@ -14,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 type Store struct {
@@ -90,24 +92,47 @@ func scanSession(row pgx.Row) (Session, error) {
 	return v, err
 }
 func (s *Store) CreateSession(ctx context.Context, actor string, ws *uuid.UUID, id uuid.UUID, defaults ...Models) (Session, error) {
+	return s.CreateSessionWithTitle(ctx, actor, ws, id, "", defaults...)
+}
+
+func SessionTitle(title string) (string, error) {
+	if strings.ContainsFunc(title, unicode.IsControl) {
+		return "", fault("invalid_request", "Project titles cannot contain control characters.")
+	}
+	title = strings.TrimSpace(title)
+	if utf8.RuneCountInString(title) > 80 {
+		return "", fault("invalid_request", "Project titles must be 80 characters or fewer.")
+	}
+	return title, nil
+}
+
+func (s *Store) CreateSessionWithTitle(ctx context.Context, actor string, ws *uuid.UUID, id uuid.UUID, title string, defaults ...Models) (Session, error) {
 	d := Document{Messages: []Message{}, Requirements: []Requirement{}, Artifacts: []Artifact{}, Models: DefaultModels()}
 	if len(defaults) > 0 {
 		d.Models = defaults[0]
 	}
-	return s.createSession(ctx, actor, ws, id, d)
+	return s.createSession(ctx, actor, ws, id, d, title)
 }
 
-func (s *Store) createSession(ctx context.Context, actor string, ws *uuid.UUID, id uuid.UUID, d Document) (Session, error) {
+func (s *Store) createSession(ctx context.Context, actor string, ws *uuid.UUID, id uuid.UUID, d Document, titles ...string) (Session, error) {
+	var title string
+	if len(titles) > 0 {
+		var err error
+		title, err = SessionTitle(titles[0])
+		if err != nil {
+			return Session{}, err
+		}
+	}
 	var v Session
 	err := s.transaction(ctx, func(ctx context.Context, tx pgx.Tx) error {
 		var err error
-		v, err = s.createSessionTx(ctx, tx, actor, ws, id, d)
+		v, err = s.createSessionTx(ctx, tx, actor, ws, id, d, title)
 		return err
 	})
 	return v, err
 }
 
-func (s *Store) createSessionTx(ctx context.Context, tx pgx.Tx, actor string, ws *uuid.UUID, id uuid.UUID, d Document) (Session, error) {
+func (s *Store) createSessionTx(ctx context.Context, tx pgx.Tx, actor string, ws *uuid.UUID, id uuid.UUID, d Document, title string) (Session, error) {
 	if err := authorize(ctx, tx, actor, ws, true); err != nil {
 		return Session{}, err
 	}
@@ -150,7 +175,7 @@ func (s *Store) createSessionTx(ctx context.Context, tx pgx.Tx, actor string, ws
 		t := actor
 		trial = &t
 	}
-	if _, err := tx.Exec(ctx, `INSERT INTO vibe_sessions(id,actor,workspace_id,trial_key,document,title) VALUES($1,$2,$3,$4,$5,CASE WHEN $5::jsonb#>>'{evaluation,door}'='build' THEN 'New prototype ' ELSE 'New evaluation ' END||left($1::uuid::text,8))`, id, actor, ws, trial, raw(d)); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO vibe_sessions(id,actor,workspace_id,trial_key,document,title) VALUES($1,$2,$3,$4,$5,COALESCE(NULLIF($6,''),CASE WHEN $5::jsonb#>>'{evaluation,door}'='build' THEN 'New prototype ' ELSE 'New evaluation ' END||left($1::uuid::text,8)))`, id, actor, ws, trial, raw(d), title); err != nil {
 		return Session{}, err
 	}
 	return scanSession(tx.QueryRow(ctx, sessionSelect, id))
