@@ -94,8 +94,8 @@ jobs:
       VIBE_BROWSER_OWNERSHIP_LOG: /tmp/vibe-ownership.jsonl
       VIBE_TEST_DATABASE_URL: postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
@@ -115,7 +115,7 @@ jobs:
         run: go test ./connectors ./provider ./scoring ./challengepack ./runner -count=1
       - name: CLI canonical CI contracts
         run: go -C cli test -race ./cmd -run 'TestCI|TestEvalTest' -count=1
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: vibe-backend-ownership
@@ -130,8 +130,8 @@ jobs:
       run:
         working-directory: web
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -144,7 +144,7 @@ jobs:
         run: |
           npx tsc --noEmit --incremental false
           npx vitest run "src/app/(workspace)/workspaces/[workspaceId]/runs/[runId]/run-detail-client.test.tsx" src/lib/ci-setup.test.ts "src/app/(workspace)/workspaces/[workspaceId]/ci-setup/ci-setup-client.test.tsx" src/components/share/report-snapshot.test.tsx src/components/share/workspace-reports.test.tsx src/app/vibe-evals src/components/vibe src/lib/vibe.test.ts src/lib/vibe-controllers.test.tsx src/lib/vibe-export.test.ts src/lib/vibe-reports.test.ts src/components/challenge-packs/vibe-return.test.tsx src/lib/vibe-build-analytics.test.ts src/lib/use-vibe-inputs.test.tsx src/lib/vibe-request-recovery.test.ts src/lib/vibe-presentation.test.ts src/lib/vibe-project.test.ts
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: vibe-mock-browser-evidence
@@ -169,12 +169,12 @@ jobs:
       VIBE_BROWSER_OWNERSHIP_LOG: /tmp/vibe-ownership.jsonl
       VIBE_TEST_DATABASE_URL: postgres://vibe_test:local_test_only@127.0.0.1:5432/vibe_test?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -207,7 +207,7 @@ jobs:
           VIBE_BROWSER_TWO_DOOR: '1'
           VIBE_BROWSER_MATERIALS: '1'
         run: VIBE_TEST_PDF_RUNTIME="$RUNNER_TEMP/vibe-pdf-runtime" npx playwright test --config playwright.vibe-stack.config.ts materials.spec.ts
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: vibe-browser-worker-evidence
@@ -219,8 +219,8 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
