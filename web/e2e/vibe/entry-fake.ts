@@ -43,14 +43,18 @@ const blueprint = {
   validators: [{ key: "has_answer" }],
   dimensions: [{}, {}],
 };
-const caseResults = (version: string): CaseResult[] => inputs.map((input, i) => ({
-  case_key: `case-${i + 1}`, title: input, version, input: { question: input }, output: outputs[i], expected: expected[i], verdict: i === 1 ? "FAIL" : "PASS", expected_checks: 1,
-  messages: [{ id: `u-${version}-${i}`, role: "user", content: input }, { id: `a-${version}-${i}`, role: "assistant", content: outputs[i] }],
-  expectations: [{ id: "behavior", statement: expected[i] }],
-  checks: [{ key: "behavior", verdict: i === 1 ? "FAIL" : "PASS", evidence: i === 1 ? "The agent allowed a return 45 days after purchase." : "The reply follows the policy." }],
-}));
+// A fixed version (a Guide fix, id "<parent>-fix") passes the late-return test that its parent fails.
+const fixedReply = "No. Unopened items can be returned within 30 days, and this purchase is 45 days old.";
+const caseResults = (version: string): CaseResult[] => inputs.map((input, i) => {
+  const failed = i === 1 && !version.endsWith("-fix"), output = i === 1 && !failed ? fixedReply : outputs[i];
+  return { case_key: `case-${i + 1}`, title: input, version, input: { question: input }, output, expected: expected[i], verdict: failed ? "FAIL" : "PASS", expected_checks: 1,
+    messages: [{ id: `u-${version}-${i}`, role: "user", content: input }, { id: `a-${version}-${i}`, role: "assistant", content: output }],
+    expectations: [{ id: "behavior", statement: expected[i] }],
+    checks: [{ key: "behavior", verdict: failed ? "FAIL" : "PASS", evidence: failed ? "The agent allowed a return 45 days after purchase." : "The reply follows the policy." }] };
+});
 const seeded = (version: string) => caseResults(version).map((c, i) => i === 0 ? c : { ...c, output: "", verdict: "UNKNOWN" as const, checks: [], error: { code: "not_evaluated", message: "This case has not been evaluated yet." } });
 const scorecard = { passed: 2, failed: 1, unknown: 0, total: 3, evaluated: 3, pass_rate: 2 / 3, coverage: 1 };
+const fixedScorecard = { ...scorecard, passed: 3, failed: 0, pass_rate: 1 };
 const running = (id: string, kind: string, extra: Partial<Operation> = {}): Operation => ({ id, kind, state: "RUNNING", billing: "RESERVED", models, max_cost_nano_usd: 120_000_000, actual_cost_nano_usd: 0, results: [], ...extra });
 const finish = (op: Operation, extra: Partial<Operation> = {}) => Object.assign(op, { state: "COMPLETED", billing: "SETTLED", progress: undefined, ...extra });
 
@@ -150,14 +154,32 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
       const op = running(body.client_id, "message", { max_cost_nano_usd: 1, conversation_decision: { intent: "prepare_tests", source_message_id: `m-${body.client_id}` }, progress: { phase: "preparing", completed_cases: 0, total_cases: 3, phase_elapsed_ms: 2_000 } } as any);
       s.operations.push(op);
       s.document.messages.push({ id: `m-${body.client_id}`, role: "user", content: body.content, operation_id: op.id });
+      // "Help me fix this": Guide proposes a child version with changed instructions and the same tests.
+      if (body.purpose === "suggest_change") {
+        const parent = s.document.artifacts.find(a => a.id === body.artifact_id)!;
+        const fix: Artifact = { ...parent, id: `${parent.id}-fix`, parent_id: parent.id, accepted: false, agent_prompt: `${parent.agent_prompt} Decline every return after 30 days.`, proposal_message_id: `fix-${op.id}` };
+        later(s, () => {
+          finish(op); s.document.artifacts.push(fix);
+          s.document.messages.push({ id: fix.proposal_message_id!, role: "assistant", content: "This change declines returns after 30 days. Run the same tests to compare.", operation_id: op.id, artifact_id: fix.id });
+        });
+        bump(s);
+        return json(op, 202);
+      }
       const art: Artifact = { id: `v${s.document.artifacts.length + 1}`, kind: "test_suite", title: "Shop returns assistant", summary: "Eligible returns, late purchases and missing details.", agent_prompt: body.instructions || instructions, accepted: true, source_message_id: `m-${op.id}`, proposal_message_id: `prepared-${op.id}`, scope_note: "Answers return questions using the policy you supplied.", blueprint };
       if (s.document.evaluation?.door === "build") {
         s.title = "Online shop returns helper";
         s.document.build = { cycle_id: body.cycle_id || "cycle", phase: "preparing", clarifications_used: 0 };
         if (options.buildFails) {
-          later(s, () => finish(op, { state: "FAILED", billing: "RELEASED", retryable: true, error: { code: "provider_error", message: "The selected model’s provider failed. Your request is saved." } } as any));
+          later(s, () => {
+            finish(op, { state: "FAILED", billing: "RELEASED", retryable: true, error: { code: "provider_error", message: "The selected model’s provider failed. Your request is saved." } } as any);
+            s.document.build = { ...s.document.build!, phase: "error", error: op.error };
+          });
           // As backend/internal/vibe/retry.go: the source stays FAILED, is no longer retryable, and a new operation runs.
-          retries.set(op.id, () => { (op as any).retryable = false; buildRun(s, running(`retry-${op.id}`, "message", { retry_of_operation_id: op.id, max_cost_nano_usd: 1 } as any), art); });
+          retries.set(op.id, () => {
+            (op as any).retryable = false;
+            s.document.build = { ...s.document.build!, phase: "preparing", error: undefined };
+            buildRun(s, running(`retry-${op.id}`, "message", { retry_of_operation_id: op.id, max_cost_nano_usd: 1 } as any), art);
+          });
           bump(s);
           return json(op, 202);
         }
@@ -183,7 +205,7 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
         actual_cost_nano_usd: 12_000_000, scorecard: { passed: 0, failed: 1, unknown: 0, total: 1, evaluated: 1, pass_rate: 0, coverage: 1 },
         results: [{ case_key: "conversation-1", title: "Conversation 1", version: artifactID, input: null, output: "", verdict: "FAIL", messages: s.document.evidence_sets![0].conversations[0].messages, expectations: [{ id: "expectation-1", statement: expectation }],
           checks: [{ key: "expectation-1", verdict: "FAIL", evidence: "The agent accepted a sealed item bought 45 days ago.", message_ids: ["c1-a"] }] }],
-      } : { actual_cost_nano_usd: 41_000_000, results: caseResults(artifactID), scorecard }));
+      } : { actual_cost_nano_usd: 41_000_000, results: caseResults(artifactID), scorecard: artifactID.endsWith("-fix") ? fixedScorecard : scorecard }));
       bump(s);
       return json(op, 202);
     }
@@ -211,8 +233,13 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
       const keys: unknown[] = Array.isArray(pack?.cases) ? pack.cases.map((c: any) => c?.key) : [];
       if (!keys.length || keys.some(key => typeof key !== "string" || !key) || new Set(keys).size !== keys.length)
         return json({ error: { code: "invalid_request", message: "This file is not a test pack that the preview can run." } }, 422);
-      const art: Artifact = { id: "pack-v1", kind: "test_suite", title: packFile.name, summary: "Imported test pack.", agent_prompt: "", accepted: false, source_message_id: "import", blueprint: pack,
+      const art: Artifact = { id: "pack-v1", kind: "test_suite", title: packFile.name, summary: "Imported test pack.", agent_prompt: "", accepted: false, source_message_id: "import", proposal_message_id: "import-reply", blueprint: pack,
         original: { id: "orig-1", artifact_id: "pack-v1", filename: packFile.name, media_type: packFile.mimeType, content_sha256: "0".repeat(64), size_bytes: packFile.buffer.length } } as any;
+      // As backend/internal/vibe/service.go importVersion: a user message names the pack (the compiled
+      // pack name, "Generated eval" without one) and Guide replies with the count of imported tests.
+      const name = typeof pack.name === "string" && pack.name.trim() || "Generated eval";
+      s.document.messages.push({ id: "import", role: "user", content: `Imported ${name} (${keys.length} cases).` },
+        { id: "import-reply", role: "assistant", content: `Your ${keys.length} imported tests are ready to review.`, artifact_id: art.id });
       s.document.artifacts.push(art); s.document.active_artifact_id = art.id; s.title = packFile.name;
       bump(s);
       return json(s);

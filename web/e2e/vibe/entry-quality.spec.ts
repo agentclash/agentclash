@@ -19,11 +19,11 @@ const viewports = [
 const known = (id: string) => `Known defect ${id} (see ~/.claude/plans/vibe-evals-redesign.md section 8.2): it must stay at today's baseline. The PR that fixes it deletes its baseline entry here.`;
 // Today's defects (d2248411), held at their measured baseline. A regression fails, and so does a fix,
 // which forces the fixing PR to delete the entry and meet the target instead.
+// B3 (one h1) and E2 (the Build send button's name) were fixed in PR 1: their entries are gone.
 const baseline: Record<"B2" | "B3" | "E2" | "F1", Partial<Record<State, unknown>>> = {
   B2: { S1: [], S2: [], S2r: [] },
-  B3: { S1: 2, S1t: 2, S2: 2 },
-  // The Build send button shows "Build and run 3 tests" but is named "Send message", empty or typed.
-  E2: { S1: ['button[type="submit"]'], S1t: [".vibe-button-primary"] },
+  B3: {},
+  E2: {},
   // Measured at 390 touch, the only viewport that runs F1.
   F1: { S0: ["Read a sample test 352x20"], S2r: ["Sample transcript format 352x24"] },
 };
@@ -144,9 +144,8 @@ for (const { label, viewport, touch } of viewports) test.describe(label, () => {
   if (!touch) test("D2 S0: no more Tab presses than today's baseline (7)", () => {
     expect(results.S0.tabsToDoor).toBeLessThanOrEqual(7);
   });
-  // Known defect D3: focus falls to <body> after either door. It cannot get worse than <body>.
+  // D3 (fixed in PR 1): the Build composer, or the project title on Improve, takes focus after the door click.
   for (const state of ["S1", "S2"] as const) test(`D3 ${state}: focus moves into the door, not to the page body`, () => {
-    test.fail(true, known("D3"));
-    expect(results[state].focus?.tag).not.toBe("body");
+    expect(results[state].focus).toEqual(state === "S1" ? { tag: "textarea", name: "Message Vibe Evals" } : { tag: "h1", name: expect.stringMatching(/\S/) });
   });
 });

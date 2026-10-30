@@ -5,6 +5,24 @@ import (
 	"github.com/google/uuid"
 )
 
+type GuestTrial struct {
+	InitialBuildUsed bool `json:"initial_build_used"`
+	BuildInProgress  bool `json:"build_in_progress"`
+}
+
+const initialBuildActivePredicate = `s.document#>>'{build,phase}' IN ('preparing','clarifying','ready','trying','checking')
+	 AND NOT EXISTS(SELECT 1 FROM vibe_cycle_quotes c WHERE c.id=(s.document#>>'{build,cycle_id}')::uuid AND c.stopped_at IS NOT NULL)`
+
+// The cookie actor is the original trial_key, including after a session is saved.
+func (s *Store) GuestTrial(ctx context.Context, trialKey string) (GuestTrial, error) {
+	var trial GuestTrial
+	err := s.DB.QueryRow(ctx, `SELECT
+	 EXISTS(SELECT 1 FROM vibe_operations o JOIN vibe_sessions s ON s.id=o.session_id
+	 WHERE s.trial_key=$1 AND o.kind='check' AND o.input->>'anonymous'='true'),
+	 EXISTS(SELECT 1 FROM vibe_sessions s WHERE s.trial_key=$1 AND `+initialBuildActivePredicate+`)`, trialKey).Scan(&trial.InitialBuildUsed, &trial.BuildInProgress)
+	return trial, err
+}
+
 // A new Build needs its entire first check, not just enough quota to prepare a
 // prototype. Repeat at admission under Store.transaction's writer lock. Keep
 // the existing guest check/call policy, including the protected later retest.
@@ -27,8 +45,7 @@ func checkInitialBuildQuota(ctx context.Context, q dbQuery, session, exclude uui
 	}
 	err = q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vibe_sessions s WHERE s.id<>$1
 	 AND s.trial_key=(SELECT trial_key FROM vibe_sessions WHERE id=$1)
-	 AND s.document#>>'{build,phase}' IN ('preparing','clarifying','ready','trying','checking')
-	 AND NOT EXISTS(SELECT 1 FROM vibe_cycle_quotes c WHERE c.id=(s.document#>>'{build,cycle_id}')::uuid AND c.stopped_at IS NOT NULL))`, session).Scan(&pending)
+	 AND `+initialBuildActivePredicate+`)`, session).Scan(&pending)
 	if err != nil {
 		return err
 	}

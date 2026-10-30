@@ -76,10 +76,10 @@ export async function watchDialogs(page: Page) {
 }
 export const mostDialogs = (page: Page) => page.evaluate(() => (window as unknown as { __vibeMostDialogs?: number }).__vibeMostDialogs ?? 0);
 
-/** Presses Tab until the target has focus. Returns the number of presses, or -1. */
+/** Presses Tab until the target has focus. Returns the number of presses (0 when it already has focus, D3), or -1. */
 export async function tabsTo(page: Page, target: Locator, max = 40) {
-  for (let presses = 1; presses <= max; presses++) {
-    await page.keyboard.press("Tab");
+  for (let presses = 0; presses <= max; presses++) {
+    if (presses) await page.keyboard.press("Tab");
     if (await target.evaluate(el => el === document.activeElement).catch(() => false)) return presses;
   }
   return -1;
@@ -133,7 +133,7 @@ export async function flowMeter(page: Page, name: string, { keyboardOnly = false
     press: (key: string, label: string) => act("submits", label, () => page.keyboard.press(key)),
     tabTo: async (target: Locator, label: string) => {
       const presses = await tabsTo(page, target);
-      expect(presses, `Tab presses to ${label}`).toBeGreaterThan(0);
+      expect(presses, `Tab presses to ${label}`).toBeGreaterThanOrEqual(0);
       counts.tabs += presses;
       steps.push(`tabs:${label}:${presses}`);
       return presses;

@@ -91,6 +91,10 @@ export type EvaluationWorkspaceProps = {
   savedWorkOpen?: boolean;
   onSavedWorkOpenChange?: (open: boolean) => void;
   buildStart?: boolean;
+  // A finished run or test preparation the user left on purpose: a link to its view.
+  arrival?: { target: "results" | "tests"; open: () => void };
+  // True once for the project a door click made: its start screen takes focus (D3).
+  takeStartFocus?: (sessionID: string) => boolean;
   onSample?: () => void;
   onDemo?: (id: string) => void;
   onTougher?: (text: string, count: number, artifactID: string) => void;
@@ -162,6 +166,11 @@ export type EvaluationWorkspaceProps = {
   onRetrySaved?: () => void;
 };
 
+// D3: after Back, focus the composer, or the project title when there is none.
+function focusProject() {
+  (document.getElementById("vibe-message") || document.querySelector<HTMLElement>(".vibe-project-header h1"))?.focus({ preventScroll: true });
+}
+
 export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
   if (p.twoDoor && p.session?.document.evaluation && !p.newEvaluation) return <ProjectWorkspace p={p} initial={<LegacyEvaluationWorkspace {...p} embedded view="build" />} />;
   return <LegacyEvaluationWorkspace {...p} />;
@@ -183,6 +192,18 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
   }, [buildJourney, p.session, activeBuildQuestion]);
   const reduced = useReducedMotion();
   const [intake, setIntake] = useState<"instructions" | "recorded" | null>(null);
+  const StartHeading = door ? "h2" : "h1";
+  // D3: a source panel focuses its first field; Back returns focus to its source button.
+  const sources = useRef<Partial<Record<"instructions" | "recorded", HTMLButtonElement | null>>>({});
+  const lastSource = useRef<"instructions" | "recorded" | undefined>(undefined);
+  const sourceRef = (source: "instructions" | "recorded") => (node: HTMLButtonElement | null) => { sources.current[source] = node; };
+  const openSource = (source: "instructions" | "recorded") => { lastSource.current = source; setIntake(source); };
+  useEffect(() => {
+    if (intake) { document.querySelector<HTMLElement>(intake === "instructions" ? "#vibe-instructions-source" : 'textarea[aria-label="Recorded replies"]')?.focus(); return; }
+    const source = lastSource.current;
+    lastSource.current = undefined;
+    if (source) sources.current[source]?.focus();
+  }, [intake]);
   const intakeDraft = useVibeEditorDraft(p.session?.id || "entry", "intake", "instructions", "intake-v1", "");
   const instructionText = intakeDraft.value;
   const setInstructionText = intakeDraft.setValue;
@@ -307,7 +328,7 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
     p.onRun(baseline, id);
   };
   const changeSource = () => {
-    setIntake("instructions");
+    openSource("instructions");
     p.onNavigate("build");
   };
   const send = () => {
@@ -424,7 +445,8 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
               <VibeButton
                 variant={p.content.trim() && !p.busy && !p.dirty ? "primary" : "quiet"}
                 type="submit"
-                aria-label="Send message"
+                // E2 (WCAG 2.5.3): a visible label is the name; the icon-only state needs one.
+                aria-label={p.buildStart ? undefined : "Send message"}
                 disabled={p.busy || p.dirty || p.sendBlocked || !p.content.trim()}
               >
                 {p.buildStart ? "Build and run 3 tests" : <span className="sr-only">Send</span>}
@@ -568,10 +590,10 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
         </div>}
       </header>}
       {p.newEvaluation && <div className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto" ref={newEntry} tabIndex={-1}
-        aria-label="New project choices" onKeyDown={event => { if (event.key === "Escape" && !p.contextNavigationBlocked) { p.onCancelNew?.(); requestAnimationFrame(() => document.getElementById("vibe-message")?.focus({ preventScroll: true })); } }}>
+        aria-label="New project choices" onKeyDown={event => { if (event.key === "Escape" && !p.contextNavigationBlocked) { p.onCancelNew?.(); requestAnimationFrame(focusProject); } }}>
         <div className="vibe-column vibe-entry-page">
           <VibeButton variant="quiet" className="vibe-back-button" disabled={p.contextNavigationBlocked} onClick={() => {
-            p.onCancelNew?.(); requestAnimationFrame(() => document.getElementById("vibe-message")?.focus({ preventScroll: true }));
+            p.onCancelNew?.(); requestAnimationFrame(focusProject);
           }}><ArrowLeft />{p.session?.document.evaluation ? "Back to your project" : "Back"}</VibeButton>
           <EvaluationEntry busy={!!p.contextNavigationBlocked || !!p.entryBlocked} onDoor={p.onDoor} notice={p.entryNotice} />
           {p.pendingLabel && <ActivityStatus label={p.pendingLabel} working />}
@@ -594,7 +616,8 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
             className={`vibe-column ${welcome ? "vibe-entry-page" : "py-8 sm:py-12"}`}
           >
             {welcome && !intake && (entry ? <EvaluationEntry busy={p.busy || !!p.inferenceUnavailable} onDoor={p.onDoor} notice={p.newEvaluation ? undefined : p.entryNotice} /> : <div className="vibe-welcome mb-6">
-              <h1 className="vibe-entry-title">{door === "build" ? "What would you like help with?" : door === "test" ? "Improve an agent you already have." : p.testJourney ? "What should your agent do?" : "Test the AI in your app."}</h1>
+              {/* B3: inside a project the project title is the h1. */}
+              <StartHeading className="vibe-entry-title">{door === "build" ? "What would you like help with?" : door === "test" ? "Improve an agent you already have." : p.testJourney ? "What should your agent do?" : "Test the AI in your app."}</StartHeading>
               <p className="mt-4 max-w-[560px] vibe-muted">{door === "build" ? "Describe a repetitive task. We’ll make an agent and run three tests to see what works." : door === "test" ? "Bring actual replies, saved instructions or a test pack." : p.testJourney ? "Describe its job and rules. We’ll test what works and what needs fixing." : "Tell us what it does, or paste an answer you want to test."}</p>
               {door === "test" && <><div className="vibe-source-options">
                 <div className="vibe-source-option">
@@ -606,8 +629,8 @@ function LegacyEvaluationWorkspace(p: EvaluationWorkspaceProps) {
                     </Tooltip>
                   </TooltipProvider>
                 </div>
-                <VibeButton disabled={p.busy} onClick={() => setIntake("recorded")}><MessagesSquare />Test replies from my app</VibeButton>
-                <VibeButton disabled={p.busy} onClick={changeSource}><FileText />Try my saved instructions</VibeButton>
+                <VibeButton ref={sourceRef("recorded")} disabled={p.busy} onClick={() => openSource("recorded")}><MessagesSquare />Test replies from my app</VibeButton>
+                <VibeButton ref={sourceRef("instructions")} disabled={p.busy} onClick={changeSource}><FileText />Try my saved instructions</VibeButton>
               </div><p className="vibe-source-note">Signed-in workspaces can connect a live app from Details after you publish tests. Instructions recreate behavior here. A test pack supplies tests, not an agent.</p>
               <details className="vibe-source-help"><summary>What’s a test pack?</summary><p>A saved set of tests: what to send your agent and what a good response should do. Import one only if you already have it.</p></details>
               {p.canChangeDoor && <button type="button" className="vibe-door-switch" onClick={p.onChangeDoor}>Actually, I want to build an agent.</button>}</>}

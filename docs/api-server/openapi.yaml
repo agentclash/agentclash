@@ -106,9 +106,50 @@ paths:
                   anonymous_limits: { type: object, additionalProperties: { type: integer } }
                   signed_in_limits: { type: object, additionalProperties: { type: integer } }
                   trial_budget_nano_usd: { type: integer, format: int64 }
+                  first_build_ceiling_nano_usd:
+                    type: integer
+                    format: int64
+                    description: Maximum spend for a first Build, in nano-USD.
+                  guest_trial:
+                    type: object
+                    description: Guest requests only (no Authorization header). Reads the existing cookie without creating a cookie, session or grant. Both flags are false without a cookie or session; omitted if the trial state cannot be read.
+                    required: [initial_build_used, build_in_progress]
+                    properties:
+                      initial_build_used: { type: boolean, description: An anonymous initial check already exists for this guest trial. }
+                      build_in_progress: { type: boolean, description: Another Build is using this guest trial and has not been stopped. }
                   capabilities:
                     type: array
                     items: { $ref: '#/components/schemas/VibeCapability' }
+  /v1/vibe/sessions:
+    post:
+      operationId: createVibeSession
+      summary: Create a private project after the first committed input
+      security: [{}, {bearerJWT: []}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [id]
+              properties:
+                id: { type: string, format: uuid, description: Client-generated idempotency ID. }
+                door: { type: string, enum: [build, test], description: Required when the two-door flow is enabled. }
+                workspace_id: { type: string, format: uuid }
+                title:
+                  type: string
+                  description: Optional project title. Leading and trailing whitespace is trimmed before the 80-character limit is checked. Control characters are rejected. Empty or omitted titles use the existing door default.
+      responses:
+        '201':
+          description: Created project, or the existing project on an idempotent retry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VibeSession' }
+        '400': { description: 'Invalid request, title longer than 80 characters after trimming, or title containing control characters' }
+        '401': { description: Sign-in required or expired }
+        '403': { description: Workspace unavailable }
+        '429': { description: 'Trial, rate or project limit' }
   /v1/vibe/sessions/{sessionId}:
     parameters:
       - name: sessionId

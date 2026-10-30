@@ -175,6 +175,8 @@ test("H10 a model error in the first Build run stays visible, and one retry runs
   await composer(page).fill("Also check opened items.");
   await retry.click();
   await expect(page.locator(".vibe-project-header")).toContainText("Run 1: Completed", { timeout: 30_000 });
+  await expect(page.getByRole("tab", { name: "Results", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("article", { name: "Run results", exact: true })).toBeVisible();
   await expect(composer(page)).toHaveValue("Also check opened items.");
   expect(writes(fake).filter(write => !write.endsWith("/build-quote"))).toEqual(["POST /sessions", "POST /sessions/:id/messages", expect.stringMatching(/^POST \/sessions\/:id\/operations\/.+\/retry$/)]);
   expect(fake.unknown).toEqual([]);

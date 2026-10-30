@@ -617,7 +617,9 @@ test("one dialog at a time: a run estimate that arrives while the Guide sheet is
     new MutationObserver(count).observe(document.body, { childList: true, subtree: true, attributes: true });
   });
   await page.getByRole("tab", { name: "Tests", exact: true }).click();
-  const run = page.getByRole("button", { name: "Run 1 test", exact: true });
+  // These tests already ran: "See the result" leads and running them again is secondary (PR 1).
+  await expect(page.getByRole("button", { name: "See the result", exact: true })).toBeVisible();
+  const run = page.getByRole("button", { name: "Run again", exact: true });
   await run.click();
   await expect.poll(() => quotes.length).toBe(1);
   await page.getByRole("button", { name: "Guide", exact: true }).click();
