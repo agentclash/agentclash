@@ -60,7 +60,7 @@ test("automatic recovery shows real progress without sending or clearing typed-a
   const composer = page.getByRole("textbox", { name: "Message Vibe Evals" });
   await composer.fill("Also check opened items.");
   await expect(page.getByRole("status").filter({ hasText: "Trying another model…" })).toBeVisible();
-  await expect(page.locator(".vibe-status-shine")).toHaveCount(0);
+  await expect(page.locator(".vibe-status-dots")).toHaveCount(0);
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

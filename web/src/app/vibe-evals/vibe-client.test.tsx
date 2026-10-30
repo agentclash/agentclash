@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { defaultModels, VibeError, type Operation, type Session } from "@/lib/vibe";
 import { draftMemory } from "@/lib/vibe-build-drafts";
 import { VibeClient } from "./vibe-client";
+import VibePage from "./page";
 
 const harness = vi.hoisted(() => ({
   params: new URLSearchParams("session=session-one"),
@@ -59,7 +60,7 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-async function render() {
+async function render(element: React.ReactNode = <VibeClient />) {
   // Simulate an external Next route change before mounting. In-app navigation
   // uses the real browser URL, so a stale mock cannot overwrite its selection.
   const query = harness.params.toString();
@@ -67,7 +68,7 @@ async function render() {
     replaceBrowserURL(null, "", `/vibe-evals?${query}`);
     routerQuery = query;
   }
-  await act(async () => root.render(<VibeClient />));
+  await act(async () => root.render(element));
 }
 function button(name: string) {
   if (name === "Try a message") name = "Try it yourself";
@@ -2002,7 +2003,7 @@ it("saves a provided-chat check without creating a prompt or agent build", async
   expect(document.body.textContent).toContain("Open saved result");
 });
 
-it("keeps the V1 entry visible while configuration loads, fails, and retries", async () => {
+it("keeps the V1 entry visible through the page while configuration loads, fails, and retries", async () => {
   const ready = deferred<Response>();
   harness.params = new URLSearchParams();
   let configLoads = 0;
@@ -2022,7 +2023,7 @@ it("keeps the V1 entry visible while configuration loads, fails, and retries", a
     return [...container.querySelectorAll<HTMLButtonElement>("button")]
       .filter(b => /Build an agent|Improve an existing agent/.test(b.textContent || ""));
   };
-  await render();
+  await render(<VibePage />);
   const doors = entry();
   expect(doors).toHaveLength(2);
   expect(doors.every(b => b.disabled)).toBe(true);
@@ -2036,7 +2037,7 @@ it("keeps the V1 entry visible while configuration loads, fails, and retries", a
   expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
 });
 
-it("keeps a saved conversation's draft unsent until configuration loads and retries without losing it", async () => {
+it("keeps a saved conversation's draft unsent through the page until configuration loads and retries without losing it", async () => {
   const ready = deferred<Response>();
   const selected = {
     assistant: "verified/free",
@@ -2053,7 +2054,7 @@ it("keeps a saved conversation's draft unsent until configuration loads and retr
     }
     return json(session);
   };
-  await render();
+  await render(<VibePage />);
   await type("Please check my app's reply");
   expect(button("Send message").disabled).toBe(true);
   await act(async () => ready.reject(new TypeError("Offline")));
