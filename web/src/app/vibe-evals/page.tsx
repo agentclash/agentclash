@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
-import { VibeRoute } from "./vibe-route";
+import { VibeClient } from "./vibe-client";
+import "@/components/vibe/project-workspace.css";
 export const metadata: Metadata = {
   title: "Vibe Evals | AgentClash",
   description:
@@ -18,7 +19,7 @@ export const viewport: Viewport = {
 export default function VibePage() {
   return (
     <Suspense fallback={<main className="vibe-route-fallback" />}>
-      <VibeRoute />
+      <VibeClient />
     </Suspense>
   );
 }

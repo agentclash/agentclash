@@ -2,11 +2,19 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { renderToString } from "react-dom/server";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 
-// Dev can server-render the client without suspending. Loading must not depend on it suspending.
-vi.mock("./vibe-client", () => ({ VibeClient: () => <main data-test-client="ready" /> }));
+const route = vi.hoisted(() => ({ suspended: false }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => {
+  if (route.suspended) throw new Promise(() => {});
+  return new URLSearchParams();
+} }));
+vi.mock("@workos-inc/authkit-nextjs/components", () => ({
+  useAccessToken: () => ({ getAccessToken: async () => undefined }),
+  useAuth: () => ({ loading: false, user: undefined }),
+}));
 const { default: VibePage, viewport } = await import("./page");
+afterEach(() => { route.suspended = false; });
 
 const css = readFileSync(path.resolve(__dirname, "../../components/vibe/project-workspace.css"), "utf8");
 const canvas = (selector: string) => {
@@ -25,10 +33,22 @@ it("colours the browser bar with the Vibe canvas of each system appearance", () 
   ]);
 });
 
-it("paints the loading fallback with the same canvas, so a light appearance does not flash dark", () => {
+it("server-renders the V1 entry with disabled doors before configuration loads", () => {
+  const html = renderToString(<VibePage />);
+  expect(html).toContain('class="vibe-entry-title">What would you like to evaluate?</h1>');
+  expect(html).toContain("Connecting…");
+  const doors = html.match(/<button[^>]*disabled=""[^>]*>[\s\S]*?<\/button>/g) || [];
+  expect(doors.filter(button => /Build an agent|Improve an existing agent/.test(button))).toHaveLength(2);
+  expect(html).toContain('data-appearance="light"');
+  expect(html).not.toContain('class="vibe-route-fallback"');
+  expect(html).not.toContain("What should your agent do?");
+});
+
+it("paints the fallback with the system canvas only when the client suspends", () => {
+  route.suspended = true;
   const html = renderToString(<VibePage />);
   expect(html).toContain('class="vibe-route-fallback"');
-  expect(html).not.toContain('data-test-client="ready"');
+  expect(html).not.toContain('class="vibe-entry-title"');
   expect(html).not.toContain("bg-background");
   expect(css).toMatch(new RegExp(`\\.vibe-route-fallback \\{[^}]*background: ${light};`));
   expect(css).toMatch(new RegExp(`@media \\(prefers-color-scheme: dark\\) \\{ \\.vibe-route-fallback \\{ background: ${dark}; \\} \\}`));

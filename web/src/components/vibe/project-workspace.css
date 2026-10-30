@@ -223,7 +223,6 @@
     --vibe-text-2: rgba(237,233,225,.88); --vibe-text-3: rgba(237,233,225,.88); --vibe-separator: rgba(237,233,225,.66); --vibe-control-border: rgba(237,233,225,.66);
     --vibe-issue: #ffb39e; --vibe-pass: #a8ddb3; --vibe-caution: #f0cc85;
   }
-  .vibe-workspace[data-appearance] .vibe-composer:focus-within { border-color: var(--vibe-focus); box-shadow: 0 0 0 1px var(--vibe-focus); }
 }
 .vibe-reply-body[data-collapsed="true"] { max-height: 24rem; overflow: hidden; }
 .vibe-project-main[data-initial] { display: flex; flex-direction: column; padding: 0; overflow: hidden; }

@@ -211,7 +211,9 @@
 /* Outranks the route surface rule in project-workspace.css that resets the border color. */
 .vibe-workspace .vibe-composer:focus-within {
   border-color: var(--vibe-control-border);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--vibe-focus) 30%, transparent);
+  outline: 2px solid var(--vibe-focus);
+  outline-offset: 2px;
+  box-shadow: none;
 }
 .vibe-composer textarea {
   display: block;

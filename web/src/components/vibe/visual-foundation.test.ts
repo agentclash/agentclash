@@ -3,6 +3,7 @@ import path from "node:path";
 import { expect, it } from "vitest";
 
 const css = readFileSync(path.resolve(__dirname, "project-workspace.css"), "utf8");
+const workspaceCSS = readFileSync(path.resolve(__dirname, "workspace.css"), "utf8");
 function tokens(selector: string) {
   const result: Record<string, string>[] = [];
   for (const block of css.split("}")) {
@@ -31,6 +32,17 @@ function boundary(border: string, inside: string, outside: string) {
   return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
 }
 for (const [name, palette] of Object.entries(palettes)) {
+  it(`${name}: the composer focus ring meets 3:1 against every adjacent surface`, () => {
+    const focus = workspaceCSS.match(/\.vibe-workspace \.vibe-composer:focus-within\s*\{([^}]+)\}/)?.[1] ?? "";
+    const outline = focus.match(/(?:^|;)\s*outline:\s*([^;]+);/)?.[1] ?? "none";
+    const resolved = outline.replace(/var\(--vibe-([\w-]+)\)/g, (_, token: string) => palette[token]);
+    const ring = resolved.match(/^(\d+(?:\.\d+)?)px solid (.+)$/);
+    expect(ring, "composer needs a solid outline instead of a translucent halo").not.toBeNull();
+    expect(Number(ring![1])).toBeGreaterThanOrEqual(2);
+    for (const surface of ["bg", "sidebar", "surface", "surface-2", "surface-3", "elevated"]) {
+      expect(contrast(ring![2], palette[surface]), `focus ring on ${surface}`).toBeGreaterThanOrEqual(3);
+    }
+  });
   it(`${name}: every readable text/status/focus token and control boundary meets contrast on every surface`, () => {
     for (const surface of ["bg", "sidebar", "surface", "surface-2", "surface-3", "elevated"]) {
       for (const token of ["text-1", "text-2", "text-3", "issue", "pass", "caution", "focus", "control-border"]) {

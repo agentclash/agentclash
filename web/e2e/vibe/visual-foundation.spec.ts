@@ -31,8 +31,8 @@ async function settle(page: Page, scheme: Scheme, media: Parameters<Page["emulat
 
 // WCAG 1.4.11 for a control: its border against the colour outside it and against its own fill,
 // whichever is lower. Alpha is composited down to the first opaque ancestor, as in navigation.spec.ts.
-function boundary(control: Locator) {
-  return control.evaluate(element => {
+function boundary(control: Locator, indicator: "border" | "outline" = "border") {
+  return control.evaluate((element, indicator) => {
     const paint = document.createElement("canvas").getContext("2d")!;
     const rgba = (color: string) => { paint.clearRect(0, 0, 1, 1); paint.fillStyle = color; paint.fillRect(0, 0, 1, 1); return [...paint.getImageData(0, 0, 1, 1).data].map((v, i) => i === 3 ? v / 255 : v); };
     const blend = (fg: number[], bg: number[]) => fg.slice(0, 3).map((v, i) => v * fg[3] + bg[i] * (1 - fg[3]));
@@ -40,11 +40,30 @@ function boundary(control: Locator) {
     const luminance = (c: number[]) => c.map(v => { const n = v / 255; return n <= .04045 ? n / 12.92 : ((n + .055) / 1.055) ** 2.4; }).reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
     const ratio = (a: number[], b: number[]) => { const x = luminance(a), y = luminance(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); };
     const outside = behind(element.parentElement), inside = behind(element);
-    const border = blend(rgba(getComputedStyle(element).borderTopColor), inside);
+    const style = getComputedStyle(element);
+    const border = blend(rgba(indicator === "outline" ? style.outlineColor : style.borderTopColor), indicator === "outline" ? outside : inside);
     return Math.min(ratio(border, outside), ratio(border, inside));
-  });
+  }, indicator);
 }
 const css = (locator: Locator, property: string) => locator.evaluate((el, name) => getComputedStyle(el).getPropertyValue(name), property);
+
+async function composerFocus(page: Page, box: Locator, textarea: Locator, context: string) {
+  await textarea.blur();
+  await expect(box, context).toHaveCSS("outline-style", "none");
+  await textarea.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect(textarea, context).toBeFocused();
+  await expect.poll(() => textarea.evaluate(el => el.matches(":focus-visible")), { message: context }).toBe(true);
+  await expect(textarea, context).toHaveCSS("outline-style", "none");
+  await expect(box, context).toHaveCSS("outline-style", "solid");
+  await expect(box, context).toHaveCSS("outline-width", "2px");
+  await expect(box, context).toHaveCSS("outline-offset", "2px");
+  expect(await css(box, "outline-color"), context).not.toBe(await css(box, "border-top-color"));
+  expect(await boundary(box, "outline"), `${context} focus ring`).toBeGreaterThanOrEqual(3);
+  await textarea.blur();
+  await expect(box, context).toHaveCSS("outline-style", "none");
+}
 
 async function toResults(page: Page) {
   const fake = await fakeVibe(page);
@@ -87,6 +106,7 @@ test("the entry and both door starts: the display serif question, 3:1 control bo
     await expect(dock, scheme).toHaveCSS("box-shadow", "none");
     await expect(dock, scheme).toHaveCSS("background-image", "none");
     await expect(dock, scheme).toHaveCSS("background-color", canvas[scheme]);
+    await composerFocus(page, box, composer(page), `${scheme} ${contrast} entry composer`);
     const secondary = page.locator(".vibe-button-secondary").filter({ visible: true });
     expect(await secondary.count(), scheme).toBeGreaterThan(0);
     for (const button of await secondary.all()) expect(await boundary(button), `${scheme} ${await button.textContent()}`).toBeGreaterThanOrEqual(3);
@@ -98,6 +118,20 @@ test("the entry and both door starts: the display serif question, 3:1 control bo
   for (const scheme of schemes) for (const contrast of ["no-preference", "more"] as const) {
     await settle(page, scheme, { contrast });
     for (const source of ["instructions", "recorded", "import"] as const) expect(await boundary(sourceButton(page, source)), `${scheme} ${source} source`).toBeGreaterThanOrEqual(3);
+  }
+  expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
+});
+
+test("the Guide composer has a distinct 3:1 keyboard focus ring in every appearance and contrast", async ({ page }) => {
+  const fake = await toResults(page);
+  const guide = page.getByRole("button", { name: "Guide", exact: true });
+  if (await guide.getAttribute("aria-pressed") !== "true") await guide.click();
+  const panel = page.getByRole("complementary", { name: "Guide utility", exact: true });
+  const textarea = panel.getByRole("textbox", { name: "Message Vibe Evals" });
+  await expect(textarea).toBeVisible();
+  for (const scheme of schemes) for (const contrast of ["no-preference", "more"] as const) {
+    await settle(page, scheme, { contrast });
+    await composerFocus(page, panel.locator(".vibe-composer"), textarea, `${scheme} ${contrast} Guide composer`);
   }
   expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
 });
@@ -247,16 +281,31 @@ test("the working state: no gradient text, a soft sweep for an unknown total, an
   expect(errors).toEqual([]);
 });
 
-test("the loading fallback paints the Vibe canvas of the system appearance, not the dark site canvas", async ({ page }) => {
-  // The route's explicit client loading boundary also renders in next dev, where useSearchParams
-  // does not suspend. Hold bundles before navigation to inspect that real server-rendered fallback.
-  await page.route(/\/_next\/static\/chunks\/.*\.js/, route => route.abort());
-  for (const scheme of schemes) {
+test.describe("before hydration", () => {
+  test.use({ javaScriptEnabled: false });
+  test("a light system paints the server entry or Suspense fallback with the light Vibe canvas", async ({ page }) => {
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto("/vibe-evals");
+    // Dev renders the entry; a production build can suspend on useSearchParams.
+    const canvasSurface = page.locator("main.vibe-route, main.vibe-route-fallback").filter({ visible: true });
+    await expect(canvasSurface).toHaveCount(1);
+    await expect(canvasSurface).toBeVisible();
+    await expect(canvasSurface).toHaveCSS("background-color", canvas.light);
+    expect((await canvasSurface.boundingBox())!.height).toBeGreaterThanOrEqual(960);
+  });
+  for (const scheme of schemes) test(`the Suspense fallback CSS paints the ${scheme} Vibe canvas`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: scheme });
-    await page.goto("/vibe-evals", { waitUntil: "commit" });
-    const fallback = page.locator("main.vibe-route-fallback");
-    await expect(fallback, scheme).toBeVisible();
-    await expect(fallback, scheme).toHaveCSS("background-color", canvas[scheme]);
-    expect((await fallback.boundingBox())!.height, scheme).toBeGreaterThanOrEqual(960);
-  }
+    await page.goto("/vibe-evals");
+    // Dev need not suspend. Probe the fallback CSS alongside the server entry in that case.
+    await page.evaluate(() => {
+      if (document.querySelector("main.vibe-route-fallback")) return;
+      const fallback = document.createElement("main");
+      fallback.className = "vibe-route-fallback";
+      document.body.append(fallback);
+    });
+    const fallback = page.locator("main.vibe-route-fallback").filter({ visible: true });
+    await expect(fallback).toBeVisible();
+    await expect(fallback).toHaveCSS("background-color", canvas[scheme]);
+    expect((await fallback.boundingBox())!.height).toBeGreaterThanOrEqual(960);
+  });
 });
