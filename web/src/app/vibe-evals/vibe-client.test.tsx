@@ -2699,7 +2699,6 @@ it("keeps untested version Results empty until explicit history pins the tested 
   session.document.evaluation={id:session.id,chat_id:session.id,door:"build"};
   session.document.artifacts=[v1,v2]; session.document.active_artifact_id="v2";
   session.operations=[{id:"old-run",kind:"check",state:"COMPLETED",billing:"SETTLED",models:defaultModels,source:{kind:"prompt",artifact_id:"v1",label:"Old policy"},results:[],max_cost_nano_usd:0,actual_cost_nano_usd:0,scorecard:{total:1,passed:1,failed:0,unknown:0,evaluated:1,pass_rate:1,coverage:1}}];
-  session.operations.unshift({...session.operations[0],id:"earlier-run"});
   harness.params=new URLSearchParams(`session=${session.id}&view=agent&agent=v2`);
   const original=respond; respond=async(path,options)=>path==="/config"?json({enabled:true,two_door:true,defaults:defaultModels,models:[...new Set(Object.values(defaultModels))].map(id=>({id,name:id})),availability:{guest:{available:true},workspace:{available:true}}}):original(path,options);
   await render(); await click("Results");
@@ -2708,12 +2707,15 @@ it("keeps untested version Results empty until explicit history pins the tested 
   expect(container.querySelector(".vibe-project-main")?.textContent).toContain("No results for this version");
   expect(container.querySelector('[aria-label="Keep and extend your results"]')).toBeNull();
   expect(container.querySelector('[aria-label="Next actions for this version"]')).toBeNull();
-  const history=container.querySelector<HTMLSelectElement>('[aria-label="Result history"]')!;
-  await act(async()=>{history.value="old-run";history.dispatchEvent(new Event("change",{bubbles:true}));});
+  const history=container.querySelector<HTMLSelectElement>('[aria-label="Result history"]');
+  expect(history).not.toBeNull();
+  expect(session.operations).toHaveLength(1);
+  await act(async()=>{history!.value="old-run";history!.dispatchEvent(new Event("change",{bubbles:true}));});
   expect(new URL(location.href).searchParams.get("run")).toBe("old-run");
   expect(new URL(location.href).searchParams.get("agent")).toBe("v1");
   expect(container.querySelector(".vibe-project-header")?.textContent).toContain("v1 · Old policy");
   expect(container.querySelector('[aria-label="Next actions for this version"]')?.getAttribute("data-artifact-id")).toBe("v1");
+  expect(container.querySelector('[aria-label="Result history"]')).toBeNull();
   const followup=container.querySelector('[aria-label="Next actions for this version"]')!;
   await act(async()=>[...followup.querySelectorAll("summary")].find(summary=>summary.textContent==="More ways to test")!.click());
   await act(async()=>[...followup.querySelectorAll<HTMLButtonElement>("button")].find(button=>button.textContent==="Add harder tests")!.click());
@@ -3274,4 +3276,48 @@ it("returns focus to the project title from the chooser when the project has no 
   await click("New project");
   await click("Back to your project"); await frame();
   expect(document.activeElement).toBe(container.querySelector(".vibe-project-header h1"));
+});
+
+
+it.each([1, 2])("sends first Build clarification choices through messages with the active cycle (selections: %s)", async count => {
+  session.document.evaluation = { id: session.id, chat_id: session.id, door: "build" };
+  session.document.build = { cycle_id: "active-build-cycle", phase: "clarifying", clarifications_used: 1 };
+  session.document.messages = [{ id: "question", role: "assistant", content: "Which return rules apply?" }];
+  session.document.conversation_state = { version: 1, actions_version: 1, through_message_id: "question", brief: { scope_id: "scope", revision: 1, facts: [] }, guidance: {}, pending_question: { id: "q", revision: 1, scope_id: "scope", origin_message_id: "question", purpose: "clarify_rule", status: "active", text: "Which return rules apply?", options: [{ id: "30", label: "30 days" }, { id: "sealed", label: "Unopened items" }], max_selections: count, proposal_id: null, proposal_revision: null } };
+  const before = respond;
+  respond = async (path, options) => {
+    if (path === "/config") return json({ enabled: true, two_door: true, interaction_actions: true, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id })), availability: { guest: { available: true }, workspace: { available: true } } });
+    if (path.endsWith("/messages")) return json({ id: "answer-admitted", kind: "message", state: "RUNNING", billing: "RESERVED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] }, 202);
+    return before(path, options);
+  };
+  await render();
+  if (count === 1) await click("30 days");
+  else {
+    await act(async () => container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]').forEach(input => input.click()));
+    await click("Use these answers");
+  }
+  const writes = requests.filter(request => request.method === "POST");
+  expect(writes).toHaveLength(1);
+  expect(writes[0].path).toBe(`/sessions/${session.id}/messages`);
+  expect(writes[0].body).toMatchObject({ kind: "message", content: count === 1 ? "30 days" : "30 days\nUnopened items", cycle_id: "active-build-cycle", revision: 1, models: defaultModels });
+  expect(writes[0].body).not.toHaveProperty("interaction");
+  expect(writes[0].body).not.toHaveProperty("payload");
+});
+
+
+it.each(["test", "build"] as const)("keeps clarification choices on actions for %s after the initial Build", async door => {
+  session.document.evaluation = { id: session.id, chat_id: session.id, door };
+  if (door === "build") {
+    session.document.artifacts = [{ id: "existing-agent", kind: "test_suite", title: "Returns", agent_prompt: "Follow the policy.", blueprint: {}, accepted: true, source_message_id: "task" }];
+    session.document.build = { cycle_id: "later-cycle", phase: "clarifying", clarifications_used: 1, artifact_id: "existing-agent" };
+  }
+  session.document.messages = [{ id: "question", role: "assistant", content: "30 days?" }];
+  session.document.conversation_state = { version: 1, actions_version: 1, through_message_id: "question", brief: { scope_id: "scope", revision: 1, facts: [] }, guidance: {}, pending_question: { id: "q", revision: 1, scope_id: "scope", origin_message_id: "question", purpose: "clarify_rule", status: "active", text: "30 days?", options: [{ id: "30", label: "30 days" }], max_selections: 1, proposal_id: null, proposal_revision: null } };
+  const before = respond;
+  respond = async (path, options) => path === "/config" ? json({ enabled: true, interaction_actions: true, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id })), availability: { guest: { available: true }, workspace: { available: true } } }) : before(path, options);
+  await render(); await click("30 days");
+  const writes = requests.filter(request => request.method === "POST");
+  expect(writes).toHaveLength(1);
+  expect(writes[0].path).toBe(`/sessions/${session.id}/actions`);
+  expect(writes[0].body).toMatchObject({ version: 1, kind: "action", payload: { kind: "answer_question", option_ids: ["30"], target_id: "q" } });
 });

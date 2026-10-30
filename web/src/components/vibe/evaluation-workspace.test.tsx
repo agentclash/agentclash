@@ -414,7 +414,7 @@ it("uses the requested run identity while permitting deliberate history selectio
   ).toBe("next");
 });
 
-it("shows result history only when a project has at least two runs", async () => {
+it("hides result history for no runs or the only displayed run", async () => {
   const data = session();
   const artifact = { id: "artifact-one", title: "Returns", agent_prompt: "Follow the policy", accepted: true, source_message_id: "task", blueprint: {} };
   data.document.evaluation = { id: data.id, chat_id: data.id, door: "test" }; data.document.artifacts = [artifact];

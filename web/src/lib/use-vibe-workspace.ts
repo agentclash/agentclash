@@ -650,7 +650,7 @@ export function useVibeWorkspace() {
   function sendMessage(text = content, context?: { viewed_run_id?: string; viewed_case_key?: string; artifact_id?: string }, demoID?: string) {
     if (buildStart && (!quoteMatches || Date.parse(buildQuote!.expires_at) <= Date.now() + serverOffset.current)) return;
     if (materials.blocked && buildStart) return;
-    void submit("message", text, undefined, {
+    return submit("message", text, undefined, {
       ...context,
       ...(demoID ? { demo_id: demoID } : {}),
       ...(buildStart ? { cycle_id: buildQuote!.id } : continuingBuild ? { cycle_id: session!.document.build!.cycle_id } : {}),
@@ -1094,6 +1094,13 @@ export function useVibeWorkspace() {
   async function applyChoice(action: ConversationAction) {
     const scope = scopeRef.current;
     if (!session) return;
+    if (action.kind === "answer_question" && buildJourney && continuingBuild && !session.document.artifacts.length) {
+      const question = session.document.conversation_state?.pending_question;
+      if (question?.status === "active" && question.id === action.target_id) {
+        const text = [...question.options.filter(option => action.option_ids.includes(option.id)).map(option => option.label), action.text?.trim()].filter(Boolean).join("\n");
+        return sendMessage(text);
+      }
+    }
     setPending(true);
     try {
       const next = await vibeFetch<Session>(`/sessions/${session.id}/actions`, await token(), {

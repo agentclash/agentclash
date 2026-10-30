@@ -33,7 +33,12 @@ export function BuildStart(p: { draft: string; onDraft(text: string): void; pric
           const selected = event.target.files?.[0]; event.target.value = ""; if (!selected) return;
           if (selected.size > 100_000 || !/\.(txt|md|csv|json)$/i.test(selected.name)) { setFileError("Choose a text file under 100 KB (.txt, .md, .csv or .json)."); return; }
           setReading(true); setFileError("");
-          try { const text = await selected.text(); p.onDraft([p.draft.trim(), text.trim()].filter(Boolean).join("\n\n")); input.current?.focus(); }
+          try {
+            const bytes = await selected.arrayBuffer();
+            let text: string;
+            try { text = new TextDecoder("utf-8", { fatal: true }).decode(bytes); }
+            catch { setFileError("This file is not UTF-8 text. Save it as UTF-8 and try again."); return; }
+            p.onDraft([p.draft.trim(), text.trim()].filter(Boolean).join("\n\n")); input.current?.focus(); }
           catch { setFileError("Couldn’t read this file. Try another file."); }
           finally { setReading(false); }
         }} />

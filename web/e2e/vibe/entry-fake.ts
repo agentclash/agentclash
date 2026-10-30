@@ -148,6 +148,10 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
     }
     if (!state) { unknown.push(`${method} ${p}`); return json({ error: { code: "not_found", message: "Project is unavailable." } }, 404); }
     const s = state;
+    if (s.document.evaluation?.door === "build" && !s.document.artifacts.length &&
+      (p.endsWith("/messages") && body.kind === "message" || p.endsWith("/actions") && body.payload?.kind === "answer_question") &&
+      (!body.cycle_id || s.document.build && body.cycle_id !== s.document.build.cycle_id))
+      return json({ error: { code: "quote_expired", message: "Use Build and try 3 examples, or Retry your saved request." } }, 409);
     if (p.endsWith("/build-quote")) return json({ id: `build-quote-${posts.length}`, max_calls: 9, cases: 3, max_cost_nano_usd: 250_000_000, request: { content: body.content, models: body.models, ...(body.inputs ? { inputs: body.inputs } : {}), ...(body.adopt_rules ? { adopt_rules: body.adopt_rules } : {}) }, expires_at: new Date(Date.now() + 600_000).toISOString() });
     if (p.endsWith("/run-quote")) return json({ id: `run-quote-${posts.length}`, max_cost_nano_usd: 120_000_000, cases: 3, calls: 6, expires_at: new Date(Date.now() + 600_000).toISOString() });
     if (p.endsWith("/messages") && body.kind === "message") {
@@ -168,7 +172,7 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
       const art: Artifact = { id: `v${s.document.artifacts.length + 1}`, kind: "test_suite", title: "Shop returns assistant", summary: "Eligible returns, late purchases and missing details.", agent_prompt: body.instructions || instructions, accepted: true, source_message_id: `m-${op.id}`, proposal_message_id: `prepared-${op.id}`, scope_note: "Answers return questions using the policy you supplied.", blueprint };
       if (s.document.evaluation?.door === "build") {
         s.title = "Online shop returns helper";
-        s.document.build = { cycle_id: body.cycle_id || "cycle", phase: "preparing", clarifications_used: 0 };
+        s.document.build = { cycle_id: body.cycle_id, phase: "preparing", clarifications_used: 0 };
         if (options.buildFails) {
           later(s, () => finish(op, { state: "FAILED", billing: "RELEASED", retryable: true, error: { code: "provider_error", message: "The selected model’s provider failed. Your request is saved." } } as any));
           // As backend/internal/vibe/retry.go: the source stays FAILED, is no longer retryable, and a new operation runs.

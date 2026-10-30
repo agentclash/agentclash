@@ -1,3 +1,4 @@
+import { File as ByteFile } from "node:buffer";
 import React, { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -59,8 +60,34 @@ it("attaches text to the draft without starting and reports unreadable or unsupp
   const fileInput = node.querySelector<HTMLInputElement>('input[type="file"]')!;
   const choose = async (file: Partial<File>) => { Object.defineProperty(fileInput, "files", { configurable: true, value: [file] }); await act(async () => fileInput.dispatchEvent(new Event("change", { bubbles: true }))); };
   const click = vi.spyOn(fileInput, "click"); await act(async () => button("Attach a file").click()); expect(click).toHaveBeenCalledOnce();
-  await choose({ name: "policy.txt", size: 30, text: async () => "Use a 30-day return policy." });
+  await choose({ name: "policy.txt", size: 30, arrayBuffer: async () => new TextEncoder().encode("Use a 30-day return policy.").buffer });
   expect(input().value).toBe("Use a 30-day return policy."); expect(start).not.toHaveBeenCalled();
   await choose({ name: "photo.png", size: 20 }); expect(node.querySelector('[role="alert"]')?.textContent).toContain("Choose a text file");
-  await choose({ name: "broken.txt", size: 20, text: async () => { throw new Error("Unreadable"); } }); expect(node.querySelector('[role="alert"]')?.textContent).toContain("Couldn’t read"); expect(input().value).toBe("Use a 30-day return policy.");
+  await choose({ name: "broken.txt", size: 20, arrayBuffer: async () => { throw new Error("Unreadable"); } }); expect(node.querySelector('[role="alert"]')?.textContent).toContain("Couldn’t read"); expect(input().value).toBe("Use a 30-day return policy.");
+});
+
+
+it.each([
+  ["UTF-16LE", [0xff, 0xfe, 0x41, 0x00, 0x42, 0x00]],
+  ["Windows-1252", [0x43, 0x61, 0x66, 0xe9]],
+] as const)("rejects %s attachment bytes without changing the draft", async (_encoding, bytes) => {
+  await render(); await type("Keep this original task description.");
+  const fileInput = node.querySelector<HTMLInputElement>('input[type="file"]')!;
+  const file = new ByteFile([new Uint8Array(bytes)], "policy.txt", { type: "text/plain" });
+  Object.defineProperty(fileInput, "files", { configurable: true, value: [file] });
+  await act(async () => fileInput.dispatchEvent(new Event("change", { bubbles: true })));
+  expect(node.querySelector('[role="alert"]')?.textContent).toBe("This file is not UTF-8 text. Save it as UTF-8 and try again.");
+  expect(input().value).toBe("Keep this original task description.");
+  expect(start).not.toHaveBeenCalled();
+  expect(submit().disabled).toBe(false);
+});
+
+it("accepts UTF-8 bytes with a BOM and appends the decoded text", async () => {
+  await render(); await type("Original task.");
+  const fileInput = node.querySelector<HTMLInputElement>('input[type="file"]')!;
+  const file = new ByteFile([new Uint8Array([0xef, 0xbb, 0xbf]), "Café returns policy."], "policy.txt");
+  Object.defineProperty(fileInput, "files", { configurable: true, value: [file] });
+  await act(async () => fileInput.dispatchEvent(new Event("change", { bubbles: true })));
+  expect(input().value).toBe("Original task.\n\nCafé returns policy.");
+  expect(node.querySelector('[role="alert"]')).toBeNull();
 });
