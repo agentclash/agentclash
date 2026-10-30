@@ -3,6 +3,8 @@
 // request is aborted and recorded. State changes that a worker would make are
 // queued per project and applied one per /events request (the client reconnects).
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import type { Page } from "@playwright/test";
 import { defaultModels, type Artifact, type CaseResult, type Operation, type Session } from "../../src/lib/vibe";
 
@@ -26,15 +28,9 @@ export const description = "Answer customer questions about returns for my onlin
 export const instructions = "Help shoppers with returns. Allow unopened items within 30 days of purchase. Decline later returns politely. Ask for missing details before deciding.";
 export const transcript = "Customer: I bought headphones 45 days ago. They are still sealed. Can I return them?\nAgent: Sure, bring them back with the receipt.";
 export const expectation = "Decline purchases older than 30 days.";
-// A pack with three text cases. The fake reads its case keys and, as the backend compiler does
-// (backend/internal/api/vibe_compiler.go:245), rejects a file with no case.
-export const packFile = { name: "returns-pack.yaml", mimeType: "application/yaml", buffer: Buffer.from([
-  "pack:", "  slug: returns", "  name: Returns", "version:", "  number: 1", "  execution_mode: prompt_eval", "input_sets:", "  - key: default", "    cases:",
-  "      - case_key: eligible", "        inputs: [{ key: message, value: \"Unopened, bought 10 days ago. Can I return it?\" }]",
-  "      - case_key: late", "        inputs: [{ key: message, value: \"Unopened, bought 45 days ago. Can I return it?\" }]",
-  "      - case_key: missing", "        inputs: [{ key: message, value: \"I want to return something.\" }]", "",
-].join("\n")) };
-export const packCaseKeys = (raw: string) => [...raw.matchAll(/^\s*- case_key:\s*(\S+)/gm)].map(match => match[1]);
+// returns-pack.json is the output of the backend's own VibePackCompiler.Draft for the three tests
+// below, and VibePackCompiler.Compile accepts it (3 cases). The fake imports what the file contains.
+export const packFile = { name: "returns-pack.json", mimeType: "application/json", buffer: readFileSync(path.resolve(__dirname, "returns-pack.json")) };
 
 const inputs = ["Unopened, bought 10 days ago. Can I return it?", "Unopened, bought 45 days ago. Can I return it?", "I want to return something."];
 const expected = ["Explain that it is eligible.", "Decline the late return.", "Ask for purchase age and item condition."];
@@ -209,9 +205,13 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
       return json(s);
     }
     if (p.endsWith("/import")) {
-      const cases = packCaseKeys(request.postData() ?? "");
-      if (cases.length !== 3) return json({ error: { code: "invalid_request", message: `The fake serves a pack of 3 cases; this file has ${cases.length}.` } }, 422);
-      const art: Artifact = { id: "pack-v1", kind: "test_suite", title: packFile.name, summary: "Imported test pack.", agent_prompt: "", accepted: false, source_message_id: "import", blueprint,
+      // As the compiler: at least one case, each with a unique nonempty key (backend/internal/api/vibe_compiler.go).
+      let pack: any;
+      try { pack = JSON.parse(request.postData() ?? ""); } catch { pack = undefined; }
+      const keys: unknown[] = Array.isArray(pack?.cases) ? pack.cases.map((c: any) => c?.key) : [];
+      if (!keys.length || keys.some(key => typeof key !== "string" || !key) || new Set(keys).size !== keys.length)
+        return json({ error: { code: "invalid_request", message: "This file is not a test pack that the preview can run." } }, 422);
+      const art: Artifact = { id: "pack-v1", kind: "test_suite", title: packFile.name, summary: "Imported test pack.", agent_prompt: "", accepted: false, source_message_id: "import", blueprint: pack,
         original: { id: "orig-1", artifact_id: "pack-v1", filename: packFile.name, media_type: packFile.mimeType, content_sha256: "0".repeat(64), size_bytes: packFile.buffer.length } } as any;
       s.document.artifacts.push(art); s.document.active_artifact_id = art.id; s.title = packFile.name;
       bump(s);
