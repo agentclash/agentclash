@@ -15,7 +15,7 @@ import { reportBase, type SDKReport } from "./vibe-reports";
 import { useVibeExport } from "./use-vibe-export";
 import {pinVibeReturn} from "./vibe-keep";
 import { useVibeSaving } from "@/lib/use-vibe-saving";
-import { readEditorDraft, discardEditorDraft, draftMemory, readBuildDrafts, emptyDrafts, persistDrafts, editorDraftKey, type EditorDraft } from "@/lib/vibe-build-drafts";
+import { readEditorDraft, discardEditorDraft, draftMemory, readBuildDrafts, emptyDrafts, persistDrafts, editorDraftKey, editorSource, type EditorDraft } from "@/lib/vibe-build-drafts";
 import { useVibeEditorDraft } from "./use-vibe-editor-draft";
 import { useVibeDrafts } from "@/lib/use-vibe-drafts";
 import { useVibeNavigation, type VibePane } from "@/lib/use-vibe-navigation";
@@ -42,7 +42,7 @@ import { evaluationIdentity } from "@/components/vibe/evaluation-navigation";
 
 
 import { recoverRequest } from "./vibe-request-recovery";
-import { editableEvaluation, defaultModels, terminal, retryVibeOperation, VibeError, vibeFetch, type CaseResult, type BuildQuote, type RunQuote, type Models, type Operation, type Session, type VibeConfig, type SavedCheck } from "@/lib/vibe";
+import { editableEvaluation, defaultModels, terminal, retryVibeOperation, VibeError, vibeFetch, type Artifact, type CaseResult, type BuildQuote, type RunQuote, type Models, type Operation, type Session, type VibeConfig, type SavedCheck } from "@/lib/vibe";
 
 
 
@@ -63,7 +63,7 @@ type PendingSubmission = {
   trialKey?: string;
   retryOperationID?: string;
   uncertain: boolean;
-  startDraft?: { kind: "build" | "instructions"; value: string };
+  startDraft?: { kind: "build" | "instructions" | "chat"; value: string };
   follow?: Follow;
   // The original fix message also owns an explicitly retried request.
   fix?: string;
@@ -77,15 +77,58 @@ type SubmissionRecovery = {
   error: string;
 };
 const recoveryKey = (scope: RequestScope) => JSON.stringify([scope.actor, scope.sessionID]);
+function clearImproveStartDraft(project: string, expected: string) {
+  const row = readEditorDraft(project, "start", "inputs");
+  if (!row || row.value !== expected) return;
+  try {
+    const inputs = JSON.parse(row.value);
+    if (typeof inputs.chat === "string" && inputs.chat) {
+      const all = draftMemory.get(project) || readBuildDrafts(project) || emptyDrafts();
+      persistDrafts(project, { ...all, editors: { ...all.editors, [editorDraftKey(project, "start", "inputs")]: { ...row, value: JSON.stringify({ chat: inputs.chat }) } } });
+      return;
+    }
+  } catch { return; }
+  discardEditorDraft(project, "start", "inputs", row);
+}
+
 function clearStartDraft(request: PendingSubmission) {
   if (!request.startDraft) return;
   const project = `start:${request.scope.actor}:${request.startDraft.kind === "build" ? "build" : "test"}`;
   const editor = request.startDraft.kind === "build" ? "brief" : "inputs";
   const row = readEditorDraft(project, "start", editor);
-  if (row?.value === request.startDraft.value) discardEditorDraft(project, "start", editor, row);
+  if (request.startDraft.kind === "chat") {
+    if (!row) return;
+    try {
+      const inputs = JSON.parse(row.value);
+      if (inputs.chat !== request.startDraft.value) return;
+      const all = draftMemory.get(project) || readBuildDrafts(project) || emptyDrafts();
+      persistDrafts(project, { ...all, editors: { ...all.editors, [editorDraftKey(project, "start", editor)]: { ...row, value: JSON.stringify({ ...inputs, chat: "" }) } } });
+    } catch { /* Preserve an unreadable start draft. */ }
+    return;
+  }
+  if (request.startDraft.kind === "instructions") clearImproveStartDraft(project, request.startDraft.value);
+  else if (row?.value === request.startDraft.value) discardEditorDraft(project, "start", editor, row);
 }
 
 
+
+function emptyStartDraft(row: EditorDraft | undefined, editor: "brief" | "inputs") {
+  if (!row || !row.value.trim()) return true;
+  if (editor === "brief") return false;
+  try {
+    const inputs = JSON.parse(row.value);
+    return inputs && typeof inputs === "object" && !Array.isArray(inputs) && Object.entries(inputs).every(([key, value]) => key === "mode" || value === undefined || value === "");
+  } catch { return false; }
+}
+
+function carryInstructionDraft(project: string, from: Artifact | undefined, to: Artifact | undefined, submitted?: EditorDraft) {
+  if (!from || !to || !submitted || from.id === to.id || from.agent_prompt !== to.agent_prompt || submitted.value === from.agent_prompt || submitted.source !== editorSource({ id: from.id, agent_prompt: from.agent_prompt })) return;
+  const current = readEditorDraft(project, from.id, "instructions");
+  const target = readEditorDraft(project, to.id, "instructions");
+  if (!current || current.source !== submitted.source || current.value !== submitted.value || target && target.value !== to.agent_prompt) return;
+  const all = draftMemory.get(project) || readBuildDrafts(project) || emptyDrafts();
+  persistDrafts(project, { ...all, editors: { ...all.editors, [editorDraftKey(project, to.id, "instructions")]: { artifact: to.id, source: editorSource({ id: to.id, agent_prompt: to.agent_prompt }), value: submitted.value } } });
+}
 
 export function useVibeWorkspace() {
 
@@ -127,7 +170,7 @@ export function useVibeWorkspace() {
     for (const [door, editor] of [["build", "brief"], ["test", "inputs"]] as const) {
       const guest = `start:guest:${door}`, account = `start:${authUserID}:${door}`;
       const row = readEditorDraft(guest, "start", editor);
-      if (!row || readEditorDraft(account, "start", editor)) continue;
+      if (!row || !emptyStartDraft(readEditorDraft(account, "start", editor), editor)) continue;
       const all = draftMemory.get(account) || readBuildDrafts(account) || emptyDrafts();
       if (persistDrafts(account, { ...all, editors: { ...all.editors, [editorDraftKey(account, "start", editor)]: row } })) discardEditorDraft(guest, "start", editor, row);
       migrated = true;
@@ -136,7 +179,7 @@ export function useVibeWorkspace() {
   }, [authUserID, authLoading]);
   const startBuildDraft = useVibeEditorDraft(`start:${authUserID || "guest"}:build`, "start", "brief", "", "");
   const startImproveDraft = useVibeEditorDraft(`start:${authUserID || "guest"}:test`, "start", "inputs", "", "{}");
-  let startInputs: { instructions: string; model?: string; conversations: string; rules: string; mode?: "instructions" | "replies" | "pack" } = { instructions: "", conversations: "", rules: "" };
+  let startInputs: { instructions: string; model?: string; conversations: string; rules: string; chat?: string; mode?: "instructions" | "replies" | "pack" } = { instructions: "", conversations: "", rules: "" };
   try { startInputs = { ...startInputs, ...JSON.parse(startImproveDraft.value) }; } catch { /* Keep an unreadable draft in storage. */ }
   const setStartInputs = (patch: Partial<typeof startInputs>) => startImproveDraft.setValue(JSON.stringify({ ...startInputs, ...patch }));
   const hiddenStartDraft = useVibeEditorDraft(`start:${authUserID || "guest"}:hidden`, "start", "projects", "", "[]");
@@ -202,7 +245,7 @@ export function useVibeWorkspace() {
   const savedCaseReads = useRef(new Map<string, Promise<CaseResult>>());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [checksDirtyID, setChecksDirtyID] = useState<string | null>(null);
-  const [pendingEdit, setPendingEdit] = useState<{ operationID: string; artifactID: string; draft?: EditorDraft }>();
+  const [pendingEdit, setPendingEdit] = useState<{ operationID: string; artifactID: string; draft?: EditorDraft; instructions?: EditorDraft }>();
   const [dirtyArtifactID, setDirtyArtifactID] = useState<string | null>(null);
 
   const workspaceActor = authUserID || "guest";
@@ -520,7 +563,7 @@ export function useVibeWorkspace() {
       alive = false;
     };
   }, [requestedSessionID, loadAttempt, token, authLoading]);
-  async function ensureSession(scope = scopeRef.current, ownsAttempt = () => true) {
+  async function ensureSession(scope = scopeRef.current, ownsAttempt = () => true, firstText = content) {
     if (requestedSessionID && session?.id !== requestedSessionID)
       throw new Error(
         "Load this project before sending. No new project was created.",
@@ -533,6 +576,7 @@ export function useVibeWorkspace() {
       method: "POST",
       body: JSON.stringify({
         id,
+        ...(startDoor === "improve" ? { door: "test", title: Array.from(firstText.trim().split(/(?<=[.!?])\s|\n/)[0].replace(/[\u0000-\u001f\u007f-\u009f]/g, " ").trim()).slice(0, 60).join("") } : {}),
         ...(workspace ? { workspace_id: workspace } : {}),
       }),
     });
@@ -698,7 +742,7 @@ export function useVibeWorkspace() {
       setContexts(old => [next, ...old.filter(row => row.id !== id)]);
       if (!firstRequest?.uncertain) {
         if (first.kind === "build") startBuildDraft.discard(first.text);
-        if (first.kind === "instructions" || first.kind === "replies") startImproveDraft.discard(startImproveDraft.value);
+        if (first.kind === "instructions" || first.kind === "replies") clearImproveStartDraft(`start:${scope.actor}:test`, startImproveDraft.value);
       }
     } catch (e) {
       if (!admitted) {
@@ -825,7 +869,7 @@ export function useVibeWorkspace() {
     const clientID = extra.client_id || crypto.randomUUID();
     // In a two-door project, follow a run, the first Build run or the first test preparation from the view it starts on.
     const startedFrom = currentPane.current;
-    const followed: Follow | undefined = !session?.document.evaluation ? undefined
+    const followed: Follow | undefined = !session && startDoor === "improve" && kind === "message" ? { view: startedFrom, target: "tests" } : !session?.document.evaluation ? undefined
       : kind === "check" || kind === "retest" ? { view: startedFrom, target: "results" }
       : kind !== "message" ? undefined
       : buildJourney && extra.cycle_id && (buildStart || continuingBuild) && !session.document.artifacts.length ? { view: startedFrom, target: "results", cycle: extra.cycle_id }
@@ -848,7 +892,7 @@ export function useVibeWorkspace() {
     setPending(true);
     setError("");
     try {
-      const v = await ensureSession(scope, ownsAttempt);
+      const v = await ensureSession(scope, ownsAttempt, text);
       if (!ownsAttempt()) return;
       if (!ownsScope(scope)) throw new Error("The active account or project changed.");
       submission.current = {
@@ -858,6 +902,7 @@ export function useVibeWorkspace() {
         composer: kind === "playground" || kind === "message" && !extra.demo_id ? text : null,
         composerVersion,
         trialKey,
+        ...(!session && startDoor === "improve" && kind === "message" ? { startDraft: { kind: "chat" as const, value: text } } : {}),
         follow: followed,
         fix: kind === "message" && extra.purpose === "suggest_change" ? clientID : undefined,
         body: JSON.stringify({
@@ -1067,6 +1112,7 @@ export function useVibeWorkspace() {
     if (!operation) return;
     const artifactID = operation.completion_receipt?.artifact_id;
     if (artifactID && session?.document.artifacts.some(item => item.id === artifactID)) {
+      if (session) carryInstructionDraft(session.id, session.document.artifacts.find(item => item.id === pendingEdit.artifactID), session.document.artifacts.find(item => item.id === artifactID), pendingEdit.instructions);
       if (pendingEdit.draft && session) discardEditorDraft(session.id, pendingEdit.artifactID, "cases", pendingEdit.draft);
       navigation.update({ artifact: artifactID, run: undefined, case: undefined, thread: "" }, "replace");
       if (currentView.current === "tests" && document.activeElement?.closest(`[data-proposal-id="${CSS.escape(pendingEdit.artifactID)}"]`)) requestAnimationFrame(() => document.querySelector<HTMLHeadingElement>(`[data-proposal-id="${CSS.escape(artifactID)}"] h2`)?.focus());
@@ -1259,6 +1305,8 @@ export function useVibeWorkspace() {
     const scope = scopeRef.current;
     if (!session) return false;
     const submittedDraft = fields.case_changes !== undefined ? readEditorDraft(session.id, String(fields.artifact_id || artifact?.id || ""), "cases") : undefined;
+    const sourceArtifact = session.document.artifacts.find(item => item.id === String(fields.artifact_id || artifact?.id || ""));
+    const submittedInstructions = fields.case_changes !== undefined && sourceArtifact ? readEditorDraft(session.id, sourceArtifact.id, "instructions") : undefined;
     if (!inferenceAvailable && (fields.case_changes !== undefined || fields.build_from_policy === true)) { setError(unavailableReason); return false; }
     setPending(true);
     setError("");
@@ -1275,7 +1323,7 @@ export function useVibeWorkspace() {
       const suiteChange = fields.case_changes !== undefined || fields.criteria !== undefined || fields.evaluation !== undefined;
       const admittedEdit = suiteChange && v.operations.find(operation => !session.operations.some(previous => previous.id === operation.id));
       if (admittedEdit && !admittedEdit.completion_receipt) {
-        setPendingEdit({ operationID: admittedEdit.id, artifactID: String(fields.artifact_id || artifact?.id || ""), draft: submittedDraft });
+        setPendingEdit({ operationID: admittedEdit.id, artifactID: String(fields.artifact_id || artifact?.id || ""), draft: submittedDraft, instructions: submittedInstructions });
         return false;
       }
       if (
@@ -1289,6 +1337,7 @@ export function useVibeWorkspace() {
       ) {
         const next = v.document.artifacts.at(-1);
         if (next) {
+          carryInstructionDraft(session.id, sourceArtifact, next, submittedInstructions);
           setSelectedArtifactID(next.id);
           navigate(currentView.current, next.id, "");
         }

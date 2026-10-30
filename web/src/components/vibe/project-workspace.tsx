@@ -69,7 +69,7 @@ function AgentEditor({ p, onDirty }: { p: EvaluationWorkspaceProps; onDirty: () 
 // Projection only. The client retains journal, drafts, admission and recovery ownership.
 export function ProjectWorkspace({ p, initial }: { p: EvaluationWorkspaceProps; initial: ReactNode }) {
   const session = p.session!;
-  const [utility, setUtility] = useState<"guide" | "details" | null>(null);
+  const [utility, setUtility] = useState<"guide" | "details" | null>(p.sourceIntent === "live_app" ? "details" : null);
   const [wide, setWide] = useState(() => typeof matchMedia !== "undefined" && matchMedia("(min-width: 1280px)").matches);
   const [guideClosed, setGuideClosed] = useState(guidePreference);
   const [reference, setReference] = useState<Reference>();

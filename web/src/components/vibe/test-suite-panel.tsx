@@ -134,7 +134,7 @@ export function TestSuitePanel({
         {!agentOpen && !editing && <div className="vibe-tests-actions">
           <div className="flex flex-wrap items-center gap-2">
             {ran && <VibeButton variant={primary ? "primary" : "secondary"} onClick={onResult}>See the result<ArrowRight /></VibeButton>}
-            <VibeButton
+            {!inlineImport && <VibeButton
               variant={primary && !ran ? "primary" : "secondary"}
               disabled={busy || blocked || validationBlocked || (ready && !!price?.credits) || instructionDraft.dirty || casesDraft.dirty || (inferenceUnavailable && (ready || !preparingOnly))}
               onClick={() => (preparingOnly && !ready ? onSave() : ready ? onRun() : buildJourney && rules.length ? void onEdit({ artifact_id: artifact.id, build_from_policy: true }) : setAgentOpen(true))}
@@ -147,7 +147,7 @@ export function TestSuitePanel({
                   : buildJourney && parent ? "Update and run" : `Run ${cases.length} ${cases.length === 1 ? "test" : "tests"}`
                 : preparingOnly ? "Keep these tests" : buildJourney && rules.length ? "Build from saved rules" : "Add your agent", ready && !buildJourney ? price : undefined)}
               <ArrowRight />
-            </VibeButton>
+            </VibeButton>}
             {tests.some(t => t.editable) && <VibeButton
               variant="quiet"
               disabled={busy}
@@ -157,7 +157,6 @@ export function TestSuitePanel({
               Edit tests
             </VibeButton>}
           </div>
-          {!buildJourney && <ImproveRunNotice reason={runBlockedReason} />}
           {ready && (
             <p className="text-sm vibe-muted">
               Text test here · {modelLabel || "Selected model"}. Your live app is not called.
@@ -165,6 +164,7 @@ export function TestSuitePanel({
           )}
         </div>}
       </div>
+      {!buildJourney && <ImproveRunNotice reason={!agentOpen && !editing ? runBlockedReason : undefined} />}
       {added>0 && <p className="text-sm vibe-muted">{testCount(added, "new")} · {testCount(cases.length-added, "existing")}. This run includes all {cases.length}; earlier results are kept separately.</p>}
       {!editing && !agentOpen && <TestMeaning />}
       {artifact.validation && <details className="vibe-test-review" open={validationBlocked}><summary>Test review: {validationBlocked ? "Needs attention" : "Ready"}</summary><ValidationDetails validation={artifact.validation} /></details>}
@@ -315,7 +315,7 @@ export function TestSuitePanel({
               variant="quiet"
               disabled={busy}
               onClick={() => {
-                if (inlineImport) { onSave(); return; }
+                if (inlineImport) { setAgentOpen(false); restoreFocus(); return; }
                 setAgentOpen(false);
                 instructionDraft.discard(); restoreFocus();
                 onDirty(false);
@@ -327,7 +327,7 @@ export function TestSuitePanel({
           <InstructionsHelp />
         </form>
       )}
-      {!agentOpen && inlineImport && <VibeButton variant="quiet" className="underline" disabled={busy} onClick={onSave}>Keep for later</VibeButton>}
+      {!agentOpen && !editing && inlineImport && <div className="flex flex-wrap gap-2"><VibeButton variant={primary ? "primary" : "secondary"} disabled={busy || validationBlocked} onClick={onSave}>Keep these tests</VibeButton><VibeButton variant="quiet" disabled={busy} onClick={() => setAgentOpen(true)}>Add your agent</VibeButton></div>}
       {!agentOpen && !editing && (
         <>
           {!ready && buildJourney && <div className="text-sm vibe-muted">
@@ -348,7 +348,7 @@ export function TestSuitePanel({
                   Change agent instructions
                 </VibeButton>
               )}
-              {!(preparingOnly && !ready) && <VibeButton
+              {!inlineImport && !(preparingOnly && !ready) && <VibeButton
                 variant="quiet"
                 onClick={onSave}
                 disabled={busy || blocked || validationBlocked}

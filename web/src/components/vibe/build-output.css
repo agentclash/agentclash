@@ -22,12 +22,12 @@
 .vibe-build-evidence-action { margin-top: var(--vibe-space-3); }
 @media (max-width: 420px) { .vibe-build-next-primary > .vibe-project-enquiry { width: 100%; } }
 .vibe-build-start { width: min(100%, 46rem); margin: auto; padding: 24px; display: grid; gap: 16px; }
-.vibe-build-start > h1 { margin: 0; font-size: clamp(1.75rem, 4vw, 2.5rem); line-height: 1.15; }
+.vibe-build-start > h1 { font-family: var(--vibe-font-serif); font-weight: 400; margin: 0; font-size: clamp(1.75rem, 4vw, 2.5rem); line-height: 1.15; }
 .vibe-build-start > p { margin: 0; }
 .vibe-build-start > .vibe-button { justify-self: start; }
-.vibe-build-start-card { min-width: 0; padding: 16px; border: 1px solid var(--vibe-control-border, var(--vibe-fg)); border-radius: 16px; background: var(--vibe-surface); display: grid; gap: 12px; }
+.vibe-build-start-card { min-width: 0; padding: 16px; border: 1px solid var(--vibe-control-border, var(--vibe-fg)); border-radius: 16px; background: var(--vibe-surface); box-shadow: none; display: grid; gap: 12px; }
 .vibe-build-start-card > textarea { width: 100%; min-height: 120px; max-height: 260px; field-sizing: content; resize: vertical; font-size: 16px; line-height: 24px; }
-.vibe-build-start-card > textarea:focus-visible { outline: 2px solid var(--vibe-fg); outline-offset: 3px; }
+.vibe-build-start-card > textarea:focus-visible { outline: 2px solid var(--vibe-focus); outline-offset: 3px; }
 .vibe-build-start-card .vibe-button-primary:disabled { background: var(--vibe-ink, var(--vibe-fg)); color: var(--vibe-on-ink, var(--vibe-bg)); opacity: .65; }
 .vibe-build-start .vibe-button, .vibe-build-trial-used a { min-height: 44px; min-width: 44px; }
 .vibe-build-trial-used a { display: inline-flex; align-items: center; text-decoration: underline; }
@@ -45,3 +45,9 @@
 @media (max-width: 600px) { .vibe-build-start { padding: 16px; gap: 12px; } .vibe-build-start-submit { width: 100%; margin: 0; } }
 .vibe-build-all-results > summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; width: fit-content; }
 .vibe-build-all-results > summary:focus-visible { outline: 2px solid var(--vibe-fg); outline-offset: 3px; }
+
+.vibe-build-start-options > summary { min-height: 44px; padding-block: 10px; cursor: pointer; }
+.vibe-build-start-options > summary:focus-visible { outline: 2px solid var(--vibe-focus); outline-offset: 3px; }
+.vibe-build-start-options > div { display: grid; justify-items: start; gap: 12px; margin-top: 12px; }
+.vibe-build-examples { gap: 8px; }
+.vibe-build-data-link { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; text-underline-offset: 3px; }

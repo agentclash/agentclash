@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { File as ByteFile } from "node:buffer";
 import React, { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -22,7 +23,8 @@ it("places a four-line labelled input after one heading and keeps the primary fi
   await render();
   expect(node.querySelectorAll("h1")).toHaveLength(1);
   expect(node.querySelector("h1")?.textContent).toBe("What task should the agent handle?");
-  expect(input().getAttribute("aria-labelledby")).toBe(node.querySelector("h1")?.id);
+  expect(input().labels?.[0]?.textContent).toBe("What task should the agent handle?");
+  expect(input().getAttribute("aria-labelledby")).toBeNull();
   expect(input().hasAttribute("aria-label")).toBe(false);
   expect(input().rows).toBeGreaterThanOrEqual(4);
   expect(document.activeElement).toBe(input());
@@ -113,4 +115,38 @@ it("sends Enter once and ignores another Enter or form submit while busy", async
   await enter(); await send();
   expect(start).toHaveBeenCalledOnce();
   expect(input().value).toBe("Answer questions using our return policy.");
+});
+
+
+it("shows two examples and puts files, switching and data documentation in one disclosure", async () => {
+  await render({ draft: "Answer questions using our return policy." });
+  const details = node.querySelector("details")!;
+  expect(details).not.toBeNull(); expect(details.open).toBe(false);
+  expect(details.querySelector("summary")?.textContent).toBe("Files and other options");
+  expect(node.querySelectorAll(".vibe-build-examples button")).toHaveLength(2);
+  expect(node.querySelector(".vibe-build-examples")?.closest("details")).toBeNull();
+  for (const name of ["Attach a file", "Already have an agent? Improve it instead."]) expect(button(name).closest("details")).toBe(details);
+  expect(node.querySelector(".vibe-material-hint")?.textContent).toContain("Leave out secrets and customer IDs.");
+  expect(node.querySelector(".vibe-material-hint a")).toBeNull();
+  expect(details.querySelector("a")?.getAttribute("href")).toBe("/docs/vibe-evals/data-use");
+  const controls = [...node.querySelectorAll("button, textarea, a[href], summary")].filter(control => !control.closest("header") && (!control.closest("details") || control.tagName === "SUMMARY"));
+  expect(controls).toHaveLength(5); expect(controls.length).toBeLessThanOrEqual(5);
+});
+it("associates each mounted Build question with its own input", async () => {
+  await render();
+  expect(input().id).not.toBe("");
+  await act(async () => root.render(<><BuildStart draft="" onDraft={() => {}} price={{ kind: "trial" }} trialUsed={false} busy={false} onStart={start} onBack={back} onSwitchDoor={switchDoor} /><BuildStart draft="" onDraft={() => {}} price={{ kind: "trial" }} trialUsed={false} busy={false} onStart={start} onBack={back} onSwitchDoor={switchDoor} /></>));
+  const inputs = [...node.querySelectorAll("textarea")]; expect(new Set(inputs.map(area => area.id)).size).toBe(2);
+  for (const area of inputs) expect(area.labels?.[0]?.htmlFor).toBe(area.id);
+});
+
+it("uses the display serif and a flat card with a distinct keyboard focus ring", async () => {
+  const style = document.createElement("style"); style.textContent = readFileSync("src/components/vibe/build-output.css", "utf8"); document.head.append(style);
+  try {
+    await render();
+    expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-serif)");
+    expect(getComputedStyle(node.querySelector("h1")!).fontWeight).toBe("400");
+    expect(getComputedStyle(node.querySelector("form")!).boxShadow).toBe("none");
+    expect(style.textContent).toContain("outline: 2px solid var(--vibe-focus)");
+  } finally { style.remove(); }
 });

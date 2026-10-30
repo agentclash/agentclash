@@ -96,8 +96,11 @@ it("lets someone without an agent keep prepared tests without offering a fabrica
     onRun={run} onEdit={vi.fn()} onDirty={vi.fn()} onSave={save} onSettings={vi.fn()} />));
   await act(async () => button("Keep for later").click());
   expect(node.querySelectorAll(".vibe-button-primary")).toHaveLength(1);
-  expect(node.querySelector(".vibe-button-primary")?.textContent).toContain("Add your agent's instructions");
-  expect(save).toHaveBeenCalledOnce(); expect(run).not.toHaveBeenCalled();
+  expect(node.querySelector(".vibe-button-primary")?.textContent).toContain("Keep these tests");
+  expect(node.querySelector('[aria-label="Agent instructions"]')).toBeNull();
+  expect(save).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
+  await act(async () => button("Keep these tests").click());
+  expect(save).toHaveBeenCalledOnce();
 });
 
 it("edits one expectation through its stable case key, preserving other inputs and custom grading", async () => {
@@ -185,7 +188,9 @@ it("collects imported agent instructions inline with one primary and a quiet Kee
   await act(async () => node.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
   expect(edit).toHaveBeenCalledWith({ artifact_id: artifact.id, agent_prompt: "Our actual policy" });
   expect(agent).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
-  await act(async () => button("Keep for later").click()); expect(save).toHaveBeenCalledOnce();
+  expect(save).not.toHaveBeenCalled();
+  expect(node.querySelector('[aria-label="Agent instructions"]')).toBeNull();
+  await act(async () => button("Keep these tests").click()); expect(save).toHaveBeenCalledOnce();
 });
 
 it("explains unsaved and unavailable runs next to the action", async () => {
@@ -212,4 +217,20 @@ it("keeps imported tests visible and preserves the instruction draft while editi
   await act(async () => button("Cancel").click());
   expect(node.querySelector<HTMLTextAreaElement>('[aria-label="Agent instructions"]')?.value).toBe("Retain my policy");
   expect(node.querySelectorAll(".vibe-button-primary")).toHaveLength(1);
+});
+
+
+it("dismisses imported instructions without saving or discarding the instruction draft", async () => {
+  artifact.agent_prompt = ""; const save = vi.fn(); const edit = vi.fn();
+  await act(async () => root.render(<TestSuitePanel artifact={artifact} busy={false} blocked={false} comparison={false}
+    onRun={run} onEdit={edit} onDirty={vi.fn()} onSave={save} onSettings={vi.fn()} />));
+  const input = node.querySelector<HTMLTextAreaElement>('[aria-label="Agent instructions"]')!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "Keep my unsaved policy"); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await act(async () => button("Keep for later").click());
+  expect(node.querySelector('[aria-label="Agent instructions"]')).toBeNull();
+  expect(save).not.toHaveBeenCalled(); expect(edit).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
+  expect(button("Keep for later")).toBeUndefined();
+  expect(button("Keep these tests").disabled).toBe(false);
+  await act(async () => button("Add your agent").click());
+  expect(node.querySelector<HTMLTextAreaElement>('[aria-label="Agent instructions"]')?.value).toBe("Keep my unsaved policy");
 });

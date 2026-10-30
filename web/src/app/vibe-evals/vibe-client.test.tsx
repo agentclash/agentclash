@@ -116,10 +116,17 @@ async function openChecks() {
   ].find((b) => b.textContent === "Results");
   if (results) await act(async () => results.click());
 }
+function labelText(label: HTMLLabelElement) {
+  const text = label.cloneNode(true) as HTMLElement;
+  for (const control of text.querySelectorAll("textarea, input, select")) control.remove();
+  return text.textContent?.trim();
+}
+function textarea(label: string) {
+  return [...container.querySelectorAll<HTMLTextAreaElement>("textarea")].find(area => area.getAttribute("aria-label") === label || [...(area.labels || [])].some(item => labelText(item) === label))
+    || (label === "Message Vibe Evals" ? container.querySelector<HTMLTextAreaElement>(".vibe-build-start textarea") : null)!;
+}
 async function type(value: string, label = "Message Vibe Evals") {
-  const input = container.querySelector<HTMLTextAreaElement>(
-    `textarea[aria-label="${label}"]${label === "Message Vibe Evals" ? ", #vibe-start-build" : ""}`,
-  ) || [...container.querySelectorAll("textarea")].find(area => [...(area.labels || [])].some(item => item.textContent === label))!;
+  const input = textarea(label);
   await act(async () => {
     Object.getOwnPropertyDescriptor(
       HTMLTextAreaElement.prototype,
@@ -129,9 +136,7 @@ async function type(value: string, label = "Message Vibe Evals") {
   });
 }
 function composer() {
-  return container.querySelector<HTMLTextAreaElement>(
-    'textarea[aria-label="Message Vibe Evals"], #vibe-start-build',
-  )!;
+  return textarea("Message Vibe Evals");
 }
 function posts() {
   return requests.filter((r) => r.path.endsWith("/messages"));
@@ -195,6 +200,102 @@ afterEach(async () => {
   container.remove();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+});
+
+it.each([false, true])("shows actionable credit errors while saving test changes (imported: %s)", async imported => {
+  const suite = readyTests("test"); signedInWorkspace(); session.workspace_id = "workspace-one";
+  if (imported) suite.agent_prompt = "";
+  harness.params = new URLSearchParams(`session=${session.id}&workspace=workspace-one&view=tests`);
+  respond = async (path, options) => path === "/config" ? twoDoorConfig()
+    : options.method === "PATCH" ? json({ error: { code: "insufficient_credits", message: "This workspace has no AI credits." } }, 402)
+    : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  await render();
+  if (imported) await click("Keep for later");
+  await click("Edit tests");
+  const expectation = container.querySelectorAll<HTMLTextAreaElement>('[aria-label="Your tests"] textarea')[1];
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(expectation, "Keep this unsaved expectation.");
+    expectation.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await click("Save test changes");
+  const alert = [...container.querySelectorAll<HTMLElement>('[role="alert"]')].find(node => node.textContent?.includes("This workspace has no AI credits."));
+  expect(alert?.textContent).toContain("This workspace has no AI credits.");
+  expect(alert?.querySelector("button")?.textContent).toBe("Credits");
+  expect(container.textContent?.split("This workspace has no AI credits.")).toHaveLength(2);
+  expect(expectation.value).toBe("Keep this unsaved expectation.");
+  const writes = requests.filter(request => request.method !== "GET").length;
+  await act(async () => alert!.querySelector<HTMLButtonElement>("button")!.click());
+  expect(dialogNames()).toEqual(["Workspace AI credits"]);
+  expect(requests.filter(request => request.method !== "GET")).toHaveLength(writes);
+});
+
+it("opens Improve chat through the real start mount and creates a project only on Send", async () => {
+  await enterDoor("test");
+  await click("Describe it in chat");
+  expect(container.querySelector('textarea[aria-label="Message Guide"]')).toBeTruthy();
+  expect(requests.filter(request => request.method !== "GET")).toEqual([]);
+  await type("Our support agent answers return questions. Help me decide what to test.", "Message Guide");
+  await click("Send message");
+  const created = requests.filter(request => request.path === "/sessions" && request.method === "POST");
+  expect(created).toHaveLength(1);
+  expect(created[0].body).toMatchObject({ door: "test", title: "Our support agent answers return questions." });
+  expect(posts()).toHaveLength(1);
+  expect(posts()[0].body).toMatchObject({ content: "Our support agent answers return questions. Help me decide what to test.", test_journey: true });
+  expect(posts()[0].body.instructions).toBeUndefined();
+  expect(params().get("session")).toBeTruthy();
+});
+
+it.each([["live_app", false], ["sdk_report", false], ["live_app", true], ["sdk_report", true]] as const)("opens the existing signed-in %s flow from the real start mount without writes (legacy: %s)", async (source, legacy) => {
+  readyTests("test"); signedInWorkspace(); session.workspace_id = "workspace-one";
+  if (legacy) delete session.document.evaluation;
+  const existing = structuredClone(session);
+  harness.params = new URLSearchParams("start=improve&workspace=workspace-one");
+  const account = await harness.me();
+  harness.me.mockImplementation(async (path: string) => path === "/v1/users/me" ? account : { items: [] });
+  respond = async path => path === "/config" ? twoDoorConfig()
+    : path === "/sessions" ? json([existing])
+    : path === "/saved-checks" || path.endsWith("/case-mapping") || path.endsWith("/reports") || path.endsWith("/evals") ? json([])
+    : json(session);
+  await render();
+  await click(source === "live_app" ? "Connect a live app" : "Import an SDK report");
+  const picker = container.querySelector<HTMLSelectElement>('select[aria-label="Project with tests"]');
+  expect(picker).toBeTruthy();
+  expect(requests.filter(request => request.method !== "GET")).toEqual([]);
+  await act(async () => { picker!.value = existing.id; picker!.dispatchEvent(new Event("change", { bubbles: true })); });
+  await click("Open project");
+  if (source === "live_app") {
+    expect(document.querySelector('[aria-label="Application connection"]')).toBeTruthy();
+    expect(document.querySelector('[aria-label="Application source"]')).toBeTruthy();
+  } else {
+    const importer = container.querySelector('details[open] [aria-label="Import SDK report"]');
+    expect(importer).toBeTruthy();
+    expect(importer?.querySelector('textarea[aria-label="SDK original JSON"]')).toBeTruthy();
+    expect(params().get("view")).toBe("results");
+  }
+  expect(params().get("session")).toBe(existing.id);
+  expect(requests.filter(request => request.method !== "GET")).toEqual([]);
+});
+
+it("keeps unavailable Improve chat drafts and explains the disabled send without writes", async () => {
+  await enterDoor("test");
+  const previous = respond;
+  respond = async (path, options) => path === "/config" ? json({ enabled: true, two_door: true, availability: { guest: { available: false }, workspace: { available: false } }, defaults: defaultModels, models: [] }) : previous(path, options);
+  harness.authLoading = true; await render(); harness.authLoading = false; await render();
+  await click("Describe it in chat");
+  await type("Keep this description for later.", "Message Guide");
+  expect(button("Send message").disabled).toBe(true);
+  expect(container.querySelector('.vibe-start-page [role="status"]')?.textContent).toBe("No approved models are available.");
+  expect(requests.filter(request => request.method !== "GET")).toEqual([]);
+  await click("Back"); await click("Describe it in chat");
+  expect(container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message Guide"]')?.value).toBe("Keep this description for later.");
+});
+
+it("explains the byte limit before sending an Improve chat draft", async () => {
+  await enterDoor("test"); await click("Describe it in chat");
+  await type("x".repeat(16385), "Message Guide");
+  expect(button("Send message").disabled).toBe(true);
+  expect(container.querySelector('.vibe-start-page [role="status"]')?.textContent).toBe("Message exceeds the 16,384 byte UTF-8 limit.");
+  expect(requests.filter(request => request.method !== "GET")).toEqual([]);
 });
 
 it.each([[false,false],[true,false],[false,true]])("saves recorded replies through evidence intake before an explicit pinned quote (lost ack: %s, retired target: %s)", async (lostAck, retiredTarget) => {
@@ -272,9 +373,7 @@ it.each(["setup", "agent"].flatMap(mode => [false, true].map(touch => ({ mode, t
     const label =
       mode === "agent" ? "Message your agent" : "Message Vibe Evals";
     await type("I bought an unopened item 10 days ago.", label);
-    const input = container.querySelector<HTMLTextAreaElement>(
-      `textarea[aria-label="${label}"]${label === "Message Vibe Evals" ? ", #vibe-start-build" : ""}`,
-    )!;
+    const input = textarea(label);
     for (const options of [
       { shiftKey: true },
       { isComposing: true },
@@ -1846,7 +1945,12 @@ it.each([false, true])("keeps a generated suite without inference even when unav
   };
   await render();
   if (unavailable) expect(button("Run 3 tests").disabled).toBe(true);
-  await click(unavailable ? "Keep these tests" : "Keep for later");
+  if (!unavailable) {
+    await click("Keep for later");
+    expect(dialogNames()).toEqual([]);
+    expect(container.querySelector('[aria-label="Agent instructions"]')).toBeNull();
+  }
+  await click("Keep these tests");
   await act(async () => {
     const dialog = document.querySelector('[role="dialog"]')!;
     const save = [...dialog.querySelectorAll("button")].find(
@@ -3548,15 +3652,15 @@ it("preserves both Improve sources through switching, Back and refresh", async (
   await type("Customer: Hi\nAgent: Hello", "Conversations");
   await type("Be polite", "What a good reply must do");
   await click("Instructions");
-  expect(container.querySelector<HTMLTextAreaElement>("#vibe-instructions-source")?.value).toBe("Keep these instructions.");
+  expect(textarea("Agent instructions")?.value).toBe("Keep these instructions.");
   await click("Back"); await frame();
   expect(document.activeElement?.id).toBe("vibe-door-test");
   await act(async () => buttonByDoor("test").click());
   await click("Real replies");
-  expect(container.querySelector<HTMLTextAreaElement>('#vibe-start-conversations')?.value).toBe("Customer: Hi\nAgent: Hello");
-  expect(container.querySelector<HTMLTextAreaElement>('#vibe-start-rules')?.value).toBe("Be polite");
+  expect(textarea("Conversations")?.value).toBe("Customer: Hi\nAgent: Hello");
+  expect(textarea("What a good reply must do")?.value).toBe("Be polite");
   await act(async () => root.unmount()); root = createRoot(container); await render();
-  expect(container.querySelector<HTMLTextAreaElement>('#vibe-start-rules')?.value).toBe("Be polite");
+  expect(textarea("What a good reply must do")?.value).toBe("Be polite");
   expect(requests.filter(r => r.method === "POST")).toHaveLength(0);
 });
 
@@ -3579,7 +3683,10 @@ it("keeps an Improve credit rejection next to Run and opens Credits without anot
     : path.endsWith("/messages") ? json({ error: { code: "insufficient_credits", message: "This workspace has no AI credits.", admission: "rejected" } }, 402)
     : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
   await render(); await click("Run 3 tests"); await click("Start run");
-  const near = container.querySelector('.vibe-tests-actions [role="alert"]');
+  const tests = button("Run 3 tests").closest('[aria-label="Your tests"]')!;
+  const near = tests.querySelector('[role="alert"]');
+  expect(near).not.toBeNull();
+  expect(near?.previousElementSibling).toBe(tests.querySelector(".vibe-tests-header"));
   expect(near?.textContent).toContain("This workspace has no AI credits.");
   expect(near?.querySelector("button")?.textContent).toBe("Credits");
   expect(button("Run 3 tests").disabled).toBe(true);
@@ -3658,7 +3765,10 @@ it("keeps a quote credit rejection beside Run and retries only after the user's 
     : path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
   await render(); expect(estimates).toBe(0);
   await click("Run 3 tests");
-  const near = container.querySelector('.vibe-tests-actions [role="alert"]');
+  const tests = button("Run 3 tests").closest('[aria-label="Your tests"]')!;
+  const near = tests.querySelector('[role="alert"]');
+  expect(near).not.toBeNull();
+  expect(near?.previousElementSibling).toBe(tests.querySelector(".vibe-tests-header"));
   expect(near?.textContent).toContain("No credits available.");
   expect(container.textContent?.split("No credits available.")).toHaveLength(2);
   expect(button("Run 3 tests").disabled).toBe(true);
@@ -3863,7 +3973,7 @@ it("PR4 uses the selected approved model for the first instructions", async () =
   respond = async (path, options) => path === "/config" ? json({ ...(await twoDoorConfig().json()), models: [...new Set(Object.values(defaultModels)), "approved/other"].map(id => ({ id, name: id })) }) : previous(path, options);
   await act(async () => root.unmount()); root = createRoot(container); await render();
   await type("Answer return questions", "Agent instructions");
-  const model = container.querySelector<HTMLSelectElement>(".vibe-improve-form select")!;
+  const model = container.querySelector<HTMLSelectElement>(".vibe-improve-start select")!;
   await act(async () => { model.value = "approved/other"; model.dispatchEvent(new Event("change", { bubbles: true })); });
   await click("Write 3 tests");
   expect(posts()[0].body.models).toEqual({ ...defaultModels, target: "approved/other" });
@@ -4049,9 +4159,9 @@ it.each(["build", "test"] as const)("PR4 round4 preserves the guest %s draft thr
   await enterDoor(door);
   await type("Guest text survives sign-in.", door === "build" ? "Message Vibe Evals" : "Agent instructions");
   signedInWorkspace(); await render();
-  expect(door === "build" ? composer().value : container.querySelector<HTMLTextAreaElement>("#vibe-instructions-source")?.value).toBe("Guest text survives sign-in.");
+  expect(door === "build" ? composer().value : textarea("Agent instructions")?.value).toBe("Guest text survives sign-in.");
   await act(async () => root.unmount()); draftMemory.clear(); root = createRoot(container); await render();
-  expect(door === "build" ? composer().value : container.querySelector<HTMLTextAreaElement>("#vibe-instructions-source")?.value).toBe("Guest text survives sign-in.");
+  expect(door === "build" ? composer().value : textarea("Agent instructions")?.value).toBe("Guest text survives sign-in.");
   expect(requests.filter(r => r.method !== "GET")).toEqual([]);
 });
 
@@ -4089,17 +4199,18 @@ it.each([["build", "drawer"], ["test", "drawer"], ["build", "sidebar"], ["test",
   expect(visibleH1().map(h => h.textContent)).toEqual(["What would you like to evaluate?"]);
   expect(params().get("start")).toBeNull();
   await act(async () => buttonByDoor(door).click());
-  expect(door === "build" ? composer().value : container.querySelector<HTMLTextAreaElement>("#vibe-instructions-source")?.value).toBe("Keep the uncommitted input.");
+  expect(door === "build" ? composer().value : textarea("Agent instructions")?.value).toBe("Keep the uncommitted input.");
   expect(requests.filter(r => r.method !== "GET")).toEqual([]);
 });
 
 it("PR4 round4 names the Build input with its visible label", async () => {
   await enterDoor("build");
-  const input = container.querySelector<HTMLTextAreaElement>("#vibe-start-build")!;
-  const label = document.getElementById(input.getAttribute("aria-labelledby")!)!;
+  const input = composer();
+  const label = input.labels![0];
+  expect(label.htmlFor).toBe(input.id);
   expect(input.hasAttribute("aria-label")).toBe(false);
   expect(label.textContent).toBe("What task should the agent handle?");
-  expect(visibleH1()).toContain(label);
+  expect(visibleH1()).toContain(label.closest("h1"));
 });
 
 it("PR4 round4 reconciles an uncertain first request from a later saved snapshot without resending", async () => {
@@ -4176,7 +4287,7 @@ it("shows busy only while the first Improve input makes the project", async () =
   expect(button("Write 3 tests").disabled).toBe(true);
   expect(button("Write 3 tests").getAttribute("aria-busy")).toBe("true");
   expect(container.textContent).not.toContain("Saving your changes…");
-  expect(container.querySelector<HTMLTextAreaElement>("#vibe-instructions-source")?.value).toBe("Answer questions about returns.");
+  expect(textarea("Agent instructions")?.value).toBe("Answer questions about returns.");
   await act(async () => held.resolve(json({ error: { code: "unavailable", message: "Start failed" } }, 503)));
   expect(button("Write 3 tests").getAttribute("aria-busy")).toBeNull();
   expect(button("Write 3 tests").disabled).toBe(false);
@@ -4205,15 +4316,170 @@ it.each(["instructions", "replies"] as const)("keeps the full Improve %s start a
   expect(container.querySelector(".vibe-project-header")).toBeNull();
   expect(requests.filter(r => r.method === "DELETE")).toHaveLength(1);
   await click("Instructions");
-  expect(container.querySelector<HTMLTextAreaElement>("#vibe-instructions-source")?.value).toBe("Keep my exact agent policy.");
+  expect(textarea("Agent instructions")?.value).toBe("Keep my exact agent policy.");
   await click("Real replies");
-  expect(container.querySelector<HTMLTextAreaElement>("#vibe-start-conversations")?.value).toBe("Customer: Hi\nAgent: Hello");
-  expect(container.querySelector<HTMLTextAreaElement>("#vibe-start-rules")?.value).toBe("Be polite");
+  expect(textarea("Conversations")?.value).toBe("Customer: Hi\nAgent: Hello");
+  expect(textarea("What a good reply must do")?.value).toBe("Be polite");
   await act(async () => container.querySelector(".vibe-improve-start")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }))); await frame();
   expect(document.activeElement).toBe(buttonByDoor("test"));
   await act(async () => buttonByDoor("test").click());
   expect(document.activeElement).toBe(visibleH1()[0]);
-  expect(container.querySelector<HTMLTextAreaElement>("#vibe-start-rules")?.value).toBe("Be polite");
+  expect(textarea("What a good reply must do")?.value).toBe("Be polite");
   expect(requests.filter(r => r.path.endsWith("/run-quote"))).toEqual([]);
   expect(requests.filter(r => r.path === "/sessions" && r.method === "POST")).toHaveLength(1);
+});
+
+it.each(["build", "test"] as const)("moves the guest %s start draft into an empty account draft and clears the guest copy", async door => {
+  await enterDoor(door);
+  await type("Guest policy survives an empty account draft.", door === "build" ? "What task should the agent handle?" : "Agent instructions");
+  const editor = door === "build" ? "brief" : "inputs";
+  const account = `start:fixture-user:${door}`;
+  sessionStorage.setItem(`vibe-build-drafts:${account}`, JSON.stringify({ version: 2, composers: {}, editors: {
+    [`${account}:start:editor:${editor}`]: { artifact: "start", source: "", value: door === "build" ? "" : JSON.stringify({ instructions: "", conversations: "", rules: "", mode: "instructions" }) },
+  } }));
+  signedInWorkspace(); await render();
+  const field = () => container.querySelector<HTMLTextAreaElement>(".vibe-start-page textarea")!;
+  expect(field().value).toBe("Guest policy survives an empty account draft.");
+  const guest = `start:guest:${door}`;
+  expect(draftMemory.get(guest)?.editors[`${guest}:start:editor:${editor}`]).toBeUndefined();
+  expect(JSON.parse(sessionStorage.getItem(`vibe-build-drafts:${guest}`)!).editors[`${guest}:start:editor:${editor}`]).toBeUndefined();
+  await act(async () => root.unmount()); draftMemory.clear(); root = createRoot(container); await render();
+  expect(field().value).toBe("Guest policy survives an empty account draft.");
+  expect(requests.filter(request => request.method !== "GET")).toEqual([]);
+});
+
+it.each(["build", "test"] as const)("preserves an occupied account %s start draft when signing in from a guest", async door => {
+  await enterDoor(door);
+  await type("Separate guest draft.", door === "build" ? "What task should the agent handle?" : "Agent instructions");
+  const editor = door === "build" ? "brief" : "inputs";
+  const account = `start:fixture-user:${door}`;
+  const value = door === "build" ? "Existing account work." : JSON.stringify({ instructions: "Existing account work.", conversations: "Saved conversation", rules: "Saved rules", model: "selected-model", mode: "instructions" });
+  sessionStorage.setItem(`vibe-build-drafts:${account}`, JSON.stringify({ version: 2, composers: {}, editors: {
+    [`${account}:start:editor:${editor}`]: { artifact: "start", source: "", value },
+  } }));
+  signedInWorkspace(); await render();
+  expect(container.querySelector<HTMLTextAreaElement>(".vibe-start-page textarea")?.value).toBe("Existing account work.");
+  const guest = `start:guest:${door}`;
+  expect(draftMemory.get(guest)?.editors[`${guest}:start:editor:${editor}`]?.value).toContain("Separate guest draft.");
+  expect(requests.filter(request => request.method !== "GET")).toEqual([]);
+});
+
+it.each([false, true])("carries untouched unsaved instructions through Save test changes and new artifact selection (async: %s)", async delayed => {
+  const suite = scenarioAgent("Imported returns tests"); suite.kind = "test_suite"; suite.agent_prompt = "";
+  session.document.test_journey = true;
+  session.document.evaluation = { id: session.id, chat_id: session.id, door: "test" };
+  harness.params = new URLSearchParams(`session=${session.id}&view=tests&agent=${suite.id}`);
+  const operation: Operation = { id: "expectation-edit", kind: "message", state: "QUEUED", billing: "RESERVED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: null, results: [] };
+  const changed = { ...suite, id: "saved-expectation-tests", parent_id: suite.id };
+  const complete = () => { session = { ...session, revision: 3, event_cursor: 3, document: { ...session.document, artifacts: [suite, changed] }, operations: [{ ...operation, state: "COMPLETED", completion_receipt: { action: "edit_tests", artifact_id: changed.id, case_count: 3, changed_case_count: 1 } }] }; };
+  const previous = respond;
+  respond = async (path, options) => {
+    if (options.method !== "PATCH") return previous(path, options);
+    if (delayed) session = { ...session, revision: 2, event_cursor: 2, operations: [operation] };
+    else complete();
+    return json(session);
+  };
+  await render(); await type("Retain this unsaved instruction draft.", "Agent instructions");
+  const row = container.querySelector<HTMLDetailsElement>('[aria-label="Your tests"] .vibe-result-row')!;
+  await act(async () => row.querySelector("summary")!.click());
+  await click("Edit this expectation");
+  const input = container.querySelector<HTMLTextAreaElement>('[aria-label="Your tests"] textarea')!;
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, "Apply the revised return deadline."); input.dispatchEvent(new Event("input", { bubbles: true })); });
+  await click("Save test changes");
+  if (delayed) { complete(); await act(async () => snapshot(structuredClone(session))); }
+  expect(new URL(window.location.href).searchParams.get("agent")).toBe(changed.id);
+  expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Agent instructions"]')?.value).toBe("Retain this unsaved instruction draft.");
+  expect(container.querySelector('[role="alert"]')?.textContent || "").not.toContain("saved source changed");
+  expect(requests.filter(request => request.method === "PATCH")).toHaveLength(1);
+  expect(requests.filter(request => request.method === "PATCH")[0].body).toMatchObject({ artifact_id: suite.id, case_changes: [{ action: "update", case_key: "case-1", expected: "Apply the revised return deadline." }] });
+  await act(async () => root.unmount()); draftMemory.clear(); root = createRoot(container); await render();
+  expect(container.querySelector<HTMLTextAreaElement>('[aria-label="Agent instructions"]')?.value).toBe("Retain this unsaved instruction draft.");
+  expect(requests.filter(request => request.method === "POST")).toEqual([]);
+});
+
+function storedImproveStart(actor = "guest") {
+  const project = `start:${actor}:test`;
+  const drafts = draftMemory.get(project);
+  const row = drafts?.editors[`${project}:start:editor:inputs`] || JSON.parse(sessionStorage.getItem(`vibe-build-drafts:${project}`) || "null")?.editors[`${project}:start:editor:inputs`];
+  return row ? JSON.parse(row.value) : {};
+}
+
+it("retains an unsubmitted Improve chat draft through refresh and guest sign-in", async () => {
+  await enterDoor("test");
+  await type("Keep my separate instruction source.", "Agent instructions");
+  await click("Describe it in chat");
+  await type("Keep my conversation with Guide.", "Message Guide");
+  await act(async () => root.unmount()); draftMemory.clear(); root = createRoot(container); await render();
+  await click("Describe it in chat");
+  expect(textarea("Message Guide")?.value).toBe("Keep my conversation with Guide.");
+  signedInWorkspace(); await render();
+  await click("Describe it in chat");
+  expect(textarea("Message Guide")?.value).toBe("Keep my conversation with Guide.");
+  expect(storedImproveStart("fixture-user")).toMatchObject({ chat: "Keep my conversation with Guide.", instructions: "Keep my separate instruction source." });
+  expect(draftMemory.get("start:guest:test")?.editors["start:guest:test:start:editor:inputs"]).toBeUndefined();
+  expect(requests.filter(request => request.method !== "GET")).toEqual([]);
+});
+
+it.each(["accepted", "rejected", "uncertain", "recovered"] as const)("settles only the acknowledged Improve chat field while retaining the other start inputs (%s)", async outcome => {
+  await enterDoor("test");
+  await type("Preserve my separate instructions.", "Agent instructions");
+  await click("Real replies");
+  await type("Customer: Hello\nAgent: Saved reply", "Conversations");
+  await type("Preserve this rule.", "What a good reply must do");
+  await click("Instructions");
+  await click("Describe it in chat");
+  const message = "My agent answers returns. Help me choose tests.";
+  await type(message, "Message Guide");
+  const previous = respond;
+  respond = async (path, options) => {
+    if (!path.endsWith("/messages")) return previous(path, options);
+    if (outcome === "rejected") return json({ error: { code: "insufficient_credits", message: "No credits available.", admission: "rejected" } }, 402);
+    if (outcome === "uncertain" || outcome === "recovered") throw new TypeError("Acknowledgement lost");
+    return json({ id: "chat-admitted", kind: "message", state: "QUEUED", models: defaultModels, results: [] }, 202);
+  };
+  await click("Send message");
+  expect(storedImproveStart()).toMatchObject({ instructions: "Preserve my separate instructions.", conversations: "Customer: Hello\nAgent: Saved reply", rules: "Preserve this rule.", chat: outcome === "accepted" ? "" : message });
+  if (outcome === "recovered") {
+    const admitted = posts()[0].body;
+    session = { ...session, revision: 2, event_cursor: 2, document: { ...session.document, messages: [{ id: String(admitted.client_id), role: "user", content: message, operation_id: "chat-recovered" }] }, operations: [{ id: "chat-recovered", kind: "message", state: "COMPLETED", billing: "RELEASED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] }] };
+    await act(async () => snapshot(structuredClone(session)));
+    expect(storedImproveStart()).toMatchObject({ chat: "", instructions: "Preserve my separate instructions.", rules: "Preserve this rule." });
+  }
+  expect(posts()).toHaveLength(1);
+});
+
+it.each(["instructions", "replies", "recovered instructions"] as const)("retains unsent Improve chat after committing the %s start", async source => {
+  await enterDoor("test");
+  await click("Describe it in chat");
+  await type("Keep this separate unsent Guide conversation.", "Message Guide");
+  await click("Back");
+  if (source === "replies") {
+    await click("Real replies");
+    await type("Customer: Hello\nAgent: Retained reply", "Conversations");
+    await type("Use the given facts.", "What a good reply must do");
+  } else await type("Only unopened purchases within 30 days qualify for returns.", "Agent instructions");
+  const previous = respond;
+  respond = async (path, options) => {
+    if (path.endsWith("/evidence")) {
+      const request = JSON.parse(String(options.body));
+      return json({ ...session, evidence_receipt: { client_id: request.client_id, evidence_id: "reply-source", artifact_id: "reply-tests" } });
+    }
+    if (path.endsWith("/messages") && source === "recovered instructions") throw new TypeError("Instruction acknowledgement lost");
+    return previous(path, options);
+  };
+  await click(source === "replies" ? "Save and check" : "Write 3 tests");
+  expect(params().get("session")).toBeTruthy();
+  if (source === "recovered instructions") {
+    expect(storedImproveStart().chat).toBe("Keep this separate unsent Guide conversation.");
+    const request = posts()[0].body;
+    session = { ...session, revision: 2, event_cursor: 2, document: { ...session.document, messages: [{ id: String(request.client_id), role: "user", content: String(request.content), operation_id: "instructions-recovered" }] }, operations: [{ id: "instructions-recovered", kind: "message", state: "COMPLETED", billing: "RELEASED", models: defaultModels, max_cost_nano_usd: 0, actual_cost_nano_usd: 0, results: [] }] };
+    await act(async () => snapshot(structuredClone(session)));
+  }
+  expect(storedImproveStart()).toMatchObject({ chat: "Keep this separate unsent Guide conversation." });
+  expect(storedImproveStart().instructions || "").toBe("");
+  expect(storedImproveStart().conversations || "").toBe("");
+  expect(storedImproveStart().rules || "").toBe("");
+  expect(requests.filter(request => request.path.endsWith(source === "replies" ? "/evidence" : "/messages"))).toHaveLength(1);
+  await act(async () => root.unmount()); draftMemory.clear(); root = createRoot(container); await render();
+  expect(storedImproveStart()).toMatchObject({ chat: "Keep this separate unsent Guide conversation." });
 });

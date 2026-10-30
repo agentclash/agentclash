@@ -6,8 +6,8 @@
 // no path clicks a tab to see its first result.
 import { expect, test, type Page } from "@playwright/test";
 import { agentReply, description, expectation, fakeVibe, instructions, packFile, transcript, type Fake } from "./entry-fake";
-import { flowMeter, type FlowMeter } from "./flow-meter";
-import { composer, doorButton, doorReady, entryReady, sendButton, sourceButton, runTestsButton, testChangeButton, addAgentInstructions, buildResult, improvePrimary, repliesInput, rulesInput, startComposer, switchDoorButton } from "./entry-model";
+import { flowMeter, type FlowMeter, census, writeRecord } from "./flow-meter";
+import { composer, doorButton, doorReady, entryReady, sendButton, sourceButton, runTestsButton, testChangeButton, addAgentInstructions, buildResult, improvePrimary, repliesInput, rulesInput, startComposer, switchDoorButton, buildOptions, improveOptions } from "./entry-model";
 
 test.use({ viewport: { width: 1440, height: 960 }, reducedMotion: "reduce" });
 test.describe.configure({ timeout: 120_000 });
@@ -17,7 +17,7 @@ type Budget = { clicks: number; texts: number; files: number; decisions: number 
 // "imported tests" is 13: the import writes Guide's two messages, as the backend does, so the Guide
 // column opens with them and its controls count in the main zone (12 before PR 1, with an empty Guide).
 // Lazy creation is merged: measure the direct first-input paths; keep explicit run consent.
-const controlBudget: Record<string, number> = { entry: 3, "build start": 4, "improve start": 8, "imported tests": 13, cost: 4 };
+const controlBudget: Record<string, number> = { entry: 3, "build start": 5, "improve start": 8, "imported tests": 13, cost: 4 };
 const tab = (page: Page, name: "Agent" | "Tests" | "Results") => page.getByRole("tab", { name, exact: true });
 const runResults = (page: Page) => page.getByRole("article", { name: "Run results" });
 const runDone = (page: Page) => expect(page.locator(".vibe-project-header")).toContainText("Run 1: Completed", { timeout: 30_000 });
@@ -90,12 +90,10 @@ test("Build reaches its first test result in 2 clicks and 1 text", async ({ page
   expect(fake.posts).toEqual([]);
   await flow.fill(composer(page), description, "task");
   await expect(sendButton(page)).toBeEnabled({ timeout: 20_000 });
-  // The forward options of the Build start, as in verification.md section 2: describe, example, attach, switch door.
-  const examples = page.getByRole("button", { name: "Answer return questions", exact: true });
-  const choices = await examples.isVisible()
-    ? [examples, page.getByRole("button", { name: "Sort support emails", exact: true }), page.getByRole("button", { name: "Attach a file", exact: true })]
-    : [page.getByRole("button", { name: "See an example" }), page.getByRole("button", { name: "Add a file or text" })];
-  await flow.decision("build start", [sendButton(page), ...choices, page.getByRole("button", { name: "Already have an agent? Improve it instead." })]);
+  // Two examples stay immediate; attachment and switching share one disclosure.
+  await expect(buildOptions(page)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Answer return questions", exact: true })).toBeVisible();
+  await flow.decision("build start", [sendButton(page), page.getByRole("button", { name: "Answer return questions", exact: true }), page.getByRole("button", { name: "Sort support emails", exact: true }), buildOptions(page)]);
   expect(fake.posts).toEqual([]);
   flow.consent();
   await flow.click(sendButton(page), "Build and run 3 tests");
@@ -313,6 +311,7 @@ test("door navigation keeps both drafts and makes no project before input is com
   await expect(page.locator(".vibe-entry-intro")).not.toHaveAttribute("data-fresh");
   await doorButton(page, "improve").click(); await doorReady(page, "improve");
   await startComposer(page, "improve").fill(instructions);
+  await improveOptions(page).click();
   await switchDoorButton(page, "improve").click();
   await doorReady(page, "build"); await expect(composer(page)).toHaveValue(description);
   await page.reload(); await doorReady(page, "build"); await expect(composer(page)).toHaveValue(description);
@@ -347,4 +346,23 @@ for (const door of ["build", "improve"] as const) test(`New project returns from
   await entryReady(page); await expect(page.getByRole("dialog")).toHaveCount(0);
   await doorButton(page, door).click(); await doorReady(page, door); await expect(input).toHaveValue("Keep this uncommitted draft.");
   expect(fake.posts).toEqual([]); expect(fake.errors).toEqual([]);
+});
+
+
+test("every Improve segment keeps at most eight enabled main controls", async ({ page }) => {
+  const { fake } = await open(page, "improve-segment-controls");
+  await doorButton(page, "improve").click(); await doorReady(page, "improve");
+  const segments: Record<string, { empty: number; populated: number }> = {};
+  for (const source of ["instructions", "recorded", "import"] as const) {
+    await sourceButton(page, source).click();
+    const empty = (await census(page)).controls.mainEnabled;
+    if (source === "instructions") await startComposer(page, "improve").fill(instructions);
+    if (source === "recorded") { await repliesInput(page).fill(transcript); await rulesInput(page).fill(expectation); }
+    const populated = (await census(page)).controls.mainEnabled;
+    segments[source] = { empty, populated };
+    expect(empty, `${source} empty controls`).toBeLessThanOrEqual(controlBudget["improve start"]);
+    expect(populated, `${source} populated controls`).toBeLessThanOrEqual(controlBudget["improve start"]);
+  }
+  await writeRecord("improve-segment-controls", segments);
+  expect(fake.posts).toEqual([]); expect(fake.errors).toEqual([]); expect(fake.unknown).toEqual([]);
 });

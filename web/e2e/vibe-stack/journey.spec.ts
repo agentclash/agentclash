@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Artifact, Operation, Session } from "../../src/lib/vibe";
+import { deferInstructionsAndKeepTests } from "./keep-tests";
 
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT ?? "55441"}`;
 const reviewVersion = process.env.VIBE_BROWSER_REVIEW_VERSION ?? "suite-review-v3";
@@ -277,8 +278,7 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   await expect(page.getByRole("heading",{name:"3 tests are ready"})).toBeVisible();
   const id=new URL(page.url()).searchParams.get("session")!;
   const before=await evidence(page,id); const artifact=before.session.document.artifacts.at(-1)!;
-  await page.getByRole("button",{name:"Keep for later",exact:true}).click();
-  await page.getByRole("button",{name:"Keep these tests",exact:true}).click();
+  await deferInstructionsAndKeepTests(page);
   const link=page.getByRole("link",{name:"Sign in to save your work"});
   expect(new URL((await link.getAttribute("href"))!,page.url()).searchParams.get("returnTo")).toContain(`agent=${artifact.id}`);
   await link.click();
@@ -287,8 +287,7 @@ test("real development-auth return keeps exact unrun tests, recovers a lost save
   await page.goBack();
   await openTests(page);
   await expect(page.getByRole("heading",{name:"3 tests are ready"})).toBeVisible();
-  await page.getByRole("button",{name:"Keep for later",exact:true}).click();
-  await page.getByRole("button",{name:"Keep these tests",exact:true}).click();
+  await deferInstructionsAndKeepTests(page);
   await page.getByRole("link",{name:"Sign in to save your work"}).click();
   await page.getByRole("button",{name:"Continue with AgentClash"}).click();
   await expect(page).toHaveURL(/vibe-evals\?.*keep=1/);

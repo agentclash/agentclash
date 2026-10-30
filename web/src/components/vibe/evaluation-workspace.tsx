@@ -76,6 +76,7 @@ Assistant: Here’s your plan: transport ₹2,000, food ₹2,000, and activities
 
 export type EvaluationWorkspaceProps = {
  startScreen?: ReactNode;
+ sourceIntent?: "live_app" | "sdk_report";
  embedded?: boolean;
  materialInput?: ReactNode;
   twoDoor?: boolean;
@@ -191,7 +192,7 @@ export function EvaluationWorkspace(p: EvaluationWorkspaceProps) {
     {p.startScreen ? <><header className="vibe-header vibe-entry-header"><div className="vibe-header-identity">{p.navigationToggle}<span className="vibe-header-title" data-brand>Vibe Evals</span></div></header><div className="vibe-scroll-region min-h-0 flex-1 overflow-y-auto">{p.startScreen}</div></> : <EntryWorkspace p={p} />}
     <SavedWorkDialog status={p.savedListStatus} onRetry={p.onRetrySaved} open={!!p.savedWorkOpen} onOpenChange={p.onSavedWorkOpenChange || (() => {})} testJourney={p.testJourney} savedChecks={p.savedChecks} hasResults={false} onResults={() => {}} />
   </>;
-  if (p.twoDoor && p.session?.document.evaluation && !p.newEvaluation) return <ProjectWorkspace p={p} initial={<LegacyEvaluationWorkspace {...p} embedded view="build" />} />;
+  if (p.twoDoor && p.session && (p.session.document.evaluation || p.sourceIntent) && !p.newEvaluation) return <ProjectWorkspace p={p} initial={<LegacyEvaluationWorkspace {...p} embedded view="build" />} />;
   return <LegacyEvaluationWorkspace {...p} />;
 }
 

@@ -19,7 +19,7 @@ export function ImproveRunProvider(p: { session?: Session | null; artifact?: Art
   const source = cached;
   const actual = source && scope(source.sessionID, source.revision, source.extra.artifact_id, source.extra.evidence_set_id, source.baseline?.id, source.kind, source.requestModels);
   const quote = source && actual === expected && source.selectionArtifact === p.artifact?.id && !source.extra.case_keys && !source.extra.purpose && Date.parse(source.quote.expires_at) > p.now && Number.isFinite(source.quote.max_cost_nano_usd) && source.quote.max_cost_nano_usd >= 0 ? source.quote : undefined;
-  return <ImprovePrice.Provider value={ready ? { quote: p.creditError ? undefined : quote, error: p.creditError, credits: !!p.creditError, refresh: () => p.onClearError?.(), onCredits: p.onCredits } : undefined}>{p.children}</ImprovePrice.Provider>;
+  return <ImprovePrice.Provider value={ready || p.creditError ? { quote: p.creditError ? undefined : quote, error: p.creditError, credits: !!p.creditError, refresh: () => p.onClearError?.(), onCredits: p.onCredits } : undefined}>{p.children}</ImprovePrice.Provider>;
 }
 export function priceLabel(label: string, price?: Price) { return price?.quote ? `${label} · up to ${dollars(price.quote.max_cost_nano_usd)}` : label; }
 export function ImproveRunNotice({ reason }: { reason?: string }) {

@@ -5,7 +5,7 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { Session } from "../../src/lib/vibe";
 import { description, fakeVibe, instructions, models, project } from "./entry-fake";
-import { chooseDoor, composer, doorButton, doorReady, entryHeading, entryReady, sendButton, sourceButton } from "./entry-model";
+import { chooseDoor, composer, doorButton, doorReady, entryHeading, entryReady, sendButton, sourceButton, doorHeading, startScreen, startComposer, buildOptions, resultsMore } from "./entry-model";
 
 type Scheme = "light" | "dark";
 const schemes = ["light", "dark"] as const;
@@ -80,7 +80,7 @@ async function toResults(page: Page) {
   return fake;
 }
 
-test("the entry and both door starts: the display serif question, 3:1 control boundaries, a flat composer and dock", async ({ page }) => {
+test("the entry and both door starts: display serif questions, 3:1 control boundaries, flat inputs and no start dock", async ({ page }) => {
   const fake = await fakeVibe(page);
   await page.goto("/vibe-evals");
   await entryReady(page, 30_000);
@@ -95,20 +95,29 @@ test("the entry and both door starts: the display serif question, 3:1 control bo
   }
   await chooseDoor(page, "build");
   await doorReady(page, "build");
-  await composer(page).blur();
-  const box = page.locator(".vibe-composer").filter({ has: composer(page) });
-  const dock = page.locator(".vibe-composer-dock").filter({ has: composer(page) });
+  const box = page.locator(".vibe-build-start-card");
+  await buildOptions(page).click();
   for (const scheme of schemes) for (const contrast of ["no-preference", "more"] as const) {
     await settle(page, scheme, { contrast });
-    expect(await boundary(box), `${scheme} composer`).toBeGreaterThanOrEqual(3);
-    // Elevation 1: a hairline or a border, no shadow; the dock has no fade and no upward shadow.
+    const title = doorHeading(page, "build"), input = startComposer(page, "build");
+    await expect(title, scheme).toHaveCSS("font-family", /Instrument[ _]Serif/);
+    await expect(title, scheme).toHaveCSS("font-weight", "400");
+    expect(parseFloat(await css(title, "font-size")), scheme).toBeGreaterThanOrEqual(20);
+    expect(await boundary(box), `${scheme} Build input card`).toBeGreaterThanOrEqual(3);
+    expect(await boundary(input), `${scheme} Build input`).toBeGreaterThanOrEqual(3);
     await expect(box, scheme).toHaveCSS("box-shadow", "none");
-    await expect(dock, scheme).toHaveCSS("box-shadow", "none");
-    await expect(dock, scheme).toHaveCSS("background-image", "none");
-    await expect(dock, scheme).toHaveCSS("background-color", canvas[scheme]);
-    await composerFocus(page, box, composer(page), `${scheme} ${contrast} entry composer`);
-    const secondary = page.locator(".vibe-button-secondary").filter({ visible: true });
-    expect(await secondary.count(), scheme).toBeGreaterThan(0);
+    await expect(box, scheme).toHaveCSS("background-image", "none");
+    await expect(page.locator(".vibe-composer-dock")).toHaveCount(0);
+    await input.focus(); await page.keyboard.press("Shift+Tab"); await page.keyboard.press("Tab");
+    await expect(input).toBeFocused();
+    await expect.poll(() => input.evaluate(element => element.matches(":focus-visible"))).toBe(true);
+    await expect(input, scheme).toHaveCSS("outline-style", "solid");
+    await expect(input, scheme).toHaveCSS("outline-width", "2px");
+    expect(await css(input, "outline-color"), scheme).not.toBe(await css(input, "border-top-color"));
+    expect(await boundary(input, "outline"), `${scheme} Build focus ring`).toBeGreaterThanOrEqual(3);
+    await input.blur(); await expect(input).toHaveCSS("outline-style", "none");
+    const secondary = startScreen(page).locator(".vibe-button-secondary").filter({ visible: true });
+    expect(await secondary.count(), scheme).toBe(2);
     for (const button of await secondary.all()) expect(await boundary(button), `${scheme} ${await button.textContent()}`).toBeGreaterThanOrEqual(3);
   }
   await page.goto("/vibe-evals");
@@ -117,7 +126,20 @@ test("the entry and both door starts: the display serif question, 3:1 control bo
   await doorReady(page, "improve");
   for (const scheme of schemes) for (const contrast of ["no-preference", "more"] as const) {
     await settle(page, scheme, { contrast });
-    for (const source of ["instructions", "recorded", "import"] as const) expect(await boundary(sourceButton(page, source)), `${scheme} ${source} source`).toBeGreaterThanOrEqual(3);
+    const title = doorHeading(page, "improve");
+    await expect(title, scheme).toHaveCSS("font-family", /Instrument[ _]Serif/);
+    await expect(title, scheme).toHaveCSS("font-weight", "400");
+    expect(parseFloat(await css(title, "font-size")), scheme).toBeGreaterThanOrEqual(20);
+    await expect(page.locator(".vibe-composer-dock")).toHaveCount(0);
+    for (const source of ["instructions", "recorded", "import"] as const) {
+      await sourceButton(page, source).click();
+      for (const radio of await startScreen(page).getByRole("radio").all()) expect(await boundary(radio), `${scheme} ${source} segment`).toBeGreaterThanOrEqual(3);
+      const surface = startScreen(page).locator(source === "import" ? ".vibe-improve-drop" : ".vibe-improve-form");
+      await expect(surface, scheme).toHaveCSS("box-shadow", "none");
+      await expect(surface, scheme).toHaveCSS("background-image", "none");
+      if (source === "import") expect(await boundary(surface), `${scheme} pack drop zone`).toBeGreaterThanOrEqual(3);
+      for (const control of await startScreen(page).locator("textarea, select").filter({ visible: true }).all()) expect(await boundary(control), `${scheme} ${source} input`).toBeGreaterThanOrEqual(3);
+    }
   }
   expect(fake.unknown).toEqual([]); expect(fake.errors).toEqual([]);
 });
@@ -138,13 +160,14 @@ test("the Guide composer has a distinct 3:1 keyboard focus ring in every appeara
 
 test("results: an ink primary, clay and sage status with a glyph and a word, and the serif title and outcome", async ({ page }) => {
   const fake = await toResults(page);
-  const results = page.getByRole("article", { name: "Run results" });
-  await results.getByText(/^Other results ·/).click();
+  const results = page.getByRole("tabpanel", { name: "Results", exact: true });
+  await results.getByText("All 3 test results", { exact: true }).click();
+  await resultsMore(page).click();
   const issue = results.locator("summary").filter({ hasText: "Issue found" }).first();
   const passed = results.locator("summary").filter({ hasText: "Passed" }).first();
   await expect(passed).toBeVisible();
   const title = page.locator(".vibe-project-identity h1");
-  const outcome = page.locator(".vibe-results-outcome");
+  const outcome = results.locator(".vibe-results-outcome").first();
   for (const scheme of schemes) {
     await settle(page, scheme);
     const primary = page.locator(".vibe-button-primary").filter({ visible: true });

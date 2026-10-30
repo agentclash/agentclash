@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Copy } from "lucide-react";
 import { VibeButton } from "./vibe-button";
 export const exampleAgentDescription = `My agent helps customers with returns. Unopened items can be returned within 30 days. Opened items and purchases older than 30 days aren't eligible. It should ask for missing purchase age or item condition, and never claim it has processed a refund.`;
@@ -27,10 +27,11 @@ export function ReplyCount({ text }: { text: string }) {
   const count = replyCount(text);
   return <p className="vibe-improve-count" role="status">{count.conversations} {count.conversations === 1 ? "conversation" : "conversations"} · {count.messages} {count.messages === 1 ? "message" : "messages"}</p>;
 }
-export function InstructionsHelp() {
+export function InstructionsHelp({ children }: { children?: ReactNode } = {}) {
   const [copied, setCopied] = useState(false), [failed, setFailed] = useState(false);
   return <details className="vibe-improve-help"><summary>Where do I find these?</summary><p>Ask the coding tool you used to build your agent:</p><p className="vibe-improve-request">{instructionsHelp}</p>
     <VibeButton variant="quiet" onClick={async () => { try { await navigator.clipboard.writeText(instructionsHelp); setCopied(true); setFailed(false); } catch { setFailed(true); } }}><Copy aria-hidden="true" />{copied ? "Copy request · copied" : "Copy request"}</VibeButton>
+    {children}
     {failed && <p role="status">Select and copy the request above.</p>}
   </details>;
 }

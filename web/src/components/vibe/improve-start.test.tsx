@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import React, { act, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -92,4 +93,51 @@ it("explains guest advanced paths and keeps Back and door switch reachable", asy
   await click("Build an agent instead"); expect(switchDoor).toHaveBeenCalledOnce();
   await draw({ signedIn: true }); await click("Connect a live app"); await click("Import an SDK report");
   expect(other.mock.calls.slice(-2)).toEqual([["live_app"], ["sdk_report"]]);
+});
+
+
+it("keeps optional choices in disclosures and caps each populated segment at eight main controls", async () => {
+  await draw({ drafts: { instructions: "Keep the policy", model: "model-a", conversations: "Customer: Hi\nAgent: Hello", rules: "Be helpful" } });
+  expect(button("Back").closest("header")).not.toBeNull();
+  expect(button("Use sample instructions").closest("details")?.querySelector("summary")?.textContent).toBe("Where do I find these?");
+  expect(button("Build an agent instead").closest("details")?.querySelector("summary")?.textContent).toBe("Other ways to bring your agent");
+  expect(node.querySelector("select")?.closest("details")?.querySelector("summary")?.textContent).toBe("Other ways to bring your agent");
+  const counts: number[] = [];
+  for (const mode of ["Instructions", "Real replies", "Test pack"]) {
+    await click(mode);
+    const controls = [...node.querySelectorAll<HTMLElement>("button, textarea, select, a[href], summary")].filter(control => {
+      if (control.closest("header") || (control as HTMLButtonElement).disabled) return false;
+      for (let detail = control.parentElement?.closest("details"); detail; detail = detail.parentElement?.closest("details")) if (!detail.open && !detail.querySelector(":scope > summary")?.contains(control)) return false;
+      return true;
+    });
+    counts.push(controls.length);
+  }
+  expect(counts).toEqual([8, 8, 6]);
+});
+it("labels every Improve input and gives independent mounts unique field ids", async () => {
+  await draw();
+  const first = node.querySelector("textarea")!.id;
+  expect(first).not.toBe(""); expect(first).not.toBe("vibe-instructions-source");
+  for (const mode of ["Instructions", "Real replies", "Test pack"]) {
+    await click(mode);
+    for (const control of node.querySelectorAll<HTMLTextAreaElement | HTMLSelectElement | HTMLInputElement>("textarea, select, input")) {
+      expect(control.id).not.toBe(""); expect(control.labels?.length).toBe(1);
+      expect(control.labels?.[0]?.textContent?.trim()).not.toBe("");
+    }
+  }
+  await act(async () => root.render(<><Harness key="first" /><Harness key="second" /></>));
+  const areas = [...node.querySelectorAll("textarea")]; expect(new Set(areas.map(area => area.id)).size).toBe(2);
+});
+
+it("uses the display serif question and visible borders for every segment", async () => {
+  const style = document.createElement("style"); style.textContent = readFileSync("src/components/vibe/improve.css", "utf8").replaceAll("var(--vibe-control-border)", "#765820"); document.head.append(style);
+  try {
+    await draw();
+    expect(getComputedStyle(node.querySelector("h1")!).fontFamily).toBe("var(--vibe-font-serif)");
+    expect(getComputedStyle(node.querySelector("h1")!).fontWeight).toBe("400");
+    for (const radio of node.querySelectorAll('[role="radio"]')) {
+      expect(getComputedStyle(radio).borderTopWidth).toBe("1px");
+      expect(getComputedStyle(radio).borderTopStyle).toBe("solid");
+    }
+  } finally { style.remove(); }
 });

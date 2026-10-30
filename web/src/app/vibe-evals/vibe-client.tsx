@@ -1,5 +1,6 @@
 "use client";
 import { BuildStart } from "@/components/vibe/build-start";
+import { ImproveOtherStart, type ImproveSource } from "@/components/vibe/improve-other-start";
 import { ImproveStart } from "@/components/vibe/improve-start";
 import { ReimportReview } from "@/components/vibe/reimport-review";
 import {ObservedResults} from "@/components/vibe/observed-results";
@@ -62,6 +63,11 @@ export function VibeClient() {
   const improveCreditError = session?.document.evaluation?.door === "test" ? creditMessage : undefined;
   const inlineCreditError = improveCreditError && (view === "tests" || view === "build" && !!instructionChangeBaseline(session, artifact));
   const choosingEntry = twoDoor && (!session || newEvaluation);
+  const startChatError = new TextEncoder().encode(startInputs.chat || "").length > messageLimit ? `Message exceeds the ${messageLimit.toLocaleString()} byte UTF-8 limit.` : undefined;
+  const actor = authUser?.id || "guest";
+  const [otherSource, setOtherSource] = useState<{ actor: string; kind: ImproveSource; projectID?: string; reportClosed?: boolean }>();
+  const source = otherSource?.actor === actor && (startDoor === "improve" || otherSource.projectID === session?.id) ? otherSource : undefined;
+  const sourceForProject = source?.projectID === session?.id ? source?.kind : undefined;
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [utilitySheet, setUtilitySheet] = useState(false);
   // One dialog at a time: Settings closes, then the dialog it asked for opens.
@@ -118,7 +124,8 @@ return (
         onSettings={() => setSettingsOpen(true)} onSavedWork={() => setSavedWorkOpen(true)}>
       {navigationToggle => <EvaluationWorkspace onExport={(a,o)=>void exporter.start(a,o)} onOriginal={a=>void exporter.original(a)}
         key={session?.id || "entry"}
-        startScreen={startDoor ? startDoor === "build" ? <BuildStart draft={startBuildDraft.value} onDraft={startBuildDraft.setValue} price={buildPrice} trialUsed={!authUser && !!startConfig?.guest_trial?.initial_build_used} busy={pending} error={startError} blockedReason={buildBlockedReason} onStart={text => void startProject("build", { kind: "build", text })} onSwitchDoor={() => chooseDoor("test")} onBack={backFromStart} /> : <ImproveStart mode={startInputs.mode || "instructions"} onMode={mode => setStartInputs({ mode })} drafts={{ ...startInputs, model: startInputs.model || config?.defaults.target }} onDraft={setStartInputs} models={config?.models || []} signedIn={!!authUser} busy={pending} error={startError} blockedReason={!entryAvailable ? unavailableReason : undefined} onWriteTests={input => void startProject("test", { kind: "instructions", ...input })} onSaveReplies={input => void startProject("test", { kind: "replies", ...input })} onImportPack={file => void startProject("test", { kind: "pack", file })} onOther={() => setStartInputs({ mode: "instructions" })} onSwitchDoor={() => chooseDoor("build")} onBack={backFromStart} /> : undefined}
+        sourceIntent={sourceForProject === "live_app" || sourceForProject === "sdk_report" ? sourceForProject : undefined}
+        startScreen={startDoor === "improve" && source ? <ImproveOtherStart key={source.kind} source={source.kind} projects={contexts} workspace={workspace} loading={contextList.status === "loading"} failed={["failed", "forbidden", "signed_out"].includes(contextList.status)} busy={pending} blockedReason={!entryAvailable ? unavailableReason : startChatError} draft={startInputs.chat || ""} onDraft={chat => setStartInputs({ chat })} onSend={() => { void sendMessage(startInputs.chat || ""); }} onProject={id => { setOtherSource({ actor, kind: source.kind, projectID: id }); void switchContext(id).then(() => { if (source.kind === "sdk_report" && new URL(window.location.href).searchParams.get("session") === id) navigate("checks"); }); }} onRetry={contextList.retry} onBack={() => setOtherSource(undefined)} error={error} /> : startDoor ? startDoor === "build" ? <BuildStart draft={startBuildDraft.value} onDraft={startBuildDraft.setValue} price={buildPrice} trialUsed={!authUser && !!startConfig?.guest_trial?.initial_build_used} busy={pending} error={startError} blockedReason={buildBlockedReason} onStart={text => void startProject("build", { kind: "build", text })} onSwitchDoor={() => chooseDoor("test")} onBack={backFromStart} /> : <ImproveStart mode={startInputs.mode || "instructions"} onMode={mode => setStartInputs({ mode })} drafts={{ ...startInputs, model: startInputs.model || config?.defaults.target }} onDraft={setStartInputs} models={config?.models || []} signedIn={!!authUser} busy={pending} error={startError} blockedReason={!entryAvailable ? unavailableReason : undefined} onWriteTests={input => void startProject("test", { kind: "instructions", ...input })} onSaveReplies={input => void startProject("test", { kind: "replies", ...input })} onImportPack={file => void startProject("test", { kind: "pack", file })} onOther={kind => setOtherSource({ actor, kind })} onSwitchDoor={() => chooseDoor("build")} onBack={backFromStart} /> : undefined}
         twoDoor={twoDoor}
         navigationToggle={navigationToggle}
         newEvaluation={newEvaluation}
@@ -176,7 +183,7 @@ return (
           {evidenceAccess.access.status === "unavailable" && <div role="alert"><p>Workspace access could not be confirmed.</p><VibeButton onClick={evidenceAccess.retry}>Retry workspace access</VibeButton></div>}
           {resultSources}
           {evidenceResult&&<ObservedResults binding={evidenceResult} actorScope={authUser?.id||"guest"} workspaceId={session.workspace_id} token={token} access={evidenceAccess.access} onExport={()=>{const pinned=session.document.artifacts.find(a=>a.id===evidenceResult.artifact_id);if(pinned)void exporter.startResult(pinned,evidenceResult.result_ref,"selected",undefined,true)}}/>}
-          {authUser && session.workspace_id && evidenceAccess.access.canWrite && <details><summary>Import SDK report</summary><SDKReportImportForm sessionId={session.id} workspaceId={session.workspace_id} artifactId={artifact.id} actorScope={authUser?.id || "guest"} token={token} access={evidenceAccess.access} onImported={binding=>{onSelectResult(binding);void snapshots.reload();}} /></details>}
+          {authUser && session.workspace_id && evidenceAccess.access.canWrite && <details open={sourceForProject === "sdk_report" && !source?.reportClosed || undefined} onToggle={event => { if (!event.currentTarget.open && sourceForProject === "sdk_report") setOtherSource(current => current && { ...current, reportClosed: true }); }}><summary>Import SDK report</summary><SDKReportImportForm sessionId={session.id} workspaceId={session.workspace_id} artifactId={artifact.id} actorScope={authUser?.id || "guest"} token={token} access={evidenceAccess.access} onImported={binding=>{onSelectResult(binding);void snapshots.reload();}} /></details>}
         </div>}
         selectedCase={navigation.case}
         onSelectCase={key => navigation.update({ case: key })}

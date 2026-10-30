@@ -42,7 +42,10 @@ async function settle(page: Page, scheme: Scheme) {
 // Focus after a screen change. Give a deferred focus move up to 2 s before reading it.
 async function focusAfterChange(page: Page) {
   await expect.poll(async () => (await focused(page)).tag, { timeout: 2_000 }).not.toBe("body").catch(() => undefined);
-  return focused(page);
+  const active = page.locator(":focus");
+  await expect(active).toHaveAccessibleName(/\S/);
+  const focus = await focused(page);
+  return { ...focus, name: await active.getAttribute("aria-label") || await active.evaluate(element => (element as HTMLTextAreaElement).labels?.[0]?.textContent || element.textContent || "") };
 }
 
 async function measure(page: Page, extra: Partial<Measure> = {}): Promise<Measure> {

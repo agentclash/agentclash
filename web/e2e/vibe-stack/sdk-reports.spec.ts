@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import { deferInstructionsAndKeepTests } from "./keep-tests";
 const api = `http://127.0.0.1:${process.env.VIBE_BROWSER_API_PORT || "55441"}`;
 const workspace = "a8000000-0000-4000-8000-000000000003";
 const blueprint = {
@@ -45,8 +46,7 @@ test("mounted SDK import keeps exact bytes, source URL, reviews, separate regrad
  const retained=archive.evidence.find((item:{reference:{kind:string}})=>item.reference.kind==="sdk_report");expect(Buffer.from(retained.value.content,"base64").toString("utf8")).toBe(source);
  await page.getByRole("dialog").getByRole("button",{name:"Close",exact:true}).last().click();
  await page.getByRole("tab",{name:"Tests",exact:true}).click();
- const keepLater=page.getByRole("button",{name:"Keep for later",exact:true});if(await keepLater.count())await keepLater.click();
- await page.getByRole("button",{name:"Keep these tests",exact:true}).first().click();
+ await deferInstructionsAndKeepTests(page);
  await expect(page.getByRole("dialog")).toContainText("No baseline selected");
  await page.getByRole("dialog").getByRole("button",{name:/Keep these tests|Save and iterate/}).click();
  const advanced=page.getByRole("link",{name:"Open in full pack builder"});await expect(advanced).toBeVisible();

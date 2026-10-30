@@ -12,8 +12,14 @@ test.afterEach(async({page},info)=>{
  await page.request.post(`${api}/__fixture/control`,{data:{target_delay_ms:0}});
 });
 async function evidence(page: import("@playwright/test").Page) {
+ await expect.poll(()=>new URL(page.url()).searchParams.get("session"),{
+  message:"The committed input must create a project and publish its UUID in the session URL parameter",
+  timeout:30000,
+ }).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
  const id=new URL(page.url()).searchParams.get("session");
- const result=await (await page.request.get(`${api}/__fixture/evidence?session=${id}`)).json();
+ const response=await page.request.get(`${api}/__fixture/evidence?session=${id}`);
+ expect(response.ok(),`Saved evidence for session ${id}: ${await response.text()}`).toBe(true);
+ const result=await response.json();
  return {...result,calls:result.calls || []};
 }
 async function openGuide(page: Page) {

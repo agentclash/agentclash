@@ -12,6 +12,8 @@ export const startCopy = {
   sources: { instructions: "Instructions", recorded: "Real replies", import: "Test pack" },
   primaries: { instructions: "Write 3 tests", recorded: "Save and check", import: "Choose a file" },
   replies: "Conversations", rules: "What a good reply must do",
+  existingProject: { build: "What task should the agent handle?", improve: "Improve an agent you already have." },
+  buildOptions: "Files and other options", improveOptions: "Other ways to bring your agent", resultsMore: "More",
 } as const;
 export const entryCopy = {
   heading: "What would you like to evaluate?", choices: "New project choices",
@@ -28,7 +30,7 @@ export const workspacePicker = (page: Page) => page.getByRole("combobox", { name
 export const newProjectChoices = (page: Page, exact = true) => page.getByLabel(entryCopy.choices, { exact });
 export const doorButton = (page: Page, door: Door) => page.getByRole("button", { name: entryCopy.doors[door], exact: true });
 export const doorHeading = (page: Page, door: Door, exact = true) => startScreen(page).getByRole("heading", { level: 1, name: startCopy[door].heading, exact });
-export const projectStartHeading = (page: Page, door: Door) => page.getByRole("heading", { level: 2, name: startCopy[door].heading, exact: true });
+export const projectStartHeading = (page: Page, door: Door) => doorHeading(page, door).or(page.getByRole("heading", { level: 2, name: startCopy.existingProject[door], exact: true }));
 export const sourceButton = (page: Page, source: ImproveSource) => startScreen(page).getByRole("radio", { name: startCopy.sources[source], exact: true }).or(page.getByRole("button", { name: { instructions: "Try my saved instructions", recorded: "Test replies from my app", import: "Import a test pack" }[source], exact: true }));
 export const startComposer = (page: Page, door: Door) => startScreen(page).getByRole("textbox", { name: startCopy[door].composer, exact: true });
 // Retain the project Guide composer as well as the start inputs for existing specs.
@@ -38,6 +40,9 @@ export const sendButton = (page: Page) => startScreen(page).getByRole("button", 
 export const improvePrimary = (page: Page, source: ImproveSource) => startScreen(page).getByRole("button", { name: startCopy.primaries[source], exact: true });
 export const repliesInput = (page: Page) => startScreen(page).getByRole("textbox", { name: startCopy.replies, exact: true });
 export const rulesInput = (page: Page) => startScreen(page).getByRole("textbox", { name: startCopy.rules, exact: true });
+export const buildOptions = (page: Page) => startScreen(page).locator("summary").filter({ hasText: new RegExp(`^${startCopy.buildOptions}$`) });
+export const improveOptions = (page: Page) => startScreen(page).locator("summary").filter({ hasText: new RegExp(`^${startCopy.improveOptions}$`) });
+export const resultsMore = (page: Page) => page.locator("summary").filter({ hasText: new RegExp(`^${startCopy.resultsMore}$`) });
 export const switchDoorButton = (page: Page, door: Door) => startScreen(page).getByRole("button", { name: startCopy[door].switchDoor, exact: true });
 export const sampleButton = (page: Page) => page.getByRole("button", { name: "Read a sample test", exact: true });
 // A filled primary button (components/vibe/vibe-button.tsx). Add any new primary style here too.
