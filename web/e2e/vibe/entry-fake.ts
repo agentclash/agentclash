@@ -173,9 +173,16 @@ export async function fakeVibe(page: Page, options: FakeOptions = {}) {
         s.title = "Online shop returns helper";
         s.document.build = { cycle_id: body.cycle_id || "cycle", phase: "preparing", clarifications_used: 0 };
         if (options.buildFails) {
-          later(s, () => finish(op, { state: "FAILED", billing: "RELEASED", retryable: true, error: { code: "provider_error", message: "The selected model’s provider failed. Your request is saved." } } as any));
+          later(s, () => {
+            finish(op, { state: "FAILED", billing: "RELEASED", retryable: true, error: { code: "provider_error", message: "The selected model’s provider failed. Your request is saved." } } as any);
+            s.document.build = { ...s.document.build!, phase: "error", error: op.error };
+          });
           // As backend/internal/vibe/retry.go: the source stays FAILED, is no longer retryable, and a new operation runs.
-          retries.set(op.id, () => { (op as any).retryable = false; buildRun(s, running(`retry-${op.id}`, "message", { retry_of_operation_id: op.id, max_cost_nano_usd: 1 } as any), art); });
+          retries.set(op.id, () => {
+            (op as any).retryable = false;
+            s.document.build = { ...s.document.build!, phase: "preparing", error: undefined };
+            buildRun(s, running(`retry-${op.id}`, "message", { retry_of_operation_id: op.id, max_cost_nano_usd: 1 } as any), art);
+          });
           bump(s);
           return json(op, 202);
         }
