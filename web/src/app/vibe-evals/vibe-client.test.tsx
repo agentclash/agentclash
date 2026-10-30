@@ -2848,3 +2848,59 @@ it("explains unavailable evaluation entry before its disabled choices while keep
   expect([...container.querySelectorAll("summary")].some(node => node.textContent === "Read a sample test")).toBe(true);
   expect(requests.filter(request => request.method === "POST")).toHaveLength(0);
 });
+
+// Entry and door invariants (~/.claude/plans/vibe-evals-redesign.md section 8.2). it.fails marks a
+// known defect; vitest errors once it is fixed, so the marker must then be removed.
+async function enterDoor(door: "build" | "test") {
+  harness.params = new URLSearchParams();
+  respond = async (path, options) => {
+    if (path === "/config") return json({ enabled: true, two_door: true, availability: { guest: { available: true }, workspace: { available: true } }, defaults: defaultModels, models: [...new Set(Object.values(defaultModels))].map(id => ({ id, name: id, input_nano_per_token: 0, output_nano_per_token: 0 })) });
+    if (path === "/sessions" && options.method === "POST") {
+      const id = JSON.parse(String(options.body)).id;
+      session = { ...session, id, document: { ...session.document, format_version: 1, test_journey: true, evaluation: { id, chat_id: id, door } } };
+      return json(session, 201);
+    }
+    if (path.endsWith("/build-quote")) return json({ id: "quote", max_calls: 9, cases: 3, max_cost_nano_usd: 250000000, request: { content: JSON.parse(String(options.body)).content, models: defaultModels }, expires_at: new Date(Date.now() + 600000).toISOString() });
+    if (path.endsWith("/messages")) return json({ id: "admitted", kind: "message", state: "QUEUED", models: defaultModels, results: [] }, 202);
+    return path === "/sessions" || path === "/saved-checks" ? json([]) : json(session);
+  };
+  await render();
+  const choice = [...container.querySelectorAll<HTMLButtonElement>(".vibe-entry-doors button")].find(b => b.textContent?.includes(door === "build" ? "Build an agent" : "Improve an existing agent"))!;
+  choice.focus();
+  await act(async () => { choice.click(); await new Promise(resolve => setTimeout(resolve, 0)); });
+  expect(container.textContent).toContain(door === "build" ? "What would you like help with?" : "Improve an agent you already have.");
+}
+const visibleH1 = () => [...container.querySelectorAll("h1")].filter(h1 => !h1.closest("[hidden]"));
+
+for (const door of ["build", "test"] as const) {
+  it.fails(`shows exactly one h1 on the ${door} start (known defect B3)`, async () => {
+    await enterDoor(door);
+    expect(visibleH1()).toHaveLength(1);
+  });
+  it.fails(`moves focus into the ${door} start after the door click, not to the body (known defect D3)`, async () => {
+    await enterDoor(door);
+    expect(document.activeElement).not.toBe(document.body);
+  });
+}
+
+it.fails("shows one primary action on the Build start (known defect B2)", async () => {
+  await enterDoor("build");
+  expect(container.querySelectorAll(".vibe-button-primary")).toHaveLength(1);
+});
+
+it.fails("creates no project before the first committed input (known defect A5)", async () => {
+  await enterDoor("build");
+  expect(requests.filter(r => r.method === "POST" && r.path === "/sessions")).toHaveLength(0);
+});
+
+it("never shows two dialogs at once from the entry to the first Build send", async () => {
+  const dialogs = watchDialogs();
+  await enterDoor("build");
+  await type("Answer shop return questions within 30 days.");
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 450)); });
+  expect(button("Send message").disabled).toBe(false);
+  await click("Send message");
+  expect(posts()).toHaveLength(1);
+  expect(dialogs.most()).toBeLessThanOrEqual(1);
+  dialogs.stop();
+});
