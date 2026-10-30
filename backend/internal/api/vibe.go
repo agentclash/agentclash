@@ -326,15 +326,31 @@ func (h *VibeHandler) config(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
 	pdfAvailable := h.Service.Config.MaterialBuild && h.Service.Store != nil && h.Service.Store.Inputs != nil && h.Service.Store.Inputs.PDFAvailable(ctx)
 	availability := h.Service.Availability(ctx, len(h.CookieSecret) >= 32)
-	vibeJSON(w, 200, map[string]any{"server_time": time.Now().UTC(), "availability": availability, "material_build": h.Service.Config.MaterialBuild, "contact": contact, "pdf_uploads": pdfAvailable, "two_door": h.Service.Config.TwoDoor, "capabilities": vibe.AvailableCapabilities(pdfAvailable), "enabled": h.Service.Config.Enabled, "interaction_actions": true, "grading_recheck": h.Service.Config.GroundedJudging, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget})
+	response := map[string]any{"server_time": time.Now().UTC(), "availability": availability, "material_build": h.Service.Config.MaterialBuild, "contact": contact, "pdf_uploads": pdfAvailable, "two_door": h.Service.Config.TwoDoor, "capabilities": vibe.AvailableCapabilities(pdfAvailable), "enabled": h.Service.Config.Enabled, "interaction_actions": true, "grading_recheck": h.Service.Config.GroundedJudging, "free_only": h.Service.Config.FreeOnly, "local_testing": h.Service.Config.TestingLocally(), "models": models, "defaults": h.Service.Config.DefaultModels(), "anonymous_limits": h.Service.Config.Limits(true), "signed_in_limits": h.Service.Config.Limits(false), "trial_budget_nano_usd": vibe.TrialBudget, "first_build_ceiling_nano_usd": vibe.FirstBuildSpendCeiling}
+	if r.Header.Get("Authorization") == "" {
+		if actor := h.anonymous(r); actor == "" {
+			response["guest_trial"] = vibe.GuestTrial{}
+		} else if h.Service.Store != nil && h.Service.Store.DB != nil {
+			if trial, err := h.Service.Store.GuestTrial(ctx, actor); err == nil {
+				response["guest_trial"] = trial
+			}
+		}
+	}
+	vibeJSON(w, 200, response)
 }
 func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		ID          uuid.UUID  `json:"id"`
 		Door        string     `json:"door,omitempty"`
+		Title       string     `json:"title,omitempty"`
 		WorkspaceID *uuid.UUID `json:"workspace_id,omitempty"`
 	}
 	if err := vibeBody(w, r, true, &input); err != nil {
+		vibeError(w, err)
+		return
+	}
+	title, err := vibe.SessionTitle(input.Title)
+	if err != nil {
 		vibeError(w, err)
 		return
 	}
@@ -360,9 +376,9 @@ func (h *VibeHandler) create(w http.ResponseWriter, r *http.Request) {
 	}
 	var v vibe.Session
 	if input.Door != "" {
-		v, err = h.Service.Store.CreateAgent(r.Context(), actor, input.WorkspaceID, input.ID, input.Door, h.Service.Config.DefaultModels())
+		v, err = h.Service.Store.CreateAgent(r.Context(), actor, input.WorkspaceID, input.ID, input.Door, h.Service.Config.DefaultModels(), title)
 	} else {
-		v, err = h.Service.Store.CreateSession(r.Context(), actor, input.WorkspaceID, input.ID, h.Service.Config.DefaultModels())
+		v, err = h.Service.Store.CreateSessionWithTitle(r.Context(), actor, input.WorkspaceID, input.ID, title, h.Service.Config.DefaultModels())
 	}
 	if err != nil {
 		vibeError(w, err)
